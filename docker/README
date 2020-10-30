@@ -1,0 +1,22 @@
+Build a Docker container for the desi-outflows project.
+=======================================================
+
+```
+docker build . -t legacysurvey/desi-outflows
+docker push legacysurvey/desi-outflows:latest
+
+docker tag legacysurvey/desi-outflows:latest legacysurvey/desi-outflows:v0.0.0
+docker push legacysurvey/desi-outflows:v0.0.0
+```
+
+To enter the container (with a shell prompt) on a laptop do:
+```
+docker pull legacysurvey/desi-outflows:latest
+docker run -it legacysurvey/desi-outflows:latest
+```
+
+Or at NERSC:
+```
+shifterimg pull docker:legacysurvey/desi-outflows:latest
+shifter --image docker:legacysurvey/desi-outflows:latest bash
+```
