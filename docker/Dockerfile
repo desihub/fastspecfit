@@ -49,11 +49,11 @@ RUN for x in \
     h5py \
     pytest \
     emcee \
-    speclite \
     configobj \
     sqlalchemy \
     corner \
     ppxf \
+    fnnls \
     ; do pip3 install $x; done \
     && rm -Rf /root/.cache/pip
 
@@ -68,9 +68,13 @@ RUN git clone https://github.com/cconroy20/fsps
 RUN cd fsps/src \
     && F90FLAGS="-fPIC" make
 
-RUN git clone https://github.com/changhoonhahn/gqp_mc.git
-RUN cd gqp_mc \
+RUN git clone https://github.com/dkirkby/speclite.git
+RUN cd speclite \
     && python setup.py install
+
+RUN git clone https://github.com/changhoonhahn/gqp_mc.git
+# RUN cd gqp_mc \
+#     && python setup.py install
 
 ENV SPS_HOME /src/fsps
 
@@ -95,7 +99,7 @@ RUN for package in \
     done
 
 ENV PATH /src/desiutil/bin:/src/desimodel/bin:/src/desitarget/bin:/src/desispec/bin:/src/desisim/bin:/src/prospect/bin:/src/redrock/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ENV PYTHONPATH /src/desiutil/py:/src/desimodel/py:/src/desitarget/py:/src/desispec/py:/src/desisim/py:/src/prospect/py:/src/redrock/py
+ENV PYTHONPATH /src/desiutil/py:/src/desimodel/py:/src/desitarget/py:/src/desispec/py:/src/desisim/py:/src/prospect/py:/src/redrock/py:/src/gqp_mc/gqp_mc
 
 RUN git clone https://github.com/desihub/redrock-templates
 
