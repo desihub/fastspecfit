@@ -1,0 +1,134 @@
+#!/usr/bin/env python
+"""Galaxy spectral synthesis fitting code.
+
+"""
+import os, pdb
+import numpy as np 
+
+def get_data(tile='66003', night='20200315'):
+    """Parse the reduced data for a given tile and night. Select the subset of
+    objects with good redshifts and visual inspections.
+
+    ELG - tile='70005', night='20200228'       
+    20200315, 66003 - BGS+MWS 
+    
+    https://desi.lbl.gov/trac/wiki/SurveyValidation/TruthTables
+    https://desi.lbl.gov/DocDB/cgi-bin/private/RetrieveFile?docid=5720;filename=DESI_data_042820.pdf
+
+    """
+    import fitsio
+    from astropy.table import Table, join, vstack
+    from desispec.spectra import Spectra
+    import desispec.io
+
+    desigal_dir = os.getenv('DESIGAL_DATA')
+    zbestoutfile = os.path.join(desigal_dir, 'zbest-{}-{}.fits'.format(tile, night))
+    coaddoutfile = os.path.join(desigal_dir, 'coadd-{}-{}.fits'.format(tile, night))
+    if os.path.isfile(coaddoutfile):
+        zbest = Table(fitsio.read(zbestoutfile))
+        print('Read {} redshifts from {}'.format(len(zbest), zbestoutfile))
+
+        coadd = desispec.io.read_spectra(coaddoutfile)
+        print('Read {} spectra from {}'.format(len(zbest), coaddoutfile))
+
+        return zbest, coadd
+
+    print('Parsing data from tile, night {}, {}'.format(tile, night))
+
+    truthdir = os.path.join(os.getenv('DESI_ROOT'), 'sv', 'vi', 'TruthTables')
+    specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', 'andes')
+    datadir = os.path.join(specprod_dir, 'tiles', tile, night)
+    
+    if tile == '66003':
+        truthfile = os.path.join(truthdir, 'truth_table_BGS_v1.2.csv')
+    elif tile == '70500':
+        truthfile = os.path.join(truthdir, 'truth_table_ELG_v1.2_latest.csv')
+    else:
+        raise ValueError('Fix me.')
+    truth = Table.read(truthfile)
+    best = np.where(
+        (truth['best quality'] >= 2.5) * 
+        (truth['Redrock spectype'] == 'GALAXY') *
+        (truth['Redrock z'] < 0.75) 
+    )[0]
+    #goodobj = np.where((zb['DELTACHI2'] > 100) * (zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY'))[0]
+    
+    print('Read {}/{} good redshifts from {}'.format(len(best), len(truth), truthfile))
+    truth = truth[best]
+    
+    zbest = []
+    spectra, keepindx = [], []
+    for spectro in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'):
+        zbestfile = os.path.join(datadir, 'zbest-{}-{}-{}.fits'.format(spectro, tile, night))
+        coaddfile = os.path.join(datadir, 'coadd-{}-{}-{}.fits'.format(spectro, tile, night))
+        if os.path.isfile(zbestfile) and os.path.isfile(coaddfile):
+            zb = Table(fitsio.read(zbestfile))
+            keep = np.where(np.isin(zb['TARGETID'], truth['TARGETID']))[0]
+            print('Spectrograph {}: N={}'.format(spectro, len(keep)))
+            if len(keep) > 0:
+                zbest.append(zb[keep])
+                keepindx.append(keep)
+                spectra.append(desispec.io.read_spectra(coaddfile))
+
+    if len(zbest) == 0:
+        raise ValueError('No spectra found for tile {} and night {}!'.format(tile, night))
+        
+    # combine the spectrographs
+    print('Stacking all the spectra.')
+    zbest = vstack(zbest)
+
+    coadd = None
+    for camera in ('b', 'r', 'z'):
+        wave = spectra[0].wave[camera]
+        fm, flux, ivar, mask, res = [], [], [], [], []
+        for ii in np.arange(len(spectra)):
+            fm.append(spectra[ii].fibermap[keepindx[ii]])
+            flux.append(spectra[ii].flux[camera][keepindx[ii], :])
+            ivar.append(spectra[ii].ivar[camera][keepindx[ii], :])
+            mask.append(spectra[ii].mask[camera][keepindx[ii], :])
+            res.append(spectra[ii].resolution_data[camera][keepindx[ii], :, :])
+
+        fm = vstack(fm)
+        flux = np.concatenate(flux)
+        ivar = np.concatenate(ivar)
+        mask = np.concatenate(mask)
+        res = np.concatenate(res)
+
+        _coadd = Spectra([camera], {camera: wave}, {camera: flux}, {camera : ivar}, 
+                    resolution_data={camera: res}, mask={camera: mask}, 
+                    fibermap=fm, single=True)#, meta=meta)    
+        if coadd is None:
+            coadd = _coadd
+        else:
+            coadd.update(_coadd)
+
+    print('Writing {} redshifts to {}'.format(len(zbest), zbestoutfile))
+    zbest.write(zbestoutfile, overwrite=True)
+
+    print('Writing {} spectra to {}'.format(len(zbest), coaddoutfile))
+    desispec.io.write_spectra(coaddoutfile, coadd)
+
+    return zbest, coadd
+
+if __name__ == '__main__':
+    """Main routine.
+
+    """
+    import argparse
+    from desigal.igalfit import CKCz14
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--night', default='20200315', type=str, help='Night to process.')
+    parser.add_argument('--tile', default='66003', type=str, help='Tile number to process.')
+    parser.add_argument('--metallicity', default='Z0.0190', type=str, help='Stellar metallicity.')
+    parser.add_argument('--parse-data', action='store_true', help='Parse a tile of data.')
+    args = parser.parse_args()
+
+    # Read the data
+    zbest, specobj = get_data(tile=args.tile, night=args.night) 
+
+    # Read the SSPs
+    ssp = CKCz14(metallicity=args.metallicity)
+
+    pdb.set_trace()
