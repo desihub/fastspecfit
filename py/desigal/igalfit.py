@@ -5,19 +5,19 @@ desigal.igalfit
 """
 import os, pdb
 import numpy as np
+import astropy.units as u
 from astropy.table import Table, Column
 from astropy.modeling import Fittable1DModel
 
 from scipy import constants
 C_LIGHT = constants.c / 1000.0 # [km/s]
 
-def init_output(tile, night, zbest, CFit):
+def init_galfit(tile, night, zbest, CFit):
     """Initialize the output data table.
 
     CFit - ContinuumFit class
 
     """
-    from astropy.table import QTable
     import astropy.units as u
     nobj = len(zbest)
 
@@ -25,21 +25,33 @@ def init_output(tile, night, zbest, CFit):
     linetable = get_linetable()
     nssp_coeff = len(CFit.sspinfo)
 
-    out = QTable()
+    out = Table()
     for zbestcol in ['TARGETID', 'Z', 'ZERR']:#, 'SPECTYPE', 'DELTACHI2']
         out[zbestcol] = zbest[zbestcol]
     out.add_column(Column(name='NIGHT', data=np.repeat(night, nobj)), index=0)
     out.add_column(Column(name='TILE', data=np.repeat(tile, nobj)), index=0)
-    out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f4'))
+    out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
     out.add_column(Column(name='CONTINUUM_CHI2', length=nobj, dtype='f4')) # reduced chi2
+    out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
+    out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8'))
+    out.add_column(Column(name='CONTINUUM_AGE', length=nobj, dtype='f4', unit=u.Gyr))
     out.add_column(Column(name='CONTINUUM_EBV', length=nobj, dtype='f4', unit=u.mag))
     out.add_column(Column(name='CONTINUUM_VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+    out.add_column(Column(name='D4000', length=nobj, dtype='f4'))
+    out.add_column(Column(name='D4000_IVAR', length=nobj, dtype='f4'))
+    out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
     out.add_column(Column(name='LINEZ', length=nobj, dtype='f4'))
+    out.add_column(Column(name='LINEZ_IVAR', length=nobj, dtype='f4'))
     out.add_column(Column(name='LINESIGMA', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+    out.add_column(Column(name='LINESIGMA_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
     #out.add_column(Column(name='LINEZ_FORBIDDEN', length=nobj, dtype='f4'))
+    #out.add_column(Column(name='LINEZ_FORBIDDEN_ERR', length=nobj, dtype='f4'))
     #out.add_column(Column(name='LINEZ_BALMER', length=nobj, dtype='f4'))
+    #out.add_column(Column(name='LINEZ_BALMER_ERR', length=nobj, dtype='f4'))
     #out.add_column(Column(name='LINESIGMA_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+    #out.add_column(Column(name='LINESIGMA_FORBIDDEN_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
     #out.add_column(Column(name='LINESIGMA_BALMER', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+    #out.add_column(Column(name='LINESIGMA_BALMER_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
 
     for line in linetable['name']:
         line = line.upper()
@@ -192,7 +204,7 @@ def smooth_and_resample(sspflux, sspwave, galwave, galR):
     
     """
     from desispec.interpolation import resample_flux
-    return galR.dot(resample_flux(galwave, sspwave, sspflux))
+    return galR.dot(resample_flux(galwave, sspwave, sspflux, extrapolate=True))
 
 class ContinuumFit():
     def __init__(self, metallicity='Z0.0190', minwave=0.0, maxwave=1e4, nproc=1,
@@ -225,6 +237,7 @@ class ContinuumFit():
         self.imf = 'Kroupa'
 
         self.nproc = nproc
+        self.verbose = verbose
 
         # Don't hard-code the path!
         self.ssppath = os.getenv('DESIGAL_TEMPLATES')
@@ -249,38 +262,49 @@ class ContinuumFit():
         # dust parameters
         self.dustslope = 0.7
         
-    def redshift_smooth_and_resample(self, galwave, galres, redshift, plot=False):
+    def redshift_smooth_and_resample(self, galwave, galres, redshift):
         """Redshift, convolve with the spectral resolution, and 
         resample in wavelength.
+
+        ToDo: velocity dispersion smoothing
         
         """
         import multiprocessing
 
-        oneplusz = 1 + redshift
-                    
         # loop over cameras then SSP ages
         smoothflux = []
         for icamera in [0, 1, 2]: # iterate on cameras
-            args = [(self.sspflux[:, iage] / oneplusz, self.sspwave * oneplusz, galwave[icamera], 
-                     galres[icamera]) for iage in np.arange(self.nage)]
+            args = [(self.sspflux[:, iage] / (1 + redshift), self.sspwave * (1 + redshift),
+                     galwave[icamera], galres[icamera]) for iage in np.arange(self.nage)]
             with multiprocessing.Pool(self.nproc) as pool:
                 smoothflux.append(np.array(pool.map(_smooth_and_resample, args)).T)
 
-        if plot:
-            import matplotlib.pyplot as plt
-            ww = 110
-            plt.plot(self.ssp.wave * (1+self.zredrock), self.ssp.flux[:, ww], color='gray', alpha=0.5)
-            for ii in [0, 1, 2]: # iterate over cameras
-                plt.plot(self.galwave[ii], sspflux[ii][:, 110], color='k')
-            plt.xlim(3900, 4000)
+        #if plot:
+        #    import matplotlib.pyplot as plt
+        #    ww = 110
+        #    plt.plot(self.ssp.wave * (1+self.zredrock), self.ssp.flux[:, ww], color='gray', alpha=0.5)
+        #    for ii in [0, 1, 2]: # iterate over cameras
+        #        plt.plot(self.galwave[ii], sspflux[ii][:, 110], color='k')
+        #    plt.xlim(3900, 4000)
             
         return smoothflux # [npix, nage]
+
+    def fnnls_continuum_bestfit(self, coeff, sspflux=None, galwave=None,
+                                galres=None, redshift=None):
+        if sspflux is None:
+            sspflux = self.redshift_smooth_and_resample(galwave, galres, redshift)
+            bestfit = [_sspflux.dot(coeff) for _sspflux in sspflux]
+        else:
+            bestfit = sspflux.dot(coeff)
+            
+        return bestfit
 
     def fnnls_continuum(self, galwave, galflux, galivar, galres, redshift, plot=False):
         """Fit the continuum using fast NNLS.
         https://github.com/jvendrow/fnnls
         
         """
+        from time import time
         from fnnls import fnnls
         
         sspflux = self.redshift_smooth_and_resample(galwave, galres, redshift) 
@@ -291,16 +315,32 @@ class ContinuumFit():
         _sspflux = np.concatenate(sspflux, axis=0) # [npix, nage]
         
         # Do a fast initial fit of the stellar continuum.
-        print('ToDo: compute reduced chi2, mask emission lines, and compute the light-weighted age.')
-        coeffs = fnnls(_sspflux * np.sqrt(_galivar[:, None]), _galflux * np.sqrt(_galivar))[0]
+        print('ToDo: mask emission lines, compute D(4000), add vdisp and ebv, and restrict maxage of templates.')
+        t0 = time()
+        coeff = fnnls(_sspflux * np.sqrt(_galivar[:, None]), _galflux * np.sqrt(_galivar))[0]
+        dt = time() - t0
 
-        _continuum = _sspflux.dot(coeffs)
+        # ToDo: fit for dust, the redshift, and velocity dispersion
+        zcontinuum, vdisp, ebv = redshift, 0.0, 0.0
 
-        # light-weighted age
-        weight = coeffs[coeffs > 0]
-        print(np.sum(weight * self.sspinfo['age'][coeffs > 0]) / np.sum(weight) / 1e9) # [Gyr]
+        # Need to push the calculation of the best-fitting continuum to a
+        # function so we can call it when building QA.
+        _continuum = self.fnnls_continuum_bestfit(coeff, _sspflux)
+        dof = np.sum(_galivar > 0) - self.nage
+        chi2 = np.sum(_galivar * (_galflux - _continuum)**2) / dof
 
-        # Repackage into individual cameras
+        # Compute the light-weighted age.
+        weight = coeff[coeff > 0]
+        age = np.sum(weight * self.sspinfo['age'][coeff > 0]) / np.sum(weight) / 1e9 # [Gyr]
+        if self.verbose:
+            print('Continuum fit done in {:.3f} seconds:'.format(dt))
+            print('  Non-zero templates: {}'.format(len(weight)))
+            print('  Reduced chi2: {:.3f}'.format(chi2))
+            print('  Velocity dispersion: {:.3f} km/s'.format(vdisp))
+            print('  Reddening: {:.3f} mag'.format(ebv))
+            print('  Light-weighted age: {:.3f} Gyr'.format(age))
+
+        # Unpack the continuum into individual cameras.
         continuum = []
         npixpercamera = [len(gw) for gw in galwave]
         npix = np.hstack([0, npixpercamera])
@@ -309,16 +349,65 @@ class ContinuumFit():
             jpix = np.sum(npix[:ii+2])
             continuum.append(_continuum[ipix:jpix])
 
-        if plot:
-            galwave = np.hstack(self.galwave)
-            fig, ax = plt.subplots(figsize=(14, 8))
-            for ii in [0, 1, 2]: # iterate over cameras
-                ax.plot(self.galwave[ii], self.galflux[ii])
-            ax.plot(galwave, continuum, alpha=0.5, color='k')
-            #ax.set_xlim(3850, 3950)
-            
-        return coeffs, continuum
+        # Store the results and return.
+        results = {'coeff': coeff, 'chi2': np.float32(chi2), 'dof': dof,
+                   'age': np.float32(age), 'ebv': np.float32(ebv),
+                   'vdisp': np.float32(vdisp), 'z': zcontinuum}
+        #results = {'coeff': coeff, 'chi2': np.float32(chi2), 'dof': dof,
+        #           'age': np.float32(age)*u.Gyr, 'ebv': np.float32(ebv)*u.mag,
+        #           'vdisp': np.float32(vdisp)*u.kilometer/u.second}
 
+        return results, continuum
+    
+    def fnnls_continuum_plot(self, galwave, galflux, galivar, continuum,
+                             objinfo, png=None):
+        """QA of the best-fitting continuum.
+
+        """
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        from matplotlib import colors
+        from scipy.ndimage import median_filter
+
+        sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
+
+        col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
+        col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
+
+        ymin, ymax = 1e6, -1e6
+        
+        fig, ax = plt.subplots(figsize=(12, 8))
+        for ii in [0, 1, 2]: # iterate over cameras
+            galsigma = 1 / np.sqrt(galivar[ii])
+            ax.fill_between(galwave[ii], galflux[ii]-galsigma, galflux[ii]+galsigma,
+                            color=col1[ii])
+            ax.plot(galwave[ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
+
+            # get the robust range
+            filtflux = median_filter(galflux[ii], 5)
+            if np.min(filtflux) < ymin:
+                ymin = np.min(filtflux)
+            if np.max(filtflux) > ymax:
+                ymax = np.max(filtflux)
+
+        ax.text(0.95, 0.92, '{}'.format(objinfo['targetid']), 
+                ha='right', va='center', transform=ax.transAxes, fontsize=16)
+        ax.text(0.95, 0.86, r'{} {}'.format(objinfo['zredrock'], objinfo['zigalfit']),
+                ha='right', va='center', transform=ax.transAxes, fontsize=16)
+        ax.text(0.95, 0.80, r'{} {} {}'.format(objinfo['chi2'], objinfo['age'], objinfo['vdisp']),
+                ha='right', va='center', transform=ax.transAxes, fontsize=16)
+                    
+        ax.set_xlim(3500, 9900)
+        ax.set_ylim(ymin, ymax)
+        ax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
+        ax.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
+
+        plt.subplots_adjust(bottom=0.15, right=0.95, top=0.95)
+
+        if png:
+            print('Writing {}'.format(png))
+            fig.savefig(png)
+        
     def _get_uncertainties(self, pcov=None, jac=None, return_covariance=False):
         """Determine the uncertainties from the diagonal terms of the covariance
         matrix. If the covariance matrix is not known, estimate it from the
@@ -391,7 +480,7 @@ class ContinuumFit():
 
 #    def emlinemodel(self, params, log10wave):
 #        """Emission-line model."""
-#        zline, linesigma = params[0], params[1]
+#        linez, linesigma = params[0], params[1]
 #
 #        linenames = self.linetable['name'].data
 #        linefluxes = params[2:]
@@ -405,15 +494,15 @@ class ContinuumFit():
 #            
 #            for linename, lineflux in zip(linenames, linefluxes):
 #                restlinewave = self.linetable[self.linetable['name'] == linename]['restwave'][0]
-#                zlinewave = np.log10(restlinewave * (1.0 + zline)) # redshifted wavelength [log-10 Angstrom]
+#                linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
 #                log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]
 #                lineamp = lineflux / (np.sqrt(2.0 * np.pi) * log10sigma)
 #            
 #                # Construct the spectrum [erg/s/cm2/A, rest]
-#                ww = np.abs(_emlinewave - zlinewave) < 20 * log10sigma
+#                ww = np.abs(_emlinewave - linezwave) < 20 * log10sigma
 #                if np.count_nonzero(ww) > 0:
-#                    #print(linename, 10**zlinewave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
-#                    _emlinemodel[ww] += lineamp * np.exp(-0.5 * (_emlinewave[ww]-zlinewave)**2 / log10sigma**2)
+#                    #print(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
+#                    _emlinemodel[ww] += lineamp * np.exp(-0.5 * (_emlinewave[ww]-linezwave)**2 / log10sigma**2)
 #
 #            # optionally convolve with the spectral resolution
 #            if self.emlineR is not None:
@@ -456,7 +545,7 @@ class EMLineModel(Fittable1DModel):
     from astropy.modeling import Parameter
 
     # NB! The order of the parameters here matters!
-    zline = Parameter(name='zline', default=0.1, bounds=(-0.05, 2.0)) # line-redshift
+    linez = Parameter(name='linez', default=0.1, bounds=(-0.05, 2.0)) # line-redshift
     linesigma = Parameter(name='linesigma', default=50.0, bounds=(0.1, 350)) # line-sigma [km/s]
 
     # Fragile because the lines are hard-coded--
@@ -480,7 +569,7 @@ class EMLineModel(Fittable1DModel):
         return model.nii_6584_flux / 2.936
     nii_6548_flux.tied = tie_nii
     
-    def __init__(self, zline=zline.default, linesigma=linesigma.default,
+    def __init__(self, linez=linez.default, linesigma=linesigma.default,
                  oii_3726_flux=oii_3726_flux.default, 
                  oii_3729_flux=oii_3729_flux.default, 
                  oiii_4959_flux=oiii_4959_flux.default, 
@@ -502,7 +591,7 @@ class EMLineModel(Fittable1DModel):
         self.npixpercamera = np.hstack([0, npixpercamera])
         
         super(EMLineModel, self).__init__(
-            zline=zline, linesigma=linesigma,
+            linez=linez, linesigma=linesigma,
             oii_3726_flux=oii_3726_flux,
             oii_3729_flux=oii_3729_flux,
             oiii_4959_flux=oiii_4959_flux,
@@ -518,7 +607,7 @@ class EMLineModel(Fittable1DModel):
         """Evaluate the emission-line model.
         emlineR=None, npixpercamera=None, 
         """ 
-        zline, linesigma = args[0], args[1]
+        linez, linesigma = args[0], args[1]
 
         linenames = self.linetable['name'].data
         linefluxes = args[2:]
@@ -532,15 +621,15 @@ class EMLineModel(Fittable1DModel):
             
             for linename, lineflux in zip(linenames, linefluxes):
                 restlinewave = self.linetable[self.linetable['name'] == linename]['restwave'][0]
-                zlinewave = np.log10(restlinewave * (1.0 + zline)) # redshifted wavelength [log-10 Angstrom]
+                linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
                 log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]
                 lineamp = lineflux / (np.sqrt(2.0 * np.pi) * log10sigma)
             
                 # Construct the spectrum [erg/s/cm2/A, rest]
-                ww = np.abs(_emlinewave - zlinewave) < 20 * log10sigma
+                ww = np.abs(_emlinewave - linezwave) < 20 * log10sigma
                 if np.count_nonzero(ww) > 0:
-                    #print(linename, 10**zlinewave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
-                    _emlinemodel[ww] += lineamp * np.exp(-0.5 * (_emlinewave[ww]-zlinewave)**2 / log10sigma**2)
+                    #print(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
+                    _emlinemodel[ww] += lineamp * np.exp(-0.5 * (_emlinewave[ww]-linezwave)**2 / log10sigma**2)
 
             # optionally convolve with the spectral resolution
             if self.emlineR is not None:
@@ -593,23 +682,26 @@ class EMLineFit(object):
         emlineivar = np.hstack(galivar)
         npixpercamera = [len(gw) for gw in galwave]
         
-        self.EMLineModel = EMLineModel(zline=redshift, emlineR=galres,
+        self.EMLineModel = EMLineModel(linez=redshift, emlineR=galres,
                                        npixpercamera=npixpercamera)
 
         weights = 1 / np.sqrt(emlineivar)
         bestfit = self.fitter(self.EMLineModel, np.log10(emlinewave), 
                               emlineflux, weights=weights)
         chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
+
+        nparam = len(self.EMLineModel.parameters)
         
         # Pack the results in a dictionary and return.
         # https://gist.github.com/eteq/1f3f0cec9e4f27536d52cd59054c55f2
         result = {
             'converged': False,
             'fit_message': self.fitter.fit_info['message'],
-            'nparam': len(self.EMLineModel.parameters),
+            'nparam': nparam,
             'npix': len(emlinewave),
             'dof': len(emlinewave) - len(self.EMLineModel.parameters),
             'chi2': chi2,
+            'linenames': [ll.replace('_flux', '') for ll in self.EMLineModel.param_names[2:]],
         }
         #for param in bestfit.param_names:
         #    result.update({param: getattr(bestfit, param).value})
@@ -617,11 +709,11 @@ class EMLineFit(object):
         # uncertainties
         if self.fitter.fit_info['param_cov'] is not None:
             cov = self.fitter.fit_info['param_cov']
-            unc = np.diag(cov)**0.5
+            ivar = 1 / np.diag(cov)
             result['converged'] = True
         else:
-            cov = np.zeros((nparams, nparams))
-            unc = np.zeros(nparams)
+            cov = np.zeros((nparam, nparam))
+            ivar = np.zeros(nparam)
 
         # Need to be careful about uncertainties for tied parameters--
         # https://github.com/astropy/astropy/issues/7202
@@ -635,12 +727,17 @@ class EMLineFit(object):
             pinfo = getattr(bestfit, pp)
             result.update({bestfit.param_names[ii]: bestfit.parameters[ii].astype('f4')})
             if pinfo.fixed:
-                result.update({bestfit.param_names[ii]+'_err': np.float32(0.0)})
+                result.update({bestfit.param_names[ii]+'_ivar': np.float32(0.0)})
             elif pinfo.tied:
-                pass # hack! see https://github.com/astropy/astropy/issues/7202
+                # hack! see https://github.com/astropy/astropy/issues/7202
+                result.update({bestfit.param_names[ii]+'_ivar': np.float32(0.0)})
             else:
-                result.update({bestfit.param_names[ii]+'_err': unc[count].astype('f4')})
+                result.update({bestfit.param_names[ii]+'_ivar': ivar[count].astype('f4')})
                 count += 1
+
+        # hack---gotta be a better way to do this
+        result['oiii_4959_flux_ivar'] = result['oiii_5007_flux_ivar'] * 2.8875**2
+        result['nii_6548_flux_ivar'] = result['nii_6548_flux_ivar'] * 2.936**2
 
         emlinemodel = bestfit(np.log10(emlinewave))
         
