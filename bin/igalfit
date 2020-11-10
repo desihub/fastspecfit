@@ -93,10 +93,18 @@ def main():
             targetid = galfit['TARGETID'][iobj]
             galwave, galflux, galivar, galres, zredrock = _unpack_spectrum(specobj, zbest, iobj)
 
-            # continuum fit
-            pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))
             continuum = CFit.fnnls_continuum_bestfit(galfit['CONTINUUM_COEFF'][iobj], galwave=galwave,
                                                      galres=galres, redshift=zredrock)
+            emlinemodel = EMFit.emlinemodel_bestfit(galwave, galres, galfit[iobj])
+
+            # emission-line fit
+            pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(args.tile, args.night, targetid))
+            EMFit.emlineplot(galwave, galflux, galivar, continuum,
+                             emlinemodel, zredrock, png=pngfile)
+
+            
+            # continuum fit
+            pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))
             objinfo = {
                 'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
                 #'targetid': 'TARGETID={} fiber={}'.format(zbest['TARGETID'][iobj], -999),
@@ -109,11 +117,6 @@ def main():
                 }
             CFit.fnnls_continuum_plot(galwave, galflux, galivar, continuum, objinfo, png=pngfile)
 
-            pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(args.tile, args.night, targetid))
-            emlinemodel = np.zeros_like(galwave)
-            
-            EMFit.emlineplot(galwave, galflux, galivar, continuum,
-                             emlinemodel, zredrock, png=pngfile)
 
 if __name__ == '__main__':
     main()

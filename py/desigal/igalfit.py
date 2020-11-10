@@ -364,10 +364,10 @@ class ContinuumFit():
         """QA of the best-fitting continuum.
 
         """
-        import seaborn as sns
+        from scipy.ndimage import median_filter
         import matplotlib.pyplot as plt
         from matplotlib import colors
-        from scipy.ndimage import median_filter
+        import seaborn as sns
 
         sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
 
@@ -602,10 +602,11 @@ class EMLineModel(Fittable1DModel):
             hgamma_flux=hgamma_flux,
             hbeta_flux=hbeta_flux,
             halpha_flux=halpha_flux, **kwargs)
-        
+
     def evaluate(self, log10wave, *args):
         """Evaluate the emission-line model.
         emlineR=None, npixpercamera=None, 
+
         """ 
         linez, linesigma = args[0], args[1]
 
@@ -668,6 +669,25 @@ class EMLineFit(object):
         emlinemodel = bestfit(emlinewave)
         chi2 = np.sum(emlineivar * (emlineflux - emlinemodel)**2) / dof
         return chi2
+
+    def emlinemodel_bestfit(self, galwave, galres, galfit_table):
+        """Wrapper function to get the best-fitting emission-line model
+        from an igalfit table (to be used to build QA).
+
+        """
+        linez, linesigma = galfit_table['LINEZ'], galfit_table['LINESIGMA']
+        npixpercamera = [len(gw) for gw in galwave]
+
+        log10wave = np.log10(np.hstack(galwave))
+
+        EMLine = EMLineModel(linez=linez, linesigma=linesigma, emlineR=galres,
+                             npixpercamera=npixpercamera)
+        lineargs = [galfit_table[linename.upper()] for linename in EMLine.param_names[2:]] # skip linez, linesigma
+        lineargs = [linez, linesigma] + lineargs
+
+        emlinemodel = EMLine.evaluate(log10wave, *lineargs)
+
+        return emlinemodel
     
     def fit(self, galwave, galflux, galivar, galres, continuum,
             redshift, verbose=False):
@@ -748,21 +768,85 @@ class EMLineFit(object):
         """Plot the emission-line spectrum and best-fitting model.
 
         """
+        from scipy.ndimage import median_filter
         import matplotlib.pyplot as plt
+        from matplotlib import colors
+        import seaborn as sns
+
+        sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
+
+        col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
+        col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
         
         emlinewave = np.hstack(galwave)
         emlineflux = np.hstack(galflux) - np.hstack(continuum)
         emlinesigma = 1 / np.sqrt(np.hstack(galivar))
 
-        fig, ax = plt.subplots(1, 4, figsize=(16, 5))#, sharey=True)
-        for xx, minwave, maxwave in zip(ax, (3725, 4850, 4950, 6550), (3730, 4870, 5015, 6595)):
+        #fig, ax = plt.subplots(1, 4, figsize=(16, 10))#, sharey=True)
+        fig = plt.figure(figsize=(16, 12))
+        gs = fig.add_gridspec(2, 4)
+
+        # full spectrum
+        #bigax = fig.add_axes([0.1, 0.5, 0.9, 0.9])
+        bigax = fig.add_subplot(gs[0, :])
+        bigax.fill_between(emlinewave, emlineflux-emlinesigma, emlineflux+emlinesigma,
+                           color='gray', alpha=0.7)
+        bigax.plot(emlinewave, emlinemodel, color='k', lw=2)
+
+        filtflux = median_filter(emlineflux, 5)
+        ylim = [np.min(filtflux), np.max(filtflux)]
+        if np.max(emlinemodel) > ylim[1]:
+            ylim[1] = np.max(emlinemodel) * 1.15
+        bigax.set_ylim(ylim)
+        
+        #bigax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
+        #bigax.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
+        
+        # zoom in on individual emission lines - use linetable!
+        ax = []
+        ymin, ymax = 1e6, []
+        for iax, (minwave, maxwave, linename) in enumerate(
+                zip((3725, 4850, 4950, 6550),
+                    (3730, 4870, 5015, 6595),
+                    (r'[OII]', r'H$\beta$', r'[OIII]', r'H$\alpha$+[NII]')
+                    #('[OII] $\lambda\lambda3726,29$', 'H$\beta$', '[OIII] $\lambda\lambda4959,5007$', 'H$\alpha$+[NII]')
+                    )):
+            xx = fig.add_subplot(gs[1, iax])
+            ax.append(xx)
+            
             wmin, wmax = np.array([minwave, maxwave]) * (1+redshift) + np.array([-20, +20])
             indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
             if len(indx) > 5:
-                xx.errorbar(emlinewave[indx], emlineflux[indx], yerr=emlinesigma[indx])
-                xx.plot(emlinewave[indx], emlinemodel[indx])
-            #xx.set_ylim(-3, 13)
-        plt.subplots_adjust(wspace=0.05)
+                xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
+                                emlineflux[indx]+emlinesigma[indx], color='gray', alpha=0.5)
+                #xx.errorbar(emlinewave[indx], emlineflux[indx], yerr=emlinesigma[indx],
+                #            color='gray', alpha=0.5)
+                xx.plot(emlinewave[indx], emlinemodel[indx], color='k', lw=3)
+                xx.text(0.08, 0.92, linename, ha='left', va='center', transform=xx.transAxes,
+                        fontsize=18)
+
+                # get the robust range
+                filtflux = median_filter(emlineflux[indx], 5)
+                if np.min(filtflux) < ymin:
+                    ymin = np.min(filtflux)
+                if np.max(emlinemodel[indx]) > np.max(filtflux):
+                    ymax.append(np.max(emlinemodel[indx]) * 1.15)
+                else:
+                    ymax.append(np.max(filtflux))
+                    
+        for xx, _ymax in zip(ax, ymax):
+            xx.set_ylim(ymin, _ymax)
+
+        # common axis labels
+        tp, bt, lf, rt = 0.95, 0.14, 0.12, 0.95
+        
+        fig.text(lf-0.07, (tp-bt)/2+bt,
+                 r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
+                 ha='center', va='center', rotation='vertical')
+        fig.text((rt-lf)/2+lf, bt-0.08, r'Observed-frame Wavelength ($\AA$)',
+                 ha='center', va='center')
+            
+        plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.15)
 
         if png:
             print('Writing {}'.format(png))
