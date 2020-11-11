@@ -30,7 +30,8 @@ def parse_args():
 
 def main():
 
-    from desigal.igalfit import get_data, _unpack_spectrum, ContinuumFit, EMLineFit, init_galfit
+    from desigal.igalfit import get_data, _unpack_spectrum, init_galfit
+    from desigal.igalfit import ContinuumFit, EMLineFit, C_LIGHT
     args = parse_args()
 
     # Read the data.
@@ -56,7 +57,8 @@ def main():
             galwave, galflux, galivar, galres, zredrock = _unpack_spectrum(specobj, zbest, iobj)
 
             # fit the stellar continuum
-            contfit, continuum = CFit.fnnls_continuum(galwave, galflux, galivar, galres, zredrock)
+            contfit, continuum = CFit.fnnls_continuum(galwave, galflux, galivar, galres,
+                                                      zredrock, CFit.linetable)
             for col in ['coeff', 'chi2', 'dof', 'age', 'ebv', 'vdisp', 'z']:
                 #if key == 'age':
                 #    pdb.set_trace()
@@ -70,14 +72,27 @@ def main():
                     galfit['{}_{}'.format(col, suffix).upper()][iobj] = emfit['{}_{}'.format(col, suffix)]
                     galfit['{}_{}_IVAR'.format(col, suffix).upper()][iobj] = emfit['{}_{}_ivar'.format(col, suffix)]
 
-            print('Need fluxes!')
-            for line in emfit['linenames']:
-                uline = line.upper()
-                galfit['{}_AMP'.format(uline)][iobj] = emfit['{}_amp'.format(line)]
-                galfit['{}_AMP_IVAR'.format(uline)][iobj] = emfit['{}_amp_ivar'.format(line)]
-                #galfit['{}_FLUX'.format(uline)][iobj] = emfit['{}_flux'.format(line)]
-                #galfit['{}_FLUX_IVAR'.format(uline)][iobj] = emfit['{}_flux_ivar'.format(line)]
+            for oneline in CFit.linetable:
+                line, uline = oneline['name'], oneline['name'].upper()
+                lineamp = emfit['{}_amp'.format(line)]
+                lineamp_ivar = emfit['{}_amp_ivar'.format(line)]
+                if online['isbalmer']:
+                    log10sigma = galfit['LINESIGMA_BALMER'][iobj] / C_LIGHT / np.log(10)
+                else:
+                    log10sigma = galfit['LINESIGMA_FORBIDDEN'][iobj] / C_LIGHT / np.log(10)
+
+                norm = np.sqrt(2.0 * np.pi) * log10sigma
+                lineflux = lineamp * norm
+                lineflux_ivar = lineamp_ivar / norm**2
+                    
+                galfit['{}_AMP'.format(uline)][iobj] = lineamp
+                galfit['{}_AMP_IVAR'.format(uline)][iobj] = lineamp_ivar
+                galfit['{}_FLUX'.format(uline)][iobj] = lineflux
+                galfit['{}_FLUX_IVAR'.format(uline)][iobj] = lineflux_ivar
                 
+            # get continuum fluxes 
+            pdb.set_trace()
+
         # write out
         print('Writing {} spectra to {}'.format(len(galfit), galfitfile))
         galfit.write(galfitfile, overwrite=True)
@@ -104,11 +119,15 @@ def main():
             objinfo = {
                 'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
                 'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(galfit['Z'][iobj]),
-                'linez': '$z_{{\\rm line}}$={:.6f}'.format(galfit['LINEZ_BALMER'][iobj]),
-                'linesigma': '$\sigma_{{\\rm line}}$={:.1f} km/s'.format(galfit['LINESIGMA_BALMER'][iobj]),
+                'linez_forbidden': '$z_{{\\rm forbidden}}$={:.6f}'.format(galfit['LINEZ_FORBIDDEN'][iobj]),
+                'linez_balmer': '$z_{{\\rm Balmer}}$={:.6f}'.format(galfit['LINEZ_BALMER'][iobj]),
+                'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(galfit['LINESIGMA_FORBIDDEN'][iobj]),
+                'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(galfit['LINESIGMA_BALMER'][iobj]),
                 }
             EMFit.emlineplot(galwave, galflux, galivar, continuum,
                              emlinemodel, zredrock, objinfo, png=pngfile)
+
+            pdb.set_trace()
 
             # continuum fit
             pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))

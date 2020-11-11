@@ -23,7 +23,7 @@ def init_galfit(tile, night, zbest, CFit):
     nobj = len(zbest)
 
     # Grab info on the emission lines and the continuum.
-    linetable = get_linetable()
+    linetable = read_igalfit_lines()
     nssp_coeff = len(CFit.sspinfo)
 
     out = Table()
@@ -263,8 +263,10 @@ class ContinuumFit():
         self.nage = len(self.sspinfo['age'])
         self.npix = len(wave)
 
-        # dust parameters
+        # dust parameters and emission lines
         self.dustslope = 0.7
+        
+        self.linetable = read_igalfit_lines()
         
     def redshift_smooth_and_resample(self, galwave, galres, redshift):
         """Redshift, convolve with the spectral resolution, and 
@@ -303,9 +305,14 @@ class ContinuumFit():
             
         return bestfit
 
-    def fnnls_continuum(self, galwave, galflux, galivar, galres, redshift, plot=False):
+    def fnnls_continuum(self, galwave, galflux, galivar, galres, redshift, linetable,
+                        sigma_mask=300.0):
         """Fit the continuum using fast NNLS.
         https://github.com/jvendrow/fnnls
+
+        sigma_mask - emission-line masking sigma [km/s]
+
+        ToDo: mask more emission lines than we fit (e.g., Mg II).
         
         """
         from time import time
@@ -314,14 +321,24 @@ class ContinuumFit():
         sspflux = self.redshift_smooth_and_resample(galwave, galres, redshift) 
 
         # combine the cameras and fit
+        _galwave = np.hstack(galwave)
         _galflux = np.hstack(galflux)
         _galivar = np.hstack(galivar)
         _sspflux = np.concatenate(sspflux, axis=0) # [npix, nage]
+
+        # Mask pixels in and around emission lines.
+        emlinemask = np.ones_like(_galivar)
+        for line in linetable:
+            zwave = line['restwave'] * (1+redshift)
+            indx = np.where((_galwave >= (zwave - 1.5*sigma_mask * zwave / C_LIGHT)) *
+                            (_galwave <= (zwave + 1.5*sigma_mask * zwave / C_LIGHT)))[0]
+            if len(indx) > 0:
+                emlinemask[indx] = 0
         
         # Do a fast initial fit of the stellar continuum.
-        print('ToDo: mask emission lines, compute D(4000), add vdisp and ebv, and restrict maxage of templates.')
+        print('ToDo: compute D(4000), add vdisp and ebv, and restrict maxage of templates.')
         t0 = time()
-        coeff = fnnls(_sspflux * np.sqrt(_galivar[:, None]), _galflux * np.sqrt(_galivar))[0]
+        coeff = fnnls(_sspflux * np.sqrt((_galivar * emlinemask)[:, None]), _galflux * np.sqrt(_galivar))[0]
         dt = time() - t0
 
         # ToDo: fit for dust, the redshift, and velocity dispersion
@@ -395,13 +412,13 @@ class ContinuumFit():
                 ymax = np.max(filtflux)
 
         ax.text(0.95, 0.92, '{}'.format(objinfo['targetid']), 
-                ha='right', va='center', transform=ax.transAxes, fontsize=16)
+                ha='right', va='center', transform=ax.transAxes, fontsize=18)
         ax.text(0.95, 0.86, r'{} {}'.format(objinfo['zredrock'], objinfo['zigalfit']),
-                ha='right', va='center', transform=ax.transAxes, fontsize=16)
+                ha='right', va='center', transform=ax.transAxes, fontsize=18)
         ax.text(0.95, 0.80, r'{} {}'.format(objinfo['chi2'], objinfo['vdisp']),
-                ha='right', va='center', transform=ax.transAxes, fontsize=16)
+                ha='right', va='center', transform=ax.transAxes, fontsize=18)
                     
-        ax.set_xlim(3500, 9900)
+        ax.set_xlim(3500, 10000)
         ax.set_ylim(ymin, ymax)
         ax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
         ax.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
@@ -482,29 +499,18 @@ class ContinuumFit():
         print(params.x[0], self.ssp.info['age'][params.x[1:] > 1] / 1e9)
         pdb.set_trace()
 
-def get_linetable():
-    # read this from a file!
-    linetable = Table()
-    linetable['name'] = ['oii_3726', 'oii_3729', 
-                         'oiii_4959', 'oiii_5007', 
-                         'nii_6548', 'nii_6584',
-                         'sii_6716', 'sii_6731',
-                         'hepsilon', 'hdelta', 'hgamma', 'hbeta', 'halpha']
-    linetable['isbalmer'] = [False, False,
-                             False, False,
-                             False, False,
-                             False, False,
-                             True, True, True, True, True]
-    linetable['flux'] = [0.73, 1.0, 
-                         1.0, 2.875, 
-                         1.0, 2.936, 
-                         1.0, 1.0,
-                         0.159, 0.259, 0.468, 1.0, 2.863]
-    linetable['restwave'] = [3727.092, 3729.874, 
-                             4960.295, 5008.239, 
-                             6549.852, 6585.277,
-                             6718.294, 6732.673,
-                             3971.195, 4102.892, 4341.684, 4862.683, 6564.613]
+def read_igalfit_lines():
+    """Read the set of emission lines of interest.
+
+    ToDo: add lines to mask during continuum-fitting but which we do not want to
+    emission-line fit.
+
+    """
+    from pkg_resources import resource_filename
+    
+    linefile = resource_filename('desigal', 'data/igalfit_lines.ecsv')    
+    linetable = Table.read(linefile, format='ascii.ecsv', guess=False)
+    
     return linetable    
 
 class EMLineModel(Fittable1DModel):
@@ -581,7 +587,7 @@ class EMLineModel(Fittable1DModel):
         redshift - required keyword
         
         """
-        self.linetable = get_linetable()
+        self.linetable = read_igalfit_lines()
         self.redshift = redshift
         self.emlineR = emlineR
         self.npixpercamera = np.hstack([0, npixpercamera])
@@ -637,7 +643,6 @@ class EMLineModel(Fittable1DModel):
             if isbalmer:
                 log10sigma = log10sigma_balmer
                 linezwave = np.log10(restlinewave * (1.0 + linez_balmer)) # redshifted wavelength [log-10 Angstrom]
-                #lineflux = lineamp * (np.sqrt(2.0 * np.pi) * log10sigma)
             else:
                 log10sigma = log10sigma_forbidden
                 linezwave = np.log10(restlinewave * (1.0 + linez_forbidden)) # redshifted wavelength [log-10 Angstrom]
@@ -787,6 +792,7 @@ class EMLineFit(object):
         weights = 1 / np.sqrt(emlineivar)
         bestfit = self.fitter(self.EMLineModel, emlinewave, 
                               emlineflux, weights=weights)
+
         chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
 
         nparam = len(self.EMLineModel.parameters)
@@ -824,15 +830,26 @@ class EMLineFit(object):
         count = 0
         for ii, pp in enumerate(bestfit.param_names):
             pinfo = getattr(bestfit, pp)
-            result.update({bestfit.param_names[ii]: bestfit.parameters[ii].astype('f4')})
+            iinfo = getattr(self.EMLineModel, pp)
+
+            if pinfo.value == iinfo.value: # not fitted
+                result.update({pinfo.name: np.float(0.0)})
+            else:
+                result.update({pinfo.name: pinfo.value.astype('f4')})
+                
             if pinfo.fixed:
-                result.update({bestfit.param_names[ii]+'_ivar': np.float32(0.0)})
+                result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
             elif pinfo.tied:
                 # hack! see https://github.com/astropy/astropy/issues/7202
-                result.update({bestfit.param_names[ii]+'_ivar': np.float32(0.0)})
+                result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
             else:
-                result.update({bestfit.param_names[ii]+'_ivar': ivar[count].astype('f4')})
+                result.update({'{}_ivar'.format(pinfo.name): ivar[count].astype('f4')})
                 count += 1
+
+            # if ivar==0 then set the parameter value to zero
+            if self.fitter.fit_info['param_cov'] is not None and result['{}_ivar'.format(pinfo.name)] == 0.0:
+                #print(bestfit.param_names[ii], result[bestfit.param_names[ii]+'_ivar'])
+                result[pinfo.name] = 0.0
 
         # hack for tied parameters---gotta be a better way to do this
         result['oiii_4959_amp_ivar'] = result['oiii_5007_amp_ivar'] * 2.8875**2
@@ -889,22 +906,32 @@ class EMLineFit(object):
             bigax.plot(emlinewave, emlinemodel, color=col2[ii], lw=2)
 
             # get the robust range
-            filtflux = median_filter(emlineflux, 3)
-            if np.min(filtflux) < ymin:
-                ymin = np.min(filtflux)
+            sigflux, filtflux = np.std(emlineflux), median_filter(emlineflux, 5)
+
+            if -3 * sigflux < ymin:
+                ymin = -2 * sigflux
+            #if np.min(filtflux) < ymin:
+            #    ymin = np.min(filtflux)
+            if np.min(emlinemodel) < ymin:
+                ymin = 0.8 * np.min(emlinemodel)
+                
+            if 5 * sigflux > ymax:
+                ymax = 4 * sigflux
             if np.max(filtflux) > ymax:
                 ymax = np.max(filtflux)
             if np.max(emlinemodel) > ymax:
                 ymax = np.max(emlinemodel) * 1.2
 
         bigax.text(0.95, 0.92, '{}'.format(objinfo['targetid']), 
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=16)
-        bigax.text(0.95, 0.86, r'{} {}'.format(objinfo['zredrock'], objinfo['linez']),
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=16)
-        bigax.text(0.95, 0.80, r'{}'.format(objinfo['linesigma']),
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=16)
+                   ha='right', va='center', transform=bigax.transAxes, fontsize=18)
+        bigax.text(0.95, 0.86, r'{}'.format(objinfo['zredrock']),
+                   ha='right', va='center', transform=bigax.transAxes, fontsize=18)
+        bigax.text(0.95, 0.80, r'{} {}'.format(objinfo['linez_balmer'], objinfo['linez_forbidden']),
+                   ha='right', va='center', transform=bigax.transAxes, fontsize=18)
+        bigax.text(0.95, 0.74, r'{} {}'.format(objinfo['linesigma_balmer'], objinfo['linesigma_forbidden']),
+                   ha='right', va='center', transform=bigax.transAxes, fontsize=18)
                 
-        bigax.set_xlim(3500, 9900)
+        bigax.set_xlim(3500, 10000)
         bigax.set_ylim(ymin, ymax)
         
         #bigax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
@@ -958,9 +985,7 @@ class EMLineFit(object):
                     if np.max(filtflux) > _ymax:
                         _ymax = np.max(filtflux)
                     if np.min(emlinemodel[indx]) < _ymin:
-                        _ymin = np.min(emlinemodel[indx])
-                    #if np.min(filtflux) < _ymin:
-                    #    _ymin = np.min(filtflux)
+                        _ymin = 0.8 * np.min(emlinemodel[indx])
                         
                     if _ymax > ymax[iax]:
                         ymax[iax] = _ymax
@@ -985,12 +1010,12 @@ class EMLineFit(object):
                 #    pdb.set_trace()
 
         # common axis labels
-        tp, bt, lf, rt = 0.95, 0.14, 0.12, 0.95
+        tp, bt, lf, rt = 0.95, 0.11, 0.12, 0.95
         
         fig.text(lf-0.07, (tp-bt)/2+bt,
                  r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
                  ha='center', va='center', rotation='vertical')
-        fig.text((rt-lf)/2+lf, bt-0.08, r'Observed-frame Wavelength ($\AA$)',
+        fig.text((rt-lf)/2+lf, bt-0.05, r'Observed-frame Wavelength ($\AA$)',
                  ha='center', va='center')
             
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
