@@ -60,37 +60,29 @@ def main():
             contfit, continuum = CFit.fnnls_continuum(galwave, galflux, galivar, galres,
                                                       zredrock, CFit.linetable)
             for col in ['coeff', 'chi2', 'dof', 'age', 'ebv', 'vdisp', 'z']:
-                #if key == 'age':
-                #    pdb.set_trace()
                 galfit['CONTINUUM_{}'.format(col).upper()][iobj] = contfit[col]
 
-            # fit the emission-line spectrum
+            # fit the emission-line spectrum and populate the output table
             emfit, emlinemodel = EMFit.fit(galwave, galflux, galivar, galres, continuum,
                                            zredrock, verbose=args.verbose)
-            for suffix in ['forbidden', 'balmer']:
-                for col in ['linez', 'linesigma']:
+            
+            for col in ['d4000', 'd4000_model']:
+                galfit['{}'.format(col).upper()][iobj] = emfit['{}'.format(col)]
+            
+            for col in ['linez', 'linesigma']:
+                for suffix in ['forbidden', 'balmer']:
                     galfit['{}_{}'.format(col, suffix).upper()][iobj] = emfit['{}_{}'.format(col, suffix)]
                     galfit['{}_{}_IVAR'.format(col, suffix).upper()][iobj] = emfit['{}_{}_ivar'.format(col, suffix)]
 
-            for oneline in CFit.linetable:
-                line, uline = oneline['name'], oneline['name'].upper()
-                lineamp = emfit['{}_amp'.format(line)]
-                lineamp_ivar = emfit['{}_amp_ivar'.format(line)]
-                if online['isbalmer']:
-                    log10sigma = galfit['LINESIGMA_BALMER'][iobj] / C_LIGHT / np.log(10)
-                else:
-                    log10sigma = galfit['LINESIGMA_FORBIDDEN'][iobj] / C_LIGHT / np.log(10)
+            for line in emfit['linenames']:
+                for suffix in ['chi2', 'npix', 'flux_limit', 'ew_limit']:
+                    galfit['{}_{}'.format(line, suffix).upper()][iobj] = emfit['{}_{}'.format(line, suffix)]
+                for suffix in ['amp', 'flux', 'boxflux', 'ew', 'cont']:
+                    galfit['{}_{}'.format(line, suffix).upper()][iobj] = emfit['{}_{}'.format(line, suffix)]
+                    galfit['{}_{}_IVAR'.format(line, suffix).upper()][iobj] = emfit['{}_{}_ivar'.format(line, suffix)]
 
-                norm = np.sqrt(2.0 * np.pi) * log10sigma
-                lineflux = lineamp * norm
-                lineflux_ivar = lineamp_ivar / norm**2
-                    
-                galfit['{}_AMP'.format(uline)][iobj] = lineamp
-                galfit['{}_AMP_IVAR'.format(uline)][iobj] = lineamp_ivar
-                galfit['{}_FLUX'.format(uline)][iobj] = lineflux
-                galfit['{}_FLUX_IVAR'.format(uline)][iobj] = lineflux_ivar
-                
-            # get continuum fluxes 
+            for col in galfit.colnames[-14:]:
+                print('{:.4f} {}'.format(galfit[col][iobj], col))
             pdb.set_trace()
 
         # write out
@@ -126,8 +118,6 @@ def main():
                 }
             EMFit.emlineplot(galwave, galflux, galivar, continuum,
                              emlinemodel, zredrock, objinfo, png=pngfile)
-
-            pdb.set_trace()
 
             # continuum fit
             pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))
