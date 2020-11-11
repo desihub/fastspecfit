@@ -8,6 +8,7 @@ import numpy as np
 import astropy.units as u
 from astropy.table import Table, Column
 from astropy.modeling import Fittable1DModel
+from desispec.interpolation import resample_flux
 
 from scipy import constants
 C_LIGHT = constants.c / 1000.0 # [km/s]
@@ -203,7 +204,6 @@ def smooth_and_resample(sspflux, sspwave, galwave, galR):
     sspwave[npix] - redshifted SSP wavelength
     
     """
-    from desispec.interpolation import resample_flux
     return galR.dot(resample_flux(galwave, sspwave, sspflux, extrapolate=True))
 
 class ContinuumFit():
@@ -549,38 +549,39 @@ class EMLineModel(Fittable1DModel):
     linesigma = Parameter(name='linesigma', default=50.0, bounds=(0.1, 350)) # line-sigma [km/s]
 
     # Fragile because the lines are hard-coded--
-    oii_3726_flux = Parameter(name='oii_3726_flux', default=0.73)
-    oii_3729_flux = Parameter(name='oii_3729_flux', default=1.0)
-    oiii_4959_flux = Parameter(name='oiii_4959_flux', default=1.0)
-    oiii_5007_flux = Parameter(name='oiii_5007_flux', default=2.8875)
-    nii_6548_flux = Parameter(name='nii_6548_flux', default=1.0)
-    nii_6584_flux = Parameter(name='nii_6584_flux', default=2.936)
-    hdelta_flux = Parameter(name='hdelta_flux', default=0.259)
-    hgamma_flux = Parameter(name='hgamma_flux', default=0.468)
-    hbeta_flux = Parameter(name='hbeta_flux', default=1.0)
-    halpha_flux = Parameter(name='halpha_flux', default=2.863)
+    oii_3726_amp = Parameter(name='oii_3726_amp', default=0.73)
+    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0)
+    oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0)
+    oiii_5007_amp = Parameter(name='oiii_5007_amp', default=2.8875)
+    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0)
+    nii_6584_amp = Parameter(name='nii_6584_amp', default=2.936)
+    hdelta_amp = Parameter(name='hdelta_amp', default=0.259)
+    hgamma_amp = Parameter(name='hgamma_amp', default=0.468)
+    hbeta_amp = Parameter(name='hbeta_amp', default=1.0)
+    halpha_amp = Parameter(name='halpha_amp', default=2.863)
 
     # tie the [NII] and [OIII] line-strengths together
     def tie_oiii(model):
-        return model.oiii_5007_flux / 2.8875
-    oiii_4959_flux.tied = tie_oiii
+        return model.oiii_5007_amp / 2.8875
+    oiii_4959_amp.tied = tie_oiii
 
     def tie_nii(model):
-        return model.nii_6584_flux / 2.936
-    nii_6548_flux.tied = tie_nii
+        return model.nii_6584_amp / 2.936
+    nii_6548_amp.tied = tie_nii
     
     def __init__(self, linez=linez.default, linesigma=linesigma.default,
-                 oii_3726_flux=oii_3726_flux.default, 
-                 oii_3729_flux=oii_3729_flux.default, 
-                 oiii_4959_flux=oiii_4959_flux.default, 
-                 oiii_5007_flux=oiii_5007_flux.default, 
-                 nii_6548_flux=nii_6548_flux.default, 
-                 nii_6584_flux=nii_6584_flux.default, 
-                 hdelta_flux=hdelta_flux.default, 
-                 hgamma_flux=hgamma_flux.default, 
-                 hbeta_flux=hbeta_flux.default, 
-                 halpha_flux=halpha_flux.default, 
-                 emlineR=None, npixpercamera=None, **kwargs):
+                 oii_3726_amp=oii_3726_amp.default, 
+                 oii_3729_amp=oii_3729_amp.default, 
+                 oiii_4959_amp=oiii_4959_amp.default, 
+                 oiii_5007_amp=oiii_5007_amp.default, 
+                 nii_6548_amp=nii_6548_amp.default, 
+                 nii_6584_amp=nii_6584_amp.default, 
+                 hdelta_amp=hdelta_amp.default, 
+                 hgamma_amp=hgamma_amp.default, 
+                 hbeta_amp=hbeta_amp.default, 
+                 halpha_amp=halpha_amp.default, 
+                 emlineR=None, npixpercamera=None,
+                 log10wave=None, **kwargs):
         """Initialize the emission-line model.
         
         emlineR - 
@@ -589,50 +590,60 @@ class EMLineModel(Fittable1DModel):
         self.linetable = get_linetable()
         self.emlineR = emlineR
         self.npixpercamera = np.hstack([0, npixpercamera])
-        
+
+        # internal wavelength vector for building the emission-line model
+        if log10wave is None:
+            pixkms = 10.0
+            dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
+            log10wave = np.arange(np.log10(3000), np.log10(1e4), dlogwave)
+        self.log10wave = log10wave
+            
         super(EMLineModel, self).__init__(
             linez=linez, linesigma=linesigma,
-            oii_3726_flux=oii_3726_flux,
-            oii_3729_flux=oii_3729_flux,
-            oiii_4959_flux=oiii_4959_flux,
-            oiii_5007_flux=oiii_5007_flux,
-            nii_6548_flux=nii_6548_flux,
-            nii_6584_flux=nii_6584_flux,
-            hdelta_flux=hdelta_flux,
-            hgamma_flux=hgamma_flux,
-            hbeta_flux=hbeta_flux,
-            halpha_flux=halpha_flux, **kwargs)
+            oii_3726_amp=oii_3726_amp,
+            oii_3729_amp=oii_3729_amp,
+            oiii_4959_amp=oiii_4959_amp,
+            oiii_5007_amp=oiii_5007_amp,
+            nii_6548_amp=nii_6548_amp,
+            nii_6584_amp=nii_6584_amp,
+            hdelta_amp=hdelta_amp,
+            hgamma_amp=hgamma_amp,
+            hbeta_amp=hbeta_amp,
+            halpha_amp=halpha_amp, **kwargs)
 
-    def evaluate(self, log10wave, *args):
+    def evaluate(self, emlinewave, *args):
         """Evaluate the emission-line model.
         emlineR=None, npixpercamera=None, 
 
         """ 
         linez, linesigma = args[0], args[1]
+        log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]
 
         linenames = self.linetable['name'].data
-        linefluxes = args[2:]
-        
+        lineamps = args[2:]
+
+        # build the emission-line model [erg/s/cm2/A, observed frame]; should we
+        # multiprocess this step?
+        log10model = np.zeros_like(self.log10wave)
+        for linename, lineamp in zip(linenames, lineamps):
+            restlinewave = self.linetable[self.linetable['name'] == linename]['restwave'][0]
+            linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
+            #lineflux = lineamp * (np.sqrt(2.0 * np.pi) * log10sigma)
+            #lineamp = lineflux / (np.sqrt(2.0 * np.pi) * log10sigma)
+
+            ww = np.abs(self.log10wave - linezwave) < 20 * log10sigma
+            if np.count_nonzero(ww) > 0:
+                #print(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
+                log10model[ww] += lineamp * np.exp(-0.5 * (self.log10wave[ww]-linezwave)**2 / log10sigma**2)
+
+        # split into cameras, resample, and convolve with the instrumental
+        # resolution
         emlinemodel = []
         for ii in [0, 1, 2]: # iterate over cameras
             ipix = np.sum(self.npixpercamera[:ii+1])
             jpix = np.sum(self.npixpercamera[:ii+2])
-            _emlinewave = log10wave[ipix:jpix]
-            _emlinemodel = np.zeros_like(_emlinewave)
+            _emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
             
-            for linename, lineflux in zip(linenames, linefluxes):
-                restlinewave = self.linetable[self.linetable['name'] == linename]['restwave'][0]
-                linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
-                log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]
-                lineamp = lineflux / (np.sqrt(2.0 * np.pi) * log10sigma)
-            
-                # Construct the spectrum [erg/s/cm2/A, rest]
-                ww = np.abs(_emlinewave - linezwave) < 20 * log10sigma
-                if np.count_nonzero(ww) > 0:
-                    #print(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
-                    _emlinemodel[ww] += lineamp * np.exp(-0.5 * (_emlinewave[ww]-linezwave)**2 / log10sigma**2)
-
-            # optionally convolve with the spectral resolution
             if self.emlineR is not None:
                 _emlinemomdel = self.emlineR[ii].dot(_emlinemodel)
             
@@ -641,6 +652,37 @@ class EMLineModel(Fittable1DModel):
             #plt.xlim(3870, 3920) ; plt.show()
             #pdb.set_trace()
             emlinemodel.append(_emlinemodel)
+
+        #emlinemodel = []
+        #for ii in [0, 1, 2]: # iterate over cameras
+        #    ipix = np.sum(self.npixpercamera[:ii+1])
+        #    jpix = np.sum(self.npixpercamera[:ii+2])
+        #    _emlinewave = log10wave[ipix:jpix]
+        #    _emlinemodel = np.zeros_like(_emlinewave)
+        #    
+        #    for linename, lineamp in zip(linenames, lineamps):
+        #        restlinewave = self.linetable[self.linetable['name'] == linename]['restwave'][0]
+        #        linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
+        #        #lineflux = lineamp * (np.sqrt(2.0 * np.pi) * log10sigma)
+        #        #lineamp = lineflux / (np.sqrt(2.0 * np.pi) * log10sigma)
+        #    
+        #        # Construct the spectrum [erg/s/cm2/A, rest]
+        #        ww = np.abs(_emlinewave - linezwave) < 20 * log10sigma
+        #        if np.count_nonzero(ww) > 0:
+        #            #print(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
+        #            _emlinemodel[ww] += lineamp * np.exp(-0.5 * (_emlinewave[ww]-linezwave)**2 / log10sigma**2)
+        #
+        #    # resample and (optionally) convolve with the spectral resolution
+        #    if self.emlineR is not None:
+        #        #pdb.set_trace()
+        #        #here  resample_flux(galwave, sspwave, sspflux, extrapolate=True)
+        #        _emlinemomdel = self.emlineR[ii].dot(_emlinemodel)
+        #    
+        #    #plt.plot(10**_emlinewave, _emlinemodel)
+        #    #plt.plot(10**_emlinewave, self.emlineR[ii].dot(_emlinemodel))
+        #    #plt.xlim(3870, 3920) ; plt.show()
+        #    #pdb.set_trace()
+        #    emlinemodel.append(_emlinemodel)
 
         return np.hstack(emlinemodel)
 
@@ -660,6 +702,7 @@ class EMLineFit(object):
 
         self.nball = nball
         self.chi2fail = chi2fail
+        self.pixkms = 10.0 # pixel size for internal wavelength array [km/s]
 
         self.fitter = fitting.LevMarLSQFitter()
                 
@@ -678,14 +721,20 @@ class EMLineFit(object):
         linez, linesigma = galfit_table['LINEZ'], galfit_table['LINESIGMA']
         npixpercamera = [len(gw) for gw in galwave]
 
-        log10wave = np.log10(np.hstack(galwave))
-
         EMLine = EMLineModel(linez=linez, linesigma=linesigma, emlineR=galres,
                              npixpercamera=npixpercamera)
         lineargs = [galfit_table[linename.upper()] for linename in EMLine.param_names[2:]] # skip linez, linesigma
         lineargs = [linez, linesigma] + lineargs
 
-        emlinemodel = EMLine.evaluate(log10wave, *lineargs)
+        _emlinemodel = EMLine.evaluate(np.hstack(galwave), *lineargs)
+
+        # unpack it
+        emlinemodel = []
+        npix = np.hstack([0, npixpercamera])
+        for ii in [0, 1, 2]: # iterate over cameras
+            ipix = np.sum(npix[:ii+1])
+            jpix = np.sum(npix[:ii+2])
+            emlinemodel.append(_emlinemodel[ipix:jpix])
 
         return emlinemodel
     
@@ -697,16 +746,22 @@ class EMLineFit(object):
         FC - ContinuumFit object
         
         """
+        npixpercamera = [len(gw) for gw in galwave]
+
+        # we have to stack the per-camera spectra for LevMarLSQFitter
         emlinewave = np.hstack(galwave)
         emlineflux = np.hstack(galflux) - np.hstack(continuum)
         emlineivar = np.hstack(galivar)
-        npixpercamera = [len(gw) for gw in galwave]
+
+        dlogwave = self.pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
+        log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
         
         self.EMLineModel = EMLineModel(linez=redshift, emlineR=galres,
-                                       npixpercamera=npixpercamera)
+                                       npixpercamera=npixpercamera,
+                                       log10wave=log10wave)
 
         weights = 1 / np.sqrt(emlineivar)
-        bestfit = self.fitter(self.EMLineModel, np.log10(emlinewave), 
+        bestfit = self.fitter(self.EMLineModel, emlinewave, 
                               emlineflux, weights=weights)
         chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
 
@@ -721,7 +776,7 @@ class EMLineFit(object):
             'npix': len(emlinewave),
             'dof': len(emlinewave) - len(self.EMLineModel.parameters),
             'chi2': chi2,
-            'linenames': [ll.replace('_flux', '') for ll in self.EMLineModel.param_names[2:]],
+            'linenames': [ll.replace('_amp', '') for ll in self.EMLineModel.param_names[2:]],
         }
         #for param in bestfit.param_names:
         #    result.update({param: getattr(bestfit, param).value})
@@ -756,15 +811,15 @@ class EMLineFit(object):
                 count += 1
 
         # hack---gotta be a better way to do this
-        result['oiii_4959_flux_ivar'] = result['oiii_5007_flux_ivar'] * 2.8875**2
-        result['nii_6548_flux_ivar'] = result['nii_6548_flux_ivar'] * 2.936**2
+        result['oiii_4959_amp_ivar'] = result['oiii_5007_amp_ivar'] * 2.8875**2
+        result['nii_6548_amp_ivar'] = result['nii_6548_amp_ivar'] * 2.936**2
 
-        emlinemodel = bestfit(np.log10(emlinewave))
+        emlinemodel = bestfit(emlinewave)
         
         return result, emlinemodel
     
     def emlineplot(self, galwave, galflux, galivar, continuum,
-                   emlinemodel, redshift, png=None):
+                   _emlinemodel, redshift, png=None):
         """Plot the emission-line spectrum and best-fitting model.
 
         """
@@ -778,61 +833,87 @@ class EMLineFit(object):
         col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
         
-        emlinewave = np.hstack(galwave)
-        emlineflux = np.hstack(galflux) - np.hstack(continuum)
-        emlinesigma = 1 / np.sqrt(np.hstack(galivar))
-
         #fig, ax = plt.subplots(1, 4, figsize=(16, 10))#, sharey=True)
         fig = plt.figure(figsize=(16, 12))
-        gs = fig.add_gridspec(2, 4)
+        gs = fig.add_gridspec(3, 4, height_ratios=[3.5, 2, 2])
+        #gs = fig.add_gridspec(2, 4, gridspec_kw={'width_ratios': 1.0, 'height_ratios': 0.5})
 
         # full spectrum
-        #bigax = fig.add_axes([0.1, 0.5, 0.9, 0.9])
         bigax = fig.add_subplot(gs[0, :])
-        bigax.fill_between(emlinewave, emlineflux-emlinesigma, emlineflux+emlinesigma,
-                           color='gray', alpha=0.7)
-        bigax.plot(emlinewave, emlinemodel, color='k', lw=2)
 
-        filtflux = median_filter(emlineflux, 5)
-        ylim = [np.min(filtflux), np.max(filtflux)]
-        if np.max(emlinemodel) > ylim[1]:
-            ylim[1] = np.max(emlinemodel) * 1.15
-        bigax.set_ylim(ylim)
+        ymin, ymax = 1e6, -1e6
+        for ii in [0, 1, 2]: # iterate over cameras
+            emlinewave = galwave[ii]
+            emlineflux = galflux[ii] - continuum[ii]
+            emlinemodel = _emlinemodel[ii]
+            emlinesigma = np.zeros_like(emlinewave)
+            good = galivar[ii] > 0
+            emlinesigma[good] = 1 / np.sqrt(galivar[ii][good])
+            
+            bigax.fill_between(emlinewave, emlineflux-emlinesigma, emlineflux+emlinesigma,
+                               color=col1[ii], alpha=0.7)
+            bigax.plot(emlinewave, emlinemodel, color=col2[ii], lw=2)
+
+            # get the robust range
+            filtflux = median_filter(emlineflux, 5)
+            if np.min(filtflux) < ymin:
+                ymin = np.min(filtflux)
+            if np.max(filtflux) > ymax:
+                ymax = np.max(filtflux)
+            if np.max(emlinemodel) > ymax:
+                ymax = np.max(emlinemodel) * 1.15
+                
+        bigax.set_xlim(3500, 9900)
+        bigax.set_ylim(ymin, ymax)
         
         #bigax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
         #bigax.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
         
         # zoom in on individual emission lines - use linetable!
+        sig = 500.0 # [km/s]
         ax = []
         ymin, ymax = 1e6, []
-        for iax, (minwave, maxwave, linename) in enumerate(
-                zip((3725, 4850, 4950, 6550),
-                    (3730, 4870, 5015, 6595),
-                    (r'[OII]', r'H$\beta$', r'[OIII]', r'H$\alpha$+[NII]')
-                    #('[OII] $\lambda\lambda3726,29$', 'H$\beta$', '[OIII] $\lambda\lambda4959,5007$', 'H$\alpha$+[NII]')
-                    )):
-            xx = fig.add_subplot(gs[1, iax])
+        for iax, (meanwave, deltawave, linename) in enumerate(zip(
+            [np.mean([3730,3727]), 4103, 4342, 4863, np.mean([4960, 5008]), 6565],
+            [0, 0, 0, 0, (5007-4959)/2, (6585-6550)/2], 
+            [r'[OII]', r'H$\delta$', r'H$\gamma$', r'H$\beta$', r'[OIII]', r'H$\alpha$+[NII]'])):
+            #('[OII] $\lambda\lambda3726,29$', 'H$\beta$', '[OIII] $\lambda\lambda4959,5007$', 'H$\alpha$+[NII]')
+            if iax < 4:
+                xx = fig.add_subplot(gs[1, iax])
+            else:
+                xx = fig.add_subplot(gs[2, iax-4])
             ax.append(xx)
-            
-            wmin, wmax = np.array([minwave, maxwave]) * (1+redshift) + np.array([-20, +20])
-            indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
-            if len(indx) > 5:
-                xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
-                                emlineflux[indx]+emlinesigma[indx], color='gray', alpha=0.5)
-                #xx.errorbar(emlinewave[indx], emlineflux[indx], yerr=emlinesigma[indx],
-                #            color='gray', alpha=0.5)
-                xx.plot(emlinewave[indx], emlinemodel[indx], color='k', lw=3)
-                xx.text(0.08, 0.92, linename, ha='left', va='center', transform=xx.transAxes,
-                        fontsize=18)
 
-                # get the robust range
-                filtflux = median_filter(emlineflux[indx], 5)
-                if np.min(filtflux) < ymin:
-                    ymin = np.min(filtflux)
-                if np.max(emlinemodel[indx]) > np.max(filtflux):
-                    ymax.append(np.max(emlinemodel[indx]) * 1.15)
-                else:
-                    ymax.append(np.max(filtflux))
+            wmin = (meanwave-deltawave)*(1+redshift)-3*sig*meanwave/3e5
+            wmax = (meanwave+deltawave)*(1+redshift)+3*sig*meanwave/3e5
+
+            # iterate over cameras
+            for ii in [0, 1, 2]: # iterate over cameras
+                emlinewave = galwave[ii]
+                emlineflux = galflux[ii] - continuum[ii]
+                emlinemodel = _emlinemodel[ii]
+                emlinesigma = np.zeros_like(emlinewave)
+                good = galivar[ii] > 0
+                emlinesigma[good] = 1 / np.sqrt(galivar[ii][good])
+            
+                indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
+                if len(indx) > 5:
+                    xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
+                                    emlineflux[indx]+emlinesigma[indx], color=col1[ii], alpha=0.5)
+                    #xx.errorbar(emlinewave[indx], emlineflux[indx], yerr=emlinesigma[indx],
+                    #            color='gray', alpha=0.5)
+                    xx.plot(emlinewave[indx], emlinemodel[indx], color=col2[ii], lw=3)
+                    xx.text(0.08, 0.92, linename, ha='left', va='center', transform=xx.transAxes,
+                            fontsize=18)
+
+                    # get the robust range
+                    filtflux = median_filter(emlineflux[indx], 5)
+                    if np.min(filtflux) < ymin:
+                        ymin = np.min(filtflux)
+                    if np.max(emlinemodel[indx]) > np.max(filtflux):
+                        ymax.append(np.max(emlinemodel[indx]) * 1.15)
+                    else:
+                        ymax.append(np.max(filtflux))
                     
         for xx, _ymax in zip(ax, ymax):
             xx.set_ylim(ymin, _ymax)
@@ -846,7 +927,7 @@ class EMLineFit(object):
         fig.text((rt-lf)/2+lf, bt-0.08, r'Observed-frame Wavelength ($\AA$)',
                  ha='center', va='center')
             
-        plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.15)
+        plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
 
         if png:
             print('Writing {}'.format(png))

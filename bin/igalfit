@@ -102,6 +102,7 @@ def main():
             EMFit.emlineplot(galwave, galflux, galivar, continuum,
                              emlinemodel, zredrock, png=pngfile)
 
+            pdb.set_trace()
             
             # continuum fit
             pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))
