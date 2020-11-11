@@ -57,24 +57,26 @@ def main():
 
             # fit the stellar continuum
             contfit, continuum = CFit.fnnls_continuum(galwave, galflux, galivar, galres, zredrock)
-            for col, key in zip(['COEFF', 'CHI2', 'DOF', 'AGE', 'EBV', 'VDISP', 'Z'],
-                                ['coeff', 'chi2', 'dof', 'age', 'ebv', 'vdisp', 'z']):
+            for col in ['coeff', 'chi2', 'dof', 'age', 'ebv', 'vdisp', 'z']:
                 #if key == 'age':
                 #    pdb.set_trace()
-                galfit['CONTINUUM_{}'.format(col)][iobj] = contfit[key]
+                galfit['CONTINUUM_{}'.format(col).upper()][iobj] = contfit[col]
 
             # fit the emission-line spectrum
             emfit, emlinemodel = EMFit.fit(galwave, galflux, galivar, galres, continuum,
                                            zredrock, verbose=args.verbose)
-            for col, key in zip(['LINEZ', 'LINESIGMA'],
-                                ['linez', 'linesigma']):
-                galfit['{}'.format(col)][iobj] = emfit['{}'.format(key)]
-                galfit['{}_IVAR'.format(col)][iobj] = emfit['{}_ivar'.format(key)]
+            for suffix in ['forbidden', 'balmer']:
+                for col in ['linez', 'linesigma']:
+                    galfit['{}_{}'.format(col, suffix).upper()][iobj] = emfit['{}_{}'.format(col, suffix)]
+                    galfit['{}_{}_IVAR'.format(col, suffix).upper()][iobj] = emfit['{}_{}_ivar'.format(col, suffix)]
 
+            print('Need fluxes!')
             for line in emfit['linenames']:
                 uline = line.upper()
-                galfit['{}_FLUX'.format(uline)][iobj] = emfit['{}_flux'.format(line)]
-                galfit['{}_FLUX_IVAR'.format(uline)][iobj] = emfit['{}_flux_ivar'.format(line)]
+                galfit['{}_AMP'.format(uline)][iobj] = emfit['{}_amp'.format(line)]
+                galfit['{}_AMP_IVAR'.format(uline)][iobj] = emfit['{}_amp_ivar'.format(line)]
+                #galfit['{}_FLUX'.format(uline)][iobj] = emfit['{}_flux'.format(line)]
+                #galfit['{}_FLUX_IVAR'.format(uline)][iobj] = emfit['{}_flux_ivar'.format(line)]
                 
         # write out
         print('Writing {} spectra to {}'.format(len(galfit), galfitfile))
@@ -99,11 +101,15 @@ def main():
 
             # emission-line fit
             pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(args.tile, args.night, targetid))
+            objinfo = {
+                'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
+                'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(galfit['Z'][iobj]),
+                'linez': '$z_{{\\rm line}}$={:.6f}'.format(galfit['LINEZ_BALMER'][iobj]),
+                'linesigma': '$\sigma_{{\\rm line}}$={:.1f} km/s'.format(galfit['LINESIGMA_BALMER'][iobj]),
+                }
             EMFit.emlineplot(galwave, galflux, galivar, continuum,
-                             emlinemodel, zredrock, png=pngfile)
+                             emlinemodel, zredrock, objinfo, png=pngfile)
 
-            pdb.set_trace()
-            
             # continuum fit
             pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))
             objinfo = {
@@ -117,7 +123,6 @@ def main():
                 'ebv': 'E(B-V)={:.4f} km/s'.format(galfit['CONTINUUM_EBV'][iobj]),
                 }
             CFit.fnnls_continuum_plot(galwave, galflux, galivar, continuum, objinfo, png=pngfile)
-
 
 if __name__ == '__main__':
     main()
