@@ -893,19 +893,37 @@ class EMLineFit(object):
 
         # measure the 4000-Angstrom break from the data and the model
         restwave = emlinewave / (1 + redshift) # [Angstrom]
-        restflux_nolines_nu = galflux_nolines * (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/Hz]
-        restcontinuum_nu = np.hstack(continuum) * (1 + redshift) * restwave**2 / (C_LIGHT * 1e5)
+
+        restflam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5)
+        restflux_nolines_nu = galflux_nolines * restflam2fnu   # rest-frame, [erg/s/cm2/Hz]
+        restcontinuum_nu = np.hstack(continuum) * restflam2fnu
+
+        good = emlineivar > 0
+        restemlinevar_nu = np.zeros_like(restcontinuum_nu)
+        restemlinevar_nu[good] = restflam2fnu[good]**2 / emlineivar[good] 
 
         indxblu = np.where((restwave >= 3850) * (restwave <= 3950))[0]
         indxred = np.where((restwave >= 4000) * (restwave <= 4100))[0]
         if len(indxblu) > 5 and len(indxred) > 5:
-            d4000 = (3950-3850) * np.sum(np.gradient(restwave[indxred]) * restflux_nolines_nu[indxred]) / \
-              ( (4100-4000) * np.sum(np.gradient(restwave[indxblu]) * restflux_nolines_nu[indxblu]) )
-            d4000_model = (3950-3850) * np.sum(np.gradient(restwave[indxred]) * restcontinuum_nu[indxred]) / \
-              ( (4100-4000) * np.sum(np.gradient(restwave[indxblu]) * restcontinuum_nu[indxblu]) )
+            blufactor, redfactor = 3950.0 - 3850.0, 4100.0 - 4000.0
+            deltawave = np.gradient(restwave)
+
+            numer = blufactor * np.sum(deltawave[indxred] * restflux_nolines_nu[indxred])
+            denom = redfactor * np.sum(deltawave[indxblu] * restflux_nolines_nu[indxblu])
+            numer_var = blufactor**2 * np.sum(deltawave[indxred] * restemlinevar_nu[indxred])
+            denom_var = redfactor**2 * np.sum(deltawave[indxblu] * restemlinevar_nu[indxblu])
+
+            d4000 =  numer / denom
+            d4000_var = (numer_var + numer**2 * denom_var) / denom**2
+            d4000_ivar = 1 / d4000_var
+              
+            d4000_model = (blufactor / redfactor) * np.sum(deltawave[indxred] * restcontinuum_nu[indxred]) / \
+              np.sum(deltawave[indxblu] * restcontinuum_nu[indxblu])
         else:
-            d4000, d4000_model = 0.0, 0.0
+            d4000, d4000_ivar, d4000_model = 0.0, 0.0, 0.0
+ 
         result['d4000'] = d4000
+        result['d4000_ivar'] = d4000_ivar
         result['d4000_model'] = d4000_model
               
         sigma_cont = 150.0
