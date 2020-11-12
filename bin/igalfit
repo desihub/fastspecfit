@@ -3,6 +3,10 @@
 
 ToDo:
 * Generalize to work on coadded spectra.
+* Fit to the photometry.
+* Solve for vdisp, zcontinuum, and E(B-V).
+* Add polynomial correction templates
+* Capture ivar=0 problems.
 
 """
 import os, pdb
@@ -10,6 +14,13 @@ import numpy as np
 
 def parse_args():
     """Parse input arguments.
+
+    ELG - 20200228 70005
+    BGS+MWS - 20200303 70500
+    BGS+MWS - 20200315 66003
+    
+    https://desi.lbl.gov/trac/wiki/SurveyValidation/TruthTables
+    https://desi.lbl.gov/DocDB/cgi-bin/private/RetrieveFile?docid=5720;filename=DESI_data_042820.pdf
 
     """
     import argparse
@@ -35,7 +46,9 @@ def main():
     args = parse_args()
 
     # Read the data.
-    zbest, specobj = get_data(tile=args.tile, night=args.night)#, overwrite=args.overwrite)
+    zbest, specobj = get_data(tile=args.tile, night=args.night,
+                              use_vi=False, overwrite=False)#args.overwrite)
+
     if args.first is None:
         args.first = 0
     if args.last is None:
@@ -69,7 +82,7 @@ def main():
             for col in ['d4000', 'd4000_model']:
                 galfit['{}'.format(col).upper()][iobj] = emfit['{}'.format(col)]
             
-            for col in ['linez', 'linesigma']:
+            for col in ['linevshift', 'linesigma']:
                 for suffix in ['forbidden', 'balmer']:
                     galfit['{}_{}'.format(col, suffix).upper()][iobj] = emfit['{}_{}'.format(col, suffix)]
                     galfit['{}_{}_IVAR'.format(col, suffix).upper()][iobj] = emfit['{}_{}_ivar'.format(col, suffix)]
@@ -81,9 +94,9 @@ def main():
                     galfit['{}_{}'.format(line, suffix).upper()][iobj] = emfit['{}_{}'.format(line, suffix)]
                     galfit['{}_{}_IVAR'.format(line, suffix).upper()][iobj] = emfit['{}_{}_ivar'.format(line, suffix)]
 
-            for col in galfit.colnames[-14:]:
-                print('{:.4f} {}'.format(galfit[col][iobj], col))
-            pdb.set_trace()
+            #for col in galfit.colnames[-14:]:
+            #    print('{:.4f} {}'.format(galfit[col][iobj], col))
+            #pdb.set_trace()
 
         # write out
         print('Writing {} spectra to {}'.format(len(galfit), galfitfile))
@@ -111,8 +124,8 @@ def main():
             objinfo = {
                 'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
                 'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(galfit['Z'][iobj]),
-                'linez_forbidden': '$z_{{\\rm forbidden}}$={:.6f}'.format(galfit['LINEZ_FORBIDDEN'][iobj]),
-                'linez_balmer': '$z_{{\\rm Balmer}}$={:.6f}'.format(galfit['LINEZ_BALMER'][iobj]),
+                'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(galfit['LINEVSHIFT_FORBIDDEN'][iobj]),
+                'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(galfit['LINEVSHIFT_BALMER'][iobj]),
                 'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(galfit['LINESIGMA_FORBIDDEN'][iobj]),
                 'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(galfit['LINESIGMA_BALMER'][iobj]),
                 }

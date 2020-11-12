@@ -45,10 +45,10 @@ def init_galfit(tile, night, zbest, CFit):
     #out.add_column(Column(name='LINEZ_IVAR', length=nobj, dtype='f4'))
     #out.add_column(Column(name='LINESIGMA', length=nobj, dtype='f4', unit=u.kilometer/u.second))
     #out.add_column(Column(name='LINESIGMA_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
-    out.add_column(Column(name='LINEZ_FORBIDDEN', length=nobj, dtype='f4'))
-    out.add_column(Column(name='LINEZ_FORBIDDEN_IVAR', length=nobj, dtype='f4'))
-    out.add_column(Column(name='LINEZ_BALMER', length=nobj, dtype='f4'))
-    out.add_column(Column(name='LINEZ_BALMER_IVAR', length=nobj, dtype='f4'))
+    out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4'))
+    out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4'))
+    out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4'))
+    out.add_column(Column(name='LINEVSHIFT_BALMER_IVAR', length=nobj, dtype='f4'))
     out.add_column(Column(name='LINESIGMA_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer / u.second))
     out.add_column(Column(name='LINESIGMA_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
     out.add_column(Column(name='LINESIGMA_BALMER', length=nobj, dtype='f4', unit=u.kilometer / u.second))
@@ -85,12 +85,12 @@ def init_galfit(tile, night, zbest, CFit):
         
     return out
     
-def get_data(tile='66003', night='20200315', overwrite=False, verbose=False):
+def get_data(tile='66003', night='20200315', overwrite=False, verbose=False, use_vi=False):
     """Parse the reduced data for a given tile and night. Select the subset of
     objects with good redshifts and visual inspections.
 
-    ELG - tile='70005', night='20200228'       
-    20200315, 66003 - BGS+MWS 
+    ELG - 20200228, 70005
+    BGS+MWS - 20200315, 66003
     
     https://desi.lbl.gov/trac/wiki/SurveyValidation/TruthTables
     https://desi.lbl.gov/DocDB/cgi-bin/private/RetrieveFile?docid=5720;filename=DESI_data_042820.pdf
@@ -115,26 +115,29 @@ def get_data(tile='66003', night='20200315', overwrite=False, verbose=False):
 
     print('Parsing data from tile, night {}, {}'.format(tile, night))
 
-    truthdir = os.path.join(os.getenv('DESI_ROOT'), 'sv', 'vi', 'TruthTables')
     specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', 'andes')
     datadir = os.path.join(specprod_dir, 'tiles', tile, night)
-    
-    if tile == '66003':
-        truthfile = os.path.join(truthdir, 'truth_table_BGS_v1.2.csv')
-    elif tile == '70500':
-        truthfile = os.path.join(truthdir, 'truth_table_ELG_v1.2_latest.csv')
-    else:
-        raise ValueError('Fix me.')
-    truth = Table.read(truthfile)
-    best = np.where(
-        (truth['best quality'] >= 2.5) * 
-        (truth['Redrock spectype'] == 'GALAXY') *
-        (truth['Redrock z'] < 0.75) 
-    )[0]
-    #goodobj = np.where((zb['DELTACHI2'] > 100) * (zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY'))[0]
-    
-    print('Read {}/{} good redshifts from {}'.format(len(best), len(truth), truthfile))
-    truth = truth[best]
+
+    # use visual inspection results?
+    if use_vi:
+        truthdir = os.path.join(os.getenv('DESI_ROOT'), 'sv', 'vi', 'TruthTables')
+        if tile == '66003':
+            truthfile = os.path.join(truthdir, 'truth_table_BGS_v1.2.csv')
+        elif tile == '70500':
+            truthfile = os.path.join(truthdir, 'truth_table_ELG_v1.2_latest.csv')
+        else:
+            raise ValueError('Fix me.')
+
+        truth = Table.read(truthfile)
+        best = np.where(
+            (truth['best quality'] >= 2.5) * 
+            (truth['Redrock spectype'] == 'GALAXY') *
+            (truth['Redrock z'] < 0.75) 
+        )[0]
+        #goodobj = np.where((zb['DELTACHI2'] > 100) * (zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY'))[0]
+
+        print('Read {}/{} good redshifts from {}'.format(len(best), len(truth), truthfile))
+        truth = truth[best]
     
     zbest = []
     spectra, keepindx = [], []
@@ -144,7 +147,12 @@ def get_data(tile='66003', night='20200315', overwrite=False, verbose=False):
         coaddfile = os.path.join(datadir, 'coadd-{}-{}-{}.fits'.format(spectro, tile, night))
         if os.path.isfile(zbestfile) and os.path.isfile(coaddfile):
             zb = Table(fitsio.read(zbestfile))
-            keep = np.where(np.isin(zb['TARGETID'], truth['TARGETID']))[0]
+            if use_vi:
+                keep = np.where(np.isin(zb['TARGETID'], truth['TARGETID']))[0]
+            else:
+                #snr = np.median(specobj.flux['r']*np.sqrt(specobj.ivar['r']), axis=1)
+                keep = np.where((zb['ZWARN'] == 0) * (zb['DELTACHI2'] > 50) * (zb['SPECTYPE'] == 'GALAXY'))[0]
+                
             print('Spectrograph {}: N={}'.format(spectro, len(keep)))
             if len(keep) > 0:
                 zbest.append(zb[keep])
@@ -678,38 +686,7 @@ class EMLineModel(Fittable1DModel):
             #plt.xlim(3870, 3920) ; plt.show()
             #pdb.set_trace()
             emlinemodel.append(_emlinemodel)
-
-        #emlinemodel = []
-        #for ii in [0, 1, 2]: # iterate over cameras
-        #    ipix = np.sum(self.npixpercamera[:ii+1])
-        #    jpix = np.sum(self.npixpercamera[:ii+2])
-        #    _emlinewave = log10wave[ipix:jpix]
-        #    _emlinemodel = np.zeros_like(_emlinewave)
-        #    
-        #    for linename, lineamp in zip(linenames, lineamps):
-        #        restlinewave = self.linetable[self.linetable['name'] == linename]['restwave'][0]
-        #        linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
-        #        #lineflux = lineamp * (np.sqrt(2.0 * np.pi) * log10sigma)
-        #        #lineamp = lineflux / (np.sqrt(2.0 * np.pi) * log10sigma)
-        #    
-        #        # Construct the spectrum [erg/s/cm2/A, rest]
-        #        ww = np.abs(_emlinewave - linezwave) < 20 * log10sigma
-        #        if np.count_nonzero(ww) > 0:
-        #            #print(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
-        #            _emlinemodel[ww] += lineamp * np.exp(-0.5 * (_emlinewave[ww]-linezwave)**2 / log10sigma**2)
-        #
-        #    # resample and (optionally) convolve with the spectral resolution
-        #    if self.emlineR is not None:
-        #        #pdb.set_trace()
-        #        #here  resample_flux(galwave, sspwave, sspflux, extrapolate=True)
-        #        _emlinemomdel = self.emlineR[ii].dot(_emlinemodel)
-        #    
-        #    #plt.plot(10**_emlinewave, _emlinemodel)
-        #    #plt.plot(10**_emlinewave, self.emlineR[ii].dot(_emlinemodel))
-        #    #plt.xlim(3870, 3920) ; plt.show()
-        #    #pdb.set_trace()
-        #    emlinemodel.append(_emlinemodel)
-
+            
         return np.hstack(emlinemodel)
 
 class EMLineFit(object):
@@ -744,16 +721,18 @@ class EMLineFit(object):
         from an igalfit table (to be used to build QA).
 
         """
-        redshift = galfit_table['Z']
-        linez_forbidden = galfit_table['LINEZ_FORBIDDEN']
-        linez_balmer = galfit_table['LINEZ_BALMER']
-        linesigma_forbidden = galfit_table['LINESIGMA_FORBIDDEN']
-        linesigma_balmer = galfit_table['LINESIGMA_BALMER']
-        
         npixpercamera = [len(gw) for gw in galwave]
 
-        linevshift_forbidden = (linez_forbidden - redshift) * C_LIGHT # [km/s]
-        linevshift_balmer = (linez_balmer - redshift) * C_LIGHT # [km/s]
+        redshift = galfit_table['Z']
+        linesigma_forbidden = galfit_table['LINESIGMA_FORBIDDEN']
+        linesigma_balmer = galfit_table['LINESIGMA_BALMER']
+
+        linevshift_forbidden = galfit_table['LINEVSHIFT_FORBIDDEN']
+        linevshift_balmer = galfit_table['LINEVSHIFT_BALMER']
+        #linez_forbidden = galfit_table['LINEZ_FORBIDDEN']
+        #linez_balmer = galfit_table['LINEZ_BALMER']
+        #linevshift_forbidden = (linez_forbidden - redshift) * C_LIGHT # [km/s]
+        #linevshift_balmer = (linez_balmer - redshift) * C_LIGHT # [km/s]
 
         EMLine = EMLineModel(linevshift_forbidden=linevshift_forbidden,
                              linevshift_balmer=linevshift_balmer,
@@ -805,6 +784,7 @@ class EMLineFit(object):
                                        npixpercamera=npixpercamera,
                                        log10wave=log10wave)
 
+        #weights = np.ones_like
         weights = 1 / np.sqrt(emlineivar)
         bestfit = self.fitter(self.EMLineModel, emlinewave, 
                               emlineflux, weights=weights)
@@ -874,12 +854,11 @@ class EMLineFit(object):
         result['linevshift_forbidden_ivar'] = result['linevshift_balmer_ivar']
         result['linesigma_forbidden_ivar'] = result['linesigma_balmer_ivar']
 
-        # convert the vshifts to redshifts
-        result['linez_forbidden'] = redshift + result['linevshift_forbidden'] / C_LIGHT
-        result['linez_balmer'] = redshift + result['linevshift_balmer'] / C_LIGHT
-
-        result['linez_forbidden_ivar'] = result['linevshift_forbidden_ivar'] * C_LIGHT**2
-        result['linez_balmer_ivar'] = result['linevshift_balmer_ivar'] * C_LIGHT**2
+        ## convert the vshifts to redshifts
+        #result['linez_forbidden'] = redshift + result['linevshift_forbidden'] / C_LIGHT
+        #result['linez_balmer'] = redshift + result['linevshift_balmer'] / C_LIGHT
+        #result['linez_forbidden_ivar'] = result['linevshift_forbidden_ivar'] * C_LIGHT**2
+        #result['linez_balmer_ivar'] = result['linevshift_balmer_ivar'] * C_LIGHT**2
 
         # now loop back through and if ivar==0 then set the parameter value to zero
         if self.fitter.fit_info['param_cov'] is not None:
@@ -1069,7 +1048,7 @@ class EMLineFit(object):
                    ha='right', va='center', transform=bigax.transAxes, fontsize=18)
         bigax.text(0.95, 0.86, r'{}'.format(objinfo['zredrock']),
                    ha='right', va='center', transform=bigax.transAxes, fontsize=18)
-        bigax.text(0.95, 0.80, r'{} {}'.format(objinfo['linez_balmer'], objinfo['linez_forbidden']),
+        bigax.text(0.95, 0.80, r'{} {}'.format(objinfo['linevshift_balmer'], objinfo['linevshift_forbidden']),
                    ha='right', va='center', transform=bigax.transAxes, fontsize=18)
         bigax.text(0.95, 0.74, r'{} {}'.format(objinfo['linesigma_balmer'], objinfo['linesigma_forbidden']),
                    ha='right', va='center', transform=bigax.transAxes, fontsize=18)
