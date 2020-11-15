@@ -7,6 +7,8 @@ ToDo:
 * Solve for vdisp, zcontinuum, and E(B-V).
 * Add polynomial correction templates
 * Capture ivar=0 problems.
+* Correct for MW extinction.
+* Fit Mg II.
 
 """
 import os, pdb
@@ -67,12 +69,14 @@ def main():
 
         for iobj in fitindx:
             # grab the spectrum
-            galwave, galflux, galivar, galres, zredrock = _unpack_spectrum(specobj, zbest, iobj)
+            south = True
+            galwave, galflux, galivar, galres, galphot, zredrock = _unpack_spectrum(
+                specobj, zbest, iobj, CFit, south=south)
 
             # fit the stellar continuum
             contfit, continuum = CFit.fnnls_continuum(galwave, galflux, galivar, galres,
-                                                      zredrock, CFit.linetable)
-            for col in ['coeff', 'chi2', 'dof', 'age', 'ebv', 'vdisp', 'z']:
+                                                      galphot, zredrock, CFit.linetable)
+            for col in ['coeff', 'chi2', 'dof', 'age', 'ebv', 'vdisp', 'z', 'phot_coeff']:
                 galfit['CONTINUUM_{}'.format(col).upper()][iobj] = contfit[col]
 
             # fit the emission-line spectrum and populate the output table
@@ -112,25 +116,18 @@ def main():
             os.makedirs(qadir)
 
         for iobj in fitindx:
+            south = True
+            
             targetid = galfit['TARGETID'][iobj]
-            galwave, galflux, galivar, galres, zredrock = _unpack_spectrum(specobj, zbest, iobj)
+            galwave, galflux, galivar, galres, galphot, zredrock = _unpack_spectrum(
+                specobj, zbest, iobj, CFit, south=south)
 
             continuum = CFit.fnnls_continuum_bestfit(galfit['CONTINUUM_COEFF'][iobj], galwave=galwave,
                                                      galres=galres, redshift=zredrock)
+            continuum_fullwave, fullwave = CFit.fnnls_continuum_bestfit(galfit['CONTINUUM_PHOT_COEFF'][iobj],
+                                                                        redshift=zredrock)
+            
             emlinemodel = EMFit.emlinemodel_bestfit(galwave, galres, galfit[iobj])
-
-            # emission-line fit
-            pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(args.tile, args.night, targetid))
-            objinfo = {
-                'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
-                'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(galfit['Z'][iobj]),
-                'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(galfit['LINEVSHIFT_FORBIDDEN'][iobj]),
-                'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(galfit['LINEVSHIFT_BALMER'][iobj]),
-                'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(galfit['LINESIGMA_FORBIDDEN'][iobj]),
-                'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(galfit['LINESIGMA_BALMER'][iobj]),
-                }
-            EMFit.emlineplot(galwave, galflux, galivar, continuum,
-                             emlinemodel, zredrock, objinfo, png=pngfile)
 
             # continuum fit
             pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))
@@ -144,7 +141,30 @@ def main():
                 'vdisp': '$\sigma$={:.1f} km/s'.format(galfit['CONTINUUM_VDISP'][iobj]),
                 'ebv': 'E(B-V)={:.4f} km/s'.format(galfit['CONTINUUM_EBV'][iobj]),
                 }
-            CFit.fnnls_continuum_plot(galwave, galflux, galivar, continuum, objinfo, png=pngfile)
+
+            if south:
+                filters = CFit.decamwise
+            else:
+                filters = CFit.bassmzlswise
+            filtwave = filters.effective_wavelengths.value
+                
+            CFit.fnnls_continuum_plot(galwave, galflux, galivar, galphot, continuum, 
+                                      continuum_fullwave, fullwave, objinfo, png=pngfile)
+
+            pdb.set_trace()
+
+            # emission-line fit
+            pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(args.tile, args.night, targetid))
+            objinfo = {
+                'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
+                'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(galfit['Z'][iobj]),
+                'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(galfit['LINEVSHIFT_FORBIDDEN'][iobj]),
+                'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(galfit['LINEVSHIFT_BALMER'][iobj]),
+                'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(galfit['LINESIGMA_FORBIDDEN'][iobj]),
+                'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(galfit['LINESIGMA_BALMER'][iobj]),
+                }
+            EMFit.emlineplot(galwave, galflux, galivar, continuum,
+                             emlinemodel, zredrock, objinfo, png=pngfile)
 
 if __name__ == '__main__':
     main()

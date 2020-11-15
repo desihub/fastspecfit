@@ -6,7 +6,7 @@ desigal.igalfit
 import os, pdb
 import numpy as np
 import astropy.units as u
-from astropy.table import Table, Column
+from astropy.table import Table, Column, vstack
 from astropy.modeling import Fittable1DModel
 from desispec.interpolation import resample_flux
 
@@ -34,6 +34,9 @@ def init_galfit(tile, night, zbest, CFit):
     out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
     out.add_column(Column(name='CONTINUUM_CHI2', length=nobj, dtype='f4')) # reduced chi2
     out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
+    out.add_column(Column(name='CONTINUUM_PHOT_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
+    out.add_column(Column(name='CONTINUUM_PHOT_CHI2', length=nobj, dtype='f4')) # reduced chi2
+    out.add_column(Column(name='CONTINUUM_PHOT_DOF', length=nobj, dtype=np.int32))
     out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8'))
     out.add_column(Column(name='CONTINUUM_AGE', length=nobj, dtype='f4', unit=u.Gyr))
     out.add_column(Column(name='CONTINUUM_EBV', length=nobj, dtype='f4', unit=u.mag))
@@ -41,10 +44,6 @@ def init_galfit(tile, night, zbest, CFit):
     out.add_column(Column(name='D4000', length=nobj, dtype='f4'))
     out.add_column(Column(name='D4000_IVAR', length=nobj, dtype='f4'))
     out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
-    #out.add_column(Column(name='LINEZ', length=nobj, dtype='f4'))
-    #out.add_column(Column(name='LINEZ_IVAR', length=nobj, dtype='f4'))
-    #out.add_column(Column(name='LINESIGMA', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-    #out.add_column(Column(name='LINESIGMA_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
     out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4'))
     out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4'))
     out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4'))
@@ -97,7 +96,7 @@ def get_data(tile='66003', night='20200315', overwrite=False, verbose=False, use
 
     """
     import fitsio
-    from astropy.table import join, vstack
+    from astropy.table import join
     from desispec.spectra import Spectra
     import desispec.io
 
@@ -199,7 +198,7 @@ def get_data(tile='66003', night='20200315', overwrite=False, verbose=False, use
 
     return zbest, coadd
 
-def _unpack_spectrum(specobj, zbest, iobj):
+def _unpack_spectrum(specobj, zbest, iobj, CFit, south=True):
     """Unpack a single spectrum into a list.
 
     """
@@ -212,9 +211,48 @@ def _unpack_spectrum(specobj, zbest, iobj):
         galivar.append(specobj.ivar[camera][iobj, :])
         galres.append(Resolution(specobj.resolution_data[camera][iobj, :, :]))
 
+    # make a quick coadd using inverse variance weights
+    ugalwave = np.unique(np.hstack(galwave))
+    ugalflux3d = np.zeros((len(ugalwave), 3))
+    ugalivar3d = np.zeros_like(ugalflux3d)
+    for icam in [0, 1, 2]:
+        I = np.where(np.isin(galwave[icam], ugalwave))[0]
+        J = np.where(np.isin(ugalwave, galwave[icam]))[0]
+        ugalflux3d[J, icam] = galflux[icam][I]
+        ugalivar3d[J, icam] = galivar[icam][I]
+
+    ugalivar = np.sum(ugalivar3d, axis=1)
+    ugalflux = np.sum(ugalivar3d * ugalflux3d, axis=1) / ugalivar
+
+    if False:
+        import matplotlib.pyplot as plt
+        for icam in [0, 1, 2]:
+            plt.plot(galwave[icam], galflux[icam])
+        plt.plot(ugalwave, ugalflux, color='k', alpha=0.7)
+        plt.savefig('junk.png')
+        pdb.set_trace()
+
+    # unpack the photometry
+    if south:
+        filters = CFit.decamwise
+    else:
+        filters = CFit.bassmzlswise
+
+    fluxcols = ['FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2']
+    ivarcols = ['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
+    #galphot = Table(specobj.fibermap[[fluxcols, ivarcols][iobj])
+
+    maggies = np.array([specobj.fibermap[col][iobj] for col in fluxcols])
+    ivarmaggies = np.array([specobj.fibermap[col][iobj] for col in ivarcols])
+    lambda_eff = filters.effective_wavelengths.value
+    
+    galphot = CFit.convert_photometry(
+        maggies=maggies, lambda_eff=lambda_eff,
+        ivarmaggies=ivarmaggies, nanomaggies=True)
+
     zredrock = zbest['Z'][iobj]
 
-    return galwave, galflux, galivar, galres, zredrock
+    return galwave, galflux, galivar, galres, galphot, zredrock
 
 def _smooth_and_resample(args):
     """Wrapper for multiprocessing."""
@@ -226,10 +264,18 @@ def smooth_and_resample(sspflux, sspwave, galwave, galR):
     sspwave[npix] - redshifted SSP wavelength
     
     """
-    return galR.dot(resample_flux(galwave, sspwave, sspflux, extrapolate=True))
+    if galwave is not None:
+        resampflux = resample_flux(galwave, sspwave, sspflux, extrapolate=True)
+    else:
+        resampflux = sspflux
+    if galR is not None:
+        smoothflux = galR.dot(resampflux)
+    else:
+        smoothflux = resampflux
+    return smoothflux.T
 
 class ContinuumFit():
-    def __init__(self, metallicity='Z0.0190', minwave=0.0, maxwave=1e4, nproc=1,
+    def __init__(self, metallicity='Z0.0190', minwave=0.0, maxwave=6e4, nproc=1,
                  verbose=True):
         """Model the stellar continuum.
     
@@ -245,10 +291,16 @@ class ContinuumFit():
           - Resample to constant log-lamba and solve for the velocity dispersion.
           - Need to be careful because several of these steps will be a function of S/N.
           - The last continuum fit should be a non-linear fit which includes dust attenuation.
-    
+
+          decamwise (speclite.filters instance): DECam2014-[g,r,z] and WISE2010-[W1,W2]
+            FilterSequence.
+          bassmzlswise (speclite.filters instance): BASS-[g,r], MzLS-z and
+            WISE2010-[W1,W2] FilterSequence.
+        
         """
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
+        from speclite import filters
 
         self.cosmo = FlatLambdaCDM(H0=70, Om0=0.3)        
 
@@ -279,52 +331,147 @@ class ContinuumFit():
         self.sspinfo = sspinfo[::3]
 
         self.nage = len(self.sspinfo['age'])
-        self.npix = len(wave)
+        self.npix = len(self.sspwave)
+
+        # photometry
+        self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z',
+                                              'wise2010-W1', 'wise2010-W2')
+        self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z',
+                                                 'wise2010-W1', 'wise2010-W2')
 
         # dust parameters and emission lines
         self.dustslope = 0.7
         
         self.linetable = read_igalfit_lines()
+
+    @staticmethod
+    def convert_photometry(maggies, lambda_eff, ivarmaggies=None, nanomaggies=True,
+                           flam=True, fnu=False, abmag=False):
+        """Convert maggies to various outputs and pack into a table.
+
+        flam - 10-17 erg/s/cm2/A
+        fnu - 10-17 erg/s/cm2/Hz
+        abmag - AB mag
+
+        nanomaggies - input maggies are actually 1e-9 maggies
+
+        """
+        shp = maggies.shape
+        if maggies.ndim == 1:
+            nband, ngal = shp[0], 1
+        else:
+            nband, ngal = shp[0], shp[1]
+            
+        phot = Table()
+        phot.add_column(Column(name='lambda_eff', length=nband, dtype='f4'))
+        phot.add_column(Column(name='nanomaggies', length=nband, shape=(ngal, ), dtype='f4'))
+        phot.add_column(Column(name='nanomaggies_ivar', length=nband, shape=(ngal, ), dtype='f4'))
+        phot.add_column(Column(name='flam', length=nband, shape=(ngal, ), dtype='f4'))
+        phot.add_column(Column(name='flam_ivar', length=nband, shape=(ngal, ), dtype='f4'))
+        phot.add_column(Column(name='abmag', length=nband, shape=(ngal, ), dtype='f4'))
+        phot.add_column(Column(name='abmag_ivar', length=nband, shape=(ngal, ), dtype='f4'))
+
+        if ivarmaggies is None:
+            ivarmaggies = np.zeros_like(maggies)
+
+        phot['lambda_eff'] = lambda_eff.astype('f4')
+        if nanomaggies:
+            phot['nanomaggies'] = maggies.astype('f4')
+            phot['nanomaggies_ivar'] = ivarmaggies.astype('f4')
+        else:
+            phot['nanomaggies'] = (maggies * 1e9).astype('f4')
+            phot['nanomaggies_ivar'] = (ivarmaggies * 1e-18).astype('f4')
+
+        if nanomaggies:
+            nanofactor = 1e-9 # [nanomaggies-->maggies]
+        else:
+            nanofactor = 1.0
+
+        factor = nanofactor * 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
+        if ngal > 1:
+            factor = factor[:, None] # broadcast for the models
+        phot['flam'] = (maggies * factor).astype('f4')
+        phot['flam_ivar'] = (ivarmaggies / factor**2).astype('f4')
+
+        phot['abmag'] = (-2.5 * np.log10(nanofactor * maggies)).astype('f4')
+
+        # approximate the uncertainty as being symmetric in magnitude
+        phot['abmag_ivar'] = (ivarmaggies * (maggies * 0.4 * np.log(10))**2).astype('f4')
+
+        return phot
         
-    def redshift_smooth_and_resample(self, galwave, galres, redshift):
+    def redshift_smooth_and_resample(self, galwave, galres, redshift, south=True):
         """Redshift, convolve with the spectral resolution, and 
         resample in wavelength.
 
         ToDo: velocity dispersion smoothing
+
+        phot - photometric table
         
         """
         import multiprocessing
 
-        # loop over cameras then SSP ages
-        smoothflux = []
-        for icamera in [0, 1, 2]: # iterate on cameras
-            args = [(self.sspflux[:, iage] / (1 + redshift), self.sspwave * (1 + redshift),
-                     galwave[icamera], galres[icamera]) for iage in np.arange(self.nage)]
-            with multiprocessing.Pool(self.nproc) as pool:
-                smoothflux.append(np.array(pool.map(_smooth_and_resample, args)).T)
+        # Synthesize photometry (only need to do this once).
+        if south:
+            filters = self.decamwise
+        else:
+            filters = self.bassmzlswise
+        zsspwave = self.sspwave * (1 + redshift)
+        zsspflux = self.sspflux / (1 + np.array(redshift).repeat(self.npix)[:, None])
 
-        #if plot:
-        #    import matplotlib.pyplot as plt
-        #    ww = 110
-        #    plt.plot(self.ssp.wave * (1+self.zredrock), self.ssp.flux[:, ww], color='gray', alpha=0.5)
-        #    for ii in [0, 1, 2]: # iterate over cameras
-        #        plt.plot(self.galwave[ii], sspflux[ii][:, 110], color='k')
-        #    plt.xlim(3900, 4000)
+        #zsspflux, zsspwave = list(zip(*args))[:2]
+        #zsspflux, zsspwave = np.vstack(zsspflux), zsspwave[0]
+
+        # convert to 10-17 flambda
+        maggies = filters.get_ab_maggies(zsspflux.T, zsspwave)
+        maggies = np.vstack(maggies.as_array().tolist()).T
+        effwave = filters.effective_wavelengths.value
+
+        phot = self.convert_photometry(maggies, effwave, nanomaggies=False)
+
+        # ignore the per-camera spectra
+        if galres is None and galwave is None:
+            args = [(zsspflux[:, iage], zsspwave, None, None)
+                    for iage in np.arange(self.nage)]
+            if self.nproc > 1:
+                with multiprocessing.Pool(self.nproc) as pool:
+                    smoothflux = np.vstack(pool.map(_smooth_and_resample, args)).T
+            else:
+                smoothflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
+        else:
+            # loop over cameras then SSP ages
+            smoothflux = []
+            for icamera in [0, 1, 2]: # iterate on cameras
+                args = [(zsspflux[:, iage], zsspwave, galwave[icamera], galres[icamera])
+                        for iage in np.arange(self.nage)]
+
+                if self.nproc > 1:
+                    with multiprocessing.Pool(self.nproc) as pool:
+                        smoothflux.append(np.vstack(pool.map(_smooth_and_resample, args)).T)
+                else:
+                    smoothflux.append(np.vstack([smooth_and_resample(*_args) for _args in args]).T)
             
-        return smoothflux # [npix, nage]
+        return smoothflux, phot # [npix, nage]
 
     def fnnls_continuum_bestfit(self, coeff, sspflux=None, galwave=None,
-                                galres=None, redshift=None):
+                                galres=None, redshift=None, south=True):
         if sspflux is None:
-            sspflux = self.redshift_smooth_and_resample(galwave, galres, redshift)
-            bestfit = [_sspflux.dot(coeff) for _sspflux in sspflux]
+            sspflux, sspphot = self.redshift_smooth_and_resample(galwave, galres, redshift, south=south)
+            if galres is None and galwave is None: # ignore per-camera
+                bestfit = sspflux.dot(coeff)
+            else: # iterate over camera
+                bestfit = [_sspflux.dot(coeff) for _sspflux in sspflux]
         else:
             bestfit = sspflux.dot(coeff)
-            
-        return bestfit
 
-    def fnnls_continuum(self, galwave, galflux, galivar, galres, redshift, linetable,
-                        sigma_mask=300.0):
+        if galres is None and galwave is None:
+            return bestfit, self.sspwave
+        else:
+            return bestfit
+
+    def fnnls_continuum(self, galwave, galflux, galivar, galres,
+                        galphot, redshift, linetable, sigma_mask=300.0,
+                        use_photometry=True, south=True):
         """Fit the continuum using fast NNLS.
         https://github.com/jvendrow/fnnls
 
@@ -336,7 +483,7 @@ class ContinuumFit():
         from time import time
         from fnnls import fnnls
         
-        sspflux = self.redshift_smooth_and_resample(galwave, galres, redshift) 
+        sspflux, sspphot = self.redshift_smooth_and_resample(galwave, galres, redshift, south=south) 
 
         # combine the cameras and fit
         _galwave = np.hstack(galwave)
@@ -352,19 +499,37 @@ class ContinuumFit():
                             (_galwave <= (zwave + 1.5*sigma_mask * zwave / C_LIGHT)))[0]
             if len(indx) > 0:
                 emlinemask[indx] = 0
-        
+
         # Do a fast initial fit of the stellar continuum.
         print('ToDo: add vdisp and ebv, and restrict maxage of templates.')
+
+        # fit with and without photometry
+        _modelphot = sspphot['flam'] # [nband, nage]
+        _galphot = galphot['flam']
+        _galphotivar = galphot['flam_ivar']
+
+        ww = np.sqrt(_galivar * emlinemask)
+        ZZ = _sspflux * ww[:, None]
+        xx = _galflux * ww
+
+        wwphot = np.sqrt(_galphotivar)
+        ZZphot = _modelphot * wwphot[:, None]
+        xxphot = _galphot * wwphot
+
         t0 = time()
-        coeff = fnnls(_sspflux * np.sqrt((_galivar * emlinemask)[:, None]), _galflux * np.sqrt(_galivar))[0]
+        coeff = fnnls(ZZ, xx)[0]
+        #coeff = fnnls(np.concatenate((ZZ, ZZphot), axis=0), np.concatenate((xx, xxphot), axis=0))[0]
+        coeffphot = fnnls(ZZphot, xxphot)[0]
         dt = time() - t0
+
+        pdb.set_trace()
 
         # ToDo: fit for dust, the redshift, and velocity dispersion
         zcontinuum, vdisp, ebv = redshift, 0.0, 0.0
 
         # Need to push the calculation of the best-fitting continuum to a
         # function so we can call it when building QA.
-        _continuum = self.fnnls_continuum_bestfit(coeff, _sspflux)
+        _continuum, _ = self.fnnls_continuum_bestfit(coeff, _sspflux)
         dof = np.sum(_galivar > 0) - self.nage
         chi2 = np.sum(_galivar * (_galflux - _continuum)**2) / dof
 
@@ -391,21 +556,24 @@ class ContinuumFit():
         # Store the results and return.
         results = {'coeff': coeff, 'chi2': np.float32(chi2), 'dof': dof,
                    'age': np.float32(age), 'ebv': np.float32(ebv),
-                   'vdisp': np.float32(vdisp), 'z': zcontinuum}
+                   'vdisp': np.float32(vdisp), 'z': zcontinuum,
+                   'phot_coeff': coeffphot}
         #results = {'coeff': coeff, 'chi2': np.float32(chi2), 'dof': dof,
         #           'age': np.float32(age)*u.Gyr, 'ebv': np.float32(ebv)*u.mag,
         #           'vdisp': np.float32(vdisp)*u.kilometer/u.second}
 
         return results, continuum
     
-    def fnnls_continuum_plot(self, galwave, galflux, galivar, continuum,
-                             objinfo, png=None):
+    def fnnls_continuum_plot(self, galwave, galflux, galivar, galphot,
+                             continuum, continuum_fullwave, fullwave, objinfo,
+                             png=None):
         """QA of the best-fitting continuum.
 
         """
         from scipy.ndimage import median_filter
         import matplotlib.pyplot as plt
         from matplotlib import colors
+        import matplotlib.ticker as ticker
         import seaborn as sns
 
         sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
@@ -414,13 +582,16 @@ class ContinuumFit():
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
 
         ymin, ymax = 1e6, -1e6
-        
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
         for ii in [0, 1, 2]: # iterate over cameras
             galsigma = 1 / np.sqrt(galivar[ii])
-            ax.fill_between(galwave[ii], galflux[ii]-galsigma, galflux[ii]+galsigma,
+            ax1.fill_between(galwave[ii], galflux[ii]-galsigma, galflux[ii]+galsigma,
                             color=col1[ii])
-            ax.plot(galwave[ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
+            ax1.plot(galwave[ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
+
+            #ax2.fill_between(galwave[ii], galflux[ii]-galsigma, galflux[ii]+galsigma,
+            #                color=col1[ii])
+            #ax2.plot(galwave[ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
 
             # get the robust range
             filtflux = median_filter(galflux[ii], 5)
@@ -429,19 +600,55 @@ class ContinuumFit():
             if np.max(filtflux) > ymax:
                 ymax = np.max(filtflux)
 
-        ax.text(0.95, 0.92, '{}'.format(objinfo['targetid']), 
-                ha='right', va='center', transform=ax.transAxes, fontsize=18)
-        ax.text(0.95, 0.86, r'{} {}'.format(objinfo['zredrock'], objinfo['zigalfit']),
-                ha='right', va='center', transform=ax.transAxes, fontsize=18)
-        ax.text(0.95, 0.80, r'{} {}'.format(objinfo['chi2'], objinfo['vdisp']),
-                ha='right', va='center', transform=ax.transAxes, fontsize=18)
+        ax1.text(0.95, 0.92, '{}'.format(objinfo['targetid']), 
+                 ha='right', va='center', transform=ax1.transAxes, fontsize=18)
+        ax1.text(0.95, 0.86, r'{} {}'.format(objinfo['zredrock'], objinfo['zigalfit']),
+                 ha='right', va='center', transform=ax1.transAxes, fontsize=18)
+        ax1.text(0.95, 0.80, r'{} {}'.format(objinfo['chi2'], objinfo['vdisp']),
+                 ha='right', va='center', transform=ax1.transAxes, fontsize=18)
                     
-        ax.set_xlim(3500, 10000)
-        ax.set_ylim(ymin, ymax)
-        ax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
-        ax.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
+        ax1.set_xlim(3500, 10000)
+        ax1.set_ylim(ymin, ymax)
+        ax1.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
+        ax1.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
 
-        plt.subplots_adjust(bottom=0.15, right=0.95, top=0.95)
+        # add the photometry
+
+        if False:
+            for ii in [0, 1, 2]: # iterate over cameras
+                #galsigma = 1 / np.sqrt(galivar[ii])
+                factor = 1e-17  * galwave[ii]**2 / (C_LIGHT * 1e13) # [10-17 erg/s/cm2/A --> maggies]
+                good = np.where(galflux[ii] > 0)[0]
+                if len(good) > 0:
+                    ax2.plot(galwave[ii][good]/1e4, -2.5*np.log10(galflux[ii][good]*factor[good])-48.6, color=col1[ii])
+                    #ax1.fill_between(galwave[ii]/1e4, -2.5*np.log10((galflux[ii]-galsigma) * factor,
+                    #                 (galflux[ii]+galsigma) * factor, color=col1[ii])
+                #ax2.plot(galwave[ii]/1e4, -2.5*np.log10(continuum[ii]*factor)-48.6, color=col2[ii], alpha=1.0)#, color='k')
+                ax2.plot(galwave[ii]/1e4, -2.5*np.log10(continuum[ii]*factor)-48.6, color=col2[ii], alpha=1.0)#, color='k')
+
+        factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) # [erg/s/cm2/A --> maggies]
+        ax2.plot(fullwave/1e4, -2.5*np.log10(continuum_fullwave*factor), color='gray', alpha=0.8)
+
+        #ax2.errorbar(filtwave, flam, yerr=flamsigma, fmt='s')
+        #ax2.scatter(galphot['lambda_eff']/1e4, galphot['abmag'], marker='s',
+        #            color='blue', s=200, edgecolor='k')
+        ax2.errorbar(galphot['lambda_eff']/1e4, galphot['abmag'], yerr=1/np.sqrt(galphot['abmag_ivar']),
+                     fmt='s', markersize=15, markeredgewidth=3, markeredgecolor='k', markerfacecolor='red',
+                     elinewidth=3, ecolor='blue', capsize=3)
+
+        dm = 0.75
+        ymin, ymax = galphot['abmag'].max() + dm, galphot['abmag'].min() - dm
+
+        ax2.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
+        ax2.set_ylabel(r'AB Mag') 
+        ax2.set_xlim(0.2, 6)
+        ax2.set_ylim(ymin, ymax)
+
+        ax2.set_xscale('log')
+        ax2.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax2.set_xticks([0.3, 0.5, 0.7, 1.0, 1.5, 3.0, 5.0])
+
+        plt.subplots_adjust(bottom=0.1, right=0.95, top=0.95, wspace=0.17)
 
         if png:
             print('Writing {}'.format(png))
