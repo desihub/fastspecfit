@@ -20,6 +20,9 @@ def parse_args():
     ELG - 20200228 70005
     BGS+MWS - 20200303 70500
     BGS+MWS - 20200315 66003
+
+    new truth table for 70500 is here--
+    /global/cfs/cdirs/desi/sv/vi/TruthTables/Andes_reinspection/BGS
     
     https://desi.lbl.gov/trac/wiki/SurveyValidation/TruthTables
     https://desi.lbl.gov/DocDB/cgi-bin/private/RetrieveFile?docid=5720;filename=DESI_data_042820.pdf

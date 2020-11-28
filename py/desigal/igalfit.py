@@ -204,6 +204,13 @@ def _unpack_spectrum(specobj, zbest, iobj, CFit, south=True):
     """
     from desispec.resolution import Resolution
     
+    if south:
+        filters = CFit.decamwise
+    else:
+        filters = CFit.bassmzlswise
+
+need to correct for dust and also maybe pack everything into a dictionary!
+
     galwave, galflux, galivar, galres = [], [], [], []
     for camera in ('b', 'r', 'z'):
         galwave.append(specobj.wave[camera])
@@ -223,6 +230,8 @@ def _unpack_spectrum(specobj, zbest, iobj, CFit, south=True):
 
     ugalivar = np.sum(ugalivar3d, axis=1)
     ugalflux = np.sum(ugalivar3d * ugalflux3d, axis=1) / ugalivar
+    padflux, padwave = filters.pad_spectrum(ugalflux, ugalwave, method='edge')
+    filters.get_ab_maggies(1e-17*padflux, padwave)
 
     if False:
         import matplotlib.pyplot as plt
@@ -233,11 +242,6 @@ def _unpack_spectrum(specobj, zbest, iobj, CFit, south=True):
         pdb.set_trace()
 
     # unpack the photometry
-    if south:
-        filters = CFit.decamwise
-    else:
-        filters = CFit.bassmzlswise
-
     fluxcols = ['FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2']
     ivarcols = ['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
     #galphot = Table(specobj.fibermap[[fluxcols, ivarcols][iobj])
