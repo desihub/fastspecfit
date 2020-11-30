@@ -2,21 +2,21 @@ Build a Docker container for the desi-outflows project.
 =======================================================
 
 ```
-docker build . -t legacysurvey/desi-outflows
-docker push legacysurvey/desi-outflows:latest
+docker build . -t desihub/nyxgalaxy
+docker push desihub/nyxgalaxy:latest
 
-docker tag legacysurvey/desi-outflows:latest legacysurvey/desi-outflows:v0.0.0
-docker push legacysurvey/desi-outflows:v0.0.0
+docker tag desihub/nyxgalaxy:latest desihub/nyxgalaxy:v0.0.1
+docker push desihub/nyxgalaxy:v0.0.1
 ```
 
 To enter the container (with a shell prompt) on a laptop do:
 ```
-docker pull legacysurvey/desi-outflows:latest
-docker run -it legacysurvey/desi-outflows:latest
+docker pull desihub/nyxgalaxy:latest
+docker run -it desihub/nyxgalaxy:latest
 ```
 
 Or at NERSC:
 ```
-shifterimg pull docker:legacysurvey/desi-outflows:latest
-shifter --image docker:legacysurvey/desi-outflows:latest bash
+shifterimg pull docker:desihub/nyxgalaxy:latest
+shifter --image docker:desihub/nyxgalaxy:latest bash
 ```

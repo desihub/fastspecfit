@@ -72,10 +72,6 @@ RUN git clone https://github.com/dkirkby/speclite.git
 RUN cd speclite \
     && python setup.py install
 
-RUN git clone https://github.com/changhoonhahn/gqp_mc.git
-# RUN cd gqp_mc \
-#     && python setup.py install
-
 ENV SPS_HOME /src/fsps
 
 RUN git clone https://github.com/dfm/python-fsps.git \
@@ -99,7 +95,7 @@ RUN for package in \
     done
 
 ENV PATH /src/desiutil/bin:/src/desimodel/bin:/src/desitarget/bin:/src/desispec/bin:/src/desisim/bin:/src/prospect/bin:/src/redrock/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ENV PYTHONPATH /src/desiutil/py:/src/desimodel/py:/src/desitarget/py:/src/desispec/py:/src/desisim/py:/src/prospect/py:/src/redrock/py:/src/gqp_mc/gqp_mc
+ENV PYTHONPATH /src/desiutil/py:/src/desimodel/py:/src/desitarget/py:/src/desispec/py:/src/desisim/py:/src/prospect/py:/src/redrock/py
 
 RUN git clone https://github.com/desihub/redrock-templates
 
@@ -117,9 +113,6 @@ ENV RR_TEMPLATE_DIR /src/redrock-templates
 
 RUN mkdir /homedir && chmod 777 /homedir
 ENV HOME /homedir
-
-ENV HDF5_USE_FILE_LOCKING FALSE
-ENV GQPMC_DIR $HOME
 
 # set prompt and default shell
 SHELL ["/bin/bash", "-c"]
