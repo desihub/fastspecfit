@@ -20,22 +20,39 @@ C_LIGHT = constants.c / 1000.0 # [km/s]
 
 log = get_logger()
 
-def init_nyxgalaxy(tile, night, zbest, CFit):
-    """Initialize the output data table.
+def init_nyxgalaxy(tile, night, zbest, fibermap, CFit):
+    """Initialize the nyxgalaxy output data table.
 
-    CFit - ContinuumFit class
+    Parameters
+    ----------
+    tile : :class:`str`
+        Tile number.
+    night : :class:`str`
+        Night on which `tile` was observed.
+    zbest : :class:`astropy.table.Table`
+        Redrock redshift table (row-aligned to `fibermap`).
+    fibermap : :class:`astropy.table.Table`
+        Fiber map (row-aligned to `zbest`).
+    CFit : :class:`desigal.nyxgalaxy.ContinuumFit`
+        Continuum-fitting class.
+
+    Returns
+    -------
+
+
+    Notes
+    -----
 
     """
-    import astropy.units as u
-    nobj = len(zbest)
-
     # Grab info on the emission lines and the continuum.
-    linetable = read_nyxgalaxy_lines()
+    nobj = len(zbest)
     nssp_coeff = len(CFit.sspinfo)
 
     out = Table()
     for zbestcol in ['TARGETID', 'Z']:#, 'ZERR']:#, 'SPECTYPE', 'DELTACHI2']
         out[zbestcol] = zbest[zbestcol]
+    for fibermapcol in ['FIBER']:
+        out[fibermapcol] = fibermap[zbestcol]
     out.add_column(Column(name='NIGHT', data=np.repeat(night, nobj)), index=0)
     out.add_column(Column(name='TILE', data=np.repeat(tile, nobj)), index=0)
     out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
@@ -60,7 +77,7 @@ def init_nyxgalaxy(tile, night, zbest, CFit):
     out.add_column(Column(name='LINESIGMA_BALMER', length=nobj, dtype='f4', unit=u.kilometer / u.second))
     out.add_column(Column(name='LINESIGMA_BALMER_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
 
-    for line in linetable['name']:
+    for line in CFit.linetable['name']:
         line = line.upper()
         out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
                               unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
@@ -91,7 +108,8 @@ def init_nyxgalaxy(tile, night, zbest, CFit):
         
     return out
     
-def read_spectra(tile, night, use_vi=False, write_spectra=True, verbose=False):
+def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
+                 verbose=False):
     """Read the spectra and redshift catalog for a given tile and night.
 
     Parameters
@@ -103,24 +121,24 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, verbose=False):
     use_vi : :class:`bool`, optional, defaults to False
         Select the subset of spectra with high-quality visual inspections.
     write_spectra : :class:`bool`, optional, defaults to True
-        Write out the selected spectra. (Useful for testing.)
+        Write out the selected spectra (useful for testing.)
+    overwrite : :class:`bool`, optional, defaults to False
+        Overwrite output files if they exist on-disk.
     verbose : :class:`bool`, optional, defaults to False
         Trigger more verbose output.
 
     Returns
     -------
     :class:`astropy.table.Table`
-        Redrock redshift table.
+        Redrock redshift table for the given tile and night.
     :class:`desispec.spectra.Spectra`
-        DESI spectra (in the standard format).
+        DESI spectra for the given tile and night (in the standard format).
 
     Notes
     -----
     The spectra from all 10 spectrographs are combined and only the subset of
     galaxy spectra with good redshifts (and, optionally, high-quality visual
     inspections) are returned.
-
-    An optional `overwrite` input could be added to overwrite existing spectra.
 
     """
     import fitsio
@@ -142,6 +160,8 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, verbose=False):
 
         coadd = desispec.io.read_spectra(coaddoutfile)
         log.info('Read {} spectra from {}'.format(len(zbest), coaddoutfile))
+
+        assert(np.all(zbest['TARGETID'] == coadd.fibermap['TARGETID']))
 
         return zbest, coadd
 
@@ -227,6 +247,8 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, verbose=False):
         else:
             coadd.update(_coadd)
 
+    assert(np.all(zbest['TARGETID'] == coadd.fibermap['TARGETID']))
+    
     log.info('Writing {} redshifts to {}'.format(len(zbest), zbestoutfile))
     zbest.write(zbestoutfile, overwrite=True)
 
@@ -235,8 +257,31 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, verbose=False):
 
     return zbest, coadd
 
-def _unpack_spectrum(specobj, zbest, iobj, CFit, south=True):
-    """Unpack a single spectrum into a list.
+def _unpack_one_spectrum(args):
+    """Multiprocessing wrapper."""
+    return unpack_one_spectrum(*args)
+
+def unpack_one_spectrum(specobj, zbest, iobj, CFit):
+    """Unpack and pre-process a single DESI spectrum.
+
+    Parameters
+    ----------
+    specobj : :class:`desispec.spectra.Spectra`
+        DESI spectra (in the standard format).
+    zbest : :class:`astropy.table.Table`
+        Redrock redshift table (row-aligned to `specobj`).
+    iobj : :class:`int`
+        Integer number of the spectrum to unpack and pre-process.
+    CFit : :class:`desigal.nyxgalaxy.ContinuumFit`
+        Continuum-fitting class which contains filter curves and some additional
+        photometric convenience functions.
+    
+    Returns
+    -------
+
+    Notes
+    -----
+    
 
     """
     from desispec.resolution import Resolution
@@ -297,7 +342,7 @@ def _unpack_spectrum(specobj, zbest, iobj, CFit, south=True):
     return galwave, galflux, galivar, galres, galphot, zredrock
 
 def _smooth_and_resample(args):
-    """Wrapper for multiprocessing."""
+    """Multiprocessing wrapper."""
     return smooth_and_resample(*args)
 
 def smooth_and_resample(sspflux, sspwave, galwave, galR):
@@ -316,7 +361,7 @@ def smooth_and_resample(sspflux, sspwave, galwave, galR):
         smoothflux = resampflux
     return smoothflux.T
 
-class ContinuumFit():
+class ContinuumFit(object):
     def __init__(self, metallicity='Z0.0190', minwave=0.0, maxwave=6e4, nproc=1,
                  verbose=True):
         """Model the stellar continuum.
