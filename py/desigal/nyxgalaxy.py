@@ -1,9 +1,11 @@
 """
-desigal.igalfit
-===============
+desigal.nyxgalaxy
+=================
 
 """
-import os, pdb
+import pdb # for debugging
+
+import os
 import numpy as np
 import astropy.units as u
 from astropy.table import Table, Column, vstack
@@ -13,7 +15,7 @@ from desispec.interpolation import resample_flux
 from scipy import constants
 C_LIGHT = constants.c / 1000.0 # [km/s]
 
-def init_galfit(tile, night, zbest, CFit):
+def init_nyxgalaxy(tile, night, zbest, CFit):
     """Initialize the output data table.
 
     CFit - ContinuumFit class
@@ -23,7 +25,7 @@ def init_galfit(tile, night, zbest, CFit):
     nobj = len(zbest)
 
     # Grab info on the emission lines and the continuum.
-    linetable = read_igalfit_lines()
+    linetable = read_nyxgalaxy_lines()
     nssp_coeff = len(CFit.sspinfo)
 
     out = Table()
@@ -100,7 +102,7 @@ def get_data(tile='66003', night='20200315', overwrite=False, verbose=False, use
     from desispec.spectra import Spectra
     import desispec.io
 
-    desigal_dir = os.getenv('DESIGAL_DATA')
+    desigal_dir = os.getenv('NYXGALAXY_DATA')
     zbestoutfile = os.path.join(desigal_dir, 'zbest-{}-{}.fits'.format(tile, night))
     coaddoutfile = os.path.join(desigal_dir, 'coadd-{}-{}.fits'.format(tile, night))
     if os.path.isfile(coaddoutfile) and not overwrite:
@@ -209,7 +211,8 @@ def _unpack_spectrum(specobj, zbest, iobj, CFit, south=True):
     else:
         filters = CFit.bassmzlswise
 
-need to correct for dust and also maybe pack everything into a dictionary!
+    print('need to correct for dust and also maybe pack everything into a dictionary!')
+    pdb.set_trace()
 
     galwave, galflux, galivar, galres = [], [], [], []
     for camera in ('b', 'r', 'z'):
@@ -318,7 +321,7 @@ class ContinuumFit():
         self.verbose = verbose
 
         # Don't hard-code the path!
-        self.ssppath = os.getenv('DESIGAL_TEMPLATES')
+        self.ssppath = os.getenv('NYXGALAXY_TEMPLATES')
         self.sspfile = os.path.join(self.ssppath, 'SSP_{}_{}_{}_{}.fits'.format(
             self.isochrone, self.library, self.imf, self.metallicity))
 
@@ -346,7 +349,7 @@ class ContinuumFit():
         # dust parameters and emission lines
         self.dustslope = 0.7
         
-        self.linetable = read_igalfit_lines()
+        self.linetable = read_nyxgalaxy_lines()
 
     @staticmethod
     def convert_photometry(maggies, lambda_eff, ivarmaggies=None, nanomaggies=True,
@@ -606,7 +609,7 @@ class ContinuumFit():
 
         ax1.text(0.95, 0.92, '{}'.format(objinfo['targetid']), 
                  ha='right', va='center', transform=ax1.transAxes, fontsize=18)
-        ax1.text(0.95, 0.86, r'{} {}'.format(objinfo['zredrock'], objinfo['zigalfit']),
+        ax1.text(0.95, 0.86, r'{} {}'.format(objinfo['zredrock'], objinfo['znyxgalaxy']),
                  ha='right', va='center', transform=ax1.transAxes, fontsize=18)
         ax1.text(0.95, 0.80, r'{} {}'.format(objinfo['chi2'], objinfo['vdisp']),
                  ha='right', va='center', transform=ax1.transAxes, fontsize=18)
@@ -728,7 +731,7 @@ class ContinuumFit():
         print(params.x[0], self.ssp.info['age'][params.x[1:] > 1] / 1e9)
         pdb.set_trace()
 
-def read_igalfit_lines():
+def read_nyxgalaxy_lines():
     """Read the set of emission lines of interest.
 
     ToDo: add lines to mask during continuum-fitting but which we do not want to
@@ -737,7 +740,7 @@ def read_igalfit_lines():
     """
     from pkg_resources import resource_filename
     
-    linefile = resource_filename('desigal', 'data/igalfit_lines.ecsv')    
+    linefile = resource_filename('desigal', 'data/nyxgalaxy_lines.ecsv')    
     linetable = Table.read(linefile, format='ascii.ecsv', guess=False)
     
     return linetable    
@@ -816,7 +819,7 @@ class EMLineModel(Fittable1DModel):
         redshift - required keyword
         
         """
-        self.linetable = read_igalfit_lines()
+        self.linetable = read_nyxgalaxy_lines()
         self.redshift = redshift
         self.emlineR = emlineR
         self.npixpercamera = np.hstack([0, npixpercamera])
@@ -927,21 +930,21 @@ class EMLineFit(object):
         chi2 = np.sum(emlineivar * (emlineflux - emlinemodel)**2) / dof
         return chi2
 
-    def emlinemodel_bestfit(self, galwave, galres, galfit_table):
+    def emlinemodel_bestfit(self, galwave, galres, nyxgalaxy_table):
         """Wrapper function to get the best-fitting emission-line model
-        from an igalfit table (to be used to build QA).
+        from an nyxgalaxy table (to be used to build QA).
 
         """
         npixpercamera = [len(gw) for gw in galwave]
 
-        redshift = galfit_table['Z']
-        linesigma_forbidden = galfit_table['LINESIGMA_FORBIDDEN']
-        linesigma_balmer = galfit_table['LINESIGMA_BALMER']
+        redshift = nyxgalaxy_table['Z']
+        linesigma_forbidden = nyxgalaxy_table['LINESIGMA_FORBIDDEN']
+        linesigma_balmer = nyxgalaxy_table['LINESIGMA_BALMER']
 
-        linevshift_forbidden = galfit_table['LINEVSHIFT_FORBIDDEN']
-        linevshift_balmer = galfit_table['LINEVSHIFT_BALMER']
-        #linez_forbidden = galfit_table['LINEZ_FORBIDDEN']
-        #linez_balmer = galfit_table['LINEZ_BALMER']
+        linevshift_forbidden = nyxgalaxy_table['LINEVSHIFT_FORBIDDEN']
+        linevshift_balmer = nyxgalaxy_table['LINEVSHIFT_BALMER']
+        #linez_forbidden = nyxgalaxy_table['LINEZ_FORBIDDEN']
+        #linez_balmer = nyxgalaxy_table['LINEZ_BALMER']
         #linevshift_forbidden = (linez_forbidden - redshift) * C_LIGHT # [km/s]
         #linevshift_balmer = (linez_balmer - redshift) * C_LIGHT # [km/s]
 
@@ -952,7 +955,7 @@ class EMLineFit(object):
                              redshift=redshift, emlineR=galres,
                              npixpercamera=npixpercamera)
         # skip linevshift_[forbidden,balmer] and linesigma_[forbidden,balmer]
-        lineargs = [galfit_table[linename.upper()] for linename in EMLine.param_names[4:]] 
+        lineargs = [nyxgalaxy_table[linename.upper()] for linename in EMLine.param_names[4:]] 
         lineargs = [linevshift_forbidden, linevshift_balmer, linesigma_forbidden, linesigma_balmer] + lineargs
 
         _emlinemodel = EMLine.evaluate(np.hstack(galwave), *lineargs)
