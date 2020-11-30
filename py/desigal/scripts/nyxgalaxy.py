@@ -35,16 +35,21 @@ def parse(options=None):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    # all inputs are optional
+    # required but with sensible defaults
     parser.add_argument('--night', default='20200225', type=str, help='Night to process.')
     parser.add_argument('--tile', default='70502', type=str, help='Tile number to process.')
+
+    # optional inputs
     parser.add_argument('--nproc', default=1, type=int, help='Number of cores.')
     parser.add_argument('--first', type=int, help='Index of first spectrum to process (0-indexed).')
     parser.add_argument('--last', type=int, help='Index of last spectrum to process (max of nobj-1).')
-    parser.add_argument('--metallicity', default='Z0.0190', type=str, help='Stellar metallicity.')
     parser.add_argument('--makeqa', action='store_true', help='Build QA output.')
-    parser.add_argument('--verbose', action='store_true', help='Be verbose.')
+
+    parser.add_argument('--use-vi', action='store_true', help='Select spectra with high-quality visual inspections (VI).')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing files.')
+    parser.add_argument('--no-write-spectra', dest='write_spectra', default=True, action='store_false',
+                        help='Do not write out the selected spectra for the specified tile and night.')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose.')
 
     log = get_logger()
     if options is None:
@@ -61,16 +66,25 @@ def main(args=None):
 
     """
 
-    from desigal.nyxgalaxy import get_data, _unpack_spectrum, init_nyxgalaxy
+    from desigal.nyxgalaxy import read_spectra, _unpack_spectrum, init_nyxgalaxy
     from desigal.nyxgalaxy import ContinuumFit, EMLineFit, C_LIGHT
 
     log = get_logger()
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    # Read the data.
-    zbest, specobj = get_data(tile=args.tile, night=args.night,
-                              use_vi=False, overwrite=False)#args.overwrite)
+    for key in ['NYXGALAXY_DATA', 'NYXGALAXY_TEMPLATES']:
+        if key not in os.environ:
+            log.fatal('Required ${} environment variable not set'.format(key))
+            raise EnvironmentError('Required ${} environment variable not set'.format(key))
+        
+    # Read the data 
+    zbest, specobj = read_spectra(tile=args.tile, night=args.night,
+                                  use_vi=args.use_vi, 
+                                  write_spectra=args.write_spectra,
+                                  verbose=args.verbose)
+
+    pdb.set_trace()
 
     if args.first is None:
         args.first = 0
@@ -120,17 +134,17 @@ def main(args=None):
                     nyxgalaxy['{}_{}_IVAR'.format(line, suffix).upper()][iobj] = emfit['{}_{}_ivar'.format(line, suffix)]
 
             #for col in nyxgalaxy.colnames[-14:]:
-            #    print('{:.4f} {}'.format(nyxgalaxy[col][iobj], col))
+            #    log.info('{:.4f} {}'.format(nyxgalaxy[col][iobj], col))
             #pdb.set_trace()
 
         # write out
-        print('Writing {} spectra to {}'.format(len(nyxgalaxy), nyxgalaxyfile))
+        log.info('Writing {} spectra to {}'.format(len(nyxgalaxy), nyxgalaxyfile))
         nyxgalaxy.write(nyxgalaxyfile, overwrite=True)
 
     if args.makeqa:
         from astropy.table import Table
         nyxgalaxy = Table.read(nyxgalaxyfile)
-        print('Read {} objects from {}'.format(len(nyxgalaxy), nyxgalaxyfile))
+        log.info('Read {} objects from {}'.format(len(nyxgalaxy), nyxgalaxyfile))
 
         qadir = os.path.join(desigal_dir, 'qa')
         if not os.path.isdir(qadir):

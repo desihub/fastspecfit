@@ -7,13 +7,18 @@ import pdb # for debugging
 
 import os
 import numpy as np
+
 import astropy.units as u
-from astropy.table import Table, Column, vstack
+from astropy.table import Table, Column, vstack, join
 from astropy.modeling import Fittable1DModel
+
+from desiutil.log import get_logger
 from desispec.interpolation import resample_flux
 
 from scipy import constants
 C_LIGHT = constants.c / 1000.0 # [km/s]
+
+log = get_logger()
 
 def init_nyxgalaxy(tile, night, zbest, CFit):
     """Initialize the output data table.
@@ -86,15 +91,36 @@ def init_nyxgalaxy(tile, night, zbest, CFit):
         
     return out
     
-def get_data(tile='66003', night='20200315', overwrite=False, verbose=False, use_vi=False):
-    """Parse the reduced data for a given tile and night. Select the subset of
-    objects with good redshifts and visual inspections.
+def read_spectra(tile, night, use_vi=False, write_spectra=True, verbose=False):
+    """Read the spectra and redshift catalog for a given tile and night.
 
-    ELG - 20200228, 70005
-    BGS+MWS - 20200315, 66003
-    
-    https://desi.lbl.gov/trac/wiki/SurveyValidation/TruthTables
-    https://desi.lbl.gov/DocDB/cgi-bin/private/RetrieveFile?docid=5720;filename=DESI_data_042820.pdf
+    Parameters
+    ----------
+    tile : :class:`str`
+        Tile number to analyze.
+    night : :class:`str`
+        Night on which `tile` was observed.
+    use_vi : :class:`bool`, optional, defaults to False
+        Select the subset of spectra with high-quality visual inspections.
+    write_spectra : :class:`bool`, optional, defaults to True
+        Write out the selected spectra. (Useful for testing.)
+    verbose : :class:`bool`, optional, defaults to False
+        Trigger more verbose output.
+
+    Returns
+    -------
+    :class:`astropy.table.Table`
+        Redrock redshift table.
+    :class:`desispec.spectra.Spectra`
+        DESI spectra (in the standard format).
+
+    Notes
+    -----
+    The spectra from all 10 spectrographs are combined and only the subset of
+    galaxy spectra with good redshifts (and, optionally, high-quality visual
+    inspections) are returned.
+
+    An optional `overwrite` input could be added to overwrite existing spectra.
 
     """
     import fitsio
@@ -102,69 +128,78 @@ def get_data(tile='66003', night='20200315', overwrite=False, verbose=False, use
     from desispec.spectra import Spectra
     import desispec.io
 
-    desigal_dir = os.getenv('NYXGALAXY_DATA')
-    zbestoutfile = os.path.join(desigal_dir, 'zbest-{}-{}.fits'.format(tile, night))
-    coaddoutfile = os.path.join(desigal_dir, 'coadd-{}-{}.fits'.format(tile, night))
+    data_dir = os.path.join(os.getenv('NYXGALAXY_DATA'), 'spectra')
+    if not os.path.isdir(data_dir):
+        if verbose:
+            log.debug('Creating directory {}'.format(data_dir))
+        os.makedirs(data_dir, exist_ok=True)
+    
+    zbestoutfile = os.path.join(data_dir, 'zbest-{}-{}.fits'.format(tile, night))
+    coaddoutfile = os.path.join(data_dir, 'coadd-{}-{}.fits'.format(tile, night))
     if os.path.isfile(coaddoutfile) and not overwrite:
         zbest = Table(fitsio.read(zbestoutfile))
-        print('Read {} redshifts from {}'.format(len(zbest), zbestoutfile))
+        log.info('Read {} redshifts from {}'.format(len(zbest), zbestoutfile))
 
         coadd = desispec.io.read_spectra(coaddoutfile)
-        print('Read {} spectra from {}'.format(len(zbest), coaddoutfile))
+        log.info('Read {} spectra from {}'.format(len(zbest), coaddoutfile))
 
         return zbest, coadd
 
-    print('Parsing data from tile, night {}, {}'.format(tile, night))
+    log.info('Parsing data from tile, night {}, {}'.format(tile, night))
 
     specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', 'andes')
-    datadir = os.path.join(specprod_dir, 'tiles', tile, night)
+    desidatadir = os.path.join(specprod_dir, 'tiles', tile, night)
 
     # use visual inspection results?
     if use_vi:
         truthdir = os.path.join(os.getenv('DESI_ROOT'), 'sv', 'vi', 'TruthTables')
-        if tile == '66003':
-            truthfile = os.path.join(truthdir, 'truth_table_BGS_v1.2.csv')
-        elif tile == '70500':
-            truthfile = os.path.join(truthdir, 'truth_table_ELG_v1.2_latest.csv')
+        tile2file = {
+            '66003': os.path.join(truthdir, 'truth_table_BGS_v1.2.csv'),
+            '70500': os.path.join(truthdir, 'truth_table_ELG_v1.2_latest.csv'),
+            }
+        if tile not in tile2file.keys():
+            log.warning('No (known) truth file exists for tile {}. Setting use_vi=False.'.format(tile))
+            use_vi = False
         else:
-            raise ValueError('Fix me.')
+            truth = Table.read(truthfile)
+            best = np.where(
+                (truth['best quality'] >= 2.5) * 
+                (truth['Redrock spectype'] == 'GALAXY')# *
+                #(truth['Redrock z'] < 0.75) 
+            )[0]
+            #goodobj = np.where((zb['DELTACHI2'] > 100) * (zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY'))[0]
 
-        truth = Table.read(truthfile)
-        best = np.where(
-            (truth['best quality'] >= 2.5) * 
-            (truth['Redrock spectype'] == 'GALAXY') *
-            (truth['Redrock z'] < 0.75) 
-        )[0]
-        #goodobj = np.where((zb['DELTACHI2'] > 100) * (zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY'))[0]
-
-        print('Read {}/{} good redshifts from {}'.format(len(best), len(truth), truthfile))
-        truth = truth[best]
+            log.info('Read {}/{} good redshifts from {}'.format(len(best), len(truth), truthfile))
+            truth = truth[best]
     
     zbest = []
     spectra, keepindx = [], []
-    for spectro in ('0'):
-    #for spectro in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'):
-        zbestfile = os.path.join(datadir, 'zbest-{}-{}-{}.fits'.format(spectro, tile, night))
-        coaddfile = os.path.join(datadir, 'coadd-{}-{}-{}.fits'.format(spectro, tile, night))
+    #for spectro in ('0'):
+    for spectro in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'):
+        zbestfile = os.path.join(desidatadir, 'zbest-{}-{}-{}.fits'.format(spectro, tile, night))
+        coaddfile = os.path.join(desidatadir, 'coadd-{}-{}-{}.fits'.format(spectro, tile, night))
         if os.path.isfile(zbestfile) and os.path.isfile(coaddfile):
             zb = Table(fitsio.read(zbestfile))
             if use_vi:
                 keep = np.where(np.isin(zb['TARGETID'], truth['TARGETID']))[0]
             else:
                 #snr = np.median(specobj.flux['r']*np.sqrt(specobj.ivar['r']), axis=1)
+                #keep = np.where((zb['ZWARN'] == 0) * (zb['DELTACHI2'] > 50) * (zb['SPECTYPE'] == 'GALAXY'))[0]
                 keep = np.where((zb['ZWARN'] == 0) * (zb['DELTACHI2'] > 50) * (zb['SPECTYPE'] == 'GALAXY'))[0]
-                
-            print('Spectrograph {}: N={}'.format(spectro, len(keep)))
+
+            if verbose:
+                log.debug('Spectrograph {}: N={}'.format(spectro, len(keep)))
             if len(keep) > 0:
                 zbest.append(zb[keep])
                 keepindx.append(keep)
                 spectra.append(desispec.io.read_spectra(coaddfile))
 
     if len(zbest) == 0:
-        raise ValueError('No spectra found for tile {} and night {}!'.format(tile, night))
+        log.fatal('No spectra found for tile {} and night {}!'.format(tile, night))
+        raise ValueError
         
     # combine the spectrographs
-    print('Stacking all the spectra.')
+    #log.debug('Stacking all the spectra.')
     zbest = vstack(zbest)
 
     coadd = None
@@ -192,10 +227,10 @@ def get_data(tile='66003', night='20200315', overwrite=False, verbose=False, use
         else:
             coadd.update(_coadd)
 
-    print('Writing {} redshifts to {}'.format(len(zbest), zbestoutfile))
+    log.info('Writing {} redshifts to {}'.format(len(zbest), zbestoutfile))
     zbest.write(zbestoutfile, overwrite=True)
 
-    print('Writing {} spectra to {}'.format(len(zbest), coaddoutfile))
+    log.info('Writing {} spectra to {}'.format(len(zbest), coaddoutfile))
     desispec.io.write_spectra(coaddoutfile, coadd)
 
     return zbest, coadd
@@ -211,7 +246,7 @@ def _unpack_spectrum(specobj, zbest, iobj, CFit, south=True):
     else:
         filters = CFit.bassmzlswise
 
-    print('need to correct for dust and also maybe pack everything into a dictionary!')
+    log.info('need to correct for dust and also maybe pack everything into a dictionary!')
     pdb.set_trace()
 
     galwave, galflux, galivar, galres = [], [], [], []
@@ -326,7 +361,7 @@ class ContinuumFit():
             self.isochrone, self.library, self.imf, self.metallicity))
 
         if verbose:
-            print('Reading {}'.format(self.sspfile))
+            log.info('Reading {}'.format(self.sspfile))
         wave = fitsio.read(self.sspfile, ext='WAVE')
         flux = fitsio.read(self.sspfile, ext='FLUX')
         sspinfo = Table(fitsio.read(self.sspfile, ext='METADATA'))
@@ -508,7 +543,7 @@ class ContinuumFit():
                 emlinemask[indx] = 0
 
         # Do a fast initial fit of the stellar continuum.
-        print('ToDo: add vdisp and ebv, and restrict maxage of templates.')
+        log.info('ToDo: add vdisp and ebv, and restrict maxage of templates.')
 
         # fit with and without photometry
         _modelphot = sspphot['flam'] # [nband, nage]
@@ -544,12 +579,12 @@ class ContinuumFit():
         weight = coeff[coeff > 0]
         age = np.sum(weight * self.sspinfo['age'][coeff > 0]) / np.sum(weight) / 1e9 # [Gyr]
         if self.verbose:
-            print('Continuum fit done in {:.3f} seconds:'.format(dt))
-            print('  Non-zero templates: {}'.format(len(weight)))
-            print('  Reduced chi2: {:.3f}'.format(chi2))
-            print('  Velocity dispersion: {:.3f} km/s'.format(vdisp))
-            print('  Reddening: {:.3f} mag'.format(ebv))
-            print('  Light-weighted age: {:.3f} Gyr'.format(age))
+            log.info('Continuum fit done in {:.3f} seconds:'.format(dt))
+            log.info('  Non-zero templates: {}'.format(len(weight)))
+            log.info('  Reduced chi2: {:.3f}'.format(chi2))
+            log.info('  Velocity dispersion: {:.3f} km/s'.format(vdisp))
+            log.info('  Reddening: {:.3f} mag'.format(ebv))
+            log.info('  Light-weighted age: {:.3f} Gyr'.format(age))
 
         # Unpack the continuum into individual cameras.
         continuum = []
@@ -658,7 +693,7 @@ class ContinuumFit():
         plt.subplots_adjust(bottom=0.1, right=0.95, top=0.95, wspace=0.17)
 
         if png:
-            print('Writing {}'.format(png))
+            log.info('Writing {}'.format(png))
             fig.savefig(png)
         
     def _get_uncertainties(self, pcov=None, jac=None, return_covariance=False):
@@ -718,7 +753,7 @@ class ContinuumFit():
 
         _ = self.fnnls_continuum()
         init_params = np.hstack([0.05, self.fnnls_coeffs])
-        print(init_params)
+        log.info(init_params)
 
         params = least_squares(self._dusty_continuum_resid, x0=init_params, #kwargs=sspflux,
                                bounds=(0.0, np.inf), args=(wave, flux, isigma, sspflux),
@@ -728,7 +763,7 @@ class ContinuumFit():
         #continuum_fit = fitter(ContinuumModel, wave, flux, 
         unc = self._get_uncertainties(jac=params.jac, return_covariance=False)
         
-        print(params.x[0], self.ssp.info['age'][params.x[1:] > 1] / 1e9)
+        log.info(params.x[0], self.ssp.info['age'][params.x[1:] > 1] / 1e9)
         pdb.set_trace()
 
 def read_nyxgalaxy_lines():
@@ -881,7 +916,7 @@ class EMLineModel(Fittable1DModel):
 
             ww = np.abs(self.log10wave - linezwave) < 20 * log10sigma
             if np.count_nonzero(ww) > 0:
-                #print(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
+                #log.info(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
                 log10model[ww] += lineamp * np.exp(-0.5 * (self.log10wave[ww]-linezwave)**2 / log10sigma**2)
 
         # split into cameras, resample, and convolve with the instrumental
@@ -1305,7 +1340,7 @@ class EMLineFit(object):
                 emlinesigma[good] = 1 / np.sqrt(galivar[ii][good])
             
                 indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
-                #print(ii, linename, len(indx))
+                #log.info(ii, linename, len(indx))
                 if len(indx) > 1:
                     removelabels[iax] = False
                     xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
@@ -1339,7 +1374,7 @@ class EMLineFit(object):
             else:
                 xx.set_ylim(ymin[iax], ymax[iax])
                 xlim = xx.get_xlim()
-                #print(linenames[iax], xlim, np.diff(xlim))
+                #log.info(linenames[iax], xlim, np.diff(xlim))
                 xx.xaxis.set_major_locator(ticker.MaxNLocator(3))
                 #xx.xaxis.set_major_locator(ticker.MultipleLocator(20)) # wavelength spacing of ticks [Angstrom]
                 #if iax == 2:
@@ -1357,5 +1392,5 @@ class EMLineFit(object):
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
 
         if png:
-            print('Writing {}'.format(png))
+            log.info('Writing {}'.format(png))
             fig.savefig(png)
