@@ -27,6 +27,12 @@ import os, sys
 import numpy as np
 from desiutil.log import get_logger
 
+# ridiculousness!
+import tempfile
+os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
+import matplotlib
+matplotlib.use('Agg')
+
 def parse(options=None):
     """Parse input arguments.
 
@@ -107,21 +113,16 @@ def main(args=None):
     data = unpack_all_spectra(specobj, zbest, CFit, fitindx, nproc=args.nproc)
     del specobj, zbest # free memory
 
-    pdb.set_trace()
-    
     # Fit each object in sequence.
     for iobj in fitindx:
 
-        south = True
-        galwave, galflux, galivar, galres, galphot, zredrock = unpack_one_spectrum(
-            specobj, zbest, iobj, CFit, south=south)
-
-
         # fit the stellar continuum
-        contfit, continuum = CFit.fnnls_continuum(galwave, galflux, galivar, galres,
-                                                  galphot, zredrock, CFit.linetable)
+        contfit, continuum = CFit.fnnls_continuum(data)#, CFit.linetable)
+        pdb.set_trace()
+
         for col in ['coeff', 'chi2', 'dof', 'age', 'ebv', 'vdisp', 'z', 'phot_coeff']:
             nyxgalaxy['CONTINUUM_{}'.format(col).upper()][iobj] = contfit[col]
+
 
         # fit the emission-line spectrum and populate the output table
         emfit, emlinemodel = EMFit.fit(galwave, galflux, galivar, galres, continuum,

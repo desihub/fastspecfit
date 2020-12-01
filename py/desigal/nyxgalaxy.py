@@ -7,6 +7,7 @@ import pdb # for debugging
 
 import os
 import numpy as np
+import multiprocessing
 
 import astropy.units as u
 from astropy.table import Table, Column, vstack, join
@@ -38,7 +39,7 @@ def init_nyxgalaxy(tile, night, zbest, fibermap, CFit):
 
     Returns
     -------
-
+    
 
     Notes
     -----
@@ -472,8 +473,9 @@ def smooth_and_resample(sspflux, sspwave, galwave, galR):
     return smoothflux.T
 
 class ContinuumFit(object):
-    def __init__(self, metallicity='Z0.0190', minwave=0.0, maxwave=6e4, nproc=1,
-                 verbose=True):
+    def __init__(self, metallicity='Z0.0190', minwave=0.0, maxwave=6e4,
+                 ebvmin=0.0, ebvmax=0.2, deltaebv=0.05, vdispmin=100.0,
+                 vdispmax=300.0, deltavdisp=50.0, nproc=1, verbose=True):
         """Model the stellar continuum.
     
         specobj - Spectra Class data
@@ -496,7 +498,11 @@ class ContinuumFit(object):
         
         """
         import fitsio
+
+        from scipy.ndimage import fourier_gaussian, gaussian_filter1d
+        from numpy.fft import rfft, irfft, fft, rfft
         from astropy.cosmology import FlatLambdaCDM
+
         from speclite import filters
         from desiutil.dust import SFDMap
 
@@ -511,9 +517,31 @@ class ContinuumFit(object):
         self.nproc = nproc
         self.verbose = verbose
 
-        # Don't hard-code the path!
-        self.ssppath = os.getenv('NYXGALAXY_TEMPLATES')
-        self.sspfile = os.path.join(self.ssppath, 'SSP_{}_{}_{}_{}.fits'.format(
+        # dust and velocity dispersion
+        self.SFDMap = SFDMap()
+        self.RV = 3.1
+        self.dustslope = 0.7
+
+        nebv = np.ceil((ebvmax - ebvmin) / deltaebv).astype(int)
+        if nebv == 0:
+            log.fatal('Incorrect input continuum E(B-V) values!')
+            raise ValueError
+        self.continuum_ebv = np.linspace(ebvmin, ebvmax, nebv).astype('f4')
+
+        nvdisp = np.ceil((vdispmax - vdispmin) / deltavdisp).astype(int)
+        if nvdisp == 0:
+            log.fatal('Incorrect input velocity dispersion values!')
+            raise ValueError
+        self.vdisp = np.linspace(vdispmin, vdispmax, nvdisp).astype('f4') # [km/s]
+
+        # photometry
+        self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z',
+                                              'wise2010-W1', 'wise2010-W2')
+        self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z',
+                                                 'wise2010-W1', 'wise2010-W2')
+
+        # SSPs
+        self.sspfile = os.path.join(os.getenv('NYXGALAXY_TEMPLATES'), 'SSP_{}_{}_{}_{}.fits'.format(
             self.isochrone, self.library, self.imf, self.metallicity))
 
         if verbose:
@@ -524,23 +552,71 @@ class ContinuumFit(object):
         
         # Trim the wavelengths and subselect the number of ages/templates.
         keep = np.where((wave >= minwave) * (wave <= maxwave))[0]
-        self.sspwave = wave[keep]
-        self.sspflux = flux[keep, ::3]
-        self.sspinfo = sspinfo[::3]
+        wave = wave[keep]
+        flux = flux[keep, ::3]
+        sspinfo = sspinfo[::3]
+        nage = len(sspinfo)
 
-        self.nage = len(self.sspinfo['age'])
-        self.npix = len(self.sspwave)
+        # Initialize the templates on a grid of [nlogwave, nage, nebv, nvdisp].
 
-        # photometry
-        self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z',
-                                              'wise2010-W1', 'wise2010-W2')
-        self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z',
-                                                 'wise2010-W1', 'wise2010-W2')
+        # First, resample to have constant pixels in velocity / log-lambda.
+        self.pixkms = 50.0                                 # SSP pixel size [km/s]
+        self.dlogwave = self.pixkms / C_LIGHT / np.log(10) # SSP pixel size [log-lambda]
+        sspwave = np.arange(np.log10(wave.min()), np.log10(wave.max()), self.dlogwave)
+        npix = len(sspwave)
 
-        # dust
-        self.SFDMap = SFDMap()
-        self.RV = 3.1
-        self.dustslope = 0.7
+        args = [(flux[:, iage], wave, sspwave, None) for iage in np.arange(nage)]
+        if self.nproc > 1:
+            with multiprocessing.Pool(self.nproc) as P:
+                sspflux = np.vstack(P.map(_smooth_and_resample, args)).T # [npix, nage]
+        else:
+            sspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
+
+        #import matplotlib.pyplot as plt
+        #ww=np.where((10**log10wave > 3000) * (10**log10wave < 8000))[0]
+
+        # Next, apply velocity dispersion smoothing in Fourier space.
+        #bigflux = np.tile(bigflux[:, :, np.newaxis], nvdisp)
+        _sspflux = []
+        for vdisp in self.vdisp:
+            sigma = vdisp / self.pixkms # [pixels]
+            _sspflux.append(gaussian_filter1d(sspflux, sigma=sigma, axis=0))
+            #_bigflux.append(irfft(fourier_gaussian(rfft(bigflux, axis=0), sigma=sigma, axis=0), axis=0, n=npix))
+            #plt.clf() ; plt.plot(10**log10wave[ww], bigflux[ww, 60]) ; plt.plot(10**log10wave[ww], rr[ww, 60]) ; plt.savefig('junk.png')
+        sspflux = np.stack(_sspflux, axis=2)
+
+        #import matplotlib.pyplot as plt
+        #ww = np.where((10**log10wave > 3000) * (10**log10wave < 6000))[0]
+        #plt.clf()
+        #for ii in np.arange(nvdisp):
+        #    plt.plot(10**log10wave[ww], bigflux[ww, 60, ii], label='{:g} km/s'.format(self.vdisp[ii]))
+        #plt.legend()
+        #plt.savefig('junk.png')
+        #pdb.set_trace()
+        
+        # Finally, apply dust extinction.
+        #attenuation = np.ones((npix, nebv)).astype('f4')
+        _sspflux = []
+        for ebv in self.continuum_ebv:
+            atten = self.dust_attenuation(sspwave, ebv)
+            _sspflux.append(sspflux * np.tile(atten[:, np.newaxis, np.newaxis], (nage, nvdisp)))
+        sspflux = np.stack(_sspflux, axis=3) # [nwave, nage, nvdisp, nebv]
+        del _sspflux, atten
+
+        if False:
+            import matplotlib.pyplot as plt
+            ww=np.where((sspwave > 3800) * (sspwave < 4200))[0]
+            plt.clf() ; plt.plot(sspwave[ww], sspflux[ww, 60, 0, 0])
+            plt.plot(sspwave[ww], sspflux[ww, 60, 0, 1]) ; plt.savefig('junk.png') # dust
+
+            plt.clf() ; plt.plot(sspwave[ww], sspflux[ww, 60, 0, 0])
+            plt.plot(sspwave[ww], sspflux[ww, 60, 3, 0]) ; plt.savefig('junk2.png') # velocity dispersion
+
+        self.sspwave = sspwave
+        self.sspflux = sspflux
+        self.sspinfo = sspinfo
+        self.nage = nage
+        self.npix = npix
 
         # table of emission lines to fit
         self.linetable = read_nyxgalaxy_lines()
@@ -610,8 +686,6 @@ class ContinuumFit(object):
         phot - photometric table
         
         """
-        import multiprocessing
-
         # Synthesize photometry (only need to do this once).
         if south:
             filters = self.decamwise
@@ -877,17 +951,20 @@ class ContinuumFit(object):
         else:
             return unc
 
-    def _get_attenuation(self, wave, ebv):
+    def dust_attenuation(self, wave, ebv):
         """Return the dust attenuation A(lambda)=E(B-V)*k(lambda)
 
+        ToDo: add a UV bump--
+          https://gitlab.lam.fr/cigale/cigale/-/blob/master/pcigale/sed_modules/dustatt_powerlaw.py#L42
+
         """
-        klambda = 5.9 * (wave / 5500)**(-self.dustslope)
+        klambda = (wave / 5500)**(-self.dustslope)
         return 10**(-0.4 * ebv * klambda)
         
     def dusty_continuum(self, ebv_and_coeffs, wave, sspflux):
         """Continuum model with dust attenuation."""
         ebv, coeffs = ebv_and_coeffs[0], ebv_and_coeffs[1:]
-        atten = self._get_attenuation(wave, ebv)
+        atten = self.dust_attenuation(wave, ebv)
         modelflux = (sspflux * atten[:, None]).dot(coeffs) 
         return modelflux
     
