@@ -65,7 +65,7 @@ def main(args=None):
     """Main module.
 
     """
-    from desigal.nyxgalaxy import read_spectra, init_nyxgalaxy, _unpack_spectrum
+    from desigal.nyxgalaxy import read_spectra, unpack_all_spectra, init_nyxgalaxy
     from desigal.nyxgalaxy import ContinuumFit, EMLineFit
 
     log = get_logger()
@@ -104,12 +104,13 @@ def main(args=None):
         args.last = len(zbest) - 1
     fitindx = np.arange(args.last - args.first + 1) + args.first
 
-    data = unpack_all_spectra(specobj, zbest, CFit)
+    data = unpack_all_spectra(specobj, zbest, CFit, fitindx, nproc=args.nproc)
     del specobj, zbest # free memory
 
+    pdb.set_trace()
+    
     # Fit each object in sequence.
     for iobj in fitindx:
-        pdb.set_trace()
 
         south = True
         galwave, galflux, galivar, galres, galphot, zredrock = unpack_one_spectrum(
@@ -149,62 +150,62 @@ def main(args=None):
     log.info('Writing {} spectra to {}'.format(len(nyxgalaxy), nyxgalaxyfile))
     nyxgalaxy.write(nyxgalaxyfile, overwrite=True)
 
-if args.makeqa:
-    from astropy.table import Table
-    nyxgalaxy = Table.read(nyxgalaxyfile)
-    log.info('Read {} objects from {}'.format(len(nyxgalaxy), nyxgalaxyfile))
+    if args.makeqa:
+        from astropy.table import Table
+        nyxgalaxy = Table.read(nyxgalaxyfile)
+        log.info('Read {} objects from {}'.format(len(nyxgalaxy), nyxgalaxyfile))
 
-    qadir = os.path.join(desigal_dir, 'qa')
-    if not os.path.isdir(qadir):
-        os.makedirs(qadir)
+        qadir = os.path.join(desigal_dir, 'qa')
+        if not os.path.isdir(qadir):
+            os.makedirs(qadir)
 
-    for iobj in fitindx:
-        south = True
+        for iobj in fitindx:
+            south = True
 
-        targetid = nyxgalaxy['TARGETID'][iobj]
-        galwave, galflux, galivar, galres, galphot, zredrock = _unpack_spectrum(
-            specobj, zbest, iobj, CFit, south=south)
+            targetid = nyxgalaxy['TARGETID'][iobj]
+            galwave, galflux, galivar, galres, galphot, zredrock = _unpack_spectrum(
+                specobj, zbest, iobj, CFit, south=south)
 
-        continuum = CFit.fnnls_continuum_bestfit(nyxgalaxy['CONTINUUM_COEFF'][iobj], galwave=galwave,
-                                                 galres=galres, redshift=zredrock)
-        continuum_fullwave, fullwave = CFit.fnnls_continuum_bestfit(nyxgalaxy['CONTINUUM_PHOT_COEFF'][iobj],
-                                                                    redshift=zredrock)
+            continuum = CFit.fnnls_continuum_bestfit(nyxgalaxy['CONTINUUM_COEFF'][iobj], galwave=galwave,
+                                                     galres=galres, redshift=zredrock)
+            continuum_fullwave, fullwave = CFit.fnnls_continuum_bestfit(nyxgalaxy['CONTINUUM_PHOT_COEFF'][iobj],
+                                                                        redshift=zredrock)
 
-        emlinemodel = EMFit.emlinemodel_bestfit(galwave, galres, nyxgalaxy[iobj])
+            emlinemodel = EMFit.emlinemodel_bestfit(galwave, galres, nyxgalaxy[iobj])
 
-        # continuum fit
-        pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))
-        objinfo = {
-            'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
-            #'targetid': 'TARGETID={} fiber={}'.format(zbest['TARGETID'][iobj], -999),
-            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(nyxgalaxy['CONTINUUM_CHI2'][iobj]),
-            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(nyxgalaxy['Z'][iobj]),
-            'znyxgalaxy': '$z_{{\\rm nyxgalaxy}}$={:.6f}'.format(nyxgalaxy['CONTINUUM_Z'][iobj]),
-            'age': '<Age>={:.3f} Gyr'.format(nyxgalaxy['CONTINUUM_AGE'][iobj]),
-            'vdisp': '$\sigma$={:.1f} km/s'.format(nyxgalaxy['CONTINUUM_VDISP'][iobj]),
-            'ebv': 'E(B-V)={:.4f} km/s'.format(nyxgalaxy['CONTINUUM_EBV'][iobj]),
-            }
+            # continuum fit
+            pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))
+            objinfo = {
+                'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
+                #'targetid': 'TARGETID={} fiber={}'.format(zbest['TARGETID'][iobj], -999),
+                'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(nyxgalaxy['CONTINUUM_CHI2'][iobj]),
+                'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(nyxgalaxy['Z'][iobj]),
+                'znyxgalaxy': '$z_{{\\rm nyxgalaxy}}$={:.6f}'.format(nyxgalaxy['CONTINUUM_Z'][iobj]),
+                'age': '<Age>={:.3f} Gyr'.format(nyxgalaxy['CONTINUUM_AGE'][iobj]),
+                'vdisp': '$\sigma$={:.1f} km/s'.format(nyxgalaxy['CONTINUUM_VDISP'][iobj]),
+                'ebv': 'E(B-V)={:.4f} km/s'.format(nyxgalaxy['CONTINUUM_EBV'][iobj]),
+                }
 
-        if south:
-            filters = CFit.decamwise
-        else:
-            filters = CFit.bassmzlswise
-        filtwave = filters.effective_wavelengths.value
+            if south:
+                filters = CFit.decamwise
+            else:
+                filters = CFit.bassmzlswise
+            filtwave = filters.effective_wavelengths.value
 
-        CFit.fnnls_continuum_plot(galwave, galflux, galivar, galphot, continuum, 
-                                  continuum_fullwave, fullwave, objinfo, png=pngfile)
+            CFit.fnnls_continuum_plot(galwave, galflux, galivar, galphot, continuum, 
+                                      continuum_fullwave, fullwave, objinfo, png=pngfile)
 
-        pdb.set_trace()
+            pdb.set_trace()
 
-        # emission-line fit
-        pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(args.tile, args.night, targetid))
-        objinfo = {
-            'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
-            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(nyxgalaxy['Z'][iobj]),
-            'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(nyxgalaxy['LINEVSHIFT_FORBIDDEN'][iobj]),
-            'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(nyxgalaxy['LINEVSHIFT_BALMER'][iobj]),
-            'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(nyxgalaxy['LINESIGMA_FORBIDDEN'][iobj]),
-            'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(nyxgalaxy['LINESIGMA_BALMER'][iobj]),
-            }
-        EMFit.emlineplot(galwave, galflux, galivar, continuum,
-                         emlinemodel, zredrock, objinfo, png=pngfile)
+            # emission-line fit
+            pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(args.tile, args.night, targetid))
+            objinfo = {
+                'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
+                'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(nyxgalaxy['Z'][iobj]),
+                'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(nyxgalaxy['LINEVSHIFT_FORBIDDEN'][iobj]),
+                'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(nyxgalaxy['LINEVSHIFT_BALMER'][iobj]),
+                'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(nyxgalaxy['LINESIGMA_FORBIDDEN'][iobj]),
+                'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(nyxgalaxy['LINESIGMA_BALMER'][iobj]),
+                }
+            EMFit.emlineplot(galwave, galflux, galivar, continuum,
+                             emlinemodel, zredrock, objinfo, png=pngfile)

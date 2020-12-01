@@ -52,7 +52,7 @@ def init_nyxgalaxy(tile, night, zbest, fibermap, CFit):
     for zbestcol in ['TARGETID', 'Z']:#, 'ZERR']:#, 'SPECTYPE', 'DELTACHI2']
         out[zbestcol] = zbest[zbestcol]
     for fibermapcol in ['FIBER']:
-        out[fibermapcol] = fibermap[zbestcol]
+        out[fibermapcol] = fibermap[fibermapcol]
     out.add_column(Column(name='NIGHT', data=np.repeat(night, nobj)), index=0)
     out.add_column(Column(name='TILE', data=np.repeat(tile, nobj)), index=0)
     out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
@@ -240,8 +240,8 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
         res = np.concatenate(res)
 
         _coadd = Spectra([camera], {camera: wave}, {camera: flux}, {camera : ivar}, 
-                    resolution_data={camera: res}, mask={camera: mask}, 
-                    fibermap=fm, single=True)#, meta=meta)    
+                         resolution_data={camera: res}, mask={camera: mask}, 
+                         fibermap=fm, single=False)#, meta=meta) 
         if coadd is None:
             coadd = _coadd
         else:
@@ -257,11 +257,23 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
 
     return zbest, coadd
 
+def _ivar2var(ivar, sigma=False):
+    """Safely convert an inverse variance to a variance."""
+    var = np.zeros_like(ivar)
+    goodmask = ivar > 0 # True is good
+    if np.count_nonzero(goodmask) == 0:
+        log.warning('All values are masked!')
+        raise ValueError
+    var[goodmask] = 1 / ivar[goodmask]
+    if sigma:
+        var = np.sqrt(var) # return a sigma
+    return var, goodmask
+
 def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(specobj, zbest, iobj, CFit):
+def unpack_one_spectrum(specobj, zbest, CFit, indx):
     """Unpack and pre-process a single DESI spectrum.
 
     Parameters
@@ -270,76 +282,174 @@ def unpack_one_spectrum(specobj, zbest, iobj, CFit):
         DESI spectra (in the standard format).
     zbest : :class:`astropy.table.Table`
         Redrock redshift table (row-aligned to `specobj`).
-    iobj : :class:`int`
-        Integer number of the spectrum to unpack and pre-process.
     CFit : :class:`desigal.nyxgalaxy.ContinuumFit`
         Continuum-fitting class which contains filter curves and some additional
         photometric convenience functions.
+    indx : :class:`int`
+        Index number (0-indexed) of the spectrum to unpack and pre-process.
     
     Returns
     -------
+    :class:`dict` with the following keys:
+        wave : :class:`list`
+            Three-element list of `numpy.ndarray` wavelength vectors, one for
+            each camera.    
+        flux : :class:`list`    
+            Three-element list of `numpy.ndarray` flux spectra, one for each
+            camera and corrected for Milky Way extinction.
+        ivar : :class:`list`    
+            Three-element list of `numpy.ndarray` inverse variance spectra, one
+            for each camera.    
+        res : :class:`list`
+            Three-element list of `desispec.resolution.Resolution` objects, one
+            for each camera.
+        coadd_wave : :class:`numpy.ndarray`
+            Coadded wavelength vector with all three cameras combined.
+        coadd_flux : :class:`numpy.ndarray`
+            Flux corresponding to `coadd_wave`.
+        coadd_ivar : :class:`numpy.ndarray`
+            Inverse variance corresponding to `coadd_flux`.
+        photsys_south : :class:`bool`
+            Boolean indicating whether this object is on the south (True) or
+            north (False) photometric system based on the declination cut coded
+            in `desitarget.io.desispec.resolution.Resolution`.
+        phot : :class:`astropy.table.Table`
+            Imaging photometry in `grzW1W2`, corrected for Milky Way extinction.
+        synthphot : :class:`astropy.table.Table`
+            Photometry in `grz` synthesized from the extinction-corrected
+            coadded spectra (with a mild extrapolation of the data blueward and
+            redward to accommodate the g-band and z-band filter curves,
+            respectively.
+        zredrock : :class:`numpy.float64`
+            Redrock redshift.
 
     Notes
     -----
-    
+    Hard-coded to assume that all three cameras (grz) have spectra.
 
     """
     from desispec.resolution import Resolution
-    
-    if south:
-        filters = CFit.decamwise
-    else:
-        filters = CFit.bassmzlswise
+    from desiutil.dust import ext_odonnell
+    from desitarget.io import desitarget_resolve_dec
 
-    log.info('need to correct for dust and also maybe pack everything into a dictionary!')
-    pdb.set_trace()
+    cameras = ['b', 'r', 'z']
+    ncam = len(cameras)
 
-    galwave, galflux, galivar, galres = [], [], [], []
-    for camera in ('b', 'r', 'z'):
-        galwave.append(specobj.wave[camera])
-        galflux.append(specobj.flux[camera][iobj, :])
-        galivar.append(specobj.ivar[camera][iobj, :])
-        galres.append(Resolution(specobj.resolution_data[camera][iobj, :, :]))
+    ra = specobj.fibermap['TARGET_RA'][indx]
+    dec = specobj.fibermap['TARGET_DEC'][indx]
+    ebv = CFit.SFDMap.ebv(ra, dec, scaling=1.0) # SFD coefficients
 
-    # make a quick coadd using inverse variance weights
-    ugalwave = np.unique(np.hstack(galwave))
+    # Unpack the data and correct for Galactic extinction.
+    data = {'wave': [], 'flux': [], 'ivar': [], 'res': []}
+    for camera in cameras:
+        dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(specobj.wave[camera], Rv=CFit.RV))
+        
+        data['wave'].append(specobj.wave[camera])
+        data['flux'].append(specobj.flux[camera][indx, :] * dust)
+        data['ivar'].append(specobj.ivar[camera][indx, :] / dust**2)
+        data['res'].append(Resolution(specobj.resolution_data[camera][indx, :, :]))
+
+    # Make a quick coadd using inverse variance weights.
+    ugalwave = np.unique(np.hstack(data['wave']))
     ugalflux3d = np.zeros((len(ugalwave), 3))
     ugalivar3d = np.zeros_like(ugalflux3d)
-    for icam in [0, 1, 2]:
-        I = np.where(np.isin(galwave[icam], ugalwave))[0]
-        J = np.where(np.isin(ugalwave, galwave[icam]))[0]
-        ugalflux3d[J, icam] = galflux[icam][I]
-        ugalivar3d[J, icam] = galivar[icam][I]
+    for icam in np.arange(ncam):
+        I = np.where(np.isin(data['wave'][icam], ugalwave))[0]
+        J = np.where(np.isin(ugalwave, data['wave'][icam]))[0]
+        ugalflux3d[J, icam] = data['flux'][icam][I]
+        ugalivar3d[J, icam] = data['ivar'][icam][I]
 
     ugalivar = np.sum(ugalivar3d, axis=1)
     ugalflux = np.sum(ugalivar3d * ugalflux3d, axis=1) / ugalivar
-    padflux, padwave = filters.pad_spectrum(ugalflux, ugalwave, method='edge')
-    filters.get_ab_maggies(1e-17*padflux, padwave)
+    data.update({'coadd_wave': ugalwave, 'coadd_flux': ugalflux, 'coadd_ivar': ugalivar})
+    del ugalwave, ugalivar, ugalflux
 
-    if False:
-        import matplotlib.pyplot as plt
-        for icam in [0, 1, 2]:
-            plt.plot(galwave[icam], galflux[icam])
-        plt.plot(ugalwave, ugalflux, color='k', alpha=0.7)
-        plt.savefig('junk.png')
-        pdb.set_trace()
+    #import matplotlib.pyplot as plt
+    #for icam in [0, 1, 2]:
+    #    plt.plot(galwave[icam], galflux[icam])
+    #plt.plot(ugalwave, ugalflux, color='k', alpha=0.7)
+    #plt.savefig('junk.png')
+    #pdb.set_trace()
 
-    # unpack the photometry
-    fluxcols = ['FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2']
-    ivarcols = ['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
-    #galphot = Table(specobj.fibermap[[fluxcols, ivarcols][iobj])
-
-    maggies = np.array([specobj.fibermap[col][iobj] for col in fluxcols])
-    ivarmaggies = np.array([specobj.fibermap[col][iobj] for col in ivarcols])
+    # Synthesize photometry, resolved into north and south.
+    split = desitarget_resolve_dec()
+    isouth = specobj.fibermap['TARGET_DEC'][indx] < split
+    if isouth:
+        filters = CFit.decamwise
+    else:
+        filters = CFit.bassmzlswise
     lambda_eff = filters.effective_wavelengths.value
+    data['photsys_south'] = isouth
+
+    padflux, padwave = filters.pad_spectrum(data['coadd_flux'], data['coadd_wave'], method='edge')
+    synthmaggies = filters.get_ab_maggies(1e-17 * padflux, padwave)
+    synthmaggies = synthmaggies.as_array().view('f8')[:3] # keep just grz
+
+    # code to synthesize uncertainties from the variance spectrum
+    #var, mask = _ivar2var(data['coadd_ivar'])
+    #padvar, padwave = filters.pad_spectrum(var[mask], data['coadd_wave'][mask], method='edge')
+    #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
+    #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
+    #
+    #data['synthphot'] = CFit.convert_photometry(
+    #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
+    #    ivarmaggies=synthivarmaggies, nanomaggies=False)
+
+    data['synthphot'] = CFit.convert_photometry(
+        maggies=synthmaggies, lambda_eff=lambda_eff[:3],
+        nanomaggies=False)
+
+    # Unpack the imaging photometry.
+    bands = ['g', 'r', 'z', 'W1', 'W2']
+    maggies = np.zeros(len(bands))
+    ivarmaggies = np.zeros(len(bands))
+    for iband, band in enumerate(bands):
+        dust = specobj.fibermap['MW_TRANSMISSION_{}'.format(band.upper())][indx]
+        maggies[iband] = specobj.fibermap['FLUX_{}'.format(band.upper())][indx] / dust
+        ivarmaggies[iband] = specobj.fibermap['FLUX_IVAR_{}'.format(band.upper())][indx] * dust**2
     
-    galphot = CFit.convert_photometry(
+    data['phot'] = CFit.convert_photometry(
         maggies=maggies, lambda_eff=lambda_eff,
         ivarmaggies=ivarmaggies, nanomaggies=True)
 
-    zredrock = zbest['Z'][iobj]
+    data['zredrock'] = zbest['Z'][indx]
 
-    return galwave, galflux, galivar, galres, galphot, zredrock
+    return data
+
+def unpack_all_spectra(specobj, zbest, CFit, fitindx, nproc=1):
+    """Wrapper on unpack_one_spectrum to parse all the input spectra.
+
+    Parameters
+    ----------
+    specobj : :class:`desispec.spectra.Spectra`
+        DESI spectra (in the standard format).
+    zbest : :class:`astropy.table.Table`
+        Redrock redshift table (row-aligned to `specobj`).
+    CFit : :class:`desigal.nyxgalaxy.ContinuumFit`
+        Continuum-fitting class.
+    fitindx : :class:`int`
+        Index numbers of the spectra to unpack and pre-process.
+    nproc : :class:`int`, optional, defaults to 1
+        Number of cores to use for multiprocessing.
+    
+    Returns
+    -------
+    :class:`list`
+        List of dictionaries (row-aligned to `fitindx`) returned by
+        `unpack_one_spectrum`.
+        
+    Notes
+    -----
+
+    """
+    args = [(specobj, zbest, CFit, indx) for indx in fitindx]
+    if nproc > 1:
+        with multiprocessing.Pool(nproc) as P:
+            data = np.vstack(P.map(_unpack_one_spectrum, args))
+    else:
+        data = [unpack_one_spectrum(*_args) for _args in args]
+
+    return data    
 
 def _smooth_and_resample(args):
     """Multiprocessing wrapper."""
@@ -388,6 +498,7 @@ class ContinuumFit(object):
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
         from speclite import filters
+        from desiutil.dust import SFDMap
 
         self.cosmo = FlatLambdaCDM(H0=70, Om0=0.3)        
 
@@ -426,9 +537,12 @@ class ContinuumFit(object):
         self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z',
                                                  'wise2010-W1', 'wise2010-W2')
 
-        # dust parameters and emission lines
+        # dust
+        self.SFDMap = SFDMap()
+        self.RV = 3.1
         self.dustslope = 0.7
-        
+
+        # table of emission lines to fit
         self.linetable = read_nyxgalaxy_lines()
 
     @staticmethod
@@ -521,8 +635,8 @@ class ContinuumFit(object):
             args = [(zsspflux[:, iage], zsspwave, None, None)
                     for iage in np.arange(self.nage)]
             if self.nproc > 1:
-                with multiprocessing.Pool(self.nproc) as pool:
-                    smoothflux = np.vstack(pool.map(_smooth_and_resample, args)).T
+                with multiprocessing.Pool(self.nproc) as P:
+                    smoothflux = np.vstack(P.map(_smooth_and_resample, args)).T
             else:
                 smoothflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
         else:
@@ -533,8 +647,8 @@ class ContinuumFit(object):
                         for iage in np.arange(self.nage)]
 
                 if self.nproc > 1:
-                    with multiprocessing.Pool(self.nproc) as pool:
-                        smoothflux.append(np.vstack(pool.map(_smooth_and_resample, args)).T)
+                    with multiprocessing.Pool(self.nproc) as P:
+                        smoothflux.append(np.vstack(P.map(_smooth_and_resample, args)).T)
                 else:
                     smoothflux.append(np.vstack([smooth_and_resample(*_args) for _args in args]).T)
             
