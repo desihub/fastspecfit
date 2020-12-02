@@ -110,41 +110,41 @@ def main(args=None):
         args.last = len(zbest) - 1
     fitindx = np.arange(args.last - args.first + 1) + args.first
 
-    data = unpack_all_spectra(specobj, zbest, CFit, fitindx, nproc=args.nproc)
+    data = unpack_all_spectra(specobj, zbest, CFit, fitindx)#, nproc=args.nproc)
     del specobj, zbest # free memory
 
     # Fit each object in sequence.
-    for iobj in fitindx:
+    for iobj, indx in enumerate(fitindx):
 
         # fit the stellar continuum
-        contfit, continuum = CFit.fnnls_continuum(data)#, CFit.linetable)
+        contfit, continuum = CFit.fnnls_continuum(data[iobj])
         pdb.set_trace()
 
         for col in ['coeff', 'chi2', 'dof', 'age', 'ebv', 'vdisp', 'z', 'phot_coeff']:
-            nyxgalaxy['CONTINUUM_{}'.format(col).upper()][iobj] = contfit[col]
+            nyxgalaxy['CONTINUUM_{}'.format(col).upper()][indx] = contfit[col]
 
 
         # fit the emission-line spectrum and populate the output table
-        emfit, emlinemodel = EMFit.fit(galwave, galflux, galivar, galres, continuum,
+        emfit, emlinemodel = EMFit.fit(specwave, specflux, specivar, specres, continuum,
                                        zredrock, verbose=args.verbose)
 
         for col in ['d4000', 'd4000_model']:
-            nyxgalaxy['{}'.format(col).upper()][iobj] = emfit['{}'.format(col)]
+            nyxgalaxy['{}'.format(col).upper()][indx] = emfit['{}'.format(col)]
 
         for col in ['linevshift', 'linesigma']:
             for suffix in ['forbidden', 'balmer']:
-                nyxgalaxy['{}_{}'.format(col, suffix).upper()][iobj] = emfit['{}_{}'.format(col, suffix)]
-                nyxgalaxy['{}_{}_IVAR'.format(col, suffix).upper()][iobj] = emfit['{}_{}_ivar'.format(col, suffix)]
+                nyxgalaxy['{}_{}'.format(col, suffix).upper()][indx] = emfit['{}_{}'.format(col, suffix)]
+                nyxgalaxy['{}_{}_IVAR'.format(col, suffix).upper()][indx] = emfit['{}_{}_ivar'.format(col, suffix)]
 
         for line in emfit['linenames']:
             for suffix in ['chi2', 'npix', 'flux_limit', 'ew_limit']:
-                nyxgalaxy['{}_{}'.format(line, suffix).upper()][iobj] = emfit['{}_{}'.format(line, suffix)]
+                nyxgalaxy['{}_{}'.format(line, suffix).upper()][indx] = emfit['{}_{}'.format(line, suffix)]
             for suffix in ['amp', 'flux', 'boxflux', 'ew', 'cont']:
-                nyxgalaxy['{}_{}'.format(line, suffix).upper()][iobj] = emfit['{}_{}'.format(line, suffix)]
-                nyxgalaxy['{}_{}_IVAR'.format(line, suffix).upper()][iobj] = emfit['{}_{}_ivar'.format(line, suffix)]
+                nyxgalaxy['{}_{}'.format(line, suffix).upper()][indx] = emfit['{}_{}'.format(line, suffix)]
+                nyxgalaxy['{}_{}_IVAR'.format(line, suffix).upper()][indx] = emfit['{}_{}_ivar'.format(line, suffix)]
 
         #for col in nyxgalaxy.colnames[-14:]:
-        #    log.info('{:.4f} {}'.format(nyxgalaxy[col][iobj], col))
+        #    log.info('{:.4f} {}'.format(nyxgalaxy[col][indx], col))
         #pdb.set_trace()
 
     # write out
@@ -160,31 +160,31 @@ def main(args=None):
         if not os.path.isdir(qadir):
             os.makedirs(qadir)
 
-        for iobj in fitindx:
+        for iobj, indx in enumerate(fitindx):
             south = True
 
-            targetid = nyxgalaxy['TARGETID'][iobj]
-            galwave, galflux, galivar, galres, galphot, zredrock = _unpack_spectrum(
+            targetid = nyxgalaxy['TARGETID'][indx]
+            specwave, specflux, specivar, specres, galphot, zredrock = _unpack_spectrum(
                 specobj, zbest, iobj, CFit, south=south)
 
-            continuum = CFit.fnnls_continuum_bestfit(nyxgalaxy['CONTINUUM_COEFF'][iobj], galwave=galwave,
-                                                     galres=galres, redshift=zredrock)
-            continuum_fullwave, fullwave = CFit.fnnls_continuum_bestfit(nyxgalaxy['CONTINUUM_PHOT_COEFF'][iobj],
+            continuum = CFit.fnnls_continuum_bestfit(nyxgalaxy['CONTINUUM_COEFF'][indx], specwave=specwave,
+                                                     specres=specres, redshift=zredrock)
+            continuum_fullwave, fullwave = CFit.fnnls_continuum_bestfit(nyxgalaxy['CONTINUUM_PHOT_COEFF'][indx],
                                                                         redshift=zredrock)
 
-            emlinemodel = EMFit.emlinemodel_bestfit(galwave, galres, nyxgalaxy[iobj])
+            emlinemodel = EMFit.emlinemodel_bestfit(specwave, specres, nyxgalaxy[indx])
 
             # continuum fit
             pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))
             objinfo = {
-                'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
+                'targetid': '{} {}'.format(zbest['TARGETID'][indx], -999),
                 #'targetid': 'TARGETID={} fiber={}'.format(zbest['TARGETID'][iobj], -999),
-                'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(nyxgalaxy['CONTINUUM_CHI2'][iobj]),
-                'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(nyxgalaxy['Z'][iobj]),
-                'znyxgalaxy': '$z_{{\\rm nyxgalaxy}}$={:.6f}'.format(nyxgalaxy['CONTINUUM_Z'][iobj]),
-                'age': '<Age>={:.3f} Gyr'.format(nyxgalaxy['CONTINUUM_AGE'][iobj]),
-                'vdisp': '$\sigma$={:.1f} km/s'.format(nyxgalaxy['CONTINUUM_VDISP'][iobj]),
-                'ebv': 'E(B-V)={:.4f} km/s'.format(nyxgalaxy['CONTINUUM_EBV'][iobj]),
+                'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(nyxgalaxy['CONTINUUM_CHI2'][indx]),
+                'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(nyxgalaxy['Z'][indx]),
+                'znyxgalaxy': '$z_{{\\rm nyxgalaxy}}$={:.6f}'.format(nyxgalaxy['CONTINUUM_Z'][indx]),
+                'age': '<Age>={:.3f} Gyr'.format(nyxgalaxy['CONTINUUM_AGE'][indx]),
+                'vdisp': '$\sigma$={:.1f} km/s'.format(nyxgalaxy['CONTINUUM_VDISP'][indx]),
+                'ebv': 'E(B-V)={:.4f} km/s'.format(nyxgalaxy['CONTINUUM_EBV'][indx]),
                 }
 
             if south:
@@ -193,7 +193,7 @@ def main(args=None):
                 filters = CFit.bassmzlswise
             filtwave = filters.effective_wavelengths.value
 
-            CFit.fnnls_continuum_plot(galwave, galflux, galivar, galphot, continuum, 
+            CFit.fnnls_continuum_plot(specwave, specflux, specivar, galphot, continuum, 
                                       continuum_fullwave, fullwave, objinfo, png=pngfile)
 
             pdb.set_trace()
@@ -201,12 +201,12 @@ def main(args=None):
             # emission-line fit
             pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(args.tile, args.night, targetid))
             objinfo = {
-                'targetid': '{} {}'.format(zbest['TARGETID'][iobj], -999),
-                'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(nyxgalaxy['Z'][iobj]),
-                'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(nyxgalaxy['LINEVSHIFT_FORBIDDEN'][iobj]),
-                'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(nyxgalaxy['LINEVSHIFT_BALMER'][iobj]),
-                'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(nyxgalaxy['LINESIGMA_FORBIDDEN'][iobj]),
-                'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(nyxgalaxy['LINESIGMA_BALMER'][iobj]),
+                'targetid': '{} {}'.format(zbest['TARGETID'][indx], -999),
+                'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(nyxgalaxy['Z'][indx]),
+                'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(nyxgalaxy['LINEVSHIFT_FORBIDDEN'][indx]),
+                'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(nyxgalaxy['LINEVSHIFT_BALMER'][indx]),
+                'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(nyxgalaxy['LINESIGMA_FORBIDDEN'][indx]),
+                'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(nyxgalaxy['LINESIGMA_BALMER'][indx]),
                 }
-            EMFit.emlineplot(galwave, galflux, galivar, continuum,
+            EMFit.emlineplot(specwave, specflux, specivar, continuum,
                              emlinemodel, zredrock, objinfo, png=pngfile)

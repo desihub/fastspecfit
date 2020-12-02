@@ -195,8 +195,8 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
     
     zbest = []
     spectra, keepindx = [], []
-    #for spectro in ('0'):
-    for spectro in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'):
+    for spectro in ('0'):
+    #for spectro in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'):
         zbestfile = os.path.join(desidatadir, 'zbest-{}-{}-{}.fits'.format(spectro, tile, night))
         coaddfile = os.path.join(desidatadir, 'coadd-{}-{}-{}.fits'.format(spectro, tile, night))
         if os.path.isfile(zbestfile) and os.path.isfile(coaddfile):
@@ -351,24 +351,24 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
         data['res'].append(Resolution(specobj.resolution_data[camera][indx, :, :]))
 
     # Make a quick coadd using inverse variance weights.
-    ugalwave = np.unique(np.hstack(data['wave']))
-    ugalflux3d = np.zeros((len(ugalwave), 3))
-    ugalivar3d = np.zeros_like(ugalflux3d)
+    uspecwave = np.unique(np.hstack(data['wave']))
+    uspecflux3d = np.zeros((len(uspecwave), 3))
+    uspecivar3d = np.zeros_like(uspecflux3d)
     for icam in np.arange(ncam):
-        I = np.where(np.isin(data['wave'][icam], ugalwave))[0]
-        J = np.where(np.isin(ugalwave, data['wave'][icam]))[0]
-        ugalflux3d[J, icam] = data['flux'][icam][I]
-        ugalivar3d[J, icam] = data['ivar'][icam][I]
+        I = np.where(np.isin(data['wave'][icam], uspecwave))[0]
+        J = np.where(np.isin(uspecwave, data['wave'][icam]))[0]
+        uspecflux3d[J, icam] = data['flux'][icam][I]
+        uspecivar3d[J, icam] = data['ivar'][icam][I]
 
-    ugalivar = np.sum(ugalivar3d, axis=1)
-    ugalflux = np.sum(ugalivar3d * ugalflux3d, axis=1) / ugalivar
-    data.update({'coadd_wave': ugalwave, 'coadd_flux': ugalflux, 'coadd_ivar': ugalivar})
-    del ugalwave, ugalivar, ugalflux
+    uspecivar = np.sum(uspecivar3d, axis=1)
+    uspecflux = np.sum(uspecivar3d * uspecflux3d, axis=1) / uspecivar
+    data.update({'coadd_wave': uspecwave, 'coadd_flux': uspecflux, 'coadd_ivar': uspecivar})
+    del uspecwave, uspecivar, uspecflux
 
     #import matplotlib.pyplot as plt
     #for icam in [0, 1, 2]:
-    #    plt.plot(galwave[icam], galflux[icam])
-    #plt.plot(ugalwave, ugalflux, color='k', alpha=0.7)
+    #    plt.plot(specwave[icam], specflux[icam])
+    #plt.plot(uspecwave, uspecflux, color='k', alpha=0.7)
     #plt.savefig('junk.png')
     #pdb.set_trace()
 
@@ -436,7 +436,7 @@ def unpack_all_spectra(specobj, zbest, CFit, fitindx, nproc=1):
     Returns
     -------
     :class:`list`
-        List of dictionaries (row-aligned to `fitindx`) returned by
+        List of dictionaries (row-aligned to `fitindx`) populated by
         `unpack_one_spectrum`.
         
     Notes
@@ -452,55 +452,86 @@ def unpack_all_spectra(specobj, zbest, CFit, fitindx, nproc=1):
 
     return data    
 
+def _fit_fnnls_continuum(args):
+    """Multiprocessing wrapper."""
+    return fit_fnnls_continuum(*args)
+
+def fit_fnnls_continuum(ZZ, xx, specflux, specivar, sspflux, return_chi2=False):
+    """Fit a continuum using fNNLS. This function is a simple wrapper on fnnls; see
+    the ContinuumFit.fnnls_continuum method for documentation.
+
+    """
+    from fnnls import fnnls
+    coeff = fnnls(ZZ, xx)[0]
+    if return_chi2:
+        return np.sum(specivar * (specflux - sspflux.dot(coeff))**2)
+    else:
+        return coeff
+
 def _smooth_and_resample(args):
     """Multiprocessing wrapper."""
     return smooth_and_resample(*args)
 
-def smooth_and_resample(sspflux, sspwave, galwave, galR):
+def smooth_and_resample(sspflux, sspwave, specwave=None, specres=None):
     """
     sspflux[npix] - redshifted SSP template
     sspwave[npix] - redshifted SSP wavelength
     
     """
-    if galwave is not None:
-        resampflux = resample_flux(galwave, sspwave, sspflux, extrapolate=True)
-    else:
+    if specwave is None:
         resampflux = sspflux
-    if galR is not None:
-        smoothflux = galR.dot(resampflux)
     else:
+        resampflux = resample_flux(specwave, sspwave, sspflux, extrapolate=True)
+
+    if specres is None:
         smoothflux = resampflux
+    else:
+        smoothflux = specres.dot(resampflux)
     return smoothflux.T
 
 class ContinuumFit(object):
-    def __init__(self, metallicity='Z0.0190', minwave=0.0, maxwave=6e4,
-                 ebvmin=0.0, ebvmax=0.2, deltaebv=0.05, vdispmin=100.0,
-                 vdispmax=300.0, deltavdisp=50.0, nproc=1, verbose=True):
-        """Model the stellar continuum.
-    
-        specobj - Spectra Class data
-        zbest - astropy Table with redshift info
-        iobj - index of object to fit
-        nproc - number of cores to use for multiprocessing
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4,
+                 vdispebv_grid=True, ebvgrid=(0.0, 0.3, 0.05),
+                 vdispgrid=(100.0, 300.0, 50.0), nproc=1, verbose=True):
+        """Class to model a galaxy stellar continuum.
 
-        * Improved (iterative) continuum-fitting:
-          - Implement weighted fitting.
-          - Mask pixels around emission lines.
-          - Update the continuum redshift using cross-correlation. 
-          - Resample to constant log-lamba and solve for the velocity dispersion.
-          - Need to be careful because several of these steps will be a function of S/N.
-          - The last continuum fit should be a non-linear fit which includes dust attenuation.
+        Parameters
+        ----------
+        metallicity : :class:`str`, optional, defaults to `Z0.0190`.
+            Stellar metallicity of the SSPs. Currently fixed at solar
+            metallicity, Z=0.0190.
+        minwave : :class:`float`, optional, defaults to ``None``
+            Minimum SSP wavelength to read into memory. If ``None``, the minimum
+            available wavelength is used (around 100 Angstrom).
+        maxwave : :class:`float`, optional, defaults to 6e4
+            Maximum SSP wavelength to read into memory. 
+        vdispebv_grid : :class:`bool`, optional, defaults to ``True``
+            If ``True``, pre-compute the model templates on a grid of velocity
+            dispersion and dust attenuation.
+        ebvgrid : :class:`tuple` of `float`, optional, defaults to (0.0,0.3,0.05)
+            Prior parameters (minimum, maximum, and spacing) on continuum
+            attenuation. Only used if `vdispebv_grid` is ``True``.
+        vdispgrid : :class:`tuple` of `float`, optional, defaults to (100.,300.,50.)
+            Prior parameters (minimum, maximum, and spacing) on velocity
+            dispersion. Only used if `vdispebv_grid` is ``True``.
+        nproc : :class:`int`, optional, defaults to 1
+            Number of cores to use for multiprocessing.
+        verbose : :class:`bool`, optional, defaults to False
+            Trigger more verbose output throughout the class.
 
-          decamwise (speclite.filters instance): DECam2014-[g,r,z] and WISE2010-[W1,W2]
-            FilterSequence.
-          bassmzlswise (speclite.filters instance): BASS-[g,r], MzLS-z and
-            WISE2010-[W1,W2] FilterSequence.
+        Returns
+        -------
+
+
+        Notes
+        -----
+        Need to document the attributes.
         
+        Plans for improvement:
+          - Update the continuum redshift using cross-correlation. 
+
         """
         import fitsio
-
-        from scipy.ndimage import fourier_gaussian, gaussian_filter1d
-        from numpy.fft import rfft, irfft, fft, rfft
         from astropy.cosmology import FlatLambdaCDM
 
         from speclite import filters
@@ -522,17 +553,28 @@ class ContinuumFit(object):
         self.RV = 3.1
         self.dustslope = 0.7
 
-        nebv = np.ceil((ebvmax - ebvmin) / deltaebv).astype(int)
-        if nebv == 0:
-            log.fatal('Incorrect input continuum E(B-V) values!')
-            raise ValueError
-        self.continuum_ebv = np.linspace(ebvmin, ebvmax, nebv).astype('f4')
+        #self.vdispebv_grid = vdispebv_grid
+        #if self.vdispebv_grid:
+        
+        # Initialize the velocity dispersion and reddening parameters. Make sure
+        # the nominal values are in the grid.
+        vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 30.0, 150.0)
+        nvdisp = np.ceil((vdispmax - vdispmin) / dvdisp).astype(int)
+        vdisp = np.linspace(vdispmin, vdispmax, nvdisp).astype('f4') # [km/s]
 
-        nvdisp = np.ceil((vdispmax - vdispmin) / deltavdisp).astype(int)
-        if nvdisp == 0:
-            log.fatal('Incorrect input velocity dispersion values!')
-            raise ValueError
-        self.vdisp = np.linspace(vdispmin, vdispmax, nvdisp).astype('f4') # [km/s]
+        if not vdisp_nominal in vdisp:
+            vdisp = np.sort(np.hstack((vdisp, vdisp_nominal)))
+        self.vdisp = vdisp
+        self.vdisp_nominal = vdisp_nominal
+
+        ebvmin, ebvmax, debv, ebv_nominal = (0.0, 1.0, 0.05, 0.0)
+        nebv = np.ceil((ebvmax - ebvmin) / debv).astype(int)
+        ebv = np.linspace(ebvmin, ebvmax, nebv).astype('f4')
+
+        if not ebv_nominal in ebv:
+            ebv = np.sort(np.hstack((ebv, ebv_nominal)))        
+        self.ebv = ebv
+        self.ebv_nominal = ebv_nominal
 
         # photometry
         self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z',
@@ -551,18 +593,19 @@ class ContinuumFit(object):
         sspinfo = Table(fitsio.read(self.sspfile, ext='METADATA'))
         
         # Trim the wavelengths and subselect the number of ages/templates.
+        if minwave is None:
+            minwave = 0.0
         keep = np.where((wave >= minwave) * (wave <= maxwave))[0]
         wave = wave[keep]
-        flux = flux[keep, ::3]
-        sspinfo = sspinfo[::3]
+        flux = flux[keep, ::4]
+        sspinfo = sspinfo[::4]
         nage = len(sspinfo)
 
-        # Initialize the templates on a grid of [nlogwave, nage, nebv, nvdisp].
-
-        # First, resample to have constant pixels in velocity / log-lambda.
+        # Resample the templates to have constant pixels in velocity /
+        # log-lambda and convolve to the nominal velocity dispersion.
         self.pixkms = 50.0                                 # SSP pixel size [km/s]
         self.dlogwave = self.pixkms / C_LIGHT / np.log(10) # SSP pixel size [log-lambda]
-        sspwave = np.arange(np.log10(wave.min()), np.log10(wave.max()), self.dlogwave)
+        sspwave = 10**np.arange(np.log10(wave.min()), np.log10(wave.max()), self.dlogwave)
         npix = len(sspwave)
 
         args = [(flux[:, iage], wave, sspwave, None) for iage in np.arange(nage)]
@@ -571,19 +614,28 @@ class ContinuumFit(object):
                 sspflux = np.vstack(P.map(_smooth_and_resample, args)).T # [npix, nage]
         else:
             sspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
+            
+        sspflux = self.convolve_vdisp(sspflux, vdisp_nominal)
 
+        # Next, optionally build out the template grid to include velocity
+        # dispersion and dust attenuation. We use these models during fitting
+        # but we don't need them when building QA. The grid ends up having
+        # dimensions [npix, nage, nvdisp, nebv].
+
+       # if self.vdispebv_grid:
         #import matplotlib.pyplot as plt
         #ww=np.where((10**log10wave > 3000) * (10**log10wave < 8000))[0]
 
-        # Next, apply velocity dispersion smoothing in Fourier space.
-        #bigflux = np.tile(bigflux[:, :, np.newaxis], nvdisp)
-        _sspflux = []
-        for vdisp in self.vdisp:
-            sigma = vdisp / self.pixkms # [pixels]
-            _sspflux.append(gaussian_filter1d(sspflux, sigma=sigma, axis=0))
-            #_bigflux.append(irfft(fourier_gaussian(rfft(bigflux, axis=0), sigma=sigma, axis=0), axis=0, n=npix))
-            #plt.clf() ; plt.plot(10**log10wave[ww], bigflux[ww, 60]) ; plt.plot(10**log10wave[ww], rr[ww, 60]) ; plt.savefig('junk.png')
-        sspflux = np.stack(_sspflux, axis=2)
+        # There's some code here to do the velocity dispersion smoothing in
+        # Fourier space, but it doesn't conserve flux!
+        #from numpy.fft import rfft, irfft, fft, rfft
+        #_sspflux = []
+        #for vdisp in self.vdisp:
+        #    smoothflux = self.convolve_vdisp(sspflux, vdisp)
+        #    _sspflux.append(smoothflux)
+        #    #_bigflux.append(irfft(fourier_gaussian(rfft(bigflux, axis=0), sigma=sigma, axis=0), axis=0, n=npix))
+        #    #plt.clf() ; plt.plot(10**log10wave[ww], bigflux[ww, 60]) ; plt.plot(10**log10wave[ww], rr[ww, 60]) ; plt.savefig('junk.png')
+        #sspflux = np.stack(_sspflux, axis=-1) # [npix, nage, nvdisp]
 
         #import matplotlib.pyplot as plt
         #ww = np.where((10**log10wave > 3000) * (10**log10wave < 6000))[0]
@@ -593,14 +645,14 @@ class ContinuumFit(object):
         #plt.legend()
         #plt.savefig('junk.png')
         #pdb.set_trace()
-        
-        # Finally, apply dust extinction.
-        #attenuation = np.ones((npix, nebv)).astype('f4')
+
+        # Apply dust attenuation over the full grid.
         _sspflux = []
-        for ebv in self.continuum_ebv:
+        for ebv in self.ebv:
             atten = self.dust_attenuation(sspwave, ebv)
-            _sspflux.append(sspflux * np.tile(atten[:, np.newaxis, np.newaxis], (nage, nvdisp)))
-        sspflux = np.stack(_sspflux, axis=3) # [nwave, nage, nvdisp, nebv]
+            #_sspflux.append(sspflux * np.tile(atten[:, np.newaxis, np.newaxis], (nage, nvdisp)))
+            _sspflux.append(sspflux * np.tile(atten[:, np.newaxis], nage))
+        sspflux = np.stack(_sspflux, axis=-1) # [npix, nage, nvdisp, nebv]
         del _sspflux, atten
 
         if False:
@@ -673,41 +725,73 @@ class ContinuumFit(object):
         phot['abmag'] = (-2.5 * np.log10(nanofactor * maggies)).astype('f4')
 
         # approximate the uncertainty as being symmetric in magnitude
+        # fixme
         phot['abmag_ivar'] = (ivarmaggies * (maggies * 0.4 * np.log(10))**2).astype('f4')
 
         return phot
+
+    def convolve_vdisp(self, sspflux, vdisp):
+        """Convolve by the velocity dispersion.
+
+        sspflux
+        vdisp
+
+        """
+        from scipy.ndimage import gaussian_filter1d
         
-    def redshift_smooth_and_resample(self, galwave, galres, redshift, south=True):
-        """Redshift, convolve with the spectral resolution, and 
-        resample in wavelength.
+        sigma = vdisp / self.pixkms # [pixels]
+        smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
+        return smoothflux
+    
+    def redshift_smooth_and_resample(self, redshift, specwave=None, specres=None, south=True):
+        """Redshift, apply the resolution matrix, and resample in wavelength.
 
-        ToDo: velocity dispersion smoothing
+        Parameters
+        ----------
+        redshift
+        wave
+        res
+        south
 
+        Returns
+        -------
         phot - photometric table
+
+        Notes
+        -----
+
         
         """
-        # Synthesize photometry (only need to do this once).
         if south:
             filters = self.decamwise
         else:
             filters = self.bassmzlswise
+
+        # Divide by redshift and then synthesize photometry on the full
+        # grid. Note that we have to handle that the grid has dimensions
+        # [npix,nage,nebv].
         zsspwave = self.sspwave * (1 + redshift)
-        zsspflux = self.sspflux / (1 + np.array(redshift).repeat(self.npix)[:, None])
 
-        #zsspflux, zsspwave = list(zip(*args))[:2]
-        #zsspflux, zsspwave = np.vstack(zsspflux), zsspwave[0]
+        npix, nage, nebv = self.npix, self.nage, len(self.ebv)
+        nmodel = nage * nebv
+        zsspflux = self.sspflux.reshape(npix, nmodel)
+        #if self.vdispebv_grid:
+        #    npix, nage, nebv, nvdisp = self.sspflux.shape
+        #    zsspflux = self.sspflux.reshape(npix, nage*nebv*nvdisp) # [npix, nage*nebv*nvdisp]
+        #else:
+        #    zsspflux = self.sspflux # [npix, nage]
+        zsspflux /= (1 + np.array(redshift).repeat(self.npix)[:, np.newaxis]) 
 
-        # convert to 10-17 flambda
-        maggies = filters.get_ab_maggies(zsspflux.T, zsspwave)
+        maggies = filters.get_ab_maggies(zsspflux, zsspwave, axis=0) # [filters wants an [nspec, npix] array
         maggies = np.vstack(maggies.as_array().tolist()).T
         effwave = filters.effective_wavelengths.value
 
-        phot = self.convert_photometry(maggies, effwave, nanomaggies=False)
+        sspphot = self.convert_photometry(maggies, effwave, nanomaggies=False)
 
-        # ignore the per-camera spectra
-        if galres is None and galwave is None:
-            args = [(zsspflux[:, iage], zsspwave, None, None)
-                    for iage in np.arange(self.nage)]
+        # Are we returning per-camera spectra or a single model? Handle that here.
+        if specres is None and specwave is None:
+            args = [(zsspflux[:, imodel], zsspwave, None, None)
+                    for imodel in np.arange(nmodel)]
             if self.nproc > 1:
                 with multiprocessing.Pool(self.nproc) as P:
                     smoothflux = np.vstack(P.map(_smooth_and_resample, args)).T
@@ -717,86 +801,195 @@ class ContinuumFit(object):
             # loop over cameras then SSP ages
             smoothflux = []
             for icamera in [0, 1, 2]: # iterate on cameras
-                args = [(zsspflux[:, iage], zsspwave, galwave[icamera], galres[icamera])
-                        for iage in np.arange(self.nage)]
-
+                args = [(zsspflux[:, imodel], zsspwave, specwave[icamera], specres[icamera])
+                        for imodel in np.arange(nmodel)]
                 if self.nproc > 1:
                     with multiprocessing.Pool(self.nproc) as P:
                         smoothflux.append(np.vstack(P.map(_smooth_and_resample, args)).T)
                 else:
                     smoothflux.append(np.vstack([smooth_and_resample(*_args) for _args in args]).T)
             
-        return smoothflux, phot # [npix, nage]
+        return smoothflux, sspphot # [npix, nmodel]
 
-    def fnnls_continuum_bestfit(self, coeff, sspflux=None, galwave=None,
-                                galres=None, redshift=None, south=True):
+    def fnnls_continuum_bestfit(self, coeff, sspflux=None, specwave=None,
+                                specres=None, redshift=None, south=True):
         if sspflux is None:
-            sspflux, sspphot = self.redshift_smooth_and_resample(galwave, galres, redshift, south=south)
-            if galres is None and galwave is None: # ignore per-camera
+            sspflux, sspphot = self.redshift_smooth_and_resample(redshift, specwave, specres, south=south)
+            if specres is None and specwave is None: # ignore per-camera
                 bestfit = sspflux.dot(coeff)
             else: # iterate over camera
                 bestfit = [_sspflux.dot(coeff) for _sspflux in sspflux]
         else:
             bestfit = sspflux.dot(coeff)
 
-        if galres is None and galwave is None:
+        if specres is None and specwave is None:
             return bestfit, self.sspwave
         else:
             return bestfit
 
-    def fnnls_continuum(self, galwave, galflux, galivar, galres,
-                        galphot, redshift, linetable, sigma_mask=300.0,
-                        use_photometry=True, south=True):
-        """Fit the continuum using fast NNLS.
-        https://github.com/jvendrow/fnnls
+    def fnnls_continuum(self, data, sigma_mask=300.0):
+        """Fit the continuum using fast non-negative least-squares fitting (fNNLS).
 
-        sigma_mask - emission-line masking sigma [km/s]
+        Parameters
+        ----------
+        data : :class:`dict`
+            Dictionary of input spectroscopy (plus ancillary data) populated by
+            `unpack_one_spectrum`.
+        sigma_mask : :class:`float`, optional
+            Mask all pixels within +/-1.5`sigma_mask` [km/s] of known emission
+            lines during continuum-fitting. Defaults to 300 km/s.
 
-        ToDo: mask more emission lines than we fit (e.g., Mg II).
-        
+        Returns
+        -------
+
+        Notes
+        -----
+        See https://github.com/jvendrow/fnnls for the fNNLS algorithm.
+
+        ToDo:
+          - Need to mask more emission lines than we fit (e.g., Mg II).
+          - Need to restrict SSP ages to the maximum age of the Universe at the
+            given redshift.
+
         """
         from time import time
         from fnnls import fnnls
-        
-        sspflux, sspphot = self.redshift_smooth_and_resample(galwave, galres, redshift, south=south) 
+        from numpy.polynomial import Polynomial
 
-        # combine the cameras and fit
-        _galwave = np.hstack(galwave)
-        _galflux = np.hstack(galflux)
-        _galivar = np.hstack(galivar)
-        _sspflux = np.concatenate(sspflux, axis=0) # [npix, nage]
+        # Redshift, smooth by the resolution matrix, and resample.
+        sspflux, sspphot = self.redshift_smooth_and_resample(
+            redshift=data['zredrock'], specwave=data['wave'],
+            specres=data['res'], south=data['photsys_south'])
+
+        # Combine all three cameras.
+        npixpercamera = [len(gw) for gw in data['wave']]
+        npixpercam = np.hstack([0, npixpercamera])
+        
+        specwave = np.hstack(data['wave'])
+        specflux = np.hstack(data['flux'])
+        specivar = np.hstack(data['ivar'])
+        sspflux = np.concatenate(sspflux, axis=0) # [npix, nmodel]
 
         # Mask pixels in and around emission lines.
-        emlinemask = np.ones_like(_galivar)
-        for line in linetable:
-            zwave = line['restwave'] * (1+redshift)
-            indx = np.where((_galwave >= (zwave - 1.5*sigma_mask * zwave / C_LIGHT)) *
-                            (_galwave <= (zwave + 1.5*sigma_mask * zwave / C_LIGHT)))[0]
+        emlinemask = np.ones_like(specivar)
+        for line in self.linetable:
+            zwave = line['restwave'] * (1+data['zredrock'])
+            indx = np.where((specwave >= (zwave - 1.5*sigma_mask * zwave / C_LIGHT)) *
+                            (specwave <= (zwave + 1.5*sigma_mask * zwave / C_LIGHT)))[0]
             if len(indx) > 0:
                 emlinemask[indx] = 0
 
-        # Do a fast initial fit of the stellar continuum.
-        log.info('ToDo: add vdisp and ebv, and restrict maxage of templates.')
-
         # fit with and without photometry
-        _modelphot = sspphot['flam'] # [nband, nage]
-        _galphot = galphot['flam']
-        _galphotivar = galphot['flam_ivar']
+        modelphot = sspphot['flam'] # [nband, nage]
+        objphot = data['phot']['flam']
+        objphotivar = data['phot']['flam_ivar']
 
-        ww = np.sqrt(_galivar * emlinemask)
-        ZZ = _sspflux * ww[:, None]
-        xx = _galflux * ww
-
-        wwphot = np.sqrt(_galphotivar)
-        ZZphot = _modelphot * wwphot[:, None]
-        xxphot = _galphot * wwphot
+        # Fit the photometry first.
+        wwphot = np.sqrt(objphotivar)
+        ZZphot = modelphot * wwphot[:, None]
+        xxphot = objphot * wwphot
 
         t0 = time()
-        coeff = fnnls(ZZ, xx)[0]
-        #coeff = fnnls(np.concatenate((ZZ, ZZphot), axis=0), np.concatenate((xx, xxphot), axis=0))[0]
         coeffphot = fnnls(ZZphot, xxphot)[0]
         dt = time() - t0
 
+        # Fit over the values of reddening in parallel.
+        ww = np.sqrt(specivar * emlinemask)
+        xx = specflux * ww
+
+        npix, nage, nebv = len(specflux), self.nage, len(self.ebv)
+        sspflux = sspflux.reshape(npix, nage, nebv)
+        ZZ = sspflux * ww[:, np.newaxis, np.newaxis]
+
+        args = []
+        for iebv in np.arange(nebv):
+            args.append((ZZ[:, :, iebv], xx, specflux, specivar, sspflux[:, :, iebv], True))
+        if self.nproc > 1:
+            with multiprocessing.Pool(self.nproc) as P:
+                chi2grid = np.array(P.map(_fit_fnnls_continuum, args))
+        else:
+            chi2grid = np.array([fit_fnnls_continuum(*_args) for _args in args])
+        #chi2grid = np.array(chi2grid).reshape(nvdisp, nebv)
+
+        # Minimize chi2 by fitting a parabola to the three points around the minimum.
+        # See also https://github.com/desihub/redrock/blob/master/py/redrock/fitz.py#L66
+        #   model: y = aa*x**2 + bb*x + cc
+        mindx = np.argmin(chi2grid)
+        aa, bb, cc = np.polyfit(self.ebv[mindx-1:mindx+2], chi2grid[mindx-1:mindx+2], 2)
+        
+        # recast as y = y0 + ((x-x0)/xerr)^2
+        ebvbest = -bb / (2*aa)
+        chi2min = -(bb**2) / (4*aa) + cc
+
+        # ebvivar==0 means a bad fit
+        ebvivar = aa # ebverr = 1/np.sqrt(aa)
+        if (ebvbest <= np.min(self.ebv)) or (np.max(self.ebv) <= ebvbest):
+            ebvivar = 0
+        if (chi2min <= 0.):
+            ebvivar = 0
+        if aa <= 0.0:
+            ebvivar = 0
+            
+        if ebvivar > 0:
+            log.info('Best-fitting E(B-V)={:.4f}+/-{:.4f} with chi2={:.2f}'.format(
+                ebvbest, 1/np.sqrt(ebvivar), chi2min))
+        else:
+            log.info('Finding E(B-V) failed; adopting E(B-V)={:.4f}'.format(self.ebv_nominal))
+            
+        import matplotlib.pyplot as plt
+        plt.clf()
+        plt.scatter(self.ebv, chi2grid)
+        plt.scatter(self.ebv[mindx-1:mindx+2], chi2grid[mindx-1:mindx+2], color='red')
+        plt.plot(self.ebv, np.polyval([aa, bb, cc], self.ebv), ls='--')
+        plt.axhline(y=chi2min, color='k')
+        plt.axvline(x=ebvbest, color='k')
+        plt.savefig('junk.png')
+        pdb.set_trace()
+
+        #if self.vdispebv_grid:
+        #    npix, nage, nvdisp, nebv = len(specflux), self.nage, len(self.vdisp), len(self.ebv)
+        #    #chi2grid = np.zeros((nvdisp, nebv)) + 1e6
+        #
+        #    sspflux = sspflux.reshape(npix, nage, nvdisp, nebv)
+        #    ZZ = sspflux * ww[:, np.newaxis, np.newaxis, np.newaxis]
+        #
+        #    args = []
+        #    for iv in np.arange(nvdisp):
+        #        for ie in np.arange(nebv):
+        #            args.append((ZZ[:, :, iv, ie], xx, specflux, specivar, sspflux[:, :, iv, ie], True))
+        #    
+        #    if self.nproc > 1:
+        #        with multiprocessing.Pool(self.nproc) as P:
+        #            chi2grid = P.map(_fit_fnnls_continuum, args)
+        #    else:
+        #        chi2grid = [fit_fnnls_continuum(*_args) for _args in args]
+        #    chi2grid = np.array(chi2grid).reshape(nvdisp, nebv)
+        #
+        #    # Fit a 2D quadratic around the best-fitting values.
+        #    vdispindx, ebvindx = np.unravel_index(chi2grid.argmin(), chi2grid.shape)
+
+        #    for iv in np.arange(nvdisp):
+        #        for ie in np.arange(nebv):
+        #            coeff = fnnls(ZZ[:, :, iv, ie], xx)[0]
+        #            chi2grid[iv, ie] = np.sum(specivar * (specflux - sspflux[:, :, iv, ie].dot(coeff))**2)            
+        #
+        #    import matplotlib.pyplot as plt
+        #    plt.clf()
+        #    for ie in np.arange(nebv):
+        #        plt.plot(self.vdisp, chi2grid[:, ie], label='E(B-V)={:.2f}'.format(self.ebv[ie]))
+        #    plt.legend()
+        #    plt.savefig('junk.png')
+        #    
+        #    plt.clf()
+        #    for iv in np.arange(nvdisp):
+        #        plt.plot(self.ebv, chi2grid[iv, :], label='sigma={:.2f} km/s'.format(self.vdisp[iv]))
+        #    plt.legend()
+        #    plt.savefig('junk2.png')
+        #
+        #    plt.clf() ; plt.plot(specwave, specflux) ; plt.savefig('junk3.png')
+        #
+        #    pdb.set_trace()
+        
         pdb.set_trace()
 
         # ToDo: fit for dust, the redshift, and velocity dispersion
@@ -805,8 +998,8 @@ class ContinuumFit(object):
         # Need to push the calculation of the best-fitting continuum to a
         # function so we can call it when building QA.
         _continuum, _ = self.fnnls_continuum_bestfit(coeff, _sspflux)
-        dof = np.sum(_galivar > 0) - self.nage
-        chi2 = np.sum(_galivar * (_galflux - _continuum)**2) / dof
+        dof = np.sum(_specivar > 0) - self.nage
+        chi2 = np.sum(_specivar * (specflux - _continuum)**2) / dof
 
         # Compute the light-weighted age.
         weight = coeff[coeff > 0]
@@ -821,11 +1014,9 @@ class ContinuumFit(object):
 
         # Unpack the continuum into individual cameras.
         continuum = []
-        npixpercamera = [len(gw) for gw in galwave]
-        npix = np.hstack([0, npixpercamera])
         for ii in [0, 1, 2]: # iterate over cameras
-            ipix = np.sum(npix[:ii+1])
-            jpix = np.sum(npix[:ii+2])
+            ipix = np.sum(npixpercam[:ii+1])
+            jpix = np.sum(npixpercam[:ii+2])
             continuum.append(_continuum[ipix:jpix])
 
         # Store the results and return.
@@ -839,7 +1030,7 @@ class ContinuumFit(object):
 
         return results, continuum
     
-    def fnnls_continuum_plot(self, galwave, galflux, galivar, galphot,
+    def fnnls_continuum_plot(self, specwave, specflux, specivar, galphot,
                              continuum, continuum_fullwave, fullwave, objinfo,
                              png=None):
         """QA of the best-fitting continuum.
@@ -859,17 +1050,17 @@ class ContinuumFit(object):
         ymin, ymax = 1e6, -1e6
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
         for ii in [0, 1, 2]: # iterate over cameras
-            galsigma = 1 / np.sqrt(galivar[ii])
-            ax1.fill_between(galwave[ii], galflux[ii]-galsigma, galflux[ii]+galsigma,
+            galsigma = 1 / np.sqrt(specivar[ii])
+            ax1.fill_between(specwave[ii], specflux[ii]-galsigma, specflux[ii]+galsigma,
                             color=col1[ii])
-            ax1.plot(galwave[ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
+            ax1.plot(specwave[ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
 
-            #ax2.fill_between(galwave[ii], galflux[ii]-galsigma, galflux[ii]+galsigma,
+            #ax2.fill_between(specwave[ii], specflux[ii]-galsigma, specflux[ii]+galsigma,
             #                color=col1[ii])
-            #ax2.plot(galwave[ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
+            #ax2.plot(specwave[ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
 
             # get the robust range
-            filtflux = median_filter(galflux[ii], 5)
+            filtflux = median_filter(specflux[ii], 5)
             if np.min(filtflux) < ymin:
                 ymin = np.min(filtflux)
             if np.max(filtflux) > ymax:
@@ -891,15 +1082,15 @@ class ContinuumFit(object):
 
         if False:
             for ii in [0, 1, 2]: # iterate over cameras
-                #galsigma = 1 / np.sqrt(galivar[ii])
-                factor = 1e-17  * galwave[ii]**2 / (C_LIGHT * 1e13) # [10-17 erg/s/cm2/A --> maggies]
-                good = np.where(galflux[ii] > 0)[0]
+                #galsigma = 1 / np.sqrt(specivar[ii])
+                factor = 1e-17  * specwave[ii]**2 / (C_LIGHT * 1e13) # [10-17 erg/s/cm2/A --> maggies]
+                good = np.where(specflux[ii] > 0)[0]
                 if len(good) > 0:
-                    ax2.plot(galwave[ii][good]/1e4, -2.5*np.log10(galflux[ii][good]*factor[good])-48.6, color=col1[ii])
-                    #ax1.fill_between(galwave[ii]/1e4, -2.5*np.log10((galflux[ii]-galsigma) * factor,
-                    #                 (galflux[ii]+galsigma) * factor, color=col1[ii])
-                #ax2.plot(galwave[ii]/1e4, -2.5*np.log10(continuum[ii]*factor)-48.6, color=col2[ii], alpha=1.0)#, color='k')
-                ax2.plot(galwave[ii]/1e4, -2.5*np.log10(continuum[ii]*factor)-48.6, color=col2[ii], alpha=1.0)#, color='k')
+                    ax2.plot(specwave[ii][good]/1e4, -2.5*np.log10(specflux[ii][good]*factor[good])-48.6, color=col1[ii])
+                    #ax1.fill_between(specwave[ii]/1e4, -2.5*np.log10((specflux[ii]-galsigma) * factor,
+                    #                 (specflux[ii]+galsigma) * factor, color=col1[ii])
+                #ax2.plot(specwave[ii]/1e4, -2.5*np.log10(continuum[ii]*factor)-48.6, color=col2[ii], alpha=1.0)#, color='k')
+                ax2.plot(specwave[ii]/1e4, -2.5*np.log10(continuum[ii]*factor)-48.6, color=col2[ii], alpha=1.0)#, color='k')
 
         factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) # [erg/s/cm2/A --> maggies]
         ax2.plot(fullwave/1e4, -2.5*np.log10(continuum_fullwave*factor), color='gray', alpha=0.8)
@@ -954,7 +1145,7 @@ class ContinuumFit(object):
     def dust_attenuation(self, wave, ebv):
         """Return the dust attenuation A(lambda)=E(B-V)*k(lambda)
 
-        ToDo: add a UV bump--
+        ToDo: add a UV bump and IGM attenuation!
           https://gitlab.lam.fr/cigale/cigale/-/blob/master/pcigale/sed_modules/dustatt_powerlaw.py#L42
 
         """
@@ -983,9 +1174,9 @@ class ContinuumFit(object):
 
         sspflux = np.concatenate(self.redshift_smooth_and_resample(), axis=0)
 
-        wave = np.hstack(self.galwave)
-        flux = np.hstack(self.galflux)
-        isigma = 1 / np.sqrt(np.hstack(self.galivar))
+        wave = np.hstack(self.specwave)
+        flux = np.hstack(self.specflux)
+        isigma = 1 / np.sqrt(np.hstack(self.specivar))
 
         _ = self.fnnls_continuum()
         init_params = np.hstack([0.05, self.fnnls_coeffs])
@@ -1201,12 +1392,12 @@ class EMLineFit(object):
         chi2 = np.sum(emlineivar * (emlineflux - emlinemodel)**2) / dof
         return chi2
 
-    def emlinemodel_bestfit(self, galwave, galres, nyxgalaxy_table):
+    def emlinemodel_bestfit(self, specwave, specres, nyxgalaxy_table):
         """Wrapper function to get the best-fitting emission-line model
         from an nyxgalaxy table (to be used to build QA).
 
         """
-        npixpercamera = [len(gw) for gw in galwave]
+        npixpercamera = [len(gw) for gw in specwave]
 
         redshift = nyxgalaxy_table['Z']
         linesigma_forbidden = nyxgalaxy_table['LINESIGMA_FORBIDDEN']
@@ -1223,13 +1414,13 @@ class EMLineFit(object):
                              linevshift_balmer=linevshift_balmer,
                              linesigma_forbidden=linesigma_forbidden,
                              linesigma_balmer=linesigma_balmer,
-                             redshift=redshift, emlineR=galres,
+                             redshift=redshift, emlineR=specres,
                              npixpercamera=npixpercamera)
         # skip linevshift_[forbidden,balmer] and linesigma_[forbidden,balmer]
         lineargs = [nyxgalaxy_table[linename.upper()] for linename in EMLine.param_names[4:]] 
         lineargs = [linevshift_forbidden, linevshift_balmer, linesigma_forbidden, linesigma_balmer] + lineargs
 
-        _emlinemodel = EMLine.evaluate(np.hstack(galwave), *lineargs)
+        _emlinemodel = EMLine.evaluate(np.hstack(specwave), *lineargs)
 
         # unpack it
         emlinemodel = []
@@ -1241,7 +1432,7 @@ class EMLineFit(object):
 
         return emlinemodel
     
-    def fit(self, galwave, galflux, galivar, galres, continuum,
+    def fit(self, specwave, specflux, specivar, specres, continuum,
             redshift, verbose=False):
         """Perform the fit minimization / chi2 minimization.
         
@@ -1254,18 +1445,18 @@ class EMLineFit(object):
         #from scipy import integrate
         from astropy.stats import sigma_clipped_stats
         
-        npixpercamera = [len(gw) for gw in galwave]
+        npixpercamera = [len(gw) for gw in specwave]
 
         # we have to stack the per-camera spectra for LevMarLSQFitter
-        _galflux = np.hstack(galflux)
-        emlinewave = np.hstack(galwave)
-        emlineivar = np.hstack(galivar)
-        emlineflux = _galflux - np.hstack(continuum)
+        _specflux = np.hstack(specflux)
+        emlinewave = np.hstack(specwave)
+        emlineivar = np.hstack(specivar)
+        emlineflux = _specflux - np.hstack(continuum)
 
         dlogwave = self.pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
         log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
         
-        self.EMLineModel = EMLineModel(redshift=redshift, emlineR=galres,
+        self.EMLineModel = EMLineModel(redshift=redshift, emlineR=specres,
                                        npixpercamera=npixpercamera,
                                        log10wave=log10wave)
 
@@ -1353,13 +1544,13 @@ class EMLineFit(object):
 
         # get continuum fluxes, EWs, and upper limits
         emlinemodel = bestfit(emlinewave)
-        galflux_nolines = _galflux - emlinemodel
+        specflux_nolines = _specflux - emlinemodel
 
         # measure the 4000-Angstrom break from the data and the model
         restwave = emlinewave / (1 + redshift) # [Angstrom]
 
         restflam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5)
-        restflux_nolines_nu = galflux_nolines * restflam2fnu   # rest-frame, [erg/s/cm2/Hz]
+        restflux_nolines_nu = specflux_nolines * restflam2fnu   # rest-frame, [erg/s/cm2/Hz]
         restcontinuum_nu = np.hstack(continuum) * restflam2fnu
 
         good = emlineivar > 0
@@ -1435,7 +1626,7 @@ class EMLineFit(object):
             indx = np.hstack((indxlo, indxhi))
 
             if len(indx) > 5: # require at least 5 pixels to get the continuum level
-                _, cmed, csig = sigma_clipped_stats(galflux_nolines[indx], sigma=3.0)
+                _, cmed, csig = sigma_clipped_stats(specflux_nolines[indx], sigma=3.0)
                 civar = (np.sqrt(len(indx)) / csig)**2
             else:
                 cmed, civar = 0.0, 0.0
@@ -1465,8 +1656,8 @@ class EMLineFit(object):
                 _indx = np.where((emlinewave > (zwave - 15*sigma_cont * zwave / C_LIGHT)) *
                                 (emlinewave < (zwave + 15*sigma_cont * zwave / C_LIGHT)))[0]
                 plt.plot(emlinewave[_indx], emlineflux[_indx])
-                plt.plot(emlinewave[_indx], galflux_nolines[_indx])
-                plt.scatter(emlinewave[indx], galflux_nolines[indx], color='red')
+                plt.plot(emlinewave[_indx], specflux_nolines[_indx])
+                plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
                 plt.axhline(y=cmed, color='k')
                 plt.axhline(y=cmed+csig/np.sqrt(len(indx)), color='k', ls='--')
                 plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
@@ -1475,7 +1666,7 @@ class EMLineFit(object):
             
         return result, emlinemodel
     
-    def emlineplot(self, galwave, galflux, galivar, continuum,
+    def emlineplot(self, specwave, specflux, specivar, continuum,
                    _emlinemodel, redshift, objinfo, png=None):
         """Plot the emission-line spectrum and best-fitting model.
 
@@ -1501,12 +1692,12 @@ class EMLineFit(object):
 
         ymin, ymax = 1e6, -1e6
         for ii in [0, 1, 2]: # iterate over cameras
-            emlinewave = galwave[ii]
-            emlineflux = galflux[ii] - continuum[ii]
+            emlinewave = specwave[ii]
+            emlineflux = specflux[ii] - continuum[ii]
             emlinemodel = _emlinemodel[ii]
             emlinesigma = np.zeros_like(emlinewave)
-            good = galivar[ii] > 0
-            emlinesigma[good] = 1 / np.sqrt(galivar[ii][good])
+            good = specivar[ii] > 0
+            emlinesigma[good] = 1 / np.sqrt(specivar[ii][good])
             
             bigax.fill_between(emlinewave, emlineflux-emlinesigma, emlineflux+emlinesigma,
                                color=col1[ii], alpha=0.7)
@@ -1568,12 +1759,12 @@ class EMLineFit(object):
 
             # iterate over cameras
             for ii in [0, 1, 2]: # iterate over cameras
-                emlinewave = galwave[ii]
-                emlineflux = galflux[ii] - continuum[ii]
+                emlinewave = specwave[ii]
+                emlineflux = specflux[ii] - continuum[ii]
                 emlinemodel = _emlinemodel[ii]
                 emlinesigma = np.zeros_like(emlinewave)
-                good = galivar[ii] > 0
-                emlinesigma[good] = 1 / np.sqrt(galivar[ii][good])
+                good = specivar[ii] > 0
+                emlinesigma[good] = 1 / np.sqrt(specivar[ii][good])
             
                 indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
                 #log.info(ii, linename, len(indx))
