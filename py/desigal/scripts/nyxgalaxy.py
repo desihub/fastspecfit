@@ -119,12 +119,11 @@ def main(args=None):
     for iobj, indx in enumerate(fitindx):
 
         # fit the stellar continuum
-        contfit, continuum = CFit.fnnls_continuum(data[iobj])
+        cfit, continuum = CFit.fnnls_continuum(data[iobj])
+        for col in cfit.colnames:
+            nyxgalaxy[col][indx] = cfit[col] 
+
         pdb.set_trace()
-
-        for col in ['coeff', 'chi2', 'dof', 'age', 'ebv', 'vdisp', 'z', 'phot_coeff']:
-            nyxgalaxy['CONTINUUM_{}'.format(col).upper()][indx] = contfit[col]
-
 
         # fit the emission-line spectrum and populate the output table
         emfit, emlinemodel = EMFit.fit(specwave, specflux, specivar, specres, continuum,

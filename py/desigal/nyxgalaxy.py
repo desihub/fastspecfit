@@ -694,7 +694,7 @@ class ContinuumFit(object):
         out.add_column(Column(name='CONTINUUM_PHOT_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_PHOT_CHI2', length=nobj, dtype='f4')) # reduced chi2
         #out.add_column(Column(name='CONTINUUM_PHOT_DOF', length=nobj, dtype=np.int32))
-        #out.add_column(Column(name='CONTINUUM_PHOT_AGE', length=nobj, dtype='f4', unit=u.Gyr))
+        out.add_column(Column(name='CONTINUUM_PHOT_AGE', length=nobj, dtype='f4', unit=u.Gyr))
         out.add_column(Column(name='CONTINUUM_PHOT_EBV', length=nobj, dtype='f4', unit=u.mag))
         out.add_column(Column(name='CONTINUUM_PHOT_EBV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
 
@@ -1126,10 +1126,15 @@ class ContinuumFit(object):
         # measure D(4000).
         atten = self.dust_attenuation(self.sspwave, ebvbest)
         bestfit = (self.sspflux[:, :, inodust] * np.tile(atten[:, np.newaxis], self.nage)).dot(coeff)
+
         d4000, _ = self.get_d4000(self.sspwave, bestfit, rest=True)
+        weight = coeff[coeff > 0]
+        age = np.sum(weight * self.sspinfo['age'][coeff > 0]) / np.sum(weight) / 1e9 # [Gyr]
+        log.info('Photometric D(4000)={:.3f}, Age={:2f} Gyr'.format(d4000, age))
 
         result['CONTINUUM_PHOT_COEFF'][0] = coeff
         result['CONTINUUM_PHOT_CHI2'][0] = chi2
+        result['CONTINUUM_PHOT_AGE'][0] = age
         result['CONTINUUM_PHOT_EBV'][0] = ebvbest
         result['CONTINUUM_PHOT_EBV_IVAR'][0] = ebvivar
         result['D4000_MODEL_PHOT'][0] = d4000
@@ -1181,8 +1186,13 @@ class ContinuumFit(object):
         coeff = np.zeros(self.nage)
         coeff[0:nage] = _coeff # deal with missing coefficients due to age constraint
 
+        # get D(4000) and the light-weighted age
         d4000, d4000_ivar = self.get_d4000(specwave, specflux, specivar, redshift=data['zredrock'])
         d4000_model, _ = self.get_d4000(specwave, bestfit, redshift=data['zredrock'])
+
+        weight = coeff[coeff > 0]
+        age = np.sum(weight * self.sspinfo['age'][coeff > 0]) / np.sum(weight) / 1e9 # [Gyr]
+        log.info('Spectroscopic D(4000)={:.3f} model D(4000)={:.3f}, Age={:2f} Gyr'.format(d4000, d4000_model, age))
         
         #import matplotlib.pyplot as plt
         #plt.clf()
@@ -1196,172 +1206,19 @@ class ContinuumFit(object):
         result['CONTINUUM_EBV_IVAR'][0] = ebvivar
         result['CONTINUUM_VDISP'][0] = vdisp
         result['CONTINUUM_VDISP_IVAR'][0] = vdispivar
+        result['CONTINUUM_AGE'] = age
         result['D4000'][0] = d4000
         result['D4000_IVAR'][0] = d4000_ivar
         result['D4000_MODEL'][0] = d4000_model
-
-
-        pdb.set_trace()
-        
-        bestfit = (self.sspflux[:, :, inodust] * np.tile(atten[:, np.newaxis], self.nage)).dot(coeff)        
-
-        coeff = np.zeros(self.nage)
-        _coeff, chi2 = _fnnls_parallel(_sspflux, specflux, specivar)
-        coeff[0:nage] = _coeff # deal with missing coefficients due to age constraint
-
-        # Render the full-wavelength rest-frame model so we can measure D(4000).
-        atten = self.dust_attenuation(self.sspwave, ebvbest)
-        bestfit = (self.sspflux[:, :, inodust] * np.tile(atten[:, np.newaxis], self.nage)).dot(coeff)
-        d4000, _ = self.get_d4000(self.sspwave, bestfit, rest=True)
-
-        
-                    
-        pdb.set_trace()
-
-        ZZphot = modelphot * wwphot[:, None]
-
-        coeffphot = fnnls(ZZphot, xxphot)[0]
-
-        #sspflux = self.convolve_vdisp(sspflux, vdisp_nominal)
-
-        pdb.set_trace()
-
-        #result['CONTINUUM_COEFF'] = 
-        #result['CONTINUUM_CHI2'] = 
-        #result[='CONTINUUM_DOF'] = 
-        #result['CONTINUUM_AGE'] = 
-        #result['CONTINUUM_EBV'] = 
-        #result['CONTINUUM_EBV_IVAR'] = 
-        #result['CONTINUUM_VDISP'] = 
-        #result['CONTINUUM_VDISP_IVAR'] = 
-        #result['CONTINUUM_PHOT_COEFF'] = 
-        #result['CONTINUUM_PHOT_CHI2'] = 
-        #result[='CONTINUUM_PHOT_DOF'] = 
-        #result['CONTINUUM_PHOT_AGE'] = 
-        #result['CONTINUUM_PHOT_EBV'] = 
-        #result['CONTINUUM_PHOT_EBV_IVAR'] = 
-        #result['D4000'] = 
-        #result['D4000_IVAR'] = 
-        #result['D4000_MODEL'] = 
-
-
-        # Fit over the values of reddening in parallel.
-        ww = np.sqrt(specivar * emlinemask)
-        xx = specflux * ww
-
-        sspflux = sspflux.reshape(npix, nage, nebv)
-        ZZ = sspflux * ww[:, np.newaxis, np.newaxis]
-
-        args = []
-        for iebv in np.arange(nebv):
-            args.append((ZZ[:, :, iebv], xx, specflux, specivar, sspflux[:, :, iebv], True))
-        if self.nproc > 1:
-            with multiprocessing.Pool(self.nproc) as P:
-                chi2grid = np.array(P.map(_fit_fnnls_continuum, args))
-        else:
-            chi2grid = np.array([fit_fnnls_continuum(*_args) for _args in args])
-
-        ebvchi2min, ebvbest, ebvivar = self.find_chi2min(self.ebv, chi2grid)
-        ebvchi2min /= np.sum(specivar > 0) - nage - 1 # reduced chi2
-
-        if ebvivar > 0:
-            log.info('Best-fitting E(B-V)={:.4f}+/-{:.4f} with chi2={:.2f}'.format(
-                ebvbest, 1/np.sqrt(ebvivar), ebvchi2min))
-        else:
-            ebvbest = self.ebv_nominal
-            log.info('Finding E(B-V) failed; adopting E(B-V)={:.4f}'.format(self.ebv_nominal))
-
-        # Rebuild the SSP grid at this best-fitting reddening.
-        atten = self.dust_attenuation(specwave, ebvbest)
-        sspflux = sspflux[:, :, 0] * np.tile(atten[:, np.newaxis], nage)
-
-        # Next, if the S/N is high enough, solve for the velocity dispersion.
-        _sspflux = []
-        for vdisp in self.vdisp:
-            if vdisp > self.vdisp_nominal: # fixme!
-                smoothflux = self.convolve_vdisp(sspflux, np.sqrt(vdisp**2 - self.vdisp_nominal**2))
-            else:
-                smoothflux = sspflux
-            _sspflux.append(smoothflux)
-        sspflux = np.stack(_sspflux, axis=-1) # [npix, nage, nvdisp]
-        del _sspflux
-
-        ZZ = sspflux * ww[:, np.newaxis, np.newaxis]
-
-        args = []
-        for ivdisp in np.arange(nvdisp):
-            args.append((ZZ[:, :, ivdisp], xx, specflux, specivar, sspflux[:, :, ivdisp], True))
-        if self.nproc > 1:
-            with multiprocessing.Pool(self.nproc) as P:
-                chi2grid = np.array(P.map(_fit_fnnls_continuum, args))
-        else:
-            chi2grid = np.array([fit_fnnls_continuum(*_args) for _args in args])
-
-        vdispchi2min, vdispbest, vdispivar = self.find_chi2min(self.vdisp, chi2grid)
-        vdispchi2min /= np.sum(specivar > 0) - nage - 1 # reduced chi2
-
-        if vdispivar > 0:
-            log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s with chi2={:.2f}'.format(
-                vdispbest, 1/np.sqrt(vdispivar), vdispchi2min))
-        else:
-            vdispbest = self.vdisp_nominal
-            log.info('Finding vdisp failed; adopting vdisp={:.4f} km/s'.format(self.vdisp_nominal))
-
-
-            
-        bb = self.convolve_vdisp(sspflux[:, :, 2], np.sqrt(vdispbest**2 - self.vdisp_nominal**2))
-        
-        ZZ = bb * ww[:, np.newaxis]
-        coeff = fit_fnnls_continuum(ZZ, xx, specflux, specivar, bb, return_chi2=False)
-        bestfit = bb.dot(coeff)
-
-        ii = np.where((specwave > 4400) * (specwave < 4800))[0]
-
-        ii = np.arange(len(specwave))
-        import matplotlib.pyplot as plt
-        plt.clf()
-        plt.plot(specwave[ii], specflux[ii])
-        plt.plot(specwave[ii], bestfit[ii])
-        plt.savefig('junk2.png')
-
-        plt.xlim(3700, 4800)
-                
-        pdb.set_trace()
-
-        # Need to push the calculation of the best-fitting continuum to a
-        # function so we can call it when building QA.
-        _continuum, _ = self.fnnls_continuum_bestfit(coeff, _sspflux)
-        dof = np.sum(_specivar > 0) - self.nage
-        chi2 = np.sum(_specivar * (specflux - _continuum)**2) / dof
-
-        # Compute the light-weighted age.
-        weight = coeff[coeff > 0]
-        age = np.sum(weight * self.sspinfo['age'][coeff > 0]) / np.sum(weight) / 1e9 # [Gyr]
-        if self.verbose:
-            log.info('Continuum fit done in {:.3f} seconds:'.format(dt))
-            log.info('  Non-zero templates: {}'.format(len(weight)))
-            log.info('  Reduced chi2: {:.3f}'.format(chi2))
-            log.info('  Velocity dispersion: {:.3f} km/s'.format(vdisp))
-            log.info('  Reddening: {:.3f} mag'.format(ebv))
-            log.info('  Light-weighted age: {:.3f} Gyr'.format(age))
 
         # Unpack the continuum into individual cameras.
         continuum = []
         for ii in [0, 1, 2]: # iterate over cameras
             ipix = np.sum(npixpercam[:ii+1])
             jpix = np.sum(npixpercam[:ii+2])
-            continuum.append(_continuum[ipix:jpix])
+            continuum.append(bestfit[ipix:jpix])
 
-        # Store the results and return.
-        results = {'coeff': coeff, 'chi2': np.float32(chi2), 'dof': dof,
-                   'age': np.float32(age), 'ebv': np.float32(ebv),
-                   'vdisp': np.float32(vdisp), 'z': zcontinuum,
-                   'phot_coeff': coeffphot}
-        #results = {'coeff': coeff, 'chi2': np.float32(chi2), 'dof': dof,
-        #           'age': np.float32(age)*u.Gyr, 'ebv': np.float32(ebv)*u.mag,
-        #           'vdisp': np.float32(vdisp)*u.kilometer/u.second}
-
-        return results, continuum
+        return result, continuum
     
     def fnnls_continuum_plot(self, specwave, specflux, specivar, galphot,
                              continuum, continuum_fullwave, fullwave, objinfo,
