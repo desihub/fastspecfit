@@ -1,0 +1,9 @@
+#!/usr/bin/env python
+"""QA-generating code for nyxgalaxy.
+
+John Moustakas (Siena College)
+
+"""
+import sys
+from desigal.scripts.nyxgalaxy_qa import main
+sys.exit(main())
