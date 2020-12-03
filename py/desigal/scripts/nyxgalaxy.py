@@ -110,6 +110,8 @@ def main(args=None):
         args.last = len(zbest) - 1
     fitindx = np.arange(args.last - args.first + 1) + args.first
 
+    # Unpacking with multiprocessing takes a lot longer (maybe pickling takes a
+    # long time?) so suppress the `nproc` argument here for now.
     data = unpack_all_spectra(specobj, zbest, CFit, fitindx)#, nproc=args.nproc)
     del specobj, zbest # free memory
 
@@ -127,7 +129,6 @@ def main(args=None):
         # fit the emission-line spectrum and populate the output table
         emfit, emlinemodel = EMFit.fit(specwave, specflux, specivar, specres, continuum,
                                        zredrock, verbose=args.verbose)
-
         for col in ['d4000', 'd4000_model']:
             nyxgalaxy['{}'.format(col).upper()][indx] = emfit['{}'.format(col)]
 
@@ -148,7 +149,7 @@ def main(args=None):
         #pdb.set_trace()
 
     # write out
-    log.info('Writing {} spectra to {}'.format(len(nyxgalaxy), nyxgalaxyfile))
+    log.info('Writing results for {} objects to {}'.format(len(nyxgalaxy), nyxgalaxyfile))
     nyxgalaxy.write(nyxgalaxyfile, overwrite=True)
 
     if args.makeqa:
