@@ -491,8 +491,7 @@ def smooth_and_resample(sspflux, sspwave, specwave=None, specres=None):
 
 class ContinuumFit(object):
     def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4,
-                 vdispebv_grid=True, ebvgrid=(0.0, 0.3, 0.05),
-                 vdispgrid=(100.0, 300.0, 50.0), nproc=1, verbose=True):
+                 nproc=1, verbose=True):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -505,15 +504,6 @@ class ContinuumFit(object):
             available wavelength is used (around 100 Angstrom).
         maxwave : :class:`float`, optional, defaults to 6e4
             Maximum SSP wavelength to read into memory. 
-        vdispebv_grid : :class:`bool`, optional, defaults to ``True``
-            If ``True``, pre-compute the model templates on a grid of velocity
-            dispersion and dust attenuation.
-        ebvgrid : :class:`tuple` of `float`, optional, defaults to (0.0,0.3,0.05)
-            Prior parameters (minimum, maximum, and spacing) on continuum
-            attenuation. Only used if `vdispebv_grid` is ``True``.
-        vdispgrid : :class:`tuple` of `float`, optional, defaults to (100.,300.,50.)
-            Prior parameters (minimum, maximum, and spacing) on velocity
-            dispersion. Only used if `vdispebv_grid` is ``True``.
         nproc : :class:`int`, optional, defaults to 1
             Number of cores to use for multiprocessing.
         verbose : :class:`bool`, optional, defaults to False
@@ -553,9 +543,6 @@ class ContinuumFit(object):
         self.RV = 3.1
         self.dustslope = 0.7
 
-        #self.vdispebv_grid = vdispebv_grid
-        #if self.vdispebv_grid:
-        
         # Initialize the velocity dispersion and reddening parameters. Make sure
         # the nominal values are in the grid.
         vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 30.0, 150.0)
@@ -570,6 +557,7 @@ class ContinuumFit(object):
         ebvmin, ebvmax, debv, ebv_nominal = (0.0, 1.0, 0.05, 0.0)
         nebv = np.ceil((ebvmax - ebvmin) / debv).astype(int)
         ebv = np.linspace(ebvmin, ebvmax, nebv).astype('f4')
+        assert(ebv[0] == 0.0) # minimum value has to be zero (assumed in fnnls_continuum)
 
         if not ebv_nominal in ebv:
             ebv = np.sort(np.hstack((ebv, ebv_nominal)))        
@@ -738,7 +726,9 @@ class ContinuumFit(object):
 
         """
         from scipy.ndimage import gaussian_filter1d
-        
+
+        if vdisp <= 0.0:
+            return sspflux
         sigma = vdisp / self.pixkms # [pixels]
         smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
         return smoothflux
@@ -897,7 +887,7 @@ class ContinuumFit(object):
         ww = np.sqrt(specivar * emlinemask)
         xx = specflux * ww
 
-        npix, nage, nebv = len(specflux), self.nage, len(self.ebv)
+        npix, nage, nebv, nvdisp = len(specflux), self.nage, len(self.ebv), len(self.vdisp)
         sspflux = sspflux.reshape(npix, nage, nebv)
         ZZ = sspflux * ww[:, np.newaxis, np.newaxis]
 
@@ -909,7 +899,6 @@ class ContinuumFit(object):
                 chi2grid = np.array(P.map(_fit_fnnls_continuum, args))
         else:
             chi2grid = np.array([fit_fnnls_continuum(*_args) for _args in args])
-        #chi2grid = np.array(chi2grid).reshape(nvdisp, nebv)
 
         # Minimize chi2 by fitting a parabola to the three points around the minimum.
         # See also https://github.com/desihub/redrock/blob/master/py/redrock/fitz.py#L66
@@ -924,26 +913,102 @@ class ContinuumFit(object):
         # ebvivar==0 means a bad fit
         ebvivar = aa # ebverr = 1/np.sqrt(aa)
         if (ebvbest <= np.min(self.ebv)) or (np.max(self.ebv) <= ebvbest):
-            ebvivar = 0
+            ebvivar = 0.0
         if (chi2min <= 0.):
-            ebvivar = 0
+            ebvivar = 0.0
         if aa <= 0.0:
-            ebvivar = 0
-            
+            ebvivar = 0.0
+        
         if ebvivar > 0:
             log.info('Best-fitting E(B-V)={:.4f}+/-{:.4f} with chi2={:.2f}'.format(
                 ebvbest, 1/np.sqrt(ebvivar), chi2min))
         else:
+            ebvbest = self.ebv_nominal
             log.info('Finding E(B-V) failed; adopting E(B-V)={:.4f}'.format(self.ebv_nominal))
+
+        #import matplotlib.pyplot as plt
+        #plt.clf()
+        #plt.scatter(self.ebv, chi2grid)
+        #plt.scatter(self.ebv[mindx-1:mindx+2], chi2grid[mindx-1:mindx+2], color='red')
+        #plt.plot(self.ebv, np.polyval([aa, bb, cc], self.ebv), ls='--')
+        #plt.axhline(y=chi2min, color='k')
+        #plt.axvline(x=ebvbest, color='k')
+        #plt.savefig('junk.png')
+        
+        # Rebuild the SSP grid at this best-fitting reddening.
+        atten = self.dust_attenuation(specwave, ebvbest)
+        sspflux = sspflux[:, :, 0] * np.tile(atten[:, np.newaxis], nage)
+
+        # Next, if the S/N is high enough, solve for the velocity dispersion.
+        _sspflux = []
+        for vdisp in self.vdisp:
+            if vdisp > self.vdisp_nominal: # fixme!
+                smoothflux = self.convolve_vdisp(sspflux, np.sqrt(vdisp**2 - self.vdisp_nominal**2))
+            else:
+                smoothflux = sspflux
+            _sspflux.append(smoothflux)
+        sspflux = np.stack(_sspflux, axis=-1) # [npix, nage, nvdisp]
+        del _sspflux
+
+        ZZ = sspflux * ww[:, np.newaxis, np.newaxis]
+
+        args = []
+        for ivdisp in np.arange(nvdisp):
+            args.append((ZZ[:, :, ivdisp], xx, specflux, specivar, sspflux[:, :, ivdisp], True))
+        if self.nproc > 1:
+            with multiprocessing.Pool(self.nproc) as P:
+                chi2grid = np.array(P.map(_fit_fnnls_continuum, args))
+        else:
+            chi2grid = np.array([fit_fnnls_continuum(*_args) for _args in args])
+
+        mindx = np.argmin(chi2grid)
+        aa, bb, cc = np.polyfit(self.vdisp[mindx-1:mindx+2], chi2grid[mindx-1:mindx+2], 2)
+        
+        # recast as y = y0 + ((x-x0)/xerr)^2
+        vdispbest = -bb / (2*aa)
+        chi2min = -(bb**2) / (4*aa) + cc
+
+        # vdispivar==0 means a bad fit
+        vdispivar = aa # vdisperr = 1/np.sqrt(aa)
+        if (vdispbest <= np.min(self.vdisp)) or (np.max(self.vdisp) <= vdispbest):
+            vdispivar = 0.0
+        if (chi2min <= 0.):
+            vdispivar = 0.0
+        if aa <= 0.0:
+            vdispivar = 0.0
+        
+        if vdispivar > 0:
+            log.info('Best-fitting vdisp={:.2f}+/-{:.2f} with chi2={:.2f}'.format(
+                vdispbest, 1/np.sqrt(vdispivar), chi2min))
+        else:
+            vdispbest = self.vdisp_nominal
+            log.info('Finding vdisp failed; adopting vdisp={:.4f}'.format(self.vdisp_nominal))
             
         import matplotlib.pyplot as plt
         plt.clf()
-        plt.scatter(self.ebv, chi2grid)
-        plt.scatter(self.ebv[mindx-1:mindx+2], chi2grid[mindx-1:mindx+2], color='red')
-        plt.plot(self.ebv, np.polyval([aa, bb, cc], self.ebv), ls='--')
+        plt.scatter(self.vdisp, chi2grid)
+        plt.scatter(self.vdisp[mindx-1:mindx+2], chi2grid[mindx-1:mindx+2], color='red')
+        plt.plot(self.vdisp, np.polyval([aa, bb, cc], self.vdisp), ls='--')
         plt.axhline(y=chi2min, color='k')
-        plt.axvline(x=ebvbest, color='k')
+        plt.axvline(x=vdispbest, color='k')
         plt.savefig('junk.png')
+
+        bb = self.convolve_vdisp(sspflux[:, :, 2], np.sqrt(vdispbest**2 - self.vdisp_nominal**2))
+        
+        ZZ = bb * ww[:, np.newaxis]
+        coeff = fit_fnnls_continuum(ZZ, xx, specflux, specivar, bb, return_chi2=False)
+        bestfit = bb.dot(coeff)
+
+        ii = np.where((specwave > 4400) * (specwave < 4800))[0]
+
+        ii = np.arange(len(specwave))
+        plt.clf()
+        plt.plot(specwave[ii], specflux[ii])
+        plt.plot(specwave[ii], bestfit[ii])
+        plt.savefig('junk2.png')
+
+        plt.xlim(3700, 4800)
+                
         pdb.set_trace()
 
         #if self.vdispebv_grid:
@@ -991,9 +1056,6 @@ class ContinuumFit(object):
         #    pdb.set_trace()
         
         pdb.set_trace()
-
-        # ToDo: fit for dust, the redshift, and velocity dispersion
-        zcontinuum, vdisp, ebv = redshift, 0.0, 0.0
 
         # Need to push the calculation of the best-fitting continuum to a
         # function so we can call it when building QA.
