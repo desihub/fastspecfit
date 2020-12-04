@@ -295,6 +295,8 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
         res : :class:`list`
             Three-element list of `desispec.resolution.Resolution` objects, one
             for each camera.
+        snr : :class:`numpy.ndarray`
+            Median per-pixel signal-to-noise ratio in the grz cameras.
         coadd_wave : :class:`numpy.ndarray`
             Coadded wavelength vector with all three cameras combined.
         coadd_flux : :class:`numpy.ndarray`
@@ -332,14 +334,14 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
     ebv = CFit.SFDMap.ebv(ra, dec, scaling=1.0) # SFD coefficients
 
     # Unpack the data and correct for Galactic extinction.
-    data = {'wave': [], 'flux': [], 'ivar': [], 'res': []}
+    data = {'wave': [], 'flux': [], 'ivar': [], 'res': [], 'snr': np.zeros(3).astype('f4')}
     for camera in cameras:
-        dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(specobj.wave[camera], Rv=CFit.RV))
-        
+        dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(specobj.wave[camera], Rv=CFit.RV))       
         data['wave'].append(specobj.wave[camera])
         data['flux'].append(specobj.flux[camera][indx, :] * dust)
         data['ivar'].append(specobj.ivar[camera][indx, :] / dust**2)
         data['res'].append(Resolution(specobj.resolution_data[camera][indx, :, :]))
+        data['snr'].append(np.median(specobj.flux[camera][indx, :]*np.sqrt(specobj.ivar[camera][indx, :])))
 
     # Make a quick coadd using inverse variance weights.
     uspecwave = np.unique(np.hstack(data['wave']))
@@ -654,6 +656,8 @@ class ContinuumFit(object):
         nssp_coeff = len(self.sspinfo)
         
         out = Table()
+        out.add_column(Column(name='CONTINUUM_SNR', length=nobj, shape=(3,), dtype='f4')) # median S/N in each camera
+
         out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_CHI2', length=nobj, dtype='f4')) # reduced chi2
@@ -1028,6 +1032,7 @@ class ContinuumFit(object):
 
         redshift = data['zredrock']
         result['CONTINUUM_Z'] = redshift
+        result['CONTINUUM_SNR'] = data['snr']
 
         # Apply the redshift, smooth by the resolution matrix, and resample in
         # wavelength.
