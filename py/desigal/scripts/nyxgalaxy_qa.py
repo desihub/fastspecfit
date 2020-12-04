@@ -49,7 +49,6 @@ def main(args=None):
     """Main module.
 
     """
-    import fitsio
     from astropy.table import Table
     from desigal.nyxgalaxy import read_spectra, unpack_all_spectra, ContinuumFit, EMLineFit
 
@@ -68,7 +67,12 @@ def main(args=None):
         os.makedirs(qadir)
 
     nyxgalaxyfile = os.path.join(nyxgalaxy_dir, 'nyxgalaxy-{}-{}.fits'.format(args.tile, args.night))
-    
+    if not os.path.isfile(nyxgalaxyfile):
+        log.info('Output file {} not found!'.format(nyxgalaxyfile))
+        return
+    nyxgalaxy = Table.read(nyxgalaxyfile)
+    log.info('Read {} objects from {}'.format(len(nyxgalaxy), nyxgalaxyfile))
+
     # Read the data 
     zbest, specobj = read_spectra(tile=args.tile, night=args.night,
                                   use_vi=args.use_vi, 
@@ -89,9 +93,6 @@ def main(args=None):
     # long time?) so suppress the `nproc` argument here for now.
     data = unpack_all_spectra(specobj, zbest, CFit, fitindx)#, nproc=args.nproc)
     del specobj, zbest # free memory
-
-    nyxgalaxy = Table(fitsio.read(nyxgalaxyfile))
-    log.info('Read {} objects from {}'.format(len(nyxgalaxy), nyxgalaxyfile))
 
     for iobj, indx in enumerate(fitindx):
         CFit.fnnls_continuum_plot(data[iobj], nyxgalaxy[indx], qadir=qadir)

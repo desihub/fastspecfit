@@ -20,6 +20,8 @@ new truth table for 70500 is here--
 https://desi.lbl.gov/trac/wiki/SurveyValidation/TruthTables
 https://desi.lbl.gov/DocDB/cgi-bin/private/RetrieveFile?docid=5720;filename=DESI_data_042820.pdf
 
+time nyxgalaxy --last 20 --nproc 32 --overwrite --tile 70005 --night 20200303
+
 """
 import pdb # for debugging
 
@@ -32,8 +34,6 @@ import tempfile
 os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 import matplotlib
 matplotlib.use('Agg')
-
-
 
 def parse(options=None):
     """Parse input arguments.
@@ -92,10 +92,12 @@ def main(args=None):
         return
         
     # Read the data 
+    t0 = time.time()
     zbest, specobj = read_spectra(tile=args.tile, night=args.night,
                                   use_vi=args.use_vi, 
                                   write_spectra=args.write_spectra,
                                   verbose=args.verbose)
+    log.info('Reading the data took: {:.2f} sec'.format(time.time()-t0))
 
     if args.first is None:
         args.first = 0
@@ -105,14 +107,18 @@ def main(args=None):
 
     # Initialize the continuum- and emission-line fitting classes and the output
     # data table.
+    t0 = time.time()
     CFit = ContinuumFit(nproc=args.nproc, verbose=args.verbose)
     EMFit = EMLineFit()
     nyxgalaxy = init_nyxgalaxy(args.tile, args.night, zbest, specobj.fibermap, CFit)
+    log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Unpacking with multiprocessing takes a lot longer (maybe pickling takes a
     # long time?) so suppress the `nproc` argument here for now.
+    t0 = time.time()
     data = unpack_all_spectra(specobj, zbest, CFit, fitindx)#, nproc=args.nproc)
     del specobj, zbest # free memory
+    log.info('Unpacking the spectra to be fitted took: {:.2f} sec'.format(time.time()-t0))
 
     # Fit each object in sequence.
     for iobj, indx in enumerate(fitindx):
@@ -122,7 +128,7 @@ def main(args=None):
         cfit, continuum = CFit.fnnls_continuum(data[iobj])
         for col in cfit.colnames:
             nyxgalaxy[col][indx] = cfit[col]
-        log.info('{}: {} sec'.format(indx, time.time()-t0))
+        log.info('Continuum-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
 
         ## fit the emission-line spectrum and populate the output table
         #emfit, emlinemodel = EMFit.fit(specwave, specflux, specivar, specres, continuum,
@@ -142,7 +148,7 @@ def main(args=None):
         #        nyxgalaxy['{}_{}_IVAR'.format(line, suffix).upper()][indx] = emfit['{}_{}_ivar'.format(line, suffix)]
 
     # write out
+    t0 = time.time()
     log.info('Writing results for {} objects to {}'.format(len(nyxgalaxy), nyxgalaxyfile))
     nyxgalaxy.write(nyxgalaxyfile, overwrite=True)
-
-    pdb.set_trace()
+    log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
