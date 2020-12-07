@@ -283,6 +283,8 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
     Returns
     -------
     :class:`dict` with the following keys:
+        zredrock : :class:`numpy.float64`
+            Redrock redshift.
         wave : :class:`list`
             Three-element list of `numpy.ndarray` wavelength vectors, one for
             each camera.    
@@ -297,6 +299,9 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
             for each camera.
         snr : :class:`numpy.ndarray`
             Median per-pixel signal-to-noise ratio in the grz cameras.
+        linemask : :class:`list`
+            Three-element list of `numpy.ndarray` boolean emission-line masks,
+            one for each camera. This mask is used during continuum-fitting.
         coadd_wave : :class:`numpy.ndarray`
             Coadded wavelength vector with all three cameras combined.
         coadd_flux : :class:`numpy.ndarray`
@@ -314,8 +319,6 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
             coadded spectra (with a mild extrapolation of the data blueward and
             redward to accommodate the g-band and z-band filter curves,
             respectively.
-        zredrock : :class:`numpy.float64`
-            Redrock redshift.
 
     Notes
     -----
@@ -333,15 +336,26 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
     dec = specobj.fibermap['TARGET_DEC'][indx]
     ebv = CFit.SFDMap.ebv(ra, dec, scaling=1.0) # SFD coefficients
 
-    # Unpack the data and correct for Galactic extinction.
-    data = {'wave': [], 'flux': [], 'ivar': [], 'res': [], 'snr': np.zeros(3).astype('f4')}
-    for camera in cameras:
+    # Unpack the data and correct for Galactic extinction. Also flag pixels that
+    # may be affected by emission lines.
+    data = {'zredrock': zbest['Z'][indx], 'wave': [], 'flux': [], 'ivar': [],
+            'res': [], 'linemask': [], 'snr': np.zeros(3).astype('f4')}
+    for icam, camera in enumerate(cameras):
         dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(specobj.wave[camera], Rv=CFit.RV))       
         data['wave'].append(specobj.wave[camera])
         data['flux'].append(specobj.flux[camera][indx, :] * dust)
         data['ivar'].append(specobj.ivar[camera][indx, :] / dust**2)
         data['res'].append(Resolution(specobj.resolution_data[camera][indx, :, :]))
-        data['snr'].append(np.median(specobj.flux[camera][indx, :]*np.sqrt(specobj.ivar[camera][indx, :])))
+        data['snr'][icam] = np.median(specobj.flux[camera][indx, :] * np.sqrt(specobj.ivar[camera][indx, :]))
+
+        linemask = np.ones_like(specobj.wave[camera], bool)
+        for line in CFit.linetable:
+            zwave = line['restwave'] * (1 + data['zredrock'])
+            I = np.where((specobj.wave[camera] >= (zwave - 1.5*CFit.linemask_sigma * zwave / C_LIGHT)) *
+                         (specobj.wave[camera] <= (zwave + 1.5*CFit.linemask_sigma * zwave / C_LIGHT)))[0]
+            if len(I) > 0:
+                linemask[I] = False
+        data['linemask'].append(linemask)
 
     # Make a quick coadd using inverse variance weights.
     uspecwave = np.unique(np.hstack(data['wave']))
@@ -407,8 +421,6 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
     data['phot'] = CFit.parse_photometry(
         maggies=maggies, lambda_eff=lambda_eff,
         ivarmaggies=ivarmaggies, nanomaggies=True)
-
-    data['zredrock'] = zbest['Z'][indx]
 
     return data
 
@@ -570,8 +582,8 @@ class ContinuumFit(object):
         self.vdisp = vdisp
         self.vdisp_nominal = vdisp_nominal
 
-        ebvmin, ebvmax, debv, ebv_nominal = (0.0, 0.0, 0.1, 0.0)
-        #ebvmin, ebvmax, debv, ebv_nominal = (0.0, 1.0, 0.05, 0.0)
+        #ebvmin, ebvmax, debv, ebv_nominal = (0.0, 0.0, 0.1, 0.0)
+        ebvmin, ebvmax, debv, ebv_nominal = (0.0, 1.0, 0.05, 0.0)
         nebv = np.ceil((ebvmax - ebvmin) / debv).astype(int)
         if nebv == 0:
             nebv = 1
@@ -624,6 +636,7 @@ class ContinuumFit(object):
         sspwave = np.hstack((opt_sspwave, ir_sspwave[1:]))
         npix = len(sspwave)
 
+        # None here means no resolution matrix.
         args = [(flux[:, iage], wave, sspwave, None) for iage in np.arange(nage)]
         if self.nproc > 1:
             with multiprocessing.Pool(self.nproc) as P:
@@ -631,23 +644,28 @@ class ContinuumFit(object):
         else:
             sspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T # [npix, nage]
 
-        # Apply dust attenuation over the full grid. Note: rest wavelengths here!
-        _sspflux = []
+        # Apply dust attenuation (note: rest wavelengths here!) and store two
+        # grids, one convolved at the nominal velocity dispersion and one with
+        # no kinematic smoothing.
+        _sspflux, _sspflux_vdisp = [], []
         for ebv in self.ebv:
             atten = self.dust_attenuation(sspwave, ebv)
-            #_sspflux.append(sspflux * np.tile(atten[:, np.newaxis, np.newaxis], (nage, nvdisp)))
-            _sspflux.append(sspflux * np.tile(atten[:, np.newaxis], nage))
-        sspflux = np.stack(_sspflux, axis=-1) # [npix, nage, nvdisp, nebv]
-        del _sspflux, atten
+            dustyflux = sspflux * atten[:, np.newaxis]
+            _sspflux.append(dustyflux)
+            _sspflux_vdisp.append(self.convolve_vdisp(dustyflux, self.vdisp_nominal))
+        sspflux = np.stack(_sspflux, axis=-1)             # [npix, nage, nebv]
+        sspflux_vdisp = np.stack(_sspflux_vdisp, axis=-1) # [npix, nage, nebv]
 
         self.sspwave = sspwave
         self.sspflux = sspflux
+        self.sspflux_vdisp = sspflux_vdisp
         self.sspinfo = sspinfo
         self.nage = nage
         self.npix = npix
 
         # table of emission lines to fit
         self.linetable = read_nyxgalaxy_lines()
+        self.linemask_sigma = 300.0 # [km/s]
 
     def init_output(self, nobj=1):
         """Initialize the output data table for this class.
@@ -996,7 +1014,7 @@ class ContinuumFit(object):
 
         return (chi2min, xbest, xivar)
 
-    def fnnls_continuum(self, data, sigma_mask=300.0):
+    def fnnls_continuum(self, data):
         """Fit the continuum using fast non-negative least-squares fitting (fNNLS).
 
         Parameters
@@ -1034,11 +1052,14 @@ class ContinuumFit(object):
         result['CONTINUUM_Z'] = redshift
         result['CONTINUUM_SNR'] = data['snr']
 
-        # Apply the redshift, smooth by the resolution matrix, and resample in
-        # wavelength.
+        # Prepare the templates by apply the redshift factor, smoothing by the
+        # resolution matrix, and resampling in wavelength. We also synthesize
+        # model photometry from these data.
         sspflux, sspphot = self.redshift_smooth_and_resample(
             redshift=redshift, specwave=data['wave'],
             specres=data['res'], south=data['photsys_south'])
+
+        pdb.set_trace()
 
         #log.info('Time test took: {:.2f} sec'.format(time.time()-tbig))
         
@@ -1049,21 +1070,12 @@ class ContinuumFit(object):
         
         specwave = np.hstack(data['wave'])
         specflux = np.hstack(data['flux'])
-        specivar = np.hstack(data['ivar'])
+        specivar = np.hstack(data['ivar']) * np.hstack(data['linemask']) # mask emission lines
         sspflux = np.concatenate(sspflux, axis=0) # [npix, nmodel]
 
         modelphot = sspphot['flam'].data # [nband, nage]
         objphot = data['phot']['flam'].data
         objphotivar = data['phot']['flam_ivar'].data
-
-        # Mask pixels in and around emission lines.
-        emlinemask = np.ones_like(specivar)
-        for line in self.linetable:
-            zwave = line['restwave'] * (1+redshift)
-            indx = np.where((specwave >= (zwave - 1.5*sigma_mask * zwave / C_LIGHT)) *
-                            (specwave <= (zwave + 1.5*sigma_mask * zwave / C_LIGHT)))[0]
-            if len(indx) > 0:
-                emlinemask[indx] = 0
 
         nband, npix, nebv, nvdisp = len(modelphot), len(specflux), len(self.ebv), len(self.vdisp)
         _, nmodel = sspflux.shape
