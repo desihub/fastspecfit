@@ -14,7 +14,8 @@ from astropy.table import Table, Column, vstack, join, hstack
 from astropy.modeling import Fittable1DModel
 
 from desiutil.log import get_logger
-from desispec.interpolation import resample_flux
+#from desispec.interpolation import resample_flux
+from redrock.rebin import trapz_rebin
 
 from scipy import constants
 C_LIGHT = constants.c / 1000.0 # [km/s]
@@ -506,6 +507,9 @@ def smooth_and_resample(sspflux, sspwave, specwave=None, specres=None):
     if specwave is None:
         resampflux = sspflux 
     else:
+        pdb.set_trace()
+        rr = trapz_rebin(sspwave, sspflux, specwave)
+        binned = rebin_template(template, z, dwave)
         #resampflux = resample_flux(specwave, sspwave, sspflux, extrapolate=True)
         resampflux = np.interp(specwave, sspwave, sspflux)
 
@@ -517,7 +521,7 @@ def smooth_and_resample(sspflux, sspwave, specwave=None, specres=None):
     return smoothflux # [noutpix]
 
 class ContinuumFit(object):
-    def __init__(self, metallicity='Z0.0190', minwave=1e3, maxwave=6e4,
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4,
                  nproc=1, verbose=True):
         """Class to model a galaxy stellar continuum.
 
@@ -526,7 +530,7 @@ class ContinuumFit(object):
         metallicity : :class:`str`, optional, defaults to `Z0.0190`.
             Stellar metallicity of the SSPs. Currently fixed at solar
             metallicity, Z=0.0190.
-        minwave : :class:`float`, optional, defaults to 1000 A.
+        minwave : :class:`float`, optional, defaults to None
             Minimum SSP wavelength to read into memory. If ``None``, the minimum
             available wavelength is used (around 100 Angstrom).
         maxwave : :class:`float`, optional, defaults to 6e4
@@ -607,58 +611,64 @@ class ContinuumFit(object):
 
         if verbose:
             log.info('Reading {}'.format(self.sspfile))
-        wave = fitsio.read(self.sspfile, ext='WAVE')
+        wave, wavehdr = fitsio.read(self.sspfile, ext='WAVE', header=True)
         flux = fitsio.read(self.sspfile, ext='FLUX')
         sspinfo = Table(fitsio.read(self.sspfile, ext='METADATA'))
         
         # Trim the wavelengths and subselect the number of ages/templates.
         if minwave is None:
-            minwave = 1000.0
+            minwave = np.min(wave)
         keep = np.where((wave >= minwave) * (wave <= maxwave))[0]
-        wave = wave[keep]
-        flux = flux[keep, ::4]
+        sspwave = wave[keep]
+        sspflux = flux[keep, ::4]
         sspinfo = sspinfo[::4]
         nage = len(sspinfo)
 
-        # Resample the templates to have constant pixels in velocity /
-        # log-lambda and convolve to the nominal velocity dispersion.
+        self.pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
 
-        # hack here
-        opt_pixkms = 50.0
-        ir_pixkms = 200
-        self.pixkms = opt_pixkms                         # SSP pixel size [km/s]
-        opt_dlogwave = opt_pixkms / C_LIGHT / np.log(10) # SSP pixel size [log-lambda]
-        ir_dlogwave = ir_pixkms / C_LIGHT / np.log(10) 
+        ## Resample the templates to have constant pixels in velocity /
+        ## log-lambda and convolve to the nominal velocity dispersion.
+        ## hack here
+        #opt_pixkms = 50.0
+        #ir_pixkms = 200
+        #self.pixkms = opt_pixkms                         # SSP pixel size [km/s]
+        #opt_dlogwave = opt_pixkms / C_LIGHT / np.log(10) # SSP pixel size [log-lambda]
+        #ir_dlogwave = ir_pixkms / C_LIGHT / np.log(10) 
+        #
+        #wavesplit = 1e4
+        #opt_sspwave = 10**np.arange(np.log10(wave.min()), np.log10(wavesplit), opt_dlogwave)
+        #ir_sspwave = 10**np.arange(np.log10(wavesplit), np.log10(wave.max()), ir_dlogwave)
+        #sspwave = np.hstack((opt_sspwave, ir_sspwave[1:]))
+        #npix = len(sspwave)
+        #
+        ## None here means no resolution matrix.
+        #args = [(flux[:, iage], wave, sspwave, None) for iage in np.arange(nage)]
+        #if self.nproc > 1:
+        #    with multiprocessing.Pool(self.nproc) as P:
+        #        sspflux = np.vstack(P.map(_smooth_and_resample, args)).T # [npix, nage]
+        #else:
+        #    sspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T # [npix, nage]
 
-        wavesplit = 1e4
-        opt_sspwave = 10**np.arange(np.log10(wave.min()), np.log10(wavesplit), opt_dlogwave)
-        ir_sspwave = 10**np.arange(np.log10(wavesplit), np.log10(wave.max()), ir_dlogwave)
-        sspwave = np.hstack((opt_sspwave, ir_sspwave[1:]))
-        npix = len(sspwave)
+        ## Build and store the nominal attenuation grid based on sspwave and the
+        ## grid of ebv values.
+        #atten = []
+        #for ebv in self.ebv:
+        #    atten.append(self.dust_attenuation(sspwave, ebv))
+        #self.atten = np.stack(atten, axis=-1) # [npix, nebv]
 
-        # None here means no resolution matrix.
-        args = [(flux[:, iage], wave, sspwave, None) for iage in np.arange(nage)]
-        if self.nproc > 1:
-            with multiprocessing.Pool(self.nproc) as P:
-                sspflux = np.vstack(P.map(_smooth_and_resample, args)).T # [npix, nage]
-        else:
-            sspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T # [npix, nage]
-
-        # Apply dust attenuation (note: rest wavelengths here!) and store two
-        # grids, one convolved at the nominal velocity dispersion and one with
-        # no kinematic smoothing.
-        _sspflux, _sspflux_vdisp = [], []
+        # Next, precompute a grid of spectra convolved to the nominal velocity
+        # dispersion with reddening applied. This isn't quite right redward of
+        # ~1 micron where the pixel size changes, but fix that later.
+        dustysspflux = []
         for ebv in self.ebv:
             atten = self.dust_attenuation(sspwave, ebv)
-            dustyflux = sspflux * atten[:, np.newaxis]
-            _sspflux.append(dustyflux)
-            _sspflux_vdisp.append(self.convolve_vdisp(dustyflux, self.vdisp_nominal))
-        sspflux = np.stack(_sspflux, axis=-1)             # [npix, nage, nebv]
-        sspflux_vdisp = np.stack(_sspflux_vdisp, axis=-1) # [npix, nage, nebv]
+            dustyflux = self.convolve_vdisp(sspflux * atten[:, np.newaxis], self.vdisp_nominal)
+            dustysspflux.append(dustyflux)
+        dustysspflux = np.stack(dustysspflux, axis=-1) # [npix, nage, nebv]
 
         self.sspwave = sspwave
-        self.sspflux = sspflux
-        self.sspflux_vdisp = sspflux_vdisp
+        self.sspflux = sspflux # no dust, no velocity broadening [npix, nage]
+        self.dustysspflux = dustysspflux # nominal velocity broadening on a grid of E(B-V) [npix, nage, nebv]
         self.sspinfo = sspinfo
         self.nage = nage
         self.npix = npix

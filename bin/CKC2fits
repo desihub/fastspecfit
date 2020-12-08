@@ -4,6 +4,11 @@
 source /global/cfs/cdirs/desi/software/desi_environment.sh master
 ./CKC2fits
 
+Note that the SSPs are resampled to 25 km/s (roughly the smallest pixel size in
+DESI at ~1 micron) but to save space every just fourth pixel longward of 1
+micron (so an effective pixel spacing of ~100 km/s) is written out.  Each SSP
+has ~83,000 pixels.
+
 """
 import os, pdb
 import numpy as np
@@ -39,11 +44,13 @@ def _CKC2fits(metallicity='Z0.0190'):
     # Resample to constant log-lambda / velocity. In the IR (starting at ~1
     # micron), take every fourth sampling, to save space.
     pixkms = 25.0                            # pixel size [km/s]
+    irfactor = 4
+    wavesplit = 1e4
     dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
     newwave = 10**np.arange(np.log10(np.min(wave)), np.log10(np.max(wave)), dlogwave)
 
-    isplit = np.argmin(np.abs(newwave-1e4)) + 1
-    newwave = np.hstack((newwave[:isplit], newwave[isplit:][::4]))
+    isplit = np.argmin(np.abs(newwave-wavesplit)) + 1
+    newwave = np.hstack((newwave[:isplit], newwave[isplit:][::irfactor]))
     npix = len(newwave)
 
     ssp = QTable()
@@ -77,17 +84,20 @@ def _CKC2fits(metallicity='Z0.0190'):
     #ssp['flux'].unit = unit=u.erg / (u.s * u.cm**2 * u.Angstrom)
 
     # add units
-    wave *= u.Angstrom
+    newwave *= u.Angstrom
     flux *= u.erg / (u.s * u.cm**2 * u.Angstrom)
     
     hduflux = fits.PrimaryHDU(flux.value)
     hduflux.header['EXTNAME'] = 'FLUX'
     hduflux.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
-    hduwave = fits.ImageHDU(wave.value)
+    hduwave = fits.ImageHDU(newwave.value)
     hduwave.header['EXTNAME'] = 'WAVE'
     hduwave.header['BUNIT'] = 'Angstrom'
-    hduwave.header['AIRORVAC'] = 'vac'
+    hduwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+    hduwave.header['PIXSZBLU'] = (pixkms, 'pixel size blueward of PIXSZSPT [km/s]')
+    hduwave.header['PIXSZRED'] = (irfactor*pixkms, 'pixel size redward of PIXSZSPT [km/s]')
+    hduwave.header['PIXSZSPT'] = (newwave[isplit].value, 'wavelength where pixel size changes [Angstrom]')
 
     hdutable = fits.convenience.table_to_hdu(ssp)
     hdutable.header['EXTNAME'] = 'METADATA'
