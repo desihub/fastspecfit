@@ -480,7 +480,8 @@ def _smooth_and_resample(args):
     return smooth_and_resample(*args)
 
 def smooth_and_resample(sspflux, sspwave, specwave=None, specres=None):
-    """Given an SSP model, apply the resolution matrix and resample in wavelength. 
+    """Given a single template, apply the resolution matrix and resample in
+    wavelength.
     
     Parameters
     ----------
@@ -507,11 +508,9 @@ def smooth_and_resample(sspflux, sspwave, specwave=None, specres=None):
     if specwave is None:
         resampflux = sspflux 
     else:
-        pdb.set_trace()
-        rr = trapz_rebin(sspwave, sspflux, specwave)
-        binned = rebin_template(template, z, dwave)
+        resampflux = trapz_rebin(sspwave, sspflux, specwave)
         #resampflux = resample_flux(specwave, sspwave, sspflux, extrapolate=True)
-        resampflux = np.interp(specwave, sspwave, sspflux)
+        #resampflux = np.interp(specwave, sspwave, sspflux)
 
     if specres is None:
         smoothflux = resampflux
@@ -623,6 +622,7 @@ class ContinuumFit(object):
         sspflux = flux[keep, ::4]
         sspinfo = sspinfo[::4]
         nage = len(sspinfo)
+        npix = len(sspwave)
 
         self.pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
 
@@ -676,6 +676,10 @@ class ContinuumFit(object):
         # table of emission lines to fit
         self.linetable = read_nyxgalaxy_lines()
         self.linemask_sigma = 300.0 # [km/s]
+
+        # Ddo a throw-away trapezoidal resampling so we can compile the numba
+        # code when instantiating this class.
+        _ = trapz_rebin(np.arange(4), np.ones(4), np.arange(2)+1)
 
     def init_output(self, nobj=1):
         """Initialize the output data table for this class.
@@ -806,8 +810,8 @@ class ContinuumFit(object):
         smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
         return smoothflux
     
-    def redshift_smooth_and_resample(self, redshift=0.0, specwave=None,
-                                     specres=None, south=True, getphot=True):
+    def obsolete_redshift_smooth_and_resample(self, redshift=0.0, specwave=None,
+                                              specres=None, south=True, getphot=True):
         """Redshift, apply the resolution matrix, and resample in wavelength.
 
         Parameters
@@ -878,6 +882,115 @@ class ContinuumFit(object):
         log.info('Resampling took: {:.2f} sec'.format(time.time()-t0))
             
         return smoothflux, sspphot # [npix, nmodel]
+
+    def SSP2data(self, sspflux, sspwave, redshift=0.0, ebv=None, vdisp=None,
+                 specwave=None, specres=None, south=True, synthphot=True):
+        """Workhorse routine to turn input SSPs into spectra that can be compared to
+        real data.
+
+        Redshift, apply the resolution matrix, and resample in wavelength.
+
+        Parameters
+        ----------
+        redshift
+        specwave
+        specres
+        south
+        synthphot - synthesize photometry?
+
+        Returns
+        -------
+        Vector or 3-element list of [npix, nmodel] spectra.
+
+        Notes
+        -----
+        This method does none or more of the following:
+        - redshifting
+        - wavelength resampling
+        - apply dust reddening
+        - apply velocity dispersion broadening
+        - apply the resolution matrix
+        - synthesize photometry
+
+        It also naturally handles SSPs which have been precomputed on a grid of
+        reddening or velocity dispersion (and therefore have an additional
+        dimension).
+
+        """
+        # Are we dealing with a 2D grid [npix,nage] or a 3D grid
+        # [npix,nage,nebv] or [npix,nage,nvdisp]?
+        ndim = sspflux.ndim
+        if ndim == 2:
+            npix, nage = sspflux.shape
+            nmodel = nage
+        elif ndim == 3:
+            npix, nage, nprop = sspflux.shape
+            nmodel = nage*nprop
+        else:
+            log.fatal('Input SSPs have an unrecognized number of dimensions, {}'.format(ndim))
+            raise ValueError
+        
+        sspflux = sspflux.reshape(npix, nmodel)
+
+        # apply reddening
+        if ebv:
+            print('Write me!')
+            pdb.set_trace()
+
+        # broaden for velocity dispersion
+        if vdisp:
+            print('Write me!')
+            pdb.set_trace()
+
+        # apply redshift factor
+        if redshift:
+            zsspwave = sspwave * (1.0 + redshift)
+            zsspflux = sspflux / (1.0 + redshift)
+        else:
+            zsspwave = sspwave
+            zsspflux = sspflux
+
+        # Optionally synthesize photometry.
+        if synthphot:
+            t0 = time.time()
+            if south:
+                filters = self.decamwise
+            else:
+                filters = self.bassmzlswise
+            maggies = filters.get_ab_maggies(zsspflux, zsspwave, axis=0) # speclite.filters wants an [nmodel, npix] array
+            maggies = np.vstack(maggies.as_array().tolist()).T
+            effwave = filters.effective_wavelengths.value
+        
+            sspphot = self.parse_photometry(maggies, effwave, nanomaggies=False)
+            log.info('Synthesizing photometry took: {:.2f} sec'.format(time.time()-t0))
+        else:
+            sspphot = None
+
+        # Are we returning per-camera spectra or a single model? Handle that here.
+        t0 = time.time()
+        if specres is None and specwave is None:
+            # multiprocess over age
+            args = [(zsspflux[:, imodel], zsspwave, None, None)
+                    for imodel in np.arange(nmodel)]
+            if self.nproc > 1:
+                with multiprocessing.Pool(self.nproc) as P:
+                    datasspflux = np.vstack(P.map(_smooth_and_resample, args)).T
+            else:
+                datasspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
+        else:
+            # loop over cameras and then multiprocess over age
+            datasspflux = []
+            for icamera in [0, 1, 2]: # iterate on cameras
+                args = [(zsspflux[:, imodel], zsspwave, specwave[icamera], specres[icamera])
+                        for imodel in np.arange(nmodel)]
+                if self.nproc > 1:
+                    with multiprocessing.Pool(self.nproc) as P:
+                        datasspflux.append(np.vstack(P.map(_smooth_and_resample, args)).T)
+                else:
+                    datasspflux.append(np.vstack([smooth_and_resample(*_args) for _args in args]).T)
+        log.info('Resampling took: {:.2f} sec'.format(time.time()-t0))
+
+        return datasspflux, sspphot # vector or 3-element list of [npix, nmodel] spectra
 
     def get_d4000(self, wave, flam, flam_ivar=None, redshift=None, rest=True):
         """Compute D(4000) and, optionally, the inverse variance.
@@ -1062,15 +1175,17 @@ class ContinuumFit(object):
         result['CONTINUUM_Z'] = redshift
         result['CONTINUUM_SNR'] = data['snr']
 
-        # Prepare the templates by apply the redshift factor, smoothing by the
-        # resolution matrix, and resampling in wavelength. We also synthesize
-        # model photometry from these data.
-        sspflux, sspphot = self.redshift_smooth_and_resample(
-            redshift=redshift, specwave=data['wave'],
-            specres=data['res'], south=data['photsys_south'])
-
-        pdb.set_trace()
-
+        # Prepare the reddened and unreddened SSP templates. Note that we ignore
+        # templates which are older than the age of the universe at the galaxy
+        # redshift.
+        keep = np.where(self.sspinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
+        dustysspflux, dustysspphot = self.SSP2data(
+            self.dustysspflux[:, keep, :], self.sspwave, redshift=redshift,
+            specwave=data['wave'], specres=data['res'], south=data['photsys_south'])
+        sspflux, dustysspphot = self.SSP2data(
+            self.sspflux[:, keep], self.sspwave, redshift=redshift,
+            specwave=data['wave'], specres=data['res'], south=data['photsys_south'])
+        
         #log.info('Time test took: {:.2f} sec'.format(time.time()-tbig))
         
         # Combine all three cameras; we will unpack them to build the
@@ -1087,15 +1202,11 @@ class ContinuumFit(object):
         objphot = data['phot']['flam'].data
         objphotivar = data['phot']['flam_ivar'].data
 
-        nband, npix, nebv, nvdisp = len(modelphot), len(specflux), len(self.ebv), len(self.vdisp)
-        _, nmodel = sspflux.shape
-        nage = nmodel // nebv # accounts for age-of-the-universe constraint
-
-        inodust = np.asscalar(np.where(self.ebv == 0)[0]) # should always be index 0
-
         def _fnnls_parallel(modelflux, flux, ivar, xparam=None):
-            """Wrapper on fnnls to set up the multiprocessing."""
+            """Wrapper on fnnls to set up the multiprocessing. Works with both spectroscopic
+            and photometric input.
 
+            """
             if xparam is not None:
                 nn = len(xparam)
             ww = np.sqrt(ivar)
@@ -1122,6 +1233,14 @@ class ContinuumFit(object):
             chi2min, xbest, xivar = self.find_chi2min(xparam, chi2grid)
 
             return (chi2min, xbest, xivar)
+
+        pdb.set_trace()
+        
+        nband, npix, nebv, nvdisp = len(modelphot), len(specflux), len(self.ebv), len(self.vdisp)
+        _, nmodel = sspflux.shape
+        nage = nmodel // nebv # accounts for age-of-the-universe constraint
+
+        inodust = np.asscalar(np.where(self.ebv == 0)[0]) # should always be index 0
 
         # [1] First, fit just the photometry, independent of the spectra,
         # including reddening.
