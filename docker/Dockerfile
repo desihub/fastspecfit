@@ -10,6 +10,7 @@ RUN DEBIAN_FRONTEND=noninteractive \
     git \
     subversion \
     file \
+    vim \
     less \
     patch \
     pkg-config \
@@ -120,6 +121,7 @@ SHELL ["/bin/bash", "-c"]
 RUN echo "export PS1='[container] \\u@\\h:\\w$ '" >> $HOME/.bashrc \
   # Create config files in $HOME
   && python -c "import astropy" \
+  && chmod -R a+rwX $HOME/.astropy \
   && python -c "import matplotlib.font_manager as fm; f = fm.FontManager()" \
   && ipython -c "print('hello')"
   
