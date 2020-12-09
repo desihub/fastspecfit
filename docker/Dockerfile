@@ -10,7 +10,7 @@ RUN DEBIAN_FRONTEND=noninteractive \
     git \
     subversion \
     file \
-    vim \
+    emacs \
     less \
     patch \
     pkg-config \
