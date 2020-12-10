@@ -24,7 +24,7 @@ C_LIGHT = constants.c / 1000.0 # [km/s]
 
 log = get_logger()
 
-def init_nyxgalaxy(tile, night, zbest, fibermap, CFit):
+def init_nyxgalaxy(tile, night, zbest, fibermap, CFit, EMFit):
     """Initialize the nyxgalaxy output data table.
 
     Parameters
@@ -39,6 +39,8 @@ def init_nyxgalaxy(tile, night, zbest, fibermap, CFit):
         Fiber map (row-aligned to `zbest`).
     CFit : :class:`desigal.nyxgalaxy.ContinuumFit`
         Continuum-fitting class.
+    CFit : :class:`desigal.nyxgalaxy.EMLineFit`
+        Emission-line fitting class.
 
     Returns
     -------
@@ -59,46 +61,8 @@ def init_nyxgalaxy(tile, night, zbest, fibermap, CFit):
     out.add_column(Column(name='NIGHT', data=np.repeat(night, nobj)), index=0)
     out.add_column(Column(name='TILE', data=np.repeat(tile, nobj)), index=0)
 
-    out = hstack((out, CFit.init_output(nobj)))
+    out = hstack((out, CFit.init_output(nobj), EMFit.init_output(CFit.linetable, nobj)))
 
-    out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4'))
-    out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4'))
-    out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4'))
-    out.add_column(Column(name='LINEVSHIFT_BALMER_IVAR', length=nobj, dtype='f4'))
-    out.add_column(Column(name='LINESIGMA_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-    out.add_column(Column(name='LINESIGMA_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-    out.add_column(Column(name='LINESIGMA_BALMER', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-    out.add_column(Column(name='LINESIGMA_BALMER_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-
-    for line in CFit.linetable['name']:
-        line = line.upper()
-        out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
-                              unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
-        out.add_column(Column(name='{}_AMP_IVAR'.format(line), length=nobj, dtype='f4',
-                              unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
-        out.add_column(Column(name='{}_FLUX'.format(line), length=nobj, dtype='f4',
-                              unit=10**(-17)*u.erg/(u.second*u.cm**2)))
-        out.add_column(Column(name='{}_FLUX_IVAR'.format(line), length=nobj, dtype='f4',
-                              unit=10**34*u.second**2*u.cm**4/u.erg**2))
-        out.add_column(Column(name='{}_BOXFLUX'.format(line), length=nobj, dtype='f4',
-                              unit=10**(-17)*u.erg/(u.second*u.cm**2)))
-        out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
-                              unit=10**34*u.second**2*u.cm**4/u.erg**2))
-        out.add_column(Column(name='{}_CONT'.format(line), length=nobj, dtype='f4',
-                              unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
-        out.add_column(Column(name='{}_CONT_IVAR'.format(line), length=nobj, dtype='f4',
-                              unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
-        out.add_column(Column(name='{}_EW'.format(line), length=nobj, dtype='f4',
-                              unit=u.Angstrom))
-        out.add_column(Column(name='{}_EW_IVAR'.format(line), length=nobj, dtype='f4',
-                              unit=1/u.Angstrom**2))
-        out.add_column(Column(name='{}_FLUX_LIMIT'.format(line), length=nobj, dtype='f4',
-                              unit=u.erg/(u.second*u.cm**2)))
-        out.add_column(Column(name='{}_EW_LIMIT'.format(line), length=nobj, dtype='f4',
-                              unit=u.Angstrom))
-        out.add_column(Column(name='{}_CHI2'.format(line), length=nobj, dtype='f4'))
-        out.add_column(Column(name='{}_NPIX'.format(line), length=nobj, dtype=np.int32))
-        
     return out
     
 def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
@@ -263,6 +227,70 @@ def _ivar2var(ivar, sigma=False):
     if sigma:
         var = np.sqrt(var) # return a sigma
     return var, goodmask
+
+def get_d4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
+    """Compute D(4000) and, optionally, the inverse variance.
+
+    Parameters
+    ----------
+    wave
+    flam
+    flam_ivar
+    redshift
+    rest
+
+    Returns
+    -------
+
+    Notes
+    -----
+    If `rest`=``False`` then `redshift` input is required.
+
+    """
+    d4000, d4000_ivar = 0.0, 0.0
+
+    if rest:
+        flam2fnu =  wave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+    else:
+        wave /= (1 + redshift) # [Angstrom]
+        flam2fnu = (1 + redshift) * wave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+
+    if flam_ivar is None:
+        goodmask = np.ones(len(flam), bool) # True is good
+    else:
+        goodmask = flam_ivar > 0
+
+    indxblu = np.where((wave >= 3850.) * (wave <= 3950.) * goodmask)[0]
+    indxred = np.where((wave >= 4000.) * (wave <= 4100.) * goodmask)[0]
+    if len(indxblu) < 5 or len(indxred) < 5:
+        return d4000, d4000_ivar
+
+    blufactor, redfactor = 3950.0 - 3850.0, 4100.0 - 4000.0
+    deltawave = np.gradient(wave) # should be constant...
+
+    fnu = flam * flam2fnu # [erg/s/cm2/Hz]
+
+    numer = blufactor * np.sum(deltawave[indxred] * fnu[indxred])
+    denom = redfactor * np.sum(deltawave[indxblu] * fnu[indxblu])
+    if denom == 0.0:
+        log.warning('D(4000) is ill-defined!')
+        return d4000, d4000_ivar
+    d4000 =  numer / denom
+
+    if flam_ivar is not None:
+        fnu_ivar = flam_ivar / flam2fnu**2
+        fnu_var, _ = _ivar2var(fnu_ivar)
+
+        numer_var = blufactor**2 * np.sum(deltawave[indxred] * fnu_var[indxred])
+        denom_var = redfactor**2 * np.sum(deltawave[indxblu] * fnu_var[indxblu])
+        d4000_var = (numer_var + numer**2 * denom_var) / denom**2
+        if d4000_var <= 0:
+            log.warning('D(4000) variance is ill-defined!')
+            d4000_ivar = 0.0
+        else:
+            d4000_ivar = 1.0 / d4000_var
+
+    return d4000, d4000_ivar
 
 def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
@@ -766,6 +794,7 @@ class ContinuumFit(object):
 
         out.add_column(Column(name='D4000', length=nobj, dtype='f4'))
         out.add_column(Column(name='D4000_IVAR', length=nobj, dtype='f4'))
+        out.add_column(Column(name='D4000_NOLINES', length=nobj, dtype='f4'))
         out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
         out.add_column(Column(name='D4000_MODEL_PHOT', length=nobj, dtype='f4'))
 
@@ -801,8 +830,8 @@ class ContinuumFit(object):
         phot.add_column(Column(name='lambda_eff', length=nband, dtype='f4'))
         phot.add_column(Column(name='nanomaggies', length=nband, shape=(ngal, ), dtype='f4'))
         phot.add_column(Column(name='nanomaggies_ivar', length=nband, shape=(ngal, ), dtype='f4'))
-        phot.add_column(Column(name='flam', length=nband, shape=(ngal, ), dtype='f4'))
-        phot.add_column(Column(name='flam_ivar', length=nband, shape=(ngal, ), dtype='f4'))
+        phot.add_column(Column(name='flam', length=nband, shape=(ngal, ), dtype='f8')) # note f8!
+        phot.add_column(Column(name='flam_ivar', length=nband, shape=(ngal, ), dtype='f8'))
         phot.add_column(Column(name='abmag', length=nband, shape=(ngal, ), dtype='f4'))
         phot.add_column(Column(name='abmag_ivar', length=nband, shape=(ngal, ), dtype='f4'))
 
@@ -825,8 +854,8 @@ class ContinuumFit(object):
         factor = nanofactor * 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
         if ngal > 1:
             factor = factor[:, None] # broadcast for the models
-        phot['flam'] = (maggies * factor).astype('f4')
-        phot['flam_ivar'] = (ivarmaggies / factor**2).astype('f4')
+        phot['flam'] = (maggies * factor)
+        phot['flam_ivar'] = (ivarmaggies / factor**2)
 
         # approximate the uncertainty as being symmetric in magnitude
         if maggies.ndim > 1:
@@ -1030,7 +1059,7 @@ class ContinuumFit(object):
         
         return meanage
 
-    def get_d4000(self, wave, flam, flam_ivar=None, redshift=None, rest=True):
+    def obsolete_get_d4000(self, wave, flam, flam_ivar=None, redshift=None, rest=True):
         """Compute D(4000) and, optionally, the inverse variance.
 
         Parameters
@@ -1329,7 +1358,8 @@ class ContinuumFit(object):
                                          objflam, objflamivar) # bestphot['flam'] is [nband, nage]
 
         bestfit = bestsspflux.dot(coeff)
-        d4000, _ = self.get_d4000(self.sspwave, bestfit, rest=True)
+        d4000, _ = get_d4000(self.sspwave, bestfit, rest=True)
+        #d4000, _ = self.get_d4000(self.sspwave, bestfit, rest=True)
         meanage = self.get_meanage(coeff)
         log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
 
@@ -1398,8 +1428,10 @@ class ContinuumFit(object):
 
         bestfit = bestsspflux.dot(coeff)
         meanage = self.get_meanage(coeff)
-        d4000_model, _ = self.get_d4000(specwave, bestfit, redshift=redshift)
-        d4000, d4000_ivar = self.get_d4000(specwave, specflux, specivar, redshift=redshift)
+        d4000_model, _ = get_d4000(specwave, bestfit, redshift=redshift)
+        d4000, d4000_ivar = get_d4000(specwave, specflux, specivar, redshift=redshift)
+        #d4000_model, _ = self.get_d4000(specwave, bestfit, redshift=redshift)
+        #d4000, d4000_ivar = self.get_d4000(specwave, specflux, specivar, redshift=redshift)
         log.info('Spectroscopic D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
 
         #import matplotlib.pyplot as plt
@@ -1568,9 +1600,12 @@ class ContinuumFit(object):
         plt.subplots_adjust(bottom=0.1, right=0.95, top=0.95, wspace=0.12)
         #plt.subplots_adjust(bottom=0.1, right=0.95, top=0.95, wspace=0.17)
 
-        pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(result['TILE'], result['NIGHT'], result['TARGETID']))
+        pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(
+            result['TILE'], result['NIGHT'], result['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
+
+        return continuum
         
     def _get_uncertainties(self, pcov=None, jac=None, return_covariance=False):
         """Determine the uncertainties from the diagonal terms of the covariance
@@ -1803,7 +1838,8 @@ class EMLineModel(Fittable1DModel):
         for ii in [0, 1, 2]: # iterate over cameras
             ipix = np.sum(self.npixpercamera[:ii+1])
             jpix = np.sum(self.npixpercamera[:ii+2])
-            _emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
+            #_emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
+            _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
             
             if self.emlineR is not None:
                 _emlinemomdel = self.emlineR[ii].dot(_emlinemodel)
@@ -1824,18 +1860,66 @@ class EMLineFit(object):
     * https://docs.astropy.org/en/stable/modeling/compound-models.html#parameters
 
     """
-    def __init__(self, nball=10, chi2fail=1e6):
+    def __init__(self, nball=10, chi2fail=1e6, nproc=1, verbose=False):
         """Write me.
         
         """
         from astropy.modeling import fitting
 
+        self.verbose = verbose
+        self.nproc = nproc
+        
         self.nball = nball
         self.chi2fail = chi2fail
         self.pixkms = 10.0 # pixel size for internal wavelength array [km/s]
 
         self.fitter = fitting.LevMarLSQFitter()
-                
+
+    def init_output(self, linetable, nobj=1):
+        """Initialize the output data table for this class.
+
+        """
+        out = Table()
+        out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4'))
+        out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4'))
+        out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4'))
+        out.add_column(Column(name='LINEVSHIFT_BALMER_IVAR', length=nobj, dtype='f4'))
+        out.add_column(Column(name='LINESIGMA_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='LINESIGMA_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+        out.add_column(Column(name='LINESIGMA_BALMER', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='LINESIGMA_BALMER_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+
+        for line in linetable['name']:
+            line = line.upper()
+            out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+            out.add_column(Column(name='{}_AMP_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
+            out.add_column(Column(name='{}_FLUX'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2)))
+            out.add_column(Column(name='{}_FLUX_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4/u.erg**2))
+            out.add_column(Column(name='{}_BOXFLUX'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2)))
+            out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4/u.erg**2))
+            out.add_column(Column(name='{}_CONT'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+            out.add_column(Column(name='{}_CONT_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
+            out.add_column(Column(name='{}_EW'.format(line), length=nobj, dtype='f4',
+                                  unit=u.Angstrom))
+            out.add_column(Column(name='{}_EW_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=1/u.Angstrom**2))
+            out.add_column(Column(name='{}_FLUX_LIMIT'.format(line), length=nobj, dtype='f4',
+                                  unit=u.erg/(u.second*u.cm**2)))
+            out.add_column(Column(name='{}_EW_LIMIT'.format(line), length=nobj, dtype='f4',
+                                  unit=u.Angstrom))
+            out.add_column(Column(name='{}_CHI2'.format(line), length=nobj, dtype='f4'))
+            out.add_column(Column(name='{}_NPIX'.format(line), length=nobj, dtype=np.int32))
+
+        return out
+        
     def chi2(self, bestfit, emlinewave, emlineflux, emlineivar):
         """Compute the reduced chi^2."""
         dof = len(emlinewave) - len(bestfit.parameters)
@@ -1883,8 +1967,7 @@ class EMLineFit(object):
 
         return emlinemodel
     
-    def fit(self, specwave, specflux, specivar, specres, continuum,
-            redshift, verbose=False):
+    def fit(self, data, continuum):
         """Perform the fit minimization / chi2 minimization.
         
         EMLineModel object
@@ -1896,41 +1979,54 @@ class EMLineFit(object):
         #from scipy import integrate
         from astropy.stats import sigma_clipped_stats
         
-        npixpercamera = [len(gw) for gw in specwave]
+        # Combine all three cameras; we will unpack them to build the
+        # best-fitting model (per-camera) below.
+        npixpercamera = [len(gw) for gw in data['wave']]
+        npixpercam = np.hstack([0, npixpercamera])
 
-        # we have to stack the per-camera spectra for LevMarLSQFitter
-        _specflux = np.hstack(specflux)
-        emlinewave = np.hstack(specwave)
-        emlineivar = np.hstack(specivar)
-        emlineflux = _specflux - np.hstack(continuum)
+        redshift = data['zredrock']
+        emlinewave = np.hstack(data['wave'])
+        emlineivar = np.hstack(data['ivar'])
+        specflux = np.hstack(data['flux'])
+        emlineflux = specflux - np.hstack(continuum)
 
         dlogwave = self.pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
-        log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
+        log10wave = np.arange(np.log10(3e3), np.log10(1e4), dlogwave)
+        #log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
         
-        self.EMLineModel = EMLineModel(redshift=redshift, emlineR=specres,
+        self.EMLineModel = EMLineModel(redshift=redshift,
+                                       emlineR=data['res'],
                                        npixpercamera=npixpercamera,
                                        log10wave=log10wave)
+        nparam = len(self.EMLineModel.parameters)
 
         #weights = np.ones_like
-        weights = 1 / np.sqrt(emlineivar)
-        bestfit = self.fitter(self.EMLineModel, emlinewave, 
-                              emlineflux, weights=weights)
+        #emlinevar, _ = _ivar2var(emlineivar)
+        #weights[np.logical_not(goodmask)] = 1e16
+        bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=np.sqrt(emlineivar))
 
+        emlinemodel = bestfit(emlinewave)
         chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
 
-        nparam = len(self.EMLineModel.parameters)
-        
-        # Pack the results in a dictionary and return.
-        # https://gist.github.com/eteq/1f3f0cec9e4f27536d52cd59054c55f2
-        result = {
-            'converged': False,
-            'fit_message': self.fitter.fit_info['message'],
-            'nparam': nparam,
-            'npix': len(emlinewave),
-            'dof': len(emlinewave) - len(self.EMLineModel.parameters),
-            'chi2': chi2,
-            'linenames': [ll.replace('_amp', '') for ll in self.EMLineModel.param_names[4:]],
-        }
+        # Initialize the output table; see init_nyxgalaxy for the data model.
+        result = self.init_output(self.EMLineModel.linetable)
+
+        specflux_nolines = specflux - emlinemodel
+
+        d4000_nolines, _ = get_d4000(emlinewave, specflux_nolines, redshift=redshift)
+        result['D4000_NOLINES'] = d4000_nolines
+
+        ## Pack the results in a dictionary and return.
+        ## https://gist.github.com/eteq/1f3f0cec9e4f27536d52cd59054c55f2
+        #result = {
+        #    'converged': False,
+        #    'fit_message': self.fitter.fit_info['message'],
+        #    'nparam': nparam,
+        #    'npix': len(emlinewave),
+        #    'dof': len(emlinewave) - len(self.EMLineModel.parameters),
+        #    'chi2': chi2,
+        #    'linenames': [ll.replace('_amp', '') for ll in self.EMLineModel.param_names[4:]],
+        #}
         #for param in bestfit.param_names:
         #    result.update({param: getattr(bestfit, param).value})
         
@@ -1938,7 +2034,7 @@ class EMLineFit(object):
         if self.fitter.fit_info['param_cov'] is not None:
             cov = self.fitter.fit_info['param_cov']
             ivar = 1 / np.diag(cov)
-            result['converged'] = True
+            #result['converged'] = True
         else:
             cov = np.zeros((nparam, nparam))
             ivar = np.zeros(nparam)
@@ -1960,15 +2056,19 @@ class EMLineFit(object):
             #    result.update({pinfo.name: np.float(0.0)})
             #else:
             #    result.update({pinfo.name: pinfo.value.astype('f4')})
-            result.update({pinfo.name: pinfo.value.astype('f4')})
+            #result.update({pinfo.name: pinfo.value.astype('f4')})
+            result[pinfo.name.upper()] = pinfo.value.astype('f4')
                 
             if pinfo.fixed:
-                result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
+                #result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
+                result['{}_IVAR'.format(pinfo.name.upper())] = pinfo.value.astype('f4')
             elif pinfo.tied:
                 # hack! see https://github.com/astropy/astropy/issues/7202
-                result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
+                #result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
+                result['{}_IVAR'.format(pinfo.name.upper())] = np.float32(0.0)
             else:
-                result.update({'{}_ivar'.format(pinfo.name): ivar[count].astype('f4')})
+                result['{}_IVAR'.format(pinfo.name.upper())] = ivar[count].astype('f4')
+                #result.update({'{}_ivar'.format(pinfo.name): ivar[count].astype('f4')})
                 count += 1
 
             #if 'forbidden' in pinfo.name:
@@ -1976,10 +2076,10 @@ class EMLineFit(object):
 
         # hack for tied parameters---gotta be a better way to do this
         #result['oiii_4959_amp_ivar'] = result['oiii_5007_amp_ivar'] * 2.8875**2
-        result['oiii_4959_amp_ivar'] = result['oiii_5007_amp_ivar'] * 2.8875**2
-        result['nii_6548_amp_ivar'] = result['nii_6548_amp_ivar'] * 2.936**2
-        result['linevshift_forbidden_ivar'] = result['linevshift_balmer_ivar']
-        result['linesigma_forbidden_ivar'] = result['linesigma_balmer_ivar']
+        result['OIII_4959_AMP_IVAR'] = result['OIII_5007_AMP_IVAR'] * 2.8875**2
+        result['NII_6548_AMP_IVAR'] = result['NII_6548_AMP_IVAR'] * 2.936**2
+        result['LINEVSHIFT_FORBIDDEN_IVAR'] = result['LINEVSHIFT_BALMER_IVAR']
+        result['LINESIGMA_FORBIDDEN_IVAR'] = result['LINESIGMA_BALMER_IVAR']
 
         ## convert the vshifts to redshifts
         #result['linez_forbidden'] = redshift + result['linevshift_forbidden'] / C_LIGHT
@@ -1988,66 +2088,29 @@ class EMLineFit(object):
         #result['linez_balmer_ivar'] = result['linevshift_balmer_ivar'] * C_LIGHT**2
 
         # now loop back through and if ivar==0 then set the parameter value to zero
-        if self.fitter.fit_info['param_cov'] is not None:
-            for pp in bestfit.param_names:
-                if result['{}_ivar'.format(pp)] == 0.0:
-                    result[pp] = 0.0
+        if False:
+            if self.fitter.fit_info['param_cov'] is not None:
+                for pp in bestfit.param_names:
+                    if result['{}_IVAR'.format(pp.upper())] == 0.0:
+                        result[pp] = np.float(0.0)
 
         # get continuum fluxes, EWs, and upper limits
-        emlinemodel = bestfit(emlinewave)
-        specflux_nolines = _specflux - emlinemodel
-
-        # measure the 4000-Angstrom break from the data and the model
-        restwave = emlinewave / (1 + redshift) # [Angstrom]
-
-        restflam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5)
-        restflux_nolines_nu = specflux_nolines * restflam2fnu   # rest-frame, [erg/s/cm2/Hz]
-        restcontinuum_nu = np.hstack(continuum) * restflam2fnu
-
-        good = emlineivar > 0
-        restemlinevar_nu = np.zeros_like(restcontinuum_nu)
-        restemlinevar_nu[good] = restflam2fnu[good]**2 / emlineivar[good] 
-
-        indxblu = np.where((restwave >= 3850) * (restwave <= 3950))[0]
-        indxred = np.where((restwave >= 4000) * (restwave <= 4100))[0]
-        if len(indxblu) > 5 and len(indxred) > 5:
-            blufactor, redfactor = 3950.0 - 3850.0, 4100.0 - 4000.0
-            deltawave = np.gradient(restwave)
-
-            numer = blufactor * np.sum(deltawave[indxred] * restflux_nolines_nu[indxred])
-            denom = redfactor * np.sum(deltawave[indxblu] * restflux_nolines_nu[indxblu])
-            numer_var = blufactor**2 * np.sum(deltawave[indxred] * restemlinevar_nu[indxred])
-            denom_var = redfactor**2 * np.sum(deltawave[indxblu] * restemlinevar_nu[indxblu])
-
-            d4000 =  numer / denom
-            d4000_var = (numer_var + numer**2 * denom_var) / denom**2
-            d4000_ivar = 1 / d4000_var
-              
-            d4000_model = (blufactor / redfactor) * np.sum(deltawave[indxred] * restcontinuum_nu[indxred]) / \
-              np.sum(deltawave[indxblu] * restcontinuum_nu[indxblu])
-        else:
-            d4000, d4000_ivar, d4000_model = 0.0, 0.0, 0.0
- 
-        result['d4000'] = d4000
-        result['d4000_ivar'] = d4000_ivar
-        result['d4000_model'] = d4000_model
-              
         sigma_cont = 150.0
         for oneline in self.EMLineModel.linetable:
-            line = oneline['name']
+            line = oneline['name'].upper()
 
             # get the emission-line flux
             zwave = oneline['restwave'] * (1 + redshift)
             if oneline['isbalmer']:
-                linesigma = result['linesigma_balmer']
+                linesigma = result['LINESIGMA_BALMER']
             else:
-                linesigma = result['linesigma_forbidden']
+                linesigma = result['LINESIGMA_FORBIDDEN']
 
             linesigma_ang = zwave * linesigma / C_LIGHT # [observed-frame Angstrom]
             norm = np.sqrt(2.0 * np.pi) * linesigma_ang
 
-            result['{}_flux'.format(line)] = result['{}_amp'.format(line)] * norm
-            result['{}_flux_ivar'.format(line)] = result['{}_amp_ivar'.format(line)] / norm**2
+            result['{}_FLUX'.format(line)] = result['{}_AMP'.format(line)] * norm
+            result['{}_FLUX_IVAR'.format(line)] = result['{}_AMP_IVAR'.format(line)] / norm**2
 
             # boxcar integration, chi2, and number of pixels
             lineindx = np.where((emlinewave > (zwave - 3*sigma_cont * zwave / C_LIGHT)) *
@@ -2062,10 +2125,10 @@ class EMLineFit(object):
             else:
                 npix, chi2, boxflux, boxflux_ivar = 0.0, 1e6, 0.0, 0.0
 
-            result['{}_npix'.format(line)] = npix
-            result['{}_chi2'.format(line)] = chi2
-            result['{}_boxflux'.format(line)] = boxflux
-            result['{}_boxflux_ivar'.format(line)] = boxflux_ivar
+            result['{}_NPIX'.format(line)] = npix
+            result['{}_CHI2'.format(line)] = chi2
+            result['{}_BOXFLUX'.format(line)] = boxflux
+            result['{}_BOXFLUX_IVAR'.format(line)] = boxflux_ivar
             
             # get the continuum and EWs
             indxlo = np.where((emlinewave > (zwave - 10*sigma_cont * zwave / C_LIGHT)) *
@@ -2082,13 +2145,13 @@ class EMLineFit(object):
             else:
                 cmed, civar = 0.0, 0.0
                 
-            result['{}_cont'.format(line)] = cmed
-            result['{}_cont_ivar'.format(line)] = civar
+            result['{}_CONT'.format(line)] = cmed
+            result['{}_CONT_IVAR'.format(line)] = civar
 
-            if result['{}_cont_ivar'.format(line)] != 0.0:
-                factor = (1 + redshift) / result['{}_cont'.format(line)]
-                ew = result['{}_flux'.format(line)] * factor   # rest frame [A]
-                ewivar = result['{}_flux_ivar'.format(line)] / factor**2
+            if result['{}_CONT_IVAR'.format(line)] != 0.0:
+                factor = (1 + redshift) / result['{}_CONT'.format(line)]
+                ew = result['{}_FLUX'.format(line)] * factor   # rest frame [A]
+                ewivar = result['{}_FLUX_IVAR'.format(line)] / factor**2
 
                 # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
                 fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar)
@@ -2096,10 +2159,10 @@ class EMLineFit(object):
             else:
                 ew, ewivar, fluxlimit, ewlimit = 0.0, 0.0, 0.0, 0.0
 
-            result['{}_ew'.format(line)] = ew
-            result['{}_ew_ivar'.format(line)] = ewivar
-            result['{}_flux_limit'.format(line)] = fluxlimit
-            result['{}_ew_limit'.format(line)] = ewlimit
+            result['{}_EW'.format(line)] = ew
+            result['{}_EW_IVAR'.format(line)] = ewivar
+            result['{}_FLUX_LIMIT'.format(line)] = fluxlimit
+            result['{}_EW_LIMIT'.format(line)] = ewlimit
 
             # simple QA
             if 'alpha' in line and False:
@@ -2113,12 +2176,10 @@ class EMLineFit(object):
                 plt.axhline(y=cmed+csig/np.sqrt(len(indx)), color='k', ls='--')
                 plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
                 plt.savefig('junk.png')
-                #pdb.set_trace()
-            
-        return result, emlinemodel
+
+        return result
     
-    def emlineplot(self, specwave, specflux, specivar, continuum,
-                   _emlinemodel, redshift, objinfo, png=None):
+    def emlineplot(self, data, result, continuum, qadir='.'):
         """Plot the emission-line spectrum and best-fitting model.
 
         """
@@ -2128,11 +2189,23 @@ class EMLineFit(object):
         import matplotlib.ticker as ticker
         import seaborn as sns
 
+        redshift = result['Z']
+        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], result)
+
         sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
 
         col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
-        
+
+        leg = {
+            'targetid': '{} {}'.format(result['TARGETID'], -999),
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
+            'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(result['LINEVSHIFT_FORBIDDEN']),
+            'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(result['LINEVSHIFT_BALMER']),
+            'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(result['LINESIGMA_FORBIDDEN']),
+            'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(result['LINESIGMA_BALMER']),
+            }
+
         #fig, ax = plt.subplots(1, 4, figsize=(16, 10))#, sharey=True)
         fig = plt.figure(figsize=(16, 16))
         gs = fig.add_gridspec(3, 4, height_ratios=[4, 2, 2])
@@ -2143,15 +2216,18 @@ class EMLineFit(object):
 
         ymin, ymax = 1e6, -1e6
         for ii in [0, 1, 2]: # iterate over cameras
-            emlinewave = specwave[ii]
-            emlineflux = specflux[ii] - continuum[ii]
+            emlinewave = data['wave'][ii]
+            emlineflux = data['flux'][ii] - continuum[ii]
             emlinemodel = _emlinemodel[ii]
-            emlinesigma = np.zeros_like(emlinewave)
-            good = specivar[ii] > 0
-            emlinesigma[good] = 1 / np.sqrt(specivar[ii][good])
-            
-            bigax.fill_between(emlinewave, emlineflux-emlinesigma, emlineflux+emlinesigma,
-                               color=col1[ii], alpha=0.7)
+
+            emlinesigma, good = _ivar2var(data['ivar'][ii], sigma=True)
+            emlinewave = emlinewave[good]
+            emlineflux = emlineflux[good]
+            emlinesigma = emlinesigma[good]
+            emlinemodel = emlinemodel[good]
+
+            bigax.fill_between(emlinewave, emlineflux-emlinesigma,
+                               emlineflux+emlinesigma, color=col1[ii], alpha=0.7)
             bigax.plot(emlinewave, emlinemodel, color=col2[ii], lw=2)
 
             # get the robust range
@@ -2171,13 +2247,13 @@ class EMLineFit(object):
             if np.max(emlinemodel) > ymax:
                 ymax = np.max(emlinemodel) * 1.2
 
-        bigax.text(0.95, 0.92, '{}'.format(objinfo['targetid']), 
+        bigax.text(0.95, 0.92, '{}'.format(leg['targetid']), 
                    ha='right', va='center', transform=bigax.transAxes, fontsize=18)
-        bigax.text(0.95, 0.86, r'{}'.format(objinfo['zredrock']),
+        bigax.text(0.95, 0.86, r'{}'.format(leg['zredrock']),
                    ha='right', va='center', transform=bigax.transAxes, fontsize=18)
-        bigax.text(0.95, 0.80, r'{} {}'.format(objinfo['linevshift_balmer'], objinfo['linevshift_forbidden']),
+        bigax.text(0.95, 0.80, r'{} {}'.format(leg['linevshift_balmer'], leg['linevshift_forbidden']),
                    ha='right', va='center', transform=bigax.transAxes, fontsize=18)
-        bigax.text(0.95, 0.74, r'{} {}'.format(objinfo['linesigma_balmer'], objinfo['linesigma_forbidden']),
+        bigax.text(0.95, 0.74, r'{} {}'.format(leg['linesigma_balmer'], leg['linesigma_forbidden']),
                    ha='right', va='center', transform=bigax.transAxes, fontsize=18)
                 
         bigax.set_xlim(3500, 10000)
@@ -2210,13 +2286,16 @@ class EMLineFit(object):
 
             # iterate over cameras
             for ii in [0, 1, 2]: # iterate over cameras
-                emlinewave = specwave[ii]
-                emlineflux = specflux[ii] - continuum[ii]
+                emlinewave = data['wave'][ii]
+                emlineflux = data['flux'][ii] - continuum[ii]
                 emlinemodel = _emlinemodel[ii]
-                emlinesigma = np.zeros_like(emlinewave)
-                good = specivar[ii] > 0
-                emlinesigma[good] = 1 / np.sqrt(specivar[ii][good])
-            
+
+                emlinesigma, good = _ivar2var(data['ivar'][ii], sigma=True)
+                emlinewave = emlinewave[good]
+                emlineflux = emlineflux[good]
+                emlinesigma = emlinesigma[good]
+                emlinemodel = emlinemodel[good]
+
                 indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
                 #log.info(ii, linename, len(indx))
                 if len(indx) > 1:
@@ -2269,6 +2348,7 @@ class EMLineFit(object):
             
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
 
-        if png:
-            log.info('Writing {}'.format(png))
-            fig.savefig(png)
+        pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(
+            result['TILE'], result['NIGHT'], result['TARGETID']))
+        log.info('Writing {}'.format(pngfile))
+        fig.savefig(pngfile)

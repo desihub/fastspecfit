@@ -109,8 +109,8 @@ def main(args=None):
     # data table.
     t0 = time.time()
     CFit = ContinuumFit(nproc=args.nproc, verbose=args.verbose)
-    EMFit = EMLineFit()
-    nyxgalaxy = init_nyxgalaxy(args.tile, args.night, zbest, specobj.fibermap, CFit)
+    EMFit = EMLineFit(nproc=args.nproc, verbose=args.verbose)
+    nyxgalaxy = init_nyxgalaxy(args.tile, args.night, zbest, specobj.fibermap, CFit, EMFit)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Unpacking with multiprocessing takes a lot longer (maybe pickling takes a
@@ -129,22 +129,12 @@ def main(args=None):
             nyxgalaxy[col][indx] = cfit[col]
         log.info('Continuum-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
 
-        ## fit the emission-line spectrum and populate the output table
-        #emfit, emlinemodel = EMFit.fit(specwave, specflux, specivar, specres, continuum,
-        #                               zredrock, verbose=args.verbose)
-        #for col in ['d4000', 'd4000_model']:
-        #    nyxgalaxy['{}'.format(col).upper()][indx] = emfit['{}'.format(col)]
-        #
-        #for col in ['linevshift', 'linesigma']:
-        #    for suffix in ['forbidden', 'balmer']:
-        #        nyxgalaxy['{}_{}'.format(col, suffix).upper()][indx] = emfit['{}_{}'.format(col, suffix)]
-        #        nyxgalaxy['{}_{}_IVAR'.format(col, suffix).upper()][indx] = emfit['{}_{}_ivar'.format(col, suffix)]
-        #for line in emfit['linenames']:
-        #    for suffix in ['chi2', 'npix', 'flux_limit', 'ew_limit']:
-        #        nyxgalaxy['{}_{}'.format(line, suffix).upper()][indx] = emfit['{}_{}'.format(line, suffix)]
-        #    for suffix in ['amp', 'flux', 'boxflux', 'ew', 'cont']:
-        #        nyxgalaxy['{}_{}'.format(line, suffix).upper()][indx] = emfit['{}_{}'.format(line, suffix)]
-        #        nyxgalaxy['{}_{}_IVAR'.format(line, suffix).upper()][indx] = emfit['{}_{}_ivar'.format(line, suffix)]
+        # fit the emission-line spectrum
+        t0 = time.time()
+        emfit = EMFit.fit(data[iobj], continuum)
+        for col in emfit.colnames:
+            nyxgalaxy[col][indx] = emfit[col]
+        log.info('Line-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
 
     # write out
     t0 = time.time()

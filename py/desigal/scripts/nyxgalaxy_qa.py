@@ -31,6 +31,7 @@ def parse(options=None):
     parser.add_argument('--last', type=int, help='Index of last spectrum to process (max of nobj-1).')
     parser.add_argument('--nproc', default=1, type=int, help='Number of cores.')
     parser.add_argument('--use-vi', action='store_true', help='Select spectra with high-quality visual inspections (VI).')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing files.')
     parser.add_argument('--no-write-spectra', dest='write_spectra', default=True, action='store_false',
                         help='Do not write out the selected spectra for the specified tile and night.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose.')
@@ -73,8 +74,6 @@ def main(args=None):
     nyxgalaxy = Table.read(nyxgalaxyfile)
     log.info('Read {} objects from {}'.format(len(nyxgalaxy), nyxgalaxyfile))
 
-    pdb.set_trace()
-
     # Read the data 
     zbest, specobj = read_spectra(tile=args.tile, night=args.night,
                                   use_vi=args.use_vi, 
@@ -97,7 +96,8 @@ def main(args=None):
     del specobj, zbest # free memory
 
     for iobj, indx in enumerate(fitindx):
-        CFit.fnnls_continuum_plot(data[iobj], nyxgalaxy[indx], qadir=qadir)
+        continuum = CFit.fnnls_continuum_plot(data[iobj], nyxgalaxy[indx], qadir=qadir)
+        EMFit.emlineplot(data[iobj], nyxgalaxy[indx], continuum, qadir=qadir)
 
         #south = True
         #targetid = nyxgalaxy['TARGETID'][indx]
