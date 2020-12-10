@@ -198,7 +198,8 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
                 keep = np.where(np.isin(zb['TARGETID'], truth['TARGETID']))[0]
             else:
                 #snr = np.median(specobj.flux['r']*np.sqrt(specobj.ivar['r']), axis=1)
-                keep = np.where((zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY') * (fiberstatus == 0))[0]
+                keep = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 0) *
+                                (zb['SPECTYPE'] == 'GALAXY') * (fiberstatus == 0))[0]
                 #keep = np.where((zb['ZWARN'] == 0) * (zb['DELTACHI2'] > 50) * (zb['SPECTYPE'] == 'GALAXY'))[0]
 
             if verbose:
@@ -467,14 +468,16 @@ def fit_fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
     if support is None:
         support = np.zeros(0, dtype=int)
     #print(printme)
-    coeff, _ = fnnls(ZZ, xx, P_initial=support)
+    warn, coeff, _ = fnnls(ZZ, xx, P_initial=support)
+    #if warn:
+    #    print('WARNING: fnnls did not converge after 5 iterations.')
 
     if get_chi2:
         chi2 = np.sum(ivar * (flux - modelflux.dot(coeff))**2)
         chi2 /= np.sum(ivar > 0) # reduced chi2
-        return coeff, chi2
+        return warn, coeff, chi2
     else:
-        return coeff
+        return warn, coeff
 
 def convolve_vdisp(sspflux, pixkms, vdisp):
     """Convolve by the velocity dispersion.
@@ -536,13 +539,18 @@ def smooth_and_resample(sspflux, sspwave, specwave=None, specres=None,
     if specwave is None:
         resampflux = sspflux 
     else:
-        resampflux = trapz_rebin(sspwave, sspflux, specwave)
+        #t0 = time.time()
+        trim = (sspwave > (specwave.min()-10.0)) * (sspwave < (specwave.max()+10.0))
+        #resampflux = trapz_rebin(sspwave, sspflux, specwave)
+        resampflux = trapz_rebin(sspwave[trim], sspflux[trim], specwave)
+        #print(time.time()-t0)
         #resampflux = resample_flux(specwave, sspwave, sspflux, extrapolate=True)
         #resampflux = np.interp(specwave, sspwave, sspflux)
 
-    # broaden for velocity dispersion
-    if vdisp:
-        resampflux = convolve_vdisp(resampflux, pixkms, vdisp)
+    ## broaden for velocity dispersion
+    #print('Turning off vdisp')
+    #if vdisp:
+    #    resampflux = convolve_vdisp(resampflux, pixkms, vdisp)
 
     if specres is None:
         smoothflux = resampflux
@@ -587,7 +595,10 @@ class ContinuumFit(object):
         from speclite import filters
         from desiutil.dust import SFDMap
 
-        self.cosmo = FlatLambdaCDM(H0=70, Om0=0.3)        
+        # pre-compute the luminosity distance on a grid
+        self.cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
+        self.redshift_ref = np.arange(0.0, 5.0, 0.05)
+        self.dlum_ref = self.cosmo.luminosity_distance(self.redshift_ref).to(u.pc).value
 
         self.metallicity = metallicity
         self.Z = float(metallicity[1:])
@@ -608,7 +619,7 @@ class ContinuumFit(object):
 
         # Initialize the velocity dispersion and reddening parameters. Make sure
         # the nominal values are in the grid.
-        vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 30.0, 150.0)
+        vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 20.0, 150.0)
         #vdispmin, vdispmax, dvdisp, vdisp_nominal = (0.0, 0.0, 30.0, 150.0)
         nvdisp = np.ceil((vdispmax - vdispmin) / dvdisp).astype(int)
         if nvdisp == 0:
@@ -657,8 +668,8 @@ class ContinuumFit(object):
             minwave = np.min(wave)
         keep = np.where((wave >= minwave) * (wave <= maxwave))[0]
         sspwave = wave[keep]
-        sspflux = flux[keep, ::4]
-        sspinfo = sspinfo[::4]
+        sspflux = flux[keep, ::5]
+        sspinfo = sspinfo[::5]
         nage = len(sspinfo)
         npix = len(sspwave)
 
@@ -713,11 +724,13 @@ class ContinuumFit(object):
 
         # table of emission lines to fit
         self.linetable = read_nyxgalaxy_lines()
-        self.linemask_sigma = 300.0 # [km/s]
+        self.linemask_sigma = 150.0 # [km/s]
 
         # Ddo a throw-away trapezoidal resampling so we can compile the numba
         # code when instantiating this class.
+        #t0 = time.time()
         _ = trapz_rebin(np.arange(4), np.ones(4), np.arange(2)+1)
+        #print('Initial rebin ', time.time() - t0)
 
     def init_output(self, nobj=1):
         """Initialize the output data table for this class.
@@ -816,13 +829,18 @@ class ContinuumFit(object):
         phot['flam_ivar'] = (ivarmaggies / factor**2).astype('f4')
 
         # approximate the uncertainty as being symmetric in magnitude
-        # fixme
-        phot['abmag'] = (-2.5 * np.log10(nanofactor * maggies)).astype('f4')
-        phot['abmag_ivar'] = (ivarmaggies * (maggies * 0.4 * np.log(10))**2).astype('f4')
-        #good = np.where(maggies > 0)[0]
-        #phot['abmag'][good, :] = (-2.5 * np.log10(nanofactor * maggies[good])).astype('f4')
-        #phot['abmag_ivar'][good, :] = (ivarmaggies[good] * (maggies[good] * 0.4 * np.log(10))**2).astype('f4')
-
+        if maggies.ndim > 1:
+            igood, jgood = np.unravel_index(np.where(maggies > 0)[0], maggies.shape)
+            maggies = maggies[igood, jgood]
+            ivarmaggies = ivarmaggies[igood, jgood]
+        else:
+            igood, jgood = np.where(maggies > 0)[0], [0]
+            maggies = maggies[igood]
+            ivarmaggies = ivarmaggies[igood]
+            
+        phot['abmag'][igood, jgood] = (-2.5 * np.log10(nanofactor * maggies)).astype('f4')
+        phot['abmag_ivar'][igood, jgood] = (ivarmaggies * (maggies * 0.4 * np.log(10))**2).astype('f4')
+        
         return phot
 
     def obsolete_convolve_vdisp(self, sspflux, vdisp):
@@ -848,82 +866,9 @@ class ContinuumFit(object):
         smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
         return smoothflux
     
-    def obsolete_redshift_smooth_and_resample(self, redshift=0.0, specwave=None,
-                                              specres=None, south=True, getphot=True):
-        """Redshift, apply the resolution matrix, and resample in wavelength.
-
-        Parameters
-        ----------
-        redshift
-        specwave
-        specres
-        south
-        getphot
-
-        Returns
-        -------
-
-        Notes
-        -----
-        
-        """
-        # Ignore models which are older than the age of the universe at this
-        # redshift.
-        agekeep = np.where(self.sspinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
-        npix, nAV, nage = self.npix, len(self.AV), len(agekeep)
-        nmodel = nage * nAV
-
-        # Apply the redshift factor.
-        zsspwave = self.sspwave * (1 + redshift)
-
-        zsspflux = self.sspflux[:, agekeep, :].reshape(npix, nmodel)
-        zsspflux /= (1 + np.array(redshift).repeat(self.npix)[:, np.newaxis])
-
-        # Optionally synthesize photometry on the full grid. Note that we have
-        # to handle that the grid has dimensions [npix,nage,nAV].
-        if getphot:
-            t0 = time.time()
-            if south:
-                filters = self.decamwise
-            else:
-                filters = self.bassmzlswise
-            maggies = filters.get_ab_maggies(zsspflux, zsspwave, axis=0) # [filters wants an [nspec, npix] array
-            maggies = np.vstack(maggies.as_array().tolist()).T
-            effwave = filters.effective_wavelengths.value
-        
-            sspphot = self.parse_photometry(maggies, effwave, nanomaggies=False)
-            log.info('Synthesizing photometry took: {:.2f} sec'.format(time.time()-t0))
-        else:
-            sspphot = None
-
-        # Are we returning per-camera spectra or a single model? Handle that here.
-        t0 = time.time()
-        if specres is None and specwave is None:
-            args = [(zsspflux[:, imodel], zsspwave, None, None)
-                    for imodel in np.arange(nmodel)]
-            if self.nproc > 1:
-                with multiprocessing.Pool(self.nproc) as P:
-                    smoothflux = np.vstack(P.map(_smooth_and_resample, args)).T
-            else:
-                smoothflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
-        else:
-            # loop over cameras then SSP ages
-            smoothflux = []
-            for icamera in [0, 1, 2]: # iterate on cameras
-                args = [(zsspflux[:, imodel], zsspwave, specwave[icamera], specres[icamera])
-                        for imodel in np.arange(nmodel)]
-                if self.nproc > 1:
-                    with multiprocessing.Pool(self.nproc) as P:
-                        smoothflux.append(np.vstack(P.map(_smooth_and_resample, args)).T)
-                else:
-                    smoothflux.append(np.vstack([smooth_and_resample(*_args) for _args in args]).T)
-        log.info('Resampling took: {:.2f} sec'.format(time.time()-t0))
-            
-        return smoothflux, sspphot # [npix, nmodel]
-
-    def SSP2data(self, sspflux, sspwave, redshift=0.0, AV=None, vdisp=None,
+    def SSP2data(self, _sspflux, _sspwave, redshift=0.0, AV=None, vdisp=None,
                  specwave=None, specres=None, coeff=None, south=True,
-                 synthphot=True):
+                 synthphot=True, nproc=1):
         """Workhorse routine to turn input SSPs into spectra that can be compared to
         real data.
 
@@ -960,6 +905,8 @@ class ContinuumFit(object):
         """
         # Are we dealing with a 2D grid [npix,nage] or a 3D grid
         # [npix,nage,nAV] or [npix,nage,nvdisp]?
+        sspflux = _sspflux.copy() # why?!?
+        sspwave = _sspwave.copy() # why?!?
         ndim = sspflux.ndim
         if ndim == 2:
             npix, nage = sspflux.shape
@@ -967,11 +914,14 @@ class ContinuumFit(object):
         elif ndim == 3:
             npix, nage, nprop = sspflux.shape
             nmodel = nage*nprop
+            sspflux = sspflux.reshape(npix, nmodel)
         else:
             log.fatal('Input SSPs have an unrecognized number of dimensions, {}'.format(ndim))
             raise ValueError
         
-        sspflux = sspflux.copy().reshape(npix, nmodel)
+        #t0 = time.time()
+        ##sspflux = sspflux.copy().reshape(npix, nmodel)
+        #log.info('Copying the data took: {:.2f} sec'.format(time.time()-t0))
 
         # apply reddening
         if AV:
@@ -985,13 +935,21 @@ class ContinuumFit(object):
         # Apply the redshift factor. The models are normalized to 10 pc, so
         # apply the luminosity distance factor here. Also normalize to a nominal
         # stellar mass.
+        #t0 = time.time()
         if redshift:
             zsspwave = sspwave * (1.0 + redshift)
-            dfactor = (10 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2
-            zsspflux = self.fluxnorm * self.massnorm * dfactor * sspflux / (1.0 + redshift) 
+            #dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2
+            dfactor = (10.0 / np.interp(redshift, self.redshift_ref, self.dlum_ref))**2
+            factor = (self.fluxnorm * self.massnorm * dfactor / (1.0 + redshift))[np.newaxis, np.newaxis]
+            #factor = np.asarray(self.fluxnorm * self.massnorm * dfactor / (1.0 + redshift))[np.newaxis, np.newaxis]
+            #t0 = time.time()
+            zsspflux = sspflux * factor
+            #zsspflux = self.fluxnorm * self.massnorm * dfactor * sspflux / (1.0 + redshift)
+            #print(time.time()-t0)
         else:
             zsspwave = sspwave.copy()
             zsspflux = self.fluxnorm * self.massnorm * sspflux
+        #log.info('Cosmology calculations took: {:.2f} sec'.format(time.time()-t0))
 
         # Optionally synthesize photometry. We assume that velocity broadening,
         # if any, won't impact the measured photometry.
@@ -1018,12 +976,15 @@ class ContinuumFit(object):
             # multiprocess over age
             args = [(zsspflux[:, imodel], zsspwave, specwave, specres, vdisp, self.pixkms)
                     for imodel in np.arange(nmodel)]
-            if self.nproc > 1:
+            if nproc > 1:
                 with multiprocessing.Pool(self.nproc) as P:
                     datasspflux = np.vstack(P.map(_smooth_and_resample, args)).T
             else:
                 datasspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
                 
+            if vdisp:
+                 datasspflux = self.obsolete_convolve_vdisp(datasspflux, vdisp)
+                 
             # optionally compute the best-fitting model
             if coeff is not None:
                 datasspflux = datasspflux.dot(coeff)
@@ -1038,14 +999,18 @@ class ContinuumFit(object):
             for icamera in [0, 1, 2]: # iterate on cameras
                 args = [(zsspflux[:, imodel], zsspwave, specwave[icamera], specres[icamera], vdisp, self.pixkms)
                         for imodel in np.arange(nmodel)]
-                if self.nproc > 1:
+                if nproc > 1:
                     with multiprocessing.Pool(self.nproc) as P:
                         datasspflux.append(np.vstack(P.map(_smooth_and_resample, args)).T)
                 else:
                     _datasspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
-                    if coeff is not None:
-                        _datasspflux = _datasspflux.dot(coeff)
-                    datasspflux.append(_datasspflux)
+
+                if vdisp:
+                    _datasspflux = self.obsolete_convolve_vdisp(_datasspflux, vdisp)
+                if coeff is not None:
+                    _datasspflux = _datasspflux.dot(coeff)
+                datasspflux.append(_datasspflux)
+                
         #log.info('Resampling took: {:.2f} sec'.format(time.time()-t0))
 
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
@@ -1254,8 +1219,11 @@ class ContinuumFit(object):
             #if modelflux.ndim == 2:
             if xparam is None:
                 ZZ = modelflux * ww[:, np.newaxis]
-                coeff, chi2 = fit_fnnls_continuum(ZZ, xx, flux=flux, ivar=ivar,
-                                                  modelflux=modelflux, get_chi2=True)
+                warn, coeff, chi2 = fit_fnnls_continuum(ZZ, xx, flux=flux, ivar=ivar,
+                                                        modelflux=modelflux, get_chi2=True)
+                if np.any(warn):
+                    print('WARNING: fnnls did not converge after 5 iterations.')
+
                 return coeff, chi2
 
             # ...otherwise multiprocess over the xparam (e.g., AV or vdisp)
@@ -1270,7 +1238,10 @@ class ContinuumFit(object):
                 #fit_fnnls_continuum(*fitargs[10])
                 #pdb.set_trace()
                 rr = [fit_fnnls_continuum(*_fitargs) for _fitargs in fitargs]
-            _, chi2grid = list(zip(*rr)) # unpack
+            warn, _, chi2grid = list(zip(*rr)) # unpack
+            if np.any(warn):
+                vals = ','.join(['{:.1f}'.format(xp) for xp in xparam[np.where(warn)[0]]])
+                log.warning('fnnls did not converge after 5 iterations for parameter value(s) {}.'.format(vals))
             chi2grid = np.array(chi2grid)
 
             imin = fitz.find_minima(chi2grid)[0]
@@ -1310,7 +1281,7 @@ class ContinuumFit(object):
         zsspflux_dustvdisp, zsspphot_dustvdisp = self.SSP2data(
             self.sspflux_dustvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
             redshift=redshift, specwave=data['wave'], specres=data['res'],
-            south=data['photsys_south'])
+            south=data['photsys_south'], nproc=1)
         log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
         
         # Combine all three cameras; we will unpack them to build the
@@ -1407,7 +1378,7 @@ class ContinuumFit(object):
             
         zsspflux_vdisp = np.stack(zsspflux_vdisp, axis=-1) # [npix,nage,nvdisp] at best A(V)
         vdispchi2min, vdispbest, vdispivar = _fnnls_parallel(zsspflux_vdisp, specflux, specivar,
-                                                             xparam=self.vdisp, debug=True)
+                                                             xparam=self.vdisp, debug=False)
         log.info('Fitting for the velocity dispersion took: {:.2f} sec'.format(time.time()-t0))
         if vdispivar > 0:
             log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s with chi2={:.3f}'.format(

@@ -122,7 +122,6 @@ def main(args=None):
 
     # Fit each object in sequence.
     for iobj, indx in enumerate(fitindx):
-
         # fit the stellar continuum
         t0 = time.time()
         cfit, continuum = CFit.fnnls_continuum(data[iobj])

@@ -73,6 +73,8 @@ def main(args=None):
     nyxgalaxy = Table.read(nyxgalaxyfile)
     log.info('Read {} objects from {}'.format(len(nyxgalaxy), nyxgalaxyfile))
 
+    pdb.set_trace()
+
     # Read the data 
     zbest, specobj = read_spectra(tile=args.tile, night=args.night,
                                   use_vi=args.use_vi, 
