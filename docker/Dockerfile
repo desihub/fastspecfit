@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 
-RUN apt -y update && apt install -y apt-utils && echo yes
+RUN apt -y update && apt install -y apt-utils && echo 1
 
 RUN DEBIAN_FRONTEND=noninteractive \
     apt install -y --no-install-recommends \
