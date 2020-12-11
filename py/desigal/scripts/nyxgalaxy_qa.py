@@ -63,11 +63,13 @@ def main(args=None):
             raise EnvironmentError('Required ${} environment variable not set'.format(key))
 
     nyxgalaxy_dir = os.getenv('NYXGALAXY_DATA')
+    resultsdir = os.path.join(nyxgalaxy_dir, 'results')
     qadir = os.path.join(nyxgalaxy_dir, 'qa')
     if not os.path.isdir(qadir):
         os.makedirs(qadir)
 
-    nyxgalaxyfile = os.path.join(nyxgalaxy_dir, 'nyxgalaxy-{}-{}.fits'.format(args.tile, args.night))
+    nyxgalaxyfile = os.path.join(resultsdir, 'nyxgalaxy-{}-{}.fits'.format(
+        args.tile, args.night))
     if not os.path.isfile(nyxgalaxyfile):
         log.info('Output file {} not found!'.format(nyxgalaxyfile))
         return
@@ -99,37 +101,3 @@ def main(args=None):
         continuum = CFit.fnnls_continuum_plot(data[iobj], nyxgalaxy[indx], qadir=qadir)
         EMFit.emlineplot(data[iobj], nyxgalaxy[indx], continuum, qadir=qadir)
 
-        #south = True
-        #targetid = nyxgalaxy['TARGETID'][indx]
-        #continuum = CFit.fnnls_continuum_bestfit(nyxgalaxy['CONTINUUM_COEFF'][indx], specwave=specwave,
-        #                                         specres=specres, redshift=zredrock)
-        #continuum_fullwave, fullwave = CFit.fnnls_continuum_bestfit(nyxgalaxy['CONTINUUM_PHOT_COEFF'][indx],
-        #                                                            redshift=zredrock)
-        #emlinemodel = EMFit.emlinemodel_bestfit(specwave, specres, nyxgalaxy[indx])
-        #
-        ## continuum fit
-        #pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(args.tile, args.night, targetid))
-        #
-        #if south:
-        #    filters = CFit.decamwise
-        #else:
-        #    filters = CFit.bassmzlswise
-        #filtwave = filters.effective_wavelengths.value
-        #
-        #CFit.fnnls_continuum_plot(specwave, specflux, specivar, galphot, continuum, 
-        #                          continuum_fullwave, fullwave, objinfo, png=pngfile)
-        #
-        #pdb.set_trace()
-        #
-        ## emission-line fit
-        #pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(args.tile, args.night, targetid))
-        #objinfo = {
-        #    'targetid': '{} {}'.format(zbest['TARGETID'][indx], -999),
-        #    'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(nyxgalaxy['Z'][indx]),
-        #    'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(nyxgalaxy['LINEVSHIFT_FORBIDDEN'][indx]),
-        #    'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(nyxgalaxy['LINEVSHIFT_BALMER'][indx]),
-        #    'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(nyxgalaxy['LINESIGMA_FORBIDDEN'][indx]),
-        #    'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(nyxgalaxy['LINESIGMA_BALMER'][indx]),
-        #    }
-        #EMFit.emlineplot(specwave, specflux, specivar, continuum,
-        #                 emlinemodel, zredrock, objinfo, png=pngfile)

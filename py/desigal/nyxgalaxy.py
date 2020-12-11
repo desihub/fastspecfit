@@ -15,13 +15,13 @@ from astropy.table import Table, Column, vstack, join, hstack
 from astropy.modeling import Fittable1DModel
 
 from fnnls import fnnls
-from desiutil.log import get_logger
 #from desispec.interpolation import resample_flux
 from redrock.rebin import trapz_rebin
 
 from scipy import constants
 C_LIGHT = constants.c / 1000.0 # [km/s]
 
+from desiutil.log import get_logger
 log = get_logger()
 
 def init_nyxgalaxy(tile, night, zbest, fibermap, CFit, EMFit):
@@ -151,20 +151,18 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
     
     zbest = []
     spectra, keepindx = [], []
-    for spectro in ('0'):
-    #for spectro in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'):
+    #for spectro in ('0'):
+    for spectro in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'):
         zbestfile = os.path.join(desidatadir, 'zbest-{}-{}-{}.fits'.format(spectro, tile, night))
         coaddfile = os.path.join(desidatadir, 'coadd-{}-{}-{}.fits'.format(spectro, tile, night))
         if os.path.isfile(zbestfile) and os.path.isfile(coaddfile):
             zb = Table(fitsio.read(zbestfile))
-            fiberstatus = fitsio.read(coaddfile, ext='FIBERMAP', columns='FIBERSTATUS')
+            fmap = fitsio.read(coaddfile, ext='FIBERMAP', columns=['FIBERSTATUS', 'OBJTYPE'])
             if use_vi:
                 keep = np.where(np.isin(zb['TARGETID'], truth['TARGETID']))[0]
             else:
-                #snr = np.median(specobj.flux['r']*np.sqrt(specobj.ivar['r']), axis=1)
-                keep = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 0) *
-                                (zb['SPECTYPE'] == 'GALAXY') * (fiberstatus == 0))[0]
-                #keep = np.where((zb['ZWARN'] == 0) * (zb['DELTACHI2'] > 50) * (zb['SPECTYPE'] == 'GALAXY'))[0]
+                keep = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 0) * (fmap['OBJTYPE'] == 'TGT') *
+                                (zb['SPECTYPE'] == 'GALAXY') * (fmap['FIBERSTATUS'] == 0))[0]
 
             if verbose:
                 log.debug('Spectrograph {}: N={}'.format(spectro, len(keep)))
@@ -438,9 +436,11 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
     maggies = np.zeros(len(bands))
     ivarmaggies = np.zeros(len(bands))
     for iband, band in enumerate(bands):
-        dust = specobj.fibermap['MW_TRANSMISSION_{}'.format(band.upper())][indx]
-        maggies[iband] = specobj.fibermap['FLUX_{}'.format(band.upper())][indx] / dust
-        ivarmaggies[iband] = specobj.fibermap['FLUX_IVAR_{}'.format(band.upper())][indx] * dust**2
+        ivar = specobj.fibermap['FLUX_IVAR_{}'.format(band.upper())][indx]
+        if ivar > 0:
+            dust = specobj.fibermap['MW_TRANSMISSION_{}'.format(band.upper())][indx]
+            maggies[iband] = specobj.fibermap['FLUX_{}'.format(band.upper())][indx] / dust
+            ivarmaggies[iband] = ivar * dust**2
     
     data['phot'] = CFit.parse_photometry(
         maggies=maggies, lambda_eff=lambda_eff,
@@ -488,14 +488,13 @@ def _fit_fnnls_continuum(myargs):
     return fit_fnnls_continuum(*myargs)
 
 def fit_fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
-                        support=None, get_chi2=False, printme=None):
+                        support=None, get_chi2=False):
     """Fit a continuum using fNNLS. This function is a simple wrapper on fnnls; see
     the ContinuumFit.fnnls_continuum method for documentation.
 
     """
     if support is None:
         support = np.zeros(0, dtype=int)
-    #print(printme)
     warn, coeff, _ = fnnls(ZZ, xx, P_initial=support)
     #if warn:
     #    print('WARNING: fnnls did not converge after 5 iterations.')
@@ -1052,76 +1051,13 @@ class ContinuumFit(object):
         age = self.sspinfo['age'][0:nage] # account for age of the universe trimming
 
         if np.count_nonzero(coeff > 0) == 0:
-            log.fatal('Coefficients are all zero!')
-            raise ValueError
-        
-        meanage = np.sum(coeff * age) / np.sum(coeff) / 1e9 # [Gyr]
+            log.warning('Coefficients are all zero!')
+            meanage = -1.0
+            #raise ValueError
+        else:
+            meanage = np.sum(coeff * age) / np.sum(coeff) / 1e9 # [Gyr]
         
         return meanage
-
-    def obsolete_get_d4000(self, wave, flam, flam_ivar=None, redshift=None, rest=True):
-        """Compute D(4000) and, optionally, the inverse variance.
-
-        Parameters
-        ----------
-        wave
-        flam
-        flam_ivar
-        redshift
-        rest
-
-        Returns
-        -------
-
-        Notes
-        -----
-        If `rest`=``False`` then `redshift` input is required.
-        
-        """
-        d4000, d4000_ivar = 0.0, 0.0
-
-        if rest:
-            flam2fnu =  wave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
-        else:
-            wave /= (1 + redshift) # [Angstrom]
-            flam2fnu = (1 + redshift) * wave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
-
-        if flam_ivar is None:
-            goodmask = np.ones(len(flam), bool) # True is good
-        else:
-            goodmask = flam_ivar > 0
-            
-        indxblu = np.where((wave >= 3850.) * (wave <= 3950.) * goodmask)[0]
-        indxred = np.where((wave >= 4000.) * (wave <= 4100.) * goodmask)[0]
-        if len(indxblu) < 5 or len(indxred) < 5:
-            return d4000, d4000_ivar
-
-        blufactor, redfactor = 3950.0 - 3850.0, 4100.0 - 4000.0
-        deltawave = np.gradient(wave) # should be constant...
-
-        fnu = flam * flam2fnu # [erg/s/cm2/Hz]
-
-        numer = blufactor * np.sum(deltawave[indxred] * fnu[indxred])
-        denom = redfactor * np.sum(deltawave[indxblu] * fnu[indxblu])
-        if denom == 0.0:
-            log.warning('D(4000) is ill-defined!')
-            return d4000, d4000_ivar
-        d4000 =  numer / denom
-        
-        if flam_ivar is not None:
-            fnu_ivar = flam_ivar / flam2fnu**2
-            fnu_var, _ = _ivar2var(fnu_ivar)
-            
-            numer_var = blufactor**2 * np.sum(deltawave[indxred] * fnu_var[indxred])
-            denom_var = redfactor**2 * np.sum(deltawave[indxblu] * fnu_var[indxblu])
-            d4000_var = (numer_var + numer**2 * denom_var) / denom**2
-            if d4000_var <= 0:
-                log.warning('D(4000) variance is ill-defined!')
-                d4000_ivar = 0.0
-            else:
-                d4000_ivar = 1.0 / d4000_var
-
-        return d4000, d4000_ivar
 
     def younger_than_universe(self, redshift):
         """Return the indices of the SSPs younger than the age of the universe at the
@@ -1259,7 +1195,7 @@ class ContinuumFit(object):
             # dimension.
             ZZ = modelflux * ww[:, np.newaxis, np.newaxis] # reshape into [npix/nband,nage,nAV/nvdisp]
 
-            fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], None, True, xparam[ii]) for ii in np.arange(nn)]
+            fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], None, True) for ii in np.arange(nn)]
             if self.nproc > 1:
                 with multiprocessing.Pool(self.nproc) as P:
                     rr = P.map(_fit_fnnls_continuum, fitargs)
@@ -1273,8 +1209,17 @@ class ContinuumFit(object):
                 log.warning('fnnls did not converge after 5 iterations for parameter value(s) {}.'.format(vals))
             chi2grid = np.array(chi2grid)
 
-            imin = fitz.find_minima(chi2grid)[0]
-            xbest, xerr, chi2min, warn = fitz.minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
+            try:
+                imin = fitz.find_minima(chi2grid)[0]
+                xbest, xerr, chi2min, warn = fitz.minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
+            except:
+                print('HERE!!!', chi2grid)
+                imin, xbest, xerr, chi2min, warn = 0, 0.0, 0.0, 0.0, 1
+                
+            #if np.all(chi2grid == 0):
+            #    imin, xbest, xerr, chi2min, warn = 0, 0.0, 0.0, 0.0, 1
+            #else:
+            
             if warn == 0:
                 xivar = 1.0 / xerr**2
             else:
@@ -1604,6 +1549,7 @@ class ContinuumFit(object):
             result['TILE'], result['NIGHT'], result['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
+        plt.close()
 
         return continuum
         
@@ -2198,7 +2144,7 @@ class EMLineFit(object):
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
 
         leg = {
-            'targetid': '{} {}'.format(result['TARGETID'], -999),
+            'targetid': '{} {}'.format(result['TARGETID'], result['FIBER']),
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
             'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(result['LINEVSHIFT_FORBIDDEN']),
             'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(result['LINEVSHIFT_BALMER']),
@@ -2352,3 +2298,4 @@ class EMLineFit(object):
             result['TILE'], result['NIGHT'], result['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
+        plt.close()

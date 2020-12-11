@@ -20,20 +20,54 @@ new truth table for 70500 is here--
 https://desi.lbl.gov/trac/wiki/SurveyValidation/TruthTables
 https://desi.lbl.gov/DocDB/cgi-bin/private/RetrieveFile?docid=5720;filename=DESI_data_042820.pdf
 
-time nyxgalaxy --last 20 --nproc 32 --overwrite --tile 70005 --night 20200303
+time nyxgalaxy --tile 70500 --night 20200303 --nproc 32 --overwrite
+
+time nyxgalaxy --tile 67230 --night 20200315 --nproc 32 --overwrite # ELG
+time nyxgalaxy --tile 68001 --night 20200315 --nproc 32 --overwrite # QSO+LRG
+time nyxgalaxy --tile 68002 --night 20200315 --nproc 32 --overwrite # QSO+LRG
+time nyxgalaxy --tile 67142 --night 20200315 --nproc 32 --overwrite # ELG
+time nyxgalaxy --tile 66003 --night 20200315 --nproc 32 --overwrite # BGS+MWS
+
+time nyxgalaxy-qa --tile 67142 --night 20200315 --first 0 --last 10
 
 """
 import pdb # for debugging
 
 import os, sys, time
 import numpy as np
+import multiprocessing
+
 from desiutil.log import get_logger
+log = get_logger()
 
 # ridiculousness!
 import tempfile
 os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 import matplotlib
 matplotlib.use('Agg')
+
+def _nyxfit_one(args):
+    """Multiprocessing wrapper."""
+    return nyxfit_one(*args)
+
+def nyxfit_one(indx, data, CFit, EMFit, out):
+    """Fit one."""
+    log.info('Continuum-fitting object {}'.format(indx))
+    t0 = time.time()
+    cfit, continuum = CFit.fnnls_continuum(data)
+    log.info('Continuum-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
+
+    # fit the emission-line spectrum
+    t0 = time.time()
+    emfit = EMFit.fit(data, continuum)
+    log.info('Line-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
+
+    for col in emfit.colnames:
+        out[col] = emfit[col]
+    for col in cfit.colnames:
+        out[col] = cfit[col]
+        
+    return out
 
 def parse(options=None):
     """Parse input arguments.
@@ -71,6 +105,7 @@ def main(args=None):
     """Main module.
 
     """
+    from astropy.table import vstack
     from desigal.nyxgalaxy import read_spectra, unpack_all_spectra, init_nyxgalaxy
     from desigal.nyxgalaxy import ContinuumFit, EMLineFit
 
@@ -84,9 +119,13 @@ def main(args=None):
             raise EnvironmentError('Required ${} environment variable not set'.format(key))
 
     nyxgalaxy_dir = os.getenv('NYXGALAXY_DATA')
+    resultsdir = os.path.join(nyxgalaxy_dir, 'results')
+    if not os.path.isdir(resultsdir):
+        os.makedirs(resultsdir)
 
     # If the output file exists, we're done!
-    nyxgalaxyfile = os.path.join(nyxgalaxy_dir, 'nyxgalaxy-{}-{}.fits'.format(args.tile, args.night))
+    nyxgalaxyfile = os.path.join(resultsdir, 'nyxgalaxy-{}-{}.fits'.format(
+        args.tile, args.night))
     if os.path.isfile(nyxgalaxyfile) and not args.overwrite:
         log.info('Output file {} exists; all done!'.format(nyxgalaxyfile))
         return
@@ -103,13 +142,16 @@ def main(args=None):
         args.first = 0
     if args.last is None:
         args.last = len(zbest) - 1
+    if args.first > args.last:
+        log.warning('Option --first cannot be larger than --last!')
+        raise ValueError
     fitindx = np.arange(args.last - args.first + 1) + args.first
 
     # Initialize the continuum- and emission-line fitting classes and the output
     # data table.
     t0 = time.time()
-    CFit = ContinuumFit(nproc=args.nproc, verbose=args.verbose)
-    EMFit = EMLineFit(nproc=args.nproc, verbose=args.verbose)
+    CFit = ContinuumFit(verbose=args.verbose)
+    EMFit = EMLineFit(verbose=args.verbose)
     nyxgalaxy = init_nyxgalaxy(args.tile, args.night, zbest, specobj.fibermap, CFit, EMFit)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
@@ -120,21 +162,32 @@ def main(args=None):
     del specobj, zbest # free memory
     log.info('Unpacking the spectra to be fitted took: {:.2f} sec'.format(time.time()-t0))
 
-    # Fit each object in sequence.
-    for iobj, indx in enumerate(fitindx):
-        # fit the stellar continuum
-        t0 = time.time()
-        cfit, continuum = CFit.fnnls_continuum(data[iobj])
-        for col in cfit.colnames:
-            nyxgalaxy[col][indx] = cfit[col]
-        log.info('Continuum-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
+    # Fit in parallel
+    fitargs = [(indx, data[iobj], CFit, EMFit, nyxgalaxy[indx]) for iobj, indx in enumerate(fitindx)]
+    if args.nproc > 1:
+        with multiprocessing.Pool(args.nproc) as P:
+            out = P.map(_nyxfit_one, fitargs)
+    else:
+        out = [nyxfit_one(*_fitargs) for _fitargs in fitargs]
 
-        # fit the emission-line spectrum
-        t0 = time.time()
-        emfit = EMFit.fit(data[iobj], continuum)
-        for col in emfit.colnames:
-            nyxgalaxy[col][indx] = emfit[col]
-        log.info('Line-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
+    nyxgalaxy = vstack(out)
+
+    #pdb.set_trace()
+    #for iobj, indx in enumerate(fitindx):
+    #    # fit the stellar continuum
+    #    t0 = time.time()
+    #    cfit, continuum = CFit.fnnls_continuum(data[iobj])
+    #    log.info('Continuum-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
+    #
+    #    # fit the emission-line spectrum
+    #    t0 = time.time()
+    #    emfit = EMFit.fit(data[iobj], continuum)
+    #    log.info('Line-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
+    #
+    #    for col in emfit.colnames:
+    #        nyxgalaxy[col][indx] = emfit[col]
+    #    for col in cfit.colnames:
+    #        nyxgalaxy[col][indx] = cfit[col]
 
     # write out
     t0 = time.time()
