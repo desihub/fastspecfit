@@ -225,7 +225,7 @@ class ContinuumFit(object):
         self.massnorm = 1e10 # stellar mass normalization factor for the SSPs [Msun]
 
         # dust and velocity dispersion
-        self.SFDMap = SFDMap()
+        self.SFDMap = SFDMap(scaling=0.86) # SF11 recalibration of the SFD maps
         self.RV = 3.1
         self.dustslope = 0.7
 

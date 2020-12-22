@@ -112,6 +112,14 @@ def read_spectra(tile, night, specprod='andes', use_vi=False, write_spectra=True
     from astropy.table import Table, vstack
     from desispec.spectra import Spectra
     import desispec.io
+    from desitarget.io import read_targets_in_tiles
+
+    if False:
+        hpdirname = '/global/cfs/cdirs/desi/target/catalogs/dr9/0.47.0/targets/sv1/resolve/dark'
+        print('Assuming hpdirname={}'.format(hpdirname))
+        from desimodel.io import load_tiles
+        tileinfo = load_tiles()
+        tileinfo = tileinfo[tileinfo['TILEID'] == tile]
 
     data_dir = os.path.join(os.getenv('FASTSPECFIT_DATA'), 'spectra', specprod)
     zbestoutfile = os.path.join(data_dir, 'zbest-{}-{}.fits'.format(tile, night))
@@ -124,7 +132,6 @@ def read_spectra(tile, night, specprod='andes', use_vi=False, write_spectra=True
         log.info('Read {} spectra from {}'.format(len(zbest), coaddoutfile))
 
         assert(np.all(zbest['TARGETID'] == coadd.fibermap['TARGETID']))
-
         return zbest, coadd
 
     log.info('Parsing tile, night {}, {} from specprod {}'.format(tile, night, specprod))
@@ -156,6 +163,9 @@ def read_spectra(tile, night, specprod='andes', use_vi=False, write_spectra=True
     
     zbest = []
     spectra, keepindx = [], []
+    if False:
+        targets = read_targets_in_tiles(tiles=np.atleast_1d(tileinfo), hpdirname=hpdirname, quick=True)
+    
     #for spectro in ('0'):
     for spectro in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'):
         zbestfile = os.path.join(desidatadir, 'zbest-{}-{}-{}.fits'.format(spectro, tile, night))
@@ -293,7 +303,7 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
 
     ra = specobj.fibermap['TARGET_RA'][indx]
     dec = specobj.fibermap['TARGET_DEC'][indx]
-    ebv = CFit.SFDMap.ebv(ra, dec, scaling=1.0) # SFD coefficients
+    ebv = CFit.SFDMap.ebv(ra, dec)
 
     # Unpack the data and correct for Galactic extinction. Also flag pixels that
     # may be affected by emission lines.
@@ -365,12 +375,17 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
     bands = ['g', 'r', 'z', 'W1', 'W2']
     maggies = np.zeros(len(bands))
     ivarmaggies = np.zeros(len(bands))
+    dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(lambda_eff, Rv=CFit.RV))
+    
     for iband, band in enumerate(bands):
-        ivar = specobj.fibermap['FLUX_IVAR_{}'.format(band.upper())][indx]
-        if ivar > 0:
-            dust = specobj.fibermap['MW_TRANSMISSION_{}'.format(band.upper())][indx]
-            maggies[iband] = specobj.fibermap['FLUX_{}'.format(band.upper())][indx] / dust
-            ivarmaggies[iband] = ivar * dust**2
+        maggies[iband] = specobj.fibermap['FLUX_{}'.format(band.upper())][indx] / dust[iband]
+
+        ivarcol = 'FLUX_IVAR_{}'.format(band.upper())
+        if ivarcol in specobj.fibermap.colnames:
+            ivarmaggies[iband] = specobj.fibermap[ivarcol][indx] * dust[iband]**2
+        else:
+            if maggies[iband] > 0:
+                ivarmaggies[iband] = (10.0 / maggies [iband])**2 # constant S/N hack!!
     
     data['phot'] = CFit.parse_photometry(
         maggies=maggies, lambda_eff=lambda_eff,
