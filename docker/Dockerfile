@@ -70,15 +70,15 @@ WORKDIR /src
 #     && F90FLAGS="-fPIC" make
 # ENV SPS_HOME /src/fsps
 
+# RUN git clone https://github.com/dfm/python-fsps.git \
+#     && cd python-fsps \
+#     && python setup.py install \
+#     && cd .. \
+#     && rm -rf python-fsps
+
 RUN git clone https://github.com/dkirkby/speclite.git
 RUN cd speclite \
     && python setup.py install
-
-RUN git clone https://github.com/dfm/python-fsps.git \
-    && cd python-fsps \
-    && python setup.py install \
-    && cd .. \
-    && rm -rf python-fsps
 
 RUN for package in \
     desiutil \
@@ -86,7 +86,6 @@ RUN for package in \
     desitarget \
     desispec \
     desisim \
-    prospect \
     specsim \
     redrock; do \
       git clone https://github.com/desihub/$package; \
@@ -94,10 +93,11 @@ RUN for package in \
       # python setup.py develop;
     done
 
-ENV PATH /src/desiutil/bin:/src/desimodel/bin:/src/desitarget/bin:/src/desispec/bin:/src/desisim/bin:/src/prospect/bin:/src/redrock/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ENV PYTHONPATH /src/desiutil/py:/src/desimodel/py:/src/desitarget/py:/src/desispec/py:/src/desisim/py:/src/prospect/py:/src/redrock/py
+ENV PATH /src/desiutil/bin:/src/desimodel/bin:/src/desitarget/bin:/src/desispec/bin:/src/desisim/bin:/src/redrock/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV PYTHONPATH /src/desiutil/py:/src/desimodel/py:/src/desitarget/py:/src/desispec/py:/src/desisim/py:/src/redrock/py
 
-RUN git clone https://github.com/desihub/redrock-templates
+# RUN git clone https://github.com/desihub/redrock-templates
+# ENV RR_TEMPLATE_DIR /src/redrock-templates
 
 # RUN git clone https://github.com/desihub/fiberassign \
 #     && cd fiberassign \
@@ -107,9 +107,6 @@ ENV DESIMODEL /src/desimodel
 
 RUN cd $DESIMODEL \
     && svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data
-
-ENV DESI_ROOT /global/cfs/cdirs/desi
-ENV RR_TEMPLATE_DIR /src/redrock-templates
 
 RUN mkdir /homedir && chmod 777 /homedir
 ENV HOME /homedir
