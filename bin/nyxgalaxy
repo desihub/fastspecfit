@@ -1,9 +1,0 @@
-#!/usr/bin/env python
-"""Galaxy spectral synthesis and emission-line fitting code.
-
-John Moustakas (Siena College)
-
-"""
-import sys
-from desigal.scripts.nyxgalaxy import main
-sys.exit(main())

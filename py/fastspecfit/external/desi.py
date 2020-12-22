@@ -1,5 +1,9 @@
 #!/usr/bin/env python
-"""Main module for nyxgalaxy.
+"""
+fastspecfit.external.desi
+=========================
+
+fastspecfit wrapper for DESI
 
 ToDo:
 * Generalize to work on coadded spectra.
@@ -20,15 +24,15 @@ new truth table for 70500 is here--
 https://desi.lbl.gov/trac/wiki/SurveyValidation/TruthTables
 https://desi.lbl.gov/DocDB/cgi-bin/private/RetrieveFile?docid=5720;filename=DESI_data_042820.pdf
 
-time nyxgalaxy --tile 70500 --night 20200303 --nproc 32 --overwrite
+time fastspecfit --tile 70500 --night 20200303 --nproc 32 --overwrite
 
-time nyxgalaxy --tile 67230 --night 20200315 --nproc 32 --overwrite # ELG
-time nyxgalaxy --tile 68001 --night 20200315 --nproc 32 --overwrite # QSO+LRG
-time nyxgalaxy --tile 68002 --night 20200315 --nproc 32 --overwrite # QSO+LRG
-time nyxgalaxy --tile 67142 --night 20200315 --nproc 32 --overwrite # ELG
-time nyxgalaxy --tile 66003 --night 20200315 --nproc 32 --overwrite # BGS+MWS
+time fastspecfit --tile 67230 --night 20200315 --nproc 32 --overwrite # ELG
+time fastspecfit --tile 68001 --night 20200315 --nproc 32 --overwrite # QSO+LRG
+time fastspecfit --tile 68002 --night 20200315 --nproc 32 --overwrite # QSO+LRG
+time fastspecfit --tile 67142 --night 20200315 --nproc 32 --overwrite # ELG
+time fastspecfit --tile 66003 --night 20200315 --nproc 32 --overwrite # BGS+MWS
 
-time nyxgalaxy-qa --tile 67142 --night 20200315 --first 0 --last 10
+time fastspecfit-qa --tile 67142 --night 20200315 --first 0 --last 10
 
 """
 import pdb # for debugging
@@ -46,11 +50,11 @@ os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 import matplotlib
 matplotlib.use('Agg')
 
-def _nyxfit_one(args):
+def _fastspecfit_one(args):
     """Multiprocessing wrapper."""
-    return nyxfit_one(*args)
+    return fastspecfit_one(*args)
 
-def nyxfit_one(indx, data, CFit, EMFit, out):
+def fastspecfit_one(indx, data, CFit, EMFit, out):
     """Fit one."""
     log.info('Continuum-fitting object {}'.format(indx))
     t0 = time.time()
@@ -97,37 +101,37 @@ def parse(options=None):
         log.info(' '.join(sys.argv))
     else:
         args = parser.parse_args(options)
-        log.info('nyxgalaxy {}'.format(' '.join(options)))
+        log.info('fastspecfit {}'.format(' '.join(options)))
 
     return args
 
-def main(args=None):
+def main(args=None, comm=None):
     """Main module.
 
     """
     from astropy.table import vstack
-    from desigal.nyxgalaxy import read_spectra, unpack_all_spectra, init_nyxgalaxy
-    from desigal.nyxgalaxy import ContinuumFit, EMLineFit
+    from desigal.fastspecfit import read_spectra, unpack_all_spectra, init_fastspecfit
+    from desigal.fastspecfit import ContinuumFit, EMLineFit
 
     log = get_logger()
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    for key in ['NYXGALAXY_DATA', 'NYXGALAXY_TEMPLATES']:
+    for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES']:
         if key not in os.environ:
             log.fatal('Required ${} environment variable not set'.format(key))
             raise EnvironmentError('Required ${} environment variable not set'.format(key))
 
-    nyxgalaxy_dir = os.getenv('NYXGALAXY_DATA')
-    resultsdir = os.path.join(nyxgalaxy_dir, 'results')
+    fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
+    resultsdir = os.path.join(fastspecfit_dir, 'results')
     if not os.path.isdir(resultsdir):
         os.makedirs(resultsdir)
 
     # If the output file exists, we're done!
-    nyxgalaxyfile = os.path.join(resultsdir, 'nyxgalaxy-{}-{}.fits'.format(
+    fastspecfitfile = os.path.join(resultsdir, 'fastspecfit-{}-{}.fits'.format(
         args.tile, args.night))
-    if os.path.isfile(nyxgalaxyfile) and not args.overwrite:
-        log.info('Output file {} exists; all done!'.format(nyxgalaxyfile))
+    if os.path.isfile(fastspecfitfile) and not args.overwrite:
+        log.info('Output file {} exists; all done!'.format(fastspecfitfile))
         return
         
     # Read the data 
@@ -152,7 +156,7 @@ def main(args=None):
     t0 = time.time()
     CFit = ContinuumFit(verbose=args.verbose)
     EMFit = EMLineFit(verbose=args.verbose)
-    nyxgalaxy = init_nyxgalaxy(args.tile, args.night, zbest, specobj.fibermap, CFit, EMFit)
+    fastspecfit = init_fastspecfit(args.tile, args.night, zbest, specobj.fibermap, CFit, EMFit)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Unpacking with multiprocessing takes a lot longer (maybe pickling takes a
@@ -163,34 +167,17 @@ def main(args=None):
     log.info('Unpacking the spectra to be fitted took: {:.2f} sec'.format(time.time()-t0))
 
     # Fit in parallel
-    fitargs = [(indx, data[iobj], CFit, EMFit, nyxgalaxy[indx]) for iobj, indx in enumerate(fitindx)]
+    fitargs = [(indx, data[iobj], CFit, EMFit, fastspecfit[indx]) for iobj, indx in enumerate(fitindx)]
     if args.nproc > 1:
         with multiprocessing.Pool(args.nproc) as P:
-            out = P.map(_nyxfit_one, fitargs)
+            out = P.map(_fastspecfit_one, fitargs)
     else:
-        out = [nyxfit_one(*_fitargs) for _fitargs in fitargs]
+        out = [fastspecfit_one(*_fitargs) for _fitargs in fitargs]
 
-    nyxgalaxy = vstack(out)
-
-    #pdb.set_trace()
-    #for iobj, indx in enumerate(fitindx):
-    #    # fit the stellar continuum
-    #    t0 = time.time()
-    #    cfit, continuum = CFit.fnnls_continuum(data[iobj])
-    #    log.info('Continuum-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
-    #
-    #    # fit the emission-line spectrum
-    #    t0 = time.time()
-    #    emfit = EMFit.fit(data[iobj], continuum)
-    #    log.info('Line-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
-    #
-    #    for col in emfit.colnames:
-    #        nyxgalaxy[col][indx] = emfit[col]
-    #    for col in cfit.colnames:
-    #        nyxgalaxy[col][indx] = cfit[col]
+    fastspecfit = vstack(out)
 
     # write out
     t0 = time.time()
-    log.info('Writing results for {} objects to {}'.format(len(nyxgalaxy), nyxgalaxyfile))
-    nyxgalaxy.write(nyxgalaxyfile, overwrite=True)
+    log.info('Writing results for {} objects to {}'.format(len(fastspecfit), fastspecfitfile))
+    fastspecfit.write(fastspecfitfile, overwrite=True)
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))

@@ -64,16 +64,15 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN mkdir -p /src
 WORKDIR /src
 
-# install FSPS
-RUN git clone https://github.com/cconroy20/fsps
-RUN cd fsps/src \
-    && F90FLAGS="-fPIC" make
+# # install FSPS
+# RUN git clone https://github.com/cconroy20/fsps
+# RUN cd fsps/src \
+#     && F90FLAGS="-fPIC" make
+# ENV SPS_HOME /src/fsps
 
 RUN git clone https://github.com/dkirkby/speclite.git
 RUN cd speclite \
     && python setup.py install
-
-ENV SPS_HOME /src/fsps
 
 RUN git clone https://github.com/dfm/python-fsps.git \
     && cd python-fsps \

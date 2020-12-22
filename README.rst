@@ -41,8 +41,8 @@ License
 `fastspecfit`_ is free software licensed under a 3-clause BSD-style license. For
 details see the ``LICENSE.rst`` file.
 
-John Moustakas  
-Siena College
-Winter 2020
+| John Moustakas  
+| Siena College
+| Winter 2020
 
 .. _`fastspecfit`: https://github.com/desihub/fastspecfit

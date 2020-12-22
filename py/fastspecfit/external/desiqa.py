@@ -1,5 +1,8 @@
 #!/usr/bin/env python
-"""Main QA module for nyxgalaxy.
+"""
+fastspecfit.external.desiqa
+===========================
+
 
 """
 import pdb # for debugging
@@ -11,6 +14,7 @@ from desiutil.log import get_logger
 # ridiculousness!
 import tempfile
 os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
+
 import matplotlib
 matplotlib.use('Agg')
 
@@ -42,39 +46,39 @@ def parse(options=None):
         log.info(' '.join(sys.argv))
     else:
         args = parser.parse_args(options)
-        log.info('nyxgalaxy_qa {}'.format(' '.join(options)))
+        log.info('fastspecfit_qa {}'.format(' '.join(options)))
 
     return args
 
-def main(args=None):
+def main(args=None, comm=None):
     """Main module.
 
     """
     from astropy.table import Table
-    from desigal.nyxgalaxy import read_spectra, unpack_all_spectra, ContinuumFit, EMLineFit
+    from desigal.fastspecfit import read_spectra, unpack_all_spectra, ContinuumFit, EMLineFit
 
     log = get_logger()
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    for key in ['NYXGALAXY_DATA', 'NYXGALAXY_TEMPLATES']:
+    for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES']:
         if key not in os.environ:
             log.fatal('Required ${} environment variable not set'.format(key))
             raise EnvironmentError('Required ${} environment variable not set'.format(key))
 
-    nyxgalaxy_dir = os.getenv('NYXGALAXY_DATA')
-    resultsdir = os.path.join(nyxgalaxy_dir, 'results')
-    qadir = os.path.join(nyxgalaxy_dir, 'qa')
+    fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
+    resultsdir = os.path.join(fastspecfit_dir, 'results')
+    qadir = os.path.join(fastspecfit_dir, 'qa')
     if not os.path.isdir(qadir):
         os.makedirs(qadir)
 
-    nyxgalaxyfile = os.path.join(resultsdir, 'nyxgalaxy-{}-{}.fits'.format(
+    fastspecfitfile = os.path.join(resultsdir, 'fastspecfit-{}-{}.fits'.format(
         args.tile, args.night))
-    if not os.path.isfile(nyxgalaxyfile):
-        log.info('Output file {} not found!'.format(nyxgalaxyfile))
+    if not os.path.isfile(fastspecfitfile):
+        log.info('Output file {} not found!'.format(fastspecfitfile))
         return
-    nyxgalaxy = Table.read(nyxgalaxyfile)
-    log.info('Read {} objects from {}'.format(len(nyxgalaxy), nyxgalaxyfile))
+    fastspecfit = Table.read(fastspecfitfile)
+    log.info('Read {} objects from {}'.format(len(fastspecfit), fastspecfitfile))
 
     # Read the data 
     zbest, specobj = read_spectra(tile=args.tile, night=args.night,
@@ -98,6 +102,6 @@ def main(args=None):
     del specobj, zbest # free memory
 
     for iobj, indx in enumerate(fitindx):
-        continuum = CFit.fnnls_continuum_plot(data[iobj], nyxgalaxy[indx], qadir=qadir)
-        EMFit.emlineplot(data[iobj], nyxgalaxy[indx], continuum, qadir=qadir)
+        continuum = CFit.fnnls_continuum_plot(data[iobj], fastspecfit[indx], qadir=qadir)
+        EMFit.emlineplot(data[iobj], fastspecfit[indx], continuum, qadir=qadir)
 
