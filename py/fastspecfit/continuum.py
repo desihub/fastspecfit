@@ -11,18 +11,9 @@ import os, time
 import numpy as np
 import multiprocessing
 
-#from scipy.ndimage import gaussian_filter1d
-#import astropy.units as u
-#from astropy.table import Table, Column, vstack, join, hstack
-#from astropy.modeling import Fittable1DModel
-#
-#from fnnls import fnnls
-##from desispec.interpolation import resample_flux
-#from redrock.rebin import trapz_rebin
+import astropy.units as u
 
-from scipy import constants
-C_LIGHT = constants.c / 1000.0 # [km/s]
-
+from fastspecfit.util import C_LIGHT
 from desiutil.log import get_logger
 log = get_logger()
 
@@ -61,6 +52,8 @@ def smooth_and_resample(sspflux, sspwave, specwave=None, specres=None,
     it with multiprocessing, below.
 
     """
+    from redrock.rebin import trapz_rebin
+    
     if specwave is None:
         resampflux = sspflux 
     else:
@@ -160,6 +153,8 @@ def fit_fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
     the ContinuumFit.fnnls_continuum method for documentation.
 
     """
+    from fnnls import fnnls
+    
     if support is None:
         support = np.zeros(0, dtype=int)
     warn, coeff, _ = fnnls(ZZ, xx, P_initial=support)
@@ -205,6 +200,7 @@ class ContinuumFit(object):
         """
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
+        from astropy.table import Table
 
         from speclite import filters
         from desiutil.dust import SFDMap
@@ -327,7 +323,7 @@ class ContinuumFit(object):
         sspflux_dustvdisp = []
         for AV in self.AV:
             atten = self.dust_attenuation(sspwave, AV)
-            _sspflux_dustvdisp = convolve_vdisp(sspflux * atten[:, np.newaxis], self.pixkms, self.vdisp_nominal)
+            _sspflux_dustvdisp = self.convolve_vdisp(sspflux * atten[:, np.newaxis], self.vdisp_nominal)
             sspflux_dustvdisp.append(_sspflux_dustvdisp)
         sspflux_dustvdisp = np.stack(sspflux_dustvdisp, axis=-1) # [npix,nage,nAV]
 
@@ -344,14 +340,17 @@ class ContinuumFit(object):
 
         # Ddo a throw-away trapezoidal resampling so we can compile the numba
         # code when instantiating this class.
+        #from redrock.rebin import trapz_rebin
         #t0 = time.time()
-        _ = trapz_rebin(np.arange(4), np.ones(4), np.arange(2)+1)
+        #_ = trapz_rebin(np.arange(4), np.ones(4), np.arange(2)+1)
         #print('Initial rebin ', time.time() - t0)
 
     def init_output(self, nobj=1):
         """Initialize the output data table for this class.
 
         """
+        from astropy.table import Table, Column
+        
         nssp_coeff = len(self.sspinfo)
         
         out = Table()
@@ -408,6 +407,8 @@ class ContinuumFit(object):
         -----
 
         """
+        from astropy.table import Table, Column
+        
         shp = maggies.shape
         if maggies.ndim == 1:
             nband, ngal = shp[0], 1

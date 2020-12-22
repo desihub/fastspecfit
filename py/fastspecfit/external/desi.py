@@ -73,8 +73,8 @@ def fastspecfit_one(indx, data, CFit, EMFit, out):
         
     return out
 
-def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
-                 verbose=False):
+def read_spectra(tile, night, specprod='andes', use_vi=False, write_spectra=True,
+                 overwrite=False, verbose=False):
     """Read the spectra and redshift catalog for a given tile and night.
 
     Parameters
@@ -83,6 +83,8 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
         Tile number to analyze.
     night : :class:`str`
         Night on which `tile` was observed.
+    specprod : :class:`str`, defaults to `andes`.
+        Spectroscopic production to read.
     use_vi : :class:`bool`, optional, defaults to False
         Select the subset of spectra with high-quality visual inspections.
     write_spectra : :class:`bool`, optional, defaults to True
@@ -107,16 +109,11 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
 
     """
     import fitsio
-    from astropy.table import join
+    from astropy.table import Table, vstack
     from desispec.spectra import Spectra
     import desispec.io
 
-    data_dir = os.path.join(os.getenv('FASTSPECFIT_DATA'), 'spectra')
-    if not os.path.isdir(data_dir):
-        if verbose:
-            log.debug('Creating directory {}'.format(data_dir))
-        os.makedirs(data_dir, exist_ok=True)
-    
+    data_dir = os.path.join(os.getenv('FASTSPECFIT_DATA'), 'spectra', specprod)
     zbestoutfile = os.path.join(data_dir, 'zbest-{}-{}.fits'.format(tile, night))
     coaddoutfile = os.path.join(data_dir, 'coadd-{}-{}.fits'.format(tile, night))
     if os.path.isfile(coaddoutfile) and not overwrite:
@@ -130,9 +127,9 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
 
         return zbest, coadd
 
-    log.info('Parsing data from tile, night {}, {}'.format(tile, night))
+    log.info('Parsing tile, night {}, {} from specprod {}'.format(tile, night, specprod))
 
-    specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', 'andes')
+    specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod)
     desidatadir = os.path.join(specprod_dir, 'tiles', tile, night)
 
     # use visual inspection results?
@@ -180,7 +177,7 @@ def read_spectra(tile, night, use_vi=False, write_spectra=True, overwrite=False,
                 spectra.append(desispec.io.read_spectra(coaddfile))
 
     if len(zbest) == 0:
-        log.fatal('No spectra found for tile {} and night {}!'.format(tile, night))
+        log.fatal('No spectra found!')
         raise ValueError
         
     # combine the spectrographs
@@ -289,6 +286,7 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
     from desispec.resolution import Resolution
     from desiutil.dust import ext_odonnell
     from desitarget.io import desitarget_resolve_dec
+    from fastspecfit.util import C_LIGHT
 
     cameras = ['b', 'r', 'z']
     ncam = len(cameras)
@@ -441,6 +439,8 @@ def init_output(tile, night, zbest, fibermap, CFit, EMFit):
     -----
 
     """
+    from astropy.table import Table, Column, hstack
+
     # Grab info on the emission lines and the continuum.
     nobj = len(zbest)
 
@@ -472,13 +472,15 @@ def parse(options=None):
     parser.add_argument('--first', type=int, help='Index of first spectrum to process (0-indexed).')
     parser.add_argument('--last', type=int, help='Index of last spectrum to process (max of nobj-1).')
     parser.add_argument('--nproc', default=1, type=int, help='Number of cores.')
+    parser.add_argument('--specprod', type=str, default='variance-model', choices=['andes', 'daily', 'variance-model'],
+                        help='Spectroscopic production to process.')
+
     parser.add_argument('--use-vi', action='store_true', help='Select spectra with high-quality visual inspections (VI).')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing files.')
     parser.add_argument('--no-write-spectra', dest='write_spectra', default=True, action='store_false',
                         help='Do not write out the selected spectra for the specified tile and night.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose.')
 
-    log = get_logger()
     if options is None:
         args = parser.parse_args()
         log.info(' '.join(sys.argv))
@@ -496,21 +498,20 @@ def main(args=None, comm=None):
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
 
-    log = get_logger()
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES']:
-        if key not in os.environ:
-            log.fatal('Required ${} environment variable not set'.format(key))
-            raise EnvironmentError('Required ${} environment variable not set'.format(key))
-
+    # Create directories as needed.
     fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
-    resultsdir = os.path.join(fastspecfit_dir, 'results')
-    if not os.path.isdir(resultsdir):
-        os.makedirs(resultsdir)
-
+    for subdir in ('spectra', 'results', 'qa'):
+        outdir = os.path.join(fastspecfit_dir, subdir, args.specprod)
+        if not os.path.isdir(outdir):
+            if args.verbose:
+                log.debug('Creating directory {}'.format(outdir))
+            os.makedirs(outdir, exist_ok=True)
+    
     # If the output file exists, we're done!
+    resultsdir = os.path.join(fastspecfit_dir, 'results', args.specprod)
     fastspecfitfile = os.path.join(resultsdir, 'fastspecfit-{}-{}.fits'.format(
         args.tile, args.night))
     if os.path.isfile(fastspecfitfile) and not args.overwrite:
@@ -520,6 +521,7 @@ def main(args=None, comm=None):
     # Read the data 
     t0 = time.time()
     zbest, specobj = read_spectra(tile=args.tile, night=args.night,
+                                  specprod=args.specprod,
                                   use_vi=args.use_vi, 
                                   write_spectra=args.write_spectra,
                                   verbose=args.verbose)

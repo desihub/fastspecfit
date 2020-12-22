@@ -7,6 +7,9 @@ General utilities.
 """
 import numpy as np
 
+from scipy import constants
+C_LIGHT = constants.c / 1000.0 # [km/s]
+
 def ivar2var(ivar, sigma=False):
     """Safely convert an inverse variance to a variance."""
     var = np.zeros_like(ivar)

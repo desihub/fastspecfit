@@ -9,7 +9,9 @@ import pdb # for debugging
 
 import os, sys, time
 import numpy as np
+
 from desiutil.log import get_logger
+log = get_logger()
 
 # ridiculousness!
 import tempfile
@@ -34,13 +36,15 @@ def parse(options=None):
     parser.add_argument('--first', type=int, help='Index of first spectrum to process (0-indexed).')
     parser.add_argument('--last', type=int, help='Index of last spectrum to process (max of nobj-1).')
     parser.add_argument('--nproc', default=1, type=int, help='Number of cores.')
+    parser.add_argument('--specprod', type=str, default='variance-model', choices=['andes', 'daily', 'variance-model'],
+                        help='Spectroscopic production to process.')
+
     parser.add_argument('--use-vi', action='store_true', help='Select spectra with high-quality visual inspections (VI).')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing files.')
     parser.add_argument('--no-write-spectra', dest='write_spectra', default=True, action='store_false',
                         help='Do not write out the selected spectra for the specified tile and night.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose.')
 
-    log = get_logger()
     if options is None:
         args = parser.parse_args()
         log.info(' '.join(sys.argv))
@@ -55,22 +59,16 @@ def main(args=None, comm=None):
 
     """
     from astropy.table import Table
-    from desigal.fastspecfit import read_spectra, unpack_all_spectra, ContinuumFit, EMLineFit
+    from fastspecfit.continuum import ContinuumFit
+    from fastspecfit.emlines import EMLineFit
+    from fastspecfit.external.desi import read_spectra, unpack_all_spectra
 
-    log = get_logger()
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES']:
-        if key not in os.environ:
-            log.fatal('Required ${} environment variable not set'.format(key))
-            raise EnvironmentError('Required ${} environment variable not set'.format(key))
-
     fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
-    resultsdir = os.path.join(fastspecfit_dir, 'results')
-    qadir = os.path.join(fastspecfit_dir, 'qa')
-    if not os.path.isdir(qadir):
-        os.makedirs(qadir)
+    resultsdir = os.path.join(fastspecfit_dir, 'results', args.specprod)
+    qadir = os.path.join(fastspecfit_dir, 'qa', args.specprod)
 
     fastspecfitfile = os.path.join(resultsdir, 'fastspecfit-{}-{}.fits'.format(
         args.tile, args.night))
@@ -82,6 +80,7 @@ def main(args=None, comm=None):
 
     # Read the data 
     zbest, specobj = read_spectra(tile=args.tile, night=args.night,
+                                  specprod=args.specprod,
                                   use_vi=args.use_vi, 
                                   write_spectra=args.write_spectra,
                                   verbose=args.verbose)
@@ -104,4 +103,3 @@ def main(args=None, comm=None):
     for iobj, indx in enumerate(fitindx):
         continuum = CFit.fnnls_continuum_plot(data[iobj], fastspecfit[indx], qadir=qadir)
         EMFit.emlineplot(data[iobj], fastspecfit[indx], continuum, qadir=qadir)
-

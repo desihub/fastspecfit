@@ -11,18 +11,10 @@ import os, time
 import numpy as np
 import multiprocessing
 
-#from scipy.ndimage import gaussian_filter1d
-#import astropy.units as u
-#from astropy.table import Table, Column, vstack, join, hstack
+import astropy.units as u
 from astropy.modeling import Fittable1DModel
-#
-#from fnnls import fnnls
-##from desispec.interpolation import resample_flux
-#from redrock.rebin import trapz_rebin
 
-from scipy import constants
-C_LIGHT = constants.c / 1000.0 # [km/s]
-
+from fastspecfit.util import C_LIGHT
 from desiutil.log import get_logger
 log = get_logger()
 
@@ -33,6 +25,7 @@ def read_emlines():
     emission-line fit.
 
     """
+    from astropy.table import Table
     from pkg_resources import resource_filename
     
     linefile = resource_filename('fastspecfit', 'data/emlines.ecsv')    
@@ -150,6 +143,8 @@ class EMLineModel(Fittable1DModel):
         emlineR=None, npixpercamera=None, 
 
         """ 
+        from redrock.rebin import trapz_rebin
+        
         linevshift_forbidden, linevshift_balmer = args[0], args[1]
         linez_forbidden = self.redshift + linevshift_forbidden / C_LIGHT
         linez_balmer = self.redshift + linevshift_balmer / C_LIGHT
@@ -226,6 +221,8 @@ class EMLineFit(object):
         """Initialize the output data table for this class.
 
         """
+        from astropy.table import Table, Column
+        
         out = Table()
         out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4'))
         out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4'))
