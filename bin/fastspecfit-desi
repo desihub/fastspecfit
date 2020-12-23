@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+"""fastspecfit for DESI - serial / multiprocessing entry point.
+
+"""
+import os
+from desiutil.log import get_logger
+from fastspecfit.external import desi
+
+log = get_logger()
+
+for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES']:
+    if key not in os.environ:
+        log.fatal('Required ${} environment variable not set'.format(key))
+        raise EnvironmentError('Required ${} environment variable not set'.format(key))
+
+desi.main(comm=None)
+

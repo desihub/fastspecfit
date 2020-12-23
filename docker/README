@@ -1,22 +1,22 @@
-Build a Docker container for the desi-outflows project.
-=======================================================
+Build a Docker container for fastspecfit.
+=========================================
 
 ```
-docker build . -t desihub/nyxgalaxy
-docker push desihub/nyxgalaxy:latest
+docker build . -t desihub/fastspecfit
+docker push desihub/fastspecfit:latest
 
-docker tag desihub/nyxgalaxy:latest desihub/nyxgalaxy:v0.0.1
-docker push desihub/nyxgalaxy:v0.0.1
+docker tag desihub/fastspecfit:latest desihub/fastspecfit:v0.0.1
+docker push desihub/fastspecfit:v0.0.1
 ```
 
 To enter the container (with a shell prompt) on a laptop do:
 ```
-docker pull desihub/nyxgalaxy:latest
-docker run -it desihub/nyxgalaxy:latest
+docker pull desihub/fastspecfit:latest
+docker run -it desihub/fastspecfit:latest
 ```
 
 Or at NERSC:
 ```
-shifterimg pull docker:desihub/nyxgalaxy:latest
-shifter --image docker:desihub/nyxgalaxy:latest bash
+shifterimg pull docker:desihub/fastspecfit:latest
+shifter --image docker:desihub/fastspecfit:latest bash
 ```
