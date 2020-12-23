@@ -1096,10 +1096,13 @@ class ContinuumFit(object):
         wavemin, wavemax = 0.2, 6.0
         indx = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]
 
-        factor = 10**(0.4 * 48.6) * continuum_wave_phot**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
-        continuum_phot_abmag = -2.5*np.log10(continuum_phot * factor)
-
-        ax2.plot(continuum_wave_phot[indx] / 1e4, continuum_phot_abmag[indx], color='gray', zorder=1)
+        if np.any(continuum_phot <= 0):
+            log.warning('Best-fitting photometric continuum is all zeros or negative!')
+            continuum_phot_abmag = continuum_phot*0 + np.median(data['phot']['abmag'][:3])
+        else:
+            factor = 10**(0.4 * 48.6) * continuum_wave_phot**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
+            continuum_phot_abmag = -2.5*np.log10(continuum_phot * factor)
+            ax2.plot(continuum_wave_phot[indx] / 1e4, continuum_phot_abmag[indx], color='gray', zorder=1)
 
         ax2.scatter(data['synthphot']['lambda_eff']/1e4, data['synthphot']['abmag'], 
                      marker='o', s=130, color='blue', edgecolor='k',
@@ -1119,6 +1122,8 @@ class ContinuumFit(object):
                        np.nanmax(continuum_phot_abmag[indx]))) + dm
         ymax = np.min((np.nanmin(data['phot']['abmag'][good]),
                        np.nanmin(continuum_phot_abmag[indx]))) - dm
+        if np.isnan(ymin) or np.isnan(ymax):
+            pdb.set_trace()
 
         ax2.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
         ax2.set_ylabel(r'AB Mag') 

@@ -6,7 +6,6 @@ fastspecfit.external.desiqa
 
 """
 import pdb # for debugging
-
 import os, sys, time
 import numpy as np
 
@@ -19,6 +18,19 @@ os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 
 import matplotlib
 matplotlib.use('Agg')
+
+import multiprocessing
+
+def _desiqa_one(args):
+    """Multiprocessing wrapper."""
+    return desiqa_one(*args)
+
+def desiqa_one(indx, data, specfit, photfit, CFit, EMFit, qadir):
+    """QA on one spectrum."""
+    t0 = time.time()
+    continuum = CFit.qa_continuum(data, specfit, photfit, qadir)
+    EMFit.qa_emlines(data, specfit, continuum, qadir)
+    log.info('Building QA for object {} took {:.2f} sec'.format(indx, time.time()-t0))
 
 def parse(options=None):
     """Parse input arguments.
@@ -35,6 +47,8 @@ def parse(options=None):
     # optional inputs
     parser.add_argument('--first', type=int, help='Index of first spectrum to process (0-indexed).')
     parser.add_argument('--last', type=int, help='Index of last spectrum to process (max of nobj-1).')
+    parser.add_argument('--targetid', type=np.int64, nargs='*', default=None, help='List of one or more targetids to consider.')
+
     parser.add_argument('--nproc', default=1, type=int, help='Number of cores.')
     parser.add_argument('--specprod', type=str, default='variance-model', choices=['andes', 'daily', 'variance-model'],
                         help='Spectroscopic production to process.')
@@ -58,6 +72,7 @@ def main(args=None, comm=None):
     """Main module.
 
     """
+    import fitsio
     from astropy.table import Table
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
@@ -73,16 +88,18 @@ def main(args=None, comm=None):
     specfitfile = os.path.join(resultsdir, 'specfit-{}-{}.fits'.format(
         args.tile, args.night))
     photfitfile = os.path.join(resultsdir, 'photfit-{}-{}.fits'.format(
-        prefix, args.tile, args.night))
+        args.tile, args.night))
     if not os.path.isfile(specfitfile):
         log.info('Spectroscopic fit file {} not found!'.format(specfitfile))
         return
     if not os.path.isfile(photfitfile):
         log.info('Photometric fit file {} not found!'.format(photfitfile))
         return
-    specfit = Table.read(specfitfile)
-    photfit = Table.read(photfitfile)
-    log.info('Read {} objects from {}'.format(len(fastspecfit), fastspecfitfile))
+    specfit = Table(fitsio.read(specfitfile))
+    log.info('Read {} objects from {}'.format(len(specfit), specfitfile))
+    photfit = Table(fitsio.read(photfitfile))
+    log.info('Read {} objects from {}'.format(len(photfit), photfitfile))
+    assert(len(specfit) == len(photfit))
 
     # Read the data 
     zbest, specobj = read_spectra(tile=args.tile, night=args.night,
@@ -91,12 +108,20 @@ def main(args=None, comm=None):
                                   write_spectra=args.write_spectra,
                                   verbose=args.verbose)
 
-    if args.first is None:
-        args.first = 0
-    if args.last is None:
-        args.last = len(zbest) - 1
-    fitindx = np.arange(args.last - args.first + 1) + args.first
-
+    if args.targetid is not None:
+        fitindx = np.where(np.isin(zbest['TARGETID'], args.targetid))[0]
+        miss = np.where(np.logical_not(np.isin(args.targetid, zbest['TARGETID'])))[0]
+        for this in miss:
+            log.warning('TARGETID {} not found!'.format(args.targetid[this]))
+        if len(fitindx) == 0:
+            return
+    else:
+        if args.first is None:
+            args.first = 0
+        if args.last is None:
+            args.last = len(zbest) - 1
+        fitindx = np.arange(args.last - args.first + 1) + args.first
+        
     # Initialize the continuum- and emission-line fitting classes.
     CFit = ContinuumFit(nproc=args.nproc, verbose=args.verbose)
     EMFit = EMLineFit()
@@ -106,6 +131,11 @@ def main(args=None, comm=None):
     data = unpack_all_spectra(specobj, zbest, CFit, fitindx)#, nproc=args.nproc)
     del specobj, zbest # free memory
 
-    for iobj, indx in enumerate(fitindx):
-        continuum = CFit.qa_continuum(data[iobj], specfit[indx], photfit[indx], qadir=qadir)
-        EMFit.qa_emlines(data[iobj], specfit[indx], continuum, qadir=qadir)
+    # Build the QA in parallel
+    qaargs = [(indx, data[iobj], specfit[indx], photfit[indx], CFit, EMFit, qadir)
+               for iobj, indx in enumerate(fitindx)]
+    if args.nproc > 1:
+        with multiprocessing.Pool(args.nproc) as P:
+            P.map(_desiqa_one, qaargs)
+    else:
+        [desiqa_one(*_qaargs) for _qaargs in qaargs]
