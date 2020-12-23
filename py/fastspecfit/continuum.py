@@ -143,11 +143,11 @@ def get_d4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
 
     return d4000, d4000_ivar
 
-def _fit_fnnls_continuum(myargs):
+def _fnnls_continuum(myargs):
     """Multiprocessing wrapper."""
-    return fit_fnnls_continuum(*myargs)
+    return fnnls_continuum(*myargs)
 
-def fit_fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
+def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
                         support=None, get_chi2=False):
     """Fit a continuum using fNNLS. This function is a simple wrapper on fnnls; see
     the ContinuumFit.fnnls_continuum method for documentation.
@@ -157,7 +157,13 @@ def fit_fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
     
     if support is None:
         support = np.zeros(0, dtype=int)
-    warn, coeff, _ = fnnls(ZZ, xx, P_initial=support)
+
+    try:
+        warn, coeff, _ = fnnls(ZZ, xx, P_initial=support)
+    except:
+        log.warning('fnnls failed to converge.')
+        warn, coeff = True, np.zeros(modelflux.shape[1])
+        
     #if warn:
     #    print('WARNING: fnnls did not converge after 5 iterations.')
 
@@ -338,14 +344,14 @@ class ContinuumFit(object):
         self.linetable = read_emlines()
         self.linemask_sigma = 150.0 # [km/s]
 
-        # Ddo a throw-away trapezoidal resampling so we can compile the numba
+        # Do a throw-away trapezoidal resampling so we can compile the numba
         # code when instantiating this class.
         #from redrock.rebin import trapz_rebin
         #t0 = time.time()
         #_ = trapz_rebin(np.arange(4), np.ones(4), np.arange(2)+1)
         #print('Initial rebin ', time.time() - t0)
 
-    def init_output(self, nobj=1):
+    def init_spec_output(self, nobj=1):
         """Initialize the output data table for this class.
 
         """
@@ -366,23 +372,39 @@ class ContinuumFit(object):
         out.add_column(Column(name='CONTINUUM_VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
         out.add_column(Column(name='CONTINUUM_VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
 
-        # continuum fit with *no* dust reddening (to be used as a diagnostic
-        # tool to identify potential calibration issues).
-        out.add_column(Column(name='CONTINUUM_NODUST_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
-        out.add_column(Column(name='CONTINUUM_NODUST_CHI2', length=nobj, dtype='f4')) # reduced chi2
-        #out.add_column(Column(name='CONTINUUM_NODUST_AGE', length=nobj, dtype='f4', unit=u.Gyr))
+        out['CONTINUUM_AV'] = self.AV_nominal
+        out['CONTINUUM_VDISP'] = self.vdisp_nominal
 
+        if False:
+            # continuum fit with *no* dust reddening (to be used as a diagnostic
+            # tool to identify potential calibration issues).
+            out.add_column(Column(name='CONTINUUM_NODUST_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
+            out.add_column(Column(name='CONTINUUM_NODUST_CHI2', length=nobj, dtype='f4')) # reduced chi2
+            #out.add_column(Column(name='CONTINUUM_NODUST_AGE', length=nobj, dtype='f4', unit=u.Gyr))
+
+        out.add_column(Column(name='D4000', length=nobj, dtype='f4'))
+        out.add_column(Column(name='D4000_IVAR', length=nobj, dtype='f4'))
+        out.add_column(Column(name='D4000_NOLINES', length=nobj, dtype='f4'))
+        out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
+
+        return out
+
+    def init_phot_output(self, nobj=1):
+        """Initialize the photometric output data table.
+
+        """
+        from astropy.table import Table, Column
+        
+        nssp_coeff = len(self.sspinfo)
+        
+        out = Table()
+        #out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_PHOT_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_PHOT_CHI2', length=nobj, dtype='f4')) # reduced chi2
         #out.add_column(Column(name='CONTINUUM_PHOT_DOF', length=nobj, dtype=np.int32))
         out.add_column(Column(name='CONTINUUM_PHOT_AGE', length=nobj, dtype='f4', unit=u.Gyr))
         out.add_column(Column(name='CONTINUUM_PHOT_AV', length=nobj, dtype='f4', unit=u.mag))
         out.add_column(Column(name='CONTINUUM_PHOT_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
-
-        out.add_column(Column(name='D4000', length=nobj, dtype='f4'))
-        out.add_column(Column(name='D4000_IVAR', length=nobj, dtype='f4'))
-        out.add_column(Column(name='D4000_NOLINES', length=nobj, dtype='f4'))
-        out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
         out.add_column(Column(name='D4000_MODEL_PHOT', length=nobj, dtype='f4'))
 
         return out
@@ -656,33 +678,176 @@ class ContinuumFit(object):
         """
         return np.where(self.sspinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
 
-    def fnnls_continuum_bestfit(self, coeff, sspflux=None, specwave=None,
-                                specres=None, redshift=None, south=True):
-        if sspflux is None:
-            sspflux, sspphot = self.redshift_smooth_and_resample(redshift, specwave, specres, south=south)
-            if specres is None and specwave is None: # ignore per-camera
-                bestfit = sspflux.dot(coeff)
-            else: # iterate over camera
-                bestfit = [_sspflux.dot(coeff) for _sspflux in sspflux]
-        else:
-            bestfit = sspflux.dot(coeff)
+    def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False):
+        """Wrapper on fnnls to set up the multiprocessing. Works with both spectroscopic
+        and photometric input and with both 2D and 3D model spectra.
 
-        if specres is None and specwave is None:
-            return bestfit, self.sspwave
-        else:
-            return bestfit
+        To be documented.
 
-    def fnnls_continuum(self, data):
-        """Fit the continuum using fast non-negative least-squares fitting (fNNLS).
+        """
+        if xparam is not None:
+            nn = len(xparam)
+        ww = np.sqrt(ivar)
+        xx = flux * ww
+
+        # If xparam is None (equivalent to modelflux having just two
+        # dimensions, [npix,nage]), assume we are just finding the
+        # coefficients at some best-fitting value...
+        #if modelflux.ndim == 2:
+        if xparam is None:
+            ZZ = modelflux * ww[:, np.newaxis]
+            warn, coeff, chi2 = fnnls_continuum(ZZ, xx, flux=flux, ivar=ivar,
+                                                modelflux=modelflux, get_chi2=True)
+            if np.any(warn):
+                print('WARNING: fnnls did not converge after 10 iterations.')
+
+            return coeff, chi2
+
+        # ...otherwise multiprocess over the xparam (e.g., AV or vdisp)
+        # dimension.
+        ZZ = modelflux * ww[:, np.newaxis, np.newaxis] # reshape into [npix/nband,nage,nAV/nvdisp]
+
+        fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], None, True) for ii in np.arange(nn)]
+        if self.nproc > 1:
+            with multiprocessing.Pool(self.nproc) as P:
+                rr = P.map(_fnnls_continuum, fitargs)
+        else:
+            #fnnls_continuum(*fitargs[10])
+            #pdb.set_trace()
+            rr = [fnnls_continuum(*_fitargs) for _fitargs in fitargs]
+        warn, _, chi2grid = list(zip(*rr)) # unpack
+        if np.any(warn):
+            vals = ','.join(['{:.1f}'.format(xp) for xp in xparam[np.where(warn)[0]]])
+            log.warning('fnnls did not converge after 10 iterations for parameter value(s) {}.'.format(vals))
+        chi2grid = np.array(chi2grid)
+
+        try:
+            imin = fitz.find_minima(chi2grid)[0]
+            xbest, xerr, chi2min, warn = fitz.minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
+        except:
+            print('Problem here!', chi2grid)
+            imin, xbest, xerr, chi2min, warn = 0, 0.0, 0.0, 0.0, 1
+
+        #if np.all(chi2grid == 0):
+        #    imin, xbest, xerr, chi2min, warn = 0, 0.0, 0.0, 0.0, 1
+        #else:
+
+        if warn == 0:
+            xivar = 1.0 / xerr**2
+        else:
+            chi2min = 1e6
+            xivar = 0.0
+
+        if debug:
+            import matplotlib.pyplot as plt
+            plt.clf()
+            plt.scatter(xparam, chi2grid)
+            plt.scatter(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2], color='red')
+            #plt.plot(xx, np.polyval([aa, bb, cc], xx), ls='--')
+            plt.axvline(x=xbest, color='k')
+            if xivar > 0:
+                plt.axhline(y=chi2min, color='k')
+            plt.yscale('log')
+            plt.savefig('qa-chi2min.png')
+
+        return chi2min, xbest, xivar
+
+    def continuum_photfit(self, data):
+        """Fit the broad photometry.
 
         Parameters
         ----------
         data : :class:`dict`
             Dictionary of input spectroscopy (plus ancillary data) populated by
             `unpack_one_spectrum`.
-        sigma_mask : :class:`float`, optional
-            Mask all pixels within +/-1.5`sigma_mask` [km/s] of known emission
-            lines during continuum-fitting. Defaults to 300 km/s.
+
+        Returns
+        -------
+        :class:`astropy.table.Table`
+            Table with all the continuum-fitting results with columns documented
+            in `init_phot_output`.
+
+        Notes
+        -----
+        See https://github.com/jvendrow/fnnls for the fNNLS algorithm.
+
+        """
+        from fnnls import fnnls
+        from redrock import fitz
+
+        # Initialize the output table; see init_fastspecfit for the data model.
+        result = self.init_phot_output()
+
+        redshift = data['zredrock']
+        #result['CONTINUUM_Z'] = redshift
+
+        # Prepare the reddened and unreddened SSP templates. Note that we ignore
+        # templates which are older than the age of the universe at the galaxy
+        # redshift.
+        agekeep = self.younger_than_universe(redshift)
+        t0 = time.time()
+        zsspflux_dustvdisp, zsspphot_dustvdisp = self.SSP2data(
+            self.sspflux_dustvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
+            redshift=redshift, specwave=None, specres=None,
+            south=data['photsys_south'], nproc=1)
+        log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
+        
+        objflam = data['phot']['flam'].data * self.fluxnorm
+        objflamivar = data['phot']['flam_ivar'].data / self.fluxnorm**2
+        zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
+        assert(np.all(objflamivar >= 0))
+
+        inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0
+
+        npix, nmodel = zsspflux_dustvdisp.shape
+        nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
+
+        zsspflam_dustvdisp = zsspflam_dustvdisp.reshape(self.nband, nage, self.nAV) # [nband,nage,nAV]
+
+        t0 = time.time()
+        AVchi2min, AVbest, AVivar = self._fnnls_parallel(zsspflam_dustvdisp, objflam,
+                                                         objflamivar, xparam=self.AV)
+        log.info('Fitting the photometry took: {:.2f} sec'.format(time.time()-t0))
+        if AVivar > 0:
+            log.info('Best-fitting photometric A(V)={:.4f}+/-{:.4f} with chi2={:.3f}'.format(
+                AVbest, 1/np.sqrt(AVivar), AVchi2min))
+        else:
+            AVbest = self.AV_nominal
+            log.info('Finding photometric A(V) failed; adopting A(V)={:.4f}'.format(self.AV_nominal))
+
+        # Get the final set of coefficients and chi2 at the best-fitting
+        # reddening and nominal velocity dispersion.
+        bestsspflux, bestphot = self.SSP2data(self.sspflux_dustvdisp[:, agekeep, inodust], # equivalent to calling with self.sspflux[:, agekeep]
+                                              self.sspwave, AV=AVbest, redshift=redshift,
+                                              south=data['photsys_south'])
+        coeff, chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
+                                              objflam, objflamivar) # bestphot['flam'] is [nband, nage]
+
+        continuum = bestsspflux.dot(coeff)
+        d4000, _ = get_d4000(self.sspwave, continuum, rest=True)
+        meanage = self.get_meanage(coeff)
+        log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
+
+        result['CONTINUUM_PHOT_COEFF'][0][:nage] = coeff
+        result['CONTINUUM_PHOT_CHI2'][0] = chi2min
+        result['CONTINUUM_PHOT_AGE'][0] = meanage
+        result['CONTINUUM_PHOT_AV'][0] = AVbest
+        result['CONTINUUM_PHOT_AV_IVAR'][0] = AVivar
+        result['D4000_MODEL_PHOT'][0] = d4000
+
+        return result, continuum
+    
+    def continuum_specfit(self, data, solve_vdisp=False):
+        """Fit the stellar continuum of a single spectrum using fast non-negative
+        least-squares fitting (fNNLS).
+
+        Parameters
+        ----------
+        data : :class:`dict`
+            Dictionary of input spectroscopy (plus ancillary data) populated by
+            `unpack_one_spectrum`.
+        solve_vdisp : :class:`bool`, optional, defaults to False
+            Solve for the velocity dispersion.
 
         Returns
         -------
@@ -702,80 +867,8 @@ class ContinuumFit(object):
         from fnnls import fnnls
         from redrock import fitz
 
-        def _fnnls_parallel(modelflux, flux, ivar, xparam=None, debug=False):
-            """Wrapper on fnnls to set up the multiprocessing. Works with both spectroscopic
-            and photometric input and with both 2D and 3D model spectra.
-
-            """
-            if xparam is not None:
-                nn = len(xparam)
-            ww = np.sqrt(ivar)
-            xx = flux * ww
-
-            # If xparam is None (equivalent to modelflux having just two
-            # dimensions, [npix,nage]), assume we are just finding the
-            # coefficients at some best-fitting value...
-            #if modelflux.ndim == 2:
-            if xparam is None:
-                ZZ = modelflux * ww[:, np.newaxis]
-                warn, coeff, chi2 = fit_fnnls_continuum(ZZ, xx, flux=flux, ivar=ivar,
-                                                        modelflux=modelflux, get_chi2=True)
-                if np.any(warn):
-                    print('WARNING: fnnls did not converge after 5 iterations.')
-
-                return coeff, chi2
-
-            # ...otherwise multiprocess over the xparam (e.g., AV or vdisp)
-            # dimension.
-            ZZ = modelflux * ww[:, np.newaxis, np.newaxis] # reshape into [npix/nband,nage,nAV/nvdisp]
-
-            fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], None, True) for ii in np.arange(nn)]
-            if self.nproc > 1:
-                with multiprocessing.Pool(self.nproc) as P:
-                    rr = P.map(_fit_fnnls_continuum, fitargs)
-            else:
-                #fit_fnnls_continuum(*fitargs[10])
-                #pdb.set_trace()
-                rr = [fit_fnnls_continuum(*_fitargs) for _fitargs in fitargs]
-            warn, _, chi2grid = list(zip(*rr)) # unpack
-            if np.any(warn):
-                vals = ','.join(['{:.1f}'.format(xp) for xp in xparam[np.where(warn)[0]]])
-                log.warning('fnnls did not converge after 5 iterations for parameter value(s) {}.'.format(vals))
-            chi2grid = np.array(chi2grid)
-
-            try:
-                imin = fitz.find_minima(chi2grid)[0]
-                xbest, xerr, chi2min, warn = fitz.minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
-            except:
-                print('Problem here!', chi2grid)
-                imin, xbest, xerr, chi2min, warn = 0, 0.0, 0.0, 0.0, 1
-                
-            #if np.all(chi2grid == 0):
-            #    imin, xbest, xerr, chi2min, warn = 0, 0.0, 0.0, 0.0, 1
-            #else:
-            
-            if warn == 0:
-                xivar = 1.0 / xerr**2
-            else:
-                chi2min = 1e6
-                xivar = 0.0
-
-            if debug:
-                import matplotlib.pyplot as plt
-                plt.clf()
-                plt.scatter(xparam, chi2grid)
-                plt.scatter(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2], color='red')
-                #plt.plot(xx, np.polyval([aa, bb, cc], xx), ls='--')
-                plt.axvline(x=xbest, color='k')
-                if xivar > 0:
-                    plt.axhline(y=chi2min, color='k')
-                plt.yscale('log')
-                plt.savefig('qa-chi2min.png')
-
-            return chi2min, xbest, xivar
-
         # Initialize the output table; see init_fastspecfit for the data model.
-        result = self.init_output()
+        result = self.init_spec_output()
 
         redshift = data['zredrock']
         result['CONTINUUM_Z'] = redshift
@@ -786,10 +879,10 @@ class ContinuumFit(object):
         # redshift.
         agekeep = self.younger_than_universe(redshift)
         t0 = time.time()
-        zsspflux_dustvdisp, zsspphot_dustvdisp = self.SSP2data(
+        zsspflux_dustvdisp, _ = self.SSP2data(
             self.sspflux_dustvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
             redshift=redshift, specwave=data['wave'], specres=data['res'],
-            south=data['photsys_south'], nproc=1)
+            nproc=1, synthphot=False)
         log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
         
         # Combine all three cameras; we will unpack them to build the
@@ -803,68 +896,30 @@ class ContinuumFit(object):
         zsspflux_dustvdisp = np.concatenate(zsspflux_dustvdisp, axis=0)  # [npix,nage*nAV]
         assert(np.all(specivar >= 0))
 
-        objflam = data['phot']['flam'].data * self.fluxnorm
-        objflamivar = data['phot']['flam_ivar'].data / self.fluxnorm**2
-        zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
-        assert(np.all(objflamivar >= 0))
-
         inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0
 
         npix, nmodel = zsspflux_dustvdisp.shape
         nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
 
         zsspflux_dustvdisp = zsspflux_dustvdisp.reshape(npix, nage, self.nAV)       # [npix,nage,nAV]
-        zsspflam_dustvdisp = zsspflam_dustvdisp.reshape(self.nband, nage, self.nAV) # [nband,nage,nAV]
-        
-        # [1] First, fit just the photometry, independent of the spectra,
-        # including reddening and at our nominal velocity dispersion.
+
+        if False:
+            # Fit the spectra with *no* dust reddening so we can identify potential
+            # calibration issues (again, at the nominal velocity dispersion).
+            t0 = time.time()
+            coeff, chi2min = self._fnnls_parallel(zsspflux_dustvdisp[:, :, inodust],
+                                                  specflux, specivar)
+            log.info('No-dust model fit has chi2={:.3f} and took {:.2f} sec'.format(
+                chi2min, time.time()-t0))
+
+            result['CONTINUUM_NODUST_COEFF'][0][0:nage] = coeff
+            result['CONTINUUM_NODUST_CHI2'] = chi2min
+
+        # Fit the spectra for reddening using the models convolved to the
+        # nominal velocity dispersion and then fit for velocity dispersion.
         t0 = time.time()
-        AVchi2min, AVbest, AVivar = _fnnls_parallel(zsspflam_dustvdisp, objflam, objflamivar, xparam=self.AV)
-        log.info('Fitting the photometry took: {:.2f} sec'.format(time.time()-t0))
-        if AVivar > 0:
-            log.info('Best-fitting photometric A(V)={:.4f}+/-{:.4f} with chi2={:.3f}'.format(
-                AVbest, 1/np.sqrt(AVivar), AVchi2min))
-        else:
-            AVbest = self.AV_nominal
-            log.info('Finding photometric A(V) failed; adopting A(V)={:.4f}'.format(self.AV_nominal))
-
-        # Get the final set of coefficients and chi2 at the best-fitting
-        # reddening and nominal velocity dispersion.
-        bestsspflux, bestphot = self.SSP2data(self.sspflux_dustvdisp[:, agekeep, inodust], # equivalent to calling with self.sspflux[:, agekeep]
-                                              self.sspwave, AV=AVbest, redshift=redshift,
-                                              south=data['photsys_south'])
-        coeff, chi2min = _fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
-                                         objflam, objflamivar) # bestphot['flam'] is [nband, nage]
-
-        bestfit = bestsspflux.dot(coeff)
-        d4000, _ = get_d4000(self.sspwave, bestfit, rest=True)
-        #d4000, _ = self.get_d4000(self.sspwave, bestfit, rest=True)
-        meanage = self.get_meanage(coeff)
-        log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
-
-        result['CONTINUUM_PHOT_COEFF'][0][:nage] = coeff
-        result['CONTINUUM_PHOT_CHI2'][0] = chi2min
-        result['CONTINUUM_PHOT_AGE'][0] = meanage
-        result['CONTINUUM_PHOT_AV'][0] = AVbest
-        result['CONTINUUM_PHOT_AV_IVAR'][0] = AVivar
-        result['D4000_MODEL_PHOT'][0] = d4000
-            
-        # [2] Next, fit the spectra  with *no* dust reddening so we can identify
-        # potential calibration issues (again, at the nominal velocity
-        # dispersion).
-        t0 = time.time()
-        coeff, chi2min = _fnnls_parallel(zsspflux_dustvdisp[:, :, inodust], specflux, specivar)
-        log.info('No-dust model fit has chi2={:.3f} and took {:.2f} sec'.format(
-            chi2min, time.time()-t0))
-
-        result['CONTINUUM_NODUST_COEFF'][0][0:nage] = coeff
-        result['CONTINUUM_NODUST_CHI2'] = chi2min
-
-        # [3] Third, fit the spectra for reddening using the models convolved to
-        # the nominal velocity dispersion and then fit for velocity dispersion.
-        t0 = time.time()
-        AVchi2min, AVbest, AVivar = _fnnls_parallel(zsspflux_dustvdisp, specflux, specivar,
-                                                    xparam=self.AV, debug=False)
+        AVchi2min, AVbest, AVivar = self._fnnls_parallel(zsspflux_dustvdisp, specflux, specivar,
+                                                         xparam=self.AV, debug=False)
         log.info('Fitting for the reddening took: {:.2f} sec'.format(time.time()-t0))
         if AVivar > 0:
             log.info('Best-fitting spectroscopic A(V)={:.4f}+/-{:.4f} with chi2={:.3f}'.format(
@@ -873,28 +928,32 @@ class ContinuumFit(object):
             AVbest = self.AV_nominal
             log.info('Finding spectroscopic A(V) failed; adopting A(V)={:.4f}'.format(
                 self.AV_nominal))
-        
-        # Build out the model spectra on our grid of velocity dispersion
-        t0 = time.time()
-        zsspflux_vdisp = []
-        for vdisp in self.vdisp:
-            _zsspflux_vdisp, _ = self.SSP2data(self.sspflux[:, agekeep], self.sspwave,
-                                               specwave=data['wave'], specres=data['res'],
-                                               AV=AVbest, vdisp=vdisp, redshift=redshift,
-                                               synthphot=False)
-            _zsspflux_vdisp = np.concatenate(_zsspflux_vdisp, axis=0)
-            zsspflux_vdisp.append(_zsspflux_vdisp)
-            
-        zsspflux_vdisp = np.stack(zsspflux_vdisp, axis=-1) # [npix,nage,nvdisp] at best A(V)
-        vdispchi2min, vdispbest, vdispivar = _fnnls_parallel(zsspflux_vdisp, specflux, specivar,
-                                                             xparam=self.vdisp, debug=False)
-        log.info('Fitting for the velocity dispersion took: {:.2f} sec'.format(time.time()-t0))
-        if vdispivar > 0:
-            log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s with chi2={:.3f}'.format(
-                vdispbest, 1/np.sqrt(vdispivar), vdispchi2min))
+
+        # Optionally build out the model spectra on our grid of velocity
+        # dispersion and then solve.
+        if solve_vdisp:
+            t0 = time.time()
+            zsspflux_vdisp = []
+            for vdisp in self.vdisp:
+                _zsspflux_vdisp, _ = self.SSP2data(self.sspflux[:, agekeep], self.sspwave,
+                                                   specwave=data['wave'], specres=data['res'],
+                                                   AV=AVbest, vdisp=vdisp, redshift=redshift,
+                                                   synthphot=False)
+                _zsspflux_vdisp = np.concatenate(_zsspflux_vdisp, axis=0)
+                zsspflux_vdisp.append(_zsspflux_vdisp)
+
+            zsspflux_vdisp = np.stack(zsspflux_vdisp, axis=-1) # [npix,nage,nvdisp] at best A(V)
+            vdispchi2min, vdispbest, vdispivar = self._fnnls_parallel(zsspflux_vdisp, specflux, specivar,
+                                                                      xparam=self.vdisp, debug=False)
+            log.info('Fitting for the velocity dispersion took: {:.2f} sec'.format(time.time()-t0))
+            if vdispivar > 0:
+                log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s with chi2={:.3f}'.format(
+                    vdispbest, 1/np.sqrt(vdispivar), vdispchi2min))
+            else:
+                vdispbest = self.vdisp_nominal
+                log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
         else:
-            vdispbest = self.vdisp_nominal
-            log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
+            vdispbest, vdispivar = self.vdisp_nominal, 0.0
 
         # Get the final set of coefficients and chi2 at the best-fitting
         # reddening and velocity dispersion.
@@ -903,21 +962,13 @@ class ContinuumFit(object):
                                               AV=AVbest, vdisp=vdispbest, redshift=redshift,
                                               south=data['photsys_south'])
         bestsspflux = np.concatenate(bestsspflux, axis=0)
-        coeff, chi2min = _fnnls_parallel(bestsspflux, specflux, specivar)
+        coeff, chi2min = self._fnnls_parallel(bestsspflux, specflux, specivar)
 
         bestfit = bestsspflux.dot(coeff)
         meanage = self.get_meanage(coeff)
         d4000_model, _ = get_d4000(specwave, bestfit, redshift=redshift)
         d4000, d4000_ivar = get_d4000(specwave, specflux, specivar, redshift=redshift)
-        #d4000_model, _ = self.get_d4000(specwave, bestfit, redshift=redshift)
-        #d4000, d4000_ivar = self.get_d4000(specwave, specflux, specivar, redshift=redshift)
         log.info('Spectroscopic D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
-
-        #import matplotlib.pyplot as plt
-        #plt.clf()
-        #plt.plot(specwave, specflux)
-        #plt.plot(specwave, bestfit)
-        #plt.savefig('qa-bestfit.png')
 
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
         result['CONTINUUM_CHI2'][0] = chi2min
@@ -939,7 +990,7 @@ class ContinuumFit(object):
 
         return result, continuum
     
-    def fnnls_continuum_plot(self, data, result, qadir='.'):
+    def qa_continuum(self, data, specfit, photfit, qadir='.'):
         """QA of the best-fitting continuum.
 
         """
@@ -964,13 +1015,13 @@ class ContinuumFit(object):
         agekeep = self.younger_than_universe(redshift)
         continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
                                      specwave=data['wave'], specres=data['res'],
-                                     AV=result['CONTINUUM_AV'],
-                                     vdisp=result['CONTINUUM_VDISP'],
-                                     coeff=result['CONTINUUM_COEFF'],
+                                     AV=specfit['CONTINUUM_AV'],
+                                     vdisp=specfit['CONTINUUM_VDISP'],
+                                     coeff=specfit['CONTINUUM_COEFF'],
                                      synthphot=False)
         continuum_phot, bestphot = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift,
-                                                 AV=result['CONTINUUM_PHOT_AV'],
-                                                 coeff=result['CONTINUUM_PHOT_COEFF'] * self.massnorm,
+                                                 AV=photfit['CONTINUUM_PHOT_AV'],
+                                                 coeff=photfit['CONTINUUM_PHOT_COEFF'] * self.massnorm,
                                                  south=data['photsys_south'],
                                                  synthphot=True)
         continuum_wave_phot = self.sspwave * (1 + redshift)
@@ -992,23 +1043,23 @@ class ContinuumFit(object):
                 ymax = np.max(filtflux) * 1.5
 
         leg = {
-            'targetid': 'targetid={} fiber={}'.format(result['TARGETID'], result['FIBER']),
-            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(result['CONTINUUM_CHI2']),
-            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(result['Z']),
-            #'zfastspecfit': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(result['CONTINUUM_Z']),
-            'z': '$z$={:.6f}'.format(result['CONTINUUM_Z']),
-            'age': '<Age>={:.3f} Gyr'.format(result['CONTINUUM_AGE']),
+            'targetid': 'targetid={} fiber={}'.format(specfit['TARGETID'], specfit['FIBER']),
+            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(specfit['CONTINUUM_CHI2']),
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(specfit['Z']),
+            #'zfastspecfit': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(specfit['CONTINUUM_Z']),
+            'z': '$z$={:.6f}'.format(specfit['CONTINUUM_Z']),
+            'age': '<Age>={:.3f} Gyr'.format(specfit['CONTINUUM_AGE']),
             }
-        if result['CONTINUUM_VDISP_IVAR'] == 0:
-            leg.update({'vdisp': '$\sigma$={:.1f} km/s'.format(result['CONTINUUM_VDISP'])})
+        if specfit['CONTINUUM_VDISP_IVAR'] == 0:
+            leg.update({'vdisp': '$\sigma$={:.1f} km/s'.format(specfit['CONTINUUM_VDISP'])})
         else:
             leg.update({'vdisp': '$\sigma$={:.1f}+/-{:.1f} km/s'.format(
-                result['CONTINUUM_VDISP'], 1/np.sqrt(result['CONTINUUM_VDISP_IVAR']))})
-        if result['CONTINUUM_AV_IVAR'] == 0:
-            leg.update({'AV': '$A(V)$={:.3f} mag'.format(result['CONTINUUM_AV'])})
+                specfit['CONTINUUM_VDISP'], 1/np.sqrt(specfit['CONTINUUM_VDISP_IVAR']))})
+        if specfit['CONTINUUM_AV_IVAR'] == 0:
+            leg.update({'AV': '$A(V)$={:.3f} mag'.format(specfit['CONTINUUM_AV'])})
         else:
             leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
-                result['CONTINUUM_AV'], 1/np.sqrt(result['CONTINUUM_AV_IVAR']))})
+                specfit['CONTINUUM_AV'], 1/np.sqrt(specfit['CONTINUUM_AV_IVAR']))})
 
         ax1.text(0.95, 0.92, '{}'.format(leg['targetid']), 
                  ha='right', va='center', transform=ax1.transAxes, fontsize=14)
@@ -1082,7 +1133,7 @@ class ContinuumFit(object):
         #plt.subplots_adjust(bottom=0.1, right=0.95, top=0.95, wspace=0.17)
 
         pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(
-            result['TILE'], result['NIGHT'], result['TARGETID']))
+            specfit['TILE'], specfit['NIGHT'], specfit['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
         plt.close()

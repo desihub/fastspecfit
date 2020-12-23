@@ -70,12 +70,18 @@ def main(args=None, comm=None):
     resultsdir = os.path.join(fastspecfit_dir, 'results', args.specprod)
     qadir = os.path.join(fastspecfit_dir, 'qa', args.specprod)
 
-    fastspecfitfile = os.path.join(resultsdir, 'fastspecfit-{}-{}.fits'.format(
+    specfitfile = os.path.join(resultsdir, 'specfit-{}-{}.fits'.format(
         args.tile, args.night))
-    if not os.path.isfile(fastspecfitfile):
-        log.info('Output file {} not found!'.format(fastspecfitfile))
+    photfitfile = os.path.join(resultsdir, 'photfit-{}-{}.fits'.format(
+        prefix, args.tile, args.night))
+    if not os.path.isfile(specfitfile):
+        log.info('Spectroscopic fit file {} not found!'.format(specfitfile))
         return
-    fastspecfit = Table.read(fastspecfitfile)
+    if not os.path.isfile(photfitfile):
+        log.info('Photometric fit file {} not found!'.format(photfitfile))
+        return
+    specfit = Table.read(specfitfile)
+    photfit = Table.read(photfitfile)
     log.info('Read {} objects from {}'.format(len(fastspecfit), fastspecfitfile))
 
     # Read the data 
@@ -101,5 +107,5 @@ def main(args=None, comm=None):
     del specobj, zbest # free memory
 
     for iobj, indx in enumerate(fitindx):
-        continuum = CFit.fnnls_continuum_plot(data[iobj], fastspecfit[indx], qadir=qadir)
-        EMFit.emlineplot(data[iobj], fastspecfit[indx], continuum, qadir=qadir)
+        continuum = CFit.qa_continuum(data[iobj], specfit[indx], photfit[indx], qadir=qadir)
+        EMFit.qa_emlines(data[iobj], specfit[indx], continuum, qadir=qadir)

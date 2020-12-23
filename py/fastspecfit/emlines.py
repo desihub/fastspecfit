@@ -524,8 +524,8 @@ class EMLineFit(object):
 
         return result
     
-    def emlineplot(self, data, result, continuum, qadir='.'):
-        """Plot the emission-line spectrum and best-fitting model.
+    def qa_emlines(self, data, specfit, continuum, qadir='.'):
+        """QA plot the emission-line spectrum and best-fitting model.
 
         """
         from scipy.ndimage import median_filter
@@ -536,8 +536,8 @@ class EMLineFit(object):
 
         from fastspecfit.util import ivar2var
 
-        redshift = result['Z']
-        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], result)
+        redshift = specfit['Z']
+        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], specfit)
 
         sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
 
@@ -545,12 +545,12 @@ class EMLineFit(object):
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
 
         leg = {
-            'targetid': '{} {}'.format(result['TARGETID'], result['FIBER']),
+            'targetid': '{} {}'.format(specfit['TARGETID'], specfit['FIBER']),
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(result['LINEVSHIFT_FORBIDDEN']),
-            'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(result['LINEVSHIFT_BALMER']),
-            'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(result['LINESIGMA_FORBIDDEN']),
-            'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(result['LINESIGMA_BALMER']),
+            'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(specfit['LINEVSHIFT_FORBIDDEN']),
+            'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(specfit['LINEVSHIFT_BALMER']),
+            'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(specfit['LINESIGMA_FORBIDDEN']),
+            'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(specfit['LINESIGMA_BALMER']),
             }
 
         #fig, ax = plt.subplots(1, 4, figsize=(16, 10))#, sharey=True)
@@ -696,7 +696,7 @@ class EMLineFit(object):
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
 
         pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(
-            result['TILE'], result['NIGHT'], result['TARGETID']))
+            specfit['TILE'], specfit['NIGHT'], specfit['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
         plt.close()
