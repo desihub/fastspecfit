@@ -119,13 +119,6 @@ def read_spectra(tile, night, specprod='andes', use_vi=False, write_spectra=True
     import desispec.io
     from desitarget.io import read_targets_in_tiles
 
-    if False:
-        hpdirname = '/global/cfs/cdirs/desi/target/catalogs/dr9/0.47.0/targets/sv1/resolve/dark'
-        print('Assuming hpdirname={}'.format(hpdirname))
-        from desimodel.io import load_tiles
-        tileinfo = load_tiles()
-        tileinfo = tileinfo[tileinfo['TILEID'] == tile]
-
     data_dir = os.path.join(os.getenv('FASTSPECFIT_DATA'), 'spectra', specprod)
     zbestoutfile = os.path.join(data_dir, 'zbest-{}-{}.fits'.format(tile, night))
     coaddoutfile = os.path.join(data_dir, 'coadd-{}-{}.fits'.format(tile, night))
@@ -165,12 +158,10 @@ def read_spectra(tile, night, specprod='andes', use_vi=False, write_spectra=True
 
             log.info('Read {}/{} good redshifts from {}'.format(len(best), len(truth), truthfile))
             truth = truth[best]
-    
+
     zbest = []
     spectra, keepindx = [], []
-    if False:
-        targets = read_targets_in_tiles(tiles=np.atleast_1d(tileinfo), hpdirname=hpdirname, quick=True)
-    
+        
     #for spectro in ('0'):
     for spectro in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'):
         zbestfile = os.path.join(desidatadir, 'zbest-{}-{}-{}.fits'.format(spectro, tile, night))
@@ -192,9 +183,21 @@ def read_spectra(tile, night, specprod='andes', use_vi=False, write_spectra=True
                 spectra.append(desispec.io.read_spectra(coaddfile))
 
     if len(zbest) == 0:
-        log.fatal('No spectra found!')
+        log.fatal('No spectra found in {}'.format(desidatadir))
         raise ValueError
-        
+
+    # Gather tile and targets info.
+    tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
+    log.info('Reading {}'.format(tilefile))
+    tiles = fitsio.read(tilefile)
+    thistile = tiles[tiles['TILEID'] == np.int(tile)]
+    
+    hpdirname = '/global/cfs/cdirs/desi/target/catalogs/dr9/0.47.0/targets/sv1/resolve/dark'
+    log.info('Assuming hpdirname {}'.format(hpdirname))
+
+    targets = read_targets_in_tiles(hpdirname, tiles=thistile, quick=True)
+    #rr = read_targets_in_cap('/global/cfs/cdirs/desi/target/catalogs/dr9/0.47.0/targets/sv1/resolve/dark', (36.448, -4.601, 1.5), quick=True)
+    
     # combine the spectrographs
     #log.debug('Stacking all the spectra.')
     zbest = vstack(zbest)
@@ -204,11 +207,19 @@ def read_spectra(tile, night, specprod='andes', use_vi=False, write_spectra=True
         wave = spectra[0].wave[camera]
         fm, flux, ivar, mask, res = [], [], [], [], []
         for ii in np.arange(len(spectra)):
-            fm.append(spectra[ii].fibermap[keepindx[ii]])
             flux.append(spectra[ii].flux[camera][keepindx[ii], :])
             ivar.append(spectra[ii].ivar[camera][keepindx[ii], :])
             mask.append(spectra[ii].mask[camera][keepindx[ii], :])
             res.append(spectra[ii].resolution_data[camera][keepindx[ii], :, :])
+
+            # add additional columns to the fibermap
+            _fm = spectra[ii].fibermap[keepindx[ii]]
+            I = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in _fm['TARGETID']])
+            #assert(len(I) == len(_fm))
+            for col in ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']:
+                _fm[col] = targets[col][I]
+            assert(np.all(targets['FLUX_W1'][I]==_fm['FLUX_W1'].data))
+            fm.append(_fm)
 
         fm = vstack(fm)
         flux = np.concatenate(flux)
@@ -386,11 +397,12 @@ def unpack_one_spectrum(specobj, zbest, CFit, indx):
         maggies[iband] = specobj.fibermap['FLUX_{}'.format(band.upper())][indx] / dust[iband]
 
         ivarcol = 'FLUX_IVAR_{}'.format(band.upper())
-        if ivarcol in specobj.fibermap.colnames:
-            ivarmaggies[iband] = specobj.fibermap[ivarcol][indx] * dust[iband]**2
-        else:
-            if maggies[iband] > 0:
-                ivarmaggies[iband] = (10.0 / maggies [iband])**2 # constant S/N hack!!
+        ivarmaggies[iband] = specobj.fibermap[ivarcol][indx] * dust[iband]**2
+        #if ivarcol in specobj.fibermap.colnames:
+        #    ivarmaggies[iband] = specobj.fibermap[ivarcol][indx] * dust[iband]**2
+        #else:
+        #    if maggies[iband] > 0:
+        #        ivarmaggies[iband] = (10.0 / maggies [iband])**2 # constant S/N hack!!
     
     data['phot'] = CFit.parse_photometry(
         maggies=maggies, lambda_eff=lambda_eff,
@@ -433,6 +445,32 @@ def unpack_all_spectra(specobj, zbest, CFit, fitindx, nproc=1):
 
     return data    
 
+def write_results(data, results, resultsfile):
+    """Write out the final results.
+
+    Parameters
+    ----------
+    data : :class:`list`
+        List of dictionaries (row-aligned to `fitindx`) populated by
+        `unpack_one_spectrum`.
+    results : :class:`astropy.table.Table`
+        Fitting results (see `init_output`) for the data model.
+    
+    Returns
+    -------
+        
+    Notes
+    -----
+
+    """
+    #from astropy.io import fits
+
+    t0 = time.time()
+    log.info('Writing results for {} objects to {}'.format(len(results), resultsfile))
+    #hduout = fits.convenience.table_to_hdu(results)
+    results.write(resultsfile, overwrite=True)
+    log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
+
 def init_output(tile, night, zbest, fibermap, CFit, EMFit, phot=False):
     """Initialize the fastspecfit output data table.
 
@@ -453,7 +491,8 @@ def init_output(tile, night, zbest, fibermap, CFit, EMFit, phot=False):
 
     Returns
     -------
-    
+    :class:`astropy.table.Table`
+        Fitting results (see `init_output`) for the data model.
 
     Notes
     -----
@@ -595,7 +634,4 @@ def main(args=None, comm=None):
     del _out
 
     # write out
-    t0 = time.time()
-    log.info('Writing results for {} objects to {}'.format(len(out), outfile))
-    out.write(outfile, overwrite=True)
-    log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
+    write_results(data, out, outfile)

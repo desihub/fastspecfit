@@ -147,22 +147,41 @@ def _fnnls_continuum(myargs):
     """Multiprocessing wrapper."""
     return fnnls_continuum(*myargs)
 
-def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
-                        support=None, get_chi2=False):
+def  fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
+                     support=None, get_chi2=False, jvendrow=False):
     """Fit a continuum using fNNLS. This function is a simple wrapper on fnnls; see
     the ContinuumFit.fnnls_continuum method for documentation.
 
-    """
-    from fnnls import fnnls
-    
-    if support is None:
-        support = np.zeros(0, dtype=int)
+        Mapping between mikeiovine fnnls(AtA, Aty) and jvendrow fnnls(Z, x) inputs:
+          Z [mxn] --> A [mxn]
+          x [mx1] --> y [mx1]
 
-    try:
-        warn, coeff, _ = fnnls(ZZ, xx, P_initial=support)
-    except:
-        log.warning('fnnls failed to converge.')
-        warn, coeff = True, np.zeros(modelflux.shape[1])
+        And mikeiovine wants:
+          A^T * A
+          A^T * y
+
+          AtA = A.T.dot(A)
+          Aty = A.T.dot(y)
+
+    """
+    if jvendrow:
+        from fnnls import fnnls
+
+        if support is None:
+            support = np.zeros(0, dtype=int)
+            
+        try:
+            warn, coeff, _ = fnnls(ZZ, xx)#, P_initial=support)
+        except:
+            log.warning('fnnls failed to converge.')
+            warn, coeff = True, np.zeros(modelflux.shape[1])
+    else:
+        from fastnnls import fnnls
+
+        AtA = ZZ.T.dot(ZZ)
+        Aty = ZZ.T.dot(xx)
+        coeff = fnnls(AtA, Aty)
+        warn = False
         
     #if warn:
     #    print('WARNING: fnnls did not converge after 5 iterations.')
@@ -251,7 +270,7 @@ class ContinuumFit(object):
         self.nvdisp = len(vdisp)
 
         #AVmin, AVmax, dAV, AV_nominal = (0.0, 0.0, 0.1, 0.0)
-        AVmin, AVmax, dAV, AV_nominal = (0.0, 1.0, 0.05, 0.0)
+        AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.05, 0.0)
         nAV = np.ceil((AVmax - AVmin) / dAV).astype(int)
         if nAV == 0:
             nAV = 1
@@ -360,7 +379,8 @@ class ContinuumFit(object):
         nssp_coeff = len(self.sspinfo)
         
         out = Table()
-        out.add_column(Column(name='CONTINUUM_SNR', length=nobj, shape=(3,), dtype='f4')) # median S/N in each camera
+        out.add_column(Column(name='SPEC_SNR', length=nobj, shape=(3,), dtype='f4')) # median S/N in each camera
+        out.add_column(Column(name='SPEC_GRZ', length=nobj, shape=(3,), dtype='f4', unit=u.nanomaggy)) # synthesized grz fluxes
 
         out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
@@ -371,6 +391,7 @@ class ContinuumFit(object):
         out.add_column(Column(name='CONTINUUM_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
         out.add_column(Column(name='CONTINUUM_VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
         out.add_column(Column(name='CONTINUUM_VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
+
 
         out['CONTINUUM_AV'] = self.AV_nominal
         out['CONTINUUM_VDISP'] = self.vdisp_nominal
@@ -398,6 +419,10 @@ class ContinuumFit(object):
         nssp_coeff = len(self.sspinfo)
         
         out = Table()
+
+        out.add_column(Column(name='PHOT_GRZW1W2', length=nobj, shape=(5,), dtype='f4', unit=u.nanomaggy)) # grzW1W2 photometry
+        out.add_column(Column(name='PHOT_GRZW1W2_IVAR', length=nobj, shape=(5,), dtype='f4', unit=u.nanomaggy)) 
+        
         #out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_PHOT_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_PHOT_CHI2', length=nobj, dtype='f4')) # reduced chi2
@@ -685,6 +710,8 @@ class ContinuumFit(object):
         To be documented.
 
         """
+        from redrock import fitz
+        
         if xparam is not None:
             nn = len(xparam)
         ww = np.sqrt(ivar)
@@ -722,15 +749,11 @@ class ContinuumFit(object):
         chi2grid = np.array(chi2grid)
 
         try:
-            imin = fitz.find_minima(chi2grid)[0]
+            imin = fitz.find_minima(chi2grid)[0] # take the zeroth minimum
             xbest, xerr, chi2min, warn = fitz.minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
         except:
             print('Problem here!', chi2grid)
             imin, xbest, xerr, chi2min, warn = 0, 0.0, 0.0, 0.0, 1
-
-        #if np.all(chi2grid == 0):
-        #    imin, xbest, xerr, chi2min, warn = 0, 0.0, 0.0, 0.0, 1
-        #else:
 
         if warn == 0:
             xivar = 1.0 / xerr**2
@@ -769,17 +792,18 @@ class ContinuumFit(object):
 
         Notes
         -----
-        See https://github.com/jvendrow/fnnls for the fNNLS algorithm.
+        See
+          https://github.com/jvendrow/fnnls
+          https://github.com/mikeiovine/fast-nnls
+        for the fNNLS algorithm.
 
         """
-        from fnnls import fnnls
-        from redrock import fitz
-
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_phot_output()
 
         redshift = data['zredrock']
-        #result['CONTINUUM_Z'] = redshift
+        result['PHOT_GRZW1W2'] = data['phot']['nanomaggies']
+        result['PHOT_GRZW1W2_IVAR'] = data['phot']['nanomaggies_ivar']
 
         # Prepare the reddened and unreddened SSP templates. Note that we ignore
         # templates which are older than the age of the universe at the galaxy
@@ -864,15 +888,13 @@ class ContinuumFit(object):
           - Need to mask more emission lines than we fit (e.g., Mg II).
 
         """
-        from fnnls import fnnls
-        from redrock import fitz
-
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_spec_output()
 
         redshift = data['zredrock']
         result['CONTINUUM_Z'] = redshift
-        result['CONTINUUM_SNR'] = data['snr']
+        result['SPEC_SNR'] = data['snr']
+        result['SPEC_GRZ'] = data['synthphot']['nanomaggies']
 
         # Prepare the reddened and unreddened SSP templates. Note that we ignore
         # templates which are older than the age of the universe at the galaxy
@@ -919,7 +941,7 @@ class ContinuumFit(object):
         # nominal velocity dispersion and then fit for velocity dispersion.
         t0 = time.time()
         AVchi2min, AVbest, AVivar = self._fnnls_parallel(zsspflux_dustvdisp, specflux, specivar,
-                                                         xparam=self.AV, debug=False)
+                                                         xparam=self.AV, debug=True)
         log.info('Fitting for the reddening took: {:.2f} sec'.format(time.time()-t0))
         if AVivar > 0:
             log.info('Best-fitting spectroscopic A(V)={:.4f}+/-{:.4f} with chi2={:.3f}'.format(
@@ -928,6 +950,8 @@ class ContinuumFit(object):
             AVbest = self.AV_nominal
             log.info('Finding spectroscopic A(V) failed; adopting A(V)={:.4f}'.format(
                 self.AV_nominal))
+
+        pdb.set_trace()
 
         # Optionally build out the model spectra on our grid of velocity
         # dispersion and then solve.
