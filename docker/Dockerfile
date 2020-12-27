@@ -140,9 +140,7 @@ RUN for x in \
     emcee \
     configobj \
     sqlalchemy \
-    corner \
-    ppxf \
-    # fnnls \
+    fnnls \
     ; do pip3 install $x; done \
     && rm -Rf /root/.cache/pip
 
@@ -179,13 +177,13 @@ RUN for package in \
     desisim \
     specsim \
     redrock; do \
-      git clone https://github.com/desihub/$package; \
-      # cd $package; \
-      # python setup.py develop;
+      git clone https://github.com/desihub/$package \
+      && cd $package \
+      && python setup.py install; \
     done
 
-ENV PATH /src/desiutil/bin:/src/desimodel/bin:/src/desitarget/bin:/src/desispec/bin:/src/desisim/bin:/src/redrock/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ENV PYTHONPATH /src/desiutil/py:/src/desimodel/py:/src/desitarget/py:/src/desispec/py:/src/desisim/py:/src/redrock/py
+# ENV PATH /src/desiutil/bin:/src/desimodel/bin:/src/desitarget/bin:/src/desispec/bin:/src/desisim/bin:/src/redrock/bin:$PATH
+# ENV PYTHONPATH /src/desiutil/py:/src/desimodel/py:/src/desitarget/py:/src/desispec/py:/src/desisim/py:/src/redrock/py
 
 # RUN git clone https://github.com/desihub/redrock-templates
 # ENV RR_TEMPLATE_DIR /src/redrock-templates
@@ -196,7 +194,8 @@ ENV PYTHONPATH /src/desiutil/py:/src/desimodel/py:/src/desitarget/py:/src/desisp
 
 ENV DESIMODEL /src/desimodel
 
-RUN cd $DESIMODEL \
+RUN mkdir $DESIMODEL \
+    && cd $DESIMODEL \
     && svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data
 
 RUN mkdir /homedir && chmod 777 /homedir
