@@ -41,14 +41,17 @@ import os, sys, time
 import numpy as np
 import multiprocessing
 
+from redrock.external.desi import DistTargetsDESI
+
 from desiutil.log import get_logger
 log = get_logger()
 
 # ridiculousness!
-import tempfile
-os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
-import matplotlib
-matplotlib.use('Agg')
+if False:
+    import tempfile
+    os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
+    import matplotlib
+    matplotlib.use('Agg')
 
 def _fastspecfit_one(args):
     """Multiprocessing wrapper."""
@@ -518,6 +521,64 @@ def init_output(tile, night, zbest, fibermap, CFit, EMFit, phot=False):
 
     return out
 
+class DistTargetsFSF(DistTargetsDESI):
+    """Distributed targets for the DESI version of fastspecfit (FSF).
+
+    Args:
+        spectrafiles (str or list): a list of input files or pattern match
+            of files.
+        coadd (bool): if False, do not compute the coadds.
+        targetids (list): (optional) restrict the global set of target IDs
+            to this list.
+        first_target (int): (optional) integer offset of the first target to
+            consider in each file.  Useful for debugging / testing.
+        n_target (int): (optional) number of targets to consider in each file.
+            Useful for debugging / testing.
+        comm (mpi4py.MPI.Comm): (optional) the MPI communicator.
+        cache_Rcsr: pre-calculate and cache sparse CSR format of resolution
+            matrix R
+        cosmics_nsig (float): cosmic rejection threshold used in coaddition
+    """
+
+    ### @profile
+    def __init__(self, spectrafiles, coadd=True, targetids=None,
+                 first_target=None, n_target=None, comm=None,
+                 cache_Rcsr=False):
+
+        from astropy.io import fits
+        from astropy.table import Table
+        from desiutil.io import encode_table
+
+        super(DistTargetsFSF, self).__init__(spectrafiles[0], coadd=False, targetids=targetids,
+                                             first_target=first_target, n_target=n_target,
+                                             comm=comm, cache_Rcsr=cache_Rcsr)
+
+        comm_size = 1
+        comm_rank = 0
+        if comm is not None:
+            comm_size = comm.size
+            comm_rank = comm.rank
+
+        # Get the zbest files.
+        self._zbestall = {}
+        
+        zbestfiles = [sp.replace('spectra-', 'zbest-') for sp in spectrafiles]
+        for sfile, zfile in zip(spectrafiles, zbestfiles):
+            hdus = None
+            nhdu = None
+            zbest = None
+            if comm_rank == 0:
+                hdus = fits.open(zfile, memmap=False)
+                nhdu = len(hdus)
+                zbest = encode_table(Table(hdus['ZBEST'].data, copy=True).as_array())
+
+            if comm is not None:
+                nhdu = comm.bcast(nhdu, root=0)
+                zbest = comm.bcast(zbest, root=0)
+
+            # Slice the zbest table
+            self._zbestall[zfile] = [Table(np.hstack([zbest[self._spec_sliced[sfile][x]] for x in self._spec_keep[sfile]]))]
+
 def parse(options=None):
     """Parse input arguments.
 
@@ -533,8 +594,16 @@ def parse(options=None):
     # optional inputs
     parser.add_argument('--first', type=int, help='Index of first spectrum to process (0-indexed).')
     parser.add_argument('--last', type=int, help='Index of last spectrum to process (max of nobj-1).')
-    parser.add_argument('--nproc', default=1, type=int, help='Number of cores.')
-    parser.add_argument('--specprod', type=str, default='variance-model', choices=['andes', 'daily', 'variance-model'],
+    parser.add_argument('--mp', default=1, type=int, help='Number of cores.')
+
+    parser.add_argument("--targetids", type=str, default=None,
+                        required=False, help="comma-separated list of target IDs")
+    parser.add_argument("--mintarget", type=int, default=None,
+        help="first target to process in each file")
+    parser.add_argument("-n", "--ntargets", type=int,
+        required=False, help="the number of targets to process in each file")
+
+    parser.add_argument('--specprod', type=str, default='daily', choices=['andes', 'daily', 'variance-model'],
                         help='Spectroscopic production to process.')
 
     parser.add_argument('--phot', action='store_true', help='Fit and write out just the broadband photometry.')
@@ -542,6 +611,8 @@ def parse(options=None):
 
     parser.add_argument('--use-vi', action='store_true', help='Select spectra with high-quality visual inspections (VI).')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing files.')
+    parser.add_argument("--debug", default=False, action="store_true",
+        help="debug with ipython (only if communicator has a single process)")
 
     parser.add_argument('--no-write-spectra', dest='write_spectra', default=True, action='store_false',
                         help='Do not write out the selected spectra for the specified tile and night.')
@@ -564,6 +635,8 @@ def main(args=None, comm=None):
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
 
+    from redrock.utils import elapsed, get_mp, distribute_work
+
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
@@ -575,7 +648,7 @@ def main(args=None, comm=None):
             if args.verbose:
                 log.debug('Creating directory {}'.format(outdir))
             os.makedirs(outdir, exist_ok=True)
-    
+
     # If the output file exists, we're done!
     resultsdir = os.path.join(fastspecfit_dir, 'results', args.specprod)
     if args.phot:
@@ -588,32 +661,143 @@ def main(args=None, comm=None):
     if os.path.isfile(outfile) and not args.overwrite:
         log.info('Output file {} exists; all done!'.format(outfile))
         return
-        
-    # Read the data 
-    t0 = time.time()
-    zbest, specobj = read_spectra(tile=args.tile, night=args.night,
-                                  specprod=args.specprod,
-                                  use_vi=args.use_vi, 
-                                  write_spectra=args.write_spectra,
-                                  verbose=args.verbose)
-    log.info('Reading the data took: {:.2f} sec'.format(time.time()-t0))
 
-    if args.first is None:
-        args.first = 0
-    if args.last is None:
-        args.last = len(zbest) - 1
-    if args.first > args.last:
-        log.warning('Option --first cannot be larger than --last!')
-        raise ValueError
-    fitindx = np.arange(args.last - args.first + 1) + args.first
+    comm_size = 1
+    comm_rank = 0
+    if comm is not None:
+        comm_size = comm.size
+        comm_rank = comm.rank
+
+    # Check arguments (just on rank 0)
+    if comm_rank == 0:
+        if args.debug and comm_size != 1:
+            print("--debug can only be used if the communicator has one "
+                " process")
+            sys.stdout.flush()
+            if comm is not None:
+                comm.Abort()
+
+        #if (args.output is None) and (args.zbest is None):
+        #    parser.print_help()
+        #    print("ERROR: --output or --zbest required")
+        #    sys.stdout.flush()
+        #    if comm is not None:
+        #        comm.Abort()
+        #    else:
+        #        sys.exit(1)
+
+        #if len(args.infiles) == 0:
+        #    print("ERROR: must provide input files")
+        #    sys.stdout.flush()
+        #    if comm is not None:
+        #        comm.Abort()
+        #    else:
+        #        sys.exit(1)
+
+        #if (args.targetids is not None) and ((args.mintarget is not None) \
+        #    or (args.ntargets is not None)):
+        #    print("ERROR: cannot select targets by both ID and range")
+        #    sys.stdout.flush()
+        #    if comm is not None:
+        #        comm.Abort()
+        #    else:
+        #        sys.exit(1)
+
+    targetids = None
+    if args.targetids is not None:
+        targetids = [int(x) for x in args.targetids.split(",")]
+
+    n_target = None
+    if args.ntargets is not None:
+        n_target = args.ntargets
+
+    first_target = None
+    if args.mintarget is not None:
+        first_target = args.mintarget
+    elif n_target is not None:
+        first_target = 0
+
+    # Multiprocessing processes to use if MPI is disabled.
+    mpprocs = 0
+    if comm is None:
+        mpprocs = get_mp(args.mp)
+        print("Running with {} processes".format(mpprocs))
+        if "OMP_NUM_THREADS" in os.environ:
+            nthread = int(os.environ["OMP_NUM_THREADS"])
+            if nthread != 1:
+                print("WARNING:  {} multiprocesses running, each with "
+                    "{} threads ({} total)".format(mpprocs, nthread,
+                    mpprocs*nthread))
+                print("WARNING:  Please ensure this is <= the number of "
+                    "physical cores on the system")
+        else:
+            print("WARNING:  using multiprocessing, but the OMP_NUM_THREADS")
+            print("WARNING:  environment variable is not set- your system may")
+            print("WARNING:  be oversubscribed.")
+        sys.stdout.flush()
+    elif comm_rank == 0:
+        print("Running with {} process(es)".format(comm_size))
+        sys.stdout.flush()
+
+    # Load and distribute the targets
+    if comm_rank == 0:
+        print("Loading targets...")
+        sys.stdout.flush()
+
+    # Load the targets.  If comm is None, then the target data will be
+    # stored in shared memory.
+    from glob import glob
+    specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', args.specprod)    
+    desidatadir = os.path.join(specprod_dir, 'tiles', args.tile, args.night)
+    infiles = glob(os.path.join(desidatadir, 'spectra-0-{}-{}.fits'.format(args.tile, args.night)))
+    
+    start = elapsed(None, "", comm=comm)
+
+    targets = DistTargetsFSF(infiles, 
+                             targetids=targetids, first_target=first_target, n_target=n_target,
+                             comm=comm, cache_Rcsr=False)#True)#, cosmics_nsig=args.cosmics_nsig)
+
+    # Get the dictionary of wavelength grids
+    # dwave = targets.wavegrids()
+
+    stop = elapsed(start, 'Read and distribution of {} targets'.format(
+        len(targets.all_target_ids)), comm=comm)
+
+    if False:
+        # Read the data
+        t0 = time.time()
+        zbest, specobj = read_spectra(tile=args.tile, night=args.night,
+                                      specprod=args.specprod,
+                                      use_vi=args.use_vi, 
+                                      write_spectra=args.write_spectra,
+                                      verbose=args.verbose)
+        log.info('Reading the data took: {:.2f} sec'.format(time.time()-t0))
+
+        if args.first is None:
+            args.first = 0
+        if args.last is None:
+            args.last = len(zbest) - 1
+        if args.first > args.last:
+            log.warning('Option --first cannot be larger than --last!')
+            raise ValueError
+        fitindx = np.arange(args.last - args.first + 1) + args.first
 
     # Initialize the continuum- and emission-line fitting classes and the output
     # data table.
-    t0 = time.time()
+    start = elapsed(None, "", comm=comm)
+    #t0 = time.time()
     CFit = ContinuumFit(verbose=args.verbose)
     EMFit = EMLineFit(verbose=args.verbose)
-    out = init_output(args.tile, args.night, zbest, specobj.fibermap, CFit, EMFit, phot=args.phot)
-    log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
+    #out = init_output(args.tile, args.night, zbest, specobj.fibermap, CFit, EMFit, phot=args.phot)
+
+    stop = elapsed(start, 'Initializing the classes took', comm=comm)
+    #log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
+
+    from fastspecfit.specfit import specfit
+    start = elapsed(None, "", comm=comm)
+    
+    results = specfit(targets, CFit, EMFit, mpprocs, phot=args.phot, solve_vdisp=args.solve_vdisp)
+    pdb.set_trace()
 
     # Unpacking with multiprocessing takes a lot longer (maybe pickling takes a
     # long time?) so suppress the `nproc` argument here for now.
