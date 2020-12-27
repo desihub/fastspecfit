@@ -54,23 +54,23 @@ WORKDIR /src
 ENV BLAS -L${MKLROOT}/lib/intel64 -lmkl_rt -fopenmp -lpthread -limf -lsvml -ldl
 ENV CPPFLAGS -I${MKLROOT}/include
 
-# RUN wget -nv https://www.mpich.org/static/downloads/3.3/mpich-3.3.tar.gz \
-#     && tar xvzf mpich-3.3.tar.gz \
-#     && cd mpich-3.3 \
-#     && ./configure \
-#     && make -j4 \
-#     && make install \
-#     && make clean \
-#     && cd .. && rm -Rf mpich-3.3
-# # defaults to installing in /usr/local
+RUN wget -nv https://www.mpich.org/static/downloads/3.3/mpich-3.3.tar.gz \
+    && tar xvzf mpich-3.3.tar.gz \
+    && cd mpich-3.3 \
+    && ./configure \
+    && make -j4 \
+    && make install \
+    && make clean \
+    && cd .. && rm -Rf mpich-3.3
+# defaults to installing in /usr/local
 
-# # mpi4py / mpicc can't handle -ax=knl
-# ENV CFLAGS -O3 -g -fPIC -std=gnu99 -pthread
-# RUN git clone https://github.com/mpi4py/mpi4py.git \
-#          && (cd mpi4py \
-#          && python setup.py build \
-#          && python setup.py install) \
-#          && rm -Rf mpi4py
+# mpi4py / mpicc can't handle -ax=knl
+ENV CFLAGS -O3 -g -fPIC -std=gnu99 -pthread
+RUN git clone https://github.com/mpi4py/mpi4py.git \
+         && (cd mpi4py \
+         && python setup.py build \
+         && python setup.py install) \
+         && rm -Rf mpi4py
 
 # Pip installs -- built from source
 RUN pip --no-cache-dir install fitsio
@@ -87,7 +87,8 @@ RUN echo 'PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh
 
 RUN rm /root/.profile
 
-RUN DEBIAN_FRONTEND=noninteractive \
+RUN apt -y update && apt install -y apt-utils \
+ && DEBIAN_FRONTEND=noninteractive \
     apt install -y --no-install-recommends \
     make \
     git \
@@ -105,6 +106,7 @@ RUN DEBIAN_FRONTEND=noninteractive \
     libgsl-dev \
     libcfitsio-dev \
     libcfitsio-bin \
+    imagemagick \
     # python3 \
     # python3-dev \
     # python3-pip \
@@ -117,7 +119,6 @@ COPY --from=builder /usr/local /usr/local
 COPY --from=builder /opt/conda /opt/conda
 
 RUN conda update --no-deps certifi
-# Pip installs
 RUN for x in \
     setuptools \
     wheel \
@@ -219,8 +220,3 @@ RUN echo "export PS1='[container] \\u@\\h:\\w$ '" >> $HOME/.bashrc \
   # Make astropy cache files readable!?!!
   && chmod -R a+rwX $HOME/.astropy
   
-# Curses upon you, astropy
-RUN wget -O /opt/conda/lib/python3.7/site-packages/astropy/utils/iers/data/Leap_Second.dat \
-    https://raw.githubusercontent.com/astropy/astropy/master/astropy/utils/iers/data/Leap_Second.dat \
-    && rm $HOME/.wget-hsts
-
