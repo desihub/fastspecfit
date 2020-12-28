@@ -395,6 +395,8 @@ def run_fastspecfit(args, comm=None):
 
         cmd = 'fastspecfit-desi {} -o {} --mp {}'.format(specfiles[ii], outfiles[ii], args.mp)
 
+        if args.exposures:
+            cmd += ' --exposures'
         if args.photfit:
             cmd += ' --photfit'
         if args.solve_vdisp:

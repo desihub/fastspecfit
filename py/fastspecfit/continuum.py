@@ -148,7 +148,7 @@ def _fnnls_continuum(myargs):
     return fnnls_continuum(*myargs)
 
 def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
-                        support=None, get_chi2=False):
+                    support=None, get_chi2=False, jvendrow=False):
     """Fit a continuum using fNNLS. This function is a simple wrapper on fnnls; see
     the ContinuumFit.fnnls_continuum method for documentation.
 
@@ -265,7 +265,11 @@ class ContinuumFit(object):
         self.nAV = len(AV)
 
         # photometry
-        self.nband = 5
+        self.bands = ['g', 'r', 'z', 'W1', 'W2']
+        self.nband = len(self.bands)
+        self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
+        self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z')
+
         self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z',
                                               'wise2010-W1', 'wise2010-W2')
         self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z',
@@ -685,6 +689,8 @@ class ContinuumFit(object):
         To be documented.
 
         """
+        from redrock import fitz
+        
         if xparam is not None:
             nn = len(xparam)
         ww = np.sqrt(ivar)
@@ -773,7 +779,6 @@ class ContinuumFit(object):
 
         """
         from fnnls import fnnls
-        from redrock import fitz
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_phot_output()
@@ -865,7 +870,6 @@ class ContinuumFit(object):
 
         """
         from fnnls import fnnls
-        from redrock import fitz
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_spec_output()
