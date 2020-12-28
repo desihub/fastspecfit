@@ -545,23 +545,66 @@ class DistTargetsFSF(DistTargetsDESI):
                  first_target=None, n_target=None, comm=None,
                  cache_Rcsr=False):
 
-        from astropy.io import fits
+        import fitsio
+        #from astropy.io import fits
         from astropy.table import Table
-        from desiutil.io import encode_table
-
-        super(DistTargetsFSF, self).__init__(spectrafiles[0], coadd=False, targetids=targetids,
-                                             first_target=first_target, n_target=n_target,
-                                             comm=comm, cache_Rcsr=cache_Rcsr)
-
+        #from desiutil.io import encode_table
+        from desitarget.io import read_targets_in_tiles
+    
         comm_size = 1
         comm_rank = 0
         if comm is not None:
             comm_size = comm.size
             comm_rank = comm.rank
 
-        # Get the zbest files.
-        self._zbestall = {}
+        # Read the zbest and fibermap files to figure out which targetids to process.
+        targetids = []
+        zbest = {}
+        for sfile in spectrafiles:
+            zfile = sfile.replace('spectra-', 'zbest-')
+            zb = fitsio.read(zfile, ext='ZBEST', columns=['Z', 'ZWARN', 'SPECTYPE', 'TARGETID'])
+            keep = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY'))[0]
+            zb = zb[keep]
+            
+            fmap = fitsio.read(zfile, ext='FIBERMAP', columns=['FIBERSTATUS', 'OBJTYPE', 'TARGETID'])
+            _, I, _ = np.intersect1d(fmap['TARGETID'], zb['TARGETID'], return_indices=True)            
+            fmap = fmap[I]
+            assert(np.all(zb['TARGETID'] == fmap['TARGETID']))
+
+            keep = np.where((fmap['OBJTYPE'] == 'TGT') * (fmap['FIBERSTATUS'] == 0))[0]
+            fmap = fmap[keep]
+            zb = zb[keep]
+            zbest[sfile] = zb
+
+            targetids.append(fmap['TARGETID'])
+
+        targetids = np.hstack(targetids)
+        assert(len(targetids) == len(np.unique(targetids)))
+
+        # self._spec_sliced -
+        # self._spec_keep - 
         
+        super(DistTargetsFSF, self).__init__(spectrafiles, coadd=True, targetids=targetids,
+                                             first_target=first_target, n_target=n_target,
+                                             comm=comm, cache_Rcsr=True)
+
+        pdb.set_trace()
+        self.zbest = [Table(np.hstack([zbest[self._spec_sliced[sfile][x]] for x in self._spec_keep[sfile]]))]
+        
+        # Gather tile and targets info.
+        tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
+        log.info('Reading {}'.format(tilefile))
+        tiles = fitsio.read(tilefile)
+        thistile = tiles[tiles['TILEID'] == np.int(tile)]
+
+        hpdirname = '/global/cfs/cdirs/desi/target/catalogs/dr9/0.47.0/targets/sv1/resolve/dark'
+        log.info('Assuming hpdirname {}'.format(hpdirname))
+
+        targets = read_targets_in_tiles(hpdirname, tiles=thistile, quick=True)
+        #rr = read_targets_in_cap('/global/cfs/cdirs/desi/target/catalogs/dr9/0.47.0/targets/sv1/resolve/dark', (36.448, -4.601, 1.5), quick=True)
+
+
+        self._zbestall = {}
         zbestfiles = [sp.replace('spectra-', 'zbest-') for sp in spectrafiles]
         for sfile, zfile in zip(spectrafiles, zbestfiles):
             hdus = None
@@ -577,8 +620,6 @@ class DistTargetsFSF(DistTargetsDESI):
                 zbest = comm.bcast(zbest, root=0)
 
             zb = Table(np.hstack([zbest[self._spec_sliced[sfile][x]] for x in self._spec_keep[sfile]]))
-
-            pdb.set_trace()
 
             # Slice the zbest table
             self._zbestall[zfile] = [Table(np.hstack([zbest[self._spec_sliced[sfile][x]] for x in self._spec_keep[sfile]]))]
@@ -614,6 +655,7 @@ def parse(options=None):
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
 
     parser.add_argument('--use-vi', action='store_true', help='Select spectra with high-quality visual inspections (VI).')
+    parser.add_argument('--coadd', action='store_true', help='Use the coadd files.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing files.')
     parser.add_argument("--debug", default=False, action="store_true",
         help="debug with ipython (only if communicator has a single process)")
@@ -753,8 +795,12 @@ def main(args=None, comm=None):
     from glob import glob
     specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', args.specprod)    
     desidatadir = os.path.join(specprod_dir, 'tiles', args.tile, args.night)
-    infiles = glob(os.path.join(desidatadir, 'spectra-0-{}-{}.fits'.format(args.tile, args.night)))
-    
+    if args.coadd:
+        infiles = glob(os.path.join(desidatadir, 'coadd-0-{}-{}.fits'.format(args.tile, args.night)))
+    else:
+        infiles = glob(os.path.join(desidatadir, 'spectra-[0-1]-{}-{}.fits'.format(args.tile, args.night)))
+        #infiles = glob(os.path.join(desidatadir, 'spectra-0-{}-{}.fits'.format(args.tile, args.night)))
+        
     start = elapsed(None, "", comm=comm)
 
     targets = DistTargetsFSF(infiles, 
