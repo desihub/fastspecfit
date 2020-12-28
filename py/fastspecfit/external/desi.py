@@ -5,6 +5,8 @@ fastspecfit.external.desi
 
 fastspecfit wrapper for DESI
 
+fastspecfit-desi /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80605/20201215/zbest-9-80605-20201215.fits -o photfit.fits --ntargets 2 --mp 1 --photfit
+
 ToDo:
 * Generalize to work on coadded spectra.
 * Fit to the photometry.
@@ -45,20 +47,21 @@ from desiutil.log import get_logger
 log = get_logger()
 
 # ridiculousness!
-import tempfile
-os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
-import matplotlib
-matplotlib.use('Agg')
+if False:
+    import tempfile
+    os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
+    import matplotlib
+    matplotlib.use('Agg')
 
 def _fastspecfit_one(args):
     """Multiprocessing wrapper."""
     return fastspecfit_one(*args)
 
-def fastspecfit_one(indx, data, CFit, EMFit, out, phot=False, solve_vdisp=False):
+def fastspecfit_one(indx, data, CFit, EMFit, out, photfit=False, solve_vdisp=False):
     """Fit one spectrum."""
     log.info('Continuum-fitting object {}'.format(indx))
     t0 = time.time()
-    if phot:
+    if photfit:
         cfit, _ = CFit.continuum_photfit(data)
     else:
         cfit, continuum = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
@@ -66,7 +69,7 @@ def fastspecfit_one(indx, data, CFit, EMFit, out, phot=False, solve_vdisp=False)
         out[col] = cfit[col]
     log.info('Continuum-fitting object {} took {:.2f} sec'.format(indx, time.time()-t0))
     
-    if phot:
+    if photfit:
         return out
 
     # fit the emission-line spectrum
@@ -433,7 +436,7 @@ def unpack_all_spectra(specobj, zbest, CFit, fitindx, nproc=1):
 
     return data    
 
-def init_output(tile, night, zbest, fibermap, CFit, EMFit, phot=False):
+def init_output(tile, night, zbest, fibermap, CFit, EMFit, photfit=False):
     """Initialize the fastspecfit output data table.
 
     Parameters
@@ -472,7 +475,7 @@ def init_output(tile, night, zbest, fibermap, CFit, EMFit, phot=False):
     out.add_column(Column(name='NIGHT', data=np.repeat(night, nobj)), index=0)
     out.add_column(Column(name='TILE', data=np.repeat(tile, nobj)), index=0)
 
-    if phot:
+    if photfit:
         out = hstack((out, CFit.init_phot_output(nobj)))
     else:
         out = hstack((out, CFit.init_spec_output(nobj), EMFit.init_output(CFit.linetable, nobj)))
@@ -487,26 +490,33 @@ def parse(options=None):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    # required but with sensible defaults
-    parser.add_argument('--night', default='20200225', type=str, help='Night to process.')
-    parser.add_argument('--tile', default='70502', type=str, help='Tile number to process.')
+    # required
+    parser.add_argument('zbestfiles', nargs='*', type=str, help='Full path to input zbest file(s).')
+
+    ## required but with sensible defaults
+    #parser.add_argument('--night', default='20200225', type=str, help='Night to process.')
+    #parser.add_argument('--tile', default='70502', type=str, help='Tile number to process.')
 
     # optional inputs
-    parser.add_argument('--first', type=int, help='Index of first spectrum to process (0-indexed).')
-    parser.add_argument('--last', type=int, help='Index of last spectrum to process (max of nobj-1).')
-    parser.add_argument('--nproc', default=1, type=int, help='Number of cores.')
-    parser.add_argument('--specprod', type=str, default='variance-model', choices=['andes', 'daily', 'variance-model'],
-                        help='Spectroscopic production to process.')
+    parser.add_argument('-o', '--outfile', type=str, default='.', help='Full path to output FITS file.')
 
-    parser.add_argument('--phot', action='store_true', help='Fit and write out just the broadband photometry.')
+    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    parser.add_argument('--mintarget', type=int, help='Index of first object to to process in each file (0-indexed).')
+    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+
+    #parser.add_argument('--specprod', type=str, default='daily', choices=['andes', 'daily', 'variance-model'],
+    #                    help='Spectroscopic production to process.')
+
+    parser.add_argument('--photfit', action='store_true', help='Fit and write out just the broadband photometry.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
 
-    parser.add_argument('--use-vi', action='store_true', help='Select spectra with high-quality visual inspections (VI).')
-    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing files.')
-
-    parser.add_argument('--no-write-spectra', dest='write_spectra', default=True, action='store_false',
-                        help='Do not write out the selected spectra for the specified tile and night.')
-    parser.add_argument('--verbose', action='store_true', help='Be verbose.')
+    #parser.add_argument('--use-vi', action='store_true', help='Select spectra with high-quality visual inspections (VI).')
+    #parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing files.')
+    #parser.add_argument('--mpi', action='store_true', help='Parallelize using MPI.')
+    #parser.add_argument('--no-write-spectra', dest='write_spectra', default=True, action='store_false',
+    #                    help='Do not write out the selected spectra for the specified tile and night.')
+    #parser.add_argument('--verbose', action='store_true', help='Be verbose.')
 
     if options is None:
         args = parser.parse_args()
@@ -528,28 +538,30 @@ def main(args=None, comm=None):
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    # Create directories as needed.
-    fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
-    for subdir in ('spectra', 'results', 'qa'):
-        outdir = os.path.join(fastspecfit_dir, subdir, args.specprod)
-        if not os.path.isdir(outdir):
-            if args.verbose:
-                log.debug('Creating directory {}'.format(outdir))
-            os.makedirs(outdir, exist_ok=True)
+    ## Create directories as needed.
+    #fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
+    #for subdir in ('spectra', 'results', 'qa'):
+    #    outdir = os.path.join(fastspecfit_dir, subdir, args.specprod)
+    #    if not os.path.isdir(outdir):
+    #        if args.verbose:
+    #            log.debug('Creating directory {}'.format(outdir))
+    #        os.makedirs(outdir, exist_ok=True)
     
-    # If the output file exists, we're done!
-    resultsdir = os.path.join(fastspecfit_dir, 'results', args.specprod)
-    if args.phot:
-        prefix = 'photfit'
-    else:
-        prefix = 'specfit'
+    ## If the output file exists, we're done!
+    #resultsdir = os.path.join(fastspecfit_dir, 'results', args.specprod)
+    #if args.photfit:
+    #    prefix = 'photfit'
+    #else:
+    #    prefix = 'specfit'
         
-    outfile = os.path.join(resultsdir, '{}-{}-{}.fits'.format(
-        prefix, args.tile, args.night))
-    if os.path.isfile(outfile) and not args.overwrite:
-        log.info('Output file {} exists; all done!'.format(outfile))
-        return
-        
+    #outfile = os.path.join(resultsdir, '{}-{}-{}.fits'.format(
+    #    prefix, args.tile, args.night))
+    #if os.path.isfile(outfile) and not args.overwrite:
+    #    log.info('Output file {} exists; all done!'.format(outfile))
+    #    return
+
+    pdb.set_trace()
+    
     # Read the data 
     t0 = time.time()
     zbest, specobj = read_spectra(tile=args.tile, night=args.night,
@@ -573,7 +585,7 @@ def main(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit(verbose=args.verbose)
     EMFit = EMLineFit(verbose=args.verbose)
-    out = init_output(args.tile, args.night, zbest, specobj.fibermap, CFit, EMFit, phot=args.phot)
+    out = init_output(args.tile, args.night, zbest, specobj.fibermap, CFit, EMFit, photfit=args.photfit)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Unpacking with multiprocessing takes a lot longer (maybe pickling takes a
@@ -584,7 +596,7 @@ def main(args=None, comm=None):
     log.info('Unpacking the spectra to be fitted took: {:.2f} sec'.format(time.time()-t0))
 
     # Fit in parallel
-    fitargs = [(indx, data[iobj], CFit, EMFit, out[indx], args.phot, args.solve_vdisp)
+    fitargs = [(indx, data[iobj], CFit, EMFit, out[indx], args.photfit, args.solve_vdisp)
                for iobj, indx in enumerate(fitindx)]
     if args.nproc > 1:
         with multiprocessing.Pool(args.nproc) as P:
