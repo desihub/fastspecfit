@@ -209,6 +209,7 @@ def backup_logs(logfile):
     return newlog
 
 def plan(args, comm=None):
+    from glob import glob
     from astropy.table import Table
     
     t0 = time.time()
@@ -272,11 +273,11 @@ def plan(args, comm=None):
             explist = explist[:10]
             
         if args.photfit:
-            _outprefix = 'photfit'
+            outprefix = 'photfit'
         else:
-            _outprefix = 'specfit'
+            outprefix = 'specfit'
 
-        specfiles = []
+        specfiles, outfiles = [], []
         alltiles = explist['TILEID'].astype(str)
         for tile in set(alltiles):
             I = tile == alltiles
@@ -288,20 +289,24 @@ def plan(args, comm=None):
                     os.makedirs(outnightdir, exist_ok=True)
                 #outprefix = '{}-{}-{}'.format(_outprefix, tile, night)                
                 #_specfiles = find_specfiles(nightdir, outnightdir, prefix='zbest', outprefix=outprefix)
-                if not os.path.isdir(nightdir): # no reductions
+                _specfiles = glob(os.path.join(nightdir, 'zbest-?-*.fits'))
+                if len(_specfiles) == 0:
+                    log.info('No redrock redshifts in {}'.format(nightdir))
                     continue
-                _specfiles = find_specfiles(nightdir, outnightdir, prefix='zbest', outprefix=_outprefix)
+                _outfiles = [os.path.join(outnightdir, os.path.basename(specfile).replace('zbest-', '{}-'.format(outprefix))) for specfile in _specfiles]
+                #_specfiles = find_specfiles(nightdir, outnightdir, prefix='zbest', outprefix=_outprefix)
                 specfiles.append(_specfiles)
-        specfiles = np.hstack(specfiles)
+                outfiles.append(_outfiles)
+        if len(specfiles) > 0:
+            specfiles = np.hstack(specfiles)
+            outfiles = np.hstack(outfiles)
     else:
-        explist = None
         specfiles = None
-        outdir = None
+        outfiles = None
 
     if comm:
-        explist = comm.bcast(explist, root=0)
         specfiles = comm.bcast(specfiles, root=0)
-        outdir = comm.bcast(outdir, root=0)
+        outfiles = comm.bcast(outfiles, root=0)
         
     if len(specfiles) == 0:
         if rank == 0:
@@ -374,7 +379,7 @@ def plan(args, comm=None):
                 rrcmd += ' --outdir {}'.format(os.path.abspath(args.outdir))
             print('srun -N $nodes -n $nodes -c {} {}'.format(maxproc, rrcmd))
 
-    return outdir, explist, specfiles, groups, grouptimes
+    return specfiles, outfiles, groups, grouptimes
 
 def run_fastspecfit(args, comm=None):
 
@@ -389,47 +394,32 @@ def run_fastspecfit(args, comm=None):
     if rank == 0:
         log.info('Starting at {}'.format(time.asctime()))
 
-    outdir, explist, specfiles, groups, grouptimes = plan(args, comm=comm)
+    specfiles, outfiles, groups, grouptimes = plan(args, comm=comm)
 
     if rank == 0:
         log.info('Initial setup took {:.1f} sec'.format(time.time() - t0))
 
     sys.stdout.flush()
     if comm:
-        groups = comm.bcast(groups, root=0)
         specfiles = comm.bcast(specfiles, root=0)
-        explist = comm.bcast(explist, root=0)
-        outdir = comm.bcast(outdir, root=0)
-
+        outfiles = comm.bcast(outfiles, root=0)
+        groups = comm.bcast(groups, root=0)
+        
     assert(len(groups) == size)
     assert(len(np.concatenate(groups)) == len(specfiles))
 
-    pixels = np.array([int(os.path.basename(os.path.dirname(x))) for x in specfiles])
-    if args.photfit:
-        _outprefix = 'photfit'
-    else:
-        _outprefix = 'specfit'
+    #pixels = np.array([int(os.path.basename(os.path.dirname(x))) for x in specfiles])
+    #if args.photfit:
+    #    _outprefix = 'photfit'
+    #else:
+    #    _outprefix = 'specfit'
         
-    outfiles = []
-    alltiles = explist['TILEID'].astype(str)
-    for tile in set(alltiles):
-        I = tile == alltiles
-        allnights = explist['NIGHT'][I].astype(str)
-        for night in set(allnights):
-            outnightdir = os.path.join(outdir, tile, night)
-            #outprefix = '{}-{}-{}'.format(_outprefix, tile, night)
-            #outfile = os.path.join(outdir, '{}.fits'.format(outprefix))
-            #outfiles.append(outfile)
-            _outfiles = spectra2outfiles(specfiles, 'zbest', _outprefix, outdir=outnightdir)
-            outfiles.append(_outfiles)
-    outfiles = np.hstack(outfiles)    
-
     for ii in groups[rank]:
         log.info('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
 
         cmd = 'fastspecfit-desi {} -o {} --mp {}'.format(specfiles[ii], outfiles[ii], args.mp)
-        #cmd += ' --ntargets 3'
+        cmd += ' --ntargets 6'
 
         if args.exposures:
             cmd += ' --exposures'
