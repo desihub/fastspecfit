@@ -51,15 +51,16 @@ def fastspecfit_one(iobj, data, CFit, EMFit, out, photfit=False, solve_vdisp=Fal
     return out
 
 class DESISpectra(object):
-    def __init__(self, zbestdir, exposures=False):
+    def __init__(self, zbestfiles, exposures=False):
         """Class to read in the DESI data needed by fastspecfit.
 
         """
-        from glob import glob
+        #from glob import glob
         from astropy.table import vstack
         from desitarget.io import read_targets_in_tiles
 
-        zbestfiles = np.array(sorted(glob(os.path.join(zbestdir, 'zbest-?-*-????????.fits'))))
+        zbestfiles = np.array(sorted(zbestfiles))
+        #zbestfiles = np.array(sorted(glob(os.path.join(zbestdir, 'zbest-?-*-????????.fits'))))
         if len(zbestfiles) == 0:
             log.warning('No zbest-?-*-????????.fits files found in {}'.format(zbestdir))
             raise IOError
@@ -122,8 +123,10 @@ class DESISpectra(object):
             zbest.append(zb)
             fmap.append(fm)
 
-        self.zbest = vstack(zbest)
-        self.fibermap = vstack(fmap)
+        self.zbest = zbest
+        self.fibermap = fmap
+        #self.zbest = vstack(zbest)
+        #self.fibermap = vstack(fmap)
         #self.zbest = Table(np.hstack(zbest))
 
     @staticmethod
@@ -200,50 +203,49 @@ class DESISpectra(object):
         from fastspecfit.util import C_LIGHT
 
         if targetids is None:
-            targetids = self.zbest['TARGETID'].data
-
-        if ntargets is None:
-            ntargets = len(self.zbest)
-        if ntargets > len(self.zbest):
-            log.warning('ntargets exceeds the number of spectra.')
-            raise ValueError
-
-        targetids = targetids[firsttarget:firsttarget+ntargets]
-        these = np.where([tid in targetids for tid in self.zbest['TARGETID']])[0]
-
-        self.ntargets = len(these)
-        self.zbest = self.zbest[these]
-        self.fibermap = self.fibermap[these]
-
-        #self.fitindx = self.fitindx[these]
-        #self.fibermap = fibermap[self.fitindx]
+            thesetargetids = None
+        else:
+            thesetargetids = targetids.copy()
 
         # Unpack the subset of objects we care about into a simple dictionary.
-        alldata = []
-        fibermaps = []
-        for specfile, fitindx in zip(self.specfiles, self.fitindx):
-            if photfit:
-                thisfibermap = Table(fitsio.read(specfile, ext='FIBERMAP'))
-            else:
-                spec = read_spectra(specfile)#.select(targets=zb['TARGETID'])
-                thisfibermap = spec.fibermap
-                
-            thisfibermap = thisfibermap[fitindx]
+        alldata, zbests, fibermaps = [], [], []
+        for specfile, zbest, fibermap, fitindx in zip(self.specfiles, self.zbest, self.fibermap, self.fitindx):
 
-            these = np.where([tid in thisfibermap['TARGETID'] for tid in self.zbest['TARGETID']])[0]
+            # Select the subset of objects to process.
+            if thesetargetids is None:
+                targetids = zbest['TARGETID'].data
+            else:
+                targetids = thesetargetids.copy()
+
+            these = np.where([tid in targetids for tid in zbest['TARGETID']])[0]
             if len(these) == 0:
                 continue
-            assert(np.all(self.fibermap['TARGETID'] == thisfibermap['TARGETID'][these]))
 
+            if ntargets is None:
+                ntargets = len(these)
+            if ntargets > len(these):
+                log.warning('Number of requested ntargets exceeds the number of spectra on {}.'.format(specfile))
+                raise ValueError
+
+            these = these[firsttarget:firsttarget+ntargets]
+            
             fitindx = fitindx[these]
+            zbest = zbest[these]
+            fibermap = fibermap[these]
+            zbests.append(zbest)
+            fibermaps.append(fibermap)
+
+            if not photfit:
+                spec = read_spectra(specfile)#.select(targets=zbest['TARGETID'])
+                
             for igal, indx in enumerate(fitindx):
-                ra = self.fibermap['TARGET_RA'][igal]
-                dec = self.fibermap['TARGET_DEC'][igal]
+                ra = fibermap['TARGET_RA'][igal]
+                dec = fibermap['TARGET_DEC'][igal]
                 ebv = CFit.SFDMap.ebv(ra, dec)
 
                 # Unpack the data and correct for Galactic extinction. Also flag pixels that
                 # may be affected by emission lines.
-                data = {'zredrock': self.zbest['Z'][igal], 'photsys_south': dec < self.desitarget_resolve_dec()}
+                data = {'zredrock': zbest['Z'][igal], 'photsys_south': dec < self.desitarget_resolve_dec()}
 
                 if data['photsys_south']:
                     filters = CFit.decam
@@ -259,8 +261,8 @@ class DESISpectra(object):
                     dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
 
                     for iband, band in enumerate(CFit.bands):
-                        maggies[iband] = self.fibermap['FLUX_{}'.format(band.upper())][igal] / dust[iband]
-                        ivarmaggies[iband] = self.fibermap['FLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
+                        maggies[iband] = fibermap['FLUX_{}'.format(band.upper())][igal] / dust[iband]
+                        ivarmaggies[iband] = fibermap['FLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
                             
                         #ivarcol = 'FLUX_IVAR_{}'.format(band.upper())
                         #if ivarcol in fibermap.colnames:
@@ -332,6 +334,10 @@ class DESISpectra(object):
 
                 alldata.append(data)
 
+        self.zbest = Table(np.hstack(zbests))
+        self.fibermap = Table(np.hstack(fibermaps))
+        self.ntargets = len(self.zbest)
+
         return alldata
         
     def init_output(self, CFit, EMFit, photfit=False):
@@ -366,9 +372,9 @@ class DESISpectra(object):
         nobj = len(self.zbest)
 
         out = Table()
-        for fibermapcol in ['NIGHT', 'TILEID', 'FIBER']:
+        for fibermapcol in ['NIGHT', 'TILEID', 'FIBER', 'EXPID']:
             out[fibermapcol] = self.fibermap[fibermapcol]
-        for zbestcol in ['TARGETID', 'Z']:#, 'ZERR']:#, 'SPECTYPE', 'DELTACHI2']
+        for zbestcol in ['TARGETID', 'Z', 'DELTACHI2']:#, 'ZERR']:#, 'SPECTYPE', ]
             out[zbestcol] = self.zbest[zbestcol]
 
         if photfit:
@@ -386,20 +392,20 @@ def parse(options=None):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('-z', '--zbestdir', type=str, default='.', help='Full path to input zbest file(s).')
-    parser.add_argument('-o', '--outdir', type=str, default='.', help='Full path to output files.')
-
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
-    parser.add_argument('--suffix', type=str, default=None, help='Optional suffix for output filename.')
+    #parser.add_argument('--suffix', type=str, default=None, help='Optional suffix for output filename.')
+    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
 
     parser.add_argument('--exposures', action='store_true', help='Fit the individual exposures (not the coadds).')
 
     parser.add_argument('--photfit', action='store_true', help='Fit and write out just the broadband photometry.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
     parser.add_argument('--verbose', action='store_true', help='Be (more) verbose.')
+
+    parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
 
     if options is None:
         args = parser.parse_args()
@@ -419,9 +425,6 @@ def main(args=None, comm=None):
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
-
-    if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir, exist_ok=True)
 
     ## Create directories as needed.
     #fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
@@ -458,15 +461,17 @@ def main(args=None, comm=None):
 
     # Read the data.
     t0 = time.time()
-    DESISpec = DESISpectra(args.zbestdir, exposures=args.exposures)
+    DESISpec = DESISpectra(args.zbestfiles, exposures=args.exposures)
 
     data = DESISpec.read_and_unpack(CFit, firsttarget=args.firsttarget, targetids=targetids,
                                     ntargets=args.ntargets, exposures=args.exposures,
                                     photfit=args.photfit)
     out = DESISpec.init_output(CFit, EMFit, photfit=args.photfit)
-    log.info('Reading and unpacking the spectra to be fitted took: {:.2f} sec'.format(time.time()-t0))
+    log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
+        DESISpec.ntargets, time.time()-t0))
 
     # Fit in parallel
+    t0 = time.time()
     fitargs = [(iobj, data[iobj], CFit, EMFit, out[iobj], args.photfit, args.solve_vdisp)
                for iobj in np.arange(DESISpec.ntargets)]
     if args.mp > 1:
@@ -475,22 +480,15 @@ def main(args=None, comm=None):
             _out = P.map(_fastspecfit_one, fitargs)
     else:
         _out = [fastspecfit_one(*_fitargs) for _fitargs in fitargs]
-    out = Table(np.hstack(_out))
-    del _out
+    out = Table(np.hstack(out))
+    log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # write out
     t0 = time.time()
-    if args.photfit:
-        prefix = 'photfit'
-    else:
-        prefix = 'specfit'
-    if args.suffix:
-        suffix = '-{}'.format(args.suffix)
-    else:
-        suffix = ''
+    outdir = os.path.dirname(os.path.abspath(args.outfile))
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
         
-    outfile = os.path.join(args.outdir, '{}{}.fits'.format(prefix, suffix))
-    log.info('Writing results for {} objects to {}'.format(len(out), outfile))
-    out.write(outfile, overwrite=True)
+    log.info('Writing results for {} objects to {}'.format(len(out), args.outfile))
+    out.write(args.outfile, overwrite=True)
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
-    

@@ -84,7 +84,8 @@ def spectra2outfiles(specfiles, inprefix, outprefix, ext=None, outdir=None):
 
     return np.array(outfiles)
 
-def find_specfiles(reduxdir, outdir=None, prefix='zbest', avoiddir=None, photfit=False):
+def find_specfiles(reduxdir, outdir=None, prefix='zbest', outprefix='specfit',
+                   avoiddir=None):
     '''
     Returns list of spectra files under reduxdir that need to be processed.
 
@@ -119,23 +120,25 @@ def find_specfiles(reduxdir, outdir=None, prefix='zbest', avoiddir=None, photfit
             if filename.startswith(prefix) and filename.endswith('.fits'):
                 specfiles.append(os.path.join(dirpath, filename))
 
+    #log.info(reduxdir, outdir, prefix, outprefix, specfiles)
     if len(specfiles) == 0:
         log.warning('no specfiles found')
         raise IOError
 
-    if photfit:
-        outprefix = 'photfit'
+    # One output file per run.
+    #outfiles = spectra2outfiles(specfiles, prefix, outprefix, outdir=outdir)
+    outfile = os.path.join(outdir, '{}.fits'.format(outprefix))
+    if os.path.exists(outfile):
+        return np.array([])
     else:
-        outprefix = 'specfit'
-    outfiles = spectra2outfiles(specfiles, prefix, outprefix, outdir=outdir)
+        return np.array(specfiles)
 
-    npix = len(specfiles)
-    todo = np.ones(npix, dtype=bool)
-    for i in range(npix):
-        if os.path.exists(outfiles[i]) and os.path.exists(specfitfiles[i]):
-            todo[i] = False
-
-    return np.array(specfiles)[todo]
+    #npix = len(specfiles)
+    #todo = np.ones(npix, dtype=bool)
+    #for i in range(npix):
+    #    if os.path.exists(outfiles[i]) and os.path.exists(specfitfiles[i]):
+    #        todo[i] = False
+    #return np.array(specfiles)[todo]
 
 def group_specfiles(specfiles, maxnodes=256, comm=None):
     '''
@@ -229,18 +232,36 @@ def plan(args, comm=None):
         # the list of tiles to process from the SV1 exposures table.
         expfile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-exposures.fits'
         explist = Table.read(expfile)
+        explist = explist[np.argsort(explist['NIGHT'])]
         log.info('Read {} exposures from {}'.format(len(explist), expfile))
         
         if args.tile and args.night:
             keep = (explist['TILEID'].astype(str) == args.tile) * (explist['NIGHT'].astype(str) == args.night)
             explist = explist[keep]
-            log.info('Keeping {} extragalactic tiles.'.format(len(explist)))
+            log.info('Keeping {} exposures from tile {} on night {}.'.format(len(explist), args.tile, args.night))
         else:
             keep = np.zeros(len(explist), bool)
-            for targclass in ['BGS+MWS', 'ELG', 'QSO+LRG']:
+            targclasses = ['BGS+MWS', 'ELG', 'QSO+LRG']
+            for targclass in targclasses:
                 keep = np.logical_or(keep, explist['TARGETS'] == targclass)
             explist = explist[keep]
-            log.info('Keeping {} extragalactic tiles.'.format(len(explist)))
+            log.info('Keeping {} {} exposures.'.format(len(explist), ' '.join(targclasses)))
+
+            # Make sure the data have been reduced.
+            keep = np.ones(len(explist), bool)
+            alltiles = explist['TILEID'].astype(str)
+            for tile in set(alltiles):
+                I = np.where(tile == alltiles)[0]
+                allnights = explist['NIGHT'][I].astype(str)
+                for night in set(allnights):
+                    J = np.where(night == allnights)[0]
+                    nightdir = os.path.join(specprod_dir, tile, night)
+                    if not os.path.isdir(nightdir):
+                        log.info('No reductions for night {}'.format(nightdir))
+                        keep[I[J]] = False
+                        
+            explist = explist[keep]
+            log.info('Keeping {} exposures with complete reductions.'.format(len(explist)))
 
             # Get the root directory and the set of tiles to process.
             tiles = set(explist['TILEID'].astype(str).data)
@@ -248,6 +269,12 @@ def plan(args, comm=None):
             log.info('Keeping {}/{} tiles with complete reductions.'.format(np.count_nonzero(keep), len(tiles)))
             tiles = np.array(list(tiles))[keep]
             explist = explist[np.isin(explist['TILEID'].astype(str), tiles)]
+            explist = explist[:10]
+            
+        if args.photfit:
+            _outprefix = 'photfit'
+        else:
+            _outprefix = 'specfit'
 
         specfiles = []
         alltiles = explist['TILEID'].astype(str)
@@ -259,11 +286,17 @@ def plan(args, comm=None):
                 outnightdir = os.path.join(outdir, tile, night)
                 if not os.path.isdir(outnightdir):
                     os.makedirs(outnightdir, exist_ok=True)
-                _specfiles = find_specfiles(nightdir, outnightdir, prefix='zbest', photfit=args.photfit, avoiddir=None)
-            specfiles.append(_specfiles)
+                #outprefix = '{}-{}-{}'.format(_outprefix, tile, night)                
+                #_specfiles = find_specfiles(nightdir, outnightdir, prefix='zbest', outprefix=outprefix)
+                if not os.path.isdir(nightdir): # no reductions
+                    continue
+                _specfiles = find_specfiles(nightdir, outnightdir, prefix='zbest', outprefix=_outprefix)
+                specfiles.append(_specfiles)
         specfiles = np.hstack(specfiles)
     else:
+        explist = None
         specfiles = None
+        outdir = None
 
     if comm:
         explist = comm.bcast(explist, root=0)
@@ -344,7 +377,6 @@ def plan(args, comm=None):
     return outdir, explist, specfiles, groups, grouptimes
 
 def run_fastspecfit(args, comm=None):
-    log = get_logger()
 
     if comm is None:
         rank, size = 0, 1
@@ -374,9 +406,9 @@ def run_fastspecfit(args, comm=None):
 
     pixels = np.array([int(os.path.basename(os.path.dirname(x))) for x in specfiles])
     if args.photfit:
-        outprefix = 'photfit'
+        _outprefix = 'photfit'
     else:
-        outprefix = 'specfit'
+        _outprefix = 'specfit'
         
     outfiles = []
     alltiles = explist['TILEID'].astype(str)
@@ -385,15 +417,19 @@ def run_fastspecfit(args, comm=None):
         allnights = explist['NIGHT'][I].astype(str)
         for night in set(allnights):
             outnightdir = os.path.join(outdir, tile, night)
-            _outfiles = spectra2outfiles(specfiles, 'zbest', outprefix, outdir=outnightdir)
+            #outprefix = '{}-{}-{}'.format(_outprefix, tile, night)
+            #outfile = os.path.join(outdir, '{}.fits'.format(outprefix))
+            #outfiles.append(outfile)
+            _outfiles = spectra2outfiles(specfiles, 'zbest', _outprefix, outdir=outnightdir)
             outfiles.append(_outfiles)
     outfiles = np.hstack(outfiles)    
 
     for ii in groups[rank]:
-        log.info('---- rank {} {}'.format(rank, time.asctime()))
+        log.info('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
 
         cmd = 'fastspecfit-desi {} -o {} --mp {}'.format(specfiles[ii], outfiles[ii], args.mp)
+        #cmd += ' --ntargets 3'
 
         if args.exposures:
             cmd += ' --exposures'
@@ -405,7 +441,7 @@ def run_fastspecfit(args, comm=None):
         logfile = outfiles[ii].replace('.fits', '.log')
         assert(logfile != outfiles[ii])
 
-        log.info('Rank {}: {}'.format(rank, cmd))
+        log.info('  rank {}: {}'.format(rank, cmd))
         #log.info('LOGGING to {}'.format(logfile))
         sys.stdout.flush()
 
@@ -413,32 +449,25 @@ def run_fastspecfit(args, comm=None):
             continue
 
         try:
-            maxtries = 2
-            for retry in range(maxtries):
-                t1 = time.time()
-                if os.path.exists(logfile):
-                    backup_logs(logfile)
-                # memory leak?  Try making system call instead
-                with open(logfile, 'w') as log:
-                    err = subprocess.call(cmd.split(), stdout=log, stderr=log)
-                dt1 = time.time() - t1
-                if err == 0:
-                    log.info('FINISHED rank {} try {} in {:.1f} sec'.format(rank, retry, dt1))
-                    if not os.path.exists(outfiles[ii]):
-                        log.warning('ERROR missing {}'.format(outfiles[ii]))
-                    break
-                else:
-                    log.warning('FAILED rank {} try {} in {:.1f} sec error code {}'.format(rank, retry, dt1, err))
-                    if retry == maxtries-1:
-                        log.warning('FATAL failed {} times; giving up'.format(maxtries))
-                    else:
-                        time.sleep(np.random.uniform(1, 5))
+            t1 = time.time()
+            if os.path.exists(logfile):
+                backup_logs(logfile)
+            # memory leak?  Try making system call instead
+            with open(logfile, 'w') as mylog:
+                err = subprocess.call(cmd.split(), stdout=mylog, stderr=mylog)
+            dt1 = time.time() - t1
+            if err == 0:
+                log.info('  rank {} done in {:.2f} sec'.format(rank, dt1))
+                if not os.path.exists(outfiles[ii]):
+                    log.warning('  rank {} missing {}'.format(rank, outfiles[ii]))
+            else:
+                log.warning('  rank {} broke after {:.1f} sec with error code {}'.format(rank, dt1, err))
         except Exception as err:
-            log.warnings('FAILED: rank {} raised an exception'.format(rank))
+            log.warning('  rank {} raised an exception'.format(rank))
             import traceback
             traceback.print_exc()
 
-    log.info('---- rank {} is done'.format(rank))
+    log.info('  rank {} is done'.format(rank))
     sys.stdout.flush()
 
     if comm is not None:
@@ -447,12 +476,10 @@ def run_fastspecfit(args, comm=None):
     if rank == 0 and not args.dryrun:
         for outfile in outfiles:
             if not os.path.exists(outfile):
-                log.warning('missing {}'.format(outfile))
+                log.warning('Missing {}'.format(outfile))
 
-        log.info('all done at {}'.format(time.asctime()))
+        log.info('All done at {}'.format(time.asctime()))
         
-    pdb.set_trace()
-
 def main():
     """Main wrapper on fastspecfit.
 
@@ -485,10 +512,6 @@ def main():
             comm = MPI.COMM_WORLD
         except ImportError:
             comm = None
-
-    # Determine the set of tiles to process.
-    #if comm is not None:
-    #    sample = comm.bcast(sample, root=0)
 
     if args.plan:
         plan(args, comm=comm)

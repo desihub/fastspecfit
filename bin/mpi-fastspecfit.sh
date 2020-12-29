@@ -6,9 +6,9 @@
 
 # Example: build the coadds using 16 MPI tasks with 8 cores per node (and therefore 16*8/32=4 nodes)
 
-#salloc -N 4 -C haswell -A desi -L cfs,SCRATCH -t 04:00:00 --qos interactive --image=desihub/fastspecfit:v0.0.1
-#srun -n 32 -c 4 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/mpi-fastspecfit.sh photfit 32 > photfit.log.1 2>&1 &
-#srun -n 32 -c 4 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/mpi-fastspecfit.sh specfit 32 > specfit.log.1 2>&1 &
+#salloc -N 4 -C haswell -A desi -L cfs,SCRATCH -t 04:00:00 --qos interactive --image=docker:desihub/fastspecfit:v0.0.1
+#srun -n 32 -c 4 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh photfit 4 > photfit.log.1 2>&1 &
+#srun -n 32 -c 4 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh specfit 4 > specfit.log.1 2>&1 &
 
 # Grab the input arguments--
 stage=$1
@@ -33,11 +33,11 @@ export KMP_AFFINITY=disabled
 export MPICH_GNI_FORK_MODE=FULLCOPY
 
 if [ $stage = "test" ]; then
-    time python mpi-fastspecfit --help
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --help
 elif [ $stage = "specfit" ]; then
-    time python mpi-fastspecfit --mp $mp --specprod $specprod
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod
 elif [ $stage = "photfit" ]; then
-    time python mpi-fastspecfit --photfit --mp $ncores --specprod $specprod
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --photfit --mp $mp --specprod $specprod
 else
     echo "Unrecognized stage "$stage
 fi
