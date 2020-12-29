@@ -293,10 +293,13 @@ def plan(args, comm=None):
                 if len(_specfiles) == 0:
                     log.info('No redrock redshifts in {}'.format(nightdir))
                     continue
-                _outfiles = [os.path.join(outnightdir, os.path.basename(specfile).replace('zbest-', '{}-'.format(outprefix))) for specfile in _specfiles]
                 #_specfiles = find_specfiles(nightdir, outnightdir, prefix='zbest', outprefix=_outprefix)
-                specfiles.append(_specfiles)
-                outfiles.append(_outfiles)
+                # How many have we done already?
+                for specfile in _specfiles:
+                    outfile = os.path.join(outnightdir, os.path.basename(specfile).replace('zbest-', '{}-'.format(outprefix)))
+                    if args.overwrite or not os.path.isfile(outfile):
+                        specfiles.append(specfile)
+                        outfiles.append(outfile)
         if len(specfiles) > 0:
             specfiles = np.hstack(specfiles)
             outfiles = np.hstack(outfiles)
@@ -311,7 +314,7 @@ def plan(args, comm=None):
     if len(specfiles) == 0:
         if rank == 0:
             log.info('All files have been processed!')
-        return explist, list(), list(), list()
+        return list(), list(), list(), list()
 
     groups, ntargets, grouptimes = group_specfiles(specfiles, args.maxnodes, comm=comm)
 
@@ -404,6 +407,10 @@ def run_fastspecfit(args, comm=None):
         specfiles = comm.bcast(specfiles, root=0)
         outfiles = comm.bcast(outfiles, root=0)
         groups = comm.bcast(groups, root=0)
+
+    # all done
+    if len(specfiles) == 0:
+        return
         
     assert(len(groups) == size)
     assert(len(np.concatenate(groups)) == len(specfiles))
@@ -488,6 +495,7 @@ def main():
     parser.add_argument('--photfit', action='store_true', help='Fit just the broadband photometry.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
 
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
     parser.add_argument('--dryrun', action='store_true', help='Generate but do not run commands')
