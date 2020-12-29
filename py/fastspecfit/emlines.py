@@ -224,6 +224,8 @@ class EMLineFit(object):
         from astropy.table import Table, Column
         
         out = Table()
+        out.add_column(Column(name='SYNTHPHOT_GRZ', length=nobj, shape=(3,), dtype='f4', unit=u.nanomaggy)) # grzW1W2 photometry
+        #out.add_column(Column(name='SYNTHPHOT_GRZ_IVAR', length=nobj, shape=(3,), dtype='f4', unit=u.nanomaggy)) 
         out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4'))
         out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4'))
         out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4'))
@@ -355,6 +357,8 @@ class EMLineFit(object):
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
+        result['SYNTHPHOT_GRZ'] = data['synthphot']['nanomaggies']
+        #result['SYNTHPHOT_GRZ_IVAR'] = data['phot']['nanomaggies_ivar']
 
         specflux_nolines = specflux - emlinemodel
 
@@ -494,7 +498,9 @@ class EMLineFit(object):
             result['{}_CONT_IVAR'.format(line)] = civar
 
             if result['{}_CONT_IVAR'.format(line)] != 0.0:
-                factor = (1 + redshift) / result['{}_CONT'.format(line)]
+                #if result['{}_CONT'.format(line)] == 0:
+                #    pdb.set_trace()
+                factor = (1 + redshift) / result['{}_CONT'.format(line)] # --> rest frame
                 ew = result['{}_FLUX'.format(line)] * factor   # rest frame [A]
                 ewivar = result['{}_FLUX_IVAR'.format(line)] / factor**2
 
