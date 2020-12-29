@@ -109,6 +109,11 @@ class DESISpectra(object):
                 stileid = '{:06d}'.format(tileid)
                 fahdr = fitsio.read_header('/global/cfs/cdirs/desi/target/fiberassign/tiles/trunk/{}/fiberassign-{}.fits.gz'.format(stileid[:3], stileid))
                 hpdirname = fahdr['TARG']
+
+                # sometimes this is a KPNO directory!
+                if not os.path.isdir(hpdirname):
+                    log.info('Targets directory not found {}'.format(hpdirname))
+                    hpdirname = os.path.join(os.getenv('DESI_ROOT'), hpdirname.replace('/data/', ''))
                 log.info('Reading targets from {}'.format(hpdirname))
                 alltargets = read_targets_in_tiles(hpdirname, tiles=thistile, quick=True)
 

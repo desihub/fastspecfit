@@ -270,7 +270,7 @@ def plan(args, comm=None):
             log.info('Keeping {}/{} tiles with complete reductions.'.format(np.count_nonzero(keep), len(tiles)))
             tiles = np.array(list(tiles))[keep]
             explist = explist[np.isin(explist['TILEID'].astype(str), tiles)]
-            explist = explist[:10]
+            #explist = explist[:10]
             
         if args.photfit:
             outprefix = 'photfit'
