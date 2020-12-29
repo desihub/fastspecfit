@@ -426,7 +426,7 @@ def run_fastspecfit(args, comm=None):
         sys.stdout.flush()
 
         cmd = 'fastspecfit-desi {} -o {} --mp {}'.format(specfiles[ii], outfiles[ii], args.mp)
-        cmd += ' --ntargets 6'
+        cmd += ' --ntargets 32'
 
         if args.exposures:
             cmd += ' --exposures'
