@@ -45,7 +45,7 @@ def fastspecfit_one(iobj, data, CFit, EMFit, out, photfit=False, solve_vdisp=Fal
     t0 = time.time()
     emfit = EMFit.fit(data, continuum)
     for col in emfit.colnames:
-        out[col] = emfit[col]
+        out[col][:] = emfit[col]
     log.info('Line-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
         
     return out
@@ -228,11 +228,13 @@ class DESISpectra(object):
 
             if ntargets is None:
                 ntargets = len(these)
+
             if ntargets > len(these):
                 log.warning('Number of requested ntargets exceeds the number of spectra on {}.'.format(specfile))
-                raise ValueError
-
-            these = these[firsttarget:firsttarget+ntargets]
+                #raise ValueError
+            else:
+                # the logic here is not quite right...needs more testing
+                these = these[firsttarget:firsttarget+ntargets]
             
             fitindx = fitindx[these]
             zbest = zbest[these]
@@ -477,7 +479,7 @@ def main(args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], CFit, EMFit, out[iobj], args.photfit, args.solve_vdisp)
+    fitargs = [(iobj, data[iobj], CFit, EMFit, Table(out[iobj]), args.photfit, args.solve_vdisp)
                for iobj in np.arange(DESISpec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -485,7 +487,7 @@ def main(args=None, comm=None):
             _out = P.map(_fastspecfit_one, fitargs)
     else:
         _out = [fastspecfit_one(*_fitargs) for _fitargs in fitargs]
-    out = Table(np.hstack(out))
+    out = Table(np.hstack(_out))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # write out
