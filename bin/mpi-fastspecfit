@@ -406,11 +406,32 @@ def merge_fastspecfit(args, comm=None):
 
     outdir, _, outfiles, _, _ = plan(args, comm=comm, merge=True)
 
-    out = Table(np.hstack([fitsio.read(outfile) for outfile in outfiles[:5]]))
-    #if args.photfit:
-        
-    pdb.set_trace()
+    if args.photfit:
+        prefix = 'photfit'
+    else:
+        prefix = 'specfit'
 
+    t0 = time.time()        
+    out = Table(np.hstack([fitsio.read(outfile) for outfile in outfiles]))#[:5]]))
+    log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
+        len(out), len(outfiles), prefix, (time.time()-t0)/60.0))
+
+    tilemin, tilemax = out['TILEID'].min(), out['TILEID'].max()
+    if tilemin == tilemax:
+        tilesuffix = str(tilemin)
+    else:
+        tilesuffix = '{}-{}'.format(tilemin, tilemax)
+        
+    nightmin, nightmax = out['NIGHT'].min(), out['NIGHT'].max()
+    if nightmin == nightmax:
+        nightsuffix = str(nightmin)
+    else:
+        nightsuffix = '{}-{}'.format(nightmin, nightmax)
+    
+    outfile = os.path.join(outdir, '{}-{}-{}.fits'.format(prefix, tilesuffix, nightsuffix))
+    log.info('Writing {}'.format(outfile))
+    out.write(outfile, overwrite=True)    
+    
 def run_fastspecfit(args, comm=None):
 
     if comm is None:
@@ -453,7 +474,7 @@ def run_fastspecfit(args, comm=None):
         sys.stdout.flush()
 
         cmd = 'fastspecfit-desi {} -o {} --mp {}'.format(specfiles[ii], outfiles[ii], args.mp)
-        cmd += ' --ntargets 32'
+        cmd += ' --ntargets 16'
 
         if args.exposures:
             cmd += ' --exposures'

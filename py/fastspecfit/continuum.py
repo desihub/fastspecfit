@@ -9,7 +9,6 @@ import pdb # for debugging
 
 import os, time
 import numpy as np
-import multiprocessing
 
 import astropy.units as u
 
@@ -57,18 +56,8 @@ def smooth_and_resample(sspflux, sspwave, specwave=None, specres=None,
     if specwave is None:
         resampflux = sspflux 
     else:
-        #t0 = time.time()
         trim = (sspwave > (specwave.min()-10.0)) * (sspwave < (specwave.max()+10.0))
-        #resampflux = trapz_rebin(sspwave, sspflux, specwave)
         resampflux = trapz_rebin(sspwave[trim], sspflux[trim], specwave)
-        #print(time.time()-t0)
-        #resampflux = resample_flux(specwave, sspwave, sspflux, extrapolate=True)
-        #resampflux = np.interp(specwave, sspwave, sspflux)
-
-    ## broaden for velocity dispersion
-    #print('Turning off vdisp')
-    #if vdisp:
-    #    resampflux = convolve_vdisp(resampflux, pixkms, vdisp)
 
     if specres is None:
         smoothflux = resampflux
@@ -194,8 +183,7 @@ def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
         return warn, coeff
 
 class ContinuumFit(object):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4,
-                 nproc=1, verbose=True):
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -208,10 +196,6 @@ class ContinuumFit(object):
             available wavelength is used (around 100 Angstrom).
         maxwave : :class:`float`, optional, defaults to 6e4
             Maximum SSP wavelength to read into memory. 
-        nproc : :class:`int`, optional, defaults to 1
-            Number of cores to use for multiprocessing.
-        verbose : :class:`bool`, optional, defaults to False
-            Trigger more verbose output throughout the class.
 
         Notes
         -----
@@ -242,9 +226,6 @@ class ContinuumFit(object):
         self.library = 'CKC14z'
         self.isochrone = 'Padova' # would be nice to get MIST in here
         self.imf = 'Kroupa'
-
-        self.nproc = nproc
-        self.verbose = verbose
 
         self.fluxnorm = 1e17 # normalization factor for the spectra
         self.massnorm = 1e10 # stellar mass normalization factor for the SSPs [Msun]
@@ -298,8 +279,7 @@ class ContinuumFit(object):
         self.sspfile = os.path.join(os.getenv('FASTSPECFIT_TEMPLATES'), 'SSP_{}_{}_{}_{}.fits'.format(
             self.isochrone, self.library, self.imf, self.metallicity))
 
-        if verbose:
-            log.info('Reading {}'.format(self.sspfile))
+        log.info('Reading {}'.format(self.sspfile))
         wave, wavehdr = fitsio.read(self.sspfile, ext='WAVE', header=True)
         flux = fitsio.read(self.sspfile, ext='FLUX')
         sspinfo = Table(fitsio.read(self.sspfile, ext='METADATA'))
@@ -315,36 +295,6 @@ class ContinuumFit(object):
         npix = len(sspwave)
 
         self.pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
-
-        ## Resample the templates to have constant pixels in velocity /
-        ## log-lambda and convolve to the nominal velocity dispersion.
-        ## hack here
-        #opt_pixkms = 50.0
-        #ir_pixkms = 200
-        #self.pixkms = opt_pixkms                         # SSP pixel size [km/s]
-        #opt_dlogwave = opt_pixkms / C_LIGHT / np.log(10) # SSP pixel size [log-lambda]
-        #ir_dlogwave = ir_pixkms / C_LIGHT / np.log(10) 
-        #
-        #wavesplit = 1e4
-        #opt_sspwave = 10**np.arange(np.log10(wave.min()), np.log10(wavesplit), opt_dlogwave)
-        #ir_sspwave = 10**np.arange(np.log10(wavesplit), np.log10(wave.max()), ir_dlogwave)
-        #sspwave = np.hstack((opt_sspwave, ir_sspwave[1:]))
-        #npix = len(sspwave)
-        #
-        ## None here means no resolution matrix.
-        #args = [(flux[:, iage], wave, sspwave, None) for iage in np.arange(nage)]
-        #if self.nproc > 1:
-        #    with multiprocessing.Pool(self.nproc) as P:
-        #        sspflux = np.vstack(P.map(_smooth_and_resample, args)).T # [npix, nage]
-        #else:
-        #    sspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T # [npix, nage]
-
-        ## Build and store the nominal attenuation grid based on sspwave and the
-        ## grid of AV values.
-        #atten = []
-        #for AV in self.AV:
-        #    atten.append(self.dust_attenuation(sspwave, AV))
-        #self.atten = np.stack(atten, axis=-1) # [npix, nAV]
 
         # Next, precompute a grid of spectra convolved to the nominal velocity
         # dispersion with reddening applied. This isn't quite right redward of
@@ -531,9 +481,18 @@ class ContinuumFit(object):
         smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
         return smoothflux
     
+    def dust_attenuation(self, wave, AV):
+        """Compute the dust attenuation curve A(lambda)/A(V) from Charlot & Fall 2000.
+
+        ToDo: add a UV bump and IGM attenuation!
+          https://gitlab.lam.fr/cigale/cigale/-/blob/master/pcigale/sed_modules/dustatt_powerlaw.py#L42
+
+        """
+        return 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
+        
     def SSP2data(self, _sspflux, _sspwave, redshift=0.0, AV=None, vdisp=None,
                  specwave=None, specres=None, coeff=None, south=True,
-                 synthphot=True, nproc=1):
+                 synthphot=True):
         """Workhorse routine to turn input SSPs into spectra that can be compared to
         real data.
 
@@ -641,11 +600,7 @@ class ContinuumFit(object):
             # multiprocess over age
             args = [(zsspflux[:, imodel], zsspwave, specwave, specres, vdisp, self.pixkms)
                     for imodel in np.arange(nmodel)]
-            if nproc > 1:
-                with multiprocessing.Pool(self.nproc) as P:
-                    datasspflux = np.vstack(P.map(_smooth_and_resample, args)).T
-            else:
-                datasspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
+            datasspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
                 
             if vdisp:
                  datasspflux = self.convolve_vdisp(datasspflux, vdisp)
@@ -664,12 +619,7 @@ class ContinuumFit(object):
             for icamera in [0, 1, 2]: # iterate on cameras
                 args = [(zsspflux[:, imodel], zsspwave, specwave[icamera], specres[icamera], vdisp, self.pixkms)
                         for imodel in np.arange(nmodel)]
-                if nproc > 1:
-                    with multiprocessing.Pool(self.nproc) as P:
-                        datasspflux.append(np.vstack(P.map(_smooth_and_resample, args)).T)
-                else:
-                    _datasspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
-
+                _datasspflux = np.vstack([smooth_and_resample(*_args) for _args in args]).T
                 if vdisp:
                     _datasspflux = self.convolve_vdisp(_datasspflux, vdisp)
                 if coeff is not None:
@@ -735,13 +685,8 @@ class ContinuumFit(object):
         ZZ = modelflux * ww[:, np.newaxis, np.newaxis] # reshape into [npix/nband,nage,nAV/nvdisp]
 
         fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], None, True) for ii in np.arange(nn)]
-        if self.nproc > 1:
-            with multiprocessing.Pool(self.nproc) as P:
-                rr = P.map(_fnnls_continuum, fitargs)
-        else:
-            #fnnls_continuum(*fitargs[10])
-            #pdb.set_trace()
-            rr = [fnnls_continuum(*_fitargs) for _fitargs in fitargs]
+        rr = [fnnls_continuum(*_fitargs) for _fitargs in fitargs]
+        
         warn, _, chi2grid = list(zip(*rr)) # unpack
         if np.any(warn):
             vals = ','.join(['{:.1f}'.format(xp) for xp in xparam[np.where(warn)[0]]])
@@ -818,7 +763,7 @@ class ContinuumFit(object):
         zsspflux_dustvdisp, zsspphot_dustvdisp = self.SSP2data(
             self.sspflux_dustvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
             redshift=redshift, specwave=None, specres=None,
-            south=data['photsys_south'], nproc=1)
+            south=data['photsys_south'])
         log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
         
         objflam = data['phot']['flam'].data * self.fluxnorm
@@ -910,7 +855,7 @@ class ContinuumFit(object):
         zsspflux_dustvdisp, _ = self.SSP2data(
             self.sspflux_dustvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
             redshift=redshift, specwave=data['wave'], specres=data['res'],
-            nproc=1, synthphot=False)
+            synthphot=False)
         log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
         
         # Combine all three cameras; we will unpack them to build the
@@ -1173,75 +1118,3 @@ class ContinuumFit(object):
 
         return continuum
         
-    def _get_uncertainties(self, pcov=None, jac=None, return_covariance=False):
-        """Determine the uncertainties from the diagonal terms of the covariance
-        matrix. If the covariance matrix is not known, estimate it from the
-        Jacobian following
-        https://github.com/scipy/scipy/blob/master/scipy/optimize/minpack.py#L805
-
-        """
-        if pcov is None:
-            from scipy.linalg import svd
-            _, s, VT = svd(jac, full_matrices=False)
-            threshold = np.finfo(float).eps * max(jac.shape) * s[0]
-            s = s[s > threshold]
-            VT = VT[:s.size]
-            pcov = np.dot(VT.T / s**2, VT)
-
-        unc = np.diag(pcov)**0.5
-
-        if return_covariance:
-            return unc, pcov
-        else:
-            return unc
-
-    def dust_attenuation(self, wave, AV):
-        """Compute the dust attenuation curve A(lambda)/A(V) from Charlot & Fall 2000.
-
-        ToDo: add a UV bump and IGM attenuation!
-          https://gitlab.lam.fr/cigale/cigale/-/blob/master/pcigale/sed_modules/dustatt_powerlaw.py#L42
-
-        """
-        return 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
-        
-    def dusty_continuum(self, ebv_and_coeffs, wave, sspflux):
-        """Continuum model with dust attenuation."""
-        ebv, coeffs = ebv_and_coeffs[0], ebv_and_coeffs[1:]
-        atten = self.dust_attenuation(wave, ebv)
-        modelflux = (sspflux * atten[:, None]).dot(coeffs) 
-        return modelflux
-    
-    def _dusty_continuum_resid(self, ebv_and_coeffs, wave, flux, isigma, sspflux):
-        """Wrapper cost function for scipy.optimize.least_squares."""
-        modelflux = self.dusty_continuum(ebv_and_coeffs, wave, sspflux)
-        return isigma * (modelflux - flux)
-    
-    def fit_continuum(self):
-        """More detailed continuum model fit, including dust attenuation.
-
-        https://stackoverflow.com/questions/60335524/how-to-use-scipy-optimize-curve-fit-to-use-lists-of-variable/60409667#60409667 
-        
-        """
-        from scipy.optimize import least_squares
-
-        sspflux = np.concatenate(self.redshift_smooth_and_resample(), axis=0)
-
-        wave = np.hstack(self.specwave)
-        flux = np.hstack(self.specflux)
-        isigma = 1 / np.sqrt(np.hstack(self.specivar))
-
-        _ = self.fnnls_continuum()
-        init_params = np.hstack([0.05, self.fnnls_coeffs])
-        log.info(init_params)
-
-        params = least_squares(self._dusty_continuum_resid, x0=init_params, #kwargs=sspflux,
-                               bounds=(0.0, np.inf), args=(wave, flux, isigma, sspflux),
-                               method='trf', tr_options={'regularize': True})
-        #params, cov = curve_fit(self._dusty_continuum, wave, flux, sigma=1/np.sqrt(ivar),
-        #                        kwargs=sspflux)
-        #continuum_fit = fitter(ContinuumModel, wave, flux, 
-        unc = self._get_uncertainties(jac=params.jac, return_covariance=False)
-        
-        log.info(params.x[0], self.ssp.info['age'][params.x[1:] > 1] / 1e9)
-        #pdb.set_trace()
-

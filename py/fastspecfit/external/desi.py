@@ -45,7 +45,7 @@ def fastspecfit_one(iobj, data, CFit, EMFit, out, photfit=False, solve_vdisp=Fal
     t0 = time.time()
     emfit = EMFit.fit(data, continuum)
     for col in emfit.colnames:
-        out[col][:] = emfit[col]
+        out[col] = emfit[col]
     log.info('Line-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
         
     return out
@@ -410,7 +410,6 @@ def parse(options=None):
 
     parser.add_argument('--photfit', action='store_true', help='Fit and write out just the broadband photometry.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
-    parser.add_argument('--verbose', action='store_true', help='Be (more) verbose.')
 
     parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
 
@@ -433,28 +432,6 @@ def main(args=None, comm=None):
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    ## Create directories as needed.
-    #fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
-    #for subdir in ('spectra', 'results', 'qa'):
-    #    outdir = os.path.join(fastspecfit_dir, subdir, args.specprod)
-    #    if not os.path.isdir(outdir):
-    #        if args.verbose:
-    #            log.debug('Creating directory {}'.format(outdir))
-    #        os.makedirs(outdir, exist_ok=True)
-    
-    ## If the output file exists, we're done!
-    #resultsdir = os.path.join(fastspecfit_dir, 'results', args.specprod)
-    #if args.photfit:
-    #    prefix = 'photfit'
-    #else:
-    #    prefix = 'specfit'
-        
-    #outfile = os.path.join(resultsdir, '{}-{}-{}.fits'.format(
-    #    prefix, args.tile, args.night))
-    #if os.path.isfile(outfile) and not args.overwrite:
-    #    log.info('Output file {} exists; all done!'.format(outfile))
-    #    return
-
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
     else:
@@ -462,8 +439,8 @@ def main(args=None, comm=None):
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit(verbose=args.verbose)
-    EMFit = EMLineFit(verbose=args.verbose)
+    CFit = ContinuumFit()
+    EMFit = EMLineFit()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
@@ -479,7 +456,7 @@ def main(args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], CFit, EMFit, Table(out[iobj]), args.photfit, args.solve_vdisp)
+    fitargs = [(iobj, data[iobj], CFit, EMFit, out[iobj], args.photfit, args.solve_vdisp)
                for iobj in np.arange(DESISpec.ntargets)]
     if args.mp > 1:
         import multiprocessing
