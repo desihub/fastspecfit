@@ -217,14 +217,16 @@ class EMLineFit(object):
 
         self.fitter = fitting.LevMarLSQFitter()
 
-    def init_output(self, linetable, nobj=1):
+    def init_output(self, linetable, CFit, nobj=1):
         """Initialize the output data table for this class.
 
         """
         from astropy.table import Table, Column
         
         out = Table()
-        out.add_column(Column(name='SYNTHPHOT_GRZ', length=nobj, shape=(3,), dtype='f4', unit=u.nanomaggy)) # grzW1W2 photometry
+        for band in CFit.synth_bands:
+            out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # synthesized observed-frame photometry
+        #out.add_column(Column(name='SYNTHPHOT_GRZ', length=nobj, shape=(3,), dtype='f4', unit=u.nanomaggy))
         #out.add_column(Column(name='SYNTHPHOT_GRZ_IVAR', length=nobj, shape=(3,), dtype='f4', unit=u.nanomaggy)) 
         out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4'))
         out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4'))
@@ -357,8 +359,9 @@ class EMLineFit(object):
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
-        result['SYNTHPHOT_GRZ'] = data['synthphot']['nanomaggies']
-        #result['SYNTHPHOT_GRZ_IVAR'] = data['phot']['nanomaggies_ivar']
+        for iband, band in enumerate(CFit.synth_bands):
+            result['FLUX_SYNTH_{}'.format(band)] = data['synthphot']['nanomaggies'][iband]
+            result['FLUX_SYNTH_IVAR_{}'.format(band)] = data['synthphot']['nanomaggies_ivar'][iband]
 
         specflux_nolines = specflux - emlinemodel
 
