@@ -278,7 +278,7 @@ class DESISpectra(object):
                         #    if maggies[iband] > 0:
                         #        ivarmaggies[iband] = (10.0 / maggies [iband])**2 # constant S/N hack!!
 
-                    data['phot'] = CFit.parse_photometry(
+                    data['phot'] = CFit.parse_photometry(CFit.bands,
                         maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
                         lambda_eff=allfilters.effective_wavelengths.value)
                 else:
@@ -331,11 +331,11 @@ class DESISpectra(object):
                     #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
                     #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
                     #
-                    #data['synthphot'] = CFit.parse_photometry(
+                    #data['synthphot'] = CFit.parse_photometry(CFit.bands,
                     #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
                     #    ivarmaggies=synthivarmaggies, nanomaggies=False)
 
-                    data['synthphot'] = CFit.parse_photometry(
+                    data['synthphot'] = CFit.parse_photometry(CFit.bands,
                         maggies=synthmaggies, nanomaggies=False,
                         lambda_eff=filters.effective_wavelengths.value)
 
