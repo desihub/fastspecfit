@@ -261,7 +261,7 @@ class DESISpectra(object):
                     filters = CFit.bassmzls
                     allfilters = CFit.bassmzlswise            
 
-                # Unpack the imaging photometry.
+                # Unpack the imaging photometry and correct for MW dust.
                 if photfit:
                     maggies = np.zeros(CFit.nband)
                     ivarmaggies = np.zeros(CFit.nband)
@@ -270,13 +270,6 @@ class DESISpectra(object):
                     for iband, band in enumerate(CFit.bands):
                         maggies[iband] = fibermap['FLUX_{}'.format(band.upper())][igal] / dust[iband]
                         ivarmaggies[iband] = fibermap['FLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
-                            
-                        #ivarcol = 'FLUX_IVAR_{}'.format(band.upper())
-                        #if ivarcol in fibermap.colnames:
-                        #    ivarmaggies[iband] = fibermap[ivarcol][igal] * dust[iband]**2
-                        #else:
-                        #    if maggies[iband] > 0:
-                        #        ivarmaggies[iband] = (10.0 / maggies [iband])**2 # constant S/N hack!!
 
                     data['phot'] = CFit.parse_photometry(CFit.bands,
                         maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
@@ -373,16 +366,29 @@ class DESISpectra(object):
         -----
 
         """
+        import astropy.units as u
         from astropy.table import hstack
 
         # Grab info on the emission lines and the continuum.
         nobj = len(self.zbest)
 
         out = Table()
+        for fibermapcol, outcol in zip(['TARGETID', 'TARGET_RA', 'TARGET_DEC'],
+                                       ['TARGETID', 'RA', 'DEC']):
+            out[outcol] = self.fibermap[fibermapcol]
         for fibermapcol in ['NIGHT', 'TILEID', 'FIBER', 'EXPID']:
             out[fibermapcol] = self.fibermap[fibermapcol]
-        for zbestcol in ['TARGETID', 'Z', 'DELTACHI2']:#, 'ZERR']:#, 'SPECTYPE', ]
+        for zbestcol in ['Z', 'DELTACHI2']:#, 'ZERR']:#, 'SPECTYPE', ]
             out[zbestcol] = self.zbest[zbestcol]
+
+        # target column names (e.g., DESI_TARGET)
+        _targetcols = ['DESI_TARGET' in col or 'BGS_TARGET' in col or 'MWS_TARGET' in col for col in self.fibermap.colnames]
+        targetcols = np.array(self.fibermap.colnames)[_targetcols]
+        for targetcol in targetcols:
+            out[targetcol] = self.fibermap[targetcol]
+        
+        out['RA'].unit = u.deg
+        out['DEC'].unit = u.deg
 
         if photfit:
             out = hstack((out, CFit.init_phot_output(nobj)))
