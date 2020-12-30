@@ -263,10 +263,11 @@ class DESISpectra(object):
 
                 # Unpack the imaging photometry and correct for MW dust.
                 if photfit:
-                    maggies = np.zeros(CFit.nband)
-                    ivarmaggies = np.zeros(CFit.nband)
+                    # all photometry
                     dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
 
+                    maggies = np.zeros(len(CFit.bands))
+                    ivarmaggies = np.zeros(len(CFit.bands))
                     for iband, band in enumerate(CFit.bands):
                         maggies[iband] = fibermap['FLUX_{}'.format(band.upper())][igal] / dust[iband]
                         ivarmaggies[iband] = fibermap['FLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
@@ -274,6 +275,19 @@ class DESISpectra(object):
                     data['phot'] = CFit.parse_photometry(CFit.bands,
                         maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
                         lambda_eff=allfilters.effective_wavelengths.value)
+
+                    # fiber fluxes
+                    fiberdust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
+
+                    fibermaggies = np.zeros(len(CFit.fiber_bands))
+                    #ivarfibermaggies = np.zeros(len(CFit.fiber_bands))
+                    for iband, band in enumerate(CFit.fiber_bands):
+                        fibermaggies[iband] = fibermap['FIBERTOTFLUX_{}'.format(band.upper())][igal] / fiberdust[iband]
+                        #ivarfibermaggies[iband] = fibermap['FIBERTOTFLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
+
+                    data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
+                        maggies=fibermaggies, nanomaggies=True,
+                        lambda_eff=filters.effective_wavelengths.value)
                 else:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                                  'linemask': [], 'snr': np.zeros(3).astype('f4')})

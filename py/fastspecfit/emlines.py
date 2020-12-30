@@ -202,29 +202,27 @@ class EMLineFit(object):
     * https://docs.astropy.org/en/stable/modeling/compound-models.html#parameters
 
     """
-    def __init__(self, nball=10, chi2fail=1e6, nproc=1, verbose=False):
+    def __init__(self, nball=10, chi2fail=1e6, synth_bands=['g', 'r', 'z']):
         """Write me.
         
         """
         from astropy.modeling import fitting
 
-        self.verbose = verbose
-        self.nproc = nproc
-        
+        self.synth_bands = synth_bands
         self.nball = nball
         self.chi2fail = chi2fail
         self.pixkms = 10.0 # pixel size for internal wavelength array [km/s]
 
         self.fitter = fitting.LevMarLSQFitter()
 
-    def init_output(self, linetable, CFit, nobj=1):
+    def init_output(self, linetable, nobj=1):
         """Initialize the output data table for this class.
 
         """
         from astropy.table import Table, Column
         
         out = Table()
-        for band in CFit.synth_bands:
+        for band in self.synth_bands:
             out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # synthesized observed-frame photometry
         #out.add_column(Column(name='SYNTHPHOT_GRZ', length=nobj, shape=(3,), dtype='f4', unit=u.nanomaggy))
         #out.add_column(Column(name='SYNTHPHOT_GRZ_IVAR', length=nobj, shape=(3,), dtype='f4', unit=u.nanomaggy)) 
@@ -359,9 +357,9 @@ class EMLineFit(object):
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
-        for iband, band in enumerate(CFit.synth_bands):
-            result['FLUX_SYNTH_{}'.format(band)] = data['synthphot']['nanomaggies'][iband]
-            result['FLUX_SYNTH_IVAR_{}'.format(band)] = data['synthphot']['nanomaggies_ivar'][iband]
+        for iband, band in enumerate(self.synth_bands):
+            result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband]
+            #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
 
         specflux_nolines = specflux - emlinemodel
 

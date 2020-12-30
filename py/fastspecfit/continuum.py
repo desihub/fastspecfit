@@ -267,7 +267,8 @@ class ContinuumFit(object):
         # photometry
         self.bands = ['g', 'r', 'z', 'W1', 'W2']
         self.synth_bands = ['g', 'r', 'z'] # for synthesized photometry
-        self.nband = len(self.bands)
+        self.fiber_bands = ['g', 'r', 'z'] # for fiber fluxes
+
         self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
         self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z')
 
@@ -390,6 +391,9 @@ class ContinuumFit(object):
         out.add_column(Column(name='CONTINUUM_PHOT_AV', length=nobj, dtype='f4', unit=u.mag))
         out.add_column(Column(name='CONTINUUM_PHOT_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
         out.add_column(Column(name='D4000_MODEL_PHOT', length=nobj, dtype='f4'))
+        for band in self.fiber_bands:
+            out.add_column(Column(name='FIBERTOTFLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame fiber photometry
+            #out.add_column(Column(name='FIBERTOTFLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
         for band in self.bands:
             out.add_column(Column(name='FLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame photometry
             out.add_column(Column(name='FLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
@@ -849,7 +853,7 @@ class ContinuumFit(object):
         npix, nmodel = zsspflux_dustvdisp.shape
         nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
 
-        zsspflam_dustvdisp = zsspflam_dustvdisp.reshape(self.nband, nage, self.nAV) # [nband,nage,nAV]
+        zsspflam_dustvdisp = zsspflam_dustvdisp.reshape(len(self.bands), nage, self.nAV) # [nband,nage,nAV]
 
         t0 = time.time()
         AVchi2min, AVbest, AVivar = self._fnnls_parallel(zsspflam_dustvdisp, objflam,
@@ -886,6 +890,9 @@ class ContinuumFit(object):
         result['CONTINUUM_PHOT_AV'][0] = AVbest
         result['CONTINUUM_PHOT_AV_IVAR'][0] = AVivar
         result['D4000_MODEL_PHOT'][0] = d4000
+        for iband, band in enumerate(self.fiber_bands):
+            result['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
+            #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
         for iband, band in enumerate(self.bands):
             result['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
             result['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
