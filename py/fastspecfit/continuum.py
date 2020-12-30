@@ -289,14 +289,18 @@ class ContinuumFit(object):
         flux = fitsio.read(self.sspfile, ext='FLUX')
         sspinfo = Table(fitsio.read(self.sspfile, ext='METADATA'))
         
-        # Trim the wavelengths and subselect the number of ages/templates.
+        # Trim the wavelengths and select the number/ages of the templates.
+        # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
         if minwave is None:
             minwave = np.min(wave)
         keep = np.where((wave >= minwave) * (wave <= maxwave))[0]
         sspwave = wave[keep]
-        pdb.set_trace()
-        sspflux = flux[keep, ::5]
-        sspinfo = sspinfo[::5]
+
+        myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 13.0])*1e9
+        iage = np.array([np.argmin(np.abs(sspinfo['age']-myage)) for myage in myages])
+        sspflux = flux[:, iage][keep, :] # flux[keep, ::5]
+        sspinfo = sspinfo[iage]
+
         nage = len(sspinfo)
         npix = len(sspwave)
 
