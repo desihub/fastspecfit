@@ -251,7 +251,7 @@ class ContinuumFit(object):
         self.nvdisp = len(vdisp)
 
         #AVmin, AVmax, dAV, AV_nominal = (0.0, 0.0, 0.1, 0.0)
-        AVmin, AVmax, dAV, AV_nominal = (0.0, 1.0, 0.05, 0.0)
+        AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.1, 0.0)
         nAV = np.ceil((AVmax - AVmin) / dAV).astype(int)
         if nAV == 0:
             nAV = 1
@@ -266,6 +266,7 @@ class ContinuumFit(object):
 
         # photometry
         self.bands = ['g', 'r', 'z', 'W1', 'W2']
+        self.synth_bands = ['g', 'r', 'z'] # for synthesized photometry
         self.nband = len(self.bands)
         self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
         self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z')
@@ -426,7 +427,7 @@ class ContinuumFit(object):
             nband, ngal = shp[0], 1
         else:
             nband, ngal = shp[0], shp[1]
-            
+
         phot = Table()
         phot.add_column(Column(name='band', data=bands))
         phot.add_column(Column(name='lambda_eff', length=nband, dtype='f4'))

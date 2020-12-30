@@ -328,7 +328,7 @@ class DESISpectra(object):
                     #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
                     #    ivarmaggies=synthivarmaggies, nanomaggies=False)
 
-                    data['synthphot'] = CFit.parse_photometry(CFit.bands,
+                    data['synthphot'] = CFit.parse_photometry(CFit.synth_bands,
                         maggies=synthmaggies, nanomaggies=False,
                         lambda_eff=filters.effective_wavelengths.value)
 
@@ -414,6 +414,7 @@ def parse(options=None):
 
     parser.add_argument('--exposures', action='store_true', help='Fit the individual exposures (not the coadds).')
 
+    parser.add_argument('--qa', action='store_true', help='Build QA (skips fitting).')
     parser.add_argument('--photfit', action='store_true', help='Fit and write out just the broadband photometry.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
 
