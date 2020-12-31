@@ -1,0 +1,151 @@
+#!/usr/bin/env python
+"""fastspecfit QA
+
+"""
+import pdb # for debugging
+import os, sys, time
+import numpy as np
+
+from desiutil.log import get_logger
+log = get_logger()
+
+# ridiculousness!
+import tempfile
+os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
+
+import multiprocessing
+
+def _desiqa_one(args):
+    """Multiprocessing wrapper."""
+    return desiqa_one(*args)
+
+def desiqa_one(indx, data, specfit, photfit, CFit, EMFit, qadir):
+    """QA on one spectrum."""
+    t0 = time.time()
+    continuum = CFit.qa_continuum(data, specfit, photfit, qadir)
+    EMFit.qa_emlines(data, specfit, continuum, qadir)
+    log.info('Building QA for object {} took {:.2f} sec'.format(indx, time.time()-t0))
+
+def parse(options=None):
+    """Parse input arguments.
+
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument('--photfit', action='store_true', help='Fit and write out just the broadband photometry.')
+
+    parser.add_argument('--suffix', default=None, type=str, help='Optional suffix for output filename.')
+    parser.add_argument('--tile', default=None, type=str, help='Generate QA for all objects on this tile.')
+    parser.add_argument('--night', default=None, type=str, help='Generate QA for all objects observed on this night.')
+    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+
+    parser.add_argument('fitfile', type=str, help='Full path to input fastspecfit file.')
+
+    if options is None:
+        args = parser.parse_args()
+        log.info(' '.join(sys.argv))
+    else:
+        args = parser.parse_args(options)
+        log.info('fastspecfit_qa {}'.format(' '.join(options)))
+
+    return args
+
+def main(args=None, comm=None):
+    """Main module.
+
+    """
+    import fitsio
+    from astropy.table import Table
+    from fastspecfit.continuum import ContinuumFit
+    from fastspecfit.emlines import EMLineFit
+    #from fastspecfit.external.desi import read_spectra, unpack_all_spectra
+
+    if isinstance(args, (list, tuple, type(None))):
+        args = parse(args)
+
+    if args.targetids:
+        targetids = [int(x) for x in args.targetids.split(',')]
+    else:
+        targetids = args.targetids
+
+    # Read the fitting results.
+    if not os.path.isfile(args.fitfile):
+        log.info('Input fit file {} not found!'.format(args.fitfile))
+        return
+    fastfit = Table(fitsio.read(args.fitfile))
+    log.info('Read {} objects from {}'.format(len(fastfit), args.fitfile))
+
+    pdb.set_trace()
+
+    # Initialize the continuum- and emission-line fitting classes.
+    t0 = time.time()
+    CFit = ContinuumFit()
+    EMFit = EMLineFit()
+    log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
+
+
+    fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
+    resultsdir = os.path.join(fastspecfit_dir, 'results', args.specprod)
+    qadir = os.path.join(fastspecfit_dir, 'qa', args.specprod)
+
+    specfitfile = os.path.join(resultsdir, 'specfit-{}-{}.fits'.format(
+        args.tile, args.night))
+    photfitfile = os.path.join(resultsdir, 'photfit-{}-{}.fits'.format(
+        args.tile, args.night))
+    if not os.path.isfile(specfitfile):
+        log.info('Spectroscopic fit file {} not found!'.format(specfitfile))
+        return
+    if not os.path.isfile(photfitfile):
+        log.info('Photometric fit file {} not found!'.format(photfitfile))
+        return
+    specfit = Table(fitsio.read(specfitfile))
+    log.info('Read {} objects from {}'.format(len(specfit), specfitfile))
+    photfit = Table(fitsio.read(photfitfile))
+    log.info('Read {} objects from {}'.format(len(photfit), photfitfile))
+    assert(len(specfit) == len(photfit))
+
+    # Read the data 
+    zbest, specobj = read_spectra(tile=args.tile, night=args.night,
+                                  specprod=args.specprod,
+                                  use_vi=args.use_vi, 
+                                  write_spectra=args.write_spectra,
+                                  verbose=args.verbose)
+
+    if args.targetid is not None:
+        fitindx = np.where(np.isin(zbest['TARGETID'], args.targetid))[0]
+        miss = np.where(np.logical_not(np.isin(args.targetid, zbest['TARGETID'])))[0]
+        for this in miss:
+            log.warning('TARGETID {} not found!'.format(args.targetid[this]))
+        if len(fitindx) == 0:
+            return
+    else:
+        if args.first is None:
+            args.first = 0
+        if args.last is None:
+            args.last = len(zbest) - 1
+        fitindx = np.arange(args.last - args.first + 1) + args.first
+        
+    # Initialize the continuum- and emission-line fitting classes.
+    CFit = ContinuumFit(nproc=args.nproc, verbose=args.verbose)
+    EMFit = EMLineFit()
+
+    # Unpacking with multiprocessing takes a lot longer (maybe pickling takes a
+    # long time?) so suppress the `nproc` argument here for now.
+    data = unpack_all_spectra(specobj, zbest, CFit, fitindx)#, nproc=args.nproc)
+    del specobj, zbest # free memory
+
+    # Build the QA in parallel
+    qaargs = [(indx, data[iobj], specfit[indx], photfit[indx], CFit, EMFit, qadir)
+               for iobj, indx in enumerate(fitindx)]
+    if args.nproc > 1:
+        with multiprocessing.Pool(args.nproc) as P:
+            P.map(_desiqa_one, qaargs)
+    else:
+        [desiqa_one(*_qaargs) for _qaargs in qaargs]
+
+if __name__ == '__main__':
+    main()
+    

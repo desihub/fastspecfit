@@ -208,7 +208,7 @@ def backup_logs(logfile):
     os.rename(logfile, newlog)
     return newlog
 
-def plan(args, comm=None):
+def plan(args, comm=None, merge=False):
     from glob import glob
     from astropy.table import Table
     
@@ -236,8 +236,12 @@ def plan(args, comm=None):
         explist = explist[np.argsort(explist['NIGHT'])]
         log.info('Read {} exposures from {}'.format(len(explist), expfile))
         
-        if args.tile and args.night:
-            keep = (explist['TILEID'].astype(str) == args.tile) * (explist['NIGHT'].astype(str) == args.night)
+        if args.tile or args.night:
+            keep = np.ones(len(explist), bool)
+            if args.tile:
+                keep *= (explist['TILEID'].astype(str) == args.tile)
+            if args.night:
+                keep *= (explist['NIGHT'].astype(str) == args.night)
             explist = explist[keep]
             log.info('Keeping {} exposures from tile {} on night {}.'.format(len(explist), args.tile, args.night))
         else:
@@ -271,7 +275,7 @@ def plan(args, comm=None):
             tiles = np.array(list(tiles))[keep]
             explist = explist[np.isin(explist['TILEID'].astype(str), tiles)]
             #explist = explist[:10]
-            
+
         if args.photfit:
             outprefix = 'photfit'
         else:
@@ -297,24 +301,31 @@ def plan(args, comm=None):
                 # How many have we done already?
                 for specfile in _specfiles:
                     outfile = os.path.join(outnightdir, os.path.basename(specfile).replace('zbest-', '{}-'.format(outprefix)))
-                    if args.overwrite or not os.path.isfile(outfile):
-                        specfiles.append(specfile)
-                        outfiles.append(outfile)
+                    if merge:
+                        if os.path.isfile(outfile):
+                            specfiles.append(specfile)
+                            outfiles.append(outfile)
+                    else:
+                        if args.overwrite or not os.path.isfile(outfile):
+                            specfiles.append(specfile)
+                            outfiles.append(outfile)
         if len(specfiles) > 0:
             specfiles = np.hstack(specfiles)
             outfiles = np.hstack(outfiles)
     else:
+        outdir = None
         specfiles = None
         outfiles = None
 
     if comm:
+        outdir = comm.bcast(outdir, root=0)
         specfiles = comm.bcast(specfiles, root=0)
         outfiles = comm.bcast(outfiles, root=0)
         
     if len(specfiles) == 0:
         if rank == 0:
             log.info('All files have been processed!')
-        return list(), list(), list(), list()
+        return '', list(), list(), list(), list()
 
     groups, ntargets, grouptimes = group_specfiles(specfiles, args.maxnodes, comm=comm)
 
@@ -382,8 +393,49 @@ def plan(args, comm=None):
                 rrcmd += ' --outdir {}'.format(os.path.abspath(args.outdir))
             print('srun -N $nodes -n $nodes -c {} {}'.format(maxproc, rrcmd))
 
-    return specfiles, outfiles, groups, grouptimes
+    return outdir, specfiles, outfiles, groups, grouptimes
 
+def merge_fastspecfit(args, comm=None):
+    """Merge all the individual catalogs into a single large catalog. Runs only on
+    rank 0.
+
+    """
+    import fitsio
+    from astropy.table import Table
+    
+    if comm is None:
+        rank, size = 0, 1
+    else:
+        rank, size = comm.rank, comm.size
+
+    outdir, _, outfiles, _, _ = plan(args, comm=comm, merge=True)
+
+    if args.photfit:
+        prefix = 'photfit'
+    else:
+        prefix = 'specfit'
+
+    t0 = time.time()        
+    out = Table(np.hstack([fitsio.read(outfile) for outfile in outfiles]))#[:5]]))
+    log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
+        len(out), len(outfiles), prefix, (time.time()-t0)/60.0))
+
+    tilemin, tilemax = out['TILEID'].min(), out['TILEID'].max()
+    if tilemin == tilemax:
+        tilesuffix = str(tilemin)
+    else:
+        tilesuffix = '{}-{}'.format(tilemin, tilemax)
+        
+    nightmin, nightmax = out['NIGHT'].min(), out['NIGHT'].max()
+    if nightmin == nightmax:
+        nightsuffix = str(nightmin)
+    else:
+        nightsuffix = '{}-{}'.format(nightmin, nightmax)
+    
+    outfile = os.path.join(outdir, '{}-{}-{}.fits'.format(prefix, tilesuffix, nightsuffix))
+    log.info('Writing {}'.format(outfile))
+    out.write(outfile, overwrite=True)    
+    
 def run_fastspecfit(args, comm=None):
 
     if comm is None:
@@ -397,7 +449,7 @@ def run_fastspecfit(args, comm=None):
     if rank == 0:
         log.info('Starting at {}'.format(time.asctime()))
 
-    specfiles, outfiles, groups, grouptimes = plan(args, comm=comm)
+    _, specfiles, outfiles, groups, grouptimes = plan(args, comm=comm)
 
     if rank == 0:
         log.info('Initial setup took {:.1f} sec'.format(time.time() - t0))
@@ -425,8 +477,8 @@ def run_fastspecfit(args, comm=None):
         log.info('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
 
-        cmd = 'fastspecfit-desi {} -o {} --mp {}'.format(specfiles[ii], outfiles[ii], args.mp)
-        cmd += ' --ntargets 32'
+        cmd = 'fastspecfit {} -o {} --mp {}'.format(specfiles[ii], outfiles[ii], args.mp)
+        #cmd += ' --ntargets 16'
 
         if args.exposures:
             cmd += ' --exposures'
@@ -495,6 +547,7 @@ def main():
     parser.add_argument('--photfit', action='store_true', help='Fit just the broadband photometry.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
 
+    parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs into one large file.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
@@ -502,7 +555,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.nompi or nersc_login_node():
+    if args.merge or args.nompi or nersc_login_node():
         comm = None
     else:
         try:
@@ -510,17 +563,12 @@ def main():
             comm = MPI.COMM_WORLD
         except ImportError:
             comm = None
-
-    if args.plan:
+            
+    if args.merge:
+        merge_fastspecfit(args, comm=comm)
+    elif args.plan:
         plan(args, comm=comm)
     else:
-        ## Create output directory if needed
-        #if (args.outdir is not None) and ((comm is None) or (comm.rank == 0)):
-        #    os.makedirs(args.outdir, exist_ok=True)
-        ## All ranks wait for directory to be created.
-        #if comm is not None:
-        #    comm.barrier()
-
         run_fastspecfit(args, comm=comm)
 
 if __name__ == '__main__':

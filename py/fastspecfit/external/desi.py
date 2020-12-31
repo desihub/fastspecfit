@@ -228,11 +228,13 @@ class DESISpectra(object):
 
             if ntargets is None:
                 ntargets = len(these)
+
             if ntargets > len(these):
                 log.warning('Number of requested ntargets exceeds the number of spectra on {}.'.format(specfile))
-                raise ValueError
-
-            these = these[firsttarget:firsttarget+ntargets]
+                #raise ValueError
+            else:
+                # the logic here is not quite right...needs more testing
+                these = these[firsttarget:firsttarget+ntargets]
             
             fitindx = fitindx[these]
             zbest = zbest[these]
@@ -259,26 +261,33 @@ class DESISpectra(object):
                     filters = CFit.bassmzls
                     allfilters = CFit.bassmzlswise            
 
-                # Unpack the imaging photometry.
+                # Unpack the imaging photometry and correct for MW dust.
                 if photfit:
-                    maggies = np.zeros(CFit.nband)
-                    ivarmaggies = np.zeros(CFit.nband)
+                    # all photometry
                     dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
 
+                    maggies = np.zeros(len(CFit.bands))
+                    ivarmaggies = np.zeros(len(CFit.bands))
                     for iband, band in enumerate(CFit.bands):
                         maggies[iband] = fibermap['FLUX_{}'.format(band.upper())][igal] / dust[iband]
                         ivarmaggies[iband] = fibermap['FLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
-                            
-                        #ivarcol = 'FLUX_IVAR_{}'.format(band.upper())
-                        #if ivarcol in fibermap.colnames:
-                        #    ivarmaggies[iband] = fibermap[ivarcol][igal] * dust[iband]**2
-                        #else:
-                        #    if maggies[iband] > 0:
-                        #        ivarmaggies[iband] = (10.0 / maggies [iband])**2 # constant S/N hack!!
 
-                    data['phot'] = CFit.parse_photometry(
+                    data['phot'] = CFit.parse_photometry(CFit.bands,
                         maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
                         lambda_eff=allfilters.effective_wavelengths.value)
+
+                    # fiber fluxes
+                    fiberdust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
+
+                    fibermaggies = np.zeros(len(CFit.fiber_bands))
+                    #ivarfibermaggies = np.zeros(len(CFit.fiber_bands))
+                    for iband, band in enumerate(CFit.fiber_bands):
+                        fibermaggies[iband] = fibermap['FIBERTOTFLUX_{}'.format(band.upper())][igal] / fiberdust[iband]
+                        #ivarfibermaggies[iband] = fibermap['FIBERTOTFLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
+
+                    data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
+                        maggies=fibermaggies, nanomaggies=True,
+                        lambda_eff=filters.effective_wavelengths.value)
                 else:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                                  'linemask': [], 'snr': np.zeros(3).astype('f4')})
@@ -329,11 +338,11 @@ class DESISpectra(object):
                     #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
                     #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
                     #
-                    #data['synthphot'] = CFit.parse_photometry(
+                    #data['synthphot'] = CFit.parse_photometry(CFit.bands,
                     #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
                     #    ivarmaggies=synthivarmaggies, nanomaggies=False)
 
-                    data['synthphot'] = CFit.parse_photometry(
+                    data['synthphot'] = CFit.parse_photometry(CFit.synth_bands,
                         maggies=synthmaggies, nanomaggies=False,
                         lambda_eff=filters.effective_wavelengths.value)
 
@@ -371,16 +380,29 @@ class DESISpectra(object):
         -----
 
         """
+        import astropy.units as u
         from astropy.table import hstack
 
         # Grab info on the emission lines and the continuum.
         nobj = len(self.zbest)
 
         out = Table()
+        for fibermapcol, outcol in zip(['TARGETID', 'TARGET_RA', 'TARGET_DEC'],
+                                       ['TARGETID', 'RA', 'DEC']):
+            out[outcol] = self.fibermap[fibermapcol]
         for fibermapcol in ['NIGHT', 'TILEID', 'FIBER', 'EXPID']:
             out[fibermapcol] = self.fibermap[fibermapcol]
-        for zbestcol in ['TARGETID', 'Z', 'DELTACHI2']:#, 'ZERR']:#, 'SPECTYPE', ]
+        for zbestcol in ['Z', 'DELTACHI2']:#, 'ZERR']:#, 'SPECTYPE', ]
             out[zbestcol] = self.zbest[zbestcol]
+
+        # target column names (e.g., DESI_TARGET)
+        _targetcols = ['DESI_TARGET' in col or 'BGS_TARGET' in col or 'MWS_TARGET' in col for col in self.fibermap.colnames]
+        targetcols = np.array(self.fibermap.colnames)[_targetcols]
+        for targetcol in targetcols:
+            out[targetcol] = self.fibermap[targetcol]
+        
+        out['RA'].unit = u.deg
+        out['DEC'].unit = u.deg
 
         if photfit:
             out = hstack((out, CFit.init_phot_output(nobj)))
@@ -406,9 +428,9 @@ def parse(options=None):
 
     parser.add_argument('--exposures', action='store_true', help='Fit the individual exposures (not the coadds).')
 
+    parser.add_argument('--qa', action='store_true', help='Build QA (skips fitting).')
     parser.add_argument('--photfit', action='store_true', help='Fit and write out just the broadband photometry.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
-    parser.add_argument('--verbose', action='store_true', help='Be (more) verbose.')
 
     parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
 
@@ -431,28 +453,6 @@ def main(args=None, comm=None):
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    ## Create directories as needed.
-    #fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
-    #for subdir in ('spectra', 'results', 'qa'):
-    #    outdir = os.path.join(fastspecfit_dir, subdir, args.specprod)
-    #    if not os.path.isdir(outdir):
-    #        if args.verbose:
-    #            log.debug('Creating directory {}'.format(outdir))
-    #        os.makedirs(outdir, exist_ok=True)
-    
-    ## If the output file exists, we're done!
-    #resultsdir = os.path.join(fastspecfit_dir, 'results', args.specprod)
-    #if args.photfit:
-    #    prefix = 'photfit'
-    #else:
-    #    prefix = 'specfit'
-        
-    #outfile = os.path.join(resultsdir, '{}-{}-{}.fits'.format(
-    #    prefix, args.tile, args.night))
-    #if os.path.isfile(outfile) and not args.overwrite:
-    #    log.info('Output file {} exists; all done!'.format(outfile))
-    #    return
-
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
     else:
@@ -460,8 +460,8 @@ def main(args=None, comm=None):
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit(verbose=args.verbose)
-    EMFit = EMLineFit(verbose=args.verbose)
+    CFit = ContinuumFit()
+    EMFit = EMLineFit()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
@@ -485,7 +485,7 @@ def main(args=None, comm=None):
             _out = P.map(_fastspecfit_one, fitargs)
     else:
         _out = [fastspecfit_one(*_fitargs) for _fitargs in fitargs]
-    out = Table(np.hstack(out))
+    out = Table(np.hstack(_out))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # write out
