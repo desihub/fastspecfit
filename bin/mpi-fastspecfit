@@ -236,8 +236,12 @@ def plan(args, comm=None, merge=False):
         explist = explist[np.argsort(explist['NIGHT'])]
         log.info('Read {} exposures from {}'.format(len(explist), expfile))
         
-        if args.tile and args.night:
-            keep = (explist['TILEID'].astype(str) == args.tile) * (explist['NIGHT'].astype(str) == args.night)
+        if args.tile or args.night:
+            keep = np.ones(len(explist), bool)
+            if args.tile:
+                keep *= (explist['TILEID'].astype(str) == args.tile)
+            if args.night:
+                keep *= (explist['NIGHT'].astype(str) == args.night)
             explist = explist[keep]
             log.info('Keeping {} exposures from tile {} on night {}.'.format(len(explist), args.tile, args.night))
         else:
@@ -271,7 +275,7 @@ def plan(args, comm=None, merge=False):
             tiles = np.array(list(tiles))[keep]
             explist = explist[np.isin(explist['TILEID'].astype(str), tiles)]
             #explist = explist[:10]
-            
+
         if args.photfit:
             outprefix = 'photfit'
         else:
@@ -473,8 +477,8 @@ def run_fastspecfit(args, comm=None):
         log.info('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
 
-        cmd = 'fastspecfit-desi {} -o {} --mp {}'.format(specfiles[ii], outfiles[ii], args.mp)
-        cmd += ' --ntargets 16'
+        cmd = 'fastspecfit {} -o {} --mp {}'.format(specfiles[ii], outfiles[ii], args.mp)
+        #cmd += ' --ntargets 16'
 
         if args.exposures:
             cmd += ' --exposures'

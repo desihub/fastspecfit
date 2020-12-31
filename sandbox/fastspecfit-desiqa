@@ -1,6 +1,0 @@
-#!/usr/bin/env python
-"""fastspecfit QA for DESI
-
-"""
-from fastspecfit.external import desiqa
-desiqa.main(comm=None)
