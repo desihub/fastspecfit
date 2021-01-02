@@ -87,12 +87,12 @@ def main(args=None, comm=None):
         fastfit = fastfit[keep]
         log.info('Keeping {} spectra from tile {} on night {}.'.format(len(fastfit), args.tile, args.night))
 
-    if False:
-        if args.targetids:
-            targetids = [int(x) for x in args.targetids.split(',')]
-        else:
-            targetids = fastfit['TARGETID'].data
+    if args.targetids:
+        targetids = [int(x) for x in args.targetids.split(',')]
+    else:
+        targetids = fastfit['TARGETID'].data
 
+    if False:
         these = np.where([tid in targetids for tid in fastfit['TARGETID']])[0]
         if len(these) == 0:
             log.info('All done!')
@@ -110,7 +110,7 @@ def main(args=None, comm=None):
     ielg = np.where((fastfit['OII_3726_AMP']*np.sqrt(fastfit['OII_3726_AMP_IVAR']) > 2) *
                     (fastfit['OII_3729_AMP']*np.sqrt(fastfit['OII_3729_AMP_IVAR']) > 2))[0]
     fastfit = fastfit[ielg]
-    targetids = fastfit['TARGETID'].data
+    alltargetids = fastfit['TARGETID'].data
 
     petals = fastfit['FIBER'].data // 500
     tiles = fastfit['TILEID'].astype(str).data
@@ -118,7 +118,11 @@ def main(args=None, comm=None):
     zbestfiles = np.array([os.path.join(specprod_dir, tile, night, 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
                            for petal, tile, night in zip(petals, tiles, nights)])
 
-    DESISpec = DESISpectra(set(zbestfiles))
+    Spec = DESISpectra()
+    Spec.find_specfiles(zbestfiles, firsttarget=args.firsttarget,
+                        targetids=targetids, ntargets=args.ntargets)
+    
+    pdb.set_trace()
     data = DESISpec.read_and_unpack(CFit, firsttarget=args.firsttarget,
                                     targetids=targetids,
                                     ntargets=args.ntargets,

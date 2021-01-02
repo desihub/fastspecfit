@@ -18,9 +18,9 @@ from astropy.table import Table
 from desiutil.log import get_logger
 log = get_logger()
 
-# ridiculousness!
-import tempfile
-os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
+## ridiculousness!
+#import tempfile
+#os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 
 def _fastspecfit_one(args):
     """Multiprocessing wrapper."""
@@ -51,91 +51,177 @@ def fastspecfit_one(iobj, data, CFit, EMFit, out, photfit=False, solve_vdisp=Fal
     return out
 
 class DESISpectra(object):
-    def __init__(self, zbestfiles, exposures=False):
+    def __init__(self):
         """Class to read in the DESI data needed by fastspecfit.
 
         """
-        #from glob import glob
-        from astropy.table import vstack
-        from desitarget.io import read_targets_in_tiles
+        #from desitarget.geomask import pixarea2nside
 
-        zbestfiles = np.array(sorted(zbestfiles))
-        #zbestfiles = np.array(sorted(glob(os.path.join(zbestdir, 'zbest-?-*-????????.fits'))))
-        if len(zbestfiles) == 0:
-            log.warning('No zbest-?-*-????????.fits files found in {}'.format(zbestdir))
+        self.fiberassign_dir = os.path.join(os.getenv('DESI_ROOT'), 'target', 'fiberassign', 'tiles', 'trunk')
+
+        ## read the summary tile file (not sure we need this...)
+        #tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
+        #self.tiles = fitsio.read(tilefile)
+        #log.info('Read {} tiles from {}'.format(len(self.tiles), tilefile))
+        #
+        ## Closest nside to DESI tile area of ~7 deg (from
+        ## desitarget.io.read_targets_in_quick).
+        #self.tile_nside = pixarea2nside(8.)
+
+    def _get_targetdir(self, tileid):
+        """Get the targets catalog used to build a given fiberassign catalog.
+
+        """
+        thistile = self.tiles[self.tiles['TILEID'] == tileid]
+        stileid = '{:06d}'.format(tileid)
+        fahdr = fitsio.read_header(os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid)))
+        targetdir = fahdr['TARG']
+
+        # sometimes this is a KPNO directory!
+        if not os.path.isdir(targetdir):
+            log.warning('Targets directory not found {}'.format(targetdir))
+            targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('/data/', ''))
+            if not os.path.isdir(targetdir):
+                log.fatal('Targets directory not found {}'.format(targetdir))
+                raise IOError
+
+        return targetdir
+
+    def find_specfiles(self, zbestfiles, firsttarget=0, targetids=None, ntargets=None, exposures=False):
+        """Initialize the fastspecfit output data table.
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        Notes
+        -----
+
+        """
+        from glob import glob
+        from desimodel.footprint import radec2pix
+
+        if len(np.atleast_1d(zbestfiles)) == 0:
+            log.warning('You must provide at least one zbestfile!')
             raise IOError
-        
-        self.zbestfiles = zbestfiles
-        
-        if exposures:
-            self.specfiles = [zbestfile.replace('zbest-', 'spectra-') for zbestfile in zbestfiles]
-        else:
-            self.specfiles = [zbestfile.replace('zbest-', 'coadd-') for zbestfile in zbestfiles]
-        
-        zbest, fmap = [], []
-        self.fitindx = []
 
-        log.info('Reading and parsing {} zbestfile(s)'.format(len(zbestfiles)))
-        
-        for ifile, (zbestfile, specfile) in enumerate(zip(self.zbestfiles, self.specfiles)):
-            # Read the zbest file and fibermap and select the objects to fit.
-            zb = fitsio.read(zbestfile, 'ZBEST')
-            #fm = fitsio.read(zbestfile, 'FIBERMAP')
+        # Should we not sort...?
+        zbestfiles = np.array(sorted(set(np.atleast_1d(zbestfiles))))
+        log.info('Reading and parsing {} unique zbestfile(s)'.format(len(zbestfiles)))
 
-            hdr = fitsio.read_header(zbestfile, 'FIBERMAP')
-            fm = fitsio.read(specfile, 'FIBERMAP')
+        #if targetids is None:
+        #    thesetargetids = None
+        #else:
+        #    thesetargetids = targetids.copy()
+
+        # exposures=True not really supported yet...
+        #if exposures:
+        #    self.specfiles = [zbestfile.replace('zbest-', 'spectra-') for zbestfile in np.atleast_1d(zbestfiles)]
+        #else:
+        #    self.specfiles = [zbestfile.replace('zbest-', 'coadd-') for zbestfile in zbestfiles]
+        
+        #self.fitindx = []
+        self.zbest, self.fmap = [], []
+        self.zbestfiles, self.specfiles = [], []
+        for zbestfile in np.atleast_1d(zbestfiles):
 
             if exposures:
-                pdb.set_trace()
-                _, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)            
-                fm = fm[I]
-                assert(np.all(zb['TARGETID'] == fm['TARGETID']))
+                specfile = zbestfile.replace('zbest-', 'spectra-')
             else:
-                J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY') * 
-                     (fm['OBJTYPE'] == 'TGT') * (fm['FIBERSTATUS'] == 0))
-                fitindx = np.where(J)[0]
-                self.fitindx.append(fitindx)
+                specfile = zbestfile.replace('zbest-', 'coadd-')
 
+            # If targetids is *not* given we have to choose "good" objects
+            # before subselecting (e.g., we don't want sky spectra).
+            if targetids is None:
+                zb = fitsio.read(zbestfile, 'ZBEST')
+                fm = fitsio.read(specfile, 'FIBERMAP')
+                #fm = fitsio.read(zbestfile, 'FIBERMAP')
+                #hdr = fitsio.read_header(zbestfile, 'FIBERMAP')
+
+                if exposures:
+                    log.fatal('Not yet implemented!')
+                    _, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)            
+                    fm = fm[I]
+                    assert(np.all(zb['TARGETID'] == fm['TARGETID']))
+                else:
+                    # The fibermap includes all the spectra that went into the coadd
+                    # (based on the unique TARGETID which is in the zbest table).
+                    assert(len(zb) == len(fm))
+                    fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY') * 
+                         (fm['OBJTYPE'] == 'TGT') * (fm['FIBERSTATUS'] == 0))[0]
+                    #self.fitindx.append(fitindx)
+            else:
+                # We already know we like the input targetids, so no selection
+                # needed.
+                alltargetids = fitsio.read(zbestfile, 'ZBEST', columns='TARGETID')                
+                fitindx = np.where([tid in targetids for tid in alltargetids])[0]
+                
+            if len(fitindx) == 0:
+                log.info('No requested targets found in zbestfile {}'.format(zbestfile))
+                continue
+
+            # Do we want just a subset of the available objects?
+            if ntargets is None:
+                ntargets = len(fitindx)
+            if ntargets > len(fitindx):
+                log.warning('Number of requested ntargets exceeds the number of targets on {}.'.format(zbestfile))
+                ntargets = len(fitindx)
+                #raise ValueError
+
+            # If firsttarget is a large index then the set can become empty.
+            _ntarg = len(fitindx)
+            fitindx = fitindx[firsttarget:firsttarget+ntargets]
+            if len(fitindx) == 0:
+                log.info('All {} targets in zbestfile {} have been dropped (firsttarget={}, ntargets={}).'.format(
+                    _ntarg, zbestfile, firsttarget, ntargets))
+                continue
+                
+            if targetids is None:
                 zb = Table(zb[fitindx])
                 fm = Table(fm[fitindx])
+            else:
+                zb = Table(fitsio.read(zbestfile, 'ZBEST', rows=fitindx))
+                fm = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx))
+            assert(np.all(zb['TARGETID'] == fm['TARGETID']))
 
-            # Add additional columns to the fibermap table. Should we pass this
-            # forward from mpi-fastspecfit?
-            if ifile == 0:
-                tileid = fm['TILEID'][0]
-                
-                tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
-                log.info('Reading {}'.format(tilefile))
-                tiles = fitsio.read(tilefile)
-                thistile = tiles[tiles['TILEID'] == tileid]
+            self.zbest.append(zb)
+            self.fmap.append(fm)
+            self.zbestfiles.append(zbestfile)
+            self.specfiles.append(specfile)
 
-                stileid = '{:06d}'.format(tileid)
-                fahdr = fitsio.read_header('/global/cfs/cdirs/desi/target/fiberassign/tiles/trunk/{}/fiberassign-{}.fits.gz'.format(stileid[:3], stileid))
-                hpdirname = fahdr['TARG']
+        # The targets catalogs are organized on a much larger spatial scale, so
+        # grab additional targeting info outside the main loop. See
+        # desitarget.io.read_targets_in_tiles for the algorithm.
+        t0 = time.time()
+        alltileid = [fm['TILEID'][0] for fm in self.fmap]
+        info = Table(np.hstack([fm['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for fm in self.fmap]))
+        targets = []
+        for tileid in set(alltileid):
+            targetdir = self._get_targetdir(tileid)
+            targetfiles = glob(os.path.join(targetdir, '*-hp-*.fits'))
+            filenside = fitsio.read_header(targetfiles[0], ext=1)['FILENSID']
+            pixlist = radec2pix(filenside, info['TARGET_RA'], info['TARGET_DEC'])
+            targetfiles = [targetfiles[0].split('hp-')[0]+'hp-{}.fits'.format(pix) for pix in set(pixlist)]
+            for targetfile in targetfiles:
+                alltargets = fitsio.read(targetfile, columns=['TARGETID', 'FLUX_W1', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2',
+                                                              'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+                                                              'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2'])
+                alltargets = alltargets[np.isin(alltargets['TARGETID'], info['TARGETID'])]
+                targets.append(alltargets)
+        targets = Table(np.hstack(targets))
 
-                # sometimes this is a KPNO directory!
-                if not os.path.isdir(hpdirname):
-                    log.info('Targets directory not found {}'.format(hpdirname))
-                    hpdirname = os.path.join(os.getenv('DESI_ROOT'), hpdirname.replace('/data/', ''))
-                log.info('Reading targets from {}'.format(hpdirname))
-                alltargets = read_targets_in_tiles(hpdirname, tiles=thistile, quick=True)
-
-            keep = np.hstack([np.where(tid == alltargets['TARGETID'])[0] for tid in fm['TARGETID']])
-            targets = alltargets[keep]
-            assert(np.all(targets['TARGETID'] == fm['TARGETID']))
-            assert(np.all(targets['FLUX_W1'] == fm['FLUX_W1']))
-            
+        fmaps = []
+        for fm in self.fmap:
+            srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in fm['TARGETID']])
             for col in ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']:
-                fm[col] = targets[col]
-                
-            zbest.append(zb)
-            fmap.append(fm)
+                fm[col] = targets[col][srt]
+            assert(np.all(fm['TARGETID'] == targets['TARGETID'][srt]))
+            fmaps.append(fm)
+        log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
-        self.zbest = zbest
-        self.fibermap = fmap
-        #self.zbest = vstack(zbest)
-        #self.fibermap = vstack(fmap)
-        #self.zbest = Table(np.hstack(zbest))
+        self.fmap = fmaps
 
     @staticmethod
     def desitarget_resolve_dec():
@@ -234,7 +320,7 @@ class DESISpectra(object):
                 ntargets = len(these)
 
             if ntargets > len(these):
-                log.warning('Number of requested ntargets exceeds the number of spectra on {}.'.format(specfile))
+                log.warning('Number of requested ntargets exceeds the number of spectra in {}.'.format(zbestfile))
                 #raise ValueError
             else:
                 # the logic here is not quite right...needs more testing
@@ -467,23 +553,26 @@ def main(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit()
     EMFit = EMLineFit()
+    Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
     t0 = time.time()
-    DESISpec = DESISpectra(args.zbestfiles, exposures=args.exposures)
+    Spec.find_specfiles(args.zbestfiles, exposures=args.exposures, firsttarget=args.firsttarget,
+                        targetids=targetids, ntargets=args.ntargets)
+    pdb.set_trace()
 
-    data = DESISpec.read_and_unpack(CFit, firsttarget=args.firsttarget, targetids=targetids,
+    data = Spec.read_and_unpack(CFit, firsttarget=args.firsttarget, targetids=targetids,
                                     ntargets=args.ntargets, exposures=args.exposures,
                                     photfit=args.photfit)
-    out = DESISpec.init_output(CFit, EMFit, photfit=args.photfit)
+    out = Spec.init_output(CFit, EMFit, photfit=args.photfit)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
-        DESISpec.ntargets, time.time()-t0))
+        Spec.ntargets, time.time()-t0))
 
     # Fit in parallel
     t0 = time.time()
     fitargs = [(iobj, data[iobj], CFit, EMFit, out[iobj], args.photfit, args.solve_vdisp)
-               for iobj in np.arange(DESISpec.ntargets)]
+               for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
         with multiprocessing.Pool(args.mp) as P:
