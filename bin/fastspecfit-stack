@@ -117,18 +117,14 @@ def main(args=None, comm=None):
     nights = fastfit['NIGHT'].astype(str).data
     zbestfiles = np.array([os.path.join(specprod_dir, tile, night, 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
                            for petal, tile, night in zip(petals, tiles, nights)])
+    #zbestfiles = zbestfiles[:3]
 
     Spec = DESISpectra()
     Spec.find_specfiles(zbestfiles, firsttarget=args.firsttarget,
                         targetids=targetids, ntargets=args.ntargets)
-    
-    pdb.set_trace()
-    data = DESISpec.read_and_unpack(CFit, firsttarget=args.firsttarget,
-                                    targetids=targetids,
-                                    ntargets=args.ntargets,
-                                    synthphot=False, remember_coadd=True)
+    data = Spec.read_and_unpack(CFit, synthphot=False, remember_coadd=True)
     ngal = len(data)
-
+    
     restwave = np.arange(1500.0, 8000.0, 0.5)
     npix = len(restwave)
     restflux = np.zeros((ngal, npix))
@@ -146,7 +142,8 @@ def main(args=None, comm=None):
     restflux = restflux[zsrt, :]
 
     import matplotlib.pyplot as plt
-    plt.clf() ; plt.plot(restwave, np.sum(restflux, axis=0)) ; plt.xlim(4600, 5100) ; plt.savefig('elgs.png')    
+    plt.clf() ; plt.plot(restwave, np.sum(restflux, axis=0)) ; plt.savefig('elgs.png')    
+    #plt.clf() ; plt.plot(restwave, np.sum(restflux, axis=0)) ; plt.xlim(4600, 5100) ; plt.savefig('elgs.png')    
 
     pdb.set_trace()
 
