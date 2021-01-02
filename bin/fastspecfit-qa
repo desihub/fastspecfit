@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """fastspecfit QA
 
-fastspecfit-qa --targetids 39627646581082317 /global/cfs/cdirs/desi/users/ioannis/fastspecfit/daily/tiles/specfit-80607-80613-20201215-20201223.fits
+fastspecfit-qa --outdir . /global/cfs/cdirs/desi/users/ioannis/fastspecfit/daily/tiles/specfit-80607-80613-20201215-20201223.fits
 
 """
 import pdb # for debugging
@@ -15,13 +15,11 @@ log = get_logger()
 import tempfile
 os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 
-import multiprocessing
-
 def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def desiqa_one(indx, data, specfit, photfit, CFit, EMFit, qadir):
+def desiqa_one(data, specfit, CFit, EMFit, photfit, qadir):
     """QA on one spectrum."""
     t0 = time.time()
     continuum = CFit.qa_continuum(data, specfit, photfit, qadir)
@@ -38,12 +36,16 @@ def parse(options=None):
 
     parser.add_argument('--photfit', action='store_true', help='Fit and write out just the broadband photometry.')
 
-    parser.add_argument('--suffix', default=None, type=str, help='Optional suffix for output filename.')
     parser.add_argument('--tile', default=None, type=str, help='Generate QA for all objects on this tile.')
     parser.add_argument('--night', default=None, type=str, help='Generate QA for all objects observed on this night.')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
+    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
 
+    parser.add_argument('--suffix', default=None, type=str, help='Optional suffix for output filename.')
+    parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
+    
     parser.add_argument('fastspecfitfile', type=str, help='Full path to results FITS file written by fastspecfit.')
 
     if options is None:
@@ -63,15 +65,10 @@ def main(args=None, comm=None):
     from astropy.table import Table
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
-    #from fastspecfit.external.desi import read_spectra, unpack_all_spectra
+    from fastspecfit.external.desi import DESISpectra
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
-
-    if args.targetids:
-        targetids = [int(x) for x in args.targetids.split(',')]
-    else:
-        targetids = args.targetids
 
     # Read the fitting results.
     if not os.path.isfile(args.fastspecfitfile):
@@ -80,19 +77,61 @@ def main(args=None, comm=None):
     fastfit = Table(fitsio.read(args.fastspecfitfile))
     log.info('Read {} objects from {}'.format(len(fastfit), args.fastspecfitfile))
 
-    pdb.set_trace()
+    if args.tile or args.night:
+        keep = np.ones(len(fastfit), bool)
+        if args.tile:
+            keep *= (fastfit['TILEID'].astype(str) == args.tile)
+        if args.night:
+            keep *= (fastfit['NIGHT'].astype(str) == args.night)
+        fastfit = fastfit[keep]
+        log.info('Keeping {} spectra from tile {} on night {}.'.format(len(fastfit), args.tile, args.night))
+
+    if args.targetids:
+        targetids = [int(x) for x in args.targetids.split(',')]
+    else:
+        targetids = args.targetids
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
     CFit = ContinuumFit()
     EMFit = EMLineFit()
+    Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
+    # Get the spectra.
+    log.info('Need to get specprod from the header!')
+    specprod = 'daily'
+    specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles')
 
-    fastspecfit_dir = os.getenv('FASTSPECFIT_DATA')
-    resultsdir = os.path.join(fastspecfit_dir, 'results', args.specprod)
-    qadir = os.path.join(fastspecfit_dir, 'qa', args.specprod)
+    cut = np.where(
+        (fastfit['OII_3726_FLUX'] > 0) *
+        (fastfit['OII_3729_FLUX'] > 0) *
+        (fastfit['OII_3726_AMP']*np.sqrt(fastfit['OII_3726_AMP_IVAR']) > 1) *
+        (fastfit['OII_3729_AMP']*np.sqrt(fastfit['OII_3729_AMP_IVAR']) > 1))[0]
+    cut = cut[:3]
+    fastfit = fastfit[cut]
+    Spec.find_specfiles(fastfit=fastfit, specprod_dir=specprod_dir, targetids=targetids,
+                        firsttarget=args.firsttarget, ntargets=args.ntargets)
+    if len(Spec.specfiles) == 0:
+        return
+    data = Spec.read_and_unpack(CFit, photfit=args.photfit)
+    ngal = len(data)
 
+    # Build the QA in parallel
+    #qadir = os.getenv('FASTSPECFIT_DATA')
+    #qadir = os.path.join(os.getenv('FASTSPECFIT_DATA'), 'qa', specprod_dir)
+
+    qaargs = [(data[iobj], fastfit[iobj], CFit, EMFit, args.photfit, args.outdir)
+              for iobj in np.arange(fastfit)]
+    if args.nproc > 1:
+        import multiprocessing
+        with multiprocessing.Pool(args.mp) as P:
+            P.map(_desiqa_one, qaargs)
+    else:
+        [desiqa_one(*_qaargs) for _qaargs in qaargs]
+
+    pdb.set_trace()
+    
     specfitfile = os.path.join(resultsdir, 'specfit-{}-{}.fits'.format(
         args.tile, args.night))
     photfitfile = os.path.join(resultsdir, 'photfit-{}-{}.fits'.format(
@@ -138,15 +177,6 @@ def main(args=None, comm=None):
     # long time?) so suppress the `nproc` argument here for now.
     data = unpack_all_spectra(specobj, zbest, CFit, fitindx)#, nproc=args.nproc)
     del specobj, zbest # free memory
-
-    # Build the QA in parallel
-    qaargs = [(indx, data[iobj], specfit[indx], photfit[indx], CFit, EMFit, qadir)
-               for iobj, indx in enumerate(fitindx)]
-    if args.nproc > 1:
-        with multiprocessing.Pool(args.nproc) as P:
-            P.map(_desiqa_one, qaargs)
-    else:
-        [desiqa_one(*_qaargs) for _qaargs in qaargs]
 
 if __name__ == '__main__':
     main()

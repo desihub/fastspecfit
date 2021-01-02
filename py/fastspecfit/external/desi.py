@@ -87,7 +87,8 @@ class DESISpectra(object):
 
         return targetdir
 
-    def find_specfiles(self, zbestfiles, firsttarget=0, targetids=None, ntargets=None, exposures=False):
+    def find_specfiles(self, zbestfiles=None, fastfit=None, specprod_dir=None,
+                       firsttarget=0, targetids=None, ntargets=None, exposures=False):
         """Initialize the fastspecfit output data table.
 
         Parameters
@@ -99,9 +100,27 @@ class DESISpectra(object):
         Notes
         -----
 
+        fastfit - results table (overrides zbestfiles and then specprod_dir is required
+
         """
         from glob import glob
         from desimodel.footprint import radec2pix
+
+        if zbestfiles is None and fastfit is None:
+            log.warning('At least one of zbestfiles or fastfit (and specprod_dir) are required.')
+            raise IOError
+
+        if fastfit is not None:
+            if specprod_dir is None:
+                log.warning('specprod_dir is required when passing a fastfit results table!')
+                raise IOError
+            fastfit = Table(fastfit)
+            targetids = fastfit['TARGETID'].data
+            petals = fastfit['FIBER'].data // 500
+            tiles = fastfit['TILEID'].astype(str).data
+            nights = fastfit['NIGHT'].astype(str).data
+            zbestfiles = np.array([os.path.join(specprod_dir, tile, night, 'zbest-{}-{}-{}.fits'.format(
+                petal, tile, night)) for petal, tile, night in zip(petals, tiles, nights)])
 
         if len(np.atleast_1d(zbestfiles)) == 0:
             log.warning('You must provide at least one zbestfile!')
@@ -164,20 +183,22 @@ class DESISpectra(object):
 
             # Do we want just a subset of the available objects?
             if ntargets is None:
-                ntargets = len(fitindx)
-            if ntargets > len(fitindx):
-                log.warning('Number of requested ntargets exceeds the number of targets on {}.'.format(zbestfile))
-                ntargets = len(fitindx)
+                _ntargets = len(fitindx)
+            else:
+                _ntargets = ntargets
+            if _ntargets > len(fitindx):
+                log.warning('Number of requested ntargets exceeds the number of targets on {}; reading all of them.'.format(
+                    zbestfile))
                 #raise ValueError
 
-            # If firsttarget is a large index then the set can become empty.
-            _ntarg = len(fitindx)
-            fitindx = fitindx[firsttarget:firsttarget+ntargets]
+            __ntargets = len(fitindx)
+            fitindx = fitindx[firsttarget:firsttarget+_ntargets]
             if len(fitindx) == 0:
                 log.info('All {} targets in zbestfile {} have been dropped (firsttarget={}, ntargets={}).'.format(
-                    _ntarg, zbestfile, firsttarget, ntargets))
+                    __ntargets, zbestfile, firsttarget, _ntargets))
                 continue
                 
+            # If firsttarget is a large index then the set can become empty.
             if targetids is None:
                 zb = Table(zb[fitindx])
                 fm = Table(fm[fitindx])
@@ -190,6 +211,10 @@ class DESISpectra(object):
             self.fibermap.append(fm)
             self.zbestfiles.append(zbestfile)
             self.specfiles.append(specfile)
+
+        if len(self.zbest) == 0:
+            log.warning('No targets read!')
+            return
 
         # The targets catalogs are organized on a much larger spatial scale, so
         # grab additional targeting info outside the main loop. See
@@ -297,9 +322,11 @@ class DESISpectra(object):
         #from desitarget.io import desitarget_resolve_dec
         from fastspecfit.util import C_LIGHT
 
-        # Read targets into a simple dictionary.
+        # Read everything into a simple dictionary.
+        t0 = time.time()
         alldata = []
         for specfile, zbest, fibermap in zip(self.specfiles, self.zbest, self.fibermap):
+            log.info('Reading {} spectra from {}'.format(len(zbest), specfile))
 
             if not photfit:
                 spec = read_spectra(specfile).select(targets=zbest['TARGETID'])
@@ -325,7 +352,7 @@ class DESISpectra(object):
                 # Unpack the imaging photometry and correct for MW dust.
                 if photfit:
                     # all photometry
-                    dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
+                    dust = 10**(0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
 
                     maggies = np.zeros(len(CFit.bands))
                     ivarmaggies = np.zeros(len(CFit.bands))
@@ -338,7 +365,7 @@ class DESISpectra(object):
                         lambda_eff=allfilters.effective_wavelengths.value)
 
                     # fiber fluxes
-                    fiberdust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
+                    fiberdust = 10**(0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
 
                     fibermaggies = np.zeros(len(CFit.fiber_bands))
                     #ivarfibermaggies = np.zeros(len(CFit.fiber_bands))
@@ -353,7 +380,7 @@ class DESISpectra(object):
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                                  'linemask': [], 'snr': np.zeros(3).astype('f4')})
                     for icam, camera in enumerate(spec.bands):
-                        dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
+                        dust = 10**(0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
                         data['wave'].append(spec.wave[camera])
                         data['flux'].append(spec.flux[camera][igal, :] * dust)
                         data['ivar'].append(spec.ivar[camera][igal, :] / dust**2)
@@ -413,7 +440,8 @@ class DESISpectra(object):
         self.zbest = Table(np.hstack(self.zbest))
         self.fibermap = Table(np.hstack(self.fibermap))
         self.ntargets = len(self.zbest)
-
+        log.info('Read data for {} objects in {:.2f} sec'.format(self.ntargets, time.time()-t0))
+        
         return alldata
         
     def init_output(self, CFit, EMFit, photfit=False):
@@ -531,6 +559,8 @@ def main(args=None, comm=None):
     t0 = time.time()
     Spec.find_specfiles(args.zbestfiles, exposures=args.exposures, firsttarget=args.firsttarget,
                         targetids=targetids, ntargets=args.ntargets)
+    if len(Spec.specfiles) == 0:
+        return
     data = Spec.read_and_unpack(CFit, exposures=args.exposures, photfit=args.photfit)
     pdb.set_trace()
     

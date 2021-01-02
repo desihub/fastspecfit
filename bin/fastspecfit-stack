@@ -101,6 +101,7 @@ def main(args=None, comm=None):
     # Initialize the continuum- and emission-line fitting classes.
     CFit = ContinuumFit()
     EMFit = EMLineFit()
+    Spec = DESISpectra()
 
     # Get the spectra.
     log.info('Need to get specprod from the header!')
@@ -110,18 +111,11 @@ def main(args=None, comm=None):
     ielg = np.where((fastfit['OII_3726_AMP']*np.sqrt(fastfit['OII_3726_AMP_IVAR']) > 2) *
                     (fastfit['OII_3729_AMP']*np.sqrt(fastfit['OII_3729_AMP_IVAR']) > 2))[0]
     fastfit = fastfit[ielg]
-    alltargetids = fastfit['TARGETID'].data
 
-    petals = fastfit['FIBER'].data // 500
-    tiles = fastfit['TILEID'].astype(str).data
-    nights = fastfit['NIGHT'].astype(str).data
-    zbestfiles = np.array([os.path.join(specprod_dir, tile, night, 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
-                           for petal, tile, night in zip(petals, tiles, nights)])
-    #zbestfiles = zbestfiles[:3]
-
-    Spec = DESISpectra()
-    Spec.find_specfiles(zbestfiles, firsttarget=args.firsttarget,
-                        targetids=targetids, ntargets=args.ntargets)
+    Spec.find_specfiles(fastfit=fastfit, specprod_dir=specprod_dir, targetids=targetids,
+                        firsttarget=args.firsttarget, ntargets=args.ntargets)
+    if len(Spec.specfiles) == 0:
+        return
     data = Spec.read_and_unpack(CFit, synthphot=False, remember_coadd=True)
     ngal = len(data)
     
