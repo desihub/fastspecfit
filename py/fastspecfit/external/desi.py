@@ -74,6 +74,9 @@ class DESISpectra(object):
         
         zbest, fmap = [], []
         self.fitindx = []
+
+        log.info('Reading and parsing {} zbestfile(s)'.format(len(zbestfiles)))
+        
         for ifile, (zbestfile, specfile) in enumerate(zip(self.zbestfiles, self.specfiles)):
             # Read the zbest file and fibermap and select the objects to fit.
             zb = fitsio.read(zbestfile, 'ZBEST')
@@ -141,7 +144,8 @@ class DESISpectra(object):
         return dec
 
     def read_and_unpack(self, CFit, firsttarget=0, targetids=None, ntargets=None,
-                        photfit=False, exposures=False):
+                        photfit=False, exposures=False, synthphot=True,
+                        remember_coadd=False):
         """Unpack and pre-process a single DESI spectrum.
         
         Parameters
@@ -325,26 +329,27 @@ class DESISpectra(object):
                     good = np.where(coadd_ivar > 0)[0]
                     coadd_flux[good] = np.sum(coadd_ivar3d[good, :] * coadd_flux3d[good, :], axis=1) / coadd_ivar[good]
 
-                    #data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux, 'coadd_ivar': coadd_ivar})
-                    #del coadd_wave, coadd_ivar, coadd_flux
+                    if remember_coadd:
+                        data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux, 'coadd_ivar': coadd_ivar})
 
-                    padflux, padwave = filters.pad_spectrum(coadd_flux, coadd_wave, method='edge')
-                    synthmaggies = filters.get_ab_maggies(padflux / CFit.fluxnorm, padwave)
-                    synthmaggies = synthmaggies.as_array().view('f8')
+                    if synthphot:
+                        padflux, padwave = filters.pad_spectrum(coadd_flux, coadd_wave, method='edge')
+                        synthmaggies = filters.get_ab_maggies(padflux / CFit.fluxnorm, padwave)
+                        synthmaggies = synthmaggies.as_array().view('f8')
 
-                    # code to synthesize uncertainties from the variance spectrum
-                    #var, mask = _ivar2var(data['coadd_ivar'])
-                    #padvar, padwave = filters.pad_spectrum(var[mask], data['coadd_wave'][mask], method='edge')
-                    #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
-                    #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
-                    #
-                    #data['synthphot'] = CFit.parse_photometry(CFit.bands,
-                    #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
-                    #    ivarmaggies=synthivarmaggies, nanomaggies=False)
+                        # code to synthesize uncertainties from the variance spectrum
+                        #var, mask = _ivar2var(data['coadd_ivar'])
+                        #padvar, padwave = filters.pad_spectrum(var[mask], data['coadd_wave'][mask], method='edge')
+                        #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
+                        #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
+                        #
+                        #data['synthphot'] = CFit.parse_photometry(CFit.bands,
+                        #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
+                        #    ivarmaggies=synthivarmaggies, nanomaggies=False)
 
-                    data['synthphot'] = CFit.parse_photometry(CFit.synth_bands,
-                        maggies=synthmaggies, nanomaggies=False,
-                        lambda_eff=filters.effective_wavelengths.value)
+                        data['synthphot'] = CFit.parse_photometry(CFit.synth_bands,
+                            maggies=synthmaggies, nanomaggies=False,
+                            lambda_eff=filters.effective_wavelengths.value)
 
                 alldata.append(data)
 
