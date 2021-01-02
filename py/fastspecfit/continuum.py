@@ -1055,7 +1055,7 @@ class ContinuumFit(object):
 
         return result, continuum
     
-    def qa_continuum(self, data, specfit, photfit, qadir='.'):
+    def qa_specfit_continuum(self, data, specfit, outdir='.'):
         """QA of the best-fitting continuum.
 
         """
@@ -1112,7 +1112,7 @@ class ContinuumFit(object):
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(specfit['CONTINUUM_CHI2']),
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(specfit['Z']),
             #'zfastspecfit': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(specfit['CONTINUUM_Z']),
-            'z': '$z$={:.6f}'.format(specfit['CONTINUUM_Z']),
+            #'z': '$z$={:.6f}'.format(specfit['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(specfit['CONTINUUM_AGE']),
             }
         if specfit['CONTINUUM_VDISP_IVAR'] == 0:
@@ -1202,7 +1202,7 @@ class ContinuumFit(object):
         plt.subplots_adjust(bottom=0.1, right=0.95, top=0.95, wspace=0.12)
         #plt.subplots_adjust(bottom=0.1, right=0.95, top=0.95, wspace=0.17)
 
-        pngfile = os.path.join(qadir, 'continuum-{}-{}-{}.png'.format(
+        pngfile = os.path.join(outdir, 'continuum-{}-{}-{}.png'.format(
             specfit['TILE'], specfit['NIGHT'], specfit['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
@@ -1210,3 +1210,117 @@ class ContinuumFit(object):
 
         return continuum
         
+    def qa_photfit_continuum(self, data, photfit, suffix=None, outdir=None):
+        """QA of the best-fitting continuum.
+
+        """
+        from scipy.ndimage import median_filter
+        import matplotlib.pyplot as plt
+        from matplotlib import colors
+        import matplotlib.ticker as ticker
+        import seaborn as sns
+
+        from fastspecfit.util import ivar2var
+    
+        sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
+
+        col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
+        col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
+        ymin, ymax = 1e6, -1e6
+
+        redshift = data['zredrock']
+
+        inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0            
+        agekeep = self.younger_than_universe(redshift)
+
+        # rebuild the best-fitting photometric model fit
+        continuum_phot, bestphot = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift,
+                                                 AV=photfit['CONTINUUM_PHOT_AV'],
+                                                 coeff=photfit['CONTINUUM_PHOT_COEFF'] * self.massnorm,
+                                                 south=data['photsys_south'],
+                                                 synthphot=True)
+        continuum_wave_phot = self.sspwave * (1 + redshift)
+
+        wavemin, wavemax = 0.2, 6.0
+        indx = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
+        
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        if np.any(continuum_phot <= 0):
+            log.warning('Best-fitting photometric continuum is all zeros or negative!')
+            continuum_phot_abmag = continuum_phot*0 + np.median(data['phot']['abmag'][:3])
+        else:
+            factor = 10**(0.4 * 48.6) * continuum_wave_phot**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
+            continuum_phot_abmag = -2.5*np.log10(continuum_phot * factor)
+            ax.plot(continuum_wave_phot[indx] / 1e4, continuum_phot_abmag[indx], color='gray', zorder=1)
+
+        ax.scatter(data['phot']['lambda_eff']/1e4, data['phot']['abmag'],
+                    marker='s', s=130, facecolor='red', edgecolor='k',
+                    label=r'$grzW1W2$ (imaging)', alpha=1.0, zorder=3)
+        ax.scatter(data['fiberphot']['lambda_eff']/1e4, data['fiberphot']['abmag'],
+                    marker='^', s=130, facecolor='orange', edgecolor='k',
+                    label=r'$grz$ (fibertotflux)', alpha=1.0, zorder=3)
+        if 'synthphot' in data.keys():
+            ax.scatter(data['synthphot']['lambda_eff']/1e4, data['synthphot']['abmag'], 
+                         marker='o', s=130, color='blue', edgecolor='k',
+                         label=r'$grz$ (synthesized)', alpha=1.0, zorder=2)
+        #abmag_sigma, _ = _ivar2var(data['phot']['abmag_ivar'], sigma=True)
+        #ax.errorbar(data['phot']['lambda_eff']/1e4, data['phot']['abmag'], yerr=abmag_sigma,
+        #             fmt='s', markersize=15, markeredgewidth=3, markeredgecolor='k', markerfacecolor='red',
+        #             elinewidth=3, ecolor='blue', capsize=3)
+        ax.legend(loc='lower left', fontsize=16)
+
+        dm = 0.75
+        good = data['phot']['abmag_ivar'] > 0
+        ymin = np.max((np.nanmax(data['phot']['abmag'][good]),
+                       np.nanmax(continuum_phot_abmag[indx]))) + dm
+        ymax = np.min((np.nanmin(data['phot']['abmag'][good]),
+                       np.nanmin(continuum_phot_abmag[indx]))) - dm
+        if ymin > 31:
+            ymin = 31
+        if np.isnan(ymin) or np.isnan(ymax):
+            raise('Problem here!')
+
+        ax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
+        ax.set_ylabel(r'Apparent Brightness (AB mag)') 
+        ax.set_xlim(wavemin, wavemax)
+        ax.set_ylim(ymin, ymax)
+
+        ax.set_xscale('log')
+        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax.set_xticks([0.3, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0])
+        
+        leg = {
+            'targetid': 'targetid={} fiber={}'.format(photfit['TARGETID'], photfit['FIBER']),
+            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(photfit['CONTINUUM_PHOT_CHI2']),
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(photfit['Z']),
+            #'zfastphotfit': '$z_{{\\rm fastphotfit}}$={:.6f}'.format(photfit['CONTINUUM_Z']),
+            #'z': '$z$={:.6f}'.format(photfit['CONTINUUM_Z']),
+            'age': '<Age>={:.3f} Gyr'.format(photfit['CONTINUUM_PHOT_AGE']),
+            }
+        if photfit['CONTINUUM_PHOT_AV_IVAR'] == 0:
+            leg.update({'AV': '$A(V)$={:.3f} mag'.format(photfit['CONTINUUM_PHOT_AV'])})
+        else:
+            leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
+                photfit['CONTINUUM_PHOT_AV'], 1/np.sqrt(photfit['CONTINUUM_PHOT_AV_IVAR']))})
+
+        ax.text(0.97, 0.24, '{}'.format(leg['targetid']), 
+                 ha='right', va='center', transform=ax.transAxes, fontsize=14)
+        #ax.text(0.97, 0.92, '{} {}'.format(leg['targetid'], leg['zredrock']), 
+        #         ha='right', va='center', transform=ax.transAxes, fontsize=14)
+        ax.text(0.97, 0.18, r'{} {}'.format(leg['zredrock'], leg['chi2']),
+                 ha='right', va='center', transform=ax.transAxes, fontsize=14)
+        ax.text(0.97, 0.12, r'{}'.format(leg['age']),
+                 ha='right', va='center', transform=ax.transAxes, fontsize=14)
+        ax.text(0.97, 0.06, r'{}'.format(leg['AV']),
+                 ha='right', va='center', transform=ax.transAxes, fontsize=14)
+
+        plt.subplots_adjust(bottom=0.14, right=0.95, top=0.95)
+
+        if outdir is None:
+            outdir = '.'
+        pngfile = os.path.join(outdir, 'continuum-{}-{}-{}.png'.format(
+            photfit['TILEID'], photfit['NIGHT'], photfit['TARGETID']))
+        log.info('Writing {}'.format(pngfile))
+        fig.savefig(pngfile)
+        plt.close()

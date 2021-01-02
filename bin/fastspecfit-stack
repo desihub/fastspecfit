@@ -108,6 +108,14 @@ def main(args=None, comm=None):
     specprod = 'daily'
     specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles')    
 
+    #cut = np.where(
+    #    (fastfit['OII_3726_FLUX'] > 0) *
+    #    (fastfit['OII_3729_FLUX'] > 0) *
+    #    (fastfit['OII_3726_AMP']*np.sqrt(fastfit['OII_3726_AMP_IVAR']) > 1) *
+    #    (fastfit['OII_3729_AMP']*np.sqrt(fastfit['OII_3729_AMP_IVAR']) > 1))[0]
+    #cut = cut[:3]
+    #fastfit = fastfit[cut]
+    
     ielg = np.where((fastfit['OII_3726_AMP']*np.sqrt(fastfit['OII_3726_AMP_IVAR']) > 2) *
                     (fastfit['OII_3729_AMP']*np.sqrt(fastfit['OII_3729_AMP_IVAR']) > 2))[0]
     fastfit = fastfit[ielg]

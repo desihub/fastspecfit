@@ -5,7 +5,7 @@ fastspecfit-qa --outdir . /global/cfs/cdirs/desi/users/ioannis/fastspecfit/daily
 
 """
 import pdb # for debugging
-import os, sys, time
+import os, time
 import numpy as np
 
 from desiutil.log import get_logger
@@ -19,18 +19,21 @@ def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def desiqa_one(data, specfit, CFit, EMFit, photfit, qadir):
+def desiqa_one(data, fastfit, CFit, EMFit, outdir=None, suffix=None, photfit=False):
     """QA on one spectrum."""
     t0 = time.time()
-    continuum = CFit.qa_continuum(data, specfit, photfit, qadir)
-    EMFit.qa_emlines(data, specfit, continuum, qadir)
-    log.info('Building QA for object {} took {:.2f} sec'.format(indx, time.time()-t0))
+    if photfit:
+        CFit.qa_photfit_continuum(data, fastfit, suffix=suffix, outdir=outdir)
+    else:
+        #continuum = CFit.qa_specfit_continuum(data, fastfit, suffix=suffix, outdir=outdir)
+        EMFit.qa_emlines(data, specfit, outdir=outdir)
+    log.info('Building took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
     """Parse input arguments.
 
     """
-    import argparse
+    import sys, argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -44,7 +47,7 @@ def parse(options=None):
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
 
     parser.add_argument('--suffix', default=None, type=str, help='Optional suffix for output filename.')
-    parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
+    parser.add_argument('-o', '--outdir', default=None, type=str, help='Full path to desired output directory.')
     
     parser.add_argument('fastspecfitfile', type=str, help='Full path to results FITS file written by fastspecfit.')
 
@@ -103,80 +106,27 @@ def main(args=None, comm=None):
     specprod = 'daily'
     specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles')
 
-    cut = np.where(
-        (fastfit['OII_3726_FLUX'] > 0) *
-        (fastfit['OII_3729_FLUX'] > 0) *
-        (fastfit['OII_3726_AMP']*np.sqrt(fastfit['OII_3726_AMP_IVAR']) > 1) *
-        (fastfit['OII_3729_AMP']*np.sqrt(fastfit['OII_3729_AMP_IVAR']) > 1))[0]
-    cut = cut[:3]
-    fastfit = fastfit[cut]
     Spec.find_specfiles(fastfit=fastfit, specprod_dir=specprod_dir, targetids=targetids,
                         firsttarget=args.firsttarget, ntargets=args.ntargets)
     if len(Spec.specfiles) == 0:
         return
     data = Spec.read_and_unpack(CFit, photfit=args.photfit)
-    ngal = len(data)
+
+    srt = np.hstack([np.where(tid == fastfit['TARGETID'])[0] for tid in Spec.zbest['TARGETID']])
+    fastfit = fastfit[srt]
+    assert(np.all(fastfit['TARGETID'] == Spec.zbest['TARGETID']))
 
     # Build the QA in parallel
     #qadir = os.getenv('FASTSPECFIT_DATA')
     #qadir = os.path.join(os.getenv('FASTSPECFIT_DATA'), 'qa', specprod_dir)
-
-    qaargs = [(data[iobj], fastfit[iobj], CFit, EMFit, args.photfit, args.outdir)
-              for iobj in np.arange(fastfit)]
-    if args.nproc > 1:
+    qaargs = [(data[iobj], fastfit[iobj], CFit, EMFit, args.outdir, args.suffix, args.photfit)
+              for iobj in np.arange(len(data))]
+    if args.mp > 1:
         import multiprocessing
         with multiprocessing.Pool(args.mp) as P:
             P.map(_desiqa_one, qaargs)
     else:
         [desiqa_one(*_qaargs) for _qaargs in qaargs]
-
-    pdb.set_trace()
-    
-    specfitfile = os.path.join(resultsdir, 'specfit-{}-{}.fits'.format(
-        args.tile, args.night))
-    photfitfile = os.path.join(resultsdir, 'photfit-{}-{}.fits'.format(
-        args.tile, args.night))
-    if not os.path.isfile(specfitfile):
-        log.info('Spectroscopic fit file {} not found!'.format(specfitfile))
-        return
-    if not os.path.isfile(photfitfile):
-        log.info('Photometric fit file {} not found!'.format(photfitfile))
-        return
-    specfit = Table(fitsio.read(specfitfile))
-    log.info('Read {} objects from {}'.format(len(specfit), specfitfile))
-    photfit = Table(fitsio.read(photfitfile))
-    log.info('Read {} objects from {}'.format(len(photfit), photfitfile))
-    assert(len(specfit) == len(photfit))
-
-    # Read the data 
-    zbest, specobj = read_spectra(tile=args.tile, night=args.night,
-                                  specprod=args.specprod,
-                                  use_vi=args.use_vi, 
-                                  write_spectra=args.write_spectra,
-                                  verbose=args.verbose)
-
-    if args.targetid is not None:
-        fitindx = np.where(np.isin(zbest['TARGETID'], args.targetid))[0]
-        miss = np.where(np.logical_not(np.isin(args.targetid, zbest['TARGETID'])))[0]
-        for this in miss:
-            log.warning('TARGETID {} not found!'.format(args.targetid[this]))
-        if len(fitindx) == 0:
-            return
-    else:
-        if args.first is None:
-            args.first = 0
-        if args.last is None:
-            args.last = len(zbest) - 1
-        fitindx = np.arange(args.last - args.first + 1) + args.first
-        
-    # Initialize the continuum- and emission-line fitting classes.
-    CFit = ContinuumFit(nproc=args.nproc, verbose=args.verbose)
-    EMFit = EMLineFit()
-
-    # Unpacking with multiprocessing takes a lot longer (maybe pickling takes a
-    # long time?) so suppress the `nproc` argument here for now.
-    data = unpack_all_spectra(specobj, zbest, CFit, fitindx)#, nproc=args.nproc)
-    del specobj, zbest # free memory
 
 if __name__ == '__main__':
     main()

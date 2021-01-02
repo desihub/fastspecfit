@@ -5,7 +5,8 @@ fastspecfit.external.desi
 
 fastspecfit wrapper for DESI
 
-fastspecfit-desi /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80605/20201215/zbest-9-80605-20201215.fits -o photfit.fits --ntargets 2 --mp 1 --photfit
+fastspecfit /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80605/20201215/zbest-9-80605-20201215.fits -o photfit.fits --ntargets 2 --mp 1 --photfit
+fastspecfit /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80608/20201215/zbest-9-80608-20201215.fits -o photfit.fits --ntargets 2 --mp 1 --photfit
 
 """
 import pdb # for debugging
@@ -18,9 +19,9 @@ from astropy.table import Table
 from desiutil.log import get_logger
 log = get_logger()
 
-## ridiculousness!
-#import tempfile
-#os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
+# ridiculousness! - this seems to come from healpy, blarg
+import tempfile
+os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 
 def _fastspecfit_one(args):
     """Multiprocessing wrapper."""
@@ -28,7 +29,7 @@ def _fastspecfit_one(args):
 
 def fastspecfit_one(iobj, data, CFit, EMFit, out, photfit=False, solve_vdisp=False):
     """Fit one spectrum."""
-    log.info('Continuum-fitting object {}'.format(iobj))
+    #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
     if photfit:
         cfit, _ = CFit.continuum_photfit(data)
@@ -328,10 +329,10 @@ class DESISpectra(object):
         for specfile, zbest, fibermap in zip(self.specfiles, self.zbest, self.fibermap):
             log.info('Reading {} spectra from {}'.format(len(zbest), specfile))
 
-            if not photfit:
+            if not photfit or synthphot:
                 spec = read_spectra(specfile).select(targets=zbest['TARGETID'])
-            assert(np.all(spec.fibermap['TARGETID'] == zbest['TARGETID']))
-            assert(np.all(spec.fibermap['TARGETID'] == fibermap['TARGETID']))
+                assert(np.all(spec.fibermap['TARGETID'] == zbest['TARGETID']))
+                assert(np.all(spec.fibermap['TARGETID'] == fibermap['TARGETID']))
             
             for igal in np.arange(len(zbest)):
                 ra = fibermap['TARGET_RA'][igal]
@@ -347,43 +348,44 @@ class DESISpectra(object):
                     allfilters = CFit.decamwise
                 else:
                     filters = CFit.bassmzls
-                    allfilters = CFit.bassmzlswise            
+                    allfilters = CFit.bassmzlswise
 
                 # Unpack the imaging photometry and correct for MW dust.
                 if photfit:
                     # all photometry
-                    dust = 10**(0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
+                    mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
 
                     maggies = np.zeros(len(CFit.bands))
                     ivarmaggies = np.zeros(len(CFit.bands))
                     for iband, band in enumerate(CFit.bands):
-                        maggies[iband] = fibermap['FLUX_{}'.format(band.upper())][igal] / dust[iband]
-                        ivarmaggies[iband] = fibermap['FLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
+                        maggies[iband] = fibermap['FLUX_{}'.format(band.upper())][igal] / mw_transmission_flux[iband]
+                        ivarmaggies[iband] = fibermap['FLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_flux[iband]**2
 
                     data['phot'] = CFit.parse_photometry(CFit.bands,
                         maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
                         lambda_eff=allfilters.effective_wavelengths.value)
 
                     # fiber fluxes
-                    fiberdust = 10**(0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
+                    mw_transmission_fiberflux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
 
                     fibermaggies = np.zeros(len(CFit.fiber_bands))
                     #ivarfibermaggies = np.zeros(len(CFit.fiber_bands))
                     for iband, band in enumerate(CFit.fiber_bands):
-                        fibermaggies[iband] = fibermap['FIBERTOTFLUX_{}'.format(band.upper())][igal] / fiberdust[iband]
-                        #ivarfibermaggies[iband] = fibermap['FIBERTOTFLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
+                        fibermaggies[iband] = fibermap['FIBERTOTFLUX_{}'.format(band.upper())][igal] / mw_transmission_fiberflux[iband]
+                        #ivarfibermaggies[iband] = fibermap['FIBERTOTFLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_fiberflux[iband]**2
 
                     data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
                         maggies=fibermaggies, nanomaggies=True,
                         lambda_eff=filters.effective_wavelengths.value)
-                else:
+
+                if not photfit or synthphot:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                                  'linemask': [], 'snr': np.zeros(3).astype('f4')})
                     for icam, camera in enumerate(spec.bands):
-                        dust = 10**(0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
+                        mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
                         data['wave'].append(spec.wave[camera])
-                        data['flux'].append(spec.flux[camera][igal, :] * dust)
-                        data['ivar'].append(spec.ivar[camera][igal, :] / dust**2)
+                        data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
+                        data['ivar'].append(spec.ivar[camera][igal, :] * mw_transmission_spec**2)
                         data['res'].append(Resolution(spec.resolution_data[camera][igal, :, :]))
                         data['snr'][icam] = np.median(spec.flux[camera][igal, :] * np.sqrt(spec.ivar[camera][igal, :]))
 
@@ -412,6 +414,15 @@ class DESISpectra(object):
                     coadd_flux = np.zeros_like(coadd_ivar)
                     good = np.where(coadd_ivar > 0)[0]
                     coadd_flux[good] = np.sum(coadd_ivar3d[good, :] * coadd_flux3d[good, :], axis=1) / coadd_ivar[good]
+
+                    #import matplotlib.pyplot as plt
+                    #plt.clf()
+                    #for ii in np.arange(3):
+                    #    plt.plot(data['wave'][ii], data['flux'][ii])
+                    #plt.plot(coadd_wave, coadd_flux-2, alpha=0.6, color='k')
+                    #plt.xlim(5500, 6000)
+                    #plt.savefig('test.png')
+                    #pdb.set_trace()
 
                     if remember_coadd:
                         data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux, 'coadd_ivar': coadd_ivar})
@@ -561,8 +572,8 @@ def main(args=None, comm=None):
                         targetids=targetids, ntargets=args.ntargets)
     if len(Spec.specfiles) == 0:
         return
-    data = Spec.read_and_unpack(CFit, exposures=args.exposures, photfit=args.photfit)
-    pdb.set_trace()
+    data = Spec.read_and_unpack(CFit, exposures=args.exposures, photfit=args.photfit,
+                                synthphot=True)
     
     out = Spec.init_output(CFit, EMFit, photfit=args.photfit)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
