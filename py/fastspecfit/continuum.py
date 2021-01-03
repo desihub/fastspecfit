@@ -369,7 +369,6 @@ class ContinuumFit(object):
 
         out.add_column(Column(name='D4000', length=nobj, dtype='f4'))
         out.add_column(Column(name='D4000_IVAR', length=nobj, dtype='f4'))
-        out.add_column(Column(name='D4000_NOLINES', length=nobj, dtype='f4'))
         out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
 
         return out
@@ -873,12 +872,12 @@ class ContinuumFit(object):
                                               south=data['photsys_south'])
         coeff, chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
                                               objflam, objflamivar) # bestphot['flam'] is [nband, nage]
-        continuum = bestsspflux.dot(coeff)
+        continuummodel = bestsspflux.dot(coeff)
 
         # Compute D4000, K-corrections, and rest-frame quantities.
-        d4000, _ = get_d4000(self.sspwave, continuum, rest=True)
+        d4000, _ = get_d4000(self.sspwave, continuummodel, rest=True)
         meanage = self.get_meanage(coeff)
-        kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuum)
+        kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel)
         
         log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
             d4000, meanage, absmag[1]))
@@ -901,7 +900,7 @@ class ContinuumFit(object):
             result['ABSMAG_{}'.format(band.upper())] = absmag[iband]
             result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband]
 
-        return result, continuum
+        return result, continuummodel
     
     def continuum_specfit(self, data, solve_vdisp=False):
         """Fit the stellar continuum of a single spectrum using fast non-negative
@@ -923,15 +922,11 @@ class ContinuumFit(object):
 
         Notes
         -----
-        See https://github.com/jvendrow/fnnls for the fNNLS algorithm.
-
         ToDo:
           - Use cross-correlation to update the redrock redshift.
           - Need to mask more emission lines than we fit (e.g., Mg II).
 
         """
-        from fnnls import fnnls
-
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_spec_output()
 
@@ -1029,6 +1024,7 @@ class ContinuumFit(object):
         bestsspflux = np.concatenate(bestsspflux, axis=0)
         coeff, chi2min = self._fnnls_parallel(bestsspflux, specflux, specivar)
 
+        # Get the mean age and D(4000).
         bestfit = bestsspflux.dot(coeff)
         meanage = self.get_meanage(coeff)
         d4000_model, _ = get_d4000(specwave, bestfit, redshift=redshift)
@@ -1047,13 +1043,13 @@ class ContinuumFit(object):
         result['D4000_MODEL'][0] = d4000_model
 
         # Unpack the continuum into individual cameras.
-        continuum = []
+        continuummodel = []
         for ii in [0, 1, 2]: # iterate over cameras
             ipix = np.sum(npixpercam[:ii+1])
             jpix = np.sum(npixpercam[:ii+2])
-            continuum.append(bestfit[ipix:jpix])
+            continuummodel.append(bestfit[ipix:jpix])
 
-        return result, continuum
+        return result, continuummodel
     
     def qa_specfit_continuum(self, data, specfit, outdir='.'):
         """QA of the best-fitting continuum.
@@ -1188,7 +1184,8 @@ class ContinuumFit(object):
         ymax = np.min((np.nanmin(data['phot']['abmag'][good]),
                        np.nanmin(continuum_phot_abmag[indx]))) - dm
         if np.isnan(ymin) or np.isnan(ymax):
-            pdb.set_trace()
+            log.warning('Problem determining the range!')
+            raise ValueError
 
         ax2.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
         ax2.set_ylabel(r'AB Mag') 
@@ -1210,7 +1207,7 @@ class ContinuumFit(object):
 
         return continuum
         
-    def qa_photfit_continuum(self, data, photfit, suffix=None, outdir=None):
+    def qa_photfit_continuum(self, photfit, specfit=None, suffix=None, outdir=None):
         """QA of the best-fitting continuum.
 
         """
@@ -1228,42 +1225,68 @@ class ContinuumFit(object):
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
         ymin, ymax = 1e6, -1e6
 
-        redshift = data['zredrock']
+        redshift = photfit['Z']
 
         inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0            
         agekeep = self.younger_than_universe(redshift)
 
+        if photfit['PHOTSYS_SOUTH']:
+            filters = self.decam
+            allfilters = self.decamwise
+        else:
+            filters = self.bassmzls
+            allfilters = self.bassmzlswise
+
         # rebuild the best-fitting photometric model fit
-        continuum_phot, bestphot = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift,
-                                                 AV=photfit['CONTINUUM_PHOT_AV'],
-                                                 coeff=photfit['CONTINUUM_PHOT_COEFF'] * self.massnorm,
-                                                 south=data['photsys_south'],
-                                                 synthphot=True)
+        continuum_phot, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift,
+                                          AV=photfit['CONTINUUM_PHOT_AV'],
+                                          coeff=photfit['CONTINUUM_PHOT_COEFF'] * self.massnorm,
+                                          synthphot=False)
         continuum_wave_phot = self.sspwave * (1 + redshift)
 
         wavemin, wavemax = 0.2, 6.0
         indx = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
-        
+
+        phot = self.parse_photometry(self.bands,
+                                     maggies=np.array([photfit['FLUX_{}'.format(band.upper())] for band in self.bands]),
+                                     ivarmaggies=np.array([photfit['FLUX_IVAR_{}'.format(band.upper())] for band in self.bands]),
+                                     lambda_eff=allfilters.effective_wavelengths.value)
+        fiberphot = self.parse_photometry(self.fiber_bands,
+                                          maggies=np.array([photfit['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
+                                          lambda_eff=filters.effective_wavelengths.value)
+        if specfit:
+            synthphot = self.parse_photometry(self.synth_bands,
+                                              maggies=np.array([specfit['FLUX_SYNTH_{}'.format(band.upper())] for band in self.synth_bands]),
+                                              lambda_eff=filters.effective_wavelengths.value)
+            synthmodelphot = self.parse_photometry(self.synth_bands,
+                                                   maggies=np.array([specfit['FLUX_SYNTH_MODEL_{}'.format(band.upper())] for band in self.synth_bands]),
+                                                   lambda_eff=filters.effective_wavelengths.value)
+        else:
+            synthphot, synthmodelphot = None, None
+            
         fig, ax = plt.subplots(figsize=(12, 8))
 
         if np.any(continuum_phot <= 0):
             log.warning('Best-fitting photometric continuum is all zeros or negative!')
-            continuum_phot_abmag = continuum_phot*0 + np.median(data['phot']['abmag'][:3])
+            continuum_phot_abmag = continuum_phot*0 + np.median(fiberphot['abmag'])
         else:
             factor = 10**(0.4 * 48.6) * continuum_wave_phot**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
             continuum_phot_abmag = -2.5*np.log10(continuum_phot * factor)
             ax.plot(continuum_wave_phot[indx] / 1e4, continuum_phot_abmag[indx], color='gray', zorder=1)
 
-        ax.scatter(data['phot']['lambda_eff']/1e4, data['phot']['abmag'],
-                    marker='s', s=130, facecolor='red', edgecolor='k',
-                    label=r'$grzW1W2$ (imaging)', alpha=1.0, zorder=3)
-        ax.scatter(data['fiberphot']['lambda_eff']/1e4, data['fiberphot']['abmag'],
+        ax.scatter(phot['lambda_eff']/1e4, phot['abmag'],
+                   marker='s', s=130, facecolor='red', edgecolor='k',
+                   label=r'$grzW1W2$ (imaging)', alpha=1.0, zorder=3)
+        ax.scatter(fiberphot['lambda_eff']/1e4, fiberphot['abmag'],
                     marker='^', s=130, facecolor='orange', edgecolor='k',
                     label=r'$grz$ (fibertotflux)', alpha=1.0, zorder=3)
-        if 'synthphot' in data.keys():
-            ax.scatter(data['synthphot']['lambda_eff']/1e4, data['synthphot']['abmag'], 
-                         marker='o', s=130, color='blue', edgecolor='k',
-                         label=r'$grz$ (synthesized)', alpha=1.0, zorder=2)
+        if synthphot:
+            ax.scatter(synthphot['lambda_eff']/1e4, synthphot['abmag'], 
+                       marker='o', s=130, color='blue', edgecolor='k',
+                       label=r'$grz$ (synthesized)', alpha=1.0, zorder=2)
+            ax.scatter(synthmodelphot['lambda_eff']/1e4, synthmodelphot['abmag'], 
+                       marker='s', s=130, color='green', edgecolor='k',
+                       label=r'$grz$ (model synthesized)', alpha=1.0, zorder=2)
         #abmag_sigma, _ = _ivar2var(data['phot']['abmag_ivar'], sigma=True)
         #ax.errorbar(data['phot']['lambda_eff']/1e4, data['phot']['abmag'], yerr=abmag_sigma,
         #             fmt='s', markersize=15, markeredgewidth=3, markeredgecolor='k', markerfacecolor='red',
@@ -1271,11 +1294,9 @@ class ContinuumFit(object):
         ax.legend(loc='lower left', fontsize=16)
 
         dm = 0.75
-        good = data['phot']['abmag_ivar'] > 0
-        ymin = np.max((np.nanmax(data['phot']['abmag'][good]),
-                       np.nanmax(continuum_phot_abmag[indx]))) + dm
-        ymax = np.min((np.nanmin(data['phot']['abmag'][good]),
-                       np.nanmin(continuum_phot_abmag[indx]))) - dm
+        good = phot['abmag_ivar'] > 0
+        ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(continuum_phot_abmag[indx]))) + dm
+        ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(continuum_phot_abmag[indx]))) - dm
         if ymin > 31:
             ymin = 31
         if np.isnan(ymin) or np.isnan(ymax):

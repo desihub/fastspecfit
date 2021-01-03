@@ -5,8 +5,8 @@ fastspecfit.external.desi
 
 fastspecfit wrapper for DESI
 
-fastspecfit /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80605/20201215/zbest-9-80605-20201215.fits -o photfit.fits --ntargets 2 --mp 1 --photfit
-fastspecfit /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80608/20201215/zbest-9-80608-20201215.fits -o photfit.fits --ntargets 2 --mp 1 --photfit
+fastspecfit /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80608/20201215/zbest-9-80608-20201215.fits -o specfit.fits --ntargets 10 --mp 1
+fastspecfit /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80605/20201215/zbest-9-80605-20201215.fits -o photfit.fits --ntargets 10 --mp 1 --photfit
 
 """
 import pdb # for debugging
@@ -34,7 +34,7 @@ def fastspecfit_one(iobj, data, CFit, EMFit, out, photfit=False, solve_vdisp=Fal
     if photfit:
         cfit, _ = CFit.continuum_photfit(data)
     else:
-        cfit, continuum = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
+        cfit, continuummodel = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
     for col in cfit.colnames:
         out[col] = cfit[col]
     log.info('Continuum-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
@@ -44,7 +44,7 @@ def fastspecfit_one(iobj, data, CFit, EMFit, out, photfit=False, solve_vdisp=Fal
 
     # fit the emission-line spectrum
     t0 = time.time()
-    emfit = EMFit.fit(data, continuum)
+    emfit = EMFit.fit(data, continuummodel)
     for col in emfit.colnames:
         out[col] = emfit[col]
     log.info('Line-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
@@ -120,28 +120,35 @@ class DESISpectra(object):
             petals = fastfit['FIBER'].data // 500
             tiles = fastfit['TILEID'].astype(str).data
             nights = fastfit['NIGHT'].astype(str).data
-            zbestfiles = np.array([os.path.join(specprod_dir, tile, night, 'zbest-{}-{}-{}.fits'.format(
-                petal, tile, night)) for petal, tile, night in zip(petals, tiles, nights)])
+
+            zbestfiles = []
+            for petal, tile, night in zip(petals, tiles, nights):
+                zbestfile = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod_dir, 'tiles',
+                                         tile, night, 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
+                if not os.path.isfile(zbestfile):
+                    log.warning('zbestfile {} not found.'.format(zbestfile))
+                    raise IOError
+                zbestfiles.append(zbestfile)
+            zbestfiles = np.array(zbestfiles)
 
         if len(np.atleast_1d(zbestfiles)) == 0:
             log.warning('You must provide at least one zbestfile!')
             raise IOError
 
+        # Try to glean specprod_dir so we can write it to the output file. This
+        # should really be in the file header--- see
+        # https://github.com/desihub/desispec/issues/1077
+        if specprod_dir is None:
+            # stupidly fragile!
+            specprod_dir = np.atleast_1d(zbestfiles)[0].replace(os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux'), '').split(os.sep)[1]
+            self.specprod_dir = specprod_dir
+            log.info('Parsed specprod_dir={}'.format(specprod_dir))
+            
         # Should we not sort...?
+        #zbestfiles = np.array(set(np.atleast_1d(zbestfiles)))
         zbestfiles = np.array(sorted(set(np.atleast_1d(zbestfiles))))
         log.info('Reading and parsing {} unique zbestfile(s)'.format(len(zbestfiles)))
 
-        #if targetids is None:
-        #    thesetargetids = None
-        #else:
-        #    thesetargetids = targetids.copy()
-
-        # exposures=True not really supported yet...
-        #if exposures:
-        #    self.specfiles = [zbestfile.replace('zbest-', 'spectra-') for zbestfile in np.atleast_1d(zbestfiles)]
-        #else:
-        #    self.specfiles = [zbestfile.replace('zbest-', 'coadd-') for zbestfile in zbestfiles]
-        
         #self.fitindx = []
         self.zbest, self.fibermap = [], []
         self.zbestfiles, self.specfiles = [], []
@@ -208,8 +215,8 @@ class DESISpectra(object):
                 fm = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx))
             assert(np.all(zb['TARGETID'] == fm['TARGETID']))
 
-            self.zbest.append(zb)
-            self.fibermap.append(fm)
+            self.zbest.append(Table(zb))
+            self.fibermap.append(Table(fm))
             self.zbestfiles.append(zbestfile)
             self.specfiles.append(specfile)
 
@@ -245,7 +252,7 @@ class DESISpectra(object):
                         'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']:
                 fm[col] = targets[col][srt]
             assert(np.all(fm['TARGETID'] == targets['TARGETID'][srt]))
-            fmaps.append(fm)
+            fmaps.append(Table(fm))
         log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
         self.fibermap = fmaps # update
@@ -329,7 +336,11 @@ class DESISpectra(object):
         for specfile, zbest, fibermap in zip(self.specfiles, self.zbest, self.fibermap):
             log.info('Reading {} spectra from {}'.format(len(zbest), specfile))
 
-            if not photfit or synthphot:
+            # sometimes these are an astropy.table.Row!
+            zbest = Table(zbest)
+            fibermap = Table(fibermap)
+
+            if not photfit:
                 spec = read_spectra(specfile).select(targets=zbest['TARGETID'])
                 assert(np.all(spec.fibermap['TARGETID'] == zbest['TARGETID']))
                 assert(np.all(spec.fibermap['TARGETID'] == fibermap['TARGETID']))
@@ -377,8 +388,9 @@ class DESISpectra(object):
                     data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
                         maggies=fibermaggies, nanomaggies=True,
                         lambda_eff=filters.effective_wavelengths.value)
-
-                if not photfit or synthphot:
+                    
+                else:
+                    
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                                  'linemask': [], 'snr': np.zeros(3).astype('f4')})
                     for icam, camera in enumerate(spec.bands):
@@ -495,6 +507,7 @@ class DESISpectra(object):
             out[fibermapcol] = self.fibermap[fibermapcol]
         for zbestcol in ['Z', 'DELTACHI2']:#, 'ZERR']:#, 'SPECTYPE', ]
             out[zbestcol] = self.zbest[zbestcol]
+        out['PHOTSYS_SOUTH'] = out['DEC'] < self.desitarget_resolve_dec()
 
         # target column names (e.g., DESI_TARGET)
         _targetcols = ['DESI_TARGET' in col or 'BGS_TARGET' in col or 'MWS_TARGET' in col for col in self.fibermap.colnames]
@@ -511,6 +524,28 @@ class DESISpectra(object):
             out = hstack((out, CFit.init_spec_output(nobj), EMFit.init_output(CFit.linetable, nobj)))
 
         return out
+
+def write_fastspec(out, outfile=None, specprod_dir=None):
+    """Write out.
+
+    """
+    from astropy.io import fits
+    
+    t0 = time.time()
+    outdir = os.path.dirname(os.path.abspath(outfile))
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+        
+    log.info('Writing results for {} objects to {}'.format(len(out), outfile))
+    #out.write(outfile, overwrite=True)
+    hduprim = fits.PrimaryHDU()
+    hduout = fits.convenience.table_to_hdu(out)
+    hduout.header['EXTNAME'] = 'RESULTS'
+    if specprod_dir:
+        hduout.header['SPECPROD'] = specprod_dir
+    hx = fits.HDUList([hduprim, hduout])
+    hx.writeto(outfile, overwrite=True)
+    log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
     """Parse input arguments.
@@ -562,7 +597,7 @@ def main(args=None, comm=None):
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
     CFit = ContinuumFit()
-    EMFit = EMLineFit()
+    EMFit = EMLineFit(CFit)
     Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
@@ -592,12 +627,5 @@ def main(args=None, comm=None):
     out = Table(np.hstack(_out))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
-    # write out
-    t0 = time.time()
-    outdir = os.path.dirname(os.path.abspath(args.outfile))
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir, exist_ok=True)
-        
-    log.info('Writing results for {} objects to {}'.format(len(out), args.outfile))
-    out.write(args.outfile, overwrite=True)
-    log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
+    # Write out.
+    write_fastspec(out, outfile=args.outfile, specprod_dir=Spec.specprod_dir)

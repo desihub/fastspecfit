@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 """fastspecfit QA
 
-fastspecfit-qa --outdir . /global/cfs/cdirs/desi/users/ioannis/fastspecfit/daily/tiles/specfit-80607-80613-20201215-20201223.fits
+fastspecfit-qa --outdir . --specfit /global/cfs/cdirs/desi/users/ioannis/fastspecfit/daily/tiles/specfit-80607-80613-20201215-20201223.fits --photfit /global/cfs/cdirs/desi/users/ioannis/fastspecfit/daily/tiles/photfit-80607-80613-20201215-20201223.fits
 
 """
 import pdb # for debugging
-import os, time
+import os, sys, time
 import numpy as np
 
 from desiutil.log import get_logger
@@ -19,14 +19,13 @@ def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def desiqa_one(data, fastfit, CFit, EMFit, outdir=None, suffix=None, photfit=False):
+def desiqa_one(CFit, EMFit, data=None, specfit=None, photfit=None, outdir=None, suffix=None):
     """QA on one spectrum."""
     t0 = time.time()
-    if photfit:
-        CFit.qa_photfit_continuum(data, fastfit, suffix=suffix, outdir=outdir)
-    else:
-        #continuum = CFit.qa_specfit_continuum(data, fastfit, suffix=suffix, outdir=outdir)
-        EMFit.qa_emlines(data, specfit, outdir=outdir)
+    if photfit is not None:
+        CFit.qa_photfit_continuum(photfit, specfit=specfit, suffix=suffix, outdir=outdir)
+    if specfit is not None:
+        EMFit.qa_emlines(data, specfit, suffix=suffix, outdir=outdir)
     log.info('Building took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
@@ -36,8 +35,6 @@ def parse(options=None):
     import sys, argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    parser.add_argument('--photfit', action='store_true', help='Fit and write out just the broadband photometry.')
 
     parser.add_argument('--tile', default=None, type=str, help='Generate QA for all objects on this tile.')
     parser.add_argument('--night', default=None, type=str, help='Generate QA for all objects observed on this night.')
@@ -49,14 +46,18 @@ def parse(options=None):
     parser.add_argument('--suffix', default=None, type=str, help='Optional suffix for output filename.')
     parser.add_argument('-o', '--outdir', default=None, type=str, help='Full path to desired output directory.')
     
-    parser.add_argument('fastspecfitfile', type=str, help='Full path to results FITS file written by fastspecfit.')
+    parser.add_argument('--photfitfile', default=None, type=str, help='Full path to photfit fitting results.')
+    parser.add_argument('--specfitfile', default=None, type=str, help='Full path to photfit fitting results.')
+    parser.add_argument('zbestdata', nargs='*', help='Full path to zbest file(s) or a directory containing zbest file(s).')
+    
+    #parser.add_argument('fastspecfitfile', type=str, help='Full path to results FITS file written by fastspecfit.')
 
     if options is None:
         args = parser.parse_args()
         log.info(' '.join(sys.argv))
     else:
         args = parser.parse_args(options)
-        log.info('fastspecfit_qa {}'.format(' '.join(options)))
+        log.info('fastspecfit-qa {}'.format(' '.join(options)))
 
     return args
 
@@ -74,21 +75,60 @@ def main(args=None, comm=None):
         args = parse(args)
 
     # Read the fitting results.
-    if not os.path.isfile(args.fastspecfitfile):
-        log.info('Required FITS file (from fastspecfit) {} not found!'.format(args.fastspecfitfile))
+    if args.photfitfile is None and args.specfitfile is None:
+        log.warning('Must provide one or both of --photfitfile and/or --specfitfile.')
         return
-    fastfit = Table(fitsio.read(args.fastspecfitfile))
-    log.info('Read {} objects from {}'.format(len(fastfit), args.fastspecfitfile))
 
-    if args.tile or args.night:
-        keep = np.ones(len(fastfit), bool)
-        if args.tile:
-            keep *= (fastfit['TILEID'].astype(str) == args.tile)
-        if args.night:
-            keep *= (fastfit['NIGHT'].astype(str) == args.night)
-        fastfit = fastfit[keep]
-        log.info('Keeping {} spectra from tile {} on night {}.'.format(len(fastfit), args.tile, args.night))
+    def _check_and_read(filename):
+        if filename:
+            if os.path.isfile(filename):
+                fastfit, hdr = fitsio.read(filename, header=True, ext='RESULTS')
+                specprod_dir = hdr['SPECPROD']
+                fastfit = Table(fastfit)
+                log.info('Read {} objects from {}'.format(len(fastfit), filename))
+                return fastfit, specprod_dir
+            else:
+                log.warning('File {} not found.'.format(filename))
+                raise IOError
+        else:
+            return None, None
 
+    specfit, specprod_dir_spec = _check_and_read(args.specfitfile)
+    photfit, specprod_dir_phot = _check_and_read(args.photfitfile)
+
+    if photfit is not None and specfit is not None:
+        assert(np.all(photfit['TARGETID'] == specfit['TARGETID']))
+        assert(specprod_dir_phot == specprod_dir_spec)
+        specprod_dir = specprod_dir_spec
+        fastfit = specfit
+    elif photfit is None and specfit is not None:
+        specprod_dir = specprod_dir_spec
+        fastfit = specfit
+    elif photfit is not None and specfit is None:
+        specprod_dir = specprod_dir_phot
+        fastfit = photfit
+    else:
+        log.warning('Required input(s) --photfitfile and/or --specfitfile not provided!')
+        return
+        
+    log.info('Found specprod_dir={}'.format(specprod_dir))
+
+    # optionally trim to a particular tile and/or night
+    def _select_tile_night(fastfit, tile=None, night=None):
+        if fastfit and (tile or night):
+            keep = np.ones(len(fastfit), bool)
+            if tile:
+                keep *= (fastfit['TILEID'].astype(str) == tile)
+            if night:
+                keep *= (fastfit['NIGHT'].astype(str) == night)
+            fastfit = fastfit[keep]
+            log.info('Keeping {} spectra from tile {} on night {}.'.format(len(fastfit), tile, night))
+        return fastfit
+
+    photfit = _select_tile_night(photfit)
+    specfit = _select_tile_night(specfit)
+
+    # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
     else:
@@ -97,30 +137,37 @@ def main(args=None, comm=None):
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
     CFit = ContinuumFit()
-    EMFit = EMLineFit()
-    Spec = DESISpectra()
+    EMFit = EMLineFit(CFit)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
-    # Get the spectra.
-    log.info('Need to get specprod from the header!')
-    specprod = 'daily'
-    specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles')
-
-    Spec.find_specfiles(fastfit=fastfit, specprod_dir=specprod_dir, targetids=targetids,
-                        firsttarget=args.firsttarget, ntargets=args.ntargets)
-    if len(Spec.specfiles) == 0:
-        return
-    data = Spec.read_and_unpack(CFit, photfit=args.photfit)
-
-    srt = np.hstack([np.where(tid == fastfit['TARGETID'])[0] for tid in Spec.zbest['TARGETID']])
-    fastfit = fastfit[srt]
-    assert(np.all(fastfit['TARGETID'] == Spec.zbest['TARGETID']))
+    if specfit:
+        Spec = DESISpectra()
+        
+        # Get the spectra (if needed).
+        Spec.find_specfiles(fastfit=fastfit, specprod_dir=specprod_dir, targetids=targetids,
+                            firsttarget=args.firsttarget, ntargets=args.ntargets)
+        if len(Spec.specfiles) == 0:
+            return
+        data = Spec.read_and_unpack(CFit, synthphot=False)
+        specfit = specfit[np.hstack([np.where(tid == specfit['TARGETID'])[0] for tid in Spec.zbest['TARGETID']])]
+        assert(np.all(specfit['TARGETID'] == Spec.zbest['TARGETID']))
+        
+    if photfit:
+        photfit = photfit[np.hstack([np.where(tid == photfit['TARGETID'])[0] for tid in specfit['TARGETID']])]
 
     # Build the QA in parallel
-    #qadir = os.getenv('FASTSPECFIT_DATA')
-    #qadir = os.path.join(os.getenv('FASTSPECFIT_DATA'), 'qa', specprod_dir)
-    qaargs = [(data[iobj], fastfit[iobj], CFit, EMFit, args.outdir, args.suffix, args.photfit)
-              for iobj in np.arange(len(data))]
+    if photfit is not None and specfit is not None:
+        qaargs = [(CFit, EMFit, data[igal], specfit[igal], photfit[igal], args.outdir, args.suffix)
+                  for igal in np.arange(len(specfit))]
+    elif photfit is None and specfit is not None:
+        qaargs = [(CFit, EMFit, data[igal], specfit[igal], None, args.outdir, args.suffix)
+                  for igal in np.arange(len(specfit))]
+    elif photfit is not None and specfit is None:
+        qaargs = [(CFit, EMFit, None, None, photfit[igal], args.outdir, args.suffix)
+                  for igal in np.arange(len(photfit))]
+    else:
+        pass
+        
     if args.mp > 1:
         import multiprocessing
         with multiprocessing.Pool(args.mp) as P:

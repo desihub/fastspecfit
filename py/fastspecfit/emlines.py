@@ -202,13 +202,19 @@ class EMLineFit(object):
     * https://docs.astropy.org/en/stable/modeling/compound-models.html#parameters
 
     """
-    def __init__(self, nball=10, chi2fail=1e6, synth_bands=['g', 'r', 'z']):
+    def __init__(self, CFit, nball=10, chi2fail=1e6):
         """Write me.
         
         """
         from astropy.modeling import fitting
 
-        self.synth_bands = synth_bands
+        # methods and attributes for synthesizing photometry
+        self.synth_bands = CFit.synth_bands
+        self.decam = CFit.decam
+        self.bassmzls = CFit.bassmzls
+        self.fluxnorm = CFit.fluxnorm
+        self.parse_photometry = CFit.parse_photometry
+
         self.nball = nball
         self.chi2fail = chi2fail
         self.pixkms = 10.0 # pixel size for internal wavelength array [km/s]
@@ -222,10 +228,15 @@ class EMLineFit(object):
         from astropy.table import Table, Column
         
         out = Table()
+        out.add_column(Column(name='D4000_NOLINES', length=nobj, dtype='f4'))
+        # observed-frame photometry synthesized from the spectra
         for band in self.synth_bands:
-            out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # synthesized observed-frame photometry
-        #out.add_column(Column(name='SYNTHPHOT_GRZ', length=nobj, shape=(3,), dtype='f4', unit=u.nanomaggy))
-        #out.add_column(Column(name='SYNTHPHOT_GRZ_IVAR', length=nobj, shape=(3,), dtype='f4', unit=u.nanomaggy)) 
+            out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) 
+            #out.add_column(Column(name='FLUX_SYNTH_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
+        # observed-frame photometry synthesized from the best-fitting continuum model fit
+        for band in self.synth_bands:
+            out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy))
+            
         out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4'))
         out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4'))
         out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4'))
@@ -313,7 +324,7 @@ class EMLineFit(object):
 
         return emlinemodel
     
-    def fit(self, data, continuum):
+    def fit(self, data, continuummodel):
         """Perform the fit minimization / chi2 minimization.
         
         EMLineModel object
@@ -335,7 +346,8 @@ class EMLineFit(object):
         emlinewave = np.hstack(data['wave'])
         emlineivar = np.hstack(data['ivar'])
         specflux = np.hstack(data['flux'])
-        emlineflux = specflux - np.hstack(continuum)
+        continuummodelflux = np.hstack(continuummodel)
+        emlineflux = specflux - continuummodelflux
 
         dlogwave = self.pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
         log10wave = np.arange(np.log10(3e3), np.log10(1e4), dlogwave)
@@ -357,10 +369,29 @@ class EMLineFit(object):
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
+        
+        # Synthesize photometry from the best-fitting model (continuum+emission lines).
+        if data['photsys_south']:
+            filters = self.decam
+        else:
+            filters = self.bassmzls
+
+        # The wavelengths overlap between the cameras a bit...
+        srt = np.argsort(emlinewave)
+        padflux, padwave = filters.pad_spectrum((continuummodelflux+emlinemodel)[srt], emlinewave[srt], method='edge')
+        synthmaggies = filters.get_ab_maggies(padflux / self.fluxnorm, padwave)
+        synthmaggies = synthmaggies.as_array().view('f8')
+        model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
+                                                nanomaggies=False,
+                                                lambda_eff=filters.effective_wavelengths.value)
+
         for iband, band in enumerate(self.synth_bands):
             result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband]
             #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
+        for iband, band in enumerate(self.synth_bands):
+            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband]
 
+        # measure D(4000) without the emission lines
         specflux_nolines = specflux - emlinemodel
 
         d4000_nolines, _ = get_d4000(emlinewave, specflux_nolines, redshift=redshift)
@@ -531,7 +562,7 @@ class EMLineFit(object):
 
         return result
     
-    def qa_emlines(self, data, specfit, continuum, qadir='.'):
+    def qa_emlines(self, data, specfit, continuum, suffix=None, outdir=None):
         """QA plot the emission-line spectrum and best-fitting model.
 
         """
