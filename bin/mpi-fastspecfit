@@ -6,7 +6,7 @@ To process all tiles in the SV1 exposure list do--
   mpi-fastspecfit
 
 To process one specific tile and night:
-  mpi-fastspecfit --tile 80605 --night 20201215
+  mpi-fastspecfit --tile 80607 80608 --night 20201215
 
 """
 import pdb # for debuggin
@@ -235,13 +235,19 @@ def plan(args, comm=None, merge=False):
         explist = Table.read(expfile)
         explist = explist[np.argsort(explist['NIGHT'])]
         log.info('Read {} exposures from {}'.format(len(explist), expfile))
-        
+
         if args.tile or args.night:
             keep = np.ones(len(explist), bool)
             if args.tile:
-                keep *= (explist['TILEID'].astype(str) == args.tile)
+                tilekeep = np.zeros(len(explist), bool)
+                for tile in args.tile:
+                    tilekeep = np.logical_or(tilekeep, explist['TILEID'].astype(str) == tile)
+                keep = np.logical_and(keep, tilekeep)
             if args.night:
-                keep *= (explist['NIGHT'].astype(str) == args.night)
+                nightkeep = np.zeros(len(explist), bool)
+                for night in args.night:
+                    nightkeep = np.logical_or(nightkeep, explist['NIGHT'].astype(str) == night)
+                keep = np.logical_and(keep, nightkeep)
             explist = explist[keep]
             log.info('Keeping {} exposures from tile {} on night {}.'.format(len(explist), args.tile, args.night))
         else:
@@ -468,11 +474,6 @@ def run_fastspecfit(args, comm=None):
     assert(len(np.concatenate(groups)) == len(specfiles))
 
     #pixels = np.array([int(os.path.basename(os.path.dirname(x))) for x in specfiles])
-    #if args.photfit:
-    #    _outprefix = 'photfit'
-    #else:
-    #    _outprefix = 'specfit'
-        
     for ii in groups[rank]:
         log.info('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
@@ -536,9 +537,9 @@ def main():
 
     """
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--specprod', type=str, default='daily', choices=['andes', 'daily'], help='Spectroscopic production to process.')
-    parser.add_argument('--tile', default=None, type=str, help='Tile number to process (default is to do all the SV1 exposures).')
-    parser.add_argument('--night', default=None, type=str, help='Night to process (default is to do all the SV1 exposures).')
+    parser.add_argument('--specprod', type=str, default='blanc', choices=['blanc', 'andes', 'daily'], help='Spectroscopic production to process.')
+    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process (default is to do all the SV1 exposures).')
+    parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (default is to do all the SV1 exposures).')
     parser.add_argument('--exposures', action='store_true', default=False, help='Process the individual exposures (based on EXPID).')
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')

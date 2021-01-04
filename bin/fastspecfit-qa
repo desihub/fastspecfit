@@ -83,35 +83,35 @@ def main(args=None, comm=None):
         if filename:
             if os.path.isfile(filename):
                 fastfit, hdr = fitsio.read(filename, header=True, ext='RESULTS')
-                specprod_dir = hdr['SPECPROD']
+                specprod = hdr['SPECPROD']
                 fastfit = Table(fastfit)
                 log.info('Read {} objects from {}'.format(len(fastfit), filename))
-                return fastfit, specprod_dir
+                return fastfit, specprod
             else:
                 log.warning('File {} not found.'.format(filename))
                 raise IOError
         else:
             return None, None
 
-    specfit, specprod_dir_spec = _check_and_read(args.specfitfile)
-    photfit, specprod_dir_phot = _check_and_read(args.photfitfile)
+    specfit, specprod_spec = _check_and_read(args.specfitfile)
+    photfit, specprod_phot = _check_and_read(args.photfitfile)
 
     if photfit is not None and specfit is not None:
         assert(np.all(photfit['TARGETID'] == specfit['TARGETID']))
-        assert(specprod_dir_phot == specprod_dir_spec)
-        specprod_dir = specprod_dir_spec
+        assert(specprod_phot == specprod_spec)
+        specprod = specprod_spec
         fastfit = specfit
     elif photfit is None and specfit is not None:
-        specprod_dir = specprod_dir_spec
+        specprod = specprod_spec
         fastfit = specfit
     elif photfit is not None and specfit is None:
-        specprod_dir = specprod_dir_phot
+        specprod = specprod_phot
         fastfit = photfit
     else:
         log.warning('Required input(s) --photfitfile and/or --specfitfile not provided!')
         return
         
-    log.info('Found specprod_dir={}'.format(specprod_dir))
+    log.info('Found specprod={}'.format(specprod))
 
     # optionally trim to a particular tile and/or night
     def _select_tile_night(fastfit, tile=None, night=None):
@@ -144,7 +144,7 @@ def main(args=None, comm=None):
         Spec = DESISpectra()
         
         # Get the spectra (if needed).
-        Spec.find_specfiles(fastfit=fastfit, specprod_dir=specprod_dir, targetids=targetids,
+        Spec.find_specfiles(fastfit=fastfit, specprod=specprod, targetids=targetids,
                             firsttarget=args.firsttarget, ntargets=args.ntargets)
         if len(Spec.specfiles) == 0:
             return

@@ -88,7 +88,7 @@ class DESISpectra(object):
 
         return targetdir
 
-    def find_specfiles(self, zbestfiles=None, fastfit=None, specprod_dir=None,
+    def find_specfiles(self, zbestfiles=None, fastfit=None, specprod=None,
                        firsttarget=0, targetids=None, ntargets=None, exposures=False):
         """Initialize the fastspecfit output data table.
 
@@ -101,19 +101,19 @@ class DESISpectra(object):
         Notes
         -----
 
-        fastfit - results table (overrides zbestfiles and then specprod_dir is required
+        fastfit - results table (overrides zbestfiles and then specprod is required
 
         """
         from glob import glob
         from desimodel.footprint import radec2pix
 
         if zbestfiles is None and fastfit is None:
-            log.warning('At least one of zbestfiles or fastfit (and specprod_dir) are required.')
+            log.warning('At least one of zbestfiles or fastfit (and specprod) are required.')
             raise IOError
 
         if fastfit is not None:
-            if specprod_dir is None:
-                log.warning('specprod_dir is required when passing a fastfit results table!')
+            if specprod is None:
+                log.warning('specprod is required when passing a fastfit results table!')
                 raise IOError
             fastfit = Table(fastfit)
             targetids = fastfit['TARGETID'].data
@@ -123,7 +123,7 @@ class DESISpectra(object):
 
             zbestfiles = []
             for petal, tile, night in zip(petals, tiles, nights):
-                zbestfile = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod_dir, 'tiles',
+                zbestfile = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles',
                                          tile, night, 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
                 if not os.path.isfile(zbestfile):
                     log.warning('zbestfile {} not found.'.format(zbestfile))
@@ -135,14 +135,14 @@ class DESISpectra(object):
             log.warning('You must provide at least one zbestfile!')
             raise IOError
 
-        # Try to glean specprod_dir so we can write it to the output file. This
+        # Try to glean specprod so we can write it to the output file. This
         # should really be in the file header--- see
         # https://github.com/desihub/desispec/issues/1077
-        if specprod_dir is None:
+        if specprod is None:
             # stupidly fragile!
-            specprod_dir = np.atleast_1d(zbestfiles)[0].replace(os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux'), '').split(os.sep)[1]
-            self.specprod_dir = specprod_dir
-            log.info('Parsed specprod_dir={}'.format(specprod_dir))
+            specprod = np.atleast_1d(zbestfiles)[0].replace(os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux'), '').split(os.sep)[1]
+            self.specprod = specprod
+            log.info('Parsed specprod={}'.format(specprod))
             
         # Should we not sort...?
         #zbestfiles = np.array(set(np.atleast_1d(zbestfiles)))
@@ -525,7 +525,7 @@ class DESISpectra(object):
 
         return out
 
-def write_fastspec(out, outfile=None, specprod_dir=None):
+def write_fastspec(out, outfile=None, specprod=None):
     """Write out.
 
     """
@@ -541,8 +541,8 @@ def write_fastspec(out, outfile=None, specprod_dir=None):
     hduprim = fits.PrimaryHDU()
     hduout = fits.convenience.table_to_hdu(out)
     hduout.header['EXTNAME'] = 'RESULTS'
-    if specprod_dir:
-        hduout.header['SPECPROD'] = specprod_dir
+    if specprod:
+        hduout.header['SPECPROD'] = specprod
     hx = fits.HDUList([hduprim, hduout])
     hx.writeto(outfile, overwrite=True)
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
@@ -628,4 +628,4 @@ def main(args=None, comm=None):
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
-    write_fastspec(out, outfile=args.outfile, specprod_dir=Spec.specprod_dir)
+    write_fastspec(out, outfile=args.outfile, specprod=Spec.specprod)
