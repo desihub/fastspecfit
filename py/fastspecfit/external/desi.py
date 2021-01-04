@@ -597,7 +597,7 @@ def main(args=None, comm=None):
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
     CFit = ContinuumFit()
-    EMFit = EMLineFit(CFit)
+    EMFit = EMLineFit()
     Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 

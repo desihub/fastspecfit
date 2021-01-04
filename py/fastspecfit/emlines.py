@@ -15,6 +15,7 @@ import astropy.units as u
 from astropy.modeling import Fittable1DModel
 
 from fastspecfit.util import C_LIGHT
+from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger
 log = get_logger()
 
@@ -194,7 +195,7 @@ class EMLineModel(Fittable1DModel):
             
         return np.hstack(emlinemodel)
 
-class EMLineFit(object):
+class EMLineFit(ContinuumTools):
     """Class to fit an emission-line spectrum.
 
     * https://docs.astropy.org/en/stable/modeling/example-fitting-constraints.html#tied
@@ -202,18 +203,20 @@ class EMLineFit(object):
     * https://docs.astropy.org/en/stable/modeling/compound-models.html#parameters
 
     """
-    def __init__(self, CFit, nball=10, chi2fail=1e6):
+    def __init__(self, nball=10, chi2fail=1e6):
         """Write me.
         
         """
         from astropy.modeling import fitting
 
-        # methods and attributes for synthesizing photometry
-        self.synth_bands = CFit.synth_bands
-        self.decam = CFit.decam
-        self.bassmzls = CFit.bassmzls
-        self.fluxnorm = CFit.fluxnorm
-        self.parse_photometry = CFit.parse_photometry
+        super(EMLineFit, self).__init__()
+        
+        ## methods and attributes for synthesizing photometry
+        #self.synth_bands = CFit.synth_bands
+        #self.decam = CFit.decam
+        #self.bassmzls = CFit.bassmzls
+        #self.fluxnorm = CFit.fluxnorm
+        #self.parse_photometry = CFit.parse_photometry
 
         self.nball = nball
         self.chi2fail = chi2fail
@@ -335,7 +338,6 @@ class EMLineFit(object):
         """
         #from scipy import integrate
         from astropy.stats import sigma_clipped_stats
-        from fastspecfit.continuum import get_d4000
         
         # Combine all three cameras; we will unpack them to build the
         # best-fitting model (per-camera) below.
@@ -394,7 +396,7 @@ class EMLineFit(object):
         # measure D(4000) without the emission lines
         specflux_nolines = specflux - emlinemodel
 
-        d4000_nolines, _ = get_d4000(emlinewave, specflux_nolines, redshift=redshift)
+        d4000_nolines, _ = self.get_d4000(emlinewave, specflux_nolines, redshift=redshift)
         result['D4000_NOLINES'] = d4000_nolines
 
         ## Pack the results in a dictionary and return.
@@ -562,7 +564,7 @@ class EMLineFit(object):
 
         return result
     
-    def qa_emlines(self, data, specfit, continuum, suffix=None, outdir=None):
+    def qa_emlines(self, data, specfit, suffix=None, outdir=None):
         """QA plot the emission-line spectrum and best-fitting model.
 
         """
@@ -573,6 +575,8 @@ class EMLineFit(object):
         import seaborn as sns
 
         from fastspecfit.util import ivar2var
+
+        pdb.set_trace()
 
         redshift = specfit['Z']
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], specfit)
@@ -632,14 +636,15 @@ class EMLineFit(object):
             if np.max(emlinemodel) > ymax:
                 ymax = np.max(emlinemodel) * 1.2
 
+        fntsz = 18
         bigax.text(0.95, 0.92, '{}'.format(leg['targetid']), 
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=18)
+                   ha='right', va='center', transform=bigax.transAxes, fontsize=fntsz)
         bigax.text(0.95, 0.86, r'{}'.format(leg['zredrock']),
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=18)
+                   ha='right', va='center', transform=bigax.transAxes, fontsize=fntsz)
         bigax.text(0.95, 0.80, r'{} {}'.format(leg['linevshift_balmer'], leg['linevshift_forbidden']),
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=18)
+                   ha='right', va='center', transform=bigax.transAxes, fontsize=fntsz)
         bigax.text(0.95, 0.74, r'{} {}'.format(leg['linesigma_balmer'], leg['linesigma_forbidden']),
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=18)
+                   ha='right', va='center', transform=bigax.transAxes, fontsize=fntsz)
                 
         bigax.set_xlim(3500, 10000)
         bigax.set_ylim(ymin, ymax)
