@@ -564,7 +564,7 @@ class EMLineFit(ContinuumTools):
 
         return result
     
-    def qa_emlines(self, data, specfit, suffix=None, outdir=None):
+    def qa_specfit(self, data, specfit, suffix=None, outdir=None):
         """QA plot the emission-line spectrum and best-fitting model.
 
         """
@@ -576,32 +576,109 @@ class EMLineFit(ContinuumTools):
 
         from fastspecfit.util import ivar2var
 
-        pdb.set_trace()
-
-        redshift = specfit['Z']
-        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], specfit)
-
-        sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
+        sns.set(context='talk', style='ticks', font_scale=1.5)#, rc=rc)
 
         col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
+        
+        redshift = specfit['Z']
+
+        # rebuild the best-fitting spectroscopic and photometric models
+        continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
+                                     specwave=data['wave'], specres=data['res'],
+                                     AV=specfit['CONTINUUM_AV'],
+                                     vdisp=specfit['CONTINUUM_VDISP'],
+                                     coeff=specfit['CONTINUUM_COEFF'],
+                                     synthphot=False)
+
+        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], specfit)
+
+        fig = plt.figure(figsize=(18, 18))
+        gs = fig.add_gridspec(4, 4, height_ratios=[3, 3, 1.8, 1.8])
+
+        # full spectrum + best-fitting continuum model
+        bigax1 = fig.add_subplot(gs[0, :])
 
         leg = {
             'targetid': '{} {}'.format(specfit['TARGETID'], specfit['FIBER']),
-            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            'linevshift_forbidden': '$\Delta\,v_{{\\rm forbidden}}$={:.1f} km/s'.format(specfit['LINEVSHIFT_FORBIDDEN']),
-            'linevshift_balmer': '$\Delta\,v_{{\\rm Balmer}}$={:.1f} km/s'.format(specfit['LINEVSHIFT_BALMER']),
-            'linesigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(specfit['LINESIGMA_FORBIDDEN']),
-            'linesigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(specfit['LINESIGMA_BALMER']),
+            #'targetid': 'targetid={} fiber={}'.format(specfit['TARGETID'], specfit['FIBER']),
+            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(specfit['CONTINUUM_CHI2']),
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(specfit['Z']),
+            #'zfastspecfit': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(specfit['CONTINUUM_Z']),
+            #'z': '$z$={:.6f}'.format(specfit['CONTINUUM_Z']),
+            'age': '<Age>={:.3f} Gyr'.format(specfit['CONTINUUM_AGE']),
             }
+        if specfit['CONTINUUM_VDISP_IVAR'] == 0:
+            leg.update({'vdisp': '$\sigma_{{\\rm star}}$={:.1f} km/s'.format(specfit['CONTINUUM_VDISP'])})
+        else:
+            leg.update({'vdisp': '$\sigma_{{\\rm star}}$={:.1f}+/-{:.1f} km/s'.format(
+                specfit['CONTINUUM_VDISP'], 1/np.sqrt(specfit['CONTINUUM_VDISP_IVAR']))})
+            
+        if specfit['CONTINUUM_AV_IVAR'] == 0:
+            leg.update({'AV': '$A(V)$={:.3f} mag'.format(specfit['CONTINUUM_AV'])})
+        else:
+            leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
+                specfit['CONTINUUM_AV'], 1/np.sqrt(specfit['CONTINUUM_AV_IVAR']))})
 
-        #fig, ax = plt.subplots(1, 4, figsize=(16, 10))#, sharey=True)
-        fig = plt.figure(figsize=(16, 16))
-        gs = fig.add_gridspec(3, 4, height_ratios=[4, 2, 2])
-        #gs = fig.add_gridspec(2, 4, gridspec_kw={'width_ratios': 1.0, 'height_ratios': 0.5})
+        ymin, ymax = 1e6, -1e6
+        wavelims = (3600, 9800)
+        
+        for ii in [0, 1, 2]: # iterate over cameras
+            sigma, _ = ivar2var(data['ivar'][ii], sigma=True)
 
-        # full spectrum
-        bigax = fig.add_subplot(gs[0, :])
+            bigax1.fill_between(data['wave'][ii], data['flux'][ii]-sigma,
+                             data['flux'][ii]+sigma, color=col1[ii])
+            bigax1.plot(data['wave'][ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
+            #bigax1.plot(data['wave'][ii], continuum_nodust[ii], alpha=0.5, color='k')
+
+            # get the robust range
+            filtflux = median_filter(data['flux'][ii], 5)
+            if np.min(filtflux) < ymin:
+                ymin = np.min(filtflux) * 0.5
+            if np.max(filtflux) > ymax:
+                ymax = np.max(filtflux) * 1.7
+
+        fntsz = 18
+        #bigax1.text(0.98, 0.92, '{}'.format(leg['targetid']), 
+        #         ha='right', va='center', transform=bigax1.transAxes, fontsize=fntsz)
+        #bigax1.text(0.98, 0.92, '{} {}'.format(leg['targetid'], leg['zredrock']), 
+        #         ha='right', va='center', transform=bigax1.transAxes, fontsize=fntsz)
+        bigax1.text(0.98, 0.92, r'{}'.format(leg['zredrock']),
+                 ha='right', va='center', transform=bigax1.transAxes, fontsize=fntsz)
+        bigax1.text(0.98, 0.83, r'{} {}'.format(leg['chi2'], leg['age']),
+                 ha='right', va='center', transform=bigax1.transAxes, fontsize=fntsz)
+        bigax1.text(0.98, 0.74, r'{}'.format(leg['AV']),
+                 ha='right', va='center', transform=bigax1.transAxes, fontsize=fntsz)
+        bigax1.text(0.98, 0.65, r'{}'.format(leg['vdisp']),
+                 ha='right', va='center', transform=bigax1.transAxes, fontsize=fntsz)
+        
+        bigax1.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
+                    ha='left', va='center', transform=bigax1.transAxes,
+                    fontsize=20)
+
+        bigax1.set_title('Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
+            specfit['TILEID'], specfit['NIGHT'], specfit['TARGETID'],
+            specfit['FIBER']))
+        bigax1.set_xlim(wavelims)
+        bigax1.set_ylim(ymin, ymax)
+        bigax1.set_xticklabels([])
+        #bigax1.set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
+        #bigax1.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
+        #bigax1.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
+
+        # full emission-line spectrum + best-fitting lines
+        bigax2 = fig.add_subplot(gs[1, :])
+
+        leg = {
+            #'targetid': '{} {}'.format(specfit['TARGETID'], specfit['FIBER']),
+            #'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
+            'linevshift_forbidden': '$\Delta\,v_{{\\rm forb}}$={:.1f} km/s'.format(specfit['LINEVSHIFT_FORBIDDEN']),
+            'linevshift_balmer': '$\Delta\,v_{{\\rm Balm}}$={:.1f} km/s'.format(specfit['LINEVSHIFT_BALMER']),
+            'linesigma_forbidden': '$\sigma_{{\\rm forb}}$={:.1f} km/s'.format(specfit['LINESIGMA_FORBIDDEN']),
+            'linesigma_balmer': '$\sigma_{{\\rm Balm}}$={:.1f} km/s'.format(specfit['LINESIGMA_BALMER']),
+            'linevshift': '$\Delta_{{\\rm line}}\,v$={:.1f} km/s'.format(specfit['LINEVSHIFT_BALMER']),
+            'linesigma': '$\sigma_{{\\rm line}}$={:.1f} km/s'.format(specfit['LINESIGMA_BALMER']),
+            }
 
         ymin, ymax = 1e6, -1e6
         for ii in [0, 1, 2]: # iterate over cameras
@@ -615,9 +692,9 @@ class EMLineFit(ContinuumTools):
             emlinesigma = emlinesigma[good]
             emlinemodel = emlinemodel[good]
 
-            bigax.fill_between(emlinewave, emlineflux-emlinesigma,
+            bigax2.fill_between(emlinewave, emlineflux-emlinesigma,
                                emlineflux+emlinesigma, color=col1[ii], alpha=0.7)
-            bigax.plot(emlinewave, emlinemodel, color=col2[ii], lw=2)
+            bigax2.plot(emlinewave, emlinemodel, color=col2[ii], lw=2)
 
             # get the robust range
             sigflux, filtflux = np.std(emlineflux), median_filter(emlineflux, 5)
@@ -637,20 +714,27 @@ class EMLineFit(ContinuumTools):
                 ymax = np.max(emlinemodel) * 1.2
 
         fntsz = 18
-        bigax.text(0.95, 0.92, '{}'.format(leg['targetid']), 
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=fntsz)
-        bigax.text(0.95, 0.86, r'{}'.format(leg['zredrock']),
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=fntsz)
-        bigax.text(0.95, 0.80, r'{} {}'.format(leg['linevshift_balmer'], leg['linevshift_forbidden']),
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=fntsz)
-        bigax.text(0.95, 0.74, r'{} {}'.format(leg['linesigma_balmer'], leg['linesigma_forbidden']),
-                   ha='right', va='center', transform=bigax.transAxes, fontsize=fntsz)
+        #bigax2.text(0.98, 0.92, '{}'.format(leg['targetid']), 
+        #           ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
+        #bigax2.text(0.98, 0.86, r'{}'.format(leg['zredrock']),
+        #           ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
+        bigax2.text(0.98, 0.92, r'{}'.format(leg['linesigma']),
+                   ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
+        bigax2.text(0.98, 0.86, r'{}'.format(leg['linevshift']),
+                   ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
+        #bigax2.text(0.98, 0.92, r'{} {}'.format(leg['linevshift_balmer'], leg['linevshift_forbidden']),
+        #           ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
+        #bigax2.text(0.98, 0.86, r'{} {}'.format(leg['linesigma_balmer'], leg['linesigma_forbidden']),
+        #           ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
+        bigax2.text(0.03, 0.9, 'Residual Spectrum + Emission-Line Model',
+                    ha='left', va='center', transform=bigax2.transAxes,
+                    fontsize=20)
                 
-        bigax.set_xlim(3500, 10000)
-        bigax.set_ylim(ymin, ymax)
+        bigax2.set_xlim(wavelims)
+        bigax2.set_ylim(ymin, ymax)
         
-        #bigax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
-        #bigax.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
+        #bigax2.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
+        #bigax2.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
         
         # zoom in on individual emission lines - use linetable!
         sig = 500.0 # [km/s]
@@ -666,9 +750,9 @@ class EMLineFit(ContinuumTools):
         ax = []
         for iax, (meanwave, deltawave, linename) in enumerate(zip(meanwaves, deltawaves, linenames)):
             if iax < 4:
-                xx = fig.add_subplot(gs[1, iax])
+                xx = fig.add_subplot(gs[2, iax])
             else:
-                xx = fig.add_subplot(gs[2, iax-4])
+                xx = fig.add_subplot(gs[3, iax-4])
             ax.append(xx)
 
             wmin = (meanwave-deltawave)*(1+redshift)-2.5*sig*meanwave/3e5
@@ -722,24 +806,24 @@ class EMLineFit(ContinuumTools):
                 xx.set_ylim(ymin[iax], ymax[iax])
                 xlim = xx.get_xlim()
                 #log.info(linenames[iax], xlim, np.diff(xlim))
-                xx.xaxis.set_major_locator(ticker.MaxNLocator(3))
+                xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
                 #xx.xaxis.set_major_locator(ticker.MultipleLocator(20)) # wavelength spacing of ticks [Angstrom]
                 #if iax == 2:
                 #    pdb.set_trace()
 
         # common axis labels
-        tp, bt, lf, rt = 0.95, 0.09, 0.12, 0.95
+        tp, bt, lf, rt = 0.95, 0.09, 0.10, 0.94
         
-        fig.text(lf-0.07, (tp-bt)/2+bt,
-                 r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
+        fig.text(lf-0.06, (tp-bt)/2+bt,
+                 r'Flux Density ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
                  ha='center', va='center', rotation='vertical')
-        fig.text((rt-lf)/2+lf, bt-0.06, r'Observed-frame Wavelength ($\AA$)',
+        fig.text((rt-lf)/2+lf, bt-0.05, r'Observed-frame Wavelength ($\AA$)',
                  ha='center', va='center')
             
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
 
-        pngfile = os.path.join(qadir, 'emlinefit-{}-{}-{}.png'.format(
-            specfit['TILE'], specfit['NIGHT'], specfit['TARGETID']))
+        pngfile = os.path.join(outdir, 'specfit-{}-{}-{}.png'.format(
+            specfit['TILEID'], specfit['NIGHT'], specfit['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
         plt.close()

@@ -21,12 +21,12 @@ def _desiqa_one(args):
 
 def desiqa_one(CFit, EMFit, data=None, specfit=None, photfit=None, outdir=None, suffix=None):
     """QA on one spectrum."""
-    t0 = time.time()
+    #t0 = time.time()
     if photfit is not None:
-        CFit.qa_photfit_continuum(photfit, specfit=specfit, suffix=suffix, outdir=outdir)
+        CFit.qa_photfit(photfit, specfit=specfit, suffix=suffix, outdir=outdir)
     if specfit is not None:
-        EMFit.qa_emlines(data, specfit, suffix=suffix, outdir=outdir)
-    log.info('Building took {:.2f} sec'.format(time.time()-t0))
+        EMFit.qa_specfit(data, specfit, suffix=suffix, outdir=outdir)
+    #log.info('Building took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
     """Parse input arguments.
@@ -156,6 +156,7 @@ def main(args=None, comm=None):
         photfit = photfit[np.hstack([np.where(tid == photfit['TARGETID'])[0] for tid in specfit['TARGETID']])]
 
     # Build the QA in parallel
+    t0 = time.time()
     if photfit is not None and specfit is not None:
         qaargs = [(CFit, EMFit, data[igal], specfit[igal], photfit[igal], args.outdir, args.suffix)
                   for igal in np.arange(len(specfit))]
@@ -174,6 +175,7 @@ def main(args=None, comm=None):
             P.map(_desiqa_one, qaargs)
     else:
         [desiqa_one(*_qaargs) for _qaargs in qaargs]
+    log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
 
 if __name__ == '__main__':
     main()
