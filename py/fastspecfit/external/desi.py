@@ -5,7 +5,8 @@ fastspecfit.external.desi
 
 fastspecfit wrapper for DESI
 
-fastspecfit-desi /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80605/20201215/zbest-9-80605-20201215.fits -o photfit.fits --ntargets 2 --mp 1 --photfit
+fastspecfit /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80608/20201215/zbest-9-80608-20201215.fits -o specfit.fits --ntargets 10 --mp 1
+fastspecfit /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80605/20201215/zbest-9-80605-20201215.fits -o photfit.fits --ntargets 10 --mp 1 --photfit
 
 """
 import pdb # for debugging
@@ -18,7 +19,7 @@ from astropy.table import Table
 from desiutil.log import get_logger
 log = get_logger()
 
-# ridiculousness!
+# ridiculousness! - this seems to come from healpy, blarg
 import tempfile
 os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 
@@ -28,12 +29,12 @@ def _fastspecfit_one(args):
 
 def fastspecfit_one(iobj, data, CFit, EMFit, out, photfit=False, solve_vdisp=False):
     """Fit one spectrum."""
-    log.info('Continuum-fitting object {}'.format(iobj))
+    #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
     if photfit:
         cfit, _ = CFit.continuum_photfit(data)
     else:
-        cfit, continuum = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
+        cfit, continuummodel = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
     for col in cfit.colnames:
         out[col] = cfit[col]
     log.info('Continuum-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
@@ -43,7 +44,7 @@ def fastspecfit_one(iobj, data, CFit, EMFit, out, photfit=False, solve_vdisp=Fal
 
     # fit the emission-line spectrum
     t0 = time.time()
-    emfit = EMFit.fit(data, continuum)
+    emfit = EMFit.fit(data, continuummodel)
     for col in emfit.colnames:
         out[col] = emfit[col]
     log.info('Line-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
@@ -51,88 +52,210 @@ def fastspecfit_one(iobj, data, CFit, EMFit, out, photfit=False, solve_vdisp=Fal
     return out
 
 class DESISpectra(object):
-    def __init__(self, zbestfiles, exposures=False):
+    def __init__(self):
         """Class to read in the DESI data needed by fastspecfit.
 
         """
-        #from glob import glob
-        from astropy.table import vstack
-        from desitarget.io import read_targets_in_tiles
+        #from desitarget.geomask import pixarea2nside
 
-        zbestfiles = np.array(sorted(zbestfiles))
-        #zbestfiles = np.array(sorted(glob(os.path.join(zbestdir, 'zbest-?-*-????????.fits'))))
-        if len(zbestfiles) == 0:
-            log.warning('No zbest-?-*-????????.fits files found in {}'.format(zbestdir))
+        self.fiberassign_dir = os.path.join(os.getenv('DESI_ROOT'), 'target', 'fiberassign', 'tiles', 'trunk')
+
+        # read the summary tile file (not sure we need this...)
+        tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
+        self.tiles = fitsio.read(tilefile)
+        log.info('Read {} tiles from {}'.format(len(self.tiles), tilefile))
+        
+        ## Closest nside to DESI tile area of ~7 deg (from
+        ## desitarget.io.read_targets_in_quick).
+        #self.tile_nside = pixarea2nside(8.)
+
+    def _get_targetdir(self, tileid):
+        """Get the targets catalog used to build a given fiberassign catalog.
+
+        """
+        thistile = self.tiles[self.tiles['TILEID'] == tileid]
+        stileid = '{:06d}'.format(tileid)
+        fahdr = fitsio.read_header(os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid)))
+        targetdir = fahdr['TARG']
+
+        # sometimes this is a KPNO directory!
+        if not os.path.isdir(targetdir):
+            log.warning('Targets directory not found {}'.format(targetdir))
+            targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('/data/', ''))
+            if not os.path.isdir(targetdir):
+                log.fatal('Targets directory not found {}'.format(targetdir))
+                raise IOError
+
+        return targetdir
+
+    def find_specfiles(self, zbestfiles=None, fastfit=None, specprod=None,
+                       firsttarget=0, targetids=None, ntargets=None, exposures=False):
+        """Initialize the fastspecfit output data table.
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        Notes
+        -----
+
+        fastfit - results table (overrides zbestfiles and then specprod is required
+
+        """
+        from glob import glob
+        from desimodel.footprint import radec2pix
+
+        if zbestfiles is None and fastfit is None:
+            log.warning('At least one of zbestfiles or fastfit (and specprod) are required.')
             raise IOError
-        
-        self.zbestfiles = zbestfiles
-        
-        if exposures:
-            self.specfiles = [zbestfile.replace('zbest-', 'spectra-') for zbestfile in zbestfiles]
-        else:
-            self.specfiles = [zbestfile.replace('zbest-', 'coadd-') for zbestfile in zbestfiles]
-        
-        zbest, fmap = [], []
-        self.fitindx = []
-        for ifile, (zbestfile, specfile) in enumerate(zip(self.zbestfiles, self.specfiles)):
-            # Read the zbest file and fibermap and select the objects to fit.
-            zb = fitsio.read(zbestfile, 'ZBEST')
-            #fm = fitsio.read(zbestfile, 'FIBERMAP')
 
-            hdr = fitsio.read_header(zbestfile, 'FIBERMAP')
-            fm = fitsio.read(specfile, 'FIBERMAP')
+        if fastfit is not None:
+            if specprod is None:
+                log.warning('specprod is required when passing a fastfit results table!')
+                raise IOError
+            fastfit = Table(fastfit)
+            targetids = fastfit['TARGETID'].data
+            petals = fastfit['FIBER'].data // 500
+            tiles = fastfit['TILEID'].astype(str).data
+            nights = fastfit['NIGHT'].astype(str).data
+
+            zbestfiles = []
+            for petal, tile, night in zip(petals, tiles, nights):
+                zbestfile = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles',
+                                         tile, night, 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
+                if not os.path.isfile(zbestfile):
+                    log.warning('zbestfile {} not found.'.format(zbestfile))
+                    raise IOError
+                zbestfiles.append(zbestfile)
+            zbestfiles = np.array(zbestfiles)
+
+        if len(np.atleast_1d(zbestfiles)) == 0:
+            log.warning('You must provide at least one zbestfile!')
+            raise IOError
+
+        # Try to glean specprod so we can write it to the output file. This
+        # should really be in the file header--- see
+        # https://github.com/desihub/desispec/issues/1077
+        if specprod is None:
+            # stupidly fragile!
+            specprod = np.atleast_1d(zbestfiles)[0].replace(os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux'), '').split(os.sep)[1]
+            self.specprod = specprod
+            log.info('Parsed specprod={}'.format(specprod))
+            
+        # Should we not sort...?
+        #zbestfiles = np.array(set(np.atleast_1d(zbestfiles)))
+        zbestfiles = np.array(sorted(set(np.atleast_1d(zbestfiles))))
+        log.info('Reading and parsing {} unique zbestfile(s)'.format(len(zbestfiles)))
+
+        #self.fitindx = []
+        self.zbest, self.fibermap = [], []
+        self.zbestfiles, self.specfiles = [], []
+        for zbestfile in np.atleast_1d(zbestfiles):
 
             if exposures:
-                pdb.set_trace()
-                _, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)            
-                fm = fm[I]
-                assert(np.all(zb['TARGETID'] == fm['TARGETID']))
+                specfile = zbestfile.replace('zbest-', 'spectra-')
             else:
-                J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY') * 
-                     (fm['OBJTYPE'] == 'TGT') * (fm['FIBERSTATUS'] == 0))
-                fitindx = np.where(J)[0]
-                self.fitindx.append(fitindx)
+                specfile = zbestfile.replace('zbest-', 'coadd-')
 
+            # If targetids is *not* given we have to choose "good" objects
+            # before subselecting (e.g., we don't want sky spectra).
+            if targetids is None:
+                zb = fitsio.read(zbestfile, 'ZBEST')
+                fm = fitsio.read(specfile, 'FIBERMAP')
+                #fm = fitsio.read(zbestfile, 'FIBERMAP')
+                #hdr = fitsio.read_header(zbestfile, 'FIBERMAP')
+
+                if exposures:
+                    log.fatal('Not yet implemented!')
+                    _, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)            
+                    fm = fm[I]
+                    assert(np.all(zb['TARGETID'] == fm['TARGETID']))
+                else:
+                    # The fibermap includes all the spectra that went into the coadd
+                    # (based on the unique TARGETID which is in the zbest table).
+                    assert(len(zb) == len(fm))
+                    fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 0) * (zb['SPECTYPE'] == 'GALAXY') * 
+                         (fm['OBJTYPE'] == 'TGT') * (fm['FIBERSTATUS'] == 0))[0]
+                    #self.fitindx.append(fitindx)
+            else:
+                # We already know we like the input targetids, so no selection
+                # needed.
+                alltargetids = fitsio.read(zbestfile, 'ZBEST', columns='TARGETID')                
+                fitindx = np.where([tid in targetids for tid in alltargetids])[0]
+                
+            if len(fitindx) == 0:
+                log.info('No requested targets found in zbestfile {}'.format(zbestfile))
+                continue
+
+            # Do we want just a subset of the available objects?
+            if ntargets is None:
+                _ntargets = len(fitindx)
+            else:
+                _ntargets = ntargets
+            if _ntargets > len(fitindx):
+                log.warning('Number of requested ntargets exceeds the number of targets on {}; reading all of them.'.format(
+                    zbestfile))
+                #raise ValueError
+
+            __ntargets = len(fitindx)
+            fitindx = fitindx[firsttarget:firsttarget+_ntargets]
+            if len(fitindx) == 0:
+                log.info('All {} targets in zbestfile {} have been dropped (firsttarget={}, ntargets={}).'.format(
+                    __ntargets, zbestfile, firsttarget, _ntargets))
+                continue
+                
+            # If firsttarget is a large index then the set can become empty.
+            if targetids is None:
                 zb = Table(zb[fitindx])
                 fm = Table(fm[fitindx])
+            else:
+                zb = Table(fitsio.read(zbestfile, 'ZBEST', rows=fitindx))
+                fm = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx))
+            assert(np.all(zb['TARGETID'] == fm['TARGETID']))
 
-            # Add additional columns to the fibermap table. Should we pass this
-            # forward from mpi-fastspecfit?
-            if ifile == 0:
-                tileid = fm['TILEID'][0]
-                
-                tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
-                log.info('Reading {}'.format(tilefile))
-                tiles = fitsio.read(tilefile)
-                thistile = tiles[tiles['TILEID'] == tileid]
+            self.zbest.append(Table(zb))
+            self.fibermap.append(Table(fm))
+            self.zbestfiles.append(zbestfile)
+            self.specfiles.append(specfile)
 
-                stileid = '{:06d}'.format(tileid)
-                fahdr = fitsio.read_header('/global/cfs/cdirs/desi/target/fiberassign/tiles/trunk/{}/fiberassign-{}.fits.gz'.format(stileid[:3], stileid))
-                hpdirname = fahdr['TARG']
+        if len(self.zbest) == 0:
+            log.warning('No targets read!')
+            return
 
-                # sometimes this is a KPNO directory!
-                if not os.path.isdir(hpdirname):
-                    log.info('Targets directory not found {}'.format(hpdirname))
-                    hpdirname = os.path.join(os.getenv('DESI_ROOT'), hpdirname.replace('/data/', ''))
-                log.info('Reading targets from {}'.format(hpdirname))
-                alltargets = read_targets_in_tiles(hpdirname, tiles=thistile, quick=True)
+        # The targets catalogs are organized on a much larger spatial scale, so
+        # grab additional targeting info outside the main loop. See
+        # desitarget.io.read_targets_in_tiles for the algorithm.
+        t0 = time.time()
+        alltileid = [fm['TILEID'][0] for fm in self.fibermap]
+        info = Table(np.hstack([fm['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for fm in self.fibermap]))
+        targets = []
+        for tileid in set(alltileid):
+            targetdir = self._get_targetdir(tileid)
+            targetfiles = glob(os.path.join(targetdir, '*-hp-*.fits'))
+            filenside = fitsio.read_header(targetfiles[0], ext=1)['FILENSID']
+            pixlist = radec2pix(filenside, info['TARGET_RA'], info['TARGET_DEC'])
+            targetfiles = [targetfiles[0].split('hp-')[0]+'hp-{}.fits'.format(pix) for pix in set(pixlist)]
+            for targetfile in targetfiles:
+                alltargets = fitsio.read(targetfile, columns=['TARGETID', 'FLUX_W1', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2',
+                                                              'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+                                                              'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2'])
+                alltargets = alltargets[np.isin(alltargets['TARGETID'], info['TARGETID'])]
+                targets.append(alltargets)
+        targets = Table(np.hstack(targets))
 
-            keep = np.hstack([np.where(tid == alltargets['TARGETID'])[0] for tid in fm['TARGETID']])
-            targets = alltargets[keep]
-            assert(np.all(targets['TARGETID'] == fm['TARGETID']))
-            assert(np.all(targets['FLUX_W1'] == fm['FLUX_W1']))
-            
-            for col in ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']:
-                fm[col] = targets[col]
-                
-            zbest.append(zb)
-            fmap.append(fm)
+        fmaps = []
+        for fm in self.fibermap:
+            srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in fm['TARGETID']])
+            for col in ['FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R',
+                        'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']:
+                fm[col] = targets[col][srt]
+            assert(np.all(fm['TARGETID'] == targets['TARGETID'][srt]))
+            fmaps.append(Table(fm))
+        log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
-        self.zbest = zbest
-        self.fibermap = fmap
-        #self.zbest = vstack(zbest)
-        #self.fibermap = vstack(fmap)
-        #self.zbest = Table(np.hstack(zbest))
+        self.fibermap = fmaps # update
 
     @staticmethod
     def desitarget_resolve_dec():
@@ -140,8 +263,8 @@ class DESISpectra(object):
         dec = 32.375
         return dec
 
-    def read_and_unpack(self, CFit, firsttarget=0, targetids=None, ntargets=None,
-                        photfit=False, exposures=False):
+    def read_and_unpack(self, CFit, photfit=False, exposures=False,
+                        synthphot=True, remember_coadd=False):
         """Unpack and pre-process a single DESI spectrum.
         
         Parameters
@@ -207,45 +330,22 @@ class DESISpectra(object):
         #from desitarget.io import desitarget_resolve_dec
         from fastspecfit.util import C_LIGHT
 
-        if targetids is None:
-            thesetargetids = None
-        else:
-            thesetargetids = targetids.copy()
+        # Read everything into a simple dictionary.
+        t0 = time.time()
+        alldata = []
+        for specfile, zbest, fibermap in zip(self.specfiles, self.zbest, self.fibermap):
+            log.info('Reading {} spectra from {}'.format(len(zbest), specfile))
 
-        # Unpack the subset of objects we care about into a simple dictionary.
-        alldata, zbests, fibermaps = [], [], []
-        for specfile, zbest, fibermap, fitindx in zip(self.specfiles, self.zbest, self.fibermap, self.fitindx):
-
-            # Select the subset of objects to process.
-            if thesetargetids is None:
-                targetids = zbest['TARGETID'].data
-            else:
-                targetids = thesetargetids.copy()
-
-            these = np.where([tid in targetids for tid in zbest['TARGETID']])[0]
-            if len(these) == 0:
-                continue
-
-            if ntargets is None:
-                ntargets = len(these)
-
-            if ntargets > len(these):
-                log.warning('Number of requested ntargets exceeds the number of spectra on {}.'.format(specfile))
-                #raise ValueError
-            else:
-                # the logic here is not quite right...needs more testing
-                these = these[firsttarget:firsttarget+ntargets]
-            
-            fitindx = fitindx[these]
-            zbest = zbest[these]
-            fibermap = fibermap[these]
-            zbests.append(zbest)
-            fibermaps.append(fibermap)
+            # sometimes these are an astropy.table.Row!
+            zbest = Table(zbest)
+            fibermap = Table(fibermap)
 
             if not photfit:
-                spec = read_spectra(specfile)#.select(targets=zbest['TARGETID'])
-                
-            for igal, indx in enumerate(fitindx):
+                spec = read_spectra(specfile).select(targets=zbest['TARGETID'])
+                assert(np.all(spec.fibermap['TARGETID'] == zbest['TARGETID']))
+                assert(np.all(spec.fibermap['TARGETID'] == fibermap['TARGETID']))
+            
+            for igal in np.arange(len(zbest)):
                 ra = fibermap['TARGET_RA'][igal]
                 dec = fibermap['TARGET_DEC'][igal]
                 ebv = CFit.SFDMap.ebv(ra, dec)
@@ -259,45 +359,47 @@ class DESISpectra(object):
                     allfilters = CFit.decamwise
                 else:
                     filters = CFit.bassmzls
-                    allfilters = CFit.bassmzlswise            
+                    allfilters = CFit.bassmzlswise
 
                 # Unpack the imaging photometry and correct for MW dust.
                 if photfit:
                     # all photometry
-                    dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
+                    mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
 
                     maggies = np.zeros(len(CFit.bands))
                     ivarmaggies = np.zeros(len(CFit.bands))
                     for iband, band in enumerate(CFit.bands):
-                        maggies[iband] = fibermap['FLUX_{}'.format(band.upper())][igal] / dust[iband]
-                        ivarmaggies[iband] = fibermap['FLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
+                        maggies[iband] = fibermap['FLUX_{}'.format(band.upper())][igal] / mw_transmission_flux[iband]
+                        ivarmaggies[iband] = fibermap['FLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_flux[iband]**2
 
                     data['phot'] = CFit.parse_photometry(CFit.bands,
                         maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
                         lambda_eff=allfilters.effective_wavelengths.value)
 
                     # fiber fluxes
-                    fiberdust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
+                    mw_transmission_fiberflux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
 
                     fibermaggies = np.zeros(len(CFit.fiber_bands))
                     #ivarfibermaggies = np.zeros(len(CFit.fiber_bands))
                     for iband, band in enumerate(CFit.fiber_bands):
-                        fibermaggies[iband] = fibermap['FIBERTOTFLUX_{}'.format(band.upper())][igal] / fiberdust[iband]
-                        #ivarfibermaggies[iband] = fibermap['FIBERTOTFLUX_IVAR_{}'.format(band.upper())][igal] * dust[iband]**2
+                        fibermaggies[iband] = fibermap['FIBERTOTFLUX_{}'.format(band.upper())][igal] / mw_transmission_fiberflux[iband]
+                        #ivarfibermaggies[iband] = fibermap['FIBERTOTFLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_fiberflux[iband]**2
 
                     data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
                         maggies=fibermaggies, nanomaggies=True,
                         lambda_eff=filters.effective_wavelengths.value)
+                    
                 else:
+                    
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                                  'linemask': [], 'snr': np.zeros(3).astype('f4')})
                     for icam, camera in enumerate(spec.bands):
-                        dust = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
+                        mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
                         data['wave'].append(spec.wave[camera])
-                        data['flux'].append(spec.flux[camera][indx, :] * dust)
-                        data['ivar'].append(spec.ivar[camera][indx, :] / dust**2)
-                        data['res'].append(Resolution(spec.resolution_data[camera][indx, :, :]))
-                        data['snr'][icam] = np.median(spec.flux[camera][indx, :] * np.sqrt(spec.ivar[camera][indx, :]))
+                        data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
+                        data['ivar'].append(spec.ivar[camera][igal, :] * mw_transmission_spec**2)
+                        data['res'].append(Resolution(spec.resolution_data[camera][igal, :, :]))
+                        data['snr'][icam] = np.median(spec.flux[camera][igal, :] * np.sqrt(spec.ivar[camera][igal, :]))
 
                         linemask = np.ones_like(spec.wave[camera], bool)
                         for line in CFit.linetable:
@@ -325,33 +427,44 @@ class DESISpectra(object):
                     good = np.where(coadd_ivar > 0)[0]
                     coadd_flux[good] = np.sum(coadd_ivar3d[good, :] * coadd_flux3d[good, :], axis=1) / coadd_ivar[good]
 
-                    #data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux, 'coadd_ivar': coadd_ivar})
-                    #del coadd_wave, coadd_ivar, coadd_flux
+                    #import matplotlib.pyplot as plt
+                    #plt.clf()
+                    #for ii in np.arange(3):
+                    #    plt.plot(data['wave'][ii], data['flux'][ii])
+                    #plt.plot(coadd_wave, coadd_flux-2, alpha=0.6, color='k')
+                    #plt.xlim(5500, 6000)
+                    #plt.savefig('test.png')
+                    #pdb.set_trace()
 
-                    padflux, padwave = filters.pad_spectrum(coadd_flux, coadd_wave, method='edge')
-                    synthmaggies = filters.get_ab_maggies(padflux / CFit.fluxnorm, padwave)
-                    synthmaggies = synthmaggies.as_array().view('f8')
+                    if remember_coadd:
+                        data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux, 'coadd_ivar': coadd_ivar})
 
-                    # code to synthesize uncertainties from the variance spectrum
-                    #var, mask = _ivar2var(data['coadd_ivar'])
-                    #padvar, padwave = filters.pad_spectrum(var[mask], data['coadd_wave'][mask], method='edge')
-                    #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
-                    #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
-                    #
-                    #data['synthphot'] = CFit.parse_photometry(CFit.bands,
-                    #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
-                    #    ivarmaggies=synthivarmaggies, nanomaggies=False)
+                    if synthphot:
+                        padflux, padwave = filters.pad_spectrum(coadd_flux, coadd_wave, method='edge')
+                        synthmaggies = filters.get_ab_maggies(padflux / CFit.fluxnorm, padwave)
+                        synthmaggies = synthmaggies.as_array().view('f8')
 
-                    data['synthphot'] = CFit.parse_photometry(CFit.synth_bands,
-                        maggies=synthmaggies, nanomaggies=False,
-                        lambda_eff=filters.effective_wavelengths.value)
+                        # code to synthesize uncertainties from the variance spectrum
+                        #var, mask = _ivar2var(data['coadd_ivar'])
+                        #padvar, padwave = filters.pad_spectrum(var[mask], data['coadd_wave'][mask], method='edge')
+                        #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
+                        #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
+                        #
+                        #data['synthphot'] = CFit.parse_photometry(CFit.bands,
+                        #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
+                        #    ivarmaggies=synthivarmaggies, nanomaggies=False)
+
+                        data['synthphot'] = CFit.parse_photometry(CFit.synth_bands,
+                            maggies=synthmaggies, nanomaggies=False,
+                            lambda_eff=filters.effective_wavelengths.value)
 
                 alldata.append(data)
 
-        self.zbest = Table(np.hstack(zbests))
-        self.fibermap = Table(np.hstack(fibermaps))
+        self.zbest = Table(np.hstack(self.zbest))
+        self.fibermap = Table(np.hstack(self.fibermap))
         self.ntargets = len(self.zbest)
-
+        log.info('Read data for {} objects in {:.2f} sec'.format(self.ntargets, time.time()-t0))
+        
         return alldata
         
     def init_output(self, CFit, EMFit, photfit=False):
@@ -394,6 +507,7 @@ class DESISpectra(object):
             out[fibermapcol] = self.fibermap[fibermapcol]
         for zbestcol in ['Z', 'DELTACHI2']:#, 'ZERR']:#, 'SPECTYPE', ]
             out[zbestcol] = self.zbest[zbestcol]
+        out['PHOTSYS_SOUTH'] = out['DEC'] < self.desitarget_resolve_dec()
 
         # target column names (e.g., DESI_TARGET)
         _targetcols = ['DESI_TARGET' in col or 'BGS_TARGET' in col or 'MWS_TARGET' in col for col in self.fibermap.colnames]
@@ -410,6 +524,28 @@ class DESISpectra(object):
             out = hstack((out, CFit.init_spec_output(nobj), EMFit.init_output(CFit.linetable, nobj)))
 
         return out
+
+def write_fastspec(out, outfile=None, specprod=None):
+    """Write out.
+
+    """
+    from astropy.io import fits
+    
+    t0 = time.time()
+    outdir = os.path.dirname(os.path.abspath(outfile))
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+        
+    log.info('Writing results for {} objects to {}'.format(len(out), outfile))
+    #out.write(outfile, overwrite=True)
+    hduprim = fits.PrimaryHDU()
+    hduout = fits.convenience.table_to_hdu(out)
+    hduout.header['EXTNAME'] = 'RESULTS'
+    if specprod:
+        hduout.header['SPECPROD'] = specprod
+    hx = fits.HDUList([hduprim, hduout])
+    hx.writeto(outfile, overwrite=True)
+    log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
     """Parse input arguments.
@@ -462,23 +598,26 @@ def main(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit()
     EMFit = EMLineFit()
+    Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
     t0 = time.time()
-    DESISpec = DESISpectra(args.zbestfiles, exposures=args.exposures)
-
-    data = DESISpec.read_and_unpack(CFit, firsttarget=args.firsttarget, targetids=targetids,
-                                    ntargets=args.ntargets, exposures=args.exposures,
-                                    photfit=args.photfit)
-    out = DESISpec.init_output(CFit, EMFit, photfit=args.photfit)
+    Spec.find_specfiles(args.zbestfiles, exposures=args.exposures, firsttarget=args.firsttarget,
+                        targetids=targetids, ntargets=args.ntargets)
+    if len(Spec.specfiles) == 0:
+        return
+    data = Spec.read_and_unpack(CFit, exposures=args.exposures, photfit=args.photfit,
+                                synthphot=True)
+    
+    out = Spec.init_output(CFit, EMFit, photfit=args.photfit)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
-        DESISpec.ntargets, time.time()-t0))
+        Spec.ntargets, time.time()-t0))
 
     # Fit in parallel
     t0 = time.time()
     fitargs = [(iobj, data[iobj], CFit, EMFit, out[iobj], args.photfit, args.solve_vdisp)
-               for iobj in np.arange(DESISpec.ntargets)]
+               for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
         with multiprocessing.Pool(args.mp) as P:
@@ -488,12 +627,5 @@ def main(args=None, comm=None):
     out = Table(np.hstack(_out))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
-    # write out
-    t0 = time.time()
-    outdir = os.path.dirname(os.path.abspath(args.outfile))
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir, exist_ok=True)
-        
-    log.info('Writing results for {} objects to {}'.format(len(out), args.outfile))
-    out.write(args.outfile, overwrite=True)
-    log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
+    # Write out.
+    write_fastspec(out, outfile=args.outfile, specprod=Spec.specprod)
