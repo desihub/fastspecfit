@@ -224,7 +224,7 @@ def plan(args, comm=None, merge=False):
                 log.fatal('Required ${} environment variable not set'.format(key))
                 raise EnvironmentError('Required ${} environment variable not set'.format(key))
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
-        if not os.path.isdir(outdir):
+        if not merge and not os.path.isdir(outdir):
             os.makedirs(outdir, exist_ok=True)
 
         specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', args.specprod, 'tiles')
@@ -295,7 +295,7 @@ def plan(args, comm=None, merge=False):
             for night in set(allnights):
                 nightdir = os.path.join(specprod_dir, tile, night)
                 outnightdir = os.path.join(outdir, tile, night)
-                if not os.path.isdir(outnightdir):
+                if not merge and not os.path.isdir(outnightdir):
                     os.makedirs(outnightdir, exist_ok=True)
                 #outprefix = '{}-{}-{}'.format(_outprefix, tile, night)                
                 #_specfiles = find_specfiles(nightdir, outnightdir, prefix='zbest', outprefix=outprefix)
@@ -407,7 +407,8 @@ def merge_fastspecfit(args, comm=None):
 
     """
     import fitsio
-    from astropy.table import Table
+    from astropy.io import fits
+    from astropy.table import Table, vstack
     
     if comm is None:
         rank, size = 0, 1
@@ -421,8 +422,9 @@ def merge_fastspecfit(args, comm=None):
     else:
         prefix = 'specfit'
 
-    t0 = time.time()        
-    out = Table(np.hstack([fitsio.read(outfile) for outfile in outfiles]))#[:5]]))
+    t0 = time.time()
+    out = vstack([Table(fitsio.read(outfile)) for outfile in outfiles])
+    #out = Table(np.hstack([fitsio.read(outfile) for outfile in outfiles]))#[:5]]))
     log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
         len(out), len(outfiles), prefix, (time.time()-t0)/60.0))
 
@@ -437,10 +439,18 @@ def merge_fastspecfit(args, comm=None):
         nightsuffix = str(nightmin)
     else:
         nightsuffix = '{}-{}'.format(nightmin, nightmax)
-    
+
+    hdr = fitsio.read_header(outfiles[0], ext='RESULTS') # assume they're all the same!
+
     outfile = os.path.join(outdir, '{}-{}-{}.fits'.format(prefix, tilesuffix, nightsuffix))
     log.info('Writing {}'.format(outfile))
-    out.write(outfile, overwrite=True)    
+    hduprim = fits.PrimaryHDU()
+    hduout = fits.convenience.table_to_hdu(out)
+    hduout.header['EXTNAME'] = 'RESULTS'
+    hduout.header['SPECPROD'] = hdr['SPECPROD']
+    hx = fits.HDUList([hduprim, hduout])
+    hx.writeto(outfile, overwrite=True)
+    #out.write(outfile, overwrite=True)    
     
 def run_fastspecfit(args, comm=None):
 

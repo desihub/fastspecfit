@@ -1209,20 +1209,20 @@ class ContinuumFit(ContinuumTools):
                     yerr=yerr,
                     fmt='s', markersize=11, markeredgewidth=3, markeredgecolor='k',
                     markerfacecolor='red', elinewidth=3, ecolor='red', capsize=4,
-                    label=r'$grz\,W_{1}W_{2}$ (total flux)', zorder=1)
+                    label=r'$grz\,W_{1}W_{2}$ (total flux)', zorder=2)
 
         good = np.where(fiberphot['abmag'] > 0)[0]
         if len(good) > 0:
             ax.scatter(fiberphot['lambda_eff'][good]/1e4, fiberphot['abmag'][good],
                         marker='^', s=150, facecolor='orange', edgecolor='k',
-                        label=r'$grz$ (fibertot flux)', alpha=0.9, zorder=4)
+                        label=r'$grz$ (fibertot flux)', alpha=0.9, zorder=5)
         if synthphot:
             ax.scatter(synthmodelphot['lambda_eff']/1e4, synthmodelphot['abmag'], 
                        marker='s', s=175, color='green', #edgecolor='k',
-                       label=r'$grz$ (spectrum, synthesized)', alpha=0.7, zorder=2)
+                       label=r'$grz$ (spectrum, synthesized)', alpha=0.7, zorder=3)
             ax.scatter(synthphot['lambda_eff']/1e4, synthphot['abmag'], 
                        marker='o', s=130, color='blue', edgecolor='k',
-                       label=r'$grz$ (spectral model, synthesized)', alpha=1.0, zorder=3)
+                       label=r'$grz$ (spectral model, synthesized)', alpha=1.0, zorder=4)
 
         leg = ax.legend(loc='lower left', fontsize=16)
         #for hndl in leg.legendHandles:

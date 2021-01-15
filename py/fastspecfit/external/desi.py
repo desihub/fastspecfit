@@ -121,8 +121,14 @@ class DESISpectra(object):
             tiles = fastfit['TILEID'].astype(str).data
             nights = fastfit['NIGHT'].astype(str).data
 
+            log.info('keep track of a sorting index which will keep the zbest and fibermap tables, below, row-aligned with the input fastfit table')
+            pdb.set_trace()
+
             zbestfiles = []
             for petal, tile, night in zip(petals, tiles, nights):
+                if petal == 2 or petal == 6:
+                    log.warning('Temporarily skipping petals 2 & 6!')
+                    continue
                 zbestfile = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles',
                                          tile, night, 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
                 if not os.path.isfile(zbestfile):
@@ -153,7 +159,6 @@ class DESISpectra(object):
         self.zbest, self.fibermap = [], []
         self.zbestfiles, self.specfiles = [], []
         for zbestfile in np.atleast_1d(zbestfiles):
-
             if exposures:
                 specfile = zbestfile.replace('zbest-', 'spectra-')
             else:
@@ -250,7 +255,8 @@ class DESISpectra(object):
             srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in fm['TARGETID']])
             for col in ['FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R',
                         'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']:
-                fm[col] = targets[col][srt]
+                if col not in fm.colnames:
+                    fm[col] = targets[col][srt]
             assert(np.all(fm['TARGETID'] == targets['TARGETID'][srt]))
             fmaps.append(Table(fm))
         log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
@@ -364,6 +370,7 @@ class DESISpectra(object):
                 # Unpack the imaging photometry and correct for MW dust.
                 if photfit:
                     # all photometry
+                    #fibermap['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
                     mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
 
                     maggies = np.zeros(len(CFit.bands))
@@ -611,6 +618,7 @@ def main(args=None, comm=None):
                                 synthphot=True)
     
     out = Spec.init_output(CFit, EMFit, photfit=args.photfit)
+    pdb.set_trace()
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
         Spec.ntargets, time.time()-t0))
 
