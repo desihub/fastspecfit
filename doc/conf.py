@@ -131,7 +131,14 @@ napoleon_include_private_with_doc = True
 # This value contains a list of modules to be mocked up. This is useful when
 # some external dependencies are not met at build time and break the
 # building process.
-# autodoc_mock_imports = ['astropy', 'astropy.io']
+autodoc_mock_imports = []
+for missing in ('astropy', 'desimodel', 'desitarget', 'desiutil', 'fitsio', 
+                'matplotlib', 'numba', 'numpy', 'redrock', 
+                'scipy', 'speclite', 'yaml'):
+    try:
+        foo = import_module(missing)
+    except ImportError:
+        autodoc_mock_imports.append(missing)
 
 # -- Options for HTML output ----------------------------------------------
 
