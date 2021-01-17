@@ -11,11 +11,8 @@ To process one specific tile and night:
 """
 import pdb # for debuggin
 
-import sys, os, glob, time, subprocess, re
-import argparse
+import sys, os, glob, time, subprocess, argparse
 import numpy as np
-from redrock.utils import nersc_login_node
-from fastspecfit.external import desi
 
 from desiutil.log import get_logger
 log = get_logger()
@@ -556,7 +553,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.merge or args.nompi or nersc_login_node():
+    if args.merge or args.nompi:
         comm = None
     else:
         try:

@@ -6,7 +6,7 @@ Use --mpi for the MPI version.
 """
 import os
 from desiutil.log import get_logger
-from fastspecfit.external import desi
+from fastspecfit import fastspecfit
 
 log = get_logger()
 
@@ -15,5 +15,5 @@ for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES']:
         log.fatal('Required ${} environment variable not set'.format(key))
         raise EnvironmentError('Required ${} environment variable not set'.format(key))
 
-desi.main(comm=None)
+fastspecfit.main(comm=None)
 

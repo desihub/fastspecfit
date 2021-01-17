@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
-fastspecfit.external.desi
-=========================
+fastspecfit.fastspecfit
+=======================
 
 fastspecfit wrapper for DESI
 
