@@ -5,13 +5,16 @@ FastSpecFit API
 ===============
 
 .. automodule:: fastspecfit
-   :members:
+   :imported-members:
 
 .. automodule:: fastspecfit.continuum
-   :members:
+   :imported-members:
 
 .. automodule:: fastspecfit.emlines
-   :members:
+   :imported-members:
+
+.. automodule:: fastspecfit.fastspecfit
+   :imported-members:
 
 .. automodule:: fastspecfit.util
-   :members:
+   :imported-members:
