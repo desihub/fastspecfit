@@ -86,8 +86,14 @@ class DESISpectra(object):
             tiles = fastfit['TILEID'].astype(str).data
             nights = fastfit['NIGHT'].astype(str).data
 
+            log.info('keep track of a sorting index which will keep the zbest and fibermap tables, below, row-aligned with the input fastfit table')
+            pdb.set_trace()
+
             zbestfiles = []
             for petal, tile, night in zip(petals, tiles, nights):
+                if petal == 2 or petal == 6:
+                    log.warning('Temporarily skipping petals 2 & 6!')
+                    continue
                 zbestfile = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles',
                                          tile, night, 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
                 if not os.path.isfile(zbestfile):
@@ -118,7 +124,6 @@ class DESISpectra(object):
         self.zbest, self.fibermap = [], []
         self.zbestfiles, self.specfiles = [], []
         for zbestfile in np.atleast_1d(zbestfiles):
-
             if exposures:
                 specfile = zbestfile.replace('zbest-', 'spectra-')
             else:
@@ -215,7 +220,8 @@ class DESISpectra(object):
             srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in fm['TARGETID']])
             for col in ['FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R',
                         'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']:
-                fm[col] = targets[col][srt]
+                if col not in fm.colnames:
+                    fm[col] = targets[col][srt]
             assert(np.all(fm['TARGETID'] == targets['TARGETID'][srt]))
             fmaps.append(Table(fm))
         log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
@@ -329,6 +335,7 @@ class DESISpectra(object):
                 # Unpack the imaging photometry and correct for MW dust.
                 if fastphot:
                     # all photometry
+                    #fibermap['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
                     mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
 
                     maggies = np.zeros(len(CFit.bands))
@@ -514,3 +521,89 @@ def write_fastspec(out, outfile=None, specprod=None):
     hx.writeto(outfile, overwrite=True)
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
 
+<<<<<<< HEAD:py/fastspecfit/io.py
+=======
+def parse(options=None):
+    """Parse input arguments.
+
+    """
+    import argparse, sys
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
+    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    #parser.add_argument('--suffix', type=str, default=None, help='Optional suffix for output filename.')
+    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
+
+    parser.add_argument('--exposures', action='store_true', help='Fit the individual exposures (not the coadds).')
+
+    parser.add_argument('--qa', action='store_true', help='Build QA (skips fitting).')
+    parser.add_argument('--photfit', action='store_true', help='Fit and write out just the broadband photometry.')
+    parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
+
+    parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
+
+    if options is None:
+        args = parser.parse_args()
+        log.info(' '.join(sys.argv))
+    else:
+        args = parser.parse_args(options)
+        log.info('fastspecfit {}'.format(' '.join(options)))
+
+    return args
+
+def main(args=None, comm=None):
+    """Main module.
+
+    """
+    from fastspecfit.continuum import ContinuumFit
+    from fastspecfit.emlines import EMLineFit
+
+    if isinstance(args, (list, tuple, type(None))):
+        args = parse(args)
+
+    if args.targetids:
+        targetids = [int(x) for x in args.targetids.split(',')]
+    else:
+        targetids = args.targetids
+
+    # Initialize the continuum- and emission-line fitting classes.
+    t0 = time.time()
+    CFit = ContinuumFit()
+    EMFit = EMLineFit()
+    Spec = DESISpectra()
+    log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
+
+    # Read the data.
+    t0 = time.time()
+    Spec.find_specfiles(args.zbestfiles, exposures=args.exposures, firsttarget=args.firsttarget,
+                        targetids=targetids, ntargets=args.ntargets)
+    if len(Spec.specfiles) == 0:
+        return
+    data = Spec.read_and_unpack(CFit, exposures=args.exposures, photfit=args.photfit,
+                                synthphot=True)
+    
+    out = Spec.init_output(CFit, EMFit, photfit=args.photfit)
+    pdb.set_trace()
+    log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
+        Spec.ntargets, time.time()-t0))
+
+    # Fit in parallel
+    t0 = time.time()
+    fitargs = [(iobj, data[iobj], CFit, EMFit, out[iobj], args.photfit, args.solve_vdisp)
+               for iobj in np.arange(Spec.ntargets)]
+    if args.mp > 1:
+        import multiprocessing
+        with multiprocessing.Pool(args.mp) as P:
+            _out = P.map(_fastspecfit_one, fitargs)
+    else:
+        _out = [fastspecfit_one(*_fitargs) for _fitargs in fitargs]
+    out = Table(np.hstack(_out))
+    log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
+
+    # Write out.
+    write_fastspec(out, outfile=args.outfile, specprod=Spec.specprod)
+>>>>>>> origin/stacking:py/fastspecfit/external/desi.py
