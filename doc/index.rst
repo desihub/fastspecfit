@@ -12,20 +12,16 @@ FastSpecFit can be called independently to fit the broadband photometry
 (*fastphot*) or the three-camera optical spectroscopy from DESI (*fastspec*),
 although in both cases DESI redshifts are a required input.
 
-Installation
-------------
-
-Examples
+Contents
 --------
-
-Data Model
-----------
 
 .. toctree::
    :maxdepth: 1
 
-   fastphot : *fastphot* data modmel <fastphot.rst>
-   fastspec : *fastspec* data model <fastspec.rst>
+   install.rst
+   fastphot.rst
+   fastspec.rst
+   api.rst
    changes.rst
 
 Indices and tables

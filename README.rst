@@ -1,5 +1,5 @@
 ===========
-fastspecfit
+FastSpecFit
 ===========
 
 .. |Documentation Status|
@@ -24,8 +24,6 @@ Introduction
 This repository contains code and documentation to perform fast, simple spectral
 synthesis and emission-line fitting of `DESI`_ spectra. 
 
-..For full documentation please visit `fastspecfit on Read the Docs`_.
-
 .. _DESI: https://desi.lbl.gov
 .. .. _`fastspecfit on Read the Docs`: http://fastspecfit.readthedocs.org/en/latest/
 
@@ -37,7 +35,7 @@ To be written.
 License
 =======
 
-`fastspecfit`_ is free software licensed under a 3-clause BSD-style license. For
+`FastSpecFit`_ is free software licensed under a 3-clause BSD-style license. For
 details see the ``LICENSE.rst`` file.
 
 | John Moustakas  

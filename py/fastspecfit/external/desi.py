@@ -500,10 +500,10 @@ class DESISpectra(object):
         nobj = len(self.zbest)
 
         out = Table()
-        for fibermapcol, outcol in zip(['TARGETID', 'TARGET_RA', 'TARGET_DEC'],
-                                       ['TARGETID', 'RA', 'DEC']):
-            out[outcol] = self.fibermap[fibermapcol]
-        for fibermapcol in ['NIGHT', 'TILEID', 'FIBER', 'EXPID']:
+        #for fibermapcol, outcol in zip(['TARGETID', 'TARGET_RA', 'TARGET_DEC'],
+        #                               ['TARGETID', 'RA', 'DEC']):
+        #    out[outcol] = self.fibermap[fibermapcol]
+        for fibermapcol in ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'NIGHT', 'TILEID', 'FIBER', 'EXPID']:
             out[fibermapcol] = self.fibermap[fibermapcol]
         for zbestcol in ['Z', 'DELTACHI2']:#, 'ZERR']:#, 'SPECTYPE', ]
             out[zbestcol] = self.zbest[zbestcol]
@@ -515,8 +515,10 @@ class DESISpectra(object):
         for targetcol in targetcols:
             out[targetcol] = self.fibermap[targetcol]
         
-        out['RA'].unit = u.deg
-        out['DEC'].unit = u.deg
+        out['TARGET_RA'].unit = u.deg
+        out['TARGET_DEC'].unit = u.deg
+        #out['RA'].unit = u.deg
+        #out['DEC'].unit = u.deg
 
         if photfit:
             out = hstack((out, CFit.init_phot_output(nobj)))
