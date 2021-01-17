@@ -231,7 +231,9 @@ class EMLineFit(ContinuumTools):
         from astropy.table import Table, Column
         
         out = Table()
-        out.add_column(Column(name='D4000_NOLINES', length=nobj, dtype='f4'))
+        if False:
+            out.add_column(Column(name='D4000_NOLINES', length=nobj, dtype='f4'))
+            
         # observed-frame photometry synthesized from the spectra
         for band in self.synth_bands:
             out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) 
@@ -394,10 +396,10 @@ class EMLineFit(ContinuumTools):
             result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband]
 
         # measure D(4000) without the emission lines
-        specflux_nolines = specflux - emlinemodel
-
-        d4000_nolines, _ = self.get_d4000(emlinewave, specflux_nolines, redshift=redshift)
-        result['D4000_NOLINES'] = d4000_nolines
+        if False:
+            specflux_nolines = specflux - emlinemodel
+            d4000_nolines, _ = self.get_d4000(emlinewave, specflux_nolines, redshift=redshift)
+            result['D4000_NOLINES'] = d4000_nolines
 
         ## Pack the results in a dictionary and return.
         ## https://gist.github.com/eteq/1f3f0cec9e4f27536d52cd59054c55f2
@@ -564,7 +566,7 @@ class EMLineFit(ContinuumTools):
 
         return result
     
-    def qa_specfit(self, data, specfit, suffix=None, outdir=None):
+    def qa_fastspec(self, data, fastspec, suffix=None, outdir=None):
         """QA plot the emission-line spectrum and best-fitting model.
 
         """
@@ -581,17 +583,17 @@ class EMLineFit(ContinuumTools):
         col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
         
-        redshift = specfit['Z']
+        redshift = fastspec['Z']
 
         # rebuild the best-fitting spectroscopic and photometric models
         continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
                                      specwave=data['wave'], specres=data['res'],
-                                     AV=specfit['CONTINUUM_AV'],
-                                     vdisp=specfit['CONTINUUM_VDISP'],
-                                     coeff=specfit['CONTINUUM_COEFF'],
+                                     AV=fastspec['CONTINUUM_AV'],
+                                     vdisp=fastspec['CONTINUUM_VDISP'],
+                                     coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)
 
-        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], specfit)
+        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
         fig = plt.figure(figsize=(18, 18))
         gs = fig.add_gridspec(4, 4, height_ratios=[3, 3, 1.8, 1.8])
@@ -600,25 +602,25 @@ class EMLineFit(ContinuumTools):
         bigax1 = fig.add_subplot(gs[0, :])
 
         leg = {
-            'targetid': '{} {}'.format(specfit['TARGETID'], specfit['FIBER']),
-            #'targetid': 'targetid={} fiber={}'.format(specfit['TARGETID'], specfit['FIBER']),
-            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(specfit['CONTINUUM_CHI2']),
-            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(specfit['Z']),
-            #'zfastspecfit': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(specfit['CONTINUUM_Z']),
-            #'z': '$z$={:.6f}'.format(specfit['CONTINUUM_Z']),
-            'age': '<Age>={:.3f} Gyr'.format(specfit['CONTINUUM_AGE']),
+            'targetid': '{} {}'.format(fastspec['TARGETID'], fastspec['FIBER']),
+            #'targetid': 'targetid={} fiber={}'.format(fastspec['TARGETID'], fastspec['FIBER']),
+            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_CHI2']),
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(fastspec['Z']),
+            #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
+            #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
+            'age': '<Age>={:.3f} Gyr'.format(fastspec['CONTINUUM_AGE']),
             }
-        if specfit['CONTINUUM_VDISP_IVAR'] == 0:
-            leg.update({'vdisp': '$\sigma_{{\\rm star}}$={:.1f} km/s'.format(specfit['CONTINUUM_VDISP'])})
+        if fastspec['CONTINUUM_VDISP_IVAR'] == 0:
+            leg.update({'vdisp': '$\sigma_{{\\rm star}}$={:.1f} km/s'.format(fastspec['CONTINUUM_VDISP'])})
         else:
             leg.update({'vdisp': '$\sigma_{{\\rm star}}$={:.1f}+/-{:.1f} km/s'.format(
-                specfit['CONTINUUM_VDISP'], 1/np.sqrt(specfit['CONTINUUM_VDISP_IVAR']))})
+                fastspec['CONTINUUM_VDISP'], 1/np.sqrt(fastspec['CONTINUUM_VDISP_IVAR']))})
             
-        if specfit['CONTINUUM_AV_IVAR'] == 0:
-            leg.update({'AV': '$A(V)$={:.3f} mag'.format(specfit['CONTINUUM_AV'])})
+        if fastspec['CONTINUUM_AV_IVAR'] == 0:
+            leg.update({'AV': '$A(V)$={:.3f} mag'.format(fastspec['CONTINUUM_AV'])})
         else:
             leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
-                specfit['CONTINUUM_AV'], 1/np.sqrt(specfit['CONTINUUM_AV_IVAR']))})
+                fastspec['CONTINUUM_AV'], 1/np.sqrt(fastspec['CONTINUUM_AV_IVAR']))})
 
         ymin, ymax = 1e6, -1e6
         wavelims = (3600, 9800)
@@ -657,8 +659,8 @@ class EMLineFit(ContinuumTools):
                     fontsize=20)
 
         bigax1.set_title('Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
-            specfit['TILEID'], specfit['NIGHT'], specfit['TARGETID'],
-            specfit['FIBER']))
+            fastspec['TILEID'], fastspec['NIGHT'], fastspec['TARGETID'],
+            fastspec['FIBER']))
         bigax1.set_xlim(wavelims)
         bigax1.set_ylim(ymin, ymax)
         bigax1.set_xticklabels([])
@@ -670,14 +672,14 @@ class EMLineFit(ContinuumTools):
         bigax2 = fig.add_subplot(gs[1, :])
 
         leg = {
-            #'targetid': '{} {}'.format(specfit['TARGETID'], specfit['FIBER']),
+            #'targetid': '{} {}'.format(fastspec['TARGETID'], fastspec['FIBER']),
             #'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            'linevshift_forbidden': '$\Delta\,v_{{\\rm forb}}$={:.1f} km/s'.format(specfit['LINEVSHIFT_FORBIDDEN']),
-            'linevshift_balmer': '$\Delta\,v_{{\\rm Balm}}$={:.1f} km/s'.format(specfit['LINEVSHIFT_BALMER']),
-            'linesigma_forbidden': '$\sigma_{{\\rm forb}}$={:.1f} km/s'.format(specfit['LINESIGMA_FORBIDDEN']),
-            'linesigma_balmer': '$\sigma_{{\\rm Balm}}$={:.1f} km/s'.format(specfit['LINESIGMA_BALMER']),
-            'linevshift': '$\Delta_{{\\rm line}}\,v$={:.1f} km/s'.format(specfit['LINEVSHIFT_BALMER']),
-            'linesigma': '$\sigma_{{\\rm line}}$={:.1f} km/s'.format(specfit['LINESIGMA_BALMER']),
+            'linevshift_forbidden': '$\Delta\,v_{{\\rm forb}}$={:.1f} km/s'.format(fastspec['LINEVSHIFT_FORBIDDEN']),
+            'linevshift_balmer': '$\Delta\,v_{{\\rm Balm}}$={:.1f} km/s'.format(fastspec['LINEVSHIFT_BALMER']),
+            'linesigma_forbidden': '$\sigma_{{\\rm forb}}$={:.1f} km/s'.format(fastspec['LINESIGMA_FORBIDDEN']),
+            'linesigma_balmer': '$\sigma_{{\\rm Balm}}$={:.1f} km/s'.format(fastspec['LINESIGMA_BALMER']),
+            'linevshift': '$\Delta_{{\\rm line}}\,v$={:.1f} km/s'.format(fastspec['LINEVSHIFT_BALMER']),
+            'linesigma': '$\sigma_{{\\rm line}}$={:.1f} km/s'.format(fastspec['LINESIGMA_BALMER']),
             }
 
         ymin, ymax = 1e6, -1e6
@@ -822,8 +824,8 @@ class EMLineFit(ContinuumTools):
             
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
 
-        pngfile = os.path.join(outdir, 'specfit-{}-{}-{}.png'.format(
-            specfit['TILEID'], specfit['NIGHT'], specfit['TARGETID']))
+        pngfile = os.path.join(outdir, 'fastspec-{}-{}-{}.png'.format(
+            fastspec['TILEID'], fastspec['NIGHT'], fastspec['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
         plt.close()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """fastspecfit QA
 
-fastspecfit-qa --outdir . --specfit /global/cfs/cdirs/desi/users/ioannis/fastspecfit/daily/tiles/specfit-80607-80613-20201215-20201223.fits --photfit /global/cfs/cdirs/desi/users/ioannis/fastspecfit/daily/tiles/photfit-80607-80613-20201215-20201223.fits
+fastspecfit-qa --outdir . --fastspec /global/cfs/cdirs/desi/users/ioannis/fastspecfit/daily/tiles/fastspec-80607-80613-20201215-20201223.fits --fastphot /global/cfs/cdirs/desi/users/ioannis/fastspecfit/daily/tiles/fastphot-80607-80613-20201215-20201223.fits
 
 """
 import pdb # for debugging
@@ -19,13 +19,13 @@ def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def desiqa_one(CFit, EMFit, data=None, specfit=None, photfit=None, outdir=None, suffix=None):
+def desiqa_one(CFit, EMFit, data=None, fastspec=None, fastphot=None, outdir=None, suffix=None):
     """QA on one spectrum."""
     #t0 = time.time()
-    if photfit is not None:
-        CFit.qa_photfit(photfit, specfit=specfit, suffix=suffix, outdir=outdir)
-    if specfit is not None:
-        EMFit.qa_specfit(data, specfit, suffix=suffix, outdir=outdir)
+    if fastphot is not None:
+        CFit.qa_fastphot(fastphot, fastspec=fastspec, suffix=suffix, outdir=outdir)
+    if fastspec is not None:
+        EMFit.qa_fastspec(data, fastspec, suffix=suffix, outdir=outdir)
     #log.info('Building took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
@@ -46,8 +46,8 @@ def parse(options=None):
     parser.add_argument('--suffix', default=None, type=str, help='Optional suffix for output filename.')
     parser.add_argument('-o', '--outdir', default=None, type=str, help='Full path to desired output directory.')
     
-    parser.add_argument('--photfitfile', default=None, type=str, help='Full path to photfit fitting results.')
-    parser.add_argument('--specfitfile', default=None, type=str, help='Full path to photfit fitting results.')
+    parser.add_argument('--fastphotfile', default=None, type=str, help='Full path to fastphot fitting results.')
+    parser.add_argument('--fastspecfile', default=None, type=str, help='Full path to fastphot fitting results.')
     parser.add_argument('zbestdata', nargs='*', help='Full path to zbest file(s) or a directory containing zbest file(s).')
     
     #parser.add_argument('fastspecfitfile', type=str, help='Full path to results FITS file written by fastspecfit.')
@@ -69,14 +69,14 @@ def main(args=None, comm=None):
     from astropy.table import Table
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
-    from fastspecfit.external.desi import DESISpectra
+    from fastspecfit.io import DESISpectra
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
     # Read the fitting results.
-    if args.photfitfile is None and args.specfitfile is None:
-        log.warning('Must provide one or both of --photfitfile and/or --specfitfile.')
+    if args.fastphotfile is None and args.fastspecfile is None:
+        log.warning('Must provide one or both of --fastphotfile and/or --fastspecfile.')
         return
 
     def _check_and_read(filename):
@@ -93,22 +93,22 @@ def main(args=None, comm=None):
         else:
             return None, None
 
-    specfit, specprod_spec = _check_and_read(args.specfitfile)
-    photfit, specprod_phot = _check_and_read(args.photfitfile)
+    fastspec, specprod_spec = _check_and_read(args.fastspecfile)
+    fastphot, specprod_phot = _check_and_read(args.fastphotfile)
 
-    if photfit is not None and specfit is not None:
-        assert(np.all(photfit['TARGETID'] == specfit['TARGETID']))
+    if fastphot is not None and fastspec is not None:
+        assert(np.all(fastphot['TARGETID'] == fastspec['TARGETID']))
         assert(specprod_phot == specprod_spec)
         specprod = specprod_spec
-        fastfit = specfit
-    elif photfit is None and specfit is not None:
+        fastfit = fastspec
+    elif fastphot is None and fastspec is not None:
         specprod = specprod_spec
-        fastfit = specfit
-    elif photfit is not None and specfit is None:
+        fastfit = fastspec
+    elif fastphot is not None and fastspec is None:
         specprod = specprod_phot
-        fastfit = photfit
+        fastfit = fastphot
     else:
-        log.warning('Required input(s) --photfitfile and/or --specfitfile not provided!')
+        log.warning('Required input(s) --fastphotfile and/or --fastspecfile not provided!')
         return
         
     log.info('Found specprod={}'.format(specprod))
@@ -125,8 +125,8 @@ def main(args=None, comm=None):
             log.info('Keeping {} spectra from tile {} on night {}.'.format(len(fastfit), tile, night))
         return fastfit
 
-    photfit = _select_tile_night(photfit)
-    specfit = _select_tile_night(specfit)
+    fastphot = _select_tile_night(fastphot)
+    fastspec = _select_tile_night(fastspec)
 
     # parse the targetids optional input
     if args.targetids:
@@ -140,7 +140,7 @@ def main(args=None, comm=None):
     EMFit = EMLineFit()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
-    if specfit:
+    if fastspec:
         Spec = DESISpectra()
         
         # Get the spectra (if needed).
@@ -149,23 +149,23 @@ def main(args=None, comm=None):
         if len(Spec.specfiles) == 0:
             return
         data = Spec.read_and_unpack(CFit, synthphot=False)
-        specfit = specfit[np.hstack([np.where(tid == specfit['TARGETID'])[0] for tid in Spec.zbest['TARGETID']])]
-        assert(np.all(specfit['TARGETID'] == Spec.zbest['TARGETID']))
+        fastspec = fastspec[np.hstack([np.where(tid == fastspec['TARGETID'])[0] for tid in Spec.zbest['TARGETID']])]
+        assert(np.all(fastspec['TARGETID'] == Spec.zbest['TARGETID']))
         
-    if photfit:
-        photfit = photfit[np.hstack([np.where(tid == photfit['TARGETID'])[0] for tid in specfit['TARGETID']])]
+    if fastphot:
+        fastphot = fastphot[np.hstack([np.where(tid == fastphot['TARGETID'])[0] for tid in fastspec['TARGETID']])]
 
     # Build the QA in parallel
     t0 = time.time()
-    if photfit is not None and specfit is not None:
-        qaargs = [(CFit, EMFit, data[igal], specfit[igal], photfit[igal], args.outdir, args.suffix)
-                  for igal in np.arange(len(specfit))]
-    elif photfit is None and specfit is not None:
-        qaargs = [(CFit, EMFit, data[igal], specfit[igal], None, args.outdir, args.suffix)
-                  for igal in np.arange(len(specfit))]
-    elif photfit is not None and specfit is None:
-        qaargs = [(CFit, EMFit, None, None, photfit[igal], args.outdir, args.suffix)
-                  for igal in np.arange(len(photfit))]
+    if fastphot is not None and fastspec is not None:
+        qaargs = [(CFit, EMFit, data[igal], fastspec[igal], fastphot[igal], args.outdir, args.suffix)
+                  for igal in np.arange(len(fastspec))]
+    elif fastphot is None and fastspec is not None:
+        qaargs = [(CFit, EMFit, data[igal], fastspec[igal], None, args.outdir, args.suffix)
+                  for igal in np.arange(len(fastspec))]
+    elif fastphot is not None and fastspec is None:
+        qaargs = [(CFit, EMFit, None, None, fastphot[igal], args.outdir, args.suffix)
+                  for igal in np.arange(len(fastphot))]
     else:
         pass
         

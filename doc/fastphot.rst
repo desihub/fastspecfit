@@ -75,19 +75,19 @@ Name                              Type        Units      Description
                  EXPID              int32                Write me.
                      Z            float64                Redrock redshift.
              DELTACHI2            float64                Redrock delta-chi-squared.
-         PHOTSYS_SOUTH               bool                Photometric system.
+         PHOTSYS_SOUTH               bool                Southern photometric system (True/False).
        SV1_DESI_TARGET              int64                Write me.
         SV1_BGS_TARGET              int64                Write me.
         SV1_MWS_TARGET              int64                Write me.
            DESI_TARGET              int64                Write me.
             BGS_TARGET              int64                Write me.
             MWS_TARGET              int64                Write me.
-  CONTINUUM_PHOT_COEFF            float64[11]            Continuum coefficients.
-   CONTINUUM_PHOT_CHI2            float32                Write me.
-    CONTINUUM_PHOT_AGE            float32            Gyr Write me.
-     CONTINUUM_PHOT_AV            float32            mag Write me.
-CONTINUUM_PHOT_AV_IVAR            float32     1 / mag^2  Write me.
-      D4000_MODEL_PHOT            float32                Write me.
+       CONTINUUM_COEFF            float64[11]            Continuum coefficients.
+        CONTINUUM_CHI2            float32                Write me.
+         CONTINUUM_AGE            float32            Gyr Write me.
+          CONTINUUM_AV            float32            mag Write me.
+     CONTINUUM_AV_IVAR            float32     1 / mag^2  Write me.
+           D4000_MODEL            float32                Write me.
         FIBERTOTFLUX_G            float32           nmgy Write me.
         FIBERTOTFLUX_R            float32           nmgy Write me.
         FIBERTOTFLUX_Z            float32           nmgy Write me.

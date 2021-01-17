@@ -147,9 +147,9 @@ class ContinuumTools(object):
                                                  'wise2010-W1', 'wise2010-W2')
 
         # rest-frame filters
-        self.absmag_bands = ['u', 'g', 'r', 'i', 'z']
+        self.absmag_bands = ['u', 'g', 'r', 'i', 'z', 'W1']
         self.absmag_filters = filters.load_filters('decam2014-u', 'decam2014-g', 'decam2014-r',
-                                                   'decam2014-i', 'decam2014-z')
+                                                   'decam2014-i', 'decam2014-z', 'wise2010-W1')
 
     @staticmethod
     def get_d4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
@@ -677,13 +677,13 @@ class ContinuumFit(ContinuumTools):
         
         out = Table()
         #out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
-        out.add_column(Column(name='CONTINUUM_PHOT_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
-        out.add_column(Column(name='CONTINUUM_PHOT_CHI2', length=nobj, dtype='f4')) # reduced chi2
-        #out.add_column(Column(name='CONTINUUM_PHOT_DOF', length=nobj, dtype=np.int32))
-        out.add_column(Column(name='CONTINUUM_PHOT_AGE', length=nobj, dtype='f4', unit=u.Gyr))
-        out.add_column(Column(name='CONTINUUM_PHOT_AV', length=nobj, dtype='f4', unit=u.mag))
-        out.add_column(Column(name='CONTINUUM_PHOT_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
-        out.add_column(Column(name='D4000_MODEL_PHOT', length=nobj, dtype='f4'))
+        out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
+        out.add_column(Column(name='CONTINUUM_CHI2', length=nobj, dtype='f4')) # reduced chi2
+        #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
+        out.add_column(Column(name='CONTINUUM_AGE', length=nobj, dtype='f4', unit=u.Gyr))
+        out.add_column(Column(name='CONTINUUM_AV', length=nobj, dtype='f4', unit=u.mag))
+        out.add_column(Column(name='CONTINUUM_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
+        out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
         for band in self.fiber_bands:
             out.add_column(Column(name='FIBERTOTFLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame fiber photometry
             #out.add_column(Column(name='FIBERTOTFLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
@@ -853,7 +853,7 @@ class ContinuumFit(ContinuumTools):
 
         return chi2min, xbest, xivar
 
-    def continuum_photfit(self, data):
+    def continuum_fastphot(self, data):
         """Fit the broad photometry.
 
         Parameters
@@ -934,12 +934,12 @@ class ContinuumFit(ContinuumTools):
             d4000, meanage, absmag[1]))
 
         # Pack it up and return.
-        result['CONTINUUM_PHOT_COEFF'][0][:nage] = coeff
-        result['CONTINUUM_PHOT_CHI2'][0] = chi2min
-        result['CONTINUUM_PHOT_AGE'][0] = meanage
-        result['CONTINUUM_PHOT_AV'][0] = AVbest
-        result['CONTINUUM_PHOT_AV_IVAR'][0] = AVivar
-        result['D4000_MODEL_PHOT'][0] = d4000
+        result['CONTINUUM_COEFF'][0][:nage] = coeff
+        result['CONTINUUM_CHI2'][0] = chi2min
+        result['CONTINUUM_AGE'][0] = meanage
+        result['CONTINUUM_AV'][0] = AVbest
+        result['CONTINUUM_AV_IVAR'][0] = AVivar
+        result['D4000_MODEL'][0] = d4000
         for iband, band in enumerate(self.fiber_bands):
             result['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
             #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
@@ -1102,7 +1102,7 @@ class ContinuumFit(ContinuumTools):
 
         return result, continuummodel
     
-    def qa_photfit(self, photfit, specfit=None, suffix=None, outdir=None):
+    def qa_fastphot(self, fastphot, specfit=None, suffix=None, outdir=None):
         """QA of the best-fitting continuum.
 
         """
@@ -1120,9 +1120,9 @@ class ContinuumFit(ContinuumTools):
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
         ymin, ymax = 1e6, -1e6
 
-        redshift = photfit['Z']
+        redshift = fastphot['Z']
 
-        if photfit['PHOTSYS_SOUTH']:
+        if fastphot['PHOTSYS_SOUTH']:
             filters = self.decam
             allfilters = self.decamwise
         else:
@@ -1131,8 +1131,8 @@ class ContinuumFit(ContinuumTools):
 
         # rebuild the best-fitting photometric model fit
         continuum_phot, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift,
-                                          AV=photfit['CONTINUUM_PHOT_AV'],
-                                          coeff=photfit['CONTINUUM_PHOT_COEFF'] * self.massnorm,
+                                          AV=fastphot['CONTINUUM_AV'],
+                                          coeff=fastphot['CONTINUUM_COEFF'] * self.massnorm,
                                           synthphot=False)
         continuum_wave_phot = self.sspwave * (1 + redshift)
 
@@ -1140,11 +1140,11 @@ class ContinuumFit(ContinuumTools):
         indx = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
 
         phot = self.parse_photometry(self.bands,
-                                     maggies=np.array([photfit['FLUX_{}'.format(band.upper())] for band in self.bands]),
-                                     ivarmaggies=np.array([photfit['FLUX_IVAR_{}'.format(band.upper())] for band in self.bands]),
+                                     maggies=np.array([fastphot['FLUX_{}'.format(band.upper())] for band in self.bands]),
+                                     ivarmaggies=np.array([fastphot['FLUX_IVAR_{}'.format(band.upper())] for band in self.bands]),
                                      lambda_eff=allfilters.effective_wavelengths.value)
         fiberphot = self.parse_photometry(self.fiber_bands,
-                                          maggies=np.array([photfit['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
+                                          maggies=np.array([fastphot['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
                                           lambda_eff=filters.effective_wavelengths.value)
         if specfit:
             synthphot = self.parse_photometry(self.synth_bands,
@@ -1187,8 +1187,8 @@ class ContinuumFit(ContinuumTools):
         ax.set_xticks([0.3, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0])
 
         ax.set_title('Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
-            photfit['TILEID'], photfit['NIGHT'], photfit['TARGETID'],
-            photfit['FIBER']), fontsize=20)
+            fastphot['TILEID'], fastphot['NIGHT'], fastphot['TARGETID'],
+            fastphot['FIBER']), fontsize=20)
 
         # integrated flux / photometry
         #ax.scatter(phot['lambda_eff']/1e4, phot['abmag'],
@@ -1229,19 +1229,19 @@ class ContinuumFit(ContinuumTools):
         #    hndl.set_markersize(8)
 
         leg = {
-            'targetid': '{} {}'.format(photfit['TARGETID'], photfit['FIBER']),
-            #'targetid': 'targetid={} fiber={}'.format(photfit['TARGETID'], photfit['FIBER']),
-            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(photfit['CONTINUUM_PHOT_CHI2']),
-            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(photfit['Z']),
-            #'zfastphotfit': '$z_{{\\rm fastphotfit}}$={:.6f}'.format(photfit['CONTINUUM_Z']),
-            #'z': '$z$={:.6f}'.format(photfit['CONTINUUM_Z']),
-            'age': '<Age>={:.3f} Gyr'.format(photfit['CONTINUUM_PHOT_AGE']),
+            'targetid': '{} {}'.format(fastphot['TARGETID'], fastphot['FIBER']),
+            #'targetid': 'targetid={} fiber={}'.format(fastphot['TARGETID'], fastphot['FIBER']),
+            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_CHI2']),
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(fastphot['Z']),
+            #'zfastfastphot': '$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
+            #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
+            'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
             }
-        if photfit['CONTINUUM_PHOT_AV_IVAR'] == 0:
-            leg.update({'AV': '$A(V)$={:.3f} mag'.format(photfit['CONTINUUM_PHOT_AV'])})
+        if fastphot['CONTINUUM_AV_IVAR'] == 0:
+            leg.update({'AV': '$A(V)$={:.3f} mag'.format(fastphot['CONTINUUM_AV'])})
         else:
             leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
-                photfit['CONTINUUM_PHOT_AV'], 1/np.sqrt(photfit['CONTINUUM_PHOT_AV_IVAR']))})
+                fastphot['CONTINUUM_AV'], 1/np.sqrt(fastphot['CONTINUUM_AV_IVAR']))})
 
         fntsz = 18
         #ax.text(0.98, 0.24, '{}'.format(leg['targetid']), 
@@ -1259,8 +1259,8 @@ class ContinuumFit(ContinuumTools):
 
         if outdir is None:
             outdir = '.'
-        pngfile = os.path.join(outdir, 'photfit-{}-{}-{}.png'.format(
-            photfit['TILEID'], photfit['NIGHT'], photfit['TARGETID']))
+        pngfile = os.path.join(outdir, 'fastphot-{}-{}-{}.png'.format(
+            fastphot['TILEID'], fastphot['NIGHT'], fastphot['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
         plt.close()
