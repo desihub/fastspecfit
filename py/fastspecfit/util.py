@@ -7,8 +7,11 @@ General utilities.
 """
 import numpy as np
 
-from scipy import constants
-C_LIGHT = constants.c / 1000.0 # [km/s]
+try: # this fails when building the documentation
+    from scipy import constants
+    C_LIGHT = constants.c / 1000.0 # [km/s]
+except:
+    C_LIGHT = 299792.458
 
 def ivar2var(ivar, sigma=False):
     """Safely convert an inverse variance to a variance."""
