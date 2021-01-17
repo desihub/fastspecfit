@@ -63,70 +63,70 @@ DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
 Required Data Table Columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-================================= =========== ========== ==========================================
-Name                              Type        Units      Description
-================================= =========== ========== ==========================================
-              TARGETID              int64                Unique target ID.
-             TARGET_RA            float64            deg Right ascension from fibermap.
-            TARGET_DEC            float64            deg Declination from fibermap.
-                 NIGHT              int32                Write me.
-                TILEID              int32                Write me.
-                 FIBER              int32                Write me.
-                 EXPID              int32                Write me.
-                     Z            float64                Redrock redshift.
-             DELTACHI2            float64                Redrock delta-chi-squared.
-         PHOTSYS_SOUTH               bool                Photometric system.
-       SV1_DESI_TARGET              int64                Write me.
-        SV1_BGS_TARGET              int64                Write me.
-        SV1_MWS_TARGET              int64                Write me.
-           DESI_TARGET              int64                Write me.
-            BGS_TARGET              int64                Write me.
-            MWS_TARGET              int64                Write me.
-  CONTINUUM_PHOT_COEFF            float64[11]            Continuum coefficients.
-   CONTINUUM_PHOT_CHI2            float32                Write me.
-    CONTINUUM_PHOT_AGE            float32            Gyr Write me.
-     CONTINUUM_PHOT_AV            float32            mag Write me.
-CONTINUUM_PHOT_AV_IVAR            float32     1 / mag^2  Write me.
-      D4000_MODEL_PHOT            float32                Write me.
-        FIBERTOTFLUX_G            float32           nmgy Write me.
-        FIBERTOTFLUX_R            float32           nmgy Write me.
-        FIBERTOTFLUX_Z            float32           nmgy Write me.
-                FLUX_G            float32           nmgy Write me.
-           FLUX_IVAR_G            float32     1 / nmgy^2 Write me.
-                FLUX_R            float32           nmgy Write me.
-           FLUX_IVAR_R            float32     1 / nmgy^2 Write me.
-                FLUX_Z            float32           nmgy Write me.
-           FLUX_IVAR_Z            float32     1 / nmgy^2 Write me.
-               FLUX_W1            float32           nmgy Write me.
-          FLUX_IVAR_W1            float32     1 / nmgy^2 Write me.
-               FLUX_W2            float32           nmgy Write me.
-          FLUX_IVAR_W2            float32     1 / nmgy^2 Write me.
-               KCORR_U            float32            mag K-correction used to derive ABSMAG_U.
-              ABSMAG_U            float32            mag Absolute magnitude in DECam u-band.
-         ABSMAG_IVAR_U            float32      1 / mag^2 Inverse variance corresponding to ABSMAG_U.
-               KCORR_G            float32            mag Like KCORR_U but for DECam g-band.
-              ABSMAG_G            float32            mag Like ABSMAG_U but for DECam g-band.
-         ABSMAG_IVAR_G            float32      1 / mag^2 Like ABSMAG_IVAR_U but for DECam r-band.
-               KCORR_R            float32            mag Like KCORR_U but for DECam r-band.
-              ABSMAG_R            float32            mag Like ABSMAG_U but for DECam r-band.
-         ABSMAG_IVAR_R            float32      1 / mag^2 Like ABSMAG_IVAR_U but for DECam i-band.
-               KCORR_I            float32            mag Like KCORR_U but for DECam i-band.
-              ABSMAG_I            float32            mag Like ABSMAG_U but for DECam i-band.
-         ABSMAG_IVAR_I            float32      1 / mag^2 Like ABSMAG_IVAR_U but for DECam z-band.
-               KCORR_Z            float32            mag Like KCORR_U but for DECam z-band.
-              ABSMAG_Z            float32            mag Like ABSMAG_U but for DECam z-band.
-         ABSMAG_IVAR_Z            float32      1 / mag^2 Like ABSMAG_IVAR_U but for DECam g-band.
-              KCORR_W1            float32            mag Like KCORR_U but for DECam W1-band.
-             ABSMAG_W1            float32            mag Like ABSMAG_U but for DECam W1-band.
-        ABSMAG_IVAR_W1            float32      1 / mag^2 Like ABSMAG_IVAR_U but for DECam W1-band.
-================================= =========== ========== ==========================================
+========================== ========== ============================= ==========================================
+Name                       Type       Units                         Description
+========================== ========== ============================= ==========================================
+                 TARGETID       int64                               Unique target ID.
+                TARGET_RA     float64                           deg Right ascension from fibermap.
+               TARGET_DEC     float64                           deg Declination from fibermap.
+                    NIGHT       int32                               Write me.
+                   TILEID       int32                               Write me.
+                    FIBER       int32                               Write me.
+                    EXPID       int32                               Write me.
+                        Z     float64                               Redrock redshift.
+                DELTACHI2     float64                               Redrock delta-chi-squared.
+            PHOTSYS_SOUTH        bool                               Photometric system.
+          SV1_DESI_TARGET       int64                               Write me.
+           SV1_BGS_TARGET       int64                               Write me.
+           SV1_MWS_TARGET       int64                               Write me.
+              DESI_TARGET       int64                               Write me.
+               BGS_TARGET       int64                               Write me.
+               MWS_TARGET       int64                               Write me.
+            CONTINUUM_SNR  float32[3]                               Write me.
+              CONTINUUM_Z     float64                               Write me.
+          CONTINUUM_COEFF float64[11]                               Write me.
+           CONTINUUM_CHI2     float32                               Write me.
+            CONTINUUM_AGE     float32                           Gyr Write me.
+             CONTINUUM_AV     float32                           mag Write me.
+        CONTINUUM_AV_IVAR     float32                      1 / mag2 Write me.
+          CONTINUUM_VDISP     float32                        km / s Write me.
+     CONTINUUM_VDISP_IVAR     float32                      s2 / km2 Write me.
+                    D4000     float32                               Write me.
+               D4000_IVAR     float32                               Write me.
+              D4000_MODEL     float32                               Write me.
+             FLUX_SYNTH_G     float32                          nmgy Write me.
+             FLUX_SYNTH_R     float32                          nmgy Write me.
+             FLUX_SYNTH_Z     float32                          nmgy Write me.
+       FLUX_SYNTH_MODEL_G     float32                          nmgy Write me.
+       FLUX_SYNTH_MODEL_R     float32                          nmgy Write me.
+       FLUX_SYNTH_MODEL_Z     float32                          nmgy Write me.
+     LINEVSHIFT_FORBIDDEN     float32                               Write me.
+LINEVSHIFT_FORBIDDEN_IVAR     float32                               Write me.
+        LINEVSHIFT_BALMER     float32                               Write me.
+   LINEVSHIFT_BALMER_IVAR     float32                               Write me.
+      LINESIGMA_FORBIDDEN     float32                        km / s Write me.
+ LINESIGMA_FORBIDDEN_IVAR     float32                      s2 / km2 Write me.
+         LINESIGMA_BALMER     float32                        km / s Write me.
+    LINESIGMA_BALMER_IVAR     float32                      s2 / km2 Write me.
+             OII_3726_AMP     float32  1e-17 erg / (Angstrom cm2 s) Write me.
+        OII_3726_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Write me.
+            OII_3726_FLUX     float32           1e-17 erg / (cm2 s) Write me.
+       OII_3726_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Write me.
+         OII_3726_BOXFLUX     float32           1e-17 erg / (cm2 s) Write me.
+    OII_3726_BOXFLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Write me.
+            OII_3726_CONT     float32  1e-17 erg / (Angstrom cm2 s) Write me.
+       OII_3726_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Write me.
+              OII_3726_EW     float32                      Angstrom Write me.
+         OII_3726_EW_IVAR     float32                 1 / Angstrom2 Write me.
+      OII_3726_FLUX_LIMIT     float32                 erg / (cm2 s) Write me.
+        OII_3726_EW_LIMIT     float32                      Angstrom Write me.
+            OII_3726_CHI2     float32                               Write me.
+            OII_3726_NPIX       int32                               Write me.
+========================== ========== ============================= ==========================================
 
 Notes and Examples
 ==================
 
-If the inverse variance on a given absolutely magnitude is zero it means that
-the absolute magnitude was derived from *synthesized* photometry based on the
-best-fitting model (i.e., use with care).
 
 Upcoming changes
 ================
