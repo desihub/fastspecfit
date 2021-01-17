@@ -1,28 +1,25 @@
-===================================
-Welcome to desigal's documentation!
-===================================
+============================================
+Welcome to the Documentation for FastSpecFit
+============================================
 
-Introduction
-============
+Overview
+--------
 
-This is the documentation for desigal.
+FastSpecFit is a spectral synthesis and emission-line modeling code for `DESI
+<https://desi.lbl.gov>`_.  optimized for speed and simplicity.
 
-Contents
-========
-
-The ``toctree`` directive can be used to link to other files in this
-directory and even display their sections.  See `the toctree documentation`_.
-
-.. _`the toctree documentation`: http://sphinx-doc.org/markup/toctree.html
+Data Model
+----------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
-   api.rst
+   photfit : photometric data modmel <photfit.rst>
+   specfit : spectroscopic data model <specfit.rst>
    changes.rst
 
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 * :ref:`modindex`
