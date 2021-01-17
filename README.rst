@@ -2,7 +2,7 @@
 fastspecfit
 ===========
 
-|Documentation Status|
+.. |Documentation Status|
 
 .. image:: https://readthedocs.org/projects/fastspecfit/badge/?version=latest
     :target: http://fastspecfit.readthedocs.org/en/latest/
@@ -22,19 +22,15 @@ Introduction
 ============
 
 This repository contains code and documentation to perform fast, simple spectral
-synthesis and emission-line fitting of DESI spectra. For full documentation
-please visit `fastspecfit on Read the Docs`_.
+synthesis and emission-line fitting of `DESI`_ spectra. 
+
+..For full documentation please visit `fastspecfit on Read the Docs`_.
 
 .. _DESI: https://desi.lbl.gov
-.. _`fastspecfit on Read the Docs`: http://fastspecfit.readthedocs.org/en/latest/
+.. .. _`fastspecfit on Read the Docs`: http://fastspecfit.readthedocs.org/en/latest/
 
 Installation
 ============
-
-To be written.
-
-Running
-=======
 
 To be written.
 
