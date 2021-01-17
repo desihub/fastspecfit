@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# desigal documentation build configuration file, created by
+# fastspecfit documentation build configuration file, created by
 # sphinx-quickstart on Tue Dec  9 10:43:33 2014.
 #
 # This file is execfile()d with the current directory set to its
@@ -72,7 +72,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'desigal'
+project = u'fastspecfit'
 copyright = u'2014-2017, DESI Collaboration'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -222,7 +222,7 @@ except ImportError:
 #html_file_suffix = None
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'desigaldoc'
+htmlhelp_basename = 'fastspecfitdoc'
 
 
 # -- Options for LaTeX output ---------------------------------------------
@@ -242,7 +242,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-  ('index', 'desigal.tex', u'desigal Documentation',
+  ('index', 'fastspecfit.tex', u'fastspecfit Documentation',
    u'DESI', 'manual'),
 ]
 
@@ -272,7 +272,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'desigal', u'desigal Documentation',
+    ('index', 'fastspecfit', u'fastspecfit Documentation',
      [u'DESI'], 1)
 ]
 
@@ -286,8 +286,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  ('index', 'desigal', u'desigal Documentation',
-   u'DESI', 'desigal', 'One line description of project.',
+  ('index', 'fastspecfit', u'fastspecfit Documentation',
+   u'DESI', 'fastspecfit', 'One line description of project.',
    'Miscellaneous'),
 ]
 
