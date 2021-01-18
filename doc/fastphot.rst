@@ -17,6 +17,7 @@ Number EXTNAME      Type     Contents
 ====== ============ ======== ======================
 HDU00_ PRIMARY      IMAGE    Empty
 HDU01_ FASTPHOT     BINTABLE Fitting results table.
+HDU02_ METADATA     BINTABLE Object metadata.
 ====== ============ ======== ======================
 
 FITS Header Units
@@ -44,7 +45,7 @@ Empty HDU.
 HDU01
 -----
 
-EXTNAME = RESULTS
+EXTNAME = FASTPHOT
 
 Fitting results. Checksum not yet implemented.
 
@@ -67,40 +68,26 @@ Required Data Table Columns
 Name                   Type        Units      Description
 ====================== =========== ========== ==========================================
               TARGETID   int64                Unique target ID.
-             TARGET_RA float64            deg Right ascension from fibermap.
-            TARGET_DEC float64            deg Declination from fibermap.
-                 NIGHT   int32                Write me.
-                TILEID   int32                Write me.
-                 FIBER   int32                Write me.
-                 EXPID   int32                Write me.
                      Z float64                Redrock redshift.
-             DELTACHI2 float64                Redrock delta-chi-squared.
-         PHOTSYS_SOUTH    bool                Southern photometric system (True/False).
-       SV1_DESI_TARGET   int64                Write me.
-        SV1_BGS_TARGET   int64                Write me.
-        SV1_MWS_TARGET   int64                Write me.
-           DESI_TARGET   int64                Write me.
-            BGS_TARGET   int64                Write me.
-            MWS_TARGET   int64                Write me.
        CONTINUUM_COEFF float64[11]            Continuum coefficients.
-        CONTINUUM_CHI2 float32                Write me.
-         CONTINUUM_AGE float32            Gyr Write me.
-          CONTINUUM_AV float32            mag Write me.
-     CONTINUUM_AV_IVAR float32     1 / mag^2  Write me.
-           D4000_MODEL float32                Write me.
-        FIBERTOTFLUX_G float32           nmgy Write me.
-        FIBERTOTFLUX_R float32           nmgy Write me.
-        FIBERTOTFLUX_Z float32           nmgy Write me.
-                FLUX_G float32           nmgy Write me.
-           FLUX_IVAR_G float32     1 / nmgy^2 Write me.
-                FLUX_R float32           nmgy Write me.
-           FLUX_IVAR_R float32     1 / nmgy^2 Write me.
-                FLUX_Z float32           nmgy Write me.
-           FLUX_IVAR_Z float32     1 / nmgy^2 Write me.
-               FLUX_W1 float32           nmgy Write me.
-          FLUX_IVAR_W1 float32     1 / nmgy^2 Write me.
-               FLUX_W2 float32           nmgy Write me.
-          FLUX_IVAR_W2 float32     1 / nmgy^2 Write me.
+        CONTINUUM_CHI2 float32                Reduced chi^2 of the continuum fit.
+         CONTINUUM_AGE float32            Gyr Light-weighted age.
+          CONTINUUM_AV float32            mag Intrinsic attenuation.
+     CONTINUUM_AV_IVAR float32     1 / mag^2  Inverse variance of CONTINUUM_AV.
+           D4000_MODEL float32                4000-A break index from the best-fitting continuum model.
+        FIBERTOTFLUX_G float32           nmgy Fibertot g-band flux from targeting catalog.
+        FIBERTOTFLUX_R float32           nmgy Fibertot r-band flux from targeting catalog.
+        FIBERTOTFLUX_Z float32           nmgy Fibertot z-band flux from targeting catalog.
+                FLUX_G float32           nmgy Total g-band flux from targeting catalog.
+                FLUX_R float32           nmgy Total r-band flux from targeting catalog.
+                FLUX_Z float32           nmgy Total z-band flux from targeting catalog.
+               FLUX_W1 float32           nmgy Total W1-band flux from targeting catalog.
+               FLUX_W2 float32           nmgy Total W2-band flux from targeting catalog.
+           FLUX_IVAR_G float32     1 / nmgy^2 Inverse variance of FLUX_G from targeting catalog.
+           FLUX_IVAR_R float32     1 / nmgy^2 Inverse variance of FLUX_R from targeting catalog.
+           FLUX_IVAR_Z float32     1 / nmgy^2 Inverse variance of FLUX_Z from targeting catalog.
+          FLUX_IVAR_W1 float32     1 / nmgy^2 Inverse variance of FLUX_W1 from targeting catalog.
+          FLUX_IVAR_W2 float32     1 / nmgy^2 Inverse variance of FLUX_W2 from targeting catalog.
                KCORR_U float32            mag K-correction used to derive ABSMAG_U.
               ABSMAG_U float32            mag Absolute magnitude in DECam u-band.
          ABSMAG_IVAR_U float32      1 / mag^2 Inverse variance corresponding to ABSMAG_U.
@@ -119,6 +106,49 @@ Name                   Type        Units      Description
               KCORR_W1 float32            mag Like KCORR_U but for DECam W1-band.
              ABSMAG_W1 float32            mag Like ABSMAG_U but for DECam W1-band.
         ABSMAG_IVAR_W1 float32      1 / mag^2 Like ABSMAG_IVAR_U but for DECam W1-band.
+====================== =========== ========== ==========================================
+
+HDU02
+-----
+
+EXTNAME = METADATA
+
+Fitting results. Checksum not yet implemented.
+
+Required Header Keywords
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+======== ================ ==== ==============================================
+KEY      Example Value    Type Comment
+======== ================ ==== ==============================================
+NAXIS1   325              int  length of dimension 1
+NAXIS2   1225             int  length of dimension 2
+CHECKSUM EAnFF7l9EAlEE5l9 str  HDU checksum updated 2018-03-29T22:45:34
+DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
+======== ================ ==== ==============================================
+
+Required Data Table Columns
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+====================== =========== ========== ==========================================
+Name                   Type        Units      Description
+====================== =========== ========== ==========================================
+              TARGETID   int64                Unique target ID.
+                    RA float64            deg Right ascension from target catalog.
+                   DEC float64            deg Declination from target catalog.
+                 FIBER   int32                Fiber ID number [1-5000]
+                TILEID   int32                Tile ID number.
+                 NIGHT   int32                Night (not present when fitting coadds).
+                 EXPID   int32                Exposure ID number (not present when fitting coadds).
+             DELTACHI2 float64                Redrock delta-chi-squared.
+              SPECTYPE    str6                Redrock spectral classification.
+               PHOTSYS    str1                Photometric system ('N' or 'S').
+       SV1_DESI_TARGET   int64                SV1 DESI targeting bit.
+        SV1_BGS_TARGET   int64                SV1 BGS targeting bit.
+        SV1_MWS_TARGET   int64                SV1 MWS targeting bit.
+           DESI_TARGET   int64                DESI targeting bit.
+            BGS_TARGET   int64                BGS targeting bit.
+            MWS_TARGET   int64                MWS targeting bit.
 ====================== =========== ========== ==========================================
 
 Notes and Examples
