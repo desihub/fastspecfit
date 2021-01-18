@@ -17,7 +17,7 @@ Number EXTNAME      Type     Contents
 ====== ============ ======== ======================
 HDU00_ PRIMARY      IMAGE    Empty
 HDU01_ FASTPHOT     BINTABLE Fitting results table.
-HDU02_ METADATA     BINTABLE Object metadata.
+HDU02_ METADATA     BINTABLE Object metadata table.
 ====== ============ ======== ======================
 
 FITS Header Units
@@ -30,8 +30,6 @@ EXTNAME = PRIMARY
 
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
-
-Checksum not yet implemented.
 
 ======== ================ ==== ==============================================
 KEY      Example Value    Type Comment
@@ -55,8 +53,8 @@ Required Header Keywords
 ======== ================ ==== ==============================================
 KEY      Example Value    Type Comment
 ======== ================ ==== ==============================================
-NAXIS1   325              int  length of dimension 1
-NAXIS2   1225             int  length of dimension 2
+NAXIS1   188              int  length of dimension 1
+NAXIS2   3000             int  length of dimension 2
 CHECKSUM EAnFF7l9EAlEE5l9 str  HDU checksum updated 2018-03-29T22:45:34
 DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
 ======== ================ ==== ==============================================
@@ -107,8 +105,9 @@ Required Header Keywords
 ======== ================ ==== ==============================================
 KEY      Example Value    Type Comment
 ======== ================ ==== ==============================================
-NAXIS1   325              int  length of dimension 1
-NAXIS2   1225             int  length of dimension 2
+NAXIS1   155              int  length of dimension 1
+NAXIS2   3000             int  length of dimension 2
+SPECPROD daily            str  spectroscopic production name
 CHECKSUM EAnFF7l9EAlEE5l9 str  HDU checksum updated 2018-03-29T22:45:34
 DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
 ======== ================ ==== ==============================================
@@ -122,14 +121,20 @@ Name                   Type        Units      Description
               TARGETID   int64                Unique target ID.
                     RA float64            deg Right ascension from target catalog.
                    DEC float64            deg Declination from target catalog.
-                 FIBER   int32                Fiber ID number [1-5000]
+                 FIBER   int32                Fiber ID number.
                 TILEID   int32                Tile ID number.
-                 NIGHT   int32                Night (not present when fitting coadds).
+                 NIGHT   int32                Night (not present when fitting deep coadds).
                  EXPID   int32                Exposure ID number (not present when fitting coadds).
+               PHOTSYS    str1                Photometric system ('N' or 'S').
+       SV1_DESI_TARGET   int64                SV1 DESI targeting bit.
+        SV1_BGS_TARGET   int64                SV1 BGS targeting bit.
+        SV1_MWS_TARGET   int64                SV1 MWS targeting bit.
+           DESI_TARGET   int64                DESI targeting bit.
+            BGS_TARGET   int64                BGS targeting bit.
+            MWS_TARGET   int64                MWS targeting bit.
                      Z float64                Redrock redshift.
              DELTACHI2 float64                Redrock delta-chi-squared.
               SPECTYPE    str6                Redrock spectral classification.
-               PHOTSYS    str1                Photometric system ('N' or 'S').
         FIBERTOTFLUX_G float32           nmgy Fibertot g-band flux from targeting catalog.
         FIBERTOTFLUX_R float32           nmgy Fibertot r-band flux from targeting catalog.
         FIBERTOTFLUX_Z float32           nmgy Fibertot z-band flux from targeting catalog.
@@ -143,12 +148,6 @@ Name                   Type        Units      Description
            FLUX_IVAR_Z float32     1 / nmgy^2 Inverse variance of FLUX_Z from targeting catalog.
           FLUX_IVAR_W1 float32     1 / nmgy^2 Inverse variance of FLUX_W1 from targeting catalog.
           FLUX_IVAR_W2 float32     1 / nmgy^2 Inverse variance of FLUX_W2 from targeting catalog.
-       SV1_DESI_TARGET   int64                SV1 DESI targeting bit.
-        SV1_BGS_TARGET   int64                SV1 BGS targeting bit.
-        SV1_MWS_TARGET   int64                SV1 MWS targeting bit.
-           DESI_TARGET   int64                DESI targeting bit.
-            BGS_TARGET   int64                BGS targeting bit.
-            MWS_TARGET   int64                MWS targeting bit.
 ====================== =========== ========== ==========================================
 
 Notes and Examples
