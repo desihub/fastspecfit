@@ -4,7 +4,7 @@ fastspecfit.scripts.fastphot
 ============================
 
 Fastphot wrapper. Call with, e.g.,
-  fastphot /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80607/deep/zbest-0-80607-deep.fits -o fastphot.fits --targetids 39633317670162883
+  fastphot /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80607/deep/zbest-0-80607-deep.fits -o fastphot.fits --ntargets 2
 
 """
 import pdb # for debugging
@@ -23,16 +23,25 @@ def _fastphot_one(args):
     """Multiprocessing wrapper."""
     return fastphot_one(*args)
 
-def fastphot_one(iobj, data, CFit, out, solve_vdisp=False):
+def fastphot_one(iobj, data, out, meta, CFit, solve_vdisp=False):
     """Fit one spectrum."""
     #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
     cfit, _ = CFit.continuum_fastphot(data)
     for col in cfit.colnames:
         out[col] = cfit[col]
+
+    # Copy over the reddening-corrected fluxes.
+    for iband, band in enumerate(CFit.fiber_bands):
+        meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
+        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+    for iband, band in enumerate(CFit.bands):
+        meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
+        meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
+        
     log.info('Continuum-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
     
-    return out
+    return out, meta
 
 def parse(options=None):
     """Parse input arguments.
@@ -92,13 +101,13 @@ def main(args=None, comm=None):
         return
     data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)
     
-    out = Spec.init_output(CFit=CFit, fastphot=True)
+    out, meta = Spec.init_output(CFit=CFit, fastphot=True)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
         Spec.ntargets, time.time()-t0))
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], CFit, out[iobj], args.solve_vdisp)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, args.solve_vdisp)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -106,8 +115,10 @@ def main(args=None, comm=None):
             _out = P.map(_fastphot_one, fitargs)
     else:
         _out = [fastphot_one(*_fitargs) for _fitargs in fitargs]
-    out = Table(np.hstack(_out))
+    _out = list(zip(*_out))
+    out = Table(np.hstack(_out[0]))
+    meta = Table(np.hstack(_out[1]))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
-    write_fastspec(out, outfile=args.outfile, specprod=Spec.specprod, fastphot=True)
+    write_fastspec(out, meta, outfile=args.outfile, specprod=Spec.specprod, fastphot=True)

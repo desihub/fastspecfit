@@ -87,7 +87,7 @@ class DESISpectra(object):
             nights = fastfit['NIGHT'].astype(str).data
 
             log.info('keep track of a sorting index which will keep the zbest and fibermap tables, below, row-aligned with the input fastfit table')
-            pdb.set_trace()
+            raise NotImplemented
 
             zbestfiles = []
             for petal, tile, night in zip(petals, tiles, nights):
@@ -139,6 +139,8 @@ class DESISpectra(object):
                       'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                       'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                       'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z']
+            if False and 'deep' in zbestfile:
+                fmcols = fmcols + ['NIGHT']
             # add targeting columns
             fmcols = fmcols + allfmcols[['DESI_TARGET' in col or 'BGS_TARGET' in col or 'MWS_TARGET' in col for col in allfmcols]].tolist()
             # older fibermaps are missing the WISE inverse variance
@@ -342,10 +344,9 @@ class DESISpectra(object):
 
                 # Unpack the data and correct for Galactic extinction. Also flag pixels that
                 # may be affected by emission lines.
-                pdb.set_trace()
-                data = {'zredrock': zbest['Z'][igal], 'photsys_south': dec < self.desitarget_resolve_dec()}
+                data = {'zredrock': zbest['Z'][igal], 'photsys': meta['PHOTSYS'][igal]}#, 'photsys_south': dec < self.desitarget_resolve_dec()}
 
-                if data['photsys_south']:
+                if data['photsys'] == 'S':
                     filters = CFit.decam
                     allfilters = CFit.decamwise
                 else:
@@ -488,38 +489,63 @@ class DESISpectra(object):
         import astropy.units as u
         from astropy.table import hstack
 
-        # Grab info on the emission lines and the continuum.
         nobj = len(self.zbest)
 
-        out = Table()
-        #for fibermapcol, outcol in zip(['TARGETID', 'TARGET_RA', 'TARGET_DEC'],
-        #                               ['TARGETID', 'RA', 'DEC']):
-        #    out[outcol] = self.fibermap[fibermapcol]
-        for fibermapcol in ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'NIGHT', 'TILEID', 'FIBER', 'EXPID']:
-            out[fibermapcol] = self.fibermap[fibermapcol]
-        for zbestcol in ['Z', 'DELTACHI2']:#, 'ZERR']:#, 'SPECTYPE', ]
-            out[zbestcol] = self.zbest[zbestcol]
-        out['PHOTSYS_SOUTH'] = out['TARGET_DEC'] < self.desitarget_resolve_dec()
+        # The information stored in the metadata table depends on which spectra
+        # were fitted (exposures, nightly coadds, deep coadds).
+        fluxcols = ['FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+                    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
+                    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
+        colunit = {'RA': u.deg, 'DEC': u.deg, 'FIBERTOTFLUX_G': u.nanomaggy, 'FIBERTOTFLUX_R': u.nanomaggy,
+                   'FIBERTOTFLUX_Z': u.nanomaggy, 'FLUX_G': u.nanomaggy, 'FLUX_R': u.nanomaggy,
+                   'FLUX_Z': u.nanomaggy, 'FLUX_W1': u.nanomaggy, 'FLUX_W2': u.nanomaggy, 
+                    'FLUX_IVAR_G': 1/u.nanomaggy**2, 'FLUX_IVAR_R': 1/u.nanomaggy**2,
+                    'FLUX_IVAR_Z': 1/u.nanomaggy**2, 'FLUX_IVAR_W1': 1/u.nanomaggy**2,
+                    'FLUX_IVAR_W2': 1/u.nanomaggy**2}
 
-        # target column names (e.g., DESI_TARGET)
-        _targetcols = ['DESI_TARGET' in col or 'BGS_TARGET' in col or 'MWS_TARGET' in col for col in self.fibermap.colnames]
-        targetcols = np.array(self.fibermap.colnames)[_targetcols]
-        for targetcol in targetcols:
-            out[targetcol] = self.fibermap[targetcol]
+        skipcols = ['FIBERSTATUS', 'OBJTYPE', 'TARGET_RA', 'TARGET_DEC'] + fluxcols
+        zcols = ['Z', 'DELTACHI2', 'SPECTYPE']
         
-        out['TARGET_RA'].unit = u.deg
-        out['TARGET_DEC'].unit = u.deg
-        #out['RA'].unit = u.deg
-        #out['DEC'].unit = u.deg
+        meta = Table()
+        metacols = self.meta.colnames
+        zbestcols = self.zbest.colnames
 
+        # All of this business is so we can get the columns in the order we want
+        # (i.e., the order that matches the data model).
+        for metacol in ['TARGETID', 'RA', 'DEC', 'FIBER', 'TILEID', 'NIGHT']:
+            if metacol in metacols:
+                meta[metacol] = self.meta[metacol]
+                if metacol in colunit.keys():
+                    meta[metacol].unit = colunit[metacol]
+
+        for metacol in metacols:
+            if metacol in skipcols or metacol in meta.colnames:
+                continue
+            else:
+                meta[metacol] = self.meta[metacol]
+                if metacol in colunit.keys():
+                    meta[metacol].unit = colunit[metacol]
+                    
+        for zcol in zcols:
+            meta[zcol] = self.zbest[zcol]
+            if zcol in colunit.keys():
+                meta[zcol].unit = colunit[zcol]
+                
+        for fluxcol in fluxcols:
+            meta[fluxcol] = self.meta[fluxcol]
+            if fluxcol in colunit.keys():
+                meta[fluxcol].unit = colunit[fluxcol]
+
+        out = Table()
+        out['TARGETID'] = self.meta['TARGETID']
         if fastphot:
             out = hstack((out, CFit.init_phot_output(nobj)))
         else:
             out = hstack((out, CFit.init_spec_output(nobj), EMFit.init_output(CFit.linetable, nobj)))
 
-        return out
+        return out, meta
 
-def write_fastspec(out, outfile=None, specprod=None, fastphot=False):
+def write_fastspec(out, meta, outfile=None, specprod=None, fastphot=False):
     """Write out.
 
     """
@@ -538,9 +564,14 @@ def write_fastspec(out, outfile=None, specprod=None, fastphot=False):
         hduout.header['EXTNAME'] = 'FASTPHOT'
     else:
         hduout.header['EXTNAME'] = 'FASTSPEC'
+    #if specprod:
+    #    hduout.header['SPECPROD'] = specprod
         
+    hdumeta = fits.convenience.table_to_hdu(meta)
+    hdumeta.header['EXTNAME'] = 'METADATA'
     if specprod:
-        hduout.header['SPECPROD'] = specprod
-    hx = fits.HDUList([hduprim, hduout])
-    hx.writeto(outfile, overwrite=True)
+        hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
+        
+    hx = fits.HDUList([hduprim, hduout, hdumeta])
+    hx.writeto(outfile, overwrite=True, checksum=True)
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
