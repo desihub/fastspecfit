@@ -12,12 +12,12 @@ fastspec Data Model
 Contents
 ========
 
-====== ============ ======== =====================
+====== ============ ======== ======================
 Number EXTNAME      Type     Contents
-====== ============ ======== =====================
+====== ============ ======== ======================
 HDU00_ PRIMARY      IMAGE    Empty
-HDU01_ RESULTS      BINTABLE Fitting results table
-====== ============ ======== =====================
+HDU01_ FASTSPEC     BINTABLE Fitting results table.
+====== ============ ======== ======================
 
 FITS Header Units
 =================

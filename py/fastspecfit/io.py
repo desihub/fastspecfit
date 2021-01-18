@@ -439,7 +439,7 @@ class DESISpectra(object):
         
         return alldata
         
-    def init_output(self, CFit, EMFit, fastphot=False):
+    def init_output(self, CFit=None, EMFit=None, fastphot=False):
         """Initialize the fastspecfit output data table.
 
         Parameters
@@ -499,7 +499,7 @@ class DESISpectra(object):
 
         return out
 
-def write_fastspec(out, outfile=None, specprod=None):
+def write_fastspec(out, outfile=None, specprod=None, fastphot=False):
     """Write out.
 
     """
@@ -509,12 +509,16 @@ def write_fastspec(out, outfile=None, specprod=None):
     outdir = os.path.dirname(os.path.abspath(outfile))
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
-        
+
     log.info('Writing results for {} objects to {}'.format(len(out), outfile))
     #out.write(outfile, overwrite=True)
     hduprim = fits.PrimaryHDU()
     hduout = fits.convenience.table_to_hdu(out)
-    hduout.header['EXTNAME'] = 'RESULTS'
+    if fastphot:
+        hduout.header['EXTNAME'] = 'FASTPHOT'
+    else:
+        hduout.header['EXTNAME'] = 'FASTSPEC'
+        
     if specprod:
         hduout.header['SPECPROD'] = specprod
     hx = fits.HDUList([hduprim, hduout])

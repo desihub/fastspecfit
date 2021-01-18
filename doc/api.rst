@@ -13,10 +13,16 @@ FastSpecFit API
 .. automodule:: fastspecfit.emlines
    :members:
 
-.. automodule:: fastspecfit.fastspecfit
+.. automodule:: fastspecfit.io
    :members:
 
-.. automodule:: fastspecfit.io
+.. automodule:: fastspecfit.scripts
+   :members:
+
+.. automodule:: fastspecfit.scripts.fastphot
+   :members:
+
+.. automodule:: fastspecfit.scripts.fastspec
    :members:
 
 .. automodule:: fastspecfit.util
