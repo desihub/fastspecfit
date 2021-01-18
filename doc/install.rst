@@ -11,9 +11,10 @@ Development Mode
 ----------------
 
 To run **FastSpecFit** in development mode requires a local check-out of the
-​*fastspecfit* repository and a simple one-time setup procedure::
+*fastspecfit* repository and a simple one-time setup procedure::
 
-  git clone git@github.com:desihub/fastspecfit.git
+  cd /path/to/fastspecfit
+  git clone https://github.com/desihub/fastspecfit.git
   wget -O fastspecfit-setup.sh https://gist.github.com/moustakas/27bfdc6ea031d470f9600efa183aa5a1/raw
 
 Once you have downloaded the *fastspecfit-setup.sh* script, edit it with the
