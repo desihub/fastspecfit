@@ -3,7 +3,8 @@
 fastspecfit.scripts.fastphot
 ============================
 
-FastSpecFit wrapper for DESI.
+Fastphot wrapper. Call with, e.g.,
+  fastphot /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80607/deep/zbest-0-80607-deep.fits -o fastphot.fits --targetids 39633317670162883
 
 """
 import pdb # for debugging
@@ -48,7 +49,6 @@ def parse(options=None):
     #parser.add_argument('--suffix', type=str, default=None, help='Optional suffix for output filename.')
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
 
-    parser.add_argument('--exposures', action='store_true', help='Fit the individual exposures (not the coadds).')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
 
     parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
@@ -86,12 +86,11 @@ def main(args=None, comm=None):
 
     # Read the data.
     t0 = time.time()
-    Spec.find_specfiles(args.zbestfiles, exposures=args.exposures, firsttarget=args.firsttarget,
+    Spec.find_specfiles(args.zbestfiles, firsttarget=args.firsttarget,
                         targetids=targetids, ntargets=args.ntargets)
     if len(Spec.specfiles) == 0:
         return
-    data = Spec.read_and_unpack(CFit, exposures=args.exposures,
-                                fastphot=True, synthphot=False)
+    data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)
     
     out = Spec.init_output(CFit=CFit, fastphot=True)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
