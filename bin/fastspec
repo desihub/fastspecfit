@@ -1,0 +1,20 @@
+#!/usr/bin/env python
+"""Fast spectral continuum and emission-line fitting.
+
+Example call:
+  fastspec /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80608/20201215/zbest-9-80608-20201215.fits -o fastspec.fits --ntargets 2 --mp 1
+
+"""
+import os
+from desiutil.log import get_logger
+from fastspecfit.scripts import fastspec
+
+log = get_logger()
+
+for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES']:
+    if key not in os.environ:
+        log.fatal('Required ${} environment variable not set'.format(key))
+        raise EnvironmentError('Required ${} environment variable not set'.format(key))
+
+fastspec.main(comm=None)
+

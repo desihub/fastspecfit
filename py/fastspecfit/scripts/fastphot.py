@@ -23,7 +23,7 @@ def _fastphot_one(args):
     """Multiprocessing wrapper."""
     return fastphot_one(*args)
 
-def fastphot_one(iobj, data, out, meta, CFit, solve_vdisp=False):
+def fastphot_one(iobj, data, out, meta, CFit):
     """Fit one spectrum."""
     #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
@@ -58,8 +58,6 @@ def parse(options=None):
     #parser.add_argument('--suffix', type=str, default=None, help='Optional suffix for output filename.')
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
 
-    parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
-
     parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
 
     if options is None:
@@ -87,7 +85,7 @@ def main(args=None, comm=None):
     else:
         targetids = args.targetids
 
-    # Initialize the continuum- and emission-line fitting classes.
+    # Initialize the continuum-fitting classes.
     t0 = time.time()
     CFit = ContinuumFit()
     Spec = DESISpectra()
@@ -107,7 +105,7 @@ def main(args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, args.solve_vdisp)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
