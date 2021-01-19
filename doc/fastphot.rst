@@ -18,7 +18,10 @@ Number EXTNAME      Type     Contents
 ====== ============ ======== ======================
 HDU00_ PRIMARY      IMAGE    Empty
 HDU01_ FASTPHOT     BINTABLE Fitting results table.
+<<<<<<< HEAD
+=======
 HDU02_ METADATA     BINTABLE Object metadata table.
+>>>>>>> main
 ====== ============ ======== ======================
 
 FITS Header Units

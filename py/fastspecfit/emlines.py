@@ -375,7 +375,7 @@ class EMLineFit(ContinuumTools):
         result = self.init_output(self.EMLineModel.linetable)
         
         # Synthesize photometry from the best-fitting model (continuum+emission lines).
-        if data['photsys_south']:
+        if data['photsys'] == 'S':
             filters = self.decam
         else:
             filters = self.bassmzls
