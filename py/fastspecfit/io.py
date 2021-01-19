@@ -545,7 +545,7 @@ class DESISpectra(object):
 
         return out, meta
 
-def write_fastspec(out, meta, outfile=None, specprod=None, fastphot=False):
+def write_fastspecfit(out, meta, outfile=None, specprod=None, fastphot=False):
     """Write out.
 
     """

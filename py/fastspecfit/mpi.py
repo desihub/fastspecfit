@@ -7,9 +7,12 @@ MPI tools.
 """
 import pdb # for debuggin
 
-import os
+import os, time
 import numpy as np
 from glob import glob
+
+from desiutil.log import get_logger
+log = get_logger()
 
 def weighted_partition(weights, n):
     '''
@@ -110,12 +113,8 @@ def backup_logs(logfile):
 
 def plan(args, comm=None, merge=False, outprefix='fastphot'):
 
-    import time
     from astropy.table import Table
 
-    from desiutil.log import get_logger
-    log = get_logger()
-    
     t0 = time.time()
     if comm is None:
         rank, size = 0, 1
@@ -127,47 +126,56 @@ def plan(args, comm=None, merge=False, outprefix='fastphot'):
             if key not in os.environ:
                 log.fatal('Required ${} environment variable not set'.format(key))
                 raise EnvironmentError('Required ${} environment variable not set'.format(key))
+            
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
-        
         specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', args.specprod, 'tiles')
-        if args.spectype == 'deep-coadds':
-            if args.tile is not None:
-                zbestfiles = np.array(sorted(set(np.hstack([glob(os.path.join(specprod_dir, str(tile), 'deep', 'zbest-[0-9]-{}-deep.fits'.format(
-                    tile))) for tile in args.tile]))))
+
+        def _findfiles(filedir, prefix='zbest'):
+            if args.spectype == 'deep-coadds':
+                if args.tile is not None:
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'deep', '{}-[0-9]-{}-deep.fits'.format(
+                        prefix, tile))) for tile in args.tile]))))
+                else:
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, tile, 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
+            elif args.spectype == 'night-coadds':
+                if args.tile is not None and args.night is not None:
+                    thesefiles = []
+                    for tile in args.tile:
+                        for night in args.night:
+                            thesefiles.append(glob(os.path.join(filedir, str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
+                    thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
+                elif args.tile is not None and args.night is None:
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
+                        prefix, tile))) for tile in args.tile]))))
+                elif args.tile is None and args.night is not None:
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
+                        prefix, night))) for night in args.night]))))
+                else:
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
+            elif args.spectype == 'exposures':
+                raise NotImplemented
+                # we probably want to *require* tile or night in this case...
             else:
-                zbestfiles = np.array(sorted(set(glob(os.path.join(specprod_dir, tile, 'deep', 'zbest-[0-9]-?????-deep.fits')))))
-        elif args.spectype == 'night-coadds':
-            if args.tile is not None and args.night is not None:
-                zbestfiles = []
-                for tile in args.tile:
-                    for night in args.night:
-                        zbestfiles.append(glob(os.path.join(specprod_dir, str(tile), str(night), 'zbest-[0-9]-{}-{}.fits'.format(tile, night))))
-                zbestfiles = np.array(sorted(set(np.hstack(zbestfiles))))
-            elif args.tile is not None and args.night is None:
-                zbestfiles = np.array(sorted(set(np.hstack([glob(os.path.join(specprod_dir, str(tile), '????????', 'zbest-[0-9]-{}-????????.fits'.format(
-                    tile))) for tile in args.tile]))))
-            elif args.tile is None and args.night is not None:
-                zbestfiles = np.array(sorted(set(np.hstack([glob(os.path.join(specprod_dir, '?????', str(night), 'zbest-[0-9]-?????-{}.fits'.format(
-                    night))) for night in args.night]))))
-            else:
-                zbestfiles = np.array(sorted(set(glob(os.path.join(specprod_dir, '?????', '????????', 'zbest-[0-9]-?????-????????.fits')))))
-        elif args.spectype == 'exposures':
-            raise NotImplemented
-            # we probably want to *require* tile or night in this case...
+                pass
+            return thesefiles
+
+        if args.merge:
+            zbestfiles = None
+            outfiles = _findfiles(outdir, prefix=outprefix)
+            log.info('Found {} {} files to be merged.'.format(len(outfiles), outprefix))
         else:
-            pass
+            zbestfiles = _findfiles(specprod_dir, prefix='zbest')
+            nfile = len(zbestfiles)
 
-        nfile = len(zbestfiles)
+            outfiles = np.array([zbestfile.replace(specprod_dir, outdir).replace('zbest-', '{}-'.format(outprefix)) for zbestfile in zbestfiles])
+            todo = np.ones(len(zbestfiles), bool)
+            for ii, outfile in enumerate(outfiles):
+                if os.path.isfile(outfile) and not args.overwrite:
+                    todo[ii] = False
+            zbestfiles = zbestfiles[todo]
+            outfiles = outfiles[todo]
 
-        outfiles = np.array([zbestfile.replace(specprod_dir, outdir) for zbestfile in zbestfiles])
-        todo = np.ones(len(zbestfiles), bool)
-        for ii, outfile in enumerate(outfiles):
-            if os.path.isfile(outfile) and not args.overwrite:
-                todo[ii] = False
-        zbestfiles = zbestfiles[todo]
-        outfiles = outfiles[todo]
-                
-        log.info('Found {}/{} zbestfiles left to do.'.format(len(zbestfiles), nfile))
+            log.info('Found {}/{} zbestfiles left to do.'.format(len(zbestfiles), nfile))
     else:
         outdir = None
         zbestfiles = None
@@ -177,11 +185,20 @@ def plan(args, comm=None, merge=False, outprefix='fastphot'):
         outdir = comm.bcast(outdir, root=0)
         zbestfiles = comm.bcast(zbestfiles, root=0)
         outfiles = comm.bcast(outfiles, root=0)
-        
-    if len(zbestfiles) == 0:
-        if rank == 0:
-            log.info('All files have been processed!')
-        return '', list(), list(), list(), list()
+
+    if args.merge:
+        if len(outfiles) == 0:
+            if rank == 0:
+                log.info('No {} files in {} found!'.format(outprefix, outdir))
+            return '', list(), list(), list(), list()
+
+        return outdir, zbestfiles, outfiles, None, None
+    
+    else:
+        if len(zbestfiles) == 0:
+            if rank == 0:
+                log.info('All files have been processed!')
+            return '', list(), list(), list(), list()
 
     groups, ntargets, grouptimes = group_zbestfiles(zbestfiles, args.maxnodes, comm=comm)
 
@@ -246,3 +263,47 @@ def plan(args, comm=None, merge=False, outprefix='fastphot'):
 
     return outdir, zbestfiles, outfiles, groups, grouptimes
 
+def merge_fastspecfit(args, fastphot=False):
+    """Merge all the individual catalogs into a single large catalog. Runs only on
+    rank 0.
+
+    """
+    import fitsio
+    from astropy.io import fits
+    from astropy.table import Table, vstack
+    from fastspecfit.mpi import plan
+    from fastspecfit.io import write_fastspecfit
+
+    if fastphot:
+        outprefix = 'fastphot'
+    else:
+        outprefix = 'fastspec'
+
+    outdir, _, outfiles, _, _ = plan(args, merge=True, outprefix=outprefix)
+
+    mergedir = os.path.join(outdir, 'merged')
+    if not os.path.isdir(mergedir):
+        os.makedirs(mergedir)
+
+    #if args.spectype == 'deep-coadds':
+    #    mergeprefix = 'deep'
+    #elif args.spectype == 'night-coadds':
+    #    mergeprefix = ''
+    #elif args.spectype == 'night-coadds':
+
+    mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, args.spectype))
+    if os.path.isfile(mergefile) and not args.overwrite:
+        log.info('Merged output file {} exists!'.format(mergefile))
+        return
+
+    t0 = time.time()
+    out, meta = [], []
+    for outfile in outfiles:
+        out.append(Table(fitsio.read(outfile, ext='FASTPHOT')))
+        meta.append(Table(fitsio.read(outfile, ext='METADATA')))
+    out = vstack(out)
+    meta = vstack(meta)
+    log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
+        len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
+
+    write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod, fastphot=fastphot)

@@ -13,53 +13,6 @@ import numpy as np
 from desiutil.log import get_logger
 log = get_logger()
 
-def merge_fastphot(args, comm=None, outprefix='fastphot'):
-    """Merge all the individual catalogs into a single large catalog. Runs only on
-    rank 0.
-
-    """
-    import fitsio
-    from astropy.io import fits
-    from astropy.table import Table, vstack
-    from fastspecfit.mpi import plan
-    
-    if comm is None:
-        rank, size = 0, 1
-    else:
-        rank, size = comm.rank, comm.size
-
-    outdir, _, outfiles, _, _ = plan(args, comm=comm, merge=True)
-
-    t0 = time.time()
-    out = vstack([Table(fitsio.read(outfile)) for outfile in outfiles])
-    #out = Table(np.hstack([fitsio.read(outfile) for outfile in outfiles]))#[:5]]))
-    log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
-        len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
-
-    tilemin, tilemax = out['TILEID'].min(), out['TILEID'].max()
-    if tilemin == tilemax:
-        tilesuffix = str(tilemin)
-    else:
-        tilesuffix = '{}-{}'.format(tilemin, tilemax)
-        
-    nightmin, nightmax = out['NIGHT'].min(), out['NIGHT'].max()
-    if nightmin == nightmax:
-        nightsuffix = str(nightmin)
-    else:
-        nightsuffix = '{}-{}'.format(nightmin, nightmax)
-
-    hdr = fitsio.read_header(outfiles[0], ext='RESULTS') # assume they're all the same!
-
-    outfile = os.path.join(outdir, '{}-{}-{}.fits'.format(outprefix, tilesuffix, nightsuffix))
-    log.info('Writing {}'.format(outfile))
-    hduprim = fits.PrimaryHDU()
-    hduout = fits.convenience.table_to_hdu(out)
-    hduout.header['EXTNAME'] = 'RESULTS'
-    hduout.header['SPECPROD'] = hdr['SPECPROD']
-    hx = fits.HDUList([hduprim, hduout])
-    hx.writeto(outfile, overwrite=True)
-    #out.write(outfile, overwrite=True)    
-    
 def run_fastphot(args, comm=None):
 
     import sys, subprocess
@@ -190,7 +143,8 @@ def main():
             comm = None
             
     if args.merge:
-        merge_fastphot(args, comm=comm, outprefix='fastphot')
+        from fastspecfit.mpi import merge_fastspecfit
+        merge_fastspecfit(args, fastphot=True)
     elif args.plan:
         plan(args, comm=comm, outprefix='fastphot')
     else:

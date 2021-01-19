@@ -723,7 +723,7 @@ class ContinuumFit(ContinuumTools):
         """
         return np.where(self.sspinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
 
-    def kcorr_and_absmag(self, data, continuum, band_shift=0.0):
+    def kcorr_and_absmag(self, data, continuum, coeff, band_shift=0.0):
         """Computer K-corrections and absolute magnitudes.
 
         # To get the absolute r-band magnitude we would do:
@@ -746,7 +746,7 @@ class ContinuumFit(ContinuumTools):
         # redshifted wavelength array and distance modulus
         zsspwave = self.sspwave * (1 + redshift)
         dmod = self.cosmo.distmod(redshift).value
-                                            
+
         maggies = data['phot']['nanomaggies'].data * 1e-9
         ivarmaggies = data['phot']['nanomaggies_ivar'].data / 1e-9**2
 
@@ -769,8 +769,9 @@ class ContinuumFit(ContinuumTools):
         kcorr = np.zeros(nout, dtype='f4')
         for jj in np.arange(nout):
             lambdadist = np.abs(lambda_in / (1 + redshift) - lambda_out[jj])
-            # K-correct from the nearest bandpass (to minimizes the K-correction)
-            oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e6)
+            # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
+            #oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e6)
+            oband = np.argmin(lambdadist + (maggies*np.sqrt(ivarmaggies) < 1)*1e6)
             kcorr[jj] = + 2.5 * np.log10(synth_outmaggies_rest[jj] / bestmaggies[oband])
 
             # m_R = M_Q + DM(z) + K_QR(z) or
@@ -782,7 +783,17 @@ class ContinuumFit(ContinuumTools):
                 # if we use synthesized photometry then ivarabsmag is zero
                 # (which should never happen?)
                 absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
-            
+
+        # get the stellar mass
+        if False:
+            nage = len(coeff)
+            dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2        
+            mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm * self.fluxnorm * dfactor / (1+redshift)
+        
+        # From Taylor+11, eq 8
+        #https://researchportal.port.ac.uk/ws/files/328938/MNRAS_2011_Taylor_1587_620.pdf
+        #mstar = 1.15 + 0.7*(absmag[1]-absmag[3]) - 0.4*absmag[3]
+
         return kcorr, absmag, ivarabsmag
 
     def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False):
@@ -931,8 +942,8 @@ class ContinuumFit(ContinuumTools):
         # Compute D4000, K-corrections, and rest-frame quantities.
         d4000, _ = self.get_d4000(self.sspwave, continuummodel, rest=True)
         meanage = self.get_meanage(coeff)
-        kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel)
-        
+        kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel, coeff)
+
         log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
             d4000, meanage, absmag[1]))
 

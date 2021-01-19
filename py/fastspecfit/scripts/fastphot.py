@@ -77,7 +77,7 @@ def main(args=None, comm=None):
     """
     from astropy.table import Table
     from fastspecfit.continuum import ContinuumFit
-    from fastspecfit.io import DESISpectra, write_fastspec
+    from fastspecfit.io import DESISpectra, write_fastspecfit
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
@@ -121,4 +121,4 @@ def main(args=None, comm=None):
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
-    write_fastspec(out, meta, outfile=args.outfile, specprod=Spec.specprod, fastphot=True)
+    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod, fastphot=True)
