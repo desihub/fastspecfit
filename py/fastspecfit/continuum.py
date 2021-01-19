@@ -684,12 +684,15 @@ class ContinuumFit(ContinuumTools):
         out.add_column(Column(name='CONTINUUM_AV', length=nobj, dtype='f4', unit=u.mag))
         out.add_column(Column(name='CONTINUUM_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
         out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
-        for band in self.fiber_bands:
-            out.add_column(Column(name='FIBERTOTFLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame fiber photometry
-            #out.add_column(Column(name='FIBERTOTFLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
-        for band in self.bands:
-            out.add_column(Column(name='FLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame photometry
-            out.add_column(Column(name='FLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
+
+        if False:
+            for band in self.fiber_bands:
+                out.add_column(Column(name='FIBERTOTFLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame fiber photometry
+                #out.add_column(Column(name='FIBERTOTFLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
+            for band in self.bands:
+                out.add_column(Column(name='FLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame photometry
+                out.add_column(Column(name='FLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
+                
         for band in self.absmag_bands:
             out.add_column(Column(name='KCORR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag))
             out.add_column(Column(name='ABSMAG_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag)) # absolute magnitudes
@@ -720,7 +723,7 @@ class ContinuumFit(ContinuumTools):
         """
         return np.where(self.sspinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
 
-    def kcorr_and_absmag(self, data, continuum, band_shift=0.0):
+    def kcorr_and_absmag(self, data, continuum, coeff, band_shift=0.0, snrmin=2.0):
         """Computer K-corrections and absolute magnitudes.
 
         # To get the absolute r-band magnitude we would do:
@@ -730,7 +733,7 @@ class ContinuumFit(ContinuumTools):
         """
         redshift = data['zredrock']
         
-        if data['photsys_south']:
+        if data['photsys'] == 'S':
             filters_in = self.decamwise
         else:
             filters_in = self.bassmzlswise
@@ -743,7 +746,7 @@ class ContinuumFit(ContinuumTools):
         # redshifted wavelength array and distance modulus
         zsspwave = self.sspwave * (1 + redshift)
         dmod = self.cosmo.distmod(redshift).value
-                                            
+
         maggies = data['phot']['nanomaggies'].data * 1e-9
         ivarmaggies = data['phot']['nanomaggies_ivar'].data / 1e-9**2
 
@@ -766,20 +769,33 @@ class ContinuumFit(ContinuumTools):
         kcorr = np.zeros(nout, dtype='f4')
         for jj in np.arange(nout):
             lambdadist = np.abs(lambda_in / (1 + redshift) - lambda_out[jj])
-            # K-correct from the nearest bandpass (to minimizes the K-correction)
-            oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e6)
+            # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
+            #oband = np.argmin(lambdadist)
+            #oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e10)
+            oband = np.argmin(lambdadist + (maggies*np.sqrt(ivarmaggies) < snrmin)*1e10)
             kcorr[jj] = + 2.5 * np.log10(synth_outmaggies_rest[jj] / bestmaggies[oband])
 
             # m_R = M_Q + DM(z) + K_QR(z) or
             # M_Q = m_R - DM(z) - K_QR(z)
-            if (maggies[oband] > 0) and (ivarmaggies[oband]) > 0:
+            if maggies[oband] * np.sqrt(ivarmaggies[oband]) > snrmin:
+            #if (maggies[oband] > 0) and (ivarmaggies[oband]) > 0:
                 absmag[jj] = -2.5 * np.log10(maggies[oband]) - dmod - kcorr[jj]
                 ivarabsmag[jj] = maggies[oband]**2 * ivarmaggies[oband] * (0.4 * np.log(10.))**2
             else:
                 # if we use synthesized photometry then ivarabsmag is zero
                 # (which should never happen?)
                 absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
-            
+
+        # get the stellar mass
+        if False:
+            nage = len(coeff)
+            dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2        
+            mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm * self.fluxnorm * dfactor / (1+redshift)
+        
+        # From Taylor+11, eq 8
+        #https://researchportal.port.ac.uk/ws/files/328938/MNRAS_2011_Taylor_1587_620.pdf
+        #mstar = 1.15 + 0.7*(absmag[1]-absmag[3]) - 0.4*absmag[3]
+
         return kcorr, absmag, ivarabsmag
 
     def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False):
@@ -890,7 +906,7 @@ class ContinuumFit(ContinuumTools):
         zsspflux_dustvdisp, zsspphot_dustvdisp = self.SSP2data(
             self.sspflux_dustvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
             redshift=redshift, specwave=None, specres=None,
-            south=data['photsys_south'])
+            south=data['photsys'] == 'S')
         log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
         
         objflam = data['phot']['flam'].data * self.fluxnorm
@@ -920,7 +936,7 @@ class ContinuumFit(ContinuumTools):
         # reddening and nominal velocity dispersion.
         bestsspflux, bestphot = self.SSP2data(self.sspflux_dustvdisp[:, agekeep, inodust], # equivalent to calling with self.sspflux[:, agekeep]
                                               self.sspwave, AV=AVbest, redshift=redshift,
-                                              south=data['photsys_south'])
+                                              south=data['photsys'] == 'S')
         coeff, chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
                                               objflam, objflamivar) # bestphot['flam'] is [nband, nage]
         continuummodel = bestsspflux.dot(coeff)
@@ -928,8 +944,8 @@ class ContinuumFit(ContinuumTools):
         # Compute D4000, K-corrections, and rest-frame quantities.
         d4000, _ = self.get_d4000(self.sspwave, continuummodel, rest=True)
         meanage = self.get_meanage(coeff)
-        kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel)
-        
+        kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel, coeff)
+
         log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
             d4000, meanage, absmag[1]))
 
@@ -940,12 +956,13 @@ class ContinuumFit(ContinuumTools):
         result['CONTINUUM_AV'][0] = AVbest
         result['CONTINUUM_AV_IVAR'][0] = AVivar
         result['D4000_MODEL'][0] = d4000
-        for iband, band in enumerate(self.fiber_bands):
-            result['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
-            #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
-        for iband, band in enumerate(self.bands):
-            result['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
-            result['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
+        if False:
+            for iband, band in enumerate(self.fiber_bands):
+                result['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
+                #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+            for iband, band in enumerate(self.bands):
+                result['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
+                result['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
         for iband, band in enumerate(self.absmag_bands):
             result['KCORR_{}'.format(band.upper())] = kcorr[iband]
             result['ABSMAG_{}'.format(band.upper())] = absmag[iband]
@@ -1071,7 +1088,7 @@ class ContinuumFit(ContinuumTools):
         bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave,
                                               specwave=data['wave'], specres=data['res'],
                                               AV=AVbest, vdisp=vdispbest, redshift=redshift,
-                                              south=data['photsys_south'])
+                                              south=data['photsys'] == 'S')
         bestsspflux = np.concatenate(bestsspflux, axis=0)
         coeff, chi2min = self._fnnls_parallel(bestsspflux, specflux, specivar)
 
@@ -1122,7 +1139,7 @@ class ContinuumFit(ContinuumTools):
 
         redshift = fastphot['Z']
 
-        if fastphot['PHOTSYS_SOUTH']:
+        if fastphot['PHOTSYS'] == 'S':
             filters = self.decam
             allfilters = self.decamwise
         else:
