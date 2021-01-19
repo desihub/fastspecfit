@@ -16,6 +16,9 @@ FastSpecFit API
 .. automodule:: fastspecfit.io
    :members:
 
+.. automodule:: fastspecfit.mpi
+   :members:
+
 .. automodule:: fastspecfit.scripts
    :members:
 
