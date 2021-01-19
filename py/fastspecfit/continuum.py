@@ -414,8 +414,8 @@ class ContinuumTools(object):
         return smoothflux # [noutpix]
     
     def SSP2data(self, _sspflux, _sspwave, redshift=0.0, AV=None, vdisp=None,
-                 specwave=None, specres=None, coeff=None, south=True,
-                 synthphot=True):
+                 cameras=['b', 'r', 'z'], specwave=None, specres=None, coeff=None,
+                 south=True, synthphot=True):
         """Workhorse routine to turn input SSPs into spectra that can be compared to
         real data.
 
@@ -535,7 +535,7 @@ class ContinuumTools(object):
         else:
             # loop over cameras and then multiprocess over age
             datasspflux = []
-            for icamera in [0, 1, 2]: # iterate on cameras
+            for icamera in np.arange(len(cameras)): # iterate on cameras
                 _datasspflux = []
                 for imodel in np.arange(nmodel):
                     _datasspflux.append(self.smooth_and_resample(
@@ -1009,7 +1009,7 @@ class ContinuumFit(ContinuumTools):
         zsspflux_dustvdisp, _ = self.SSP2data(
             self.sspflux_dustvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
             redshift=redshift, specwave=data['wave'], specres=data['res'],
-            synthphot=False)
+            cameras=data['cameras'], synthphot=False)
         log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
         
         # Combine all three cameras; we will unpack them to build the
@@ -1065,7 +1065,7 @@ class ContinuumFit(ContinuumTools):
                 _zsspflux_vdisp, _ = self.SSP2data(self.sspflux[:, agekeep], self.sspwave,
                                                    specwave=data['wave'], specres=data['res'],
                                                    AV=AVbest, vdisp=vdisp, redshift=redshift,
-                                                   synthphot=False)
+                                                   cameras=data['cameras'], synthphot=False)
                 _zsspflux_vdisp = np.concatenate(_zsspflux_vdisp, axis=0)
                 zsspflux_vdisp.append(_zsspflux_vdisp)
 
@@ -1087,7 +1087,7 @@ class ContinuumFit(ContinuumTools):
         bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave,
                                               specwave=data['wave'], specres=data['res'],
                                               AV=AVbest, vdisp=vdispbest, redshift=redshift,
-                                              south=data['photsys'] == 'S')
+                                              cameras=data['cameras'], south=data['photsys'] == 'S')
         bestsspflux = np.concatenate(bestsspflux, axis=0)
         coeff, chi2min = self._fnnls_parallel(bestsspflux, specflux, specivar)
 

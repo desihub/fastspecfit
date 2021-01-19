@@ -41,7 +41,13 @@ class DESISpectra(object):
         """
         #thistile = self.tiles[self.tiles['TILEID'] == tileid]
         stileid = '{:06d}'.format(tileid)
-        fahdr = fitsio.read_header(os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid)))
+        fiberfile = os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid))
+        if not os.path.isfile(fiberfile):
+            fiberfile = fiberfile.replace('.gz', '')
+            if not os.path.isfile(fiberfile):
+                log.warning('Fiber assignment file {} not found!'.format(fiberfile))
+        log.info('Reading {} header.'.format(fiberfile))
+        fahdr = fitsio.read_header(fiberfile, ext=0)
         targetdir = fahdr['TARG']
 
         # sometimes this is a KPNO directory!
@@ -384,8 +390,9 @@ class DESISpectra(object):
                         lambda_eff=filters.effective_wavelengths.value)
                 else:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
-                                 'linemask': [], 'snr': np.zeros(3).astype('f4')})
-                    for icam, camera in enumerate(spec.bands):
+                                 'linemask': [], 'snr': np.zeros(3).astype('f4'),
+                                 'cameras': spec.bands})
+                    for icam, camera in enumerate(data['cameras']):
                         mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
                         data['wave'].append(spec.wave[camera])
                         data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
@@ -408,7 +415,7 @@ class DESISpectra(object):
                     coadd_wave = np.unique(np.hstack(data['wave']))
                     coadd_flux3d = np.zeros((len(coadd_wave), 3))
                     coadd_ivar3d = np.zeros_like(coadd_flux3d)
-                    for icam in np.arange(len(spec.bands)):
+                    for icam in np.arange(len(data['cameras'])):
                         I = np.where(np.isin(data['wave'][icam], coadd_wave))[0]
                         J = np.where(np.isin(coadd_wave, data['wave'][icam]))[0]
                         coadd_flux3d[J, icam] = data['flux'][icam][I]

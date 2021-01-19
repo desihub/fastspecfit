@@ -6,7 +6,7 @@
 
 # Example: build the coadds using 16 MPI tasks with 8 cores per node (and therefore 16*8/32=4 nodes)
 
-#salloc -N 8 -C haswell -A desi -L cfs -t 02:00:00 --qos interactive --image=docker:desihub/fastspecfit:v0.0.1
+#salloc -N 16 -C haswell -A desi -L cfs -t 02:00:00 --qos interactive --image=docker:desihub/fastspecfit:v0.0.1
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastphot 32 > fastphot.log.1 2>&1 &
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec 32 > fastspec.log.1 2>&1 &
 
@@ -35,7 +35,7 @@ if [ $stage = "test" ]; then
 elif [ $stage = "fastspec" ]; then
     time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --spectype night-coadds
 elif [ $stage = "fastphot" ]; then
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --mp $mp --specprod $specprod
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --mp $mp --specprod $specprod --spectype night-coadds
 else
     echo "Unrecognized stage "$stage
 fi

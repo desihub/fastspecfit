@@ -141,7 +141,7 @@ def plan(args, comm=None, merge=False, fastphot=False):
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'deep', '{}-[0-9]-{}-deep.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '8????', 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
             elif args.spectype == 'night-coadds':
                 if args.tile is not None and args.night is not None:
                     thesefiles = []
@@ -153,10 +153,10 @@ def plan(args, comm=None, merge=False, fastphot=False):
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 elif args.tile is None and args.night is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, '8????', str(night), '{}-[0-9]-?????-{}.fits'.format(
                         prefix, night))) for night in args.night]))))
                 else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '8????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
             elif args.spectype == 'exposures':
                 raise NotImplemented
                 # we probably want to *require* tile or night in this case...
@@ -281,8 +281,10 @@ def merge_fastspecfit(args, fastphot=False):
 
     if fastphot:
         outprefix = 'fastphot'
+        extname = 'FASTPHOT'
     else:
         outprefix = 'fastspec'
+        extname = 'FASTSPEC'
 
     outdir, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot)
 
@@ -304,7 +306,7 @@ def merge_fastspecfit(args, fastphot=False):
     t0 = time.time()
     out, meta = [], []
     for outfile in outfiles:
-        out.append(Table(fitsio.read(outfile, ext='FASTPHOT')))
+        out.append(Table(fitsio.read(outfile, ext=extname)))
         meta.append(Table(fitsio.read(outfile, ext='METADATA')))
     out = vstack(out)
     meta = vstack(meta)
