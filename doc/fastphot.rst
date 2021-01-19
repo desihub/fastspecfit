@@ -3,9 +3,10 @@ fastphot Data Model
 ===================
 
 :Summary: Photometric fitting results.
-:Naming Convention: ``fastphot-{petal}-{tileid}-{night}.fits``, where
+:Naming Convention: ``fastphot-{petal}-{tileid}-{night,deep}.fits``, where
     ``{petal}`` is the petal or spetrograph number (0-9), ``{tileid}`` is the
-    tileid and ``{night}`` is the night of the observation.
+    tileid, and the ``{night}`` or ``{deep}`` suffix indicates whether nightly
+    or deep coadds were used for the input redshifts.
 :Regex: ``fastphot-[0-9]+*+\.fits``
 :File Type: FITS, <1 MB
 
@@ -45,7 +46,7 @@ HDU01
 
 EXTNAME = FASTPHOT
 
-Fitting results. Checksum not yet implemented.
+Fitting results.
 
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -97,7 +98,7 @@ HDU02
 
 EXTNAME = METADATA
 
-Fitting results. Checksum not yet implemented.
+Metadata associated with each objected fitted.
 
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -157,5 +158,14 @@ If the inverse variance on a given absolutely magnitude is zero it means that
 the absolute magnitude was derived from *synthesized* photometry based on the
 best-fitting model (i.e., use with care).
 
+Similarly, if CONTINUUM_AV_IVAR is zero it means that fitted for the (intrinsic)
+dust extinction failed.
+
+In general, one should use the value of CONTINUUM_CHI2 to assess the quality of
+the fit to the broadband photometry.
+
 Upcoming changes
 ================
+
+A basic stellar mass estimate will be added.
+
