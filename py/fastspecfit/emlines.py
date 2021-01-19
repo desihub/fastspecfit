@@ -228,6 +228,7 @@ class EMLineFit(ContinuumTools):
         """Initialize the output data table for this class.
 
         """
+        import astropy.units as u
         from astropy.table import Table, Column
         
         out = Table()
@@ -242,10 +243,10 @@ class EMLineFit(ContinuumTools):
         for band in self.synth_bands:
             out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy))
             
-        out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4'))
-        out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4'))
-        out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4'))
-        out.add_column(Column(name='LINEVSHIFT_BALMER_IVAR', length=nobj, dtype='f4'))
+        out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+        out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+        out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+        out.add_column(Column(name='LINEVSHIFT_BALMER_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
         out.add_column(Column(name='LINESIGMA_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer / u.second))
         out.add_column(Column(name='LINESIGMA_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
         out.add_column(Column(name='LINESIGMA_BALMER', length=nobj, dtype='f4', unit=u.kilometer / u.second))
@@ -395,9 +396,10 @@ class EMLineFit(ContinuumTools):
         for iband, band in enumerate(self.synth_bands):
             result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband]
 
+        specflux_nolines = specflux - emlinemodel
+        
         # measure D(4000) without the emission lines
         if False:
-            specflux_nolines = specflux - emlinemodel
             d4000_nolines, _ = self.get_d4000(emlinewave, specflux_nolines, redshift=redshift)
             result['D4000_NOLINES'] = d4000_nolines
 

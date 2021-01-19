@@ -31,15 +31,24 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False):
     cfit, continuummodel = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
     for col in cfit.colnames:
         out[col] = cfit[col]
+
+    ## Copy over the reddening-corrected fluxes -- messy!
+    #for iband, band in enumerate(CFit.fiber_bands):
+    #    meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
+    #    #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+    #for iband, band in enumerate(CFit.bands):
+    #    meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
+    #    meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
+        
     log.info('Continuum-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
     
-    # fit the emission-line spectrum
+    # Fit the emission-line spectrum.
     t0 = time.time()
     emfit = EMFit.fit(data, continuummodel)
     for col in emfit.colnames:
         out[col] = emfit[col]
     log.info('Line-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
-        
+
     return out, meta
 
 def parse(options=None):
@@ -101,15 +110,13 @@ def main(args=None, comm=None):
         return
     data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True)
 
-    pdb.set_trace()
-    
-    out = Spec.init_output(CFit, EMFit, fastphot=args.fastphot)
+    out, meta = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=False)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
         Spec.ntargets, time.time()-t0))
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], CFit, EMFit, out[iobj], args.fastphot, args.solve_vdisp)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.solve_vdisp)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -117,8 +124,11 @@ def main(args=None, comm=None):
             _out = P.map(_fastspec_one, fitargs)
     else:
         _out = [fastspec_one(*_fitargs) for _fitargs in fitargs]
-    out = Table(np.hstack(_out))
+    _out = list(zip(*_out))
+    out = Table(np.hstack(_out[0]))
+    meta = Table(np.hstack(_out[1]))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
-    write_fastspecfit(out, outfile=args.outfile, specprod=Spec.specprod)
+    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
+                      fastphot=False)

@@ -335,8 +335,8 @@ class DESISpectra(object):
 
             if not fastphot:
                 spec = read_spectra(specfile).select(targets=zbest['TARGETID'])
-                assert(np.all(spec.meta['TARGETID'] == zbest['TARGETID']))
-                assert(np.all(spec.meta['TARGETID'] == meta['TARGETID']))
+                assert(np.all(spec.fibermap['TARGETID'] == zbest['TARGETID']))
+                assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
             
             for igal in np.arange(len(zbest)):
                 ra, dec = meta['RA'][igal], meta['DEC'][igal]
@@ -381,9 +381,7 @@ class DESISpectra(object):
                     data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
                         maggies=fibermaggies, nanomaggies=True,
                         lambda_eff=filters.effective_wavelengths.value)
-                    
                 else:
-                    
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                                  'linemask': [], 'snr': np.zeros(3).astype('f4')})
                     for icam, camera in enumerate(spec.bands):
@@ -499,9 +497,10 @@ class DESISpectra(object):
         colunit = {'RA': u.deg, 'DEC': u.deg, 'FIBERTOTFLUX_G': u.nanomaggy, 'FIBERTOTFLUX_R': u.nanomaggy,
                    'FIBERTOTFLUX_Z': u.nanomaggy, 'FLUX_G': u.nanomaggy, 'FLUX_R': u.nanomaggy,
                    'FLUX_Z': u.nanomaggy, 'FLUX_W1': u.nanomaggy, 'FLUX_W2': u.nanomaggy, 
-                    'FLUX_IVAR_G': 1/u.nanomaggy**2, 'FLUX_IVAR_R': 1/u.nanomaggy**2,
-                    'FLUX_IVAR_Z': 1/u.nanomaggy**2, 'FLUX_IVAR_W1': 1/u.nanomaggy**2,
-                    'FLUX_IVAR_W2': 1/u.nanomaggy**2}
+                   'FLUX_IVAR_G': 1/u.nanomaggy**2, 'FLUX_IVAR_R': 1/u.nanomaggy**2,
+                   'FLUX_IVAR_Z': 1/u.nanomaggy**2, 'FLUX_IVAR_W1': 1/u.nanomaggy**2,
+                   'FLUX_IVAR_W2': 1/u.nanomaggy**2,
+                   }
 
         skipcols = ['FIBERSTATUS', 'OBJTYPE', 'TARGET_RA', 'TARGET_DEC'] + fluxcols
         zcols = ['Z', 'DELTACHI2', 'SPECTYPE']
@@ -530,11 +529,12 @@ class DESISpectra(object):
             meta[zcol] = self.zbest[zcol]
             if zcol in colunit.keys():
                 meta[zcol].unit = colunit[zcol]
-                
-        for fluxcol in fluxcols:
-            meta[fluxcol] = self.meta[fluxcol]
-            if fluxcol in colunit.keys():
-                meta[fluxcol].unit = colunit[fluxcol]
+
+        if fastphot:
+            for fluxcol in fluxcols:
+                meta[fluxcol] = self.meta[fluxcol]
+                if fluxcol in colunit.keys():
+                    meta[fluxcol].unit = colunit[fluxcol]
 
         out = Table()
         out['TARGETID'] = self.meta['TARGETID']

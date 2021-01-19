@@ -31,7 +31,7 @@ def fastphot_one(iobj, data, out, meta, CFit):
     for col in cfit.colnames:
         out[col] = cfit[col]
 
-    # Copy over the reddening-corrected fluxes.
+    # Copy over the reddening-corrected fluxes -- messy!
     for iband, band in enumerate(CFit.fiber_bands):
         meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
         #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
