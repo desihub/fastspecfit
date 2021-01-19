@@ -111,7 +111,7 @@ def backup_logs(logfile):
     os.rename(logfile, newlog)
     return newlog
 
-def plan(args, comm=None, merge=False, outprefix='fastphot'):
+def plan(args, comm=None, merge=False, fastphot=False):
 
     from astropy.table import Table
 
@@ -120,6 +120,11 @@ def plan(args, comm=None, merge=False, outprefix='fastphot'):
         rank, size = 0, 1
     else:
         rank, size = comm.rank, comm.size
+
+    if fastphot:
+        outprefix = 'fastphot'
+    else:
+        outprefix = 'fastspec'
 
     if rank == 0:
         for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES', 'DESI_ROOT', 'DUST_DIR']:
@@ -279,7 +284,7 @@ def merge_fastspecfit(args, fastphot=False):
     else:
         outprefix = 'fastspec'
 
-    outdir, _, outfiles, _, _ = plan(args, merge=True, outprefix=outprefix)
+    outdir, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot)
 
     mergedir = os.path.join(outdir, 'merged')
     if not os.path.isdir(mergedir):

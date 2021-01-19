@@ -26,9 +26,10 @@ class DESISpectra(object):
         self.fiberassign_dir = os.path.join(os.getenv('DESI_ROOT'), 'target', 'fiberassign', 'tiles', 'trunk')
 
         # read the summary tile file (not sure we need this...)
-        tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
-        self.tiles = fitsio.read(tilefile)
-        log.info('Read {} tiles from {}'.format(len(self.tiles), tilefile))
+        if False:
+            tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
+            self.tiles = fitsio.read(tilefile)
+            log.info('Read {} tiles from {}'.format(len(self.tiles), tilefile))
         
         ## Closest nside to DESI tile area of ~7 deg (from
         ## desitarget.io.read_targets_in_quick).
@@ -38,7 +39,7 @@ class DESISpectra(object):
         """Get the targets catalog used to build a given fiberassign catalog.
 
         """
-        thistile = self.tiles[self.tiles['TILEID'] == tileid]
+        #thistile = self.tiles[self.tiles['TILEID'] == tileid]
         stileid = '{:06d}'.format(tileid)
         fahdr = fitsio.read_header(os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid)))
         targetdir = fahdr['TARG']
