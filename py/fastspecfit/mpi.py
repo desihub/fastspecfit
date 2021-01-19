@@ -136,7 +136,7 @@ def plan(args, comm=None, merge=False, outprefix='fastphot'):
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'deep', '{}-[0-9]-{}-deep.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, tile, 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
             elif args.spectype == 'night-coadds':
                 if args.tile is not None and args.night is not None:
                     thesefiles = []
@@ -175,7 +175,7 @@ def plan(args, comm=None, merge=False, outprefix='fastphot'):
             zbestfiles = zbestfiles[todo]
             outfiles = outfiles[todo]
 
-            log.info('Found {}/{} zbestfiles left to do.'.format(len(zbestfiles), nfile))
+            log.info('Found {}/{} zbestfiles (left) to do.'.format(len(zbestfiles), nfile))
     else:
         outdir = None
         zbestfiles = None
