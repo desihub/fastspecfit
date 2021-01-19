@@ -723,7 +723,7 @@ class ContinuumFit(ContinuumTools):
         """
         return np.where(self.sspinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
 
-    def kcorr_and_absmag(self, data, continuum, coeff, band_shift=0.0):
+    def kcorr_and_absmag(self, data, continuum, coeff, band_shift=0.0, snrmin=2.0):
         """Computer K-corrections and absolute magnitudes.
 
         # To get the absolute r-band magnitude we would do:
@@ -770,13 +770,15 @@ class ContinuumFit(ContinuumTools):
         for jj in np.arange(nout):
             lambdadist = np.abs(lambda_in / (1 + redshift) - lambda_out[jj])
             # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
-            #oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e6)
-            oband = np.argmin(lambdadist + (maggies*np.sqrt(ivarmaggies) < 1)*1e6)
+            #oband = np.argmin(lambdadist)
+            #oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e10)
+            oband = np.argmin(lambdadist + (maggies*np.sqrt(ivarmaggies) < snrmin)*1e10)
             kcorr[jj] = + 2.5 * np.log10(synth_outmaggies_rest[jj] / bestmaggies[oband])
 
             # m_R = M_Q + DM(z) + K_QR(z) or
             # M_Q = m_R - DM(z) - K_QR(z)
-            if (maggies[oband] > 0) and (ivarmaggies[oband]) > 0:
+            if maggies[oband] * np.sqrt(ivarmaggies[oband]) > snrmin:
+            #if (maggies[oband] > 0) and (ivarmaggies[oband]) > 0:
                 absmag[jj] = -2.5 * np.log10(maggies[oband]) - dmod - kcorr[jj]
                 ivarabsmag[jj] = maggies[oband]**2 * ivarmaggies[oband] * (0.4 * np.log(10.))**2
             else:
