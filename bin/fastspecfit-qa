@@ -42,8 +42,8 @@ def parse(options=None):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
-    parser.add_argument('--night', default=None, type=str, nargs='*', help='Generate QA for all objects observed on this night.')
+    #parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
+    #parser.add_argument('--night', default=None, type=str, nargs='*', help='Generate QA for all objects observed on this night.')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
@@ -92,45 +92,13 @@ def main(args=None, comm=None):
     
     fastfit, meta, specprod = read_fastspecfit(args.fastspecfile, fastphot=fastphot)
 
-    pdb.set_trace()
-
-    if fastphot is not None and fastspec is not None:
-        assert(np.all(fastphot['TARGETID'] == fastspec['TARGETID']))
-        assert(specprod_phot == specprod_spec)
-        specprod = specprod_spec
-        fastfit = fastspec
-    elif fastphot is None and fastspec is not None:
-        specprod = specprod_spec
-        fastfit = fastspec
-    elif fastphot is not None and fastspec is None:
-        specprod = specprod_phot
-        fastfit = fastphot
-    else:
-        log.warning('Required input(s) --fastphotfile and/or --fastspecfile not provided!')
-        return
-        
-    log.info('Found specprod={}'.format(specprod))
-
-    # optionally trim to a particular tile and/or night
-    def _select_tile_night(fastfit, tile=None, night=None):
-        if fastfit and (tile or night):
-            keep = np.ones(len(fastfit), bool)
-            if tile:
-                keep *= (fastfit['TILEID'].astype(str) == tile)
-            if night:
-                keep *= (fastfit['NIGHT'].astype(str) == night)
-            fastfit = fastfit[keep]
-            log.info('Keeping {} spectra from tile {} on night {}.'.format(len(fastfit), tile, night))
-        return fastfit
-
-    fastphot = _select_tile_night(fastphot)
-    fastspec = _select_tile_night(fastspec)
-
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
     else:
         targetids = args.targetids
+
+    pdb.set_trace()
 
     # optionally trim to a particular tile and/or night
     def _select_tiles_nights_targets(fastfit, tiles=None, nights=None, targetids=None):

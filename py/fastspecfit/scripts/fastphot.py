@@ -58,6 +58,9 @@ def parse(options=None):
     #parser.add_argument('--suffix', type=str, default=None, help='Optional suffix for output filename.')
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
 
+    parser.add_argument('--coadd-type', type=str, required=True, default='deep',
+                        choices=['deep', 'all', 'night', 'exposures'],
+                        help='Type of spectral coadds corresponding to the input zbestfiles.')
     parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
 
     if options is None:

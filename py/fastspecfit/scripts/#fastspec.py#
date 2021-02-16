@@ -109,7 +109,8 @@ def main(args=None, comm=None):
     # Read the data.
     t0 = time.time()
     Spec.find_specfiles(args.zbestfiles, firsttarget=args.firsttarget,
-                        targetids=targetids, ntargets=args.ntargets)
+                        targetids=targetids, ntargets=args.ntargets,
+                        )
     if len(Spec.specfiles) == 0:
         return
     data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True)

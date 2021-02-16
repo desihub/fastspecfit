@@ -65,7 +65,8 @@ class DESISpectra(object):
         return targetdir
 
     def find_specfiles(self, zbestfiles=None, fastfit=None, specprod=None,
-                       firsttarget=0, targetids=None, ntargets=None, exposures=False):
+                       coadd_type='deep', firsttarget=0, targetids=None,
+                       ntargets=None, exposures=False):
         """Initialize the fastspecfit output data table.
 
         Parameters
@@ -76,7 +77,6 @@ class DESISpectra(object):
 
         Notes
         -----
-
         fastfit - results table (overrides zbestfiles and then specprod is required
 
         """
@@ -88,8 +88,8 @@ class DESISpectra(object):
             raise IOError
 
         if fastfit is not None:
-            if specprod is None:
-                log.warning('specprod is required when passing a fastfit results table!')
+            if specprod is None or coadd_type is None:
+                log.warning('specprod and coadd_type are required when passing a fastfit results table!')
                 raise IOError
             fastfit = Table(fastfit)
             targetids = fastfit['TARGETID'].data
@@ -126,6 +126,9 @@ class DESISpectra(object):
             self.specprod = specprod
             log.info('Parsed specprod={}'.format(specprod))
             
+        self.coadd_type = coadd_type
+        log.info('Storing coadd_type={}'.format(coadd_type))
+
         # Should we not sort...?
         #zbestfiles = np.array(set(np.atleast_1d(zbestfiles)))
         zbestfiles = np.array(sorted(set(np.atleast_1d(zbestfiles))))
@@ -573,13 +576,14 @@ def read_fastspecfit(fastspecfile, fastphot=False):
 
         fastfit = Table(fitsio.read(fastspecfile, ext=ext))
         meta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-        log.info('Read {} objects from {}'.format(len(fastfit), fastspecfile))
+        log.info('Read {} object(s) from {} and specprod={}'.format(len(fastfit), fastspecfile, specprod))
         return fastfit, meta, specprod
     else:
         log.warning('File {} not found.'.format(fastspecfile))
         return None, None, None
 
-def write_fastspecfit(out, meta, outfile=None, specprod=None, fastphot=False):
+def write_fastspecfit(out, meta, outfile=None, specprod=None, coadd_type=None,
+                      fastphot=False):
     """Write out.
 
     """
@@ -598,13 +602,13 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None, fastphot=False):
         hduout.header['EXTNAME'] = 'FASTPHOT'
     else:
         hduout.header['EXTNAME'] = 'FASTSPEC'
-    #if specprod:
-    #    hduout.header['SPECPROD'] = specprod
         
     hdumeta = fits.convenience.table_to_hdu(meta)
     hdumeta.header['EXTNAME'] = 'METADATA'
     if specprod:
         hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
+    if coadd_type:
+        hdumeta.header['COADDTYP'] = (coadd_type, 'spectral coadd fitted')
         
     hx = fits.HDUList([hduprim, hduout, hdumeta])
     hx.writeto(outfile, overwrite=True, checksum=True)

@@ -146,13 +146,19 @@ def plan(args, comm=None, merge=False, fastphot=False):
         specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', args.specprod, 'tiles')
 
         def _findfiles(filedir, prefix='zbest'):
-            if args.spectype == 'deep-coadds':
+            if args.coadd_type == 'deep':
                 if args.tile is not None:
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'deep', '{}-[0-9]-{}-deep.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 else:
                     thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
-            elif args.spectype == 'night-coadds':
+            elif args.coadd_type == 'all':
+                if args.tile is not None:
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'all', '{}-[0-9]-{}-all.fits'.format(
+                        prefix, tile))) for tile in args.tile]))))
+                else:
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'all', '{}-[0-9]-?????-all.fits'.format(prefix))))))
+            elif args.coadd_type == 'night':
                 if args.tile is not None and args.night is not None:
                     thesefiles = []
                     for tile in args.tile:
@@ -167,7 +173,7 @@ def plan(args, comm=None, merge=False, fastphot=False):
                         prefix, night))) for night in args.night]))))
                 else:
                     thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
-            elif args.spectype == 'exposures':
+            elif args.coadd_type == 'exposures':
                 raise NotImplemented
                 # we probably want to *require* tile or night in this case...
             else:
@@ -302,13 +308,13 @@ def merge_fastspecfit(args, fastphot=False):
     if not os.path.isdir(mergedir):
         os.makedirs(mergedir)
 
-    #if args.spectype == 'deep-coadds':
+    #if args.coadd_type == 'deep-coadds':
     #    mergeprefix = 'deep'
-    #elif args.spectype == 'night-coadds':
+    #elif args.coadd_type == 'night-coadds':
     #    mergeprefix = ''
-    #elif args.spectype == 'night-coadds':
+    #elif args.coadd_type == 'night-coadds':
 
-    mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, args.spectype))
+    mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, args.coadd_type))
     if os.path.isfile(mergefile) and not args.overwrite:
         log.info('Merged output file {} exists!'.format(mergefile))
         return

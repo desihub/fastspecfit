@@ -2,10 +2,10 @@
 """
 MPI wrapper for fastphot and fastspec.
 
-mpi-fastspecfit --mp 32 --spectype night-coadds --tile 80608 --night 20201220 --plan
+mpi-fastspecfit --mp 32 --coadd-type night-coadds --tile 80608 --night 20201220 --plan
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
 
-mpi-fastspecfit --mp 32 --spectype deep-coadds --merge --nompi
+mpi-fastspecfit --mp 32 --coadd-type deep-coadds --merge --nompi
 
 """
 import pdb # for debugging
@@ -56,9 +56,11 @@ def run_fastspecfit(args, comm=None, fastphot=False):
         sys.stdout.flush()
 
         if fastphot:
-            cmd = 'fastphot {} -o {} --mp {}'.format(zbestfiles[ii], outfiles[ii], args.mp)
+            cmd = 'fastphot {} -o {} --mp {} --coadd-type {}'.format(zbestfiles[ii], outfiles[ii],
+                                                                     args.mp, args.coadd_type)
         else:
-            cmd = 'fastspec {} -o {} --mp {}'.format(zbestfiles[ii], outfiles[ii], args.mp)
+            cmd = 'fastspec {} -o {} --mp {} --coadd-type {}'.format(zbestfiles[ii], outfiles[ii],
+                                                                     args.mp, args.coadd_type)
             if args.solve_vdisp:
                 cmd += ' --solve-vdisp'
         #cmd += ' --ntargets 16'
@@ -119,11 +121,12 @@ def main():
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--specprod', type=str, default='blanc', choices=['blanc', 'daily'], help='Spectroscopic production to process.')
-    parser.add_argument('--spectype', type=str, default='deep-coadds', choices=['deep-coadds', 'night-coadds', 'exposures'],
-                        help='Specify which type of spectra to process.')
+    parser.add_argument('--coadd-type', type=str, default='deep',
+                        choices=['deep', 'all', 'night', 'exposures'],
+                        help='Specify which type of spectra/zbest files to process.')
     
-    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process (ignored if spectype is exposures).')
-    parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if spectype is exposures or deep-coadds).')
+    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process (ignored if coadd-type is exposures).')
+    parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is exposures or deep-coadds).')
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--maxnodes', type=int, default=256, help='maximum number of nodes to use')
