@@ -3,10 +3,12 @@ fastphot Data Model
 ===================
 
 :Summary: Photometric fitting results.
-:Naming Convention: ``fastphot-{petal}-{tileid}-{night,deep}.fits``, where
+:Naming Convention:
+    ``fastphot-{petal}-{tileid}-{all,deep,night,exposures}.fits``, where
     ``{petal}`` is the petal or spetrograph number (0-9), ``{tileid}`` is the
-    tileid, and the ``{night}`` or ``{deep}`` suffix indicates whether nightly
-    or deep coadds were used for the input redshifts.
+    tileid, and the ``{all}``, ``{deep}``, ``{night}``, or ``{exposures}``
+    suffix indicates which type of spectral coadds (and corresponding redshifts)
+    were fitted (used).
 :Regex: ``fastphot-[0-9]+*+\.fits``
 :File Type: FITS, <1 MB
 
@@ -18,10 +20,7 @@ Number EXTNAME      Type     Contents
 ====== ============ ======== ======================
 HDU00_ PRIMARY      IMAGE    Empty
 HDU01_ FASTPHOT     BINTABLE Fitting results table.
-<<<<<<< HEAD
-=======
 HDU02_ METADATA     BINTABLE Object metadata table.
->>>>>>> main
 ====== ============ ======== ======================
 
 FITS Header Units
@@ -111,7 +110,8 @@ KEY      Example Value    Type Comment
 ======== ================ ==== ==============================================
 NAXIS1   155              int  length of dimension 1
 NAXIS2   3000             int  length of dimension 2
-SPECPROD daily            str  spectroscopic production name
+SPECPROD blanc            str  spectroscopic production name
+COADDTYP deep             str  spectral coadd fitted
 CHECKSUM EAnFF7l9EAlEE5l9 str  HDU checksum updated 2018-03-29T22:45:34
 DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
 ======== ================ ==== ==============================================
