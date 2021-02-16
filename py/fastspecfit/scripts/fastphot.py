@@ -23,7 +23,7 @@ def _fastphot_one(args):
     """Multiprocessing wrapper."""
     return fastphot_one(*args)
 
-def fastphot_one(iobj, data, out, meta, CFit, solve_vdisp=False):
+def fastphot_one(iobj, data, out, meta, CFit):
     """Fit one spectrum."""
     #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
@@ -31,7 +31,7 @@ def fastphot_one(iobj, data, out, meta, CFit, solve_vdisp=False):
     for col in cfit.colnames:
         out[col] = cfit[col]
 
-    # Copy over the reddening-corrected fluxes.
+    # Copy over the reddening-corrected fluxes -- messy!
     for iband, band in enumerate(CFit.fiber_bands):
         meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
         #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
@@ -58,8 +58,9 @@ def parse(options=None):
     #parser.add_argument('--suffix', type=str, default=None, help='Optional suffix for output filename.')
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
 
-    parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
-
+    parser.add_argument('--coadd-type', type=str, required=True, default='deep',
+                        choices=['deep', 'all', 'night', 'exposures'],
+                        help='Type of spectral coadds corresponding to the input zbestfiles.')
     parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
 
     if options is None:
@@ -87,7 +88,7 @@ def main(args=None, comm=None):
     else:
         targetids = args.targetids
 
-    # Initialize the continuum- and emission-line fitting classes.
+    # Initialize the continuum-fitting classes.
     t0 = time.time()
     CFit = ContinuumFit()
     Spec = DESISpectra()
@@ -96,7 +97,8 @@ def main(args=None, comm=None):
     # Read the data.
     t0 = time.time()
     Spec.find_specfiles(args.zbestfiles, firsttarget=args.firsttarget,
-                        targetids=targetids, ntargets=args.ntargets)
+                        targetids=targetids, ntargets=args.ntargets,
+                        coadd_type=args.coadd_type)
     if len(Spec.specfiles) == 0:
         return
     data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)
@@ -107,7 +109,7 @@ def main(args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, args.solve_vdisp)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -121,4 +123,5 @@ def main(args=None, comm=None):
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
-    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod, fastphot=True)
+    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
+                      coadd_type=Spec.coadd_type, fastphot=True)

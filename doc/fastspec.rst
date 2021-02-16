@@ -3,9 +3,12 @@ fastspec Data Model
 ===================
 
 :Summary: Spectroscopic fitting results.
-:Naming Convention: ``fastspec-{petal}-{tileid}-{night}.fits``, where
+:Naming Convention:
+    ``fastspec-{petal}-{tileid}-{all,deep,night,exposures}.fits``, where
     ``{petal}`` is the petal or spetrograph number (0-9), ``{tileid}`` is the
-    tileid and ``{night}`` is the night of the observation.
+    tileid, and the ``{all}``, ``{deep}``, ``{night}``, or ``{exposures}``
+    suffix indicates which type of spectral coadds (and corresponding redshifts)
+    were fitted (used).
 :Regex: ``fastspec-[0-9]+*+\.fits``
 :File Type: FITS, <1 MB
 
@@ -56,7 +59,9 @@ Required Header Keywords
 KEY      Example Value    Type Comment
 ======== ================ ==== ==============================================
 NAXIS1   325              int  length of dimension 1
-NAXIS2   3000             int  length of dimension 2
+NAXIS2   1225             int  length of dimension 2
+SPECPROD blanc            str  spectroscopic production name
+COADDTYP deep             str  spectral coadd fitted
 CHECKSUM EAnFF7l9EAlEE5l9 str  HDU checksum updated 2018-03-29T22:45:34
 DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
 ======== ================ ==== ==============================================

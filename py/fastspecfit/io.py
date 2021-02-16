@@ -26,9 +26,10 @@ class DESISpectra(object):
         self.fiberassign_dir = os.path.join(os.getenv('DESI_ROOT'), 'target', 'fiberassign', 'tiles', 'trunk')
 
         # read the summary tile file (not sure we need this...)
-        tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
-        self.tiles = fitsio.read(tilefile)
-        log.info('Read {} tiles from {}'.format(len(self.tiles), tilefile))
+        if False:
+            tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
+            self.tiles = fitsio.read(tilefile)
+            log.info('Read {} tiles from {}'.format(len(self.tiles), tilefile))
         
         ## Closest nside to DESI tile area of ~7 deg (from
         ## desitarget.io.read_targets_in_quick).
@@ -38,9 +39,19 @@ class DESISpectra(object):
         """Get the targets catalog used to build a given fiberassign catalog.
 
         """
-        thistile = self.tiles[self.tiles['TILEID'] == tileid]
+        from astropy.io import fits
+        #thistile = self.tiles[self.tiles['TILEID'] == tileid]
         stileid = '{:06d}'.format(tileid)
-        fahdr = fitsio.read_header(os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid)))
+        fiberfile = os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid))
+        if not os.path.isfile(fiberfile):
+            fiberfile = fiberfile.replace('.gz', '')
+            if not os.path.isfile(fiberfile):
+                log.warning('Fiber assignment file {} not found!'.format(fiberfile))
+        log.info('Reading {} header.'.format(fiberfile))
+        # fitsio can't handle CONTINUE header cards!
+        #fahdr = fitsio.read_header(fiberfile, ext=0)
+        # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/zbest-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
+        fahdr = fits.getheader(fiberfile, ext=0)
         targetdir = fahdr['TARG']
 
         # sometimes this is a KPNO directory!
@@ -53,8 +64,10 @@ class DESISpectra(object):
 
         return targetdir
 
-    def find_specfiles(self, zbestfiles=None, fastfit=None, specprod=None,
-                       firsttarget=0, targetids=None, ntargets=None, exposures=False):
+    def find_specfiles(self, zbestfiles=None,
+                       #fastfit=None, metadata=None,
+                       specprod=None, coadd_type=None, firsttarget=0,
+                       targetids=None, ntargets=None, exposures=False):
         """Initialize the fastspecfit output data table.
 
         Parameters
@@ -65,45 +78,49 @@ class DESISpectra(object):
 
         Notes
         -----
-
         fastfit - results table (overrides zbestfiles and then specprod is required
 
         """
         from glob import glob
         from desimodel.footprint import radec2pix
 
-        if zbestfiles is None and fastfit is None:
-            log.warning('At least one of zbestfiles or fastfit (and specprod) are required.')
-            raise IOError
+        if zbestfiles is None and fastfit is None and metadata is None:
+            log.warning('At least one of zbestfiles or fastfit (and metadata, specprod, and coadd_type) are required.')
+            raise ValueError
 
-        if fastfit is not None:
-            if specprod is None:
-                log.warning('specprod is required when passing a fastfit results table!')
-                raise IOError
-            fastfit = Table(fastfit)
-            targetids = fastfit['TARGETID'].data
-            petals = fastfit['FIBER'].data // 500
-            tiles = fastfit['TILEID'].astype(str).data
-            nights = fastfit['NIGHT'].astype(str).data
-
-            log.info('keep track of a sorting index which will keep the zbest and fibermap tables, below, row-aligned with the input fastfit table')
-            raise NotImplemented
-
-            zbestfiles = []
-            for petal, tile, night in zip(petals, tiles, nights):
-                #if petal == 2 or petal == 6:
-                #    log.warning('Temporarily skipping petals 2 & 6!')
-                #    continue
-                zbestfile = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles',
-                                         tile, night, 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
-                if not os.path.isfile(zbestfile):
-                    log.warning('zbestfile {} not found.'.format(zbestfile))
-                    raise IOError
-                zbestfiles.append(zbestfile)
-            zbestfiles = np.array(zbestfiles)
-
+        ## If we are given the fitting results, construct the appropriate
+        ## zbestfiles filenames based on the input.
+        #if fastfit is not None and metadata is not None:
+        #    if specprod is None or coadd_type is None:
+        #        log.warning('When using fastfit and metadata, specprod and coadd_type are required inputs.')
+        #        raise ValueError
+        #    
+        #    zbestdir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles')
+        #    tiles = metadata['TILEID'].astype(str).data
+        #    petals = metadata['FIBER'].data // 500
+        #    
+        #    zbestfiles = []
+        #    if coadd_type == 'deep' or coadd_type == 'all':
+        #        for tile in tiles:
+        #            for petal in petals:
+        #                zbestfiles.append(os.path.join(zbestdir, str(tile), coadd_type, 'zbest-{}-{}-{}.fits'.format(petal, tile, coadd_type)))
+        #    elif coadd_type == 'night':
+        #        nights = metadata['NIGHT'].astype(str).data
+        #        for tile in tiles:
+        #            for night in nights:
+        #                for petal in petals:
+        #                    zbestfiles.append(os.path.join(zbestdir, str(tile), str(night), 'zbest-{}-{}-{}.fits'.format(petal, tile, night)))
+        #    elif coadd_type == 'exposures':
+        #        raise NotImplemented
+        #        # we probably want to *require* tile or night in this case...
+        #    else:
+        #        pass
+        #    
+        #    zbestfiles = np.array(zbestfiles)
+        #    targetids = fastfit['TARGETID'].data
+            
         if len(np.atleast_1d(zbestfiles)) == 0:
-            log.warning('You must provide at least one zbestfile!')
+            log.warning('No zbestfiles found!')
             raise IOError
 
         # Try to glean specprod so we can write it to the output file. This
@@ -114,7 +131,24 @@ class DESISpectra(object):
             specprod = np.atleast_1d(zbestfiles)[0].replace(os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux'), '').split(os.sep)[1]
             self.specprod = specprod
             log.info('Parsed specprod={}'.format(specprod))
-            
+
+        # Try to figure out coadd_type from the first filename. Fragile! Assumes
+        # that coadd_type is a scalar...
+        if coadd_type is None:
+            import re
+            if re.search('-20[0-9]+[0-9]+[0-9]+\.fits', zbestfile[0]) is not None:
+                coadd_type = 'night'
+            elif 'deep' in zbestfile[0]:
+                coadd_type = 'deep'
+            elif 'all' in zbestfile[0]:
+                coadd_type = 'all'
+            else:
+                raise NotImplementedError
+                # single expsure
+                
+        self.coadd_type = coadd_type
+        log.info('Parsed coadd_type={}'.format(coadd_type))
+
         # Should we not sort...?
         #zbestfiles = np.array(set(np.atleast_1d(zbestfiles)))
         zbestfiles = np.array(sorted(set(np.atleast_1d(zbestfiles))))
@@ -139,7 +173,8 @@ class DESISpectra(object):
                       'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                       'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                       'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z']
-            if False and 'deep' in zbestfile:
+            # NIGHT is not defined for the deep coadds
+            if not 'deep' in zbestfile:
                 fmcols = fmcols + ['NIGHT']
             # add targeting columns
             fmcols = fmcols + allfmcols[['DESI_TARGET' in col or 'BGS_TARGET' in col or 'MWS_TARGET' in col for col in allfmcols]].tolist()
@@ -335,8 +370,8 @@ class DESISpectra(object):
 
             if not fastphot:
                 spec = read_spectra(specfile).select(targets=zbest['TARGETID'])
-                assert(np.all(spec.meta['TARGETID'] == zbest['TARGETID']))
-                assert(np.all(spec.meta['TARGETID'] == meta['TARGETID']))
+                assert(np.all(spec.fibermap['TARGETID'] == zbest['TARGETID']))
+                assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
             
             for igal in np.arange(len(zbest)):
                 ra, dec = meta['RA'][igal], meta['DEC'][igal]
@@ -381,12 +416,11 @@ class DESISpectra(object):
                     data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
                         maggies=fibermaggies, nanomaggies=True,
                         lambda_eff=filters.effective_wavelengths.value)
-                    
                 else:
-                    
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
-                                 'linemask': [], 'snr': np.zeros(3).astype('f4')})
-                    for icam, camera in enumerate(spec.bands):
+                                 'linemask': [], 'snr': np.zeros(3).astype('f4'),
+                                 'cameras': spec.bands})
+                    for icam, camera in enumerate(data['cameras']):
                         mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
                         data['wave'].append(spec.wave[camera])
                         data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
@@ -409,7 +443,7 @@ class DESISpectra(object):
                     coadd_wave = np.unique(np.hstack(data['wave']))
                     coadd_flux3d = np.zeros((len(coadd_wave), 3))
                     coadd_ivar3d = np.zeros_like(coadd_flux3d)
-                    for icam in np.arange(len(spec.bands)):
+                    for icam in np.arange(len(data['cameras'])):
                         I = np.where(np.isin(data['wave'][icam], coadd_wave))[0]
                         J = np.where(np.isin(coadd_wave, data['wave'][icam]))[0]
                         coadd_flux3d[J, icam] = data['flux'][icam][I]
@@ -499,9 +533,10 @@ class DESISpectra(object):
         colunit = {'RA': u.deg, 'DEC': u.deg, 'FIBERTOTFLUX_G': u.nanomaggy, 'FIBERTOTFLUX_R': u.nanomaggy,
                    'FIBERTOTFLUX_Z': u.nanomaggy, 'FLUX_G': u.nanomaggy, 'FLUX_R': u.nanomaggy,
                    'FLUX_Z': u.nanomaggy, 'FLUX_W1': u.nanomaggy, 'FLUX_W2': u.nanomaggy, 
-                    'FLUX_IVAR_G': 1/u.nanomaggy**2, 'FLUX_IVAR_R': 1/u.nanomaggy**2,
-                    'FLUX_IVAR_Z': 1/u.nanomaggy**2, 'FLUX_IVAR_W1': 1/u.nanomaggy**2,
-                    'FLUX_IVAR_W2': 1/u.nanomaggy**2}
+                   'FLUX_IVAR_G': 1/u.nanomaggy**2, 'FLUX_IVAR_R': 1/u.nanomaggy**2,
+                   'FLUX_IVAR_Z': 1/u.nanomaggy**2, 'FLUX_IVAR_W1': 1/u.nanomaggy**2,
+                   'FLUX_IVAR_W2': 1/u.nanomaggy**2,
+                   }
 
         skipcols = ['FIBERSTATUS', 'OBJTYPE', 'TARGET_RA', 'TARGET_DEC'] + fluxcols
         zcols = ['Z', 'DELTACHI2', 'SPECTYPE']
@@ -530,11 +565,12 @@ class DESISpectra(object):
             meta[zcol] = self.zbest[zcol]
             if zcol in colunit.keys():
                 meta[zcol].unit = colunit[zcol]
-                
-        for fluxcol in fluxcols:
-            meta[fluxcol] = self.meta[fluxcol]
-            if fluxcol in colunit.keys():
-                meta[fluxcol].unit = colunit[fluxcol]
+
+        if fastphot:
+            for fluxcol in fluxcols:
+                meta[fluxcol] = self.meta[fluxcol]
+                if fluxcol in colunit.keys():
+                    meta[fluxcol].unit = colunit[fluxcol]
 
         out = Table()
         out['TARGETID'] = self.meta['TARGETID']
@@ -545,7 +581,31 @@ class DESISpectra(object):
 
         return out, meta
 
-def write_fastspecfit(out, meta, outfile=None, specprod=None, fastphot=False):
+def read_fastspecfit(fastfitfile, fastphot=False):
+    """Read the fitting results.
+
+    """
+    if os.path.isfile(fastfitfile):
+        if fastphot:
+            ext = 'FASTPHOT'
+        else:
+            ext = 'FASTSPEC'
+            
+        hdr = fitsio.read_header(fastfitfile, ext='METADATA')
+        specprod, coadd_type = hdr['SPECPROD'], hdr['COADDTYP']
+
+        fastfit = Table(fitsio.read(fastfitfile, ext=ext))
+        meta = Table(fitsio.read(fastfitfile, ext='METADATA'))
+        log.info('Read {} object(s) from {} and specprod={}'.format(len(fastfit), fastfitfile, specprod))
+
+        return fastfit, meta, specprod, coadd_type
+    
+    else:
+        log.warning('File {} not found.'.format(fastfitfile))
+        return None, None, None
+
+def write_fastspecfit(out, meta, outfile=None, specprod=None,
+                      coadd_type=None, fastphot=False):
     """Write out.
 
     """
@@ -564,13 +624,13 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None, fastphot=False):
         hduout.header['EXTNAME'] = 'FASTPHOT'
     else:
         hduout.header['EXTNAME'] = 'FASTSPEC'
-    #if specprod:
-    #    hduout.header['SPECPROD'] = specprod
         
     hdumeta = fits.convenience.table_to_hdu(meta)
     hdumeta.header['EXTNAME'] = 'METADATA'
     if specprod:
         hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
+    if coadd_type:
+        hdumeta.header['COADDTYP'] = (coadd_type, 'spectral coadd fitted')
         
     hx = fits.HDUList([hduprim, hduout, hdumeta])
     hx.writeto(outfile, overwrite=True, checksum=True)

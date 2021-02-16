@@ -111,8 +111,9 @@ def backup_logs(logfile):
     os.rename(logfile, newlog)
     return newlog
 
-def plan(args, comm=None, merge=False, outprefix='fastphot'):
+def plan(args, comm=None, merge=False, fastphot=False):
 
+    import fitsio
     from astropy.table import Table
 
     t0 = time.time()
@@ -121,23 +122,43 @@ def plan(args, comm=None, merge=False, outprefix='fastphot'):
     else:
         rank, size = comm.rank, comm.size
 
+    if fastphot:
+        outprefix = 'fastphot'
+    else:
+        outprefix = 'fastspec'
+
     if rank == 0:
         for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES', 'DESI_ROOT', 'DUST_DIR']:
             if key not in os.environ:
                 log.fatal('Required ${} environment variable not set'.format(key))
                 raise EnvironmentError('Required ${} environment variable not set'.format(key))
-            
+
+        # figure out which tiles belong to SV1
+        if args.tile is None:
+            tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
+            tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
+            tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
+            args.tile = list(set(tileinfo['TILEID']))
+            log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
+            print(args.tile)
+
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
         specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', args.specprod, 'tiles')
 
         def _findfiles(filedir, prefix='zbest'):
-            if args.spectype == 'deep-coadds':
+            if args.coadd_type == 'deep':
                 if args.tile is not None:
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'deep', '{}-[0-9]-{}-deep.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 else:
                     thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
-            elif args.spectype == 'night-coadds':
+            elif args.coadd_type == 'all':
+                if args.tile is not None:
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'all', '{}-[0-9]-{}-all.fits'.format(
+                        prefix, tile))) for tile in args.tile]))))
+                else:
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'all', '{}-[0-9]-?????-all.fits'.format(prefix))))))
+            elif args.coadd_type == 'night':
                 if args.tile is not None and args.night is not None:
                     thesefiles = []
                     for tile in args.tile:
@@ -152,7 +173,7 @@ def plan(args, comm=None, merge=False, outprefix='fastphot'):
                         prefix, night))) for night in args.night]))))
                 else:
                     thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
-            elif args.spectype == 'exposures':
+            elif args.coadd_type == 'exposures':
                 raise NotImplemented
                 # we probably want to *require* tile or night in this case...
             else:
@@ -276,22 +297,24 @@ def merge_fastspecfit(args, fastphot=False):
 
     if fastphot:
         outprefix = 'fastphot'
+        extname = 'FASTPHOT'
     else:
         outprefix = 'fastspec'
+        extname = 'FASTSPEC'
 
-    outdir, _, outfiles, _, _ = plan(args, merge=True, outprefix=outprefix)
+    outdir, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot)
 
     mergedir = os.path.join(outdir, 'merged')
     if not os.path.isdir(mergedir):
         os.makedirs(mergedir)
 
-    #if args.spectype == 'deep-coadds':
+    #if args.coadd_type == 'deep-coadds':
     #    mergeprefix = 'deep'
-    #elif args.spectype == 'night-coadds':
+    #elif args.coadd_type == 'night-coadds':
     #    mergeprefix = ''
-    #elif args.spectype == 'night-coadds':
+    #elif args.coadd_type == 'night-coadds':
 
-    mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, args.spectype))
+    mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
     if os.path.isfile(mergefile) and not args.overwrite:
         log.info('Merged output file {} exists!'.format(mergefile))
         return
@@ -299,11 +322,12 @@ def merge_fastspecfit(args, fastphot=False):
     t0 = time.time()
     out, meta = [], []
     for outfile in outfiles:
-        out.append(Table(fitsio.read(outfile, ext='FASTPHOT')))
+        out.append(Table(fitsio.read(outfile, ext=extname)))
         meta.append(Table(fitsio.read(outfile, ext='METADATA')))
     out = vstack(out)
     meta = vstack(meta)
     log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
         len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
 
-    write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod, fastphot=fastphot)
+    write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod,
+                      coadd_type=args.coadd_type, fastphot=fastphot)
