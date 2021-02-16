@@ -15,9 +15,9 @@ import numpy as np
 from desiutil.log import get_logger
 log = get_logger()
 
-# ridiculousness! - this seems to come from healpy, blarg
-import tempfile
-os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
+## ridiculousness! - this seems to come from healpy, blarg
+#import tempfile
+#os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 
 def _fastspec_one(args):
     """Multiprocessing wrapper."""

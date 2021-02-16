@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 """fastspecfit QA
 
-fastspecfit-qa --photfitfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80607-20201214.fits --specfitfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80607-20201214.fits --outdir /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/qa/80607 --night 20201214 --tile 80607 --mp 32 --ntargets 20 --firsttarget 50
+fastspecfit-qa --fastphotfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80607-20201214.fits --fastspecfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80607-20201214.fits --outdir /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/qa/80607 --night 20201214 --tile 80607 --mp 32 --ntargets 20 --firsttarget 50
 
-fastspecfit-qa --photfitfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80608-20201215.fits --specfitfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80608-20201215.fits --outdir /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/qa/80608 --night 20201215 --tile 80608 --mp 32 --ntargets 20 --firsttarget 50
+fastspecfit-qa --fastphotfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80608-20201215.fits --fastspecfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80608-20201215.fits --outdir /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/qa/80608 --night 20201215 --tile 80608 --mp 32 --ntargets 20 --firsttarget 50
 
-fastspecfit-qa --photfitfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80613-20201221.fits --specfitfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80613-20201221.fits --outdir /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/qa/80613 --night 20201221 --tile 80613 --mp 32 --ntargets 20 --firsttarget 50
+fastspecfit-qa --fastphotfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80613-20201221.fits --fastspecfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80613-20201221.fits --outdir /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/qa/80613 --night 20201221 --tile 80613 --mp 32 --ntargets 20 --firsttarget 50
 
-fastspecfit-qa --photfitfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80607-20201214.fits --specfitfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80607-20201214.fits --outdir tmp/lrg --night 20201214 --tile 80607 --mp 32 --targetids 39633317678548005,39633317678549957,39633331544917404,39633321159819482
+fastspecfit-qa --fastphotfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80607-20201214.fits --fastspecfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80607-20201214.fits --outdir tmp/lrg --night 20201214 --tile 80607 --mp 32 --targetids 39633317678548005,39633317678549957,39633331544917404,39633321159819482
 
 """
 import pdb # for debugging
@@ -17,9 +17,9 @@ import numpy as np
 from desiutil.log import get_logger
 log = get_logger()
 
-# ridiculousness!
-import tempfile
-os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
+## ridiculousness!
+#import tempfile
+#os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 
 def _desiqa_one(args):
     """Multiprocessing wrapper."""
@@ -56,8 +56,6 @@ def parse(options=None):
     parser.add_argument('--fastspecfile', default=None, type=str, help='Full path to fastphot fitting results.')
     parser.add_argument('zbestdata', nargs='*', help='Full path to zbest file(s) or a directory containing zbest file(s).')
     
-    #parser.add_argument('fastspecfitfile', type=str, help='Full path to results FITS file written by fastspecfit.')
-
     if options is None:
         args = parser.parse_args()
         log.info(' '.join(sys.argv))
@@ -75,32 +73,26 @@ def main(args=None, comm=None):
     from astropy.table import Table
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
-    from fastspecfit.io import DESISpectra
+    from fastspecfit.io import DESISpectra, read_fastspecfit
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
     # Read the fitting results.
-    if args.fastphotfile is None and args.fastspecfile is None:
-        log.warning('Must provide one or both of --fastphotfile and/or --fastspecfile.')
+    if ((args.fastphotfile is None and args.fastspecfile is None) or
+        (args.fastphotfile is not None and args.fastspecfile is not None)):
+        log.warning('Must provide one (but not both) of --fastphotfile or --fastspecfile.')
         return
+    elif args.fastphotfile is None and args.fastspecfile is not None:
+        fastphot = False
+    elif args.fastphotfile is not None and args.fastspecfile is None:
+        fastphot = True
+    else:
+        pass # should never get here
+    
+    fastfit, meta, specprod = read_fastspecfit(args.fastspecfile, fastphot=fastphot)
 
-    def _check_and_read(filename):
-        if filename:
-            if os.path.isfile(filename):
-                fastfit, hdr = fitsio.read(filename, header=True, ext='RESULTS')
-                specprod = hdr['SPECPROD']
-                fastfit = Table(fastfit)
-                log.info('Read {} objects from {}'.format(len(fastfit), filename))
-                return fastfit, specprod
-            else:
-                log.warning('File {} not found.'.format(filename))
-                raise IOError
-        else:
-            return None, None
-
-    fastspec, specprod_spec = _check_and_read(args.fastspecfile)
-    fastphot, specprod_phot = _check_and_read(args.fastphotfile)
+    pdb.set_trace()
 
     if fastphot is not None and fastspec is not None:
         assert(np.all(fastphot['TARGETID'] == fastspec['TARGETID']))

@@ -558,6 +558,27 @@ class DESISpectra(object):
 
         return out, meta
 
+def read_fastspecfit(fastspecfile, fastphot=False):
+    """Read the fitting results.
+
+    """
+    if os.path.isfile(fastspecfile):
+        if fastphot:
+            ext = 'FASTPHOT'
+        else:
+            ext = 'FASTSPEC'
+            
+        hdr = fitsio.read_header(fastspecfile, ext='METADATA')
+        specprod = hdr['SPECPROD']
+
+        fastfit = Table(fitsio.read(fastspecfile, ext=ext))
+        meta = Table(fitsio.read(fastspecfile, ext='METADATA'))
+        log.info('Read {} objects from {}'.format(len(fastfit), fastspecfile))
+        return fastfit, meta, specprod
+    else:
+        log.warning('File {} not found.'.format(fastspecfile))
+        return None, None, None
+
 def write_fastspecfit(out, meta, outfile=None, specprod=None, fastphot=False):
     """Write out.
 
