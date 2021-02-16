@@ -1,13 +1,7 @@
 #!/usr/bin/env python
 """fastspecfit QA
 
-fastspecfit-qa --fastphotfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80607-20201214.fits --fastspecfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80607-20201214.fits --outdir /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/qa/80607 --night 20201214 --tile 80607 --mp 32 --ntargets 20 --firsttarget 50
-
-fastspecfit-qa --fastphotfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80608-20201215.fits --fastspecfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80608-20201215.fits --outdir /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/qa/80608 --night 20201215 --tile 80608 --mp 32 --ntargets 20 --firsttarget 50
-
-fastspecfit-qa --fastphotfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80613-20201221.fits --fastspecfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80613-20201221.fits --outdir /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/qa/80613 --night 20201221 --tile 80613 --mp 32 --ntargets 20 --firsttarget 50
-
-fastspecfit-qa --fastphotfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/photfit-80607-20201214.fits --fastspecfile /global/cfs/cdirs/desi/users/ioannis/fastspecfit/blanc/tiles/specfit-80607-20201214.fits --outdir tmp/lrg --night 20201214 --tile 80607 --mp 32 --targetids 39633317678548005,39633317678549957,39633331544917404,39633321159819482
+fastspecfit-qa --fastphotfile /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80606/deep/fastphot-0-80606-deep.fits --outdir . --ntargets 20 --firsttarget 50
 
 """
 import pdb # for debugging

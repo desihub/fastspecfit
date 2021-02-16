@@ -314,7 +314,7 @@ def merge_fastspecfit(args, fastphot=False):
     #    mergeprefix = ''
     #elif args.coadd_type == 'night-coadds':
 
-    mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, args.coadd_type))
+    mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
     if os.path.isfile(mergefile) and not args.overwrite:
         log.info('Merged output file {} exists!'.format(mergefile))
         return
@@ -329,4 +329,5 @@ def merge_fastspecfit(args, fastphot=False):
     log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
         len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
 
-    write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod, fastphot=fastphot)
+    write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod,
+                      coadd_type=args.coadd_type, fastphot=fastphot)
