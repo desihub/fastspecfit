@@ -39,6 +39,7 @@ class DESISpectra(object):
         """Get the targets catalog used to build a given fiberassign catalog.
 
         """
+        from astropy.io import fits
         #thistile = self.tiles[self.tiles['TILEID'] == tileid]
         stileid = '{:06d}'.format(tileid)
         fiberfile = os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid))
@@ -47,7 +48,10 @@ class DESISpectra(object):
             if not os.path.isfile(fiberfile):
                 log.warning('Fiber assignment file {} not found!'.format(fiberfile))
         log.info('Reading {} header.'.format(fiberfile))
-        fahdr = fitsio.read_header(fiberfile, ext=0)
+        # fitsio can't handle CONTINUE header cards!
+        #fahdr = fitsio.read_header(fiberfile, ext=0)
+        # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/zbest-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
+        fahdr = fits.getheader(fiberfile, ext=0)
         targetdir = fahdr['TARG']
 
         # sometimes this is a KPNO directory!
@@ -146,7 +150,8 @@ class DESISpectra(object):
                       'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                       'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                       'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z']
-            if False and 'deep' in zbestfile:
+            # NIGHT is not defined for the deep coadds
+            if not 'deep' in zbestfile:
                 fmcols = fmcols + ['NIGHT']
             # add targeting columns
             fmcols = fmcols + allfmcols[['DESI_TARGET' in col or 'BGS_TARGET' in col or 'MWS_TARGET' in col for col in allfmcols]].tolist()

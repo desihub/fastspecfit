@@ -2,8 +2,10 @@
 """
 MPI wrapper for fastphot and fastspec.
 
-mpi-fastspecfit --mp 32 --spectype night-coadds
+mpi-fastspecfit --mp 32 --spectype night-coadds --tile 80608 --night 20201220 --plan
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
+
+mpi-fastspecfit --mp 32 --spectype deep-coadds --merge --nompi
 
 """
 import pdb # for debugging

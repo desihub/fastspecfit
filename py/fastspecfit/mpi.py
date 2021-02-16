@@ -113,6 +113,7 @@ def backup_logs(logfile):
 
 def plan(args, comm=None, merge=False, fastphot=False):
 
+    import fitsio
     from astropy.table import Table
 
     t0 = time.time()
@@ -131,7 +132,16 @@ def plan(args, comm=None, merge=False, fastphot=False):
             if key not in os.environ:
                 log.fatal('Required ${} environment variable not set'.format(key))
                 raise EnvironmentError('Required ${} environment variable not set'.format(key))
-            
+
+        # figure out which tiles belong to SV1
+        if args.tile is None:
+            tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
+            tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
+            tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
+            args.tile = list(set(tileinfo['TILEID']))
+            log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
+            print(args.tile)
+
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
         specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', args.specprod, 'tiles')
 
@@ -141,7 +151,7 @@ def plan(args, comm=None, merge=False, fastphot=False):
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'deep', '{}-[0-9]-{}-deep.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '8????', 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
             elif args.spectype == 'night-coadds':
                 if args.tile is not None and args.night is not None:
                     thesefiles = []
@@ -153,10 +163,10 @@ def plan(args, comm=None, merge=False, fastphot=False):
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 elif args.tile is None and args.night is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, '8????', str(night), '{}-[0-9]-?????-{}.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
                         prefix, night))) for night in args.night]))))
                 else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '8????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
             elif args.spectype == 'exposures':
                 raise NotImplemented
                 # we probably want to *require* tile or night in this case...
