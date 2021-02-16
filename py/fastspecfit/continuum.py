@@ -1118,7 +1118,8 @@ class ContinuumFit(ContinuumTools):
 
         return result, continuummodel
     
-    def qa_fastphot(self, fastphot, specfit=None, suffix=None, outdir=None):
+    def qa_fastphot(self, data, fastphot, metadata, coadd_type='deep',
+                    outdir=None, outprefix=None):
         """QA of the best-fitting continuum.
 
         """
@@ -1136,14 +1137,38 @@ class ContinuumFit(ContinuumTools):
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
         ymin, ymax = 1e6, -1e6
 
-        redshift = fastphot['Z']
+        redshift = metadata['Z']
 
-        if fastphot['PHOTSYS'] == 'S':
+        if metadata['PHOTSYS'] == 'S':
             filters = self.decam
             allfilters = self.decamwise
         else:
             filters = self.bassmzls
             allfilters = self.bassmzlswise
+
+        if outdir is None:
+            outdir = '.'
+        if outprefix is None:
+            outprefix = 'fastphot'
+
+        if coadd_type == 'deep' or coadd_type == 'all':
+            title = 'Tile/Coadd: {}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], coadd_type, metadata['TARGETID'], metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
+        elif coadd_type == 'night':
+            title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
+                    metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
+        else:
+            title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
+                    metadata['TARGETID'], metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], metadata['NIGHT'],
+                    metadata['EXPID'], metadata['TARGETID']))
 
         # rebuild the best-fitting photometric model fit
         continuum_phot, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift,
@@ -1156,21 +1181,21 @@ class ContinuumFit(ContinuumTools):
         indx = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
 
         phot = self.parse_photometry(self.bands,
-                                     maggies=np.array([fastphot['FLUX_{}'.format(band.upper())] for band in self.bands]),
-                                     ivarmaggies=np.array([fastphot['FLUX_IVAR_{}'.format(band.upper())] for band in self.bands]),
+                                     maggies=np.array([metadata['FLUX_{}'.format(band.upper())] for band in self.bands]),
+                                     ivarmaggies=np.array([metadata['FLUX_IVAR_{}'.format(band.upper())] for band in self.bands]),
                                      lambda_eff=allfilters.effective_wavelengths.value)
         fiberphot = self.parse_photometry(self.fiber_bands,
-                                          maggies=np.array([fastphot['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
+                                          maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
                                           lambda_eff=filters.effective_wavelengths.value)
-        if specfit:
-            synthphot = self.parse_photometry(self.synth_bands,
-                                              maggies=np.array([specfit['FLUX_SYNTH_{}'.format(band.upper())] for band in self.synth_bands]),
-                                              lambda_eff=filters.effective_wavelengths.value)
-            synthmodelphot = self.parse_photometry(self.synth_bands,
-                                                   maggies=np.array([specfit['FLUX_SYNTH_MODEL_{}'.format(band.upper())] for band in self.synth_bands]),
-                                                   lambda_eff=filters.effective_wavelengths.value)
-        else:
-            synthphot, synthmodelphot = None, None
+        #if specfit:
+        #    synthphot = self.parse_photometry(self.synth_bands,
+        #                                      maggies=np.array([specfit['FLUX_SYNTH_{}'.format(band.upper())] for band in self.synth_bands]),
+        #                                      lambda_eff=filters.effective_wavelengths.value)
+        #    synthmodelphot = self.parse_photometry(self.synth_bands,
+        #                                           maggies=np.array([specfit['FLUX_SYNTH_MODEL_{}'.format(band.upper())] for band in self.synth_bands]),
+        #                                           lambda_eff=filters.effective_wavelengths.value)
+        #else:
+        #    synthphot, synthmodelphot = None, None
             
         fig, ax = plt.subplots(figsize=(12, 8))
 
@@ -1202,9 +1227,7 @@ class ContinuumFit(ContinuumTools):
         ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
         ax.set_xticks([0.3, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0])
 
-        ax.set_title('Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
-            fastphot['TILEID'], fastphot['NIGHT'], fastphot['TARGETID'],
-            fastphot['FIBER']), fontsize=20)
+        ax.set_title(title, fontsize=20)
 
         # integrated flux / photometry
         #ax.scatter(phot['lambda_eff']/1e4, phot['abmag'],
@@ -1232,23 +1255,23 @@ class ContinuumFit(ContinuumTools):
             ax.scatter(fiberphot['lambda_eff'][good]/1e4, fiberphot['abmag'][good],
                         marker='^', s=150, facecolor='orange', edgecolor='k',
                         label=r'$grz$ (fibertot flux)', alpha=0.9, zorder=5)
-        if synthphot:
-            ax.scatter(synthmodelphot['lambda_eff']/1e4, synthmodelphot['abmag'], 
-                       marker='s', s=175, color='green', #edgecolor='k',
-                       label=r'$grz$ (spectrum, synthesized)', alpha=0.7, zorder=3)
-            ax.scatter(synthphot['lambda_eff']/1e4, synthphot['abmag'], 
-                       marker='o', s=130, color='blue', edgecolor='k',
-                       label=r'$grz$ (spectral model, synthesized)', alpha=1.0, zorder=4)
+        #if synthphot:
+        #    ax.scatter(synthmodelphot['lambda_eff']/1e4, synthmodelphot['abmag'], 
+        #               marker='s', s=175, color='green', #edgecolor='k',
+        #               label=r'$grz$ (spectrum, synthesized)', alpha=0.7, zorder=3)
+        #    ax.scatter(synthphot['lambda_eff']/1e4, synthphot['abmag'], 
+        #               marker='o', s=130, color='blue', edgecolor='k',
+        #               label=r'$grz$ (spectral model, synthesized)', alpha=1.0, zorder=4)
 
         leg = ax.legend(loc='lower left', fontsize=16)
         #for hndl in leg.legendHandles:
         #    hndl.set_markersize(8)
 
         leg = {
-            'targetid': '{} {}'.format(fastphot['TARGETID'], fastphot['FIBER']),
-            #'targetid': 'targetid={} fiber={}'.format(fastphot['TARGETID'], fastphot['FIBER']),
+            'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
+            #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_CHI2']),
-            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(fastphot['Z']),
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
             #'zfastfastphot': '$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
@@ -1273,10 +1296,6 @@ class ContinuumFit(ContinuumTools):
 
         plt.subplots_adjust(bottom=0.14, right=0.95, top=0.93)
 
-        if outdir is None:
-            outdir = '.'
-        pngfile = os.path.join(outdir, 'fastphot-{}-{}-{}.png'.format(
-            fastphot['TILEID'], fastphot['NIGHT'], fastphot['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
         plt.close()

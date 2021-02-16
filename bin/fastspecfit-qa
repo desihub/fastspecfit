@@ -25,13 +25,16 @@ def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def desiqa_one(CFit, EMFit, data=None, fastspec=None, fastphot=None, outdir=None, suffix=None):
+def desiqa_one(CFit, EMFit, data, fastfit, metadata, coadd_type,
+               fastphot=False, outdir=None, outprefix=None):
     """QA on one spectrum."""
     #t0 = time.time()
-    if fastphot is not None:
-        CFit.qa_fastphot(fastphot, fastspec=fastspec, suffix=suffix, outdir=outdir)
-    if fastspec is not None:
-        EMFit.qa_fastspec(data, fastspec, suffix=suffix, outdir=outdir)
+    if fastphot:
+        CFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
+                         outprefix=outprefix, outdir=outdir)
+    else:
+        EMFit.qa_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
+                          outprefix=outprefix, outdir=outdir)
     #log.info('Building took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
@@ -42,15 +45,16 @@ def parse(options=None):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    #parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
-    #parser.add_argument('--night', default=None, type=str, nargs='*', help='Generate QA for all objects observed on this night.')
+    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
+    parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
+        night (only defined for coadd-type 'night' and 'exposures').""")
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
 
-    parser.add_argument('--suffix', default=None, type=str, help='Optional suffix for output filename.')
-    parser.add_argument('-o', '--outdir', default=None, type=str, help='Full path to desired output directory.')
+    parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
+    parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
     
     parser.add_argument('--fastphotfile', default=None, type=str, help='Full path to fastphot fitting results.')
     parser.add_argument('--fastspecfile', default=None, type=str, help='Full path to fastphot fitting results.')
@@ -85,121 +89,109 @@ def main(args=None, comm=None):
         return
     elif args.fastphotfile is None and args.fastspecfile is not None:
         fastphot = False
+        fastfitfile = args.fastspecfile
     elif args.fastphotfile is not None and args.fastspecfile is None:
         fastphot = True
+        fastfitfile = args.fastphotfile
     else:
         pass # should never get here
     
-    fastfit, meta, specprod = read_fastspecfit(args.fastspecfile, fastphot=fastphot)
-
+    fastfit, metadata, specprod, coadd_type = read_fastspecfit(fastfitfile, fastphot=fastphot)
+    
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
-    else:
-        targetids = args.targetids
 
-    pdb.set_trace()
+        keep = np.where(np.isin(fastfit['TARGETID'], targetids))[0]
+        if len(keep) == 0:
+            log.warning('No matching targetids found!')
+            return
+        fastfit = fastfit[keep]
+        metadata = metadata[keep]
+
+    if args.ntargets is not None:
+        keep = np.arange(args.ntargets) + args.firsttarget
+        log.info('Keeping {} targets.'.format(args.ntargets))
+        fastfit = fastfit[keep]
+        metadata = metadata[keep]
 
     # optionally trim to a particular tile and/or night
-    def _select_tiles_nights_targets(fastfit, tiles=None, nights=None, targetids=None):
-        if fastfit and (tiles or nights or targetids):
-            keep = np.ones(len(fastfit), bool)
-            if targetids:
-                targetkeep = np.zeros(len(fastfit), bool)
-                for targetid in targetids:
-                    targetkeep = np.logical_or(targetkeep, fastfit['TARGETID'] == targetid)
-                keep = np.logical_and(keep, targetkeep)
-            if tiles:
-                tilekeep = np.zeros(len(fastfit), bool)
-                for tile in tiles:
-                    tilekeep = np.logical_or(tilekeep, fastfit['TILEID'].astype(str) == tile)
-                keep = np.logical_and(keep, tilekeep)
-            if nights:
-                nightkeep = np.zeros(len(fastfit), bool)
-                for night in nights:
-                    nightkeep = np.logical_or(nightkeep, fastfit['NIGHT'].astype(str) == night)
-                keep = np.logical_and(keep, nightkeep)
-            fastfit = fastfit[keep]
-            #log.info('Keeping {} spectra from tile {} on night {}.'.format(len(fastfit), tile, night))
-        return fastfit
-
-    photfit = _select_tiles_nights_targets(photfit, tiles=args.tile, nights=args.night, targetids=targetids)
-    specfit = _select_tiles_nights_targets(specfit, tiles=args.tile, nights=args.night, targetids=targetids)
-
-    #if photfit is not None and specfit is not None:
-    #    assert(specprod_phot == specprod_spec)
-    #    specprod = specprod_spec
-    #    fastfit = specfit
-    #elif photfit is None and specfit is not None:
-    #    specprod = specprod_spec
-    #    fastfit = specfit
-    #elif photfit is not None and specfit is None:
-    #    specprod = specprod_phot
-    #    fastfit = photfit
-    #log.info('Found specprod={}'.format(specprod))
+    def _select_tiles_nights_targets(fastfit, metadata, tiles=None, nights=None):
+        keep = np.ones(len(fastfit), bool)
+        if tiles:
+            tilekeep = np.zeros(len(fastfit), bool)
+            for tile in tiles:
+                tilekeep = np.logical_or(tilekeep, metadata['TILEID'].astype(str) == tile)
+            keep = np.logical_and(keep, tilekeep)
+            log.info('Keeping {} objects from tile(s) {}'.format(len(fastfit), ','.join(tiles)))
+        if nights and 'NIGHT' in metadata:
+            nightkeep = np.zeros(len(fastfit), bool)
+            for night in nights:
+                nightkeep = np.logical_or(nightkeep, metadata['NIGHT'].astype(str) == night)
+            keep = np.logical_and(keep, nightkeep)
+            log.info('Keeping {} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
+        return fastfit[keep], metadata[keep]
+    
+    fastfit, metadata = _select_tiles_nights_targets(
+        fastfit, metadata, tiles=args.tile, nights=args.night)
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
     CFit = ContinuumFit()
     EMFit = EMLineFit()
+    Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
-
-    if fastspec:
-        Spec = DESISpectra()
-        
-        # Get the spectra (if needed).
-        Spec.find_specfiles(fastfit=specfit, specprod=specprod_spec, targetids=targetids,
-                            firsttarget=args.firsttarget, ntargets=args.ntargets)
-        if len(Spec.specfiles) == 0:
-            return
-        data = Spec.read_and_unpack(CFit, synthphot=False)
-        refindx = np.array(['{}-{}-{}'.format(night, tile, tid) for night, tile, tid in zip(Spec.fibermap['FIRST_NIGHT'], Spec.fibermap['FIRST_TILEID'], Spec.fibermap['TARGETID'])])
-
-        sindx = np.array(['{}-{}-{}'.format(night, tile, tid) for night, tile, tid in zip(fastspec['NIGHT'], fastspec['TILEID'], fastspec['TARGETID'])])
-        fastspec = fastspec[np.hstack([np.where(rindx == sindx)[0] for rindx in refindx])]
-        
-        #log.warning('Maybe sort by tile-night-targetid rather than expid???')
-        #fastspec = fastspec[np.hstack([np.where(expid == fastspec['EXPID'])[0] for expid in Spec.fibermap['EXPID']])]
-        #assert(np.all(fastspec['EXPID'] == Spec.fibermap['EXPID']))
-        
-        if fastphot:
-            pindx = np.array(['{}-{}-{}'.format(night, tile, tid) for night, tile, tid in zip(fastphot['NIGHT'], fastphot['TILEID'], fastphot['TARGETID'])])
-            fastphot = fastphot[np.hstack([np.where(rindx == pindx)[0] for rindx in refindx])]
-            assert(np.all(fastspec['TARGETID'] == fastphot['TARGETID']))
-
-        assert(np.all(fastspec['TARGETID'] == Spec.zbest['TARGETID']))
-
-        ## sort
-        #
-        #psrt = np.argsort(['{}-{}-{}'.format(night, tile, tid) for night, tile, tid in zip(fastphot['NIGHT'], fastphot['TILEID'], fastphot['TARGETID'])])
-        #fastspec = fastspec[ssrt]
-        #fastphot = fastphot[psrt]
-        #assert(np.all(fastphot['TARGETID'] == fastspec['TARGETID']))
 
     if args.outdir:
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir)
         
-    # Build the QA in parallel
+    # Construct the zbestfiles filenames based on the input.
+    zbestdir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles')
+    alltiles = metadata['TILEID'].astype(str).data
+    allpetals = metadata['FIBER'].data // 500
+
+    #if fastphot:
+    #    synthphot = False
+    #else:
+    #    synthphot = True
+
+    def _wrap_qa(zbestfile, indx):
+        targetids = fastfit['TARGETID'][indx]
+        Spec.find_specfiles(zbestfiles=zbestfile, specprod=specprod,
+                            coadd_type=coadd_type, targetids=targetids)
+        data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True)
+        qaargs = [(CFit, EMFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
+                   coadd_type, fastphot, args.outdir, args.outprefix) for igal in np.arange(len(indx))]                
+
+        if args.mp > 1:
+            import multiprocessing
+            with multiprocessing.Pool(args.mp) as P:
+                P.map(_desiqa_one, qaargs)
+        else:
+            [desiqa_one(*_qaargs) for _qaargs in qaargs]
+
     t0 = time.time()
-    if fastphot is not None and fastspec is not None:
-        qaargs = [(CFit, EMFit, data[igal], fastspec[igal], fastphot[igal], args.outdir, args.suffix)
-                  for igal in np.arange(len(fastspec))]
-    elif fastphot is None and fastspec is not None:
-        qaargs = [(CFit, EMFit, data[igal], fastspec[igal], None, args.outdir, args.suffix)
-                  for igal in np.arange(len(fastspec))]
-    elif fastphot is not None and fastspec is None:
-        qaargs = [(CFit, EMFit, None, None, fastphot[igal], args.outdir, args.suffix)
-                  for igal in np.arange(len(fastphot))]
+    if coadd_type == 'deep' or coadd_type == 'all':
+        for tile in set(alltiles):
+            for petal in set(allpetals):
+                indx = np.where((tile == alltiles) * (petal == allpetals))[0]
+                zbestfile = os.path.join(zbestdir, str(tile), coadd_type, 'zbest-{}-{}-{}.fits'.format(petal, tile, coadd_type))
+                _wrap_qa(zbestfile, indx)
+    elif coadd_type == 'night':
+        allnights = metadata['NIGHT'].astype(str).data
+        for night in set(allnights):
+            for tile in set(alltiles):
+                for petal in set(allpetals):
+                    indx = np.where((night == allnights) * (tile == alltiles) * (petal == allpetals))[0]
+                    zbestfile = os.path.join(zbestdir, str(tile), str(night), 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
+                    _wrap_qa(zbestfile, indx)
+                    
+    elif coadd_type == 'exposures':
+        raise NotImplemented
+        # we probably want to *require* tile or night in this case...
     else:
         pass
-        
-    if args.mp > 1:
-        import multiprocessing
-        with multiprocessing.Pool(args.mp) as P:
-            P.map(_desiqa_one, qaargs)
-    else:
-        [desiqa_one(*_qaargs) for _qaargs in qaargs]
     log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
 
 if __name__ == '__main__':

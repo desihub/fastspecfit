@@ -297,7 +297,7 @@ class EMLineFit(ContinuumTools):
         """
         npixpercamera = [len(gw) for gw in specwave]
 
-        redshift = fastspecfit_table['Z']
+        redshift = fastspecfit_table['CONTINUUM_Z']
         linesigma_forbidden = fastspecfit_table['LINESIGMA_FORBIDDEN']
         linesigma_balmer = fastspecfit_table['LINESIGMA_BALMER']
 
@@ -568,7 +568,8 @@ class EMLineFit(ContinuumTools):
 
         return result
     
-    def qa_fastspec(self, data, fastspec, suffix=None, outdir=None):
+    def qa_fastspec(self, data, fastspec, metadata, coadd_type='deep',
+                    outprefix=None, outdir=None):
         """QA plot the emission-line spectrum and best-fitting model.
 
         """
@@ -584,8 +585,32 @@ class EMLineFit(ContinuumTools):
 
         col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
-        
-        redshift = fastspec['Z']
+
+        if outdir is None:
+            outdir = '.'
+        if outprefix is None:
+            outprefix = 'fastspec'
+
+        if coadd_type == 'deep' or coadd_type == 'all':
+            title = 'Tile/Coadd: {}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], coadd_type, metadata['TARGETID'], metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
+        elif coadd_type == 'night':
+            title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
+                    metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
+        else:
+            title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
+                    metadata['TARGETID'], metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], metadata['NIGHT'],
+                    metadata['EXPID'], metadata['TARGETID']))
+
+        redshift = fastspec['CONTINUUM_Z']
 
         # rebuild the best-fitting spectroscopic and photometric models
         continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
@@ -604,10 +629,10 @@ class EMLineFit(ContinuumTools):
         bigax1 = fig.add_subplot(gs[0, :])
 
         leg = {
-            'targetid': '{} {}'.format(fastspec['TARGETID'], fastspec['FIBER']),
-            #'targetid': 'targetid={} fiber={}'.format(fastspec['TARGETID'], fastspec['FIBER']),
+            'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
+            #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_CHI2']),
-            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(fastspec['Z']),
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
             #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastspec['CONTINUUM_AGE']),
@@ -659,10 +684,8 @@ class EMLineFit(ContinuumTools):
         bigax1.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
                     ha='left', va='center', transform=bigax1.transAxes,
                     fontsize=20)
-
-        bigax1.set_title('Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
-            fastspec['TILEID'], fastspec['NIGHT'], fastspec['TARGETID'],
-            fastspec['FIBER']))
+        bigax1.set_title(title, fontsize=20)
+            
         bigax1.set_xlim(wavelims)
         bigax1.set_ylim(ymin, ymax)
         bigax1.set_xticklabels([])
@@ -674,7 +697,7 @@ class EMLineFit(ContinuumTools):
         bigax2 = fig.add_subplot(gs[1, :])
 
         leg = {
-            #'targetid': '{} {}'.format(fastspec['TARGETID'], fastspec['FIBER']),
+            #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
             #'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
             'linevshift_forbidden': '$\Delta\,v_{{\\rm forb}}$={:.1f} km/s'.format(fastspec['LINEVSHIFT_FORBIDDEN']),
             'linevshift_balmer': '$\Delta\,v_{{\\rm Balm}}$={:.1f} km/s'.format(fastspec['LINEVSHIFT_BALMER']),
@@ -826,8 +849,6 @@ class EMLineFit(ContinuumTools):
             
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
 
-        pngfile = os.path.join(outdir, 'fastspec-{}-{}-{}.png'.format(
-            fastspec['TILEID'], fastspec['NIGHT'], fastspec['TARGETID']))
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
         plt.close()

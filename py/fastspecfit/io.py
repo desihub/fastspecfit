@@ -64,9 +64,10 @@ class DESISpectra(object):
 
         return targetdir
 
-    def find_specfiles(self, zbestfiles=None, fastfit=None, specprod=None,
-                       coadd_type='deep', firsttarget=0, targetids=None,
-                       ntargets=None, exposures=False):
+    def find_specfiles(self, zbestfiles=None,
+                       #fastfit=None, metadata=None,
+                       specprod=None, coadd_type=None, firsttarget=0,
+                       targetids=None, ntargets=None, exposures=False):
         """Initialize the fastspecfit output data table.
 
         Parameters
@@ -83,38 +84,43 @@ class DESISpectra(object):
         from glob import glob
         from desimodel.footprint import radec2pix
 
-        if zbestfiles is None and fastfit is None:
-            log.warning('At least one of zbestfiles or fastfit (and specprod) are required.')
-            raise IOError
+        if zbestfiles is None and fastfit is None and metadata is None:
+            log.warning('At least one of zbestfiles or fastfit (and metadata, specprod, and coadd_type) are required.')
+            raise ValueError
 
-        if fastfit is not None:
-            if specprod is None or coadd_type is None:
-                log.warning('specprod and coadd_type are required when passing a fastfit results table!')
-                raise IOError
-            fastfit = Table(fastfit)
-            targetids = fastfit['TARGETID'].data
-            petals = fastfit['FIBER'].data // 500
-            tiles = fastfit['TILEID'].astype(str).data
-            nights = fastfit['NIGHT'].astype(str).data
-
-            log.info('keep track of a sorting index which will keep the zbest and fibermap tables, below, row-aligned with the input fastfit table')
-            raise NotImplemented
-
-            zbestfiles = []
-            for petal, tile, night in zip(petals, tiles, nights):
-                #if petal == 2 or petal == 6:
-                #    log.warning('Temporarily skipping petals 2 & 6!')
-                #    continue
-                zbestfile = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles',
-                                         tile, night, 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
-                if not os.path.isfile(zbestfile):
-                    log.warning('zbestfile {} not found.'.format(zbestfile))
-                    raise IOError
-                zbestfiles.append(zbestfile)
-            zbestfiles = np.array(zbestfiles)
-
+        ## If we are given the fitting results, construct the appropriate
+        ## zbestfiles filenames based on the input.
+        #if fastfit is not None and metadata is not None:
+        #    if specprod is None or coadd_type is None:
+        #        log.warning('When using fastfit and metadata, specprod and coadd_type are required inputs.')
+        #        raise ValueError
+        #    
+        #    zbestdir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles')
+        #    tiles = metadata['TILEID'].astype(str).data
+        #    petals = metadata['FIBER'].data // 500
+        #    
+        #    zbestfiles = []
+        #    if coadd_type == 'deep' or coadd_type == 'all':
+        #        for tile in tiles:
+        #            for petal in petals:
+        #                zbestfiles.append(os.path.join(zbestdir, str(tile), coadd_type, 'zbest-{}-{}-{}.fits'.format(petal, tile, coadd_type)))
+        #    elif coadd_type == 'night':
+        #        nights = metadata['NIGHT'].astype(str).data
+        #        for tile in tiles:
+        #            for night in nights:
+        #                for petal in petals:
+        #                    zbestfiles.append(os.path.join(zbestdir, str(tile), str(night), 'zbest-{}-{}-{}.fits'.format(petal, tile, night)))
+        #    elif coadd_type == 'exposures':
+        #        raise NotImplemented
+        #        # we probably want to *require* tile or night in this case...
+        #    else:
+        #        pass
+        #    
+        #    zbestfiles = np.array(zbestfiles)
+        #    targetids = fastfit['TARGETID'].data
+            
         if len(np.atleast_1d(zbestfiles)) == 0:
-            log.warning('You must provide at least one zbestfile!')
+            log.warning('No zbestfiles found!')
             raise IOError
 
         # Try to glean specprod so we can write it to the output file. This
@@ -125,9 +131,23 @@ class DESISpectra(object):
             specprod = np.atleast_1d(zbestfiles)[0].replace(os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux'), '').split(os.sep)[1]
             self.specprod = specprod
             log.info('Parsed specprod={}'.format(specprod))
-            
+
+        # Try to figure out coadd_type from the first filename. Fragile! Assumes
+        # that coadd_type is a scalar...
+        if coadd_type is None:
+            import re
+            if re.search('-20[0-9]+[0-9]+[0-9]+\.fits', zbestfile[0]) is not None:
+                coadd_type = 'night'
+            elif 'deep' in zbestfile[0]:
+                coadd_type = 'deep'
+            elif 'all' in zbestfile[0]:
+                coadd_type = 'all'
+            else:
+                raise NotImplementedError
+                # single expsure
+                
         self.coadd_type = coadd_type
-        log.info('Storing coadd_type={}'.format(coadd_type))
+        log.info('Parsed coadd_type={}'.format(coadd_type))
 
         # Should we not sort...?
         #zbestfiles = np.array(set(np.atleast_1d(zbestfiles)))
@@ -561,29 +581,31 @@ class DESISpectra(object):
 
         return out, meta
 
-def read_fastspecfit(fastspecfile, fastphot=False):
+def read_fastspecfit(fastfitfile, fastphot=False):
     """Read the fitting results.
 
     """
-    if os.path.isfile(fastspecfile):
+    if os.path.isfile(fastfitfile):
         if fastphot:
             ext = 'FASTPHOT'
         else:
             ext = 'FASTSPEC'
             
-        hdr = fitsio.read_header(fastspecfile, ext='METADATA')
-        specprod = hdr['SPECPROD']
+        hdr = fitsio.read_header(fastfitfile, ext='METADATA')
+        specprod, coadd_type = hdr['SPECPROD'], hdr['COADDTYP']
 
-        fastfit = Table(fitsio.read(fastspecfile, ext=ext))
-        meta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-        log.info('Read {} object(s) from {} and specprod={}'.format(len(fastfit), fastspecfile, specprod))
-        return fastfit, meta, specprod
+        fastfit = Table(fitsio.read(fastfitfile, ext=ext))
+        meta = Table(fitsio.read(fastfitfile, ext='METADATA'))
+        log.info('Read {} object(s) from {} and specprod={}'.format(len(fastfit), fastfitfile, specprod))
+
+        return fastfit, meta, specprod, coadd_type
+    
     else:
-        log.warning('File {} not found.'.format(fastspecfile))
+        log.warning('File {} not found.'.format(fastfitfile))
         return None, None, None
 
-def write_fastspecfit(out, meta, outfile=None, specprod=None, coadd_type=None,
-                      fastphot=False):
+def write_fastspecfit(out, meta, outfile=None, specprod=None,
+                      coadd_type=None, fastphot=False):
     """Write out.
 
     """

@@ -108,8 +108,10 @@ def main(args=None, comm=None):
 
     # Read the data.
     t0 = time.time()
+
     Spec.find_specfiles(args.zbestfiles, firsttarget=args.firsttarget,
-                        targetids=targetids, ntargets=args.ntargets)
+                        targetids=targetids, ntargets=args.ntargets,
+                        coadd_type=args.coadd_type)
     if len(Spec.specfiles) == 0:
         return
     data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True)
@@ -135,4 +137,4 @@ def main(args=None, comm=None):
 
     # Write out.
     write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
-                      fastphot=False)
+                      coadd_type=Spec.coadd_type, fastphot=False)
