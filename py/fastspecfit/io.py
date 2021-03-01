@@ -200,7 +200,7 @@ class DESISpectra(object):
                 else:
                     meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                     assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                    fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
+                    fitindx = np.where((zb['Z'] > 0) * # (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
                          (meta['OBJTYPE'] == 'TGT') * (meta['FIBERSTATUS'] == 0))[0]
                     #self.fitindx.append(fitindx)
             else:

@@ -111,7 +111,7 @@ def backup_logs(logfile):
     os.rename(logfile, newlog)
     return newlog
 
-def plan(args, comm=None, merge=False, fastphot=False):
+def plan(args, comm=None, merge=False, makeqa=False, fastphot=False):
 
     import fitsio
     from astropy.table import Table
@@ -128,7 +128,7 @@ def plan(args, comm=None, merge=False, fastphot=False):
         outprefix = 'fastspec'
 
     if rank == 0:
-        for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES', 'DESI_ROOT', 'DUST_DIR']:
+        for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_HTML', 'FASTSPECFIT_TEMPLATES', 'DESI_ROOT', 'DUST_DIR']:
             if key not in os.environ:
                 log.fatal('Required ${} environment variable not set'.format(key))
                 raise EnvironmentError('Required ${} environment variable not set'.format(key))
@@ -143,6 +143,7 @@ def plan(args, comm=None, merge=False, fastphot=False):
             print(args.tile)
 
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
+        htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')
         specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', args.specprod, 'tiles')
 
         def _findfiles(filedir, prefix='zbest'):
