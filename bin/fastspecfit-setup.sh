@@ -6,7 +6,7 @@
 
 if [ $1 = "shifter" ]; then
     # Load the desigal Docker container using shifter
-    SHIFTER=docker:desihub/fastspecfit:v0.0.1
+    SHIFTER=docker:desihub/fastspecfit:v0.0.2
 
     echo 'Updating and loading the shifter image '$SHIFTER
     echo 'Load the environment with: '
