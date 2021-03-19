@@ -1,6 +1,6 @@
 FROM registry.services.nersc.gov/nersc/intel_cxx_fort_mpi_mkl_devel as builder
 
-RUN apt -y update && apt install -y apt-utils && echo 3
+RUN apt-get -y clean && apt -y update && apt install -y apt-utils && echo 4
 
 RUN DEBIAN_FRONTEND=noninteractive \
     apt install -y --no-install-recommends \
@@ -107,11 +107,6 @@ RUN apt -y update && apt install -y apt-utils \
     libcfitsio-dev \
     libcfitsio-bin \
     imagemagick \
-    # python3 \
-    # python3-dev \
-    # python3-pip \
-    # python3-pil \
-    # python3-tk \
     # # Remove APT files
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -140,7 +135,6 @@ RUN for x in \
     emcee \
     configobj \
     sqlalchemy \
-    fnnls \
     ; do pip3 install $x; done \
     && rm -Rf /root/.cache/pip
 
@@ -149,24 +143,8 @@ WORKDIR /src
 # python = python3
 RUN ln -s $(which python3) /usr/bin/python
 
-# # install FSPS
-# RUN git clone https://github.com/cconroy20/fsps
-# RUN cd fsps/src \
-#     && F90FLAGS="-fPIC" make
-# ENV SPS_HOME /src/fsps
-
-# RUN git clone https://github.com/dfm/python-fsps.git \
-#     && cd python-fsps \
-#     && python setup.py install \
-#     && cd .. \
-#     && rm -rf python-fsps
-
 RUN git clone https://github.com/dkirkby/speclite.git
 RUN cd speclite \
-    && python setup.py install
-
-RUN git clone https://github.com/mikeiovine/fast-nnls
-RUN cd fast-nnls \
     && python setup.py install
 
 RUN for package in \
@@ -175,22 +153,16 @@ RUN for package in \
     desitarget \
     desispec \
     desisim \
-    specsim \
-    redrock; do \
+    specsim; do \
       git clone https://github.com/desihub/$package \
       && cd $package \
       && python setup.py install; \
     done
 
-# ENV PATH /src/desiutil/bin:/src/desimodel/bin:/src/desitarget/bin:/src/desispec/bin:/src/desisim/bin:/src/redrock/bin:$PATH
-# ENV PYTHONPATH /src/desiutil/py:/src/desimodel/py:/src/desitarget/py:/src/desispec/py:/src/desisim/py:/src/redrock/py
-
-# RUN git clone https://github.com/desihub/redrock-templates
-# ENV RR_TEMPLATE_DIR /src/redrock-templates
-
-# RUN git clone https://github.com/desihub/fiberassign \
-#     && cd fiberassign \
-#     && python setup.py install
+RUN git clone https://github.com/desihub/redrock
+RUN cd redrock \
+    && git clone https://github.com/desihub/redrock-templates py/redrock/templates \
+    && python setup.py install
 
 ENV DESIMODEL /src/desimodel
 
@@ -208,6 +180,7 @@ CMD ["/bin/bash"]
 
 RUN echo "export PS1='[container] \\u@\\h:\\w$ '" >> $HOME/.bashrc \
   # Create config files in $HOME
+  && mkdir $HOME/.qdo && echo "[qdo]" > $HOME/.qdo/qdorc \
   && python -c "import astropy" \
   && python -c "import matplotlib.font_manager as fm; f = fm.FontManager()" \
   && ipython -c "print('hello')" \
@@ -217,5 +190,7 @@ RUN echo "export PS1='[container] \\u@\\h:\\w$ '" >> $HOME/.bashrc \
   # Download astropy IERS leap-second list
   && python -c "from astropy.time import Time; Time.now()" \
   # Make astropy cache files readable!?!!
-  && chmod -R a+rwX $HOME/.astropy
-  
+  && chmod -R a+rwX $HOME/.astropy \
+  # Make ipython config files readable!?!!
+  && chmod -R a+rwX $HOME/.ipython \
+  && echo 1

@@ -324,6 +324,7 @@ Name                   Type        Units      Description
             BGS_TARGET   int64                BGS targeting bit.
             MWS_TARGET   int64                MWS targeting bit.
                      Z float64                Redrock redshift.
+                 ZWARN float64                Redrock zwarning bit.
              DELTACHI2 float64                Redrock delta-chi-squared.
               SPECTYPE    str6                Redrock spectral classification.
 ====================== =========== ========== ==========================================
