@@ -622,8 +622,8 @@ class EMLineFit(ContinuumTools):
 
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
-        fig = plt.figure(figsize=(18, 18))
-        gs = fig.add_gridspec(4, 4, height_ratios=[3, 3, 1.8, 1.8])
+        fig = plt.figure(figsize=(18, 22))
+        gs = fig.add_gridspec(5, 4, height_ratios=[3, 3, 1.8, 1.8, 1.8])
 
         # full spectrum + best-fitting continuum model
         bigax1 = fig.add_subplot(gs[0, :])
@@ -766,9 +766,9 @@ class EMLineFit(ContinuumTools):
         # zoom in on individual emission lines - use linetable!
         sig = 500.0 # [km/s]
 
-        meanwaves = [np.mean([3730,3727]), 3971, 4103, 4342, 4863, np.mean([4960, 5008]), 6565, np.mean([6718.294, 6732.673])]
-        deltawaves = [0, 0, 0, 0, 0, (5007-4959)/2, (6585-6550)/2, (6733-6718)/2]
-        linenames = [r'[OII]', r'H$\epsilon$', r'H$\delta$', r'H$\gamma$', r'H$\beta$', r'[OIII]', r'H$\alpha$+[NII]', r'[SII]']
+        meanwaves = [2800, np.mean([3730,3727]), 3971, 4103, 4342, 4863, np.mean([4960, 5008]), 6565, np.mean([6718.294, 6732.673])]
+        deltawaves = [0, 0, 0, 0, 0, 0, (5007-4959)/2, (6585-6550)/2, (6733-6718)/2]
+        linenames = [r'MgII', r'[OII]', r'H$\epsilon$', r'H$\delta$', r'H$\gamma$', r'H$\beta$', r'[OIII]', r'H$\alpha$+[NII]', r'[SII]']
         nline = len(meanwaves)
 
         removelabels = np.ones(nline, bool)
@@ -778,8 +778,10 @@ class EMLineFit(ContinuumTools):
         for iax, (meanwave, deltawave, linename) in enumerate(zip(meanwaves, deltawaves, linenames)):
             if iax < 4:
                 xx = fig.add_subplot(gs[2, iax])
-            else:
+            elif (iax >= 4) and (iax < 8):
                 xx = fig.add_subplot(gs[3, iax-4])
+            else:
+                xx = fig.add_subplot(gs[4, iax-8])
             ax.append(xx)
 
             wmin = (meanwave-deltawave)*(1+redshift)-2.5*sig*meanwave/3e5
