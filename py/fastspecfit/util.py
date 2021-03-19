@@ -25,3 +25,10 @@ def ivar2var(ivar, sigma=False):
         var = np.sqrt(var) # return a sigma
     return var, goodmask
 
+def air2vac(airwave):
+    """http://www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion"""
+    if airwave <= 0:
+        raise ValueError('Input wavelength is not defined.')
+    ss = 1e4 / airwave
+    nn = 1 + 0.00008336624212083 + 0.02408926869968 / (130.1065924522 - ss**2) + 0.0001599740894897 / (38.92568793293 - ss**2)
+    return airwave * nn

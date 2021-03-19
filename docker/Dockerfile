@@ -147,10 +147,6 @@ RUN git clone https://github.com/dkirkby/speclite.git
 RUN cd speclite \
     && python setup.py install
 
-RUN git clone https://github.com/mikeiovine/fast-nnls
-RUN cd fast-nnls \
-    && python setup.py install
-
 RUN for package in \
     desiutil \
     desimodel \
@@ -198,8 +194,3 @@ RUN echo "export PS1='[container] \\u@\\h:\\w$ '" >> $HOME/.bashrc \
   # Make ipython config files readable!?!!
   && chmod -R a+rwX $HOME/.ipython \
   && echo 1
-
-RUN wget -O /opt/conda/lib/python3.7/site-packages/astropy/utils/iers/data/Leap_Second.dat \
-    https://raw.githubusercontent.com/astropy/astropy/master/astropy/utils/iers/data/Leap_Second.dat \
-    && rm $HOME/.wget-hsts
-
