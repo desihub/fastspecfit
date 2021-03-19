@@ -12,4 +12,3 @@ else
 fi
 
 docker build  --add-host intel.licenses.nersc.gov:${LOCAL_IP} -t desihub/fastspecfit:latest .
-
