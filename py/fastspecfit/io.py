@@ -168,6 +168,7 @@ class DESISpectra(object):
             # into the coadd (based on the unique TARGETID which is in the zbest
             # table).  See https://github.com/desihub/desispec/issues/1104
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
+            pdb.set_trace()
             fmcols = ['TARGETID', 'TILEID', 'FIBER', 'TARGET_RA', 'TARGET_DEC',
                       'FIBERSTATUS', 'OBJTYPE', 'PHOTSYS',
                       'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 

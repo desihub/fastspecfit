@@ -111,7 +111,8 @@ def backup_logs(logfile):
     os.rename(logfile, newlog)
     return newlog
 
-def plan(args, comm=None, merge=False, makeqa=False, fastphot=False):
+def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
+         specprod_dir=None):
 
     import fitsio
     from astropy.table import Table
@@ -128,7 +129,7 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False):
         outprefix = 'fastspec'
 
     if rank == 0:
-        for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_HTML', 'FASTSPECFIT_TEMPLATES', 'DESI_ROOT', 'DUST_DIR']:
+        for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_HTML', 'FASTSPECFIT_TEMPLATES', 'DESI_ROOT', 'DESI_SPECTRO_REDUX', 'DUST_DIR']:
             if key not in os.environ:
                 log.fatal('Required ${} environment variable not set'.format(key))
                 raise EnvironmentError('Required ${} environment variable not set'.format(key))
@@ -144,7 +145,10 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False):
 
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')
-        specprod_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', args.specprod, 'tiles')
+
+        # look for data in the standard location
+        if specprod_dir is None:
+            specprod_dir = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), args.specprod, 'tiles')
 
         def _findfiles(filedir, prefix='zbest'):
             if args.coadd_type == 'deep':
@@ -285,7 +289,7 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False):
 
     return outdir, zbestfiles, outfiles, groups, grouptimes
 
-def merge_fastspecfit(args, fastphot=False):
+def merge_fastspecfit(args, fastphot=False, specprod_dir=None):
     """Merge all the individual catalogs into a single large catalog. Runs only on
     rank 0.
 
@@ -303,7 +307,8 @@ def merge_fastspecfit(args, fastphot=False):
         outprefix = 'fastspec'
         extname = 'FASTSPEC'
 
-    outdir, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot)
+    outdir, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
+                                     specprod_dir=specprod_dir)
 
     mergedir = os.path.join(outdir, 'merged')
     if not os.path.isdir(mergedir):
