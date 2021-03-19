@@ -38,7 +38,7 @@ def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
 
     """
     if jvendrow:
-        from fastspecfit.fnnls import fnnls
+        from fnnls import fnnls
 
         if support is None:
             support = np.zeros(0, dtype=int)
@@ -50,7 +50,7 @@ def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
             warn, coeff = True, np.zeros(modelflux.shape[1])
     else:
         #from fastnnls import fnnls
-        from fnnls import fnnls
+        from fastspecfit.fnnls import fnnls
 
         AtA = ZZ.T.dot(ZZ)
         Aty = ZZ.T.dot(xx)

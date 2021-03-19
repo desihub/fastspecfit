@@ -42,35 +42,45 @@ class EMLineModel(Fittable1DModel):
 
     # NB! The order of the parameters here matters! linevshift is the shift of
     # the emission-line velocity (in km/s) with respect to the systemic redshift
-    linevshift_forbidden = Parameter(name='linevshift_forbidden', default=0.0, bounds=(-500.0, 500.0)) # [km/s]
-    linevshift_balmer = Parameter(name='linevshift_balmer', default=0.0, bounds=(-500.0, 500.0)) # [km/s]
+    linevshift_forbidden = Parameter(name='linevshift_forbidden', default=1.0, bounds=(-100.0, 100.0)) # [km/s]
+    linevshift_balmer = Parameter(name='linevshift_balmer', default=1.0, bounds=(-100.0, 100.0)) # [km/s]
 
-    linesigma_forbidden = Parameter(name='linesigma_forbidden', default=50.0, bounds=(5, 350)) # line-sigma [km/s]
-    linesigma_balmer = Parameter(name='linesigma_balmer', default=50.0, bounds=(5, 350)) # line-sigma [km/s]
+    linesigma_forbidden = Parameter(name='linesigma_forbidden', default=50.0, bounds=(1, 1500)) # line-sigma [km/s]
+    linesigma_balmer = Parameter(name='linesigma_balmer', default=50.0, bounds=(1, 1500)) # line-sigma [km/s]
 
     # Fragile because the lines are hard-coded--
+    nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1)
+    nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1)
+
     oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0)
     oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0)
+
+    neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3)
+    
     oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0)
     oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0)
-    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0)
-    nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0)
-    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0)
-    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0)
+
     hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5)
     hdelta_amp = Parameter(name='hdelta_amp', default=0.5)
     hgamma_amp = Parameter(name='hgamma_amp', default=0.5)
     hbeta_amp = Parameter(name='hbeta_amp', default=1.0)
     halpha_amp = Parameter(name='halpha_amp', default=3.0)
 
-    # tie the velocity shifts and line-widths together
-    def tie_vshift(model):
-        return model.linevshift_balmer
-    linevshift_forbidden.tied = tie_vshift
+    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0)
+    nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0)
 
-    def tie_sigma(model):
-        return model.linesigma_balmer
-    linesigma_forbidden.tied = tie_sigma
+    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0)
+    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0)
+
+    # tie the velocity shifts and line-widths together
+    if False:
+        def tie_vshift(model):
+            return model.linevshift_balmer
+        linevshift_forbidden.tied = tie_vshift
+
+        def tie_sigma(model):
+            return model.linesigma_balmer
+        linesigma_forbidden.tied = tie_sigma
 
     # tie the [NII] and [OIII] line-strengths together
     def tie_oiii(model):
@@ -86,19 +96,22 @@ class EMLineModel(Fittable1DModel):
                  linevshift_balmer=linevshift_balmer.default,
                  linesigma_forbidden=linesigma_forbidden.default,
                  linesigma_balmer=linesigma_balmer.default,
+                 nev_3346_amp=nev_3346_amp.default,
+                 nev_3426_amp=nev_3426_amp.default,
                  oii_3726_amp=oii_3726_amp.default, 
                  oii_3729_amp=oii_3729_amp.default, 
+                 neiii_3869_amp=neiii_3869_amp.default,
                  oiii_4959_amp=oiii_4959_amp.default, 
                  oiii_5007_amp=oiii_5007_amp.default, 
-                 nii_6548_amp=nii_6548_amp.default, 
-                 nii_6584_amp=nii_6584_amp.default, 
-                 sii_6716_amp=sii_6716_amp.default, 
-                 sii_6731_amp=sii_6731_amp.default, 
                  hepsilon_amp=hepsilon_amp.default, 
                  hdelta_amp=hdelta_amp.default, 
                  hgamma_amp=hgamma_amp.default, 
                  hbeta_amp=hbeta_amp.default, 
                  halpha_amp=halpha_amp.default,
+                 nii_6548_amp=nii_6548_amp.default, 
+                 nii_6584_amp=nii_6584_amp.default, 
+                 sii_6716_amp=sii_6716_amp.default, 
+                 sii_6731_amp=sii_6731_amp.default, 
                  redshift=None,
                  emlineR=None, npixpercamera=None,
                  log10wave=None, **kwargs):
@@ -125,19 +138,23 @@ class EMLineModel(Fittable1DModel):
             linevshift_balmer=linevshift_balmer,
             linesigma_forbidden=linesigma_forbidden,
             linesigma_balmer=linesigma_balmer,
+            nev_3346_amp=nev_3346_amp,
+            nev_3426_amp=nev_3426_amp,
             oii_3726_amp=oii_3726_amp,
             oii_3729_amp=oii_3729_amp,
+            neiii_3869_amp=neiii_3869_amp,
             oiii_4959_amp=oiii_4959_amp,
             oiii_5007_amp=oiii_5007_amp,
-            nii_6548_amp=nii_6548_amp,
-            nii_6584_amp=nii_6584_amp,
-            sii_6716_amp=sii_6716_amp,
-            sii_6731_amp=sii_6731_amp,
             hepsilon_amp=hepsilon_amp,
             hdelta_amp=hdelta_amp,
             hgamma_amp=hgamma_amp,
             hbeta_amp=hbeta_amp,
-            halpha_amp=halpha_amp, **kwargs)
+            halpha_amp=halpha_amp,
+            nii_6548_amp=nii_6548_amp,
+            nii_6584_amp=nii_6584_amp,
+            sii_6716_amp=sii_6716_amp,
+            sii_6731_amp=sii_6731_amp,
+            **kwargs)
 
     def evaluate(self, emlinewave, *args):
         """Evaluate the emission-line model.
@@ -154,7 +171,7 @@ class EMLineModel(Fittable1DModel):
         log10sigma_forbidden = linesigma_forbidden / C_LIGHT / np.log(10) # line-width [log-10 Angstrom]
         log10sigma_balmer = linesigma_balmer / C_LIGHT / np.log(10)       # line-width [log-10 Angstrom]
 
-        lineamps = args[4:]
+        lineamps = args[4:] # fragile!
         linenames = self.linetable['name'].data
         isbalmers = self.linetable['isbalmer'].data
 
@@ -363,6 +380,22 @@ class EMLineFit(ContinuumTools):
                                        npixpercamera=npixpercamera,
                                        log10wave=log10wave)
         nparam = len(self.EMLineModel.parameters)
+        #params = np.repeat(self.EMLineModel.parameters, self.nball).reshape(nparam, self.nball)
+
+        # do a fast box-car integration to get the initial line-fluxes
+        sigma_cont = 150.0
+        for pp in self.EMLineModel.param_names:
+            if 'amp' in pp:
+                pinfo = getattr(self.EMLineModel, pp)
+                oneline = self.linetable[self.linetable['name'] == pinfo.name[:-4]][0]
+                zwave = oneline['restwave'] * (1 + redshift)
+                lineindx = np.where((emlinewave > (zwave - 3*sigma_cont * zwave / C_LIGHT)) *
+                                    (emlinewave < (zwave + 3.*sigma_cont * zwave / C_LIGHT)) *
+                                    (emlineivar > 0))[0]
+                if len(lineindx) > 10:
+                    lineflux = np.sum(emlineflux[lineindx])
+                    lineamp = lineflux / (np.sqrt(2.0 * np.pi) * zwave * sigma_cont / C_LIGHT)
+                    #print(pinfo.name, len(lineindx), lineflux, lineamp)
 
         #weights = np.ones_like
         #emlinevar, _ = _ivar2var(emlineivar)
