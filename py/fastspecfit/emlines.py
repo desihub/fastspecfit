@@ -666,12 +666,6 @@ class EMLineFit(ContinuumTools):
 
         height_ratios = np.hstack([1, 1, [0.5]*nlinerows])
 
-        #pdb.set_trace()
-        #linenames = [r'MgII', r'[OII]', r'H$\epsilon$', r'H$\delta$', r'H$\gamma$', r'H$\beta$', r'[OIII]', r'H$\alpha$+[NII]', r'[SII]']
-        #meanwaves = [2800, 3971, 4103, 4342, 4863, np.mean([4960, 5008]), 6565, np.mean([6718.294, 6732.673])]
-        #deltawaves = [0, 0, 0, 0, 0, 0, (5007-4959)/2, (6585-6550)/2, (6733-6718)/2]
-        #nline = len(meanwaves)
-        
         fig = plt.figure(figsize=(inches_wide, 2*inches_fullspec + inches_perline*nlinerows))
         gs = fig.add_gridspec(nrows, nlinepanels, height_ratios=height_ratios)
 
@@ -816,33 +810,39 @@ class EMLineFit(ContinuumTools):
         # zoom in on individual emission lines - use linetable!
         sig = 500.0 # [km/s]
 
-        meanwaves, deltawaves, linenames = [], [], []
+        meanwaves, deltawaves, sigmas, linenames = [], [], [], []
         for plotgroup in set(self.linetable['plotgroup']):
             I = np.where(plotgroup == self.linetable['plotgroup'])[0]
             linenames.append(self.linetable['nicename'][I[0]])
             meanwaves.append(np.mean(self.linetable['restwave'][I]))
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
+            if np.any(self.linetable['isbalmer'][I]):
+                sigmas.append(np.max((fastspec['LINESIGMA_BALMER'], fastspec['LINESIGMA_FORBIDDEN'])))
+            else:
+                sigmas.append(fastspec['LINESIGMA_FORBIDDEN'])
+
         srt = np.argsort(meanwaves)
         meanwaves = np.hstack(meanwaves)[srt]
-        linenames = np.hstack(linenames)[srt]
         deltawaves = np.hstack(deltawaves)[srt]
+        sigmas = np.hstack(sigmas)[srt]
+        linenames = np.hstack(linenames)[srt]
 
         removelabels = np.ones(nline, bool)
         ymin, ymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
         
-        ax = []
-        for iax, (meanwave, deltawave, linename) in enumerate(zip(meanwaves, deltawaves, linenames)):
-            if iax < nlinepanels:
-                xx = fig.add_subplot(gs[2, iax])
-            elif (iax >= nlinepanels) and (iax < 2*nlinepanels):
-                xx = fig.add_subplot(gs[3, iax-nlinepanels])
-            else:
-                xx = fig.add_subplot(gs[4, iax-2*nlinepanels])
+        ax, irow, icol = [], 2, 0
+        for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
+            icol = iax % nlinepanels
+            if iax > 0 and iax % nlinepanels == 0:
+                irow += 1
+            #print(iax, irow, icol)
+
+            xx = fig.add_subplot(gs[irow, icol])
             ax.append(xx)
 
-            wmin = (meanwave-deltawave)*(1+redshift)-2.5*sig*meanwave/3e5
-            wmax = (meanwave+deltawave)*(1+redshift)+2.5*sig*meanwave/3e5
+            wmin = (meanwave - deltawave) * (1+redshift) - 8 * sig * meanwave / C_LIGHT
+            wmax = (meanwave + deltawave) * (1+redshift) + 8 * sig * meanwave / C_LIGHT
             #print(linename, wmin, wmax)
 
             # iterate over cameras
@@ -883,7 +883,8 @@ class EMLineFit(ContinuumTools):
                     
                 xx.text(0.08, 0.9, linename, ha='left', va='center',
                         transform=xx.transAxes, fontsize=20)
-                    
+
+                
         for iax, xx in enumerate(ax):
             if removelabels[iax]:
                 xx.set_ylim(0, 1)
