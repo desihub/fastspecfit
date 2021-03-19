@@ -1,6 +1,6 @@
 FROM registry.services.nersc.gov/nersc/intel_cxx_fort_mpi_mkl_devel as builder
 
-RUN apt -y update && apt install -y apt-utils && echo 4
+RUN apt-get -y clean && apt -y update && apt install -y apt-utils && echo 4
 
 RUN DEBIAN_FRONTEND=noninteractive \
     apt install -y --no-install-recommends \
