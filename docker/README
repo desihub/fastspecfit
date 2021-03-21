@@ -14,6 +14,11 @@ To enter the container (with a shell prompt) on a laptop do:
 docker pull desihub/fastspecfit:latest
 docker run -it desihub/fastspecfit:latest
 ```
+or
+```
+docker pull desihub/fastspecfit:v0.0.2
+docker run -it desihub/fastspecfit:v0.0.2
+```
 
 Or at NERSC:
 ```
