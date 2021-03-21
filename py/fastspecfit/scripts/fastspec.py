@@ -5,6 +5,8 @@ fastspecfit.scripts.fastspec
 
 FastSpec wrapper. Call with, e.g.,
   # nice BGS example
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-4-80613-deep.fits --coadd-type deep -o fastspec.fits --targetids 39633345008634465
+
   fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-0-80613-deep.fits --coadd-type deep -o fastspec.fits --targetids 39633314155332057
   fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-0-80606-deep.fits --coadd-type deep -o fastspec.fits --ntargets 2
 

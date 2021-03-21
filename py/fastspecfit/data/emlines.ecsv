@@ -9,12 +9,12 @@
 # - {name: plotgroup, datatype: str}
 # meta: !!omap
 # - {description: 'Nebular emission lines to be fit by fastspec.#
+# mgii_2800a   2796.352     1.0    False  MgII            01
+# mgii_2800b   2803.530     1.0    False  MgII            01
 #     Wavelengths are in the vacuum rest-frame in Angstroms.
 #       J. Moustakas, Siena College, 2020 Nov 11
 #       jm21mar19 - more lines added'}
 name restwave flux isbalmer nicename plotgroup
-mgii_2800a   2796.352     1.0    False  MgII            01
-mgii_2800b   2803.530     1.0    False  MgII            01
   nev_3346   3346.7828    0.1    False  [NeV]           02
   nev_3426   3426.8637    0.1    False  [NeV]           03
   oii_3726   3727.092    0.73    False  [OII]           04
