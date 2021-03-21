@@ -40,46 +40,84 @@ class EMLineModel(Fittable1DModel):
     """
     from astropy.modeling import Parameter
 
-    # NB! The order of the parameters here matters! linevshift is the shift of
-    # the emission-line velocity (in km/s) with respect to the systemic redshift
-    linevshift_forbidden = Parameter(name='linevshift_forbidden', default=1.0, bounds=(-300.0, +300.0)) # [km/s]
-    linevshift_balmer = Parameter(name='linevshift_balmer', default=1.0, bounds=(-300.0, +300.0)) # [km/s]
+    # NB! The order of the parameters here matters!
 
-    linesigma_forbidden = Parameter(name='linesigma_forbidden', default=50.0, bounds=(1, 1500)) # line-sigma [km/s]
-    linesigma_balmer = Parameter(name='linesigma_balmer', default=50.0, bounds=(1, 1500)) # line-sigma [km/s]
+    ## linevshift is the shift of the emission-line velocity (in km/s) with
+    ## respect to the systemic redshift
+    #linevshift_forbidden = Parameter(name='linevshift_forbidden', default=1.0, bounds=(-300.0, +300.0)) # [km/s]
+    #linevshift_balmer = Parameter(name='linevshift_balmer', default=1.0, bounds=(-300.0, +300.0)) # [km/s]
+    #
+    #linesigma_forbidden = Parameter(name='linesigma_forbidden', default=50.0, bounds=(1, 1500)) # line-sigma [km/s]
+    #linesigma_balmer = Parameter(name='linesigma_balmer', default=50.0, bounds=(1, 1500)) # line-sigma [km/s]
+
+    vmaxshift = 300.0
+
+    maxsigma_narrow = 500.0
+    maxsigma_broad = 3000.0
+
+    initsigma_narrow = 75.0
+    initsigma_broad = 300.0
 
     # Fragile because the lines are hard-coded--
     nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1)
     nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1)
-
     oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0)
     oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0)
-
     neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3)
-    
     oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0)
     oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0)
-
     hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5)
     hdelta_amp = Parameter(name='hdelta_amp', default=0.5)
     hgamma_amp = Parameter(name='hgamma_amp', default=0.5)
     hbeta_amp = Parameter(name='hbeta_amp', default=1.0)
     halpha_amp = Parameter(name='halpha_amp', default=3.0)
-
     nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0)
     nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0)
-
     sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0)
     sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0)
 
-    # tie the velocity shifts and line-widths together
-    def tie_vshift(model):
-        return model.linevshift_balmer
-    linevshift_forbidden.tied = tie_vshift
+    nev_3346_vshift = Parameter(name='nev_3346_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    nev_3426_vshift = Parameter(name='nev_3426_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    oii_3726_vshift = Parameter(name='oii_3726_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    oii_3729_vshift = Parameter(name='oii_3729_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    hepsilon_vshift = Parameter(name='hepsilon_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    hdelta_vshift = Parameter(name='hdelta_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    hgamma_vshift = Parameter(name='hgamma_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    hbeta_vshift = Parameter(name='hbeta_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    halpha_vshift = Parameter(name='halpha_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    nii_6548_vshift = Parameter(name='nii_6548_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    nii_6584_vshift = Parameter(name='nii_6584_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
 
-    def tie_sigma(model):
-        return model.linesigma_balmer
-    linesigma_forbidden.tied = tie_sigma
+    nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    oiii_4959_sigma = Parameter(name='oiii_4959_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    oiii_5007_sigma = Parameter(name='oiii_5007_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_broad, bounds=[0.0, maxsigma_broad])
+    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_broad, bounds=[0.0, maxsigma_broad])
+    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_broad, bounds=[0.0, maxsigma_broad])
+    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_broad, bounds=[0.0, maxsigma_broad])
+    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_broad, bounds=[0.0, maxsigma_broad])
+    nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+
+    ## tie the velocity shifts and line-widths together
+    #def tie_vshift(model):
+    #    return model.linevshift_balmer
+    ##linevshift_forbidden.tied = tie_vshift
+    #
+    #def tie_sigma(model):
+    #    return model.linesigma_balmer
+    ##linesigma_forbidden.tied = tie_sigma
 
     # tie the [NII] and [OIII] line-strengths together
     def tie_oiii(model):
@@ -91,10 +129,11 @@ class EMLineModel(Fittable1DModel):
     nii_6548_amp.tied = tie_nii
     
     def __init__(self,
-                 linevshift_forbidden=linevshift_forbidden.default,
-                 linevshift_balmer=linevshift_balmer.default,
-                 linesigma_forbidden=linesigma_forbidden.default,
-                 linesigma_balmer=linesigma_balmer.default,
+                 #linevshift_forbidden=linevshift_forbidden.default,
+                 #linevshift_balmer=linevshift_balmer.default,
+                 #linesigma_forbidden=linesigma_forbidden.default,
+                 #linesigma_balmer=linesigma_balmer.default,
+
                  nev_3346_amp=nev_3346_amp.default,
                  nev_3426_amp=nev_3426_amp.default,
                  oii_3726_amp=oii_3726_amp.default, 
@@ -110,7 +149,42 @@ class EMLineModel(Fittable1DModel):
                  nii_6548_amp=nii_6548_amp.default, 
                  nii_6584_amp=nii_6584_amp.default, 
                  sii_6716_amp=sii_6716_amp.default, 
-                 sii_6731_amp=sii_6731_amp.default, 
+                 sii_6731_amp=sii_6731_amp.default,
+                 
+                 nev_3346_vshift=nev_3346_vshift.default,
+                 nev_3426_vshift=nev_3426_vshift.default,
+                 oii_3726_vshift=oii_3726_vshift.default, 
+                 oii_3729_vshift=oii_3729_vshift.default, 
+                 neiii_3869_vshift=neiii_3869_vshift.default,
+                 oiii_4959_vshift=oiii_4959_vshift.default, 
+                 oiii_5007_vshift=oiii_5007_vshift.default, 
+                 hepsilon_vshift=hepsilon_vshift.default, 
+                 hdelta_vshift=hdelta_vshift.default, 
+                 hgamma_vshift=hgamma_vshift.default, 
+                 hbeta_vshift=hbeta_vshift.default, 
+                 halpha_vshift=halpha_vshift.default,
+                 nii_6548_vshift=nii_6548_vshift.default, 
+                 nii_6584_vshift=nii_6584_vshift.default, 
+                 sii_6716_vshift=sii_6716_vshift.default, 
+                 sii_6731_vshift=sii_6731_vshift.default,
+                 
+                 nev_3346_sigma=nev_3346_sigma.default,
+                 nev_3426_sigma=nev_3426_sigma.default,
+                 oii_3726_sigma=oii_3726_sigma.default, 
+                 oii_3729_sigma=oii_3729_sigma.default, 
+                 neiii_3869_sigma=neiii_3869_sigma.default,
+                 oiii_4959_sigma=oiii_4959_sigma.default, 
+                 oiii_5007_sigma=oiii_5007_sigma.default, 
+                 hepsilon_sigma=hepsilon_sigma.default, 
+                 hdelta_sigma=hdelta_sigma.default, 
+                 hgamma_sigma=hgamma_sigma.default, 
+                 hbeta_sigma=hbeta_sigma.default, 
+                 halpha_sigma=halpha_sigma.default,
+                 nii_6548_sigma=nii_6548_sigma.default, 
+                 nii_6584_sigma=nii_6584_sigma.default, 
+                 sii_6716_sigma=sii_6716_sigma.default, 
+                 sii_6731_sigma=sii_6731_sigma.default,
+                 
                  redshift=None,
                  emlineR=None, npixpercamera=None,
                  log10wave=None, **kwargs):
@@ -121,6 +195,10 @@ class EMLineModel(Fittable1DModel):
         
         """
         self.linetable = read_emlines()
+
+        self.nparam_perline = 3 # amplitude, velocity shift, and line-width
+        self.nline = len(self.param_names) // self.nparam_perline
+
         self.redshift = redshift
         self.emlineR = emlineR
         self.npixpercamera = np.hstack([0, npixpercamera])
@@ -133,10 +211,11 @@ class EMLineModel(Fittable1DModel):
         self.log10wave = log10wave
             
         super(EMLineModel, self).__init__(
-            linevshift_forbidden=linevshift_forbidden,
-            linevshift_balmer=linevshift_balmer,
-            linesigma_forbidden=linesigma_forbidden,
-            linesigma_balmer=linesigma_balmer,
+            #linevshift_forbidden=linevshift_forbidden,
+            #linevshift_balmer=linevshift_balmer,
+            #linesigma_forbidden=linesigma_forbidden,
+            #linesigma_balmer=linesigma_balmer,
+            
             nev_3346_amp=nev_3346_amp,
             nev_3426_amp=nev_3426_amp,
             oii_3726_amp=oii_3726_amp,
@@ -153,6 +232,41 @@ class EMLineModel(Fittable1DModel):
             nii_6584_amp=nii_6584_amp,
             sii_6716_amp=sii_6716_amp,
             sii_6731_amp=sii_6731_amp,
+            
+            nev_3346_vshift=nev_3346_vshift,
+            nev_3426_vshift=nev_3426_vshift,
+            oii_3726_vshift=oii_3726_vshift,
+            oii_3729_vshift=oii_3729_vshift,
+            neiii_3869_vshift=neiii_3869_vshift,
+            oiii_4959_vshift=oiii_4959_vshift,
+            oiii_5007_vshift=oiii_5007_vshift,
+            hepsilon_vshift=hepsilon_vshift,
+            hdelta_vshift=hdelta_vshift,
+            hgamma_vshift=hgamma_vshift,
+            hbeta_vshift=hbeta_vshift,
+            halpha_vshift=halpha_vshift,
+            nii_6548_vshift=nii_6548_vshift,
+            nii_6584_vshift=nii_6584_vshift,
+            sii_6716_vshift=sii_6716_vshift,
+            sii_6731_vshift=sii_6731_vshift,
+            
+            nev_3346_sigma=nev_3346_sigma,
+            nev_3426_sigma=nev_3426_sigma,
+            oii_3726_sigma=oii_3726_sigma,
+            oii_3729_sigma=oii_3729_sigma,
+            neiii_3869_sigma=neiii_3869_sigma,
+            oiii_4959_sigma=oiii_4959_sigma,
+            oiii_5007_sigma=oiii_5007_sigma,
+            hepsilon_sigma=hepsilon_sigma,
+            hdelta_sigma=hdelta_sigma,
+            hgamma_sigma=hgamma_sigma,
+            hbeta_sigma=hbeta_sigma,
+            halpha_sigma=halpha_sigma,
+            nii_6548_sigma=nii_6548_sigma,
+            nii_6584_sigma=nii_6584_sigma,
+            sii_6716_sigma=sii_6716_sigma,
+            sii_6731_sigma=sii_6731_sigma,
+            
             **kwargs)
 
     def evaluate(self, emlinewave, *args):
@@ -162,47 +276,58 @@ class EMLineModel(Fittable1DModel):
         """ 
         from redrock.rebin import trapz_rebin
 
-        vvzz = np.hstack(args[:4]) # fragile!
-        lineamps = np.hstack(args[4:]) # fragile!
-        
-        linevshift_forbidden = vvzz[0] # [km/s]
-        linevshift_balmer = vvzz[1]    # [km/s]
-        linesigma_forbidden = vvzz[2]  # [km/s]
-        linesigma_balmer = vvzz[3]     # [km/s]
+        linenames = np.array([linename.replace('_amp', '') for linename in self.param_names[:self.nline]])
+        lineamps = np.hstack(args[0:self.nline])
+        linevshifts = np.hstack(args[self.nline:2*self.nline])
+        linesigmas = np.hstack(args[2*self.nline:])
 
-        linez_forbidden = self.redshift + linevshift_forbidden / C_LIGHT
-        linez_balmer = self.redshift + linevshift_balmer / C_LIGHT
+        #vvzz = np.hstack(args[:4]) # fragile!
+        #lineamps = np.hstack(args[4:]) # fragile!
+        #
+        #linevshift_forbidden = vvzz[0] # [km/s]
+        #linevshift_balmer = vvzz[1]    # [km/s]
+        #linesigma_forbidden = vvzz[2]  # [km/s]
+        #linesigma_balmer = vvzz[3]     # [km/s]
+        #
+        #linez_forbidden = self.redshift + linevshift_forbidden / C_LIGHT
+        #linez_balmer = self.redshift + linevshift_balmer / C_LIGHT
+        #
+        #log10sigma_forbidden = linesigma_forbidden / C_LIGHT / np.log(10) # line-width [log-10 Angstrom]
+        #log10sigma_balmer = linesigma_balmer / C_LIGHT / np.log(10)       # line-width [log-10 Angstrom]
 
-        log10sigma_forbidden = linesigma_forbidden / C_LIGHT / np.log(10) # line-width [log-10 Angstrom]
-        log10sigma_balmer = linesigma_balmer / C_LIGHT / np.log(10)       # line-width [log-10 Angstrom]
+        #linenames = self.linetable['name'].data
+        #isbalmers = self.linetable['isbalmer'].data
 
-        linenames = self.linetable['name'].data
-        isbalmers = self.linetable['isbalmer'].data
-
-        # build the emission-line model [erg/s/cm2/A, observed frame]; should we
-        # multiprocess this step?
+        # build the emission-line model [erg/s/cm2/A, observed frame]
         log10model = np.zeros_like(self.log10wave)
-        for linename, lineamp, isbalmer in zip(linenames, lineamps, isbalmers):
+        for linename, lineamp, linevshift, linesigma in zip(linenames, lineamps, linevshifts, linesigmas):
+            
             iline = np.where(self.linetable['name'] == linename)[0]
             if len(iline) != 1:
                 log.warning('No matching line found!')
                 raise ValueError
                 
             restlinewave = self.linetable[iline]['restwave'][0]
-            if isbalmer:
-                log10sigma = log10sigma_balmer
-                linezwave = np.log10(restlinewave * (1.0 + linez_balmer)) # redshifted wavelength [log-10 Angstrom]
-            else:
-                log10sigma = log10sigma_forbidden
-                linezwave = np.log10(restlinewave * (1.0 + linez_forbidden)) # redshifted wavelength [log-10 Angstrom]
+            
+            linez = self.redshift + linevshift / C_LIGHT
+            linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
 
-            ww = np.abs(self.log10wave - linezwave) < 20 * log10sigma
+            log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]
+            
+            #if isbalmer:
+            #    log10sigma = log10sigma_balmer
+            #    linezwave = np.log10(restlinewave * (1.0 + linez_balmer)) # redshifted wavelength [log-10 Angstrom]
+            #else:
+            #    log10sigma = log10sigma_forbidden
+            #    linezwave = np.log10(restlinewave * (1.0 + linez_forbidden)) # redshifted wavelength [log-10 Angstrom]
+
+            ww = np.abs(self.log10wave - linezwave) < (100 * log10sigma)
             if np.count_nonzero(ww) > 0:
                 #log.info(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
                 log10model[ww] += lineamp * np.exp(-0.5 * (self.log10wave[ww]-linezwave)**2 / log10sigma**2)
 
             #print(linename, self.linetable['name'][iline][0], restlinewave, lineamp, linezwave, isbalmer)
-        #pdb.set_trace()
+            #pdb.set_trace()
 
         # split into cameras, resample, and convolve with the instrumental
         # resolution
@@ -270,15 +395,15 @@ class EMLineFit(ContinuumTools):
         # observed-frame photometry synthesized from the best-fitting continuum model fit
         for band in self.synth_bands:
             out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy))
-            
-        out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-        out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-        out.add_column(Column(name='LINEVSHIFT_BALMER_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        out.add_column(Column(name='LINESIGMA_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        out.add_column(Column(name='LINESIGMA_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        out.add_column(Column(name='LINESIGMA_BALMER', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        out.add_column(Column(name='LINESIGMA_BALMER_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+
+        #out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+        #out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+        #out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+        #out.add_column(Column(name='LINEVSHIFT_BALMER_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+        #out.add_column(Column(name='LINESIGMA_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        #out.add_column(Column(name='LINESIGMA_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+        #out.add_column(Column(name='LINESIGMA_BALMER', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        #out.add_column(Column(name='LINESIGMA_BALMER_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
 
         for line in linetable['name']:
             line = line.upper()
@@ -294,6 +419,16 @@ class EMLineFit(ContinuumTools):
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2)))
             out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
                                   unit=10**34*u.second**2*u.cm**4/u.erg**2))
+            
+            out.add_column(Column(name='{}_VSHIFT'.format(line), length=nobj, dtype='f4',
+                                  unit=u.kilometer/u.second))
+            out.add_column(Column(name='{}_VSHIFT_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=u.second**2 / u.kilometer**2))
+            out.add_column(Column(name='{}_SIGMA'.format(line), length=nobj, dtype='f4',
+                                  unit=u.kilometer / u.second))
+            out.add_column(Column(name='{}_SIGMA_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=u.second**2 / u.kilometer**2))
+            
             out.add_column(Column(name='{}_CONT'.format(line), length=nobj, dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
             out.add_column(Column(name='{}_CONT_IVAR'.format(line), length=nobj, dtype='f4',
@@ -326,25 +461,30 @@ class EMLineFit(ContinuumTools):
         npixpercamera = [len(gw) for gw in specwave]
 
         redshift = fastspecfit_table['CONTINUUM_Z']
-        linesigma_forbidden = fastspecfit_table['LINESIGMA_FORBIDDEN']
-        linesigma_balmer = fastspecfit_table['LINESIGMA_BALMER']
-
-        linevshift_forbidden = fastspecfit_table['LINEVSHIFT_FORBIDDEN']
-        linevshift_balmer = fastspecfit_table['LINEVSHIFT_BALMER']
+        
+        #linesigma_forbidden = fastspecfit_table['LINESIGMA_FORBIDDEN']
+        #linesigma_balmer = fastspecfit_table['LINESIGMA_BALMER']
+        #linevshift_forbidden = fastspecfit_table['LINEVSHIFT_FORBIDDEN']
+        #linevshift_balmer = fastspecfit_table['LINEVSHIFT_BALMER']
+        
         #linez_forbidden = fastspecfit_table['LINEZ_FORBIDDEN']
         #linez_balmer = fastspecfit_table['LINEZ_BALMER']
         #linevshift_forbidden = (linez_forbidden - redshift) * C_LIGHT # [km/s]
         #linevshift_balmer = (linez_balmer - redshift) * C_LIGHT # [km/s]
 
-        EMLine = EMLineModel(linevshift_forbidden=linevshift_forbidden,
-                             linevshift_balmer=linevshift_balmer,
-                             linesigma_forbidden=linesigma_forbidden,
-                             linesigma_balmer=linesigma_balmer,
-                             redshift=redshift, emlineR=specres,
-                             npixpercamera=npixpercamera)
+        EMLine = EMLineModel(
+            #linevshift_forbidden=linevshift_forbidden,
+            #linevshift_balmer=linevshift_balmer,
+            #linesigma_forbidden=linesigma_forbidden,
+            #linesigma_balmer=linesigma_balmer,
+            redshift=redshift, emlineR=specres,
+            npixpercamera=npixpercamera)
+        
+        lineargs = [fastspecfit_table[linename.upper()] for linename in EMLine.param_names]#[4:]]
+        
         # skip linevshift_[forbidden,balmer] and linesigma_[forbidden,balmer]
-        lineargs = [fastspecfit_table[linename.upper()] for linename in EMLine.param_names[4:]] 
-        lineargs = [linevshift_forbidden, linevshift_balmer, linesigma_forbidden, linesigma_balmer] + lineargs
+        #lineargs = [fastspecfit_table[linename.upper()] for linename in EMLine.param_names[4:]] 
+        #lineargs = [linevshift_forbidden, linevshift_balmer, linesigma_forbidden, linesigma_balmer] + lineargs
 
         _emlinemodel = EMLine.evaluate(np.hstack(specwave), *lineargs)
 
@@ -424,7 +564,7 @@ class EMLineFit(ContinuumTools):
         #self.EMLineModel.linevshift_balmer.fixed = True
         #self.EMLineModel.linevshift_forbidden.fixed = True
         #pdb.set_trace()
-        bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=np.sqrt(emlineivar))
+        bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=np.sqrt(emlineivar), maxiter=100)
         #print(bestfit.parameters)
         #pdb.set_trace()
 
@@ -525,9 +665,9 @@ class EMLineFit(ContinuumTools):
         result['OIII_4959_AMP_IVAR'] = result['OIII_5007_AMP_IVAR'] * 2.8875**2
         result['NII_6548_AMP_IVAR'] = result['NII_6548_AMP_IVAR'] * 2.936**2
 
-        if False:
-            result['LINEVSHIFT_FORBIDDEN_IVAR'] = result['LINEVSHIFT_BALMER_IVAR']
-            result['LINESIGMA_FORBIDDEN_IVAR'] = result['LINESIGMA_BALMER_IVAR']
+        #if False:
+        #    result['LINEVSHIFT_FORBIDDEN_IVAR'] = result['LINEVSHIFT_BALMER_IVAR']
+        #    result['LINESIGMA_FORBIDDEN_IVAR'] = result['LINESIGMA_BALMER_IVAR']
 
         ## convert the vshifts to redshifts
         #result['linez_forbidden'] = redshift + result['linevshift_forbidden'] / C_LIGHT
@@ -548,21 +688,26 @@ class EMLineFit(ContinuumTools):
             line = oneline['name'].upper()
 
             # get the emission-line flux
-            zwave = oneline['restwave'] * (1 + redshift)
-            if oneline['isbalmer']:
-                linesigma = result['LINESIGMA_BALMER']
-            else:
-                linesigma = result['LINESIGMA_FORBIDDEN']
+            
+            #zwave = oneline['restwave'] * (1 + redshift)
+            #if oneline['isbalmer']:
+            #    linesigma = result['LINESIGMA_BALMER']
+            #else:
+            #    linesigma = result['LINESIGMA_FORBIDDEN']
 
-            linesigma_ang = zwave * linesigma / C_LIGHT # [observed-frame Angstrom]
+            linez = redshift + result['{}_VSHIFT'.format(line)] / C_LIGHT
+            linezwave = oneline['restwave'] * (1 + linez)
+            
+            linesigma = result['{}_SIGMA'.format(line)]     # [km/s]
+            linesigma_ang = linezwave * linesigma / C_LIGHT # [observed-frame Angstrom]
             norm = np.sqrt(2.0 * np.pi) * linesigma_ang
 
             result['{}_FLUX'.format(line)] = result['{}_AMP'.format(line)] * norm
             result['{}_FLUX_IVAR'.format(line)] = result['{}_AMP_IVAR'.format(line)] / norm**2
 
             # boxcar integration, chi2, and number of pixels
-            lineindx = np.where((emlinewave > (zwave - 3*sigma_cont * zwave / C_LIGHT)) *
-                                (emlinewave < (zwave + 3.*sigma_cont * zwave / C_LIGHT)) *
+            lineindx = np.where((emlinewave > (linezwave - 3.*linesigma * linezwave / C_LIGHT)) *
+                                (emlinewave < (linezwave + 3.*linesigma * linezwave / C_LIGHT)) *
                                 (emlineivar > 0))[0]
             npix = len(lineindx)
             if npix > 0:
@@ -578,14 +723,16 @@ class EMLineFit(ContinuumTools):
             result['{}_BOXFLUX'.format(line)] = boxflux
             result['{}_BOXFLUX_IVAR'.format(line)] = boxflux_ivar
 
-            print(line, result['{}_AMP'.format(line)][0], result['{}_FLUX'.format(line)][0], result['{}_BOXFLUX'.format(line)][0])
+            #print(line, npix, result['{}_FLUX'.format(line)][0], result['{}_BOXFLUX'.format(line)][0], result['{}_AMP'.format(line)][0])
+            print(line, npix, result['{}_SIGMA'.format(line)][0], result['{}_VSHIFT'.format(line)][0],
+                  result['{}_FLUX'.format(line)][0], result['{}_AMP'.format(line)][0])
             
             # get the continuum and EWs
-            indxlo = np.where((emlinewave > (zwave - 10*sigma_cont * zwave / C_LIGHT)) *
-                              (emlinewave < (zwave - 3.*sigma_cont * zwave / C_LIGHT)))[0]# *
+            indxlo = np.where((emlinewave > (linezwave - 10*linesigma * linezwave / C_LIGHT)) *
+                              (emlinewave < (linezwave - 3.*linesigma * linezwave / C_LIGHT)))[0]# *
                               #(emlinemodel == 0))[0]
-            indxhi = np.where((emlinewave < (zwave + 10*sigma_cont * zwave / C_LIGHT)) *
-                              (emlinewave > (zwave + 3.*sigma_cont * zwave / C_LIGHT)))[0]# *
+            indxhi = np.where((emlinewave < (zwave + 10*linesigma * linezwave / C_LIGHT)) *
+                              (emlinewave > (zwave + 3.*linesigma * linezwave / C_LIGHT)))[0]# *
                               #(emlinemodel == 0))[0]
             indx = np.hstack((indxlo, indxhi))
 
@@ -770,16 +917,17 @@ class EMLineFit(ContinuumTools):
         # full emission-line spectrum + best-fitting lines
         bigax2 = fig.add_subplot(gs[1, :])
 
-        leg = {
-            #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
-            #'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            'linevshift_forbidden': '$\Delta\,v_{{\\rm forb}}$={:.1f} km/s'.format(fastspec['LINEVSHIFT_FORBIDDEN']),
-            'linevshift_balmer': '$\Delta\,v_{{\\rm Balm}}$={:.1f} km/s'.format(fastspec['LINEVSHIFT_BALMER']),
-            'linesigma_forbidden': '$\sigma_{{\\rm forb}}$={:.1f} km/s'.format(fastspec['LINESIGMA_FORBIDDEN']),
-            'linesigma_balmer': '$\sigma_{{\\rm Balm}}$={:.1f} km/s'.format(fastspec['LINESIGMA_BALMER']),
-            'linevshift': '$\Delta_{{\\rm line}}\,v$={:.1f} km/s'.format(fastspec['LINEVSHIFT_BALMER']),
-            'linesigma': '$\sigma_{{\\rm line}}$={:.1f} km/s'.format(fastspec['LINESIGMA_BALMER']),
-            }
+        if False:
+            leg = {
+                #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
+                #'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
+                'linevshift_forbidden': '$\Delta\,v_{{\\rm forb}}$={:.1f} km/s'.format(fastspec['LINEVSHIFT_FORBIDDEN']),
+                'linevshift_balmer': '$\Delta\,v_{{\\rm Balm}}$={:.1f} km/s'.format(fastspec['LINEVSHIFT_BALMER']),
+                'linesigma_forbidden': '$\sigma_{{\\rm forb}}$={:.1f} km/s'.format(fastspec['LINESIGMA_FORBIDDEN']),
+                'linesigma_balmer': '$\sigma_{{\\rm Balm}}$={:.1f} km/s'.format(fastspec['LINESIGMA_BALMER']),
+                'linevshift': '$\Delta_{{\\rm line}}\,v$={:.1f} km/s'.format(fastspec['LINEVSHIFT_BALMER']),
+                'linesigma': '$\sigma_{{\\rm line}}$={:.1f} km/s'.format(fastspec['LINESIGMA_BALMER']),
+                }
 
         ymin, ymax = 1e6, -1e6
         for ii in [0, 1, 2]: # iterate over cameras
@@ -819,14 +967,17 @@ class EMLineFit(ContinuumTools):
         #           ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
         #bigax2.text(0.98, 0.86, r'{}'.format(leg['zredrock']),
         #           ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
-        bigax2.text(0.98, 0.92, r'{}'.format(leg['linesigma']),
-                   ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
-        bigax2.text(0.98, 0.86, r'{}'.format(leg['linevshift']),
-                   ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
+        
+        #bigax2.text(0.98, 0.92, r'{}'.format(leg['linesigma']),
+        #           ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
+        #bigax2.text(0.98, 0.86, r'{}'.format(leg['linevshift']),
+        #           ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
+        
         #bigax2.text(0.98, 0.92, r'{} {}'.format(leg['linevshift_balmer'], leg['linevshift_forbidden']),
         #           ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
         #bigax2.text(0.98, 0.86, r'{} {}'.format(leg['linesigma_balmer'], leg['linesigma_forbidden']),
         #           ha='right', va='center', transform=bigax2.transAxes, fontsize=fntsz)
+        
         bigax2.text(0.03, 0.9, 'Residual Spectrum + Emission-Line Model',
                     ha='left', va='center', transform=bigax2.transAxes,
                     fontsize=20)
@@ -847,10 +998,11 @@ class EMLineFit(ContinuumTools):
             meanwaves.append(np.mean(self.linetable['restwave'][I]))
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
-            if np.any(self.linetable['isbalmer'][I]):
-                sigmas.append(np.max((fastspec['LINESIGMA_BALMER'], fastspec['LINESIGMA_FORBIDDEN'])))
-            else:
-                sigmas.append(fastspec['LINESIGMA_FORBIDDEN'])
+            #if np.any(self.linetable['isbalmer'][I]):
+            #    sigmas.append(np.max((fastspec['LINESIGMA_BALMER'], fastspec['LINESIGMA_FORBIDDEN'])))
+            #else:
+            #    sigmas.append(fastspec['LINESIGMA_FORBIDDEN'])
+            sigmas.append(sig)
 
         srt = np.argsort(meanwaves)
         meanwaves = np.hstack(meanwaves)[srt]
