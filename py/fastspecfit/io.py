@@ -123,12 +123,14 @@ class DESISpectra(object):
             log.warning('No zbestfiles found!')
             raise IOError
 
+        self.reduxdir = os.getenv('DESI_SPECTRO_REDUX')
+        
         # Try to glean specprod so we can write it to the output file. This
         # should really be in the file header--- see
         # https://github.com/desihub/desispec/issues/1077
         if specprod is None:
             # stupidly fragile!
-            specprod = np.atleast_1d(zbestfiles)[0].replace(os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux'), '').split(os.sep)[1]
+            specprod = np.atleast_1d(zbestfiles)[0].replace(self.reduxdir, '').split(os.sep)[1]
             self.specprod = specprod
             log.info('Parsed specprod={}'.format(specprod))
 
@@ -200,7 +202,7 @@ class DESISpectra(object):
                 else:
                     meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                     assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                    fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
+                    fitindx = np.where((zb['Z'] > 0) * # (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
                          (meta['OBJTYPE'] == 'TGT') * (meta['FIBERSTATUS'] == 0))[0]
                     #self.fitindx.append(fitindx)
             else:
@@ -355,7 +357,7 @@ class DESISpectra(object):
         """
         from desispec.resolution import Resolution
         from desiutil.dust import ext_odonnell
-        from desispec.io import read_spectra
+        from desispec.io import read_spectra # read_tile_spectra # 
         from fastspecfit.util import C_LIGHT
 
         # Read everything into a simple dictionary.
@@ -369,6 +371,8 @@ class DESISpectra(object):
             meta = Table(meta)
 
             if not fastphot:
+                #spec = read_tile_spectra(meta['TILEID'][0], self.coadd_type, specprod=self.specprod,
+                #                         targets=zbest['TARGETID'])
                 spec = read_spectra(specfile).select(targets=zbest['TARGETID'])
                 assert(np.all(spec.fibermap['TARGETID'] == zbest['TARGETID']))
                 assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
@@ -539,7 +543,7 @@ class DESISpectra(object):
                    }
 
         skipcols = ['FIBERSTATUS', 'OBJTYPE', 'TARGET_RA', 'TARGET_DEC'] + fluxcols
-        zcols = ['Z', 'DELTACHI2', 'SPECTYPE']
+        zcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE']
         
         meta = Table()
         metacols = self.meta.colnames

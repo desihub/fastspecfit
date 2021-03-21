@@ -49,7 +49,8 @@ def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
             log.warning('fnnls failed to converge.')
             warn, coeff = True, np.zeros(modelflux.shape[1])
     else:
-        from fastnnls import fnnls
+        #from fastnnls import fnnls
+        from fastspecfit.fnnls import fnnls
 
         AtA = ZZ.T.dot(ZZ)
         Aty = ZZ.T.dot(xx)

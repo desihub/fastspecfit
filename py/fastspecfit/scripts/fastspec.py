@@ -4,8 +4,14 @@ fastspecfit.scripts.fastspec
 ============================
 
 FastSpec wrapper. Call with, e.g.,
-  fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80607/deep/zbest-0-80607-deep.fits --coadd-type deep -o fastspec.fits --ntargets 2
-  fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80606/deep/zbest-0-80606-deep.fits --coadd-type deep -o fastspec.fits --targetids 39627646576887581
+  # nice BGS example
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-4-80613-deep.fits --coadd-type deep -o fastspec.fits --targetids 39633345008634465
+
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-0-80613-deep.fits --coadd-type deep -o fastspec.fits --targetids 39633314155332057
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-0-80606-deep.fits --coadd-type deep -o fastspec.fits --ntargets 2
+
+  # nice QSO with broad lines
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80607/deep/zbest-9-80607-deep.fits --coadd-type deep -o fastspec2.fits --targetids 39633331528141827
 
 """
 import pdb # for debugging

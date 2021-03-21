@@ -11,7 +11,7 @@ from fastspecfit.scripts import fastspec
 
 log = get_logger()
 
-for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_TEMPLATES']:
+for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_HTML', 'FASTSPECFIT_TEMPLATES']:
     if key not in os.environ:
         log.fatal('Required ${} environment variable not set'.format(key))
         raise EnvironmentError('Required ${} environment variable not set'.format(key))
