@@ -475,8 +475,8 @@ class EMLineFit(ContinuumTools):
                                   unit=10**34*u.second**2*u.cm**4/u.erg**2))
             out.add_column(Column(name='{}_BOXFLUX'.format(line), length=nobj, dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2)))
-            out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4/u.erg**2))
+            #out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
+            #                      unit=10**34*u.second**2*u.cm**4/u.erg**2))
             
             out.add_column(Column(name='{}_VSHIFT'.format(line), length=nobj, dtype='f4',
                                   unit=u.kilometer/u.second))
@@ -765,53 +765,39 @@ class EMLineFit(ContinuumTools):
             #if 'forbidden' in pinfo.name:
             #    pdb.set_trace()
 
-        pdb.set_trace()
-        
         ## hack for tied parameters---gotta be a better way to do this
         ##result['oiii_4959_amp_ivar'] = result['oiii_5007_amp_ivar'] * 2.8875**2
         #result['OIII_4959_AMP_IVAR'] = result['OIII_5007_AMP_IVAR'] * 2.8875**2
         #result['NII_6548_AMP_IVAR'] = result['NII_6548_AMP_IVAR'] * 2.936**2
 
-        # now loop back through and if ivar==0 then set the parameter value to zero
-        if False:
-            if self.fitter.fit_info['param_cov'] is not None:
-                for pp in bestfit.param_names:
-                    if result['{}_IVAR'.format(pp.upper())] == 0.0:
-                        result[pp] = np.float(0.0)
+        ## now loop back through and if ivar==0 then set the parameter value to zero
+        #if False:
+        #    if self.fitter.fit_info['param_cov'] is not None:
+        #        for pp in bestfit.param_names:
+        #            if result['{}_IVAR'.format(pp.upper())] == 0.0:
+        #                result[pp] = np.float(0.0)
 
         # get continuum fluxes, EWs, and upper limits
         sigma_cont = 150.0
         balmer_sigmas, balmer_vshift = [], []
         forbidden_sigmas, forbidden_vshift = [], []
         for oneline in self.EMLineModel.linetable:
+
             linename = oneline['name'].upper()
-
-            if result['{}_AMP'.format(linename)] == 0: # no line fitted!
-                print(linename, result['{}_SIGMA'.format(linename)][0], result['{}_VSHIFT'.format(linename)][0],
-                      result['{}_FLUX'.format(linename)][0], result['{}_AMP'.format(linename)][0])
-                continue
-
-            # get the emission-line flux
-            
-            #zwave = oneline['restwave'] * (1 + redshift)
-            #if oneline['isbalmer']:
-            #    linesigma = result['LINESIGMA_BALMER']
-            #else:
-            #    linesigma = result['LINESIGMA_FORBIDDEN']
-
-            linez = redshift + result['{}_VSHIFT'.format(linename)] / C_LIGHT
+            linez = redshift + result['{}_VSHIFT'.format(linename)][0] / C_LIGHT
             linezwave = oneline['restwave'] * (1 + linez)
-            
-            linesigma = result['{}_SIGMA'.format(linename)]     # [km/s]
-            linesigma_ang = linezwave * linesigma / C_LIGHT # [observed-frame Angstrom]
-            linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
-            #if linenorm == 0.0:
-            #    pdb.set_trace()
-            
-            result['{}_FLUX'.format(linename)] = result['{}_AMP'.format(linename)] * linenorm
-            result['{}_FLUX_IVAR'.format(linename)] = result['{}_AMP_IVAR'.format(linename)] / linenorm**2
 
-            # boxcar integration, chi2, and number of pixels
+            linesigma = result['{}_SIGMA'.format(linename)][0] # [km/s]
+            log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]            
+
+            # if line-sigma is zero then the line was dropped; handle these
+            # lines outside of this loop based on an average velocity line-width
+            #if linesigma == 0.0:
+                #print(linename, result['{}_SIGMA'.format(linename)][0], result['{}_VSHIFT'.format(linename)][0],
+                #      result['{}_FLUX'.format(linename)][0], result['{}_AMP'.format(linename)][0])
+            #    continue
+
+            # number of pixels, chi2, and boxcar integration
             lineindx = np.where((emlinewave > (linezwave - 3.*linesigma * linezwave / C_LIGHT)) *
                                 (emlinewave < (linezwave + 3.*linesigma * linezwave / C_LIGHT)) *
                                 (emlineivar > 0))[0]
@@ -822,16 +808,38 @@ class EMLineFit(ContinuumTools):
                 boxflux = np.sum(emlineflux[lineindx])
                 boxflux_ivar = 1 / np.sum(1 / emlineivar[lineindx])
             else:
-                npix, chi2, boxflux, boxflux_ivar = 0.0, 1e6, 0.0, 0.0
+                npix, chi2, boxflux, boxflux_ivar = 0, 1e6, 0.0, 0.0
+
+                # I don't think this is quite right...
+                linez = redshift + result['{}_VSHIFT'.format(linename)][0] / C_LIGHT                
+                
+                pdb.set_trace()
 
             result['{}_NPIX'.format(linename)] = npix
             result['{}_CHI2'.format(linename)] = chi2
             result['{}_BOXFLUX'.format(linename)] = boxflux
-            result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar
+            #result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar
 
-            print(linename, npix, result['{}_SIGMA'.format(linename)][0], result['{}_VSHIFT'.format(linename)][0],
-                  result['{}_FLUX'.format(linename)][0], result['{}_AMP'.format(linename)][0])
+            #zwave = oneline['restwave'] * (1 + redshift)
+            #if oneline['isbalmer']:
+            #    linesigma = result['LINESIGMA_BALMER']
+            #else:
+            #    linesigma = result['LINESIGMA_FORBIDDEN']
             
+            # get the emission-line flux
+            linesigma_ang = linezwave * linesigma / C_LIGHT # [observed-frame Angstrom]
+            linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
+
+            #print('{} sigma={:.3f} km/s npix={} chi2={:.3f} boxflux={:.3f} amp={:.3f}'.format(
+            #    linename, linesigma, npix, chi2, boxflux, result['{}_AMP'.format(linename)][0]))
+            
+            result['{}_FLUX'.format(linename)] = result['{}_AMP'.format(linename)][0] * linenorm
+            #result['{}_FLUX_IVAR'.format(linename)] = result['{}_AMP_IVAR'.format(linename)] / linenorm**2
+            #weight = np.exp(-0.5 * np.log10(emlinewave/linezwave)**2 / log10sigma**2)
+            #weight = (weight / np.max(weight)) > 1e-3
+            #result['{}_FLUX_IVAR'.format(linename)] = 1 / np.sum(1 / emlineivar[weight])
+            result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar
+
             # get the continuum and EWs
             indxlo = np.where((emlinewave > (linezwave - 10*linesigma * linezwave / C_LIGHT)) *
                               (emlinewave < (linezwave - 3.*linesigma * linezwave / C_LIGHT)))[0]# *
@@ -868,6 +876,28 @@ class EMLineFit(ContinuumTools):
             result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit
             result['{}_EW_LIMIT'.format(linename)] = ewlimit
 
+            # measurements
+            #HDELTA_AMP = 3.1488
+            #HDELTA_FLUX = 13.5276
+            #HDELTA_FLUX_IVAR = 0.5453
+            #HDELTA_BOXFLUX = 17.6277
+            #HDELTA_BOXFLUX_IVAR = 0.5453
+            #HDELTA_VSHIFT = -0.1209
+            #HDELTA_SIGMA = 91.4947
+            #HDELTA_CONT = 1.2095
+            #HDELTA_CONT_IVAR = 126.2962
+            #HDELTA_EW = 15.3085
+            #HDELTA_EW_IVAR = 0.4258
+            #HDELTA_FLUX_LIMIT = 0.3823
+            #HDELTA_EW_LIMIT = 0.4326
+            #HDELTA_CHI2 = 1.0794
+            #HDELTA_NPIX = 13.0000
+            for col in ('VSHIFT', 'SIGMA', 'AMP', 'CHI2', 'NPIX'):
+                print('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
+            for col in ('FLUX', 'BOXFLUX', 'CONT', 'EW', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'FLUX_IVAR', 'CONT_IVAR', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
+                print('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
+            print()
+
             # simple QA
             if 'alpha' in linename and False:
                 import matplotlib.pyplot as plt
@@ -881,7 +911,10 @@ class EMLineFit(ContinuumTools):
                 plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
                 plt.savefig('junk.png')
 
-        #pdb.set_trace()
+        #for col in result.colnames:
+        #    print('{} = {:.4f}'.format(col, result[col][0]))
+        pdb.set_trace()
+
         return result
     
     def qa_fastspec(self, data, fastspec, metadata, coadd_type='deep',
