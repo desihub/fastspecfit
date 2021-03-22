@@ -114,6 +114,7 @@ class EMLineModel(Fittable1DModel):
 
     # NB! The order of the parameters here matters!
     vmaxshift = 300.0
+    initvshift = 0.0
 
     maxsigma_narrow = 500.0
     maxsigma_broad = 3000.0
@@ -143,26 +144,26 @@ class EMLineModel(Fittable1DModel):
     siii_9068_amp = Parameter(name='siii_9068_amp', default=0.3)
     siii_9530_amp = Parameter(name='siii_9530_amp', default=0.3)
 
-    mgii_2800_vshift = Parameter(name='mgii_2800_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    #mgii_2800b_vshift = Parameter(name='mgii_2800b_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    nev_3346_vshift = Parameter(name='nev_3346_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    nev_3426_vshift = Parameter(name='nev_3426_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    oii_3726_vshift = Parameter(name='oii_3726_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    oii_3729_vshift = Parameter(name='oii_3729_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    hepsilon_vshift = Parameter(name='hepsilon_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    hdelta_vshift = Parameter(name='hdelta_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    hgamma_vshift = Parameter(name='hgamma_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    hbeta_vshift = Parameter(name='hbeta_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    halpha_vshift = Parameter(name='halpha_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    nii_6548_vshift = Parameter(name='nii_6548_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    nii_6584_vshift = Parameter(name='nii_6584_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    siii_9068_vshift = Parameter(name='siii_9068_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
-    siii_9530_vshift = Parameter(name='siii_9530_vshift', default=0.0, bounds=[-vmaxshift, +vmaxshift])
+    mgii_2800_vshift = Parameter(name='mgii_2800_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    #mgii_2800b_vshift = Parameter(name='mgii_2800b_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    nev_3346_vshift = Parameter(name='nev_3346_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    nev_3426_vshift = Parameter(name='nev_3426_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    oii_3729_vshift = Parameter(name='oii_3729_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    hepsilon_vshift = Parameter(name='hepsilon_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    hdelta_vshift = Parameter(name='hdelta_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    hgamma_vshift = Parameter(name='hgamma_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    hbeta_vshift = Parameter(name='hbeta_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    halpha_vshift = Parameter(name='halpha_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    nii_6548_vshift = Parameter(name='nii_6548_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    nii_6584_vshift = Parameter(name='nii_6584_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    siii_9068_vshift = Parameter(name='siii_9068_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    siii_9530_vshift = Parameter(name='siii_9530_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
 
     mgii_2800_sigma = Parameter(name='mgii_2800_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
     #mgii_2800b_sigma = Parameter(name='mgii_2800b_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
@@ -431,9 +432,10 @@ class EMLineFit(ContinuumTools):
         self.chi2fail = chi2fail
         self.pixkms = 10.0 # pixel size for internal wavelength array [km/s]
 
-        self.fitter = fitting.LevMarLSQFitter()
+        self.fitter = fitting.LevMarLSQFitter()#calc_uncertainties=True)
+        #self.fitter_nouncertainties = fitting.LevMarLSQFitter(calc_uncertainties=False)
 
-    def init_output(self, linetable, nobj=1):
+    def init_output(self, linetable, nobj=1, chi2_default=1e6):
         """Initialize the output data table for this class.
 
         """
@@ -452,21 +454,21 @@ class EMLineFit(ContinuumTools):
         for band in self.synth_bands:
             out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy))
 
-        #out.add_column(Column(name='LINEVSHIFT_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-        #out.add_column(Column(name='LINEVSHIFT_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        #out.add_column(Column(name='LINEVSHIFT_BALMER', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-        #out.add_column(Column(name='LINEVSHIFT_BALMER_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        #out.add_column(Column(name='LINESIGMA_FORBIDDEN', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='LINESIGMA_FORBIDDEN_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        #out.add_column(Column(name='LINESIGMA_BALMER', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='LINESIGMA_BALMER_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+        out.add_column(Column(name='BALMER_VSHIFT', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+        out.add_column(Column(name='BALMER_VSHIFT_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+        out.add_column(Column(name='BALMER_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='BALMER_SIGMA_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+        out.add_column(Column(name='FORBIDDEN_VSHIFT', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+        out.add_column(Column(name='FORBIDDEN_VSHIFT_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
+        out.add_column(Column(name='FORBIDDEN_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='FORBIDDEN_SIGMA_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
 
         for line in linetable['name']:
             line = line.upper()
             out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
-            out.add_column(Column(name='{}_AMP_IVAR'.format(line), length=nobj, dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
+            #out.add_column(Column(name='{}_AMP_IVAR'.format(line), length=nobj, dtype='f4',
+            #                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
             out.add_column(Column(name='{}_FLUX'.format(line), length=nobj, dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2)))
             out.add_column(Column(name='{}_FLUX_IVAR'.format(line), length=nobj, dtype='f4',
@@ -478,12 +480,12 @@ class EMLineFit(ContinuumTools):
             
             out.add_column(Column(name='{}_VSHIFT'.format(line), length=nobj, dtype='f4',
                                   unit=u.kilometer/u.second))
-            out.add_column(Column(name='{}_VSHIFT_IVAR'.format(line), length=nobj, dtype='f4',
-                                  unit=u.second**2 / u.kilometer**2))
+            #out.add_column(Column(name='{}_VSHIFT_IVAR'.format(line), length=nobj, dtype='f4',
+            #                      unit=u.second**2 / u.kilometer**2))
             out.add_column(Column(name='{}_SIGMA'.format(line), length=nobj, dtype='f4',
                                   unit=u.kilometer / u.second))
-            out.add_column(Column(name='{}_SIGMA_IVAR'.format(line), length=nobj, dtype='f4',
-                                  unit=u.second**2 / u.kilometer**2))
+            #out.add_column(Column(name='{}_SIGMA_IVAR'.format(line), length=nobj, dtype='f4',
+            #                      unit=u.second**2 / u.kilometer**2))
             
             out.add_column(Column(name='{}_CONT'.format(line), length=nobj, dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
@@ -497,16 +499,19 @@ class EMLineFit(ContinuumTools):
                                   unit=u.erg/(u.second*u.cm**2)))
             out.add_column(Column(name='{}_EW_LIMIT'.format(line), length=nobj, dtype='f4',
                                   unit=u.Angstrom))
-            out.add_column(Column(name='{}_CHI2'.format(line), length=nobj, dtype='f4'))
+            out.add_column(Column(name='{}_CHI2'.format(line), data=np.repeat(chi2_default, nobj), dtype='f4'))
             out.add_column(Column(name='{}_NPIX'.format(line), length=nobj, dtype=np.int32))
 
         return out
         
     def chi2(self, bestfit, emlinewave, emlineflux, emlineivar):
         """Compute the reduced chi^2."""
-        dof = len(emlinewave) - len(bestfit.parameters)
-        emlinemodel = bestfit(emlinewave)
-        chi2 = np.sum(emlineivar * (emlineflux - emlinemodel)**2) / dof
+        dof = np.sum(emlineivar > 0) - len(bestfit.parameters)
+        if dof > 0:
+            emlinemodel = bestfit(emlinewave)
+            chi2 = np.sum(emlineivar * (emlineflux - emlinemodel)**2) / dof
+        else:
+            chi2 = 1e6
         return chi2
 
     def emlinemodel_bestfit(self, specwave, specres, fastspecfit_table):
@@ -564,7 +569,9 @@ class EMLineFit(ContinuumTools):
         
         """
         #from scipy import integrate
+        from fastspecfit.util import ivar2var        
         from astropy.stats import sigma_clipped_stats
+        from scipy.ndimage.filters import median_filter
         
         # Combine all three cameras; we will unpack them to build the
         # best-fitting model (per-camera) below.
@@ -578,6 +585,11 @@ class EMLineFit(ContinuumTools):
         continuummodelflux = np.hstack(continuummodel)
         emlineflux = specflux - continuummodelflux
 
+        emlinevar, emlinegood = ivar2var(emlineivar)
+
+        # fragile -- do a quick median-smoothing
+        #emlineflux -= median_filter(emlineflux, width=100, mode='constant')
+
         dlogwave = self.pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
         log10wave = np.arange(np.log10(3e3), np.log10(1e4), dlogwave)
         #log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
@@ -589,43 +601,71 @@ class EMLineFit(ContinuumTools):
         nparam = len(self.EMLineModel.parameters)
         #params = np.repeat(self.EMLineModel.parameters, self.nball).reshape(nparam, self.nball)
 
-        # do a fast box-car integration to get the initial line-amplitudes
+        # do a fast box-car integration to get the initial line-amplitudes and line-widths
         sigma_cont = 200.0
+        init_linesigmas = []
         for pp in self.EMLineModel.param_names:
             if getattr(self.EMLineModel, pp).tied:
-                print('Skipping {}'.format(pp))
+                #print('Skipping {}'.format(pp))
                 continue
 
             if 'amp' in pp:
                 pinfo = getattr(self.EMLineModel, pp)
-                oneline = self.linetable[self.linetable['name'] == pinfo.name.replace('_amp', '')][0]
+                linename = pinfo.name.replace('_amp', '')
+
+                iline = np.where(self.linetable['name'] == linename)[0]
+                if len(iline) != 1:
+                    log.warning('No matching line found!')
+                    raise ValueError
+                
+                oneline = self.linetable[iline][0]
                 zwave = oneline['restwave'] * (1 + redshift)
                 lineindx = np.where((emlinewave > (zwave - 3*sigma_cont * zwave / C_LIGHT)) *
                                     (emlinewave < (zwave + 3.*sigma_cont * zwave / C_LIGHT)) *
-                                    (emlineivar > 0))[0]
+                                    (emlineflux * np.sqrt(emlineivar) > 1.5))[0] # S/N > 1.5
+                                    #(emlineivar > 0))[0]
+                                    
+                linesigma = getattr(self.EMLineModel, '{}_sigma'.format(linename)).default # initial guess
                 if len(lineindx) > 10:
                     lineflux = np.sum(emlineflux[lineindx])
-                    #lineflux = np.sum(emlineivar[lineindx] * emlineflux[lineindx]) / np.sum(emlineivar[lineindx])
+                    #lineflux = np.sum(emlinevar[lineindx] * emlineflux[lineindx]) / np.sum(emlinevar[lineindx])
+                    
                     linesigma_ang = zwave * sigma_cont / C_LIGHT # [observed-frame Angstrom]
                     linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
-                    lineamp = np.abs(lineflux / linenorm)
+                    if linenorm > 0:
+                        lineamp = np.abs(lineflux / linenorm)
+                        # estimate the velocity width from potentially strong, isolated lines; fragile!
+                        if linename in ['mgii_2800', 'oii_3729', 'oiii_5007', 'hgamma', 'hbeta', 'halpha']:
+                            linesigma = np.sqrt(np.sum(emlineflux[lineindx] * (emlinewave[lineindx]-zwave)**2) /
+                                                np.sum(emlineflux[lineindx])) / zwave * C_LIGHT # [km/s]
+                            init_linesigmas.append(linesigma)
+                    else:
+                        lineamp = 1.0
 
                     #if 'beta' in pinfo.name:
                     #    pdb.set_trace()
-                    
                     if not pinfo.tied:
                         setattr(self.EMLineModel, pp, lineamp)
-                    print(pinfo.name, len(lineindx), lineflux, lineamp)
-                    
-        ## reset the tied amplitudes
-        #self.EMLineModel.oiii_4959_amp = self.EMLineModel.oiii_4959_amp.tied(self.EMLineModel)
-        #self.EMLineModel.nii_6548_amp = self.EMLineModel.nii_6548_amp.tied(self.EMLineModel)
-        #self.EMLineModel.linevshift_balmer.fixed = True
-        #self.EMLineModel.linevshift_forbidden.fixed = True
+                    #print(pinfo.name, len(lineindx), lineflux, lineamp, linesigma)
+
+        # reset the amplitudes of the tied doublets; fragile...
+        self.EMLineModel.oiii_4959_amp = self.EMLineModel.oiii_4959_amp.tied(self.EMLineModel)
+        self.EMLineModel.nii_6548_amp = self.EMLineModel.nii_6548_amp.tied(self.EMLineModel)
+
+        # update the initial velocity widths
+        if len(init_linesigmas) > 3:
+            init_linesigma = np.median(init_linesigmas)
+            if init_linesigma > 0 and init_linesigma < 500:
+                for pp in self.EMLineModel.param_names:
+                    if 'sigma' in pp:
+                        setattr(self.EMLineModel, pp, init_linesigma)
 
         # Fit [1]: tie all lines together
         self.EMLineModel = _tie_all_lines(self.EMLineModel)
-        bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=np.sqrt(emlineivar), maxiter=100)
+        bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
+                              weights=np.sqrt(emlineivar[emlinegood]), maxiter=500)
+        #bestfit = self.fitter_nouncertainties(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
+        #                                      weights=np.sqrt(emlineivar[emlinegood]), maxiter=500)
         #print(bestfit.parameters)
 
         # Fit [2]: tie Balmer, narrow forbidden, and QSO/broad lines together, separately
@@ -633,7 +673,9 @@ class EMLineFit(ContinuumTools):
         self.EMLineModel = _tie_balmer_lines(self.EMLineModel)
         self.EMLineModel = _tie_forbidden_lines(self.EMLineModel)
         #self.EMLineModel = _tie_qso_lines(self.EMLineModel)
-        bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=np.sqrt(emlineivar), maxiter=100)
+
+        bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
+                              weights=np.sqrt(emlineivar[emlinegood]), maxiter=500)
         
         emlinemodel = bestfit(emlinewave)
         chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
@@ -669,28 +711,23 @@ class EMLineFit(ContinuumTools):
             d4000_nolines, _ = self.get_d4000(emlinewave, specflux_nolines, redshift=redshift)
             result['D4000_NOLINES'] = d4000_nolines
 
-        ## Pack the results in a dictionary and return.
-        ## https://gist.github.com/eteq/1f3f0cec9e4f27536d52cd59054c55f2
-        #result = {
-        #    'converged': False,
-        #    'fit_message': self.fitter.fit_info['message'],
-        #    'nparam': nparam,
-        #    'npix': len(emlinewave),
-        #    'dof': len(emlinewave) - len(self.EMLineModel.parameters),
-        #    'chi2': chi2,
-        #    'linenames': [ll.replace('_amp', '') for ll in self.EMLineModel.param_names[4:]],
-        #}
-        #for param in bestfit.param_names:
-        #    result.update({param: getattr(bestfit, param).value})
-        
-        # uncertainties
-        if self.fitter.fit_info['param_cov'] is not None:
-            cov = self.fitter.fit_info['param_cov']
-            ivar = 1 / np.diag(cov)
-            #result['converged'] = True
-        else:
-            cov = np.zeros((nparam, nparam))
-            ivar = np.zeros(nparam)
+        ## Determine the uncertainties from the diagonal terms of the covariance
+        ## matrix. If the covariance matrix is not known, estimate it from the
+        ## Jacobian following:
+        ##   https://github.com/scipy/scipy/blob/master/scipy/optimize/minpack.py#L805
+        #pcov = self.fitter.fit_info['param_cov']
+        #if pcov is None:
+        #    pcov = np.zeros((nparam, nparam))
+        #    #from scipy.linalg import svd
+        #    #fjac = self.fitter.fit_info['fjac']
+        #    #if fjac is not None:
+        #    #    _, s, VT = svd(fjac, full_matrices=False)
+        #    #    threshold = np.finfo(float).eps * max(fjac.shape) * s[0]
+        #    #    s = s[s > threshold]
+        #    #    VT = VT[:s.size]
+        #    #    pcov = np.dot(VT.T / s**2, VT)
+        #paramvar = np.diag(pcov)
+        #ivar = np.zeros(nparam)
 
         # Need to be careful about uncertainties for tied parameters--
         # https://github.com/astropy/astropy/issues/7202
@@ -698,11 +735,12 @@ class EMLineFit(ContinuumTools):
         #err_params = np.sqrt(np.diag(fitter.fit_info['param_cov']))
         #err = model.copy()
         #fitting._fitter_to_model_params(err, err_params)            
-            
-        count = 0
+
+        # populate the output table
+        #count = 0
         for ii, pp in enumerate(bestfit.param_names):
             pinfo = getattr(bestfit, pp)
-            iinfo = getattr(self.EMLineModel, pp)
+            #iinfo = getattr(self.EMLineModel, pp)
 
             # need to think about this more deeply
             #if pinfo.value == iinfo.value: # not fitted
@@ -712,35 +750,27 @@ class EMLineFit(ContinuumTools):
             #result.update({pinfo.name: pinfo.value.astype('f4')})
             result[pinfo.name.upper()] = pinfo.value.astype('f4')
                 
-            if pinfo.fixed:
-                #result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
-                result['{}_IVAR'.format(pinfo.name.upper())] = pinfo.value.astype('f4')
-            elif pinfo.tied:
-                # hack! see https://github.com/astropy/astropy/issues/7202
-                #result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
-                result['{}_IVAR'.format(pinfo.name.upper())] = np.float32(0.0)
-            else:
-                result['{}_IVAR'.format(pinfo.name.upper())] = ivar[count].astype('f4')
-                #result.update({'{}_ivar'.format(pinfo.name): ivar[count].astype('f4')})
-                count += 1
+            #if pinfo.fixed:
+            #    #result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
+            #    result['{}_IVAR'.format(pinfo.name.upper())] = pinfo.value.astype('f4')
+            #elif pinfo.tied:
+            #    # hack! see https://github.com/astropy/astropy/issues/7202
+            #    #result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
+            #    result['{}_IVAR'.format(pinfo.name.upper())] = np.float32(0.0)
+            #else:
+            #    result['{}_IVAR'.format(pinfo.name.upper())] = ivar[count].astype('f4')
+            #    #result.update({'{}_ivar'.format(pinfo.name): ivar[count].astype('f4')})
+            #    count += 1
 
             #if 'forbidden' in pinfo.name:
             #    pdb.set_trace()
 
-        # hack for tied parameters---gotta be a better way to do this
-        #result['oiii_4959_amp_ivar'] = result['oiii_5007_amp_ivar'] * 2.8875**2
-        result['OIII_4959_AMP_IVAR'] = result['OIII_5007_AMP_IVAR'] * 2.8875**2
-        result['NII_6548_AMP_IVAR'] = result['NII_6548_AMP_IVAR'] * 2.936**2
-
-        #if False:
-        #    result['LINEVSHIFT_FORBIDDEN_IVAR'] = result['LINEVSHIFT_BALMER_IVAR']
-        #    result['LINESIGMA_FORBIDDEN_IVAR'] = result['LINESIGMA_BALMER_IVAR']
-
-        ## convert the vshifts to redshifts
-        #result['linez_forbidden'] = redshift + result['linevshift_forbidden'] / C_LIGHT
-        #result['linez_balmer'] = redshift + result['linevshift_balmer'] / C_LIGHT
-        #result['linez_forbidden_ivar'] = result['linevshift_forbidden_ivar'] * C_LIGHT**2
-        #result['linez_balmer_ivar'] = result['linevshift_balmer_ivar'] * C_LIGHT**2
+        pdb.set_trace()
+        
+        ## hack for tied parameters---gotta be a better way to do this
+        ##result['oiii_4959_amp_ivar'] = result['oiii_5007_amp_ivar'] * 2.8875**2
+        #result['OIII_4959_AMP_IVAR'] = result['OIII_5007_AMP_IVAR'] * 2.8875**2
+        #result['NII_6548_AMP_IVAR'] = result['NII_6548_AMP_IVAR'] * 2.936**2
 
         # now loop back through and if ivar==0 then set the parameter value to zero
         if False:
@@ -751,8 +781,15 @@ class EMLineFit(ContinuumTools):
 
         # get continuum fluxes, EWs, and upper limits
         sigma_cont = 150.0
+        balmer_sigmas, balmer_vshift = [], []
+        forbidden_sigmas, forbidden_vshift = [], []
         for oneline in self.EMLineModel.linetable:
-            line = oneline['name'].upper()
+            linename = oneline['name'].upper()
+
+            if result['{}_AMP'.format(linename)] == 0: # no line fitted!
+                print(linename, result['{}_SIGMA'.format(linename)][0], result['{}_VSHIFT'.format(linename)][0],
+                      result['{}_FLUX'.format(linename)][0], result['{}_AMP'.format(linename)][0])
+                continue
 
             # get the emission-line flux
             
@@ -762,25 +799,24 @@ class EMLineFit(ContinuumTools):
             #else:
             #    linesigma = result['LINESIGMA_FORBIDDEN']
 
-            linez = redshift + result['{}_VSHIFT'.format(line)] / C_LIGHT
+            linez = redshift + result['{}_VSHIFT'.format(linename)] / C_LIGHT
             linezwave = oneline['restwave'] * (1 + linez)
             
-            linesigma = result['{}_SIGMA'.format(line)]     # [km/s]
+            linesigma = result['{}_SIGMA'.format(linename)]     # [km/s]
             linesigma_ang = linezwave * linesigma / C_LIGHT # [observed-frame Angstrom]
-            norm = np.sqrt(2.0 * np.pi) * linesigma_ang
-
-            if norm == 0.0:
-                pdb.set_trace()
-
-            result['{}_FLUX'.format(line)] = result['{}_AMP'.format(line)] * norm
-            result['{}_FLUX_IVAR'.format(line)] = result['{}_AMP_IVAR'.format(line)] / norm**2
+            linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
+            #if linenorm == 0.0:
+            #    pdb.set_trace()
+            
+            result['{}_FLUX'.format(linename)] = result['{}_AMP'.format(linename)] * linenorm
+            result['{}_FLUX_IVAR'.format(linename)] = result['{}_AMP_IVAR'.format(linename)] / linenorm**2
 
             # boxcar integration, chi2, and number of pixels
             lineindx = np.where((emlinewave > (linezwave - 3.*linesigma * linezwave / C_LIGHT)) *
                                 (emlinewave < (linezwave + 3.*linesigma * linezwave / C_LIGHT)) *
                                 (emlineivar > 0))[0]
             npix = len(lineindx)
-            if npix > 0:
+            if npix > 3:
                 dof = npix - 3 # ??? [redshift, sigma, and amplitude]
                 chi2 = np.sum(emlineivar[lineindx]*(emlineflux[lineindx]-emlinemodel[lineindx])**2) / dof
                 boxflux = np.sum(emlineflux[lineindx])
@@ -788,14 +824,13 @@ class EMLineFit(ContinuumTools):
             else:
                 npix, chi2, boxflux, boxflux_ivar = 0.0, 1e6, 0.0, 0.0
 
-            result['{}_NPIX'.format(line)] = npix
-            result['{}_CHI2'.format(line)] = chi2
-            result['{}_BOXFLUX'.format(line)] = boxflux
-            result['{}_BOXFLUX_IVAR'.format(line)] = boxflux_ivar
+            result['{}_NPIX'.format(linename)] = npix
+            result['{}_CHI2'.format(linename)] = chi2
+            result['{}_BOXFLUX'.format(linename)] = boxflux
+            result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar
 
-            #print(line, npix, result['{}_FLUX'.format(line)][0], result['{}_BOXFLUX'.format(line)][0], result['{}_AMP'.format(line)][0])
-            print(line, npix, result['{}_SIGMA'.format(line)][0], result['{}_VSHIFT'.format(line)][0],
-                  result['{}_FLUX'.format(line)][0], result['{}_AMP'.format(line)][0])
+            print(linename, npix, result['{}_SIGMA'.format(linename)][0], result['{}_VSHIFT'.format(linename)][0],
+                  result['{}_FLUX'.format(linename)][0], result['{}_AMP'.format(linename)][0])
             
             # get the continuum and EWs
             indxlo = np.where((emlinewave > (linezwave - 10*linesigma * linezwave / C_LIGHT)) *
@@ -812,15 +847,15 @@ class EMLineFit(ContinuumTools):
             else:
                 cmed, civar = 0.0, 0.0
                 
-            result['{}_CONT'.format(line)] = cmed
-            result['{}_CONT_IVAR'.format(line)] = civar
+            result['{}_CONT'.format(linename)] = cmed
+            result['{}_CONT_IVAR'.format(linename)] = civar
 
-            if result['{}_CONT_IVAR'.format(line)] != 0.0:
-                #if result['{}_CONT'.format(line)] == 0:
+            if result['{}_CONT_IVAR'.format(linename)] != 0.0:
+                #if result['{}_CONT'.format(linename)] == 0:
                 #    pdb.set_trace()
-                factor = (1 + redshift) / result['{}_CONT'.format(line)] # --> rest frame
-                ew = result['{}_FLUX'.format(line)] * factor   # rest frame [A]
-                ewivar = result['{}_FLUX_IVAR'.format(line)] / factor**2
+                factor = (1 + redshift) / result['{}_CONT'.format(linename)] # --> rest frame
+                ew = result['{}_FLUX'.format(linename)] * factor   # rest frame [A]
+                ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
 
                 # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
                 fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar)
@@ -828,13 +863,13 @@ class EMLineFit(ContinuumTools):
             else:
                 ew, ewivar, fluxlimit, ewlimit = 0.0, 0.0, 0.0, 0.0
 
-            result['{}_EW'.format(line)] = ew
-            result['{}_EW_IVAR'.format(line)] = ewivar
-            result['{}_FLUX_LIMIT'.format(line)] = fluxlimit
-            result['{}_EW_LIMIT'.format(line)] = ewlimit
+            result['{}_EW'.format(linename)] = ew
+            result['{}_EW_IVAR'.format(linename)] = ewivar
+            result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit
+            result['{}_EW_LIMIT'.format(linename)] = ewlimit
 
             # simple QA
-            if 'alpha' in line and False:
+            if 'alpha' in linename and False:
                 import matplotlib.pyplot as plt
                 _indx = np.where((emlinewave > (zwave - 15*sigma_cont * zwave / C_LIGHT)) *
                                 (emlinewave < (zwave + 15*sigma_cont * zwave / C_LIGHT)))[0]
@@ -846,6 +881,7 @@ class EMLineFit(ContinuumTools):
                 plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
                 plt.savefig('junk.png')
 
+        #pdb.set_trace()
         return result
     
     def qa_fastspec(self, data, fastspec, metadata, coadd_type='deep',
