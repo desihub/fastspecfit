@@ -27,20 +27,20 @@ name restwave amp isbalmer isbroad nicename plotgroup
   nev_3426   3426.8637    0.1   False  False  [NeV]               02
   oii_3726   3727.092    0.73   False  False  [OII]               03
   oii_3729   3729.874     1.0   False  False  [OII]               03
-neiii_3869   3869.8611    0.1   False  False  [NeIII]+H$\epsilon$ 04
+neiii_3869   3869.8611    0.1   False  False  [NeIII]             04
  oiii_4959   4960.295     1.0   False  False  [OIII]              05
  oiii_5007   5008.239   2.875   False  False  [OIII]              05
-  hepsilon   3971.195   0.159   True   False  [NeIII]+H$\epsilon$ 04
-    hdelta   4102.892   0.259   True   False  H$\delta$           06
-    hgamma   4341.684   0.468   True   False  H$\gamma$           07
-     hbeta   4862.683     1.0   True   False  H$\beta$            08
+  hepsilon   3971.195   0.159   True   False  H$\epsilon$         06
+    hdelta   4102.892   0.259   True   False  H$\delta$           07
+    hgamma   4341.684   0.468   True   False  H$\gamma$           08
+     hbeta   4862.683     1.0   True   False  H$\beta$            09
     halpha   6564.613   2.863   True   False  H$\alpha$+[NII]     10
   nii_6548   6549.852     1.0   False  False  H$\alpha$+[NII]     10
   nii_6584   6585.277   2.936   False  False  H$\alpha$+[NII]     10
   sii_6716   6718.294     1.0   False  False  [SII]               11
   sii_6731   6732.673     1.0   False  False  [SII]               11
- siii_9068   9071.1034    0.3   False  False  [SIII]              12
- siii_9530   9533.2274    0.3   False  False  [SIII]              12
+ siii_9069   9071.1034    0.3   False  False  [SIII]              12
+ siii_9532   9533.2274    0.3   False  False  [SIII]              12
 
 
 

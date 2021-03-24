@@ -44,8 +44,8 @@ def _tie_nii_6548_sigma(model):
     return model.nii_6584_sigma
 def _tie_sii_6731_sigma(model):
     return model.sii_6716_sigma
-def _tie_siii_9530_sigma(model):
-    return model.siii_9068_sigma
+def _tie_siii_9532_sigma(model):
+    return model.siii_9069_sigma
 
 def _tie_hbeta_sigma(model):
     return model.hbeta_sigma
@@ -149,8 +149,8 @@ class EMLineModel(Fittable1DModel):
     nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0)
     sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0)
     sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0)
-    siii_9068_amp = Parameter(name='siii_9068_amp', default=0.3)
-    siii_9530_amp = Parameter(name='siii_9530_amp', default=0.3)
+    siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3)
+    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3)
 
     mgii_2800_vshift = Parameter(name='mgii_2800_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     #mgii_2800b_vshift = Parameter(name='mgii_2800b_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
@@ -170,8 +170,8 @@ class EMLineModel(Fittable1DModel):
     nii_6584_vshift = Parameter(name='nii_6584_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    siii_9068_vshift = Parameter(name='siii_9068_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    siii_9530_vshift = Parameter(name='siii_9530_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
 
     mgii_2800_sigma = Parameter(name='mgii_2800_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
     #mgii_2800b_sigma = Parameter(name='mgii_2800b_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
@@ -191,8 +191,8 @@ class EMLineModel(Fittable1DModel):
     nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
     sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
     sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    siii_9068_sigma = Parameter(name='siii_9068_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    siii_9530_sigma = Parameter(name='siii_9530_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    siii_9069_sigma = Parameter(name='siii_9069_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    siii_9532_sigma = Parameter(name='siii_9532_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
 
     # doublet ratios are always tied
     def _tie_nii_amp(model):
@@ -222,8 +222,8 @@ class EMLineModel(Fittable1DModel):
                  nii_6584_amp=nii_6584_amp.default, 
                  sii_6716_amp=sii_6716_amp.default, 
                  sii_6731_amp=sii_6731_amp.default,
-                 siii_9068_amp=siii_9068_amp.default,
-                 siii_9530_amp=siii_9530_amp.default,
+                 siii_9069_amp=siii_9069_amp.default,
+                 siii_9532_amp=siii_9532_amp.default,
                  
                  mgii_2800_vshift=mgii_2800_vshift.default,
                  #mgii_2800b_vshift=mgii_2800b_vshift.default,
@@ -243,8 +243,8 @@ class EMLineModel(Fittable1DModel):
                  nii_6584_vshift=nii_6584_vshift.default, 
                  sii_6716_vshift=sii_6716_vshift.default, 
                  sii_6731_vshift=sii_6731_vshift.default,
-                 siii_9068_vshift=siii_9068_vshift.default,
-                 siii_9530_vshift=siii_9530_vshift.default,
+                 siii_9069_vshift=siii_9069_vshift.default,
+                 siii_9532_vshift=siii_9532_vshift.default,
                  
                  mgii_2800_sigma=mgii_2800_sigma.default,
                  #mgii_2800b_sigma=mgii_2800b_sigma.default,
@@ -264,8 +264,8 @@ class EMLineModel(Fittable1DModel):
                  nii_6584_sigma=nii_6584_sigma.default, 
                  sii_6716_sigma=sii_6716_sigma.default, 
                  sii_6731_sigma=sii_6731_sigma.default,
-                 siii_9068_sigma=siii_9068_sigma.default,
-                 siii_9530_sigma=siii_9530_sigma.default,
+                 siii_9069_sigma=siii_9069_sigma.default,
+                 siii_9532_sigma=siii_9532_sigma.default,
                  
                  redshift=None,
                  emlineR=None, npixpercamera=None,
@@ -311,8 +311,8 @@ class EMLineModel(Fittable1DModel):
             nii_6584_amp=nii_6584_amp,
             sii_6716_amp=sii_6716_amp,
             sii_6731_amp=sii_6731_amp,
-            siii_9068_amp=siii_9068_amp,
-            siii_9530_amp=siii_9530_amp,
+            siii_9069_amp=siii_9069_amp,
+            siii_9532_amp=siii_9532_amp,
             
             mgii_2800_vshift=mgii_2800_vshift,
             #mgii_2800b_vshift=mgii_2800b_vshift,
@@ -332,8 +332,8 @@ class EMLineModel(Fittable1DModel):
             nii_6584_vshift=nii_6584_vshift,
             sii_6716_vshift=sii_6716_vshift,
             sii_6731_vshift=sii_6731_vshift,
-            siii_9068_vshift=siii_9068_vshift,
-            siii_9530_vshift=siii_9530_vshift,
+            siii_9069_vshift=siii_9069_vshift,
+            siii_9532_vshift=siii_9532_vshift,
             
             mgii_2800_sigma=mgii_2800_sigma,
             #mgii_2800b_sigma=mgii_2800b_sigma,
@@ -353,8 +353,8 @@ class EMLineModel(Fittable1DModel):
             nii_6584_sigma=nii_6584_sigma,
             sii_6716_sigma=sii_6716_sigma,
             sii_6731_sigma=sii_6731_sigma,
-            siii_9068_sigma=siii_9068_sigma,
-            siii_9530_sigma=siii_9530_sigma,
+            siii_9069_sigma=siii_9069_sigma,
+            siii_9532_sigma=siii_9532_sigma,
             
             **kwargs)
 
@@ -1058,7 +1058,8 @@ class EMLineFit(ContinuumTools):
         ymin, ymax = 1e6, -1e6
         wavelims = (3600, 9800)
 
-        legfntsz = 18
+        legxpos, legypos, legfntsz = 0.98, 0.94, 20
+        bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
         
         for ii in [0, 1, 2]: # iterate over cameras
             sigma, _ = ivar2var(data['ivar'][ii], sigma=True)
@@ -1069,25 +1070,30 @@ class EMLineFit(ContinuumTools):
             #bigax1.plot(data['wave'][ii], continuum_nodust[ii], alpha=0.5, color='k')
 
             # get the robust range
-            filtflux = median_filter(data['flux'][ii], 5)
-            if np.min(filtflux) < ymin:
-                ymin = np.min(filtflux) * 0.5
-            if np.max(filtflux) > ymax:
-                ymax = np.max(filtflux) * 1.7
+            filtflux = median_filter(data['flux'][ii] - _emlinemodel[ii], 15)
+            sigflux = np.std(filtflux)
+            #if np.min(filtflux) < ymin:
+            #    ymin = np.min(filtflux) * 0.5
+            #if np.max(filtflux) > ymax:
+            #    #ymax = np.max(filtflux) * 1.4
+            if -3 * sigflux < ymin:
+                ymin = -3 * sigflux
+            if sigflux * 10 > ymax:
+                ymax = sigflux * 10
+            #print(ymin, ymax)
 
-        xpos, ypos, yoff = 0.98, 0.92, 0.09
-
-        bigax1.text(xpos, ypos, r'{}'.format(leg['zredrock']),
-                    ha='right', va='center', transform=bigax1.transAxes, fontsize=legfntsz)#, fontweight='bold')
-        bigax1.text(xpos, ypos-yoff, r'{} {}'.format(leg['chi2'], leg['age']),
-                    ha='right', va='center', transform=bigax1.transAxes, fontsize=legfntsz)#, fontweight='bold')
-        bigax1.text(xpos, ypos-2*yoff, r'{}'.format(leg['AV']),
-                    ha='right', va='center', transform=bigax1.transAxes, fontsize=legfntsz)#, fontweight='bold')
-        bigax1.text(xpos, ypos-3*yoff, r'{}'.format(leg['vdisp']),
-                    ha='right', va='center', transform=bigax1.transAxes, fontsize=legfntsz)#, fontweight='bold')
+        txt = '\n'.join((
+            r'{}'.format(leg['zredrock']),
+            r'{} {}'.format(leg['chi2'], leg['age']),
+            r'{}'.format(leg['AV']),
+            r'{}'.format(leg['vdisp']),
+            ))
+        bigax1.text(legxpos, legypos, txt, ha='right', va='top',
+                    transform=bigax1.transAxes, fontsize=legfntsz,
+                    bbox=bbox)
         bigax1.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
-                    ha='left', va='center', transform=bigax1.transAxes, fontsize=20)
-        bigax1.set_title(title, fontsize=20)
+                    ha='left', va='center', transform=bigax1.transAxes, fontsize=22)
+        bigax1.set_title(title, fontsize=22)
         
         bigax1.set_xlim(wavelims)
         bigax1.set_ylim(ymin, ymax)
@@ -1132,18 +1138,17 @@ class EMLineFit(ContinuumTools):
             if np.max(emlinemodel) > ymax:
                 ymax = np.max(emlinemodel) * 1.2
 
-        xpos, ypos, yoff = 0.98, 0.92, 0.09
-
-        bigax2.text(xpos, ypos, r'{}'.format(leg['dv_balmer']),
-                    ha='right', va='center', transform=bigax2.transAxes, fontsize=legfntsz)#, fontweight='bold')
-        bigax2.text(xpos, ypos-yoff, r'{}'.format(leg['dv_forbidden']),
-                    ha='right', va='center', transform=bigax2.transAxes, fontsize=legfntsz)#, fontweight='bold')
-        bigax2.text(xpos, ypos-2*yoff, r'{}'.format(leg['dv_broad']),
-                    ha='right', va='center', transform=bigax2.transAxes, fontsize=legfntsz)#, fontweight='bold')
-        
+        txt = '\n'.join((
+            r'{}'.format(leg['dv_balmer']),
+            r'{}'.format(leg['dv_forbidden']),
+            r'{}'.format(leg['dv_broad']),
+            ))
+        bigax2.text(legxpos, legypos, txt, ha='right', va='top',
+                    transform=bigax2.transAxes, fontsize=legfntsz,
+                    bbox=bbox)
         bigax2.text(0.03, 0.9, 'Residual Spectrum + Emission-Line Model',
                     ha='left', va='center', transform=bigax2.transAxes,
-                    fontsize=20)
+                    fontsize=22)
                 
         bigax2.set_xlim(wavelims)
         bigax2.set_ylim(ymin, ymax)
@@ -1152,7 +1157,7 @@ class EMLineFit(ContinuumTools):
         #bigax2.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
         
         # zoom in on individual emission lines - use linetable!
-        sig = 500.0 # [km/s]
+        plotsig_default = 300.0 # [km/s]
 
         meanwaves, deltawaves, sigmas, linenames = [], [], [], []
         for plotgroup in set(self.linetable['plotgroup']):
@@ -1161,11 +1166,17 @@ class EMLineFit(ContinuumTools):
             meanwaves.append(np.mean(self.linetable['restwave'][I]))
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
-            #if np.any(self.linetable['isbalmer'][I]):
-            #    sigmas.append(np.max((fastspec['LINESIGMA_BALMER'], fastspec['LINESIGMA_FORBIDDEN'])))
-            #else:
-            #    sigmas.append(fastspec['LINESIGMA_FORBIDDEN'])
-            sigmas.append(sig)
+            plotsig = None
+            if np.any(self.linetable['isbroad'][I]):
+                plotsig = fastspec['BROAD_SIGMA']
+            elif np.any(self.linetable['isbalmer'][I]):
+                plotsig = np.max((fastspec['BALMER_SIGMA'], fastspec['FORBIDDEN_SIGMA']))
+            else:
+                plotsig = fastspec['FORBIDDEN_SIGMA']
+            if plotsig:
+                sigmas.append(plotsig)
+            else:
+                sigmas.append(plotsig_default)
 
         srt = np.argsort(meanwaves)
         meanwaves = np.hstack(meanwaves)[srt]
@@ -1209,11 +1220,12 @@ class EMLineFit(ContinuumTools):
                     xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
                                     emlineflux[indx]+emlinesigma[indx], color=col1[ii], alpha=0.5)
                     xx.plot(emlinewave[indx], emlinemodel[indx], color=col2[ii], lw=3)
+                    xx.axhline(y=0, color='gray', ls='-')
 
                     # get the robust range
                     sigflux, filtflux = np.std(emlineflux[indx]), median_filter(emlineflux[indx], 3)
 
-                    _ymin, _ymax = -1.5 * sigflux, 3 * sigflux
+                    _ymin, _ymax = -1.5 * sigflux, 4 * sigflux
                     if np.max(emlinemodel[indx]) > _ymax:
                         _ymax = np.max(emlinemodel[indx]) * 1.2
                     if np.max(filtflux) > _ymax:
@@ -1226,7 +1238,7 @@ class EMLineFit(ContinuumTools):
                     if _ymin < ymin[iax]:
                         ymin[iax] = _ymin
                     
-                xx.text(0.08, 0.9, linename, ha='left', va='center',
+                xx.text(0.08, 0.89, linename, ha='left', va='center',
                         transform=xx.transAxes, fontsize=20)
 
                 
@@ -1247,7 +1259,7 @@ class EMLineFit(ContinuumTools):
         # common axis labels
         tp, bt, lf, rt = 0.95, 0.09, 0.10, 0.94
         
-        fig.text(lf-0.06, (tp-bt)/2+bt,
+        fig.text(lf-0.07, (tp-bt)/2+bt,
                  r'Flux Density ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
                  ha='center', va='center', rotation='vertical')
         fig.text((rt-lf)/2+lf, bt-0.05, r'Observed-frame Wavelength ($\AA$)',
