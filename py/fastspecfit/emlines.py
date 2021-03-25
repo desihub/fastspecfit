@@ -112,6 +112,11 @@ def _tie_all_lines(model):
             getattr(model, pp).tied = _tie_hbeta_sigma
         if 'vshift' in pp and pp != 'hbeta_vshift':
             getattr(model, pp).tied = _tie_hbeta_vshift
+            
+    # reset the amplitudes of the tied doublets; fragile...
+    model.oiii_4959_amp = model.oiii_4959_amp.tied(model)
+    model.nii_6548_amp = model.nii_6548_amp.tied(model)
+            
     return model
 
 class EMLineModel(Fittable1DModel):
@@ -603,7 +608,7 @@ class EMLineFit(ContinuumTools):
         init_linesigmas = []
         for pp in self.EMLineModel.param_names:
             if getattr(self.EMLineModel, pp).tied:
-                #print('Skipping {}'.format(pp))
+                print('Skipping tied parameter {}'.format(pp))
                 continue
 
             if 'amp' in pp:
@@ -616,71 +621,88 @@ class EMLineFit(ContinuumTools):
                     raise ValueError
                 
                 oneline = self.linetable[iline][0]
-                zwave = oneline['restwave'] * (1 + redshift)
-                lineindx = np.where((emlinewave > (zwave - 3*sigma_cont * zwave / C_LIGHT)) *
-                                    (emlinewave < (zwave + 3.*sigma_cont * zwave / C_LIGHT)) *
-                                    (emlineflux * np.sqrt(emlineivar) > 1.5))[0] # S/N > 1.5
-                                    #(emlineivar > 0))[0]
+                linezwave = oneline['restwave'] * (1 + redshift)
+                lineindx = np.where((emlinewave > (linezwave - 5*sigma_cont * linezwave / C_LIGHT)) *
+                                    (emlinewave < (linezwave + 5.*sigma_cont * linezwave / C_LIGHT)) *
+                                    #(emlineflux * np.sqrt(emlineivar) > 1)
+                                    (emlineivar > 0))[0]
                                     
                 linesigma = getattr(self.EMLineModel, '{}_sigma'.format(linename)).default # initial guess
+                #print(linename, linesigma, len(lineindx))
                 if len(lineindx) > 10:
-                    lineflux = np.sum(emlineflux[lineindx])
-                    #lineflux = np.sum(emlinevar[lineindx] * emlineflux[lineindx]) / np.sum(emlinevar[lineindx])
-                    
-                    linesigma_ang = zwave * sigma_cont / C_LIGHT # [observed-frame Angstrom]
+                    linesigma_ang = linezwave * sigma_cont / C_LIGHT # [observed-frame Angstrom]
                     linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
-                    if linenorm > 0:
-                        lineamp = np.abs(lineflux / linenorm)
-                        # estimate the velocity width from potentially strong, isolated lines; fragile!
-                        if linename in ['mgii_2800', 'oii_3729', 'oiii_5007', 'hgamma', 'hbeta', 'halpha']:
-                            linesigma = np.sqrt(np.sum(emlineflux[lineindx] * (emlinewave[lineindx]-zwave)**2) /
-                                                np.sum(emlineflux[lineindx])) / zwave * C_LIGHT # [km/s]
-                            init_linesigmas.append(linesigma)
-                    else:
-                        lineamp = 1.0
 
-                    #if 'beta' in pinfo.name:
-                    #    pdb.set_trace()
-                    if not pinfo.tied:
-                        setattr(self.EMLineModel, pp, lineamp)
-                    #print(pinfo.name, len(lineindx), lineflux, lineamp, linesigma)
+                    lineflux = np.sum(emlineflux[lineindx])
+                    lineamp = np.abs(lineflux / linenorm)
 
-        # reset the amplitudes of the tied doublets; fragile...
-        self.EMLineModel.oiii_4959_amp = self.EMLineModel.oiii_4959_amp.tied(self.EMLineModel)
-        self.EMLineModel.nii_6548_amp = self.EMLineModel.nii_6548_amp.tied(self.EMLineModel)
+                    # estimate the velocity width from potentially strong, isolated lines; fragile!
+                    if lineflux > 0 and linename in ['mgii_2800', 'oiii_5007', 'hbeta', 'halpha']:
+                        linesigma = np.sqrt(np.sum(emlineflux[lineindx] * (emlinewave[lineindx] - linezwave)**2) / np.sum(emlineflux[lineindx])) / linezwave * C_LIGHT # [km/s]
+                        init_linesigmas.append(linesigma)
+                else:
+                    lineamp = pinfo.default
+
+                if not pinfo.tied:
+                    setattr(self.EMLineModel, pp, lineamp)
+                #print(pinfo.name, len(lineindx), lineflux, lineamp, linesigma)
 
         # update the initial velocity widths
-        if len(init_linesigmas) > 3:
+        if len(init_linesigmas) >= 3:
             init_linesigma = np.median(init_linesigmas)
-            if init_linesigma > 0 and init_linesigma < 500:
+            if init_linesigma > 0 and init_linesigma < 300:
                 for pp in self.EMLineModel.param_names:
                     if 'sigma' in pp:
                         setattr(self.EMLineModel, pp, init_linesigma)
 
         # Fit [1]: tie all lines together
         self.EMLineModel = _tie_all_lines(self.EMLineModel)
-        bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
-                              weights=np.sqrt(emlineivar[emlinegood]), maxiter=500)
-        #bestfit = self.fitter_nouncertainties(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
-        #                                      weights=np.sqrt(emlineivar[emlinegood]), maxiter=500)
-        #print(bestfit.parameters)
+        t0 = time.time()        
+        bestfit_init = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
+                                   weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
+        log.info('Initial line-fitting took {:.2f} sec'.format(time.time()-t0))
+        #print(bestfit_init.parameters)
 
         # Fit [2]: tie Balmer, narrow forbidden, and QSO/broad lines together,
         # separately, and refit.
-        self.EMLineModel = bestfit
+        self.EMLineModel = bestfit_init
+        #self.EMLineModel = _tie_all_lines(self.EMLineModel)
         self.EMLineModel = _tie_balmer_lines(self.EMLineModel)
         self.EMLineModel = _tie_forbidden_lines(self.EMLineModel)
         self.EMLineModel = _tie_broad_lines(self.EMLineModel)
 
+        t0 = time.time()        
         bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
-                              weights=np.sqrt(emlineivar[emlinegood]), maxiter=500)
-        
-        emlinemodel = bestfit(emlinewave)
-        chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
+                              weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
+        log.info('Final line-fitting took {:.2f} sec'.format(time.time()-t0))
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
-        
+
+        # Populate the output table. First do a pass through the sigma
+        # parameters. If sigma is zero, restore the default value and if the
+        # amplitude is still at its default, it means the line wasn't fit
+        # (right??), so set it to zero.
+        for pp in bestfit.param_names:
+            if 'sigma' in pp:
+                pinfo = getattr(bestfit, pp)
+                if pinfo.value == 0.0: # sigma=0, drop the line
+                    setattr(bestfit, pp, pinfo.default)
+
+        # Now fill the output table.
+        for pp in bestfit.param_names:
+            pinfo = getattr(bestfit, pp)
+            val = pinfo.value
+            #if '9532' in pp:
+            #    pdb.set_trace()
+            if 'amp' in pp and val == pinfo.default: # line not optimized; drop it!
+                val = 0.0
+                setattr(bestfit, pp, val)
+            result[pinfo.name.upper()] = val
+
+        emlinemodel = bestfit(emlinewave)
+        chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
+
         # Synthesize photometry from the best-fitting model (continuum+emission lines).
         if data['photsys'] == 'S':
             filters = self.decam
@@ -704,18 +726,6 @@ class EMLineFit(ContinuumTools):
 
         specflux_nolines = specflux - emlinemodel
 
-        # Populate the output table. If sigma is zero, restore the default value
-        # and if the amplitude is still at its default, it means the line wasn't
-        # fit (right??), so set it to zero.
-        for ii, pp in enumerate(bestfit.param_names):
-            pinfo = getattr(bestfit, pp)
-            val = pinfo.value
-            if 'sigma' in pp and val == 0.0:
-                val = pinfo.default
-            if 'amp' in pp and val == pinfo.default:
-                val = 0.0
-            result[pinfo.name.upper()] = val
-            
         # measure D(4000) without the emission lines
         if False:
             d4000_nolines, _ = self.get_d4000(emlinewave, specflux_nolines, redshift=redshift)
@@ -787,7 +797,7 @@ class EMLineFit(ContinuumTools):
 
         # get continuum fluxes, EWs, and upper limits
 
-        verbose = True
+        verbose = False
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
@@ -864,8 +874,8 @@ class EMLineFit(ContinuumTools):
             indxlo = np.where((emlinewave > (linezwave - 10*linesigma * linezwave / C_LIGHT)) *
                               (emlinewave < (linezwave - 3.*linesigma * linezwave / C_LIGHT)))[0]# *
                               #(emlinemodel == 0))[0]
-            indxhi = np.where((emlinewave < (zwave + 10*linesigma * linezwave / C_LIGHT)) *
-                              (emlinewave > (zwave + 3.*linesigma * linezwave / C_LIGHT)))[0]# *
+            indxhi = np.where((emlinewave < (linezwave + 10*linesigma * linezwave / C_LIGHT)) *
+                              (emlinewave > (linezwave + 3.*linesigma * linezwave / C_LIGHT)))[0]# *
                               #(emlinemodel == 0))[0]
             indx = np.hstack((indxlo, indxhi))
 
@@ -911,8 +921,8 @@ class EMLineFit(ContinuumTools):
             if 'alpha' in linename and False:
                 sigma_cont = 150.0
                 import matplotlib.pyplot as plt
-                _indx = np.where((emlinewave > (zwave - 15*sigma_cont * zwave / C_LIGHT)) *
-                                (emlinewave < (zwave + 15*sigma_cont * zwave / C_LIGHT)))[0]
+                _indx = np.where((emlinewave > (linezwave - 15*sigma_cont * linezwave / C_LIGHT)) *
+                                (emlinewave < (linezwave + 15*sigma_cont * linezwave / C_LIGHT)))[0]
                 plt.plot(emlinewave[_indx], emlineflux[_indx])
                 plt.plot(emlinewave[_indx], specflux_nolines[_indx])
                 plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
@@ -951,6 +961,7 @@ class EMLineFit(ContinuumTools):
                 for col in ('Z', 'SIGMA'):
                 #for col in ('Z', 'Z_ERR', 'SIGMA', 'SIGMA_ERR'):
                     print('{}_{}: {:.12f}'.format(line, col, result['{}_{}'.format(line, col)][0]))
+        pdb.set_trace()
 
         return result
     
@@ -1028,13 +1039,13 @@ class EMLineFit(ContinuumTools):
         leg = {
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
             'dv_balmer': '$\Delta v_{{\\rm Balmer}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BALMER_Z']-redshift)),
-            'dv_forbidden': '$\Delta v_{{\\rm forbidden}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['FORBIDDEN_Z']-redshift)),
+            'dv_forbid': '$\Delta v_{{\\rm forbid}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['FORBIDDEN_Z']-redshift)),
             'dv_broad': '$\Delta v_{{\\rm MgII}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
             #'zbalmer': '$z_{{\\rm Balmer}}$={:.6f}'.format(fastspec['BALMER_Z']),
             #'zforbidden': '$z_{{\\rm forbidden}}$={:.6f}'.format(fastspec['FORBIDDEN_Z']),
             #'zbroad': '$z_{{\\rm MgII}}$={:.6f}'.format(fastspec['BROAD_Z']),
             'sigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(fastspec['BALMER_SIGMA']),
-            'sigma_forbidden': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(fastspec['FORBIDDEN_SIGMA']),
+            'sigma_forbid': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(fastspec['FORBIDDEN_SIGMA']),
             'sigma_broad': '$\sigma_{{\\rm MgII}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
             #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
@@ -1043,6 +1054,7 @@ class EMLineFit(ContinuumTools):
             #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastspec['CONTINUUM_AGE']),
             }
+
         if fastspec['CONTINUUM_VDISP_IVAR'] == 0:
             leg.update({'vdisp': '$\sigma_{{\\rm star}}$={:.1f} km/s'.format(fastspec['CONTINUUM_VDISP'])})
         else:
@@ -1052,7 +1064,7 @@ class EMLineFit(ContinuumTools):
         if fastspec['CONTINUUM_AV_IVAR'] == 0:
             leg.update({'AV': '$A(V)$={:.3f} mag'.format(fastspec['CONTINUUM_AV'])})
         else:
-            leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
+            leg.update({'AV': '$A(V)$={:.2f}+/-{:.2f} mag'.format(
                 fastspec['CONTINUUM_AV'], 1/np.sqrt(fastspec['CONTINUUM_AV_IVAR']))})
 
         ymin, ymax = 1e6, -1e6
@@ -1086,7 +1098,7 @@ class EMLineFit(ContinuumTools):
             r'{}'.format(leg['zredrock']),
             r'{} {}'.format(leg['chi2'], leg['age']),
             r'{}'.format(leg['AV']),
-            r'{}'.format(leg['vdisp']),
+            #r'{}'.format(leg['vdisp']),
             ))
         bigax1.text(legxpos, legypos, txt, ha='right', va='top',
                     transform=bigax1.transAxes, fontsize=legfntsz,
@@ -1139,9 +1151,9 @@ class EMLineFit(ContinuumTools):
                 ymax = np.max(emlinemodel) * 1.2
 
         txt = '\n'.join((
-            r'{}'.format(leg['dv_balmer']),
-            r'{}'.format(leg['dv_forbidden']),
-            r'{}'.format(leg['dv_broad']),
+            r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),
+            r'{} {}'.format(leg['dv_forbid'], leg['sigma_forbid']),
+            r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),
             ))
         bigax2.text(legxpos, legypos, txt, ha='right', va='top',
                     transform=bigax2.transAxes, fontsize=legfntsz,

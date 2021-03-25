@@ -2,7 +2,7 @@
 """
 MPI wrapper for fastphot and fastspec.
 
-mpi-fastspecfit --mp 32 --coadd-type night-coadds --tile 80608 --night 20201220 --plan
+mpi-fastspecfit --mp 32 --coadd-type night-coadds --tile 80608 --night 20201220 --plan --nompi
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
 
 mpi-fastspecfit --mp 32 --coadd-type deep --merge --nompi
@@ -65,7 +65,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None):
                                                                      args.mp, args.coadd_type)
             if args.solve_vdisp:
                 cmd += ' --solve-vdisp'
-        #cmd += ' --ntargets 16'
+        #cmd += ' --ntargets 12'
 
         logfile = outfiles[ii].replace('.fits', '.log')
         assert(logfile != outfiles[ii])
@@ -145,8 +145,9 @@ def main():
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands')
 
-    specprod_dir = '/global/cscratch1/sd/ioannis/cascades_subsets/cascades_3x_depth_subset1'
-    os.environ['FASTSPECFIT_DATA'] = '/global/cscratch1/sd/ioannis/cascades_subsets/fastspecfit/cascades_3x_depth_subset1'
+    specprod_dir = None
+    #specprod_dir = '/global/cscratch1/sd/ioannis/cascades_subsets/cascades_3x_depth_subset1'
+    #os.environ['FASTSPECFIT_DATA'] = '/global/cscratch1/sd/ioannis/cascades_subsets/fastspecfit/cascades_3x_depth_subset1'
 
     args = parser.parse_args()
 
