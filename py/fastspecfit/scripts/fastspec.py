@@ -74,8 +74,7 @@ def parse(options=None):
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
 
-    parser.add_argument('--coadd-type', type=str, required=True, default='deep',
-                        choices=['deep', 'all', 'night', 'exposures'],
+    parser.add_argument('--coadd-type', type=str, default='deep', choices=['deep', 'all', 'night', 'exposures'],
                         help='Type of spectral coadds corresponding to the input zbestfiles.')
     parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
 

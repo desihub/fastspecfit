@@ -273,8 +273,11 @@ class EMLineModel(Fittable1DModel):
                  siii_9532_sigma=siii_9532_sigma.default,
                  
                  redshift=None,
-                 emlineR=None, npixpercamera=None,
-                 log10wave=None, **kwargs):
+                 emlineR=None,
+                 npixpercamera=None,
+                 #goodpixpercam=None,
+                 log10wave=None,
+                 **kwargs):
         """Initialize the emission-line model.
         
         emlineR -
@@ -289,6 +292,7 @@ class EMLineModel(Fittable1DModel):
         self.redshift = redshift
         self.emlineR = emlineR
         self.npixpercamera = np.hstack([0, npixpercamera])
+        #self.goodpixpercam = goodpixpercam
 
         # internal wavelength vector for building the emission-line model
         if log10wave is None:
@@ -365,7 +369,6 @@ class EMLineModel(Fittable1DModel):
 
     def evaluate(self, emlinewave, *args):
         """Evaluate the emission-line model.
-        emlineR=None, npixpercamera=None, 
 
         """ 
         from redrock.rebin import trapz_rebin
@@ -396,18 +399,18 @@ class EMLineModel(Fittable1DModel):
                 #log.info(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
                 log10model[ww] += lineamp * np.exp(-0.5 * (self.log10wave[ww]-linezwave)**2 / log10sigma**2)
 
-            #print(linename, self.linetable['name'][iline][0], restlinewave, lineamp, linezwave, isbalmer)
-            #pdb.set_trace()
-
         # split into cameras, resample, and convolve with the instrumental
         # resolution
         emlinemodel = []
         for ii in [0, 1, 2]: # iterate over cameras
-            ipix = np.sum(self.npixpercamera[:ii+1])
+            #ipix = np.sum(self.ngoodpixpercamera[:ii+1]) # unmasked pixels!
+            #jpix = np.sum(self.ngoodpixpercamera[:ii+2])
+
+            ipix = np.sum(self.npixpercamera[:ii+1]) # all pixels!
             jpix = np.sum(self.npixpercamera[:ii+2])
             #_emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
             _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
-            
+
             if self.emlineR is not None:
                 _emlinemomdel = self.emlineR[ii].dot(_emlinemodel)
             
@@ -577,9 +580,6 @@ class EMLineFit(ContinuumTools):
         
         # Combine all three cameras; we will unpack them to build the
         # best-fitting model (per-camera) below.
-        npixpercamera = [len(gw) for gw in data['wave']]
-        npixpercam = np.hstack([0, npixpercamera])
-
         redshift = data['zredrock']
         emlinewave = np.hstack(data['wave'])
         emlineivar = np.hstack(data['ivar'])
@@ -588,6 +588,13 @@ class EMLineFit(ContinuumTools):
         emlineflux = specflux - continuummodelflux
 
         emlinevar, emlinegood = ivar2var(emlineivar)
+
+        npixpercamera = [len(gw) for gw in data['wave']] # all pixels
+        npixpercam = np.hstack([0, npixpercamera])
+        #goodpixpercam = [np.where(iv > 0)[0] for iv in data['ivar']] # unmasked pixels used in the fitting
+
+        #ngoodpixpercamera = [np.count_nonzero(iv) for iv in data['ivar']] # unmasked pixels used in the fitting
+        #ngoodpixpercam = np.hstack([0, ngoodpixpercamera])
 
         # fragile -- do a quick median-smoothing
         #emlineflux -= median_filter(emlineflux, width=100, mode='constant')
@@ -599,6 +606,7 @@ class EMLineFit(ContinuumTools):
         self.EMLineModel = EMLineModel(redshift=redshift,
                                        emlineR=data['res'],
                                        npixpercamera=npixpercamera,
+                                       #goodpixpercam=goodpixpercam,
                                        log10wave=log10wave)
         nparam = len(self.EMLineModel.parameters)
         #params = np.repeat(self.EMLineModel.parameters, self.nball).reshape(nparam, self.nball)
@@ -608,7 +616,7 @@ class EMLineFit(ContinuumTools):
         init_linesigmas = []
         for pp in self.EMLineModel.param_names:
             if getattr(self.EMLineModel, pp).tied:
-                print('Skipping tied parameter {}'.format(pp))
+                #print('Skipping tied parameter {}'.format(pp))
                 continue
 
             if 'amp' in pp:
@@ -638,8 +646,10 @@ class EMLineFit(ContinuumTools):
 
                     # estimate the velocity width from potentially strong, isolated lines; fragile!
                     if lineflux > 0 and linename in ['mgii_2800', 'oiii_5007', 'hbeta', 'halpha']:
-                        linesigma = np.sqrt(np.sum(emlineflux[lineindx] * (emlinewave[lineindx] - linezwave)**2) / np.sum(emlineflux[lineindx])) / linezwave * C_LIGHT # [km/s]
-                        init_linesigmas.append(linesigma)
+                        linevar = np.sum(emlineflux[lineindx] * (emlinewave[lineindx] - linezwave)**2) / np.sum(emlineflux[lineindx]) / linezwave * C_LIGHT # [km/s]
+                        if linevar > 0:
+                            linesigma = np.sqrt(linevar)
+                            init_linesigmas.append(linesigma)
                 else:
                     lineamp = pinfo.default
 
@@ -657,23 +667,30 @@ class EMLineFit(ContinuumTools):
 
         # Fit [1]: tie all lines together
         self.EMLineModel = _tie_all_lines(self.EMLineModel)
-        t0 = time.time()        
-        bestfit_init = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
-                                   weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
+        weights = np.sqrt(emlineivar)
+        emlinebad = np.logical_not(emlinegood)
+        if np.count_nonzero(emlinebad) > 0:
+            weights[emlinebad] = 1e16 # ???
+        
+        t0 = time.time()
+        bestfit_init = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
+        #bestfit_init = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
+        #                           weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
         log.info('Initial line-fitting took {:.2f} sec'.format(time.time()-t0))
         #print(bestfit_init.parameters)
 
         # Fit [2]: tie Balmer, narrow forbidden, and QSO/broad lines together,
         # separately, and refit.
         self.EMLineModel = bestfit_init
-        #self.EMLineModel = _tie_all_lines(self.EMLineModel)
+        #self.EMLineModel = _tie_all_lines(self.EMLineModel) # this will reset our updates, above, so don't do it!
         self.EMLineModel = _tie_balmer_lines(self.EMLineModel)
         self.EMLineModel = _tie_forbidden_lines(self.EMLineModel)
         self.EMLineModel = _tie_broad_lines(self.EMLineModel)
 
         t0 = time.time()        
-        bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
-                              weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
+        bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
+        #bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
+        #                      weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
         log.info('Final line-fitting took {:.2f} sec'.format(time.time()-t0))
 
         # Initialize the output table; see init_fastspecfit for the data model.
@@ -879,19 +896,19 @@ class EMLineFit(ContinuumTools):
                               #(emlinemodel == 0))[0]
             indx = np.hstack((indxlo, indxhi))
 
+            cmed, civar = 0.0, 0.0
             if len(indx) > 10: # require at least XX pixels to get the continuum level
                 #_, cmed, csig = sigma_clipped_stats(specflux_nolines[indx], sigma=3.0)
-                clipflux, _, _ = sigmaclip(specflux_nolines[lineindx], low=3, high=3)
+                clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
                 cmed, csig = np.median(clipflux), np.std(clipflux)
                 if csig > 0:
                     civar = (np.sqrt(len(indx)) / csig)**2
                     #result['{}_AMP_IVAR'.format(linename)] = 1 / csig**2
-            else:
-                cmed, civar = 0.0, 0.0
                 
             result['{}_CONT'.format(linename)] = cmed
             result['{}_CONT_IVAR'.format(linename)] = civar
 
+            ew, ewivar, fluxlimit, ewlimit = 0.0, 0.0, 0.0, 0.0
             if result['{}_CONT_IVAR'.format(linename)] != 0.0:
                 #if result['{}_CONT'.format(linename)] == 0:
                 #    pdb.set_trace()
@@ -902,8 +919,6 @@ class EMLineFit(ContinuumTools):
                 # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
                 fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar)
                 ewlimit = fluxlimit * factor
-            else:
-                ew, ewivar, fluxlimit, ewlimit = 0.0, 0.0, 0.0, 0.0
 
             result['{}_EW'.format(linename)] = ew
             result['{}_EW_IVAR'.format(linename)] = ewivar
@@ -961,7 +976,6 @@ class EMLineFit(ContinuumTools):
                 for col in ('Z', 'SIGMA'):
                 #for col in ('Z', 'Z_ERR', 'SIGMA', 'SIGMA_ERR'):
                     print('{}_{}: {:.12f}'.format(line, col, result['{}_{}'.format(line, col)][0]))
-        pdb.set_trace()
 
         return result
     
@@ -1045,7 +1059,7 @@ class EMLineFit(ContinuumTools):
             #'zforbidden': '$z_{{\\rm forbidden}}$={:.6f}'.format(fastspec['FORBIDDEN_Z']),
             #'zbroad': '$z_{{\\rm MgII}}$={:.6f}'.format(fastspec['BROAD_Z']),
             'sigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(fastspec['BALMER_SIGMA']),
-            'sigma_forbid': '$\sigma_{{\\rm forbidden}}$={:.1f} km/s'.format(fastspec['FORBIDDEN_SIGMA']),
+            'sigma_forbid': '$\sigma_{{\\rm forbid}}$={:.1f} km/s'.format(fastspec['FORBIDDEN_SIGMA']),
             'sigma_broad': '$\sigma_{{\\rm MgII}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
             #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),

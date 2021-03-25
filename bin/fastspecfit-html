@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""fastspecfit-html
+"""Wrapper to build HTML output from fastspec files.
 
-fastspecfit-html --fastphotfile /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80606/deep/fastphot-0-80606-deep.fits --outdir . --ntargets 20 --firsttarget 50
+fastspecfit-html --fastspecfile /global/cfs/cdirs/desi/spectro/fastspecfit/cascades/tiles/80607/deep/fastspec-2-80607-deep.fits --outdir . --ntargets 20 --firsttarget 50
 
 """
 import pdb # for debugging

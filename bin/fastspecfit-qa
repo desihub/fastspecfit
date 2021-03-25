@@ -141,7 +141,7 @@ def main(args=None, comm=None):
             os.makedirs(args.outdir)
         
     # Construct the zbestfiles filenames based on the input.
-    zbestdir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles')
+    zbestdir = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), specprod, 'tiles')
     alltiles = metadata['TILEID'].astype(str).data
     allpetals = metadata['FIBER'].data // 500
 
