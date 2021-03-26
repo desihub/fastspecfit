@@ -53,6 +53,7 @@ class DESISpectra(object):
         # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/zbest-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
         fahdr = fits.getheader(fiberfile, ext=0)
         targetdir = fahdr['TARG']
+        targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('DESIROOT/', ''))
 
         # sometimes this is a KPNO directory!
         if not os.path.isdir(targetdir):

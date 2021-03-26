@@ -134,21 +134,28 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
                 log.fatal('Required ${} environment variable not set'.format(key))
                 raise EnvironmentError('Required ${} environment variable not set'.format(key))
 
+        # look for data in the standard location
+        if specprod_dir is None:
+            specprod_dir = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), args.specprod, 'tiles')
+
         # figure out which tiles belong to SV1
         if args.tile is None:
             tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
             tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
             tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
-            args.tile = list(set(tileinfo['TILEID']))
+            alltiles = np.array(list(set(tileinfo['TILEID'])))
             log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
+
+            ireduced = [os.path.isdir(os.path.join(specprod_dir, str(tile1))) for tile1 in alltiles]
+            log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
+                args.specprod, np.sum(ireduced), len(alltiles)))
+
+            args.tile = alltiles[ireduced]
             print(args.tile)
+
 
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')
-
-        # look for data in the standard location
-        if specprod_dir is None:
-            specprod_dir = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), args.specprod, 'tiles')
 
         def _findfiles(filedir, prefix='zbest'):
             if args.coadd_type == 'deep':
