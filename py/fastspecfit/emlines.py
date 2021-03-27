@@ -611,66 +611,69 @@ class EMLineFit(ContinuumTools):
         nparam = len(self.EMLineModel.parameters)
         #params = np.repeat(self.EMLineModel.parameters, self.nball).reshape(nparam, self.nball)
 
-        # do a fast box-car integration to get the initial line-amplitudes and line-widths
-        sigma_cont = 200.0
-        init_linesigmas = []
-        for pp in self.EMLineModel.param_names:
-            if getattr(self.EMLineModel, pp).tied:
-                #print('Skipping tied parameter {}'.format(pp))
-                continue
+        # Do a fast box-car integration to get the initial line-amplitudes and
+        # line-widths...actually these initial guesses are not really working
+        # but keep the code here.
+        if False:
+            sigma_cont = 200.0
+            init_linesigmas = []
+            for pp in self.EMLineModel.param_names:
+                if getattr(self.EMLineModel, pp).tied:
+                    #print('Skipping tied parameter {}'.format(pp))
+                    continue
 
-            if 'amp' in pp:
-                pinfo = getattr(self.EMLineModel, pp)
-                linename = pinfo.name.replace('_amp', '')
+                if 'amp' in pp:
+                    pinfo = getattr(self.EMLineModel, pp)
+                    linename = pinfo.name.replace('_amp', '')
 
-                iline = np.where(self.linetable['name'] == linename)[0]
-                if len(iline) != 1:
-                    log.warning('No matching line found!')
-                    raise ValueError
-                
-                oneline = self.linetable[iline][0]
-                linezwave = oneline['restwave'] * (1 + redshift)
-                lineindx = np.where((emlinewave > (linezwave - 5*sigma_cont * linezwave / C_LIGHT)) *
-                                    (emlinewave < (linezwave + 5.*sigma_cont * linezwave / C_LIGHT)) *
-                                    #(emlineflux * np.sqrt(emlineivar) > 1)
-                                    (emlineivar > 0))[0]
-                                    
-                linesigma = getattr(self.EMLineModel, '{}_sigma'.format(linename)).default # initial guess
-                #print(linename, linesigma, len(lineindx))
-                if len(lineindx) > 10:
-                    linesigma_ang = linezwave * sigma_cont / C_LIGHT # [observed-frame Angstrom]
-                    linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
+                    iline = np.where(self.linetable['name'] == linename)[0]
+                    if len(iline) != 1:
+                        log.warning('No matching line found!')
+                        raise ValueError
 
-                    lineflux = np.sum(emlineflux[lineindx])
-                    lineamp = np.abs(lineflux / linenorm)
+                    oneline = self.linetable[iline][0]
+                    linezwave = oneline['restwave'] * (1 + redshift)
+                    lineindx = np.where((emlinewave > (linezwave - 5*sigma_cont * linezwave / C_LIGHT)) *
+                                        (emlinewave < (linezwave + 5.*sigma_cont * linezwave / C_LIGHT)) *
+                                        #(emlineflux * np.sqrt(emlineivar) > 1)
+                                        (emlineivar > 0))[0]
 
-                    # estimate the velocity width from potentially strong, isolated lines; fragile!
-                    if lineflux > 0 and linename in ['mgii_2800', 'oiii_5007', 'hbeta', 'halpha']:
-                        linevar = np.sum(emlineflux[lineindx] * (emlinewave[lineindx] - linezwave)**2) / np.sum(emlineflux[lineindx]) / linezwave * C_LIGHT # [km/s]
-                        if linevar > 0:
-                            linesigma = np.sqrt(linevar)
-                            init_linesigmas.append(linesigma)
-                else:
-                    lineamp = pinfo.default
+                    linesigma = getattr(self.EMLineModel, '{}_sigma'.format(linename)).default # initial guess
+                    #print(linename, linesigma, len(lineindx))
 
-                if not pinfo.tied:
-                    setattr(self.EMLineModel, pp, lineamp)
-                #print(pinfo.name, len(lineindx), lineflux, lineamp, linesigma)
+                    lineamp = pinfo.default # backup
+                    if len(lineindx) > 10:
+                        linesigma_ang = linezwave * sigma_cont / C_LIGHT # [observed-frame Angstrom]
+                        linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
 
-        # update the initial velocity widths
-        if len(init_linesigmas) >= 3:
-            init_linesigma = np.median(init_linesigmas)
-            if init_linesigma > 0 and init_linesigma < 300:
-                for pp in self.EMLineModel.param_names:
-                    if 'sigma' in pp:
-                        setattr(self.EMLineModel, pp, init_linesigma)
+                        lineflux = np.sum(emlineflux[lineindx])
+                        lineamp = np.abs(lineflux / linenorm)
+
+                        # estimate the velocity width from potentially strong, isolated lines; fragile!
+                        if lineflux > 0 and linename in ['mgii_2800', 'oiii_5007', 'hbeta', 'halpha']:
+                            linevar = np.sum(emlineflux[lineindx] * (emlinewave[lineindx] - linezwave)**2) / np.sum(emlineflux[lineindx]) / linezwave * C_LIGHT # [km/s]
+                            if linevar > 0:
+                                linesigma = np.sqrt(linevar)
+                                init_linesigmas.append(linesigma)
+
+                    if not pinfo.tied:# and False:
+                        setattr(self.EMLineModel, pp, lineamp)
+                    #print(pinfo.name, len(lineindx), lineflux, lineamp, linesigma)
+
+            # update the initial velocity widths
+            if len(init_linesigmas) >= 3:
+                init_linesigma = np.median(init_linesigmas)
+                if init_linesigma > 0 and init_linesigma < 300:
+                    for pp in self.EMLineModel.param_names:
+                        if 'sigma' in pp:
+                            setattr(self.EMLineModel, pp, init_linesigma)
 
         # Fit [1]: tie all lines together
         self.EMLineModel = _tie_all_lines(self.EMLineModel)
         weights = np.sqrt(emlineivar)
         emlinebad = np.logical_not(emlinegood)
         if np.count_nonzero(emlinebad) > 0:
-            weights[emlinebad] = 1e16 # ???
+            weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
         
         t0 = time.time()
         bestfit_init = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
@@ -814,7 +817,7 @@ class EMLineFit(ContinuumTools):
 
         # get continuum fluxes, EWs, and upper limits
 
-        verbose = False
+        verbose = True
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
