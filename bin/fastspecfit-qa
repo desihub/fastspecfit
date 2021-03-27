@@ -52,7 +52,7 @@ def parse(options=None):
     
     parser.add_argument('--fastphotfile', default=None, type=str, help='Full path to fastphot fitting results.')
     parser.add_argument('--fastspecfile', default=None, type=str, help='Full path to fastphot fitting results.')
-    parser.add_argument('zbestdata', nargs='*', help='Full path to zbest file(s) or a directory containing zbest file(s).')
+    #parser.add_argument('zbestdata', nargs='*', help='Full path to zbest file(s) or a directory containing zbest file(s).')
     
     if options is None:
         args = parser.parse_args()

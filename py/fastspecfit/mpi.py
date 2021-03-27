@@ -43,7 +43,7 @@ def weighted_partition(weights, n):
 
     return groups, np.array([np.sum(x) for x in sumweights])
 
-def group_zbestfiles(specfiles, maxnodes=256, comm=None):
+def group_zbestfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
     '''
     Group zbestfiles to balance runtimes
 
@@ -71,14 +71,17 @@ def group_zbestfiles(specfiles, maxnodes=256, comm=None):
     pixgroups = np.array_split(np.arange(npix), size)
     ntargets = np.zeros(len(pixgroups[rank]), dtype=int)
     for i, j in enumerate(pixgroups[rank]):
-        zb = fitsio.read(specfiles[j], 'ZBEST', columns=['Z', 'ZWARN', 'TARGETID'])
-        fm = fitsio.read(specfiles[j], 'FIBERMAP', columns=['OBJTYPE', 'FIBERSTATUS', 'TARGETID'])
-        _, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)
-        fm = fm[I]
-        assert(np.all(zb['TARGETID'] == fm['TARGETID']))
-        J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
-             (fm['OBJTYPE'] == 'TGT') * (fm['FIBERSTATUS'] == 0))
-        ntargets[i] = np.count_nonzero(J)
+        if makeqa:
+            ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
+        else:
+            zb = fitsio.read(specfiles[j], 'ZBEST', columns=['Z', 'ZWARN', 'TARGETID'])
+            fm = fitsio.read(specfiles[j], 'FIBERMAP', columns=['OBJTYPE', 'FIBERSTATUS', 'TARGETID'])
+            _, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)
+            fm = fm[I]
+            assert(np.all(zb['TARGETID'] == fm['TARGETID']))
+            J = ((zb['Z'] > 0) * #(zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
+                 (fm['OBJTYPE'] == 'TGT') * (fm['FIBERSTATUS'] == 0))
+            ntargets[i] = np.count_nonzero(J)
 
     if comm is not None:
         ntargets = comm.gather(ntargets)
@@ -196,6 +199,10 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             zbestfiles = None
             outfiles = _findfiles(outdir, prefix=outprefix)
             log.info('Found {} {} files to be merged.'.format(len(outfiles), outprefix))
+        elif args.makeqa:
+            zbestfiles = None
+            outfiles = _findfiles(outdir, prefix=outprefix)
+            log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
         else:
             zbestfiles = _findfiles(specprod_dir, prefix='zbest')
             nfile = len(zbestfiles)
@@ -224,16 +231,24 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             if rank == 0:
                 log.info('No {} files in {} found!'.format(outprefix, outdir))
             return '', list(), list(), list(), list()
-
         return outdir, zbestfiles, outfiles, None, None
-    
+    elif args.makeqa:
+        if len(outfiles) == 0:
+            if rank == 0:
+                log.info('No {} files in {} found!'.format(outprefix, outdir))
+            return '', list(), list(), list(), list()
+        #  hack--build the output directories and pass them in the 'zbestfiles' position!
+        zbestfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir) for outfile in outfiles])
     else:
         if len(zbestfiles) == 0:
             if rank == 0:
                 log.info('All files have been processed!')
             return '', list(), list(), list(), list()
 
-    groups, ntargets, grouptimes = group_zbestfiles(zbestfiles, args.maxnodes, comm=comm)
+    if args.makeqa:
+        groups, ntargets, grouptimes = group_zbestfiles(outfiles, args.maxnodes, comm=comm, makeqa=True)
+    else:
+        groups, ntargets, grouptimes = group_zbestfiles(zbestfiles, args.maxnodes, comm=comm)
 
     if args.plan and rank == 0:
         plantime = time.time() - t0

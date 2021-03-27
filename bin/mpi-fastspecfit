@@ -8,6 +8,8 @@ mpi-fastspecfit --fastphot --mp 32 --tile 80608
 mpi-fastspecfit --mp 32 --coadd-type deep --merge --nompi
 mpi-fastspecfit --mp 32 --coadd-type deep --merge --nompi --fastphot
 
+mpi-fastspecfit --mp 32 --makeqa --tile 80607
+
 """
 import pdb # for debugging
 
@@ -17,7 +19,7 @@ import numpy as np
 from desiutil.log import get_logger
 log = get_logger()
 
-def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None):
+def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False):
 
     import sys, subprocess
     from fastspecfit.mpi import backup_logs, plan
@@ -57,15 +59,26 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None):
         log.info('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
 
-        if fastphot:
-            cmd = 'fastphot {} -o {} --mp {} --coadd-type {}'.format(zbestfiles[ii], outfiles[ii],
-                                                                     args.mp, args.coadd_type)
+        if args.makeqa:
+            #  hack--the desired output directories are in the 'zbestfiles' variable!
+            if fastphot:
+                cmd = 'fastspecfit-qa --fastphotfile {} -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
+            else:
+                cmd = 'fastspecfit-qa --fastspecfile {} -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
+            if args.ntargets:
+                cmd += ' --ntargets {}'.format(args.ntargets)
         else:
-            cmd = 'fastspec {} -o {} --mp {} --coadd-type {}'.format(zbestfiles[ii], outfiles[ii],
-                                                                     args.mp, args.coadd_type)
-            if args.solve_vdisp:
-                cmd += ' --solve-vdisp'
-        #cmd += ' --ntargets 12'
+            if fastphot:
+                cmd = 'fastphot {} -o {} --mp {} --coadd-type {}'.format(zbestfiles[ii], outfiles[ii],
+                                                                         args.mp, args.coadd_type)
+            else:
+                cmd = 'fastspec {} -o {} --mp {} --coadd-type {}'.format(zbestfiles[ii], outfiles[ii],
+                                                                         args.mp, args.coadd_type)
+                if args.solve_vdisp:
+                    cmd += ' --solve-vdisp'
+                    
+            if args.ntargets:
+                cmd += ' --ntargets {}'.format(args.ntargets)
 
         logfile = outfiles[ii].replace('.fits', '.log')
         assert(logfile != outfiles[ii])
@@ -133,7 +146,8 @@ def main():
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--maxnodes', type=int, default=256, help='maximum number of nodes to use')
-
+    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion (only used with fastspec).')
 
@@ -166,7 +180,8 @@ def main():
     elif args.plan:
         plan(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir)
     else:
-        run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir)
+        run_fastspecfit(args, comm=comm, fastphot=args.fastphot,
+                        specprod_dir=specprod_dir, makeqa=args.makeqa)
 
 if __name__ == '__main__':
     main()
