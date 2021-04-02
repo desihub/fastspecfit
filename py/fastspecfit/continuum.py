@@ -74,7 +74,7 @@ class ContinuumTools(object):
         """
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
-        from astropy.table import Table
+        from astropy.table import Table, Column
 
         from speclite import filters
         from desiutil.dust import SFDMap
@@ -124,6 +124,32 @@ class ContinuumTools(object):
         npix = len(sspwave)
 
         self.pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
+
+        # add AGN templates here?
+        if False:
+            # https://www.aanda.org/articles/aa/pdf/2017/08/aa30378-16.pdf
+            # F_nu \propto \nu^(-alpha) or F_lambda \propto \lambda^(alpha-2)
+            self.agn_lambda0 = 4020.0 # [Angstrom]a
+            self.agn_alpha = [0.5, 1.0, 1.5, 2.0]
+            nagn = len(self.agn_alpha)
+            
+            agnflux = np.zeros((npix, nagn), 'f4')
+            #import matplotlib.pyplot as plt
+            for ii, alpha in enumerate(self.agn_alpha):
+                agnflux[:, ii] = sspwave**(alpha-2) / self.agn_lambda0**(alpha-2)
+                #plt.plot(sspwave, agnflux[:, ii])
+            #plt.xlim(3000, 9000) ; plt.ylim(0.1, 2.2) ; plt.savefig('junk.png')
+
+            sspflux = np.vstack((agnflux.T, sspflux.T)).T
+
+            sspinfo = Table(np.hstack([sspinfo[:nagn], sspinfo]))
+            sspinfo.add_column(Column(name='agn_alpha', length=nagn+nage, dtype='f4'))
+            sspinfo['age'][:nagn] = 0.0
+            sspinfo['mstar'][:nagn] = 0.0
+            sspinfo['lbol'][:nagn] = 0.0
+            sspinfo['agn_alpha'][:nagn] = self.agn_alpha
+
+            nage = len(sspinfo)
 
         self.sspwave = sspwave
         self.sspflux = sspflux                     # no dust, no velocity broadening [npix,nage]
@@ -622,7 +648,8 @@ class ContinuumFit(ContinuumTools):
         self.sspflux_dustvdisp = np.stack(sspflux_dustvdisp, axis=-1) # [npix,nage,nAV]
 
         # table of emission lines to fit
-        self.linemask_sigma = 150.0 # [km/s]
+        self.linemask_sigma = 200.0 # [km/s]
+        self.linemask_sigma_broad = 1000.0 # [km/s]
 
         # Do a throw-away trapezoidal resampling so we can compile the numba
         # code when instantiating this class.

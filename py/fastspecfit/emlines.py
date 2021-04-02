@@ -577,7 +577,7 @@ class EMLineFit(ContinuumTools):
         from scipy.stats import sigmaclip
         #from astropy.stats import sigma_clipped_stats
         from scipy.ndimage.filters import median_filter
-        
+
         # Combine all three cameras; we will unpack them to build the
         # best-fitting model (per-camera) below.
         redshift = data['zredrock']
@@ -596,7 +596,25 @@ class EMLineFit(ContinuumTools):
         #ngoodpixpercamera = [np.count_nonzero(iv) for iv in data['ivar']] # unmasked pixels used in the fitting
         #ngoodpixpercam = np.hstack([0, ngoodpixpercamera])
 
-        # fragile -- do a quick median-smoothing
+        # fragile -- do a quick median-smoothing of the residuals
+        # https://github.com/moustakas/moustakas-projects/blob/master/ages/ppxf/ages_gandalf_specfit.pro#L138-L145
+        pix_nolines = np.hstack(data['linemask'])
+        pix_emlines = np.logical_not(np.hstack(data['linemask'])) # affected by line = True
+
+        # replace the line-affected pixels with noise to make the smoothing
+        # better-behaved
+        residuals = emlineflux.copy()
+        if np.count_nonzero(pix_emlines) > 0:
+            rand = np.random.RandomState(seed=1)
+            residuals[pix_emlines] = (rand.normal(np.count_nonzero(pix_emlines)) * np.std(residuals[pix_nolines]) +
+                                      np.median(residuals[pix_nolines]))
+        
+            
+        smooth_continuum = median_filter(median_filter(residuals, 151), 51)
+        emlineflux -= smooth_continuum
+
+        pdb.set_trace()
+        
         #emlineflux -= median_filter(emlineflux, width=100, mode='constant')
 
         dlogwave = self.pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]

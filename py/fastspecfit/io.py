@@ -422,10 +422,10 @@ class DESISpectra(object):
                     fibertotmaggies[iband] = meta['FIBERTOTFLUX_{}'.format(band.upper())][igal] / mw_transmission_fiberflux[iband]
                     #ivarfibermaggies[iband] = meta['FIBERTOTFLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_fiberflux[iband]**2
 
-                data['fiberphot'] = CFit.parse_photometry(CFit.bands,
+                data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
                     maggies=fibermaggies, nanomaggies=True,
                     lambda_eff=filters.effective_wavelengths.value)
-                data['fibertotphot'] = CFit.parse_photometry(CFit.bands,
+                data['fibertotphot'] = CFit.parse_photometry(CFit.fiber_bands,
                     maggies=fibertotmaggies, nanomaggies=True,
                     lambda_eff=filters.effective_wavelengths.value)
 
@@ -445,8 +445,12 @@ class DESISpectra(object):
                         linemask = np.ones_like(spec.wave[camera], bool)
                         for line in CFit.linetable:
                             zwave = line['restwave'] * (1 + data['zredrock'])
-                            I = np.where((spec.wave[camera] >= (zwave - 1.5*CFit.linemask_sigma * zwave / C_LIGHT)) *
-                                         (spec.wave[camera] <= (zwave + 1.5*CFit.linemask_sigma * zwave / C_LIGHT)))[0]
+                            if line['isbroad']:
+                                sigma = CFit.linemask_sigma_broad
+                            else:
+                                sigma = CFit.linemask_sigma
+                            I = np.where((spec.wave[camera] >= (zwave - 1.5*sigma * zwave / C_LIGHT)) *
+                                         (spec.wave[camera] <= (zwave + 1.5*sigma * zwave / C_LIGHT)))[0]
                             if len(I) > 0:
                                 linemask[I] = False
                         data['linemask'].append(linemask)
