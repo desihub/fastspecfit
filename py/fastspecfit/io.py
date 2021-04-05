@@ -430,9 +430,9 @@ class DESISpectra(object):
                     lambda_eff=filters.effective_wavelengths.value)
 
                 if not fastphot:
-                #else:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                                  'linemask': [], 'snr': np.zeros(3).astype('f4'),
+                                 #'std': np.zeros(3).astype('f4'), # emission-line free standard deviation, per-camera
                                  'cameras': spec.bands})
                     for icam, camera in enumerate(data['cameras']):
                         mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
@@ -453,6 +453,8 @@ class DESISpectra(object):
                                          (spec.wave[camera] <= (zwave + 1.5*sigma * zwave / C_LIGHT)))[0]
                             if len(I) > 0:
                                 linemask[I] = False
+
+                        #data['std'][icam] = np.std(spec.flux[camera][igal, :][linemask])
                         data['linemask'].append(linemask)
 
                     # Synthesize photometry from a quick coadded (inverse-variance

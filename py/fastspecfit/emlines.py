@@ -563,7 +563,7 @@ class EMLineFit(ContinuumTools):
 
         return emlinemodel
     
-    def fit(self, data, continuummodel):
+    def fit(self, data, continuummodel, smooth_continuum):
         """Perform the fit minimization / chi2 minimization.
         
         EMLineModel object
@@ -585,7 +585,9 @@ class EMLineFit(ContinuumTools):
         emlineivar = np.hstack(data['ivar'])
         specflux = np.hstack(data['flux'])
         continuummodelflux = np.hstack(continuummodel)
-        emlineflux = specflux - continuummodelflux
+        smoothcontinuummodelflux = np.hstack(smooth_continuum)
+
+        emlineflux = specflux - continuummodelflux - smoothcontinuummodelflux
 
         emlinevar, emlinegood = ivar2var(emlineivar)
 
@@ -595,27 +597,6 @@ class EMLineFit(ContinuumTools):
 
         #ngoodpixpercamera = [np.count_nonzero(iv) for iv in data['ivar']] # unmasked pixels used in the fitting
         #ngoodpixpercam = np.hstack([0, ngoodpixpercamera])
-
-        # fragile -- do a quick median-smoothing of the residuals
-        # https://github.com/moustakas/moustakas-projects/blob/master/ages/ppxf/ages_gandalf_specfit.pro#L138-L145
-        pix_nolines = np.hstack(data['linemask'])
-        pix_emlines = np.logical_not(np.hstack(data['linemask'])) # affected by line = True
-
-        # replace the line-affected pixels with noise to make the smoothing
-        # better-behaved
-        residuals = emlineflux.copy()
-        if np.count_nonzero(pix_emlines) > 0:
-            rand = np.random.RandomState(seed=1)
-            residuals[pix_emlines] = (rand.normal(np.count_nonzero(pix_emlines)) * np.std(residuals[pix_nolines]) +
-                                      np.median(residuals[pix_nolines]))
-        
-            
-        smooth_continuum = median_filter(median_filter(residuals, 151), 51)
-        emlineflux -= smooth_continuum
-
-        pdb.set_trace()
-        
-        #emlineflux -= median_filter(emlineflux, width=100, mode='constant')
 
         dlogwave = self.pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
         log10wave = np.arange(np.log10(3e3), np.log10(1e4), dlogwave)
@@ -835,7 +816,7 @@ class EMLineFit(ContinuumTools):
 
         # get continuum fluxes, EWs, and upper limits
 
-        verbose = True
+        verbose = False
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
@@ -1017,6 +998,7 @@ class EMLineFit(ContinuumTools):
 
         col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
         col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
+        col3 = [colors.to_hex(col) for col in ['blue', 'green', 'red']]
 
         if outdir is None:
             outdir = '.'
@@ -1051,7 +1033,12 @@ class EMLineFit(ContinuumTools):
                                      vdisp=fastspec['CONTINUUM_VDISP'],
                                      coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)
-
+        
+        #smooth_continuum = self.smooth_residuals(data['flux'], continuum, data['linemask'])
+        smooth_continuum = self.smooth_residuals(
+            continuum, data['wave'], data['flux'],
+            data['ivar'], data['linemask'])
+        
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
         inches_wide = 16
@@ -1113,21 +1100,32 @@ class EMLineFit(ContinuumTools):
 
             bigax1.fill_between(data['wave'][ii], data['flux'][ii]-sigma,
                              data['flux'][ii]+sigma, color=col1[ii])
-            bigax1.plot(data['wave'][ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
+            #bigax1.plot(data['wave'][ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
             #bigax1.plot(data['wave'][ii], continuum_nodust[ii], alpha=0.5, color='k')
-
+            bigax1.plot(data['wave'][ii], smooth_continuum[ii], color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+            bigax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii], color=col2[ii])
+            
             # get the robust range
-            filtflux = median_filter(data['flux'][ii] - _emlinemodel[ii], 15)
-            sigflux = np.std(filtflux)
+            filtflux = median_filter(data['flux'][ii], 51, mode='nearest')
+            #filtflux = median_filter(data['flux'][ii] - _emlinemodel[ii], 51, mode='nearest')
+            #perc = np.percentile(filtflux[data['ivar'][ii] > 0], [5, 95])
+            sigflux = np.std(data['flux'][ii][data['ivar'][ii] > 0])
+            #sigflux = np.std(filtflux[data['ivar'][ii] > 0])
+            #if -2 * perc[0] < ymin:
+            #    ymin = -2 * perc[0]
+            if -2 * sigflux < ymin:
+                ymin = -2 * sigflux
+            #if perc[1] > ymax:
+            #    ymax = perc[1]
             #if np.min(filtflux) < ymin:
             #    ymin = np.min(filtflux) * 0.5
-            #if np.max(filtflux) > ymax:
-            #    #ymax = np.max(filtflux) * 1.4
-            if -3 * sigflux < ymin:
-                ymin = -3 * sigflux
-            if sigflux * 10 > ymax:
-                ymax = sigflux * 10
-            #print(ymin, ymax)
+            if sigflux * 5 > ymax:
+                ymax = sigflux * 5
+            if np.max(filtflux) > ymax:
+                ymax = np.max(filtflux) * 1.4
+            print(ymin, ymax)
+            #if ii == 2:
+            #    pdb.set_trace()
 
         txt = '\n'.join((
             r'{}'.format(leg['zredrock']),
@@ -1155,7 +1153,7 @@ class EMLineFit(ContinuumTools):
         ymin, ymax = 1e6, -1e6
         for ii in [0, 1, 2]: # iterate over cameras
             emlinewave = data['wave'][ii]
-            emlineflux = data['flux'][ii] - continuum[ii]
+            emlineflux = data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
             emlinemodel = _emlinemodel[ii]
 
             emlinesigma, good = ivar2var(data['ivar'][ii], sigma=True)
@@ -1169,21 +1167,23 @@ class EMLineFit(ContinuumTools):
             bigax2.plot(emlinewave, emlinemodel, color=col2[ii], lw=2)
 
             # get the robust range
-            sigflux, filtflux = np.std(emlineflux), median_filter(emlineflux, 5)
+            filtflux = median_filter(emlineflux, 51, mode='nearest')
+            #sigflux = np.std(filtflux)
+            sigflux = np.std(emlineflux)
 
-            if -3 * sigflux < ymin:
+            if -2 * sigflux < ymin:
                 ymin = -2 * sigflux
             #if np.min(filtflux) < ymin:
             #    ymin = np.min(filtflux)
-            if np.min(emlinemodel) < ymin:
-                ymin = 0.8 * np.min(emlinemodel)
-                
+            #if np.min(emlinemodel) < ymin:
+            #    ymin = 0.8 * np.min(emlinemodel)
             if 5 * sigflux > ymax:
-                ymax = 4 * sigflux
+                ymax = 5 * sigflux
             if np.max(filtflux) > ymax:
                 ymax = np.max(filtflux)
             if np.max(emlinemodel) > ymax:
                 ymax = np.max(emlinemodel) * 1.2
+            print(ymin, ymax)
 
         txt = '\n'.join((
             r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),
@@ -1251,7 +1251,7 @@ class EMLineFit(ContinuumTools):
             # iterate over cameras
             for ii in [0, 1, 2]: # iterate over cameras
                 emlinewave = data['wave'][ii]
-                emlineflux = data['flux'][ii] - continuum[ii]
+                emlineflux = data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
                 emlinemodel = _emlinemodel[ii]
 
                 emlinesigma, good = ivar2var(data['ivar'][ii], sigma=True)
@@ -1270,7 +1270,8 @@ class EMLineFit(ContinuumTools):
                     xx.axhline(y=0, color='gray', ls='-')
 
                     # get the robust range
-                    sigflux, filtflux = np.std(emlineflux[indx]), median_filter(emlineflux[indx], 3)
+                    sigflux = np.std(emlineflux[indx])
+                    filtflux = median_filter(emlineflux[indx], 3, mode='nearest')
 
                     _ymin, _ymax = -1.5 * sigflux, 4 * sigflux
                     if np.max(emlinemodel[indx]) > _ymax:
@@ -1317,3 +1318,4 @@ class EMLineFit(ContinuumTools):
         log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
         plt.close()
+        #pdb.set_trace()

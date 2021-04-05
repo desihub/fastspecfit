@@ -7,6 +7,12 @@ FastSpec wrapper. Call with, e.g.,
   # nice BGS example
   fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-4-80613-deep.fits --coadd-type deep -o fastspec.fits --targetids 39633345008634465
 
+  # redrock is wrong!
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80605/deep/zbest-0-80605-deep.fits --coadd-type deep -o fastspec.fits --targetids 39627652595714901
+
+  # good test of needing smoothing continuum residuals before line-fitting
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80605/deep/zbest-9-80605-deep.fits --coadd-type deep -o fastspec.fits --targetids 39627658622930703
+
   fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-0-80613-deep.fits --coadd-type deep -o fastspec.fits --targetids 39633314155332057
   fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-0-80606-deep.fits --coadd-type deep -o fastspec.fits --ntargets 2
 
@@ -35,7 +41,7 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False):
     #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
 
-    cfit, continuummodel = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
+    cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
     for col in cfit.colnames:
         out[col] = cfit[col]
 
@@ -51,7 +57,7 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False):
     
     # Fit the emission-line spectrum.
     t0 = time.time()
-    emfit = EMFit.fit(data, continuummodel)
+    emfit = EMFit.fit(data, continuummodel, smooth_continuum)
     for col in emfit.colnames:
         out[col] = emfit[col]
     log.info('Line-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
