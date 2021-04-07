@@ -1036,16 +1036,18 @@ class EMLineFit(ContinuumTools):
                                      coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)
         
-        #smooth_continuum = self.smooth_residuals(
-        #    continuum, data['wave'], data['flux'],
-        #    data['ivar'], data['linemask'])
-        pdb.set_trace()
-        smooth_continuum = self.smooth_residuals(
-            np.hstack(continuum), data['coadd_wave'], data['coadd_flux'],
-            data['coadd_ivar'], data['coadd_linemask'], npixpercam)
-        
+        _smooth_continuum = self.smooth_residuals(
+            np.hstack(continuum), np.hstack(data['wave']), np.hstack(data['flux']),
+            np.hstack(data['ivar']), np.hstack(data['linemask']))
+        smooth_continuum = []
+        for icam in [0, 1, 2]: # iterate over cameras
+            ipix = np.sum(npixpercam[:icam+1])
+            jpix = np.sum(npixpercam[:icam+2])
+            smooth_continuum.append(_smooth_continuum[ipix:jpix])
+
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
+        # QA choices
         inches_wide = 16
         inches_fullspec = 6
         inches_perline = inches_fullspec / 2.0
@@ -1128,11 +1130,11 @@ class EMLineFit(ContinuumTools):
                 ymax = sigflux * 5
             if np.max(filtflux) > ymax:
                 ymax = np.max(filtflux) * 1.4
-            print(ymin, ymax)
+            #print(ymin, ymax)
             #if ii == 2:
             #    pdb.set_trace()
 
-        bigax1.plot(data['coadd_wave'], smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+        bigax1.plot(np.hstack(data['wave']), _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
 
         txt = '\n'.join((
             r'{}'.format(leg['zredrock']),
@@ -1190,7 +1192,7 @@ class EMLineFit(ContinuumTools):
                 ymax = np.max(filtflux)
             if np.max(emlinemodel) > ymax:
                 ymax = np.max(emlinemodel) * 1.2
-            print(ymin, ymax)
+            #print(ymin, ymax)
 
         txt = '\n'.join((
             r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),

@@ -584,8 +584,8 @@ class ContinuumTools(object):
 
     def smooth_residuals(self, continuummodel, specwave, specflux, specivar,
                          linemask, percamera=False, binwave=0.8*160):
-        """Derive a median-smoothed correction to the continuum fit (one per camera) in
-        order to pick up any unmodeled flux, before emission-line fitting.
+        """Derive a median-smoothed correction to the continuum fit in order to pick up
+        any unmodeled flux, before emission-line fitting.
 
         Parameters
         ----------
@@ -595,6 +595,11 @@ class ContinuumTools(object):
 
         Notes
         -----
+        There are a few different algorithms in here, but the default one is to
+        do a very simple median-smoothing on the camera-stacked
+        (percamera=False) spectrum, which prevents any crazy discontinuities
+        between the cameras.
+        
         https://github.com/moustakas/moustakas-projects/blob/master/ages/ppxf/ages_gandalf_specfit.pro#L138-L145
 
         """
@@ -653,12 +658,6 @@ class ContinuumTools(object):
                                       np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
             smooth1 = median_filter(residuals, medbin, mode='nearest')
             smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
-
-            #smooth_continuum = []
-            #for icam in [0, 1, 2]: # iterate over cameras
-            #    ipix = np.sum(npixpercam[:icam+1])
-            #    jpix = np.sum(npixpercam[:icam+2])
-            #    smooth_continuum.append(_smooth_continuum[ipix:jpix])
 
         return smooth_continuum
 
@@ -1239,16 +1238,18 @@ class ContinuumFit(ContinuumTools):
         #    continuummodel, data['wave'], data['flux'],
         #    data['ivar'], data['linemask'], percamera=False)
 
-        if True:
+        if False:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots(2, 1)
             for icam in [0, 1, 2]: # iterate over cameras
                 resid = data['flux'][icam]-continuummodel[icam]
-                pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
                 ax[0].plot(data['wave'][icam], resid)
-                ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', lw=2)
-                ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
                 ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
+            for icam in [0, 1, 2]: # iterate over cameras
+                resid = data['flux'][icam]-continuummodel[icam]
+                pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
+                ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
+                ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
             plt.savefig('junk.png')
             pdb.set_trace()
 
@@ -1268,10 +1269,8 @@ class ContinuumFit(ContinuumTools):
             nonzero = continuummodel[icam] != 0
             if np.sum(nonzero) > 0:
                 corr = np.mean(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
-                #corr = np.max(np.abs(np.percentile(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero] - 1, [0.1, 0.9])))
                 result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr
-                #print('HERE!! ', cam, corr)
-                #pdb.set_trace()
+                
         log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
             100*result['CONTINUUM_SMOOTHCORR_B'][0], 100*result['CONTINUUM_SMOOTHCORR_R'][0],
             100*result['CONTINUUM_SMOOTHCORR_Z'][0]))

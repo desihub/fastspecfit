@@ -53,14 +53,16 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False):
     #    meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
     #    meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
         
-    log.info('Continuum-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
+    log.info('Continuum-fitting object {} (targetid={}) took {:.2f} sec'.format(
+        iobj, meta['TARGETID'], time.time()-t0))
     
     # Fit the emission-line spectrum.
     t0 = time.time()
     emfit = EMFit.fit(data, continuummodel, smooth_continuum)
     for col in emfit.colnames:
         out[col] = emfit[col]
-    log.info('Line-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
+    log.info('Line-fitting object {} (targetid={}) took {:.2f} sec'.format(
+        iobj, meta['TARGETID'], time.time()-t0))
 
     return out, meta
 
