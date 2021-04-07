@@ -431,7 +431,8 @@ class DESISpectra(object):
 
                 if not fastphot:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
-                                 'linemask': [], 'snr': np.zeros(3).astype('f4'),
+                                 'linemask': [],
+                                 'snr': np.zeros(3).astype('f4'),
                                  #'std': np.zeros(3).astype('f4'), # emission-line free standard deviation, per-camera
                                  'cameras': spec.bands})
                     for icam, camera in enumerate(data['cameras']):
@@ -452,7 +453,7 @@ class DESISpectra(object):
                             I = np.where((spec.wave[camera] >= (zwave - 1.5*sigma * zwave / C_LIGHT)) *
                                          (spec.wave[camera] <= (zwave + 1.5*sigma * zwave / C_LIGHT)))[0]
                             if len(I) > 0:
-                                linemask[I] = False
+                                linemask[I] = False  # False = affected by line
 
                         #data['std'][icam] = np.std(spec.flux[camera][igal, :][linemask])
                         data['linemask'].append(linemask)
@@ -463,16 +464,19 @@ class DESISpectra(object):
                     coadd_wave = np.unique(np.hstack(data['wave']))
                     coadd_flux3d = np.zeros((len(coadd_wave), 3))
                     coadd_ivar3d = np.zeros_like(coadd_flux3d)
+                    coadd_linemask3d = np.ones((len(coadd_wave), 3), bool)
                     for icam in np.arange(len(data['cameras'])):
                         I = np.where(np.isin(data['wave'][icam], coadd_wave))[0]
                         J = np.where(np.isin(coadd_wave, data['wave'][icam]))[0]
                         coadd_flux3d[J, icam] = data['flux'][icam][I]
                         coadd_ivar3d[J, icam] = data['ivar'][icam][I]
+                        coadd_linemask3d[J, icam] = data['linemask'][icam][I]
 
                     coadd_ivar = np.sum(coadd_ivar3d, axis=1)
                     coadd_flux = np.zeros_like(coadd_ivar)
                     good = np.where(coadd_ivar > 0)[0]
                     coadd_flux[good] = np.sum(coadd_ivar3d[good, :] * coadd_flux3d[good, :], axis=1) / coadd_ivar[good]
+                    coadd_linemask = np.all(coadd_linemask3d, axis=1)
 
                     #import matplotlib.pyplot as plt
                     #plt.clf()
@@ -484,7 +488,8 @@ class DESISpectra(object):
                     #pdb.set_trace()
 
                     if remember_coadd:
-                        data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux, 'coadd_ivar': coadd_ivar})
+                        data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux,
+                                     'coadd_ivar': coadd_ivar, 'coadd_linemask': coadd_linemask})
 
                     if synthphot:
                         padflux, padwave = filters.pad_spectrum(coadd_flux, coadd_wave, method='edge')

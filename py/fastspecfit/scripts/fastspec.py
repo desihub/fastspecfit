@@ -125,7 +125,7 @@ def main(args=None, comm=None):
                         coadd_type=args.coadd_type)
     if len(Spec.specfiles) == 0:
         return
-    data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True)
+    data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True, remember_coadd=True)
 
     out, meta = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=False)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(

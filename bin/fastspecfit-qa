@@ -154,7 +154,7 @@ def main(args=None, comm=None):
         targetids = fastfit['TARGETID'][indx]
         Spec.find_specfiles(zbestfiles=zbestfile, specprod=specprod,
                             coadd_type=coadd_type, targetids=targetids)
-        data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True)
+        data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True, remember_coadd=True)
         qaargs = [(CFit, EMFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
                    coadd_type, fastphot, args.outdir, args.outprefix) for igal in np.arange(len(indx))]                
 

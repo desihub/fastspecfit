@@ -582,7 +582,8 @@ class ContinuumTools(object):
 
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 
-    def smooth_residuals(self, continuummodel, specwave, specflux, specivar, linemask):
+    def smooth_residuals(self, continuummodel, specwave, specflux, specivar,
+                         linemask, percamera=False, binwave=0.8*160):
         """Derive a median-smoothed correction to the continuum fit (one per camera) in
         order to pick up any unmodeled flux, before emission-line fitting.
 
@@ -597,11 +598,13 @@ class ContinuumTools(object):
         https://github.com/moustakas/moustakas-projects/blob/master/ages/ppxf/ages_gandalf_specfit.pro#L138-L145
 
         """
-        from scipy import ptp
-        from scipy.stats import sigmaclip
         from scipy.ndimage import median_filter
-        
+
         def robust_median(wave, flux, ivar, binwave):
+            from scipy import ptp
+            from scipy.stats import sigmaclip
+            #from scipy.signal import savgol_filter
+            
             smoothflux = np.zeros_like(flux)
             minwave, maxwave = np.min(wave), np.max(wave)
             nbin = int(ptp(wave) / binwave)
@@ -617,33 +620,45 @@ class ContinuumTools(object):
                     #print(kk, np.sum(J), np.sum(I), np.median(wave[I]), smoothflux[I][0])
             return smoothflux
                 
-        #from scipy.signal import savgol_filter
-        
-        binwave = 0.8 * 160
         medbin = np.int(binwave * 2)
         #print(binwave, medbin)
-        
-        smooth_continuum = []
-        for icam in [0, 1, 2]: # iterate over cameras        
-            residuals = specflux[icam] - continuummodel[icam]
 
-            if False:
-                smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
-                #smooth1 = robust_median(specwave[icam], residuals, specivar[icam] * linemask[icam], binwave)
-                smooth2 = median_filter(smooth1, medbin, mode='nearest')
-                smooth_continuum.append(smooth2)
-            else:
-                # Fragile...replace the line-affected pixels with noise to make the
-                # smoothing better-behaved.
-                pix_nolines = linemask[icam]      # unaffected by a line = True
-                pix_emlines = np.logical_not(pix_nolines) # affected by line = True
-                residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
-                                          np.std(residuals[pix_nolines]) +
-                                          np.median(residuals[pix_nolines]))
-                smooth1 = median_filter(residuals, medbin, mode='nearest')
-                #smooth2 = savgol_filter(smooth1, 151, 2)
-                smooth2 = median_filter(smooth1, medbin//2, mode='nearest')
-                smooth_continuum.append(smooth2)
+        if percamera:
+            smooth_continuum = []
+            for icam in [0, 1, 2]: # iterate over cameras        
+                residuals = specflux[icam] - continuummodel[icam]
+                if False:
+                    smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
+                    #smooth1 = robust_median(specwave[icam], residuals, specivar[icam] * linemask[icam], binwave)
+                    smooth2 = median_filter(smooth1, medbin, mode='nearest')
+                    smooth_continuum.append(smooth2)
+                else:
+                    # Fragile...replace the line-affected pixels with noise to make the
+                    # smoothing better-behaved.
+                    pix_nolines = linemask[icam]      # unaffected by a line = True
+                    pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+                    residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
+                                              np.std(residuals[pix_nolines]) +
+                                              np.median(residuals[pix_nolines]))
+                    smooth1 = median_filter(residuals, medbin, mode='nearest')
+                    #smooth2 = savgol_filter(smooth1, 151, 2)
+                    smooth2 = median_filter(smooth1, medbin//2, mode='nearest')
+                    smooth_continuum.append(smooth2)
+        else:
+            residuals = specflux - continuummodel
+            pix_nolines = linemask      # unaffected by a line = True
+            pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+            
+            residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
+                                      np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
+            smooth1 = median_filter(residuals, medbin, mode='nearest')
+            smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
+
+            #smooth_continuum = []
+            #for icam in [0, 1, 2]: # iterate over cameras
+            #    ipix = np.sum(npixpercam[:icam+1])
+            #    jpix = np.sum(npixpercam[:icam+2])
+            #    smooth_continuum.append(_smooth_continuum[ipix:jpix])
 
         return smooth_continuum
 
@@ -1200,20 +1215,31 @@ class ContinuumFit(ContinuumTools):
         d4000, d4000_ivar = self.get_d4000(specwave, specflux, specivar, redshift=redshift)
         log.info('Spectroscopic D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
 
+        # Do a quick median-smoothing of the stellar continuum-subtracted
+        # residuals, to help with the emission-line fitting.
+        _smooth_continuum = self.smooth_residuals(
+            bestfit, specwave, specflux, np.hstack(data['ivar']),
+            np.hstack(data['linemask']))
+        #smooth_continuum = self.smooth_residuals(
+        #    bestfit, data['coadd_wave'], data['coadd_flux'],
+        #    data['coadd_ivar'], data['coadd_linemask'],
+        #    npixpercam)
+        
         # Unpack the continuum into individual cameras.
         continuummodel = []
+        smooth_continuum = []
         for icam in [0, 1, 2]: # iterate over cameras
             ipix = np.sum(npixpercam[:icam+1])
             jpix = np.sum(npixpercam[:icam+2])
             continuummodel.append(bestfit[ipix:jpix])
+            smooth_continuum.append(_smooth_continuum[ipix:jpix])
 
-        # Do a quick median-smoothing of the stellar continuum-subtracted
-        # residuals, to help with the emission-line fitting.
-        smooth_continuum = self.smooth_residuals(
-            continuummodel, data['wave'], data['flux'],
-            data['ivar'], data['linemask'])
+        ## Like above, but with per-camera smoothing.
+        #smooth_continuum = self.smooth_residuals(
+        #    continuummodel, data['wave'], data['flux'],
+        #    data['ivar'], data['linemask'], percamera=False)
 
-        if False:
+        if True:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots(2, 1)
             for icam in [0, 1, 2]: # iterate over cameras

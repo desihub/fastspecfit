@@ -1025,7 +1025,9 @@ class EMLineFit(ContinuumTools):
                     metadata['EXPID'], metadata['TARGETID']))
 
         redshift = fastspec['CONTINUUM_Z']
-
+        npixpercamera = [len(gw) for gw in data['wave']] # all pixels
+        npixpercam = np.hstack([0, npixpercamera])
+        
         # rebuild the best-fitting spectroscopic and photometric models
         continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
                                      specwave=data['wave'], specres=data['res'],
@@ -1034,10 +1036,13 @@ class EMLineFit(ContinuumTools):
                                      coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)
         
-        #smooth_continuum = self.smooth_residuals(data['flux'], continuum, data['linemask'])
+        #smooth_continuum = self.smooth_residuals(
+        #    continuum, data['wave'], data['flux'],
+        #    data['ivar'], data['linemask'])
+        pdb.set_trace()
         smooth_continuum = self.smooth_residuals(
-            continuum, data['wave'], data['flux'],
-            data['ivar'], data['linemask'])
+            np.hstack(continuum), data['coadd_wave'], data['coadd_flux'],
+            data['coadd_ivar'], data['coadd_linemask'], npixpercam)
         
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
@@ -1102,7 +1107,7 @@ class EMLineFit(ContinuumTools):
                              data['flux'][ii]+sigma, color=col1[ii])
             #bigax1.plot(data['wave'][ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
             #bigax1.plot(data['wave'][ii], continuum_nodust[ii], alpha=0.5, color='k')
-            bigax1.plot(data['wave'][ii], smooth_continuum[ii], color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+            #bigax1.plot(data['wave'][ii], smooth_continuum[ii], color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
             bigax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii], color=col2[ii])
             
             # get the robust range
@@ -1126,6 +1131,8 @@ class EMLineFit(ContinuumTools):
             print(ymin, ymax)
             #if ii == 2:
             #    pdb.set_trace()
+
+        bigax1.plot(data['coadd_wave'], smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
 
         txt = '\n'.join((
             r'{}'.format(leg['zredrock']),
