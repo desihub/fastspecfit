@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 """Wrapper to build HTML output from previously generated QA files.
 
-fastspecfit-html 
+fastspecfit-html --fastphotfile /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80606/deep/fastphot-0-80606-deep.fits \
+  --fastspecfile /global/cfs/cdirs/desi/spectro/  fastspecfit/blanc/tiles/80606/deep/fastspec-0-80606-deep.fits 
+
+fastspecfit-html --fastspecfile ./fastspect.fits
 
 """
 import pdb # for debugging
@@ -35,10 +38,14 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
 
+    parser.add_argument('--htmlhome', type=str, default='index.html', help='Main HTML page name.')
     parser.add_argument('--htmldir', type=str, help='Output directory for HTML files.')
 
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
     parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
+
+    parser.add_argument('--fastphotfile', default=None, type=str, help='Full path to fastphot fitting results.')
+    parser.add_argument('--fastspecfile', default=None, type=str, help='Full path to fastphot fitting results.')
     
     if options is None:
         args = parser.parse_args()
@@ -49,12 +56,19 @@ def parse(options=None):
 
     return args
 
-def build_htmlhome(htmldir, targetids, specfiles, photfiles, htmlhome='index.html'):
+def build_htmlhome(htmldir, fastfit, metadata, coadd_type='deep', htmlhome='index.html'):
     """Build the home (index.html) page.
 
     """
+    htmldir_https = htmldir.replace(cfsroot, httpsroot)
+
     htmlhomefile = os.path.join(htmldir, htmlhome)
+    htmlhomefile_https = os.path.join(htmldir_https, htmlhome)
     print('Building {}'.format(htmlhomefile))
+
+    alltiles = metadata['TILEID']
+    tiles = np.unique(metadata['TILEID'])
+    tiledirs = [os.path.join('tiles', str(tile), coadd_type, '{}.html'.format(tile)) for tile in tiles]
 
     with open(htmlhomefile, 'w') as html:
         html.write('<html><body>\n')
@@ -63,27 +77,22 @@ def build_htmlhome(htmldir, targetids, specfiles, photfiles, htmlhome='index.htm
         html.write('p {display: inline-block;;}\n')
         html.write('</style>\n')
 
-        html.write('<h1>fastsspecfit</h1>\n')
+        html.write('<h1>FastSpecFit Visualizations</h1>\n')
 
-        html.write('<p style="width: 75%">\n')
-        html.write("""Write me.</p>\n""")
+        #html.write('<p style="width: 75%">\n')
+        #html.write("""Write me.</p>\n""")
 
         html.write('<br /><br />\n')
         html.write('<table>\n')
         html.write('<tr>\n')
-        html.write('<th>TARGETID</th>\n')
+        html.write('<th>Tile ID</th>\n')
         #html.write('<th>Index</th>\n')
         #html.write('<th></th>\n')
         html.write('</tr>\n')
 
-        for targetid, specfile in zip(targetids, specfiles):
-            htmlspecfile = specfile.replace('/global/cfs/cdirs', 'https://data.desi.lbl.gov')
-            
+        for tile, tiledir in zip(tiles, tiledirs):
             html.write('<tr>\n')
-            #html.write('<td>{}</td>\n'.format(targetid))
-            html.write('<td><a href="{}">{}</a></td>\n'.format(htmlspecfile, targetid))
-            #html.write('<td><a href="{0}"><img src="{0}" height="256px"></a></td>\n'.format(htmlspecfile))
-            #html.write('<td>{}</td>\n'.format(gal['INDEX']))
+            html.write('<td><a href="{}">{}</a></td>\n'.format(os.path.join(htmldir_https, tiledir), tile))
             html.write('</tr>\n')
         html.write('</table>\n')
 
@@ -91,67 +100,52 @@ def build_htmlhome(htmldir, targetids, specfiles, photfiles, htmlhome='index.htm
         html.write('<br /><br />\n')
         html.write('</html></body>\n')
 
-    ## Build the individual pages (one per tile).
-    #for raslice in sorted(set(alltiles)):
-    #    inslice = np.where(raslice == alltiles)[0]
-    #    galaxy, galaxydir, htmlgalaxydir = get_galaxy_galaxydir(sample[inslice], html=True)
-    #
-    #    slicefile = os.path.join(htmldir, 'RA{}.html'.format(raslice))
-    #    print('Building {}'.format(slicefile))
-    #
-    #    with open(slicefile, 'w') as html:
-    #        html.write('<html><body>\n')
-    #        html.write('<style type="text/css">\n')
-    #        html.write('table, td, th {padding: 5px; text-align: center; border: 1px solid black;}\n')
-    #        html.write('p {width: "75%";}\n')
-    #        html.write('</style>\n')
-    #
-    #        html.write('<h3>RA Slice {}</h3>\n'.format(raslice))
-    #
-    #        html.write('<table>\n')
-    #        html.write('<tr>\n')
-    #        #html.write('<th>Number</th>\n')
-    #        html.write('<th> </th>\n')
-    #        html.write('<th>Index</th>\n')
-    #        html.write('<th>SGA ID</th>\n')
-    #        html.write('<th>Galaxy</th>\n')
-    #        html.write('<th>RA</th>\n')
-    #        html.write('<th>Dec</th>\n')
-    #        html.write('<th>Diameter (arcmin)</th>\n')
-    #        html.write('<th>Viewer</th>\n')
-    #
-    #        html.write('</tr>\n')
-    #        for gal, galaxy1, htmlgalaxydir1 in zip(sample[inslice], np.atleast_1d(galaxy), np.atleast_1d(htmlgalaxydir)):
-    #
-    #            htmlfile1 = os.path.join(htmlgalaxydir1.replace(htmldir, '')[1:], '{}.html'.format(galaxy1))
-    #            pngfile1 = os.path.join(htmlgalaxydir1.replace(htmldir, '')[1:], '{}-largegalaxy-grz-montage.png'.format(galaxy1))
-    #            thumbfile1 = os.path.join(htmlgalaxydir1.replace(htmldir, '')[1:], 'thumb2-{}-largegalaxy-grz-montage.png'.format(galaxy1))
-    #
-    #            ra1, dec1, diam1 = gal[racolumn], gal[deccolumn], gal[diamcolumn]
-    #            viewer_link = legacyhalos.html.viewer_link(ra1, dec1, diam1*2*60/pixscale, sga=True)
-    #
-    #            html.write('<tr>\n')
-    #            #html.write('<td>{:g}</td>\n'.format(count))
-    #            #print(gal['INDEX'], gal['SGA_ID'], gal['GALAXY'])
-    #            html.write('<td><a href="{0}"><img src="{1}" height="auto" width="100%"></a></td>\n'.format(pngfile1, thumbfile1))
-    #            html.write('<td>{}</td>\n'.format(gal['INDEX']))
-    #            html.write('<td>{}</td>\n'.format(gal['SGA_ID']))
-    #            html.write('<td><a href="{}">{}</a></td>\n'.format(htmlfile1, galaxy1))
-    #            html.write('<td>{:.7f}</td>\n'.format(ra1))
-    #            html.write('<td>{:.7f}</td>\n'.format(dec1))
-    #            html.write('<td>{:.4f}</td>\n'.format(diam1))
-    #            #html.write('<td>{:.5f}</td>\n'.format(gal[zcolumn]))
-    #            #html.write('<td>{:.4f}</td>\n'.format(gal['LAMBDA_CHISQ']))
-    #            #html.write('<td>{:.3f}</td>\n'.format(gal['P_CEN'][0]))
-    #            html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(viewer_link))
-    #            #html.write('<td><a href="{}" target="_blank">Link</a></td>\n'.format(_skyserver_link(gal)))
-    #            html.write('</tr>\n')
-    #        html.write('</table>\n')
-    #        #count += 1
-    #
-    #        html.write('<br /><br />\n')
-    #        html.write('</html></body>\n')
+    # Now build the individual tile pages.
+    for tile, tiledir in zip(tiles, tiledirs):
+        tilehtmldir = os.path.join(htmldir_https, tiledir)
+        print('Building {}'.format(tilehtmldir))
+    
+        intile = np.where(tile == alltiles)[0]
+        targetids = metadata[intile]['TARGETID']
+        assert(len(targetids) == len(np.unique(targetids))) # should be unique on a given tile, always
 
+        tiledatadir = os.path.join(htmldir, tiledir)
+        with open(tiledatadir, 'w') as html:
+            html.write('<html><body>\n')
+            html.write('<style type="text/css">\n')
+            html.write('table, td, th {padding: 5px; text-align: center; border: 1px solid black;}\n')
+            html.write('p {width: "75%";}\n')
+            html.write('</style>\n')
+
+            html.write('<h3><a href="{}">Home</a></h3>\n'.format(htmlhomefile_https))
+    
+            html.write('<h3>Tile ID {}</h3>\n'.format(tile))
+    
+            html.write('<table>\n')
+            html.write('<tr>\n')
+            html.write('<th>TARGETID</th>\n')
+            html.write('<th>fastspec</th>\n')
+            html.write('<th>fastphot</th>\n')
+            html.write('</tr>\n')
+
+            for targetid in targetids:
+                html.write('<tr>\n')
+                html.write('<td>{}</td>\n'.format(targetid))
+
+                for prefix in ('fastspec', 'fastphot'):
+                    httpfile = os.path.join(htmldir_https, 'tiles', str(tile), coadd_type, '{}-{}-{}-{}.png'.format(
+                        prefix, tile, coadd_type, targetid))
+                    pngfile = os.path.join(htmldir, 'tiles', str(tile), coadd_type, '{}-{}-{}-{}.png'.format(
+                        prefix, tile, coadd_type, targetid))
+                    if os.path.isfile(pngfile):
+                        html.write('<td><a href="{0}"><img src="{0}" height="auto" width="512px"></a></td>\n'.format(httpfile))
+                    else:
+                        html.write('<td>Not Available</td>\n')
+
+            html.write('</table>\n')
+            html.write('<br /><br />\n')
+            html.write('</html></body>\n')
+            
 def _build_htmlpage_one(args):
     """Wrapper function for the multiprocessing."""
     return build_htmlpage_one(*args)
@@ -198,13 +192,99 @@ def main(args=None, comm=None, htmldir=None):
     """Make the HTML pages.
 
     """
-    from glob import glob
-
+    #from glob import glob
+    from fastspecfit.io import read_fastspecfit
+    
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
     if htmldir is None:
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod)
+
+    # Read the fitting results and get all the unique targetids.
+    if (args.fastphotfile is None and args.fastspecfile is None):
+        log.warning('Must provide one of --fastphotfile or --fastspecfile.')
+        return
+    
+    elif (args.fastphotfile is not None and args.fastspecfile is not None):
+        fastspec, metaspec, specprod, coadd_type = read_fastspecfit(args.fastspecfile)
+        fastphot, metaphot, _specprod, _coadd_type = read_fastspecfit(args.fastphotfile, fastphot=True)
+        if (specprod != _specprod) or (coadd_type != _coadd_type):
+            log.warning('Mis-matching specprod or coadd_type in fastspec vs fastphot fitting results!')
+            return
+
+        from astropy.table import join
+        fastspec['TILEID'] = metaspec['TILEID']
+        fastphot['TILEID'] = metaphot['TILEID']
+
+        joinkeys = ['TARGETID', 'TILEID']
+        if 'NIGHT' in fastspec.colnames:
+            joinkeys += 'NIGHT'
+            fastspec['NIGHT'] = metaspec['NIGHT']
+            fastphot['NIGHT'] = metaphot['NIGHT']
+            
+        fastfit = join(fastspec, fastphot, keys=joinkeys, join_type='outer',
+                       table_names=['SPEC', 'PHOT'])
+        metadata = join(metaspec, metaphot, keys=joinkeys, join_type='outer',
+                       table_names=['SPEC', 'PHOT'])
+        assert(np.all(fastfit['TARGETID'] == metadata['TARGETID']))
+        assert(np.all(fastfit['TILEID'] == metadata['TILEID']))
+
+    elif args.fastphotfile is None and args.fastspecfile is not None:
+        fastfit, metadata, specprod, coadd_type = read_fastspecfit(args.fastspecfile)
+        
+    elif args.fastphotfile is not None and args.fastspecfile is None:
+        fastfit, metadata, specprod, coadd_type = read_fastspecfit(args.fastphotfile, fastphot=True)
+
+    else:
+        pass # should never get here
+
+    # optionally trim to a particular tile and/or night
+    def _select_tiles_nights_targets(fastfit, metadata, tiles=None, nights=None):
+        if fastfit is None or metadata is None:
+            return fastfit, metadata
+        keep = np.ones(len(fastfit), bool)
+        if tiles:
+            tilekeep = np.zeros(len(fastfit), bool)
+            for tile in tiles:
+                tilekeep = np.logical_or(tilekeep, metadata['TILEID'].astype(str) == tile)
+            keep = np.logical_and(keep, tilekeep)
+            log.info('Keeping {} objects from tile(s) {}'.format(len(fastfit), ','.join(tiles)))
+        if nights and 'NIGHT' in metadata:
+            nightkeep = np.zeros(len(fastfit), bool)
+            for night in nights:
+                nightkeep = np.logical_or(nightkeep, metadata['NIGHT'].astype(str) == night)
+            keep = np.logical_and(keep, nightkeep)
+            log.info('Keeping {} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
+        return fastfit[keep], metadata[keep]
+    
+    fastfit, metadata = _select_tiles_nights_targets(
+        fastfit, metadata, tiles=args.tile, nights=args.night)
+
+    # parse the targetids optional input
+    if args.targetids:
+        targetids = [int(x) for x in args.targetids.split(',')]
+
+        keep = np.where(np.isin(fastfit['TARGETID'], targetids))[0]
+        if len(keep) == 0:
+            log.warning('No matching targetids found!')
+            return
+        fastfit = fastfit[keep]
+        metadata = metadata[keep]
+
+    if args.ntargets is not None:
+        keep = np.arange(args.ntargets) + args.firsttarget
+        log.info('Keeping {} targets.'.format(args.ntargets))
+        fastfit = fastfit[keep]
+        metadata = metadata[keep]
+
+    # Build the home (index.html) page (always, irrespective of clobber)--
+    build_htmlhome(htmldir, fastfit, metadata, htmlhome=args.htmlhome)
+
+    pdb.set_trace()
+
+    # Group by tiles.
+    tiles = np.unique(fastfit['TILEID'])
 
     tiledirs = glob(os.path.join(htmldir, 'tiles', '?????'))
     ntile = len(tiledirs)
@@ -245,9 +325,6 @@ def main(args=None, comm=None, htmldir=None):
         tiledicts.append(tiledict)
 
     targetids = np.array([os.path.basename(fastspecfile).replace('.png', '')[-17:] for fastspecfile in fastspecfiles])
-
-    # Build the home (index.html) page (always, irrespective of clobber)--
-    build_htmlhome(htmldir, targetids, fastspecfiles, fastphotfiles, htmlhome='index.html')
 
     # Now the individual pages.
     htmltargetids = [specfile.replace(cfsroot, httpsroot).replace('.png', '.html') for specfile in fastspecfiles]
