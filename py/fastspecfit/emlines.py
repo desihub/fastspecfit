@@ -136,26 +136,26 @@ class EMLineModel(Fittable1DModel):
     initsigma_broad = 300.0
 
     # Fragile because the lines are hard-coded--
-    mgii_2800_amp = Parameter(name='mgii_2800_amp', default=3.0)
+    mgii_2800_amp = Parameter(name='mgii_2800_amp', default=3.0, bounds=(None, 1e5))
     #mgii_2800b_amp = Parameter(name='mgii_2800b_amp', default=1.0)
-    nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1)
-    nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1)
-    oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0)
-    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0)
-    neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3)
-    oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0)
-    oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0)
-    hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5)
-    hdelta_amp = Parameter(name='hdelta_amp', default=0.5)
-    hgamma_amp = Parameter(name='hgamma_amp', default=0.5)
-    hbeta_amp = Parameter(name='hbeta_amp', default=1.0)
-    halpha_amp = Parameter(name='halpha_amp', default=3.0)
-    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0)
-    nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0)
-    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0)
-    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0)
-    siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3)
-    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3)
+    nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=(None, 1e5))
+    nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=(None, 1e5))
+    oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0, bounds=(None, 1e5))
+    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=(None, 1e5))
+    neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=(None, 1e5))
+    oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0, bounds=(None, 1e5))
+    oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=(None, 1e5))
+    hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=(None, 1e5))
+    hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=(None, 1e5))
+    hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=(None, 1e5))
+    hbeta_amp = Parameter(name='hbeta_amp', default=1.0, bounds=(None, 1e5))
+    halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=(None, 1e5))
+    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=(None, 1e5))
+    nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=(None, 1e5))
+    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=(None, 1e5))
+    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=(None, 1e5))
+    siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=(None, 1e5))
+    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=(None, 1e5))
 
     mgii_2800_vshift = Parameter(name='mgii_2800_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     #mgii_2800b_vshift = Parameter(name='mgii_2800b_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
@@ -593,10 +593,6 @@ class EMLineFit(ContinuumTools):
 
         npixpercamera = [len(gw) for gw in data['wave']] # all pixels
         npixpercam = np.hstack([0, npixpercamera])
-        #goodpixpercam = [np.where(iv > 0)[0] for iv in data['ivar']] # unmasked pixels used in the fitting
-
-        #ngoodpixpercamera = [np.count_nonzero(iv) for iv in data['ivar']] # unmasked pixels used in the fitting
-        #ngoodpixpercam = np.hstack([0, ngoodpixpercamera])
 
         dlogwave = self.pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
         log10wave = np.arange(np.log10(3e3), np.log10(1e4), dlogwave)
@@ -613,7 +609,8 @@ class EMLineFit(ContinuumTools):
         # Do a fast box-car integration to get the initial line-amplitudes and
         # line-widths...actually these initial guesses are not really working
         # but keep the code here.
-        if False:
+        initguess = False
+        if initguess:
             sigma_cont = 200.0
             init_linesigmas = []
             for pp in self.EMLineModel.param_names:
@@ -700,13 +697,20 @@ class EMLineFit(ContinuumTools):
 
         # Populate the output table. First do a pass through the sigma
         # parameters. If sigma is zero, restore the default value and if the
-        # amplitude is still at its default, it means the line wasn't fit
-        # (right??), so set it to zero.
-        for pp in bestfit.param_names:
-            if 'sigma' in pp:
-                pinfo = getattr(bestfit, pp)
-                if pinfo.value == 0.0: # sigma=0, drop the line
-                    setattr(bestfit, pp, pinfo.default)
+        # amplitude is still at its default (or its upper bound!), it means the
+        # line wasn't fit or the fit failed (right??), so set it to zero.
+        for linename in self.linetable['name'].data:
+            amp = getattr(bestfit, '{}_amp'.format(linename))
+            sigma = getattr(bestfit, '{}_sigma'.format(linename))
+            vshift = getattr(bestfit, '{}_vshift'.format(linename))
+
+            # drop the line if:
+            #  sigma = 0
+            #  amp = default or amp = max bound (not optimized!)
+            if (sigma.value == 0.0) or (amp.value== amp.default) or (amp.value == amp.bounds[1]):
+                setattr(bestfit, '{}_amp'.format(linename), 0.0)
+                setattr(bestfit, '{}_sigma'.format(linename), sigma.default)
+                setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
 
         # Now fill the output table.
         for pp in bestfit.param_names:
@@ -714,11 +718,8 @@ class EMLineFit(ContinuumTools):
             val = pinfo.value
             #if '9532' in pp:
             #    pdb.set_trace()
-            if 'amp' in pp and val == pinfo.default: # line not optimized; drop it!
-                val = 0.0
-                setattr(bestfit, pp, val)
             result[pinfo.name.upper()] = val
-
+                
         emlinemodel = bestfit(emlinewave)
         chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
 

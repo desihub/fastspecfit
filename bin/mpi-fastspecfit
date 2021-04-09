@@ -2,7 +2,7 @@
 """
 MPI wrapper for fastphot and fastspec.
 
-mpi-fastspecfit --mp 32 --coadd-type night-coadds --tile 80608 --night 20201220 --plan --nompi
+mpi-fastspecfit --mp 32 --coadd-type deep --tile 80608 --night 20201220 --plan --nompi
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
 
 mpi-fastspecfit --mp 32 --coadd-type deep --merge --nompi

@@ -278,73 +278,30 @@ def main(args=None, comm=None, htmldir=None):
         fastfit = fastfit[keep]
         metadata = metadata[keep]
 
+    t0 = time.time()
+
     # Build the home (index.html) page (always, irrespective of clobber)--
     build_htmlhome(htmldir, fastfit, metadata, htmlhome=args.htmlhome)
 
-    pdb.set_trace()
-
-    # Group by tiles.
-    tiles = np.unique(fastfit['TILEID'])
-
-    tiledirs = glob(os.path.join(htmldir, 'tiles', '?????'))
-    ntile = len(tiledirs)
-    if ntile == 0:
-        log.warning('No tiles found!')
-        return
-    
-    log.info('Found {} tiles with coadd_type={}'.format(ntile, args.coadd_type))
-
-    # Build HTML output for each tile serially.
-    t0 = time.time()
-    tiledicts = []
-    for tiledir in tiledirs:
-        tile = os.path.basename(tiledir)
-        htmltiledir = os.path.join(htmldir, 'tiles', str(tile), args.coadd_type)
-        
-        specfiles = glob(os.path.join(htmltiledir, 'fastspec-?????-{}-*.png'.format(args.coadd_type)))
-        photfiles = glob(os.path.join(htmltiledir, 'fastphot-?????-{}-*.png'.format(args.coadd_type)))
-        nspec = len(specfiles)
-        nphot = len(photfiles)
-
-        targetids = []
-        if nspec > 0:
-            targetids.append(np.array([os.path.basename(specfile).replace('.png', '')[-17:] for specfile in specfiles]))
-        if nphot > 0:
-            targetids.append(np.array([os.path.basename(photfile).replace('.png', '')[-17:] for photfile in photfiles]))
-        targetids = np.unique(targetids)
-        targetids = np.sort(targetids)
-
-        pdb.set_trace()
-        
-
-        # need to store the coadd_type
-        tiledict = {str(tile): {}}
-
-        log.info('Found {} fastspec files and {} fastphot files for tile {}.'.format(len(fastspecfiles), len(fastphotfiles), tile))
-
-        tiledicts.append(tiledict)
-
-    targetids = np.array([os.path.basename(fastspecfile).replace('.png', '')[-17:] for fastspecfile in fastspecfiles])
-
-    # Now the individual pages.
-    htmltargetids = [specfile.replace(cfsroot, httpsroot).replace('.png', '.html') for specfile in fastspecfiles]
-
-    nexttargetids = np.roll(np.atleast_1d(targetids), -1)
-    prevtargetids = np.roll(np.atleast_1d(targetids), 1)
-    nexthtmltargetids = np.roll(np.atleast_1d(htmltargetids), -1)
-    prevhtmltargetids = np.roll(np.atleast_1d(htmltargetids), 1)
-
-    htmlargs = []
-    for ii, (targetid, htmltargetid, specfile, nexttargetid, prevtargetid, nexthtmltargetid, prevhtmltargetid) in enumerate(
-            zip(targetids, htmltargetids, fastspecfiles, nexttargetids, prevtargetids, nexthtmltargetids, prevhtmltargetids)):
-        htmlargs.append([ii, targetid, htmltargetid, specfile, nexttargetid, prevtargetid, nexthtmltargetid, prevhtmltargetid])
-
-    if args.mp > 1:
-        import multiprocessing
-        with multiprocessing.Pool(args.mp) as P:
-            P.map(_build_htmlpage_one, htmlargs)
-    else:
-        [build_htmlpage_one(*_htmlargs) for _htmlargs in htmlargs]
+    ## Now the individual pages.
+    #htmltargetids = [specfile.replace(cfsroot, httpsroot).replace('.png', '.html') for specfile in fastspecfiles]
+    #
+    #nexttargetids = np.roll(np.atleast_1d(targetids), -1)
+    #prevtargetids = np.roll(np.atleast_1d(targetids), 1)
+    #nexthtmltargetids = np.roll(np.atleast_1d(htmltargetids), -1)
+    #prevhtmltargetids = np.roll(np.atleast_1d(htmltargetids), 1)
+    #
+    #htmlargs = []
+    #for ii, (targetid, htmltargetid, specfile, nexttargetid, prevtargetid, nexthtmltargetid, prevhtmltargetid) in enumerate(
+    #        zip(targetids, htmltargetids, fastspecfiles, nexttargetids, prevtargetids, nexthtmltargetids, prevhtmltargetids)):
+    #    htmlargs.append([ii, targetid, htmltargetid, specfile, nexttargetid, prevtargetid, nexthtmltargetid, prevhtmltargetid])
+    #
+    #if args.mp > 1:
+    #    import multiprocessing
+    #    with multiprocessing.Pool(args.mp) as P:
+    #        P.map(_build_htmlpage_one, htmlargs)
+    #else:
+    #    [build_htmlpage_one(*_htmlargs) for _htmlargs in htmlargs]
 
     log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
 
