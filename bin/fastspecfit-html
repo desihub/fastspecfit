@@ -85,7 +85,7 @@ def build_htmlhome(htmldir, fastfit, metadata, coadd_type='deep', htmlhome='inde
         html.write('<br /><br />\n')
         html.write('<table>\n')
         html.write('<tr>\n')
-        html.write('<th>Tile ID</th>\n')
+        html.write('<th>Tile</th>\n')
         #html.write('<th>Index</th>\n')
         #html.write('<th></th>\n')
         html.write('</tr>\n')
@@ -119,7 +119,7 @@ def build_htmlhome(htmldir, fastfit, metadata, coadd_type='deep', htmlhome='inde
 
             html.write('<h3><a href="{}">Home</a></h3>\n'.format(htmlhomefile_https))
     
-            html.write('<h3>Tile ID {}</h3>\n'.format(tile))
+            html.write('<h3>Tile {}</h3>\n'.format(tile))
     
             html.write('<table>\n')
             html.write('<tr>\n')

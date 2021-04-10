@@ -136,26 +136,26 @@ class EMLineModel(Fittable1DModel):
     initsigma_broad = 300.0
 
     # Fragile because the lines are hard-coded--
-    mgii_2800_amp = Parameter(name='mgii_2800_amp', default=3.0, bounds=(None, 1e5))
+    mgii_2800_amp = Parameter(name='mgii_2800_amp', default=3.0, bounds=(-1e3, 1e5))
     #mgii_2800b_amp = Parameter(name='mgii_2800b_amp', default=1.0)
-    nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=(None, 1e5))
-    nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=(None, 1e5))
-    oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0, bounds=(None, 1e5))
-    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=(None, 1e5))
-    neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=(None, 1e5))
-    oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0, bounds=(None, 1e5))
-    oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=(None, 1e5))
-    hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=(None, 1e5))
-    hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=(None, 1e5))
-    hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=(None, 1e5))
-    hbeta_amp = Parameter(name='hbeta_amp', default=1.0, bounds=(None, 1e5))
-    halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=(None, 1e5))
-    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=(None, 1e5))
-    nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=(None, 1e5))
-    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=(None, 1e5))
-    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=(None, 1e5))
-    siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=(None, 1e5))
-    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=(None, 1e5))
+    nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=(-1e3, 1e5))
+    nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=(-1e3, 1e5))
+    oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0, bounds=(-1e3, 1e5))
+    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=(-1e3, 1e5))
+    neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=(-1e3, 1e5))
+    oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0, bounds=(-1e3, 1e5))
+    oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=(-1e3, 1e5))
+    hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=(-1e3, 1e5))
+    hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=(-1e3, 1e5))
+    hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=(-1e3, 1e5))
+    hbeta_amp = Parameter(name='hbeta_amp', default=1.0, bounds=(-1e3, 1e5))
+    halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=(-1e3, 1e5))
+    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=(-1e3, 1e5))
+    nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=(-1e3, 1e5))
+    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=(-1e3, 1e5))
+    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=(-1e3, 1e5))
+    siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=(-1e3, 1e5))
+    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=(-1e3, 1e5))
 
     mgii_2800_vshift = Parameter(name='mgii_2800_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     #mgii_2800b_vshift = Parameter(name='mgii_2800b_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
@@ -178,26 +178,26 @@ class EMLineModel(Fittable1DModel):
     siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
 
-    mgii_2800_sigma = Parameter(name='mgii_2800_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
-    #mgii_2800b_sigma = Parameter(name='mgii_2800b_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
-    nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    oiii_4959_sigma = Parameter(name='oiii_4959_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    oiii_5007_sigma = Parameter(name='oiii_5007_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
-    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
-    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
-    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
-    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_broad])
-    nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    siii_9069_sigma = Parameter(name='siii_9069_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
-    siii_9532_sigma = Parameter(name='siii_9532_sigma', default=initsigma_narrow, bounds=[0.0, maxsigma_narrow])
+    mgii_2800_sigma = Parameter(name='mgii_2800_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
+    #mgii_2800b_sigma = Parameter(name='mgii_2800b_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
+    nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    oiii_4959_sigma = Parameter(name='oiii_4959_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    oiii_5007_sigma = Parameter(name='oiii_5007_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
+    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
+    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
+    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
+    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
+    nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    siii_9069_sigma = Parameter(name='siii_9069_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    siii_9532_sigma = Parameter(name='siii_9532_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
 
     # doublet ratios are always tied
     def _tie_nii_amp(model):
@@ -686,6 +686,15 @@ class EMLineFit(ContinuumTools):
         self.EMLineModel = _tie_forbidden_lines(self.EMLineModel)
         self.EMLineModel = _tie_broad_lines(self.EMLineModel)
 
+        # In the initial fit the lines can wander, especially Mg II on the
+        # edges, so reset the line-amplitudes.
+        for pp in self.EMLineModel.param_names:
+            if 'amp' in pp:
+                amp = getattr(self.EMLineModel, pp)
+                if (amp.value <= amp.bounds[0]) or (amp.value >= amp.bounds[1]):
+                    #print(pp, amp.value, amp.bounds[1])
+                    setattr(self.EMLineModel, pp, amp.default)
+
         t0 = time.time()        
         bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
         #bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
@@ -707,7 +716,8 @@ class EMLineFit(ContinuumTools):
             # drop the line if:
             #  sigma = 0
             #  amp = default or amp = max bound (not optimized!)
-            if (sigma.value == 0.0) or (amp.value== amp.default) or (amp.value == amp.bounds[1]):
+            if ((sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1]) or (amp.value == amp.default) or
+                (amp.value >= amp.bounds[1]) or (amp.value <= amp.bounds[0])):
                 setattr(bestfit, '{}_amp'.format(linename), 0.0)
                 setattr(bestfit, '{}_sigma'.format(linename), sigma.default)
                 setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
@@ -835,6 +845,9 @@ class EMLineFit(ContinuumTools):
                                 (emlinewave < (linezwave + 4.*linesigma * linezwave / C_LIGHT)) *
                                 (emlineivar > 0))[0]
             npix = len(lineindx)
+            #if 'BETA' in linename:
+            #    pdb.set_trace()
+                
             if npix > 3: # magic number: required at least XX unmasked pixels centered on the line
                 dof = npix - 3 # ??? [redshift, sigma, and amplitude]
                 chi2 = np.sum(emlineivar[lineindx]*(emlineflux[lineindx]-emlinemodel[lineindx])**2) / dof
@@ -979,7 +992,8 @@ class EMLineFit(ContinuumTools):
                 for col in ('Z', 'SIGMA'):
                 #for col in ('Z', 'Z_ERR', 'SIGMA', 'SIGMA_ERR'):
                     print('{}_{}: {:.12f}'.format(line, col, result['{}_{}'.format(line, col)][0]))
-
+            #pdb.set_trace()
+            
         return result
     
     def qa_fastspec(self, data, fastspec, metadata, coadd_type='deep',
