@@ -68,7 +68,7 @@ Required Data Table Columns
 ====================== =========== ========== ==========================================
 Name                   Type        Units      Description
 ====================== =========== ========== ==========================================
-              TARGETID   int64                Unique target ID.
+              TARGETID int64                  Unique target ID.
        CONTINUUM_COEFF float64[11]            Continuum coefficients.
         CONTINUUM_CHI2 float32                Reduced chi^2 of the continuum fit.
          CONTINUUM_AGE float32            Gyr Light-weighted age.
@@ -127,9 +127,9 @@ Name                   Type        Units      Description
                    DEC float64            deg Declination from target catalog.
                  FIBER   int32                Fiber ID number.
                 TILEID   int32                Tile ID number.
-                 NIGHT   int32                Night (not present when fitting deep coadds).
-                 EXPID   int32                Exposure ID number (not present when fitting coadds).
-               PHOTSYS    str1                Photometric system ('N' or 'S').
+                 NIGHT   int32                Night (not present when fitting multi-night coadds).
+                 EXPID   int32                Exposure ID number (not present when multi-night coadds).
+               PHOTSYS    str1                Photometric system (*N* or *S*).
        SV1_DESI_TARGET   int64                SV1 DESI targeting bit.
         SV1_BGS_TARGET   int64                SV1 BGS targeting bit.
         SV1_MWS_TARGET   int64                SV1 MWS targeting bit.
@@ -137,8 +137,12 @@ Name                   Type        Units      Description
             BGS_TARGET   int64                BGS targeting bit.
             MWS_TARGET   int64                MWS targeting bit.
                      Z float64                Redrock redshift.
+                 ZWARN    int8                Redrock zwarning bit.
              DELTACHI2 float64                Redrock delta-chi-squared.
               SPECTYPE    str6                Redrock spectral classification.
+           FIBERFLUX_G float32           nmgy Fiber g-band flux from targeting catalog.
+           FIBERFLUX_R float32           nmgy Fiber r-band flux from targeting catalog.
+           FIBERFLUX_Z float32           nmgy Fiber z-band flux from targeting catalog.
         FIBERTOTFLUX_G float32           nmgy Fibertot g-band flux from targeting catalog.
         FIBERTOTFLUX_R float32           nmgy Fibertot r-band flux from targeting catalog.
         FIBERTOTFLUX_Z float32           nmgy Fibertot z-band flux from targeting catalog.

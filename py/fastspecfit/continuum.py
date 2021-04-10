@@ -68,13 +68,13 @@ def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
         return warn, coeff
     
 class ContinuumTools(object):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4):
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, seed=1):
         """Tools for dealing with stellar continua..
 
         """
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
-        from astropy.table import Table
+        from astropy.table import Table, Column
 
         from speclite import filters
         from desiutil.dust import SFDMap
@@ -125,6 +125,32 @@ class ContinuumTools(object):
 
         self.pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
 
+        # add AGN templates here?
+        if False:
+            # https://www.aanda.org/articles/aa/pdf/2017/08/aa30378-16.pdf
+            # F_nu \propto \nu^(-alpha) or F_lambda \propto \lambda^(alpha-2)
+            self.agn_lambda0 = 4020.0 # [Angstrom]a
+            self.agn_alpha = [0.5, 1.0, 1.5, 2.0]
+            nagn = len(self.agn_alpha)
+            
+            agnflux = np.zeros((npix, nagn), 'f4')
+            #import matplotlib.pyplot as plt
+            for ii, alpha in enumerate(self.agn_alpha):
+                agnflux[:, ii] = sspwave**(alpha-2) / self.agn_lambda0**(alpha-2)
+                #plt.plot(sspwave, agnflux[:, ii])
+            #plt.xlim(3000, 9000) ; plt.ylim(0.1, 2.2) ; plt.savefig('junk.png')
+
+            sspflux = np.vstack((agnflux.T, sspflux.T)).T
+
+            sspinfo = Table(np.hstack([sspinfo[:nagn], sspinfo]))
+            sspinfo.add_column(Column(name='agn_alpha', length=nagn+nage, dtype='f4'))
+            sspinfo['age'][:nagn] = 0.0
+            sspinfo['mstar'][:nagn] = 0.0
+            sspinfo['lbol'][:nagn] = 0.0
+            sspinfo['agn_alpha'][:nagn] = self.agn_alpha
+
+            nage = len(sspinfo)
+
         self.sspwave = sspwave
         self.sspflux = sspflux                     # no dust, no velocity broadening [npix,nage]
         self.sspinfo = sspinfo
@@ -151,6 +177,9 @@ class ContinuumTools(object):
         self.absmag_bands = ['u', 'g', 'r', 'i', 'z', 'W1']
         self.absmag_filters = filters.load_filters('decam2014-u', 'decam2014-g', 'decam2014-r',
                                                    'decam2014-i', 'decam2014-z', 'wise2010-W1')
+
+        # used in one place...
+        self.rand = np.random.RandomState(seed=seed)
 
     @staticmethod
     def get_d4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
@@ -553,6 +582,85 @@ class ContinuumTools(object):
 
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 
+    def smooth_residuals(self, continuummodel, specwave, specflux, specivar,
+                         linemask, percamera=False, binwave=0.8*160):
+        """Derive a median-smoothed correction to the continuum fit in order to pick up
+        any unmodeled flux, before emission-line fitting.
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        Notes
+        -----
+        There are a few different algorithms in here, but the default one is to
+        do a very simple median-smoothing on the camera-stacked
+        (percamera=False) spectrum, which prevents any crazy discontinuities
+        between the cameras.
+        
+        https://github.com/moustakas/moustakas-projects/blob/master/ages/ppxf/ages_gandalf_specfit.pro#L138-L145
+
+        """
+        from scipy.ndimage import median_filter
+
+        def robust_median(wave, flux, ivar, binwave):
+            from scipy import ptp
+            from scipy.stats import sigmaclip
+            #from scipy.signal import savgol_filter
+            
+            smoothflux = np.zeros_like(flux)
+            minwave, maxwave = np.min(wave), np.max(wave)
+            nbin = int(ptp(wave) / binwave)
+            wavebins = np.linspace(minwave, maxwave, nbin)
+            idx  = np.digitize(wave, wavebins)
+            for kk in np.arange(nbin):
+                I = (idx == kk)
+                J = I * (ivar > 0)
+                #print(kk, np.sum(I), np.sum(J))
+                if np.sum(J) > 10:
+                    clipflux, _, _ = sigmaclip(flux[J], low=5.0, high=5.0)
+                    smoothflux[I] = np.median(clipflux)
+                    #print(kk, np.sum(J), np.sum(I), np.median(wave[I]), smoothflux[I][0])
+            return smoothflux
+                
+        medbin = np.int(binwave * 2)
+        #print(binwave, medbin)
+
+        if percamera:
+            smooth_continuum = []
+            for icam in [0, 1, 2]: # iterate over cameras        
+                residuals = specflux[icam] - continuummodel[icam]
+                if False:
+                    smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
+                    #smooth1 = robust_median(specwave[icam], residuals, specivar[icam] * linemask[icam], binwave)
+                    smooth2 = median_filter(smooth1, medbin, mode='nearest')
+                    smooth_continuum.append(smooth2)
+                else:
+                    # Fragile...replace the line-affected pixels with noise to make the
+                    # smoothing better-behaved.
+                    pix_nolines = linemask[icam]      # unaffected by a line = True
+                    pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+                    residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
+                                              np.std(residuals[pix_nolines]) +
+                                              np.median(residuals[pix_nolines]))
+                    smooth1 = median_filter(residuals, medbin, mode='nearest')
+                    #smooth2 = savgol_filter(smooth1, 151, 2)
+                    smooth2 = median_filter(smooth1, medbin//2, mode='nearest')
+                    smooth_continuum.append(smooth2)
+        else:
+            residuals = specflux - continuummodel
+            pix_nolines = linemask      # unaffected by a line = True
+            pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+            
+            residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
+                                      np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
+            smooth1 = median_filter(residuals, medbin, mode='nearest')
+            smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
+
+        return smooth_continuum
+
 class ContinuumFit(ContinuumTools):
     def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4):
         """Class to model a galaxy stellar continuum.
@@ -622,7 +730,8 @@ class ContinuumFit(ContinuumTools):
         self.sspflux_dustvdisp = np.stack(sspflux_dustvdisp, axis=-1) # [npix,nage,nAV]
 
         # table of emission lines to fit
-        self.linemask_sigma = 150.0 # [km/s]
+        self.linemask_sigma = 200.0 # [km/s]
+        self.linemask_sigma_broad = 1000.0 # [km/s]
 
         # Do a throw-away trapezoidal resampling so we can compile the numba
         # code when instantiating this class.
@@ -649,8 +758,13 @@ class ContinuumFit(ContinuumTools):
         out.add_column(Column(name='CONTINUUM_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
         out.add_column(Column(name='CONTINUUM_VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
         out.add_column(Column(name='CONTINUUM_VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
-        out.add_column(Column(name='CONTINUUM_SNR', length=nobj, shape=(3,), dtype='f4')) # median S/N in each camera
+        for cam in ['B', 'R', 'Z']:
+            out.add_column(Column(name='CONTINUUM_SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
+        #out.add_column(Column(name='CONTINUUM_SNR', length=nobj, shape=(3,), dtype='f4')) # median S/N in each camera
 
+        # maximum correction to the median-smoothed continuum
+        for cam in ['B', 'R', 'Z']:
+            out.add_column(Column(name='CONTINUUM_SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
         out['CONTINUUM_AV'] = self.AV_nominal
         out['CONTINUUM_VDISP'] = self.vdisp_nominal
 
@@ -1000,7 +1114,8 @@ class ContinuumFit(ContinuumTools):
 
         redshift = data['zredrock']
         result['CONTINUUM_Z'] = redshift
-        result['CONTINUUM_SNR'] = data['snr']
+        for icam, cam in enumerate(data['cameras']):
+            result['CONTINUUM_SNR_{}'.format(cam.upper())] = data['snr'][icam]
 
         # Prepare the reddened and unreddened SSP templates. Note that we ignore
         # templates which are older than the age of the universe at the galaxy
@@ -1099,6 +1214,46 @@ class ContinuumFit(ContinuumTools):
         d4000, d4000_ivar = self.get_d4000(specwave, specflux, specivar, redshift=redshift)
         log.info('Spectroscopic D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
 
+        # Do a quick median-smoothing of the stellar continuum-subtracted
+        # residuals, to help with the emission-line fitting.
+        _smooth_continuum = self.smooth_residuals(
+            bestfit, specwave, specflux, np.hstack(data['ivar']),
+            np.hstack(data['linemask']))
+        #smooth_continuum = self.smooth_residuals(
+        #    bestfit, data['coadd_wave'], data['coadd_flux'],
+        #    data['coadd_ivar'], data['coadd_linemask'],
+        #    npixpercam)
+        
+        # Unpack the continuum into individual cameras.
+        continuummodel = []
+        smooth_continuum = []
+        for icam in [0, 1, 2]: # iterate over cameras
+            ipix = np.sum(npixpercam[:icam+1])
+            jpix = np.sum(npixpercam[:icam+2])
+            continuummodel.append(bestfit[ipix:jpix])
+            smooth_continuum.append(_smooth_continuum[ipix:jpix])
+
+        ## Like above, but with per-camera smoothing.
+        #smooth_continuum = self.smooth_residuals(
+        #    continuummodel, data['wave'], data['flux'],
+        #    data['ivar'], data['linemask'], percamera=False)
+
+        if False:
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(2, 1)
+            for icam in [0, 1, 2]: # iterate over cameras
+                resid = data['flux'][icam]-continuummodel[icam]
+                ax[0].plot(data['wave'][icam], resid)
+                ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
+            for icam in [0, 1, 2]: # iterate over cameras
+                resid = data['flux'][icam]-continuummodel[icam]
+                pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
+                ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
+                ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
+            plt.savefig('junk.png')
+            pdb.set_trace()
+
+        # Pack it in and return.
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
         result['CONTINUUM_CHI2'][0] = chi2min
         result['CONTINUUM_AV'][0] = AVbest
@@ -1110,21 +1265,23 @@ class ContinuumFit(ContinuumTools):
         result['D4000_IVAR'][0] = d4000_ivar
         result['D4000_MODEL'][0] = d4000_model
 
-        # Unpack the continuum into individual cameras.
-        continuummodel = []
-        for ii in [0, 1, 2]: # iterate over cameras
-            ipix = np.sum(npixpercam[:ii+1])
-            jpix = np.sum(npixpercam[:ii+2])
-            continuummodel.append(bestfit[ipix:jpix])
-
-        return result, continuummodel
+        for icam, cam in enumerate(data['cameras']):
+            nonzero = continuummodel[icam] != 0
+            if np.sum(nonzero) > 0:
+                corr = np.mean(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
+                result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr
+                
+        log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
+            100*result['CONTINUUM_SMOOTHCORR_B'][0], 100*result['CONTINUUM_SMOOTHCORR_R'][0],
+            100*result['CONTINUUM_SMOOTHCORR_Z'][0]))
+        
+        return result, continuummodel, smooth_continuum
     
     def qa_fastphot(self, data, fastphot, metadata, coadd_type='deep',
                     outdir=None, outprefix=None):
         """QA of the best-fitting continuum.
 
         """
-        from scipy.ndimage import median_filter
         import matplotlib.pyplot as plt
         from matplotlib import colors
         import matplotlib.ticker as ticker
