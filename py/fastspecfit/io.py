@@ -53,6 +53,7 @@ class DESISpectra(object):
         # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/zbest-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
         fahdr = fits.getheader(fiberfile, ext=0)
         targetdir = fahdr['TARG']
+        targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('DESIROOT/', ''))
 
         # sometimes this is a KPNO directory!
         if not os.path.isdir(targetdir):
@@ -172,6 +173,7 @@ class DESISpectra(object):
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
             fmcols = ['TARGETID', 'TILEID', 'FIBER', 'TARGET_RA', 'TARGET_DEC',
                       'FIBERSTATUS', 'OBJTYPE', 'PHOTSYS',
+                      'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
                       'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                       'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                       'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z']
@@ -393,36 +395,45 @@ class DESISpectra(object):
                     allfilters = CFit.bassmzlswise
 
                 # Unpack the imaging photometry and correct for MW dust.
-                if fastphot:
-                    # all photometry
-                    #meta['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
-                    mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
+                #if fastphot:
+                
+                # all photometry
+                #meta['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
+                mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
 
-                    maggies = np.zeros(len(CFit.bands))
-                    ivarmaggies = np.zeros(len(CFit.bands))
-                    for iband, band in enumerate(CFit.bands):
-                        maggies[iband] = meta['FLUX_{}'.format(band.upper())][igal] / mw_transmission_flux[iband]
-                        ivarmaggies[iband] = meta['FLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_flux[iband]**2
+                maggies = np.zeros(len(CFit.bands))
+                ivarmaggies = np.zeros(len(CFit.bands))
+                for iband, band in enumerate(CFit.bands):
+                    maggies[iband] = meta['FLUX_{}'.format(band.upper())][igal] / mw_transmission_flux[iband]
+                    ivarmaggies[iband] = meta['FLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_flux[iband]**2
 
-                    data['phot'] = CFit.parse_photometry(CFit.bands,
-                        maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
-                        lambda_eff=allfilters.effective_wavelengths.value)
+                data['phot'] = CFit.parse_photometry(CFit.bands,
+                    maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
+                    lambda_eff=allfilters.effective_wavelengths.value)
 
-                    # fiber fluxes
-                    mw_transmission_fiberflux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
+                # fiber fluxes
+                mw_transmission_fiberflux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
 
-                    fibermaggies = np.zeros(len(CFit.fiber_bands))
-                    #ivarfibermaggies = np.zeros(len(CFit.fiber_bands))
-                    for iband, band in enumerate(CFit.fiber_bands):
-                        fibermaggies[iband] = meta['FIBERTOTFLUX_{}'.format(band.upper())][igal] / mw_transmission_fiberflux[iband]
-                        #ivarfibermaggies[iband] = meta['FIBERTOTFLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_fiberflux[iband]**2
+                fibermaggies = np.zeros(len(CFit.fiber_bands))
+                fibertotmaggies = np.zeros(len(CFit.fiber_bands))
+                #ivarfibermaggies = np.zeros(len(CFit.fiber_bands))
+                for iband, band in enumerate(CFit.fiber_bands):
+                    fibermaggies[iband] = meta['FIBERFLUX_{}'.format(band.upper())][igal] / mw_transmission_fiberflux[iband]
+                    fibertotmaggies[iband] = meta['FIBERTOTFLUX_{}'.format(band.upper())][igal] / mw_transmission_fiberflux[iband]
+                    #ivarfibermaggies[iband] = meta['FIBERTOTFLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_fiberflux[iband]**2
 
-                    data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
-                        maggies=fibermaggies, nanomaggies=True,
-                        lambda_eff=filters.effective_wavelengths.value)
-                else:
+                data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
+                    maggies=fibermaggies, nanomaggies=True,
+                    lambda_eff=filters.effective_wavelengths.value)
+                data['fibertotphot'] = CFit.parse_photometry(CFit.fiber_bands,
+                    maggies=fibertotmaggies, nanomaggies=True,
+                    lambda_eff=filters.effective_wavelengths.value)
+
+                if not fastphot:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
-                                 'linemask': [], 'snr': np.zeros(3).astype('f4'),
+                                 'linemask': [],
+                                 'snr': np.zeros(3).astype('f4'),
+                                 #'std': np.zeros(3).astype('f4'), # emission-line free standard deviation, per-camera
                                  'cameras': spec.bands})
                     for icam, camera in enumerate(data['cameras']):
                         mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
@@ -435,10 +446,16 @@ class DESISpectra(object):
                         linemask = np.ones_like(spec.wave[camera], bool)
                         for line in CFit.linetable:
                             zwave = line['restwave'] * (1 + data['zredrock'])
-                            I = np.where((spec.wave[camera] >= (zwave - 1.5*CFit.linemask_sigma * zwave / C_LIGHT)) *
-                                         (spec.wave[camera] <= (zwave + 1.5*CFit.linemask_sigma * zwave / C_LIGHT)))[0]
+                            if line['isbroad']:
+                                sigma = CFit.linemask_sigma_broad
+                            else:
+                                sigma = CFit.linemask_sigma
+                            I = np.where((spec.wave[camera] >= (zwave - 1.5*sigma * zwave / C_LIGHT)) *
+                                         (spec.wave[camera] <= (zwave + 1.5*sigma * zwave / C_LIGHT)))[0]
                             if len(I) > 0:
-                                linemask[I] = False
+                                linemask[I] = False  # False = affected by line
+
+                        #data['std'][icam] = np.std(spec.flux[camera][igal, :][linemask])
                         data['linemask'].append(linemask)
 
                     # Synthesize photometry from a quick coadded (inverse-variance
@@ -447,16 +464,19 @@ class DESISpectra(object):
                     coadd_wave = np.unique(np.hstack(data['wave']))
                     coadd_flux3d = np.zeros((len(coadd_wave), 3))
                     coadd_ivar3d = np.zeros_like(coadd_flux3d)
+                    coadd_linemask3d = np.ones((len(coadd_wave), 3), bool)
                     for icam in np.arange(len(data['cameras'])):
                         I = np.where(np.isin(data['wave'][icam], coadd_wave))[0]
                         J = np.where(np.isin(coadd_wave, data['wave'][icam]))[0]
                         coadd_flux3d[J, icam] = data['flux'][icam][I]
                         coadd_ivar3d[J, icam] = data['ivar'][icam][I]
+                        coadd_linemask3d[J, icam] = data['linemask'][icam][I]
 
                     coadd_ivar = np.sum(coadd_ivar3d, axis=1)
                     coadd_flux = np.zeros_like(coadd_ivar)
                     good = np.where(coadd_ivar > 0)[0]
                     coadd_flux[good] = np.sum(coadd_ivar3d[good, :] * coadd_flux3d[good, :], axis=1) / coadd_ivar[good]
+                    coadd_linemask = np.all(coadd_linemask3d, axis=1)
 
                     #import matplotlib.pyplot as plt
                     #plt.clf()
@@ -468,7 +488,8 @@ class DESISpectra(object):
                     #pdb.set_trace()
 
                     if remember_coadd:
-                        data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux, 'coadd_ivar': coadd_ivar})
+                        data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux,
+                                     'coadd_ivar': coadd_ivar, 'coadd_linemask': coadd_linemask})
 
                     if synthphot:
                         padflux, padwave = filters.pad_spectrum(coadd_flux, coadd_wave, method='edge')
@@ -531,11 +552,14 @@ class DESISpectra(object):
 
         # The information stored in the metadata table depends on which spectra
         # were fitted (exposures, nightly coadds, deep coadds).
-        fluxcols = ['FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+        fluxcols = ['FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
+                    'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                     'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                     'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
-        colunit = {'RA': u.deg, 'DEC': u.deg, 'FIBERTOTFLUX_G': u.nanomaggy, 'FIBERTOTFLUX_R': u.nanomaggy,
-                   'FIBERTOTFLUX_Z': u.nanomaggy, 'FLUX_G': u.nanomaggy, 'FLUX_R': u.nanomaggy,
+        colunit = {'RA': u.deg, 'DEC': u.deg,
+                   'FIBERFLUX_G': u.nanomaggy, 'FIBERFLUX_R': u.nanomaggy, 'FIBERFLUX_Z': u.nanomaggy,
+                   'FIBERTOTFLUX_G': u.nanomaggy, 'FIBERTOTFLUX_R': u.nanomaggy, 'FIBERTOTFLUX_Z': u.nanomaggy,
+                   'FLUX_G': u.nanomaggy, 'FLUX_R': u.nanomaggy,
                    'FLUX_Z': u.nanomaggy, 'FLUX_W1': u.nanomaggy, 'FLUX_W2': u.nanomaggy, 
                    'FLUX_IVAR_G': 1/u.nanomaggy**2, 'FLUX_IVAR_R': 1/u.nanomaggy**2,
                    'FLUX_IVAR_Z': 1/u.nanomaggy**2, 'FLUX_IVAR_W1': 1/u.nanomaggy**2,
@@ -570,11 +594,11 @@ class DESISpectra(object):
             if zcol in colunit.keys():
                 meta[zcol].unit = colunit[zcol]
 
-        if fastphot:
-            for fluxcol in fluxcols:
-                meta[fluxcol] = self.meta[fluxcol]
-                if fluxcol in colunit.keys():
-                    meta[fluxcol].unit = colunit[fluxcol]
+        #if fastphot:
+        for fluxcol in fluxcols:
+            meta[fluxcol] = self.meta[fluxcol]
+            if fluxcol in colunit.keys():
+                meta[fluxcol].unit = colunit[fluxcol]
 
         out = Table()
         out['TARGETID'] = self.meta['TARGETID']
