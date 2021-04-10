@@ -25,12 +25,6 @@ class DESISpectra(object):
 
         self.fiberassign_dir = os.path.join(os.getenv('DESI_ROOT'), 'target', 'fiberassign', 'tiles', 'trunk')
 
-        # read the summary tile file (not sure we need this...)
-        if False:
-            tilefile = '/global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/sv1-tiles.fits'
-            self.tiles = fitsio.read(tilefile)
-            log.info('Read {} tiles from {}'.format(len(self.tiles), tilefile))
-        
         ## Closest nside to DESI tile area of ~7 deg (from
         ## desitarget.io.read_targets_in_quick).
         #self.tile_nside = pixarea2nside(8.)
@@ -89,37 +83,6 @@ class DESISpectra(object):
             log.warning('At least one of zbestfiles or fastfit (and metadata, specprod, and coadd_type) are required.')
             raise ValueError
 
-        ## If we are given the fitting results, construct the appropriate
-        ## zbestfiles filenames based on the input.
-        #if fastfit is not None and metadata is not None:
-        #    if specprod is None or coadd_type is None:
-        #        log.warning('When using fastfit and metadata, specprod and coadd_type are required inputs.')
-        #        raise ValueError
-        #    
-        #    zbestdir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles')
-        #    tiles = metadata['TILEID'].astype(str).data
-        #    petals = metadata['FIBER'].data // 500
-        #    
-        #    zbestfiles = []
-        #    if coadd_type == 'deep' or coadd_type == 'all':
-        #        for tile in tiles:
-        #            for petal in petals:
-        #                zbestfiles.append(os.path.join(zbestdir, str(tile), coadd_type, 'zbest-{}-{}-{}.fits'.format(petal, tile, coadd_type)))
-        #    elif coadd_type == 'night':
-        #        nights = metadata['NIGHT'].astype(str).data
-        #        for tile in tiles:
-        #            for night in nights:
-        #                for petal in petals:
-        #                    zbestfiles.append(os.path.join(zbestdir, str(tile), str(night), 'zbest-{}-{}-{}.fits'.format(petal, tile, night)))
-        #    elif coadd_type == 'exposures':
-        #        raise NotImplemented
-        #        # we probably want to *require* tile or night in this case...
-        #    else:
-        #        pass
-        #    
-        #    zbestfiles = np.array(zbestfiles)
-        #    targetids = fastfit['TARGETID'].data
-            
         if len(np.atleast_1d(zbestfiles)) == 0:
             log.warning('No zbestfiles found!')
             raise IOError
@@ -157,7 +120,6 @@ class DESISpectra(object):
         zbestfiles = np.array(sorted(set(np.atleast_1d(zbestfiles))))
         log.info('Reading and parsing {} unique zbestfile(s)'.format(len(zbestfiles)))
 
-        #self.fitindx = []
         self.zbest, self.meta = [], []
         self.zbestfiles, self.specfiles = [], []
         for zbestfile in np.atleast_1d(zbestfiles):
@@ -206,7 +168,6 @@ class DESISpectra(object):
                     assert(np.all(zb['TARGETID'] == meta['TARGETID']))
                     fitindx = np.where((zb['Z'] > 0) * # (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
                          (meta['OBJTYPE'] == 'TGT') * (meta['FIBERSTATUS'] == 0))[0]
-                    #self.fitindx.append(fitindx)
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.

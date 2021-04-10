@@ -156,7 +156,6 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             args.tile = alltiles[ireduced]
             print(args.tile)
 
-
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')
 

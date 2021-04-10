@@ -5,19 +5,19 @@ fastspecfit.scripts.fastspec
 
 FastSpec wrapper. Call with, e.g.,
   # nice BGS example
-  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-4-80613-deep.fits --coadd-type deep -o fastspec.fits --targetids 39633345008634465
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-4-80613-deep.fits -o fastspec.fits --targetids 39633345008634465
 
   # redrock is wrong!
-  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80605/deep/zbest-0-80605-deep.fits --coadd-type deep -o fastspec.fits --targetids 39627652595714901
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80605/deep/zbest-0-80605-deep.fits -o fastspec.fits --targetids 39627652595714901
 
   # good test of needing smoothing continuum residuals before line-fitting
-  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80605/deep/zbest-9-80605-deep.fits --coadd-type deep -o fastspec.fits --targetids 39627658622930703
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80605/deep/zbest-9-80605-deep.fits -o fastspec.fits --targetids 39627658622930703
 
-  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-0-80613-deep.fits --coadd-type deep -o fastspec.fits --targetids 39633314155332057
-  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-0-80606-deep.fits --coadd-type deep -o fastspec.fits --ntargets 2
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-0-80613-deep.fits -o fastspec.fits --targetids 39633314155332057
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80613/deep/zbest-0-80606-deep.fits -o fastspec.fits --ntargets 2
 
   # nice QSO with broad lines
-  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80607/deep/zbest-9-80607-deep.fits --coadd-type deep -o fastspec2.fits --targetids 39633331528141827
+  fastspec /global/cfs/cdirs/desi/spectro/redux/cascades/tiles/80607/deep/zbest-9-80607-deep.fits -o fastspec2.fits --targetids 39633331528141827
 
 """
 import pdb # for debugging
@@ -82,7 +82,7 @@ def parse(options=None):
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
 
-    parser.add_argument('--coadd-type', type=str, default='deep', choices=['deep', 'all', 'night', 'exposures'],
+    parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
                         help='Type of spectral coadds corresponding to the input zbestfiles.')
     parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
 
