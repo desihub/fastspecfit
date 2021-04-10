@@ -160,7 +160,7 @@ Name                      Type        Units                         Description
          OII_3726_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
       OII_3726_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
         OII_3726_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
-            OII_3726_CHI2     float32                               Reduced chi^2 of the line-fit.
+            OII_3726_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
             OII_3726_NPIX       int32                               Number of pixels attributed to the emission line.
              OII_3729_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
         OII_3729_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
@@ -175,7 +175,7 @@ Name                      Type        Units                         Description
          OII_3729_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
       OII_3729_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
         OII_3729_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
-            OII_3729_CHI2     float32                               Reduced chi^2 of the line-fit.
+            OII_3729_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
             OII_3729_NPIX       int32                               Number of pixels attributed to the emission line.
            NEIII_3869_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
       NEIII_3869_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
@@ -205,7 +205,7 @@ Name                      Type        Units                         Description
         OIII_4959_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
      OIII_4959_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
        OIII_4959_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
-           OIII_4959_CHI2     float32                               Reduced chi^2 of the line-fit.
+           OIII_4959_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
            OIII_4959_NPIX       int32                               Number of pixels attributed to the emission line.
             OIII_5007_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
        OIII_5007_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
@@ -220,7 +220,7 @@ Name                      Type        Units                         Description
         OIII_5007_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
      OIII_5007_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
        OIII_5007_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
-           OIII_5007_CHI2     float32                               Reduced chi^2 of the line-fit.
+           OIII_5007_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
            OIII_5007_NPIX       int32                               Number of pixels attributed to the emission line.
              HEPSILON_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
         HEPSILON_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
@@ -235,7 +235,7 @@ Name                      Type        Units                         Description
          HEPSILON_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
       HEPSILON_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
         HEPSILON_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
-            HEPSILON_CHI2     float32                               Reduced chi^2 of the line-fit.
+            HEPSILON_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
             HEPSILON_NPIX       int32                               Number of pixels attributed to the emission line.
                HDELTA_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
           HDELTA_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
@@ -265,7 +265,7 @@ Name                      Type        Units                         Description
            HGAMMA_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
         HGAMMA_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
           HGAMMA_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
-              HGAMMA_CHI2     float32                               Reduced chi^2 of the line-fit.
+              HGAMMA_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
               HGAMMA_NPIX       int32                               Number of pixels attributed to the emission line.
                 HBETA_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
            HBETA_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
@@ -280,7 +280,7 @@ Name                      Type        Units                         Description
             HBETA_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
          HBETA_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
            HBETA_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
-               HBETA_CHI2     float32                               Reduced chi^2 of the line-fit.
+               HBETA_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
                HBETA_NPIX       int32                               Number of pixels attributed to the emission line.
                HALPHA_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
           HALPHA_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
@@ -295,7 +295,7 @@ Name                      Type        Units                         Description
            HALPHA_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
         HALPHA_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
           HALPHA_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
-              HALPHA_CHI2     float32                               Reduced chi^2 of the line-fit.
+              HALPHA_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
               HALPHA_NPIX       int32                               Number of pixels attributed to the emission line.
              NII_6548_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
         NII_6548_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
