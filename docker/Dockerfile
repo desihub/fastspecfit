@@ -170,6 +170,16 @@ RUN mkdir $DESIMODEL \
     && cd $DESIMODEL \
     && svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data
 
+WORKDIR /src
+RUN git clone https://github.com/desihub/fastspecfit.git fastspecfit \
+    && cd fastspecfit && git describe --always
+
+# update 
+# RUN cd /src/fastspecfit && git pull && git describe --always && echo 1
+
+ENV PYTHONPATH=/src/fastspecfit/py:$PYTHONPATH
+ENV PATH=/src/fastspecfit/bin:$PATH
+
 RUN mkdir /homedir && chmod 777 /homedir
 ENV HOME /homedir
 
@@ -194,3 +204,5 @@ RUN echo "export PS1='[container] \\u@\\h:\\w$ '" >> $HOME/.bashrc \
   # Make ipython config files readable!?!!
   && chmod -R a+rwX $HOME/.ipython \
   && echo 1
+
+LABEL Maintainer="John Moustakas jmoustakas@siena.edu"
