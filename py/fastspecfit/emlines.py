@@ -741,7 +741,7 @@ class EMLineFit(ContinuumTools):
 
         # The wavelengths overlap between the cameras a bit...
         srt = np.argsort(emlinewave)
-        padflux, padwave = filters.pad_spectrum((continuummodelflux+emlinemodel)[srt], emlinewave[srt], method='edge')
+        padflux, padwave = filters.pad_spectrum((continuummodelflux+smoothcontinuummodelflux+emlinemodel)[srt], emlinewave[srt], method='edge')
         synthmaggies = filters.get_ab_maggies(padflux / self.fluxnorm, padwave)
         synthmaggies = synthmaggies.as_array().view('f8')
         model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
