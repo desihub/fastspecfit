@@ -81,12 +81,12 @@ Name                      Type        Units                         Description
         CONTINUUM_AV_IVAR     float32                      1 / mag2 Inverse variance of CONTINUUM_AV.
           CONTINUUM_VDISP     float32                        km / s Stellar velocity dispersion.
      CONTINUUM_VDISP_IVAR     float32                      s2 / km2 Inverse variance of CONTINUUM_VDISP.
-          CONTINUUM_SNR_B     float32                               Median signal-to-noise ratio per pixel in 'b' camera.
-          CONTINUUM_SNR_R     float32                               Median signal-to-noise ratio per pixel in 'r' camera.
-          CONTINUUM_SNR_Z     float32                               Median signal-to-noise ratio per pixel in 'z' camera.
-   CONTINUUM_SMOOTHCORR_B     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the 'b' camera (e.g., values > 0.1 or 10% imply a large mean correction).
-   CONTINUUM_SMOOTHCORR_R     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the 'r' camera.
-   CONTINUUM_SMOOTHCORR_Z     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the 'z' camera.
+          CONTINUUM_SNR_B     float32                               Median signal-to-noise ratio per pixel in *b* camera.
+          CONTINUUM_SNR_R     float32                               Median signal-to-noise ratio per pixel in *r* camera.
+          CONTINUUM_SNR_Z     float32                               Median signal-to-noise ratio per pixel in *z* camera.
+   CONTINUUM_SMOOTHCORR_B     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *b* camera.
+   CONTINUUM_SMOOTHCORR_R     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *r* camera.
+   CONTINUUM_SMOOTHCORR_Z     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *z* camera.
                     D4000     float32                               4000-A break index from the data.
                D4000_IVAR     float32                               Inverse variance of D4000.
               D4000_MODEL     float32                               4000-A break index from the best-fitting continuum model.
@@ -422,7 +422,7 @@ Name                   Type        Units      Description
                 TILEID   int32                Tile ID number.
                  NIGHT   int32                Night (not present when fitting deep coadds).
                  EXPID   int32                Exposure ID number (not present when fitting coadds).
-               PHOTSYS    str1                Photometric system ('N' or 'S').
+               PHOTSYS    str1                Photometric system (*N* or *S*).
        SV1_DESI_TARGET   int64                SV1 DESI targeting bit.
         SV1_BGS_TARGET   int64                SV1 BGS targeting bit.
         SV1_MWS_TARGET   int64                SV1 MWS targeting bit.
@@ -433,6 +433,22 @@ Name                   Type        Units      Description
                  ZWARN    int8                Redrock zwarning bit.
              DELTACHI2 float64                Redrock delta-chi-squared.
               SPECTYPE    str6                Redrock spectral classification.
+           FIBERFLUX_G float32           nmgy Fiber g-band flux from targeting catalog.
+           FIBERFLUX_R float32           nmgy Fiber r-band flux from targeting catalog.
+           FIBERFLUX_Z float32           nmgy Fiber z-band flux from targeting catalog.
+        FIBERTOTFLUX_G float32           nmgy Fibertot g-band flux from targeting catalog.
+        FIBERTOTFLUX_R float32           nmgy Fibertot r-band flux from targeting catalog.
+        FIBERTOTFLUX_Z float32           nmgy Fibertot z-band flux from targeting catalog.
+                FLUX_G float32           nmgy Total g-band flux from targeting catalog.
+                FLUX_R float32           nmgy Total r-band flux from targeting catalog.
+                FLUX_Z float32           nmgy Total z-band flux from targeting catalog.
+               FLUX_W1 float32           nmgy Total W1-band flux from targeting catalog.
+               FLUX_W2 float32           nmgy Total W2-band flux from targeting catalog.
+           FLUX_IVAR_G float32     1 / nmgy^2 Inverse variance of FLUX_G from targeting catalog.
+           FLUX_IVAR_R float32     1 / nmgy^2 Inverse variance of FLUX_R from targeting catalog.
+           FLUX_IVAR_Z float32     1 / nmgy^2 Inverse variance of FLUX_Z from targeting catalog.
+          FLUX_IVAR_W1 float32     1 / nmgy^2 Inverse variance of FLUX_W1 from targeting catalog.
+          FLUX_IVAR_W2 float32     1 / nmgy^2 Inverse variance of FLUX_W2 from targeting catalog.
 ====================== =========== ========== ==========================================
 
 Notes and Examples

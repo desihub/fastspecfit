@@ -129,7 +129,7 @@ Name                   Type        Units      Description
                 TILEID   int32                Tile ID number.
                  NIGHT   int32                Night (not present when fitting multi-night coadds).
                  EXPID   int32                Exposure ID number (not present when multi-night coadds).
-               PHOTSYS    str1                Photometric system ('N' or 'S').
+               PHOTSYS    str1                Photometric system (*N* or *S*).
        SV1_DESI_TARGET   int64                SV1 DESI targeting bit.
         SV1_BGS_TARGET   int64                SV1 BGS targeting bit.
         SV1_MWS_TARGET   int64                SV1 MWS targeting bit.
