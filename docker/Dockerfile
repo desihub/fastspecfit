@@ -190,19 +190,20 @@ CMD ["/bin/bash"]
 
 RUN echo "export PS1='[container] \\u@\\h:\\w$ '" >> $HOME/.bashrc \
   # Create config files in $HOME
-  && mkdir $HOME/.qdo && echo "[qdo]" > $HOME/.qdo/qdorc \
   && python -c "import astropy" \
   && python -c "import matplotlib.font_manager as fm; f = fm.FontManager()" \
-  && ipython -c "print('hello')" \
-  # Download astropy site locations and USNO sky model
-  && python -c "from astropy.coordinates import EarthLocation; EarthLocation._get_site_registry(force_download=True)" \
-  && python -c "from astropy.coordinates import EarthLocation, SkyCoord, AltAz; from astropy.time import Time; print(EarthLocation.of_site('ctio')); print(SkyCoord(180.,-45.,unit='deg').transform_to(AltAz(obstime=Time(56806.0, format='mjd'), location=EarthLocation.of_site('ctio'))))" \
-  # Download astropy IERS leap-second list
-  && python -c "from astropy.time import Time; Time.now()" \
-  # Make astropy cache files readable!?!!
-  && chmod -R a+rwX $HOME/.astropy \
-  # Make ipython config files readable!?!!
-  && chmod -R a+rwX $HOME/.ipython \
-  && echo 1
+  && ipython -c "print('hello')" 
+
+#  # Download astropy site locations and USNO sky model
+#  && python -c "from astropy.coordinates import EarthLocation; EarthLocation._get_site_registry(force_download=True)" \
+#  && python -c "from astropy.coordinates import EarthLocation, SkyCoord, AltAz; from astropy.time import Time; print(EarthLocation.of_site('ctio')); print(SkyCoord(180.,-45.,unit='deg').transform_to(AltAz(obstime=Time(56806.0, format='mjd'), location=EarthLocation.of_site('ctio'))))" 
+#
+#  # Download astropy IERS leap-second list
+#  && python -c "from astropy.time import Time; Time.now()" \
+#  # Make astropy cache files readable!?!!
+#  && chmod -R a+rwX $HOME/.astropy \
+#  # Make ipython config files readable!?!!
+#  && chmod -R a+rwX $HOME/.ipython \
+#  && echo 1
 
 LABEL Maintainer="John Moustakas jmoustakas@siena.edu"
