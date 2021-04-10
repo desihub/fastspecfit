@@ -160,36 +160,33 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')
 
         def _findfiles(filedir, prefix='zbest'):
-            if args.coadd_type == 'deep':
+            if args.coadd_type == 'cumulative':
                 if args.tile is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'deep', '{}-[0-9]-{}-deep.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
-            elif args.coadd_type == 'all':
-                if args.tile is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'all', '{}-[0-9]-{}-all.fits'.format(
-                        prefix, tile))) for tile in args.tile]))))
-                else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'all', '{}-[0-9]-?????-all.fits'.format(prefix))))))
-            elif args.coadd_type == 'night':
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', '?????', '????????', '{}-[0-9]-?????-thru????????.fits'.format(prefix))))))
+            elif args.coadd_type == 'pernight':
                 if args.tile is not None and args.night is not None:
                     thesefiles = []
                     for tile in args.tile:
                         for night in args.night:
-                            thesefiles.append(glob(os.path.join(filedir, str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
+                            thesefiles.append(glob(os.path.join(filedir, 'pernight', str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
                     thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
                 elif args.tile is not None and args.night is None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'pernight', str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 elif args.tile is None and args.night is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'pernight', '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
                         prefix, night))) for night in args.night]))))
                 else:
                     thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
-            elif args.coadd_type == 'exposures':
-                raise NotImplemented
-                # we probably want to *require* tile or night in this case...
+            elif args.coadd_type == 'perexp':
+                if args.tile is not None:
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'perexp', str(tile), '????????', '{}-[0-9]-{}-exp????????.fits'.format(
+                        prefix, tile))) for tile in args.tile]))))
+                else:
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, 'perexp', '?????', '????????', '{}-[0-9]-?????-exp????????.fits'.format(prefix))))))
             else:
                 pass
             return thesefiles

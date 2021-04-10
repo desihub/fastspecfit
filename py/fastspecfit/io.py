@@ -62,7 +62,7 @@ class DESISpectra(object):
     def find_specfiles(self, zbestfiles=None,
                        #fastfit=None, metadata=None,
                        specprod=None, coadd_type=None, firsttarget=0,
-                       targetids=None, ntargets=None, exposures=False):
+                       targetids=None, ntargets=None):
         """Initialize the fastspecfit output data table.
 
         Parameters
@@ -92,7 +92,9 @@ class DESISpectra(object):
         # Try to glean specprod so we can write it to the output file. This
         # should really be in the file header--- see
         # https://github.com/desihub/desispec/issues/1077
-        if specprod is None:
+        if specprod is None:            
+            #import desiutil.depend
+            #hdr = fitsio.read_header(np.atleast_1d(zbestfiles)[0].replace('zbest-', 'coadd-'))
             # stupidly fragile!
             specprod = np.atleast_1d(zbestfiles)[0].replace(self.reduxdir, '').split(os.sep)[1]
             self.specprod = specprod
@@ -102,15 +104,12 @@ class DESISpectra(object):
         # that coadd_type is a scalar...
         if coadd_type is None:
             import re
-            if re.search('-20[0-9]+[0-9]+[0-9]+\.fits', zbestfile[0]) is not None:
-                coadd_type = 'night'
-            elif 'deep' in zbestfile[0]:
-                coadd_type = 'deep'
-            elif 'all' in zbestfile[0]:
-                coadd_type = 'all'
+            if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', zbestfile[0]) is not None:
+                coadd_type = 'cumulative'
+            elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', zbestfile[0]) is not None:
+                coadd_type = 'pernight'
             else:
-                raise NotImplementedError
-                # single expsure
+                coadd_type = 'perexp'
                 
         self.coadd_type = coadd_type
         log.info('Parsed coadd_type={}'.format(coadd_type))
@@ -123,10 +122,7 @@ class DESISpectra(object):
         self.zbest, self.meta = [], []
         self.zbestfiles, self.specfiles = [], []
         for zbestfile in np.atleast_1d(zbestfiles):
-            if exposures:
-                specfile = zbestfile.replace('zbest-', 'spectra-')
-            else:
-                specfile = zbestfile.replace('zbest-', 'coadd-')
+            specfile = zbestfile.replace('zbest-', 'coadd-')
 
             # Figure out which fibermap columns to put into the metadata
             # table. Note that the fibermap includes all the spectra that went
@@ -139,8 +135,8 @@ class DESISpectra(object):
                       'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                       'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                       'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z']
-            # NIGHT is not defined for the deep coadds
-            if not 'deep' in zbestfile:
+            # NIGHT is not defined for the cumulative coadds
+            if coadd_type != 'cumulative':
                 fmcols = fmcols + ['NIGHT']
             # add targeting columns
             fmcols = fmcols + allfmcols[['DESI_TARGET' in col or 'BGS_TARGET' in col or 'MWS_TARGET' in col for col in allfmcols]].tolist()
@@ -154,20 +150,11 @@ class DESISpectra(object):
             # before subselecting (e.g., we don't want sky spectra).
             if targetids is None:
                 zb = fitsio.read(zbestfile, 'ZBEST', columns=zbcols)
-
                 # Are we reading individual exposures or coadds?
-                if exposures:
-                    log.fatal('Not yet implemented!')
-                    raise NotImplemented
-                    meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
-                    _, I, _ = np.intersect1d(meta['TARGETID'], zb['TARGETID'], return_indices=True)            
-                    meta = meta[I]
-                    assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                else:
-                    meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
-                    assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                    fitindx = np.where((zb['Z'] > 0) * # (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
-                         (meta['OBJTYPE'] == 'TGT') * (meta['FIBERSTATUS'] == 0))[0]
+                meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
+                assert(np.all(zb['TARGETID'] == meta['TARGETID']))
+                fitindx = np.where((zb['Z'] > 0) * # (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
+                     (meta['OBJTYPE'] == 'TGT') * (meta['FIBERSTATUS'] == 0))[0]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -257,8 +244,8 @@ class DESISpectra(object):
     #    dec = 32.375
     #    return dec
 
-    def read_and_unpack(self, CFit, fastphot=False, exposures=False,
-                        synthphot=True, remember_coadd=False):
+    def read_and_unpack(self, CFit, fastphot=False, synthphot=True,
+                        remember_coadd=False):
         """Unpack and pre-process a single DESI spectrum.
         
         Parameters

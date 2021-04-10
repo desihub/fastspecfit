@@ -166,13 +166,14 @@ def main(args=None, comm=None):
             [desiqa_one(*_qaargs) for _qaargs in qaargs]
 
     t0 = time.time()
-    if coadd_type == 'deep' or coadd_type == 'all':
+    if coadd_type == 'cumulative':
         for tile in set(alltiles):
             for petal in set(allpetals):
                 indx = np.where((tile == alltiles) * (petal == allpetals))[0]
                 zbestfile = os.path.join(zbestdir, str(tile), coadd_type, 'zbest-{}-{}-{}.fits'.format(petal, tile, coadd_type))
+                pdb.set_trace()
                 _wrap_qa(zbestfile, indx)
-    elif coadd_type == 'night':
+    elif coadd_type == 'pernight':
         allnights = metadata['NIGHT'].astype(str).data
         for night in set(allnights):
             for tile in set(alltiles):

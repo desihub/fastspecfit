@@ -4,7 +4,8 @@ fastspecfit.scripts.fastphot
 ============================
 
 Fastphot wrapper. Call with, e.g.,
-  fastphot /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80607/deep/zbest-0-80607-deep.fits -o fastphot.fits --ntargets 2
+  fastphot /global/cfs/cdirs/desi/spectro/redux/denali/tiles/cumulative/80607/20201219/zbest-0-80607-thru20201219.fits -o fastphot.fits --ntargets 1
+
 
 """
 import pdb # for debugging
