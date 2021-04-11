@@ -420,15 +420,25 @@ Name                   Type        Units      Description
                    DEC float64            deg Declination from target catalog.
                  FIBER   int32                Fiber ID number.
                 TILEID   int32                Tile ID number.
-                 NIGHT   int32                Night (not present when fitting deep coadds).
-                 EXPID   int32                Exposure ID number (not present when fitting coadds).
+             THRUNIGHT   int32                Last night of coadded data (only present when fitting cumulative coadds).
+                 NIGHT   int32                Night (only when fitting per-night coadds or per-exposure spectra).
+                 EXPID   int32                Exposure ID number (only when fitting per-exposure spectra).
                PHOTSYS    str1                Photometric system (*N* or *S*).
-       SV1_DESI_TARGET   int64                SV1 DESI targeting bit.
-        SV1_BGS_TARGET   int64                SV1 BGS targeting bit.
-        SV1_MWS_TARGET   int64                SV1 MWS targeting bit.
            DESI_TARGET   int64                DESI targeting bit.
             BGS_TARGET   int64                BGS targeting bit.
             MWS_TARGET   int64                MWS targeting bit.
+       SV1_DESI_TARGET   int64                SV1 DESI targeting bit.
+        SV1_BGS_TARGET   int64                SV1 BGS targeting bit.
+        SV1_MWS_TARGET   int64                SV1 MWS targeting bit.
+       SV2_DESI_TARGET   int64                SV2 DESI targeting bit.
+        SV2_BGS_TARGET   int64                SV2 BGS targeting bit.
+        SV2_MWS_TARGET   int64                SV2 MWS targeting bit.
+       SV3_DESI_TARGET   int64                SV3 DESI targeting bit.
+        SV3_BGS_TARGET   int64                SV3 BGS targeting bit.
+        SV3_MWS_TARGET   int64                SV3 MWS targeting bit.
+       SV1_SCND_TARGET   int64                SV1 secondary targeting bit.
+       SV2_SCND_TARGET   int64                SV2 secondary targeting bit.
+       SV3_SCND_TARGET   int64                SV3 secondary targeting bit.
                      Z float64                Redrock redshift.
                  ZWARN    int8                Redrock zwarning bit.
              DELTACHI2 float64                Redrock delta-chi-squared.
