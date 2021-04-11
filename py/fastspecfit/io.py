@@ -16,6 +16,15 @@ from astropy.table import Table
 from desiutil.log import get_logger
 log = get_logger()
 
+TARGETINGBITCOLS = [
+    #'CMX_TARGET',
+    'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET',
+    'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
+    'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
+    'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
+    'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET',
+    ]
+    
 class DESISpectra(object):
     def __init__(self):
         """Class to read in the DESI data needed by fastspecfit.
@@ -135,11 +144,18 @@ class DESISpectra(object):
                       'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                       'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                       'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z']
-            # NIGHT is not defined for the cumulative coadds
-            if coadd_type != 'cumulative':
+                
+            # add targeting bit columns
+            fmcols = np.array(fmcols + [col for col in TARGETINGBITCOLS if col in allfmcols]).tolist()
+                
+            # for the cumulative coadds, NIGHT is defined to be the last night
+            # contributing to the coadd
+            if coadd_type == 'cumulative':
+                thrunight = np.int32(os.path.basename(os.path.dirname(specfile)))
+            else:
+                thrunight = None
                 fmcols = fmcols + ['NIGHT']
-            # add targeting columns
-            fmcols = fmcols + allfmcols[['DESI_TARGET' in col or 'BGS_TARGET' in col or 'MWS_TARGET' in col for col in allfmcols]].tolist()
+
             # older fibermaps are missing the WISE inverse variance
             if 'FLUX_IVAR_W1' in allfmcols:
                 fmcols = fmcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
@@ -189,6 +205,10 @@ class DESISpectra(object):
             else:
                 zb = Table(fitsio.read(zbestfile, 'ZBEST', rows=fitindx, columns=zbcols))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=fmcols))
+
+            if thrunight:
+                meta['THRUNIGHT'] = thrunight
+                
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
             self.zbest.append(Table(zb))
@@ -494,7 +514,7 @@ class DESISpectra(object):
 
         """
         import astropy.units as u
-        from astropy.table import hstack
+        from astropy.table import hstack, Column
 
         nobj = len(self.zbest)
 
@@ -523,26 +543,31 @@ class DESISpectra(object):
 
         # All of this business is so we can get the columns in the order we want
         # (i.e., the order that matches the data model).
-        for metacol in ['TARGETID', 'RA', 'DEC', 'FIBER', 'TILEID', 'NIGHT']:
+        for metacol in ['TARGETID', 'RA', 'DEC', 'FIBER', 'TILEID', 'NIGHT', 'THRUNIGHT']:
             if metacol in metacols:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():
                     meta[metacol].unit = colunit[metacol]
 
         for metacol in metacols:
-            if metacol in skipcols or metacol in meta.colnames:
+            if metacol in skipcols or metacol in TARGETINGBITCOLS or metacol in meta.colnames:
                 continue
             else:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():
                     meta[metacol].unit = colunit[metacol]
-                    
+
+        for bitcol in TARGETINGBITCOLS:
+            if bitcol in metacols:
+                meta[bitcol] = self.meta[bitcol]
+            else:
+                meta.add_column(Column(name=bitcol, dtype=np.int64, length=nobj))
+
         for zcol in zcols:
             meta[zcol] = self.zbest[zcol]
             if zcol in colunit.keys():
                 meta[zcol].unit = colunit[zcol]
 
-        #if fastphot:
         for fluxcol in fluxcols:
             meta[fluxcol] = self.meta[fluxcol]
             if fluxcol in colunit.keys():
