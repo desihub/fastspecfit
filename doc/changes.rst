@@ -5,7 +5,10 @@ FastSpecFit Change Log
 0.0.3 (unreleased)
 -------------------
 
-* No changes yet.
+* First set of updates for denali data release [`PR #16`_].
+
+.. _`PR #16`: https://github.com/desihub/fastspecfit/pull/16
+
 
 0.0.2 (2021-04-10)
 ------------------
