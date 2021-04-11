@@ -141,20 +141,29 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
         if specprod_dir is None:
             specprod_dir = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), args.specprod, 'tiles')
 
-        # figure out which tiles belong to SV1
+        # figure out which tiles belong to the SV programs
         if args.tile is None:
-            tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
-            tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
-            tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
-            alltiles = np.array(list(set(tileinfo['TILEID'])))
-            log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
+            tilefile = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), args.specprod, 'tiles-{}.csv'.format(args.specprod))
+            tileinfo = Table.read(tilefile)
+            tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
+            log.info('Retrieved a list of {} {} tiles from {}'.format(
+                len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
 
-            ireduced = [os.path.isdir(os.path.join(specprod_dir, str(tile1))) for tile1 in alltiles]
+            # old 
+            #tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
+            #tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
+            #tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
+            #log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
+
+            alltiles = np.array(list(set(tileinfo['TILEID'])))
+            ireduced = [os.path.isdir(os.path.join(specprod_dir, args.coadd_type, str(tile1))) for tile1 in alltiles]
             log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
                 args.specprod, np.sum(ireduced), len(alltiles)))
 
             args.tile = alltiles[ireduced]
-            print(args.tile)
+            tileinfo = tileinfo[ireduced]
+            #print(args.tile)
+            print(tileinfo)
 
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')
@@ -233,8 +242,17 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             if rank == 0:
                 log.info('No {} files in {} found!'.format(outprefix, outdir))
             return '', list(), list(), list(), list()
-        #  hack--build the output directories and pass them in the 'zbestfiles' position!
-        zbestfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir) for outfile in outfiles])
+        #  hack--build the output directories and pass them in the 'zbestfiles'
+        #  position! for coadd_type==cumulative, strip out the 'lastnight' argument
+        if args.coadd_type == 'cumulative':
+            #zbestfiles = []
+            #for outfile in outfiles:
+            #    dd = os.path.split(outfile)
+            #    zbestfiles.append(os.path.dirname(dd[0]).replace(outdir, htmldir))
+            #    os.path.dirname(dd[0])
+            zbestfiles = np.array([os.path.dirname(os.path.dirname(outfile)).replace(outdir, htmldir) for outfile in outfiles])
+        else:
+            zbestfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir) for outfile in outfiles])
     else:
         if len(zbestfiles) == 0:
             if rank == 0:

@@ -1347,6 +1347,10 @@ class ContinuumFit(ContinuumTools):
         fiberphot = self.parse_photometry(self.fiber_bands,
                                           maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
                                           lambda_eff=filters.effective_wavelengths.value)
+        
+        #fibertotphot = self.parse_photometry(self.fiber_bands,
+        #                                     maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
+        #                                     lambda_eff=filters.effective_wavelengths.value)
         #if specfit:
         #    synthphot = self.parse_photometry(self.synth_bands,
         #                                      maggies=np.array([specfit['FLUX_SYNTH_{}'.format(band.upper())] for band in self.synth_bands]),
@@ -1356,7 +1360,7 @@ class ContinuumFit(ContinuumTools):
         #                                           lambda_eff=filters.effective_wavelengths.value)
         #else:
         #    synthphot, synthmodelphot = None, None
-            
+        
         fig, ax = plt.subplots(figsize=(12, 8))
 
         if np.any(continuum_phot <= 0):
@@ -1408,13 +1412,21 @@ class ContinuumFit(ContinuumTools):
                     yerr=yerr,
                     fmt='s', markersize=11, markeredgewidth=3, markeredgecolor='k',
                     markerfacecolor='red', elinewidth=3, ecolor='red', capsize=4,
-                    label=r'$grz\,W_{1}W_{2}$ (total flux)', zorder=2)
+                    label=r'$grz\,W_{1}W_{2}$', zorder=2)
 
         good = np.where(fiberphot['abmag'] > 0)[0]
         if len(good) > 0:
             ax.scatter(fiberphot['lambda_eff'][good]/1e4, fiberphot['abmag'][good],
-                        marker='^', s=150, facecolor='orange', edgecolor='k',
-                        label=r'$grz$ (fibertot flux)', alpha=0.9, zorder=5)
+                        marker='o', s=150, facecolor='blue', edgecolor='k',
+                        label=r'$grz$ (fiberflux)', alpha=0.9, zorder=5)
+
+        if False:
+            good = np.where(fibertotphot['abmag'] > 0)[0]
+            if len(good) > 0:
+                ax.scatter(fibertotphot['lambda_eff'][good]/1e4, fibertotphot['abmag'][good],
+                            marker='^', s=150, facecolor='orange', edgecolor='k',
+                            label=r'$grz$ (total fiberflux)', alpha=0.9, zorder=6)
+                
         #if synthphot:
         #    ax.scatter(synthmodelphot['lambda_eff']/1e4, synthmodelphot['abmag'], 
         #               marker='s', s=175, color='green', #edgecolor='k',
@@ -1435,24 +1447,38 @@ class ContinuumFit(ContinuumTools):
             #'zfastfastphot': '$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
+            'absmag_r': '$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_R']),
+            'absmag_gr': '$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_G']-fastphot['ABSMAG_R']),
             }
         if fastphot['CONTINUUM_AV_IVAR'] == 0:
-            leg.update({'AV': '$A(V)$={:.3f} mag'.format(fastphot['CONTINUUM_AV'])})
+            leg.update({'AV': '$A(V)$={:.2f} mag'.format(fastphot['CONTINUUM_AV'])})
         else:
-            leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
+            leg.update({'AV': '$A(V)$={:.2f}+/-{:.2f} mag'.format(
                 fastphot['CONTINUUM_AV'], 1/np.sqrt(fastphot['CONTINUUM_AV_IVAR']))})
 
-        fntsz = 18
-        #ax.text(0.98, 0.24, '{}'.format(leg['targetid']), 
-        #         ha='right', va='center', transform=ax.transAxes, fontsize=fntsz)
-        #ax.text(0.98, 0.92, '{} {}'.format(leg['targetid'], leg['zredrock']), 
-        #         ha='right', va='center', transform=ax.transAxes, fontsize=fntsz)
-        ax.text(0.98, 0.18, r'{}'.format(leg['zredrock']),
-                 ha='right', va='center', transform=ax.transAxes, fontsize=fntsz)
-        ax.text(0.98, 0.12, r'{} {}'.format(leg['chi2'], leg['age']),
-                 ha='right', va='center', transform=ax.transAxes, fontsize=fntsz)
-        ax.text(0.98, 0.06, r'{}'.format(leg['AV']),
-                 ha='right', va='center', transform=ax.transAxes, fontsize=fntsz)
+        bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
+        legfntsz = 20
+
+        txt = '\n'.join((
+            r'{}'.format(leg['absmag_r']),
+            r'{}'.format(leg['absmag_gr'])
+            ))
+        
+        legxpos, legypos = 0.04, 0.94
+        ax.text(legxpos, legypos, txt, ha='left', va='top',
+                transform=ax.transAxes, fontsize=legfntsz,
+                bbox=bbox)
+        
+        txt = '\n'.join((
+            r'{}'.format(leg['zredrock']),
+            r'{} {}'.format(leg['chi2'], leg['age']),
+            r'{}'.format(leg['AV']),
+            ))
+        
+        legxpos, legypos = 0.98, 0.06
+        ax.text(legxpos, legypos, txt, ha='right', va='bottom',
+                transform=ax.transAxes, fontsize=legfntsz,
+                bbox=bbox)
 
         plt.subplots_adjust(bottom=0.14, right=0.95, top=0.93)
 

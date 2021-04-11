@@ -24,7 +24,7 @@ def parse(options=None):
     import sys, argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--specprod', type=str, default='cascades', #choices=['cascades', 'blanc', 'daily'],
+    parser.add_argument('--specprod', type=str, default='denali', choices=['denali', 'cascades', 'daily'],
                         help='Spectroscopic production to process.')
     parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
                         help='Type of spectral coadds corresponding to the input zbestfiles.')
@@ -66,7 +66,7 @@ def build_htmlhome(htmldir, fastfit, metadata, coadd_type='cumulative', htmlhome
 
     alltiles = metadata['TILEID']
     tiles = np.unique(metadata['TILEID'])
-    tiledirs = [os.path.join('tiles', str(tile), coadd_type, '{}.html'.format(tile)) for tile in tiles]
+    #tiledirs = [os.path.join('tiles', coadd_type, str(tile), '{}-{}.html'.format(tile, coadd_type)) for tile in tiles]
 
     with open(htmlhomefile, 'w') as html:
         html.write('<html><body>\n')
@@ -88,9 +88,11 @@ def build_htmlhome(htmldir, fastfit, metadata, coadd_type='cumulative', htmlhome
         #html.write('<th></th>\n')
         html.write('</tr>\n')
 
-        for tile, tiledir in zip(tiles, tiledirs):
+        for tile in tiles:
+            tiledatafile = os.path.join(htmldir, 'tiles', coadd_type, str(tile), '{}-{}.html'.format(tile, coadd_type))
+            tilehtmlfile = os.path.join(htmldir_https, 'tiles', coadd_type, str(tile), '{}-{}.html'.format(tile, coadd_type))
             html.write('<tr>\n')
-            html.write('<td><a href="{}">{}</a></td>\n'.format(os.path.join(htmldir_https, tiledir), tile))
+            html.write('<td><a href="{}">{}</a></td>\n'.format(tilehtmlfile, tile))
             html.write('</tr>\n')
         html.write('</table>\n')
 
@@ -99,16 +101,19 @@ def build_htmlhome(htmldir, fastfit, metadata, coadd_type='cumulative', htmlhome
         html.write('</html></body>\n')
 
     # Now build the individual tile pages.
-    for tile, tiledir in zip(tiles, tiledirs):
-        tilehtmldir = os.path.join(htmldir_https, tiledir)
-        print('Building {}'.format(tilehtmldir))
+    for tile in tiles:
+        tiledatafile = os.path.join(htmldir, 'tiles', coadd_type, str(tile), '{}-{}.html'.format(tile, coadd_type))
+        print('Building {}'.format(tiledatafile))
     
         intile = np.where(tile == alltiles)[0]
         targetids = metadata[intile]['TARGETID']
         assert(len(targetids) == len(np.unique(targetids))) # should be unique on a given tile, always
 
-        tiledatadir = os.path.join(htmldir, tiledir)
-        with open(tiledatadir, 'w') as html:
+        #tiledatadir = os.path.join(htmldir, tiledir)
+        #if not os.path.isdir(tiledatadir):
+        #    os.makedirs(tiledatadir)
+        
+        with open(tiledatafile, 'w') as html:
             html.write('<html><body>\n')
             html.write('<style type="text/css">\n')
             html.write('table, td, th {padding: 5px; text-align: center; border: 1px solid black;}\n')
@@ -131,9 +136,9 @@ def build_htmlhome(htmldir, fastfit, metadata, coadd_type='cumulative', htmlhome
                 html.write('<td>{}</td>\n'.format(targetid))
 
                 for prefix in ('fastspec', 'fastphot'):
-                    httpfile = os.path.join(htmldir_https, 'tiles', str(tile), coadd_type, '{}-{}-{}-{}.png'.format(
+                    httpfile = os.path.join(htmldir_https, 'tiles', coadd_type, str(tile), '{}-{}-{}-{}.png'.format(
                         prefix, tile, coadd_type, targetid))
-                    pngfile = os.path.join(htmldir, 'tiles', str(tile), coadd_type, '{}-{}-{}-{}.png'.format(
+                    pngfile = os.path.join(htmldir, 'tiles', coadd_type, str(tile), '{}-{}-{}-{}.png'.format(
                         prefix, tile, coadd_type, targetid))
                     if os.path.isfile(pngfile):
                         html.write('<td><a href="{0}"><img src="{0}" height="auto" width="512px"></a></td>\n'.format(httpfile))
