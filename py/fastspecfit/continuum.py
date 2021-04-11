@@ -1277,7 +1277,7 @@ class ContinuumFit(ContinuumTools):
         
         return result, continuummodel, smooth_continuum
     
-    def qa_fastphot(self, data, fastphot, metadata, coadd_type='deep',
+    def qa_fastphot(self, data, fastphot, metadata, coadd_type='cumulative',
                     outdir=None, outprefix=None):
         """QA of the best-fitting continuum.
 
@@ -1309,24 +1309,26 @@ class ContinuumFit(ContinuumTools):
         if outprefix is None:
             outprefix = 'fastphot'
 
-        if coadd_type == 'deep' or coadd_type == 'all':
+        if coadd_type == 'cumulative':
             title = 'Tile/Coadd: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], coadd_type, metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
-        elif coadd_type == 'night':
+        elif coadd_type == 'pernight':
             title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
                     metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
-        else:
+        elif coadd_type == 'perexp':
             title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
                     metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'],
                     metadata['EXPID'], metadata['TARGETID']))
+        else:
+            pass
 
         # rebuild the best-fitting photometric model fit
         continuum_phot, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift,

@@ -26,12 +26,10 @@ def parse(options=None):
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--specprod', type=str, default='cascades', #choices=['cascades', 'blanc', 'daily'],
                         help='Spectroscopic production to process.')
-    parser.add_argument('--coadd-type', type=str, default='deep',
-                        choices=['deep', 'all', 'night', 'exposures'],
-                        help='Specify which type of spectra/zbest files to process.')
-    
-    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process (ignored if coadd-type is exposures).')
-    parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is exposures or deep-coadds).')
+    parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
+                        help='Type of spectral coadds corresponding to the input zbestfiles.')
+    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
+    parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
     
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
@@ -56,7 +54,7 @@ def parse(options=None):
 
     return args
 
-def build_htmlhome(htmldir, fastfit, metadata, coadd_type='deep', htmlhome='index.html'):
+def build_htmlhome(htmldir, fastfit, metadata, coadd_type='cumulative', htmlhome='index.html'):
     """Build the home (index.html) page.
 
     """
