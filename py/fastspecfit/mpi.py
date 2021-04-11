@@ -118,7 +118,7 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
          specprod_dir=None):
 
     import fitsio
-    from astropy.table import Table
+    from astropy.table import Table, vstack
 
     t0 = time.time()
     if comm is None:
@@ -141,56 +141,67 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
         if specprod_dir is None:
             specprod_dir = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), args.specprod, 'tiles')
 
-        # figure out which tiles belong to SV1
+        # figure out which tiles belong to the SV programs
         if args.tile is None:
-            tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
-            tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
-            tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
-            alltiles = np.array(list(set(tileinfo['TILEID'])))
-            log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
+            tilefile = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), args.specprod, 'tiles-{}.csv'.format(args.specprod))
+            alltileinfo = Table.read(tilefile)
+            tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
+            #tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
 
-            ireduced = [os.path.isdir(os.path.join(specprod_dir, str(tile1))) for tile1 in alltiles]
+            log.info('Add tiles 80605-80610 which are incorrectly identified as cmx tiles.')
+            tileinfo = vstack((tileinfo, alltileinfo[np.where((alltileinfo['TILEID'] >= 80605) * (alltileinfo['TILEID'] <= 80610))[0]]))
+            tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
+
+            log.info('Retrieved a list of {} {} tiles from {}'.format(
+                len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
+
+            # old 
+            #tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
+            #tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
+            #tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
+            #log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
+
+            alltiles = np.array(list(set(tileinfo['TILEID'])))
+            ireduced = [os.path.isdir(os.path.join(specprod_dir, args.coadd_type, str(tile1))) for tile1 in alltiles]
             log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
                 args.specprod, np.sum(ireduced), len(alltiles)))
 
             args.tile = alltiles[ireduced]
-            print(args.tile)
-
+            tileinfo = tileinfo[ireduced]
+            #print(args.tile)
+            print(tileinfo)
 
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')
 
         def _findfiles(filedir, prefix='zbest'):
-            if args.coadd_type == 'deep':
+            if args.coadd_type == 'cumulative':
                 if args.tile is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'deep', '{}-[0-9]-{}-deep.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'deep', '{}-[0-9]-?????-deep.fits'.format(prefix))))))
-            elif args.coadd_type == 'all':
-                if args.tile is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), 'all', '{}-[0-9]-{}-all.fits'.format(
-                        prefix, tile))) for tile in args.tile]))))
-                else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', 'all', '{}-[0-9]-?????-all.fits'.format(prefix))))))
-            elif args.coadd_type == 'night':
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', '?????', '????????', '{}-[0-9]-?????-thru????????.fits'.format(prefix))))))
+            elif args.coadd_type == 'pernight':
                 if args.tile is not None and args.night is not None:
                     thesefiles = []
                     for tile in args.tile:
                         for night in args.night:
-                            thesefiles.append(glob(os.path.join(filedir, str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
+                            thesefiles.append(glob(os.path.join(filedir, 'pernight', str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
                     thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
                 elif args.tile is not None and args.night is None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'pernight', str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 elif args.tile is None and args.night is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'pernight', '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
                         prefix, night))) for night in args.night]))))
                 else:
                     thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
-            elif args.coadd_type == 'exposures':
-                raise NotImplemented
-                # we probably want to *require* tile or night in this case...
+            elif args.coadd_type == 'perexp':
+                if args.tile is not None:
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'perexp', str(tile), '????????', '{}-[0-9]-{}-exp????????.fits'.format(
+                        prefix, tile))) for tile in args.tile]))))
+                else:
+                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, 'perexp', '?????', '????????', '{}-[0-9]-?????-exp????????.fits'.format(prefix))))))
             else:
                 pass
             return thesefiles
@@ -237,8 +248,17 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             if rank == 0:
                 log.info('No {} files in {} found!'.format(outprefix, outdir))
             return '', list(), list(), list(), list()
-        #  hack--build the output directories and pass them in the 'zbestfiles' position!
-        zbestfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir) for outfile in outfiles])
+        #  hack--build the output directories and pass them in the 'zbestfiles'
+        #  position! for coadd_type==cumulative, strip out the 'lastnight' argument
+        if args.coadd_type == 'cumulative':
+            #zbestfiles = []
+            #for outfile in outfiles:
+            #    dd = os.path.split(outfile)
+            #    zbestfiles.append(os.path.dirname(dd[0]).replace(outdir, htmldir))
+            #    os.path.dirname(dd[0])
+            zbestfiles = np.array([os.path.dirname(os.path.dirname(outfile)).replace(outdir, htmldir) for outfile in outfiles])
+        else:
+            zbestfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir) for outfile in outfiles])
     else:
         if len(zbestfiles) == 0:
             if rank == 0:

@@ -41,7 +41,7 @@ def parse(options=None):
 
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
-        night (only defined for coadd-type 'night' and 'exposures').""")
+        night (only defined for coadd-type 'pernight' and 'perexp').""")
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
@@ -144,7 +144,7 @@ def main(args=None, comm=None):
     zbestdir = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), specprod, 'tiles')
     alltiles = metadata['TILEID'].astype(str).data
     allpetals = metadata['FIBER'].data // 500
-
+    
     #if fastphot:
     #    synthphot = False
     #else:
@@ -166,22 +166,22 @@ def main(args=None, comm=None):
             [desiqa_one(*_qaargs) for _qaargs in qaargs]
 
     t0 = time.time()
-    if coadd_type == 'deep' or coadd_type == 'all':
+    if coadd_type == 'cumulative':
+        thrunights = metadata['THRUNIGHT'].astype(str).data
         for tile in set(alltiles):
             for petal in set(allpetals):
                 indx = np.where((tile == alltiles) * (petal == allpetals))[0]
-                zbestfile = os.path.join(zbestdir, str(tile), coadd_type, 'zbest-{}-{}-{}.fits'.format(petal, tile, coadd_type))
+                zbestfile = os.path.join(zbestdir, 'cumulative', str(tile), thrunights[indx[0]], 'zbest-{}-{}-thru{}.fits'.format(petal, tile, thrunights[indx[0]]))
                 _wrap_qa(zbestfile, indx)
-    elif coadd_type == 'night':
+    elif coadd_type == 'pernight':
         allnights = metadata['NIGHT'].astype(str).data
         for night in set(allnights):
             for tile in set(alltiles):
                 for petal in set(allpetals):
                     indx = np.where((night == allnights) * (tile == alltiles) * (petal == allpetals))[0]
-                    zbestfile = os.path.join(zbestdir, str(tile), str(night), 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
+                    zbestfile = os.path.join(zbestdir, 'pernight', str(tile), str(night), 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
                     _wrap_qa(zbestfile, indx)
-                    
-    elif coadd_type == 'exposures':
+    elif coadd_type == 'perexp':
         raise NotImplemented
         # we probably want to *require* tile or night in this case...
     else:

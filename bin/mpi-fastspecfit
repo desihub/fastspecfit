@@ -2,11 +2,11 @@
 """
 MPI wrapper for fastphot and fastspec.
 
-mpi-fastspecfit --mp 32 --coadd-type deep --tile 80608 --night 20201220 --plan --nompi
+mpi-fastspecfit --mp 32 --coadd-type cumulative --tile 80608 --night 20201220 --plan --nompi
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
 
-mpi-fastspecfit --mp 32 --coadd-type deep --merge --nompi
-mpi-fastspecfit --mp 32 --coadd-type deep --merge --nompi --fastphot
+mpi-fastspecfit --mp 32 --coadd-type cumulative --merge --nompi
+mpi-fastspecfit --mp 32 --coadd-type cumulative --merge --nompi --fastphot
 
 mpi-fastspecfit --mp 32 --makeqa --tile 80607
 
@@ -135,14 +135,13 @@ def main():
     from fastspecfit.mpi import plan
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--specprod', type=str, default='cascades', #choices=['cascades', 'blanc', 'daily'],
+    parser.add_argument('--specprod', type=str, default='denali', choices=['denali', 'cascades', 'daily'],
                         help='Spectroscopic production to process.')
-    parser.add_argument('--coadd-type', type=str, default='deep',
-                        choices=['deep', 'all', 'night', 'exposures'],
+    parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
     
-    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process (ignored if coadd-type is exposures).')
-    parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is exposures or deep-coadds).')
+    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
+    parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--maxnodes', type=int, default=256, help='maximum number of nodes to use')

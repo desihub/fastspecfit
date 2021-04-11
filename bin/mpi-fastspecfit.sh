@@ -6,16 +6,16 @@
 
 # Example: build the coadds using 16 MPI tasks with 8 cores per node (and therefore 16*8/32=4 nodes)
 
-#salloc -N 16 -C haswell -A desi -L cfs -t 02:00:00 --qos interactive --image=docker:desihub/fastspecfit:v0.0.2
-#srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastphot 32 > fastphot-cascades.log.1 2>&1 &
-#srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec 32 > fastspec-cascades.log.1 2>&1 &
+#salloc -N 16 -C haswell -A desi -L cfs -t 02:00:00 --qos interactive --image=docker:desihub/fastspecfit:v0.0.3
+#srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastphot 32 > fastphot-denali.log.1 2>&1 &
+#srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec 32 > fastspec-denali.log.1 2>&1 &
 
 # Grab the input arguments--
 stage=$1
 mp=$2
 
-specprod=cascades
-coadd_type=deep
+specprod=denali
+coadd_type=cumulative
 
 package=fastspecfit
 export PATH=/opt/conda/bin:$PATH # nersc hack!
@@ -42,12 +42,9 @@ export MPICH_GNI_FORK_MODE=FULLCOPY
 if [ $stage = "test" ]; then
     time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --help
 elif [ $stage = "fastspec" ]; then
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80619 80617 80643 80644 80660 80644 80645 80646 80653 80655
-#--tile 80613 80608 80606 80610 80609 80605 80609 80607 80605
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80607 80608 80613
 elif [ $stage = "fastphot" ]; then
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80640 80641 80642 80643 80644 80645 80646 80647 80648 80649 80650 80651 80652 80653 80654 80655 80656 80657 80658 80659 80660 80661 80662 80663 80664 80665 80666 80611 80612 80613 80614 80742 80616 80617 80618 80619 80741 80740 80624 80626 80627 80628 80629 80632 80633 80635 80636 80637 80638 80639
-#    80619 80617 80643 80644 80660 80644 80645 80646 80653 80655
-#--tile 80613 80608 80606 80610 80609 80605 80609 80607 80605
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80607 80608 80613
 else
     echo "Unrecognized stage "$stage
 fi
