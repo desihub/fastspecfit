@@ -177,9 +177,6 @@ RUN git clone https://github.com/desihub/fastspecfit.git fastspecfit \
 # update 
 # RUN cd /src/fastspecfit && git pull && git describe --always && echo 1
 
-ENV PYTHONPATH=/src/fastspecfit/py:$PYTHONPATH
-ENV PATH=/src/fastspecfit/bin:$PATH
-
 RUN mkdir /homedir && chmod 777 /homedir
 ENV HOME /homedir
 
@@ -191,19 +188,18 @@ CMD ["/bin/bash"]
 RUN echo "export PS1='[container] \\u@\\h:\\w$ '" >> $HOME/.bashrc \
   # Create config files in $HOME
   && python -c "import astropy" \
+  # Download astropy IERS leap-second list
+  && python -c "from astropy.coordinates import EarthLocation; EarthLocation._get_site_registry(force_download=True)" \
+  # Download astropy site locations and USNO sky model
+  && python -c "from astropy.coordinates import EarthLocation, SkyCoord, AltAz; from astropy.time import Time; print(EarthLocation.of_site('ctio')); print(SkyCoord(180.,-45.,unit='deg').transform_to(AltAz(obstime=Time(56806.0, format='mjd'), location=EarthLocation.of_site('ctio'))))" \
+  && python -c "from astropy.time import Time; Time.now()" \
   && python -c "import matplotlib.font_manager as fm; f = fm.FontManager()" \
-  && ipython -c "print('hello')" 
+  && ipython -c "print('hello')" \
+  # Make astropy cache files readable!?!!
+  && chmod -R a+rwX $HOME/.astropy \
+  # Make ipython config files readable!?!!
+  && chmod -R a+rwX $HOME/.ipython \
+  && echo 1
 
-#  # Download astropy site locations and USNO sky model
-#  && python -c "from astropy.coordinates import EarthLocation; EarthLocation._get_site_registry(force_download=True)" \
-#  && python -c "from astropy.coordinates import EarthLocation, SkyCoord, AltAz; from astropy.time import Time; print(EarthLocation.of_site('ctio')); print(SkyCoord(180.,-45.,unit='deg').transform_to(AltAz(obstime=Time(56806.0, format='mjd'), location=EarthLocation.of_site('ctio'))))" 
-#
-#  # Download astropy IERS leap-second list
-#  && python -c "from astropy.time import Time; Time.now()" \
-#  # Make astropy cache files readable!?!!
-#  && chmod -R a+rwX $HOME/.astropy \
-#  # Make ipython config files readable!?!!
-#  && chmod -R a+rwX $HOME/.ipython \
-#  && echo 1
 
 LABEL Maintainer="John Moustakas jmoustakas@siena.edu"
