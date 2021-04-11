@@ -118,7 +118,7 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
          specprod_dir=None):
 
     import fitsio
-    from astropy.table import Table
+    from astropy.table import Table, vstack
 
     t0 = time.time()
     if comm is None:
@@ -144,8 +144,14 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
         # figure out which tiles belong to the SV programs
         if args.tile is None:
             tilefile = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), args.specprod, 'tiles-{}.csv'.format(args.specprod))
-            tileinfo = Table.read(tilefile)
-            tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
+            alltileinfo = Table.read(tilefile)
+            tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
+            #tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
+
+            log.info('Add tiles 80605-80610 which are incorrectly identified as cmx tiles.')
+            tileinfo = vstack((tileinfo, alltileinfo[np.where((alltileinfo['TILEID'] >= 80605) * (alltileinfo['TILEID'] <= 80610))[0]]))
+            tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
+
             log.info('Retrieved a list of {} {} tiles from {}'.format(
                 len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
 
