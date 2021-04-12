@@ -925,7 +925,7 @@ class EMLineFit(ContinuumTools):
             result['{}_CONT_IVAR'.format(linename)] = civar
 
             ew, ewivar, fluxlimit, ewlimit = 0.0, 0.0, 0.0, 0.0
-            if result['{}_CONT_IVAR'.format(linename)] != 0.0:
+            if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
                 #if result['{}_CONT'.format(linename)] == 0:
                 #    pdb.set_trace()
                 factor = (1 + redshift) / result['{}_CONT'.format(linename)] # --> rest frame
