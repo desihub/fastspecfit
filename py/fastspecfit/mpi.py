@@ -79,7 +79,7 @@ def group_zbestfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
             _, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)
             fm = fm[I]
             assert(np.all(zb['TARGETID'] == fm['TARGETID']))
-            J = ((zb['Z'] > 0) * #(zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
+            J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
                  (fm['OBJTYPE'] == 'TGT') * (fm['FIBERSTATUS'] == 0))
             ntargets[i] = np.count_nonzero(J)
 
@@ -169,7 +169,12 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             args.tile = alltiles[ireduced]
             tileinfo = tileinfo[ireduced]
             #print(args.tile)
-            print(tileinfo)
+
+            #if True:
+            #    tileinfo = tileinfo[['lrg' in program or 'elg' in program for program in tileinfo['FAPRGRM']]]
+            #    args.tile = np.array(list(set(tileinfo['TILEID'])))
+            #print(tileinfo)
+            #pdb.set_trace()
 
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')
@@ -354,7 +359,7 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None):
 
     mergedir = os.path.join(outdir, 'merged')
     if not os.path.isdir(mergedir):
-        os.makedirs(mergedir)
+        os.makedirs(mergedir, exist_ok=True)
 
     #if args.coadd_type == 'deep-coadds':
     #    mergeprefix = 'deep'

@@ -97,7 +97,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             # memory leak?  Try making system call instead
             outdir = os.path.dirname(logfile)
             if not os.path.isdir(outdir):
-                os.makedirs(outdir)
+                os.makedirs(outdir, exist_ok=True)
             with open(logfile, 'w') as mylog:
                 err = subprocess.call(cmd.split(), stdout=mylog, stderr=mylog)
             dt1 = time.time() - t1
