@@ -56,8 +56,9 @@ class DESISpectra(object):
         # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/zbest-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
         fahdr = fits.getheader(fiberfile, ext=0)
         targetdirs = [fahdr['TARG']]
-        if 'TARG2' in fahdr:
-            targetdirs += [fahdr['TARG2']]
+        for moretarg in ['TARG2', 'TARG3', 'TARG4']:
+            if moretarg in fahdr:
+                targetdirs += [fahdr[moretarg]]
         if 'SCND' in fahdr:
             if fahdr['SCND'].strip() != '-':
                 targetdirs += [fahdr['SCND']]
@@ -265,6 +266,10 @@ class DESISpectra(object):
                         targets.append(alltargets)
                         
         targets = Table(np.hstack(targets))
+
+        # targets table can include duplicates from secondary programs...
+        _, uindx = np.unique(targets['TARGETID'], return_index=True) 
+        targets = targets[uindx]
         if len(targets) != len(meta):
             log.warning('Missing targeting info for {} objects!'.format(len(meta) - len(targets)))
             raise ValueError
