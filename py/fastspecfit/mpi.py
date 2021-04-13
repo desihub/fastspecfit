@@ -148,9 +148,9 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
             #tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
 
-            log.info('Add tiles 80605-80610 which are incorrectly identified as cmx tiles.')
-            tileinfo = vstack((tileinfo, alltileinfo[np.where((alltileinfo['TILEID'] >= 80605) * (alltileinfo['TILEID'] <= 80610))[0]]))
-            tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
+            #log.info('Add tiles 80605-80610 which are incorrectly identified as cmx tiles.')
+            #tileinfo = vstack((tileinfo, alltileinfo[np.where((alltileinfo['TILEID'] >= 80605) * (alltileinfo['TILEID'] <= 80610))[0]]))
+            #tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
 
             log.info('Retrieved a list of {} {} tiles from {}'.format(
                 len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
@@ -174,7 +174,6 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             #    tileinfo = tileinfo[['lrg' in program or 'elg' in program for program in tileinfo['FAPRGRM']]]
             #    args.tile = np.array(list(set(tileinfo['TILEID'])))
             #print(tileinfo)
-            #pdb.set_trace()
 
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')

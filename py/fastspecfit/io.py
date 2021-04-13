@@ -59,7 +59,8 @@ class DESISpectra(object):
         if 'TARG2' in fahdr:
             targetdirs += [fahdr['TARG2']]
         if 'SCND' in fahdr:
-            targetdirs += [fahdr['SCND']]
+            if fahdr['SCND'].strip() != '-':
+                targetdirs += [fahdr['SCND']]
             
         for ii, targetdir in enumerate(targetdirs):
             targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('DESIROOT/', ''))

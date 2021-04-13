@@ -409,6 +409,9 @@ class EMLineModel(Fittable1DModel):
             ipix = np.sum(self.npixpercamera[:ii+1]) # all pixels!
             jpix = np.sum(self.npixpercamera[:ii+2])
             #_emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
+            if ipix == jpix:
+                pdb.set_trace()
+        
             _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
 
             if self.emlineR is not None:
@@ -670,7 +673,7 @@ class EMLineFit(ContinuumTools):
         emlinebad = np.logical_not(emlinegood)
         if np.count_nonzero(emlinebad) > 0:
             weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
-        
+
         t0 = time.time()
         bestfit_init = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
         #bestfit_init = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
