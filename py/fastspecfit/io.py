@@ -178,9 +178,9 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') *
-                                   (meta['PHOTSYS'] != 'G') *
-                                   (meta['OBJTYPE'] == 'TGT') * (meta['FIBERSTATUS'] == 0))[0]
+                fitindx = np.where(np.logical_and((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') *
+                                                  (meta['OBJTYPE'] == 'TGT') * (meta['FIBERSTATUS'] == 0),
+                                                  np.logical_or(meta['PHOTSYS'] == 'N', meta['PHOTSYS'] == 'S')))[0]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -397,6 +397,10 @@ class DESISpectra(object):
                 for iband, band in enumerate(CFit.bands):
                     maggies[iband] = meta['FLUX_{}'.format(band.upper())][igal] / mw_transmission_flux[iband]
                     ivarmaggies[iband] = meta['FLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_flux[iband]**2
+                    
+                if not np.all(ivarmaggies >= 0):
+                    log.warning('Some ivarmaggies are negative!')
+                    raise ValueError
 
                 data['phot'] = CFit.parse_photometry(CFit.bands,
                     maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
