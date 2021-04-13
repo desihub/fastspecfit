@@ -636,7 +636,7 @@ class ContinuumTools(object):
 
         if percamera:
             smooth_continuum = []
-            for icam in [0, 1, 2]: # iterate over cameras        
+            for icam in np.arange(len(specflux)): # iterate over cameras        
                 residuals = specflux[icam] - continuummodel[icam]
                 if False:
                     smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
@@ -1236,7 +1236,7 @@ class ContinuumFit(ContinuumTools):
         # Unpack the continuum into individual cameras.
         continuummodel = []
         smooth_continuum = []
-        for icam in [0, 1, 2]: # iterate over cameras
+        for icam in np.arange(len(data['cameras'])): # iterate over cameras
             ipix = np.sum(npixpercam[:icam+1])
             jpix = np.sum(npixpercam[:icam+2])
             continuummodel.append(bestfit[ipix:jpix])
@@ -1250,11 +1250,11 @@ class ContinuumFit(ContinuumTools):
         if False:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots(2, 1)
-            for icam in [0, 1, 2]: # iterate over cameras
+            for icam in np.arange(len(data['cameras'])): # iterate over cameras
                 resid = data['flux'][icam]-continuummodel[icam]
                 ax[0].plot(data['wave'][icam], resid)
                 ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
-            for icam in [0, 1, 2]: # iterate over cameras
+            for icam in np.arange(len(data['cameras'])): # iterate over cameras
                 resid = data['flux'][icam]-continuummodel[icam]
                 pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
                 ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')

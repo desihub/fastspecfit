@@ -402,15 +402,13 @@ class EMLineModel(Fittable1DModel):
         # split into cameras, resample, and convolve with the instrumental
         # resolution
         emlinemodel = []
-        for ii in [0, 1, 2]: # iterate over cameras
+        for ii in np.arange(len(self.npixpercamera)-1): # iterate over cameras
             #ipix = np.sum(self.ngoodpixpercamera[:ii+1]) # unmasked pixels!
             #jpix = np.sum(self.ngoodpixpercamera[:ii+2])
 
             ipix = np.sum(self.npixpercamera[:ii+1]) # all pixels!
             jpix = np.sum(self.npixpercamera[:ii+2])
             #_emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
-            if ipix == jpix:
-                pdb.set_trace()
         
             _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
 
@@ -559,7 +557,7 @@ class EMLineFit(ContinuumTools):
         # unpack the per-camera spectra
         emlinemodel = []
         npix = np.hstack([0, npixpercamera])
-        for ii in [0, 1, 2]: # iterate over cameras
+        for ii in np.arange(len(specwave)): # iterate over cameras
             ipix = np.sum(npix[:ii+1])
             jpix = np.sum(npix[:ii+2])
             emlinemodel.append(_emlinemodel[ipix:jpix])
@@ -600,11 +598,10 @@ class EMLineFit(ContinuumTools):
         dlogwave = self.pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
         log10wave = np.arange(np.log10(3e3), np.log10(1e4), dlogwave)
         #log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
-        
+
         self.EMLineModel = EMLineModel(redshift=redshift,
                                        emlineR=data['res'],
                                        npixpercamera=npixpercamera,
-                                       #goodpixpercam=goodpixpercam,
                                        log10wave=log10wave)
         nparam = len(self.EMLineModel.parameters)
         #params = np.repeat(self.EMLineModel.parameters, self.nball).reshape(nparam, self.nball)
@@ -1051,6 +1048,7 @@ class EMLineFit(ContinuumTools):
         # rebuild the best-fitting spectroscopic and photometric models
         continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
                                      specwave=data['wave'], specres=data['res'],
+                                     cameras=data['cameras'],
                                      AV=fastspec['CONTINUUM_AV'],
                                      vdisp=fastspec['CONTINUUM_VDISP'],
                                      coeff=fastspec['CONTINUUM_COEFF'],
@@ -1060,7 +1058,7 @@ class EMLineFit(ContinuumTools):
             np.hstack(continuum), np.hstack(data['wave']), np.hstack(data['flux']),
             np.hstack(data['ivar']), np.hstack(data['linemask']))
         smooth_continuum = []
-        for icam in [0, 1, 2]: # iterate over cameras
+        for icam in np.arange(len(data['cameras'])): # iterate over cameras
             ipix = np.sum(npixpercam[:icam+1])
             jpix = np.sum(npixpercam[:icam+2])
             smooth_continuum.append(_smooth_continuum[ipix:jpix])
@@ -1122,7 +1120,7 @@ class EMLineFit(ContinuumTools):
         legxpos, legypos, legfntsz = 0.98, 0.94, 20
         bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
         
-        for ii in [0, 1, 2]: # iterate over cameras
+        for ii in np.arange(len(data['cameras'])): # iterate over cameras
             sigma, _ = ivar2var(data['ivar'][ii], sigma=True)
 
             bigax1.fill_between(data['wave'][ii], data['flux'][ii]-sigma,
@@ -1180,7 +1178,7 @@ class EMLineFit(ContinuumTools):
         bigax2 = fig.add_subplot(gs[1, :])
 
         ymin, ymax = 1e6, -1e6
-        for ii in [0, 1, 2]: # iterate over cameras
+        for ii in np.arange(len(data['cameras'])): # iterate over cameras
             emlinewave = data['wave'][ii]
             emlineflux = data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
             emlinemodel = _emlinemodel[ii]
@@ -1278,7 +1276,7 @@ class EMLineFit(ContinuumTools):
             #print(linename, wmin, wmax)
 
             # iterate over cameras
-            for ii in [0, 1, 2]: # iterate over cameras
+            for ii in np.arange(len(data['cameras'])): # iterate over cameras
                 emlinewave = data['wave'][ii]
                 emlineflux = data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
                 emlinemodel = _emlinemodel[ii]
