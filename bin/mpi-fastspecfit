@@ -98,8 +98,11 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             outdir = os.path.dirname(logfile)
             if not os.path.isdir(outdir):
                 os.makedirs(outdir, exist_ok=True)
-            with open(logfile, 'w') as mylog:
-                err = subprocess.call(cmd.split(), stdout=mylog, stderr=mylog)
+            if args.nolog:
+                err = subprocess.call(cmd.split())
+            else:
+                with open(logfile, 'w') as mylog:
+                    err = subprocess.call(cmd.split(), stdout=mylog, stderr=mylog)
             dt1 = time.time() - t1
             if err == 0:
                 log.info('  rank {} done in {:.2f} sec'.format(rank, dt1))
@@ -156,6 +159,7 @@ def main():
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
+    parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands')
 
     specprod_dir = None

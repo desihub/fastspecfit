@@ -161,13 +161,14 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             #tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
             #log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
 
-            alltiles = np.array(list(set(tileinfo['TILEID'])))
-            ireduced = [os.path.isdir(os.path.join(specprod_dir, args.coadd_type, str(tile1))) for tile1 in alltiles]
-            log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
-                args.specprod, np.sum(ireduced), len(alltiles)))
+            #alltiles = np.array(list(set(tileinfo['TILEID'])))
+            #ireduced = [os.path.isdir(os.path.join(specprod_dir, args.coadd_type, str(tile1))) for tile1 in alltiles]
+            #log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
+            #    args.specprod, np.sum(ireduced), len(alltiles)))
+            #args.tile = alltiles[ireduced]
+            #tileinfo = tileinfo[ireduced]
 
-            args.tile = alltiles[ireduced]
-            tileinfo = tileinfo[ireduced]
+            args.tile = np.array(list(set(tileinfo['TILEID'])))
             #print(args.tile)
 
             #if True:
