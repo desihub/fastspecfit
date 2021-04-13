@@ -295,6 +295,12 @@ class ContinuumTools(object):
         if ivarmaggies is None:
             ivarmaggies = np.zeros_like(maggies)
 
+        ## Gaia-only targets all have grz=-99 fluxes (we now cut these out in
+        ## io.DESISpectra.find_specfiles)
+        #if np.all(maggies==-99):
+        #    log.warning('Gaia-only targets not supported.')
+        #    raise ValueError
+
         phot['lambda_eff'] = lambda_eff.astype('f4')
         if nanomaggies:
             phot['nanomaggies'] = maggies.astype('f4')
@@ -1026,7 +1032,10 @@ class ContinuumFit(ContinuumTools):
         objflam = data['phot']['flam'].data * self.fluxnorm
         objflamivar = data['phot']['flam_ivar'].data / self.fluxnorm**2
         zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
-        assert(np.all(objflamivar >= 0))
+        try:
+            assert(np.all(objflamivar >= 0))
+        except:
+            pdb.set_trace()
 
         inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0
 
