@@ -905,10 +905,12 @@ class EMLineFit(ContinuumTools):
 
             # get the continuum, the inverse variance in the line-amplitude, and the EW
             indxlo = np.where((emlinewave > (linezwave - 10*linesigma * linezwave / C_LIGHT)) *
-                              (emlinewave < (linezwave - 3.*linesigma * linezwave / C_LIGHT)))[0]# *
+                              (emlinewave < (linezwave - 3.*linesigma * linezwave / C_LIGHT)) *
+                              (emlineivar > 0))[0]
                               #(emlinemodel == 0))[0]
             indxhi = np.where((emlinewave < (linezwave + 10*linesigma * linezwave / C_LIGHT)) *
-                              (emlinewave > (linezwave + 3.*linesigma * linezwave / C_LIGHT)))[0]# *
+                              (emlinewave > (linezwave + 3.*linesigma * linezwave / C_LIGHT)) *
+                              (emlineivar > 0))[0]
                               #(emlinemodel == 0))[0]
             indx = np.hstack((indxlo, indxhi))
 
@@ -916,11 +918,15 @@ class EMLineFit(ContinuumTools):
             if len(indx) > 10: # require at least XX pixels to get the continuum level
                 #_, cmed, csig = sigma_clipped_stats(specflux_nolines[indx], sigma=3.0)
                 clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
-                cmed, csig = np.median(clipflux), np.std(clipflux)
+                # corner case: if a portion of a camera is masked
+                if len(clipflux) > 0:
+                    cmed, csig = np.median(clipflux), np.std(clipflux)
                 if csig > 0:
                     civar = (np.sqrt(len(indx)) / csig)**2
                     #result['{}_AMP_IVAR'.format(linename)] = 1 / csig**2
-                
+
+            #if '3726' in linename:
+            #    pdb.set_trace()
             result['{}_CONT'.format(linename)] = cmed
             result['{}_CONT_IVAR'.format(linename)] = civar
 

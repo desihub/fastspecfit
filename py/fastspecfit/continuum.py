@@ -1275,7 +1275,7 @@ class ContinuumFit(ContinuumTools):
         result['D4000_MODEL'][0] = d4000_model
 
         for icam, cam in enumerate(data['cameras']):
-            nonzero = continuummodel[icam] != 0
+            nonzero = np.abs(continuummodel[icam]) > 1e-5
             if np.sum(nonzero) > 0:
                 corr = np.mean(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
                 result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr
