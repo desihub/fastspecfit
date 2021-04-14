@@ -6,8 +6,10 @@ import os, pdb
 import fitsio
 import numpy as np
 from astropy.table import Table
+from fastspecfit.io import write_fastspecfit
 
-topdir = '/Users/ioannis/work/desi/spectro/fastspecfit/denali/tiles/'
+topdir = '/global/cfs/cdirs/desi/spectro/fastspecfit/denali/tiles/'
+#topdir = '/Users/ioannis/work/desi/spectro/fastspecfit/denali/tiles/'
 
 #tt = Table(fitsio.read(topdir+'merged/fastphot-denali-cumulative.fits', 'FASTPHOT'))
 #mm = Table(fitsio.read(topdir+'merged/fastphot-denali-cumulative.fits', 'METADATA'))
@@ -33,19 +35,25 @@ print(len(zbest))
 
 fastfiles = np.array([zb.replace('zbest-', 'fastspec-') for zb in zbest])
 for fastfile in fastfiles:
-    print('Working on {}'.format(fastfile))
+    #print('Working on {}'.format(fastfile))
     ff = topdir+'cumulative/{}'.format(fastfile)
     data = Table.read(ff, 'FASTSPEC')
     meta = Table.read(ff, 'METADATA')
 
     keep = np.where(np.logical_or(meta['PHOTSYS'] == 'N', meta['PHOTSYS'] == 'S'))[0]
+    if len(keep) == len(data): # already did tit
+        continue
+    
     print('Keeping {}/{} objects'.format(len(keep), len(meta)))
+    if len(keep) == 0:
+        print('All targets dropped for {}'.format(ff))
+        continue
 
     data = data[keep]
     meta = meta[keep]
+    write_fastspecfit(data, meta, outfile=ff, specprod='denali', coadd_type='cumulative', fastphot=False)
     
-    pdb.set_trace()
-
+pdb.set_trace()
 
 for col in tt.colnames:
     if tt[col].dtype.char == 'U':
