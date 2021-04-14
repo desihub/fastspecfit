@@ -1,0 +1,68 @@
+#!/usr/bin/env python
+
+# /global/cfs/cdirs/desi/spectro/redux/denali/tiles/cumulative/80609/20201217/zbest-2-80609-thru20201217.fits
+
+import os, pdb
+import fitsio
+import numpy as np
+from astropy.table import Table
+
+topdir = '/Users/ioannis/work/desi/spectro/fastspecfit/denali/tiles/'
+
+#tt = Table(fitsio.read(topdir+'merged/fastphot-denali-cumulative.fits', 'FASTPHOT'))
+#mm = Table(fitsio.read(topdir+'merged/fastphot-denali-cumulative.fits', 'METADATA'))
+
+tt = Table(fitsio.read(topdir+'merged/fastspec-denali-cumulative.fits', 'FASTSPEC'))
+mm = Table(fitsio.read(topdir+'merged/fastspec-denali-cumulative.fits', 'METADATA'))
+
+zbest = []
+
+
+ifix = np.where(np.logical_or(mm['PHOTSYS'] == 'G', mm['PHOTSYS'] == ''))[0]
+if len(ifix) > 0:
+    tiles = mm['TILEID'][ifix]
+    petals = mm['FIBER'][ifix] // 500
+    nights = mm['THRUNIGHT'][ifix]
+    for tile, petal, night in zip(tiles, petals, nights):
+        zbest.append('{}/{}/zbest-{}-{}-thru{}.fits'.format(
+            str(tile), str(night), str(petal), str(tile), str(night)))
+
+zbest = np.unique(np.hstack(zbest))
+print(len(zbest))
+#print(set(zbest))
+
+fastfiles = np.array([zb.replace('zbest-', 'fastspec-') for zb in zbest])
+for fastfile in fastfiles:
+    print('Working on {}'.format(fastfile))
+    ff = topdir+'cumulative/{}'.format(fastfile)
+    data = Table.read(ff, 'FASTSPEC')
+    meta = Table.read(ff, 'METADATA')
+
+    keep = np.where(np.logical_or(meta['PHOTSYS'] == 'N', meta['PHOTSYS'] == 'S'))[0]
+    print('Keeping {}/{} objects'.format(len(keep), len(meta)))
+
+    data = data[keep]
+    meta = meta[keep]
+    
+    pdb.set_trace()
+
+
+for col in tt.colnames:
+    if tt[col].dtype.char == 'U':
+        continue
+    ifix = np.where(np.isnan(tt[col]))[0]
+    if len(ifix) > 0:
+        print('{}: {} NaNs'.format(col, len(ifix)))
+
+        tiles = mm['TILEID'][ifix]
+        petals = mm['FIBER'][ifix] // 500
+        nights = mm['THRUNIGHT'][ifix]
+        for tile, petal, night in zip(tiles, petals, nights):
+            zbest.append('{}/{}/zbest-{}-{}-thru{}.fits'.format(
+                str(tile), str(night), str(petal), str(tile), str(night)))
+
+print(len(np.unique(np.hstack(zbest))))
+
+
+
+
