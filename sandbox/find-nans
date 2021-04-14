@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 # /global/cfs/cdirs/desi/spectro/redux/denali/tiles/cumulative/80609/20201217/zbest-2-80609-thru20201217.fits
 
 import os, pdb
@@ -40,19 +39,19 @@ for col in tt.colnames:
             zbest.append('{}/{}/zbest-{}-{}-thru{}.fits'.format(
                 str(tile), str(night), str(petal), str(tile), str(night)))
 
-if len(zbest) > 0:
+if len(zbest) == 0:
+    print('No NaNs!')
+else:
     zbest = np.unique(np.hstack(zbest))
     print(len(zbest))
-else:
-    print('No NaNs!')
 
-if True:
-    with open('/global/u2/i/ioannis/junk', 'w') as ff:
-        for zb in zbest:
-            outfile = topdir+'cumulative/{}'.format(zb.replace('zbest-', 'fastphot-'))
-            #zbestfile = topdir.replace('fastspecfit/', 'redux/')+'cumulative/{}'.formaat(zb)
-            #ff.write('fastspec {} -o {} --mp 32 \n'.format(zbestfile, outfile))
-            ff.write('\\rm {}\n'.format(outfile))
+    if False:
+        with open('/global/u2/i/ioannis/junk', 'w') as ff:
+            for zb in zbest:
+                outfile = topdir+'cumulative/{}'.format(zb.replace('zbest-', 'fastphot-'))
+                #zbestfile = topdir.replace('fastspecfit/', 'redux/')+'cumulative/{}'.formaat(zb)
+                #ff.write('fastspec {} -o {} --mp 32 \n'.format(zbestfile, outfile))
+                ff.write('\\rm {}\n'.format(outfile))
 
 pdb.set_trace()
 
@@ -75,10 +74,6 @@ pdb.set_trace()
 #    data = data[keep]
 #    meta = meta[keep]
 #    write_fastspecfit(data, meta, outfile=ff, specprod='denali', coadd_type='cumulative', fastphot=True)
-
-pdb.set_trace()
-
-pdb.set_trace()
 
 #from fastspecfit.io import write_fastspecfit
 #fastfiles = np.array([zb.replace('zbest-', 'fastspec-') for zb in zbest])
