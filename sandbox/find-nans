@@ -10,11 +10,10 @@ from astropy.table import Table
 topdir = '/global/cfs/cdirs/desi/spectro/fastspecfit/denali/tiles/'
 #topdir = '/Users/ioannis/work/desi/spectro/fastspecfit/denali/tiles/'
 
-#tt = Table(fitsio.read(topdir+'merged/fastphot-denali-cumulative.fits', 'FASTPHOT'))
-#mm = Table(fitsio.read(topdir+'merged/fastphot-denali-cumulative.fits', 'METADATA'))
-
-tt = Table(fitsio.read(topdir+'merged/fastspec-denali-cumulative.fits', 'FASTSPEC'))
-mm = Table(fitsio.read(topdir+'merged/fastspec-denali-cumulative.fits', 'METADATA'))
+tt = Table(fitsio.read(topdir+'merged/fastphot-denali-cumulative.fits', 'FASTPHOT'))
+mm = Table(fitsio.read(topdir+'merged/fastphot-denali-cumulative.fits', 'METADATA'))
+#tt = Table(fitsio.read(topdir+'merged/fastspec-denali-cumulative.fits', 'FASTSPEC'))
+#mm = Table(fitsio.read(topdir+'merged/fastspec-denali-cumulative.fits', 'METADATA'))
 
 zbest = []
 
@@ -41,17 +40,43 @@ for col in tt.colnames:
             zbest.append('{}/{}/zbest-{}-{}-thru{}.fits'.format(
                 str(tile), str(night), str(petal), str(tile), str(night)))
 
-zbest = np.unique(np.hstack(zbest))
-print(len(zbest))
+if len(zbest) > 0:
+    zbest = np.unique(np.hstack(zbest))
+    print(len(zbest))
+else:
+    print('No NaNs!')
+
+if True:
+    with open('/global/u2/i/ioannis/junk', 'w') as ff:
+        for zb in zbest:
+            outfile = topdir+'cumulative/{}'.format(zb.replace('zbest-', 'fastphot-'))
+            #zbestfile = topdir.replace('fastspecfit/', 'redux/')+'cumulative/{}'.formaat(zb)
+            #ff.write('fastspec {} -o {} --mp 32 \n'.format(zbestfile, outfile))
+            ff.write('\\rm {}\n'.format(outfile))
 
 pdb.set_trace()
 
-with open('/global/u2/i/ioannis/junk', 'w') as ff:
-    for zb in zbest:
-        outfile = topdir+'cumulative/{}'.format(zb.replace('zbest-', 'fastspec-'))
-        #zbestfile = topdir.replace('fastspecfit/', 'redux/')+'cumulative/{}'.formaat(zb)
-        #ff.write('fastspec {} -o {} --mp 32 \n'.format(zbestfile, outfile))
-        ff.write('\\rm {}\n'.format(outfile))
+#from fastspecfit.io import write_fastspecfit
+#fastfiles = np.array([zb.replace('zbest-', 'fastphot-') for zb in zbest])
+#for fastfile in fastfiles:
+#    ff = topdir+'cumulative/{}'.format(fastfile)
+#    data = Table.read(ff, 'FASTPHOT')
+#    meta = Table.read(ff, 'METADATA')
+#
+#    keep = np.where(np.logical_or(meta['PHOTSYS'] == 'N', meta['PHOTSYS'] == 'S'))[0]
+#    if len(keep) == len(data): # already did tit
+#        continue
+#    
+#    print('Keeping {}/{} objects'.format(len(keep), len(meta)))
+#    if len(keep) == 0:
+#        print('All targets dropped for {}'.format(ff))
+#        continue
+#
+#    data = data[keep]
+#    meta = meta[keep]
+#    write_fastspecfit(data, meta, outfile=ff, specprod='denali', coadd_type='cumulative', fastphot=True)
+
+pdb.set_trace()
 
 pdb.set_trace()
 

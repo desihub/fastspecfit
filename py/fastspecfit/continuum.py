@@ -1032,10 +1032,7 @@ class ContinuumFit(ContinuumTools):
         objflam = data['phot']['flam'].data * self.fluxnorm
         objflamivar = data['phot']['flam_ivar'].data / self.fluxnorm**2
         zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
-        try:
-            assert(np.all(objflamivar >= 0))
-        except:
-            pdb.set_trace()
+        assert(np.all(objflamivar >= 0))
 
         inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0
 
@@ -1065,12 +1062,19 @@ class ContinuumFit(ContinuumTools):
         continuummodel = bestsspflux.dot(coeff)
 
         # Compute D4000, K-corrections, and rest-frame quantities.
-        d4000, _ = self.get_d4000(self.sspwave, continuummodel, rest=True)
-        meanage = self.get_meanage(coeff)
-        kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel, coeff)
+        if np.count_nonzero(coeff > 0) == 0:
+            log.warning('Continuum coefficients are all zero!')
+            chi2min, d4000, meanage = 1e6, -1.0, -1.0
+            kcorr = np.zeros(len(self.absmag_bands))
+            absmag = np.zeros(len(self.absmag_bands))-99.0
+            ivarabsmag = np.zeros(len(self.absmag_bands))
+        else:
+            d4000, _ = self.get_d4000(self.sspwave, continuummodel, rest=True)
+            meanage = self.get_meanage(coeff)
+            kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel, coeff)
 
-        log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
-            d4000, meanage, absmag[1]))
+            log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
+                d4000, meanage, absmag[1]))
 
         # Pack it up and return.
         result['CONTINUUM_COEFF'][0][:nage] = coeff
