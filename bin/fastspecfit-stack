@@ -11,8 +11,27 @@ import pdb # for debugging
 import os, sys, time
 import numpy as np
 
+from fastspecfit.util import C_LIGHT
+
+#from redrock.rebin import trapz_rebin
+from desispec.interpolation import resample_flux
 from desiutil.log import get_logger
 log = get_logger()
+
+def _deredshift_one(args):
+    """Multiprocessing wrapper."""
+    return deredshift_one(*args)
+
+def deredshift_one(coaddwave, coaddflux, coaddivar, restwave, Iwave):
+    """QA on one spectrum."""
+    resampflux = np.zeros_like(restwave)
+    resampivar = np.zeros_like(restwave)
+    if len(Iwave) > 0:
+        #resampflux[Iwave] = trapz_rebin(coaddwave, coaddflux, restwave[Iwave])
+        flux, ivar = resample_flux(restwave[Iwave], coaddwave, coaddflux, ivar=coaddivar)
+        resampflux[Iwave] = flux
+        resampivar[Iwave] = ivar
+    return resampflux, resampivar
 
 def parse(options=None):
     """Parse input arguments.
@@ -51,189 +70,6 @@ def parse(options=None):
 
     return args
 
-def build_htmlhome(fastfit, metadata, tileinfo, coadd_type='cumulative',
-                   specprod='denali', htmlhome='index.html'):
-    """Build the home (index.html) page.
-
-    """
-    htmldir_https = htmldir.replace(cfsroot, httpsroot)
-
-    htmlhomefile = os.path.join(htmldir, htmlhome)
-    htmlhomefile_https = os.path.join(htmldir_https, htmlhome)
-    print('Building {}'.format(htmlhomefile))
-
-    targetclasses = ('ELG', 'LRG', 'QSO', 'BGS_ANY', 'MWS_ANY')
-
-    with open(htmlhomefile, 'w') as html:
-        html.write('<html><body>\n')
-        html.write('<style type="text/css">\n')
-        html.write('table, td, th {padding: 5px; text-align: center; border: 1px solid black;}\n')
-        html.write('p {display: inline-block;;}\n')
-        html.write('</style>\n')
-
-        html.write('<br />\n')
-        html.write('<h1><a href="https://fastspecfit.readthedocs.io/en/latest/index.html">FastSpecFit</a> Visualizations</h1>\n')
-        html.write('<h3><a href="https://data.desi.lbl.gov/desi/spectro/redux/denali">{} Data Release</a></h3>\n'.format(specprod))
-
-        #html.write('<p style="width: 75%">\n')
-        #html.write("""Write me.</p>\n""")
-
-        html.write('<br />\n')
-        html.write('<table>\n')
-        html.write('<tr>\n')
-        html.write('<th></th>\n')
-        html.write('<th></th>\n')
-        html.write('<th></th>\n')
-        html.write('<th></th>\n')
-        html.write('<th colspan="2">Effective Time (minutes)</th>\n')
-        html.write('</tr>\n')
-        
-        html.write('<tr>\n')
-        html.write('<th>Tile</th>\n')
-        html.write('<th>Survey</th>\n')
-        html.write('<th>Program</th>\n')
-        html.write('<th>Nexp</th>\n')
-        html.write('<th>ELG, dark</th>\n')
-        html.write('<th>BGS, bright</th>\n')
-        html.write('</tr>\n')
-
-        for tinfo in tileinfo:
-            tile = tinfo['TILEID']
-            tiledatafile = os.path.join(htmldir, 'tiles', coadd_type, str(tile), '{}-{}.html'.format(tile, coadd_type))
-            tilehtmlfile = os.path.join(htmldir_https, 'tiles', coadd_type, str(tile), '{}-{}.html'.format(tile, coadd_type))
-            
-            html.write('<tr>\n')
-            html.write('<td><a href="{}">{}</a></td>\n'.format(tilehtmlfile, tile))
-            html.write('<td>{}</td>\n'.format(tinfo['SURVEY'].upper()))
-            html.write('<td>{}</td>\n'.format(tinfo['FAPRGRM'].upper()))
-            html.write('<td>{}</td>\n'.format(tinfo['NEXP']))
-            html.write('<td>{:.0f}</td>\n'.format(tinfo['ELG_EFFTIME_DARK']/60))
-            html.write('<td>{:.0f}</td>\n'.format(tinfo['BGS_EFFTIME_BRIGHT']/60))
-            html.write('</tr>\n')
-        html.write('</table>\n')
-
-        # close up shop
-        html.write('<br /><br />\n')
-        html.write('</html></body>\n')
-
-    # Now the individual tile pages are more finely subdivided by target classes.
-    for tinfo in tileinfo:
-        tile = tinfo['TILEID']
-        tiledatafile = os.path.join(htmldir, 'tiles', coadd_type, str(tile), '{}-{}.html'.format(tile, coadd_type))
-        log.info('Building {}'.format(tiledatafile))
-
-        if tinfo['SURVEY'].upper() == 'SV1':
-            from desitarget.sv1.sv1_targetmask import desi_mask#, bgs_mask, mws_mask
-            desibit = 'SV1_DESI_TARGET'
-            bgsbit = 'SV1_BGS_TARGET'
-            mwsbit = 'SV1_MWS_TARGET'
-        elif tinfo['SURVEY'].upper() == 'SV2':
-            from desitarget.sv2.sv2_targetmask import desi_mask#, bgs_mask, mws_mask
-            desibit = 'SV2_DESI_TARGET'
-            bgsbit = 'SV2_BGS_TARGET'
-            mwsbit = 'SV2_MWS_TARGET'
-        else:
-            NotImplementedError
-
-        # need to account for the join suffix when we have both fastspec and
-        # fastphot output
-        if 'DESI_TARGET_SPEC' in metadata.colnames:
-            desibit = desibit+'_SPEC'
-            bgsbit = bgsbit+'_SPEC'
-            mwsbit = mwsbit+'_SPEC'
-
-        with open(tiledatafile, 'w') as html:
-            html.write('<html><body>\n')
-            html.write('<style type="text/css">\n')
-            html.write('table, td, th {padding: 5px; text-align: center; border: 1px solid black;}\n')
-            html.write('p {width: "75%";}\n')
-            html.write('</style>\n')
-
-            html.write('<h3><a href="{}">Home</a></h3>\n'.format(htmlhomefile_https))
-
-            html.write('<h2>Tile {}</h2>\n'.format(tile))
-            html.write('<br />\n')
-            html.write('<table>\n')
-            html.write('<tr>\n')
-            html.write('<th></th>\n')
-            html.write('<th></th>\n')
-            html.write('<th></th>\n')
-            html.write('<th colspan="2">Effective Time (minutes)</th>\n')
-            html.write('</tr>\n')
-
-            html.write('<tr>\n')
-            html.write('<th>Survey</th>\n')
-            html.write('<th>Program</th>\n')
-            html.write('<th>Nexp</th>\n')
-            html.write('<th>ELG, dark</th>\n')
-            html.write('<th>BGS, bright</th>\n')
-            html.write('</tr>\n')
-            html.write('<tr>\n')
-            html.write('<td>{}</td>\n'.format(tinfo['SURVEY'].upper()))
-            html.write('<td>{}</td>\n'.format(tinfo['FAPRGRM'].upper()))
-            html.write('<td>{}</td>\n'.format(tinfo['NEXP']))
-            html.write('<td>{:.0f}</td>\n'.format(tinfo['ELG_EFFTIME_DARK']/60))
-            html.write('<td>{:.0f}</td>\n'.format(tinfo['BGS_EFFTIME_BRIGHT']/60))
-            html.write('</tr>\n')
-            html.write('</table>\n')
-            
-            html.write('<br /><br />\n')
-            html.write('<table>\n')
-            html.write('<tr>\n')
-            html.write('<th>Target Class</th>\n')
-            html.write('<th>N</th>\n')
-            html.write('</tr>\n')
-                
-            for targetclass in targetclasses:
-                targhtmlfile = os.path.join(htmldir_https, 'tiles', coadd_type, str(tile), '{}-{}-{}.html'.format(tile, targetclass, coadd_type))
-                targdatafile = os.path.join(htmldir, 'tiles', coadd_type, str(tile), '{}-{}-{}.html'.format(tile, targetclass, coadd_type))
-                log.info('  Building {}'.format(targdatafile))
-
-                targintile = np.where((tile == metadata['TILEID']) *
-                                      metadata[desibit] & desi_mask.mask(targetclass) != 0)[0]
-                nobj = len(targintile)
-
-                html.write('<tr>\n')
-                html.write('<td><a href="{}">{}</a></td>\n'.format(targhtmlfile, targetclass))
-                html.write('<td>{}</td>\n'.format(nobj))
-                html.write('</tr>\n')
-
-                with open(targdatafile, 'w') as targhtml:
-                    targhtml.write('<html><body>\n')
-                    targhtml.write('<style type="text/css">\n')
-                    targhtml.write('table, td, th {padding: 5px; text-align: center; border: 1px solid black;}\n')
-                    targhtml.write('p {width: "75%";}\n')
-                    targhtml.write('</style>\n')
-                    targhtml.write('<h3><a href="{}">Home</a></h3>\n'.format(htmlhomefile_https))
-                    targhtml.write('<h3>Tile {} - {} (N={})</h3>\n'.format(tile, targetclass, nobj))
-                    targhtml.write('<table>\n')
-                    targhtml.write('<tr>\n')
-                    targhtml.write('<th>TargetID</th>\n')
-                    targhtml.write('<th>fastspec</th>\n')
-                    targhtml.write('<th>fastphot</th>\n')
-                    targhtml.write('</tr>\n')
-                
-                    for targetid in metadata['TARGETID'][targintile]:
-                        targhtml.write('<tr>\n')
-                        targhtml.write('<td>{}</td>\n'.format(targetid))
-
-                        for prefix in ('fastspec', 'fastphot'):
-                            httpfile = os.path.join(htmldir_https, 'tiles', coadd_type, str(tile), '{}-{}-{}-{}.png'.format(
-                                prefix, tile, coadd_type, targetid))
-                            pngfile = os.path.join(htmldir, 'tiles', coadd_type, str(tile), '{}-{}-{}-{}.png'.format(
-                                prefix, tile, coadd_type, targetid))
-                            if os.path.isfile(pngfile):
-                                targhtml.write('<td><a href="{0}"><img src="{0}" height="auto" width="512px"></a></td>\n'.format(httpfile))
-                            else:
-                                targhtml.write('<td>Not Available</td>\n')
-                    targhtml.write('</table>\n')
-                    targhtml.write('<br /><br />\n')
-                    targhtml.write('</html></body>\n')
-
-            html.write('</table>\n')
-            html.write('<br /><br />\n')
-            html.write('</html></body>\n')
-
 def main(args=None, comm=None):
     """Stack the spectra.
 
@@ -259,19 +95,16 @@ def main(args=None, comm=None):
             return
 
         from astropy.table import join
-        fastspec['TILEID'] = metaspec['TILEID']
-        fastphot['TILEID'] = metaphot['TILEID']
-
+        # temporarily add TILEID to the tables so we can use it to join,
+        # together with TARGETID and, optionally, NIGHT.
         joinkeys = ['TARGETID', 'TILEID']
         if 'NIGHT' in fastspec.colnames:
             joinkeys += 'NIGHT'
-            fastspec['NIGHT'] = metaspec['NIGHT']
-            fastphot['NIGHT'] = metaphot['NIGHT']
-            
-        fastfit = join(fastspec, fastphot, keys=joinkeys, join_type='outer',
-                       table_names=['SPEC', 'PHOT'])
-        metadata = join(metaspec, metaphot, keys=joinkeys, join_type='outer',
-                       table_names=['SPEC', 'PHOT'])
+        fastspec['TILEID'] = metaspec['TILEID']
+        fastphot['TILEID'] = metaphot['TILEID']
+        
+        fastfit = join(fastspec, fastphot, join_type='outer', table_names=['SPEC', 'PHOT'], keys=joinkeys)
+        metadata = join(metaspec, metaphot, join_type='outer', table_names=['SPEC', 'PHOT'], keys=joinkeys)
         assert(np.all(fastfit['TARGETID'] == metadata['TARGETID']))
         assert(np.all(fastfit['TILEID'] == metadata['TILEID']))
 
@@ -340,16 +173,18 @@ def main(args=None, comm=None):
     tilefile = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), specprod, 'tiles-{}.csv'.format(specprod))
     tileinfo = Table.read(tilefile)
     tileinfo = tileinfo[np.isin(tileinfo['TILEID'], np.unique(metadata['TILEID']))]
-
-    log.info('Fix SURVEY for tiles 80605-80610, which are incorrectly identified as cmx tiles.')    
-    surveyfix = np.where((tileinfo['TILEID'] >= 80605) * (tileinfo['TILEID'] <= 80610))[0]
-    if len(surveyfix) > 0:
-        tileinfo['SURVEY'][surveyfix] = 'sv1'
     log.info('Read survey info for {} tiles'.format(len(tileinfo)))
+
+    # rest-frame resampling parameters
+    obswave_min, obswave_max = 3600.0, 9800.0
+    zmax = {'ELG': 1.6, 'LRG': 1.3, 'QSO': 3.5, 'BGS_ANY': 0.7}
+
+    pixkms = 25.0                            # pixel size [km/s]Traceback (most recent call last):
+    dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
 
     # For each unique tile, select targets of each class and build the
     # rest-frame spectra.
-    targetclasses = ('ELG', 'LRG', 'QSO', 'BGS_ANY', 'MWS_ANY')
+    targetclasses = ('ELG', 'LRG', 'QSO', 'BGS_ANY')#, 'MWS_ANY')
 
     for tinfo in tileinfo:
         tile = tinfo['TILEID']
@@ -381,10 +216,19 @@ def main(args=None, comm=None):
             thrunightcol = 'THRUNIGHT'
             
         for targetclass in targetclasses:
-            targintile = np.where((tile == metadata['TILEID']) *
-                                  metadata[desibit] & desi_mask.mask(targetclass) != 0)[0]
+            targintile = np.where(
+                (metadata['Z_SPEC'] > 1.0) * # minimum redshift!
+                (metadata['Z_SPEC'] < 1.1) * # minimum redshift!
+                (tile == metadata['TILEID']) *
+                metadata[desibit] & desi_mask.mask(targetclass) != 0)[0]
+            if len(targintile) == 0:
+                log.info('No good {} targets in tile {}...moving on.'.format(targetclass, tile))
+                continue
+            #targintile = targintile[:22]
+            
             targ_fastfit = fastfit[targintile]
             targ_metadata = metadata[targintile]
+            nobj = len(targ_metadata)
 
             # Construct the zbestfiles filenames based on the input (only
             # supports coadd_type=='cumulative').
@@ -405,14 +249,40 @@ def main(args=None, comm=None):
             #dataphot = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)
             dataspec = Spec.read_and_unpack(CFit, fastphot=False, synthphot=False,
                                             remember_coadd=True)
-            assert(len(dataspec) == len(targ_metadata))
-            
+            assert(len(dataspec) == nobj)
+
+            # now resample onto a constant log-lambda binning scale
+            restwave = 10**np.arange(np.log10(obswave_min / (1+zmax[targetclass])), np.log10(obswave_max), dlogwave)
+            restwave_min = np.min(restwave)
+            restwave_max = np.max(restwave)
+            npix = len(restwave)
+
+            pad = 2 # [angstroms]
+            mpargs = []
+            for iobj in np.arange(nobj):
+                oneplusz = 1 + dataspec[iobj]['zredrock']
+                coaddwave = dataspec[iobj]['coadd_wave'] / oneplusz
+                coaddflux = dataspec[iobj]['coadd_flux'] * oneplusz
+                coaddivar = dataspec[iobj]['coadd_ivar'] / oneplusz**2
+                Iwave = np.where((restwave > np.min(coaddwave+pad)) * (restwave < np.max(coaddwave-pad)))[0]
+                mpargs.append((coaddwave, coaddflux, coaddivar, restwave, Iwave))
+                
+            t0 = time.time()
+            if args.mp > 1:
+                import multiprocessing
+                with multiprocessing.Pool(args.mp) as P:
+                    res = P.map(_deredshift_one, mpargs)
+            else:
+                res = [deredshift_one(*_mpargs) for _mpargs in mpargs]
+                
+            res = list(zip(*res))
+            restflux = np.vstack(res[0]).astype('f4')
+            restivar = np.vstack(res[1]).astype('f4')
+            log.info('De-redshifting done in {:.2f} sec'.format(time.time()-t0))
+
+            import matplotlib.pyplot as plt
+            plt.plot(restwave, np.sum(restflux, axis=0)) ; plt.xlim(3000, 4200) ; plt.savefig('test.png')
             pdb.set_trace()
-
-    # Build the home (index.html) page (always, irrespective of clobber)--
-    build_htmlhome(htmldir, fastfit, metadata, tileinfo, htmlhome=args.htmlhome,
-                   specprod=specprod)
-
 
     log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
 
