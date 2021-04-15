@@ -270,8 +270,8 @@ class DESISpectra(object):
         # targets table can include duplicates from secondary programs...
         _, uindx = np.unique(targets['TARGETID'], return_index=True) 
         targets = targets[uindx]
-        if len(targets) != len(meta):
-            log.warning('Missing targeting info for {} objects!'.format(len(meta) - len(targets)))
+        if len(targets) != len(info):
+            log.warning('Missing targeting info for {} objects!'.format(len(info) - len(targets)))
             raise ValueError
 
         metas = []
