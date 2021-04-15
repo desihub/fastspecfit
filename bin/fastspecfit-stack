@@ -33,6 +33,42 @@ def deredshift_one(coaddwave, coaddflux, coaddivar, restwave, Iwave):
         resampivar[Iwave] = ivar
     return resampflux, resampivar
 
+def write_stacked(wave, flux, ivar, fastspec, fastphot, metadata,
+                  outfile, specprod, coadd_type):
+    """Write out.
+
+    """
+    from astropy.io import fits
+    
+    t0 = time.time()
+
+    hduflux = fits.PrimaryHDU(flux.astype('f4'))
+    hduflux.header['EXTNAME'] = 'FLUX'
+
+    hduivar = fits.ImageHDU(ivar.astype('f4'))
+    hduivar.header['EXTNAME'] = 'IVAR'
+
+    hduwave = fits.ImageHDU(wave.astype('f8'))
+    hduwave.header['EXTNAME'] = 'WAVE'
+    hduwave.header['BUNIT'] = 'Angstrom'
+    hduwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+
+    hduspec = fits.convenience.table_to_hdu(fastspec)
+    hduspec.header['EXTNAME'] = 'FASTSPEC'
+
+    hduphot = fits.convenience.table_to_hdu(fastphot)
+    hduphot.header['EXTNAME'] = 'FASTPHOT'
+
+    hdumeta = fits.convenience.table_to_hdu(metadata)
+    hdumeta.header['EXTNAME'] = 'METADATA'
+    hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
+    hdumeta.header['COADDTYP'] = (coadd_type, 'spectral coadd fitted')
+
+    hx = fits.HDUList([hduflux, hduwave, hduspec, hduphot, hdumeta])
+    hx.writeto(outfile, overwrite=True, checksum=True)
+    print('Writing {} spectra to {} took {:.2f} sec'.format(
+        len(fastphot), outfile, time.time()-t0))
+
 def parse(options=None):
     """Parse input arguments.
 
@@ -179,13 +215,14 @@ def main(args=None, comm=None):
     obswave_min, obswave_max = 3600.0, 9800.0
     zmax = {'ELG': 1.6, 'LRG': 1.3, 'QSO': 3.5, 'BGS_ANY': 0.7}
 
-    pixkms = 25.0                            # pixel size [km/s]Traceback (most recent call last):
+    pixkms = 20.0                            # pixel size [km/s]Traceback (most recent call last):
     dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
 
     # For each unique tile, select targets of each class and build the
     # rest-frame spectra.
     targetclasses = ('ELG', 'LRG', 'QSO', 'BGS_ANY')#, 'MWS_ANY')
 
+    tall = time.time()
     for tinfo in tileinfo:
         tile = tinfo['TILEID']
         log.info('Working on tile {}'.format(tile))
@@ -216,10 +253,13 @@ def main(args=None, comm=None):
             thrunightcol = 'THRUNIGHT'
             
         for targetclass in targetclasses:
+            log.info('Working on {} on tile {}'.format(targetclass, tile))
+            
             targintile = np.where(
-                (metadata['Z_SPEC'] > 1.0) * # minimum redshift!
-                (metadata['Z_SPEC'] < 1.1) * # minimum redshift!
                 (tile == metadata['TILEID']) *
+                (metadata['Z_SPEC'] > 0.01) * # minimum redshift!
+                #(metadata['Z_SPEC'] > 1.0) *
+                #(metadata['Z_SPEC'] < 1.1) *
                 metadata[desibit] & desi_mask.mask(targetclass) != 0)[0]
             if len(targintile) == 0:
                 log.info('No good {} targets in tile {}...moving on.'.format(targetclass, tile))
@@ -280,11 +320,15 @@ def main(args=None, comm=None):
             restivar = np.vstack(res[1]).astype('f4')
             log.info('De-redshifting done in {:.2f} sec'.format(time.time()-t0))
 
-            import matplotlib.pyplot as plt
-            plt.plot(restwave, np.sum(restflux, axis=0)) ; plt.xlim(3000, 4200) ; plt.savefig('test.png')
+            #import matplotlib.pyplot as plt
+            #plt.plot(restwave, np.sum(restflux, axis=0)) ; plt.xlim(3000, 4200) ; plt.savefig('test.png')
+            #pdb.set_trace()
+
+            write_stacked(restwave, restflux, restivar, fastspec, fastphot,
+                          metadata, outfile, specprod, coadd_type):
             pdb.set_trace()
 
-    log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
+    log.info('Stacking everything took: {:.2f} sec'.format(time.time()-tall))
 
 if __name__ == '__main__':
     main()
