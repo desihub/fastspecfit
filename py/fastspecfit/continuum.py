@@ -295,6 +295,12 @@ class ContinuumTools(object):
         if ivarmaggies is None:
             ivarmaggies = np.zeros_like(maggies)
 
+        ## Gaia-only targets all have grz=-99 fluxes (we now cut these out in
+        ## io.DESISpectra.find_specfiles)
+        #if np.all(maggies==-99):
+        #    log.warning('Gaia-only targets not supported.')
+        #    raise ValueError
+
         phot['lambda_eff'] = lambda_eff.astype('f4')
         if nanomaggies:
             phot['nanomaggies'] = maggies.astype('f4')
@@ -630,7 +636,7 @@ class ContinuumTools(object):
 
         if percamera:
             smooth_continuum = []
-            for icam in [0, 1, 2]: # iterate over cameras        
+            for icam in np.arange(len(specflux)): # iterate over cameras        
                 residuals = specflux[icam] - continuummodel[icam]
                 if False:
                     smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
@@ -1056,12 +1062,19 @@ class ContinuumFit(ContinuumTools):
         continuummodel = bestsspflux.dot(coeff)
 
         # Compute D4000, K-corrections, and rest-frame quantities.
-        d4000, _ = self.get_d4000(self.sspwave, continuummodel, rest=True)
-        meanage = self.get_meanage(coeff)
-        kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel, coeff)
+        if np.count_nonzero(coeff > 0) == 0:
+            log.warning('Continuum coefficients are all zero!')
+            chi2min, d4000, meanage = 1e6, -1.0, -1.0
+            kcorr = np.zeros(len(self.absmag_bands))
+            absmag = np.zeros(len(self.absmag_bands))-99.0
+            ivarabsmag = np.zeros(len(self.absmag_bands))
+        else:
+            d4000, _ = self.get_d4000(self.sspwave, continuummodel, rest=True)
+            meanage = self.get_meanage(coeff)
+            kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel, coeff)
 
-        log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
-            d4000, meanage, absmag[1]))
+            log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
+                d4000, meanage, absmag[1]))
 
         # Pack it up and return.
         result['CONTINUUM_COEFF'][0][:nage] = coeff
@@ -1227,7 +1240,7 @@ class ContinuumFit(ContinuumTools):
         # Unpack the continuum into individual cameras.
         continuummodel = []
         smooth_continuum = []
-        for icam in [0, 1, 2]: # iterate over cameras
+        for icam in np.arange(len(data['cameras'])): # iterate over cameras
             ipix = np.sum(npixpercam[:icam+1])
             jpix = np.sum(npixpercam[:icam+2])
             continuummodel.append(bestfit[ipix:jpix])
@@ -1241,11 +1254,11 @@ class ContinuumFit(ContinuumTools):
         if False:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots(2, 1)
-            for icam in [0, 1, 2]: # iterate over cameras
+            for icam in np.arange(len(data['cameras'])): # iterate over cameras
                 resid = data['flux'][icam]-continuummodel[icam]
                 ax[0].plot(data['wave'][icam], resid)
                 ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
-            for icam in [0, 1, 2]: # iterate over cameras
+            for icam in np.arange(len(data['cameras'])): # iterate over cameras
                 resid = data['flux'][icam]-continuummodel[icam]
                 pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
                 ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
@@ -1266,7 +1279,7 @@ class ContinuumFit(ContinuumTools):
         result['D4000_MODEL'][0] = d4000_model
 
         for icam, cam in enumerate(data['cameras']):
-            nonzero = continuummodel[icam] != 0
+            nonzero = np.abs(continuummodel[icam]) > 1e-5
             if np.sum(nonzero) > 0:
                 corr = np.mean(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
                 result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr

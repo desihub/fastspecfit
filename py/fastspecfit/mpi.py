@@ -79,7 +79,7 @@ def group_zbestfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
             _, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)
             fm = fm[I]
             assert(np.all(zb['TARGETID'] == fm['TARGETID']))
-            J = ((zb['Z'] > 0) * #(zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
+            J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
                  (fm['OBJTYPE'] == 'TGT') * (fm['FIBERSTATUS'] == 0))
             ntargets[i] = np.count_nonzero(J)
 
@@ -148,9 +148,9 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
             #tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
 
-            log.info('Add tiles 80605-80610 which are incorrectly identified as cmx tiles.')
-            tileinfo = vstack((tileinfo, alltileinfo[np.where((alltileinfo['TILEID'] >= 80605) * (alltileinfo['TILEID'] <= 80610))[0]]))
-            tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
+            #log.info('Add tiles 80605-80610 which are incorrectly identified as cmx tiles.')
+            #tileinfo = vstack((tileinfo, alltileinfo[np.where((alltileinfo['TILEID'] >= 80605) * (alltileinfo['TILEID'] <= 80610))[0]]))
+            #tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
 
             log.info('Retrieved a list of {} {} tiles from {}'.format(
                 len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
@@ -161,15 +161,20 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             #tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
             #log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
 
-            alltiles = np.array(list(set(tileinfo['TILEID'])))
-            ireduced = [os.path.isdir(os.path.join(specprod_dir, args.coadd_type, str(tile1))) for tile1 in alltiles]
-            log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
-                args.specprod, np.sum(ireduced), len(alltiles)))
+            #alltiles = np.array(list(set(tileinfo['TILEID'])))
+            #ireduced = [os.path.isdir(os.path.join(specprod_dir, args.coadd_type, str(tile1))) for tile1 in alltiles]
+            #log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
+            #    args.specprod, np.sum(ireduced), len(alltiles)))
+            #args.tile = alltiles[ireduced]
+            #tileinfo = tileinfo[ireduced]
 
-            args.tile = alltiles[ireduced]
-            tileinfo = tileinfo[ireduced]
+            args.tile = np.array(list(set(tileinfo['TILEID'])))
             #print(args.tile)
-            print(tileinfo)
+
+            #if True:
+            #    tileinfo = tileinfo[['lrg' in program or 'elg' in program for program in tileinfo['FAPRGRM']]]
+            #    args.tile = np.array(list(set(tileinfo['TILEID'])))
+            #print(tileinfo)
 
         outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')
@@ -354,7 +359,7 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None):
 
     mergedir = os.path.join(outdir, 'merged')
     if not os.path.isdir(mergedir):
-        os.makedirs(mergedir)
+        os.makedirs(mergedir, exist_ok=True)
 
     #if args.coadd_type == 'deep-coadds':
     #    mergeprefix = 'deep'

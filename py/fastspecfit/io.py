@@ -38,7 +38,7 @@ class DESISpectra(object):
         ## desitarget.io.read_targets_in_quick).
         #self.tile_nside = pixarea2nside(8.)
 
-    def _get_targetdir(self, tileid):
+    def _get_targetdirs(self, tileid):
         """Get the targets catalog used to build a given fiberassign catalog.
 
         """
@@ -55,18 +55,28 @@ class DESISpectra(object):
         #fahdr = fitsio.read_header(fiberfile, ext=0)
         # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/zbest-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
         fahdr = fits.getheader(fiberfile, ext=0)
-        targetdir = fahdr['TARG']
-        targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('DESIROOT/', ''))
+        targetdirs = [fahdr['TARG']]
+        for moretarg in ['TARG2', 'TARG3', 'TARG4']:
+            if moretarg in fahdr:
+                targetdirs += [fahdr[moretarg]]
+        if 'SCND' in fahdr:
+            if fahdr['SCND'].strip() != '-':
+                targetdirs += [fahdr['SCND']]
+            
+        for ii, targetdir in enumerate(targetdirs):
+            targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('DESIROOT/', ''))
 
-        # sometimes this is a KPNO directory!
-        if not os.path.isdir(targetdir):
-            log.warning('Targets directory not found {}'.format(targetdir))
-            targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('/data/', ''))
+            # sometimes this is a KPNO directory!
             if not os.path.isdir(targetdir):
-                log.fatal('Targets directory not found {}'.format(targetdir))
-                raise IOError
+                log.warning('Targets directory not found {}'.format(targetdir))
+                targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('/data/', ''))
+                if not os.path.isdir(targetdir):
+                    log.fatal('Targets directory not found {}'.format(targetdir))
+                    raise IOError
+                
+            targetdirs[ii] = targetdir
 
-        return targetdir
+        return targetdirs
 
     def find_specfiles(self, zbestfiles=None,
                        #fastfit=None, metadata=None,
@@ -169,8 +179,9 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
-                     (meta['OBJTYPE'] == 'TGT') * (meta['FIBERSTATUS'] == 0))[0]
+                fitindx = np.where(np.logical_and((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') *
+                                                  (meta['OBJTYPE'] == 'TGT') * (meta['FIBERSTATUS'] == 0),
+                                                  np.logical_or(meta['PHOTSYS'] == 'N', meta['PHOTSYS'] == 'S')))[0]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -235,16 +246,33 @@ class DESISpectra(object):
         info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
         targets = []
         for tileid in set(alltileid):
-            targetdir = self._get_targetdir(tileid)
-            targetfiles = glob(os.path.join(targetdir, '*-hp-*.fits'))
-            filenside = fitsio.read_header(targetfiles[0], ext=1)['FILENSID']
-            pixlist = radec2pix(filenside, info['TARGET_RA'], info['TARGET_DEC'])
-            targetfiles = [targetfiles[0].split('hp-')[0]+'hp-{}.fits'.format(pix) for pix in set(pixlist)]
-            for targetfile in targetfiles:
-                alltargets = fitsio.read(targetfile, columns=targetcols)
-                alltargets = alltargets[np.isin(alltargets['TARGETID'], info['TARGETID'])]
-                targets.append(alltargets)
+            targetdirs = self._get_targetdirs(tileid)
+            for targetdir in targetdirs:
+                # handle secondary targets, which have a different data model
+                if 'secondary' in targetdir:
+                    targetfiles = glob(os.path.join(targetdir, '*-secondary.fits'))
+                else:
+                    targetfiles = glob(os.path.join(targetdir, '*-hp-*.fits'))
+                    filenside = fitsio.read_header(targetfiles[0], ext=1)['FILENSID']
+                    pixlist = radec2pix(filenside, info['TARGET_RA'], info['TARGET_DEC'])
+                    targetfiles = [targetfiles[0].split('hp-')[0]+'hp-{}.fits'.format(pix) for pix in set(pixlist)]
+                    
+                for targetfile in targetfiles:
+                    alltargets = fitsio.read(targetfile, columns=targetcols)
+                    match = np.isin(alltargets['TARGETID'], info['TARGETID'])
+                    log.info('Matched {} targets in {}'.format(np.sum(match), targetfile))
+                    if np.sum(match) > 0:
+                        alltargets = alltargets[match]
+                        targets.append(alltargets)
+                        
         targets = Table(np.hstack(targets))
+
+        # targets table can include duplicates from secondary programs...
+        _, uindx = np.unique(targets['TARGETID'], return_index=True) 
+        targets = targets[uindx]
+        if len(targets) != len(info):
+            log.warning('Missing targeting info for {} objects!'.format(len(info) - len(targets)))
+            raise ValueError
 
         metas = []
         for meta in self.meta:
@@ -252,7 +280,7 @@ class DESISpectra(object):
             for col in targetcols:
                 if col not in meta.colnames:
                     meta[col] = targets[col][srt]
-            assert(np.all(meta['TARGETID'] == targets['TARGETID'][srt]))
+                    assert(np.all(meta['TARGETID'] == targets['TARGETID'][srt]))
             metas.append(Table(meta))
         log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
@@ -374,6 +402,10 @@ class DESISpectra(object):
                 for iband, band in enumerate(CFit.bands):
                     maggies[iband] = meta['FLUX_{}'.format(band.upper())][igal] / mw_transmission_flux[iband]
                     ivarmaggies[iband] = meta['FLUX_IVAR_{}'.format(band.upper())][igal] * mw_transmission_flux[iband]**2
+                    
+                if not np.all(ivarmaggies >= 0):
+                    log.warning('Some ivarmaggies are negative!')
+                    raise ValueError
 
                 data['phot'] = CFit.parse_photometry(CFit.bands,
                     maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
