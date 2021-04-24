@@ -5,10 +5,24 @@ fastspecfit.templates.qa
 QA for templates
 
 """
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from matplotlib.patches import Rectangle
+
+import seaborn as sns
+sns.set(context='talk', style='ticks', palette='deep', font_scale=1.2)#, rc=rc)
+colors = sns.color_palette()
+
+cmap = plt.cm.get_cmap('RdYlBu')
+    
 def qa_obs(phot, png=None):
-    
-    cmap = plt.cm.get_cmap('RdYlBu')
-    
+
+    zobslim = (16, 22)
+    W1obslim = (16, 21)
+    grobslim = (-0.2, 5)
+    rzobslim = (0.3, 3)
+    zW1obslim = (0, 2.8)
+
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
     
     ax1.hexbin(phot['RMAG']-phot['ZMAG'], phot['GMAG']-phot['RMAG'], mincnt=1, bins='log', 
@@ -45,7 +59,10 @@ def qa_obs(phot, png=None):
     ax4.set_ylim(zW1obslim)
     
     cax = fig.add_axes([0.88, 0.20, 0.02, 0.68])
-    fig.colorbar(hb, cax=cax, label=r'$\log_{10}$ (Number of Galaxies)')
+
+    formatter = ticker.LogFormatter(10, labelOnlyBase=False) 
+    fig.colorbar(hb, cax=cax, format=formatter, label='Number of Galaxies')
+                 #label=r'$\log_{10}$ (Number of Galaxies)')
 
     #cb = plt.colorbar(hb)
     #cb.set_label(r'$\log_{10}$ (Number of Galaxies)')  
@@ -53,15 +70,16 @@ def qa_obs(phot, png=None):
     for aa in (ax1, ax2, ax3, ax4):
         aa.grid(True)
 
-    plt.subplots_adjust(wspace=0.22, hspace=0.32, right=0.85, bottom=0.2)
+    plt.subplots_adjust(wspace=0.22, hspace=0.32, right=0.85, bottom=0.15)
     
     if png:
         print('Writing {}'.format(png))
         fig.savefig(png)
     
 def qa_rest(phot, spec, meta, bins=None, png=None):
+
+    zlim, Mrlim, gilim, rW1lim = (0.0, 1.2), (-19, -25), (0.2, 1.6), (-1.4, 1.4)
     
-    cmap = plt.cm.get_cmap('RdYlBu')
     fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(18, 10))
     
     ax1.hexbin(meta['Z'], phot['ABSMAG_R'], mincnt=1, bins='log', 
@@ -147,7 +165,8 @@ def qa_rest(phot, spec, meta, bins=None, png=None):
          for xx in bins['rW1']['grid'] for yy in bins['gi']['grid']]
     
     cax = fig.add_axes([0.88, 0.13, 0.02, 0.75])
-    fig.colorbar(hb, cax=cax, label=r'$\log_{10}$ (Number of Galaxies)')
+    formatter = ticker.LogFormatter(10, labelOnlyBase=False) 
+    fig.colorbar(hb, cax=cax, format=formatter, label='Number of Galaxies')
 
     for aa in (ax1, ax2, ax3, ax4, ax5, ax6):
         aa.grid(True)
