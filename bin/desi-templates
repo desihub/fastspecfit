@@ -7,7 +7,7 @@ import os, sys, time
 import numpy as np
 import fitsio
 
-from astropy.table import Table
+from astropy.table import Table, Column
 from fastspecfit.util import C_LIGHT
 
 from desiutil.log import get_logger
@@ -386,33 +386,100 @@ def main(args=None, comm=None):
 
     log.info('Working on targetclass {}'.format(args.targetclass.upper()))
 
-    # Read the master tile file and the fastspecfit fitting results.
-    tileinfo = read_tileinfo(args.targetclass, remove_vi=True, efftime_min=5.0,
-                             specprod=args.specprod)
-    allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass)
-
-    # select the parent sample and specify the averaging bins
-    bins, nbins = stacking_bins(verbose=True)
-    galphot, galspec, galmeta = select_gals(allphot, allspec, allmeta)
-
-    # intermediate QA
-    from fastspecfit.templates.qa import qa_obs, qa_rest
-
-    qa_obs(galphot, png=os.path.join(templatedir, 'qa', '{}-obs.png'.format(args.targetclass)))
-    qa_rest(galphot, galspec, galmeta, bins=None, png=os.path.join(templatedir, 'qa', '{}-rest.png'.format(args.targetclass)))
-    qa_rest(galphot, galspec, galmeta, bins=bins, png=os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(args.targetclass)))
-
-    # select spectra in bins of properties, looping over all tiles
-    CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
-    sample, data, restwave = spectra_in_bins(tileinfo[5:8], targetclass=args.targetclass,
-                                             CFit=CFit, verbose=False)
-
-    log.info('Building the stacks in bins.')
+    # [1] Build the stacked spectra.
     stackfile = os.path.join(templatedir, '{}-stacks.fits'.format(args.targetclass))
-    stack_in_bins(sample[:3], data, restwave, continuumwave=CFit.sspwave, mp=args.mp, stackfile=stackfile)
+    if not os.path.isfile(stackfile) or args.overwrite:
+        log.info('Building stacked spectra in bins of properties.')
+        
+        # Read the master tile file and the fastspecfit fitting results.
+        tileinfo = read_tileinfo(args.targetclass, remove_vi=True, efftime_min=5.0,
+                                 specprod=args.specprod)
+        allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass)
 
+        # select the parent sample and specify the averaging bins
+        bins, nbins = stacking_bins(verbose=True)
+        galphot, galspec, galmeta = select_gals(allphot, allspec, allmeta)
+
+        # intermediate QA
+        from fastspecfit.templates.qa import qa_obs, qa_rest
+        qa_obs(galphot, png=os.path.join(templatedir, 'qa', '{}-obs.png'.format(args.targetclass)))
+        qa_rest(galphot, galspec, galmeta, bins=None, png=os.path.join(templatedir, 'qa', '{}-rest.png'.format(args.targetclass)))
+        qa_rest(galphot, galspec, galmeta, bins=bins, png=os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(args.targetclass)))
+
+        # select spectra in bins of properties, looping over all tiles
+        CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
+        sample, data, restwave = spectra_in_bins(tileinfo[5:8], targetclass=args.targetclass,
+                                                 CFit=CFit, verbose=False)
+
+        stack_in_bins(sample, data, restwave, continuumwave=CFit.sspwave, mp=args.mp, stackfile=stackfile)
+
+    # [2] Model the stacked spectra and write out fitting results.
+    log.info('Reading stacked spectra from {}'.format(stackfile))
+    wave = fitsio.read(stackfile, ext='WAVE')
+    flux = fitsio.read(stackfile, ext='FLUX')
+    ivar = fitsio.read(stackfile, ext='IVAR')
+    cwave = fitsio.read(stackfile, ext='CWAVE')
+    cflux = fitsio.read(stackfile, ext='CFLUX')
+    meta = fitsio.read(stackfile, ext='METADATA')
+
+    ngal, npix = flux.shape
+
+    from desispec.resolution import Resolution
+    from scipy.sparse import identity
+
+    from fastspecfit.continuum import ContinuumFit
+    from fastspecfit.emlines import EMLineFit
+    from fastspecfit.io import write_fastspecfit
+    #from fastspecfit.io import DESISpectra, write_fastspecfit
+    
+    igal = 0
+    good = np.where(ivar[igal, :] > 0)[0]
+    npix = len(good)
+
+    ztemp = 0.01
+
+    data = {}
+    data['zredrock'] = ztemp
+    data['cameras'] = ['all']
+    data['snr'] = [1.0]
+    data['photsys'] = 'S'
+    data['wave'] = [wave[good] * (1+ztemp)]
+    data['flux'] = [flux[igal, good]]
+    data['ivar'] = [ivar[igal, good]]
+    data['linemask'] = [np.ones(npix, bool)]
+
+    resolution_data = identity(n=npix)
+    data['res'] = [Resolution(resolution_data)]
+    
+    minwave, maxwave = data['wave'][0].min()-3.0, data['wave'][0].max()+3.0
+
+    CFit = ContinuumFit()
+    EMFit = EMLineFit(minwave=minwave, maxwave=maxwave)
+    #Spec = DESISpectra()
+
+    cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data)    
+    emfit = EMFit.fit(data, continuummodel, smooth_continuum, synthphot=False)
+
+    fastmeta = Table()
+    fastmeta.add_column(Column(name='TARGETID', data=np.ones(1, dtype=np.int32)))
+    fastmeta.add_column(Column(name='TILEID', data=np.ones(1, dtype=np.int32)))
+    fastmeta.add_column(Column(name='FIBER', data=np.ones(1, dtype=np.int32)))
+
+    fastspec = Table()
+    for col in cfit.colnames:
+        fastspec[col] = cfit[col]
+    for col in emfit.colnames:
+        fastspec[col] = emfit[col]
+        
+    #fastspec, fastmeta = Spec.init_output(CFit=CFit, EMFit=EMFit)
+    #for col in cfit.colnames:
+    #    fastspec[col] = cfit[col]
+    #for col in emfit.colnames:
+    #    fastspec[col] = emfit[col]
+
+    EMFit.qa_fastspec(data, fastspec[igal], fastmeta[igal], wavelims=(minwave, maxwave))
+    
     pdb.set_trace()
-
 
 if __name__ == '__main__':
     main()

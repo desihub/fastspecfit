@@ -15,9 +15,9 @@ log = get_logger()
 
 def _stack_onebin(args):
     """Multiprocessing wrapper."""
-    return deredshift_one(*args)
+    return stack_onebin(*args)
 
-def stack_onebin(flux2d, ivar2d, templatewave, ecflux2d, continuumwave):
+def stack_onebin(flux2d, ivar2d, templatewave, cflux2d, continuumwave):
     """Build one stack."""
 
     templatewave1, templateflux1, templateivar1, _, templatepix = iterative_stack(
@@ -192,7 +192,7 @@ def stack_in_bins(sample, data, templatewave, mp=1, continuumwave=None, stackfil
     t0 = time.time()
     if mp > 1:
         import multiprocessing
-        with multiprocessing.Pool(args.mp) as P:
+        with multiprocessing.Pool(mp) as P:
             results = P.map(_stack_onebin, mpargs)
     else:
         results = [stack_onebin(*_mpargs) for _mpargs in mpargs]

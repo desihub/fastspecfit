@@ -411,6 +411,10 @@ class EMLineModel(Fittable1DModel):
             #_emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
         
             _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
+            #try:
+            #    _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
+            #except:
+            #    pdb.set_trace()                
 
             if self.emlineR is not None:
                 _emlinemomdel = self.emlineR[ii].dot(_emlinemodel)
@@ -430,7 +434,8 @@ class EMLineFit(ContinuumTools):
     * https://docs.astropy.org/en/stable/modeling/compound-models.html#parameters
 
     """
-    def __init__(self, nball=10, chi2fail=1e6):
+    def __init__(self, nball=10, chi2fail=1e6, minwave=3000.0,
+                 maxwave=10000.0, pixkms=10.0):
         """Write me.
         
         """
@@ -440,7 +445,11 @@ class EMLineFit(ContinuumTools):
         
         self.nball = nball
         self.chi2fail = chi2fail
+
         self.pixkms = 10.0 # pixel size for internal wavelength array [km/s]
+        dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
+        self.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), dlogwave)
+        #self.log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
 
         self.fitter = fitting.LevMarLSQFitter()#calc_uncertainties=True)
         #self.fitter_nouncertainties = fitting.LevMarLSQFitter(calc_uncertainties=False)
@@ -548,7 +557,8 @@ class EMLineFit(ContinuumTools):
         
         EMLine = EMLineModel(
             redshift=redshift, emlineR=specres,
-            npixpercamera=npixpercamera)
+            npixpercamera=npixpercamera,
+            log10wave=self.log10wave)
         
         lineargs = [fastspecfit_table[linename.upper()] for linename in EMLine.param_names]#[4:]]
         
@@ -564,7 +574,7 @@ class EMLineFit(ContinuumTools):
 
         return emlinemodel
     
-    def fit(self, data, continuummodel, smooth_continuum):
+    def fit(self, data, continuummodel, smooth_continuum, synthphot=True):
         """Perform the fit minimization / chi2 minimization.
         
         EMLineModel object
@@ -595,14 +605,10 @@ class EMLineFit(ContinuumTools):
         npixpercamera = [len(gw) for gw in data['wave']] # all pixels
         npixpercam = np.hstack([0, npixpercamera])
 
-        dlogwave = self.pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
-        log10wave = np.arange(np.log10(3e3), np.log10(1e4), dlogwave)
-        #log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
-
         self.EMLineModel = EMLineModel(redshift=redshift,
                                        emlineR=data['res'],
                                        npixpercamera=npixpercamera,
-                                       log10wave=log10wave)
+                                       log10wave=self.log10wave)
         nparam = len(self.EMLineModel.parameters)
         #params = np.repeat(self.EMLineModel.parameters, self.nball).reshape(nparam, self.nball)
 
@@ -734,25 +740,26 @@ class EMLineFit(ContinuumTools):
         chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
 
         # Synthesize photometry from the best-fitting model (continuum+emission lines).
-        if data['photsys'] == 'S':
-            filters = self.decam
-        else:
-            filters = self.bassmzls
+        if synthphot:
+            if data['photsys'] == 'S':
+                filters = self.decam
+            else:
+                filters = self.bassmzls
 
-        # The wavelengths overlap between the cameras a bit...
-        srt = np.argsort(emlinewave)
-        padflux, padwave = filters.pad_spectrum((continuummodelflux+smoothcontinuummodelflux+emlinemodel)[srt], emlinewave[srt], method='edge')
-        synthmaggies = filters.get_ab_maggies(padflux / self.fluxnorm, padwave)
-        synthmaggies = synthmaggies.as_array().view('f8')
-        model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
-                                                nanomaggies=False,
-                                                lambda_eff=filters.effective_wavelengths.value)
+            # The wavelengths overlap between the cameras a bit...
+            srt = np.argsort(emlinewave)
+            padflux, padwave = filters.pad_spectrum((continuummodelflux+smoothcontinuummodelflux+emlinemodel)[srt], emlinewave[srt], method='edge')
+            synthmaggies = filters.get_ab_maggies(padflux / self.fluxnorm, padwave)
+            synthmaggies = synthmaggies.as_array().view('f8')
+            model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
+                                                    nanomaggies=False,
+                                                    lambda_eff=filters.effective_wavelengths.value)
 
-        for iband, band in enumerate(self.synth_bands):
-            result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband]
-            #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
-        for iband, band in enumerate(self.synth_bands):
-            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband]
+            for iband, band in enumerate(self.synth_bands):
+                result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband]
+                #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
+            for iband, band in enumerate(self.synth_bands):
+                result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband]
 
         specflux_nolines = specflux - emlinemodel
 
@@ -1003,7 +1010,7 @@ class EMLineFit(ContinuumTools):
         return result
     
     def qa_fastspec(self, data, fastspec, metadata, coadd_type='cumulative',
-                    outprefix=None, outdir=None):
+                    wavelims=(3600, 9800), outprefix=None, outdir=None):
         """QA plot the emission-line spectrum and best-fitting model.
 
         """
@@ -1121,7 +1128,6 @@ class EMLineFit(ContinuumTools):
                 fastspec['CONTINUUM_AV'], 1/np.sqrt(fastspec['CONTINUUM_AV_IVAR']))})
 
         ymin, ymax = 1e6, -1e6
-        wavelims = (3600, 9800)
 
         legxpos, legypos, legfntsz = 0.98, 0.94, 20
         bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
