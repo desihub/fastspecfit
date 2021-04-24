@@ -408,8 +408,8 @@ def main(args=None, comm=None):
                                              CFit=CFit, verbose=False)
 
     log.info('Building the stacks in bins.')
-    outfile = os.path.join(templatedir, '{}-stacks.fits'.format(args.targetclass))
-    stack_in_bins(sample[:3], data, restwave, continuumwave=CFit.sspwave, mp=args.mp, outfile=outfile)
+    stackfile = os.path.join(templatedir, '{}-stacks.fits'.format(args.targetclass))
+    stack_in_bins(sample[:3], data, restwave, continuumwave=CFit.sspwave, mp=args.mp, stackfile=stackfile)
 
     pdb.set_trace()
 

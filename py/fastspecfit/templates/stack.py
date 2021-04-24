@@ -17,17 +17,19 @@ def _stack_onebin(args):
     """Multiprocessing wrapper."""
     return deredshift_one(*args)
 
-def stack_onebin(flux2d, ivar2d, cflux2d, templatewave, continuumwave):
+def stack_onebin(flux2d, ivar2d, templatewave, ecflux2d, continuumwave):
     """Build one stack."""
 
     templatewave1, templateflux1, templateivar1, _, templatepix = iterative_stack(
         templatewave, flux2d, ivar2d, constant_ivar=False, verbose=False)
     
-    _, continuumflux1, _, _, templatecpix = iterative_stack(continuumwave, cflux2d, verbose=False)
+    if continuumwave is None:
+        return templateflux1, templateivar1, templatepix
+    else:
+        _, continuumflux1, _, _, templatecpix = iterative_stack(continuumwave, cflux2d, verbose=False)
+        return templateflux1, templateivar1, templatepix, continuumflux1, templatecpix
 
-    return templateflux1, templateivar1, templatepix, continuumflux1, templatecpix
-
-def write_binned_stacks(metadata, wave, flux, ivar, cwave, cflux, outfile):
+def write_binned_stacks(metadata, wave, flux, ivar, cwave, cflux, stackfile):
     """Write out the stacked spectra.
     
     """
@@ -47,18 +49,22 @@ def write_binned_stacks(metadata, wave, flux, ivar, cwave, cflux, outfile):
     hducflux = fits.ImageHDU(cflux.astype('f4'))
     hducflux.header['EXTNAME'] = 'CFLUX'
 
-    hducwave = fits.ImageHDU(cwave.astype('f8'))
-    hducwave.header['EXTNAME'] = 'CWAVE'
-    hducwave.header['BUNIT'] = 'Angstrom'
-    hducwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
-    
     hdumeta = fits.convenience.table_to_hdu(metadata)
     hdumeta.header['EXTNAME'] = 'METADATA'
     #hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
 
-    hx = fits.HDUList([hduflux, hduivar, hduwave, hducflux, hducwave, hdumeta])
-    hx.writeto(outfile, overwrite=True, checksum=True)
-    log.info('Writing {} stacked spectra to {}'.format(len(metadata), outfile))
+    if cwave is not None:
+        hducwave = fits.ImageHDU(cwave.astype('f8'))
+        hducwave.header['EXTNAME'] = 'CWAVE'
+        hducwave.header['BUNIT'] = 'Angstrom'
+        hducwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+    
+        hx = fits.HDUList([hduflux, hduivar, hduwave, hducflux, hducwave, hdumeta])
+    else:
+        hx = fits.HDUList([hduflux, hduivar, hduwave, hdumeta])
+        
+    hx.writeto(stackfile, overwrite=True, checksum=True)
+    log.info('Writing {} stacked spectra to {}'.format(len(metadata), stackfile))
 
 def quick_stack(wave, flux2d, ivar2d=None, constant_ivar=False):
     """Simple inverse-variance-weighted stack.
@@ -163,7 +169,7 @@ def iterative_stack(wave, flux2d, ivar2d=None, constant_ivar=False, maxdiff=0.01
 
     return templatewave, templateflux, templateivar, nperpix, goodpix
 
-def stack_in_bins(sample, data, templatewave, mp=1, continuumwave=None, outfile=None):
+def stack_in_bins(sample, data, templatewave, mp=1, continuumwave=None, stackfile=None):
     """Stack spectra in bins given the output of a spectra_in_bins run.
 
     """
@@ -172,14 +178,16 @@ def stack_in_bins(sample, data, templatewave, mp=1, continuumwave=None, outfile=
     templateivar = np.zeros((ntemplate, npix), dtype='f4')
 
     if continuumwave is not None:
-        ncpix = len(continuumwave)
-        continuumflux = np.zeros((ntemplate, ncpix), dtype='f4')
+        continuumflux = np.zeros((ntemplate, len(continuumwave)), dtype='f4')
 
     # parallelize the stack-building step
     mpargs = []
     for samp in sample:
         ibin = samp['ibin'].astype(str)
-        mpargs.append([data[ibin]['flux'], data[ibin]['ivar'], data[ibin]['cflux'], templatewave, continuumwave])
+        if continuumwave is not None:
+            mpargs.append([data[ibin]['flux'], data[ibin]['ivar'], templatewave, data[ibin]['cflux'], continuumwave])
+        else:
+            mpargs.append([data[ibin]['flux'], data[ibin]['ivar'], templatewave])
 
     t0 = time.time()
     if mp > 1:
@@ -194,13 +202,14 @@ def stack_in_bins(sample, data, templatewave, mp=1, continuumwave=None, outfile=
     results = list(zip(*results))
     for itemp in np.arange(ntemplate):
         templatepix = results[2][itemp]
-        templatecpix = results[4][itemp]
-        
         templateflux[itemp, templatepix] = results[0][itemp]
         templateivar[itemp, templatepix] = results[1][itemp]
-        continuumflux[itemp, templatecpix] = results[3][itemp]
+
+        if continuumwave is not None:
+            templatecpix = results[4][itemp]
+            continuumflux[itemp, templatecpix] = results[3][itemp]
     
-    if outfile:
+    if stackfile:
         write_binned_stacks(sample, templatewave, templateflux, templateivar, 
-                            continuumwave, continuumflux, outfile)
+                            continuumwave, continuumflux, stackfile)
 
