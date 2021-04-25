@@ -73,8 +73,8 @@ def fastspec_onestack(fastmeta, fastspec, flux, ivar, meta,
         fastspec[col] = emfit[col]
 
     # optional?
-    EMFit.qa_fastspec(data, fastspec, fastmeta, wavelims=(minwave, maxwave),
-                      outdir=qadir, outprefix=qaprefix)
+    #EMFit.qa_fastspec(data, fastspec, fastmeta, wavelims=(minwave, maxwave),
+    #                  outdir=qadir, outprefix=qaprefix)
 
     return fastspec, fastmeta
     
@@ -100,6 +100,8 @@ def write_binned_stacks(outfile, wave, flux, ivar, metadata=None, cwave=None,
     
     """
     from astropy.io import fits
+
+    nobj, _ = flux.shape
     
     hduflux = fits.PrimaryHDU(flux.astype('f4'))
     hduflux.header['EXTNAME'] = 'FLUX'
@@ -123,28 +125,28 @@ def write_binned_stacks(outfile, wave, flux, ivar, metadata=None, cwave=None,
         hducwave.header['BUNIT'] = 'Angstrom'
         hducwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
 
-        hdulist += [hducflux, hducwave]
+        hdulist = hdulist + [hducflux, hducwave]
         
-    if hdumeta is not None and fastmeta is None:
-        hdumeta = fits.convenience.table_to_hdu(metadata)
-        hdumeta.header['EXTNAME'] = 'METADATA'
-        #hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
-        hdulist += hdumeta
+    if metadata is not None and fastmeta is None:
+        hdumetadata = fits.convenience.table_to_hdu(metadata)
+        hdumetadata.header['EXTNAME'] = 'METADATA'
+        #hdumetadata.header['SPECPROD'] = (specprod, 'spectroscopic production name')
+        hdulist = hdulist + [hdumetadata]
 
-    if hdumeta is None and fastmeta is not None:
-        hdumeta = fits.convenience.table_to_hdu(fastmeta)
-        hdumeta.header['EXTNAME'] = 'METADATA'
-        hdulist += hdumeta
+    if metadata is None and fastmeta is not None:
+        hdufastmeta = fits.convenience.table_to_hdu(fastmeta)
+        hdufastmeta.header['EXTNAME'] = 'METADATA'
+        hdulist = hdulist + [hdufastmeta]
 
     if fastspec is not None:
         hdufast = fits.convenience.table_to_hdu(fastspec)
         hdufast.header['EXTNAME'] = 'FASTSPEC'
-        hdulist += hdufast
+        hdulist = hdulist + [hdufast]
     
     hx = fits.HDUList(hdulist)
 
     hx.writeto(outfile, overwrite=True, checksum=True)
-    log.info('Writing {} spectra to {}'.format(len(metadata), outfile))
+    log.info('Writing {} spectra to {}'.format(nobj, outfile))
 
 def quick_stack(wave, flux2d, ivar2d=None, constant_ivar=False):
     """Simple inverse-variance-weighted stack.
@@ -180,7 +182,7 @@ def iterative_stack(wave, flux2d, ivar2d=None, constant_ivar=False, maxdiff=0.01
     """
     from scipy.ndimage import median_filter
     
-    ngal, npix = flux2d.shape
+    nobj, npix = flux2d.shape
     if ivar2d is None:
         ivar2d = np.ones_like(flux2d)
 
@@ -209,13 +211,13 @@ def iterative_stack(wave, flux2d, ivar2d=None, constant_ivar=False, maxdiff=0.01
             #print(ii, np.median(diff), np.max(np.abs(diff)))
             if debug:
                 if smooth:
-                    for jj in np.arange(ngal):
+                    for jj in np.arange(nobj):
                         #plt.plot(wave[goodpix], flux2d[jj, goodpix], alpha=0.5, color='gray')
                         plt.plot(wave[goodpix], median_filter(_flux2d[jj, :], smooth), alpha=0.5, color='gray')
                     plt.plot(templatewave, median_filter(templateflux, smooth), color='k', lw=2)
                     plt.plot(_templatewave, median_filter(_templateflux, smooth), color='orange', alpha=0.5)
                 else:
-                    for jj in np.arange(ngal):
+                    for jj in np.arange(nobj):
                         #plt.plot(wave[goodpix], flux2d[jj, goodpix], alpha=0.5, color='gray')
                         plt.plot(wave[goodpix], _flux2d[jj, :], alpha=0.5, color='gray')
                     plt.plot(templatewave, templateflux, color='k', lw=2)
@@ -360,7 +362,3 @@ def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=
     if fastspecfile:
         write_binned_stacks(fastspecfile, wave, flux, ivar,
                             fastspec=fastspec, fastmeta=fastmeta)
-        
-    pdb.set_trace()
-    
-    

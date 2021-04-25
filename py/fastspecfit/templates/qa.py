@@ -9,9 +9,11 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.patches import Rectangle
 
-import seaborn as sns
-sns.set(context='talk', style='ticks', palette='deep', font_scale=1.2)#, rc=rc)
-colors = sns.color_palette()
+def plot_style(font_scale=1.2):
+    import seaborn as sns
+    sns.set(context='talk', style='ticks', palette='deep', font_scale=font_scale)#, rc=rc)
+    colors = sns.color_palette()
+    return sns, colors
 
 cmap = plt.cm.get_cmap('RdYlBu')
     
@@ -75,6 +77,7 @@ def qa_obs(phot, png=None):
     if png:
         print('Writing {}'.format(png))
         fig.savefig(png)
+        plt.close()
     
 def qa_rest(phot, spec, meta, bins=None, png=None):
 
@@ -176,3 +179,5 @@ def qa_rest(phot, spec, meta, bins=None, png=None):
     if png:
         print('Writing {}'.format(png))
         fig.savefig(png)
+        plt.close()
+        

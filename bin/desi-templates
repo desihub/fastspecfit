@@ -13,32 +13,75 @@ log = get_logger()
 
 templatedir = os.path.join(os.getenv('DESI_ROOT'), 'users', 'ioannis', 'desi-templates')
 
-def read_tileinfo(targetclass='lrg', remove_vi=False, efftime_min=None,
-                  specprod='denali'):
+def read_tileinfo(targetclass, remove_vi=False, min_efftime=None,
+                  specprod='denali', png=None):
     """Optionally remove tiles which are being visually inspected.
      /global/cfs/cdirs/desi/sv/vi/TruthTables/Blanc/
 
     """
-    vi = {'lrg': [80605, 80609],
-          'elg': [80606, 80608, 86010],
-          'bgs': [80613]}
+    vilookup = {'lrg': [80605, 80609],
+                'elg': [80606, 80608, 86010],
+                'bgs': [80613]}
     
     reduxdir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod)
     tileinfo = Table.read(os.path.join(reduxdir, 'tiles-{}.csv'.format(specprod)))
     tileinfo = tileinfo[tileinfo['SURVEY'] != 'unknown']
     tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
+
+    itargtiles = [targetclass in program for program in tileinfo['FAPRGRM']]
+    targtiles = tileinfo[itargtiles]
     
+    efftime = tileinfo['EFFTIME_SPEC'] / 60
+
     if targetclass and remove_vi:
-        rem = np.isin(tileinfo['TILEID'], vi[targetclass])
-        log.info('Removing {} VI tiles.'.format(np.sum(rem)))
-        tileinfo = tileinfo[np.logical_not(rem)]
+        ivitiles = np.isin(tileinfo['TILEID'], vilookup[targetclass])
+        vitiles = tileinfo[ivitiles]
+        log.info('Removing {} VI tiles.'.format(np.sum(ivitiles)))
+        tileinfo = tileinfo[np.logical_not(ivitiles)]
+    else:
+        vitiles = None
         
-    if efftime_min:
-        rem = tileinfo['EFFTIME_SPEC']/60 <= efftime_min
+    if min_efftime:
+        ishallowtiles = tileinfo['EFFTIME_SPEC'] / 60 <= min_efftime
+        shallowtiles = tileinfo[ishallowtiles]
         log.info('Removing {} tiles with efftime < {:.1f} min.'.format(
-            np.sum(rem), efftime_min))
-        tileinfo = tileinfo[np.logical_not(rem)]
-    
+            np.sum(ishallowtiles), min_efftime))
+        tileinfo = tileinfo[np.logical_not(ishallowtiles)]
+    else:
+        shallowtiles = None
+
+    if png:
+        import matplotlib.pyplot as plt
+        from fastspecfit.templates.qa import plot_style
+        sns, _ = plot_style()
+
+        xlim = (efftime.min(), efftime.max())
+        fig, ax = plt.subplots(figsize=(9, 6))
+        _ = ax.hist(tileinfo['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+                    label='All Tiles (N={})'.format(len(tileinfo)))
+        _ = ax.hist(targtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim, alpha=0.9,
+                    label='{} Tiles (N={})'.format(targetclass.upper(), len(targtiles)))
+        
+        if vitiles:
+          _ = ax.hist(vitiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+                      label='VI Tiles (N={})'.format(len(vitiles)))
+        if shallowtiles:
+          _ = ax.hist(shallowtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+                      label='Shallow (<{:.0f} min) Tiles (N={})'.format(
+                          min_efftime, len(shallowtiles)))
+          
+        ax.set_xlabel('Effective Time (spec, min)')
+        ax.set_ylabel('Number of Tiles')
+           
+        ax.legend(loc='upper right', fontsize=16)
+
+        plt.subplots_adjust(right=0.95, top=0.95, bottom=0.17)
+
+    if png:
+        print('Writing {}'.format(png))
+        fig.savefig(png)
+        plt.close()
+        
     return tileinfo
 
 def read_fastspecfit(tileinfo, specprod='denali', targetclass='lrg'):
@@ -205,7 +248,7 @@ def spectra_in_bins(tileinfo, minperbin=3, targetclass='lrg', specprod='denali',
         sample1 = Table()
         sample1.add_column(Column(name='tile', dtype=np.int32, length=1))
         sample1.add_column(Column(name='ibin', dtype=np.int32, length=1))
-        sample1.add_column(Column(name='ngal', dtype=np.int32, length=1))
+        sample1.add_column(Column(name='nobj', dtype=np.int32, length=1))
     
         sample1.add_column(Column(name='z', dtype='f4', length=1)) # mean bin center
         sample1.add_column(Column(name='zmin', dtype='f4', length=1))
@@ -276,7 +319,7 @@ def spectra_in_bins(tileinfo, minperbin=3, targetclass='lrg', specprod='denali',
                             _sample = sample_template()
                             _sample['tile'] = tile
                             _sample['ibin'] = ibin
-                            _sample['ngal'] = len(I)
+                            _sample['nobj'] = len(I)
                             _sample['z'] = zmin + dz / 2
                             _sample['zmin'] = zmin
                             _sample['zmax'] = zmin + dz
@@ -325,7 +368,7 @@ def spectra_in_bins(tileinfo, minperbin=3, targetclass='lrg', specprod='denali',
         I = np.where(ibin == samples['ibin'])[0]
         _samplestack = samples[[I[0]]].copy()
         _samplestack.remove_column('tile')
-        _samplestack['ngal'] = np.sum(samples[I]['ngal'])
+        _samplestack['nobj'] = np.sum(samples[I]['nobj'])
         samplestack.append(_samplestack)
 
         _sampledata = {}
@@ -363,11 +406,14 @@ def parse(options=None):
 
     parser.add_argument('--minwave', type=float, default=1200.0, help='Minimum output wavelength of stacked continuum spectra.')
     parser.add_argument('--maxwave', type=float, default=4e4, help='Maximum output wavelength of stacked continuum spectra.')
+    parser.add_argument('--min-efftime', type=float, default=5.0, help='Minimum effective time to keep a tile (min).')
 
     parser.add_argument('-o', '--outdir', default=None, type=str, help='Full path to desired output directory.')
     parser.add_argument('--overwrite-stacks', action='store_true', help='Overwrite existing stacked spectra output files.')
     parser.add_argument('--overwrite-fastspec', action='store_true', help='Overwrite existing fastspec fitting results.')
     parser.add_argument('--overwrite-templates', action='store_true', help='Overwrite existing templates.')
+
+    parser.add_argument('--qa', action='store_true', help='Build QA output for a given target class.')
     
     if options is None:
         args = parser.parse_args()
@@ -387,48 +433,74 @@ def main(args=None, comm=None):
 
     log.info('Working on targetclass {}'.format(args.targetclass.upper()))
 
-    # [1] Build the stacked spectra.
     stackfile = os.path.join(templatedir, '{}-stacks.fits'.format(args.targetclass))
+    fastspecfile = os.path.join(templatedir, '{}-fastspec.fits'.format(args.targetclass))
+    templatefile = os.path.join(templatedir, '{}-templates.fits'.format(args.targetclass))
+
+    # Optionally build QA for every (existing) output file.
+    if args.qa:
+        from fastspecfit.templates.qa import qa_obs, qa_rest
+
+        # Read the master tile file and the fastspecfit fitting results and
+        # select the parent sample.
+        png = os.path.join(templatedir, 'qa', '{}-tiles.png'.format(args.targetclass))
+        tileinfo = read_tileinfo(args.targetclass, min_efftime=args.min_efftime,
+                                 remove_vi=True, specprod=args.specprod, png=png)
+        allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass)
+
+        png = os.path.join(templatedir, 'qa', '{}-parent.png'.format(args.targetclass))
+        galphot, galspec, galmeta = select_gals(allphot, allspec, allmeta)
+
+        pdb.set_trace()
+        
+        bins, nbins = stacking_bins(verbose=True)
+        qa_obs(galphot, png=os.path.join(templatedir, 'qa', '{}-obs.png'.format(args.targetclass)))
+        qa_rest(galphot, galspec, galmeta, bins=None, png=os.path.join(templatedir, 'qa', '{}-rest.png'.format(args.targetclass)))
+        qa_rest(galphot, galspec, galmeta, bins=bins, png=os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(args.targetclass)))
+
+        pdb.set_trace()
+
+        return
+
+    # [1] Build the stacked spectra.
     if not os.path.isfile(stackfile) or args.overwrite_stacks:
         log.info('Building stacked spectra in bins of properties.')
 
         from fastspecfit.continuum import ContinuumFit
         from fastspecfit.templates.stack import stack_in_bins
         
-        # Read the master tile file and the fastspecfit fitting results.
-        tileinfo = read_tileinfo(args.targetclass, remove_vi=True, efftime_min=5.0,
-                                 specprod=args.specprod)
+        # Read the master tile file and the fastspecfit fitting results and
+        # select the parent sample.
+        tileinfo = read_tileinfo(args.targetclass, min_efftime=args.min_efftime,
+                                 remove_vi=True, specprod=args.specprod)
         allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass)
-
-        # select the parent sample and specify the averaging bins
-        bins, nbins = stacking_bins(verbose=True)
         galphot, galspec, galmeta = select_gals(allphot, allspec, allmeta)
 
-        # intermediate QA -- move to another routine!
-        from fastspecfit.templates.qa import qa_obs, qa_rest
-        qa_obs(galphot, png=os.path.join(templatedir, 'qa', '{}-obs.png'.format(args.targetclass)))
-        qa_rest(galphot, galspec, galmeta, bins=None, png=os.path.join(templatedir, 'qa', '{}-rest.png'.format(args.targetclass)))
-        qa_rest(galphot, galspec, galmeta, bins=bins, png=os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(args.targetclass)))
-
         # select spectra in bins of properties, looping over all tiles
+        bins, nbins = stacking_bins(verbose=True)
         CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
         sample, data, restwave = spectra_in_bins(tileinfo, targetclass=args.targetclass,
                                                  minperbin=args.minperbin, CFit=CFit, verbose=False)
 
-        stack_in_bins(sample, data, restwave, continuumwave=CFit.sspwave, mp=args.mp, stackfile=stackfile)
+        stack_in_bins(sample, data, restwave, continuumwave=CFit.sspwave,
+                      mp=args.mp, stackfile=stackfile)
 
     # [2] Model the stacked spectra using fastspecfit.
-    fastspecfile = os.path.join(templatedir, '{}-fastspec.fits'.format(args.targetclass))
     if not os.path.isfile(fastspecfile) or args.overwrite_fastspec:
-        log.info('Modeling stacked spectra using fastspec.')
-
         from fastspecfit.templates.stack import fastspecfit_stacks
+
+        log.info('Modeling stacked spectra using fastspec.')
 
         qadir = os.path.join(templatedir, 'qa')
         fastspecfit_stacks(stackfile, mp=args.mp, fastspecfile=fastspecfile,
                            qadir=qadir, qaprefix=args.targetclass)
 
-    pdb.set_trace()
+    # [3] Generate the final templates and then we're done!
+    if not os.path.isfile(templatefile) or args.overwrite_templates:
+        #from fastspecfit.templates.stack import build_templates
+
+        log.info('Building final templates')
+        pdb.set_trace()
 
 if __name__ == '__main__':
     main()
