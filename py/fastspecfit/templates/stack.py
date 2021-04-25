@@ -9,10 +9,75 @@ import pdb # for debugging
 
 import os, time
 import numpy as np
+from astropy.table import Table, Column
 
 from desiutil.log import get_logger
 log = get_logger()
 
+def _fastspec_onestack(args):
+    """Multiprocessing wrapper."""
+    return fastspec_onestack(*args)
+
+def fastspec_onestack(fastmeta, fastspec, flux, ivar, meta,
+                      wave, CFit, EMFit, qadir, qaprefix):
+    """Fit one stacked spectrum.
+
+    """
+    from scipy.sparse import identity
+    from desispec.resolution import Resolution
+
+    good = np.where(ivar > 0)[0]
+    npix = len(good)
+    if npix == 0:
+        log.warning('No good pixels!')
+        raise ValueError
+
+    # mock up a fastspec-compatible dictionary of DESI data
+    data = {}
+    data['zredrock'] = fastspec['CONTINUUM_Z']
+    data['cameras'] = ['all']
+    data['photsys'] = 'S'
+    data['wave'] = [wave[good] * (1+data['zredrock'])]
+    data['flux'] = [flux[good]]
+    data['ivar'] = [ivar[good]]
+    data['res'] = [Resolution(identity(n=npix))] # hack!
+    data['snr'] = [np.median(flux[good] * np.sqrt(ivar[good]))]
+
+    linemask = np.ones(npix, bool)
+    if False:
+        for line in CFit.linetable:
+            zwave = line['restwave'] * (1 + data['zredrock'])
+            if line['isbroad']:
+                sigma = CFit.linemask_sigma_broad
+            else:
+                sigma = CFit.linemask_sigma
+            I = np.where((data['wave'][0] >= (zwave - 1.5*sigma * zwave / C_LIGHT)) *
+                         (data['wave'][0] <= (zwave + 1.5*sigma * zwave / C_LIGHT)))[0]
+            if len(I) > 0:
+                linemask[I] = False  # False = affected by line
+    data['linemask'] = [linemask]
+
+    # adapt the emission-line fitting range for each object.
+    minwave, maxwave = data['wave'][0].min()-1.0, data['wave'][0].max()+1.0
+    EMFit.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), EMFit.dlogwave)
+
+    # fit the continuum and the (residual) emission-line spectrum
+    cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data)    
+    emfit = EMFit.fit(data, continuummodel, smooth_continuum, synthphot=False)
+
+    # pack up the results and write out
+    for col in cfit.colnames:
+        if col in fastspec.colnames:
+            fastspec[col] = cfit[col]
+    for col in emfit.colnames:
+        fastspec[col] = emfit[col]
+
+    # optional?
+    EMFit.qa_fastspec(data, fastspec, fastmeta, wavelims=(minwave, maxwave),
+                      outdir=qadir, outprefix=qaprefix)
+
+    return fastspec, fastmeta
+    
 def _stack_onebin(args):
     """Multiprocessing wrapper."""
     return stack_onebin(*args)
@@ -29,7 +94,8 @@ def stack_onebin(flux2d, ivar2d, templatewave, cflux2d, continuumwave):
         _, continuumflux1, _, _, templatecpix = iterative_stack(continuumwave, cflux2d, verbose=False)
         return templateflux1, templateivar1, templatepix, continuumflux1, templatecpix
 
-def write_binned_stacks(metadata, wave, flux, ivar, cwave, cflux, stackfile):
+def write_binned_stacks(outfile, wave, flux, ivar, metadata=None, cwave=None,
+                        cflux=None, fastspec=None, fastmeta=None):
     """Write out the stacked spectra.
     
     """
@@ -46,25 +112,39 @@ def write_binned_stacks(metadata, wave, flux, ivar, cwave, cflux, stackfile):
     hduwave.header['BUNIT'] = 'Angstrom'
     hduwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
 
-    hducflux = fits.ImageHDU(cflux.astype('f4'))
-    hducflux.header['EXTNAME'] = 'CFLUX'
+    hdulist = [hduflux, hduivar, hduwave]
 
-    hdumeta = fits.convenience.table_to_hdu(metadata)
-    hdumeta.header['EXTNAME'] = 'METADATA'
-    #hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
+    if cflux is not None and cwave is not None:
+        hducflux = fits.ImageHDU(cflux.astype('f4'))
+        hducflux.header['EXTNAME'] = 'CFLUX'
 
-    if cwave is not None:
         hducwave = fits.ImageHDU(cwave.astype('f8'))
         hducwave.header['EXTNAME'] = 'CWAVE'
         hducwave.header['BUNIT'] = 'Angstrom'
         hducwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
-    
-        hx = fits.HDUList([hduflux, hduivar, hduwave, hducflux, hducwave, hdumeta])
-    else:
-        hx = fits.HDUList([hduflux, hduivar, hduwave, hdumeta])
+
+        hdulist += [hducflux, hducwave]
         
-    hx.writeto(stackfile, overwrite=True, checksum=True)
-    log.info('Writing {} stacked spectra to {}'.format(len(metadata), stackfile))
+    if hdumeta is not None and fastmeta is None:
+        hdumeta = fits.convenience.table_to_hdu(metadata)
+        hdumeta.header['EXTNAME'] = 'METADATA'
+        #hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
+        hdulist += hdumeta
+
+    if hdumeta is None and fastmeta is not None:
+        hdumeta = fits.convenience.table_to_hdu(fastmeta)
+        hdumeta.header['EXTNAME'] = 'METADATA'
+        hdulist += hdumeta
+
+    if fastspec is not None:
+        hdufast = fits.convenience.table_to_hdu(fastspec)
+        hdufast.header['EXTNAME'] = 'FASTSPEC'
+        hdulist += hdufast
+    
+    hx = fits.HDUList(hdulist)
+
+    hx.writeto(outfile, overwrite=True, checksum=True)
+    log.info('Writing {} spectra to {}'.format(len(metadata), outfile))
 
 def quick_stack(wave, flux2d, ivar2d=None, constant_ivar=False):
     """Simple inverse-variance-weighted stack.
@@ -172,6 +252,8 @@ def iterative_stack(wave, flux2d, ivar2d=None, constant_ivar=False, maxdiff=0.01
 def stack_in_bins(sample, data, templatewave, mp=1, continuumwave=None, stackfile=None):
     """Stack spectra in bins given the output of a spectra_in_bins run.
 
+    See bin/desi-templates for how to generate the required input.
+
     """
     npix, ntemplate = len(templatewave), len(sample)
     templateflux = np.zeros((ntemplate, npix), dtype='f4')
@@ -210,6 +292,75 @@ def stack_in_bins(sample, data, templatewave, mp=1, continuumwave=None, stackfil
             continuumflux[itemp, templatecpix] = results[3][itemp]
     
     if stackfile:
-        write_binned_stacks(sample, templatewave, templateflux, templateivar, 
-                            continuumwave, continuumflux, stackfile)
+        write_binned_stacks(stackfile, templatewave, templateflux, templateivar,
+                            metadata=sample, cwave=continuumwave, cflux=continuumflux)
 
+def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=None):
+    """Model stacked spectra using fastspecfit.
+
+    Called by bin/desi-templates.
+
+    stackfile is the output of stack_in_bins
+
+    """
+    import fitsio
+    from fastspecfit.continuum import ContinuumFit
+    from fastspecfit.emlines import EMLineFit
+    from fastspecfit.util import C_LIGHT    
+    #rom fastspecfit.io import write_fastspecfit
+
+    if not os.path.isfile(stackfile):
+        log.warning('Stack file {} not found!'.format(stackfile))
+        raise IOError
+    
+    meta = Table(fitsio.read(stackfile, ext='METADATA'))
+    wave = fitsio.read(stackfile, ext='WAVE')
+    flux = fitsio.read(stackfile, ext='FLUX')
+    ivar = fitsio.read(stackfile, ext='IVAR')
+    #cwave = fitsio.read(stackfile, ext='CWAVE')
+    #cflux = fitsio.read(stackfile, ext='CFLUX')
+
+    nobj = len(meta)
+    log.info('Read {} stacked spectra from {}'.format(nobj, stackfile))
+
+    # initialize the continuum-fitting class and the output tables
+    CFit = ContinuumFit()
+    EMFit = EMLineFit()
+
+    fastmeta = meta.copy()
+    for col in fastmeta.colnames:
+        fastmeta.rename_column(col, col.upper())
+    fastmeta.add_column(Column(name='FIBER', data=np.arange(nobj, dtype=np.int32)), index=0)
+    fastmeta.add_column(Column(name='TILEID', data=np.ones(nobj, dtype=np.int32)), index=0)
+    fastmeta.add_column(Column(name='TARGETID', data=np.arange(nobj, dtype=np.int64)), index=0)
+
+    from astropy.table import hstack
+    fastspec = hstack((CFit.init_spec_output(nobj=nobj), EMFit.init_output(CFit.linetable, nobj=nobj)))
+    fastspec.rename_column('CONTINUUM_SNR_B', 'CONTINUUM_SNR_ALL')
+    fastspec.remove_columns(['CONTINUUM_SNR_R', 'CONTINUUM_SNR_Z'])
+    fastspec.add_column(Column(name='TARGETID', data=np.arange(nobj, dtype=np.int64)), index=0)
+
+    fastspec['CONTINUUM_Z'] = meta['z'] # fix this!
+
+    # Fit in parallel
+    t0 = time.time()
+    fitargs = [(fastmeta[iobj], fastspec[iobj], flux[iobj, :], ivar[iobj, :], meta[iobj],
+                wave, CFit, EMFit, qadir, qaprefix) for iobj in np.arange(nobj)]
+    if mp > 1:
+        import multiprocessing
+        with multiprocessing.Pool(mp) as P:
+            _out = P.map(_fastspec_onestack, fitargs)
+    else:
+        _out = [fastspec_onestack(*_fitargs) for _fitargs in fitargs]
+    _out = list(zip(*_out))
+    fastspec = Table(np.hstack(_out[0])) # overwrite
+    fastmeta = Table(np.hstack(_out[1]))
+    log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
+
+    if fastspecfile:
+        write_binned_stacks(fastspecfile, wave, flux, ivar,
+                            fastspec=fastspec, fastmeta=fastmeta)
+        
+    pdb.set_trace()
+    
+    

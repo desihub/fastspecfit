@@ -6,9 +6,7 @@ import pdb # for debugging
 import os, sys, time
 import numpy as np
 import fitsio
-
-from astropy.table import Table, Column
-from fastspecfit.util import C_LIGHT
+from astropy.table import Table
 
 from desiutil.log import get_logger
 log = get_logger()
@@ -159,10 +157,10 @@ def select_gals(phot, spec, meta, verbose=True,
 def stacking_bins(verbose=False):
 
     # define the stacking limits and the number of bin *centers*
-    zlim, nz = [0.1, 1.1], 10
-    Mrlim, nMr = [-24.5, -20], 5 #4
-    gilim, ngi = [0.4, 1.4], 5 # 4
-    rW1lim, nrW1 = [-1.0, 1.0], 5 # 2
+    zlim, nz = [0.1, 1.1], 20
+    Mrlim, nMr = [-24.5, -20], 10 #4
+    gilim, ngi = [0.4, 1.4], 6 # 4
+    rW1lim, nrW1 = [-1.0, 1.0], 6 # 2
     
     dz = (zlim[1] - zlim[0]) / nz
     dMr = (Mrlim[1] - Mrlim[0]) / nMr
@@ -175,11 +173,12 @@ def stacking_bins(verbose=False):
     gigrid = np.arange(gilim[0], gilim[1], dgi)
     rW1grid = np.arange(rW1lim[0], rW1lim[1], drW1)
     
-    bins = {'z': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
-            'Mr': {'min': Mrlim[0], 'max': Mrlim[1], 'del': dMr, 'grid': Mrgrid}, 
-            'gi': {'min': gilim[0], 'max': gilim[1], 'del': dgi, 'grid': gigrid}, 
-            'rW1': {'min': rW1lim[0], 'max': rW1lim[1], 'del': drW1, 'grid': rW1grid},
-           }
+    bins = {
+        'z': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
+        'Mr': {'min': Mrlim[0], 'max': Mrlim[1], 'del': dMr, 'grid': Mrgrid}, 
+        'gi': {'min': gilim[0], 'max': gilim[1], 'del': dgi, 'grid': gigrid}, 
+        'rW1': {'min': rW1lim[0], 'max': rW1lim[1], 'del': drW1, 'grid': rW1grid},
+        }
     
     nbins = 1
     for key in bins.keys():
@@ -191,7 +190,8 @@ def stacking_bins(verbose=False):
 
     return bins, nbins
 
-def spectra_in_bins(tileinfo, targetclass='lrg', specprod='denali', CFit=None, verbose=False):
+def spectra_in_bins(tileinfo, minperbin=3, targetclass='lrg', specprod='denali',
+                    CFit=None, verbose=False):
     """Select objects in bins of rest-frame properties.
     
     """
@@ -267,7 +267,7 @@ def spectra_in_bins(tileinfo, targetclass='lrg', specprod='denali', CFit=None, v
                                         verbose=False, return_indices=True)
                         nobj = len(I)
                         
-                        if nobj > 10:
+                        if nobj >= minperbin:
                             if verbose:
                                 log.info('N={:04d}, z: {:.3f} {:.3f}, Mr: {:.2f} {:.2f}, g-i: {:.3f} {:.3f}, r-W1: {:.3f} {:.3f}'.format(
                                     len(I), zmin, zmin+dz, Mrmin, Mrmin+dMr, gimin, 
@@ -357,13 +357,17 @@ def parse(options=None):
                         help='Spectroscopic production to process.')
     parser.add_argument('--targetclass', type=str, default='lrg', choices=['lrg', 'elg', 'bgs', 'qso'],
                         help='Target class to analyze.')
+
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parser.add_argument('--minperbin', type=int, default=3, help='Minimum number of galaxies per bin.')
 
     parser.add_argument('--minwave', type=float, default=1200.0, help='Minimum output wavelength of stacked continuum spectra.')
     parser.add_argument('--maxwave', type=float, default=4e4, help='Maximum output wavelength of stacked continuum spectra.')
 
     parser.add_argument('-o', '--outdir', default=None, type=str, help='Full path to desired output directory.')
-    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
+    parser.add_argument('--overwrite-stacks', action='store_true', help='Overwrite existing stacked spectra output files.')
+    parser.add_argument('--overwrite-fastspec', action='store_true', help='Overwrite existing fastspec fitting results.')
+    parser.add_argument('--overwrite-templates', action='store_true', help='Overwrite existing templates.')
     
     if options is None:
         args = parser.parse_args()
@@ -378,9 +382,6 @@ def main(args=None, comm=None):
     """Wrapper for building templates.
 
     """
-    from fastspecfit.continuum import ContinuumFit
-    from fastspecfit.templates.stack import stack_in_bins
-
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
@@ -388,8 +389,11 @@ def main(args=None, comm=None):
 
     # [1] Build the stacked spectra.
     stackfile = os.path.join(templatedir, '{}-stacks.fits'.format(args.targetclass))
-    if not os.path.isfile(stackfile) or args.overwrite:
+    if not os.path.isfile(stackfile) or args.overwrite_stacks:
         log.info('Building stacked spectra in bins of properties.')
+
+        from fastspecfit.continuum import ContinuumFit
+        from fastspecfit.templates.stack import stack_in_bins
         
         # Read the master tile file and the fastspecfit fitting results.
         tileinfo = read_tileinfo(args.targetclass, remove_vi=True, efftime_min=5.0,
@@ -400,7 +404,7 @@ def main(args=None, comm=None):
         bins, nbins = stacking_bins(verbose=True)
         galphot, galspec, galmeta = select_gals(allphot, allspec, allmeta)
 
-        # intermediate QA
+        # intermediate QA -- move to another routine!
         from fastspecfit.templates.qa import qa_obs, qa_rest
         qa_obs(galphot, png=os.path.join(templatedir, 'qa', '{}-obs.png'.format(args.targetclass)))
         qa_rest(galphot, galspec, galmeta, bins=None, png=os.path.join(templatedir, 'qa', '{}-rest.png'.format(args.targetclass)))
@@ -408,77 +412,22 @@ def main(args=None, comm=None):
 
         # select spectra in bins of properties, looping over all tiles
         CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
-        sample, data, restwave = spectra_in_bins(tileinfo[5:8], targetclass=args.targetclass,
-                                                 CFit=CFit, verbose=False)
+        sample, data, restwave = spectra_in_bins(tileinfo, targetclass=args.targetclass,
+                                                 minperbin=args.minperbin, CFit=CFit, verbose=False)
 
         stack_in_bins(sample, data, restwave, continuumwave=CFit.sspwave, mp=args.mp, stackfile=stackfile)
 
-    # [2] Model the stacked spectra and write out fitting results.
-    log.info('Reading stacked spectra from {}'.format(stackfile))
-    wave = fitsio.read(stackfile, ext='WAVE')
-    flux = fitsio.read(stackfile, ext='FLUX')
-    ivar = fitsio.read(stackfile, ext='IVAR')
-    cwave = fitsio.read(stackfile, ext='CWAVE')
-    cflux = fitsio.read(stackfile, ext='CFLUX')
-    meta = fitsio.read(stackfile, ext='METADATA')
+    # [2] Model the stacked spectra using fastspecfit.
+    fastspecfile = os.path.join(templatedir, '{}-fastspec.fits'.format(args.targetclass))
+    if not os.path.isfile(fastspecfile) or args.overwrite_fastspec:
+        log.info('Modeling stacked spectra using fastspec.')
 
-    ngal, npix = flux.shape
+        from fastspecfit.templates.stack import fastspecfit_stacks
 
-    from desispec.resolution import Resolution
-    from scipy.sparse import identity
+        qadir = os.path.join(templatedir, 'qa')
+        fastspecfit_stacks(stackfile, mp=args.mp, fastspecfile=fastspecfile,
+                           qadir=qadir, qaprefix=args.targetclass)
 
-    from fastspecfit.continuum import ContinuumFit
-    from fastspecfit.emlines import EMLineFit
-    from fastspecfit.io import write_fastspecfit
-    #from fastspecfit.io import DESISpectra, write_fastspecfit
-    
-    igal = 0
-    good = np.where(ivar[igal, :] > 0)[0]
-    npix = len(good)
-
-    ztemp = 0.01
-
-    data = {}
-    data['zredrock'] = ztemp
-    data['cameras'] = ['all']
-    data['snr'] = [1.0]
-    data['photsys'] = 'S'
-    data['wave'] = [wave[good] * (1+ztemp)]
-    data['flux'] = [flux[igal, good]]
-    data['ivar'] = [ivar[igal, good]]
-    data['linemask'] = [np.ones(npix, bool)]
-
-    resolution_data = identity(n=npix)
-    data['res'] = [Resolution(resolution_data)]
-    
-    minwave, maxwave = data['wave'][0].min()-3.0, data['wave'][0].max()+3.0
-
-    CFit = ContinuumFit()
-    EMFit = EMLineFit(minwave=minwave, maxwave=maxwave)
-    #Spec = DESISpectra()
-
-    cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data)    
-    emfit = EMFit.fit(data, continuummodel, smooth_continuum, synthphot=False)
-
-    fastmeta = Table()
-    fastmeta.add_column(Column(name='TARGETID', data=np.ones(1, dtype=np.int32)))
-    fastmeta.add_column(Column(name='TILEID', data=np.ones(1, dtype=np.int32)))
-    fastmeta.add_column(Column(name='FIBER', data=np.ones(1, dtype=np.int32)))
-
-    fastspec = Table()
-    for col in cfit.colnames:
-        fastspec[col] = cfit[col]
-    for col in emfit.colnames:
-        fastspec[col] = emfit[col]
-        
-    #fastspec, fastmeta = Spec.init_output(CFit=CFit, EMFit=EMFit)
-    #for col in cfit.colnames:
-    #    fastspec[col] = cfit[col]
-    #for col in emfit.colnames:
-    #    fastspec[col] = emfit[col]
-
-    EMFit.qa_fastspec(data, fastspec[igal], fastmeta[igal], wavelims=(minwave, maxwave))
-    
     pdb.set_trace()
 
 if __name__ == '__main__':

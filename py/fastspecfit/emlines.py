@@ -447,8 +447,8 @@ class EMLineFit(ContinuumTools):
         self.chi2fail = chi2fail
 
         self.pixkms = 10.0 # pixel size for internal wavelength array [km/s]
-        dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
-        self.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), dlogwave)
+        self.dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
+        self.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), self.dlogwave)
         #self.log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
 
         self.fitter = fitting.LevMarLSQFitter()#calc_uncertainties=True)
