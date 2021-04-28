@@ -28,8 +28,8 @@ def parse(options=None):
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--minperbin', type=int, default=3, help='Minimum number of galaxies per bin.')
 
-    parser.add_argument('--minwave', type=float, default=1200.0, help='Minimum output wavelength of stacked continuum spectra.')
-    parser.add_argument('--maxwave', type=float, default=4e4, help='Maximum output wavelength of stacked continuum spectra.')
+    parser.add_argument('--minwave', type=float, default=500.0, help='Minimum output wavelength of stacked continuum spectra.')
+    parser.add_argument('--maxwave', type=float, default=6e4, help='Maximum output wavelength of stacked continuum spectra.')
     parser.add_argument('--min-efftime', type=float, default=5.0, help='Minimum effective time to keep a tile (min).')
 
     parser.add_argument('-o', '--outdir', default=None, type=str, help='Full path to desired output directory.')
@@ -148,13 +148,13 @@ def main(args=None, comm=None):
 
     # [3] Generate the final templates and then we're done!
     if not os.path.isfile(templatefile) or args.overwrite_templates:
-        #from fastspecfit.templates.templates import build_templates
+        from fastspecfit.templates.templates import build_templates
 
         log.info('Building final templates.')
+        build_templates(fastspecfile, mp=args.mp, minwave=args.minwave,
+                        maxwave=args.maxwave, templatefile=templatefile)
 
-        
-
-
+        pdb.set_trace()
 
     # FITS file with 3 HDUs:
     

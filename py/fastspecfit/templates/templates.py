@@ -18,37 +18,65 @@ def _rebuild_fastspec_spectrum(args):
     """Multiprocessing wrapper."""
     return rebuild_fastspec_spectrum(*args)
 
-def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit):
+def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
+                              full_resolution=False):
     """Rebuilding a single fastspec model continuum and emission-line spectrum given
     a fastspec astropy.table.Table.
 
     """
-    icam = 0 # one (merged) "camera"
+    from fastspecfit.emlines import EMLineModel
     
-    # mock up a fastspec-compatible dictionary of DESI data
-    data = fastspec_to_desidata(fastspec, wave, flux, ivar)
+    if full_resolution:
+        modelwave = CFit.sspwave
+        redshift = fastspec['CONTINUUM_Z']
 
-    continuum, _ = CFit.SSP2data(CFit.sspflux, CFit.sspwave,
-                                 redshift=data['zredrock'], 
-                                 specwave=data['wave'],
-                                 specres=data['res'],
-                                 cameras=data['cameras'],
-                                 AV=fastspec['CONTINUUM_AV'],
-                                 vdisp=fastspec['CONTINUUM_VDISP'],
-                                 coeff=fastspec['CONTINUUM_COEFF'],
-                                 synthphot=False)
+        continuum, _ = CFit.SSP2data(CFit.sspflux, CFit.sspwave,
+                                     redshift=redshift,
+                                     AV=fastspec['CONTINUUM_AV'],
+                                     vdisp=fastspec['CONTINUUM_VDISP'],
+                                     coeff=fastspec['CONTINUUM_COEFF'],
+                                     synthphot=False)
+        continuum *= (1 + redshift) # rest frame
+
+        smooth_continuum = np.zeros_like(continuum, dtype='f4')
+
+        # steal the code we need from emlines.EMLineFit.emlinemodel_bestfit
+        EMLine = EMLineModel(redshift=0.0, npixpercamera=len(modelwave), log10wave=np.log10(modelwave))
+        lineargs = [fastspec[linename.upper()] for linename in EMLine.param_names]
+
+        emlinemodel = EMLine._emline_spectrum(*lineargs)
+        import matplotlib.pyplot as plt
+        plt.plot(modelwave, continuum+emlinemodel) ; plt.xlim(3200, 10000) ; plt.savefig('junk.png')
+        pdb.set_trace()
+
+    else:
+        icam = 0 # one (merged) "camera"
+
+        # mock up a fastspec-compatible dictionary of DESI data
+        data = fastspec_to_desidata(fastspec, wave, flux, ivar)
+
+        continuum, _ = CFit.SSP2data(CFit.sspflux, CFit.sspwave,
+                                     redshift=data['zredrock'], 
+                                     specwave=data['wave'],
+                                     specres=data['res'],
+                                     cameras=data['cameras'],
+                                     AV=fastspec['CONTINUUM_AV'],
+                                     vdisp=fastspec['CONTINUUM_VDISP'],
+                                     coeff=fastspec['CONTINUUM_COEFF'],
+                                     synthphot=False)
     
-    continuum = continuum[icam]
-    smooth_continuum = CFit.smooth_residuals(
-       continuum, data['wave'][icam], data['flux'][icam],
-       data['ivar'][icam], data['linemask'][icam])
+        continuum = continuum[icam]
+        smooth_continuum = CFit.smooth_residuals(
+            continuum, data['wave'][icam], data['flux'][icam],
+            data['ivar'][icam], data['linemask'][icam])
 
-    # adjust the emission-line fitting range for each object.
-    modelwave = data['wave'][icam]
-    minwave, maxwave = modelwave.min()-1.0, modelwave.max()+1.0
-    EMFit.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), EMFit.dlogwave)
+        modelwave = data['wave'][icam]
 
-    emlinemodel = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec)[icam]
+        # adjust the emission-line model range for each object.
+        minwave, maxwave = modelwave.min()-1.0, modelwave.max()+1.0
+        EMFit.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), EMFit.dlogwave)
+
+        emlinemodel = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec)[icam]
 
     return modelwave, continuum, smooth_continuum, emlinemodel, data
 
@@ -56,7 +84,7 @@ def write_templates(templatefile, wave, flux, weights, metadata):
     pass
     
 
-def build_templates(fastspecfile, mp=1, templatefile=None):
+def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None, templatefile=None):
     """Build the final templates.
 
     Called by bin/desi-templates.
@@ -67,22 +95,27 @@ def build_templates(fastspecfile, mp=1, templatefile=None):
     import fitsio
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
-    from fastspecfit.util import C_LIGHT    
 
-    if not os.path.isfile(stackfile):
-        log.warning('Stack file {} not found!'.format(stackfile))
+    if not os.path.isfile(fastspecfile):
+        log.warning('fastspecfile {} not found!'.format(fastspecfile))
         raise IOError
+
+    CFit = ContinuumFit(minwave=minwave, maxwave=maxwave)
+    EMFit = EMLineFit()
 
     fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
     fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
     wave = fitsio.read(fastspecfile, ext='WAVE')
     flux = fitsio.read(fastspecfile, ext='FLUX')
     ivar = fitsio.read(fastspecfile, ext='IVAR')
+
+    nobj = len(fastmeta)
+    log.info('Read {} fastspec model fits from {}'.format(nobj, fastspecfile))
     
     # Rebuild in parallel.
     t0 = time.time()
-    mpargs = [(fastmeta[iobj], fastspec[iobj], flux[iobj, :], ivar[iobj, :], meta[iobj],
-                wave, CFit, EMFit, qadir, qaprefix) for iobj in np.arange(nobj)]
+    mpargs = [(fastspec[iobj], wave, flux[iobj, :], ivar[iobj, :], CFit, EMFit, True)
+              for iobj in np.arange(nobj)]
     if mp > 1:
         import multiprocessing
         with multiprocessing.Pool(mp) as P:
@@ -91,10 +124,11 @@ def build_templates(fastspecfile, mp=1, templatefile=None):
         _out = [rebuild_fastspec_spectrum(*_mpargs) for _mpargs in mpargs]
     _out = list(zip(*_out))
 
+    #modelwave = 
+
     pdb.set_trace()
     
     fastspec = Table(np.hstack(_out[0])) # overwrite
-    fastmeta = Table(np.hstack(_out[1]))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     if templatefile:
@@ -157,6 +191,7 @@ def fastspec_to_desidata(fastspec, wave, flux, ivar):
     """
     from scipy.sparse import identity
     from desispec.resolution import Resolution
+    from fastspecfit.util import C_LIGHT    
 
     good = np.where(ivar > 0)[0]
     npix = len(good)
