@@ -1,8 +1,8 @@
 """
-fastspecfit.templates.stack
-===========================
+fastspecfit.templates.templates
+===============================
 
-Tools for generating stacked spectra.
+Tools for generating stacked spectra and building templates.
 
 """
 import pdb # for debugging
@@ -14,6 +14,92 @@ from astropy.table import Table, Column
 from desiutil.log import get_logger
 log = get_logger()
 
+def _rebuild_fastspec_spectrum(args):
+    """Multiprocessing wrapper."""
+    return rebuild_fastspec_spectrum(*args)
+
+def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit):
+    """Rebuilding a single fastspec model continuum and emission-line spectrum given
+    a fastspec astropy.table.Table.
+
+    """
+    icam = 0 # one (merged) "camera"
+    
+    # mock up a fastspec-compatible dictionary of DESI data
+    data = fastspec_to_desidata(fastspec, wave, flux, ivar)
+
+    continuum, _ = CFit.SSP2data(CFit.sspflux, CFit.sspwave,
+                                 redshift=data['zredrock'], 
+                                 specwave=data['wave'],
+                                 specres=data['res'],
+                                 cameras=data['cameras'],
+                                 AV=fastspec['CONTINUUM_AV'],
+                                 vdisp=fastspec['CONTINUUM_VDISP'],
+                                 coeff=fastspec['CONTINUUM_COEFF'],
+                                 synthphot=False)
+    
+    continuum = continuum[icam]
+    smooth_continuum = CFit.smooth_residuals(
+       continuum, data['wave'][icam], data['flux'][icam],
+       data['ivar'][icam], data['linemask'][icam])
+
+    # adjust the emission-line fitting range for each object.
+    modelwave = data['wave'][icam]
+    minwave, maxwave = modelwave.min()-1.0, modelwave.max()+1.0
+    EMFit.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), EMFit.dlogwave)
+
+    emlinemodel = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec)[icam]
+
+    return modelwave, continuum, smooth_continuum, emlinemodel, data
+
+def write_templates(templatefile, wave, flux, weights, metadata):
+    pass
+    
+
+def build_templates(fastspecfile, mp=1, templatefile=None):
+    """Build the final templates.
+
+    Called by bin/desi-templates.
+
+    fastspecfile is the output of fastspecfit_stacks
+
+    """
+    import fitsio
+    from fastspecfit.continuum import ContinuumFit
+    from fastspecfit.emlines import EMLineFit
+    from fastspecfit.util import C_LIGHT    
+
+    if not os.path.isfile(stackfile):
+        log.warning('Stack file {} not found!'.format(stackfile))
+        raise IOError
+
+    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    wave = fitsio.read(fastspecfile, ext='WAVE')
+    flux = fitsio.read(fastspecfile, ext='FLUX')
+    ivar = fitsio.read(fastspecfile, ext='IVAR')
+    
+    # Rebuild in parallel.
+    t0 = time.time()
+    mpargs = [(fastmeta[iobj], fastspec[iobj], flux[iobj, :], ivar[iobj, :], meta[iobj],
+                wave, CFit, EMFit, qadir, qaprefix) for iobj in np.arange(nobj)]
+    if mp > 1:
+        import multiprocessing
+        with multiprocessing.Pool(mp) as P:
+            _out = P.map(_rebuild_fastspec_spectrum, mpargs)
+    else:
+        _out = [rebuild_fastspec_spectrum(*_mpargs) for _mpargs in mpargs]
+    _out = list(zip(*_out))
+
+    pdb.set_trace()
+    
+    fastspec = Table(np.hstack(_out[0])) # overwrite
+    fastmeta = Table(np.hstack(_out[1]))
+    log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
+
+    if templatefile:
+        write_templates(templatefile, wave, flux, weights, metadata)
+
 def _fastspec_onestack(args):
     """Multiprocessing wrapper."""
     return fastspec_onestack(*args)
@@ -23,41 +109,11 @@ def fastspec_onestack(fastmeta, fastspec, flux, ivar, meta,
     """Fit one stacked spectrum.
 
     """
-    from scipy.sparse import identity
-    from desispec.resolution import Resolution
-
-    good = np.where(ivar > 0)[0]
-    npix = len(good)
-    if npix == 0:
-        log.warning('No good pixels!')
-        raise ValueError
-
     # mock up a fastspec-compatible dictionary of DESI data
-    data = {}
-    data['zredrock'] = fastspec['CONTINUUM_Z']
-    data['cameras'] = ['all']
-    data['photsys'] = 'S'
-    data['wave'] = [wave[good] * (1+data['zredrock'])]
-    data['flux'] = [flux[good]]
-    data['ivar'] = [ivar[good]]
-    data['res'] = [Resolution(identity(n=npix))] # hack!
-    data['snr'] = [np.median(flux[good] * np.sqrt(ivar[good]))]
+    data = fastspec_to_desidata(fastspec, wave, flux, ivar)
 
-    linemask = np.ones(npix, bool)
-    if False:
-        for line in CFit.linetable:
-            zwave = line['restwave'] * (1 + data['zredrock'])
-            if line['isbroad']:
-                sigma = CFit.linemask_sigma_broad
-            else:
-                sigma = CFit.linemask_sigma
-            I = np.where((data['wave'][0] >= (zwave - 1.5*sigma * zwave / C_LIGHT)) *
-                         (data['wave'][0] <= (zwave + 1.5*sigma * zwave / C_LIGHT)))[0]
-            if len(I) > 0:
-                linemask[I] = False  # False = affected by line
-    data['linemask'] = [linemask]
-
-    # adapt the emission-line fitting range for each object.
+    # Adjust the emission-line fitting range for each object (otherwise the
+    # trapezoidal rebinning barfs with the default wavelength array).
     minwave, maxwave = data['wave'][0].min()-1.0, data['wave'][0].max()+1.0
     EMFit.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), EMFit.dlogwave)
 
@@ -94,6 +150,48 @@ def stack_onebin(flux2d, ivar2d, templatewave, cflux2d, continuumwave):
         _, continuumflux1, _, _, templatecpix = iterative_stack(continuumwave, cflux2d, verbose=False)
         return templateflux1, templateivar1, templatepix, continuumflux1, templatecpix
 
+def fastspec_to_desidata(fastspec, wave, flux, ivar):
+    """Convenience wrapper to turn spectra in a fastspecfit-compatible dictionary of
+    DESI data.
+
+    """
+    from scipy.sparse import identity
+    from desispec.resolution import Resolution
+
+    good = np.where(ivar > 0)[0]
+    npix = len(good)
+    if npix == 0:
+        log.warning('No good pixels in the spectrum!')
+        raise ValueError
+
+    data = {}
+    data['zredrock'] = fastspec['CONTINUUM_Z']
+    data['cameras'] = ['all']
+    data['photsys'] = 'S'
+    data['wave'] = [wave[good] * (1+data['zredrock'])]
+    data['flux'] = [flux[good]]
+    data['ivar'] = [ivar[good]]
+    data['res'] = [Resolution(identity(n=npix))] # hack!
+    data['snr'] = [np.median(flux[good] * np.sqrt(ivar[good]))]
+    data['good'] = good
+
+    # line-masking is doing some odd things around MgII so skip for now
+
+    linemask = np.ones(npix, bool)
+    #for line in CFit.linetable:
+    #    zwave = line['restwave'] * (1 + data['zredrock'])
+    #    if line['isbroad']:
+    #        sigma = CFit.linemask_sigma_broad
+    #    else:
+    #        sigma = CFit.linemask_sigma
+    #    I = np.where((data['wave'][0] >= (zwave - 1.5*sigma * zwave / C_LIGHT)) *
+    #                 (data['wave'][0] <= (zwave + 1.5*sigma * zwave / C_LIGHT)))[0]
+    #    if len(I) > 0:
+    #        linemask[I] = False  # False = affected by line
+    data['linemask'] = [linemask]
+    
+    return data
+    
 def write_binned_stacks(outfile, wave, flux, ivar, metadata=None, cwave=None,
                         cflux=None, fastspec=None, fastmeta=None):
     """Write out the stacked spectra.
@@ -302,7 +400,7 @@ def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=
 
     Called by bin/desi-templates.
 
-    stackfile is the output of stack_in_bins
+    stackfile is the output of stack_in_bins.
 
     """
     import fitsio

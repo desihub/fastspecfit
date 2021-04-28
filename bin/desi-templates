@@ -63,7 +63,7 @@ def main(args=None, comm=None):
 
     # Optionally build QA for every (existing) output file.
     if args.qa:
-        from fastspecfit.templates.templates import read_tileinfo, read_fastspecfit, select_parent_sample
+        from fastspecfit.templates.sample import read_tileinfo, read_fastspecfit, select_parent_sample
 
         # hacky
         from fastspecfit.templates.qa import qa_fastspec
@@ -110,9 +110,9 @@ def main(args=None, comm=None):
         log.info('Building stacked spectra in bins of properties.')
 
         from fastspecfit.continuum import ContinuumFit
-        from fastspecfit.templates.stack import stack_in_bins
-        from fastspecfit.templates.templates import (read_tileinfo, read_fastspecfit,
-                                                     select_parent_sample, spectra_in_bins)
+        from fastspecfit.templates.templates import stack_in_bins
+        from fastspecfit.templates.sample import (read_tileinfo, read_fastspecfit,
+                                                  select_parent_sample, spectra_in_bins)
         
         if args.targetclass == 'lrg':
             from fastspecfit.templates.templates import lrg_stacking_bins
@@ -138,7 +138,7 @@ def main(args=None, comm=None):
 
     # [2] Model the stacked spectra using fastspecfit.
     if not os.path.isfile(fastspecfile) or args.overwrite_fastspec:
-        from fastspecfit.templates.stack import fastspecfit_stacks
+        from fastspecfit.templates.templates import fastspecfit_stacks
 
         log.info('Modeling stacked spectra using fastspec.')
 
@@ -148,7 +148,7 @@ def main(args=None, comm=None):
 
     # [3] Generate the final templates and then we're done!
     if not os.path.isfile(templatefile) or args.overwrite_templates:
-        #from fastspecfit.templates.stack import build_templates
+        #from fastspecfit.templates.templates import build_templates
 
         log.info('Building final templates.')
 

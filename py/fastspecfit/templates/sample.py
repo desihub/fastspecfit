@@ -1,8 +1,9 @@
 """
-fastspecfit.templates.templates
-===============================
+fastspecfit.templates.sample
+============================
 
-Code for building templates of various target classes. Called by bin/desi-templates.
+Code for defining samples and reading the data needed to build templates for the
+various target classes. Called by bin/desi-templates.
 
 """
 import pdb # for debugging

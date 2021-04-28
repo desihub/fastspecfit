@@ -195,12 +195,10 @@ def qa_fastspec(fastspecfile, CFit, EMFit, png=None):
     import numpy as np
     import fitsio
     from astropy.table import Table
-
     from scipy.ndimage import median_filter
-    from scipy.sparse import identity
 
-    from desispec.resolution import Resolution
     from fastspecfit.util import ivar2var
+    from fastspecfit.templates.templates import rebuild_fastspec_spectrum
 
     sns, _ = plot_style()
 
@@ -209,43 +207,19 @@ def qa_fastspec(fastspecfile, CFit, EMFit, png=None):
     col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
     col3 = [colors.to_hex(col) for col in ['blue', 'green', 'red']]
 
-    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
-    nobj = len(fastmeta)
-
     wave = fitsio.read(fastspecfile, ext='WAVE')
     flux = fitsio.read(fastspecfile, ext='FLUX')
     ivar = fitsio.read(fastspecfile, ext='IVAR')
 
-    ## choose a redshift slice
-    #zindx = np.where((fastmeta['ZOBJ'] >= 0.4) * (fastmeta['ZOBJ'] <= 0.6))[0]
-    #fastmeta = fastmeta[zindx]
-    #fastspec = fastspec[zindx]
-    ##nobj = len(fastmeta)
-    #zobj = np.unique(fastmeta['ZOBJ'])
-    #nzobj = len(zobj)
-
-    #key_row = 'MR' # property along rows
-    #key_col = 'GI' # property along columns
-    #fastmeta_sort = fastmeta[zindx].group_by([key_row, key_col])
-    #nobj = len(fastmeta_sort)
+    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    nobj = len(fastmeta)
 
     #fastmeta = fastmeta.group_by(['ZOBJ', 'MR', 'GI', 'RW1'])
     ncol = 3
     nrow = 5
     bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
         
-    #property_row = sorted(set(fastmeta[key_row]))
-    #property_col = sorted(set(fastmeta[key_col]))
-    #nrows = len(property_row)
-    #ncols = len(property_col)
-    #
-    #fig, ax = plt.subplots(nrows, ncols, figsize=(12, 16))
-    #for icol in np.arange(ncols):
-    #    for irow in np.arange(nrows):
-    #        indx = np.where((property_row[irow] == fastmeta[key_row]) *
-    #                        (property_col[icol] == fastmeta[key_col]))[0]
-
     if png:
         from matplotlib.backends.backend_pdf import PdfPages
         pdffile = png.replace('.png', '.pdf')
@@ -254,7 +228,7 @@ def qa_fastspec(fastspecfile, CFit, EMFit, png=None):
     zobj = np.unique(fastmeta['ZOBJ'])
     nzpage = len(zobj)
 
-    for izpage in np.arange(nzpage):#[:1]:
+    for izpage in np.arange(nzpage)[:1]:
         zindx = np.where(zobj[izpage] == fastmeta['ZOBJ'])[0]
         zfastmeta = fastmeta[zindx]
         zfastspec = fastspec[zindx]
@@ -266,7 +240,7 @@ def qa_fastspec(fastspecfile, CFit, EMFit, png=None):
         absmag = np.unique(zfastmeta['MR'])
         nabspage = len(absmag)
 
-        for iabspage in np.arange(nabspage):#[:2]:
+        for iabspage in np.arange(nabspage)[:2]:
 
             absindx = np.where((absmag[iabspage] == zfastmeta['MR']))[0]
             absfastmeta = zfastmeta[absindx]
@@ -275,53 +249,24 @@ def qa_fastspec(fastspecfile, CFit, EMFit, png=None):
             fig, allax = plt.subplots(nrow, ncol, figsize=(12, 16), sharex=True, sharey=True)
             for iplot, (indx, ax) in enumerate(zip(zindx[absindx], allax.flatten())):
                 print(izpage, iabspage, iplot, len(zindx), len(absindx))
-                redshift = fastspec['CONTINUUM_Z'][indx] # not zfastmeta!
 
-                good = np.where(ivar[indx, :] > 0)[0]
-                npix = len(good)
+                # rebuild the best-fitting spectrum
+                modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
+                    fastspec[indx], wave, flux[indx, :], ivar[indx, :], CFit, EMFit)
 
-                # mock up a fastspec-compatible dictionary of DESI data
-                data = {}
-                data['zredrock'] = redshift
-                data['cameras'] = ['all']
-                data['photsys'] = 'S'
-                data['wave'] = [wave[good] * (1+data['zredrock'])]
-                data['flux'] = [flux[indx, good]]
-                data['ivar'] = [ivar[indx, good]]
-                data['res'] = [Resolution(identity(n=npix))] # hack!
-                data['snr'] = [np.median(flux[indx, good] * np.sqrt(ivar[indx, good]))]
-                data['linemask'] = np.ones(npix, bool)
+                redshift = data['zredrock']
 
                 icam = 0
-
-                # rebuild the best-fitting spectroscopic and photometric models
-                continuum, _ = CFit.SSP2data(CFit.sspflux, CFit.sspwave, redshift=redshift, 
-                                             specwave=data['wave'], specres=data['res'],
-                                             cameras=data['cameras'],
-                                             AV=fastspec['CONTINUUM_AV'][indx],
-                                             vdisp=fastspec['CONTINUUM_VDISP'][indx],
-                                             coeff=fastspec['CONTINUUM_COEFF'][indx, :],
-                                             synthphot=False)
-                continuum = continuum[icam]
-                smooth_continuum = CFit.smooth_residuals(
-                   continuum, data['wave'][icam], data['flux'][icam],
-                   data['ivar'][icam], data['linemask'][icam])
-
-                # adapt the emission-line fitting range for each object.
-                minwave, maxwave = data['wave'][0].min()-1.0, data['wave'][0].max()+1.0
-                wavelims = (minwave, maxwave)
-                EMFit.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), EMFit.dlogwave)
-
-                emlinemodel = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec[indx])[icam]
-
+                wavelims = (modelwave.min(), modelwave.max())
                 ymin, ymax = 1e6, -1e6
 
                 sigma, _ = ivar2var(data['ivar'][icam], sigma=True)
                 ax.fill_between(data['wave'][icam], data['flux'][icam]-sigma,
                                             data['flux'][icam]+sigma, color='skyblue')
-                ax.plot(data['wave'][icam], continuum+smooth_continuum+emlinemodel, color='firebrick', alpha=0.5)
-                ax.plot(data['wave'][icam], continuum+smooth_continuum, color='blue', alpha=0.5)
-                #ax.plot(data['wave'][icam], smooth_continuum, color='gray')#col3[icam])#, alpha=0.3, lw=2)#, color='k')
+                ax.plot(modelwave, continuum+emlinemodel, color='firebrick', alpha=0.5)
+                ax.plot(modelwave, continuum, color='blue', alpha=0.5)
+                ax.plot(modelwave, continuum+smooth_continuum, color='gray', alpha=0.3)
+                #ax.plot(modelwave, smooth_continuum, color='gray')#col3[icam])#, alpha=0.3, lw=2)#, color='k')
 
                 # get the robust range
                 filtflux = median_filter(data['flux'][icam], 51, mode='nearest')
@@ -343,15 +288,11 @@ def qa_fastspec(fastspecfile, CFit, EMFit, png=None):
                     'N={}, S/N={:.1f}'.format(fastmeta['NOBJ'][indx], fastspec['CONTINUUM_SNR_ALL'][indx]),
                     ))
                 ax.text(0.04, 0.96, txt, ha='left', va='top', transform=ax.transAxes, fontsize=10, bbox=bbox)
-                #ax.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
-                #            ha='left', va='center', transform=ax.transAxes, fontsize=22)
 
                 ax.set_xlim(wavelims)
                 ax.set_ylim(ymin, ymax)
                 ax.set_xticklabels([])
                 ax.set_yticklabels([])
-                #ax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
-                #ax.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)')
 
                 plt.subplots_adjust(wspace=0.05, hspace=0.05, left=0.07, right=0.95, top=0.95, bottom=0.1)
 
@@ -372,9 +313,5 @@ def qa_fastspec(fastspecfile, CFit, EMFit, png=None):
     if png:
         log.info('Writing {}'.format(pdffile))
         pdf.close()
-        
-        #log.info('Writing {}'.format(png))
-        #fig.savefig(png)
-        #plt.close()
         
     pdb.set_trace()
