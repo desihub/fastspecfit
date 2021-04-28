@@ -13,382 +13,6 @@ log = get_logger()
 
 templatedir = os.path.join(os.getenv('DESI_ROOT'), 'users', 'ioannis', 'desi-templates')
 
-def read_tileinfo(targetclass, remove_vi=False, min_efftime=None,
-                  specprod='denali', png=None):
-    """Optionally remove tiles which are being visually inspected.
-     /global/cfs/cdirs/desi/sv/vi/TruthTables/Blanc/
-
-    """
-    vilookup = {'lrg': [80605, 80609],
-                'elg': [80606, 80608, 86010],
-                'bgs': [80613]}
-    
-    reduxdir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod)
-    tileinfo = Table.read(os.path.join(reduxdir, 'tiles-{}.csv'.format(specprod)))
-    tileinfo = tileinfo[tileinfo['SURVEY'] != 'unknown']
-    tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
-
-    itargtiles = [targetclass in program for program in tileinfo['FAPRGRM']]
-    targtiles = tileinfo[itargtiles]
-    
-    efftime = tileinfo['EFFTIME_SPEC'] / 60
-
-    if targetclass and remove_vi:
-        ivitiles = np.isin(tileinfo['TILEID'], vilookup[targetclass])
-        vitiles = tileinfo[ivitiles]
-        log.info('Removing {} VI tiles.'.format(np.sum(ivitiles)))
-        tileinfo = tileinfo[np.logical_not(ivitiles)]
-    else:
-        vitiles = None
-        
-    if min_efftime:
-        ishallowtiles = tileinfo['EFFTIME_SPEC'] / 60 <= min_efftime
-        shallowtiles = tileinfo[ishallowtiles]
-        log.info('Removing {} tiles with efftime < {:.1f} min.'.format(
-            np.sum(ishallowtiles), min_efftime))
-        tileinfo = tileinfo[np.logical_not(ishallowtiles)]
-    else:
-        shallowtiles = None
-
-    if png:
-        import matplotlib.pyplot as plt
-        from fastspecfit.templates.qa import plot_style
-        sns, _ = plot_style()
-
-        xlim = (efftime.min(), efftime.max())
-        fig, ax = plt.subplots(figsize=(9, 6))
-        _ = ax.hist(tileinfo['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
-                    label='All Tiles (N={})'.format(len(tileinfo)))
-        _ = ax.hist(targtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim, alpha=0.9,
-                    label='{} Tiles (N={})'.format(targetclass.upper(), len(targtiles)))
-        
-        if vitiles:
-          _ = ax.hist(vitiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
-                      label='VI Tiles (N={})'.format(len(vitiles)))
-        if shallowtiles:
-          _ = ax.hist(shallowtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
-                      label='Shallow (<{:.0f} min) Tiles (N={})'.format(
-                          min_efftime, len(shallowtiles)))
-          
-        ax.set_xlabel('Effective Time (spec, min)')
-        ax.set_ylabel('Number of Tiles')
-           
-        ax.legend(loc='upper right', fontsize=16)
-
-        plt.subplots_adjust(right=0.95, top=0.95, bottom=0.17)
-
-    if png:
-        print('Writing {}'.format(png))
-        fig.savefig(png)
-        plt.close()
-        
-    return tileinfo
-
-def read_fastspecfit(tileinfo, specprod='denali', targetclass='lrg'):
-    """Read the fastspecfit output for this production.
-
-    """
-    from desitarget.targets import main_cmx_or_sv
-
-    fastspecdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), specprod, 'tiles')
-    specfile = os.path.join(fastspecdir, 'merged', 'fastspec-{}-cumulative.fits'.format(specprod))
-    photfile = os.path.join(fastspecdir, 'merged', 'fastphot-{}-cumulative.fits'.format(specprod))
-
-    spec = Table(fitsio.read(specfile, 'FASTSPEC'))
-    meta = Table(fitsio.read(specfile, 'METADATA'))
-    phot = Table(fitsio.read(photfile, 'FASTPHOT'))
-
-    assert(np.all(spec['TARGETID'] == phot['TARGETID']))
-    
-    log.info('Read {} objects from {}'.format(len(spec), specfile))
-    log.info('Read {} objects from {}'.format(len(phot), photfile))
-    
-    ontiles = np.where(np.isin(meta['TILEID'], tileinfo['TILEID']))[0]
-    spec = spec[ontiles]
-    meta = meta[ontiles]
-    phot = phot[ontiles]
-    
-    log.info('Keeping {} objects on {}/{} unique tiles.'.format(
-        len(ontiles), len(np.unique(meta['TILEID'])), len(tileinfo)))
-    
-    ngal = len(spec)
-    
-    # convenience magnitudes and targeting variables
-    for band in ('G', 'R', 'Z', 'W1'):
-        phot['{}MAG'.format(band)] = np.zeros(ngal, 'f4')
-        good = np.where(meta['FLUX_{}'.format(band)] > 0)[0]
-        phot['{}MAG'.format(band)][good] = 22.5 - 2.5 * np.log10(meta['FLUX_{}'.format(band)][good])
-        
-    for band in ('G', 'R', 'Z'):
-        phot['{}FIBERMAG'.format(band)] = np.zeros(ngal, 'f4')
-        good = np.where(meta['FIBERFLUX_{}'.format(band)] > 0)[0]
-        phot['{}FIBERMAG'.format(band)][good] = 22.5 - 2.5 * np.log10(meta['FIBERFLUX_{}'.format(band)][good])
-
-    targs = ['BGS_ANY', 'ELG', 'LRG', 'QSO']
-    targcols = ['BGS', 'ELG', 'LRG', 'QSO']
-    for targcol in targcols:
-        spec[targcol] = np.zeros(ngal, bool)
-        phot[targcol] = np.zeros(ngal, bool)
-        
-    for tile in tileinfo['TILEID']:
-        I = np.where(meta['TILEID'] == tile)[0]
-        if len(I) == 0:
-            continue
-
-        (desicol, bgscol, mwscol), (desimask, bgsmask, mwsmask), survey = main_cmx_or_sv(meta[I])
-
-        for targcol, targ in zip(targcols, targs):
-            phot[targcol][I] = meta[desicol][I] & desimask.mask(targ) != 0
-            spec[targcol][I] = meta[desicol][I] & desimask.mask(targ) != 0
-            
-    #for targcol in targcols:
-    #    log.info('  {}: {}'.format(targcol, np.sum(phot[targcol])))
-
-    itarg = phot[targetclass.upper().replace('BGS', 'BGS_ANY')]
-    log.info('Keeping {} {} targets.'.format(np.sum(itarg), targetclass.upper()))
-
-    phot = phot[itarg]
-    spec = spec[itarg]
-    meta = meta[itarg]
-    
-    return phot, spec, meta
-
-def select_gals(phot, spec, meta, verbose=True,
-                z_minmax=None, Mr_minmax=None, gi_minmax=None, 
-                rW1_minmax=None, return_indices=False):
-    """Apply some basic quality cuts to select LRGs. Then divide into bins of
-    redshift, luminosity, and color.
-
-    """
-    igal = (
-        #(meta['SPECTYPE'] == 'GALAXY') *
-        (meta['DELTACHI2'] > 25) * 
-        (meta['FLUX_G'] > 0) * 
-        (meta['FLUX_R'] > 0) * 
-        (meta['FLUX_Z'] > 0) * 
-        (meta['FLUX_W1'] > 0) *
-        (phot['CONTINUUM_CHI2'] < 20) *
-        (np.abs(spec['CONTINUUM_SMOOTHCORR_B']) < 10) *
-        (np.abs(spec['CONTINUUM_SMOOTHCORR_R']) < 10) *
-        (np.abs(spec['CONTINUUM_SMOOTHCORR_Z']) < 10)
-    )
-    
-    # optionally select sub-populations
-    if z_minmax:
-        igal *= (meta['Z'] > z_minmax[0]) * (meta['Z'] < z_minmax[1])
-    else:
-        igal *= (meta['Z'] > 0.1) * (meta['Z'] < 1.1)
-        
-    if Mr_minmax:
-        igal *= (phot['ABSMAG_R'] > Mr_minmax[0]) * (phot['ABSMAG_R'] < Mr_minmax[1])
-        
-    if gi_minmax:
-        gi = phot['ABSMAG_G'] - phot['ABSMAG_I']
-        igal *= (gi > gi_minmax[0]) * (gi < gi_minmax[1])
-        
-    if rW1_minmax:
-        rW1 = phot['ABSMAG_R'] - phot['ABSMAG_W1']
-        igal *= (rW1 > rW1_minmax[0]) * (rW1 < rW1_minmax[1])
-
-    igal = np.where(igal)[0]
-
-    if return_indices:
-        return igal
-    else:
-        return phot[igal], spec[igal], meta[igal]
-
-def stacking_bins(verbose=False):
-
-    # define the stacking limits and the number of bin *centers*
-    zlim, nz = [0.1, 1.1], 20
-    Mrlim, nMr = [-24.5, -20], 10 #4
-    gilim, ngi = [0.4, 1.4], 6 # 4
-    rW1lim, nrW1 = [-1.0, 1.0], 6 # 2
-    
-    dz = (zlim[1] - zlim[0]) / nz
-    dMr = (Mrlim[1] - Mrlim[0]) / nMr
-    dgi = (gilim[1] - gilim[0]) / ngi
-    drW1 = (rW1lim[1] - rW1lim[0]) / nrW1
-    
-    # build the array of (left) bin *edges*
-    zgrid = np.arange(zlim[0], zlim[1], dz)
-    Mrgrid = np.arange(Mrlim[0], Mrlim[1], dMr)
-    gigrid = np.arange(gilim[0], gilim[1], dgi)
-    rW1grid = np.arange(rW1lim[0], rW1lim[1], drW1)
-    
-    bins = {
-        'z': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
-        'Mr': {'min': Mrlim[0], 'max': Mrlim[1], 'del': dMr, 'grid': Mrgrid}, 
-        'gi': {'min': gilim[0], 'max': gilim[1], 'del': dgi, 'grid': gigrid}, 
-        'rW1': {'min': rW1lim[0], 'max': rW1lim[1], 'del': drW1, 'grid': rW1grid},
-        }
-    
-    nbins = 1
-    for key in bins.keys():
-        nbins *= len(bins[key]['grid'])
-        if verbose:
-            log.debug(len(bins[key]['grid']))
-    if verbose:
-        log.debug(nbins)
-
-    return bins, nbins
-
-def spectra_in_bins(tileinfo, minperbin=3, targetclass='lrg', specprod='denali',
-                    CFit=None, verbose=False):
-    """Select objects in bins of rest-frame properties.
-    
-    """
-    from astropy.table import Table, Column
-    
-    fastspecdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), specprod, 'tiles')
-    
-    bins, nbins = stacking_bins()
-    
-    def sample_template():
-        sample1 = Table()
-        sample1.add_column(Column(name='tile', dtype=np.int32, length=1))
-        sample1.add_column(Column(name='ibin', dtype=np.int32, length=1))
-        sample1.add_column(Column(name='nobj', dtype=np.int32, length=1))
-    
-        sample1.add_column(Column(name='z', dtype='f4', length=1)) # mean bin center
-        sample1.add_column(Column(name='zmin', dtype='f4', length=1))
-        sample1.add_column(Column(name='zmax', dtype='f4', length=1))
-    
-        sample1.add_column(Column(name='Mr', dtype='f4', length=1))
-        sample1.add_column(Column(name='Mrmin', dtype='f4', length=1))
-        sample1.add_column(Column(name='Mrmax', dtype='f4', length=1))
-    
-        sample1.add_column(Column(name='gi', dtype='f4', length=1))
-        sample1.add_column(Column(name='gimin', dtype='f4', length=1))
-        sample1.add_column(Column(name='gimax', dtype='f4', length=1))
-
-        sample1.add_column(Column(name='rW1', dtype='f4', length=1))
-        sample1.add_column(Column(name='rW1min', dtype='f4', length=1))
-        sample1.add_column(Column(name='rW1max', dtype='f4', length=1))
-        return sample1
-        
-    samples, data = [], [] # these lists will be aligned
-
-    dz = bins['z']['del']
-    dMr = bins['Mr']['del']
-    dgi = bins['gi']['del']
-    drW1 = bins['rW1']['del']
-    
-    wave = None
-
-    tiles = tileinfo['TILEID']
-    for itile, tile in enumerate(tiles):
-        if itile % 10 == 0:
-            log.info('Working on tile {}/{}'.format(itile, len(tiles)))
-        
-        restfile = os.path.join(fastspecdir, 'deredshifted', '{}-{}-restflux.fits'.format(
-            targetclass.lower(), tile))
-        if not os.path.isfile(restfile): # not all of them exist
-            continue
-
-        # don't read the spectra if we're just counting
-        allphot = Table(fitsio.read(restfile, ext='FASTPHOT'))
-        allspec = Table(fitsio.read(restfile, ext='FASTSPEC'))
-        allmeta = Table(fitsio.read(restfile, ext='METADATA'))
-        flux = fitsio.read(restfile, ext='FLUX')
-        ivar = fitsio.read(restfile, ext='IVAR')
-        # the wavelength vector is identical, so just read one
-        if wave is None:
-            wave = fitsio.read(restfile, ext='WAVE')
-
-        # select the sample of interest on this tile
-        ibin = 0
-        for zmin in bins['z']['grid']:
-            for Mrmin in bins['Mr']['grid']:
-                for gimin in bins['gi']['grid']:
-                    for rW1min in bins['rW1']['grid']:
-                        I = select_gals(allphot, allspec, allmeta, 
-                                        z_minmax=[zmin, zmin+dz],
-                                        Mr_minmax=[Mrmin, Mrmin+dMr],
-                                        gi_minmax=[gimin, gimin+dgi],
-                                        rW1_minmax=[rW1min, rW1min+drW1],
-                                        verbose=False, return_indices=True)
-                        nobj = len(I)
-                        
-                        if nobj >= minperbin:
-                            if verbose:
-                                log.info('N={:04d}, z: {:.3f} {:.3f}, Mr: {:.2f} {:.2f}, g-i: {:.3f} {:.3f}, r-W1: {:.3f} {:.3f}'.format(
-                                    len(I), zmin, zmin+dz, Mrmin, Mrmin+dMr, gimin, 
-                                    gimin+dgi, rW1min, rW1min+drW1))
-                                
-                            _sample = sample_template()
-                            _sample['tile'] = tile
-                            _sample['ibin'] = ibin
-                            _sample['nobj'] = len(I)
-                            _sample['z'] = zmin + dz / 2
-                            _sample['zmin'] = zmin
-                            _sample['zmax'] = zmin + dz
-                            _sample['Mr'] = Mrmin + dMr / 2
-                            _sample['Mrmin'] = Mrmin
-                            _sample['Mrmax'] = Mrmin + dMr
-                            _sample['gi'] = gimin + dgi / 2
-                            _sample['gimin'] = gimin
-                            _sample['gimax'] = gimin + dgi
-                            _sample['rW1'] = rW1min + drW1 / 2
-                            _sample['rW1min'] = rW1min
-                            _sample['rW1max'] = rW1min + drW1
-                            samples.append(_sample)
-                            
-                            _data = {}
-                            _data['flux'] = flux[I, :]
-                            _data['ivar'] = ivar[I, :]
-                            _data['fastphot'] = allphot[I]
-                            _data['fastspec'] = allspec[I]
-                            _data['metadata'] = allmeta[I]
-
-                            # rebuild the best-fitting continuum model fits
-                            if CFit is not None:
-                                _data['cflux'] = []
-                                for iobj in np.arange(nobj):
-                                    cflux1, _ = CFit.SSP2data(
-                                        CFit.sspflux, CFit.sspwave, 
-                                        redshift=allmeta[I][iobj]['Z'],
-                                        AV=allphot['CONTINUUM_AV'][I][iobj],
-                                        coeff=allphot['CONTINUUM_COEFF'][I][iobj],# * CFit.massnorm,
-                                        synthphot=False)
-                                    _data['cflux'].append(cflux1)# * (1 + allmeta[I[iobj]]['Z']) # deredshift
-                                _data['cflux'] = np.vstack(_data['cflux'])
-                            data.append(_data)
-                                
-                        ibin += 1 # next bin
-
-    # Stack the bin-level statistics table
-    samples = Table(np.hstack(samples))
-    data = np.array(data)
-
-    # ...and now stack the data in each (unique) bin number.
-    samplestack, sampledata = [], {}
-    
-    for ibin in sorted(set(samples['ibin'])):
-        I = np.where(ibin == samples['ibin'])[0]
-        _samplestack = samples[[I[0]]].copy()
-        _samplestack.remove_column('tile')
-        _samplestack['nobj'] = np.sum(samples[I]['nobj'])
-        samplestack.append(_samplestack)
-
-        _sampledata = {}
-        _sampledata['flux'] = np.vstack([_data['flux'] for _data in data[I]])
-        _sampledata['ivar'] = np.vstack([_data['ivar'] for _data in data[I]])
-        _sampledata['fastphot'] = Table(np.hstack([_data['fastphot'] for _data in data[I]]))
-        _sampledata['fastspec'] = Table(np.hstack([_data['fastspec'] for _data in data[I]]))
-        _sampledata['metadata'] = Table(np.hstack([_data['metadata'] for _data in data[I]]))
-
-        if CFit is not None:
-            _sampledata['cflux'] = np.vstack([_data['cflux'] for _data in data[I]])
-        
-        sampledata.update({str(ibin): _sampledata})
-        del _sampledata, _samplestack
-
-    del data, samples
-    samplestack = Table(np.hstack(samplestack))
-    
-    return samplestack, sampledata, wave
-
 def parse(options=None):
     """Parse input arguments.
 
@@ -439,27 +63,46 @@ def main(args=None, comm=None):
 
     # Optionally build QA for every (existing) output file.
     if args.qa:
-        from fastspecfit.templates.qa import qa_obs, qa_rest
+        from fastspecfit.templates.templates import read_tileinfo, read_fastspecfit, select_parent_sample
+
+        # hacky
+        from fastspecfit.templates.qa import qa_fastspec
+        from fastspecfit.continuum import ContinuumFit
+        from fastspecfit.emlines import EMLineFit
+    
+        CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
+        EMFit = EMLineFit()
+
+        png = os.path.join(templatedir, 'qa', '{}-fastspec.png'.format(args.targetclass))        
+        qa_fastspec(fastspecfile, CFit, EMFit, png=png)
+        
+        pdb.set_trace()
 
         # Read the master tile file and the fastspecfit fitting results and
         # select the parent sample.
         png = os.path.join(templatedir, 'qa', '{}-tiles.png'.format(args.targetclass))
         tileinfo = read_tileinfo(args.targetclass, min_efftime=args.min_efftime,
                                  remove_vi=True, specprod=args.specprod, png=png)
-        allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass)
+        allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass,
+                                                     specprod=args.specprod)
 
         png = os.path.join(templatedir, 'qa', '{}-parent.png'.format(args.targetclass))
-        galphot, galspec, galmeta = select_gals(allphot, allspec, allmeta)
-
-        pdb.set_trace()
+        phot, spec, meta = select_parent_sample(allphot, allspec, allmeta, png=png,
+                                                targetclass=args.targetclass, verbose=True)
         
-        bins, nbins = stacking_bins(verbose=True)
-        qa_obs(galphot, png=os.path.join(templatedir, 'qa', '{}-obs.png'.format(args.targetclass)))
-        qa_rest(galphot, galspec, galmeta, bins=None, png=os.path.join(templatedir, 'qa', '{}-rest.png'.format(args.targetclass)))
-        qa_rest(galphot, galspec, galmeta, bins=bins, png=os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(args.targetclass)))
+        if args.targetclass == 'lrg':
+            from fastspecfit.templates.templates import lrg_stacking_bins
+            from fastspecfit.templates.qa import qa_photometry_lrg
 
-        pdb.set_trace()
+            bins, nbins = lrg_stacking_bins(verbose=True)
+        
+            png_obs = os.path.join(templatedir, 'qa', '{}-obs.png'.format(args.targetclass))
+            png_rest = os.path.join(templatedir, 'qa', '{}-rest.png'.format(args.targetclass))
+            png_rest_bins = os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(args.targetclass))
 
+            qa_photometry_lrg(phot, spec, meta, bins=bins, png_obs=png_obs,
+                              png_rest=png_rest, png_rest_bins=png_rest_bins)
+                              
         return
 
     # [1] Build the stacked spectra.
@@ -468,20 +111,28 @@ def main(args=None, comm=None):
 
         from fastspecfit.continuum import ContinuumFit
         from fastspecfit.templates.stack import stack_in_bins
+        from fastspecfit.templates.templates import (read_tileinfo, read_fastspecfit,
+                                                     select_parent_sample, spectra_in_bins)
         
+        if args.targetclass == 'lrg':
+            from fastspecfit.templates.templates import lrg_stacking_bins
+            bins, nbins = lrg_stacking_bins(verbose=True)
+            
         # Read the master tile file and the fastspecfit fitting results and
         # select the parent sample.
         tileinfo = read_tileinfo(args.targetclass, min_efftime=args.min_efftime,
                                  remove_vi=True, specprod=args.specprod)
-        allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass)
-        galphot, galspec, galmeta = select_gals(allphot, allspec, allmeta)
-
+        allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass,
+                                                     specprod=args.specprod)
+        phot, spec, meta = select_parent_sample(allphot, allspec, allmeta, 
+                                                targetclass=args.targetclass)
+        
         # select spectra in bins of properties, looping over all tiles
-        bins, nbins = stacking_bins(verbose=True)
         CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
         sample, data, restwave = spectra_in_bins(tileinfo, targetclass=args.targetclass,
-                                                 minperbin=args.minperbin, CFit=CFit, verbose=False)
-
+                                                 bins=bins, minperbin=args.minperbin,
+                                                 CFit=CFit, verbose=False)
+        
         stack_in_bins(sample, data, restwave, continuumwave=CFit.sspwave,
                       mp=args.mp, stackfile=stackfile)
 

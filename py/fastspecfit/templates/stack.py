@@ -267,7 +267,7 @@ def stack_in_bins(sample, data, templatewave, mp=1, continuumwave=None, stackfil
     # parallelize the stack-building step
     mpargs = []
     for samp in sample:
-        ibin = samp['ibin'].astype(str)
+        ibin = samp['IBIN'].astype(str)
         if continuumwave is not None:
             mpargs.append([data[ibin]['flux'], data[ibin]['ivar'], templatewave, data[ibin]['cflux'], continuumwave])
         else:
@@ -342,7 +342,7 @@ def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=
     fastspec.remove_columns(['CONTINUUM_SNR_R', 'CONTINUUM_SNR_Z'])
     fastspec.add_column(Column(name='TARGETID', data=np.arange(nobj, dtype=np.int64)), index=0)
 
-    fastspec['CONTINUUM_Z'] = meta['z'] # fix this!
+    fastspec['CONTINUUM_Z'] = meta['ZOBJ']
 
     # Fit in parallel
     t0 = time.time()
