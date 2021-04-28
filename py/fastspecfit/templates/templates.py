@@ -45,11 +45,17 @@ def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
         lineargs = [fastspec[linename.upper()] for linename in EMLine.param_names]
 
         emlinemodel = EMLine._emline_spectrum(*lineargs)
-        import matplotlib.pyplot as plt
-        plt.plot(modelwave, continuum+emlinemodel) ; plt.xlim(3200, 10000) ; plt.savefig('junk.png')
-        pdb.set_trace()
+
+        modelflux = continuum + emlinemodel
+
+        #import matplotlib.pyplot as plt
+        #plt.plot(modelwave, modelspec) ; plt.xlim(3200, 10000) ; plt.savefig('junk.png')
+        #pdb.set_trace()
+
+        return modelwave, modelflux
 
     else:
+
         icam = 0 # one (merged) "camera"
 
         # mock up a fastspec-compatible dictionary of DESI data
@@ -78,13 +84,48 @@ def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
 
         emlinemodel = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec)[icam]
 
-    return modelwave, continuum, smooth_continuum, emlinemodel, data
+        return modelwave, continuum, smooth_continuum, emlinemodel, data
 
-def write_templates(templatefile, wave, flux, weights, metadata):
-    pass
+def write_templates(outfile, wave, flux, metadata, weights=None, empca=False):
+    """Write out the final templates
     
+    """
+    from astropy.io import fits
 
-def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None, templatefile=None):
+    nobj, _ = flux.shape
+
+    if empca:
+        hduname_wave = 'WAVELENGTH'
+        hduname_weights = 'WEIGHTS'
+    else:
+        hduname_wave = 'WAVE'
+        
+    hduflux = fits.PrimaryHDU(flux.astype('f4'))
+    hduflux.header['EXTNAME'] = 'FLUX'
+    hdulist = [hduflux]
+
+    if empca and weights is not None:
+        hduweights = fits.ImageHDU(weights.astype('f4'))
+        hduweights.header['EXTNAME'] = 'WEIGHTS'
+        hdulist = hdulist + [hduweights]        
+        
+    hduwave = fits.ImageHDU(wave.astype('f8'))
+    hduwave.header['EXTNAME'] = hduname_wave
+    hduwave.header['BUNIT'] = 'Angstrom'
+    hduwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+    hdulist = hdulist + [hduwave]
+
+    hdumetadata = fits.convenience.table_to_hdu(metadata)
+    hdumetadata.header['EXTNAME'] = 'METADATA'
+    hdulist = hdulist + [hdumetadata]
+
+    hx = fits.HDUList(hdulist)
+
+    hx.writeto(outfile, overwrite=True, checksum=True)
+    log.info('Writing {} templates to {}'.format(nobj, outfile))
+
+def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None, templatefile=None,
+                    empca=False):
     """Build the final templates.
 
     Called by bin/desi-templates.
@@ -124,15 +165,31 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None, templatefile
         _out = [rebuild_fastspec_spectrum(*_mpargs) for _mpargs in mpargs]
     _out = list(zip(*_out))
 
-    #modelwave = 
+    log.info('Rebuilding all model spectra took: {:.2f} sec'.format(time.time()-t0))
 
-    pdb.set_trace()
+    modelwave = _out[0][0] # all are identical
+    modelflux = np.vstack(_out[1])
+
+    metacols = ['NOBJ', 'ZOBJ', 'MR', 'GI', 'RW1']
+    speccols = ['CONTINUUM_SNR_ALL',
+                'BALMER_Z', 'FORBIDDEN_Z', 'BROAD_Z', 'BALMER_SIGMA', 'FORBIDDEN_SIGMA', 'BROAD_SIGMA',
+                'OII_3726_EW', 'OII_3726_EW_IVAR',
+                'OII_3729_EW', 'OII_3729_EW_IVAR',
+                'OIII_5007_EW', 'OIII_5007_EW_IVAR',
+                'HBETA_EW', 'HBETA_EW_IVAR',
+                'HALPHA_EW', 'HALPHA_EW_IVAR']
+
+    from astropy.table import hstack
+    metadata = hstack([fastmeta[metacols], fastspec[speccols]])
     
-    fastspec = Table(np.hstack(_out[0])) # overwrite
-    log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
+    if empca:
+        weights = np.zeros_like(modelflux) + fastmeta['NOBJ'].data[:, np.newaxis]
+    else:
+        weights = None
 
     if templatefile:
-        write_templates(templatefile, wave, flux, weights, metadata)
+        write_templates(templatefile, modelwave, modelflux, metadata,
+                        weights=weights, empca=empca)
 
 def _fastspec_onestack(args):
     """Multiprocessing wrapper."""
