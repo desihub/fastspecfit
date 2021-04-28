@@ -338,7 +338,7 @@ def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=
 
     from astropy.table import hstack
     fastspec = hstack((CFit.init_spec_output(nobj=nobj), EMFit.init_output(CFit.linetable, nobj=nobj)))
-    fastspec.rename_column('CONTINUUM_SNR_B', 'CONTINUUM_SNR_ALL')
+    fastspec.rename_column('CONTINUUM_SNR_B', 'CONTINUUM_SNR_ALL') # new column!
     fastspec.remove_columns(['CONTINUUM_SNR_R', 'CONTINUUM_SNR_Z'])
     fastspec.add_column(Column(name='TARGETID', data=np.arange(nobj, dtype=np.int64)), index=0)
 

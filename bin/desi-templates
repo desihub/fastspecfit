@@ -150,8 +150,27 @@ def main(args=None, comm=None):
     if not os.path.isfile(templatefile) or args.overwrite_templates:
         #from fastspecfit.templates.stack import build_templates
 
-        log.info('Building final templates')
-        pdb.set_trace()
+        log.info('Building final templates.')
+
+        
+
+
+
+    # FITS file with 3 HDUs:
+    
+    # FLUX[n,m] - n restframe templates sampled at m wavelengths
+    
+    # WEIGHTS[n,m] - weights for FLUX; note that weights can be both template
+    # and wavelength dependent.  Set to 0 for wavelengths that should not be
+    # trusted for this template.  As a starting point let's try the non-zeros
+    # weights being the number of input spectra that contributed to the
+    # template.  We may need to try a S/N weighted version of that.  We could
+    # also try something like only masking (weight=0) around the emission lines
+    # that are not within the DESI wavelengths, while still trusting the
+    # extrapolation of the continuum.  Feel free to send several versions to try
+    # if you'd like.
+    
+    # WAVELENGTH[m] - not needed for empca, but needed for redrock to interpret the PCA results
 
 if __name__ == '__main__':
     main()
