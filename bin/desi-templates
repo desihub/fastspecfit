@@ -37,6 +37,7 @@ def parse(options=None):
     parser.add_argument('--overwrite-fastspec', action='store_true', help='Overwrite existing fastspec fitting results.')
     parser.add_argument('--overwrite-templates', action='store_true', help='Overwrite existing templates.')
 
+    parser.add_argument('--empca', action='store_true', help='Build the emPCA-compatible templates.')
     parser.add_argument('--qa', action='store_true', help='Build QA output for a given target class.')
     
     if options is None:
@@ -59,7 +60,10 @@ def main(args=None, comm=None):
 
     stackfile = os.path.join(templatedir, '{}-stacks.fits'.format(args.targetclass))
     fastspecfile = os.path.join(templatedir, '{}-fastspec.fits'.format(args.targetclass))
-    templatefile = os.path.join(templatedir, '{}-templates.fits'.format(args.targetclass))
+    if args.empca:
+        templatefile = os.path.join(templatedir, '{}-empca-templates.fits'.format(args.targetclass))
+    else:
+        templatefile = os.path.join(templatedir, '{}-templates.fits'.format(args.targetclass))
 
     # Optionally build QA for every (existing) output file.
     if args.qa:
@@ -73,8 +77,8 @@ def main(args=None, comm=None):
         CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
         EMFit = EMLineFit()
 
-        png = os.path.join(templatedir, 'qa', '{}-fastspec.png'.format(args.targetclass))        
-        qa_fastspec(fastspecfile, CFit, EMFit, png=png)
+        pdffile = os.path.join(templatedir, 'qa', '{}-fastspec.pdf'.format(args.targetclass))
+        qa_fastspec(fastspecfile, CFit, EMFit, pdffile=pdffile)
         
         pdb.set_trace()
 
@@ -152,25 +156,7 @@ def main(args=None, comm=None):
 
         log.info('Building final templates.')
         build_templates(fastspecfile, mp=args.mp, templatefile=templatefile,
-                        minwave=args.minwave, maxwave=args.maxwave, empca=True)
-
-        pdb.set_trace()
-
-    # FITS file with 3 HDUs:
-    
-    # FLUX[n,m] - n restframe templates sampled at m wavelengths
-    
-    # WEIGHTS[n,m] - weights for FLUX; note that weights can be both template
-    # and wavelength dependent.  Set to 0 for wavelengths that should not be
-    # trusted for this template.  As a starting point let's try the non-zeros
-    # weights being the number of input spectra that contributed to the
-    # template.  We may need to try a S/N weighted version of that.  We could
-    # also try something like only masking (weight=0) around the emission lines
-    # that are not within the DESI wavelengths, while still trusting the
-    # extrapolation of the continuum.  Feel free to send several versions to try
-    # if you'd like.
-    
-    # WAVELENGTH[m] - not needed for empca, but needed for redrock to interpret the PCA results
+                        minwave=args.minwave, maxwave=args.maxwave, empca=args.empca)
 
 if __name__ == '__main__':
     main()

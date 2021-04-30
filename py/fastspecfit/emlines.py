@@ -408,38 +408,10 @@ class EMLineModel(Fittable1DModel):
         from redrock.rebin import trapz_rebin
 
         # build the emission-line model [erg/s/cm2/A, observed frame]
-        log10model = self._emline_spectrum(lineargs)
-
-        pdb.set_trace()
-
-        linenames = np.array([linename.replace('_amp', '') for linename in self.param_names[:self.nline]])
-        lineamps = np.hstack(args[0:self.nline])
-        linevshifts = np.hstack(args[self.nline:2*self.nline])
-        linesigmas = np.hstack(args[2*self.nline:])
-        
-        log10model = np.zeros_like(self.log10wave)
-        for linename, lineamp, linevshift, linesigma in zip(linenames, lineamps, linevshifts, linesigmas):
-            
-            iline = np.where(self.linetable['name'] == linename)[0]
-            if len(iline) != 1:
-                log.warning('No matching line found!')
-                raise ValueError
-                
-            restlinewave = self.linetable[iline]['restwave'][0]
-            
-            linez = self.redshift + linevshift / C_LIGHT
-            linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
-
-            log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]
-            
-            ww = np.abs(self.log10wave - linezwave) < (100 * log10sigma)
-            if np.count_nonzero(ww) > 0:
-                #log.info(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
-                log10model[ww] += lineamp * np.exp(-0.5 * (self.log10wave[ww]-linezwave)**2 / log10sigma**2)
+        log10model = self._emline_spectrum(*lineargs)
 
         # optionally split into cameras, resample, and convolve with the instrumental
         # resolution
-        
         emlinemodel = []
         for ii in np.arange(len(self.npixpercamera)-1): # iterate over cameras
             #ipix = np.sum(self.ngoodpixpercamera[:ii+1]) # unmasked pixels!
