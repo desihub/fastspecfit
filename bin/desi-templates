@@ -70,17 +70,20 @@ def main(args=None, comm=None):
         from fastspecfit.templates.sample import read_tileinfo, read_fastspecfit, select_parent_sample
 
         # hacky
-        from fastspecfit.templates.qa import qa_fastspec
         from fastspecfit.continuum import ContinuumFit
         from fastspecfit.emlines import EMLineFit
+        from fastspecfit.templates.qa import qa_fastspec_emlinespec, qa_fastspec_fullspec
     
         CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
         EMFit = EMLineFit()
 
-        pdffile = os.path.join(templatedir, 'qa', '{}-fastspec.pdf'.format(args.targetclass))
-        qa_fastspec(fastspecfile, CFit, EMFit, pdffile=pdffile)
-        
+        pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-emlinespec.pdf'.format(args.targetclass))
+        qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=pdffile)        
         pdb.set_trace()
+
+        pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec.pdf'.format(args.targetclass))
+        qa_fastspec_fullspec(fastspecfile, CFit, EMFit, pdffile=pdffile)
+        
 
         # Read the master tile file and the fastspecfit fitting results and
         # select the parent sample.

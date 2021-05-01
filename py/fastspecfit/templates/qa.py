@@ -29,10 +29,370 @@ def plot_style(font_scale=1.2):
     colors = sns.color_palette()
     return sns, colors
 
-cmap = plt.cm.get_cmap('RdYlBu')
+def remove_undetected_lines(fastspec, linenames, snrmin=3.0):
+    """replace weak or undetected emission lines with their upper limits
+
+    """
+    for linename in linenames:
+        amp = fastspec['{}_AMP'.format(linename.upper())].data
+        amp_ivar = fastspec['{}_AMP_IVAR'.format(linename.upper())].data
+        cont_ivar = fastspec['{}_CONT_IVAR'.format(linename.upper())].data
+
+        fix = np.where(amp_ivar == 0)[0]
+        if len(fix) > 0:
+            fastspec['{}_AMP'.format(linename.upper())][fix] = 0.0 # fixes a bug with [OIII] 4959
+
+        # fix and then skip tied doublets
+        if 'oiii_4959' in linename or 'nii_6548' in linename: 
+            #fix = np.where((fastspec['OIII_4959_AMP_IVAR'] > 0) * (fastspec['OIII_5007_AMP_IVAR'] == 0))[0]
+            #if len(fix) > 0:
+            #    fastspec['OIII_4959_AMP'][fix] = 0.0
+            #    fastspec['OIII_4959_AMP_IVAR'][fix] = 0.0
+            continue
+
+        snr = amp * np.sqrt(amp_ivar)
+        losnr = np.where(np.logical_or((amp_ivar > 0) * (snr < snrmin), (amp_ivar == 0) * (cont_ivar > 0)))[0]
+
+        if len(losnr) > 0:
+            csig = 1 / np.sqrt(cont_ivar[losnr])
+            if np.any(csig) < 0:
+                pdb.set_trace()
+
+            fastspec['{}_AMP'.format(linename.upper())][losnr] = snrmin * csig
+            #fastspec['{}_AMP'.format(linename.upper())][losnr] = 0.0
+            #fastspec['{}_AMP_IVAR'.format(linename.upper())][losnr] = 0.0
+            #fastspec['{}_AMP_IVAR'.format(linename.upper())][losnr] = 0.0
+
+            if linename == 'oiii_5007':
+                fastspec['OIII_4959_AMP'][losnr] = fastspec['OIII_5007_AMP'][losnr].data / 2.875
+            if linename == 'nii_6584':
+                fastspec['NII_6548_AMP'][losnr] = fastspec['NII_6584_AMP'][losnr].data / 2.936
+
+            #if linename == 'nii_6584':
+            #    pdb.set_trace()
+                
+    # corner case of when the stronger doublet is on the edge of the wavelength range
+    fix = np.where((fastspec['OIII_5007_AMP'] == 0) * (fastspec['OIII_4959_AMP'] != 0))[0]
+    if len(fix) > 0:
+        fastspec['OIII_4959_AMP'][fix] = 0.0
+        fastspec['OIII_4959_AMP_IVAR'][fix] = 0.0
+        
+    fix = np.where((fastspec['NII_6584_AMP'] == 0) * (fastspec['NII_6548_AMP'] != 0))[0]
+    if len(fix) > 0:
+        fastspec['NII_6548_AMP'][fix] = 0.0
+        fastspec['NII_6548_AMP_IVAR'][fix] = 0.0
+
+    for linename in linenames:
+        amp = fastspec['{}_AMP'.format(linename.upper())].data
+        neg = np.where(amp < 0)[0]
+        if len(neg) > 0:
+            print('Fix {}'.format(linename))
+            pdb.set_trace()
+
+    return fastspec
+
+def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
+    """QA of the fastspec emission-line spectra.
+
+    """
+    from matplotlib.colors import Normalize
     
+    sns, _ = plot_style()
+
+    wave = fitsio.read(fastspecfile, ext='WAVE')
+    flux = fitsio.read(fastspecfile, ext='FLUX')
+    ivar = fitsio.read(fastspecfile, ext='IVAR')
+
+    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    nobj = len(fastmeta)
+
+    if False:
+        this = (fastmeta['RW1'] == -0.875) * (fastmeta['ZOBJ'] == 0.85) * (fastmeta['MR'] == -22.25)
+        fastspec['OIII_4959_AMP', 'OIII_4959_AMP_IVAR', 'OIII_5007_AMP', 'OIII_5007_AMP_IVAR'][this]
+        pdb.set_trace()
+    
+    fastspec = remove_undetected_lines(fastspec, EMFit.linetable['name'])
+
+    for linename in EMFit.linetable['name']:
+        amp = fastspec['{}_AMP'.format(linename.upper())].data
+        neg = np.where(amp < 0)[0]
+        if len(neg) > 0:
+            print('Fix {}'.format(linename))
+            pdb.set_trace()
+
+    ncol, nrow = 3, 5
+    icam = 0
+        
+    rW1color = np.unique(fastmeta['RW1'])
+    npage = len(rW1color)
+
+    cmap = plt.cm.get_cmap('jet')
+    #cmap = sns.color_palette(as_cmap=True)
+    cnorm = Normalize(vmin=np.min(fastmeta['ZOBJ']), vmax=np.max(fastmeta['ZOBJ']))
+    #cnorm = Normalize(vmin=np.min(rW1color), vmax=np.max(rW1color))
+        
+    if pdffile:
+        from matplotlib.backends.backend_pdf import PdfPages
+        pdf = PdfPages(pdffile)
+
+    inches_wide = 16
+    inches_fullspec = 6
+    inches_perline = inches_fullspec / 2.0
+    nlinepanels = 4
+
+    nline = len(set(EMFit.linetable['plotgroup']))
+    nlinerows = np.ceil(nline / nlinepanels).astype(int)
+    nrows = 1 + nlinerows
+
+    height_ratios = np.hstack([1, [0.5]*nlinerows])
+
+    plotsig_default = 300.0 # [km/s]
+    meanwaves, deltawaves, sigmas, linenames = [], [], [], []
+    for plotgroup in set(EMFit.linetable['plotgroup']):
+        I = np.where(plotgroup == EMFit.linetable['plotgroup'])[0]
+        linenames.append(EMFit.linetable['nicename'][I[0]])
+        meanwaves.append(np.mean(EMFit.linetable['restwave'][I]))
+        deltawaves.append((np.max(EMFit.linetable['restwave'][I]) - np.min(EMFit.linetable['restwave'][I])) / 2)
+        sigmas.append(plotsig_default)
+    srt = np.argsort(meanwaves)
+    meanwaves = np.hstack(meanwaves)[srt]
+    deltawaves = np.hstack(deltawaves)[srt]
+    sigmas = np.hstack(sigmas)[srt]
+    linenames = np.hstack(linenames)[srt]
+    
+    # make the plot!
+    for ipage in np.arange(npage):#[:2]:
+        zindx = np.where(rW1color[ipage] == fastmeta['RW1'])[0]
+        zfastmeta = fastmeta[zindx]
+        zfastspec = fastspec[zindx]
+
+        srt = np.argsort(zfastmeta['MR'])
+        zfastmeta = zfastmeta[srt]
+        zfastspec = zfastspec[srt]
+
+        absmag = np.unique(zfastmeta['MR'])
+        nabspage = len(absmag)
+
+        for iabspage in np.arange(nabspage):#[:1]:#[::2]:
+            absindx = np.where((absmag[iabspage] == zfastmeta['MR']))[0]
+            absfastmeta = zfastmeta[absindx]
+            absfastspec = zfastspec[absindx]
+
+            fig = plt.figure(figsize=(inches_wide, 2*inches_fullspec + inches_perline*nlinerows))
+            gs = fig.add_gridspec(nrows, nlinepanels, height_ratios=height_ratios)
+
+            bigax = fig.add_subplot(gs[0, :])
+            ax, irow, icol = [], 1, 0
+            for iax in np.arange(nline):
+                icol = iax % nlinepanels
+                if iax > 0 and iax % nlinepanels == 0:
+                    irow += 1
+                xx = fig.add_subplot(gs[irow, icol])
+                ax.append(xx)
+            
+            bigymin, bigymax = 1e6, -1e6
+            lineymin, lineymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
+            removelabels = np.ones(nline, bool)
+        
+            for iplot, indx in enumerate(zindx[absindx]):
+                print(ipage, iabspage, iplot, len(zindx), len(absindx))
+
+                modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
+                    fastspec[indx], wave, flux[indx, :], ivar[indx, :], CFit, EMFit)
+                #pdb.set_trace()
+
+                redshift = data['zredrock']
+                emlineflux = data['flux'][icam] - continuum - smooth_continuum
+
+                modelwave /= (1+redshift) # rest-frame
+
+                label = 'z=[{:.1f}-{:.1f}] (N={})'.format(
+                    fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
+                    len(set(fastmeta['ZOBJ'][zindx])))
+                #label = '[{:.2f},{:.2f}],[{:.1f},{:.1f}]'.format(
+                #    fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
+                #    fastmeta['GIMIN'][indx], fastmeta['GIMAX'][indx])
+                #bigax.plot(modelwave/(1+redshift), emlineflux, color='gray')
+                bigax.plot(modelwave, emlinemodel, label=label, color=cmap(cnorm(fastmeta['ZOBJ'][indx])))
+
+                if -np.max(emlinemodel)*0.05 < bigymin:
+                    bigymin = -np.max(emlinemodel)*0.05
+                if np.max(emlinemodel)*1.1 > bigymax:
+                    bigymax = np.max(emlinemodel)*1.1
+
+                # zoom in on individual emission lines
+                for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
+                    wmin = (meanwave - deltawave) - 8 * sig * meanwave / C_LIGHT
+                    wmax = (meanwave + deltawave) + 8 * sig * meanwave / C_LIGHT
+                    lineindx = np.where((modelwave > wmin) * (modelwave < wmax))[0]
+
+                    if len(lineindx) > 1:
+                        if np.min(emlinemodel[lineindx]) > 0.0: # at least one line kept (snr>3)
+                            removelabels[iax] = False
+                            ax[iax].plot(modelwave[lineindx], emlinemodel[lineindx],
+                                         color=cmap(cnorm(fastmeta['ZOBJ'][indx])))
+
+                            if -np.max(emlinemodel[lineindx])*0.05 < lineymin[iax]:
+                                lineymin[iax] = -np.max(emlinemodel[lineindx])*0.05
+                            if np.max(emlinemodel[lineindx]) * 1.1 > lineymax[iax]:
+                                lineymax[iax] = np.max(emlinemodel[lineindx]) * 1.1
+
+            for iax, xx in enumerate(ax):
+                xx.text(0.08, 0.89, linenames[iax], ha='left', va='center',
+                        transform=xx.transAxes, fontsize=20)
+                if removelabels[iax]:
+                    xx.set_ylim(0, 1)
+                    xx.set_xticklabels([])
+                    xx.set_yticklabels([])
+                else:
+                    if lineymax[iax] == lineymin[iax]:
+                        lineymax[iax] = 1.0
+                        
+                    xx.set_ylim(lineymin[iax], lineymax[iax])
+                    xlim = xx.get_xlim()
+                    xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
+
+            # don't repeat the legend labels
+            hand, lab = bigax.get_legend_handles_labels()
+            ulabels = dict(zip(lab, hand))
+            bigax.legend(ulabels.values(), ulabels.keys(), fontsize=18, loc='upper left')
+            #bigax.legend(fontsize=18, loc='upper left')
+
+            bigax.set_ylim(bigymin, bigymax)
+            bigax.set_xlim(2600, 7200) # 3500, 9300)
+            bigax.set_title(
+                r'${:.2f}<r-W1<{:.2f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
+                absfastmeta['RW1MIN'][0], absfastmeta['RW1MAX'][0],
+                absfastmeta['MRMIN'][0], absfastmeta['MRMAX'][0]
+                ))
+            #bigax.set_xlabel('Observed-frame Wavelength ($\AA$)')
+
+            plt.subplots_adjust(wspace=0.28, left=0.07, right=0.95, top=0.95, bottom=0.1)
+            
+            if pdffile:
+                pdf.savefig(fig)
+                
+            plt.close()
+
+    if pdffile:
+        log.info('Writing {}'.format(pdffile))
+        pdf.close()
+
+    pdb.set_trace()
+
+def qa_fastspec_fullspec(fastspecfile, CFit, EMFit, pdffile=None):
+    """Full-spectrum QA."""
+
+    sns, _ = plot_style()
+
+    wave = fitsio.read(fastspecfile, ext='WAVE')
+    flux = fitsio.read(fastspecfile, ext='FLUX')
+    ivar = fitsio.read(fastspecfile, ext='IVAR')
+
+    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    nobj = len(fastmeta)
+
+    ncol, nrow = 3, 5
+    icam = 0
+        
+    zobj = np.unique(fastmeta['ZOBJ'])
+    npage = len(zobj)
+    
+    if pdffile:
+        from matplotlib.backends.backend_pdf import PdfPages
+        pdf = PdfPages(pdffile)
+
+    for ipage in np.arange(npage):#[:1]:
+        zindx = np.where(zobj[ipage] == fastmeta['ZOBJ'])[0]
+        zfastmeta = fastmeta[zindx]
+        zfastspec = fastspec[zindx]
+
+        srt = np.argsort(zfastmeta['MR'])
+        zfastmeta = zfastmeta[srt]
+        zfastspec = zfastspec[srt]
+
+        absmag = np.unique(zfastmeta['MR'])
+        nabspage = len(absmag)
+
+        for iabspage in np.arange(nabspage):#[:2]:
+
+            absindx = np.where((absmag[iabspage] == zfastmeta['MR']))[0]
+            absfastmeta = zfastmeta[absindx]
+            absfastspec = zfastspec[absindx]
+
+            fig, allax = plt.subplots(nrow, ncol, figsize=(12, 16), sharex=True, sharey=True)
+            for iplot, (indx, ax) in enumerate(zip(zindx[absindx], allax.flatten())):
+                print(ipage, iabspage, iplot, len(zindx), len(absindx))
+
+                # rebuild the best-fitting spectrum
+                modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
+                    fastspec[indx], wave, flux[indx, :], ivar[indx, :], CFit, EMFit)
+
+                #sigma, _ = ivar2var(data['ivar'][icam], sigma=True)
+                #ax.fill_between(data['wave'][icam], data['flux'][icam]-sigma,
+                #                            data['flux'][icam]+sigma, color='skyblue')
+                ax.plot(data['wave'][icam], data['flux'][icam], color='skyblue')
+                ax.plot(modelwave[::3], (continuum+emlinemodel)[::3], color='firebrick', alpha=0.5)
+                ax.plot(modelwave[::3], continuum[::3], color='blue', alpha=0.5)
+                #ax.plot(modelwave[::3], (continuum+smooth_continuum)[::3], color='gray', alpha=0.3)
+                ax.plot(modelwave[::3], smooth_continuum[::3], color='gray', alpha=0.7)
+
+                ymin, ymax = 1e6, -1e6
+
+                filtflux = median_filter(data['flux'][icam], 51, mode='nearest')
+                sigflux = np.std(data['flux'][icam][data['ivar'][icam] > 0])
+                if -2 * sigflux < ymin:
+                    ymin = -2 * sigflux
+                if sigflux * 5 > ymax:
+                    ymax = sigflux * 5
+                if np.max(filtflux) > ymax:
+                    ymax = np.max(filtflux) * 1.4
+
+                ax.text(0.96, 0.06, '\n'.join(( r'${:.1f}<g-i<{:.1f}$'.format(fastmeta['GIMIN'][indx], fastmeta['GIMAX'][indx]),
+                                                r'${:.2f}<r-W1<{:.2f}$'.format(fastmeta['RW1MIN'][indx], fastmeta['RW1MAX'][indx]) )),
+                                                ha='right', va='bottom', transform=ax.transAxes, fontsize=10,
+                                                bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
+                ax.text(0.04, 0.96,
+                        '\n'.join(( 'N={}, S/N={:.1f}'.format(fastmeta['NOBJ'][indx], fastspec['CONTINUUM_SNR_ALL'][indx]), )),
+                    ha='left', va='top', transform=ax.transAxes, fontsize=10,
+                    bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
+
+                ax.set_xlim(modelwave.min(), modelwave.max())
+                ax.set_ylim(ymin, ymax)
+                ax.set_xticklabels([])
+                ax.set_yticklabels([])
+
+                plt.subplots_adjust(wspace=0.05, hspace=0.05, left=0.07, right=0.95, top=0.95, bottom=0.1)
+
+                if iplot == ncol*nrow-1:
+                    break
+            
+            fig.text(0.52, 0.968, r'${:.1f}<z<{:.1f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
+                absfastmeta['ZOBJMIN'][0], absfastmeta['ZOBJMAX'][0],
+                absfastmeta['MRMIN'][0], absfastmeta['MRMAX'][0]),
+                ha='center', va='center', fontsize=22)
+
+            for rem in np.arange(ncol*nrow-iplot-1)+iplot+1:
+                allax.flatten()[rem].axis('off')
+                
+            if pdffile:
+                pdf.savefig(fig)
+                
+            plt.close()
+
+    if pdffile:
+        log.info('Writing {}'.format(pdffile))
+        pdf.close()
+
+
+
+        
 def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
                       png_rest=None, png_rest_bins=None):
+
+    cmap = plt.cm.get_cmap('RdYlBu')    
 
     def obs(phot, png=None):
         zobslim = (16, 22)
@@ -195,262 +555,4 @@ def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
     obs(phot, png=png_obs)
     rest(phot, spec, meta, png=png_rest)
     rest(phot, spec, meta, bins, png=png_rest_bins)
-
-def qa_fastspec(fastspecfile, CFit, EMFit, pdffile=None):
-    """QA of the fastspec fitting results.
-
-    """
-    sns, _ = plot_style()
-
-    wave = fitsio.read(fastspecfile, ext='WAVE')
-    flux = fitsio.read(fastspecfile, ext='FLUX')
-    ivar = fitsio.read(fastspecfile, ext='IVAR')
-
-    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
-    nobj = len(fastmeta)
-
-    ncol, nrow = 3, 5
-    icam = 0
-        
-    zobj = np.unique(fastmeta['ZOBJ'])
-    nzpage = len(zobj)
-
-    #########################
-    # Emission-line  spectra
-    from copy import copy
-    _pdffile = copy(pdffile)
-    pdffile = pdffile.replace('.pdf', '-emlines.pdf')
-    
-    if pdffile:
-        from matplotlib.backends.backend_pdf import PdfPages
-        pdf = PdfPages(pdffile)
-
-    inches_wide = 16
-    inches_fullspec = 6
-    inches_perline = inches_fullspec / 2.0
-    nlinepanels = 4
-
-    nline = len(set(EMFit.linetable['plotgroup']))
-    nlinerows = np.ceil(nline / nlinepanels).astype(int)
-    nrows = 1 + nlinerows
-
-    height_ratios = np.hstack([1, [0.5]*nlinerows])
-
-    plotsig_default = 300.0 # [km/s]
-    meanwaves, deltawaves, sigmas, linenames = [], [], [], []
-    for plotgroup in set(EMFit.linetable['plotgroup']):
-        I = np.where(plotgroup == EMFit.linetable['plotgroup'])[0]
-        linenames.append(EMFit.linetable['nicename'][I[0]])
-        meanwaves.append(np.mean(EMFit.linetable['restwave'][I]))
-        deltawaves.append((np.max(EMFit.linetable['restwave'][I]) - np.min(EMFit.linetable['restwave'][I])) / 2)
-        sigmas.append(plotsig_default)
-    srt = np.argsort(meanwaves)
-    meanwaves = np.hstack(meanwaves)[srt]
-    deltawaves = np.hstack(deltawaves)[srt]
-    sigmas = np.hstack(sigmas)[srt]
-    linenames = np.hstack(linenames)[srt]
-    
-    # make the plot!
-    for izpage in np.arange(nzpage)[:2]:#[::3]:
-        zindx = np.where(zobj[izpage] == fastmeta['ZOBJ'])[0]
-        zfastmeta = fastmeta[zindx]
-        zfastspec = fastspec[zindx]
-
-        srt = np.argsort(zfastmeta['MR'])
-        zfastmeta = zfastmeta[srt]
-        zfastspec = zfastspec[srt]
-
-        absmag = np.unique(zfastmeta['MR'])
-        nabspage = len(absmag)
-
-        for iabspage in np.arange(nabspage)[:3]:#[::2]:
-            absindx = np.where((absmag[iabspage] == zfastmeta['MR']))[0]
-            absfastmeta = zfastmeta[absindx]
-            absfastspec = zfastspec[absindx]
-
-            #fig, ax = plt.subplots(figsize=(12, 8))
-
-            fig = plt.figure(figsize=(inches_wide, 2*inches_fullspec + inches_perline*nlinerows))
-            gs = fig.add_gridspec(nrows, nlinepanels, height_ratios=height_ratios)
-
-            bigax = fig.add_subplot(gs[0, :])
-            ax, irow, icol = [], 1, 0
-            for iax in np.arange(nline):
-                icol = iax % nlinepanels
-                if iax > 0 and iax % nlinepanels == 0:
-                    irow += 1
-                xx = fig.add_subplot(gs[irow, icol])
-                ax.append(xx)
-            
-            bigymin, bigymax = 1e6, -1e6
-            lineymin, lineymax = np.zeros(nline)-0.1, np.zeros(nline)-1e6
-        
-            for iplot, indx in enumerate(zindx[absindx]):
-                print(izpage, iabspage, iplot, len(zindx), len(absindx))
-
-                modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
-                    fastspec[indx], wave, flux[indx, :], ivar[indx, :], CFit, EMFit)
-
-                redshift = data['zredrock']
-                emlineflux = data['flux'][icam] - continuum - smooth_continuum
-
-                modelwave /= (1+redshift) # rest-frame
-                
-                label = '[{:.1f},{:.1f}],[{:.2f},{:.2f}]'.format(
-                    fastmeta['GIMIN'][indx], fastmeta['GIMAX'][indx],
-                    fastmeta['RW1MIN'][indx], fastmeta['RW1MAX'][indx])
-                #bigax.plot(modelwave/(1+redshift), emlineflux, color='gray')
-                bigax.plot(modelwave, emlinemodel, label=label)
-
-                if -0.1 < bigymin:
-                    bigymin = -0.1
-                if np.max(emlinemodel)*1.1 > bigymax:
-                    bigymax = np.max(emlinemodel)*1.1
-
-                # zoom in on individual emission lines
-                for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
-                    wmin = (meanwave - deltawave) - 8 * sig * meanwave / C_LIGHT
-                    wmax = (meanwave + deltawave) + 8 * sig * meanwave / C_LIGHT
-                    lineindx = np.where((modelwave > wmin) * (modelwave < wmax))[0]
-                    #print(linename, meanwave, len(lineindx))
-
-                    if len(lineindx) > 1:
-                        #print(linename, emlinemodel[lineindx].max())                    
-                        #xx.plot(modelwave[lineindx], emlineflux[lineindx]-emlinesigma[lineindx],
-                        #        emlineflux[lineindx]+emlinesigma[lineindx], color=col1[icam], alpha=0.5)
-                        ax[iax].plot(modelwave[lineindx], emlinemodel[lineindx])#, color=col2[icam], lw=3)
-                        #xx.axhline(y=0, color='gray', ls='-')
-                        #if 'beta' in linename:
-                        #    pdb.set_trace()
-
-                        if -0.1 < lineymin[iax]:
-                            lineymin[iax] = -0.1
-                        if np.max(emlinemodel[lineindx]) * 1.1 > lineymax[iax]:
-                            lineymax[iax] = np.max(emlinemodel[lineindx]) * 1.1
-
-            for iax, xx in enumerate(ax):
-                xx.text(0.08, 0.89, linenames[iax], ha='left', va='center',
-                        transform=xx.transAxes, fontsize=20)
-                xx.set_ylim(lineymin[iax], lineymax[iax])
-                xlim = xx.get_xlim()
-                #log.info(linenames[iax], xlim, np.diff(xlim))
-                xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
-                #xx.xaxis.set_major_locator(ticker.MultipleLocator(20)) # wavelength spacing of ticks [Angstrom]
-                #if iax == 2:
-                #    pdb.set_trace()
-            
-            bigax.legend(fontsize=10, loc='upper left')
-
-            bigax.set_ylim(bigymin, bigymax)
-            bigax.set_xlim(1400, 7000) # 3500, 9300)
-            #bigax.set_xticklabels([])
-            #bigax.set_yticklabels([])
-            bigax.set_title(r'${:.1f}<z<{:.1f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
-                absfastmeta['ZOBJMIN'][0], absfastmeta['ZOBJMAX'][0],
-                absfastmeta['MRMIN'][0], absfastmeta['MRMAX'][0]))
-            #bigax.set_xlabel('Observed-frame Wavelength ($\AA$)')
-
-            #plt.subplots_adjust(left=0.07, right=0.95, top=0.95, bottom=0.1)
-            
-            if pdffile:
-                pdf.savefig(fig)
-                
-            plt.close()
-
-    if pdffile:
-        log.info('Writing {}'.format(pdffile))
-        pdf.close()
-
-    pdb.set_trace()
-        
-    #########################
-    # Full spectra
-
-    pdffile = _pdffile
-    if pdffile:
-        from matplotlib.backends.backend_pdf import PdfPages
-        pdf = PdfPages(pdffile)
-
-    for izpage in np.arange(nzpage):#[:1]:
-        zindx = np.where(zobj[izpage] == fastmeta['ZOBJ'])[0]
-        zfastmeta = fastmeta[zindx]
-        zfastspec = fastspec[zindx]
-
-        srt = np.argsort(zfastmeta['MR'])
-        zfastmeta = zfastmeta[srt]
-        zfastspec = zfastspec[srt]
-
-        absmag = np.unique(zfastmeta['MR'])
-        nabspage = len(absmag)
-
-        for iabspage in np.arange(nabspage):#[:2]:
-
-            absindx = np.where((absmag[iabspage] == zfastmeta['MR']))[0]
-            absfastmeta = zfastmeta[absindx]
-            absfastspec = zfastspec[absindx]
-
-            fig, allax = plt.subplots(nrow, ncol, figsize=(12, 16), sharex=True, sharey=True)
-            for iplot, (indx, ax) in enumerate(zip(zindx[absindx], allax.flatten())):
-                print(izpage, iabspage, iplot, len(zindx), len(absindx))
-
-                # rebuild the best-fitting spectrum
-                modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
-                    fastspec[indx], wave, flux[indx, :], ivar[indx, :], CFit, EMFit)
-
-                #sigma, _ = ivar2var(data['ivar'][icam], sigma=True)
-                #ax.fill_between(data['wave'][icam], data['flux'][icam]-sigma,
-                #                            data['flux'][icam]+sigma, color='skyblue')
-                ax.plot(data['wave'][icam], data['flux'][icam], color='skyblue')
-                ax.plot(modelwave[::3], (continuum+emlinemodel)[::3], color='firebrick', alpha=0.5)
-                ax.plot(modelwave[::3], continuum[::3], color='blue', alpha=0.5)
-                #ax.plot(modelwave[::3], (continuum+smooth_continuum)[::3], color='gray', alpha=0.3)
-                ax.plot(modelwave[::3], smooth_continuum[::3], color='gray', alpha=0.7)
-
-                ymin, ymax = 1e6, -1e6
-
-                filtflux = median_filter(data['flux'][icam], 51, mode='nearest')
-                sigflux = np.std(data['flux'][icam][data['ivar'][icam] > 0])
-                if -2 * sigflux < ymin:
-                    ymin = -2 * sigflux
-                if sigflux * 5 > ymax:
-                    ymax = sigflux * 5
-                if np.max(filtflux) > ymax:
-                    ymax = np.max(filtflux) * 1.4
-
-                ax.text(0.96, 0.06, '\n'.join(( r'${:.1f}<g-i<{:.1f}$'.format(fastmeta['GIMIN'][indx], fastmeta['GIMAX'][indx]),
-                                                r'${:.2f}<r-W1<{:.2f}$'.format(fastmeta['RW1MIN'][indx], fastmeta['RW1MAX'][indx]) )),
-                                                ha='right', va='bottom', transform=ax.transAxes, fontsize=10,
-                                                bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
-                ax.text(0.04, 0.96,
-                        '\n'.join(( 'N={}, S/N={:.1f}'.format(fastmeta['NOBJ'][indx], fastspec['CONTINUUM_SNR_ALL'][indx]), )),
-                    ha='left', va='top', transform=ax.transAxes, fontsize=10,
-                    bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
-
-                ax.set_xlim(modelwave.min(), modelwave.max())
-                ax.set_ylim(ymin, ymax)
-                ax.set_xticklabels([])
-                ax.set_yticklabels([])
-
-                plt.subplots_adjust(wspace=0.05, hspace=0.05, left=0.07, right=0.95, top=0.95, bottom=0.1)
-
-                if iplot == ncol*nrow-1:
-                    break
-            
-            fig.text(0.52, 0.968, r'${:.1f}<z<{:.1f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
-                absfastmeta['ZOBJMIN'][0], absfastmeta['ZOBJMAX'][0],
-                absfastmeta['MRMIN'][0], absfastmeta['MRMAX'][0]),
-                ha='center', va='center', fontsize=22)
-
-            for rem in np.arange(ncol*nrow-iplot-1)+iplot+1:
-                allax.flatten()[rem].axis('off')
-                
-            if pdffile:
-                pdf.savefig(fig)
-                
-            plt.close()
-
-    if pdffile:
-        log.info('Writing {}'.format(pdffile))
-        pdf.close()
 
