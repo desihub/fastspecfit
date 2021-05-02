@@ -29,10 +29,12 @@ def plot_style(font_scale=1.2):
     colors = sns.color_palette()
     return sns, colors
 
-def remove_undetected_lines(fastspec, linenames, snrmin=3.0):
+def remove_undetected_lines(fastspec, linetable, snrmin=3.0):
     """replace weak or undetected emission lines with their upper limits
 
     """
+    linenames = linetable['name']
+    
     for linename in linenames:
         amp = fastspec['{}_AMP'.format(linename.upper())].data
         amp_ivar = fastspec['{}_AMP_IVAR'.format(linename.upper())].data
@@ -89,7 +91,101 @@ def remove_undetected_lines(fastspec, linenames, snrmin=3.0):
             print('Fix {}'.format(linename))
             pdb.set_trace()
 
+    # go back through and update FLUX and EW based on the new line-amplitudes
+    redshift = 0.0 # check this...
+    for oneline in linetable:
+        linename = oneline['name'].upper()
+
+        amp = fastspec['{}_AMP'.format(linename.upper())].data
+        amp_ivar = fastspec['{}_AMP_IVAR'.format(linename.upper())].data
+        snr = amp * np.sqrt(amp_ivar)
+        hisnr = np.where(snr >= snrmin)[0]
+        if len(hisnr) == 0:
+            continue
+
+        linez = redshift + fastspec['{}_VSHIFT'.format(linename)][hisnr].data / C_LIGHT
+        linezwave = oneline['restwave'] * (1 + linez)
+
+        linesigma = fastspec['{}_SIGMA'.format(linename)][hisnr].data # [km/s]
+        log10sigma = linesigma / C_LIGHT / np.log(10)     # line-width [log-10 Angstrom]
+            
+        # get the emission-line flux
+        linesigma_ang = linezwave * linesigma / C_LIGHT # [observed-frame Angstrom]
+        linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
+
+        fastspec['{}_FLUX'.format(linename)][hisnr] = fastspec['{}_AMP'.format(linename)][hisnr].data * linenorm
+
+        cpos = np.where(fastspec['{}_CONT'.format(linename)][hisnr] > 0.0)[0]
+        if len(cpos) > 0:
+            factor = (1 + redshift) / fastspec['{}_CONT'.format(linename)][hisnr][cpos] # --> rest frame
+            fastspec['{}_EW'.format(linename)][hisnr][cpos] = fastspec['{}_FLUX'.format(linename)][hisnr][cpos] * factor   # rest frame [A]
+
     return fastspec
+
+def qa_bpt(fastspecfile, EMFit, png=None):
+    """QA of the fastspec emission-line spectra.
+
+    """
+    sns, _ = plot_style()
+
+    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    nobj = len(fastmeta)
+
+    fastspec = remove_undetected_lines(fastspec, EMFit.linetable)
+
+    def oplot_class(ax, kewley=False, **kwargs):
+        if kewley:
+            niiha = np.linspace(-1.9, 0.4, 1000)
+            oiiihb = 0.61 / (niiha-0.47) + 1.19
+        else:
+            niiha = np.linspace(-1.9, -0.1, 1000)
+            oiiihb = 0.61 / (niiha-0.05) + 1.3
+        ax.plot(niiha, oiiihb, **kwargs)
+
+    def _bpt(cc, cclabel='Redshift', vmin=None, vmax=None, png=None):
+        fig, ax = plt.subplots(figsize=(10, 7))
+        cb = ax.scatter(niiha, oiiihb, c=cc, cmap='jet', vmin=vmin, vmax=vmax)
+        oplot_class(ax, kewley=True, color='k', ls='--', lw=3, label='Kewley+01')
+        oplot_class(ax, kewley=False, color='k', lw=3, label='Kauffmann+03')
+        plt.colorbar(cb, label=cclabel)
+        ax.set_xlim(-1.9, 0.7)
+        ax.set_ylim(-1.2, 1.5)
+        ax.set_xlabel(r'$\log_{10}$ ([NII] $\lambda6584$ / H$\alpha$)')
+        ax.set_ylabel(r'$\log_{10}$ ([OIII] $\lambda5007$ / H$\beta$)')
+        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))    
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(0.5))
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(0.5))
+        ax.legend(fontsize=16, loc='lower left')#, ncol=2)
+        plt.subplots_adjust(bottom=0.15, left=0.18, top=0.95, right=0.95)
+        if png:
+            print('Writing {}'.format(png))
+            fig.savefig(png)
+            plt.close()
+
+    good = np.where(
+        (fastspec['HALPHA_FLUX'] > 0) * 
+        (fastspec['HBETA_FLUX'] > 0) * 
+        (fastspec['NII_6584_FLUX'] > 0) * 
+        (fastspec['OIII_5007_FLUX'] > 0) 
+        #(fastspec['HALPHA_CHI2'] < 1e4)
+    )[0]
+    
+    zz = fastspec['CONTINUUM_Z'][good]
+    rW1 = fastmeta['RW1'][good]
+    gi = fastmeta['GI'][good]
+    ewhb = fastspec['HBETA_EW'][good]
+    
+    niiha = np.log10(fastspec['NII_6584_FLUX'][good] / fastspec['HALPHA_FLUX'][good])
+    oiiihb = np.log10(fastspec['OIII_5007_FLUX'][good] / fastspec['HBETA_FLUX'][good])
+    ww = np.where((niiha > -0.05) * (niiha < 0.05) * (oiiihb < -0.5))[0]
+    #print(fastspec[good][ww]['HALPHA_FLUX', 'NII_6584_FLUX'])
+
+    _bpt(zz, 'Redshift', vmin=0, vmax=0.5, png=png.replace('.png', '-redshift.png'))
+    _bpt(rW1, r'$r-W1$', vmin=-0.3, vmax=0.9, png=png.replace('.png', '-rW1.png'))
+    _bpt(gi, r'$g-i$', vmin=0.6, vmax=1.3, png=png.replace('.png', '-gi.png'))
+    _bpt(np.log10(ewhb), r'$\log_{10}\,\mathrm{EW}(\mathrm{H}\beta)$', png=png.replace('.png', '-ewhb.png'))
 
 def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
     """QA of the fastspec emission-line spectra.
@@ -107,12 +203,12 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
     fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
     nobj = len(fastmeta)
 
-    if False:
-        this = (fastmeta['RW1'] == -0.875) * (fastmeta['ZOBJ'] == 0.85) * (fastmeta['MR'] == -22.25)
-        fastspec['OIII_4959_AMP', 'OIII_4959_AMP_IVAR', 'OIII_5007_AMP', 'OIII_5007_AMP_IVAR'][this]
-        pdb.set_trace()
+    #if False:
+    #    this = (fastmeta['RW1'] == -0.875) * (fastmeta['ZOBJ'] == 0.85) * (fastmeta['MR'] == -22.25)
+    #    fastspec['OIII_4959_AMP', 'OIII_4959_AMP_IVAR', 'OIII_5007_AMP', 'OIII_5007_AMP_IVAR'][this]
+    #    pdb.set_trace()
     
-    fastspec = remove_undetected_lines(fastspec, EMFit.linetable['name'])
+    fastspec = remove_undetected_lines(fastspec, EMFit.linetable)
 
     for linename in EMFit.linetable['name']:
         amp = fastspec['{}_AMP'.format(linename.upper())].data
@@ -209,7 +305,7 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
 
                 label = 'z=[{:.1f}-{:.1f}] (N={})'.format(
                     fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
-                    len(set(fastmeta['ZOBJ'][zindx])))
+                    np.sum(fastmeta['ZOBJ'][zindx[absindx]] == fastmeta['ZOBJ'][indx]))
                 #label = '[{:.2f},{:.2f}],[{:.1f},{:.1f}]'.format(
                 #    fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
                 #    fastmeta['GIMIN'][indx], fastmeta['GIMAX'][indx])

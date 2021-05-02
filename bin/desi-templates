@@ -72,10 +72,14 @@ def main(args=None, comm=None):
         # hacky
         from fastspecfit.continuum import ContinuumFit
         from fastspecfit.emlines import EMLineFit
-        from fastspecfit.templates.qa import qa_fastspec_emlinespec, qa_fastspec_fullspec
+        from fastspecfit.templates.qa import qa_fastspec_emlinespec, qa_fastspec_fullspec, qa_bpt
     
         CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
         EMFit = EMLineFit()
+
+        png = os.path.join(templatedir, 'qa', '{}-bpt.png'.format(args.targetclass))
+        qa_bpt(fastspecfile, EMFit, png=png)
+        pdb.set_trace()
 
         pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-emlinespec.pdf'.format(args.targetclass))
         qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=pdffile)        

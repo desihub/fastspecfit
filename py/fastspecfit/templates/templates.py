@@ -124,73 +124,6 @@ def write_templates(outfile, wave, flux, metadata, weights=None, empca=False):
     hx.writeto(outfile, overwrite=True, checksum=True)
     log.info('Writing {} templates to {}'.format(nobj, outfile))
 
-def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None, templatefile=None,
-                    empca=False):
-    """Build the final templates.
-
-    Called by bin/desi-templates.
-
-    fastspecfile is the output of fastspecfit_stacks
-
-    """
-    import fitsio
-    from fastspecfit.continuum import ContinuumFit
-    from fastspecfit.emlines import EMLineFit
-
-    if not os.path.isfile(fastspecfile):
-        log.warning('fastspecfile {} not found!'.format(fastspecfile))
-        raise IOError
-
-    CFit = ContinuumFit(minwave=minwave, maxwave=maxwave)
-    EMFit = EMLineFit()
-
-    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
-    wave = fitsio.read(fastspecfile, ext='WAVE')
-    flux = fitsio.read(fastspecfile, ext='FLUX')
-    ivar = fitsio.read(fastspecfile, ext='IVAR')
-
-    nobj = len(fastmeta)
-    log.info('Read {} fastspec model fits from {}'.format(nobj, fastspecfile))
-    
-    # Rebuild in parallel.
-    t0 = time.time()
-    mpargs = [(fastspec[iobj], wave, flux[iobj, :], ivar[iobj, :], CFit, EMFit, True)
-              for iobj in np.arange(nobj)]
-    if mp > 1:
-        import multiprocessing
-        with multiprocessing.Pool(mp) as P:
-            _out = P.map(_rebuild_fastspec_spectrum, mpargs)
-    else:
-        _out = [rebuild_fastspec_spectrum(*_mpargs) for _mpargs in mpargs]
-    _out = list(zip(*_out))
-
-    log.info('Rebuilding all model spectra took: {:.2f} sec'.format(time.time()-t0))
-
-    modelwave = _out[0][0] # all are identical
-    modelflux = np.vstack(_out[1])
-
-    metacols = ['NOBJ', 'ZOBJ', 'MR', 'GI', 'RW1']
-    speccols = ['CONTINUUM_SNR_ALL',
-                'BALMER_Z', 'FORBIDDEN_Z', 'BROAD_Z', 'BALMER_SIGMA', 'FORBIDDEN_SIGMA', 'BROAD_SIGMA',
-                'OII_3726_EW', 'OII_3726_EW_IVAR',
-                'OII_3729_EW', 'OII_3729_EW_IVAR',
-                'OIII_5007_EW', 'OIII_5007_EW_IVAR',
-                'HBETA_EW', 'HBETA_EW_IVAR',
-                'HALPHA_EW', 'HALPHA_EW_IVAR']
-
-    from astropy.table import hstack
-    metadata = hstack([fastmeta[metacols], fastspec[speccols]])
-    
-    if empca:
-        weights = np.zeros_like(modelflux) + fastmeta['NOBJ'].data[:, np.newaxis]
-    else:
-        weights = None
-
-    if templatefile:
-        write_templates(templatefile, modelwave, modelflux, metadata,
-                        weights=weights, empca=empca)
-
 def _fastspec_onestack(args):
     """Multiprocessing wrapper."""
     return fastspec_onestack(*args)
@@ -552,3 +485,71 @@ def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=
     if fastspecfile:
         write_binned_stacks(fastspecfile, wave, flux, ivar,
                             fastspec=fastspec, fastmeta=fastmeta)
+
+def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None, templatefile=None,
+                    empca=False):
+    """Build the final templates.
+
+    Called by bin/desi-templates.
+
+    fastspecfile is the output of fastspecfit_stacks
+
+    """
+    import fitsio
+    from fastspecfit.continuum import ContinuumFit
+    from fastspecfit.emlines import EMLineFit
+
+    if not os.path.isfile(fastspecfile):
+        log.warning('fastspecfile {} not found!'.format(fastspecfile))
+        raise IOError
+
+    CFit = ContinuumFit(minwave=minwave, maxwave=maxwave)
+    EMFit = EMLineFit()
+
+    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    wave = fitsio.read(fastspecfile, ext='WAVE')
+    flux = fitsio.read(fastspecfile, ext='FLUX')
+    ivar = fitsio.read(fastspecfile, ext='IVAR')
+
+    nobj = len(fastmeta)
+    log.info('Read {} fastspec model fits from {}'.format(nobj, fastspecfile))
+    
+    # Rebuild in parallel.
+    t0 = time.time()
+    mpargs = [(fastspec[iobj], wave, flux[iobj, :], ivar[iobj, :], CFit, EMFit, True)
+              for iobj in np.arange(nobj)]
+    if mp > 1:
+        import multiprocessing
+        with multiprocessing.Pool(mp) as P:
+            _out = P.map(_rebuild_fastspec_spectrum, mpargs)
+    else:
+        _out = [rebuild_fastspec_spectrum(*_mpargs) for _mpargs in mpargs]
+    _out = list(zip(*_out))
+
+    log.info('Rebuilding all model spectra took: {:.2f} sec'.format(time.time()-t0))
+
+    modelwave = _out[0][0] # all are identical
+    modelflux = np.vstack(_out[1])
+
+    metacols = ['NOBJ', 'ZOBJ', 'MR', 'GI', 'RW1']
+    speccols = ['CONTINUUM_SNR_ALL',
+                'BALMER_Z', 'FORBIDDEN_Z', 'BROAD_Z', 'BALMER_SIGMA', 'FORBIDDEN_SIGMA', 'BROAD_SIGMA',
+                'OII_3726_EW', 'OII_3726_EW_IVAR',
+                'OII_3729_EW', 'OII_3729_EW_IVAR',
+                'OIII_5007_EW', 'OIII_5007_EW_IVAR',
+                'HBETA_EW', 'HBETA_EW_IVAR',
+                'HALPHA_EW', 'HALPHA_EW_IVAR']
+
+    from astropy.table import hstack
+    metadata = hstack([fastmeta[metacols], fastspec[speccols]])
+    
+    if empca:
+        weights = np.zeros_like(modelflux) + fastmeta['NOBJ'].data[:, np.newaxis]
+    else:
+        weights = None
+
+    if templatefile:
+        write_templates(templatefile, modelwave, modelflux, metadata,
+                        weights=weights, empca=empca)
+
