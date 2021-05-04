@@ -206,7 +206,7 @@ def _select_lrgs(iparent, phot, spec, meta, z_minmax=(0.1, 1.1), Mr_minmax=None,
         
         ax1.legend(loc='upper right', fontsize=14)
 
-        plt.subplots_adjust(left=0.14, wspace=0.09, right=0.95, top=0.95, bottom=0.17)
+        plt.subplots_adjust(left=0.14, wspace=0.09, right=0.95, top=0.95, bottom=0.20)
 
         print('Writing {}'.format(png))
         fig.savefig(png)
@@ -215,7 +215,7 @@ def _select_lrgs(iparent, phot, spec, meta, z_minmax=(0.1, 1.1), Mr_minmax=None,
     return iparent
 
 def select_parent_sample(phot, spec, meta, targetclass='lrg', deltachi2_cut=40,
-                         continuumchi2_cut=20, smoothcorr_cut=10, return_indices=False,
+                         continuumchi2_cut=300, smoothcorr_cut=10, return_indices=False,
                          verbose=False, **kwargs):
     """High-level sample selection.
 
@@ -247,7 +247,7 @@ def lrg_stacking_bins(verbose=False):
     zlim, nz = [0.1, 1.1], 10
     Mrlim, nMr = [-24.5, -20], 9
     gilim, ngi = [0.4, 1.4], 5 
-    rW1lim, nrW1 = [-1.0, 1.0], 8
+    rW1lim, nrW1 = [-1.0, 1.25], 9
     
     dz = (zlim[1] - zlim[0]) / nz
     dMr = (Mrlim[1] - Mrlim[0]) / nMr

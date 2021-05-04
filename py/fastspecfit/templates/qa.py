@@ -441,7 +441,7 @@ def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
             plt.close()
 
     def rest(phot, spec, meta, bins=None, png=None):
-        zlim, Mrlim, gilim, rW1lim = (0.0, 1.2), (-19, -25), (0.2, 1.6), (-1.4, 1.4)
+        zlim, Mrlim, gilim, rW1lim = (0.0, 1.2), (-19, -25), (0.2, 1.6), (-1.4, 1.7)
 
         fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(18, 10))
 
@@ -458,9 +458,9 @@ def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
             #                         np.ptp(bins['z']['grid'])+bins['z']['del'], 
             #                         np.ptp(bins['absmag']['grid'])+bins['absmag']['del'],
             #                         facecolor='none', edgecolor='k', lw=3))
-            dx, dy = bins['z']['del'], bins['Mr']['del']
+            dx, dy = bins['zobj']['del'], bins['Mr']['del']
             [ax1.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['z']['grid'] for yy in bins['Mr']['grid']]            
+             for xx in bins['zobj']['grid'] for yy in bins['Mr']['grid']]            
 
         ax2.hexbin(meta['Z'], phot['ABSMAG_G']-phot['ABSMAG_I'], mincnt=1, bins='log', 
                    #C=cat['weight'], reduce_C_function=np.sum,           
@@ -471,9 +471,9 @@ def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
         ax2.set_ylabel(r'$^{0.0}(g - i)$')
 
         if bins:
-            dx, dy = bins['z']['del'], bins['gi']['del']
+            dx, dy = bins['zobj']['del'], bins['gi']['del']
             [ax2.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['z']['grid'] for yy in bins['gi']['grid']]
+             for xx in bins['zobj']['grid'] for yy in bins['gi']['grid']]
 
         ax3.hexbin(meta['Z'], phot['ABSMAG_R']-phot['ABSMAG_W1'], mincnt=1, bins='log', 
                    #C=cat['weight'], reduce_C_function=np.sum,               
@@ -484,9 +484,9 @@ def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
         ax3.set_xlim(zlim)
 
         if bins:
-            dx, dy = bins['z']['del'], bins['rW1']['del']
+            dx, dy = bins['zobj']['del'], bins['rW1']['del']
             [ax3.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['z']['grid'] for yy in bins['rW1']['grid']]
+             for xx in bins['zobj']['grid'] for yy in bins['rW1']['grid']]
 
         ax4.hexbin(phot['ABSMAG_R'], phot['ABSMAG_G']-phot['ABSMAG_I'], mincnt=1, bins='log', 
                         #C=cat['weight'], reduce_C_function=np.sum,                    

@@ -89,32 +89,30 @@ def main(args=None, comm=None):
         qa_bpt(fastspecfile, EMFit, png=png)
         pdb.set_trace()
 
-        
-
-        # Read the master tile file and the fastspecfit fitting results and
-        # select the parent sample.
-        png = os.path.join(templatedir, 'qa', '{}-tiles.png'.format(args.targetclass))
-        tileinfo = read_tileinfo(args.targetclass, min_efftime=args.min_efftime,
-                                 remove_vi=True, specprod=args.specprod, png=png)
-        allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass,
-                                                     specprod=args.specprod)
-
-        png = os.path.join(templatedir, 'qa', '{}-parent.png'.format(args.targetclass))
-        phot, spec, meta = select_parent_sample(allphot, allspec, allmeta, png=png,
-                                                targetclass=args.targetclass, verbose=True)
-        
-        if args.targetclass == 'lrg':
-            from fastspecfit.templates.templates import lrg_stacking_bins
-            from fastspecfit.templates.qa import qa_photometry_lrg
-
-            bins, nbins = lrg_stacking_bins(verbose=True)
-        
-            png_obs = os.path.join(templatedir, 'qa', '{}-obs.png'.format(args.targetclass))
-            png_rest = os.path.join(templatedir, 'qa', '{}-rest.png'.format(args.targetclass))
-            png_rest_bins = os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(args.targetclass))
-
-            qa_photometry_lrg(phot, spec, meta, bins=bins, png_obs=png_obs,
-                              png_rest=png_rest, png_rest_bins=png_rest_bins)
+        ## Read the master tile file and the fastspecfit fitting results and
+        ## select the parent sample.
+        #png = os.path.join(templatedir, 'qa', '{}-tiles.png'.format(args.targetclass))
+        #tileinfo = read_tileinfo(args.targetclass, min_efftime=args.min_efftime,
+        #                         remove_vi=True, specprod=args.specprod, png=png)
+        #allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass,
+        #                                             specprod=args.specprod)
+        #
+        #png = os.path.join(templatedir, 'qa', '{}-parent.png'.format(args.targetclass))
+        #phot, spec, meta = select_parent_sample(allphot, allspec, allmeta, png=png,
+        #                                        targetclass=args.targetclass, verbose=True)
+        #
+        #if args.targetclass == 'lrg':
+        #    from fastspecfit.templates.templates import lrg_stacking_bins
+        #    from fastspecfit.templates.qa import qa_photometry_lrg
+        #
+        #    bins, nbins = lrg_stacking_bins(verbose=True)
+        #
+        #    png_obs = os.path.join(templatedir, 'qa', '{}-obs.png'.format(args.targetclass))
+        #    png_rest = os.path.join(templatedir, 'qa', '{}-rest.png'.format(args.targetclass))
+        #    png_rest_bins = os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(args.targetclass))
+        #
+        #    qa_photometry_lrg(phot, spec, meta, bins=bins, png_obs=png_obs,
+        #                      png_rest=png_rest, png_rest_bins=png_rest_bins)
                               
         return
 
@@ -128,7 +126,7 @@ def main(args=None, comm=None):
                                                   select_parent_sample, spectra_in_bins)
         
         if args.targetclass == 'lrg':
-            from fastspecfit.templates.templates import lrg_stacking_bins
+            from fastspecfit.templates.sample import lrg_stacking_bins
             bins, nbins = lrg_stacking_bins(verbose=True)
             
         # Read the master tile file and the fastspecfit fitting results and
