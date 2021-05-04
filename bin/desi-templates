@@ -77,16 +77,18 @@ def main(args=None, comm=None):
         CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
         EMFit = EMLineFit()
 
-        png = os.path.join(templatedir, 'qa', '{}-bpt.png'.format(args.targetclass))
-        qa_bpt(fastspecfile, EMFit, png=png)
+        pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec.pdf'.format(args.targetclass))
+        qa_fastspec_fullspec(fastspecfile, CFit, EMFit, pdffile=pdffile)
         pdb.set_trace()
 
         pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-emlinespec.pdf'.format(args.targetclass))
         qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=pdffile)        
         pdb.set_trace()
 
-        pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec.pdf'.format(args.targetclass))
-        qa_fastspec_fullspec(fastspecfile, CFit, EMFit, pdffile=pdffile)
+        png = os.path.join(templatedir, 'qa', '{}-bpt.png'.format(args.targetclass))
+        qa_bpt(fastspecfile, EMFit, png=png)
+        pdb.set_trace()
+
         
 
         # Read the master tile file and the fastspecfit fitting results and

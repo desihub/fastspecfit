@@ -29,103 +29,12 @@ def plot_style(font_scale=1.2):
     colors = sns.color_palette()
     return sns, colors
 
-def remove_undetected_lines(fastspec, linetable, snrmin=3.0):
-    """replace weak or undetected emission lines with their upper limits
-
-    """
-    linenames = linetable['name']
-    
-    for linename in linenames:
-        amp = fastspec['{}_AMP'.format(linename.upper())].data
-        amp_ivar = fastspec['{}_AMP_IVAR'.format(linename.upper())].data
-        cont_ivar = fastspec['{}_CONT_IVAR'.format(linename.upper())].data
-
-        fix = np.where(amp_ivar == 0)[0]
-        if len(fix) > 0:
-            fastspec['{}_AMP'.format(linename.upper())][fix] = 0.0 # fixes a bug with [OIII] 4959
-
-        # fix and then skip tied doublets
-        if 'oiii_4959' in linename or 'nii_6548' in linename: 
-            #fix = np.where((fastspec['OIII_4959_AMP_IVAR'] > 0) * (fastspec['OIII_5007_AMP_IVAR'] == 0))[0]
-            #if len(fix) > 0:
-            #    fastspec['OIII_4959_AMP'][fix] = 0.0
-            #    fastspec['OIII_4959_AMP_IVAR'][fix] = 0.0
-            continue
-
-        snr = amp * np.sqrt(amp_ivar)
-        losnr = np.where(np.logical_or((amp_ivar > 0) * (snr < snrmin), (amp_ivar == 0) * (cont_ivar > 0)))[0]
-
-        if len(losnr) > 0:
-            csig = 1 / np.sqrt(cont_ivar[losnr])
-            if np.any(csig) < 0:
-                pdb.set_trace()
-
-            fastspec['{}_AMP'.format(linename.upper())][losnr] = snrmin * csig
-            #fastspec['{}_AMP'.format(linename.upper())][losnr] = 0.0
-            #fastspec['{}_AMP_IVAR'.format(linename.upper())][losnr] = 0.0
-            #fastspec['{}_AMP_IVAR'.format(linename.upper())][losnr] = 0.0
-
-            if linename == 'oiii_5007':
-                fastspec['OIII_4959_AMP'][losnr] = fastspec['OIII_5007_AMP'][losnr].data / 2.875
-            if linename == 'nii_6584':
-                fastspec['NII_6548_AMP'][losnr] = fastspec['NII_6584_AMP'][losnr].data / 2.936
-
-            #if linename == 'nii_6584':
-            #    pdb.set_trace()
-                
-    # corner case of when the stronger doublet is on the edge of the wavelength range
-    fix = np.where((fastspec['OIII_5007_AMP'] == 0) * (fastspec['OIII_4959_AMP'] != 0))[0]
-    if len(fix) > 0:
-        fastspec['OIII_4959_AMP'][fix] = 0.0
-        fastspec['OIII_4959_AMP_IVAR'][fix] = 0.0
-        
-    fix = np.where((fastspec['NII_6584_AMP'] == 0) * (fastspec['NII_6548_AMP'] != 0))[0]
-    if len(fix) > 0:
-        fastspec['NII_6548_AMP'][fix] = 0.0
-        fastspec['NII_6548_AMP_IVAR'][fix] = 0.0
-
-    for linename in linenames:
-        amp = fastspec['{}_AMP'.format(linename.upper())].data
-        neg = np.where(amp < 0)[0]
-        if len(neg) > 0:
-            print('Fix {}'.format(linename))
-            pdb.set_trace()
-
-    # go back through and update FLUX and EW based on the new line-amplitudes
-    redshift = 0.0 # check this...
-    for oneline in linetable:
-        linename = oneline['name'].upper()
-
-        amp = fastspec['{}_AMP'.format(linename.upper())].data
-        amp_ivar = fastspec['{}_AMP_IVAR'.format(linename.upper())].data
-        snr = amp * np.sqrt(amp_ivar)
-        hisnr = np.where(snr >= snrmin)[0]
-        if len(hisnr) == 0:
-            continue
-
-        linez = redshift + fastspec['{}_VSHIFT'.format(linename)][hisnr].data / C_LIGHT
-        linezwave = oneline['restwave'] * (1 + linez)
-
-        linesigma = fastspec['{}_SIGMA'.format(linename)][hisnr].data # [km/s]
-        log10sigma = linesigma / C_LIGHT / np.log(10)     # line-width [log-10 Angstrom]
-            
-        # get the emission-line flux
-        linesigma_ang = linezwave * linesigma / C_LIGHT # [observed-frame Angstrom]
-        linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
-
-        fastspec['{}_FLUX'.format(linename)][hisnr] = fastspec['{}_AMP'.format(linename)][hisnr].data * linenorm
-
-        cpos = np.where(fastspec['{}_CONT'.format(linename)][hisnr] > 0.0)[0]
-        if len(cpos) > 0:
-            factor = (1 + redshift) / fastspec['{}_CONT'.format(linename)][hisnr][cpos] # --> rest frame
-            fastspec['{}_EW'.format(linename)][hisnr][cpos] = fastspec['{}_FLUX'.format(linename)][hisnr][cpos] * factor   # rest frame [A]
-
-    return fastspec
-
 def qa_bpt(fastspecfile, EMFit, png=None):
     """QA of the fastspec emission-line spectra.
 
     """
+    from fastspecfit.templates.templates import remove_undetected_lines
+    
     sns, _ = plot_style()
 
     fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
@@ -192,6 +101,7 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
 
     """
     from matplotlib.colors import Normalize
+    from fastspecfit.templates.templates import remove_undetected_lines
     
     sns, _ = plot_style()
 
@@ -203,12 +113,7 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
     fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
     nobj = len(fastmeta)
 
-    #if False:
-    #    this = (fastmeta['RW1'] == -0.875) * (fastmeta['ZOBJ'] == 0.85) * (fastmeta['MR'] == -22.25)
-    #    fastspec['OIII_4959_AMP', 'OIII_4959_AMP_IVAR', 'OIII_5007_AMP', 'OIII_5007_AMP_IVAR'][this]
-    #    pdb.set_trace()
-    
-    fastspec = remove_undetected_lines(fastspec, EMFit.linetable)
+    fastspec = remove_undetected_lines(fastspec, EMFit.linetable, devshift=False)
 
     for linename in EMFit.linetable['name']:
         amp = fastspec['{}_AMP'.format(linename.upper())].data
@@ -243,7 +148,7 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
 
     height_ratios = np.hstack([1, [0.5]*nlinerows])
 
-    plotsig_default = 300.0 # [km/s]
+    plotsig_default = 150.0 # 300.0 # [km/s]
     meanwaves, deltawaves, sigmas, linenames = [], [], [], []
     for plotgroup in set(EMFit.linetable['plotgroup']):
         I = np.where(plotgroup == EMFit.linetable['plotgroup'])[0]
@@ -259,21 +164,14 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
     
     # make the plot!
     for ipage in np.arange(npage):#[:2]:
-        zindx = np.where(rW1color[ipage] == fastmeta['RW1'])[0]
-        zfastmeta = fastmeta[zindx]
-        zfastspec = fastspec[zindx]
 
-        srt = np.argsort(zfastmeta['MR'])
-        zfastmeta = zfastmeta[srt]
-        zfastspec = zfastspec[srt]
+        pageindx = np.where(rW1color[ipage] == fastmeta['RW1'])[0]
+        absmag = sorted(set(fastmeta['MR'][pageindx])) # subpage
+        nsubpage = len(absmag)
 
-        absmag = np.unique(zfastmeta['MR'])
-        nabspage = len(absmag)
+        for isubpage in np.arange(nsubpage):#[:1]:#[::2]:
 
-        for iabspage in np.arange(nabspage):#[:1]:#[::2]:
-            absindx = np.where((absmag[iabspage] == zfastmeta['MR']))[0]
-            absfastmeta = zfastmeta[absindx]
-            absfastspec = zfastspec[absindx]
+            subpageindx = np.where((absmag[isubpage] == fastmeta['MR'][pageindx]))[0]
 
             fig = plt.figure(figsize=(inches_wide, 2*inches_fullspec + inches_perline*nlinerows))
             gs = fig.add_gridspec(nrows, nlinepanels, height_ratios=height_ratios)
@@ -291,12 +189,14 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
             lineymin, lineymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
             removelabels = np.ones(nline, bool)
         
-            for iplot, indx in enumerate(zindx[absindx]):
-                print(ipage, iabspage, iplot, len(zindx), len(absindx))
+            for iplot, indx in enumerate(pageindx[subpageindx]):
+                print(ipage, isubpage, iplot, len(pageindx), len(subpageindx))
 
                 modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
                     fastspec[indx], wave, flux[indx, :], ivar[indx, :], CFit, EMFit)
-                #pdb.set_trace()
+
+                #if fastmeta['IBIN'][indx] == 1262:
+                #    pdb.set_trace()
 
                 redshift = data['zredrock']
                 emlineflux = data['flux'][icam] - continuum - smooth_continuum
@@ -305,10 +205,7 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
 
                 label = 'z=[{:.1f}-{:.1f}] (N={})'.format(
                     fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
-                    np.sum(fastmeta['ZOBJ'][zindx[absindx]] == fastmeta['ZOBJ'][indx]))
-                #label = '[{:.2f},{:.2f}],[{:.1f},{:.1f}]'.format(
-                #    fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
-                #    fastmeta['GIMIN'][indx], fastmeta['GIMAX'][indx])
+                    np.sum(fastmeta['ZOBJ'][pageindx[subpageindx]] == fastmeta['ZOBJ'][indx]))
                 #bigax.plot(modelwave/(1+redshift), emlineflux, color='gray')
                 bigax.plot(modelwave, emlinemodel, label=label, color=cmap(cnorm(fastmeta['ZOBJ'][indx])))
 
@@ -316,6 +213,8 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
                     bigymin = -np.max(emlinemodel)*0.05
                 if np.max(emlinemodel)*1.1 > bigymax:
                     bigymax = np.max(emlinemodel)*1.1
+                if np.max(emlinemodel) == 0.0:
+                    bigymin, bigymax = 0.0, 1.0
 
                 # zoom in on individual emission lines
                 for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
@@ -333,6 +232,8 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
                                 lineymin[iax] = -np.max(emlinemodel[lineindx])*0.05
                             if np.max(emlinemodel[lineindx]) * 1.1 > lineymax[iax]:
                                 lineymax[iax] = np.max(emlinemodel[lineindx]) * 1.1
+                            if np.abs(lineymax[iax]-lineymin[iax]) < 1e-2:
+                                removelabels[iax] = False
 
             for iax, xx in enumerate(ax):
                 xx.text(0.08, 0.89, linenames[iax], ha='left', va='center',
@@ -359,8 +260,8 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
             bigax.set_xlim(2600, 7200) # 3500, 9300)
             bigax.set_title(
                 r'${:.2f}<r-W1<{:.2f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
-                absfastmeta['RW1MIN'][0], absfastmeta['RW1MAX'][0],
-                absfastmeta['MRMIN'][0], absfastmeta['MRMAX'][0]
+                fastmeta['RW1MIN'][indx], fastmeta['RW1MAX'][indx],
+                fastmeta['MRMIN'][indx], fastmeta['MRMAX'][indx]
                 ))
             #bigax.set_xlabel('Observed-frame Wavelength ($\AA$)')
 
@@ -401,26 +302,19 @@ def qa_fastspec_fullspec(fastspecfile, CFit, EMFit, pdffile=None):
         pdf = PdfPages(pdffile)
 
     for ipage in np.arange(npage):#[:1]:
-        zindx = np.where(zobj[ipage] == fastmeta['ZOBJ'])[0]
-        zfastmeta = fastmeta[zindx]
-        zfastspec = fastspec[zindx]
 
-        srt = np.argsort(zfastmeta['MR'])
-        zfastmeta = zfastmeta[srt]
-        zfastspec = zfastspec[srt]
+        pageindx = np.where(zobj[ipage] == fastmeta['ZOBJ'])[0]
 
-        absmag = np.unique(zfastmeta['MR'])
-        nabspage = len(absmag)
+        absmag = sorted(set(fastmeta['MR'][pageindx])) # subpage
+        nsubpage = len(absmag)
 
-        for iabspage in np.arange(nabspage):#[:2]:
+        for isubpage in np.arange(nsubpage):#[:1]:#[::2]:
 
-            absindx = np.where((absmag[iabspage] == zfastmeta['MR']))[0]
-            absfastmeta = zfastmeta[absindx]
-            absfastspec = zfastspec[absindx]
+            subpageindx = np.where((absmag[isubpage] == fastmeta['MR'][pageindx]))[0]
 
             fig, allax = plt.subplots(nrow, ncol, figsize=(12, 16), sharex=True, sharey=True)
-            for iplot, (indx, ax) in enumerate(zip(zindx[absindx], allax.flatten())):
-                print(ipage, iabspage, iplot, len(zindx), len(absindx))
+            for iplot, (indx, ax) in enumerate(zip(pageindx[subpageindx], allax.flatten())):
+                print(ipage, isubpage, iplot, len(pageindx), len(subpageindx))
 
                 # rebuild the best-fitting spectrum
                 modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
@@ -466,8 +360,8 @@ def qa_fastspec_fullspec(fastspecfile, CFit, EMFit, pdffile=None):
                     break
             
             fig.text(0.52, 0.968, r'${:.1f}<z<{:.1f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
-                absfastmeta['ZOBJMIN'][0], absfastmeta['ZOBJMAX'][0],
-                absfastmeta['MRMIN'][0], absfastmeta['MRMAX'][0]),
+                fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
+                fastmeta['MRMIN'][indx], fastmeta['MRMAX'][indx]),
                 ha='center', va='center', fontsize=22)
 
             for rem in np.arange(ncol*nrow-iplot-1)+iplot+1:

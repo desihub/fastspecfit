@@ -8,8 +8,11 @@ Tools for generating stacked spectra and building templates.
 import pdb # for debugging
 
 import os, time
+import multiprocessing
 import numpy as np
 from astropy.table import Table, Column
+
+from fastspecfit.util import C_LIGHT
 
 from desiutil.log import get_logger
 log = get_logger()
@@ -19,43 +22,56 @@ def _rebuild_fastspec_spectrum(args):
     return rebuild_fastspec_spectrum(*args)
 
 def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
-                              full_resolution=False):
+                              full_resolution=False, emlines_only=False):
     """Rebuilding a single fastspec model continuum and emission-line spectrum given
     a fastspec astropy.table.Table.
+
+    full_resolution - returns a full-resolution spectrum in the rest-frame!
 
     """
     from fastspecfit.emlines import EMLineModel
     
     if full_resolution:
-        modelwave = CFit.sspwave
-        redshift = fastspec['CONTINUUM_Z']
+        modelwave = CFit.sspwave # rest-frame
 
-        continuum, _ = CFit.SSP2data(CFit.sspflux, CFit.sspwave,
-                                     redshift=redshift,
-                                     AV=fastspec['CONTINUUM_AV'],
-                                     vdisp=fastspec['CONTINUUM_VDISP'],
-                                     coeff=fastspec['CONTINUUM_COEFF'],
-                                     synthphot=False)
-        continuum *= (1 + redshift) # rest frame
-
-        smooth_continuum = np.zeros_like(continuum, dtype='f4')
+        # set the redshift equal to zero here but...
+        redshift = 0.0 # fastspec['CONTINUUM_Z']
 
         # steal the code we need from emlines.EMLineFit.emlinemodel_bestfit
-        EMLine = EMLineModel(redshift=0.0, npixpercamera=len(modelwave), log10wave=np.log10(modelwave))
+        EMLine = EMLineModel(redshift=redshift, npixpercamera=len(modelwave), log10wave=np.log10(modelwave))
         lineargs = [fastspec[linename.upper()] for linename in EMLine.param_names]
 
         emlinemodel = EMLine._emline_spectrum(*lineargs)
 
+        # ...multiply by 1+z because the amplitudes were measured from the
+        # redshifted spectra (so when we evaluate the models in
+        # EMLine._emline_spectrum, the lines need to be brighter by
+        # 1+z). Shoould really check this by re-measuring...
+
+        # oh, wait, we do that below, ugh.
+        
+        if emlines_only:
+            continuum = np.zeros_like(emlinemodel)
+        else:
+            continuum, _ = CFit.SSP2data(CFit.sspflux, CFit.sspwave,
+                                         redshift=redshift,
+                                         AV=fastspec['CONTINUUM_AV'],
+                                         vdisp=fastspec['CONTINUUM_VDISP'],
+                                         coeff=fastspec['CONTINUUM_COEFF'],
+                                         synthphot=False)
+        
+        #smooth_continuum = np.zeros_like(continuum, dtype='f4')
         modelflux = continuum + emlinemodel
+        
+        modelflux *= (1 + redshift) # rest frame
 
         #import matplotlib.pyplot as plt
-        #plt.plot(modelwave, modelspec) ; plt.xlim(3200, 10000) ; plt.savefig('junk.png')
+        #plt.plot(modelwave, modelflux) ; plt.xlim(3200, 10000) ; plt.savefig('junk.png')
         #pdb.set_trace()
 
         return modelwave, modelflux
 
     else:
-
         icam = 0 # one (merged) "camera"
 
         # mock up a fastspec-compatible dictionary of DESI data
@@ -78,7 +94,8 @@ def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
 
         modelwave = data['wave'][icam]
 
-        # adjust the emission-line model range for each object.
+        # Adjust the emission-line model range for each object otherwise the
+        # trapezoidal rebinning borks..
         minwave, maxwave = modelwave.min()-1.0, modelwave.max()+1.0
         EMFit.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), EMFit.dlogwave)
 
@@ -181,7 +198,6 @@ def fastspec_to_desidata(fastspec, wave, flux, ivar):
     """
     from scipy.sparse import identity
     from desispec.resolution import Resolution
-    from fastspecfit.util import C_LIGHT    
 
     good = np.where(ivar > 0)[0]
     npix = len(good)
@@ -431,8 +447,6 @@ def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=
     import fitsio
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
-    from fastspecfit.util import C_LIGHT    
-    #rom fastspecfit.io import write_fastspecfit
 
     if not os.path.isfile(stackfile):
         log.warning('Stack file {} not found!'.format(stackfile))
@@ -486,8 +500,152 @@ def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=
         write_binned_stacks(fastspecfile, wave, flux, ivar,
                             fastspec=fastspec, fastmeta=fastmeta)
 
-def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None, templatefile=None,
-                    empca=False):
+def remove_undetected_lines(fastspec, linetable, snrmin=3.0, oiidoublet=0.73,
+                            siidoublet=1.3, niidoublet=2.936, oiiidoublet=2.875,
+                            fastmeta=None, devshift=False):
+    """replace weak or undetected emission lines with their upper limits
+
+    devshift - remove individual velocity shifts
+    oiidoublet - [OII] 3726/3729
+    siidoublet - [SII] 6716/6731
+    niidoublet - [NII] 6584/6548
+    oiiidoublet - [OIII] 5007/4959
+    
+    """
+    linenames = linetable['name']
+    redshift = fastspec['CONTINUUM_Z']
+    
+    for linename in linenames:
+        # Fix a quick bug that affected Denali
+        # https://github.com/desihub/fastspecfit/issues/21
+        fix = np.where((fastspec['{}_AMP'.format(linename.upper())] != 0) *
+                       (fastspec['{}_AMP_IVAR'.format(linename.upper())] == 0))[0]
+        if len(fix) > 0:
+            fastspec['{}_AMP'.format(linename.upper())][fix] = 0.0 
+
+        amp = fastspec['{}_AMP'.format(linename.upper())].data
+        amp_ivar = fastspec['{}_AMP_IVAR'.format(linename.upper())].data
+        cont_ivar = fastspec['{}_CONT_IVAR'.format(linename.upper())].data
+
+        if devshift:
+            fastspec['{}_VSHIFT'.format(linename.upper())] = 0.0
+
+        # we deal with the tied doublets below
+        if 'oiii_4959' in linename or 'nii_6548' in linename: 
+            #fix = np.where((fastspec['OIII_4959_AMP_IVAR'] > 0) * (fastspec['OIII_5007_AMP_IVAR'] == 0))[0]
+            #if len(fix) > 0:
+            #    fastspec['OIII_4959_AMP'][fix] = 0.0
+            #    fastspec['OIII_4959_AMP_IVAR'][fix] = 0.0
+            continue
+
+        snr = amp * np.sqrt(amp_ivar)
+        losnr = np.where((snr < snrmin) * (amp_ivar > 0))[0]
+        #losnr = np.where(np.logical_or((amp_ivar > 0) * (snr < snrmin), (amp_ivar == 0) * (cont_ivar > 0)))[0]
+
+        if len(losnr) > 0:
+            # optionally set a minimum line-amplitude
+            if False:
+                csig = 1 / np.sqrt(cont_ivar[losnr])
+                if np.any(csig) < 0:
+                    raise ValueError
+                fastspec['{}_AMP'.format(linename.upper())][losnr] = snrmin * csig
+                if linename == 'oiii_5007':
+                    fastspec['OIII_4959_AMP'][losnr] = fastspec['OIII_5007_AMP'][losnr].data / oiiidoublet
+                if linename == 'nii_6584':
+                    fastspec['NII_6548_AMP'][losnr] = fastspec['NII_6584_AMP'][losnr].data / niidoublet
+            else:
+                # remove the line
+                fastspec['{}_AMP'.format(linename.upper())][losnr] = 0.0
+                #fastspec['{}_AMP_IVAR'.format(linename.upper())][losnr] = 0.0
+                if linename == 'oiii_5007':
+                    fastspec['OIII_4959_AMP'][losnr] = 0.0
+                if linename == 'nii_6584':
+                    fastspec['NII_6548_AMP'][losnr] = 0.0
+
+    # corner case of when the stronger doublet is on the edge of the wavelength range
+    fix = np.where((fastspec['OIII_5007_AMP'] == 0) * (fastspec['OIII_4959_AMP'] != 0))[0]
+    if len(fix) > 0:
+        fastspec['OIII_4959_AMP'][fix] = 0.0
+        fastspec['OIII_4959_AMP_IVAR'][fix] = 0.0
+    fix = np.where((fastspec['NII_6584_AMP'] == 0) * (fastspec['NII_6548_AMP'] != 0))[0]
+    if len(fix) > 0:
+        fastspec['NII_6548_AMP'][fix] = 0.0
+        fastspec['NII_6548_AMP_IVAR'][fix] = 0.0
+
+    # double-check for negative lines
+    for linename in linenames:
+        neg = np.where(fastspec['{}_AMP'.format(linename.upper())] < 0)[0]
+        if len(neg) > 0:
+            print(neg)
+            raise ValueError('Negative {}!'.format(linename))
+
+    # restore any missing components of the [OII] or [SII] doublets 
+    fix_oii3726 = np.where((fastspec['OII_3726_AMP'] == 0) * (fastspec['OII_3729_AMP'] > 0))[0]
+    if len(fix_oii3726) > 0:
+        fastspec['OII_3726_AMP'][fix_oii3726] = fastspec['OII_3729_AMP'][fix_oii3726] * oiidoublet
+
+    fix_oii3729 = np.where((fastspec['OII_3729_AMP'] == 0) * (fastspec['OII_3726_AMP'] > 0))[0]
+    if len(fix_oii3726) > 0:
+        fastspec['OII_3729_AMP'][fix_oii3729] = fastspec['OII_3726_AMP'][fix_oii3729] / oiidoublet
+
+    fix_sii6716 = np.where((fastspec['SII_6731_AMP'] > 0) * (fastspec['SII_6716_AMP'] == 0))[0]
+    if len(fix_sii6716) > 0:
+        fastspec['SII_6716_AMP'][fix_sii6716] = fastspec['SII_6731_AMP'][fix_sii6716] * siidoublet
+
+    fix_sii6731 = np.where((fastspec['SII_6731_AMP'] == 0) * (fastspec['SII_6716_AMP'] > 0))[0]
+    if len(fix_sii6731) > 0:
+        fastspec['SII_6731_AMP'][fix_sii6731] = fastspec['SII_6716_AMP'][fix_sii6731] / siidoublet
+
+    # higher-order Balmer lines require H-beta and/or H-alpha
+    fix_hgamma = np.where((fastspec['HGAMMA_AMP'] > 0) * (fastspec['HBETA_AMP'] == 0) * (fastspec['HBETA_AMP_IVAR'] > 0))[0]
+    if len(fix_hgamma) > 0:
+        fastspec['HGAMMA_AMP'][fix_hgamma] = 0.0 # 16, 21
+
+    fix_hdelta = np.where((fastspec['HDELTA_AMP'] > 0) * (fastspec['HBETA_AMP'] == 0) * (fastspec['HBETA_AMP_IVAR'] > 0))[0]
+    if len(fix_hdelta) > 0:
+        fastspec['HDELTA_AMP'][fix_hdelta] = 0.0
+
+    fix_hepsilon = np.where((fastspec['HEPSILON_AMP'] > 0) * (fastspec['HBETA_AMP'] == 0) * (fastspec['HBETA_AMP_IVAR'] > 0))[0]
+    if len(fix_hepsilon) > 0:
+        fastspec['HEPSILON_AMP'][fix_hepsilon] = 0.0
+
+    #fastspec['HGAMMA_AMP', 'HBETA_AMP'][fix_hgamma]
+    #I = (fastmeta['ZOBJ'] == 0.95) * (fastmeta['MR'] == -22.75) * (fastmeta['RW1'] == -0.625)
+    #fastspec[I]['OII_3726_AMP', 'OII_3729_AMP']
+    #pdb.set_trace()
+
+    # go back through and update FLUX and EW based on the new line-amplitudes
+    for oneline in linetable:
+        linename = oneline['name'].upper()
+
+        amp = fastspec['{}_AMP'.format(linename.upper())].data
+        amp_ivar = fastspec['{}_AMP_IVAR'.format(linename.upper())].data
+        snr = amp * np.sqrt(amp_ivar)
+        hisnr = np.where(snr >= snrmin)[0]
+        if len(hisnr) == 0:
+            continue
+
+        linez = redshift[hisnr] + fastspec['{}_VSHIFT'.format(linename)][hisnr].data / C_LIGHT
+        linezwave = oneline['restwave'] * (1 + linez)
+
+        linesigma = fastspec['{}_SIGMA'.format(linename)][hisnr].data # [km/s]
+        log10sigma = linesigma / C_LIGHT / np.log(10)     # line-width [log-10 Angstrom]
+            
+        # get the emission-line flux
+        linesigma_ang = linezwave * linesigma / C_LIGHT # [observed-frame Angstrom]
+        linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
+
+        fastspec['{}_FLUX'.format(linename)][hisnr] = fastspec['{}_AMP'.format(linename)][hisnr].data * linenorm
+
+        cpos = np.where(fastspec['{}_CONT'.format(linename)][hisnr] > 0.0)[0]
+        if len(cpos) > 0:
+            factor = (1 + redshift[hisnr][cpos]) / fastspec['{}_CONT'.format(linename)][hisnr][cpos] # --> rest frame
+            fastspec['{}_EW'.format(linename)][hisnr][cpos] = fastspec['{}_FLUX'.format(linename)][hisnr][cpos] * factor   # rest frame [A]
+
+    return fastspec
+
+def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
+                    templatefile=None, empca=False):
     """Build the final templates.
 
     Called by bin/desi-templates.
@@ -514,27 +672,115 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None, templatefile
 
     nobj = len(fastmeta)
     log.info('Read {} fastspec model fits from {}'.format(nobj, fastspecfile))
+
+    # Setting full_resolution here because we want to ensure the templates are
+    # at full spectral resolution and in the rest-frame.
+    full_resolution = True
+
+    # Remove low-significance lines.
+    fastspec = remove_undetected_lines(fastspec, EMFit.linetable, fastmeta=fastmeta)
     
-    # Rebuild in parallel.
+    # Add lines that could not be measured from the higher-redshift stacked
+    # spectra.
+    if False:
+        t0 = time.time()
+
+        emlines_only = True
+        mpargs = [(fastspec[iobj], wave, flux[iobj, :], ivar[iobj, :], CFit, EMFit, 
+                   full_resolution, emlines_only) for iobj in np.arange(nobj)]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                _out = P.map(_rebuild_fastspec_spectrum, mpargs)
+        else:
+            _out = [rebuild_fastspec_spectrum(*_mpargs) for _mpargs in mpargs]
+        _out = list(zip(*_out))
+
+        modelwave = _out[0][0] # all are identical
+        emlineflux = np.vstack(_out[1])
+
+        Mr_norm = ((fastmeta['MR'] - np.min(fastmeta['MR'])) / (np.max(fastmeta['MR']) - np.min(fastmeta['MR']))).data
+        rW1_norm = ((fastmeta['RW1'] - np.min(fastmeta['RW1'])) / (np.max(fastmeta['RW1']) - np.min(fastmeta['RW1']))).data
+        gi_norm = ((fastmeta['GI'] - np.min(fastmeta['GI'])) / (np.max(fastmeta['GI']) - np.min(fastmeta['GI']))).data
+
+        maxwave = 6540.0
+        zcut = 9800 / maxwave - 1
+        #waverange = np.where(modelwave < maxwave)[0]
+
+        hiz = np.where((fastmeta['ZOBJ'] > zcut) * (np.sum(emlineflux > 0, axis=1) > 0))[0] # need
+        loz = np.where((fastmeta['ZOBJ'] < zcut) * (np.sum(emlineflux > 0, axis=1) > 0))[0] # have
+
+        loz_emlineflux = emlineflux[loz, :]
+
+        #iewhb = np.where(fastspec['HBETA_EW'] > 0)[0]
+        #ewhb_norm = (fastspec['HBETA_EW'][iewhb] - np.min(fastspec['HBETA_EW'][iewhb])) /
+        #    (np.max(fastspec['HBETA_EW'][iewhb]) - np.min(fastspec['HBETA_EW'][iewhb]))
+        #ewhb_norm = ((fastspec['HBETA_EW'] - np.min(fastspec['HBETA_EW'][iewhb])) / (np.max(fastspec['HBETA_EW'][iewhb]) - np.min(fastspec['HBETA_EW'][iewhb]))).data
+        #I = np.where((fastmeta['ZOBJ'] > 9800 / 6540-1) * (fastspec['HBETA_AMP'] > 0) * (fastspec['HALPHA_AMP'] == 0))[0]
+        #J = np.where((fastmeta['ZOBJ'] < 9800 / 6540-1) * (fastspec['HBETA_AMP'] > 0))[0]
+
+        for ihiz in hiz:
+            ## Get the scale factor between this spectrum and all the other spectra.
+            #good = emlineflux[loz, :]
+            #hiz_emlineflux = emlineflux[ihiz, :]
+            #scale = np.sum(hiz_emlineflux[np.newaxis, :] * emlineflux[loz, :], axis=1) / np.sum(emlineflux[loz, :] * emlineflux[loz, :], axis=1)
+
+            hiz_emlineflux = emlineflux[ihiz, :]
+            good = np.where(hiz_emlineflux > 0)[0]
+
+            weight = (hiz_emlineflux > 0) * 1
+
+            emdist = np.sqrt(np.sum((hiz_emlineflux[np.newaxis, :] - loz_emlineflux)**2, axis=1))
+            #emdist = np.sum(weight * (hiz_emlineflux[np.newaxis, :] - loz_emlineflux)**2, axis=1) / np.sum(weight)
+            nemdist = (emdist - np.min(emdist)) / (np.max(emdist) - np.min(emdist))
+            dist = np.sqrt(nemdist**2 + (Mr_norm[loz] - Mr_norm[ihiz])**2 + (rW1_norm[loz] - rW1_norm[ihiz])**2 + (gi_norm[loz] - gi_norm[ihiz])**2)
+
+            #dist = np.sqrt((ewhb_norm[I] - ewhb_norm[jj])**2 + (Mr_norm[I] - Mr_norm[jj])**2 + (rW1_norm[I] - rW1_norm[jj])**2)
+            M = loz[np.argmin(emdist)]
+            #M = loz[np.argmin(dist)]
+            print(fastmeta['ZOBJ'][ihiz], fastmeta['ZOBJ'][M], fastmeta['MR'][ihiz], fastmeta['MR'][M],
+                  fastmeta['RW1'][ihiz], fastmeta['RW1'][M], fastmeta['GI'][ihiz], fastmeta['GI'][M],
+                  fastspec['HBETA_AMP'][ihiz], fastspec['HBETA_AMP'][M], fastspec['HALPHA_AMP'][ihiz],
+                  fastspec['HALPHA_AMP'][M])#, dist)
+            #for linename in ['HALPHA', 
+
+            import matplotlib.pyplot as plt
+            xlim = (3200, 7000)
+            ww = np.where((modelwave > xlim[0]) * (modelwave < xlim[1]))[0]
+            ylim = (0, np.max(emlineflux[M, ww]))
+
+            #plt.clf() ; plt.plot(modelwave, emlineflux[ihiz, :]) ;  plt.xlim(3200, 7000) ; plt.savefig('junk.png')
+            plt.clf() ; plt.plot(modelwave, emlineflux[ihiz, :]) ; plt.plot(modelwave, emlineflux[M, :], color='orange', alpha=0.6) ; plt.xlim(xlim) ; plt.ylim(ylim) ; plt.savefig('junk.png')
+            pdb.set_trace()
+
+        I = np.where((fastspec['HALPHA_AMP_IVAR'] == 0) * (np.sum(emlineflux > 0, axis=1) > 0))[0]
+
+        log.info('Updating the emission-line parameters took: {:.2f} sec'.format(time.time()-t0))
+
+        pdb.set_trace()
+
+    # Now rebuid the full-spectrum models again with the updated emission-line
+    # parameters.
     t0 = time.time()
-    mpargs = [(fastspec[iobj], wave, flux[iobj, :], ivar[iobj, :], CFit, EMFit, True)
-              for iobj in np.arange(nobj)]
+    emlines_only = False
+    mpargs = [(fastspec[iobj], wave, flux[iobj, :], ivar[iobj, :], CFit, EMFit, 
+               full_resolution, emlines_only) for iobj in np.arange(nobj)]
     if mp > 1:
-        import multiprocessing
         with multiprocessing.Pool(mp) as P:
             _out = P.map(_rebuild_fastspec_spectrum, mpargs)
     else:
         _out = [rebuild_fastspec_spectrum(*_mpargs) for _mpargs in mpargs]
     _out = list(zip(*_out))
 
-    log.info('Rebuilding all model spectra took: {:.2f} sec'.format(time.time()-t0))
-
+    # rest-frame spectra
     modelwave = _out[0][0] # all are identical
     modelflux = np.vstack(_out[1])
 
+    log.info('Rebuilding the final model spectra took: {:.2f} sec'.format(time.time()-t0))
+
     metacols = ['NOBJ', 'ZOBJ', 'MR', 'GI', 'RW1']
     speccols = ['CONTINUUM_SNR_ALL',
-                'BALMER_Z', 'FORBIDDEN_Z', 'BROAD_Z', 'BALMER_SIGMA', 'FORBIDDEN_SIGMA', 'BROAD_SIGMA',
+                'BALMER_Z', 'FORBIDDEN_Z', 'BROAD_Z',
+                'BALMER_SIGMA', 'FORBIDDEN_SIGMA', 'BROAD_SIGMA',
                 'OII_3726_EW', 'OII_3726_EW_IVAR',
                 'OII_3729_EW', 'OII_3729_EW_IVAR',
                 'OIII_5007_EW', 'OIII_5007_EW_IVAR',
