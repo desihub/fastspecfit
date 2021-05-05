@@ -441,6 +441,10 @@ class ContinuumTools(object):
         else:
             trim = (sspwave > (specwave.min()-10.0)) * (sspwave < (specwave.max()+10.0))
             resampflux = trapz_rebin(sspwave[trim], sspflux[trim], specwave)
+            #try:
+            #    resampflux = trapz_rebin(sspwave[trim], sspflux[trim], specwave)
+            #except:
+            #    pdb.set_trace()
 
         if specres is None:
             smoothflux = resampflux
