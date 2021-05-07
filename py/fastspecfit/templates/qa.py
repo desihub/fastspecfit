@@ -376,9 +376,6 @@ def qa_fastspec_fullspec(fastspecfile, CFit, EMFit, pdffile=None):
         log.info('Writing {}'.format(pdffile))
         pdf.close()
 
-
-
-        
 def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
                       png_rest=None, png_rest_bins=None):
 
@@ -545,4 +542,36 @@ def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
     obs(phot, png=png_obs)
     rest(phot, spec, meta, png=png_rest)
     rest(phot, spec, meta, bins, png=png_rest_bins)
+
+def qa_tilefile(tilefile, png=None):
+
+    sns, _ = plot_style()
+
+    tileinfo = Table.read(tilefile)
+
+    xlim = (efftime.min(), efftime.max())
+    fig, ax = plt.subplots(figsize=(9, 6))
+    _ = ax.hist(tileinfo['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+                label='All Tiles (N={})'.format(len(tileinfo)))
+    _ = ax.hist(targtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim, alpha=0.9,
+                label='{} Tiles (N={})'.format(targetclass.upper(), len(targtiles)))
+
+    if vitiles:
+      _ = ax.hist(vitiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+                  label='VI Tiles (N={})'.format(len(vitiles)))
+    if shallowtiles:
+      _ = ax.hist(shallowtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+                  label='Shallow (<{:.0f} min) Tiles (N={})'.format(
+                      min_efftime, len(shallowtiles)))
+
+    ax.set_xlabel('Effective Time (spec, min)')
+    ax.set_ylabel('Number of Tiles')
+
+    ax.legend(loc='upper right', fontsize=16)
+
+    plt.subplots_adjust(right=0.95, top=0.95, bottom=0.17)
+
+    print('Writing {}'.format(png))
+    fig.savefig(png)
+    plt.close()
 

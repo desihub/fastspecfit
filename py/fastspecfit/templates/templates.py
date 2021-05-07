@@ -179,16 +179,17 @@ def _stack_onebin(args):
     """Multiprocessing wrapper."""
     return stack_onebin(*args)
 
-def stack_onebin(flux2d, ivar2d, templatewave, cflux2d, continuumwave):
+def stack_onebin(flux2d, ivar2d, templatewave, normwave, cflux2d, continuumwave):
     """Build one stack."""
 
     templatewave1, templateflux1, templateivar1, _, templatepix = iterative_stack(
-        templatewave, flux2d, ivar2d, constant_ivar=False, verbose=False)
-    
+        templatewave, flux2d, ivar2d, constant_ivar=False, normwave=normwave)
+
     if continuumwave is None:
         return templateflux1, templateivar1, templatepix
     else:
-        _, continuumflux1, _, _, templatecpix = iterative_stack(continuumwave, cflux2d, verbose=False)
+        _, continuumflux1, _, _, templatecpix = iterative_stack(
+            continuumwave, cflux2d, normwave=normwave)
         return templateflux1, templateivar1, templatepix, continuumflux1, templatecpix
 
 def fastspec_to_desidata(fastspec, wave, flux, ivar):
@@ -304,6 +305,9 @@ def quick_stack(wave, flux2d, ivar2d=None, constant_ivar=False):
     nperpix = np.sum((_ivar2d > 0), axis=0).astype(int)
 
     good = np.where((ivar > 0) * (nperpix > 0.9*np.max(nperpix)))[0]
+    if len(good) == 0:
+        log.warning('No good pixels!')
+        raise ValueError
     flux = np.sum(_ivar2d[:, good] * flux2d[:, good], axis=0) / ivar[good]
     
     #pos = np.where(flux > 0)[0]
@@ -314,7 +318,7 @@ def quick_stack(wave, flux2d, ivar2d=None, constant_ivar=False):
     return wave[good], flux, ivar, nperpix[good], good
 
 def iterative_stack(wave, flux2d, ivar2d=None, constant_ivar=False, maxdiff=0.01, 
-                    maxiter=500, normwave=4500, smooth=None, debug=False, verbose=True):
+                    maxiter=500, normwave=4500, smooth=None, debug=False, verbose=False):
     """Iterative stacking algorithm taken from Bovy, Hogg, & Moustakas 2008.
        https://arxiv.org/pdf/0805.1200.pdf
 
@@ -382,7 +386,12 @@ def iterative_stack(wave, flux2d, ivar2d=None, constant_ivar=False, maxdiff=0.01
             
             # normalize
             normflux = np.median(templateflux[(templatewave > (normwave-10)) * (templatewave < (normwave+10))])
-            #normflux = np.interp(normwave, templatewave, templateflux)
+            if normflux <= 0:
+                log.warning('Normalization flux is negative or zero!')
+                normflux = 1.0
+                #pdb.set_trace()
+                #raise ValueError
+
             templateflux /= normflux
             templateivar *= normflux**2
             
@@ -390,7 +399,8 @@ def iterative_stack(wave, flux2d, ivar2d=None, constant_ivar=False, maxdiff=0.01
 
     return templatewave, templateflux, templateivar, nperpix, goodpix
 
-def stack_in_bins(sample, data, templatewave, mp=1, continuumwave=None, stackfile=None):
+def stack_in_bins(sample, data, templatewave, mp=1, normwave=4500.0,
+                  continuumwave=None, stackfile=None):
     """Stack spectra in bins given the output of a spectra_in_bins run.
 
     See bin/desi-templates for how to generate the required input.
@@ -408,9 +418,11 @@ def stack_in_bins(sample, data, templatewave, mp=1, continuumwave=None, stackfil
     for samp in sample:
         ibin = samp['IBIN'].astype(str)
         if continuumwave is not None:
-            mpargs.append([data[ibin]['flux'], data[ibin]['ivar'], templatewave, data[ibin]['cflux'], continuumwave])
+            mpargs.append([data[ibin]['flux'], data[ibin]['ivar'], templatewave,
+                           normwave, data[ibin]['cflux'], continuumwave])
         else:
-            mpargs.append([data[ibin]['flux'], data[ibin]['ivar'], templatewave])
+            mpargs.append([data[ibin]['flux'], data[ibin]['ivar'], templatewave,
+                           normwave], None, None)
 
     t0 = time.time()
     if mp > 1:
