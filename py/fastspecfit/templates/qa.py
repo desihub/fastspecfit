@@ -29,19 +29,119 @@ def plot_style(font_scale=1.2):
     colors = sns.color_palette()
     return sns, colors
 
+def read_stacked_fastspec(fastspecfile):
+    wave = fitsio.read(fastspecfile, ext='WAVE')
+    flux = fitsio.read(fastspecfile, ext='FLUX')
+    ivar = fitsio.read(fastspecfile, ext='IVAR')
+    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    return wave, flux, ivar, fastmeta, fastspec
+
+def read_templates(targetclass='lrg'):
+    templatefile = os.path.join(templatedir, '{}-templates.fits'.format(targetclass))
+    wave = fitsio.read(templatefile, ext='WAVE')
+    flux = fitsio.read(templatefile, ext='FLUX')
+    meta = Table(fitsio.read(templatefile, ext='METADATA'))
+    return wave, flux, meta
+
+def qa_template_colors(phot, template_colors, ntspace=25, png=None):
+
+    if ntspace == 1:
+        prefix = 'All '
+    else:
+        prefix = ''
+    
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 10))
+
+    ax1.hexbin(phot['RMAG']-phot['ZMAG'], phot['GMAG']-phot['RMAG'], mincnt=1, bins='log',
+               #C=cat['weight'], reduce_C_function=np.sum,
+               cmap=cmap)
+    ax1.set_xlabel(r'$(r - z)_{\rm obs}$')
+    ax1.set_ylabel(r'$(g - r)_{\rm obs}$')
+    ax1.set_xlim(rzobslim)
+    ax1.set_ylim(grobslim)
+    ax1.text(0.05, 0.9, 'Data', ha='left', va='bottom',
+             transform=ax1.transAxes, fontsize=14)
+    ax1.grid(True)
+
+    #cb = fig.colorbar(hb, ax=ax1)
+    #cb.set_label(r'log$_{10}$ (Number of Galaxies)')
+    
+    for tt in np.arange(0, nt, ntspace):
+        ax2.plot(template_colors['rz'][tt, :], template_colors['gr'][tt, :], marker='s', 
+                 markersize=5, ls='-', alpha=0.5)
+        
+    for tt in np.arange(0, nt, ntspace):
+        ax2.scatter(template_colors['rz'][tt, 0], template_colors['gr'][tt, 0], marker='o', 
+                   facecolors='none', s=40, edgecolors='k',
+                   linewidth=1, zorder=10)
+        
+    ax2.text(0.1, 0.05, 'z=0.0', ha='left', va='bottom',
+             transform=ax2.transAxes, fontsize=14)
+    ax2.text(0.05, 0.9, '{}Models (z=0.0-1.5, dz=0.1)'.format(prefix), 
+             ha='left', va='bottom',
+             transform=ax2.transAxes, fontsize=14)
+    
+    ax2.set_xlim(rzobslim)
+    ax2.set_ylim(grobslim)
+    ax2.set_xlabel(r'$(r - z)_{\rm obs}$')
+    ax2.set_ylabel(r'$(g - r)_{\rm obs}$')
+    ax2.yaxis.set_label_position('right')
+    ax2.yaxis.tick_right()
+    ax2.grid(True)
+    
+    ax3.hexbin(phot['ZMAG']-phot['W1MAG'], phot['RMAG']-phot['ZMAG'], mincnt=1, bins='log',
+               #C=cat['weight'], reduce_C_function=np.sum,
+               cmap=cmap)
+    ax3.set_ylabel(r'$(r - z)_{\rm obs}$')
+    ax3.set_xlabel(r'$(z - W1)_{\rm obs}$')
+    ax3.set_ylim(rzobslim)
+    ax3.set_xlim(zW1obslim)
+    ax3.text(0.05, 0.9, 'Data', ha='left', va='bottom',
+             transform=ax3.transAxes, fontsize=14)
+    ax3.grid(True)
+    
+    for tt in np.arange(0, nt, ntspace):
+        ax4.plot(template_colors['zW1'][tt, :], template_colors['rz'][tt, :], marker='s', 
+                 markersize=5, ls='-', alpha=0.5)
+        
+    for tt in np.arange(0, nt, ntspace):
+        ax4.scatter(template_colors['zW1'][tt, 0], template_colors['rz'][tt, 0], marker='o', 
+                   facecolors='none', s=40, edgecolors='k',
+                   linewidth=1, zorder=10)
+        
+    ax4.text(0.05, 0.3, 'z=0.0', ha='left', va='bottom',
+             transform=ax4.transAxes, fontsize=14)
+    ax4.text(0.05, 0.9, '{}Models (z=0.0-1.5, dz=0.1)'.format(prefix), 
+             ha='left', va='bottom',
+             transform=ax4.transAxes, fontsize=14)
+    
+    ax4.set_xlim(zW1obslim)
+    ax4.set_ylim(rzobslim)
+    ax4.set_ylabel(r'$(r - z)_{\rm obs}$')
+    ax4.set_xlabel(r'$(z - W1)_{\rm obs}$')
+    ax4.yaxis.set_label_position('right')
+    ax4.yaxis.tick_right()
+    ax4.grid(True)
+    
+    plt.subplots_adjust(wspace=0.05, hspace=0.28)
+    
+    if png:
+        log.info('Writing {}'.format(png))
+        fig.savefig(png)
+        plt.close()
+
 def qa_bpt(fastspecfile, EMFit, png=None):
     """QA of the fastspec emission-line spectra.
 
     """
     from fastspecfit.templates.templates import remove_undetected_lines
-    
-    sns, _ = plot_style()
 
     fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    _fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
     nobj = len(fastmeta)
 
-    fastspec = remove_undetected_lines(fastspec, EMFit.linetable)
+    fastspec = remove_undetected_lines(_fastspec, EMFit.linetable)
 
     def oplot_class(ax, kewley=False, **kwargs):
         if kewley:
@@ -63,79 +163,218 @@ def qa_bpt(fastspecfile, EMFit, png=None):
         ax.set_xlabel(r'$\log_{10}$ ([NII] $\lambda6584$ / H$\alpha$)')
         ax.set_ylabel(r'$\log_{10}$ ([OIII] $\lambda5007$ / H$\beta$)')
         ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
-        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))    
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
         ax.xaxis.set_major_locator(ticker.MultipleLocator(0.5))
         ax.yaxis.set_major_locator(ticker.MultipleLocator(0.5))
         ax.legend(fontsize=16, loc='lower left')#, ncol=2)
         plt.subplots_adjust(bottom=0.15, left=0.18, top=0.95, right=0.95)
         if png:
-            print('Writing {}'.format(png))
+            log.info('Writing {}'.format(png))
             fig.savefig(png)
             plt.close()
 
     good = np.where(
-        (fastspec['HALPHA_FLUX'] > 0) * 
-        (fastspec['HBETA_FLUX'] > 0) * 
-        (fastspec['NII_6584_FLUX'] > 0) * 
-        (fastspec['OIII_5007_FLUX'] > 0) 
+        (fastspec['HALPHA_FLUX'] > 0) *
+        (fastspec['HBETA_FLUX'] > 0) *
+        (fastspec['NII_6584_FLUX'] > 0) *
+        (fastspec['OIII_5007_FLUX'] > 0)
         #(fastspec['HALPHA_CHI2'] < 1e4)
     )[0]
-    
+
     zz = fastspec['CONTINUUM_Z'][good]
     rW1 = fastmeta['RW1'][good]
     gi = fastmeta['GI'][good]
     ewhb = fastspec['HBETA_EW'][good]
-    
+
     niiha = np.log10(fastspec['NII_6584_FLUX'][good] / fastspec['HALPHA_FLUX'][good])
     oiiihb = np.log10(fastspec['OIII_5007_FLUX'][good] / fastspec['HBETA_FLUX'][good])
     ww = np.where((niiha > -0.05) * (niiha < 0.05) * (oiiihb < -0.5))[0]
-    #print(fastspec[good][ww]['HALPHA_FLUX', 'NII_6584_FLUX'])
+    #log.info(fastspec[good][ww]['HALPHA_FLUX', 'NII_6584_FLUX'])
 
     _bpt(zz, 'Redshift', vmin=0, vmax=0.5, png=png.replace('.png', '-redshift.png'))
     _bpt(rW1, r'$r-W1$', vmin=-0.3, vmax=0.9, png=png.replace('.png', '-rW1.png'))
     _bpt(gi, r'$g-i$', vmin=0.6, vmax=1.3, png=png.replace('.png', '-gi.png'))
-    _bpt(np.log10(ewhb), r'$\log_{10}\,\mathrm{EW}(\mathrm{H}\beta)$', png=png.replace('.png', '-ewhb.png'))
+    _bpt(np.log10(ewhb), r'$\log_{10}\,\mathrm{EW}(\mathrm{H}\beta)$', 
+         png=png.replace('.png', '-ewhb.png'))            
 
-def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
+def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=None,
+                         fastmeta=None, fastspec=None, fastspecfile=None, CFit=None,
+                         EMFit=None, ncol=3, nrow=5, pdffile=None):
+    """Full-spectrum QA.
+    
+    """
+    from fastspecfit.util import ivar2var, C_LIGHT
+    from fastspecfit.templates.templates import rebuild_fastspec_spectrum
+
+    sns, _ = plot_style()        
+    
+    if CFit is None or EMFit is None:
+        from fastspecfit.continuum import ContinuumFit
+        from fastspecfit.emlines import EMLineFit    
+        CFit = ContinuumFit()
+        EMFit = EMLineFit()    
+
+    if fastwave is None:
+        fastwave, fastflux, fastivar, fastmeta, fastspec = read_stacked_fastspec(fastspecfile)
+        #fastspec = remove_undetected_lines(fastspec, EMFit.linetable, devshift=False)
+
+    if targetclass == 'lrg':
+        absmagcol = 'MR'
+        colorcol = 'RW1'
+    elif targetclass == 'elg':
+        absmagcol = 'MG'
+        colorcol = 'GR'
+    elif targetclass == 'bgs':
+        absmagcol = 'MR'
+        colorcol = 'GR'
+    else:
+        raise NotImplemented
+        
+    nobj = len(fastmeta)
+    icam = 0
+        
+    zobj = np.unique(fastmeta['ZOBJ'])
+    npage = len(zobj)
+
+    if npage == 1:
+        png = True
+    else:
+        png = False
+    
+    if pdffile:
+        if png:
+            pdffile = pdffile.replace('.pdf', '.png')
+        else:
+            from matplotlib.backends.backend_pdf import PdfPages
+            pdf = PdfPages(pdffile)
+
+    for ipage in np.arange(npage):#[:1]:
+        log.info('Building page {}/{}'.format(ipage+1, npage))
+        pageindx = np.where(zobj[ipage] == fastmeta['ZOBJ'])[0]
+
+        absmag = sorted(set(fastmeta[absmagcol][pageindx])) # subpage
+        nsubpage = len(absmag)
+
+        for isubpage in np.arange(nsubpage):#[:1]:#[::2]:
+
+            subpageindx = np.where((absmag[isubpage] == fastmeta[absmagcol][pageindx]))[0]
+
+            fig, allax = plt.subplots(nrow, ncol, figsize=(12, 16), sharex=True, sharey=True)
+            for iplot, (indx, ax) in enumerate(zip(pageindx[subpageindx], allax.flatten())):
+                #log.info(ipage, isubpage, iplot, len(pageindx), len(subpageindx))
+
+                # rebuild the best-fitting spectrum
+                modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
+                    fastspec[indx], fastwave, fastflux[indx, :], fastivar[indx, :], CFit, EMFit)
+
+                #sigma, _ = ivar2var(data['ivar'][icam], sigma=True)
+                #ax.fill_between(data['wave'][icam], data['flux'][icam]-sigma,
+                #                            data['flux'][icam]+sigma, color='skyblue')
+                ax.plot(data['wave'][icam], data['flux'][icam], color='skyblue')
+                ax.plot(modelwave, continuum+emlinemodel, color='firebrick', alpha=0.5)
+                ax.plot(modelwave, continuum, color='blue', alpha=0.5)
+                #ax.plot(modelwave, continuum+smooth_continuum, color='gray', alpha=0.3)
+                ax.plot(modelwave, smooth_continuum, color='gray', alpha=0.7)
+
+                ymin, ymax = 1e6, -1e6
+
+                filtflux = median_filter(data['flux'][icam], 51, mode='nearest')
+                sigflux = np.std(data['flux'][icam][data['ivar'][icam] > 0])
+                if -2 * sigflux < ymin:
+                    ymin = -2 * sigflux
+                if sigflux * 5 > ymax:
+                    ymax = sigflux * 5
+                if np.max(filtflux) > ymax:
+                    ymax = np.max(filtflux) * 1.4
+
+                if targetclass == 'lrg':
+                    ax.text(0.96, 0.06, '\n'.join((
+                        r'${:.1f}<g-i<{:.1f}$'.format(fastmeta['GIMIN'][indx], fastmeta['GIMAX'][indx]),
+                        r'${:.2f}<r-W1<{:.2f}$'.format(fastmeta['RW1MIN'][indx], fastmeta['RW1MAX'][indx]) )),
+                        ha='right', va='bottom', transform=ax.transAxes, fontsize=10,
+                        bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
+                else:
+                    ax.text(0.96, 0.06, r'${:.1f}<g-r<{:.1f}$'.format(
+                        fastmeta['GRMIN'][indx], fastmeta['GRMAX'][indx]),
+                        ha='right', va='bottom', transform=ax.transAxes, fontsize=10,
+                        bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
+
+                ax.text(0.04, 0.96,
+                        '\n'.join(( 'N={}, S/N={:.1f}'.format(
+                            fastmeta['NOBJ'][indx], fastspec['CONTINUUM_SNR_ALL'][indx]), )),
+                    ha='left', va='top', transform=ax.transAxes, fontsize=10,
+                    bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
+
+                ax.set_xlim(modelwave.min(), modelwave.max())
+                ax.set_ylim(ymin, ymax)
+                ax.set_xticklabels([])
+                ax.set_yticklabels([])
+
+                plt.subplots_adjust(wspace=0.05, hspace=0.05, left=0.07, right=0.95, top=0.95, bottom=0.1)
+
+                if iplot == ncol*nrow-1:
+                    break
+            
+            fig.text(0.52, 0.968, r'${:.1f}<z<{:.1f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
+                fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
+                fastmeta['{}MIN'.format(absmagcol)][indx], fastmeta['{}MAX'.format(absmagcol)][indx]),
+                ha='center', va='center', fontsize=22)
+
+            for rem in np.arange(ncol*nrow-iplot-1)+iplot+1:
+                allax.flatten()[rem].axis('off')
+                
+            if pdffile and png is False:
+                pdf.savefig(fig)
+                plt.close()
+
+    if pdffile:
+        log.info('Writing {}'.format(pdffile))
+        if png:
+            fig.savefig(pdffile)
+            plt.close()
+        else:
+            pdf.close()
+
+def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=None,
+                           fastmeta=None, fastspec=None, fastspecfile=None, CFit=None,
+                           EMFit=None, ncol=3, nrow=5, pdffile=None):
     """QA of the fastspec emission-line spectra.
 
     """
     from matplotlib.colors import Normalize
     from fastspecfit.templates.templates import remove_undetected_lines
+    from fastspecfit.util import ivar2var, C_LIGHT
+    from fastspecfit.templates.templates import rebuild_fastspec_spectrum
+
+    sns, _ = plot_style()        
+
+    if CFit is None or EMFit is None:
+        from fastspecfit.continuum import ContinuumFit
+        from fastspecfit.emlines import EMLineFit    
+        CFit = ContinuumFit()
+        EMFit = EMLineFit()    
     
-    sns, _ = plot_style()
-
-    wave = fitsio.read(fastspecfile, ext='WAVE')
-    flux = fitsio.read(fastspecfile, ext='FLUX')
-    ivar = fitsio.read(fastspecfile, ext='IVAR')
-
-    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
-    nobj = len(fastmeta)
-
-    fastspec = remove_undetected_lines(fastspec, EMFit.linetable, devshift=False)
-
-    for linename in EMFit.linetable['name']:
-        amp = fastspec['{}_AMP'.format(linename.upper())].data
-        neg = np.where(amp < 0)[0]
-        if len(neg) > 0:
-            print('Fix {}'.format(linename))
-            pdb.set_trace()
-
-    ncol, nrow = 3, 5
-    icam = 0
+    if fastwave is None:
+        fastwave, fastflux, fastivar, fastmeta, fastspec = read_stacked_fastspec(fastspecfile)
         
-    rW1color = np.unique(fastmeta['RW1'])
-    npage = len(rW1color)
+    fastspec_fix = remove_undetected_lines(fastspec, EMFit.linetable, devshift=False)
 
+    if targetclass == 'lrg':
+        absmagcol = 'MR'
+        colorcol = 'GI'
+    elif targetclass == 'elg':
+        absmagcol = 'MG'
+        colorcol = 'GR'
+    elif targetclass == 'bgs':
+        absmagcol = 'MR'
+        colorcol = 'GR'
+    else:
+        raise NotImplemented
+
+    # plotting preferences
     cmap = plt.cm.get_cmap('jet')
     #cmap = sns.color_palette(as_cmap=True)
     cnorm = Normalize(vmin=np.min(fastmeta['ZOBJ']), vmax=np.max(fastmeta['ZOBJ']))
-    #cnorm = Normalize(vmin=np.min(rW1color), vmax=np.max(rW1color))
-        
-    if pdffile:
-        from matplotlib.backends.backend_pdf import PdfPages
-        pdf = PdfPages(pdffile)
 
     inches_wide = 16
     inches_fullspec = 6
@@ -154,24 +393,57 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
         I = np.where(plotgroup == EMFit.linetable['plotgroup'])[0]
         linenames.append(EMFit.linetable['nicename'][I[0]])
         meanwaves.append(np.mean(EMFit.linetable['restwave'][I]))
-        deltawaves.append((np.max(EMFit.linetable['restwave'][I]) - np.min(EMFit.linetable['restwave'][I])) / 2)
+        deltawaves.append((np.max(EMFit.linetable['restwave'][I]) - 
+                           np.min(EMFit.linetable['restwave'][I])) / 2)
         sigmas.append(plotsig_default)
     srt = np.argsort(meanwaves)
     meanwaves = np.hstack(meanwaves)[srt]
     deltawaves = np.hstack(deltawaves)[srt]
     sigmas = np.hstack(sigmas)[srt]
     linenames = np.hstack(linenames)[srt]
-    
-    # make the plot!
-    for ipage in np.arange(npage):#[:2]:
 
-        pageindx = np.where(rW1color[ipage] == fastmeta['RW1'])[0]
-        absmag = sorted(set(fastmeta['MR'][pageindx])) # subpage
+    if targetclass == 'lrg':
+        absmagcol = 'MR'
+        colorcol = 'RW1'
+    elif targetclass == 'elg':
+        absmagcol = 'MG'
+        colorcol = 'GR'
+    elif targetclass == 'bgs':
+        absmagcol = 'MR'
+        colorcol = 'GR'
+    else:
+        raise NotImplemented
+        
+    # how many pages?
+    nobj = len(fastmeta)
+    icam = 0
+    
+    restcolor = np.unique(fastmeta[colorcol])
+    npage = len(restcolor)
+
+    if npage == 1:
+        png = True
+    else:
+        png = False
+    
+    if pdffile:
+        if png:
+            pdffile = pdffile.replace('.pdf', '.png')
+        else:
+            from matplotlib.backends.backend_pdf import PdfPages
+            pdf = PdfPages(pdffile)
+
+    # make the plot!
+    for ipage in np.arange(npage):
+        log.info('Building page {}/{}'.format(ipage+1, npage))
+
+        pageindx = np.where(restcolor[ipage] == fastmeta[colorcol])[0]
+        absmag = sorted(set(fastmeta[absmagcol][pageindx])) # subpage
         nsubpage = len(absmag)
 
         for isubpage in np.arange(nsubpage):#[:1]:#[::2]:
 
-            subpageindx = np.where((absmag[isubpage] == fastmeta['MR'][pageindx]))[0]
+            subpageindx = np.where((absmag[isubpage] == fastmeta[absmagcol][pageindx]))[0]
 
             fig = plt.figure(figsize=(inches_wide, 2*inches_fullspec + inches_perline*nlinerows))
             gs = fig.add_gridspec(nrows, nlinepanels, height_ratios=height_ratios)
@@ -190,10 +462,10 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
             removelabels = np.ones(nline, bool)
         
             for iplot, indx in enumerate(pageindx[subpageindx]):
-                print(ipage, isubpage, iplot, len(pageindx), len(subpageindx))
+                #log.info(ipage, isubpage, iplot, len(pageindx), len(subpageindx))
 
                 modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
-                    fastspec[indx], wave, flux[indx, :], ivar[indx, :], CFit, EMFit)
+                    fastspec[indx], fastwave, fastflux[indx, :], fastivar[indx, :], CFit, EMFit)
 
                 #if fastmeta['IBIN'][indx] == 1262:
                 #    pdb.set_trace()
@@ -217,7 +489,8 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
                     bigymin, bigymax = 0.0, 1.0
 
                 # zoom in on individual emission lines
-                for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
+                for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(
+                    meanwaves, deltawaves, sigmas, linenames)):
                     wmin = (meanwave - deltawave) - 8 * sig * meanwave / C_LIGHT
                     wmax = (meanwave + deltawave) + 8 * sig * meanwave / C_LIGHT
                     lineindx = np.where((modelwave > wmin) * (modelwave < wmax))[0]
@@ -260,142 +533,157 @@ def qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=None):
             bigax.set_xlim(2600, 7200) # 3500, 9300)
             bigax.set_title(
                 r'${:.2f}<r-W1<{:.2f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
-                fastmeta['RW1MIN'][indx], fastmeta['RW1MAX'][indx],
-                fastmeta['MRMIN'][indx], fastmeta['MRMAX'][indx]
+                fastmeta['{}MIN'.format(colorcol)][indx], fastmeta['{}MAX'.format(colorcol)][indx],
+                fastmeta['{}MIN'.format(absmagcol)][indx], fastmeta['{}MAX'.format(absmagcol)][indx]
                 ))
             #bigax.set_xlabel('Observed-frame Wavelength ($\AA$)')
 
             plt.subplots_adjust(wspace=0.28, left=0.07, right=0.95, top=0.95, bottom=0.1)
-            
-            if pdffile:
+
+            if pdffile and png is False:
                 pdf.savefig(fig)
-                
-            plt.close()
+                plt.close()
 
     if pdffile:
         log.info('Writing {}'.format(pdffile))
-        pdf.close()
+        if png:
+            fig.savefig(pdffile)
+            plt.close()
+        else:
+            pdf.close()
 
-    pdb.set_trace()
+def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png_rest_bins=None):
+    """QA of the observed- and rest-frame photometry.
 
-def qa_fastspec_fullspec(fastspecfile, CFit, EMFit, pdffile=None):
-    """Full-spectrum QA."""
+    """
+    from matplotlib.colors import LogNorm
+    from fastspecfit.templates.sample import read_parent_sample, stacking_bins
 
     sns, _ = plot_style()
+    cmap = plt.cm.get_cmap('RdYlBu')
 
-    wave = fitsio.read(fastspecfile, ext='WAVE')
-    flux = fitsio.read(fastspecfile, ext='FLUX')
-    ivar = fitsio.read(fastspecfile, ext='IVAR')
-
-    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
-    nobj = len(fastmeta)
-
-    ncol, nrow = 3, 5
-    icam = 0
-        
-    zobj = np.unique(fastmeta['ZOBJ'])
-    npage = len(zobj)
+    phot, spec, meta = read_parent_sample(samplefile)
+    bins, nbins = stacking_bins(targetclass, verbose=True)
     
-    if pdffile:
-        from matplotlib.backends.backend_pdf import PdfPages
-        pdf = PdfPages(pdffile)
+    def elg_obs(phot, png=None):
+        gobslim = (19.5, 25)
+        grobslim = (-1.2, 1.5)
+        rzobslim = (-1.5, 2.2)
 
-    for ipage in np.arange(npage):#[:1]:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 
-        pageindx = np.where(zobj[ipage] == fastmeta['ZOBJ'])[0]
-
-        absmag = sorted(set(fastmeta['MR'][pageindx])) # subpage
-        nsubpage = len(absmag)
-
-        for isubpage in np.arange(nsubpage):#[:1]:#[::2]:
-
-            subpageindx = np.where((absmag[isubpage] == fastmeta['MR'][pageindx]))[0]
-
-            fig, allax = plt.subplots(nrow, ncol, figsize=(12, 16), sharex=True, sharey=True)
-            for iplot, (indx, ax) in enumerate(zip(pageindx[subpageindx], allax.flatten())):
-                print(ipage, isubpage, iplot, len(pageindx), len(subpageindx))
-
-                # rebuild the best-fitting spectrum
-                modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
-                    fastspec[indx], wave, flux[indx, :], ivar[indx, :], CFit, EMFit)
-
-                #sigma, _ = ivar2var(data['ivar'][icam], sigma=True)
-                #ax.fill_between(data['wave'][icam], data['flux'][icam]-sigma,
-                #                            data['flux'][icam]+sigma, color='skyblue')
-                ax.plot(data['wave'][icam], data['flux'][icam], color='skyblue')
-                ax.plot(modelwave[::3], (continuum+emlinemodel)[::3], color='firebrick', alpha=0.5)
-                ax.plot(modelwave[::3], continuum[::3], color='blue', alpha=0.5)
-                #ax.plot(modelwave[::3], (continuum+smooth_continuum)[::3], color='gray', alpha=0.3)
-                ax.plot(modelwave[::3], smooth_continuum[::3], color='gray', alpha=0.7)
-
-                ymin, ymax = 1e6, -1e6
-
-                filtflux = median_filter(data['flux'][icam], 51, mode='nearest')
-                sigflux = np.std(data['flux'][icam][data['ivar'][icam] > 0])
-                if -2 * sigflux < ymin:
-                    ymin = -2 * sigflux
-                if sigflux * 5 > ymax:
-                    ymax = sigflux * 5
-                if np.max(filtflux) > ymax:
-                    ymax = np.max(filtflux) * 1.4
-
-                ax.text(0.96, 0.06, '\n'.join(( r'${:.1f}<g-i<{:.1f}$'.format(fastmeta['GIMIN'][indx], fastmeta['GIMAX'][indx]),
-                                                r'${:.2f}<r-W1<{:.2f}$'.format(fastmeta['RW1MIN'][indx], fastmeta['RW1MAX'][indx]) )),
-                                                ha='right', va='bottom', transform=ax.transAxes, fontsize=10,
-                                                bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
-                ax.text(0.04, 0.96,
-                        '\n'.join(( 'N={}, S/N={:.1f}'.format(fastmeta['NOBJ'][indx], fastspec['CONTINUUM_SNR_ALL'][indx]), )),
-                    ha='left', va='top', transform=ax.transAxes, fontsize=10,
-                    bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
-
-                ax.set_xlim(modelwave.min(), modelwave.max())
-                ax.set_ylim(ymin, ymax)
-                ax.set_xticklabels([])
-                ax.set_yticklabels([])
-
-                plt.subplots_adjust(wspace=0.05, hspace=0.05, left=0.07, right=0.95, top=0.95, bottom=0.1)
-
-                if iplot == ncol*nrow-1:
-                    break
-            
-            fig.text(0.52, 0.968, r'${:.1f}<z<{:.1f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
-                fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
-                fastmeta['MRMIN'][indx], fastmeta['MRMAX'][indx]),
-                ha='center', va='center', fontsize=22)
-
-            for rem in np.arange(ncol*nrow-iplot-1)+iplot+1:
-                allax.flatten()[rem].axis('off')
-                
-            if pdffile:
-                pdf.savefig(fig)
-                
-            plt.close()
-
-    if pdffile:
-        log.info('Writing {}'.format(pdffile))
-        pdf.close()
-
-def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
-                      png_rest=None, png_rest_bins=None):
-
-    cmap = plt.cm.get_cmap('RdYlBu')    
-
-    def obs(phot, png=None):
-        zobslim = (16, 22)
-        W1obslim = (16, 21)
-        grobslim = (-0.2, 5)
-        rzobslim = (0.3, 3)
-        zW1obslim = (0, 2.8)
-
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
-
-        ax1.hexbin(phot['RMAG']-phot['ZMAG'], phot['GMAG']-phot['RMAG'], mincnt=1, bins='log', 
+        ax1.hexbin(phot['RMAG']-phot['ZMAG'], phot['GMAG']-phot['RMAG'], mincnt=1, bins='log',
                    #C=cat['weight'], reduce_C_function=np.sum,
                    cmap=cmap)
         ax1.set_xlabel(r'$(r - z)_{\rm obs}$')
         ax1.set_ylabel(r'$(g - r)_{\rm obs}$')
         ax1.set_xlim(rzobslim)
+        ax1.set_ylim(grobslim)
+
+        hb = ax2.hexbin(phot['GMAG'], phot['GMAG']-phot['RMAG'], mincnt=1, bins='log',
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   cmap=cmap)
+        ax2.set_xlabel(r'$g$')
+        ax2.set_ylim(grobslim)
+        ax2.set_xlim(gobslim)
+
+        cax = fig.add_axes([0.88, 0.12, 0.02, 0.83])
+        formatter = ticker.LogFormatter(10, labelOnlyBase=False)
+        fig.colorbar(hb, cax=cax, format=formatter, label='Number of Galaxies')
+
+        for aa in (ax1, ax2):
+            aa.grid(True)
+
+        plt.subplots_adjust(left=0.12, top=0.95, right=0.85, bottom=0.13, wspace=0.07)
+
+        if png:
+            log.info('Writing {}'.format(png))
+            fig.savefig(png)
+            plt.close()
+            
+    def elg_rest(phot, meta, bins=None, png=None):
+        zlim, Mglim, grlim = (0.5, 1.7), (-17, -26), (-0.5, 1.0)
+
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
+
+        ax1.hexbin(meta['Z'], phot['ABSMAG_G'], mincnt=1, bins='log',
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   cmap=cmap)
+        ax1.set_ylim(Mglim)
+        ax1.set_xlim(zlim)
+        ax1.set_xlabel('Redshift')
+        ax1.set_ylabel(r'$M_{0.0g}$')
+        ax1.xaxis.set_major_locator(ticker.MultipleLocator(0.2))        
+
+        if bins:
+            dx, dy = bins['zobj']['del'], bins['Mg']['del']
+            [ax1.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
+             for xx in bins['zobj']['grid'] for yy in bins['Mg']['grid']]
+
+        ax2.hexbin(meta['Z'], phot['ABSMAG_G']-phot['ABSMAG_R'], mincnt=1, bins='log',
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   cmap=plt.cm.get_cmap('RdYlBu'))
+        ax2.set_xlim(zlim)
+        ax2.set_ylim(grlim)
+        ax2.set_xlabel('Redshift')
+        ax2.set_ylabel(r'$^{0.0}(g - r)$', labelpad=-10)
+        ax2.xaxis.set_major_locator(ticker.MultipleLocator(0.2))        
+        ax2.yaxis.set_major_locator(ticker.MultipleLocator(0.5))        
+
+        if bins:
+            dx, dy = bins['zobj']['del'], bins['gr']['del']
+            [ax2.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
+             for xx in bins['zobj']['grid'] for yy in bins['gr']['grid']]
+
+        hb = ax3.hexbin(phot['ABSMAG_G'], phot['ABSMAG_G']-phot['ABSMAG_R'], mincnt=1, bins='log',
+                        #C=cat['weight'], reduce_C_function=np.sum,
+                        cmap=plt.cm.get_cmap('RdYlBu'))
+        ax3.set_xlabel(r'$M_{0.0g}$')
+        ax3.set_ylabel(r'$^{0.0}(g - r)$', labelpad=-10)
+        ax3.set_xlim(Mglim)
+        ax3.set_ylim(grlim)
+        ax3.yaxis.set_major_locator(ticker.MultipleLocator(0.5))        
+
+        if bins:
+            dx, dy = bins['Mg']['del'], bins['gr']['del']
+            [ax3.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
+             for xx in bins['Mg']['grid'] for yy in bins['gr']['grid']]
+            
+        ax4.axis('off')
+
+        cax = fig.add_axes([0.49, 0.12, 0.02, 0.36])
+        #cax = fig.add_axes([0.54, 0.4, 0.35, 0.03])
+        formatter = ticker.LogFormatter(10, labelOnlyBase=False)
+        fig.colorbar(hb, format=formatter, label='Number of Galaxies',
+                     cax=cax)#, orientation='horizontal')
+
+        for aa in (ax1, ax2, ax3):
+            aa.grid(True)
+
+        plt.subplots_adjust(left=0.1, top=0.95, wspace=0.3, hspace=0.3, right=0.88, bottom=0.13)
+
+        if png:
+            log.info('Writing {}'.format(png))
+            fig.savefig(png)
+            plt.close()
+
+    def lrg_obs(phot, png=None):
+        zobslim = (16, 22)
+        W1obslim = (16, 21)
+        grobslim = (0.0, 4)
+        rzobslim = (0.0, 3)
+        rW1obslim = (0.5, 4.5)
+        zW1obslim = (0, 3)
+
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
+
+        ax1.hexbin(phot['RMAG']-phot['W1MAG'], phot['GMAG']-phot['RMAG'], mincnt=1, bins='log', 
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   #norm=LogNorm(vmin=1, vmax=100),
+                   cmap=cmap)
+        ax1.set_xlabel(r'$(r - W1)_{\rm obs}$')
+        ax1.set_ylabel(r'$(g - r)_{\rm obs}$')
+        ax1.set_xlim(rW1obslim)
         ax1.set_ylim(grobslim)
 
         ax2.hexbin(phot['ZMAG']-phot['W1MAG'], phot['RMAG']-phot['ZMAG'], mincnt=1, bins='log', 
@@ -406,26 +694,31 @@ def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
         ax2.set_xlabel(r'$(z - W1)_{\rm obs}$')
         ax2.set_xlim(zW1obslim)
         ax2.set_ylim(rzobslim)
-
+        ax2.xaxis.set_major_locator(ticker.MultipleLocator(1))
+        ax2.yaxis.set_major_locator(ticker.MultipleLocator(1))
+        
         ax3.hexbin(phot['ZMAG'], phot['RMAG']-phot['ZMAG'], mincnt=1, bins='log', 
                    #C=cat['weight'], reduce_C_function=np.sum,
                    cmap=cmap)
         ax3.set_ylabel(r'$(r - z)_{\rm obs}$')
-        ax3.set_xlabel(r'$z$')
+        ax3.set_xlabel(r'$z_{\rm obs}$')
         ax3.set_xlim(zobslim)
         ax3.set_ylim(rzobslim)
+        ax3.yaxis.set_major_locator(ticker.MultipleLocator(1))
 
         hb = ax4.hexbin(phot['W1MAG'], phot['ZMAG']-phot['W1MAG'], mincnt=1, bins='log', 
                    #C=cat['weight'], reduce_C_function=np.sum,
                    cmap=cmap)
         ax4.set_ylabel(r'$(z - W1)_{\rm obs}$')
-        ax4.set_xlabel(r'$W1$')
+        ax4.set_xlabel(r'$W1_{\rm obs}$')
         ax4.set_xlim(W1obslim)
         ax4.set_ylim(zW1obslim)
+        ax4.yaxis.set_major_locator(ticker.MultipleLocator(1))
 
         cax = fig.add_axes([0.88, 0.12, 0.02, 0.83])
         formatter = ticker.LogFormatter(10, labelOnlyBase=False) 
-        fig.colorbar(hb, cax=cax, format=formatter, label='Number of Galaxies')
+        cb = fig.colorbar(hb, cax=cax, label='Number of Galaxies',
+                          format=formatter)#, ticks=[1, 10, 50])
 
         for aa in (ax1, ax2, ax3, ax4):
             aa.grid(True)
@@ -433,11 +726,11 @@ def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
         plt.subplots_adjust(left=0.1, top=0.95, wspace=0.25, hspace=0.32, right=0.85, bottom=0.13)
 
         if png:
-            print('Writing {}'.format(png))
+            log.info('Writing {}'.format(png))
             fig.savefig(png)
             plt.close()
 
-    def rest(phot, spec, meta, bins=None, png=None):
+    def lrg_rest(phot, meta, bins=None, png=None):
         zlim, Mrlim, gilim, rW1lim = (0.0, 1.2), (-19, -25), (0.2, 1.6), (-1.4, 1.7)
 
         fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(18, 10))
@@ -535,43 +828,188 @@ def qa_photometry_lrg(phot, spec, meta, bins=None, png_obs=None,
         plt.subplots_adjust(left=0.1, top=0.95, wspace=0.37, hspace=0.3, right=0.88, bottom=0.13)
         
         if png:
-            print('Writing {}'.format(png))
+            log.info('Writing {}'.format(png))
             fig.savefig(png)
             plt.close()
+            
+    # make the plots!
+    if targetclass == 'lrg':
+        if png_obs:
+            lrg_obs(phot, png=png_obs)            
+        if png_rest:
+            lrg_rest(phot, meta, png=png_rest)    
+        if png_rest_bins:
+            lrg_rest(phot, meta, bins=bins, png=png_rest_bins)
+    elif targetclass == 'elg':
+        if png_obs:
+            elg_obs(phot, png=png_obs)            
+        if png_rest:
+            elg_rest(phot, meta, png=png_rest)    
+        if png_rest_bins:
+            elg_rest(phot, meta, bins=bins, png=png_rest_bins)
+    elif targetclass == 'bgs':
+        if png_obs:
+            bgs_obs(phot, png=png_obs)            
+        if png_rest:
+            bgs_rest(phot, meta, png=png_rest)    
+        if png_rest_bins:
+            bgs_rest(phot, meta, bins=bins, png=png_rest_bins)
+    else:
+        pass
 
-    obs(phot, png=png_obs)
-    rest(phot, spec, meta, png=png_rest)
-    rest(phot, spec, meta, bins, png=png_rest_bins)
+#def qa_tilefile(targetclass, remove_vi=True, min_efftime=10.0,
+#                specprod='denali', png=None):
+#    """Read the set of tiles used for the templates and make a simple QA plot
+#    showing the distribution of effective exposure times.
+#
+#    """
+#
+#    #from fastspecfit.templates.sample import select_tiles
+#    #tileinfo = select_tiles(targetclass, remove_vi=remove_vi, specprod=specprod
+#    #                        min_efftime=min_efftime)
+#    #tileinfo = Table.read(tilefile)
+#    
+#    sns, _ = plot_style()
+#
+#    log.info('Read {} tiles from {}'.format(len(tileinfo), tilefile))
+#
+#    xlim = (efftime.min(), efftime.max())
+#    fig, ax = plt.subplots(figsize=(9, 6))
+#    _ = ax.hist(tileinfo['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+#                label='All Tiles (N={})'.format(len(tileinfo)))
+#    _ = ax.hist(targtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim, alpha=0.9,
+#                label='{} Tiles (N={})'.format(targetclass.upper(), len(targtiles)))
+#
+#    if vitiles:
+#      _ = ax.hist(vitiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+#                  label='VI Tiles (N={})'.format(len(vitiles)))
+#    if shallowtiles:
+#      _ = ax.hist(shallowtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+#                  label='Shallow (<{:.0f} min) Tiles (N={})'.format(
+#                      min_efftime, len(shallowtiles)))
+#
+#    ax.set_xlabel('Effective Time (spec, min)')
+#    ax.set_ylabel('Number of Tiles')
+#
+#    ax.legend(loc='upper right', fontsize=16)
+#
+#    plt.subplots_adjust(right=0.95, top=0.95, bottom=0.17)
+#
+#    if png:
+#        log.info('Writing {}'.format(png))
+#        fig.savefig(png)
+#        plt.close()
 
-def qa_tilefile(tilefile, png=None):
+def qa_parent_sample(samplefile, tilefile, targetclass='lrg', specprod='denali', png=None):
+    """Build QA showing how the parent sample was selected.
 
-    sns, _ = plot_style()
+    """
+    import fitsio
+    from fastspecfit.templates.sample import read_fastspecfit, read_parent_sample
 
-    tileinfo = Table.read(tilefile)
+    sns, _ = plot_style()        
 
-    xlim = (efftime.min(), efftime.max())
-    fig, ax = plt.subplots(figsize=(9, 6))
-    _ = ax.hist(tileinfo['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
-                label='All Tiles (N={})'.format(len(tileinfo)))
-    _ = ax.hist(targtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim, alpha=0.9,
-                label='{} Tiles (N={})'.format(targetclass.upper(), len(targtiles)))
+    tilestable = Table.read(tilefile)
+    log.info('Read {} tiles from {}'.format(len(tilestable), tilefile))
+    
+    allphot, allspec, allmeta = read_fastspecfit(
+        tilestable, targetclass=targetclass,
+        specprod=specprod)
 
-    if vitiles:
-      _ = ax.hist(vitiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
-                  label='VI Tiles (N={})'.format(len(vitiles)))
-    if shallowtiles:
-      _ = ax.hist(shallowtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
-                  label='Shallow (<{:.0f} min) Tiles (N={})'.format(
-                      min_efftime, len(shallowtiles)))
+    phot, spec, meta = read_parent_sample(samplefile)
 
-    ax.set_xlabel('Effective Time (spec, min)')
-    ax.set_ylabel('Number of Tiles')
+    nall = len(allphot)
+    nparent = len(phot)
+    log.info('Read {} objects in the parent sample from {}'.format(nparent, samplefile))
 
-    ax.legend(loc='upper right', fontsize=16)
+    if targetclass == 'lrg':
+        zlim = (-0.05, 1.5)
+        fastphot_chi2lim = (-2.5, 4)
+        loc = 'upper right'
+    elif targetclass == 'elg':
+        zlim = (-0.05, 1.8)
+        fastphot_chi2lim = (-2.5, 4)
+        loc = 'upper left'
+    elif targetclass == 'bgs':
+        zlim = (-0.05, 0.6)
+        fastphot_chi2lim = (-2.5, 4)
+    else:
+        pass
 
-    plt.subplots_adjust(right=0.95, top=0.95, bottom=0.17)
+    dchi2lim = (0.8, 4.5)
+    #fastspec_chi2lim = (-2, 1)
+    fastspec_chi2lim = (-0.1, 1)
 
-    print('Writing {}'.format(png))
-    fig.savefig(png)
-    plt.close()
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 10), sharey=True)
+    ax1.hist(allmeta['Z'], bins=75, range=zlim, label='All (N={})'.format(nall))
+    ax1.hist(meta['Z'], bins=75, range=zlim, alpha=0.7, label='Parent (N={})'.format(nparent))
+    ax1.set_xlim(zlim)
+    ax1.set_xlabel('Redshift')
+    ax1.set_ylabel('Number of {} Targets'.format(targetclass.upper()))
 
+    ax2.hist(np.log10(allphot['CONTINUUM_CHI2']), bins=75, range=fastphot_chi2lim)
+    ax2.hist(np.log10(phot['CONTINUUM_CHI2']), bins=75, range=fastphot_chi2lim, alpha=0.7)
+    ax2.set_xlim(fastphot_chi2lim)
+    ax2.set_xlabel(r'$\log_{10}\,\chi^{2}_{\nu}$ [fastphot, continuum]')
+    #ax2.set_xlabel(r'$\log_{10}\,\chi^{2}_{\nu}$ [$grzW1W2$ model fit]')
+    #ax2.yaxis.set_label_position('right')
+    #ax2.yaxis.tick_right()
+
+    ax3.hist(np.log10(allmeta['DELTACHI2']), bins=75, range=dchi2lim)
+    ax3.hist(np.log10(meta['DELTACHI2']), bins=75, range=dchi2lim, alpha=0.7)
+    ax3.set_xlim(dchi2lim)
+    ax3.set_xlabel(r'$\log_{10}\,\Delta\chi^{2}$ [redrock]')
+    ax3.set_ylabel('Number of {} Targets'.format(targetclass.upper()))
+
+    #ax4.hist(np.log10(np.abs(allspec['CONTINUUM_SMOOTHCORR_B'])), bins=75, range=fastspec_chi2lim)
+    #ax4.hist(np.log10(np.abs(spec['CONTINUUM_SMOOTHCORR_B'])), bins=75, range=fastspec_chi2lim, alpha=0.7)
+    ax4.hist(np.log10(allspec['CONTINUUM_CHI2']), bins=75, range=fastspec_chi2lim)
+    ax4.hist(np.log10(spec['CONTINUUM_CHI2']), bins=75, range=fastspec_chi2lim, alpha=0.7)
+    ax4.set_xlim(fastspec_chi2lim)
+    ax4.set_xlabel(r'$\log_{10}\,\chi^{2}_{\nu}$ [fastspec, continuum]')
+    ax4.xaxis.set_major_locator(ticker.MultipleLocator(0.5))
+    #ax4.yaxis.set_label_position('right')
+    #ax4.yaxis.tick_right()
+
+    ax1.legend(loc=loc, fontsize=14)
+    plt.subplots_adjust(left=0.14, wspace=0.09, hspace=0.3, right=0.95, top=0.95, bottom=0.15)
+
+    if png:
+        log.info('Writing {}'.format(png))
+        fig.savefig(png)
+        plt.close()
+
+def build_all_qa(targetclass, templatedir, tilefile=None, samplefile=None,
+                 stackfile=None, fastspecfile=None, specprod='denali'):
+
+    from fastspecfit.templates.sample import select_tiles
+
+    png = os.path.join(templatedir, 'qa', '{}-tiles.png'.format(targetclass))
+    #select_tiles(targetclass, png=png)
+
+    png = os.path.join(templatedir, 'qa', '{}-parent.png'.format(targetclass))
+    #qa_parent_sample(samplefile, tilefile, targetclass=targetclass, specprod=specprod, png=png)
+
+    png_obs = os.path.join(templatedir, 'qa', '{}-obs.png'.format(targetclass))
+    png_rest = os.path.join(templatedir, 'qa', '{}-rest.png'.format(targetclass))
+    png_rest_bins = os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(targetclass))
+    qa_photometry(targetclass, samplefile=samplefile, png_obs=png_obs,
+                  png_rest=png_rest, png_rest_bins=png_rest_bins)
+
+    pdb.set_trace()
+
+    pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec.pdf'.format(targetclass))
+    #qa_fastspec_fullspec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)
+
+    pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-emlinespec.pdf'.format(targetclass))
+    qa_fastspec_emlinespec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)        
+
+    pdb.set_trace()
+
+    png = os.path.join(templatedir, 'qa', '{}-bpt.png'.format(args.targetclass))
+    qa_bpt(fastspecfile, EMFit, png=png)
+    pdb.set_trace()
+
+
+    #    bins, nbins = lrg_stacking_bins(verbose=True)
+    #

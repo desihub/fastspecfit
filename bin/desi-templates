@@ -30,7 +30,7 @@ def parse(options=None):
 
     parser.add_argument('--minwave', type=float, default=500.0, help='Minimum output wavelength of stacked continuum spectra.')
     parser.add_argument('--maxwave', type=float, default=6e4, help='Maximum output wavelength of stacked continuum spectra.')
-    parser.add_argument('--min-efftime', type=float, default=10.0, help='Minimum effective time to keep a tile (min).')
+    parser.add_argument('--min-efftime', type=float, default=5.0, help='Minimum effective time to keep a tile (min).')
 
     parser.add_argument('-o', '--outdir', default=None, type=str, help='Full path to desired output directory.')
     parser.add_argument('--overwrite-stacks', action='store_true', help='Overwrite existing stacked spectra output files.')
@@ -67,55 +67,13 @@ def main(args=None, comm=None):
     else:
         templatefile = os.path.join(templatedir, '{}-templates.fits'.format(args.targetclass))
 
-    # Optionally build QA for every (existing) output file.
+    # Optional build QA for every (existing) output files and return.
     if args.qa:
-        from fastspecfit.templates.sample import read_tileinfo, read_fastspecfit, select_parent_sample
+        from fastspecfit.templates.qa import build_all_qa
+        build_all_qa(args.targetclass, templatedir, tilefile=tilefile,
+                     samplefile=samplefile, stackfile=stackfile,
+                     fastspecfile=fastspecfile, specprod=args.specprod)
 
-        # hacky
-        from fastspecfit.continuum import ContinuumFit
-        from fastspecfit.emlines import EMLineFit
-        from fastspecfit.templates.qa import qa_fastspec_emlinespec, qa_fastspec_fullspec, qa_bpt
-    
-        CFit = ContinuumFit(minwave=args.minwave, maxwave=args.maxwave)
-        EMFit = EMLineFit()
-
-        pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec.pdf'.format(args.targetclass))
-        qa_fastspec_fullspec(fastspecfile, CFit, EMFit, pdffile=pdffile)
-        pdb.set_trace()
-
-        pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-emlinespec.pdf'.format(args.targetclass))
-        qa_fastspec_emlinespec(fastspecfile, CFit, EMFit, pdffile=pdffile)        
-        pdb.set_trace()
-
-        png = os.path.join(templatedir, 'qa', '{}-bpt.png'.format(args.targetclass))
-        qa_bpt(fastspecfile, EMFit, png=png)
-        pdb.set_trace()
-
-        ## Read the master tile file and the fastspecfit fitting results and
-        ## select the parent sample.
-        #png = os.path.join(templatedir, 'qa', '{}-tiles.png'.format(args.targetclass))
-        #tileinfo = read_tileinfo(args.targetclass, min_efftime=args.min_efftime,
-        #                         remove_vi=True, specprod=args.specprod, png=png)
-        #allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass,
-        #                                             specprod=args.specprod)
-        #
-        #png = os.path.join(templatedir, 'qa', '{}-parent.png'.format(args.targetclass))
-        #phot, spec, meta = select_parent_sample(allphot, allspec, allmeta, png=png,
-        #                                        targetclass=args.targetclass, verbose=True)
-        #
-        #if args.targetclass == 'lrg':
-        #    from fastspecfit.templates.templates import lrg_stacking_bins
-        #    from fastspecfit.templates.qa import qa_photometry_lrg
-        #
-        #    bins, nbins = lrg_stacking_bins(verbose=True)
-        #
-        #    png_obs = os.path.join(templatedir, 'qa', '{}-obs.png'.format(args.targetclass))
-        #    png_rest = os.path.join(templatedir, 'qa', '{}-rest.png'.format(args.targetclass))
-        #    png_rest_bins = os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(args.targetclass))
-        #
-        #    qa_photometry_lrg(phot, spec, meta, bins=bins, png_obs=png_obs,
-        #                      png_rest=png_rest, png_rest_bins=png_rest_bins)
-                              
         return
 
     # [1] Build the stacked spectra.
@@ -123,20 +81,23 @@ def main(args=None, comm=None):
         log.info('Building stacked spectra in bins of properties.')
 
         from fastspecfit.templates.templates import stack_in_bins
-        from fastspecfit.templates.sample import (read_tileinfo, read_fastspecfit,
+        from fastspecfit.templates.sample import (select_tiles, read_fastspecfit,
                                                   select_parent_sample, spectra_in_bins)
         
         # Read the master tile file and the fastspecfit fitting results and
         # select the parent sample.
-        tileinfo = read_tileinfo(args.targetclass, min_efftime=args.min_efftime,
-                                 remove_vi=True, specprod=args.specprod,
-                                 tilefile=tilefile)
-        allphot, allspec, allmeta = read_fastspecfit(tileinfo, targetclass=args.targetclass,
-                                                     specprod=args.specprod)
-        phot, spec, meta = select_parent_sample(allphot, allspec, allmeta, 
-                                                targetclass=args.targetclass,
-                                                specprod=args.specprod,
-                                                samplefile=samplefile, verbose=True)
+        tilestable = select_tiles(args.targetclass, min_efftime=args.min_efftime,
+                                remove_vi=True, specprod=args.specprod,
+                                outfile=tilefile)
+        
+        allphot, allspec, allmeta = read_fastspecfit(
+            tilestable, targetclass=args.targetclass,
+            specprod=args.specprod)
+        phot, spec, meta = select_parent_sample(
+            allphot, allspec, allmeta, targetclass=args.targetclass,
+            specprod=args.specprod, samplefile=samplefile, verbose=True)
+
+        pdb.set_trace()
         
         if args.targetclass == 'lrg':
             normwave = 4500.0
@@ -152,14 +113,12 @@ def main(args=None, comm=None):
 
         # select spectra in bins of properties, looping over all tiles
         sample, data, restwave, continuumwave = spectra_in_bins(
-            tileinfo, targetclass=args.targetclass, minperbin=args.minperbin,
+            tilestable, targetclass=args.targetclass, minperbin=args.minperbin,
             minwave=args.minwave, maxwave=args.maxwave, 
             fastphot_in_bins=fastphot_in_bins, verbose=False)
 
         stack_in_bins(sample, data, restwave, continuumwave=continuumwave,
                       normwave=normwave, mp=args.mp, stackfile=stackfile)
-
-    pdb.set_trace()
 
     # [2] Model the stacked spectra using fastspecfit.
     if not os.path.isfile(fastspecfile) or args.overwrite_fastspec:

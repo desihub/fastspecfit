@@ -155,7 +155,7 @@ def fastspec_onestack(fastmeta, fastspec, flux, ivar, meta,
 
     # Adjust the emission-line fitting range for each object (otherwise the
     # trapezoidal rebinning barfs with the default wavelength array).
-    minwave, maxwave = data['wave'][0].min()-1.0, data['wave'][0].max()+1.0
+    minwave, maxwave = data['wave'][0].min()-3.0, data['wave'][0].max()+3.0
     EMFit.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), EMFit.dlogwave)
 
     # fit the continuum and the (residual) emission-line spectrum
@@ -412,6 +412,8 @@ def stack_in_bins(sample, data, templatewave, mp=1, normwave=4500.0,
 
     if continuumwave is not None:
         continuumflux = np.zeros((ntemplate, len(continuumwave)), dtype='f4')
+    else:
+        continuumflux = None
 
     # parallelize the stack-building step
     mpargs = []
@@ -422,7 +424,7 @@ def stack_in_bins(sample, data, templatewave, mp=1, normwave=4500.0,
                            normwave, data[ibin]['cflux'], continuumwave])
         else:
             mpargs.append([data[ibin]['flux'], data[ibin]['ivar'], templatewave,
-                           normwave], None, None)
+                           normwave, None, None])
 
     t0 = time.time()
     if mp > 1:
@@ -811,3 +813,34 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
         write_templates(templatefile, modelwave, modelflux, metadata,
                         weights=weights, empca=empca)
 
+
+def zgrid_colors():
+    """Compute the colors of the templates on a fixed redshift grid."""
+    from speclite import filters
+    filt = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1')
+
+    wave, flux, meta = read_templates()
+    nt = len(meta)
+    print('Number of templates = {}'.format(nt))
+    #print(wave.min(), wave.max())    
+    
+    zmin, zmax, dz = 0.0, 1.5, 0.1
+    #zmin, zmax, dz = 0.0, 1.0, 0.1
+    nz = np.round( (zmax - zmin) / dz ).astype('i2')
+    print('Number of redshift points = {}'.format(nz))
+
+    cc = dict(
+        redshift = np.linspace(zmin, zmax, nz),
+        gr = np.zeros( (nt, nz) ),
+        rz = np.zeros( (nt, nz) ),
+        zW1 = np.zeros( (nt, nz), )
+    )    
+    
+    for iz, red in enumerate(cc['redshift']):
+        zwave = wave.astype('float') * (1 + red)
+        maggies = filt.get_ab_maggies(flux, zwave, mask_invalid=False)
+        cc['gr'][:, iz] = -2.5 * np.log10(maggies['decam2014-g'] / maggies['decam2014-r'] )
+        cc['rz'][:, iz] = -2.5 * np.log10(maggies['decam2014-r'] / maggies['decam2014-z'] )
+        cc['zW1'][:, iz] = -2.5 * np.log10(maggies['decam2014-z'] / maggies['wise2010-W1'] )
+    
+    return cc    

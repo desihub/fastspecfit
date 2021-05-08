@@ -17,46 +17,49 @@ from astropy.table import Table
 from desiutil.log import get_logger
 log = get_logger()
 
-def read_tileinfo(targetclass, remove_vi=False, min_efftime=None,
-                  specprod='denali', png=None, tilefile=None):
-    """Optionally remove tiles which are being visually inspected.
-     /global/cfs/cdirs/desi/sv/vi/TruthTables/Blanc/
+VITILES_TARGETCLASS = {'lrg': [80605, 80609],
+                       'elg': [80606, 80608, 80610],
+                       'bgs': [80613]}
+
+def select_tiles(targetclass, remove_vi=True, min_efftime=5.0,
+                 specprod='denali', outfile=None, png=None):
+    """Select tiles to use. Remove low exposure-time tiles and also 
+    remove tiles which are being visually inspected.
+    
+      /global/cfs/cdirs/desi/sv/vi/TruthTables/Blanc/
 
     """
-    vilookup = {'lrg': [80605, 80609],
-                'elg': [80606, 80608, 86010],
-                'bgs': [80613]}
-    
     reduxdir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod)
-    tileinfo = Table.read(os.path.join(reduxdir, 'tiles-{}.csv'.format(specprod)))
-    tileinfo = tileinfo[tileinfo['SURVEY'] != 'unknown']
-    tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
+    tilestable = Table.read(os.path.join(reduxdir, 'tiles-{}.csv'.format(specprod)))
+    tilestable = tilestable[tilestable['SURVEY'] != 'unknown']
+    tilestable = tilestable[np.argsort(tilestable['TILEID'])]
 
-    itargtiles = [targetclass in program for program in tileinfo['FAPRGRM']]
-    targtiles = tileinfo[itargtiles]
+    itargtiles = [targetclass in program for program in tilestable['FAPRGRM']]
+    targtiles = tilestable[itargtiles]
     
-    efftime = tileinfo['EFFTIME_SPEC'] / 60
+    efftime = tilestable['EFFTIME_SPEC'] / 60
 
     if targetclass and remove_vi:
-        ivitiles = np.isin(tileinfo['TILEID'], vilookup[targetclass])
-        vitiles = tileinfo[ivitiles]
-        log.info('Removing {} VI tiles.'.format(np.sum(ivitiles)))
-        tileinfo = tileinfo[np.logical_not(ivitiles)]
+        ivitiles = np.isin(tilestable['TILEID'], VITILES_TARGETCLASS[targetclass])
+        vitiles = tilestable[ivitiles]
+        log.info('Removing {} {} VI tiles: {}'.format(np.sum(ivitiles), targetclass.upper(),
+                                                      ', '.join(vitiles['TILEID'].astype(str))))
+        tilestable = tilestable[np.logical_not(ivitiles)]
     else:
         vitiles = None
         
     if min_efftime:
-        ishallowtiles = tileinfo['EFFTIME_SPEC'] / 60 <= min_efftime
-        shallowtiles = tileinfo[ishallowtiles]
+        ishallowtiles = tilestable['EFFTIME_SPEC'] / 60 <= min_efftime
+        shallowtiles = tilestable[ishallowtiles]
         log.info('Removing {} tiles with efftime < {:.1f} min.'.format(
             np.sum(ishallowtiles), min_efftime))
-        tileinfo = tileinfo[np.logical_not(ishallowtiles)]
+        tilestable = tilestable[np.logical_not(ishallowtiles)]
     else:
         shallowtiles = None
 
-    if tilefile:
-        log.info('Writing {} tiles to {}'.format(len(tileinfo), tilefile))
-        tileinfo.write(tilefile, overwrite=True)
+    if outfile:
+        log.info('Writing {} tiles to {}'.format(len(tilestable), outfile))
+        tilestable.write(outfile, overwrite=True)
 
     if png:
         import matplotlib.pyplot as plt
@@ -65,8 +68,8 @@ def read_tileinfo(targetclass, remove_vi=False, min_efftime=None,
 
         xlim = (efftime.min(), efftime.max())
         fig, ax = plt.subplots(figsize=(9, 6))
-        _ = ax.hist(tileinfo['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
-                    label='All Tiles (N={})'.format(len(tileinfo)))
+        _ = ax.hist(tilestable['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+                    label='All Tiles (N={})'.format(len(tilestable)))
         _ = ax.hist(targtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim, alpha=0.9,
                     label='{} Tiles (N={})'.format(targetclass.upper(), len(targtiles)))
         
@@ -85,13 +88,22 @@ def read_tileinfo(targetclass, remove_vi=False, min_efftime=None,
 
         plt.subplots_adjust(right=0.95, top=0.95, bottom=0.17)
 
-        print('Writing {}'.format(png))
+        log.info('Writing {}'.format(png))
         fig.savefig(png)
         plt.close()
-        
-    return tileinfo
 
-def read_fastspecfit(tileinfo, specprod='denali', targetclass='lrg'):
+    return tilestable
+
+def read_parent_sample(samplefile):
+    """Read the output of select_parent_sample
+
+    """
+    phot = Table(fitsio.read(samplefile, 'FASTPHOT'))
+    spec = Table(fitsio.read(samplefile, 'FASTSPEC'))
+    meta = Table(fitsio.read(samplefile, 'METADATA'))
+    return phot, spec, meta
+
+def read_fastspecfit(tilestable, specprod='denali', targetclass='lrg'):
     """Read the fastspecfit output for this production.
 
     """
@@ -110,13 +122,13 @@ def read_fastspecfit(tileinfo, specprod='denali', targetclass='lrg'):
     log.info('Read {} objects from {}'.format(len(spec), specfile))
     log.info('Read {} objects from {}'.format(len(phot), photfile))
     
-    ontiles = np.where(np.isin(meta['TILEID'], tileinfo['TILEID']))[0]
+    ontiles = np.where(np.isin(meta['TILEID'], tilestable['TILEID']))[0]
     spec = spec[ontiles]
     meta = meta[ontiles]
     phot = phot[ontiles]
     
     log.info('Keeping {} objects on {}/{} unique tiles.'.format(
-        len(ontiles), len(np.unique(meta['TILEID'])), len(tileinfo)))
+        len(ontiles), len(np.unique(meta['TILEID'])), len(tilestable)))
     
     ngal = len(spec)
     
@@ -137,7 +149,7 @@ def read_fastspecfit(tileinfo, specprod='denali', targetclass='lrg'):
         spec[targcol] = np.zeros(ngal, bool)
         phot[targcol] = np.zeros(ngal, bool)
         
-    for tile in tileinfo['TILEID']:
+    for tile in tilestable['TILEID']:
         I = np.where(meta['TILEID'] == tile)[0]
         if len(I) == 0:
             continue
@@ -215,23 +227,24 @@ def _select_bgs(iparent, phot, spec, meta, z_minmax=(0.05, 0.65),
     return iselect
 
 def select_parent_sample(phot, spec, meta, targetclass='lrg', specprod='denali',
-                         deltachi2_cut=40, continuumchi2_cut=300, smoothcorr_cut=10,
+                         deltachi2_cut=40, fastphot_chi2cut=100.0,
+                         fastspec_chi2cut=3.0, smoothcorr_cut=10,
                          return_indices=False, verbose=False, png=None, samplefile=None,
                          **kwargs):
     """High-level sample selection.
 
     """
     iparent = (
-        #(meta['SPECTYPE'] == 'GALAXY') *
         (meta['DELTACHI2'] > deltachi2_cut) * 
         (meta['FLUX_G'] > 0) * 
         (meta['FLUX_R'] > 0) * 
         (meta['FLUX_Z'] > 0) * 
         (meta['FLUX_W1'] > 0) *
-        (phot['CONTINUUM_CHI2'] < continuumchi2_cut) *
-        (np.abs(spec['CONTINUUM_SMOOTHCORR_B']) < smoothcorr_cut) *
-        (np.abs(spec['CONTINUUM_SMOOTHCORR_R']) < smoothcorr_cut) *
-        (np.abs(spec['CONTINUUM_SMOOTHCORR_Z']) < smoothcorr_cut)
+        (spec['CONTINUUM_CHI2'] < fastspec_chi2cut) *
+        (phot['CONTINUUM_CHI2'] < fastphot_chi2cut) 
+        #(np.abs(spec['CONTINUUM_SMOOTHCORR_B']) < smoothcorr_cut) *
+        #(np.abs(spec['CONTINUUM_SMOOTHCORR_R']) < smoothcorr_cut) *
+        #(np.abs(spec['CONTINUUM_SMOOTHCORR_Z']) < smoothcorr_cut)
     )
 
     if targetclass == 'lrg':
@@ -245,41 +258,7 @@ def select_parent_sample(phot, spec, meta, targetclass='lrg', specprod='denali',
 
     if verbose:
         log.info('Selecting a parent sample of {}/{} {}s.'.format(
-                np.sum(iselect), len(meta), targetclass.upper()))
-
-    if png:
-        import matplotlib.pyplot as plt
-        from fastspecfit.templates.qa import plot_style
-        sns, _ = plot_style()        
-
-        #zlim = (meta['Z'].min(), meta['Z'].max())
-        zlim = (0.0, 1.5)
-        chi2lim = (-2, 4)
-        
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
-
-        ax1.hist(meta['Z'], bins=75, range=zlim,
-                 label='All (N={})'.format(len(phot)))
-        ax1.hist(meta['Z'][iselect], bins=75, range=zlim, alpha=0.7,
-                 label='Parent (N={})'.format(np.sum(iselect)))
-        ax1.set_xlim(zlim)
-        ax1.set_xlabel('Redshift')
-        ax1.set_ylabel('Number of {} Targets'.format(targetclass))
-        
-        ax2.hist(np.log10(phot['CONTINUUM_CHI2']), bins=75, range=chi2lim,
-                 label='All (N={})'.format(len(phot)))
-        ax2.hist(np.log10(phot['CONTINUUM_CHI2'][iselect]), bins=75, range=chi2lim, alpha=0.7,
-                 label='Parent (N={})'.format(np.sum(iselect)))
-        ax2.set_xlim(chi2lim)
-        ax2.set_xlabel(r'$\log_{10}\,\chi^{2}_{\nu}$ [fastphot]')
-        
-        ax1.legend(loc='upper right', fontsize=14)
-
-        plt.subplots_adjust(left=0.14, wspace=0.09, right=0.95, top=0.95, bottom=0.20)
-
-        print('Writing {}'.format(png))
-        fig.savefig(png)
-        plt.close()
+            np.sum(iselect), len(meta), targetclass.upper()))
 
     # optionally write out
     if samplefile:
@@ -382,7 +361,7 @@ def stacking_bins(targetclass='lrg', verbose=False):
 
     return bins, nbins
 
-def spectra_in_bins(tileinfo, minperbin=3, targetclass='lrg', specprod='denali',
+def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali',
                     minwave=None, maxwave=None, fastphot_in_bins=True, verbose=False):
     """Select objects in bins of rest-frame properties.
 
@@ -438,7 +417,7 @@ def spectra_in_bins(tileinfo, minperbin=3, targetclass='lrg', specprod='denali',
 
     wave = None
 
-    tiles = tileinfo['TILEID']
+    tiles = tilestable['TILEID']
     for itile, tile in enumerate(tiles):
         if itile % 10 == 0:
             log.info('Working on tile {}/{}'.format(itile, len(tiles)))
