@@ -9,7 +9,6 @@ import pdb
 
 import os
 import numpy as np
-import fitsio
 from astropy.table import Table
 from scipy.ndimage import median_filter
 
@@ -28,21 +27,6 @@ def plot_style(font_scale=1.2):
     sns.set(context='talk', style='ticks', palette='deep', font_scale=font_scale)#, rc=rc)
     colors = sns.color_palette()
     return sns, colors
-
-def read_stacked_fastspec(fastspecfile):
-    wave = fitsio.read(fastspecfile, ext='WAVE')
-    flux = fitsio.read(fastspecfile, ext='FLUX')
-    ivar = fitsio.read(fastspecfile, ext='IVAR')
-    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
-    return wave, flux, ivar, fastmeta, fastspec
-
-def read_templates(targetclass='lrg'):
-    templatefile = os.path.join(templatedir, '{}-templates.fits'.format(targetclass))
-    wave = fitsio.read(templatefile, ext='WAVE')
-    flux = fitsio.read(templatefile, ext='FLUX')
-    meta = Table(fitsio.read(templatefile, ext='METADATA'))
-    return wave, flux, meta
 
 def qa_template_colors(phot, template_colors, ntspace=25, png=None):
 
@@ -131,17 +115,17 @@ def qa_template_colors(phot, template_colors, ntspace=25, png=None):
         fig.savefig(png)
         plt.close()
 
-def qa_bpt(fastspecfile, EMFit, png=None):
+def qa_bpt(targetclass, fastspecfile=None, png=None):
     """QA of the fastspec emission-line spectra.
 
     """
-    from fastspecfit.templates.templates import remove_undetected_lines
+    from fastspecfit.templates.templates import remove_undetected_lines, read_stacked_fastspec
 
-    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-    _fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    sns, _ = plot_style()
+
+    fastmeta, _fastspec = read_stacked_fastspec(fastspecfile, read_spectra=False)
+    fastspec = remove_undetected_lines(_fastspec)
     nobj = len(fastmeta)
-
-    fastspec = remove_undetected_lines(_fastspec, EMFit.linetable)
 
     def oplot_class(ax, kewley=False, **kwargs):
         if kewley:
@@ -181,21 +165,21 @@ def qa_bpt(fastspecfile, EMFit, png=None):
         #(fastspec['HALPHA_CHI2'] < 1e4)
     )[0]
 
-    zz = fastspec['CONTINUUM_Z'][good]
-    rW1 = fastmeta['RW1'][good]
-    gi = fastmeta['GI'][good]
-    ewhb = fastspec['HBETA_EW'][good]
-
     niiha = np.log10(fastspec['NII_6584_FLUX'][good] / fastspec['HALPHA_FLUX'][good])
     oiiihb = np.log10(fastspec['OIII_5007_FLUX'][good] / fastspec['HBETA_FLUX'][good])
     ww = np.where((niiha > -0.05) * (niiha < 0.05) * (oiiihb < -0.5))[0]
     #log.info(fastspec[good][ww]['HALPHA_FLUX', 'NII_6584_FLUX'])
 
+    zz = fastspec['CONTINUUM_Z'][good]
+    ewhb = fastspec['HBETA_EW'][good]
+    #rW1 = fastmeta['RW1'][good]
+    #gr = fastmeta['GR'][good]
+
     _bpt(zz, 'Redshift', vmin=0, vmax=0.5, png=png.replace('.png', '-redshift.png'))
-    _bpt(rW1, r'$r-W1$', vmin=-0.3, vmax=0.9, png=png.replace('.png', '-rW1.png'))
-    _bpt(gi, r'$g-i$', vmin=0.6, vmax=1.3, png=png.replace('.png', '-gi.png'))
     _bpt(np.log10(ewhb), r'$\log_{10}\,\mathrm{EW}(\mathrm{H}\beta)$', 
          png=png.replace('.png', '-ewhb.png'))            
+    #_bpt(rW1, r'$r-W1$', vmin=-0.3, vmax=0.9, png=png.replace('.png', '-rW1.png'))
+    #_bpt(gi, r'$g-i$', vmin=0.6, vmax=1.3, png=png.replace('.png', '-gi.png'))
 
 def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=None,
                          fastmeta=None, fastspec=None, fastspecfile=None, CFit=None,
@@ -204,7 +188,7 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
     
     """
     from fastspecfit.util import ivar2var, C_LIGHT
-    from fastspecfit.templates.templates import rebuild_fastspec_spectrum
+    from fastspecfit.templates.templates import rebuild_fastspec_spectrum, read_stacked_fastspec
 
     sns, _ = plot_style()        
     
@@ -344,7 +328,7 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
     from matplotlib.colors import Normalize
     from fastspecfit.templates.templates import remove_undetected_lines
     from fastspecfit.util import ivar2var, C_LIGHT
-    from fastspecfit.templates.templates import rebuild_fastspec_spectrum
+    from fastspecfit.templates.templates import rebuild_fastspec_spectrum, read_stacked_fastspec
 
     sns, _ = plot_style()        
 
@@ -561,29 +545,141 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
 
     sns, _ = plot_style()
     cmap = plt.cm.get_cmap('RdYlBu')
+    mincnt = 1
 
     phot, spec, meta = read_parent_sample(samplefile)
     bins, nbins = stacking_bins(targetclass, verbose=True)
     
-    def elg_obs(phot, png=None):
-        gobslim = (19.5, 25)
-        grobslim = (-1.2, 1.5)
-        rzobslim = (-1.5, 2.2)
+    def bgs_obs(phot, png=None):
+        robslim = (15, 21.0)
+        grobslim = (-0.2, 2.5)
+        rzobslim = (-0.5, 1.5)
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 
-        ax1.hexbin(phot['RMAG']-phot['ZMAG'], phot['GMAG']-phot['RMAG'], mincnt=1, bins='log',
-                   #C=cat['weight'], reduce_C_function=np.sum,
-                   cmap=cmap)
+        ax1.hexbin(phot['RMAG']-phot['ZMAG'], phot['GMAG']-phot['RMAG'],
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum
+                   extent=np.hstack((rzobslim, grobslim)))
         ax1.set_xlabel(r'$(r - z)_{\rm obs}$')
         ax1.set_ylabel(r'$(g - r)_{\rm obs}$')
         ax1.set_xlim(rzobslim)
         ax1.set_ylim(grobslim)
 
-        hb = ax2.hexbin(phot['GMAG'], phot['GMAG']-phot['RMAG'], mincnt=1, bins='log',
+        hb = ax2.hexbin(phot['RMAG'], phot['GMAG']-phot['RMAG'],
+                        mincnt=mincnt, bins='log', cmap=cmap,
+                        #C=cat['weight'], reduce_C_function=np.sum,
+                        extent=np.hstack((robslim, grobslim)))
+        ax2.set_xlabel(r'$r_{\rm obs}$')
+        ax2.set_ylim(grobslim)
+        ax2.set_xlim(robslim)
+
+        cax = fig.add_axes([0.88, 0.12, 0.02, 0.83])
+        formatter = ticker.LogFormatter(10, labelOnlyBase=False)
+        fig.colorbar(hb, cax=cax, format=formatter, label='Number of Galaxies')
+
+        for aa in (ax1, ax2):
+            aa.grid(True)
+
+        plt.subplots_adjust(left=0.12, top=0.95, right=0.85, bottom=0.19, wspace=0.07)
+
+        if png:
+            log.info('Writing {}'.format(png))
+            fig.savefig(png)
+            plt.close()
+            
+    def bgs_rest(phot, meta, bins=None, png=None):
+        zlim = (0.0, 0.6)
+        Mrlim = (-16, -25)
+        grlim = (-0.2, 1.2)
+
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
+
+        ax1.hexbin(meta['Z'], phot['ABSMAG_R'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
                    #C=cat['weight'], reduce_C_function=np.sum,
-                   cmap=cmap)
-        ax2.set_xlabel(r'$g$')
+                   extent=np.hstack((zlim, Mrlim)))
+        ax1.set_ylim(Mrlim)
+        ax1.set_xlim(zlim)
+        ax1.set_xlabel('Redshift')
+        ax1.set_ylabel(r'$M_{0.0r}$')
+        #ax1.xaxis.set_major_locator(ticker.MultipleLocator(0.2))        
+
+        if bins:
+            dx, dy = bins['zobj']['del'], bins['Mr']['del']
+            [ax1.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
+             for xx in bins['zobj']['grid'] for yy in bins['Mr']['grid']]
+
+        ax2.hexbin(meta['Z'], phot['ABSMAG_G']-phot['ABSMAG_R'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   extent=np.hstack((zlim, grlim)))
+        ax2.set_xlim(zlim)
+        ax2.set_ylim(grlim)
+        ax2.set_xlabel('Redshift')
+        ax2.set_ylabel(r'$^{0.0}(g - r)$')#, labelpad=-10)
+        #ax2.xaxis.set_major_locator(ticker.MultipleLocator(0.2))        
+        #ax2.yaxis.set_major_locator(ticker.MultipleLocator(0.5))        
+
+        if bins:
+            dx, dy = bins['zobj']['del'], bins['gr']['del']
+            [ax2.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
+             for xx in bins['zobj']['grid'] for yy in bins['gr']['grid']]
+
+        hb = ax3.hexbin(phot['ABSMAG_R'], phot['ABSMAG_G']-phot['ABSMAG_R'], 
+                        mincnt=mincnt, bins='log', cmap=cmap,
+                        #C=cat['weight'], reduce_C_function=np.sum,
+                        extent=np.hstack((Mrlim, grlim)))
+        ax3.set_xlabel(r'$M_{0.0r}$')
+        ax3.set_ylabel(r'$^{0.0}(g - r)$')#, labelpad=-10)
+        ax3.set_xlim(Mrlim)
+        ax3.set_ylim(grlim)
+        #ax3.yaxis.set_major_locator(ticker.MultipleLocator(0.5))        
+
+        if bins:
+            dx, dy = bins['Mr']['del'], bins['gr']['del']
+            [ax3.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
+             for xx in bins['Mr']['grid'] for yy in bins['gr']['grid']]
+            
+        ax4.axis('off')
+
+        cax = fig.add_axes([0.49, 0.12, 0.02, 0.36])
+        #cax = fig.add_axes([0.54, 0.4, 0.35, 0.03])
+        formatter = ticker.LogFormatter(10, labelOnlyBase=False)
+        fig.colorbar(hb, format=formatter, label='Number of Galaxies',
+                     cax=cax)#, orientation='horizontal')
+
+        for aa in (ax1, ax2, ax3):
+            aa.grid(True)
+
+        plt.subplots_adjust(left=0.1, top=0.95, wspace=0.3, hspace=0.3, right=0.88, bottom=0.13)
+
+        if png:
+            log.info('Writing {}'.format(png))
+            fig.savefig(png)
+            plt.close()
+
+    def elg_obs(phot, png=None):
+        gobslim = (19.5, 24.5)
+        grobslim = (-1.2, 1.2)
+        rzobslim = (-1.5, 2.2)
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+
+        ax1.hexbin(phot['RMAG']-phot['ZMAG'], phot['GMAG']-phot['RMAG'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   extent=np.hstack((rzobslim, grobslim)))
+        ax1.set_xlabel(r'$(r - z)_{\rm obs}$')
+        ax1.set_ylabel(r'$(g - r)_{\rm obs}$')
+        ax1.set_xlim(rzobslim)
+        ax1.set_ylim(grobslim)
+
+        hb = ax2.hexbin(phot['GMAG'], phot['GMAG']-phot['RMAG'], 
+                        mincnt=mincnt, bins='log', cmap=cmap,
+                        #C=cat['weight'], reduce_C_function=np.sum,
+                        extent=np.hstack((gobslim, grobslim)))
+        ax2.set_xlabel(r'$g_{\rm obs}$')
         ax2.set_ylim(grobslim)
         ax2.set_xlim(gobslim)
 
@@ -594,7 +690,7 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         for aa in (ax1, ax2):
             aa.grid(True)
 
-        plt.subplots_adjust(left=0.12, top=0.95, right=0.85, bottom=0.13, wspace=0.07)
+        plt.subplots_adjust(left=0.12, top=0.95, right=0.85, bottom=0.19, wspace=0.07)
 
         if png:
             log.info('Writing {}'.format(png))
@@ -602,13 +698,16 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
             plt.close()
             
     def elg_rest(phot, meta, bins=None, png=None):
-        zlim, Mglim, grlim = (0.5, 1.7), (-17, -26), (-0.5, 1.0)
+        zlim = (0.5, 1.6)
+        Mglim = (-18, -25)
+        grlim = (-0.5, 1.0)
 
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
 
-        ax1.hexbin(meta['Z'], phot['ABSMAG_G'], mincnt=1, bins='log',
+        ax1.hexbin(meta['Z'], phot['ABSMAG_G'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
                    #C=cat['weight'], reduce_C_function=np.sum,
-                   cmap=cmap)
+                   extent=np.hstack((zlim, Mglim)))
         ax1.set_ylim(Mglim)
         ax1.set_xlim(zlim)
         ax1.set_xlabel('Redshift')
@@ -620,9 +719,10 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
             [ax1.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
              for xx in bins['zobj']['grid'] for yy in bins['Mg']['grid']]
 
-        ax2.hexbin(meta['Z'], phot['ABSMAG_G']-phot['ABSMAG_R'], mincnt=1, bins='log',
+        ax2.hexbin(meta['Z'], phot['ABSMAG_G']-phot['ABSMAG_R'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
                    #C=cat['weight'], reduce_C_function=np.sum,
-                   cmap=plt.cm.get_cmap('RdYlBu'))
+                   extent=np.hstack((zlim, grlim)))
         ax2.set_xlim(zlim)
         ax2.set_ylim(grlim)
         ax2.set_xlabel('Redshift')
@@ -635,9 +735,10 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
             [ax2.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
              for xx in bins['zobj']['grid'] for yy in bins['gr']['grid']]
 
-        hb = ax3.hexbin(phot['ABSMAG_G'], phot['ABSMAG_G']-phot['ABSMAG_R'], mincnt=1, bins='log',
+        hb = ax3.hexbin(phot['ABSMAG_G'], phot['ABSMAG_G']-phot['ABSMAG_R'], 
+                        mincnt=mincnt, bins='log', cmap=cmap,
                         #C=cat['weight'], reduce_C_function=np.sum,
-                        cmap=plt.cm.get_cmap('RdYlBu'))
+                        extent=np.hstack((Mglim, grlim)))
         ax3.set_xlabel(r'$M_{0.0g}$')
         ax3.set_ylabel(r'$^{0.0}(g - r)$', labelpad=-10)
         ax3.set_xlim(Mglim)
@@ -672,23 +773,25 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         W1obslim = (16, 21)
         grobslim = (0.0, 4)
         rzobslim = (0.0, 3)
-        rW1obslim = (0.5, 4.5)
-        zW1obslim = (0, 3)
+        rW1obslim = (0.7, 4.5)
+        zW1obslim = (0, 2.7)
 
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
 
-        ax1.hexbin(phot['RMAG']-phot['W1MAG'], phot['GMAG']-phot['RMAG'], mincnt=1, bins='log', 
+        ax1.hexbin(phot['RMAG']-phot['W1MAG'], phot['GMAG']-phot['RMAG'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
                    #C=cat['weight'], reduce_C_function=np.sum,
                    #norm=LogNorm(vmin=1, vmax=100),
-                   cmap=cmap)
+                   extent=np.hstack((rW1obslim, grobslim)))
         ax1.set_xlabel(r'$(r - W1)_{\rm obs}$')
         ax1.set_ylabel(r'$(g - r)_{\rm obs}$')
         ax1.set_xlim(rW1obslim)
         ax1.set_ylim(grobslim)
 
-        ax2.hexbin(phot['ZMAG']-phot['W1MAG'], phot['RMAG']-phot['ZMAG'], mincnt=1, bins='log', 
-                   #C=cat['weight'], reduce_C_function=np.sum,                    
-                   cmap=cmap)
+        ax2.hexbin(phot['ZMAG']-phot['W1MAG'], phot['RMAG']-phot['ZMAG'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   extent=np.hstack((zW1obslim, rzobslim)))
 
         ax2.set_ylabel(r'$(r - z)_{\rm obs}$')
         ax2.set_xlabel(r'$(z - W1)_{\rm obs}$')
@@ -697,18 +800,20 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         ax2.xaxis.set_major_locator(ticker.MultipleLocator(1))
         ax2.yaxis.set_major_locator(ticker.MultipleLocator(1))
         
-        ax3.hexbin(phot['ZMAG'], phot['RMAG']-phot['ZMAG'], mincnt=1, bins='log', 
+        ax3.hexbin(phot['ZMAG'], phot['RMAG']-phot['ZMAG'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
                    #C=cat['weight'], reduce_C_function=np.sum,
-                   cmap=cmap)
+                   extent=np.hstack((zobslim, rzobslim)))
         ax3.set_ylabel(r'$(r - z)_{\rm obs}$')
         ax3.set_xlabel(r'$z_{\rm obs}$')
         ax3.set_xlim(zobslim)
         ax3.set_ylim(rzobslim)
         ax3.yaxis.set_major_locator(ticker.MultipleLocator(1))
 
-        hb = ax4.hexbin(phot['W1MAG'], phot['ZMAG']-phot['W1MAG'], mincnt=1, bins='log', 
-                   #C=cat['weight'], reduce_C_function=np.sum,
-                   cmap=cmap)
+        hb = ax4.hexbin(phot['W1MAG'], phot['ZMAG']-phot['W1MAG'], 
+                        mincnt=mincnt, bins='log', cmap=cmap,
+                        #C=cat['weight'], reduce_C_function=np.sum,
+                        extent=np.hstack((W1obslim, zW1obslim)))
         ax4.set_ylabel(r'$(z - W1)_{\rm obs}$')
         ax4.set_xlabel(r'$W1_{\rm obs}$')
         ax4.set_xlim(W1obslim)
@@ -735,9 +840,10 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
 
         fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(18, 10))
 
-        ax1.hexbin(meta['Z'], phot['ABSMAG_R'], mincnt=1, bins='log', 
+        ax1.hexbin(meta['Z'], phot['ABSMAG_R'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
                    #C=cat['weight'], reduce_C_function=np.sum,
-                   cmap=cmap) 
+                   extent=np.hstack((zlim, Mrlim)))
         ax1.set_ylim(Mrlim)
         ax1.set_xlim(zlim)
         ax1.set_xlabel('Redshift')
@@ -752,9 +858,10 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
             [ax1.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
              for xx in bins['zobj']['grid'] for yy in bins['Mr']['grid']]            
 
-        ax2.hexbin(meta['Z'], phot['ABSMAG_G']-phot['ABSMAG_I'], mincnt=1, bins='log', 
-                   #C=cat['weight'], reduce_C_function=np.sum,           
-                   cmap=plt.cm.get_cmap('RdYlBu'))
+        ax2.hexbin(meta['Z'], phot['ABSMAG_G']-phot['ABSMAG_I'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   extent=np.hstack((zlim, gilim)))
         ax2.set_xlim(zlim)
         ax2.set_ylim(gilim)
         ax2.set_xlabel('Redshift')
@@ -765,9 +872,10 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
             [ax2.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
              for xx in bins['zobj']['grid'] for yy in bins['gi']['grid']]
 
-        ax3.hexbin(meta['Z'], phot['ABSMAG_R']-phot['ABSMAG_W1'], mincnt=1, bins='log', 
-                   #C=cat['weight'], reduce_C_function=np.sum,               
-                   cmap=plt.cm.get_cmap('RdYlBu'))
+        ax3.hexbin(meta['Z'], phot['ABSMAG_R']-phot['ABSMAG_W1'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   extent=np.hstack((zlim, rW1lim)))
         ax3.set_xlabel('Redshift')
         ax3.set_ylabel(r'$^{0.0}(r - W1)$')
         ax3.set_ylim(rW1lim)
@@ -778,9 +886,10 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
             [ax3.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
              for xx in bins['zobj']['grid'] for yy in bins['rW1']['grid']]
 
-        ax4.hexbin(phot['ABSMAG_R'], phot['ABSMAG_G']-phot['ABSMAG_I'], mincnt=1, bins='log', 
-                        #C=cat['weight'], reduce_C_function=np.sum,                    
-                        cmap=plt.cm.get_cmap('RdYlBu'))
+        ax4.hexbin(phot['ABSMAG_R'], phot['ABSMAG_G']-phot['ABSMAG_I'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   extent=np.hstack((Mrlim, gilim)))
         ax4.set_xlabel(r'$M_{0.0r}$')
         ax4.set_ylabel(r'$^{0.0}(g - i)$')
         ax4.set_xlim(Mrlim)
@@ -791,9 +900,10 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
             [ax4.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
              for xx in bins['Mr']['grid'] for yy in bins['gi']['grid']]
 
-        ax5.hexbin(phot['ABSMAG_R'], phot['ABSMAG_R']-phot['ABSMAG_W1'], mincnt=1, bins='log', 
-                   #C=cat['weight'], reduce_C_function=np.sum,                    
-                   cmap=plt.cm.get_cmap('RdYlBu'))
+        ax5.hexbin(phot['ABSMAG_R'], phot['ABSMAG_R']-phot['ABSMAG_W1'],
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   extent=np.hstack((Mrlim, rW1lim)))
         ax5.set_xlabel(r'$M_{0.0r}$')
         ax5.set_ylabel(r'$^{0.0}(r - W1)$')
         ax5.set_xlim(Mrlim)
@@ -804,9 +914,10 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
             [ax5.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
              for xx in bins['Mr']['grid'] for yy in bins['rW1']['grid']]    
 
-        hb = ax6.hexbin(phot['ABSMAG_R']-phot['ABSMAG_W1'], phot['ABSMAG_G']-phot['ABSMAG_I'], mincnt=1, bins='log', 
-                        #C=cat['weight'], reduce_C_function=np.sum,               
-                        cmap=plt.cm.get_cmap('RdYlBu'))
+        hb = ax6.hexbin(phot['ABSMAG_R']-phot['ABSMAG_W1'], phot['ABSMAG_G']-phot['ABSMAG_I'],
+                        mincnt=mincnt, bins='log', cmap=cmap,
+                        #C=cat['weight'], reduce_C_function=np.sum,
+                        extent=np.hstack((rW1lim, gilim)))
         ax6.set_xlabel(r'$^{0.0}(r - W1)$')
         ax6.set_ylabel(r'$^{0.0}(g - i)$')
         ax6.set_ylim(gilim)
@@ -900,11 +1011,11 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
 #        fig.savefig(png)
 #        plt.close()
 
-def qa_parent_sample(samplefile, tilefile, targetclass='lrg', specprod='denali', png=None):
+def qa_parent_sample(samplefile, tilefile, targetclass='lrg',
+                     specprod='denali', png=None):
     """Build QA showing how the parent sample was selected.
 
     """
-    import fitsio
     from fastspecfit.templates.sample import read_fastspecfit, read_parent_sample
 
     sns, _ = plot_style()        
@@ -924,55 +1035,55 @@ def qa_parent_sample(samplefile, tilefile, targetclass='lrg', specprod='denali',
 
     if targetclass == 'lrg':
         zlim = (-0.05, 1.5)
-        fastphot_chi2lim = (-2.5, 4)
-        loc = 'upper right'
     elif targetclass == 'elg':
         zlim = (-0.05, 1.8)
-        fastphot_chi2lim = (-2.5, 4)
-        loc = 'upper left'
     elif targetclass == 'bgs':
-        zlim = (-0.05, 0.6)
-        fastphot_chi2lim = (-2.5, 4)
+        zlim = (-0.05, 0.65)
     else:
         pass
 
     dchi2lim = (0.8, 4.5)
     #fastspec_chi2lim = (-2, 1)
     fastspec_chi2lim = (-0.1, 1)
+    fastphot_chi2lim = (-2.5, 4)
 
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 10), sharey=True)
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 10))#, sharey=True)
+    
     ax1.hist(allmeta['Z'], bins=75, range=zlim, label='All (N={})'.format(nall))
     ax1.hist(meta['Z'], bins=75, range=zlim, alpha=0.7, label='Parent (N={})'.format(nparent))
     ax1.set_xlim(zlim)
     ax1.set_xlabel('Redshift')
     ax1.set_ylabel('Number of {} Targets'.format(targetclass.upper()))
 
-    ax2.hist(np.log10(allphot['CONTINUUM_CHI2']), bins=75, range=fastphot_chi2lim)
-    ax2.hist(np.log10(phot['CONTINUUM_CHI2']), bins=75, range=fastphot_chi2lim, alpha=0.7)
+    ax2.hist(np.log10(allphot['CONTINUUM_CHI2']), bins=75, range=fastphot_chi2lim, label='All (N={})'.format(nall))
+    ax2.hist(np.log10(phot['CONTINUUM_CHI2']), bins=75, range=fastphot_chi2lim, alpha=0.7, label='Parent (N={})'.format(nparent))
     ax2.set_xlim(fastphot_chi2lim)
     ax2.set_xlabel(r'$\log_{10}\,\chi^{2}_{\nu}$ [fastphot, continuum]')
     #ax2.set_xlabel(r'$\log_{10}\,\chi^{2}_{\nu}$ [$grzW1W2$ model fit]')
-    #ax2.yaxis.set_label_position('right')
-    #ax2.yaxis.tick_right()
+    ax2.yaxis.set_label_position('right')
+    ax2.yaxis.tick_right()
+    ax2.set_ylabel('Number of {} Targets'.format(targetclass.upper()))
 
-    ax3.hist(np.log10(allmeta['DELTACHI2']), bins=75, range=dchi2lim)
-    ax3.hist(np.log10(meta['DELTACHI2']), bins=75, range=dchi2lim, alpha=0.7)
+    ax3.hist(np.log10(allmeta['DELTACHI2']), bins=75, range=dchi2lim, label='All (N={})'.format(nall))
+    ax3.hist(np.log10(meta['DELTACHI2']), bins=75, range=dchi2lim, alpha=0.7, label='Parent (N={})'.format(nparent))
     ax3.set_xlim(dchi2lim)
     ax3.set_xlabel(r'$\log_{10}\,\Delta\chi^{2}$ [redrock]')
     ax3.set_ylabel('Number of {} Targets'.format(targetclass.upper()))
 
     #ax4.hist(np.log10(np.abs(allspec['CONTINUUM_SMOOTHCORR_B'])), bins=75, range=fastspec_chi2lim)
     #ax4.hist(np.log10(np.abs(spec['CONTINUUM_SMOOTHCORR_B'])), bins=75, range=fastspec_chi2lim, alpha=0.7)
-    ax4.hist(np.log10(allspec['CONTINUUM_CHI2']), bins=75, range=fastspec_chi2lim)
-    ax4.hist(np.log10(spec['CONTINUUM_CHI2']), bins=75, range=fastspec_chi2lim, alpha=0.7)
+    ax4.hist(np.log10(allspec['CONTINUUM_CHI2']), bins=75, range=fastspec_chi2lim, label='All (N={})'.format(nall))
+    ax4.hist(np.log10(spec['CONTINUUM_CHI2']), bins=75, range=fastspec_chi2lim, alpha=0.7, label='Parent (N={})'.format(nparent))
     ax4.set_xlim(fastspec_chi2lim)
     ax4.set_xlabel(r'$\log_{10}\,\chi^{2}_{\nu}$ [fastspec, continuum]')
     ax4.xaxis.set_major_locator(ticker.MultipleLocator(0.5))
-    #ax4.yaxis.set_label_position('right')
-    #ax4.yaxis.tick_right()
+    ax4.yaxis.set_label_position('right')
+    ax4.yaxis.tick_right()
+    ax4.set_ylabel('Number of {} Targets'.format(targetclass.upper()))
 
-    ax1.legend(loc=loc, fontsize=14)
-    plt.subplots_adjust(left=0.14, wspace=0.09, hspace=0.3, right=0.95, top=0.95, bottom=0.15)
+    ax4.legend(loc='upper right', fontsize=14)
+
+    plt.subplots_adjust(left=0.14, wspace=0.09, hspace=0.3, right=0.85, top=0.95, bottom=0.15)
 
     if png:
         log.info('Writing {}'.format(png))
@@ -1002,14 +1113,8 @@ def build_all_qa(targetclass, templatedir, tilefile=None, samplefile=None,
     #qa_fastspec_fullspec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)
 
     pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-emlinespec.pdf'.format(targetclass))
-    qa_fastspec_emlinespec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)        
+    #qa_fastspec_emlinespec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)        
 
-    pdb.set_trace()
-
-    png = os.path.join(templatedir, 'qa', '{}-bpt.png'.format(args.targetclass))
-    qa_bpt(fastspecfile, EMFit, png=png)
-    pdb.set_trace()
-
-
-    #    bins, nbins = lrg_stacking_bins(verbose=True)
-    #
+    if targetclass != 'elg': # no lines in redshift range
+        png = os.path.join(templatedir, 'qa', '{}-bpt.png'.format(targetclass))
+        qa_bpt(targetclass, fastspecfile=fastspecfile, png=png)

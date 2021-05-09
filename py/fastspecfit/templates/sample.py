@@ -131,17 +131,48 @@ def read_fastspecfit(tilestable, specprod='denali', targetclass='lrg'):
         len(ontiles), len(np.unique(meta['TILEID'])), len(tilestable)))
     
     ngal = len(spec)
-    
+
+    # correct for extinction!
+    # see https://github.com/desihub/fastspecfit/issues/23
+    if specprod == 'denali':
+        log.warning('Correcting for MW extinction in denali production!')
+
+        from desiutil.dust import SFDMap, ext_odonnell
+        from speclite import filters
+        
+        RV = 3.1
+        SFD = SFDMap(scaling=0.86) # SF11 recalibration of the SFD maps
+        ebv = SFD.ebv(meta['RA'], meta['DEC'])
+
+        effwave_north, effwave_south = {}, {}
+        for band, nfilt, sfilt in zip(['G', 'R', 'Z', 'W1', 'W2'],
+                               ['BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2'],
+                               ['decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1', 'wise2010-W2']):
+            effwave_north[band] = filters.load_filters(nfilt).effective_wavelengths.value[0]
+            effwave_south[band] = filters.load_filters(sfilt).effective_wavelengths.value[0]
+
+    # correct for extinction!
+    # see https://github.com/desihub/fastspecfit/issues/23
+    def _get_mw_transmission(good, band):
+        mw_transmission = np.ones(len(good))
+        isouth = np.where(meta['PHOTSYS'][good] == 'S')[0]
+        inorth = np.where(meta['PHOTSYS'][good] == 'N')[0]
+        if len(isouth) > 0:
+            mw_transmission[isouth] = 10**(-0.4 * ebv[good][isouth] * RV * ext_odonnell(effwave_south[band], Rv=RV))
+        if len(inorth) > 0:
+            mw_transmission[inorth] = 10**(-0.4 * ebv[good][inorth] * RV * ext_odonnell(effwave_south[band], Rv=RV))
+        return mw_transmission
+
     # convenience magnitudes and targeting variables
     for band in ('G', 'R', 'Z', 'W1'):
         phot['{}MAG'.format(band)] = np.zeros(ngal, 'f4')
         good = np.where(meta['FLUX_{}'.format(band)] > 0)[0]
-        phot['{}MAG'.format(band)][good] = 22.5 - 2.5 * np.log10(meta['FLUX_{}'.format(band)][good])
+        phot['{}MAG'.format(band)][good] = 22.5 - 2.5 * np.log10(meta['FLUX_{}'.format(band)][good] / _get_mw_transmission(good, band))
         
     for band in ('G', 'R', 'Z'):
         phot['{}FIBERMAG'.format(band)] = np.zeros(ngal, 'f4')
         good = np.where(meta['FIBERFLUX_{}'.format(band)] > 0)[0]
-        phot['{}FIBERMAG'.format(band)][good] = 22.5 - 2.5 * np.log10(meta['FIBERFLUX_{}'.format(band)][good])
+        phot['{}FIBERMAG'.format(band)][good] = 22.5 - 2.5 * np.log10(meta['FIBERFLUX_{}'.format(band)][good] / _get_mw_transmission(good, band))
 
     targs = ['BGS_ANY', 'ELG', 'LRG', 'QSO']
     targcols = ['BGS', 'ELG', 'LRG', 'QSO']
@@ -163,7 +194,7 @@ def read_fastspecfit(tilestable, specprod='denali', targetclass='lrg'):
     #for targcol in targcols:
     #    log.info('  {}: {}'.format(targcol, np.sum(phot[targcol])))
 
-    itarg = phot[targetclass.upper().replace('BGS', 'BGS_ANY')]
+    itarg = phot[targetclass.upper()]
     log.info('Keeping {} {} targets.'.format(np.sum(itarg), targetclass.upper()))
 
     phot = phot[itarg]
@@ -209,7 +240,7 @@ def _select_elg(iparent, phot, spec, meta, z_minmax=(0.6, 1.5),
         iselect *= (gr > gr_minmax[0]) * (gr < gr_minmax[1])
     return iselect
 
-def _select_bgs(iparent, phot, spec, meta, z_minmax=(0.05, 0.65),
+def _select_bgs(iparent, phot, spec, meta, z_minmax=(0.05, 0.55),
                 Mr_minmax=None, gr_minmax=None):
     """Select BGS. This method should be called with:
 
@@ -331,9 +362,9 @@ def stacking_bins(targetclass='lrg', verbose=False):
                 'gr': {'min': grlim[0], 'max': grlim[1], 'del': dgr, 'grid': grgrid}, 
                 }
     elif targetclass == 'bgs':
-        zlim, nz = [0.05, 0.65], 6
-        Mrlim, nMr = [-25.0, -18.0], 8
-        grlim, ngr = [-0.2, 1.2], 7
+        zlim, nz = [0.05, 0.55], 10
+        Mrlim, nMr = [-24.0, -17.0], 7
+        grlim, ngr = [0.0, 1.0], 5
         
         dz = (zlim[1] - zlim[0]) / nz
         dMr = (Mrlim[1] - Mrlim[0]) / nMr

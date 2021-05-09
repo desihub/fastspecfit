@@ -10,6 +10,7 @@ import pdb # for debugging
 import os, time
 import multiprocessing
 import numpy as np
+import fitsio
 from astropy.table import Table, Column
 
 from fastspecfit.util import C_LIGHT
@@ -514,7 +515,7 @@ def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=
         write_binned_stacks(fastspecfile, wave, flux, ivar,
                             fastspec=fastspec, fastmeta=fastmeta)
 
-def remove_undetected_lines(fastspec, linetable, snrmin=3.0, oiidoublet=0.73,
+def remove_undetected_lines(fastspec, linetable=None, snrmin=3.0, oiidoublet=0.73,
                             siidoublet=1.3, niidoublet=2.936, oiiidoublet=2.875,
                             fastmeta=None, devshift=False):
     """replace weak or undetected emission lines with their upper limits
@@ -526,6 +527,10 @@ def remove_undetected_lines(fastspec, linetable, snrmin=3.0, oiidoublet=0.73,
     oiiidoublet - [OIII] 5007/4959
     
     """
+    if linetable is None:
+        from fastspecfit.emlines import read_emlines
+        linetable = read_emlines()
+    
     linenames = linetable['name']
     redshift = fastspec['CONTINUUM_Z']
     
@@ -844,3 +849,22 @@ def zgrid_colors():
         cc['zW1'][:, iz] = -2.5 * np.log10(maggies['decam2014-z'] / maggies['wise2010-W1'] )
     
     return cc    
+
+def read_stacked_fastspec(fastspecfile, read_spectra=True):
+    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    if read_spectra:
+        wave = fitsio.read(fastspecfile, ext='WAVE')
+        flux = fitsio.read(fastspecfile, ext='FLUX')
+        ivar = fitsio.read(fastspecfile, ext='IVAR')
+        return wave, flux, ivar, fastmeta, fastspec
+    else:
+        return fastmeta, fastspec
+
+def read_templates(targetclass='lrg'):
+    templatefile = os.path.join(templatedir, '{}-templates.fits'.format(targetclass))
+    wave = fitsio.read(templatefile, ext='WAVE')
+    flux = fitsio.read(templatefile, ext='FLUX')
+    meta = Table(fitsio.read(templatefile, ext='METADATA'))
+    return wave, flux, meta
+
