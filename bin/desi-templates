@@ -97,8 +97,6 @@ def main(args=None, comm=None):
             allphot, allspec, allmeta, targetclass=args.targetclass,
             specprod=args.specprod, samplefile=samplefile, verbose=True)
 
-        pdb.set_trace()
-        
         if args.targetclass == 'lrg':
             normwave = 4500.0
             fastphot_in_bins = True

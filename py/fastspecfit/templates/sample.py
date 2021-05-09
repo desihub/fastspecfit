@@ -203,8 +203,9 @@ def read_fastspecfit(tilestable, specprod='denali', targetclass='lrg'):
     
     return phot, spec, meta
 
-def _select_lrg(iparent, phot, spec, meta, z_minmax=(0.1, 1.1), Mr_minmax=None,
-                gi_minmax=None, rW1_minmax=None):
+def _select_lrg(iparent, phot, spec, meta, z_minmax=(0.1, 1.1),
+                Mr_minmax=None, rW1_minmax=None):
+                #gi_minmax=None
     """Select LRGs. This method should be called with:
 
     select_parent_sample(phot, spec, meta, targetclass='lrg')
@@ -215,9 +216,9 @@ def _select_lrg(iparent, phot, spec, meta, z_minmax=(0.1, 1.1), Mr_minmax=None,
         iselect *= (meta['Z'] > z_minmax[0]) * (meta['Z'] < z_minmax[1])
     if Mr_minmax:
         iselect *= (phot['ABSMAG_R'] > Mr_minmax[0]) * (phot['ABSMAG_R'] < Mr_minmax[1])
-    if gi_minmax:
-        gi = phot['ABSMAG_G'] - phot['ABSMAG_I']
-        iselect *= (gi > gi_minmax[0]) * (gi < gi_minmax[1])
+    #if gi_minmax:
+    #    gi = phot['ABSMAG_G'] - phot['ABSMAG_I']
+    #    iselect *= (gi > gi_minmax[0]) * (gi < gi_minmax[1])
     if rW1_minmax:
         rW1 = phot['ABSMAG_R'] - phot['ABSMAG_W1']
         iselect *= (rW1 > rW1_minmax[0]) * (rW1 < rW1_minmax[1])
@@ -324,23 +325,23 @@ def stacking_bins(targetclass='lrg', verbose=False):
     if targetclass == 'lrg':
         zlim, nz = [0.1, 1.1], 10
         Mrlim, nMr = [-24.5, -20], 9
-        gilim, ngi = [0.4, 1.4], 5 
+        #gilim, ngi = [0.4, 1.4], 5 
         rW1lim, nrW1 = [-1.0, 1.25], 9
         
         dz = (zlim[1] - zlim[0]) / nz
         dMr = (Mrlim[1] - Mrlim[0]) / nMr
-        dgi = (gilim[1] - gilim[0]) / ngi
+        #dgi = (gilim[1] - gilim[0]) / ngi
         drW1 = (rW1lim[1] - rW1lim[0]) / nrW1
         
         # build the array of (left) bin *edges*
         zgrid = np.arange(zlim[0], zlim[1], dz)
         Mrgrid = np.arange(Mrlim[0], Mrlim[1], dMr)
-        gigrid = np.arange(gilim[0], gilim[1], dgi)
+        #gigrid = np.arange(gilim[0], gilim[1], dgi)
         rW1grid = np.arange(rW1lim[0], rW1lim[1], drW1)
         
         bins = {'zobj': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
                 'Mr': {'min': Mrlim[0], 'max': Mrlim[1], 'del': dMr, 'grid': Mrgrid}, 
-                'gi': {'min': gilim[0], 'max': gilim[1], 'del': dgi, 'grid': gigrid}, 
+                #'gi': {'min': gilim[0], 'max': gilim[1], 'del': dgi, 'grid': gigrid}, 
                 'rW1': {'min': rW1lim[0], 'max': rW1lim[1], 'del': drW1, 'grid': rW1grid}
                 }
     elif targetclass == 'elg':
@@ -474,32 +475,36 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
 
         # this is boneheaded...vectorize!
         if targetclass == 'lrg':
-            dz, dMr, dgi, drW1 = bins['zobj']['del'], bins['Mr']['del'], bins['gi']['del'], bins['rW1']['del']
+            dz, dMr, drW1 = bins['zobj']['del'], bins['Mr']['del'], bins['rW1']['del']
+            #dz, dMr, dgi, drW1 = bins['zobj']['del'], bins['Mr']['del'], bins['gi']['del'], bins['rW1']['del']
             for zmin in bins['zobj']['grid']:
                 for Mrmin in bins['Mr']['grid']:
-                    for gimin in bins['gi']['grid']:
-                        for rW1min in bins['rW1']['grid']:
-                            I = select_parent_sample(allphot, allspec, allmeta, 
-                                                     z_minmax=[zmin, zmin+dz],
-                                                     Mr_minmax=[Mrmin, Mrmin+dMr],
-                                                     gi_minmax=[gimin, gimin+dgi],
-                                                     rW1_minmax=[rW1min, rW1min+drW1],
-                                                     targetclass=targetclass,
-                                                     verbose=False, return_indices=True)
-                            if len(I) >= minperbin:
-                                _sample = sample_template(bins)
-                                _sample['IBIN'] = ibin
-                                _sample['NOBJ'] = len(I)
-                                for key, mmin, delt in zip(('ZOBJ', 'MR', 'GI', 'RW1'),
-                                                           (zmin, Mrmin, gimin, rW1min),
-                                                           (dz, dMr, dgi, drW1)):
-                                    _sample[key] = mmin + delt / 2
-                                    _sample['{}MIN'.format(key)] = mmin
-                                    _sample['{}MAX'.format(key)] = mmin + delt
-                                samples.append(_sample)
-                                _data = _get_data(I)
-                                data.append(_data)
-                            ibin += 1 # next bin
+                    #for gimin in bins['gi']['grid']:
+                    for rW1min in bins['rW1']['grid']:
+                        I = select_parent_sample(allphot, allspec, allmeta, 
+                                                 z_minmax=[zmin, zmin+dz],
+                                                 Mr_minmax=[Mrmin, Mrmin+dMr],
+                                                 #gi_minmax=[gimin, gimin+dgi],
+                                                 rW1_minmax=[rW1min, rW1min+drW1],
+                                                 targetclass=targetclass,
+                                                 verbose=False, return_indices=True)
+                        if len(I) >= minperbin:
+                            _sample = sample_template(bins)
+                            _sample['IBIN'] = ibin
+                            _sample['NOBJ'] = len(I)
+                            #for key, mmin, delt in zip(('ZOBJ', 'MR', 'GI', 'RW1'),
+                            #                           (zmin, Mrmin, gimin, rW1min),
+                            #                           (dz, dMr, dgi, drW1)):
+                            for key, mmin, delt in zip(('ZOBJ', 'MR', 'RW1'),
+                                                       (zmin, Mrmin, rW1min),
+                                                       (dz, dMr, drW1)):
+                                _sample[key] = mmin + delt / 2
+                                _sample['{}MIN'.format(key)] = mmin
+                                _sample['{}MAX'.format(key)] = mmin + delt
+                            samples.append(_sample)
+                            _data = _get_data(I)
+                            data.append(_data)
+                        ibin += 1 # next bin
         elif targetclass == 'elg':
             dz, dMg, dgr = bins['zobj']['del'], bins['Mg']['del'], bins['gr']['del']
             for zmin in bins['zobj']['grid']:

@@ -836,6 +836,75 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
             plt.close()
 
     def lrg_rest(phot, meta, bins=None, png=None):
+        zlim = (0.0, 1.2)
+        Mrlim = (-19, -25)
+        rW1lim = (-1.4, 1.7)
+
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
+
+        ax1.hexbin(meta['Z'], phot['ABSMAG_R'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   extent=np.hstack((zlim, Mrlim)))
+        ax1.set_ylim(Mrlim)
+        ax1.set_xlim(zlim)
+        ax1.set_xlabel('Redshift')
+        ax1.set_ylabel(r'$M_{0.0r}$')
+
+        if bins:
+            #ax1.add_patch(Rectangle((bins['z']['min'], bins['absmag']['min']),
+            #                         np.ptp(bins['z']['grid'])+bins['z']['del'], 
+            #                         np.ptp(bins['absmag']['grid'])+bins['absmag']['del'],
+            #                         facecolor='none', edgecolor='k', lw=3))
+            dx, dy = bins['zobj']['del'], bins['Mr']['del']
+            [ax1.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
+             for xx in bins['zobj']['grid'] for yy in bins['Mr']['grid']]            
+
+        ax2.hexbin(meta['Z'], phot['ABSMAG_R']-phot['ABSMAG_W1'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   extent=np.hstack((zlim, rW1lim)))
+        ax2.set_xlabel('Redshift')
+        ax2.set_ylabel(r'$^{0.0}(r - W1)$')
+        ax2.set_ylim(rW1lim)
+        ax2.set_xlim(zlim)
+
+        if bins:
+            dx, dy = bins['zobj']['del'], bins['rW1']['del']
+            [ax2.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
+             for xx in bins['zobj']['grid'] for yy in bins['rW1']['grid']]
+
+        hb = ax3.hexbin(phot['ABSMAG_R'], phot['ABSMAG_R']-phot['ABSMAG_W1'],
+                        mincnt=mincnt, bins='log', cmap=cmap,
+                        #C=cat['weight'], reduce_C_function=np.sum,
+                        extent=np.hstack((Mrlim, rW1lim)))
+        ax3.set_xlabel(r'$M_{0.0r}$')
+        ax3.set_ylabel(r'$^{0.0}(r - W1)$')
+        ax3.set_xlim(Mrlim)
+        ax3.set_ylim(rW1lim)
+
+        if bins:
+            dx, dy = bins['Mr']['del'], bins['rW1']['del']
+            [ax3.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
+             for xx in bins['Mr']['grid'] for yy in bins['rW1']['grid']]    
+
+        ax4.axis('off')
+        
+        cax = fig.add_axes([0.49, 0.12, 0.02, 0.36])
+        formatter = ticker.LogFormatter(10, labelOnlyBase=False) 
+        fig.colorbar(hb, cax=cax, format=formatter, label='Number of Galaxies')
+
+        for aa in (ax1, ax2, ax3):
+            aa.grid(True)
+
+        plt.subplots_adjust(left=0.1, top=0.95, wspace=0.3, hspace=0.3, right=0.88, bottom=0.13)
+        
+        if png:
+            log.info('Writing {}'.format(png))
+            fig.savefig(png)
+            plt.close()
+            
+    def lrg_rest2(phot, meta, bins=None, png=None):
         zlim, Mrlim, gilim, rW1lim = (0.0, 1.2), (-19, -25), (0.2, 1.6), (-1.4, 1.7)
 
         fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(18, 10))
