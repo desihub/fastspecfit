@@ -62,17 +62,16 @@ def main(args=None, comm=None):
     samplefile = os.path.join(templatedir, '{}-sample.fits'.format(args.targetclass))
     stackfile = os.path.join(templatedir, '{}-stacks.fits'.format(args.targetclass))
     fastspecfile = os.path.join(templatedir, '{}-fastspec.fits'.format(args.targetclass))
-    if args.empca:
-        templatefile = os.path.join(templatedir, '{}-empca-templates.fits'.format(args.targetclass))
-    else:
-        templatefile = os.path.join(templatedir, '{}-templates.fits'.format(args.targetclass))
+    templatefile = os.path.join(templatedir, '{}-templates.fits'.format(args.targetclass))
+    empcafile = os.path.join(templatedir, '{}-empca-templates.fits'.format(args.targetclass))
 
     # Optional build QA for every (existing) output files and return.
     if args.qa:
         from fastspecfit.templates.qa import build_all_qa
         build_all_qa(args.targetclass, templatedir, tilefile=tilefile,
                      samplefile=samplefile, stackfile=stackfile,
-                     fastspecfile=fastspecfile, specprod=args.specprod)
+                     fastspecfile=fastspecfile, templatefile=templatefile,
+                     specprod=args.specprod)
 
         return
 

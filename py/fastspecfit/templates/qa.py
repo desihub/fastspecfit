@@ -28,93 +28,6 @@ def plot_style(font_scale=1.2):
     colors = sns.color_palette()
     return sns, colors
 
-def qa_template_colors(phot, template_colors, ntspace=25, png=None):
-
-    if ntspace == 1:
-        prefix = 'All '
-    else:
-        prefix = ''
-    
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 10))
-
-    ax1.hexbin(phot['RMAG']-phot['ZMAG'], phot['GMAG']-phot['RMAG'], mincnt=1, bins='log',
-               #C=cat['weight'], reduce_C_function=np.sum,
-               cmap=cmap)
-    ax1.set_xlabel(r'$(r - z)_{\rm obs}$')
-    ax1.set_ylabel(r'$(g - r)_{\rm obs}$')
-    ax1.set_xlim(rzobslim)
-    ax1.set_ylim(grobslim)
-    ax1.text(0.05, 0.9, 'Data', ha='left', va='bottom',
-             transform=ax1.transAxes, fontsize=14)
-    ax1.grid(True)
-
-    #cb = fig.colorbar(hb, ax=ax1)
-    #cb.set_label(r'log$_{10}$ (Number of Galaxies)')
-    
-    for tt in np.arange(0, nt, ntspace):
-        ax2.plot(template_colors['rz'][tt, :], template_colors['gr'][tt, :], marker='s', 
-                 markersize=5, ls='-', alpha=0.5)
-        
-    for tt in np.arange(0, nt, ntspace):
-        ax2.scatter(template_colors['rz'][tt, 0], template_colors['gr'][tt, 0], marker='o', 
-                   facecolors='none', s=40, edgecolors='k',
-                   linewidth=1, zorder=10)
-        
-    ax2.text(0.1, 0.05, 'z=0.0', ha='left', va='bottom',
-             transform=ax2.transAxes, fontsize=14)
-    ax2.text(0.05, 0.9, '{}Models (z=0.0-1.5, dz=0.1)'.format(prefix), 
-             ha='left', va='bottom',
-             transform=ax2.transAxes, fontsize=14)
-    
-    ax2.set_xlim(rzobslim)
-    ax2.set_ylim(grobslim)
-    ax2.set_xlabel(r'$(r - z)_{\rm obs}$')
-    ax2.set_ylabel(r'$(g - r)_{\rm obs}$')
-    ax2.yaxis.set_label_position('right')
-    ax2.yaxis.tick_right()
-    ax2.grid(True)
-    
-    ax3.hexbin(phot['ZMAG']-phot['W1MAG'], phot['RMAG']-phot['ZMAG'], mincnt=1, bins='log',
-               #C=cat['weight'], reduce_C_function=np.sum,
-               cmap=cmap)
-    ax3.set_ylabel(r'$(r - z)_{\rm obs}$')
-    ax3.set_xlabel(r'$(z - W1)_{\rm obs}$')
-    ax3.set_ylim(rzobslim)
-    ax3.set_xlim(zW1obslim)
-    ax3.text(0.05, 0.9, 'Data', ha='left', va='bottom',
-             transform=ax3.transAxes, fontsize=14)
-    ax3.grid(True)
-    
-    for tt in np.arange(0, nt, ntspace):
-        ax4.plot(template_colors['zW1'][tt, :], template_colors['rz'][tt, :], marker='s', 
-                 markersize=5, ls='-', alpha=0.5)
-        
-    for tt in np.arange(0, nt, ntspace):
-        ax4.scatter(template_colors['zW1'][tt, 0], template_colors['rz'][tt, 0], marker='o', 
-                   facecolors='none', s=40, edgecolors='k',
-                   linewidth=1, zorder=10)
-        
-    ax4.text(0.05, 0.3, 'z=0.0', ha='left', va='bottom',
-             transform=ax4.transAxes, fontsize=14)
-    ax4.text(0.05, 0.9, '{}Models (z=0.0-1.5, dz=0.1)'.format(prefix), 
-             ha='left', va='bottom',
-             transform=ax4.transAxes, fontsize=14)
-    
-    ax4.set_xlim(zW1obslim)
-    ax4.set_ylim(rzobslim)
-    ax4.set_ylabel(r'$(r - z)_{\rm obs}$')
-    ax4.set_xlabel(r'$(z - W1)_{\rm obs}$')
-    ax4.yaxis.set_label_position('right')
-    ax4.yaxis.tick_right()
-    ax4.grid(True)
-    
-    plt.subplots_adjust(wspace=0.05, hspace=0.28)
-    
-    if png:
-        log.info('Writing {}'.format(png))
-        fig.savefig(png)
-        plt.close()
-
 def qa_bpt(targetclass, fastspecfile=None, png=None):
     """QA of the fastspec emission-line spectra.
 
@@ -532,6 +445,264 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
             plt.close()
         else:
             pdf.close()
+
+def qa_photometry_templates(targetclass, samplefile=None, templatefile=None,
+                            ntspace=5, png=None):
+    """Compare the color-color tracks of the templates to the data.
+
+    """
+    from fastspecfit.templates.sample import read_parent_sample
+    from fastspecfit.templates.templates import read_templates
+    
+    if ntspace == 1:
+        prefix = 'All '
+    else:
+        prefix = ''
+
+    sns, _ = plot_style()
+    cmap = plt.cm.get_cmap('RdYlBu')
+    mincnt = 1
+
+    phot, spec, meta = read_parent_sample(samplefile)
+
+    def template_colors_zgrid(templatefile, targetclass):
+        """Compute the colors of the templates on a fixed redshift grid.
+
+        """
+        from speclite import filters
+        filt = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1')
+
+        wave, flux, meta = read_templates(templatefile)
+        nt = len(meta)
+        print('Number of templates = {}'.format(nt))
+        print(wave.min(), wave.max())
+
+        dz = 0.1
+        if targetclass == 'lrg':
+            zmin, zmax = 0.0, 1.4
+        elif targetclass == 'elg':
+            zmin, zmax = 0.0, 1.7
+        elif targetclass == 'bgs':
+            zmin, zmax = 0.0, 0.6
+        else:
+            pass
+
+        nz = np.round( (zmax - zmin) / dz ).astype('i2')
+        print('Number of redshift points = {}'.format(nz))
+
+        cc = dict(
+            redshift = np.linspace(zmin, zmax, nz),
+            gr = np.zeros((nt, nz), 'f4'),
+            rz = np.zeros((nt, nz), 'f4'),
+            rW1 = np.zeros((nt, nz), 'f4'),
+            zW1 = np.zeros((nt, nz), 'f4')
+        )    
+
+        for iz, red in enumerate(cc['redshift']):
+            zwave = wave.astype('float') * (1 + red)
+            maggies = filt.get_ab_maggies(flux, zwave, mask_invalid=False)
+            cc['gr'][:, iz] = -2.5 * np.log10(maggies['decam2014-g'] / maggies['decam2014-r'] )
+            cc['rz'][:, iz] = -2.5 * np.log10(maggies['decam2014-r'] / maggies['decam2014-z'] )
+            cc['rW1'][:, iz] = -2.5 * np.log10(maggies['decam2014-r'] / maggies['wise2010-W1'] )
+            cc['zW1'][:, iz] = -2.5 * np.log10(maggies['decam2014-z'] / maggies['wise2010-W1'] )
+
+        return cc    
+
+    # compute colors on a grid
+    log.info('Reading {}'.format(templatefile))
+    template_colors = template_colors_zgrid(templatefile, targetclass)
+
+    nt, nz = template_colors['gr'].shape
+    zmin = '{:.1f}'.format(template_colors['redshift'].min())
+    zmax = '{:.1f}'.format(template_colors['redshift'].max())
+    dz = '{:.1f}'.format(template_colors['redshift'][1] - template_colors['redshift'][0])
+
+    def elg_obs(phot, png=None):
+        grobslim = (-0.8, 1.8)
+        rzobslim = (-1, 2.2)
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+        ax1.hexbin(phot['RMAG']-phot['ZMAG'], phot['GMAG']-phot['RMAG'],
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum
+                   extent=np.hstack((rzobslim, grobslim)))
+        ax1.set_xlabel(r'$(r - z)_{\rm obs}$')
+        ax1.set_ylabel(r'$(g - r)_{\rm obs}$')
+        ax1.set_xlim(rzobslim)
+        ax1.set_ylim(grobslim)
+        ax1.text(0.05, 0.9, 'Data', ha='left', va='bottom',
+                 transform=ax1.transAxes, fontsize=14)
+
+        for tt in np.arange(0, nt, ntspace):
+            ax2.plot(template_colors['rz'][tt, :], template_colors['gr'][tt, :], marker='s', 
+                     markersize=5, ls='-', alpha=0.5)
+        for tt in np.arange(0, nt, ntspace):
+            ax2.scatter(template_colors['rz'][tt, 0], template_colors['gr'][tt, 0], marker='o', 
+                       facecolors='none', s=40, edgecolors='k',
+                       linewidth=1, zorder=10)
+            
+        ax2.text(0.17, 0.42, 'z=0.0', ha='left', va='bottom',
+                 transform=ax2.transAxes, fontsize=14)
+        ax2.text(0.05, 0.9, '{}Models (z={}-{}, dz={})'.format(prefix, zmin, zmax, dz), 
+                 ha='left', va='bottom',
+                 transform=ax2.transAxes, fontsize=14)
+
+        ax2.yaxis.set_label_position('right')
+        ax2.yaxis.tick_right()
+        ax2.set_xlabel(r'$(r - z)_{\rm obs}$')
+        ax2.set_ylabel(r'$(g - r)_{\rm obs}$')
+        ax2.set_xlim(rzobslim)
+        ax2.set_ylim(grobslim)
+
+        for aa in (ax1, ax2):
+            aa.grid(True)
+
+        plt.subplots_adjust(left=0.12, top=0.95, right=0.87, bottom=0.19, wspace=0.05)
+
+        if png:
+            log.info('Writing {}'.format(png))
+            fig.savefig(png)
+            plt.close()
+            
+    def bgs_obs(phot, png=None):
+        grobslim = (-0.5, 2.5)
+        rzobslim = (-0.5, 1.5)
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+        ax1.hexbin(phot['RMAG']-phot['ZMAG'], phot['GMAG']-phot['RMAG'],
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum
+                   extent=np.hstack((rzobslim, grobslim)))
+        ax1.set_xlabel(r'$(r - z)_{\rm obs}$')
+        ax1.set_ylabel(r'$(g - r)_{\rm obs}$')
+        ax1.set_xlim(rzobslim)
+        ax1.set_ylim(grobslim)
+        ax1.grid(True)
+
+        ax1.text(0.05, 0.9, 'Data', ha='left', va='bottom',
+                 transform=ax1.transAxes, fontsize=14)
+
+        for tt in np.arange(0, nt, ntspace):
+            ax2.plot(template_colors['rz'][tt, :], template_colors['gr'][tt, :], marker='s', 
+                     markersize=5, ls='-', alpha=0.5)
+        for tt in np.arange(0, nt, ntspace):
+            ax2.scatter(template_colors['rz'][tt, 0], template_colors['gr'][tt, 0], marker='o', 
+                       facecolors='none', s=40, edgecolors='k',
+                       linewidth=1, zorder=10)
+        ax2.text(0.2, 0.1, 'z=0.0', ha='left', va='bottom',
+                 transform=ax2.transAxes, fontsize=14)
+        ax2.text(0.05, 0.9, '{}Models (z={}-{}, dz={})'.format(prefix, zmin, zmax, dz), 
+                 ha='left', va='bottom',
+                 transform=ax2.transAxes, fontsize=14)
+        ax2.set_xlim(rzobslim)
+        ax2.set_ylim(grobslim)
+        ax2.set_xlabel(r'$(r - z)_{\rm obs}$')
+        ax2.set_ylabel(r'$(g - r)_{\rm obs}$')
+        ax2.yaxis.set_label_position('right')
+        ax2.yaxis.tick_right()
+        ax2.grid(True)
+
+        plt.subplots_adjust(left=0.12, top=0.95, right=0.87, bottom=0.19, wspace=0.05)
+
+        if png:
+            log.info('Writing {}'.format(png))
+            fig.savefig(png)
+            plt.close()
+            
+    def lrg_obs(phot, png=None):
+        grobslim = (-0.2, 3)
+        rzobslim = (0.0, 3)
+        rW1obslim = (-0.3, 5.5)
+        zW1obslim = (-0.5, 3)
+
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))        
+
+        ax1.hexbin(phot['RMAG']-phot['W1MAG'], phot['GMAG']-phot['RMAG'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   #norm=LogNorm(vmin=1, vmax=100),
+                   extent=np.hstack((rW1obslim, grobslim)))
+        ax1.set_xlabel(r'$(r - W1)_{\rm obs}$')
+        ax1.set_ylabel(r'$(g - r)_{\rm obs}$')
+        ax1.set_xlim(rW1obslim)
+        ax1.set_ylim(grobslim)
+        ax1.text(0.05, 0.9, 'Data', ha='left', va='bottom',
+                 transform=ax1.transAxes, fontsize=14)
+
+        for tt in np.arange(0, nt, ntspace):
+            ax2.plot(template_colors['rW1'][tt, :], template_colors['gr'][tt, :], marker='s', 
+                     markersize=5, ls='-', alpha=0.5)
+        for tt in np.arange(0, nt, ntspace):
+            ax2.scatter(template_colors['rW1'][tt, 0], template_colors['gr'][tt, 0], marker='o', 
+                       facecolors='none', s=40, edgecolors='k',
+                       linewidth=1, zorder=10)
+
+        ax2.text(0.1, 0.05, 'z=0.0', ha='left', va='bottom',
+                 transform=ax2.transAxes, fontsize=14)
+        ax2.text(0.05, 0.9, '{}Models (z={}-{}, dz={})'.format(prefix, zmin, zmax, dz), 
+                 ha='left', va='bottom',
+                 transform=ax2.transAxes, fontsize=14)
+        ax2.yaxis.set_label_position('right')
+        ax2.yaxis.tick_right()
+        ax2.set_xlabel(r'$(r - W1)_{\rm obs}$')
+        ax2.set_ylabel(r'$(g - r)_{\rm obs}$')
+        ax2.set_xlim(rW1obslim)
+        ax2.set_ylim(grobslim)
+
+        ax3.hexbin(phot['ZMAG']-phot['W1MAG'], phot['RMAG']-phot['ZMAG'], 
+                   mincnt=mincnt, bins='log', cmap=cmap,
+                   #C=cat['weight'], reduce_C_function=np.sum,
+                   extent=np.hstack((zW1obslim, rzobslim)))
+        ax3.set_ylabel(r'$(r - z)_{\rm obs}$')
+        ax3.set_xlabel(r'$(z - W1)_{\rm obs}$')
+        ax3.set_xlim(zW1obslim)
+        ax3.set_ylim(rzobslim)
+        ax3.xaxis.set_major_locator(ticker.MultipleLocator(1))
+        ax3.yaxis.set_major_locator(ticker.MultipleLocator(1))
+
+        for tt in np.arange(0, nt, ntspace):
+            ax4.plot(template_colors['zW1'][tt, :], template_colors['rz'][tt, :], marker='s', 
+                     markersize=5, ls='-', alpha=0.5)
+        for tt in np.arange(0, nt, ntspace):
+            ax4.scatter(template_colors['zW1'][tt, 0], template_colors['rz'][tt, 0], marker='o', 
+                       facecolors='none', s=40, edgecolors='k',
+                       linewidth=1, zorder=10)
+
+        ax4.text(0.05, 0.3, 'z=0.0', ha='left', va='bottom',
+                 transform=ax4.transAxes, fontsize=14)
+        #ax4.text(0.05, 0.9, '{}Models (z={}-{}, dz={})'.format(prefix, zmin, zmax, dz), 
+        #         ha='left', va='bottom',
+        #         transform=ax4.transAxes, fontsize=14)
+        ax4.yaxis.set_label_position('right')
+        ax4.yaxis.tick_right()
+        ax4.set_ylabel(r'$(r - z)_{\rm obs}$')
+        ax4.set_xlabel(r'$(z - W1)_{\rm obs}$')
+        ax4.set_xlim(zW1obslim)
+        ax4.set_ylim(rzobslim)
+        ax4.xaxis.set_major_locator(ticker.MultipleLocator(1))
+        ax4.yaxis.set_major_locator(ticker.MultipleLocator(1))
+
+        for aa in (ax1, ax2, ax3, ax4):
+            aa.grid(True)
+
+        plt.subplots_adjust(top=0.95, left=0.1, right=0.9, bottom=0.13, wspace=0.05, hspace=0.28)
+    
+        if png:
+            log.info('Writing {}'.format(png))
+            fig.savefig(png)
+            plt.close()
+
+    # make the plots!
+    if targetclass == 'lrg':
+        lrg_obs(phot, png=png)
+    elif targetclass == 'elg':
+        elg_obs(phot, png=png)
+    elif targetclass == 'bgs':
+        bgs_obs(phot, png=png)
+    else:
+        pass
 
 def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png_rest_bins=None):
     """QA of the observed- and rest-frame photometry.
@@ -1157,7 +1328,8 @@ def qa_parent_sample(samplefile, tilefile, targetclass='lrg',
         plt.close()
 
 def build_all_qa(targetclass, templatedir, tilefile=None, samplefile=None,
-                 stackfile=None, fastspecfile=None, specprod='denali'):
+                 stackfile=None, fastspecfile=None, templatefile=None,
+                 specprod='denali'):
 
     from fastspecfit.templates.sample import select_tiles
 
@@ -1179,11 +1351,13 @@ def build_all_qa(targetclass, templatedir, tilefile=None, samplefile=None,
     pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-emlinespec.pdf'.format(targetclass))
     #qa_fastspec_emlinespec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)        
 
+    png = os.path.join(templatedir, 'qa', '{}-obs-templates.png'.format(targetclass))
+    qa_photometry_templates(targetclass, samplefile=samplefile, templatefile=templatefile, png=png)
+
+    pdb.set_trace()
+    
     if targetclass != 'elg': # no lines in redshift range
         png = os.path.join(templatedir, 'qa', '{}-bpt.png'.format(targetclass))
         qa_bpt(targetclass, fastspecfile=fastspecfile, png=png)
 
-
-
-    pdb.set_trace()
 

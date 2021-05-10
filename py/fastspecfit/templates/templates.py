@@ -674,8 +674,7 @@ def read_stacked_fastspec(fastspecfile, read_spectra=True):
     else:
         return fastmeta, fastspec
 
-def read_templates(targetclass='lrg'):
-    templatefile = os.path.join(templatedir, '{}-templates.fits'.format(targetclass))
+def read_templates(templatefile, empca=False):
     wave = fitsio.read(templatefile, ext='WAVE')
     flux = fitsio.read(templatefile, ext='FLUX')
     meta = Table(fitsio.read(templatefile, ext='METADATA'))
@@ -829,35 +828,4 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
     if templatefile:
         write_templates(templatefile, modelwave, modelflux, metadata,
                         weights=weights, empca=empca)
-
-def zgrid_colors():
-    """Compute the colors of the templates on a fixed redshift grid."""
-    from speclite import filters
-    filt = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1')
-
-    wave, flux, meta = read_templates()
-    nt = len(meta)
-    print('Number of templates = {}'.format(nt))
-    #print(wave.min(), wave.max())    
-    
-    zmin, zmax, dz = 0.0, 1.5, 0.1
-    #zmin, zmax, dz = 0.0, 1.0, 0.1
-    nz = np.round( (zmax - zmin) / dz ).astype('i2')
-    print('Number of redshift points = {}'.format(nz))
-
-    cc = dict(
-        redshift = np.linspace(zmin, zmax, nz),
-        gr = np.zeros( (nt, nz) ),
-        rz = np.zeros( (nt, nz) ),
-        zW1 = np.zeros( (nt, nz), )
-    )    
-    
-    for iz, red in enumerate(cc['redshift']):
-        zwave = wave.astype('float') * (1 + red)
-        maggies = filt.get_ab_maggies(flux, zwave, mask_invalid=False)
-        cc['gr'][:, iz] = -2.5 * np.log10(maggies['decam2014-g'] / maggies['decam2014-r'] )
-        cc['rz'][:, iz] = -2.5 * np.log10(maggies['decam2014-r'] / maggies['decam2014-z'] )
-        cc['zW1'][:, iz] = -2.5 * np.log10(maggies['decam2014-z'] / maggies['wise2010-W1'] )
-    
-    return cc    
 
