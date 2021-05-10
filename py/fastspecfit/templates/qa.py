@@ -205,12 +205,18 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
     if targetclass == 'lrg':
         absmagcol = 'MR'
         colorcol = 'RW1'
+        absmaglabel = 'M_{{0.0r}}'
+        colorlabel = '^{{0.0}}(r-W1)'
     elif targetclass == 'elg':
         absmagcol = 'MG'
         colorcol = 'GR'
+        absmaglabel = 'M_{{0.0g}}'
+        colorlabel = '^{{0.0}}(g-r)'
     elif targetclass == 'bgs':
         absmagcol = 'MR'
         colorcol = 'GR'
+        absmaglabel = 'M_{{0.0r}}'
+        colorlabel = '^{{0.0}}(g-r)'
     else:
         raise NotImplemented
         
@@ -219,6 +225,9 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
         
     zobj = np.unique(fastmeta['ZOBJ'])
     npage = len(zobj)
+
+    inches_wide_perpanel = 4.0
+    inches_tall_perpanel = 3.0
 
     if npage == 1:
         png = True
@@ -232,18 +241,19 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
             from matplotlib.backends.backend_pdf import PdfPages
             pdf = PdfPages(pdffile)
 
-    for ipage in np.arange(npage):#[:1]:
+    for ipage in np.arange(npage):
         log.info('Building page {}/{}'.format(ipage+1, npage))
         pageindx = np.where(zobj[ipage] == fastmeta['ZOBJ'])[0]
 
         absmag = sorted(set(fastmeta[absmagcol][pageindx])) # subpage
         nsubpage = len(absmag)
 
-        for isubpage in np.arange(nsubpage):#[:1]:#[::2]:
+        for isubpage in np.arange(nsubpage):
 
             subpageindx = np.where((absmag[isubpage] == fastmeta[absmagcol][pageindx]))[0]
 
-            fig, allax = plt.subplots(nrow, ncol, figsize=(12, 16), sharex=True, sharey=True)
+            fig, allax = plt.subplots(nrow, ncol, figsize=(inches_wide_perpanel*ncol, inches_tall_perpanel*nrow),
+                                      sharex=True, sharey=True)
             for iplot, (indx, ax) in enumerate(zip(pageindx[subpageindx], allax.flatten())):
                 #log.info(ipage, isubpage, iplot, len(pageindx), len(subpageindx))
 
@@ -271,21 +281,13 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
                 if np.max(filtflux) > ymax:
                     ymax = np.max(filtflux) * 1.4
 
-                if targetclass == 'lrg':
-                    ax.text(0.96, 0.06, '\n'.join((
-                        r'${:.1f}<g-i<{:.1f}$'.format(fastmeta['GIMIN'][indx], fastmeta['GIMAX'][indx]),
-                        r'${:.2f}<r-W1<{:.2f}$'.format(fastmeta['RW1MIN'][indx], fastmeta['RW1MAX'][indx]) )),
-                        ha='right', va='bottom', transform=ax.transAxes, fontsize=10,
-                        bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
-                else:
-                    ax.text(0.96, 0.06, r'${:.1f}<g-r<{:.1f}$'.format(
-                        fastmeta['GRMIN'][indx], fastmeta['GRMAX'][indx]),
-                        ha='right', va='bottom', transform=ax.transAxes, fontsize=10,
-                        bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
-
-                ax.text(0.04, 0.96,
-                        '\n'.join(( 'N={}, S/N={:.1f}'.format(
-                            fastmeta['NOBJ'][indx], fastspec['CONTINUUM_SNR_ALL'][indx]), )),
+                ax.text(0.96, 0.06, r'${:.2f}<{}<{:.2f}$'.format(
+                    fastmeta['{}MIN'.format(colorcol)][indx], colorlabel,
+                    fastmeta['{}MAX'.format(colorcol)][indx]),
+                    ha='right', va='bottom', transform=ax.transAxes, fontsize=10,
+                    bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
+                ax.text(0.04, 0.96, '\n'.join(( 'N={}, S/N={:.1f}'.format(
+                    fastmeta['NOBJ'][indx], fastspec['CONTINUUM_SNR_ALL'][indx]), )),
                     ha='left', va='top', transform=ax.transAxes, fontsize=10,
                     bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
 
@@ -299,9 +301,10 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
                 if iplot == ncol*nrow-1:
                     break
             
-            fig.text(0.52, 0.968, r'${:.1f}<z<{:.1f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
+            fig.text(0.52, 0.968, r'${:.2f}<z<{:.2f}\ {:.1f}<{}<{:.1f}$'.format(
                 fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
-                fastmeta['{}MIN'.format(absmagcol)][indx], fastmeta['{}MAX'.format(absmagcol)][indx]),
+                fastmeta['{}MIN'.format(absmagcol)][indx], absmaglabel,
+                fastmeta['{}MAX'.format(absmagcol)][indx]),
                 ha='center', va='center', fontsize=22)
 
             for rem in np.arange(ncol*nrow-iplot-1)+iplot+1:
@@ -343,18 +346,6 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
         
     fastspec_fix = remove_undetected_lines(fastspec, EMFit.linetable, devshift=False)
 
-    if targetclass == 'lrg':
-        absmagcol = 'MR'
-        colorcol = 'GI'
-    elif targetclass == 'elg':
-        absmagcol = 'MG'
-        colorcol = 'GR'
-    elif targetclass == 'bgs':
-        absmagcol = 'MR'
-        colorcol = 'GR'
-    else:
-        raise NotImplemented
-
     # plotting preferences
     cmap = plt.cm.get_cmap('jet')
     #cmap = sns.color_palette(as_cmap=True)
@@ -389,12 +380,18 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
     if targetclass == 'lrg':
         absmagcol = 'MR'
         colorcol = 'RW1'
+        absmaglabel = 'M_{{0.0r}}'
+        colorlabel = '^{{0.0}}(r-W1)'
     elif targetclass == 'elg':
         absmagcol = 'MG'
         colorcol = 'GR'
+        absmaglabel = 'M_{{0.0g}}'
+        colorlabel = '^{{0.0}}(g-r)'
     elif targetclass == 'bgs':
         absmagcol = 'MR'
         colorcol = 'GR'
+        absmaglabel = 'M_{{0.0r}}'
+        colorlabel = '^{{0.0}}(g-r)'
     else:
         raise NotImplemented
         
@@ -459,7 +456,7 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
 
                 modelwave /= (1+redshift) # rest-frame
 
-                label = 'z=[{:.1f}-{:.1f}] (N={})'.format(
+                label = 'z=[{:.2f}-{:.2f}] (N={})'.format(
                     fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
                     np.sum(fastmeta['ZOBJ'][pageindx[subpageindx]] == fastmeta['ZOBJ'][indx]))
                 #bigax.plot(modelwave/(1+redshift), emlineflux, color='gray')
@@ -515,11 +512,11 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
 
             bigax.set_ylim(bigymin, bigymax)
             bigax.set_xlim(2600, 7200) # 3500, 9300)
-            bigax.set_title(
-                r'${:.2f}<r-W1<{:.2f}\ {:.1f}<M_{{r}}<{:.1f}$'.format(
-                fastmeta['{}MIN'.format(colorcol)][indx], fastmeta['{}MAX'.format(colorcol)][indx],
-                fastmeta['{}MIN'.format(absmagcol)][indx], fastmeta['{}MAX'.format(absmagcol)][indx]
-                ))
+            bigax.set_title(r'${:.2f}<{}<{:.2f}\ {:.1f}<{}<{:.1f}$'.format(
+                fastmeta['{}MIN'.format(colorcol)][indx], colorlabel,
+                fastmeta['{}MAX'.format(colorcol)][indx],
+                fastmeta['{}MIN'.format(absmagcol)][indx], absmaglabel,
+                fastmeta['{}MAX'.format(absmagcol)][indx]))
             #bigax.set_xlabel('Observed-frame Wavelength ($\AA$)')
 
             plt.subplots_adjust(wspace=0.28, left=0.07, right=0.95, top=0.95, bottom=0.1)
@@ -1173,10 +1170,8 @@ def build_all_qa(targetclass, templatedir, tilefile=None, samplefile=None,
     png_obs = os.path.join(templatedir, 'qa', '{}-obs.png'.format(targetclass))
     png_rest = os.path.join(templatedir, 'qa', '{}-rest.png'.format(targetclass))
     png_rest_bins = os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(targetclass))
-    qa_photometry(targetclass, samplefile=samplefile, png_obs=png_obs,
-                  png_rest=png_rest, png_rest_bins=png_rest_bins)
-
-    pdb.set_trace()
+    #qa_photometry(targetclass, samplefile=samplefile, png_obs=png_obs,
+    #              png_rest=png_rest, png_rest_bins=png_rest_bins)
 
     pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec.pdf'.format(targetclass))
     #qa_fastspec_fullspec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)
@@ -1187,3 +1182,8 @@ def build_all_qa(targetclass, templatedir, tilefile=None, samplefile=None,
     if targetclass != 'elg': # no lines in redshift range
         png = os.path.join(templatedir, 'qa', '{}-bpt.png'.format(targetclass))
         qa_bpt(targetclass, fastspecfile=fastspecfile, png=png)
+
+
+
+    pdb.set_trace()
+

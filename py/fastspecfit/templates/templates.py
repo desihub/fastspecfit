@@ -663,6 +663,24 @@ def remove_undetected_lines(fastspec, linetable=None, snrmin=3.0, oiidoublet=0.7
 
     return fastspec
 
+def read_stacked_fastspec(fastspecfile, read_spectra=True):
+    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
+    if read_spectra:
+        wave = fitsio.read(fastspecfile, ext='WAVE')
+        flux = fitsio.read(fastspecfile, ext='FLUX')
+        ivar = fitsio.read(fastspecfile, ext='IVAR')
+        return wave, flux, ivar, fastmeta, fastspec
+    else:
+        return fastmeta, fastspec
+
+def read_templates(targetclass='lrg'):
+    templatefile = os.path.join(templatedir, '{}-templates.fits'.format(targetclass))
+    wave = fitsio.read(templatefile, ext='WAVE')
+    flux = fitsio.read(templatefile, ext='FLUX')
+    meta = Table(fitsio.read(templatefile, ext='METADATA'))
+    return wave, flux, meta
+
 def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
                     templatefile=None, empca=False):
     """Build the final templates.
@@ -673,6 +691,7 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
 
     """
     import fitsio
+    from astropy.table import join
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
 
@@ -683,11 +702,7 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
     CFit = ContinuumFit(minwave=minwave, maxwave=maxwave)
     EMFit = EMLineFit()
 
-    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
-    wave = fitsio.read(fastspecfile, ext='WAVE')
-    flux = fitsio.read(fastspecfile, ext='FLUX')
-    ivar = fitsio.read(fastspecfile, ext='IVAR')
+    wave, flux, ivar, fastmeta, fastspec = read_stacked_fastspec(fastspecfile, read_spectra=True)
 
     nobj = len(fastmeta)
     log.info('Read {} fastspec model fits from {}'.format(nobj, fastspecfile))
@@ -796,18 +811,15 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
 
     log.info('Rebuilding the final model spectra took: {:.2f} sec'.format(time.time()-t0))
 
-    metacols = ['NOBJ', 'ZOBJ', 'MR', 'GI', 'RW1']
-    speccols = ['CONTINUUM_SNR_ALL',
-                'BALMER_Z', 'FORBIDDEN_Z', 'BROAD_Z',
-                'BALMER_SIGMA', 'FORBIDDEN_SIGMA', 'BROAD_SIGMA',
-                'OII_3726_EW', 'OII_3726_EW_IVAR',
-                'OII_3729_EW', 'OII_3729_EW_IVAR',
-                'OIII_5007_EW', 'OIII_5007_EW_IVAR',
-                'HBETA_EW', 'HBETA_EW_IVAR',
-                'HALPHA_EW', 'HALPHA_EW_IVAR']
-
-    from astropy.table import hstack
-    metadata = hstack([fastmeta[metacols], fastspec[speccols]])
+    #speccols = ['CONTINUUM_SNR_ALL',
+    #            'BALMER_Z', 'FORBIDDEN_Z', 'BROAD_Z',
+    #            'BALMER_SIGMA', 'FORBIDDEN_SIGMA', 'BROAD_SIGMA',
+    #            'OII_3726_EW', 'OII_3726_EW_IVAR',
+    #            'OII_3729_EW', 'OII_3729_EW_IVAR',
+    #            'OIII_5007_EW', 'OIII_5007_EW_IVAR',
+    #            'HBETA_EW', 'HBETA_EW_IVAR',
+    #            'HALPHA_EW', 'HALPHA_EW_IVAR']
+    metadata = join(fastmeta, fastspec, keys='TARGETID')
     
     if empca:
         weights = np.zeros_like(modelflux) + fastmeta['NOBJ'].data[:, np.newaxis]
@@ -817,7 +829,6 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
     if templatefile:
         write_templates(templatefile, modelwave, modelflux, metadata,
                         weights=weights, empca=empca)
-
 
 def zgrid_colors():
     """Compute the colors of the templates on a fixed redshift grid."""
@@ -849,22 +860,4 @@ def zgrid_colors():
         cc['zW1'][:, iz] = -2.5 * np.log10(maggies['decam2014-z'] / maggies['wise2010-W1'] )
     
     return cc    
-
-def read_stacked_fastspec(fastspecfile, read_spectra=True):
-    fastmeta = Table(fitsio.read(fastspecfile, ext='METADATA'))
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC'))
-    if read_spectra:
-        wave = fitsio.read(fastspecfile, ext='WAVE')
-        flux = fitsio.read(fastspecfile, ext='FLUX')
-        ivar = fitsio.read(fastspecfile, ext='IVAR')
-        return wave, flux, ivar, fastmeta, fastspec
-    else:
-        return fastmeta, fastspec
-
-def read_templates(targetclass='lrg'):
-    templatefile = os.path.join(templatedir, '{}-templates.fits'.format(targetclass))
-    wave = fitsio.read(templatefile, ext='WAVE')
-    flux = fitsio.read(templatefile, ext='FLUX')
-    meta = Table(fitsio.read(templatefile, ext='METADATA'))
-    return wave, flux, meta
 

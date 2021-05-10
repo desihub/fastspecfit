@@ -99,13 +99,13 @@ def main(args=None, comm=None):
 
         if args.targetclass == 'lrg':
             normwave = 4500.0
-            fastphot_in_bins = True
+            fastphot_in_bins = False
         elif args.targetclass == 'elg':
             normwave = 3500.0
             fastphot_in_bins = False
         elif args.targetclass == 'bgs':
             normwave = 5500.0
-            fastphot_in_bins = True
+            fastphot_in_bins = False
         else:
             raise NotImplemented
 
