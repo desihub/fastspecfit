@@ -411,20 +411,22 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
     else:
         continuumwave = None
         
-    def sample_template(bins):
+    def sample_template(targetclass, bins):
         sample1 = Table()
+        sample1.add_column(Column(name='TARGETCLASS', dtype='U3', length=1))
         sample1.add_column(Column(name='IBIN', dtype=np.int32, length=1))
         sample1.add_column(Column(name='NOBJ', dtype=np.int32, length=1))
         for binkey in bins.keys():
             sample1.add_column(Column(name=binkey.upper(), dtype='f4', length=1)) # mean bin center
             sample1.add_column(Column(name='{}MIN'.format(binkey.upper()), dtype='f4', length=1))
             sample1.add_column(Column(name='{}MAX'.format(binkey.upper()), dtype='f4', length=1))
+        sample1['TARGETCLASS'] = targetclass
         return sample1
 
-    def _get_data(I):
+    def _get_data(allflux, allivar, allphot, allspec, allmeta, I):
         _data = {}
-        _data['flux'] = flux[I, :]
-        _data['ivar'] = ivar[I, :]
+        _data['flux'] = allflux[I, :]
+        _data['ivar'] = allivar[I, :]
         _data['fastphot'] = allphot[I]
         _data['fastspec'] = allspec[I]
         _data['metadata'] = allmeta[I]
@@ -439,7 +441,7 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
                     AV=allphot['CONTINUUM_AV'][I][iobj],
                     coeff=allphot['CONTINUUM_COEFF'][I][iobj],# * CFit.massnorm,
                     synthphot=False)
-                _data['cflux'].append(cflux1)# * (1 + allmeta[I[iobj]]['Z']) # deredshift
+                _data['cflux'].append(cflux1.astype('f4'))# * (1 + allmeta[I[iobj]]['Z']) # deredshift
             _data['cflux'] = np.vstack(_data['cflux'])
         return _data
 
@@ -463,8 +465,8 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
         allphot = Table(fitsio.read(restfile, ext='FASTPHOT'))
         allspec = Table(fitsio.read(restfile, ext='FASTSPEC'))
         allmeta = Table(fitsio.read(restfile, ext='METADATA'))
-        flux = fitsio.read(restfile, ext='FLUX')
-        ivar = fitsio.read(restfile, ext='IVAR')
+        allflux = fitsio.read(restfile, ext='FLUX')
+        allivar = fitsio.read(restfile, ext='IVAR')
 
         # the wavelength vector is identical, so just read one
         if wave is None:
@@ -489,7 +491,7 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
                                                  targetclass=targetclass,
                                                  verbose=False, return_indices=True)
                         if len(I) >= minperbin:
-                            _sample = sample_template(bins)
+                            _sample = sample_template(targetclass, bins)
                             _sample['IBIN'] = ibin
                             _sample['NOBJ'] = len(I)
                             #for key, mmin, delt in zip(('ZOBJ', 'MR', 'GI', 'RW1'),
@@ -502,8 +504,7 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
                                 _sample['{}MIN'.format(key)] = mmin
                                 _sample['{}MAX'.format(key)] = mmin + delt
                             samples.append(_sample)
-                            _data = _get_data(I)
-                            data.append(_data)
+                            data.append(_get_data(allflux, allivar, allphot, allspec, allmeta, I))
                         ibin += 1 # next bin
         elif targetclass == 'elg':
             dz, dMg, dgr = bins['zobj']['del'], bins['Mg']['del'], bins['gr']['del']
@@ -517,7 +518,7 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
                                                  targetclass=targetclass,
                                                  verbose=False, return_indices=True)
                         if len(I) >= minperbin:
-                            _sample = sample_template(bins)
+                            _sample = sample_template(targetclass, bins)
                             _sample['IBIN'] = ibin
                             _sample['NOBJ'] = len(I)
                             for key, mmin, delt in zip(('ZOBJ', 'MG', 'GR'),
@@ -527,8 +528,7 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
                                 _sample['{}MIN'.format(key)] = mmin
                                 _sample['{}MAX'.format(key)] = mmin + delt
                             samples.append(_sample)
-                            _data = _get_data(I)
-                            data.append(_data)
+                            data.append(_get_data(allflux, allivar, allphot, allspec, allmeta, I))
                         ibin += 1 # next bin
         elif targetclass == 'bgs':
             dz, dMr, dgr = bins['zobj']['del'], bins['Mr']['del'], bins['gr']['del']
@@ -542,7 +542,7 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
                                                  targetclass=targetclass,
                                                  verbose=False, return_indices=True)
                         if len(I) >= minperbin:
-                            _sample = sample_template(bins)
+                            _sample = sample_template(targetclass, bins)
                             _sample['IBIN'] = ibin
                             _sample['NOBJ'] = len(I)
                             for key, mmin, delt in zip(('ZOBJ', 'MR', 'GR'),
@@ -552,12 +552,11 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
                                 _sample['{}MIN'.format(key)] = mmin
                                 _sample['{}MAX'.format(key)] = mmin + delt
                             samples.append(_sample)
-                            _data = _get_data(I)
-                            data.append(_data)
+                            data.append(_get_data(allflux, allivar, allphot, allspec, allmeta, I))
                         ibin += 1 # next bin
         else:
-            raise NotImplemented
-
+            raise NotImplemented        
+        
     # Stack the bin-level statistics table
     samples = Table(np.hstack(samples))
     data = np.array(data)

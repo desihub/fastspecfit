@@ -63,7 +63,6 @@ def main(args=None, comm=None):
     stackfile = os.path.join(templatedir, '{}-stacks.fits'.format(args.targetclass))
     fastspecfile = os.path.join(templatedir, '{}-fastspec.fits'.format(args.targetclass))
     templatefile = os.path.join(templatedir, '{}-templates.fits'.format(args.targetclass))
-    empcafile = os.path.join(templatedir, '{}-empca-templates.fits'.format(args.targetclass))
 
     # Optional build QA for every (existing) output files and return.
     if args.qa:
@@ -98,13 +97,13 @@ def main(args=None, comm=None):
 
         if args.targetclass == 'lrg':
             normwave = 4500.0
-            fastphot_in_bins = False
+            fastphot_in_bins = True
         elif args.targetclass == 'elg':
             normwave = 3500.0
-            fastphot_in_bins = False
+            fastphot_in_bins = True
         elif args.targetclass == 'bgs':
             normwave = 5500.0
-            fastphot_in_bins = False
+            fastphot_in_bins = True
         else:
             raise NotImplemented
 
@@ -127,13 +126,47 @@ def main(args=None, comm=None):
         fastspecfit_stacks(stackfile, mp=args.mp, fastspecfile=fastspecfile,
                            qadir=qadir, qaprefix=args.targetclass)
 
-    # [3] Generate the final templates and then we're done!
+    # [3] Generate the final templates.
     if not os.path.isfile(templatefile) or args.overwrite_templates:
         from fastspecfit.templates.templates import build_templates
 
         log.info('Building final templates.')
         build_templates(fastspecfile, mp=args.mp, templatefile=templatefile,
-                        minwave=args.minwave, maxwave=args.maxwave, empca=args.empca)
+                        minwave=args.minwave, maxwave=args.maxwave)
+
+    # [4] Build the empca template catalog using all the target classes.
+    if args.empca:
+        from astropy.table import vstack
+        from fastspecfit.templates.templates import read_templates, write_templates
+
+        log.info('Building empca template set.')
+
+        empcafile = os.path.join(templatedir, 'empca-templates.fits')
+
+        modelwave = None
+        modelflux, modeldata, weights = [], [], []
+
+        for targetclass in ('bgs', 'lrg', 'elg'):
+            templatefile = os.path.join(templatedir, '{}-templates.fits'.format(targetclass))
+            
+            modelwave1, modelflux1, modeldata1 = read_templates(templatefile)
+            if modelwave is None:
+                modelwave = modelwave1
+            assert(np.all(modelwave == modelwave1))
+            modelflux.append(modelflux1)
+            modeldata.append(modeldata1)
+            weights1 = np.zeros_like(modelflux1) + modeldata1['NOBJ'].data[:, np.newaxis]
+            weights1 /= np.sum(modeldata1['NOBJ'].data)
+            weights.append(weights1)
+
+        modelflux = np.vstack(modelflux)
+        weights = np.vstack(weights)
+        modeldata = vstack(modeldata)
+
+        write_templates(empcafile, modelwave, modelflux, modeldata,
+                        weights=weights, empca=True)
+
+        pdb.set_trace()
 
 if __name__ == '__main__':
     main()

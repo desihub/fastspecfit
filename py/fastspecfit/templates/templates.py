@@ -23,7 +23,8 @@ def _rebuild_fastspec_spectrum(args):
     return rebuild_fastspec_spectrum(*args)
 
 def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
-                              full_resolution=False, emlines_only=False):
+                              full_resolution=False, emlines_only=False,
+                              normalize_filter=None, normalize_mag=20.0):
     """Rebuilding a single fastspec model continuum and emission-line spectrum given
     a fastspec astropy.table.Table.
 
@@ -66,6 +67,14 @@ def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
         
         modelflux *= (1 + redshift) # rest frame
 
+        # normalize to a sensible magnitude
+        if normalize_filter:
+            #normmaggies = normalize_filter.get_ab_maggies(modelflux, modelwave)
+            #modelflux /= normmaggies[normalize_filter.names[0]].data[0]
+            #factor = 10**(-0.4*(48.6-normalize_mag)) * C_LIGHT * 1e13 / normalize_filter.effective_wavelengths.value**2  # [maggies-->erg/s/cm2/A] * CFit.fluxnorm
+            #modelflux *= factor
+            modelflux /= np.interp(5500.0, modelwave, modelflux)
+            
         #import matplotlib.pyplot as plt
         #plt.plot(modelwave, modelflux) ; plt.xlim(3200, 10000) ; plt.savefig('junk.png')
         #pdb.set_trace()
@@ -674,14 +683,14 @@ def read_stacked_fastspec(fastspecfile, read_spectra=True):
     else:
         return fastmeta, fastspec
 
-def read_templates(templatefile, empca=False):
+def read_templates(templatefile):
     wave = fitsio.read(templatefile, ext='WAVE')
     flux = fitsio.read(templatefile, ext='FLUX')
     meta = Table(fitsio.read(templatefile, ext='METADATA'))
     return wave, flux, meta
 
 def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
-                    templatefile=None, empca=False):
+                    templatefile=None):
     """Build the final templates.
 
     Called by bin/desi-templates.
@@ -691,12 +700,16 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
     """
     import fitsio
     from astropy.table import join
+    from speclite import filters
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
 
     if not os.path.isfile(fastspecfile):
         log.warning('fastspecfile {} not found!'.format(fastspecfile))
         raise IOError
+
+    normalize_mag = 20.0
+    normalize_filter = filters.load_filters('decam2014-r')
 
     CFit = ContinuumFit(minwave=minwave, maxwave=maxwave)
     EMFit = EMLineFit()
@@ -796,7 +809,8 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
     t0 = time.time()
     emlines_only = False
     mpargs = [(fastspec[iobj], wave, flux[iobj, :], ivar[iobj, :], CFit, EMFit, 
-               full_resolution, emlines_only) for iobj in np.arange(nobj)]
+               full_resolution, emlines_only, normalize_filter, normalize_mag)
+               for iobj in np.arange(nobj)]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             _out = P.map(_rebuild_fastspec_spectrum, mpargs)
@@ -820,12 +834,5 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
     #            'HALPHA_EW', 'HALPHA_EW_IVAR']
     metadata = join(fastmeta, fastspec, keys='TARGETID')
     
-    if empca:
-        weights = np.zeros_like(modelflux) + fastmeta['NOBJ'].data[:, np.newaxis]
-    else:
-        weights = None
-
     if templatefile:
-        write_templates(templatefile, modelwave, modelflux, metadata,
-                        weights=weights, empca=empca)
-
+        write_templates(templatefile, modelwave, modelflux, metadata)
