@@ -196,11 +196,12 @@ def stack_onebin(flux2d, ivar2d, templatewave, normwave, cflux2d, continuumwave)
         templatewave, flux2d, ivar2d, constant_ivar=False, normwave=normwave)
 
     if continuumwave is None:
-        return templateflux1, templateivar1, templatepix
+        continuumflux1, templatecpix = None, None
     else:
         _, continuumflux1, _, _, templatecpix = iterative_stack(
             continuumwave, cflux2d, normwave=normwave)
-        return templateflux1, templateivar1, templatepix, continuumflux1, templatecpix
+        
+    return templateflux1, templateivar1, templatepix, continuumflux1, templatecpix
 
 def fastspec_to_desidata(fastspec, wave, flux, ivar):
     """Convenience wrapper to turn spectra in a fastspecfit-compatible dictionary of

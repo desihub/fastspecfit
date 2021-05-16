@@ -21,11 +21,11 @@ VITILES_TARGETCLASS = {'lrg': [80605, 80609],
                        'bgs': [80613]}
 
 SAMPLE_PROPERTIES = {
-    'lrg': {'zminmax': (0.1, 1.1), 'normwave': 4500.0,
+    'lrg': {'zminmax': (0.1, 1.1), 'normwave': 4500.0, 'absmag': 'Mr', 'color': 'rW1',
             'absmag_band': 'R', 'color_band1': 'R', 'color_band2': 'W1'},
-    'elg': {'zminmax': (0.6, 1.5), 'normwave': 3500.0,
+    'elg': {'zminmax': (0.6, 1.5), 'normwave': 3500.0, 'absmag': 'Mg', 'color': 'gr',
             'absmag_band': 'G', 'color_band1': 'G', 'color_band2': 'R'},
-    'bgs': {'zminmax': (0.05, 1.55), 'normwave': 5500.0,
+    'bgs': {'zminmax': (0.05, 1.55), 'normwave': 5500.0, 'absmag': 'Mr', 'color': 'gr',
             'absmag_band': 'R', 'color_band1': 'G', 'color_band2': 'R'},
     }
 
@@ -293,199 +293,79 @@ def select_parent_sample(phot, spec, meta, targetclass='lrg', specprod='denali',
     else:
         return phot[iselect], spec[iselect], meta[iselect]
 
-def stacking_bins2(targetclass='lrg', verbose=False):
-
-    # define the stacking limits and the number of bin *centers*
-
-    if targetclass == 'lrg':
-        zlim, nz = [0.1, 1.1], 10
-        Mrlim, nMr = [-24.5, -20], 9
-        #gilim, ngi = [0.4, 1.4], 5 
-        rW1lim, nrW1 = [-1.0, 1.25], 9
-        
-        dz = (zlim[1] - zlim[0]) / nz
-        dMr = (Mrlim[1] - Mrlim[0]) / nMr
-        #dgi = (gilim[1] - gilim[0]) / ngi
-        drW1 = (rW1lim[1] - rW1lim[0]) / nrW1
-        
-        # build the array of (left) bin *edges*
-        zgrid = np.arange(zlim[0], zlim[1], dz)
-        Mrgrid = np.arange(Mrlim[0], Mrlim[1], dMr)
-        #gigrid = np.arange(gilim[0], gilim[1], dgi)
-        rW1grid = np.arange(rW1lim[0], rW1lim[1], drW1)
-        
-        bins = {'zobj': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
-                'Mr': {'min': Mrlim[0], 'max': Mrlim[1], 'del': dMr, 'grid': Mrgrid}, 
-                #'gi': {'min': gilim[0], 'max': gilim[1], 'del': dgi, 'grid': gigrid}, 
-                'rW1': {'min': rW1lim[0], 'max': rW1lim[1], 'del': drW1, 'grid': rW1grid}
-                }
-            
-    elif targetclass == 'elg':
-        zlim, nz = [0.6, 1.5], 9
-        Mglim, nMg = [-24, -19], 10
-        grlim, ngr = [-0.2, 0.6], 4
-        
-        dz = (zlim[1] - zlim[0]) / nz
-        dMg = (Mglim[1] - Mglim[0]) / nMg
-        dgr = (grlim[1] - grlim[0]) / ngr
-        
-        # build the array of (left) bin *edges*
-        zgrid = np.arange(zlim[0], zlim[1], dz)
-        Mggrid = np.arange(Mglim[0], Mglim[1], dMg)
-        grgrid = np.arange(grlim[0], grlim[1], dgr)
-        
-        bins = {'zobj': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
-                'Mg': {'min': Mglim[0], 'max': Mglim[1], 'del': dMg, 'grid': Mggrid}, 
-                'gr': {'min': grlim[0], 'max': grlim[1], 'del': dgr, 'grid': grgrid}, 
-                }
-    elif targetclass == 'bgs':
-        zlim, nz = [0.05, 0.55], 10
-        Mrlim, nMr = [-24.0, -17.0], 7
-        grlim, ngr = [0.0, 1.0], 5
-        
-        dz = (zlim[1] - zlim[0]) / nz
-        dMr = (Mrlim[1] - Mrlim[0]) / nMr
-        dgr = (grlim[1] - grlim[0]) / ngr
-        
-        # build the array of (left) bin *edges*
-        zgrid = np.arange(zlim[0], zlim[1], dz)
-        Mrgrid = np.arange(Mrlim[0], Mrlim[1], dMr)
-        grgrid = np.arange(grlim[0], grlim[1], dgr)
-        
-        bins = {'zobj': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
-                'Mr': {'min': Mrlim[0], 'max': Mrlim[1], 'del': dMr, 'grid': Mrgrid}, 
-                'gr': {'min': grlim[0], 'max': grlim[1], 'del': dgr, 'grid': grgrid}, 
-                }
-    else:
-        raise NotImplemented
-        
-    nbins = 1
-    for key in bins.keys():
-        nbins *= len(bins[key]['grid'])
-        if verbose:
-            log.info(len(bins[key]['grid']))
-    if verbose:
-        log.info(nbins)
-
-    return bins, nbins
-
 def stacking_bins(targetclass='lrg', verbose=False):
 
     # define the stacking limits and the number of bin *centers*
 
     if targetclass == 'lrg':
         zlim, nz = [0.1, 1.1], 10
-        Mrlim, nMr = [-24.5, -20], 9
-        rW1lim, nrW1 = [-1.0, 1.25], 9
-        
-        dz = (zlim[1] - zlim[0]) / nz
-        dMr = (Mrlim[1] - Mrlim[0]) / nMr
-        #dgi = (gilim[1] - gilim[0]) / ngi
-        drW1 = (rW1lim[1] - rW1lim[0]) / nrW1
-        
-        # build the array of (left) bin *edges*
-        zgrid = np.arange(zlim[0], zlim[1], dz)
-        Mrgrid = np.arange(Mrlim[0], Mrlim[1], dMr)
-        #gigrid = np.arange(gilim[0], gilim[1], dgi)
-        rW1grid = np.arange(rW1lim[0], rW1lim[1], drW1)
-        
-        bins = {'zobj': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
-                'Mr': {'min': Mrlim[0], 'max': Mrlim[1], 'del': dMr, 'grid': Mrgrid}, 
-                #'gi': {'min': gilim[0], 'max': gilim[1], 'del': dgi, 'grid': gigrid}, 
-                'rW1': {'min': rW1lim[0], 'max': rW1lim[1], 'del': drW1, 'grid': rW1grid}
-                }
-            
+        absmaglim, nabsmag = [-24.5, -20], 9 # Mr
+        colorlim, ncolor = [-1.0, 1.25], 9   # r-W1
     elif targetclass == 'elg':
         zlim, nz = [0.6, 1.5], 9
-        Mglim, nMg = [-24, -19], 10
-        grlim, ngr = [-0.2, 0.6], 4
-        
-        dz = (zlim[1] - zlim[0]) / nz
-        dMg = (Mglim[1] - Mglim[0]) / nMg
-        dgr = (grlim[1] - grlim[0]) / ngr
-        
-        # build the array of (left) bin *edges*
-        zgrid = np.arange(zlim[0], zlim[1], dz)
-        Mggrid = np.arange(Mglim[0], Mglim[1], dMg)
-        grgrid = np.arange(grlim[0], grlim[1], dgr)
-        
-        bins = {'zobj': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
-                'Mg': {'min': Mglim[0], 'max': Mglim[1], 'del': dMg, 'grid': Mggrid}, 
-                'gr': {'min': grlim[0], 'max': grlim[1], 'del': dgr, 'grid': grgrid}, 
-                }
-            
+        absmaglim, nabsmag = [-24, -19], 10 # Mg
+        colorlim, ncolor = [-0.2, 0.6], 4   # g-r
     elif targetclass == 'bgs':
-        
         zlim, nz = [0.05, 0.55], 10
-        Mrlim, nMr = [-24.0, -17.0], 7
-        grlim, ngr = [0.0, 1.0], 5
-        
-        dz = (zlim[1] - zlim[0]) / nz
-        dMr = (Mrlim[1] - Mrlim[0]) / nMr
-        dgr = (grlim[1] - grlim[0]) / ngr
-        
-        # build the array of (left) bin *edges*
-        zgrid = np.arange(zlim[0], zlim[1], dz)
-        Mrgrid = np.arange(Mrlim[0], Mrlim[1], dMr)
-        grgrid = np.arange(grlim[0], grlim[1], dgr)
-        
-        bins = {'zobj': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
-                'Mr': {'min': Mrlim[0], 'max': Mrlim[1], 'del': dMr, 'grid': Mrgrid}, 
-                'gr': {'min': grlim[0], 'max': grlim[1], 'del': dgr, 'grid': grgrid}, 
-                }
+        absmaglim, nabsmag = [-24.0, -17.0], 7 # Mr
+        colorlim, ncolor = [0.0, 1.0], 5       # g-r
     else:
         raise NotImplemented
+        
+    dz = (zlim[1] - zlim[0]) / nz
+    dabsmag = (absmaglim[1] - absmaglim[0]) / nabsmag
+    dcolor = (colorlim[1] - colorlim[0]) / ncolor
 
-    sample1 = Table()
-    sample1.add_column(Column(name='TARGETCLASS', dtype='U3', length=1))
-    sample1.add_column(Column(name='IBIN', dtype=np.int32, length=1))
-    sample1.add_column(Column(name='NOBJ', dtype=np.int32, length=1))
-    for binkey in bins.keys():
-        sample1.add_column(Column(name=binkey.upper(), dtype='f4', length=1)) # mean bin center
-        sample1.add_column(Column(name='{}MIN'.format(binkey.upper()), dtype='f4', length=1))
-        sample1.add_column(Column(name='{}MAX'.format(binkey.upper()), dtype='f4', length=1))
-    sample1['TARGETCLASS'] = targetclass
+    # build the array of (left) bin *edges*
+    zgrid = np.arange(zlim[0], zlim[1], dz)
+    absmaggrid = np.arange(absmaglim[0], absmaglim[1], dabsmag)
+    colorgrid = np.arange(colorlim[0], colorlim[1], dcolor)
+
+    nbins = len(zgrid) * len(absmaggrid) * len(colorgrid)
+
+    # pack into a table
+    bins = Table()
+    bins.add_column(Column(name='TARGETCLASS', dtype='U3', length=nbins))
+    bins.add_column(Column(name='IBIN', dtype=np.int32, length=nbins))
+    bins.add_column(Column(name='ISUBBIN', dtype=np.int16, length=nbins))
+    bins.add_column(Column(name='NOBJ', dtype=np.int32, length=nbins))
+    for col in ('ZOBJ', 'ABSMAG', 'COLOR'):
+        bins.add_column(Column(name=col, dtype='f4', length=nbins)) # mean bin center
+        bins.add_column(Column(name='{}MIN'.format(col), dtype='f4', length=nbins))
+        bins.add_column(Column(name='{}MAX'.format(col), dtype='f4', length=nbins))
+        
+    bins['TARGETCLASS'] = targetclass
+    bins['IBIN'] = np.arange(nbins)
+
+    ibin = 0
+    for zmin in zgrid:
+        for absmagmin in absmaggrid:
+            for colormin in colorgrid:
+                for col, mmin, delt in zip(('ZOBJ', 'ABSMAG', 'COLOR'),
+                                           (zmin, absmagmin, colormin),
+                                           (dz, dabsmag, dcolor)):
+                    bins[col][ibin] = mmin + delt / 2             # bin center
+                    bins['{}MIN'.format(col)][ibin] = mmin        # left edge
+                    bins['{}MAX'.format(col)][ibin] = mmin + delt # right edge
+                ibin += 1
 
     if verbose:
-        log.info('Number of bins = {}'.format(len(sample1)))
+        log.info('Number of {} bins = {}'.format(targetclass, bins))
 
-    return sample1
-
-def _read_restflux_onetile(targetclass, tile, read_spectra=False, zobj_minmax=None,
-                           absmag_minmax=None, color_minmax=None):
-    restfile = os.path.join(fastspecdir, 'deredshifted', '{}-{}-restflux.fits'.format(
-        targetclass.lower(), tile))
-    if not os.path.isfile(restfile): # not all of them exist
-        return [None]
-    # don't read the spectra if we're just counting
-    phot = Table(fitsio.read(restfile, ext='FASTPHOT', rows=rows, columns=columns))
-    spec = Table(fitsio.read(restfile, ext='FASTSPEC', rows=rows, columns=columns))
-    meta = Table(fitsio.read(restfile, ext='METADATA', rows=rows, columns=columns))
-
-    
-    
-    if read_spectra:
-        flux = fitsio.read(restfile, ext='FLUX')
-        ivar = fitsio.read(restfile, ext='IVAR')
-        if rows:
-            flux = flux[rows, :]
-            ivar = ivar[rows, :]
-            
-        return [phot, spec, meta, flux, ivar]
-    else:
-        return [phot, spec, meta]
+    return bins
 
 def _spectra_onebin(args):
     """Multiprocessing wrapper."""
     return spectra_onebin(*args)
 
-def spectra_onebin(fastspecdir, targetclass, tile, zobj_minmax=None, absmag_minmax=None,
-                   color_minmax=None, minperbin=3, fastphot_in_bins=False, CFit=None,
-                   continuumwave=None):
+def spectra_onebin(fastspecdir, targetclass, tile, bins, specwave, normwave,
+                   minperbin=3, CFit=None, continuumwave=None):
     """For Find (and, optionally, read) all the spectra in a given tile and bin of
     properties.
 
     """
+    from fastspecfit.templates.templates import stack_onebin
+    
     restfile = os.path.join(fastspecdir, 'deredshifted', '{}-{}-restflux.fits'.format(
         targetclass.lower(), tile))
     if not os.path.isfile(restfile): # not all of them exist
@@ -500,8 +380,13 @@ def spectra_onebin(fastspecdir, targetclass, tile, zobj_minmax=None, absmag_minm
     spec = Table(fitsio.read(restfile, ext='FASTSPEC', columns=speccols))
     meta = Table(fitsio.read(restfile, ext='METADATA', columns=metacols))
 
-    phot['ABSMAG_GR'] = phot['ABSMAG_G'] - phot['ABSMAG_R']
-    phot['ABSMAG_RW1'] = phot['ABSMAG_R'] - phot['ABSMAG_W1']
+    #phot['ABSMAG_GR'] = phot['ABSMAG_G'] - phot['ABSMAG_R']
+    #phot['ABSMAG_RW1'] = phot['ABSMAG_R'] - phot['ABSMAG_W1']
+
+    #[zmin, zmin+dz], [Mrmin, Mrmin+dMr], [rW1min, rW1min+drW1]
+    zobj_minmax = (bins['ZOBJMIN'], bins['ZOBJMAX'])
+    absmag_minmax = (bins['ABSMAGMIN'], bins['ABSMAGMAX'])
+    color_minmax = (bins['COLORMIN'], bins['COLORMAX'])
 
     I = select_parent_sample(phot, spec, meta,
                              zobj_minmax=zobj_minmax,
@@ -509,52 +394,42 @@ def spectra_onebin(fastspecdir, targetclass, tile, zobj_minmax=None, absmag_minm
                              color_minmax=color_minmax,
                              targetclass=targetclass,
                              verbose=False, return_indices=True)
+    nobj = len(I)
     
-    if len(I) >= minperbin:
-        flux = fitsio.read(restfile, ext='FLUX')[I, :]
-        ivar = fitsio.read(restfile, ext='IVAR')[I, :]
+    if nobj >= minperbin:
+        flux2d = fitsio.read(restfile, ext='FLUX')[I, :]
+        ivar2d = fitsio.read(restfile, ext='IVAR')[I, :]
         meta = meta[I]
         phot = phot[I]
         spec = spec[I]
 
         # rebuild the best-fitting continuum model fits
-        if fastphot_in_bins:
-            cflux = []
+        if continuumwave is not None:
+            cflux2d = []
             for iobj in np.arange(len(I)):
-                cflux1, _ = CFit.SSP2data(
+                cflux, _ = CFit.SSP2data(
                     CFit.sspflux, continuumwave, 
                     redshift=meta[iobj]['Z'],
                     AV=phot['CONTINUUM_AV'][iobj],
                     coeff=phot['CONTINUUM_COEFF'][iobj],# * CFit.massnorm,
                     synthphot=False)
-                cflux.append(cflux1.astype('f4'))
-            cflux = np.vstack(cflux)
+                cflux2d.append(cflux.astype('f4'))
+            cflux2d = np.vstack(cflux2d)
+        else:
+            cflux2d = None
 
-        pdb.set_trace()
-            
-        _sample = sample_template(targetclass, bins)
-        _sample['IBIN'] = ibin
-        _sample['NOBJ'] = len(I)
-        #for key, mmin, delt in zip(('ZOBJ', 'MR', 'GI', 'RW1'),
-        #                           (zmin, Mrmin, gimin, rW1min),
-        #                           (dz, dMr, dgi, drW1)):
-        for key, mmin, delt in zip(('ZOBJ', 'MR', 'RW1'),
-                                   (zmin, Mrmin, rW1min),
-                                   (dz, dMr, drW1)):
-            _sample[key] = mmin + delt / 2
-            _sample['{}MIN'.format(key)] = mmin
-            _sample['{}MAX'.format(key)] = mmin + delt
-        samples.append(_sample)
-        data.append(_get_data(allflux, allivar, allphot, allspec, allmeta, I))
+        bins['NOBJ'] = nobj
 
-    pdb.set_trace()    
-    ibin += 1 # next bin
+        # make the stack(s)!
+        stackflux, stackivar, stackpix, cstackflux, cstackpix = stack_onebin(
+            flux2d, ivar2d, specwave, normwave, cflux2d, continuumwave)
+        del flux2d, ivar2d, cflux2d
 
-    return 1
+    return bins, stackflux, stackivar, stackpix, cstackflux, cstackpix
 
 def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali',
-                    minwave=None, maxwave=None, mp=1, fastphot_in_bins=True,
-                    verbose=False):
+                    minwave=None, maxwave=None, mp=1, normwave=None,
+                    fastphot_in_bins=True, verbose=False):
     """Select objects in bins of rest-frame properties.
 
     fastphot_in_bins - also stack the fastphot continuum-fitting results
@@ -569,54 +444,29 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
     else:
         continuumwave = None
         
-    #def sample_template(targetclass, bins):
-    #    sample1 = Table()
-    #    sample1.add_column(Column(name='TARGETCLASS', dtype='U3', length=1))
-    #    sample1.add_column(Column(name='IBIN', dtype=np.int32, length=1))
-    #    sample1.add_column(Column(name='NOBJ', dtype=np.int32, length=1))
-    #    for binkey in bins.keys():
-    #        sample1.add_column(Column(name=binkey.upper(), dtype='f4', length=1)) # mean bin center
-    #        sample1.add_column(Column(name='{}MIN'.format(binkey.upper()), dtype='f4', length=1))
-    #        sample1.add_column(Column(name='{}MAX'.format(binkey.upper()), dtype='f4', length=1))
-    #    sample1['TARGETCLASS'] = targetclass
-    #    return sample1
-
-    def _get_data(allflux, allivar, allphot, allspec, allmeta, I):
-        _data = {}
-        _data['flux'] = allflux[I, :]
-        _data['ivar'] = allivar[I, :]
-        _data['fastphot'] = allphot[I]
-        _data['fastspec'] = allspec[I]
-        _data['metadata'] = allmeta[I]
-
-        # rebuild the best-fitting continuum model fits
-        if fastphot_in_bins:
-            _data['cflux'] = []
-            for iobj in np.arange(len(I)):
-                cflux1, _ = CFit.SSP2data(
-                    CFit.sspflux, continuumwave, 
-                    redshift=allmeta[I][iobj]['Z'],
-                    AV=allphot['CONTINUUM_AV'][I][iobj],
-                    coeff=allphot['CONTINUUM_COEFF'][I][iobj],# * CFit.massnorm,
-                    synthphot=False)
-                _data['cflux'].append(cflux1.astype('f4'))# * (1 + allmeta[I[iobj]]['Z']) # deredshift
-            _data['cflux'] = np.vstack(_data['cflux'])
-        return _data
-
-    #samples, data = [], [] # these lists will be aligned
-    
-    bins = stacking_bins(targetclass, verbose=True)
-    #bins, nbins = stacking_bins(targetclass, verbose=True)
     tiles = tilestable['TILEID']
+    bins = stacking_bins(targetclass, verbose=False)
 
-    # the wavelength vector is identical, so just read one
-    wave = fitsio.read(os.path.join(fastspecdir, 'deredshifted', '{}-{}-restflux.fits'.format(
-        targetclass.lower(), tiles[0])), ext='WAVE')
+    # the spectral wavelength vector is identical, so just read one
+    restfile = os.path.join(fastspecdir, 'deredshifted', '{}-{}-restflux.fits'.format(targetclass.lower(), tiles[0]))
+    specwave = fitsio.read(restfile, ext='WAVE')
 
     # The initial version of this code looped over tiles and then properties but
     # that runs into memory issues and won't scale as the number of tiles
     # increases. So we now loop over properties and then tiles, which means we
     # hit the disk more, sigh.
+    
+    
+    
+    for thesebins in bins:
+        print(thesebins)
+        mpargs = [(fastspecdir, targetclass, tile, thesebins, specwave,
+                   normwave, minperbin, CFit, continuumwave) for tile in tiles]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                results = P.map(_spectra_onebin, mpargs)
+        else:
+            results = [spectra_onebin(*_mpargs) for _mpargs in mpargs]
 
     pdb.set_trace()
 
