@@ -14,6 +14,7 @@ import fitsio
 from astropy.table import Table, Column
 
 from fastspecfit.util import C_LIGHT
+from fastspecfit.templates.sample import select_parent_sample
 
 from desiutil.log import get_logger
 log = get_logger()
@@ -202,6 +203,69 @@ def stack_onebin(flux2d, ivar2d, templatewave, normwave, cflux2d, continuumwave)
             continuumwave, cflux2d, normwave=normwave)
         
     return templateflux1, templateivar1, templatepix, continuumflux1, templatecpix
+
+def _spectra_onebin_onetile(args):
+    """Multiprocessing wrapper."""
+    return spectra_onebin_onetile(*args)
+
+def spectra_onebin_onetile(fastspecdir, targetclass, tile, bins, minperbin=3, 
+                           CFit=None, continuumwave=None):
+    """For Find (and, optionally, read) all the spectra in a given tile and bin of
+    properties.
+
+    """
+    #log.info('Reading tile {}'.format(tile))
+    
+    restfile = os.path.join(fastspecdir, 'deredshifted', '{}-{}-restflux.fits'.format(
+        targetclass.lower(), tile))
+    if not os.path.isfile(restfile): # not all of them exist
+        return bins, None, None, None, None, None, None
+
+    photcols = ['CONTINUUM_CHI2', 'CONTINUUM_AV', 'CONTINUUM_COEFF',
+                'ABSMAG_G', 'ABSMAG_R', 'ABSMAG_W1']
+    speccols = ['CONTINUUM_CHI2']
+    metacols = ['Z', 'DELTACHI2', 'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1']
+    
+    phot = Table(fitsio.read(restfile, ext='FASTPHOT', columns=photcols))
+    spec = Table(fitsio.read(restfile, ext='FASTSPEC', columns=speccols))
+    meta = Table(fitsio.read(restfile, ext='METADATA', columns=metacols))
+
+    zobj_minmax = (bins['ZOBJMIN'], bins['ZOBJMAX'])
+    absmag_minmax = (bins['ABSMAGMIN'], bins['ABSMAGMAX'])
+    color_minmax = (bins['COLORMIN'], bins['COLORMAX'])
+
+    I = select_parent_sample(phot, spec, meta,
+                             zobj_minmax=zobj_minmax,
+                             absmag_minmax=absmag_minmax,
+                             color_minmax=color_minmax,
+                             targetclass=targetclass,
+                             verbose=False, return_indices=True)
+    
+    nobj = len(I)
+    if nobj >= minperbin:
+        outbins = Table(bins).copy()
+        outbins['NOBJ'] = nobj
+
+        flux2d = fitsio.read(restfile, ext='FLUX')[I, :]
+        ivar2d = fitsio.read(restfile, ext='IVAR')[I, :]
+        allmeta = Table(fitsio.read(restfile, ext='METADATA', rows=I)) # read all columns
+        allphot = Table(fitsio.read(restfile, ext='FASTPHOT', rows=I))
+        allspec = Table(fitsio.read(restfile, ext='FASTSPEC', rows=I))
+
+        # rebuild the best-fitting continuum model fits
+        if continuumwave is not None:
+            cflux2d = []
+            for iobj in np.arange(nobj):
+                cflux, _ = CFit.SSP2data(CFit.sspflux, continuumwave, synthphot=False,
+                                         redshift=meta['Z'][I[iobj]],
+                                         AV=phot['CONTINUUM_AV'][I[iobj]],
+                                         coeff=phot['CONTINUUM_COEFF'][I[iobj]])# * CFit.massnorm,
+                cflux2d.append(cflux.astype('f4'))
+            cflux2d = np.vstack(cflux2d)
+
+        return outbins, flux2d, ivar2d, cflux2d, allmeta, allphot, allspec
+    else:
+        return bins, None, None, None, None, None, None
 
 def fastspec_to_desidata(fastspec, wave, flux, ivar):
     """Convenience wrapper to turn spectra in a fastspecfit-compatible dictionary of
@@ -400,8 +464,6 @@ def iterative_stack(wave, flux2d, ivar2d=None, constant_ivar=False, maxdiff=0.01
             if normflux <= 0:
                 log.warning('Normalization flux is negative or zero!')
                 normflux = 1.0
-                #pdb.set_trace()
-                #raise ValueError
 
             templateflux /= normflux
             templateivar *= normflux**2
@@ -415,6 +477,10 @@ def stack_in_bins(sample, data, templatewave, mp=1, normwave=4500.0,
     """Stack spectra in bins given the output of a spectra_in_bins run.
 
     See bin/desi-templates for how to generate the required input.
+
+    This routine is basically obsolete -- we now use spectra_in_bins directly
+    because there were memory issues passing around the grids of spectra before
+    making the stacks.
 
     """
     npix, ntemplate = len(templatewave), len(sample)
@@ -460,6 +526,119 @@ def stack_in_bins(sample, data, templatewave, mp=1, normwave=4500.0,
     if stackfile:
         write_binned_stacks(stackfile, templatewave, templateflux, templateivar,
                             metadata=sample, cwave=continuumwave, cflux=continuumflux)
+
+def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali',
+                    minwave=None, maxwave=None, mp=1, normwave=None,
+                    fastphot_in_bins=True, verbose=False, stackfile=None):
+    """Select objects in bins of rest-frame properties.
+
+    fastphot_in_bins - also stack the fastphot continuum-fitting results
+    
+    """
+    from fastspecfit.templates.sample import stacking_bins
+    
+    fastspecdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), specprod, 'tiles')
+
+    # the spectral wavelength vector is identical, so just read one
+    restfile = os.path.join(fastspecdir, 'deredshifted', '{}-{}-restflux.fits'.format(
+        targetclass.lower(), tilestable['TILEID'][0]))
+    templatewave = fitsio.read(restfile, ext='WAVE')
+    npix = len(templatewave)
+
+    bins = stacking_bins(targetclass, verbose=False)
+
+    if fastphot_in_bins:
+        from fastspecfit.continuum import ContinuumFit            
+        CFit = ContinuumFit(minwave=minwave, maxwave=maxwave)
+
+        continuumflux = []
+        continuumwave = CFit.sspwave
+        ncpix = len(continuumwave)
+    else:
+        continuumflux = None
+        continuumwave = None
+        
+    sample, templateflux, templateivar = [], [], []
+    
+    # The initial version of this code looped over tiles and then properties but
+    # that runs into memory issues and won't scale as the number of tiles
+    # increases. So we now loop over properties and then tiles, which means we
+    # hit the disk more, sigh.
+    
+    #print('HACK!')
+    #ww = np.where((bins['ZOBJ'] > 0.6) * (bins['ZOBJ'] < 0.7) * (bins['ABSMAG'] > -23.0) * (bins['ABSMAG'] < -22.0))[0][:6]
+    #bins = bins[ww]
+
+    nbins = len(bins)
+    for ii, sample1 in enumerate(bins):#[60:64]):
+        log.info('Working on bin {}/{}'.format(ii+1, nbins))
+
+        mpargs = [(fastspecdir, targetclass, tile, sample1, minperbin,
+                   CFit, continuumwave) for tile in tilestable['TILEID']]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                results = P.map(_spectra_onebin_onetile, mpargs)
+        else:
+            results = [spectra_onebin_onetile(*_mpargs) for _mpargs in mpargs]
+
+        # unpack the results and make the stack(s)!            
+        results = list(zip(*results))
+
+        stackbins = Table(np.hstack(results[0]))
+        idata = np.where(stackbins['NOBJ'] >= minperbin)[0]
+        if len(idata) > 0:
+            flux2d = np.vstack(np.array(results[1], dtype=object)[idata])
+            ivar2d = np.vstack(np.array(results[2], dtype=object)[idata])
+
+            if continuumwave is not None:
+                cflux2d = np.vstack(np.array(results[3], dtype=object)[idata])
+            else:
+                cflux2d = None
+
+            # Here we could optionally subsample and make many spectra within a
+            # given bin, assuming we have enough statistics.
+            meta = Table(np.hstack(np.array(results[4], dtype=object)[idata]))
+            phot = Table(np.hstack(np.array(results[5], dtype=object)[idata]))
+            spec = Table(np.hstack(np.array(results[6], dtype=object)[idata]))
+            del results
+
+            # make the stack!
+            stackflux, stackivar, stackpix, cstackflux, cstackpix = stack_onebin(
+                flux2d, ivar2d, templatewave, normwave, cflux2d, continuumwave)
+            del flux2d, ivar2d, cflux2d
+            
+            sample1['NOBJ'] = np.sum(stackbins['NOBJ'][idata])
+            sample1['SNR'] = np.median(stackflux*np.sqrt(stackivar))
+
+            # pack it all up
+            templateflux1 = np.zeros(npix, dtype='f4')
+            templateivar1 = np.zeros(npix, dtype='f4')
+            templateflux1[stackpix] = stackflux
+            templateivar1[stackpix] = stackivar
+
+            sample.append(sample1)
+            templateflux.append(templateflux1)
+            templateivar.append(templateivar1)
+            
+            if continuumwave is not None:
+                continuumflux1 = np.zeros(ncpix, dtype='f4')
+                continuumflux1[cstackpix] = cstackflux
+                continuumflux.append(continuumflux1)
+
+    sample = Table(np.hstack(sample))
+    templateflux = np.vstack(templateflux)
+    templateivar = np.vstack(templateivar)
+    if continuumwave is not None:
+        continuumflux = np.vstack(continuumflux)
+    else:
+        continuumflux = None
+
+    # write out
+    if stackfile:
+        write_binned_stacks(stackfile, templatewave, templateflux, templateivar,
+                            metadata=sample, cwave=continuumwave, cflux=continuumflux)
+
+    pdb.set_trace()
 
 def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=None):
     """Model stacked spectra using fastspecfit.
