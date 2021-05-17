@@ -22,11 +22,14 @@ VITILES_TARGETCLASS = {'lrg': [80605, 80609],
 
 SAMPLE_PROPERTIES = {
     'lrg': {'zminmax': (0.1, 1.1), 'normwave': 4500.0, 'absmag': 'Mr', 'color': 'rW1',
-            'absmag_band': 'R', 'color_band1': 'R', 'color_band2': 'W1'},
+            'absmag_band': 'R', 'color_band1': 'R', 'color_band2': 'W1',
+            'absmag_label': 'M_{{0.0r}}', 'color_label': '^{{0.0}}(r-W1)'},            
     'elg': {'zminmax': (0.6, 1.5), 'normwave': 3500.0, 'absmag': 'Mg', 'color': 'gr',
-            'absmag_band': 'G', 'color_band1': 'G', 'color_band2': 'R'},
+            'absmag_band': 'G', 'color_band1': 'G', 'color_band2': 'R',
+            'absmag_label': 'M_{{0.0g}}', 'color_label': '^{{0.0}}(g-r)'},
     'bgs': {'zminmax': (0.05, 1.55), 'normwave': 5500.0, 'absmag': 'Mr', 'color': 'gr',
-            'absmag_band': 'R', 'color_band1': 'G', 'color_band2': 'R'},
+            'absmag_band': 'R', 'color_band1': 'G', 'color_band2': 'R',
+            'absmag_label': 'M_{{0.0r}}', 'color_label': '^{{0.0}}(g-r)'},
     }
 
 def select_tiles(targetclass, remove_vi=True, min_efftime=5.0,
@@ -354,7 +357,3 @@ def stacking_bins(targetclass='lrg', verbose=False):
         log.info('Number of {} bins = {}'.format(targetclass, bins))
 
     return bins
-
-
-
-

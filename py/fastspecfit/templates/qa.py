@@ -101,6 +101,7 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
     
     """
     from fastspecfit.util import ivar2var, C_LIGHT
+    from fastspecfit.templates.sample import SAMPLE_PROPERTIES as props    
     from fastspecfit.templates.templates import rebuild_fastspec_spectrum, read_stacked_fastspec
 
     sns, _ = plot_style()        
@@ -115,24 +116,9 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
         fastwave, fastflux, fastivar, fastmeta, fastspec = read_stacked_fastspec(fastspecfile)
         #fastspec = remove_undetected_lines(fastspec, EMFit.linetable, devshift=False)
 
-    if targetclass == 'lrg':
-        absmagcol = 'MR'
-        colorcol = 'RW1'
-        absmaglabel = 'M_{{0.0r}}'
-        colorlabel = '^{{0.0}}(r-W1)'
-    elif targetclass == 'elg':
-        absmagcol = 'MG'
-        colorcol = 'GR'
-        absmaglabel = 'M_{{0.0g}}'
-        colorlabel = '^{{0.0}}(g-r)'
-    elif targetclass == 'bgs':
-        absmagcol = 'MR'
-        colorcol = 'GR'
-        absmaglabel = 'M_{{0.0r}}'
-        colorlabel = '^{{0.0}}(g-r)'
-    else:
-        raise NotImplemented
-        
+    absmaglabel = props[targetclass]['absmag_label']
+    colorlabel = props[targetclass]['color_label']
+
     nobj = len(fastmeta)
     icam = 0
         
@@ -158,12 +144,12 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
         log.info('Building page {}/{}'.format(ipage+1, npage))
         pageindx = np.where(zobj[ipage] == fastmeta['ZOBJ'])[0]
 
-        absmag = sorted(set(fastmeta[absmagcol][pageindx])) # subpage
+        absmag = sorted(set(fastmeta['ABSMAG'][pageindx])) # subpage
         nsubpage = len(absmag)
 
         for isubpage in np.arange(nsubpage):
 
-            subpageindx = np.where((absmag[isubpage] == fastmeta[absmagcol][pageindx]))[0]
+            subpageindx = np.where((absmag[isubpage] == fastmeta['ABSMAG'][pageindx]))[0]
 
             fig, allax = plt.subplots(nrow, ncol, figsize=(inches_wide_perpanel*ncol, inches_tall_perpanel*nrow),
                                       sharex=True, sharey=True)
@@ -195,8 +181,8 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
                     ymax = np.max(filtflux) * 1.4
 
                 ax.text(0.96, 0.06, r'${:.2f}<{}<{:.2f}$'.format(
-                    fastmeta['{}MIN'.format(colorcol)][indx], colorlabel,
-                    fastmeta['{}MAX'.format(colorcol)][indx]),
+                    fastmeta['COLORMIN'][indx], colorlabel,
+                    fastmeta['COLORMAX'][indx]),
                     ha='right', va='bottom', transform=ax.transAxes, fontsize=10,
                     bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
                 ax.text(0.04, 0.96, '\n'.join(( 'N={}, S/N={:.1f}'.format(
@@ -216,8 +202,8 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
             
             fig.text(0.52, 0.968, r'${:.2f}<z<{:.2f}\ {:.1f}<{}<{:.1f}$'.format(
                 fastmeta['ZOBJMIN'][indx], fastmeta['ZOBJMAX'][indx],
-                fastmeta['{}MIN'.format(absmagcol)][indx], absmaglabel,
-                fastmeta['{}MAX'.format(absmagcol)][indx]),
+                fastmeta['{}MIN'.format('ABSMAG')][indx], absmaglabel,
+                fastmeta['{}MAX'.format('ABSMAG')][indx]),
                 ha='center', va='center', fontsize=22)
 
             for rem in np.arange(ncol*nrow-iplot-1)+iplot+1:
@@ -244,6 +230,7 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
     from matplotlib.colors import Normalize
     from fastspecfit.templates.templates import remove_undetected_lines
     from fastspecfit.util import ivar2var, C_LIGHT
+    from fastspecfit.templates.sample import SAMPLE_PROPERTIES as props        
     from fastspecfit.templates.templates import rebuild_fastspec_spectrum, read_stacked_fastspec
 
     sns, _ = plot_style()        
@@ -290,24 +277,9 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
     sigmas = np.hstack(sigmas)[srt]
     linenames = np.hstack(linenames)[srt]
 
-    if targetclass == 'lrg':
-        absmagcol = 'MR'
-        colorcol = 'RW1'
-        absmaglabel = 'M_{{0.0r}}'
-        colorlabel = '^{{0.0}}(r-W1)'
-    elif targetclass == 'elg':
-        absmagcol = 'MG'
-        colorcol = 'GR'
-        absmaglabel = 'M_{{0.0g}}'
-        colorlabel = '^{{0.0}}(g-r)'
-    elif targetclass == 'bgs':
-        absmagcol = 'MR'
-        colorcol = 'GR'
-        absmaglabel = 'M_{{0.0r}}'
-        colorlabel = '^{{0.0}}(g-r)'
-    else:
-        raise NotImplemented
-        
+    absmaglabel = props[targetclass]['absmag_label']
+    colorlabel = props[targetclass]['color_label']
+
     # how many pages?
     nobj = len(fastmeta)
     icam = 0
@@ -331,13 +303,13 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
     for ipage in np.arange(npage):
         log.info('Building page {}/{}'.format(ipage+1, npage))
 
-        pageindx = np.where(restcolor[ipage] == fastmeta[colorcol])[0]
-        absmag = sorted(set(fastmeta[absmagcol][pageindx])) # subpage
+        pageindx = np.where(restcolor[ipage] == fastmeta['COLOR'])[0]
+        absmag = sorted(set(fastmeta['ABSMAG'][pageindx])) # subpage
         nsubpage = len(absmag)
 
         for isubpage in np.arange(nsubpage):#[:1]:#[::2]:
 
-            subpageindx = np.where((absmag[isubpage] == fastmeta[absmagcol][pageindx]))[0]
+            subpageindx = np.where((absmag[isubpage] == fastmeta['ABSMAG'][pageindx]))[0]
 
             fig = plt.figure(figsize=(inches_wide, 2*inches_fullspec + inches_perline*nlinerows))
             gs = fig.add_gridspec(nrows, nlinepanels, height_ratios=height_ratios)
@@ -426,10 +398,10 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
             bigax.set_ylim(bigymin, bigymax)
             bigax.set_xlim(2600, 7200) # 3500, 9300)
             bigax.set_title(r'${:.2f}<{}<{:.2f}\ {:.1f}<{}<{:.1f}$'.format(
-                fastmeta['{}MIN'.format(colorcol)][indx], colorlabel,
-                fastmeta['{}MAX'.format(colorcol)][indx],
-                fastmeta['{}MIN'.format(absmagcol)][indx], absmaglabel,
-                fastmeta['{}MAX'.format(absmagcol)][indx]))
+                fastmeta['COLORMIN'][indx], colorlabel,
+                fastmeta['COLORMAX'][indx],
+                fastmeta['ABSMAGMIN'][indx], absmaglabel,
+                fastmeta['ABSMAGMAX'][indx]))
             #bigax.set_xlabel('Observed-frame Wavelength ($\AA$)')
 
             plt.subplots_adjust(wspace=0.28, left=0.07, right=0.95, top=0.95, bottom=0.1)
@@ -716,7 +688,7 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
     mincnt = 1
 
     phot, spec, meta = read_parent_sample(samplefile)
-    bins, nbins = stacking_bins(targetclass, verbose=True)
+    bins  = stacking_bins(targetclass, verbose=True)
     
     def bgs_obs(phot, png=None):
         robslim = (15, 21.0)
@@ -774,9 +746,9 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         #ax1.xaxis.set_major_locator(ticker.MultipleLocator(0.2))        
 
         if bins:
-            dx, dy = bins['zobj']['del'], bins['Mr']['del']
+            dx, dy = bins['ZOBJMAX'][0]-bins['ZOBJMIN'][0], bins['ABSMAGMAX'][0]-bins['ABSMAGMIN'][0]
             [ax1.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['zobj']['grid'] for yy in bins['Mr']['grid']]
+             for xx, yy in zip(bins['ZOBJMIN'], bins['ABSMAGMIN'])]
 
         ax2.hexbin(meta['Z'], phot['ABSMAG_G']-phot['ABSMAG_R'], 
                    mincnt=mincnt, bins='log', cmap=cmap,
@@ -790,9 +762,9 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         #ax2.yaxis.set_major_locator(ticker.MultipleLocator(0.5))        
 
         if bins:
-            dx, dy = bins['zobj']['del'], bins['gr']['del']
+            dx, dy = bins['ZOBJMAX'][0]-bins['ZOBJMIN'][0], bins['COLORMAX'][0]-bins['COLORMIN'][0]
             [ax2.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['zobj']['grid'] for yy in bins['gr']['grid']]
+             for xx, yy in zip(bins['ZOBJMIN'], bins['COLORMIN'])]
 
         hb = ax3.hexbin(phot['ABSMAG_R'], phot['ABSMAG_G']-phot['ABSMAG_R'], 
                         mincnt=mincnt, bins='log', cmap=cmap,
@@ -805,9 +777,9 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         #ax3.yaxis.set_major_locator(ticker.MultipleLocator(0.5))        
 
         if bins:
-            dx, dy = bins['Mr']['del'], bins['gr']['del']
+            dx, dy = bins['ABSMAGMAX'][0]-bins['ABSMAGMIN'][0], bins['COLORMAX'][0]-bins['COLORMIN'][0]
             [ax3.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['Mr']['grid'] for yy in bins['gr']['grid']]
+             for xx, yy in zip(bins['ABSMAGMIN'], bins['COLORMIN'])]
             
         ax4.axis('off')
 
@@ -883,9 +855,9 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         ax1.xaxis.set_major_locator(ticker.MultipleLocator(0.2))        
 
         if bins:
-            dx, dy = bins['zobj']['del'], bins['Mg']['del']
+            dx, dy = bins['ZOBJMAX'][0]-bins['ZOBJMIN'][0], bins['ABSMAGMAX'][0]-bins['ABSMAGMIN'][0]
             [ax1.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['zobj']['grid'] for yy in bins['Mg']['grid']]
+             for xx, yy in zip(bins['ZOBJMIN'], bins['ABSMAGMIN'])]
 
         ax2.hexbin(meta['Z'], phot['ABSMAG_G']-phot['ABSMAG_R'], 
                    mincnt=mincnt, bins='log', cmap=cmap,
@@ -899,9 +871,9 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         ax2.yaxis.set_major_locator(ticker.MultipleLocator(0.5))        
 
         if bins:
-            dx, dy = bins['zobj']['del'], bins['gr']['del']
+            dx, dy = bins['ZOBJMAX'][0]-bins['ZOBJMIN'][0], bins['COLORMAX'][0]-bins['COLORMIN'][0]
             [ax2.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['zobj']['grid'] for yy in bins['gr']['grid']]
+             for xx, yy in zip(bins['ZOBJMIN'], bins['COLORMIN'])]
 
         hb = ax3.hexbin(phot['ABSMAG_G'], phot['ABSMAG_G']-phot['ABSMAG_R'], 
                         mincnt=mincnt, bins='log', cmap=cmap,
@@ -914,9 +886,9 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         ax3.yaxis.set_major_locator(ticker.MultipleLocator(0.5))        
 
         if bins:
-            dx, dy = bins['Mg']['del'], bins['gr']['del']
+            dx, dy = bins['ABSMAGMAX'][0]-bins['ABSMAGMIN'][0], bins['COLORMAX'][0]-bins['COLORMIN'][0]
             [ax3.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['Mg']['grid'] for yy in bins['gr']['grid']]
+             for xx, yy in zip(bins['ABSMAGMIN'], bins['COLORMIN'])]
             
         ax4.axis('off')
 
@@ -1020,13 +992,9 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         ax1.set_ylabel(r'$M_{0.0r}$')
 
         if bins:
-            #ax1.add_patch(Rectangle((bins['z']['min'], bins['absmag']['min']),
-            #                         np.ptp(bins['z']['grid'])+bins['z']['del'], 
-            #                         np.ptp(bins['absmag']['grid'])+bins['absmag']['del'],
-            #                         facecolor='none', edgecolor='k', lw=3))
-            dx, dy = bins['zobj']['del'], bins['Mr']['del']
+            dx, dy = bins['ZOBJMAX'][0]-bins['ZOBJMIN'][0], bins['ABSMAGMAX'][0]-bins['ABSMAGMIN'][0]
             [ax1.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['zobj']['grid'] for yy in bins['Mr']['grid']]            
+             for xx, yy in zip(bins['ZOBJMIN'], bins['ABSMAGMIN'])]
 
         ax2.hexbin(meta['Z'], phot['ABSMAG_R']-phot['ABSMAG_W1'], 
                    mincnt=mincnt, bins='log', cmap=cmap,
@@ -1038,9 +1006,9 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         ax2.set_xlim(zlim)
 
         if bins:
-            dx, dy = bins['zobj']['del'], bins['rW1']['del']
+            dx, dy = bins['ZOBJMAX'][0]-bins['ZOBJMIN'][0], bins['COLORMAX'][0]-bins['COLORMIN'][0]
             [ax2.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['zobj']['grid'] for yy in bins['rW1']['grid']]
+             for xx, yy in zip(bins['ZOBJMIN'], bins['COLORMIN'])]
 
         hb = ax3.hexbin(phot['ABSMAG_R'], phot['ABSMAG_R']-phot['ABSMAG_W1'],
                         mincnt=mincnt, bins='log', cmap=cmap,
@@ -1052,9 +1020,9 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
         ax3.set_ylim(rW1lim)
 
         if bins:
-            dx, dy = bins['Mr']['del'], bins['rW1']['del']
+            dx, dy = bins['ABSMAGMAX'][0]-bins['ABSMAGMIN'][0], bins['COLORMAX'][0]-bins['COLORMIN'][0]
             [ax3.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['Mr']['grid'] for yy in bins['rW1']['grid']]    
+             for xx, yy in zip(bins['ABSMAGMIN'], bins['COLORMIN'])]
 
         ax4.axis('off')
         
@@ -1066,114 +1034,6 @@ def qa_photometry(targetclass, samplefile=None, png_obs=None, png_rest=None, png
             aa.grid(True)
 
         plt.subplots_adjust(left=0.1, top=0.95, wspace=0.3, hspace=0.3, right=0.88, bottom=0.13)
-        
-        if png:
-            log.info('Writing {}'.format(png))
-            fig.savefig(png)
-            plt.close()
-            
-    def lrg_rest2(phot, meta, bins=None, png=None):
-        zlim, Mrlim, gilim, rW1lim = (0.0, 1.2), (-19, -25), (0.2, 1.6), (-1.4, 1.7)
-
-        fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(18, 10))
-
-        ax1.hexbin(meta['Z'], phot['ABSMAG_R'], 
-                   mincnt=mincnt, bins='log', cmap=cmap,
-                   #C=cat['weight'], reduce_C_function=np.sum,
-                   extent=np.hstack((zlim, Mrlim)))
-        ax1.set_ylim(Mrlim)
-        ax1.set_xlim(zlim)
-        ax1.set_xlabel('Redshift')
-        ax1.set_ylabel(r'$M_{0.0r}$')
-
-        if bins:
-            #ax1.add_patch(Rectangle((bins['z']['min'], bins['absmag']['min']),
-            #                         np.ptp(bins['z']['grid'])+bins['z']['del'], 
-            #                         np.ptp(bins['absmag']['grid'])+bins['absmag']['del'],
-            #                         facecolor='none', edgecolor='k', lw=3))
-            dx, dy = bins['zobj']['del'], bins['Mr']['del']
-            [ax1.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['zobj']['grid'] for yy in bins['Mr']['grid']]            
-
-        ax2.hexbin(meta['Z'], phot['ABSMAG_G']-phot['ABSMAG_I'], 
-                   mincnt=mincnt, bins='log', cmap=cmap,
-                   #C=cat['weight'], reduce_C_function=np.sum,
-                   extent=np.hstack((zlim, gilim)))
-        ax2.set_xlim(zlim)
-        ax2.set_ylim(gilim)
-        ax2.set_xlabel('Redshift')
-        ax2.set_ylabel(r'$^{0.0}(g - i)$')
-
-        if bins:
-            dx, dy = bins['zobj']['del'], bins['gi']['del']
-            [ax2.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['zobj']['grid'] for yy in bins['gi']['grid']]
-
-        ax3.hexbin(meta['Z'], phot['ABSMAG_R']-phot['ABSMAG_W1'], 
-                   mincnt=mincnt, bins='log', cmap=cmap,
-                   #C=cat['weight'], reduce_C_function=np.sum,
-                   extent=np.hstack((zlim, rW1lim)))
-        ax3.set_xlabel('Redshift')
-        ax3.set_ylabel(r'$^{0.0}(r - W1)$')
-        ax3.set_ylim(rW1lim)
-        ax3.set_xlim(zlim)
-
-        if bins:
-            dx, dy = bins['zobj']['del'], bins['rW1']['del']
-            [ax3.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['zobj']['grid'] for yy in bins['rW1']['grid']]
-
-        ax4.hexbin(phot['ABSMAG_R'], phot['ABSMAG_G']-phot['ABSMAG_I'], 
-                   mincnt=mincnt, bins='log', cmap=cmap,
-                   #C=cat['weight'], reduce_C_function=np.sum,
-                   extent=np.hstack((Mrlim, gilim)))
-        ax4.set_xlabel(r'$M_{0.0r}$')
-        ax4.set_ylabel(r'$^{0.0}(g - i)$')
-        ax4.set_xlim(Mrlim)
-        ax4.set_ylim(gilim)
-
-        if bins:
-            dx, dy = bins['Mr']['del'], bins['gi']['del']
-            [ax4.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['Mr']['grid'] for yy in bins['gi']['grid']]
-
-        ax5.hexbin(phot['ABSMAG_R'], phot['ABSMAG_R']-phot['ABSMAG_W1'],
-                   mincnt=mincnt, bins='log', cmap=cmap,
-                   #C=cat['weight'], reduce_C_function=np.sum,
-                   extent=np.hstack((Mrlim, rW1lim)))
-        ax5.set_xlabel(r'$M_{0.0r}$')
-        ax5.set_ylabel(r'$^{0.0}(r - W1)$')
-        ax5.set_xlim(Mrlim)
-        ax5.set_ylim(rW1lim)
-
-        if bins:
-            dx, dy = bins['Mr']['del'], bins['rW1']['del']
-            [ax5.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['Mr']['grid'] for yy in bins['rW1']['grid']]    
-
-        hb = ax6.hexbin(phot['ABSMAG_R']-phot['ABSMAG_W1'], phot['ABSMAG_G']-phot['ABSMAG_I'],
-                        mincnt=mincnt, bins='log', cmap=cmap,
-                        #C=cat['weight'], reduce_C_function=np.sum,
-                        extent=np.hstack((rW1lim, gilim)))
-        ax6.set_xlabel(r'$^{0.0}(r - W1)$')
-        ax6.set_ylabel(r'$^{0.0}(g - i)$')
-        ax6.set_ylim(gilim)
-        ax6.set_xlim(rW1lim)
-
-        if bins:
-            dx, dy = bins['rW1']['del'], bins['gi']['del']
-            [ax6.add_patch(Rectangle((xx, yy), dx, dy, facecolor='none', edgecolor='k'))
-             for xx in bins['rW1']['grid'] for yy in bins['gi']['grid']]
-
-        cax = fig.add_axes([0.9, 0.12, 0.02, 0.83])
-        formatter = ticker.LogFormatter(10, labelOnlyBase=False) 
-        fig.colorbar(hb, cax=cax, format=formatter, label='Number of Galaxies')
-
-        for aa in (ax1, ax2, ax3, ax4, ax5, ax6):
-            aa.grid(True)
-
-        #plt.subplots_adjust(wspace=0.35, hspace=0.3, right=0.85)
-        plt.subplots_adjust(left=0.1, top=0.95, wspace=0.37, hspace=0.3, right=0.88, bottom=0.13)
         
         if png:
             log.info('Writing {}'.format(png))
@@ -1342,14 +1202,16 @@ def build_all_qa(targetclass, templatedir, tilefile=None, samplefile=None,
     png_obs = os.path.join(templatedir, 'qa', '{}-obs.png'.format(targetclass))
     png_rest = os.path.join(templatedir, 'qa', '{}-rest.png'.format(targetclass))
     png_rest_bins = os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(targetclass))
-    #qa_photometry(targetclass, samplefile=samplefile, png_obs=png_obs,
-    #              png_rest=png_rest, png_rest_bins=png_rest_bins)
+    qa_photometry(targetclass, samplefile=samplefile, png_obs=png_obs,
+                  png_rest=png_rest, png_rest_bins=png_rest_bins)
 
     pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec.pdf'.format(targetclass))
-    #qa_fastspec_fullspec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)
+    qa_fastspec_fullspec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)
 
     pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-emlinespec.pdf'.format(targetclass))
     #qa_fastspec_emlinespec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)        
+
+    pdb.set_trace()
 
     png = os.path.join(templatedir, 'qa', '{}-obs-templates.png'.format(targetclass))
     qa_photometry_templates(targetclass, samplefile=samplefile, templatefile=templatefile, png=png)

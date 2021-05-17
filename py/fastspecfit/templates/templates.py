@@ -638,8 +638,6 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
         write_binned_stacks(stackfile, templatewave, templateflux, templateivar,
                             metadata=sample, cwave=continuumwave, cflux=continuumflux)
 
-    pdb.set_trace()
-
 def fastspecfit_stacks(stackfile, mp=1, qadir=None, qaprefix=None, fastspecfile=None):
     """Model stacked spectra using fastspecfit.
 
