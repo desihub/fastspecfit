@@ -96,8 +96,11 @@ def qa_bpt(targetclass, fastspecfile=None, png=None):
 
 def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=None,
                          fastmeta=None, fastspec=None, fastspecfile=None, CFit=None,
-                         EMFit=None, ncol=3, nrow=5, pdffile=None):
+                         EMFit=None, ncol=3, nrow=5, photometric_models=False,
+                         pdffile=None):
     """Full-spectrum QA.
+
+    photometric_models - use the fits to the broadband continuum
     
     """
     from fastspecfit.util import ivar2var, C_LIGHT
@@ -159,26 +162,45 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
                 # rebuild the best-fitting spectrum
                 modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
                     fastspec[indx], fastwave, fastflux[indx, :], fastivar[indx, :], CFit, EMFit)
+                
+                # rest-frame
+                if photometric_models:
+                    modelwave_phot, continuum_phot = rebuild_fastspec_spectrum(fastspec[indx], _, _, _, CFit,
+                                                                               EMFit, full_resolution=True,
+                                                                               normalize_wave=props[targetclass]['normwave'])
 
-                #sigma, _ = ivar2var(data['ivar'][icam], sigma=True)
-                #ax.fill_between(data['wave'][icam], data['flux'][icam]-sigma,
-                #                            data['flux'][icam]+sigma, color='skyblue')
-                ax.plot(data['wave'][icam], data['flux'][icam], color='skyblue')
-                ax.plot(modelwave, continuum+emlinemodel, color='firebrick', alpha=0.5)
-                ax.plot(modelwave, continuum, color='blue', alpha=0.5)
-                #ax.plot(modelwave, continuum+smooth_continuum, color='gray', alpha=0.3)
-                ax.plot(modelwave, smooth_continuum, color='gray', alpha=0.7)
+                    #modelwave_phot *= (1 + data['zredrock'])
+                    #continuum_phot /= (1 + data['zredrock'])
+                    zfact = (1 + data['zredrock'])
+                    #ax.plot(data['wave'][icam]/zfact, data['flux'][icam], color='skyblue')
+                    ax.plot(modelwave_phot, continuum_phot, color='gray')
+                    ax.plot(modelwave/zfact, (continuum+emlinemodel), color='firebrick', alpha=0.7)
 
-                ymin, ymax = 1e6, -1e6
+                    xmin, xmax = 900, 4e4
 
-                filtflux = median_filter(data['flux'][icam], 51, mode='nearest')
-                sigflux = np.std(data['flux'][icam][data['ivar'][icam] > 0])
-                if -2 * sigflux < ymin:
-                    ymin = -2 * sigflux
-                if sigflux * 5 > ymax:
-                    ymax = sigflux * 5
-                if np.max(filtflux) > ymax:
-                    ymax = np.max(filtflux) * 1.4
+                    ww = np.where((modelwave_phot > xmin) * (modelwave_phot < xmax))[0]
+                    ymin, ymax = np.min(continuum_phot[ww]), np.max(continuum_phot[ww])
+
+                else:
+                    # observed frame
+                    ax.plot(data['wave'][icam], data['flux'][icam], color='skyblue')
+                    ax.plot(modelwave, continuum+emlinemodel, color='firebrick', alpha=0.5)
+                    ax.plot(modelwave, continuum, color='blue', alpha=0.5)
+                    #ax.plot(modelwave, continuum+smooth_continuum, color='gray', alpha=0.3)
+                    ax.plot(modelwave, smooth_continuum, color='gray', alpha=0.7)
+
+                    xmin, xmax = modelwave.min(), modelwave.max()
+                    
+                    ymin, ymax = 1e6, -1e6
+
+                    filtflux = median_filter(data['flux'][icam], 51, mode='nearest')
+                    sigflux = np.std(data['flux'][icam][data['ivar'][icam] > 0])
+                    if -2 * sigflux < ymin:
+                        ymin = -2 * sigflux
+                    if sigflux * 5 > ymax:
+                        ymax = sigflux * 5
+                    if np.max(filtflux) > ymax:
+                        ymax = np.max(filtflux) * 1.4
 
                 ax.text(0.96, 0.06, r'${:.2f}<{}<{:.2f}$'.format(
                     fastmeta['COLORMIN'][indx], colorlabel,
@@ -190,10 +212,12 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
                     ha='left', va='top', transform=ax.transAxes, fontsize=10,
                     bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
 
-                ax.set_xlim(modelwave.min(), modelwave.max())
+                ax.set_xlim(xmin, xmax)
                 ax.set_ylim(ymin, ymax)
                 ax.set_xticklabels([])
                 ax.set_yticklabels([])
+                if photometric_models:
+                    ax.set_xscale('log')
 
                 plt.subplots_adjust(wspace=0.05, hspace=0.05, left=0.07, right=0.95, top=0.95, bottom=0.1)
 
@@ -1202,8 +1226,12 @@ def build_all_qa(targetclass, templatedir, tilefile=None, samplefile=None,
     png_obs = os.path.join(templatedir, 'qa', '{}-obs.png'.format(targetclass))
     png_rest = os.path.join(templatedir, 'qa', '{}-rest.png'.format(targetclass))
     png_rest_bins = os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(targetclass))
-    qa_photometry(targetclass, samplefile=samplefile, png_obs=png_obs,
-                  png_rest=png_rest, png_rest_bins=png_rest_bins)
+    #qa_photometry(targetclass, samplefile=samplefile, png_obs=png_obs,
+    #              png_rest=png_rest, png_rest_bins=png_rest_bins)
+
+    pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec-phot.pdf'.format(targetclass))
+    qa_fastspec_fullspec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile,
+                         photometric_models=True)
 
     pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec.pdf'.format(targetclass))
     qa_fastspec_fullspec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)

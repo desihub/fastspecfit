@@ -25,7 +25,8 @@ def _rebuild_fastspec_spectrum(args):
 
 def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
                               full_resolution=False, emlines_only=False,
-                              normalize_filter=None, normalize_mag=20.0):
+                              normalize_wave=5500.0, normalize_filter=None,
+                              normalize_mag=20.0):
     """Rebuilding a single fastspec model continuum and emission-line spectrum given
     a fastspec astropy.table.Table.
 
@@ -35,7 +36,10 @@ def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
     from fastspecfit.emlines import EMLineModel
     
     if full_resolution:
-        modelwave = CFit.sspwave # rest-frame
+        #from copy import copy
+        #_CFit = copy(CFit)
+        
+        modelwave = CFit.sspwave.copy() # rest-frame
 
         # set the redshift equal to zero here but...
         redshift = 0.0 # fastspec['CONTINUUM_Z']
@@ -49,7 +53,7 @@ def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
         # ...multiply by 1+z because the amplitudes were measured from the
         # redshifted spectra (so when we evaluate the models in
         # EMLine._emline_spectrum, the lines need to be brighter by
-        # 1+z). Shoould really check this by re-measuring...
+        # 1+z). Should really check this by re-measuring...
 
         # oh, wait, we do that below, ugh.
         
@@ -65,7 +69,6 @@ def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
         
         #smooth_continuum = np.zeros_like(continuum, dtype='f4')
         modelflux = continuum + emlinemodel
-        
         modelflux *= (1 + redshift) # rest frame
 
         # normalize to a sensible magnitude
@@ -74,7 +77,16 @@ def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
             #modelflux /= normmaggies[normalize_filter.names[0]].data[0]
             #factor = 10**(-0.4*(48.6-normalize_mag)) * C_LIGHT * 1e13 / normalize_filter.effective_wavelengths.value**2  # [maggies-->erg/s/cm2/A] * CFit.fluxnorm
             #modelflux *= factor
-            modelflux /= np.interp(5500.0, modelwave, modelflux)
+            #modelflux /= np.interp(5500.0, modelwave, modelflux)
+            pass
+            
+        if normalize_wave:
+            normflux = np.median(modelflux[(modelwave > (normalize_wave-10)) * (modelwave < (normalize_wave+10))])
+            if normflux <= 0:
+                raise ValueError
+                #pdb.set_trace()
+                
+            modelflux /= normflux
             
         #import matplotlib.pyplot as plt
         #plt.plot(modelwave, modelflux) ; plt.xlim(3200, 10000) ; plt.savefig('junk.png')
@@ -108,8 +120,8 @@ def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
         # Adjust the emission-line model range for each object otherwise the
         # trapezoidal rebinning borks..
         minwave, maxwave = modelwave.min()-1.0, modelwave.max()+1.0
+        
         EMFit.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), EMFit.dlogwave)
-
         emlinemodel = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec)[icam]
 
         return modelwave, continuum, smooth_continuum, emlinemodel, data
@@ -886,6 +898,7 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
         log.warning('fastspecfile {} not found!'.format(fastspecfile))
         raise IOError
 
+    normalize_wave = 5500.0
     normalize_mag = 20.0
     normalize_filter = filters.load_filters('decam2014-r')
 
@@ -911,7 +924,7 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
 
         emlines_only = True
         mpargs = [(fastspec[iobj], wave, flux[iobj, :], ivar[iobj, :], CFit, EMFit, 
-                   full_resolution, emlines_only) for iobj in np.arange(nobj)]
+                   full_resolution, emlines_only, normalize_wave) for iobj in np.arange(nobj)]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
                 _out = P.map(_rebuild_fastspec_spectrum, mpargs)
@@ -987,7 +1000,7 @@ def build_templates(fastspecfile, mp=1, minwave=None, maxwave=None,
     t0 = time.time()
     emlines_only = False
     mpargs = [(fastspec[iobj], wave, flux[iobj, :], ivar[iobj, :], CFit, EMFit, 
-               full_resolution, emlines_only, normalize_filter, normalize_mag)
+               full_resolution, emlines_only, normalize_wave) #normalize_filter, normalize_mag)
                for iobj in np.arange(nobj)]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
