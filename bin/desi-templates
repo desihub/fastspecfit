@@ -30,7 +30,7 @@ def parse(options=None):
 
     parser.add_argument('--minwave', type=float, default=500.0, help='Minimum output wavelength of stacked continuum spectra.')
     parser.add_argument('--maxwave', type=float, default=6e4, help='Maximum output wavelength of stacked continuum spectra.')
-    parser.add_argument('--min-efftime', type=float, default=5.0, help='Minimum effective time to keep a tile (min).')
+    parser.add_argument('--min-efftime', type=float, default=None, help='Minimum effective time to keep a tile (min).')
 
     parser.add_argument('-o', '--outdir', default=None, type=str, help='Full path to desired output directory.')
     parser.add_argument('--overwrite-parent', action='store_true', help='Overwrite the parent sample.')
@@ -46,7 +46,7 @@ def parse(options=None):
         log.info(' '.join(sys.argv))
     else:
         args = parser.parse_args(options)
-        log.info('fastspecfit-html {}'.format(' '.join(options)))
+        log.info('desi-templates {}'.format(' '.join(options)))
 
     return args
 
@@ -87,7 +87,7 @@ def main(args=None, comm=None):
         # Read the master tile file and the fastspecfit fitting results and
         # select the parent sample.
         tilestable = select_tiles(args.targetclass, min_efftime=args.min_efftime,
-                                  remove_vi=True, specprod=args.specprod,
+                                  remove_vi=False, specprod=args.specprod,
                                   outfile=tilefile)
         
         allphot, allspec, allmeta = read_fastspecfit(

@@ -143,23 +143,23 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
             from matplotlib.backends.backend_pdf import PdfPages
             pdf = PdfPages(pdffile)
 
-    for ipage in np.arange(npage):
+    for ipage in [0]:#np.arange(npage):
         log.info('Building page {}/{}'.format(ipage+1, npage))
         pageindx = np.where(zobj[ipage] == fastmeta['ZOBJ'])[0]
 
         absmag = sorted(set(fastmeta['ABSMAG'][pageindx])) # subpage
         nsubpage = len(absmag)
 
-        for isubpage in np.arange(nsubpage):
-
+        for isubpage in [6]:#np.arange(nsubpage):
             subpageindx = np.where((absmag[isubpage] == fastmeta['ABSMAG'][pageindx]))[0]
 
             fig, allax = plt.subplots(nrow, ncol, figsize=(inches_wide_perpanel*ncol, inches_tall_perpanel*nrow),
-                                      sharex=True, sharey=True)
+                                      sharex=True, sharey=False)#True)
             for iplot, (indx, ax) in enumerate(zip(pageindx[subpageindx], allax.flatten())):
                 #log.info(ipage, isubpage, iplot, len(pageindx), len(subpageindx))
 
-                # rebuild the best-fitting spectrum
+                # rebuild the best-fitting spectrum; these models have been
+                # normalized already in iterative_stack
                 modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
                     fastspec[indx], fastwave, fastflux[indx, :], fastivar[indx, :], CFit, EMFit)
                 
@@ -180,6 +180,9 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
 
                     ww = np.where((modelwave_phot > xmin) * (modelwave_phot < xmax))[0]
                     ymin, ymax = np.min(continuum_phot[ww]), np.max(continuum_phot[ww])
+                    if np.max(emlinemodel) > ymax:
+                        pdb.set_trace()
+                        ymax = np.max(emlinemodel)
 
                 else:
                     # observed frame
@@ -212,6 +215,7 @@ def qa_fastspec_fullspec(targetclass, fastwave=None, fastflux=None, fastivar=Non
                     ha='left', va='top', transform=ax.transAxes, fontsize=10,
                     bbox=dict(boxstyle='round', facecolor='gray', alpha=0.25))
 
+                print(ymin, ymax)
                 ax.set_xlim(xmin, xmax)
                 ax.set_ylim(ymin, ymax)
                 ax.set_xticklabels([])
@@ -308,7 +312,7 @@ def qa_fastspec_emlinespec(targetclass, fastwave=None, fastflux=None, fastivar=N
     nobj = len(fastmeta)
     icam = 0
     
-    restcolor = np.unique(fastmeta[colorcol])
+    restcolor = np.unique(fastmeta['COLOR'])
     npage = len(restcolor)
 
     if npage == 1:
@@ -1218,28 +1222,30 @@ def build_all_qa(targetclass, templatedir, tilefile=None, samplefile=None,
     from fastspecfit.templates.sample import select_tiles
 
     png = os.path.join(templatedir, 'qa', '{}-tiles.png'.format(targetclass))
-    #select_tiles(targetclass, png=png)
+    select_tiles(targetclass, png=png)
 
     png = os.path.join(templatedir, 'qa', '{}-parent.png'.format(targetclass))
-    #qa_parent_sample(samplefile, tilefile, targetclass=targetclass, specprod=specprod, png=png)
+    qa_parent_sample(samplefile, tilefile, targetclass=targetclass, specprod=specprod, png=png)
 
     png_obs = os.path.join(templatedir, 'qa', '{}-obs.png'.format(targetclass))
     png_rest = os.path.join(templatedir, 'qa', '{}-rest.png'.format(targetclass))
     png_rest_bins = os.path.join(templatedir, 'qa', '{}-rest-bins.png'.format(targetclass))
-    #qa_photometry(targetclass, samplefile=samplefile, png_obs=png_obs,
-    #              png_rest=png_rest, png_rest_bins=png_rest_bins)
+    qa_photometry(targetclass, samplefile=samplefile, png_obs=png_obs,
+                  png_rest=png_rest, png_rest_bins=png_rest_bins)
+
+    pdb.set_trace()
 
     pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec-phot.pdf'.format(targetclass))
     qa_fastspec_fullspec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile,
                          photometric_models=True)
 
+    pdb.set_trace()
+
     pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-fullspec.pdf'.format(targetclass))
-    qa_fastspec_fullspec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)
+    #qa_fastspec_fullspec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)
 
     pdffile = os.path.join(templatedir, 'qa', '{}-fastspec-emlinespec.pdf'.format(targetclass))
-    #qa_fastspec_emlinespec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)        
-
-    pdb.set_trace()
+    qa_fastspec_emlinespec(targetclass, fastspecfile=fastspecfile, pdffile=pdffile)        
 
     png = os.path.join(templatedir, 'qa', '{}-obs-templates.png'.format(targetclass))
     qa_photometry_templates(targetclass, samplefile=samplefile, templatefile=templatefile, png=png)

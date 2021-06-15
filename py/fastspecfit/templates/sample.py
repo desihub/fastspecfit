@@ -32,7 +32,7 @@ SAMPLE_PROPERTIES = {
             'absmag_label': 'M_{{0.0r}}', 'color_label': '^{{0.0}}(g-r)'},
     }
 
-def select_tiles(targetclass, remove_vi=True, min_efftime=5.0,
+def select_tiles(targetclass, remove_vi=False, min_efftime=None,
                  specprod='denali', outfile=None, png=None):
     """Select tiles to use. Remove low exposure-time tiles and also 
     remove tiles which are being visually inspected.
@@ -70,6 +70,8 @@ def select_tiles(targetclass, remove_vi=True, min_efftime=5.0,
         shallowtiles = None
 
     if outfile:
+        #log.info('Writing {} tiles to {}'.format(len(targtiles), outfile))
+        #targtiles.write(outfile, overwrite=True)
         log.info('Writing {} tiles to {}'.format(len(tilestable), outfile))
         tilestable.write(outfile, overwrite=True)
 
@@ -104,6 +106,7 @@ def select_tiles(targetclass, remove_vi=True, min_efftime=5.0,
         fig.savefig(png)
         plt.close()
 
+    #return targtiles
     return tilestable
 
 def read_parent_sample(samplefile):

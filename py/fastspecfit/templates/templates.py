@@ -83,8 +83,9 @@ def rebuild_fastspec_spectrum(fastspec, wave, flux, ivar, CFit, EMFit,
         if normalize_wave:
             normflux = np.median(modelflux[(modelwave > (normalize_wave-10)) * (modelwave < (normalize_wave+10))])
             if normflux <= 0:
-                raise ValueError
-                #pdb.set_trace()
+                #raise ValueError
+                log.warning('Normalization flux is negative or zero!')
+                normflux = 1.0
                 
             modelflux /= normflux
             
@@ -303,6 +304,8 @@ def fastspec_to_desidata(fastspec, wave, flux, ivar):
     data['res'] = [Resolution(identity(n=npix))] # hack!
     data['snr'] = [np.median(flux[good] * np.sqrt(ivar[good]))]
     data['good'] = good
+
+    pdb.set_trace()
 
     # line-masking is doing some odd things around MgII so skip for now
 
