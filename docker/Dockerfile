@@ -175,7 +175,7 @@ RUN git clone https://github.com/desihub/fastspecfit.git fastspecfit \
     && cd fastspecfit && git describe --always
 
 # update 
-# RUN cd /src/fastspecfit && git pull && git describe --always && echo 1
+RUN cd /src/fastspecfit && git pull && git describe --always && echo 2
 
 RUN mkdir /homedir && chmod 777 /homedir
 ENV HOME /homedir
