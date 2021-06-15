@@ -60,19 +60,17 @@ def main():
     nobj = len(fastmeta)
 
     # rebuild the best-fitting spectrum
-    for ii in np.arange(nobj)[:5]:
+    for ii in np.arange(nobj):
         modelwave, continuum, smooth_continuum, emlinemodel, data = rebuild_fastspec_spectrum(
             fastspec[ii], fastwave, fastflux[ii, :], fastivar[ii, :], CFit, EMFit)
         
         good = np.where(fastivar[ii, :] > 0)[0]
-        emlineflux[ii, good] = emlinemodel[0]
+        emlineflux[ii, good] = emlinemodel
         modelflux[ii, good] = continuum + emlinemodel
 
-    outfile = '{}-fastspec-models.fits'.format(targetclass)
+    outfile = '/global/cscratch1/sd/ioannis/{}-fastspec-models.fits'.format(targetclass)
     writeout(outfile, fastwave, fastflux, fastivar, 
              modelflux, emlineflux, fastspec, fastmeta)
-
-    pdb.set_trace()
 
 if __name__ == '__main__':
     main()

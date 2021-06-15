@@ -122,7 +122,10 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
     # Now the individual tile pages are more finely subdivided by target classes.
     for tinfo in tileinfo:
         tile = tinfo['TILEID']
-        tiledatafile = os.path.join(htmldir, 'tiles', coadd_type, str(tile), '{}-{}.html'.format(tile, coadd_type))
+        tiledatadir = os.path.join(htmldir, 'tiles', coadd_type, str(tile))
+        if not os.path.isdir(tiledatadir):
+            os.makedirs(tiledatadir, exist_ok=True)
+        tiledatafile = os.path.join(tiledatadir, '{}-{}.html'.format(tile, coadd_type))
         log.info('Building {}'.format(tiledatafile))
 
         if tinfo['SURVEY'].upper() == 'SV1':
@@ -279,7 +282,7 @@ def build_htmlpage_one(ii, targetid, htmltargetid, specfile, nexttargetid, prevt
         html.write('<br />\n')
         html.write('</html></body>\n')
 
-def main(args=None, comm=None, htmldir=None):
+def main(args=None, comm=None):
     """Make the HTML pages.
 
     """
@@ -289,8 +292,12 @@ def main(args=None, comm=None, htmldir=None):
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    if htmldir is None:
+    if args.htmldir is None:
         htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod)
+    else:
+        htmldir = args.htmldir
+    if not os.path.isdir(htmldir):
+        os.makedirs(htmldir, exist_ok=True)
 
     # Read the fitting results and get all the unique targetids.
     if (args.fastphotfile is None and args.fastspecfile is None):
@@ -374,10 +381,10 @@ def main(args=None, comm=None, htmldir=None):
     tileinfo = Table.read(tilefile)
     tileinfo = tileinfo[np.isin(tileinfo['TILEID'], np.unique(metadata['TILEID']))]
 
-    log.info('Fix SURVEY for tiles 80605-80610, which are incorrectly identified as cmx tiles.')    
-    surveyfix = np.where((tileinfo['TILEID'] >= 80605) * (tileinfo['TILEID'] <= 80610))[0]
-    if len(surveyfix) > 0:
-        tileinfo['SURVEY'][surveyfix] = 'sv1'
+    #log.info('Fix SURVEY for tiles 80605-80610, which are incorrectly identified as cmx tiles.')    
+    #surveyfix = np.where((tileinfo['TILEID'] >= 80605) * (tileinfo['TILEID'] <= 80610))[0]
+    #if len(surveyfix) > 0:
+    #    tileinfo['SURVEY'][surveyfix] = 'sv1'
     log.info('Read survey info for {} tiles'.format(len(tileinfo)))
 
     t0 = time.time()
