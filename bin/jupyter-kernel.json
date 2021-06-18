@@ -2,10 +2,8 @@
     "language": "python",
     "display_name": "fastspecfit",
     "env": {
-        "REALHOME": "${HOME}",
         "DESI_ROOT": "/global/cfs/cdirs/desi",
         "DESI_SPECTRO_REDUX": "/global/cfs/cdirs/desi/spectro/redux",
-        "FASTSPECFIT_DATA": "/global/cfs/cdirs/desi/spectro/fastspecfit",
     },
     "argv": [
         "shifter",
