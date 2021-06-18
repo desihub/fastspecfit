@@ -24,6 +24,9 @@ TARGETINGBITCOLS = [
     'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
     'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET',
     ]
+
+FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
+DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
     
 class DESISpectra(object):
     def __init__(self):
