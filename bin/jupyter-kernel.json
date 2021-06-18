@@ -1,14 +1,12 @@
 {
     "language": "python",
-    "display_name": "fastspecfit test",
+    "display_name": "fastspecfit",
     "env": {
         "REALHOME": "${HOME}",
         "DESI_ROOT": "/global/cfs/cdirs/desi",
         "DESI_SPECTRO_REDUX": "/global/cfs/cdirs/desi/spectro/redux",
         "FASTSPECFIT_DATA": "/global/cfs/cdirs/desi/spectro/fastspecfit",
-        "FASTSPECFIT_TEMPLATES": "/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z",
-        "DUST_DIR": "/global/cfs/cdirs/cosmo/data/dust/v0_1"
-    }
+    },
     "argv": [
         "shifter",
         "--image=docker:desihub/fastspecfit:latest",
