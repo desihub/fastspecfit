@@ -1,9 +1,10 @@
 {
     "language": "python",
-    "display_name": "fastspecfit",
+    "display_name": "docker: fastspecfit",
     "env": {
+        "REALHOME": "${HOME}",
         "DESI_ROOT": "/global/cfs/cdirs/desi",
-        "DESI_SPECTRO_REDUX": "/global/cfs/cdirs/desi/spectro/redux",
+        "FASTSPECFIT_TEMPLATES": "/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z"
     },
     "argv": [
         "shifter",

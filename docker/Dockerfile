@@ -157,26 +157,29 @@ RUN for package in \
       git clone https://github.com/desihub/$package \
       && cd $package \
       && python setup.py install; \
-    done
+    done && echo 2
 
 RUN git clone https://github.com/desihub/redrock
 RUN cd redrock \
     && git clone https://github.com/desihub/redrock-templates py/redrock/templates \
-    && python setup.py install
+    && python setup.py install \
+    && echo 1
 
 ENV DESIMODEL /src/desimodel
 
 RUN mkdir $DESIMODEL \
     && cd $DESIMODEL \
-    && svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data
+    && svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data \
+    && echo 1
 
 WORKDIR /src
 RUN git clone https://github.com/desihub/fastspecfit.git fastspecfit \
     && cd fastspecfit && git describe --always
 
 # update 
-RUN cd /src/fastspecfit && git pull && git describe --always && echo 4
+RUN cd /src/fastspecfit && git pull && git describe --always && echo 5
 
+ENV PYTHONPATH /src/fastspecfit/py:$PYTHONPATH
 ENV PATH /src/fastspecfit/bin:$PATH
 
 RUN mkdir /homedir && chmod 777 /homedir
