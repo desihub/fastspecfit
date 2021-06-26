@@ -157,25 +157,30 @@ RUN for package in \
       git clone https://github.com/desihub/$package \
       && cd $package \
       && python setup.py install; \
-    done
+    done && echo 2
 
 RUN git clone https://github.com/desihub/redrock
 RUN cd redrock \
     && git clone https://github.com/desihub/redrock-templates py/redrock/templates \
-    && python setup.py install
+    && python setup.py install \
+    && echo 1
 
 ENV DESIMODEL /src/desimodel
 
 RUN mkdir $DESIMODEL \
     && cd $DESIMODEL \
-    && svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data
+    && svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data \
+    && echo 1
 
 WORKDIR /src
 RUN git clone https://github.com/desihub/fastspecfit.git fastspecfit \
     && cd fastspecfit && git describe --always
 
 # update 
-RUN cd /src/fastspecfit && git pull && git describe --always && echo 2
+RUN cd /src/fastspecfit && git pull && git describe --always && echo 5
+
+ENV PYTHONPATH /src/fastspecfit/py:$PYTHONPATH
+ENV PATH /src/fastspecfit/bin:$PATH
 
 RUN mkdir /homedir && chmod 777 /homedir
 ENV HOME /homedir
@@ -188,18 +193,22 @@ CMD ["/bin/bash"]
 RUN echo "export PS1='[container] \\u@\\h:\\w$ '" >> $HOME/.bashrc \
   # Create config files in $HOME
   && python -c "import astropy" \
-  # Download astropy IERS leap-second list
-  && python -c "from astropy.coordinates import EarthLocation; EarthLocation._get_site_registry(force_download=True)" \
-  # Download astropy site locations and USNO sky model
-  && python -c "from astropy.coordinates import EarthLocation, SkyCoord, AltAz; from astropy.time import Time; print(EarthLocation.of_site('ctio')); print(SkyCoord(180.,-45.,unit='deg').transform_to(AltAz(obstime=Time(56806.0, format='mjd'), location=EarthLocation.of_site('ctio'))))" \
-  && python -c "from astropy.time import Time; Time.now()" \
   && python -c "import matplotlib.font_manager as fm; f = fm.FontManager()" \
   && ipython -c "print('hello')" \
+  # Download astropy site locations and USNO sky model
+  && python -c "from astropy.coordinates import EarthLocation; EarthLocation._get_site_registry(force_download=True)" \
+  && python -c "from astropy.coordinates import EarthLocation, SkyCoord, AltAz; from astropy.time import Time; print(EarthLocation.of_site('ctio')); print(SkyCoord(180.,-45.,unit='deg').transform_to(AltAz(obstime=Time(56806.0, format='mjd'), location=EarthLocation.of_site('ctio'))))" \
+  # Download astropy IERS leap-second list
+  && python -c "from astropy.time import Time; Time.now()" \
   # Make astropy cache files readable!?!!
   && chmod -R a+rwX $HOME/.astropy \
   # Make ipython config files readable!?!!
   && chmod -R a+rwX $HOME/.ipython \
   && echo 1
 
+# Curses upon you, astropy
+RUN wget -O /opt/conda/lib/python3.8/site-packages/astropy/utils/iers/data/Leap_Second.dat \
+    https://raw.githubusercontent.com/astropy/astropy/master/astropy/utils/iers/data/Leap_Second.dat \
+    && rm $HOME/.wget-hsts
 
 LABEL Maintainer="John Moustakas jmoustakas@siena.edu"

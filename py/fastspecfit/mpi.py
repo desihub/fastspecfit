@@ -115,10 +115,11 @@ def backup_logs(logfile):
     return newlog
 
 def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
-         specprod_dir=None):
+         specprod_dir=None, base_datadir='.', base_htmldir='.'):
 
     import fitsio
     from astropy.table import Table, vstack
+    from fastspecfit.io import DESI_ROOT_NERSC
 
     t0 = time.time()
     if comm is None:
@@ -132,18 +133,14 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
         outprefix = 'fastspec'
 
     if rank == 0:
-        for key in ['FASTSPECFIT_DATA', 'FASTSPECFIT_HTML', 'FASTSPECFIT_TEMPLATES', 'DESI_ROOT', 'DESI_SPECTRO_REDUX', 'DUST_DIR']:
-            if key not in os.environ:
-                log.fatal('Required ${} environment variable not set'.format(key))
-                raise EnvironmentError('Required ${} environment variable not set'.format(key))
-
+        desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
         # look for data in the standard location
         if specprod_dir is None:
-            specprod_dir = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), args.specprod, 'tiles')
+            specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod, 'tiles')
 
         # figure out which tiles belong to the SV programs
         if args.tile is None:
-            tilefile = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), args.specprod, 'tiles-{}.csv'.format(args.specprod))
+            tilefile = os.path.join(desi_root, 'spectro', 'redux', args.specprod, 'tiles-{}.csv'.format(args.specprod))
             alltileinfo = Table.read(tilefile)
             tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
             #tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
@@ -176,37 +173,45 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             #    args.tile = np.array(list(set(tileinfo['TILEID'])))
             #print(tileinfo)
 
-        outdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), args.specprod, 'tiles')
-        htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod, 'tiles')
+        outdir = os.path.join(base_datadir, args.specprod, 'tiles')
+        htmldir = os.path.join(base_htmldir, args.specprod, 'tiles')
 
         def _findfiles(filedir, prefix='zbest'):
             if args.coadd_type == 'cumulative':
                 if args.tile is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                        filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', '?????', '????????', '{}-[0-9]-?????-thru????????.fits'.format(prefix))))))
+                    thesefiles = np.array(sorted(set(glob(os.path.join(
+                        filedir, 'cumulative', '?????', '????????', '{}-[0-9]-?????-thru????????.fits'.format(prefix))))))
             elif args.coadd_type == 'pernight':
                 if args.tile is not None and args.night is not None:
                     thesefiles = []
                     for tile in args.tile:
                         for night in args.night:
-                            thesefiles.append(glob(os.path.join(filedir, 'pernight', str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
+                            thesefiles.append(glob(os.path.join(
+                                filedir, 'pernight', str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
                     thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
                 elif args.tile is not None and args.night is None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'pernight', str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                        filedir, 'pernight', str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 elif args.tile is None and args.night is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'pernight', '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                        filedir, 'pernight', '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
                         prefix, night))) for night in args.night]))))
                 else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
+                    thesefiles = np.array(sorted(set(glob(os.path.join(
+                        filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
             elif args.coadd_type == 'perexp':
                 if args.tile is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(filedir, 'perexp', str(tile), '????????', '{}-[0-9]-{}-exp????????.fits'.format(
+                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                        filedir, 'perexp', str(tile), '????????', '{}-[0-9]-{}-exp????????.fits'.format(
                         prefix, tile))) for tile in args.tile]))))
                 else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(filedir, 'perexp', '?????', '????????', '{}-[0-9]-?????-exp????????.fits'.format(prefix))))))
+                    thesefiles = np.array(sorted(set(glob(os.path.join(
+                        filedir, 'perexp', '?????', '????????', '{}-[0-9]-?????-exp????????.fits'.format(prefix))))))
             else:
                 pass
             return thesefiles

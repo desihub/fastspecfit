@@ -24,6 +24,10 @@ TARGETINGBITCOLS = [
     'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
     'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET',
     ]
+
+DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
+DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
+FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
     
 class DESISpectra(object):
     def __init__(self):
@@ -31,8 +35,8 @@ class DESISpectra(object):
 
         """
         #from desitarget.geomask import pixarea2nside
-
-        self.fiberassign_dir = os.path.join(os.getenv('DESI_ROOT'), 'target', 'fiberassign', 'tiles', 'trunk')
+        self.fiberassign_dir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC),
+                                            'target', 'fiberassign', 'tiles', 'trunk')
 
         ## Closest nside to DESI tile area of ~7 deg (from
         ## desitarget.io.read_targets_in_quick).
@@ -62,14 +66,15 @@ class DESISpectra(object):
         if 'SCND' in fahdr:
             if fahdr['SCND'].strip() != '-':
                 targetdirs += [fahdr['SCND']]
-            
+
+        desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
         for ii, targetdir in enumerate(targetdirs):
-            targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('DESIROOT/', ''))
+            targetdir = os.path.join(desi_root, targetdir.replace('DESIROOT/', ''))
 
             # sometimes this is a KPNO directory!
             if not os.path.isdir(targetdir):
                 log.warning('Targets directory not found {}'.format(targetdir))
-                targetdir = os.path.join(os.getenv('DESI_ROOT'), targetdir.replace('/data/', ''))
+                targetdir = os.path.join(desi_root, targetdir.replace('/data/', ''))
                 if not os.path.isdir(targetdir):
                     log.fatal('Targets directory not found {}'.format(targetdir))
                     raise IOError
@@ -106,7 +111,8 @@ class DESISpectra(object):
             log.warning('No zbestfiles found!')
             raise IOError
 
-        self.reduxdir = os.getenv('DESI_SPECTRO_REDUX')
+        desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
+        self.reduxdir = os.path.join(desi_root, 'spectro', 'redux')
         
         # Try to glean specprod so we can write it to the output file. This
         # should really be in the file header--- see

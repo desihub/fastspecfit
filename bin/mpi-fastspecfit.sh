@@ -18,21 +18,17 @@ specprod=denali
 coadd_type=cumulative
 
 package=fastspecfit
-export PATH=/opt/conda/bin:$PATH # nersc hack!
+
+#export PATH=/opt/conda/bin:$PATH # nersc hack!
 export PATH=/global/homes/i/ioannis/repos/desihub/$package/bin:$PATH
 export PYTHONPATH=/global/homes/i/ioannis/repos/desihub/$package/py:$PYTHONPATH
 
-for package in desispec desitarget desiutil desimodel speclite specsim; do
-    export PATH=/global/homes/i/ioannis/repos/desihub/$package/bin:$PATH
-    export PYTHONPATH=/global/homes/i/ioannis/repos/desihub/$package/py:$PYTHONPATH
-done
-
-export DESI_ROOT=/global/cfs/cdirs/desi
-export DESI_SPECTRO_REDUX=/global/cfs/cdirs/desi/spectro/redux
-export FASTSPECFIT_DATA=/global/cfs/cdirs/desi/spectro/fastspecfit
-export FASTSPECFIT_HTML=/global/cfs/cdirs/desi/users/ioannis/fastspecfit
-export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z
-export DUST_DIR=/global/cfs/cdirs/cosmo/data/dust/v0_1
+#for package in desispec desitarget desiutil desimodel speclite specsim; do
+#    export PATH=/global/homes/i/ioannis/repos/desihub/$package/bin:$PATH
+#    export PYTHONPATH=/global/homes/i/ioannis/repos/desihub/$package/py:$PYTHONPATH
+#done
+#export FASTSPECFIT_DATA=/global/cfs/cdirs/desi/spectro/fastspecfit
+#export FASTSPECFIT_HTML=/global/cfs/cdirs/desi/users/ioannis/fastspecfit
 
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
@@ -42,9 +38,9 @@ export MPICH_GNI_FORK_MODE=FULLCOPY
 if [ $stage = "test" ]; then
     time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --help
 elif [ $stage = "fastspec" ]; then
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type --outdir /global/cfs/cdirs/desi/spectro/fastspecfit
 elif [ $stage = "fastphot" ]; then
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --mp $mp --specprod $specprod --coadd-type $coadd_type
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --mp $mp --specprod $specprod --coadd-type $coadd_type --outdir /global/cfs/cdirs/desi/spectro/fastspecfit
 else
     echo "Unrecognized stage "$stage
 fi

@@ -1,0 +1,15 @@
+{
+    "language": "python",
+    "display_name": "docker: fastspecfit",
+    "env": {
+        "REALHOME": "${HOME}",
+        "DESI_ROOT": "/global/cfs/cdirs/desi",
+        "FASTSPECFIT_TEMPLATES": "/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z"
+    },
+    "argv": [
+        "shifter",
+        "--image=docker:desihub/fastspecfit:latest",
+        "/src/fastspecfit/bin/jupyter-kernel.sh",
+        "{connection_file}"
+    ]
+}

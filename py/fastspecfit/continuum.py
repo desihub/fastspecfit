@@ -79,6 +79,7 @@ class ContinuumTools(object):
         from speclite import filters
         from desiutil.dust import SFDMap
         from fastspecfit.emlines import read_emlines
+        from fastspecfit.io import FASTSPECFIT_TEMPLATES_NERSC, DUST_DIR_NERSC
 
         self.cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
         # pre-compute the luminosity distance on a grid
@@ -95,13 +96,18 @@ class ContinuumTools(object):
         self.imf = 'Kroupa'
 
         # dust maps
-        self.SFDMap = SFDMap(scaling=0.86) # SF11 recalibration of the SFD maps
+        mapdir = os.environ.get('DUST_DIR', DUST_DIR_NERSC)
+        self.SFDMap = SFDMap(scaling=0.86, mapdir=mapdir) # SF11 recalibration of the SFD maps
         self.RV = 3.1
         self.dustslope = 0.7
 
         # SSPs
-        self.sspfile = os.path.join(os.getenv('FASTSPECFIT_TEMPLATES'), 'SSP_{}_{}_{}_{}.fits'.format(
+        templates_dir = os.environ.get('FASTSPECFIT_TEMPLATES', FASTSPECFIT_TEMPLATES_NERSC)
+        self.sspfile = os.path.join(templates_dir, 'SSP_{}_{}_{}_{}.fits'.format(
             self.isochrone, self.library, self.imf, self.metallicity))
+        if not os.path.isfile(self.sspfile):
+            log.warning('SSP templates file not found {}'.format(self.sspfile))
+            raise IOError
 
         log.info('Reading {}'.format(self.sspfile))
         wave, wavehdr = fitsio.read(self.sspfile, ext='WAVE', header=True)
