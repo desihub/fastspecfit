@@ -29,5 +29,10 @@ shifter --image docker:desihub/fastspecfit:latest bash
 To install the jupyter kernel do:
 ```
 mkdir -p ~/.local/share/jupyter/kernels/fastspecfit
-wget -O ~/.local/share/jupyter/kernels/fastspecfit/kernel.json https://raw.githubusercontent.com/desihub/fastspecbi/main/bin/jupyter-kernel.json
+wget -O ~/.local/share/jupyter/kernels/fastspecfit/kernel.json https://raw.githubusercontent.com/desihub/fastspecbi/main/etc/jupyter-kernel.json
+```
+
+To grab the setup script (and modify it as needed) do:
+```
+wget https://raw.githubusercontent.com/desihub/fastspecbi/main/bin/fastspecfit-setup.sh
 ```
