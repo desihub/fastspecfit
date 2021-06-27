@@ -96,7 +96,7 @@ class ContinuumTools(object):
         self.imf = 'Kroupa'
 
         # dust maps
-        mapdir = os.environ.get('DUST_DIR', DUST_DIR_NERSC)
+        mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
         self.SFDMap = SFDMap(scaling=0.86, mapdir=mapdir) # SF11 recalibration of the SFD maps
         self.RV = 3.1
         self.dustslope = 0.7
