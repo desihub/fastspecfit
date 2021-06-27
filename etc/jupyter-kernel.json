@@ -4,6 +4,7 @@
     "env": {
         "REALHOME": "${HOME}",
         "DESI_ROOT": "/global/cfs/cdirs/desi",
+        "DUST_DIR": "/global/cfs/cdirs/cosmo/data/dust/v0_1",
         "FASTSPECFIT_TEMPLATES": "/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z"
     },
     "argv": [

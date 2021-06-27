@@ -177,7 +177,7 @@ RUN git clone https://github.com/desihub/fastspecfit.git fastspecfit \
     && cd fastspecfit && git describe --always
 
 # update 
-RUN cd /src/fastspecfit && git pull && git describe --always && echo 5
+RUN cd /src/fastspecfit && git pull && git describe --always && echo 1.1
 
 ENV PYTHONPATH /src/fastspecfit/py:$PYTHONPATH
 ENV PATH /src/fastspecfit/bin:$PATH
