@@ -180,9 +180,11 @@ class ContinuumTools(object):
                                                  'wise2010-W1', 'wise2010-W2')
 
         # rest-frame filters
-        self.absmag_bands = ['u', 'g', 'r', 'i', 'z', 'W1']
+        self.absmag_bands = ['u', 'g', 'r', 'i', 'z', 'W1', 'UX', 'B', 'V']
         self.absmag_filters = filters.load_filters('decam2014-u', 'decam2014-g', 'decam2014-r',
-                                                   'decam2014-i', 'decam2014-z', 'wise2010-W1')
+                                                   'decam2014-i', 'decam2014-z', 'wise2010-W1',
+                                                   'bessell-U', 'bessell-B', 'bessell-V',
+                                                    )
 
         # used in one place...
         self.rand = np.random.RandomState(seed=seed)
