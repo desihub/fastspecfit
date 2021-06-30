@@ -93,6 +93,15 @@ Name                   Type        Units      Description
               KCORR_W1 float32            mag Like KCORR_U but for WISE W1-band.
              ABSMAG_W1 float32            mag Like ABSMAG_U but for WISE W1-band.
         ABSMAG_IVAR_W1 float32      1 / mag^2 Like ABSMAG_IVAR_U but for WISE W1-band.
+              KCORR_UX float32            mag Like KCORR_U but for Johnson/Cousins U-band.
+             ABSMAG_UX float32            mag Like ABSMAG_U but for Johnson/Cousins U-band.
+        ABSMAG_IVAR_UX float32      1 / mag^2 Like ABSMAG_IVAR_U but for Johnson/Cousins U-band.
+               KCORR_B float32            mag Like KCORR_U but for Johnson/Cousins B-band.
+              ABSMAG_B float32            mag Like ABSMAG_U but for Johnson/Cousins B-band.
+         ABSMAG_IVAR_B float32      1 / mag^2 Like ABSMAG_IVAR_U but for Johnson/Cousins B-band.
+               KCORR_V float32            mag Like KCORR_U but for Johnson/Cousins V-band.
+              ABSMAG_V float32            mag Like ABSMAG_U but for Johnson/Cousins V-band.
+         ABSMAG_IVAR_V float32      1 / mag^2 Like ABSMAG_IVAR_U but for Johnson/Cousins V-band.
 ====================== =========== ========== ==========================================
 
 HDU02
