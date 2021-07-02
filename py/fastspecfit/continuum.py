@@ -188,8 +188,8 @@ class ContinuumTools(object):
         self.rand = np.random.RandomState(seed=seed)
 
     @staticmethod
-    def get_d4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
-        """Compute D(4000) and, optionally, the inverse variance.
+    def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
+        """Compute DN(4000) and, optionally, the inverse variance.
 
         Parameters
         ----------
@@ -209,11 +209,12 @@ class ContinuumTools(object):
         """
         from fastspecfit.util import ivar2var
 
-        d4000, d4000_ivar = 0.0, 0.0
+        dn4000, dn4000_ivar = 0.0, 0.0
 
         if rest:
             flam2fnu =  wave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
         else:
+            wave = np.copy(wave)
             wave /= (1 + redshift) # [Angstrom]
             flam2fnu = (1 + redshift) * wave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
 
@@ -225,7 +226,7 @@ class ContinuumTools(object):
         indxblu = np.where((wave >= 3850.) * (wave <= 3950.) * goodmask)[0]
         indxred = np.where((wave >= 4000.) * (wave <= 4100.) * goodmask)[0]
         if len(indxblu) < 5 or len(indxred) < 5:
-            return d4000, d4000_ivar
+            return dn4000, dn4000_ivar
 
         blufactor, redfactor = 3950.0 - 3850.0, 4100.0 - 4000.0
         deltawave = np.gradient(wave) # should be constant...
@@ -235,9 +236,9 @@ class ContinuumTools(object):
         numer = blufactor * np.sum(deltawave[indxred] * fnu[indxred])
         denom = redfactor * np.sum(deltawave[indxblu] * fnu[indxblu])
         if denom == 0.0:
-            log.warning('D(4000) is ill-defined!')
-            return d4000, d4000_ivar
-        d4000 =  numer / denom
+            log.warning('DN(4000) is ill-defined!')
+            return dn4000, dn4000_ivar
+        dn4000 =  numer / denom
 
         if flam_ivar is not None:
             fnu_ivar = flam_ivar / flam2fnu**2
@@ -245,14 +246,14 @@ class ContinuumTools(object):
 
             numer_var = blufactor**2 * np.sum(deltawave[indxred] * fnu_var[indxred])
             denom_var = redfactor**2 * np.sum(deltawave[indxblu] * fnu_var[indxblu])
-            d4000_var = (numer_var + numer**2 * denom_var) / denom**2
-            if d4000_var <= 0:
-                log.warning('D(4000) variance is ill-defined!')
-                d4000_ivar = 0.0
+            dn4000_var = (numer_var + numer**2 * denom_var) / denom**2
+            if dn4000_var <= 0:
+                log.warning('DN(4000) variance is ill-defined!')
+                dn4000_ivar = 0.0
             else:
-                d4000_ivar = 1.0 / d4000_var
+                dn4000_ivar = 1.0 / dn4000_var
 
-        return d4000, d4000_ivar
+        return dn4000, dn4000_ivar
 
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
@@ -791,9 +792,9 @@ class ContinuumFit(ContinuumTools):
             out.add_column(Column(name='CONTINUUM_NODUST_CHI2', length=nobj, dtype='f4')) # reduced chi2
             #out.add_column(Column(name='CONTINUUM_NODUST_AGE', length=nobj, dtype='f4', unit=u.Gyr))
 
-        out.add_column(Column(name='D4000', length=nobj, dtype='f4'))
-        out.add_column(Column(name='D4000_IVAR', length=nobj, dtype='f4'))
-        out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000_IVAR', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
 
         return out
 
@@ -813,7 +814,7 @@ class ContinuumFit(ContinuumTools):
         out.add_column(Column(name='CONTINUUM_AGE', length=nobj, dtype='f4', unit=u.Gyr))
         out.add_column(Column(name='CONTINUUM_AV', length=nobj, dtype='f4', unit=u.mag))
         out.add_column(Column(name='CONTINUUM_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
-        out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
 
         if False:
             for band in self.fiber_bands:
@@ -1071,20 +1072,20 @@ class ContinuumFit(ContinuumTools):
                                               objflam, objflamivar) # bestphot['flam'] is [nband, nage]
         continuummodel = bestsspflux.dot(coeff)
 
-        # Compute D4000, K-corrections, and rest-frame quantities.
+        # Compute DN4000, K-corrections, and rest-frame quantities.
         if np.count_nonzero(coeff > 0) == 0:
             log.warning('Continuum coefficients are all zero!')
-            chi2min, d4000, meanage = 1e6, -1.0, -1.0
+            chi2min, dn4000, meanage = 1e6, -1.0, -1.0
             kcorr = np.zeros(len(self.absmag_bands))
             absmag = np.zeros(len(self.absmag_bands))-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
         else:
-            d4000, _ = self.get_d4000(self.sspwave, continuummodel, rest=True)
+            dn4000, _ = self.get_dn4000(self.sspwave, continuummodel, rest=True)
             meanage = self.get_meanage(coeff)
             kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel, coeff)
 
-            log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
-                d4000, meanage, absmag[1]))
+            log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
+                dn4000, meanage, absmag[1]))
 
         # Pack it up and return.
         result['CONTINUUM_COEFF'][0][:nage] = coeff
@@ -1092,7 +1093,7 @@ class ContinuumFit(ContinuumTools):
         result['CONTINUUM_AGE'][0] = meanage
         result['CONTINUUM_AV'][0] = AVbest
         result['CONTINUUM_AV_IVAR'][0] = AVivar
-        result['D4000_MODEL'][0] = d4000
+        result['DN4000_MODEL'][0] = dn4000
         if False:
             for iband, band in enumerate(self.fiber_bands):
                 result['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
@@ -1230,12 +1231,12 @@ class ContinuumFit(ContinuumTools):
         bestsspflux = np.concatenate(bestsspflux, axis=0)
         coeff, chi2min = self._fnnls_parallel(bestsspflux, specflux, specivar)
 
-        # Get the mean age and D(4000).
+        # Get the mean age and DN(4000).
         bestfit = bestsspflux.dot(coeff)
         meanage = self.get_meanage(coeff)
-        d4000_model, _ = self.get_d4000(specwave, bestfit, redshift=redshift)
-        d4000, d4000_ivar = self.get_d4000(specwave, specflux, specivar, redshift=redshift)
-        log.info('Spectroscopic D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
+        dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
+        dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, specivar, redshift=redshift, rest=False)
+        log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
 
         # Do a quick median-smoothing of the stellar continuum-subtracted
         # residuals, to help with the emission-line fitting.
@@ -1284,9 +1285,9 @@ class ContinuumFit(ContinuumTools):
         result['CONTINUUM_VDISP'][0] = vdispbest
         result['CONTINUUM_VDISP_IVAR'][0] = vdispivar
         result['CONTINUUM_AGE'] = meanage
-        result['D4000'][0] = d4000
-        result['D4000_IVAR'][0] = d4000_ivar
-        result['D4000_MODEL'][0] = d4000_model
+        result['DN4000'][0] = dn4000
+        result['DN4000_IVAR'][0] = dn4000_ivar
+        result['DN4000_MODEL'][0] = dn4000_model
 
         for icam, cam in enumerate(data['cameras']):
             nonzero = np.abs(continuummodel[icam]) > 1e-5
