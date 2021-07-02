@@ -474,7 +474,7 @@ class EMLineFit(ContinuumTools):
         
         out = Table()
         if False:
-            out.add_column(Column(name='D4000_NOLINES', length=nobj, dtype='f4'))
+            out.add_column(Column(name='DN4000_NOLINES', length=nobj, dtype='f4'))
             
         # observed-frame photometry synthesized from the spectra
         for band in self.synth_bands:
@@ -774,10 +774,10 @@ class EMLineFit(ContinuumTools):
 
         specflux_nolines = specflux - emlinemodel
 
-        # measure D(4000) without the emission lines
+        # measure DN(4000) without the emission lines
         if False:
-            d4000_nolines, _ = self.get_d4000(emlinewave, specflux_nolines, redshift=redshift)
-            result['D4000_NOLINES'] = d4000_nolines
+            dn4000_nolines, _ = self.get_dn4000(emlinewave, specflux_nolines, redshift=redshift)
+            result['DN4000_NOLINES'] = dn4000_nolines
 
         ## Determine the uncertainties from the diagonal terms of the covariance
         ## matrix. If the covariance matrix is not known, estimate it from the
