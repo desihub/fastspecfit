@@ -1015,7 +1015,7 @@ class ContinuumFit(object):
         continuum = bestsspflux.dot(coeff)
         dn4000, _ = get_dn4000(self.sspwave, continuum, rest=True)
         meanage = self.get_meanage(coeff)
-        log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
+        log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
 
         result['CONTINUUM_PHOT_COEFF'][0][:nage] = coeff
         result['CONTINUUM_PHOT_CHI2'][0] = chi2min
@@ -1156,7 +1156,7 @@ class ContinuumFit(object):
         meanage = self.get_meanage(coeff)
         dn4000_model, _ = get_dn4000(specwave, bestfit, redshift=redshift)
         dn4000, dn4000_ivar = get_dn4000(specwave, specflux, specivar, redshift=redshift)
-        log.info('Spectroscopic D(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
+        log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
 
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
         result['CONTINUUM_CHI2'][0] = chi2min
