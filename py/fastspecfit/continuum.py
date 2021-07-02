@@ -214,6 +214,7 @@ class ContinuumTools(object):
         if rest:
             flam2fnu =  wave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
         else:
+            wave = np.copy(wave)
             wave /= (1 + redshift) # [Angstrom]
             flam2fnu = (1 + redshift) * wave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
 
@@ -1233,8 +1234,8 @@ class ContinuumFit(ContinuumTools):
         # Get the mean age and D(4000).
         bestfit = bestsspflux.dot(coeff)
         meanage = self.get_meanage(coeff)
-        d4000_model, _ = self.get_d4000(specwave, bestfit, redshift=redshift)
-        d4000, d4000_ivar = self.get_d4000(specwave, specflux, specivar, redshift=redshift)
+        d4000_model, _ = self.get_d4000(specwave, bestfit, redshift=redshift, rest=False)
+        d4000, d4000_ivar = self.get_d4000(specwave, specflux, specivar, redshift=redshift, rest=False)
         log.info('Spectroscopic D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
 
         # Do a quick median-smoothing of the stellar continuum-subtracted
