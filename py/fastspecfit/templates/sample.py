@@ -8,7 +8,7 @@ various target classes. Called by bin/desi-templates.
 """
 import pdb # for debugging
 
-import os, time, multiprocessing
+import os
 import numpy as np
 import fitsio
 from astropy.table import Table, Column
@@ -127,13 +127,17 @@ def read_tilestable(tilefile):
     log.info('Read {} tiles from {}'.format(len(tilestable), tilefile))
     return tilestable
 
-def read_fastspecfit(tilestable, specprod='denali', targetclass='lrg'):
+def read_fastspecfit(tilestable, fastspecfit_dir=None, specprod='denali',
+                     targetclass='lrg'):
     """Read the fastspecfit output for this production.
 
     """
     from desitarget.targets import main_cmx_or_sv
 
-    fastspecdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), specprod, 'tiles')
+    if fastspecfit_dir is None:
+        fastspecfit_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'fastspecfit')
+
+    fastspecdir = os.path.join(fastspecfit_dir, specprod, 'tiles')
     specfile = os.path.join(fastspecdir, 'merged', 'fastspec-{}-cumulative.fits'.format(specprod))
     photfile = os.path.join(fastspecdir, 'merged', 'fastphot-{}-cumulative.fits'.format(specprod))
 

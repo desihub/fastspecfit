@@ -12,6 +12,7 @@ from desiutil.log import get_logger
 log = get_logger()
 
 templatedir = os.path.join(os.getenv('DESI_ROOT'), 'users', 'ioannis', 'desi-templates')
+fastspecfitdir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'fastspecfit')
 
 def parse(options=None):
     """Parse input arguments.
@@ -20,10 +21,10 @@ def parse(options=None):
     import sys, argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('targetclass', type=str, choices=['lrg', 'elg', 'bgs', 'qso'],
+                        help='Target class to analyze.')
     parser.add_argument('--specprod', type=str, default='denali', choices=['denali', 'cascades', 'daily'],
                         help='Spectroscopic production to process.')
-    parser.add_argument('--targetclass', type=str, default='lrg', choices=['lrg', 'elg', 'bgs', 'qso'],
-                        help='Target class to analyze.')
 
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--minperbin', type=int, default=3, help='Minimum number of galaxies per bin.')
@@ -92,6 +93,7 @@ def main(args=None, comm=None):
         
         allphot, allspec, allmeta = read_fastspecfit(
             tilestable, targetclass=args.targetclass,
+            fastspecfit_dir=fastspecfitdir,
             specprod=args.specprod)
         phot, spec, meta = select_parent_sample(
             allphot, allspec, allmeta, targetclass=args.targetclass,
@@ -111,6 +113,7 @@ def main(args=None, comm=None):
         # select spectra in bins of properties, looping over all tiles
         #tilestable = tilestable[tilestable['TILEID'] == 80607]
         spectra_in_bins(tilestable, targetclass=args.targetclass,
+                        fastspecfit_dir=fastspecfitdir,
                         minperbin=args.minperbin, minwave=args.minwave,
                         maxwave=args.maxwave, normwave=props['normwave'], 
                         mp=args.mp, fastphot_in_bins=True, verbose=False,

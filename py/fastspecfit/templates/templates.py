@@ -217,12 +217,34 @@ def stack_onebin(flux2d, ivar2d, templatewave, normwave, cflux2d, continuumwave)
         
     return templateflux1, templateivar1, templatepix, continuumflux1, templatecpix
 
+def _spectra_allbins_onetile(args):
+    """Multiprocessing wrapper."""
+    return spectra_allbins_onetile(*args)
+
+def spectra_allbins_onetile(fastspecdir, targetclass, tile, bins, minperbin=3):
+    """Find the indices of the objects we care about in a given tile across all the
+    bins of properties.
+
+    """
+    nbins = len(bins)
+    res = {}
+    [res.update({str(ibin): []}) for ibin in np.arange(nbins)]
+    
+    for ibin, sample1 in enumerate(bins):#[60:64]):
+        #log.info('Tile {}: working on bin {}/{}'.format(tile, ibin+1, nbins))
+
+        I = spectra_onebin_onetile(fastspecdir, targetclass, tile, sample1, return_index=True)
+        if len(I) >= minperbin:
+            res[str(ibin)] = I
+
+    return res
+
 def _spectra_onebin_onetile(args):
     """Multiprocessing wrapper."""
     return spectra_onebin_onetile(*args)
 
 def spectra_onebin_onetile(fastspecdir, targetclass, tile, bins, minperbin=3, 
-                           CFit=None, continuumwave=None):
+                           CFit=None, continuumwave=None, index=None, return_index=False):
     """For Find (and, optionally, read) all the spectra in a given tile and bin of
     properties.
 
@@ -234,25 +256,30 @@ def spectra_onebin_onetile(fastspecdir, targetclass, tile, bins, minperbin=3,
     if not os.path.isfile(restfile): # not all of them exist
         return bins, None, None, None, None, None, None
 
-    photcols = ['CONTINUUM_CHI2', 'CONTINUUM_AV', 'CONTINUUM_COEFF',
-                'ABSMAG_G', 'ABSMAG_R', 'ABSMAG_W1']
-    speccols = ['CONTINUUM_CHI2']
-    metacols = ['Z', 'DELTACHI2', 'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1']
-    
-    phot = Table(fitsio.read(restfile, ext='FASTPHOT', columns=photcols))
-    spec = Table(fitsio.read(restfile, ext='FASTSPEC', columns=speccols))
-    meta = Table(fitsio.read(restfile, ext='METADATA', columns=metacols))
+    if index is None:
+        photcols = ['CONTINUUM_CHI2', 'CONTINUUM_AV', 'CONTINUUM_COEFF',
+                    'ABSMAG_G', 'ABSMAG_R', 'ABSMAG_W1']
+        speccols = ['CONTINUUM_CHI2']
+        metacols = ['Z', 'DELTACHI2', 'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1']
 
-    zobj_minmax = (bins['ZOBJMIN'], bins['ZOBJMAX'])
-    absmag_minmax = (bins['ABSMAGMIN'], bins['ABSMAGMAX'])
-    color_minmax = (bins['COLORMIN'], bins['COLORMAX'])
+        phot = Table(fitsio.read(restfile, ext='FASTPHOT', columns=photcols))
+        spec = Table(fitsio.read(restfile, ext='FASTSPEC', columns=speccols))
+        meta = Table(fitsio.read(restfile, ext='METADATA', columns=metacols))
 
-    I = select_parent_sample(phot, spec, meta,
-                             zobj_minmax=zobj_minmax,
-                             absmag_minmax=absmag_minmax,
-                             color_minmax=color_minmax,
-                             targetclass=targetclass,
-                             verbose=False, return_indices=True)
+        zobj_minmax = (bins['ZOBJMIN'], bins['ZOBJMAX'])
+        absmag_minmax = (bins['ABSMAGMIN'], bins['ABSMAGMAX'])
+        color_minmax = (bins['COLORMIN'], bins['COLORMAX'])
+
+        I = select_parent_sample(phot, spec, meta,
+                                 zobj_minmax=zobj_minmax,
+                                 absmag_minmax=absmag_minmax,
+                                 color_minmax=color_minmax,
+                                 targetclass=targetclass,
+                                 verbose=False, return_indices=True)
+        if return_index:
+            return I
+    else:
+        I = index
     
     nobj = len(I)
     if nobj >= minperbin:
@@ -270,9 +297,9 @@ def spectra_onebin_onetile(fastspecdir, targetclass, tile, bins, minperbin=3,
             cflux2d = []
             for iobj in np.arange(nobj):
                 cflux, _ = CFit.SSP2data(CFit.sspflux, continuumwave, synthphot=False,
-                                         redshift=meta['Z'][I[iobj]],
-                                         AV=phot['CONTINUUM_AV'][I[iobj]],
-                                         coeff=phot['CONTINUUM_COEFF'][I[iobj]])# * CFit.massnorm,
+                                         redshift=allmeta['Z'][iobj],
+                                         AV=allphot['CONTINUUM_AV'][iobj],
+                                         coeff=allphot['CONTINUUM_COEFF'][iobj])# * CFit.massnorm,
                 cflux2d.append(cflux.astype('f4'))
             cflux2d = np.vstack(cflux2d)
 
@@ -543,8 +570,8 @@ def stack_in_bins(sample, data, templatewave, mp=1, normwave=4500.0,
                             metadata=sample, cwave=continuumwave, cflux=continuumflux)
 
 def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali',
-                    minwave=None, maxwave=None, mp=1, normwave=None,
-                    fastphot_in_bins=True, verbose=False, stackfile=None):
+                    fastspecfit_dir=None, minwave=None, maxwave=None, mp=1,
+                    normwave=None, fastphot_in_bins=True, verbose=False, stackfile=None):
     """Select objects in bins of rest-frame properties.
 
     fastphot_in_bins - also stack the fastphot continuum-fitting results
@@ -552,7 +579,9 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
     """
     from fastspecfit.templates.sample import stacking_bins
     
-    fastspecdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), specprod, 'tiles')
+    if fastspecfit_dir is None:
+        fastspecfit_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'fastspecfit')
+    fastspecdir = os.path.join(fastspecfit_dir, specprod, 'tiles')        
 
     # the spectral wavelength vector is identical, so just read one
     restfile = os.path.join(fastspecdir, 'deredshifted', '{}-{}-restflux.fits'.format(
@@ -577,19 +606,38 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
     
     # The initial version of this code looped over tiles and then properties but
     # that runs into memory issues and won't scale as the number of tiles
-    # increases. So we now loop over properties and then tiles, which means we
-    # hit the disk more, sigh.
+    # increases.
+
+
+    # So, now we do it in two steps. First, we multiprocess over tiles and then
+    # properties to just get the indices of the objects we care about. And then
+    # we loop serially over properties and multiprocess over tiles to read and
+    # stack the actual spectra. Unfortunately, this does mean that we hit the
+    # disk more, but the algorithm should scale OK.
     
     #print('HACK!')
     #ww = np.where((bins['ZOBJ'] > 0.6) * (bins['ZOBJ'] < 0.7) * (bins['ABSMAG'] > -23.0) * (bins['ABSMAG'] < -22.0))[0][:6]
     #bins = bins[ww]
 
-    nbins = len(bins)
-    for ii, sample1 in enumerate(bins):#[60:64]):
-        log.info('Working on bin {}/{}'.format(ii+1, nbins))
+    print('HACK the number of tiles!')
+    tilestable = tilestable[[1,3]]
 
-        mpargs = [(fastspecdir, targetclass, tile, sample1, minperbin,
-                   CFit, continuumwave) for tile in tilestable['TILEID']]
+    t0 = time.time()
+    log.info('Building the index lists.')
+    mpargs = [(fastspecdir, targetclass, tile, bins, minperbin) for tile in tilestable['TILEID']]
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            tileI = P.map(_spectra_allbins_onetile, mpargs)
+    else:
+        tileI = [spectra_allbins_onetile(*_mpargs) for _mpargs in mpargs]
+    log.info('Getting all the indices took: {:.2f} min'.format((time.time()-t0) / 60))        
+
+    nbins = len(bins)
+    for ibin, sample1 in enumerate(bins[342:344]):
+        log.info('Working on bin {}/{}'.format(ibin+1, nbins))
+
+        mpargs = [(fastspecdir, targetclass, tile, sample1, minperbin, CFit, continuumwave,
+                   tileI[itile][str(ibin)], False) for itile, tile in enumerate(tilestable['TILEID'])]
         if mp > 1:
             with multiprocessing.Pool(mp) as P:
                 results = P.map(_spectra_onebin_onetile, mpargs)
@@ -602,11 +650,11 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
         stackbins = Table(np.hstack(results[0]))
         idata = np.where(stackbins['NOBJ'] >= minperbin)[0]
         if len(idata) > 0:
-            flux2d = np.vstack(np.array(results[1], dtype=object)[idata])
-            ivar2d = np.vstack(np.array(results[2], dtype=object)[idata])
+            flux2d = np.vstack(np.array(results[1], dtype=object)[idata]).astype('f4')
+            ivar2d = np.vstack(np.array(results[2], dtype=object)[idata]).astype('f4')
 
             if continuumwave is not None:
-                cflux2d = np.vstack(np.array(results[3], dtype=object)[idata])
+                cflux2d = np.vstack(np.array(results[3], dtype=object)[idata]).astype('f4')
             else:
                 cflux2d = None
 
@@ -624,6 +672,9 @@ def spectra_in_bins(tilestable, minperbin=3, targetclass='lrg', specprod='denali
             
             sample1['NOBJ'] = np.sum(stackbins['NOBJ'][idata])
             sample1['SNR'] = np.median(stackflux*np.sqrt(stackivar))
+
+            if sample1['SNR'] < 0:
+                pdb.set_trace()
 
             # pack it all up
             templateflux1 = np.zeros(npix, dtype='f4')
