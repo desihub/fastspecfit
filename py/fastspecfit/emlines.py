@@ -406,6 +406,7 @@ class EMLineModel(Fittable1DModel):
 
         """ 
         from redrock.rebin import trapz_rebin
+        from desispec.interpolation import resample_flux
 
         # build the emission-line model [erg/s/cm2/A, observed frame]
         log10model = self._emline_spectrum(*lineargs)
@@ -421,11 +422,11 @@ class EMLineModel(Fittable1DModel):
             jpix = np.sum(self.npixpercamera[:ii+2])
             #_emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
         
-            _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
-            #try:
-            #    _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
-            #except:
-            #    pdb.set_trace()                
+            #_emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
+            try:
+                _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
+            except:
+                _emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
 
             if self.emlineR is not None:
                 _emlinemomdel = self.emlineR[ii].dot(_emlinemodel)
@@ -474,7 +475,7 @@ class EMLineFit(ContinuumTools):
         
         out = Table()
         if False:
-            out.add_column(Column(name='D4000_NOLINES', length=nobj, dtype='f4'))
+            out.add_column(Column(name='DN4000_NOLINES', length=nobj, dtype='f4'))
             
         # observed-frame photometry synthesized from the spectra
         for band in self.synth_bands:
@@ -774,10 +775,10 @@ class EMLineFit(ContinuumTools):
 
         specflux_nolines = specflux - emlinemodel
 
-        # measure D(4000) without the emission lines
+        # measure DN(4000) without the emission lines
         if False:
-            d4000_nolines, _ = self.get_d4000(emlinewave, specflux_nolines, redshift=redshift)
-            result['D4000_NOLINES'] = d4000_nolines
+            dn4000_nolines, _ = self.get_dn4000(emlinewave, specflux_nolines, redshift=redshift)
+            result['DN4000_NOLINES'] = dn4000_nolines
 
         ## Determine the uncertainties from the diagonal terms of the covariance
         ## matrix. If the covariance matrix is not known, estimate it from the

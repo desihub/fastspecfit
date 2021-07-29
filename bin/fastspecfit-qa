@@ -171,6 +171,10 @@ def main(args=None, comm=None):
         for tile in set(alltiles):
             for petal in set(allpetals):
                 indx = np.where((tile == alltiles) * (petal == allpetals))[0]
+                if len(indx) == 0:
+                    log.warning('No object found with tileid={} and petal={}!'.format(
+                        tile, petal))
+                    continue
                 zbestfile = os.path.join(zbestdir, 'cumulative', str(tile), thrunights[indx[0]], 'zbest-{}-{}-thru{}.fits'.format(petal, tile, thrunights[indx[0]]))
                 _wrap_qa(zbestfile, indx)
     elif coadd_type == 'pernight':

@@ -565,10 +565,10 @@ class ContinuumFit(object):
             out.add_column(Column(name='CONTINUUM_NODUST_CHI2', length=nobj, dtype='f4')) # reduced chi2
             #out.add_column(Column(name='CONTINUUM_NODUST_AGE', length=nobj, dtype='f4', unit=u.Gyr))
 
-        out.add_column(Column(name='D4000', length=nobj, dtype='f4'))
-        out.add_column(Column(name='D4000_IVAR', length=nobj, dtype='f4'))
-        out.add_column(Column(name='D4000_NOLINES', length=nobj, dtype='f4'))
-        out.add_column(Column(name='D4000_MODEL', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000_IVAR', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000_NOLINES', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
 
         return out
 
@@ -590,7 +590,7 @@ class ContinuumFit(object):
         out.add_column(Column(name='CONTINUUM_PHOT_AGE', length=nobj, dtype='f4', unit=u.Gyr))
         out.add_column(Column(name='CONTINUUM_PHOT_AV', length=nobj, dtype='f4', unit=u.mag))
         out.add_column(Column(name='CONTINUUM_PHOT_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
-        out.add_column(Column(name='D4000_MODEL_PHOT', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000_MODEL_PHOT', length=nobj, dtype='f4'))
 
         return out
 
@@ -1013,16 +1013,16 @@ class ContinuumFit(object):
                                               objflam, objflamivar) # bestphot['flam'] is [nband, nage]
 
         continuum = bestsspflux.dot(coeff)
-        d4000, _ = get_d4000(self.sspwave, continuum, rest=True)
+        dn4000, _ = get_dn4000(self.sspwave, continuum, rest=True)
         meanage = self.get_meanage(coeff)
-        log.info('Photometric D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
+        log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
 
         result['CONTINUUM_PHOT_COEFF'][0][:nage] = coeff
         result['CONTINUUM_PHOT_CHI2'][0] = chi2min
         result['CONTINUUM_PHOT_AGE'][0] = meanage
         result['CONTINUUM_PHOT_AV'][0] = AVbest
         result['CONTINUUM_PHOT_AV_IVAR'][0] = AVivar
-        result['D4000_MODEL_PHOT'][0] = d4000
+        result['DN4000_MODEL_PHOT'][0] = dn4000
 
         return result, continuum
     
@@ -1154,9 +1154,9 @@ class ContinuumFit(object):
 
         bestfit = bestsspflux.dot(coeff)
         meanage = self.get_meanage(coeff)
-        d4000_model, _ = get_d4000(specwave, bestfit, redshift=redshift)
-        d4000, d4000_ivar = get_d4000(specwave, specflux, specivar, redshift=redshift)
-        log.info('Spectroscopic D(4000)={:.3f}, Age={:.2f} Gyr'.format(d4000, meanage))
+        dn4000_model, _ = get_dn4000(specwave, bestfit, redshift=redshift)
+        dn4000, dn4000_ivar = get_dn4000(specwave, specflux, specivar, redshift=redshift)
+        log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
 
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
         result['CONTINUUM_CHI2'][0] = chi2min
@@ -1165,9 +1165,9 @@ class ContinuumFit(object):
         result['CONTINUUM_VDISP'][0] = vdispbest
         result['CONTINUUM_VDISP_IVAR'][0] = vdispivar
         result['CONTINUUM_AGE'] = meanage
-        result['D4000'][0] = d4000
-        result['D4000_IVAR'][0] = d4000_ivar
-        result['D4000_MODEL'][0] = d4000_model
+        result['DN4000'][0] = dn4000
+        result['DN4000_IVAR'][0] = dn4000_ivar
+        result['DN4000_MODEL'][0] = dn4000_model
 
         # Unpack the continuum into individual cameras.
         continuum = []
