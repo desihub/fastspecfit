@@ -8,50 +8,72 @@ various target classes. Called by bin/desi-templates.
 """
 import pdb # for debugging
 
-import os, time
+import os
 import numpy as np
 import fitsio
-from astropy.table import Table
-
+from astropy.table import Table, Column
+    
 from desiutil.log import get_logger
 log = get_logger()
 
-def read_tileinfo(targetclass, remove_vi=False, min_efftime=None,
-                  specprod='denali', png=None):
-    """Optionally remove tiles which are being visually inspected.
-     /global/cfs/cdirs/desi/sv/vi/TruthTables/Blanc/
+VITILES_TARGETCLASS = {'lrg': [80605, 80609],
+                       'elg': [80606, 80608, 80610],
+                       'bgs': [80613]}
+
+SAMPLE_PROPERTIES = {
+    'lrg': {'zminmax': (0.1, 1.1), 'normwave': 4500.0, 'absmag': 'Mr', 'color': 'rW1',
+            'absmag_band': 'R', 'color_band1': 'R', 'color_band2': 'W1',
+            'absmag_label': 'M_{{0.0r}}', 'color_label': '^{{0.0}}(r-W1)'},            
+    'elg': {'zminmax': (0.6, 1.5), 'normwave': 3500.0, 'absmag': 'Mg', 'color': 'gr',
+            'absmag_band': 'G', 'color_band1': 'G', 'color_band2': 'R',
+            'absmag_label': 'M_{{0.0g}}', 'color_label': '^{{0.0}}(g-r)'},
+    'bgs': {'zminmax': (0.05, 1.55), 'normwave': 5500.0, 'absmag': 'Mr', 'color': 'gr',
+            'absmag_band': 'R', 'color_band1': 'G', 'color_band2': 'R',
+            'absmag_label': 'M_{{0.0r}}', 'color_label': '^{{0.0}}(g-r)'},
+    }
+
+def select_tiles(targetclass, remove_vi=False, min_efftime=None,
+                 specprod='denali', outfile=None, png=None):
+    """Select tiles to use. Remove low exposure-time tiles and also 
+    remove tiles which are being visually inspected.
+    
+      /global/cfs/cdirs/desi/sv/vi/TruthTables/Blanc/
 
     """
-    vilookup = {'lrg': [80605, 80609],
-                'elg': [80606, 80608, 86010],
-                'bgs': [80613]}
-    
     reduxdir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod)
-    tileinfo = Table.read(os.path.join(reduxdir, 'tiles-{}.csv'.format(specprod)))
-    tileinfo = tileinfo[tileinfo['SURVEY'] != 'unknown']
-    tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
+    tilestable = Table.read(os.path.join(reduxdir, 'tiles-{}.csv'.format(specprod)))
+    tilestable = tilestable[tilestable['SURVEY'] == 'sv1']
+    #tilestable = tilestable[tilestable['SURVEY'] != 'unknown']
+    tilestable = tilestable[np.argsort(tilestable['TILEID'])]
 
-    itargtiles = [targetclass in program for program in tileinfo['FAPRGRM']]
-    targtiles = tileinfo[itargtiles]
+    itargtiles = [targetclass in program for program in tilestable['FAPRGRM']]
+    targtiles = tilestable[itargtiles]
     
-    efftime = tileinfo['EFFTIME_SPEC'] / 60
+    efftime = tilestable['EFFTIME_SPEC'] / 60
 
     if targetclass and remove_vi:
-        ivitiles = np.isin(tileinfo['TILEID'], vilookup[targetclass])
-        vitiles = tileinfo[ivitiles]
-        log.info('Removing {} VI tiles.'.format(np.sum(ivitiles)))
-        tileinfo = tileinfo[np.logical_not(ivitiles)]
+        ivitiles = np.isin(tilestable['TILEID'], VITILES_TARGETCLASS[targetclass])
+        vitiles = tilestable[ivitiles]
+        log.info('Removing {} {} VI tiles: {}'.format(np.sum(ivitiles), targetclass.upper(),
+                                                      ', '.join(vitiles['TILEID'].astype(str))))
+        tilestable = tilestable[np.logical_not(ivitiles)]
     else:
         vitiles = None
         
     if min_efftime:
-        ishallowtiles = tileinfo['EFFTIME_SPEC'] / 60 <= min_efftime
-        shallowtiles = tileinfo[ishallowtiles]
+        ishallowtiles = tilestable['EFFTIME_SPEC'] / 60 <= min_efftime
+        shallowtiles = tilestable[ishallowtiles]
         log.info('Removing {} tiles with efftime < {:.1f} min.'.format(
             np.sum(ishallowtiles), min_efftime))
-        tileinfo = tileinfo[np.logical_not(ishallowtiles)]
+        tilestable = tilestable[np.logical_not(ishallowtiles)]
     else:
         shallowtiles = None
+
+    if outfile:
+        #log.info('Writing {} tiles to {}'.format(len(targtiles), outfile))
+        #targtiles.write(outfile, overwrite=True)
+        log.info('Writing {} tiles to {}'.format(len(tilestable), outfile))
+        tilestable.write(outfile, overwrite=True)
 
     if png:
         import matplotlib.pyplot as plt
@@ -60,8 +82,8 @@ def read_tileinfo(targetclass, remove_vi=False, min_efftime=None,
 
         xlim = (efftime.min(), efftime.max())
         fig, ax = plt.subplots(figsize=(9, 6))
-        _ = ax.hist(tileinfo['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
-                    label='All Tiles (N={})'.format(len(tileinfo)))
+        _ = ax.hist(tilestable['EFFTIME_SPEC'] / 60, bins=50, range=xlim,
+                    label='All Tiles (N={})'.format(len(tilestable)))
         _ = ax.hist(targtiles['EFFTIME_SPEC'] / 60, bins=50, range=xlim, alpha=0.9,
                     label='{} Tiles (N={})'.format(targetclass.upper(), len(targtiles)))
         
@@ -80,19 +102,42 @@ def read_tileinfo(targetclass, remove_vi=False, min_efftime=None,
 
         plt.subplots_adjust(right=0.95, top=0.95, bottom=0.17)
 
-        print('Writing {}'.format(png))
+        log.info('Writing {}'.format(png))
         fig.savefig(png)
         plt.close()
-        
-    return tileinfo
 
-def read_fastspecfit(tileinfo, specprod='denali', targetclass='lrg'):
+    #return targtiles
+    return tilestable
+
+def read_parent_sample(samplefile):
+    """Read the output of select_parent_sample
+
+    """
+    log.info('Reading {}'.format(samplefile))
+    phot = Table(fitsio.read(samplefile, 'FASTPHOT'))
+    spec = Table(fitsio.read(samplefile, 'FASTSPEC'))
+    meta = Table(fitsio.read(samplefile, 'METADATA'))
+    return phot, spec, meta
+
+def read_tilestable(tilefile):
+    """Read the output of select_tiles
+
+    """
+    tilestable = Table.read(tilefile)
+    log.info('Read {} tiles from {}'.format(len(tilestable), tilefile))
+    return tilestable
+
+def read_fastspecfit(tilestable, fastspecfit_dir=None, specprod='denali',
+                     targetclass='lrg'):
     """Read the fastspecfit output for this production.
 
     """
     from desitarget.targets import main_cmx_or_sv
 
-    fastspecdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), specprod, 'tiles')
+    if fastspecfit_dir is None:
+        fastspecfit_dir = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'fastspecfit')
+
+    fastspecdir = os.path.join(fastspecfit_dir, specprod, 'tiles')
     specfile = os.path.join(fastspecdir, 'merged', 'fastspec-{}-cumulative.fits'.format(specprod))
     photfile = os.path.join(fastspecdir, 'merged', 'fastphot-{}-cumulative.fits'.format(specprod))
 
@@ -105,34 +150,71 @@ def read_fastspecfit(tileinfo, specprod='denali', targetclass='lrg'):
     log.info('Read {} objects from {}'.format(len(spec), specfile))
     log.info('Read {} objects from {}'.format(len(phot), photfile))
     
-    ontiles = np.where(np.isin(meta['TILEID'], tileinfo['TILEID']))[0]
+    ontiles = np.where(np.isin(meta['TILEID'], tilestable['TILEID']))[0]
     spec = spec[ontiles]
     meta = meta[ontiles]
     phot = phot[ontiles]
     
     log.info('Keeping {} objects on {}/{} unique tiles.'.format(
-        len(ontiles), len(np.unique(meta['TILEID'])), len(tileinfo)))
+        len(ontiles), len(np.unique(meta['TILEID'])), len(tilestable)))
     
     ngal = len(spec)
-    
-    # convenience magnitudes and targeting variables
+
+    # correct for extinction!
+    # see https://github.com/desihub/fastspecfit/issues/23
+    if specprod == 'denali':
+        log.warning('Correcting for MW extinction in denali production!')
+
+        from desiutil.dust import SFDMap, ext_odonnell
+        from speclite import filters
+        
+        RV = 3.1
+        SFD = SFDMap(scaling=0.86) # SF11 recalibration of the SFD maps
+        ebv = SFD.ebv(meta['RA'], meta['DEC'])
+
+        effwave_north, effwave_south = {}, {}
+        for band, nfilt, sfilt in zip(['G', 'R', 'Z', 'W1', 'W2'],
+                               ['BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2'],
+                               ['decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1', 'wise2010-W2']):
+            effwave_north[band] = filters.load_filters(nfilt).effective_wavelengths.value[0]
+            effwave_south[band] = filters.load_filters(sfilt).effective_wavelengths.value[0]
+
+    # correct for extinction!
+    # see https://github.com/desihub/fastspecfit/issues/23
+    def _get_mw_transmission(good, band):
+        mw_transmission = np.ones(len(good))
+        isouth = np.where(meta['PHOTSYS'][good] == 'S')[0]
+        inorth = np.where(meta['PHOTSYS'][good] == 'N')[0]
+        if len(isouth) > 0:
+            mw_transmission[isouth] = 10**(-0.4 * ebv[good][isouth] * RV * ext_odonnell(effwave_south[band], Rv=RV))
+        if len(inorth) > 0:
+            mw_transmission[inorth] = 10**(-0.4 * ebv[good][inorth] * RV * ext_odonnell(effwave_south[band], Rv=RV))
+        return mw_transmission
+
+    # for convenience, add observed-frame photometry, rest-frame colors, and
+    # targeting variables
     for band in ('G', 'R', 'Z', 'W1'):
         phot['{}MAG'.format(band)] = np.zeros(ngal, 'f4')
         good = np.where(meta['FLUX_{}'.format(band)] > 0)[0]
-        phot['{}MAG'.format(band)][good] = 22.5 - 2.5 * np.log10(meta['FLUX_{}'.format(band)][good])
+        phot['{}MAG'.format(band)][good] = 22.5 - 2.5 * np.log10(meta['FLUX_{}'.format(band)][good] / _get_mw_transmission(good, band))
         
     for band in ('G', 'R', 'Z'):
         phot['{}FIBERMAG'.format(band)] = np.zeros(ngal, 'f4')
         good = np.where(meta['FIBERFLUX_{}'.format(band)] > 0)[0]
-        phot['{}FIBERMAG'.format(band)][good] = 22.5 - 2.5 * np.log10(meta['FIBERFLUX_{}'.format(band)][good])
+        phot['{}FIBERMAG'.format(band)][good] = 22.5 - 2.5 * np.log10(meta['FIBERFLUX_{}'.format(band)][good] / _get_mw_transmission(good, band))
 
+    #phot['ABSMAG_GR'] = phot['ABSMAG_G'] - phot['ABSMAG_R']
+    #phot['ABSMAG_RZ'] = phot['ABSMAG_R'] - phot['ABSMAG_Z']
+    #phot['ABSMAG_RW1'] = phot['ABSMAG_R'] - phot['ABSMAG_W1']
+
+    # targeting...
     targs = ['BGS_ANY', 'ELG', 'LRG', 'QSO']
     targcols = ['BGS', 'ELG', 'LRG', 'QSO']
     for targcol in targcols:
         spec[targcol] = np.zeros(ngal, bool)
         phot[targcol] = np.zeros(ngal, bool)
         
-    for tile in tileinfo['TILEID']:
+    for tile in tilestable['TILEID']:
         I = np.where(meta['TILEID'] == tile)[0]
         if len(I) == 0:
             continue
@@ -146,7 +228,7 @@ def read_fastspecfit(tileinfo, specprod='denali', targetclass='lrg'):
     #for targcol in targcols:
     #    log.info('  {}: {}'.format(targcol, np.sum(phot[targcol])))
 
-    itarg = phot[targetclass.upper().replace('BGS', 'BGS_ANY')]
+    itarg = phot[targetclass.upper()]
     log.info('Keeping {} {} targets.'.format(np.sum(itarg), targetclass.upper()))
 
     phot = phot[itarg]
@@ -155,273 +237,130 @@ def read_fastspecfit(tileinfo, specprod='denali', targetclass='lrg'):
     
     return phot, spec, meta
 
-def _select_lrgs(iparent, phot, spec, meta, z_minmax=(0.1, 1.1), Mr_minmax=None,
-                 gi_minmax=None, rW1_minmax=None, targetclass='LRG', verbose=False,
-                 png=None):
-    """Select LRGs. This method should be called with:
-
-    select_parent_sample(phot, spec, meta, targetclass='lrg')
-
-    """
-    if z_minmax:
-        iparent *= (meta['Z'] > z_minmax[0]) * (meta['Z'] < z_minmax[1])
-    if Mr_minmax:
-        iparent *= (phot['ABSMAG_R'] > Mr_minmax[0]) * (phot['ABSMAG_R'] < Mr_minmax[1])
-    if gi_minmax:
-        gi = phot['ABSMAG_G'] - phot['ABSMAG_I']
-        iparent *= (gi > gi_minmax[0]) * (gi < gi_minmax[1])
-    if rW1_minmax:
-        rW1 = phot['ABSMAG_R'] - phot['ABSMAG_W1']
-        iparent *= (rW1 > rW1_minmax[0]) * (rW1 < rW1_minmax[1])
-
-    if verbose:
-        log.info('Selecting {}/{} {}s.'.format(np.sum(iparent), len(meta),
-                                               targetclass.upper()))
-
-    if png:
-        import matplotlib.pyplot as plt
-        from fastspecfit.templates.qa import plot_style
-        sns, _ = plot_style()        
-
-        #zlim = (meta['Z'].min(), meta['Z'].max())
-        zlim = (0.0, 1.5)
-        chi2lim = (-2, 4)
-        
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
-
-        ax1.hist(meta['Z'], bins=75, range=zlim,
-                 label='All (N={})'.format(len(phot)))
-        ax1.hist(meta['Z'][iparent], bins=75, range=zlim, alpha=0.7,
-                 label='Parent (N={})'.format(np.sum(iparent)))
-        ax1.set_xlim(zlim)
-        ax1.set_xlabel('Redshift')
-        ax1.set_ylabel('Number of {} Targets'.format(targetclass))
-        
-        ax2.hist(np.log10(phot['CONTINUUM_CHI2']), bins=75, range=chi2lim,
-                 label='All (N={})'.format(len(phot)))
-        ax2.hist(np.log10(phot['CONTINUUM_CHI2'][iparent]), bins=75, range=chi2lim, alpha=0.7,
-                 label='Parent (N={})'.format(np.sum(iparent)))
-        ax2.set_xlim(chi2lim)
-        ax2.set_xlabel(r'$\log_{10}\,\chi^{2}_{\nu}$ [fastphot]')
-        
-        ax1.legend(loc='upper right', fontsize=14)
-
-        plt.subplots_adjust(left=0.14, wspace=0.09, right=0.95, top=0.95, bottom=0.20)
-
-        print('Writing {}'.format(png))
-        fig.savefig(png)
-        plt.close()
-
-    return iparent
-
-def select_parent_sample(phot, spec, meta, targetclass='lrg', deltachi2_cut=40,
-                         continuumchi2_cut=300, smoothcorr_cut=10, return_indices=False,
-                         verbose=False, **kwargs):
+def select_parent_sample(phot, spec, meta, targetclass='lrg', specprod='denali',
+                         deltachi2_cut=40, fastphot_chi2cut=100.0,
+                         fastspec_chi2cut=3.0, smoothcorr_cut=10,
+                         zobj_minmax=None, absmag_minmax=None, color_minmax=None,
+                         return_indices=False, verbose=False, png=None, samplefile=None):
     """High-level sample selection.
 
     """
     iparent = (
-        #(meta['SPECTYPE'] == 'GALAXY') *
+        (meta['Z'] > zobj_minmax[0]) *
+        (meta['Z'] < zobj_minmax[1]) * 
         (meta['DELTACHI2'] > deltachi2_cut) * 
         (meta['FLUX_G'] > 0) * 
         (meta['FLUX_R'] > 0) * 
         (meta['FLUX_Z'] > 0) * 
         (meta['FLUX_W1'] > 0) *
-        (phot['CONTINUUM_CHI2'] < continuumchi2_cut) *
-        (np.abs(spec['CONTINUUM_SMOOTHCORR_B']) < smoothcorr_cut) *
-        (np.abs(spec['CONTINUUM_SMOOTHCORR_R']) < smoothcorr_cut) *
-        (np.abs(spec['CONTINUUM_SMOOTHCORR_Z']) < smoothcorr_cut)
+        (spec['CONTINUUM_CHI2'] < fastspec_chi2cut) *
+        (phot['CONTINUUM_CHI2'] < fastphot_chi2cut) 
+        #(np.abs(spec['CONTINUUM_SMOOTHCORR_B']) < smoothcorr_cut) *
+        #(np.abs(spec['CONTINUUM_SMOOTHCORR_R']) < smoothcorr_cut) *
+        #(np.abs(spec['CONTINUUM_SMOOTHCORR_Z']) < smoothcorr_cut)
     )
 
-    if targetclass == 'lrg':
-        _select_lrgs(iparent, phot, spec, meta, verbose=verbose, **kwargs)
+    if zobj_minmax is not None and absmag_minmax is not None and color_minmax is not None:
 
-    if return_indices:
-        return np.where(iparent)[0]
+        props = SAMPLE_PROPERTIES[targetclass]
+        absmagcol = 'ABSMAG_{}'.format(props['absmag_band'])
+        color = phot['ABSMAG_{}'.format(props['color_band1'])] - phot['ABSMAG_{}'.format(props['color_band2'])]
+        
+        iselect = iparent * (
+            (meta['Z'] > zobj_minmax[0]) * (meta['Z'] < zobj_minmax[1]) *
+            (phot[absmagcol] > absmag_minmax[0]) * (phot[absmagcol] < absmag_minmax[1]) *
+            (color > color_minmax[0]) * (color < color_minmax[1]) )
     else:
-        return phot[iparent], spec[iparent], meta[iparent]
+        iselect = iparent
 
-def lrg_stacking_bins(verbose=False):
+    if verbose:
+        log.info('Selecting a parent sample of {}/{} {}s.'.format(
+            np.sum(iselect), len(meta), targetclass.upper()))
+
+    # optionally write out
+    if samplefile:
+        from astropy.io import fits
+        log.info('Writing {} objects to {}'.format(np.sum(iselect), samplefile))
+
+        hduprim = fits.PrimaryHDU()
+        hduphot = fits.convenience.table_to_hdu(phot[iselect])
+        hduphot.header['EXTNAME'] = 'FASTPHOT'
+
+        hduspec = fits.convenience.table_to_hdu(spec[iselect])
+        hduspec.header['EXTNAME'] = 'FASTSPEC'
+    
+        hdumeta = fits.convenience.table_to_hdu(meta[iselect])
+        hdumeta.header['EXTNAME'] = 'METADATA'
+        hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
+        hdumeta.header['TARGET'] = (targetclass, 'target class')
+        
+        hx = fits.HDUList([hduprim, hduphot, hduspec, hdumeta])
+        hx.writeto(samplefile, overwrite=True, checksum=True)
+
+    # return
+    if return_indices:
+        return np.where(iselect)[0]
+    else:
+        return phot[iselect], spec[iselect], meta[iselect]
+
+def stacking_bins(targetclass='lrg', verbose=False):
 
     # define the stacking limits and the number of bin *centers*
-    zlim, nz = [0.1, 1.1], 10
-    Mrlim, nMr = [-24.5, -20], 9
-    gilim, ngi = [0.4, 1.4], 5 
-    rW1lim, nrW1 = [-1.0, 1.25], 9
-    
+
+    if targetclass == 'lrg':
+        zlim, nz = [0.1, 1.1], 10
+        absmaglim, nabsmag = [-24.5, -20], 9 # Mr
+        colorlim, ncolor = [-1.0, 1.25], 9   # r-W1
+    elif targetclass == 'elg':
+        zlim, nz = [0.6, 1.5], 9
+        absmaglim, nabsmag = [-24, -19], 10 # Mg
+        colorlim, ncolor = [-0.2, 0.6], 4   # g-r
+    elif targetclass == 'bgs':
+        zlim, nz = [0.05, 0.55], 10
+        absmaglim, nabsmag = [-24.0, -17.0], 7 # Mr
+        colorlim, ncolor = [0.0, 1.0], 5       # g-r
+    else:
+        raise NotImplemented
+        
     dz = (zlim[1] - zlim[0]) / nz
-    dMr = (Mrlim[1] - Mrlim[0]) / nMr
-    dgi = (gilim[1] - gilim[0]) / ngi
-    drW1 = (rW1lim[1] - rW1lim[0]) / nrW1
-    
+    dabsmag = (absmaglim[1] - absmaglim[0]) / nabsmag
+    dcolor = (colorlim[1] - colorlim[0]) / ncolor
+
     # build the array of (left) bin *edges*
     zgrid = np.arange(zlim[0], zlim[1], dz)
-    Mrgrid = np.arange(Mrlim[0], Mrlim[1], dMr)
-    gigrid = np.arange(gilim[0], gilim[1], dgi)
-    rW1grid = np.arange(rW1lim[0], rW1lim[1], drW1)
-    
-    bins = {
-        'zobj': {'min': zlim[0], 'max': zlim[1], 'del': dz, 'grid': zgrid},
-        'Mr': {'min': Mrlim[0], 'max': Mrlim[1], 'del': dMr, 'grid': Mrgrid}, 
-        'gi': {'min': gilim[0], 'max': gilim[1], 'del': dgi, 'grid': gigrid}, 
-        'rW1': {'min': rW1lim[0], 'max': rW1lim[1], 'del': drW1, 'grid': rW1grid},
-        }
-    
-    nbins = 1
-    for key in bins.keys():
-        nbins *= len(bins[key]['grid'])
-        if verbose:
-            log.debug(len(bins[key]['grid']))
+    absmaggrid = np.arange(absmaglim[0], absmaglim[1], dabsmag)
+    colorgrid = np.arange(colorlim[0], colorlim[1], dcolor)
+
+    nbins = len(zgrid) * len(absmaggrid) * len(colorgrid)
+
+    # pack into a table
+    bins = Table()
+    bins.add_column(Column(name='TARGETCLASS', dtype='U3', length=nbins))
+    bins.add_column(Column(name='IBIN', dtype=np.int32, length=nbins))
+    bins.add_column(Column(name='ISUBBIN', dtype=np.int16, length=nbins))
+    bins.add_column(Column(name='NOBJ', dtype=np.int32, length=nbins))
+    bins.add_column(Column(name='SNR', dtype='f4', length=nbins))
+    for col in ('ZOBJ', 'ABSMAG', 'COLOR'):
+        bins.add_column(Column(name=col, dtype='f4', length=nbins)) # mean bin center
+        bins.add_column(Column(name='{}MIN'.format(col), dtype='f4', length=nbins))
+        bins.add_column(Column(name='{}MAX'.format(col), dtype='f4', length=nbins))
+        
+    bins['TARGETCLASS'] = targetclass
+    bins['IBIN'] = np.arange(nbins, dtype=np.int32)
+
+    ibin = 0
+    for zmin in zgrid:
+        for absmagmin in absmaggrid:
+            for colormin in colorgrid:
+                for col, mmin, delt in zip(('ZOBJ', 'ABSMAG', 'COLOR'),
+                                           (zmin, absmagmin, colormin),
+                                           (dz, dabsmag, dcolor)):
+                    bins[col][ibin] = mmin + delt / 2             # bin center
+                    bins['{}MIN'.format(col)][ibin] = mmin        # left edge
+                    bins['{}MAX'.format(col)][ibin] = mmin + delt # right edge
+                ibin += 1
+
     if verbose:
-        log.debug(nbins)
+        log.info('Number of {} bins = {}'.format(targetclass, bins))
 
-    return bins, nbins
-
-def spectra_in_bins(tileinfo, minperbin=3, targetclass='lrg', specprod='denali',
-                    bins=None, CFit=None, verbose=False):
-    """Select objects in bins of rest-frame properties.
-    
-    """
-    from astropy.table import Table, Column
-    
-    fastspecdir = os.path.join(os.getenv('FASTSPECFIT_DATA'), specprod, 'tiles')
-
-    def sample_template(bins):
-        sample1 = Table()
-        sample1.add_column(Column(name='TILE', dtype=np.int32, length=1))
-        sample1.add_column(Column(name='IBIN', dtype=np.int32, length=1))
-        sample1.add_column(Column(name='NOBJ', dtype=np.int32, length=1))
-        for binkey in bins.keys():
-            sample1.add_column(Column(name=binkey.upper(), dtype='f4', length=1)) # mean bin center
-            sample1.add_column(Column(name='{}MIN'.format(binkey.upper()), dtype='f4', length=1))
-            sample1.add_column(Column(name='{}MAX'.format(binkey.upper()), dtype='f4', length=1))
-            
-        return sample1
-        
-    samples, data = [], [] # these lists will be aligned
-
-    dz = bins['zobj']['del']
-    dMr = bins['Mr']['del']
-    dgi = bins['gi']['del']
-    drW1 = bins['rW1']['del']
-    
-    wave = None
-
-    tiles = tileinfo['TILEID']
-    for itile, tile in enumerate(tiles):
-        if itile % 10 == 0:
-            log.info('Working on tile {}/{}'.format(itile, len(tiles)))
-        
-        restfile = os.path.join(fastspecdir, 'deredshifted', '{}-{}-restflux.fits'.format(
-            targetclass.lower(), tile))
-        if not os.path.isfile(restfile): # not all of them exist
-            continue
-
-        # don't read the spectra if we're just counting
-        allphot = Table(fitsio.read(restfile, ext='FASTPHOT'))
-        allspec = Table(fitsio.read(restfile, ext='FASTSPEC'))
-        allmeta = Table(fitsio.read(restfile, ext='METADATA'))
-        flux = fitsio.read(restfile, ext='FLUX')
-        ivar = fitsio.read(restfile, ext='IVAR')
-        # the wavelength vector is identical, so just read one
-        if wave is None:
-            wave = fitsio.read(restfile, ext='WAVE')
-
-        # select the sample of interest on this tile
-        ibin = 0
-        #binkeys = bins.keys()
-        
-        for zmin in bins['zobj']['grid']:
-            for Mrmin in bins['Mr']['grid']:
-                for gimin in bins['gi']['grid']:
-                    for rW1min in bins['rW1']['grid']:
-                        I = select_parent_sample(allphot, allspec, allmeta, 
-                                                 z_minmax=[zmin, zmin+dz],
-                                                 Mr_minmax=[Mrmin, Mrmin+dMr],
-                                                 gi_minmax=[gimin, gimin+dgi],
-                                                 rW1_minmax=[rW1min, rW1min+drW1],
-                                                 verbose=False, return_indices=True)
-                        nobj = len(I)
-                        
-                        if nobj >= minperbin:
-                            if verbose:
-                                log.info('N={:04d}, z: {:.3f} {:.3f}, Mr: {:.2f} {:.2f}, g-i: {:.3f} {:.3f}, r-W1: {:.3f} {:.3f}'.format(
-                                    len(I), zmin, zmin+dz, Mrmin, Mrmin+dMr, gimin, 
-                                    gimin+dgi, rW1min, rW1min+drW1))
-                                
-                            _sample = sample_template(bins)
-                            _sample['TILE'] = tile
-                            _sample['IBIN'] = ibin
-                            _sample['NOBJ'] = len(I)
-                            _sample['ZOBJ'] = zmin + dz / 2
-                            _sample['ZOBJMIN'] = zmin
-                            _sample['ZOBJMAX'] = zmin + dz
-                            _sample['MR'] = Mrmin + dMr / 2
-                            _sample['MRMIN'] = Mrmin
-                            _sample['MRMAX'] = Mrmin + dMr
-                            _sample['GI'] = gimin + dgi / 2
-                            _sample['GIMIN'] = gimin
-                            _sample['GIMAX'] = gimin + dgi
-                            _sample['RW1'] = rW1min + drW1 / 2
-                            _sample['RW1MIN'] = rW1min
-                            _sample['RW1MAX'] = rW1min + drW1
-                            samples.append(_sample)
-                            
-                            _data = {}
-                            _data['flux'] = flux[I, :]
-                            _data['ivar'] = ivar[I, :]
-                            _data['fastphot'] = allphot[I]
-                            _data['fastspec'] = allspec[I]
-                            _data['metadata'] = allmeta[I]
-
-                            # rebuild the best-fitting continuum model fits
-                            if CFit is not None:
-                                _data['cflux'] = []
-                                for iobj in np.arange(nobj):
-                                    cflux1, _ = CFit.SSP2data(
-                                        CFit.sspflux, CFit.sspwave, 
-                                        redshift=allmeta[I][iobj]['Z'],
-                                        AV=allphot['CONTINUUM_AV'][I][iobj],
-                                        coeff=allphot['CONTINUUM_COEFF'][I][iobj],# * CFit.massnorm,
-                                        synthphot=False)
-                                    _data['cflux'].append(cflux1)# * (1 + allmeta[I[iobj]]['Z']) # deredshift
-                                _data['cflux'] = np.vstack(_data['cflux'])
-                            data.append(_data)
-                                
-                        ibin += 1 # next bin
-
-    # Stack the bin-level statistics table
-    samples = Table(np.hstack(samples))
-    data = np.array(data)
-
-    # ...and now stack the data in each (unique) bin number.
-    samplestack, sampledata = [], {}
-    
-    for ibin in sorted(set(samples['IBIN'])):
-        I = np.where(ibin == samples['IBIN'])[0]
-        _samplestack = samples[[I[0]]].copy()
-        _samplestack.remove_column('TILE')
-        _samplestack['NOBJ'] = np.sum(samples[I]['NOBJ'])
-        samplestack.append(_samplestack)
-
-        _sampledata = {}
-        _sampledata['flux'] = np.vstack([_data['flux'] for _data in data[I]])
-        _sampledata['ivar'] = np.vstack([_data['ivar'] for _data in data[I]])
-        _sampledata['fastphot'] = Table(np.hstack([_data['fastphot'] for _data in data[I]]))
-        _sampledata['fastspec'] = Table(np.hstack([_data['fastspec'] for _data in data[I]]))
-        _sampledata['metadata'] = Table(np.hstack([_data['metadata'] for _data in data[I]]))
-
-        if CFit is not None:
-            _sampledata['cflux'] = np.vstack([_data['cflux'] for _data in data[I]])
-        
-        sampledata.update({str(ibin): _sampledata})
-        del _sampledata, _samplestack
-
-    del data, samples
-    samplestack = Table(np.hstack(samplestack))
-    
-    return samplestack, sampledata, wave
-
-
-
-
+    return bins
