@@ -4,7 +4,7 @@ fastspecfit.scripts.fastphot
 ============================
 
 Fastphot wrapper. Call with, e.g.,
-  fastphot /global/cfs/cdirs/desi/spectro/redux/denali/tiles/cumulative/80607/20201219/zbest-0-80607-thru20201219.fits -o fastphot.fits --ntargets 1
+  fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-0-80607-thru20201219.fits -o fastphot.fits --ntargets 1
 
 
 """
@@ -60,8 +60,8 @@ def parse(options=None):
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
 
     parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
-                        help='Type of spectral coadds corresponding to the input zbestfiles.')
-    parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
+                        help='Type of spectral coadds corresponding to the input redrock files.')
+    parser.add_argument('redrockfiles', nargs='*', help='Full path to input zbest file(s).')
 
     if options is None:
         args = parser.parse_args()
@@ -96,7 +96,7 @@ def main(args=None, comm=None):
 
     # Read the data.
     t0 = time.time()
-    Spec.find_specfiles(args.zbestfiles, firsttarget=args.firsttarget,
+    Spec.find_specfiles(args.redrockfiles, firsttarget=args.firsttarget,
                         targetids=targetids, ntargets=args.ntargets,
                         coadd_type=args.coadd_type)
     if len(Spec.specfiles) == 0:

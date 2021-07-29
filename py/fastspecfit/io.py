@@ -57,7 +57,7 @@ class DESISpectra(object):
         log.info('Reading {} header.'.format(fiberfile))
         # fitsio can't handle CONTINUE header cards!
         #fahdr = fitsio.read_header(fiberfile, ext=0)
-        # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/zbest-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
+        # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/redrock-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
         fahdr = fits.getheader(fiberfile, ext=0)
         targetdirs = [fahdr['TARG']]
         for moretarg in ['TARG2', 'TARG3', 'TARG4']:
@@ -83,7 +83,7 @@ class DESISpectra(object):
 
         return targetdirs
 
-    def find_specfiles(self, zbestfiles=None,
+    def find_specfiles(self, redrockfiles=None,
                        #fastfit=None, metadata=None,
                        specprod=None, coadd_type=None, firsttarget=0,
                        targetids=None, ntargets=None):
@@ -97,18 +97,18 @@ class DESISpectra(object):
 
         Notes
         -----
-        fastfit - results table (overrides zbestfiles and then specprod is required
+        fastfit - results table (overrides redrockfiles and then specprod is required
 
         """
         from glob import glob
         from desimodel.footprint import radec2pix
 
-        if zbestfiles is None and fastfit is None and metadata is None:
-            log.warning('At least one of zbestfiles or fastfit (and metadata, specprod, and coadd_type) are required.')
+        if redrockfiles is None and fastfit is None and metadata is None:
+            log.warning('At least one of redrockfiles or fastfit (and metadata, specprod, and coadd_type) are required.')
             raise ValueError
 
-        if len(np.atleast_1d(zbestfiles)) == 0:
-            log.warning('No zbestfiles found!')
+        if len(np.atleast_1d(redrockfiles)) == 0:
+            log.warning('No redrockfiles found!')
             raise IOError
 
         desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
@@ -119,9 +119,9 @@ class DESISpectra(object):
         # https://github.com/desihub/desispec/issues/1077
         if specprod is None:            
             #import desiutil.depend
-            #hdr = fitsio.read_header(np.atleast_1d(zbestfiles)[0].replace('zbest-', 'coadd-'))
+            #hdr = fitsio.read_header(np.atleast_1d(redrockfiles)[0].replace('redrock-', 'coadd-'))
             # stupidly fragile!
-            specprod = np.atleast_1d(zbestfiles)[0].replace(self.reduxdir, '').split(os.sep)[1]
+            specprod = np.atleast_1d(redrockfiles)[0].replace(self.reduxdir, '').split(os.sep)[1]
             self.specprod = specprod
             log.info('Parsed specprod={}'.format(specprod))
 
@@ -129,9 +129,9 @@ class DESISpectra(object):
         # that coadd_type is a scalar...
         if coadd_type is None:
             import re
-            if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', zbestfile[0]) is not None:
+            if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile[0]) is not None:
                 coadd_type = 'cumulative'
-            elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', zbestfile[0]) is not None:
+            elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile[0]) is not None:
                 coadd_type = 'pernight'
             else:
                 coadd_type = 'perexp'
@@ -140,18 +140,18 @@ class DESISpectra(object):
         log.info('Parsed coadd_type={}'.format(coadd_type))
 
         # Should we not sort...?
-        #zbestfiles = np.array(set(np.atleast_1d(zbestfiles)))
-        zbestfiles = np.array(sorted(set(np.atleast_1d(zbestfiles))))
-        log.info('Reading and parsing {} unique zbestfile(s)'.format(len(zbestfiles)))
+        #redrockfiles = np.array(set(np.atleast_1d(redrockfiles)))
+        redrockfiles = np.array(sorted(set(np.atleast_1d(redrockfiles))))
+        log.info('Reading and parsing {} unique redrockfile(s)'.format(len(redrockfiles)))
 
-        self.zbest, self.meta = [], []
-        self.zbestfiles, self.specfiles = [], []
-        for zbestfile in np.atleast_1d(zbestfiles):
-            specfile = zbestfile.replace('zbest-', 'coadd-')
+        self.redrock, self.meta = [], []
+        self.redrockfiles, self.specfiles = [], []
+        for redrockfile in np.atleast_1d(redrockfiles):
+            specfile = redrockfile.replace('redrock-', 'coadd-')
 
             # Figure out which fibermap columns to put into the metadata
             # table. Note that the fibermap includes all the spectra that went
-            # into the coadd (based on the unique TARGETID which is in the zbest
+            # into the coadd (based on the unique TARGETID which is in the redrock
             # table).  See https://github.com/desihub/desispec/issues/1104
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
             fmcols = ['TARGETID', 'TILEID', 'FIBER', 'TARGET_RA', 'TARGET_DEC',
@@ -181,7 +181,7 @@ class DESISpectra(object):
             # If targetids is *not* given we have to choose "good" objects
             # before subselecting (e.g., we don't want sky spectra).
             if targetids is None:
-                zb = fitsio.read(zbestfile, 'ZBEST', columns=zbcols)
+                zb = fitsio.read(redrockfile, 'REDSHIFTS', columns=zbcols)
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
@@ -191,11 +191,11 @@ class DESISpectra(object):
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
-                alltargetids = fitsio.read(zbestfile, 'ZBEST', columns='TARGETID')
+                alltargetids = fitsio.read(redrockfile, 'REDSHIFTS', columns='TARGETID')
                 fitindx = np.where([tid in targetids for tid in alltargetids])[0]
                 
             if len(fitindx) == 0:
-                log.info('No requested targets found in zbestfile {}'.format(zbestfile))
+                log.info('No requested targets found in redrockfile {}'.format(redrockfile))
                 continue
 
             # Do we want just a subset of the available objects?
@@ -205,14 +205,14 @@ class DESISpectra(object):
                 _ntargets = ntargets
             if _ntargets > len(fitindx):
                 log.warning('Number of requested ntargets exceeds the number of targets on {}; reading all of them.'.format(
-                    zbestfile))
+                    redrockfile))
                 #raise ValueError
 
             __ntargets = len(fitindx)
             fitindx = fitindx[firsttarget:firsttarget+_ntargets]
             if len(fitindx) == 0:
-                log.info('All {} targets in zbestfile {} have been dropped (firsttarget={}, ntargets={}).'.format(
-                    __ntargets, zbestfile, firsttarget, _ntargets))
+                log.info('All {} targets in redrockfile {} have been dropped (firsttarget={}, ntargets={}).'.format(
+                    __ntargets, redrockfile, firsttarget, _ntargets))
                 continue
                 
             # If firsttarget is a large index then the set can become empty.
@@ -220,7 +220,7 @@ class DESISpectra(object):
                 zb = Table(zb[fitindx])
                 meta = Table(meta[fitindx])
             else:
-                zb = Table(fitsio.read(zbestfile, 'ZBEST', rows=fitindx, columns=zbcols))
+                zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=zbcols))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=fmcols))
 
             if thrunight:
@@ -228,12 +228,12 @@ class DESISpectra(object):
                 
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
-            self.zbest.append(Table(zb))
+            self.redrock.append(Table(zb))
             self.meta.append(Table(meta))
-            self.zbestfiles.append(zbestfile)
+            self.redrockfiles.append(redrockfile)
             self.specfiles.append(specfile)
 
-        if len(self.zbest) == 0:
+        if len(self.redrock) == 0:
             log.warning('No targets read!')
             return
 
@@ -306,7 +306,7 @@ class DESISpectra(object):
         ----------
         specobj : :class:`desispec.spectra.Spectra`
             DESI spectra (in the standard format).
-        zbest : :class:`astropy.table.Table`
+        redrock : :class:`astropy.table.Table`
             Redrock redshift table (row-aligned to `specobj`).
         CFit : :class:`fastspecfit.continuum.ContinuumFit`
             Continuum-fitting class which contains filter curves and some additional
@@ -367,27 +367,27 @@ class DESISpectra(object):
         # Read everything into a simple dictionary.
         t0 = time.time()
         alldata = []
-        for specfile, zbest, meta in zip(self.specfiles, self.zbest, self.meta):
-            log.info('Reading {} spectra from {}'.format(len(zbest), specfile))
+        for specfile, redrock, meta in zip(self.specfiles, self.redrock, self.meta):
+            log.info('Reading {} spectra from {}'.format(len(redrock), specfile))
 
             # sometimes these are an astropy.table.Row!
-            zbest = Table(zbest)
+            redrock = Table(redrock)
             meta = Table(meta)
 
             if not fastphot:
                 #spec = read_tile_spectra(meta['TILEID'][0], self.coadd_type, specprod=self.specprod,
-                #                         targets=zbest['TARGETID'])
-                spec = read_spectra(specfile).select(targets=zbest['TARGETID'])
-                assert(np.all(spec.fibermap['TARGETID'] == zbest['TARGETID']))
+                #                         targets=redrock['TARGETID'])
+                spec = read_spectra(specfile).select(targets=redrock['TARGETID'])
+                assert(np.all(spec.fibermap['TARGETID'] == redrock['TARGETID']))
                 assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
             
-            for igal in np.arange(len(zbest)):
+            for igal in np.arange(len(redrock)):
                 ra, dec = meta['RA'][igal], meta['DEC'][igal]
                 ebv = CFit.SFDMap.ebv(ra, dec)
 
                 # Unpack the data and correct for Galactic extinction. Also flag pixels that
                 # may be affected by emission lines.
-                data = {'zredrock': zbest['Z'][igal], 'photsys': meta['PHOTSYS'][igal]}#, 'photsys_south': dec < self.desitarget_resolve_dec()}
+                data = {'zredrock': redrock['Z'][igal], 'photsys': meta['PHOTSYS'][igal]}#, 'photsys_south': dec < self.desitarget_resolve_dec()}
 
                 if data['photsys'] == 'S':
                     filters = CFit.decam
@@ -518,9 +518,9 @@ class DESISpectra(object):
 
                 alldata.append(data)
 
-        self.zbest = Table(np.hstack(self.zbest))
+        self.redrock = Table(np.hstack(self.redrock))
         self.meta = Table(np.hstack(self.meta))
-        self.ntargets = len(self.zbest)
+        self.ntargets = len(self.redrock)
         log.info('Read data for {} objects in {:.2f} sec'.format(self.ntargets, time.time()-t0))
         
         return alldata
@@ -534,10 +534,10 @@ class DESISpectra(object):
             Tile number.
         night : :class:`str`
             Night on which `tile` was observed.
-        zbest : :class:`astropy.table.Table`
+        redrock : :class:`astropy.table.Table`
             Redrock redshift table (row-aligned to `fibermap`).
         fibermap : :class:`astropy.table.Table`
-            Fiber map (row-aligned to `zbest`).
+            Fiber map (row-aligned to `redrock`).
         CFit : :class:`fastspecfit.continuum.ContinuumFit`
             Continuum-fitting class.
         EMFit : :class:`fastspecfit.emlines.EMLineFit`
@@ -554,7 +554,7 @@ class DESISpectra(object):
         import astropy.units as u
         from astropy.table import hstack, Column
 
-        nobj = len(self.zbest)
+        nobj = len(self.redrock)
 
         # The information stored in the metadata table depends on which spectra
         # were fitted (exposures, nightly coadds, deep coadds).
@@ -577,7 +577,7 @@ class DESISpectra(object):
         
         meta = Table()
         metacols = self.meta.colnames
-        zbestcols = self.zbest.colnames
+        redrockcols = self.redrock.colnames
 
         # All of this business is so we can get the columns in the order we want
         # (i.e., the order that matches the data model).
@@ -602,7 +602,7 @@ class DESISpectra(object):
                 meta.add_column(Column(name=bitcol, dtype=np.int64, length=nobj))
 
         for zcol in zcols:
-            meta[zcol] = self.zbest[zcol]
+            meta[zcol] = self.redrock[zcol]
             if zcol in colunit.keys():
                 meta[zcol].unit = colunit[zcol]
 
