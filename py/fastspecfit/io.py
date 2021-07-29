@@ -155,7 +155,7 @@ class DESISpectra(object):
             # table).  See https://github.com/desihub/desispec/issues/1104
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
             fmcols = ['TARGETID', 'TILEID', 'FIBER', 'TARGET_RA', 'TARGET_DEC',
-                      'FIBERSTATUS', 'OBJTYPE', 'PHOTSYS',
+                      'COADD_FIBERSTATUS', 'OBJTYPE', 'PHOTSYS',
                       'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
                       'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                       'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
@@ -186,7 +186,7 @@ class DESISpectra(object):
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
                 fitindx = np.where(np.logical_and((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') *
-                                                  (meta['OBJTYPE'] == 'TGT') * (meta['FIBERSTATUS'] == 0),
+                                                  (meta['OBJTYPE'] == 'TGT') * (meta['COADD_FIBERSTATUS'] == 0),
                                                   np.logical_or(meta['PHOTSYS'] == 'N', meta['PHOTSYS'] == 'S')))[0]
             else:
                 # We already know we like the input targetids, so no selection
@@ -572,7 +572,7 @@ class DESISpectra(object):
                    'FLUX_IVAR_W2': 1/u.nanomaggy**2,
                    }
 
-        skipcols = ['FIBERSTATUS', 'OBJTYPE', 'TARGET_RA', 'TARGET_DEC'] + fluxcols
+        skipcols = ['COADD_FIBERSTATUS', 'OBJTYPE', 'TARGET_RA', 'TARGET_DEC'] + fluxcols
         zcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE']
         
         meta = Table()
