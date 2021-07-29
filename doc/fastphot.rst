@@ -76,20 +76,29 @@ Name                   Type        Units      Description
      CONTINUUM_AV_IVAR float32     1 / mag^2  Inverse variance of CONTINUUM_AV.
           DN4000_MODEL float32                4000-A break index from the best-fitting continuum model.
                KCORR_U float32            mag K-correction used to derive ABSMAG_U.
-              ABSMAG_U float32            mag Absolute magnitude in DECam u-band.
+              ABSMAG_U float32            mag Absolute magnitude in Johnson/Cousins U-band.
          ABSMAG_IVAR_U float32      1 / mag^2 Inverse variance corresponding to ABSMAG_U.
-               KCORR_G float32            mag Like KCORR_U but for DECam g-band.
-              ABSMAG_G float32            mag Like ABSMAG_U but for DECam g-band.
-         ABSMAG_IVAR_G float32      1 / mag^2 Like ABSMAG_IVAR_U but for DECam r-band.
-               KCORR_R float32            mag Like KCORR_U but for DECam r-band.
-              ABSMAG_R float32            mag Like ABSMAG_U but for DECam r-band.
-         ABSMAG_IVAR_R float32      1 / mag^2 Like ABSMAG_IVAR_U but for DECam i-band.
-               KCORR_I float32            mag Like KCORR_U but for DECam i-band.
-              ABSMAG_I float32            mag Like ABSMAG_U but for DECam i-band.
-         ABSMAG_IVAR_I float32      1 / mag^2 Like ABSMAG_IVAR_U but for DECam z-band.
-               KCORR_Z float32            mag Like KCORR_U but for DECam z-band.
-              ABSMAG_Z float32            mag Like ABSMAG_U but for DECam z-band.
-         ABSMAG_IVAR_Z float32      1 / mag^2 Like ABSMAG_IVAR_U but for DECam g-band.
+               KCORR_B float32            mag Like KCORR_U but for Johnson/Cousins B-band.
+              ABSMAG_B float32            mag Like ABSMAG_U but for Johnson/Cousins B-band.
+         ABSMAG_IVAR_B float32      1 / mag^2 Like ABSMAG_IVAR_U but for Johnson/Cousins B-band.
+               KCORR_V float32            mag Like KCORR_U but for Johnson/Cousins V-band.
+              ABSMAG_V float32            mag Like ABSMAG_U but for Johnson/Cousins V-band.
+         ABSMAG_IVAR_V float32      1 / mag^2 Like ABSMAG_IVAR_U but for Johnson/Cousins V-band.
+          KCORR_SDSS_U float32            mag Like KCORR_U but for SDSS u-band.
+         ABSMAG_SDSS_U float32            mag Like ABSMAG_U but for SDSS u-band.
+    ABSMAG_IVAR_SDSS_U float32      1 / mag^2 Like ABSMAG_IVAR_U but for SDSS u-band.
+          KCORR_SDSS_G float32            mag Like KCORR_U but for SDSS g-band.
+         ABSMAG_SDSS_G float32            mag Like ABSMAG_U but for SDSS g-band.
+    ABSMAG_IVAR_SDSS_G float32      1 / mag^2 Like ABSMAG_IVAR_U but for SDSS g-band.
+          KCORR_SDSS_R float32            mag Like KCORR_U but for SDSS r-band.
+         ABSMAG_SDSS_R float32            mag Like ABSMAG_U but for SDSS r-band.
+    ABSMAG_IVAR_SDSS_R float32      1 / mag^2 Like ABSMAG_IVAR_U but for SDSS r-band.
+          KCORR_SDSS_I float32            mag Like KCORR_U but for SDSS i-band.
+         ABSMAG_SDSS_I float32            mag Like ABSMAG_U but for SDSS i-band.
+    ABSMAG_IVAR_SDSS_I float32      1 / mag^2 Like ABSMAG_IVAR_U but for SDSS i-band.
+          KCORR_SDSS_Z float32            mag Like KCORR_U but for SDSS z-band.
+         ABSMAG_SDSS_Z float32            mag Like ABSMAG_U but for SDSS z-band.
+    ABSMAG_IVAR_SDSS_Z float32      1 / mag^2 Like ABSMAG_IVAR_U but for SDSS z-band.
               KCORR_W1 float32            mag Like KCORR_U but for WISE W1-band.
              ABSMAG_W1 float32            mag Like ABSMAG_U but for WISE W1-band.
         ABSMAG_IVAR_W1 float32      1 / mag^2 Like ABSMAG_IVAR_U but for WISE W1-band.
