@@ -120,7 +120,7 @@ RUN for x in \
     numpy \
     scipy \
     matplotlib \
-    astropy \
+    astropy==4.2.1 \
     numba \
     pyyaml \
     requests \
