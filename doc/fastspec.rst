@@ -87,9 +87,9 @@ Name                      Type        Units                         Description
    CONTINUUM_SMOOTHCORR_B     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *b* camera.
    CONTINUUM_SMOOTHCORR_R     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *r* camera.
    CONTINUUM_SMOOTHCORR_Z     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *z* camera.
-                   DN4000     float32                               4000-A break index from the data.
+                   DN4000     float32                               Narrow 4000-A break index (from Balogh et al. 1999) measured from the data.
               DN4000_IVAR     float32                               Inverse variance of DN4000.
-             DN4000_MODEL     float32                               4000-A break index from the best-fitting continuum model.
+             DN4000_MODEL     float32                               Narrow 4000-A break index (from Balogh et al. 1999) measured from the best-fitting continuum model.
              FLUX_SYNTH_G     float32                          nmgy g-band flux synthesized from the data.
              FLUX_SYNTH_R     float32                          nmgy r-band flux synthesized from the data.
              FLUX_SYNTH_Z     float32                          nmgy z-band flux synthesized from the data.

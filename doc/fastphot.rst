@@ -74,7 +74,7 @@ Name                   Type        Units      Description
          CONTINUUM_AGE float32            Gyr Light-weighted age.
           CONTINUUM_AV float32            mag Intrinsic attenuation.
      CONTINUUM_AV_IVAR float32     1 / mag^2  Inverse variance of CONTINUUM_AV.
-          DN4000_MODEL float32                4000-A break index from the best-fitting continuum model.
+          DN4000_MODEL float32                Narrow 4000-A break index (from Balogh et al. 1999) measured from the best-fitting continuum model.
                KCORR_U float32            mag K-correction used to derive ABSMAG_U.
               ABSMAG_U float32            mag Absolute magnitude in Johnson/Cousins U-band.
          ABSMAG_IVAR_U float32      1 / mag^2 Inverse variance corresponding to ABSMAG_U.
