@@ -179,8 +179,8 @@ RUN git clone https://github.com/desihub/fastspecfit.git fastspecfit \
 # update 
 RUN cd /src/fastspecfit && git pull && git describe --always && echo 2
 
-ENV PYTHONPATH /src/fastspecfit/py:$PYTHONPATH
-ENV PATH /src/fastspecfit/bin:$PATH
+ENV PYTHONPATH /src/fastspecfit/py
+ENV PATH /src/fastspecfit/bin:/opt/conda/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 RUN mkdir /homedir && chmod 777 /homedir
 ENV HOME /homedir
