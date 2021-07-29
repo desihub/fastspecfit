@@ -1,13 +1,13 @@
 # %ECSV 0.9
 # ---
 # datatype:
-# - {name: name, datatype: str}
+# - {name: name, datatype: string}
 # - {name: restwave, datatype: float64}
 # - {name: amp, datatype: float32}
 # - {name: isbalmer, datatype: bool}
 # - {name: isbroad, datatype: bool}
-# - {name: nicename, datatype: str}
-# - {name: plotgroup, datatype: str}
+# - {name: nicename, datatype: string}
+# - {name: plotgroup, datatype: string}
 # meta: !!omap
 # - {description: 'Emission lines to be fit by fastspec.
 #     Wavelengths are in the vacuum rest-frame in Angstroms.
