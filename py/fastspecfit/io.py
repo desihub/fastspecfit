@@ -30,17 +30,19 @@ DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
     
 class DESISpectra(object):
-    def __init__(self):
+    def __init__(self, specprod='everest', coadd_type='cumulative'):
         """Class to read in the DESI data needed by fastspecfit.
 
         """
-        #from desitarget.geomask import pixarea2nside
-        self.fiberassign_dir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC),
-                                            'target', 'fiberassign', 'tiles', 'trunk')
+        desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
 
-        ## Closest nside to DESI tile area of ~7 deg (from
-        ## desitarget.io.read_targets_in_quick).
-        #self.tile_nside = pixarea2nside(8.)
+        self.specprod = specprod
+        self.coadd_type = coadd_type
+        
+        self.redux_dir = os.path.join(desi_root, 'spectro', 'redux')
+        self.fiberassign_dir = os.path.join(desi_root, 'target', 'fiberassign', 'tiles', 'trunk')
+        self.tiles_dir = os.path.join(self.redux_dir, self.specprod, 'tiles', self.coadd_type)
+        self.healpix_dir = os.path.join(self.redux_dir, self.specprod, 'healpix')
 
     def _get_targetdirs(self, tileid):
         """Get the targets catalog used to build a given fiberassign catalog.
@@ -83,9 +85,7 @@ class DESISpectra(object):
 
         return targetdirs
 
-    def find_specfiles(self, redrockfiles=None,
-                       #fastfit=None, metadata=None,
-                       specprod=None, coadd_type=None, firsttarget=0,
+    def find_specfiles(self, redrockfiles=None, firsttarget=0,
                        targetids=None, ntargets=None):
         """Initialize the fastspecfit output data table.
 
@@ -103,41 +103,40 @@ class DESISpectra(object):
         from glob import glob
         from desimodel.footprint import radec2pix
 
-        if redrockfiles is None and fastfit is None and metadata is None:
-            log.warning('At least one of redrockfiles or fastfit (and metadata, specprod, and coadd_type) are required.')
+        if redrockfiles is None:
+            log.warning('At least one redrockfiles file is required.')
             raise ValueError
+        #if redrockfiles is None and fastfit is None and metadata is None:
+        #    log.warning('At least one of redrockfiles or fastfit (and metadata, specprod, and coadd_type) are required.')
+        #    raise ValueError
 
         if len(np.atleast_1d(redrockfiles)) == 0:
             log.warning('No redrockfiles found!')
             raise IOError
 
-        desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
-        self.reduxdir = os.path.join(desi_root, 'spectro', 'redux')
-        
-        # Try to glean specprod so we can write it to the output file. This
-        # should really be in the file header--- see
-        # https://github.com/desihub/desispec/issues/1077
-        if specprod is None:            
-            #import desiutil.depend
-            #hdr = fitsio.read_header(np.atleast_1d(redrockfiles)[0].replace('redrock-', 'coadd-'))
-            # stupidly fragile!
-            specprod = np.atleast_1d(redrockfiles)[0].replace(self.reduxdir, '').split(os.sep)[1]
-            self.specprod = specprod
-            log.info('Parsed specprod={}'.format(specprod))
+        ## Try to glean specprod so we can write it to the output file. This
+        ## should really be in the file header--- see
+        ## https://github.com/desihub/desispec/issues/1077
+        #if specprod is None:            
+        #    #import desiutil.depend
+        #    #hdr = fitsio.read_header(np.atleast_1d(redrockfiles)[0].replace('redrock-', 'coadd-'))
+        #    # stupidly fragile!
+        #    specprod = np.atleast_1d(redrockfiles)[0].replace(self.redux_dir, '').split(os.sep)[1]
+        #    self.specprod = specprod
+        #    log.info('Parsed specprod={}'.format(specprod))
 
-        # Try to figure out coadd_type from the first filename. Fragile! Assumes
-        # that coadd_type is a scalar...
-        if coadd_type is None:
-            import re
-            if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile[0]) is not None:
-                coadd_type = 'cumulative'
-            elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile[0]) is not None:
-                coadd_type = 'pernight'
-            else:
-                coadd_type = 'perexp'
-                
-        self.coadd_type = coadd_type
-        log.info('Parsed coadd_type={}'.format(coadd_type))
+        ## Try to figure out coadd_type from the first filename. Fragile! Assumes
+        ## that coadd_type is a scalar...
+        #if coadd_type is None:
+        #    import re
+        #    if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile[0]) is not None:
+        #        coadd_type = 'cumulative'
+        #    elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile[0]) is not None:
+        #        coadd_type = 'pernight'
+        #    else:
+        #        coadd_type = 'perexp'
+        #self.coadd_type = coadd_type
+        #log.info('Parsed coadd_type={}'.format(coadd_type))
 
         # Should we not sort...?
         #redrockfiles = np.array(set(np.atleast_1d(redrockfiles)))
@@ -164,9 +163,9 @@ class DESISpectra(object):
             # add targeting bit columns
             fmcols = np.array(fmcols + [col for col in TARGETINGBITCOLS if col in allfmcols]).tolist()
                 
-            # for the cumulative coadds, NIGHT is defined to be the last night
-            # contributing to the coadd
-            if coadd_type == 'cumulative':
+            # For the cumulative coadds, NIGHT is defined to be the last night
+            # contributing to the coadd.
+            if self.coadd_type == 'cumulative':
                 thrunight = np.int32(os.path.basename(os.path.dirname(specfile)))
             else:
                 thrunight = None

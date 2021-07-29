@@ -4,20 +4,23 @@ fastspecfit.scripts.fastspec
 ============================
 
 FastSpec wrapper. Call with, e.g.,
-  # nice BGS example
-  fastspec /global/cfs/cdirs/desi/spectro/redux/denali/tiles/cumulative/80613/20210324/zbest-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
+
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
+
+# nice BGS example
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
 
   # redrock is wrong!
-  fastspec /global/cfs/cdirs/desi/spectro/redux/denali/tiles/cumulative/80605/zbest-0-80605-deep.fits -o fastspec.fits --targetids 39627652595714901
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80605/redrock-0-80605-deep.fits -o fastspec.fits --targetids 39627652595714901
 
   # good test of needing smoothing continuum residuals before line-fitting
-  fastspec /global/cfs/cdirs/desi/spectro/redux/denali/tiles/cumulative/80605/zbest-9-80605-deep.fits -o fastspec.fits --targetids 39627658622930703
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80605/redrock-9-80605-deep.fits -o fastspec.fits --targetids 39627658622930703
 
-  fastspec /global/cfs/cdirs/desi/spectro/redux/denali/tiles/cumulative/80613/zbest-0-80613-deep.fits -o fastspec.fits --targetids 39633314155332057
-  fastspec /global/cfs/cdirs/desi/spectro/redux/denali/tiles/cumulative/80613/zbest-0-80606-deep.fits -o fastspec.fits --ntargets 2
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/redrock-0-80613-deep.fits -o fastspec.fits --targetids 39633314155332057
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/redrock-0-80606-deep.fits -o fastspec.fits --ntargets 2
 
   # nice QSO with broad lines
-  fastspec /global/cfs/cdirs/desi/spectro/redux/denali/tiles/cumulative/80607/zbest-9-80607-deep.fits -o fastspec2.fits --targetids 39633331528141827
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/redrock-9-80607-deep.fits -o fastspec2.fits --targetids 39633331528141827
 
 """
 import pdb # for debugging
@@ -82,9 +85,12 @@ def parse(options=None):
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
 
+    parser.add_argument('--specprod', type=str, default='denali', choices=['everest', 'denali', 'daily'],
+                        help='Spectroscopic production to process.')
     parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
-                        help='Type of spectral coadds corresponding to the input zbestfiles.')
-    parser.add_argument('zbestfiles', nargs='*', help='Full path to input zbest file(s).')
+                        help='Type of spectral coadds corresponding to the input redrockfiles.')
+
+    parser.add_argument('redrockfiles', nargs='*', help='Full path to input redrock file(s).')
 
     if options is None:
         args = parser.parse_args()
@@ -116,15 +122,14 @@ def main(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit()
     EMFit = EMLineFit()
-    Spec = DESISpectra()
+    Spec = DESISpectra(specprod=args.specprod, coadd_type=args.coadd_type)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
     t0 = time.time()
 
-    Spec.find_specfiles(args.zbestfiles, firsttarget=args.firsttarget,
-                        targetids=targetids, ntargets=args.ntargets,
-                        coadd_type=args.coadd_type)
+    Spec.find_specfiles(args.redrockfiles, firsttarget=args.firsttarget,
+                        targetids=targetids, ntargets=args.ntargets)
     if len(Spec.specfiles) == 0:
         return
     data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True, remember_coadd=True)
