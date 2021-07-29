@@ -52,7 +52,7 @@ def parse(options=None):
     
     parser.add_argument('--fastphotfile', default=None, type=str, help='Full path to fastphot fitting results.')
     parser.add_argument('--fastspecfile', default=None, type=str, help='Full path to fastphot fitting results.')
-    #parser.add_argument('zbestdata', nargs='*', help='Full path to zbest file(s) or a directory containing zbest file(s).')
+    #parser.add_argument('redrockdata', nargs='*', help='Full path to redrock file(s) or a directory containing redrock file(s).')
     
     if options is None:
         args = parser.parse_args()
@@ -71,7 +71,7 @@ def main(args=None, comm=None):
     from astropy.table import Table
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
-    from fastspecfit.io import DESISpectra, read_fastspecfit
+    from fastspecfit.io import DESISpectra, read_fastspecfit, DESI_ROOT_NERSC
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
@@ -140,8 +140,8 @@ def main(args=None, comm=None):
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
         
-    # Construct the zbestfiles filenames based on the input.
-    zbestdir = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), specprod, 'tiles')
+    # Construct the redrockfiles filenames based on the input.
+    redrockdir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux', specprod, 'tiles')
     alltiles = metadata['TILEID'].astype(str).data
     allpetals = metadata['FIBER'].data // 500
     
@@ -150,9 +150,9 @@ def main(args=None, comm=None):
     #else:
     #    synthphot = True
 
-    def _wrap_qa(zbestfile, indx):
+    def _wrap_qa(redrockfile, indx):
         targetids = fastfit['TARGETID'][indx]
-        Spec.find_specfiles(zbestfiles=zbestfile, specprod=specprod,
+        Spec.find_specfiles(redrockfiles=redrockfile, specprod=specprod,
                             coadd_type=coadd_type, targetids=targetids)
         data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True, remember_coadd=True)
         qaargs = [(CFit, EMFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
@@ -175,16 +175,16 @@ def main(args=None, comm=None):
                     log.warning('No object found with tileid={} and petal={}!'.format(
                         tile, petal))
                     continue
-                zbestfile = os.path.join(zbestdir, 'cumulative', str(tile), thrunights[indx[0]], 'zbest-{}-{}-thru{}.fits'.format(petal, tile, thrunights[indx[0]]))
-                _wrap_qa(zbestfile, indx)
+                redrockfile = os.path.join(redrockdir, 'cumulative', str(tile), thrunights[indx[0]], 'redrock-{}-{}-thru{}.fits'.format(petal, tile, thrunights[indx[0]]))
+                _wrap_qa(redrockfile, indx)
     elif coadd_type == 'pernight':
         allnights = metadata['NIGHT'].astype(str).data
         for night in set(allnights):
             for tile in set(alltiles):
                 for petal in set(allpetals):
                     indx = np.where((night == allnights) * (tile == alltiles) * (petal == allpetals))[0]
-                    zbestfile = os.path.join(zbestdir, 'pernight', str(tile), str(night), 'zbest-{}-{}-{}.fits'.format(petal, tile, night))
-                    _wrap_qa(zbestfile, indx)
+                    redrockfile = os.path.join(redrockdir, 'pernight', str(tile), str(night), 'redrock-{}-{}-{}.fits'.format(petal, tile, night))
+                    _wrap_qa(redrockfile, indx)
     elif coadd_type == 'perexp':
         raise NotImplemented
         # we probably want to *require* tile or night in this case...
