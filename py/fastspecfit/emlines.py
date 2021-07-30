@@ -1046,7 +1046,7 @@ class EMLineFit(ContinuumTools):
             outprefix = 'fastspec'
 
         if coadd_type == 'healpix':
-            title = 'Survey/Program/Pixel: {}/{}/{}, TargetID: {}'.format(
+            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
                     metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))

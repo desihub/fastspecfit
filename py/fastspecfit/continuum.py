@@ -1338,15 +1338,15 @@ class ContinuumFit(ContinuumTools):
             outprefix = 'fastphot'
 
         if coadd_type == 'healpix':
-            title = 'Survey/Program/Pixel: {}/{}/{}, TargetID: {}'.format(
+            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
                     metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
-            title = 'Tile/Coadd: {}/{}, TargetID/Fiber: {}/{}'.format(
-                    metadata['TILEID'], coadd_type, metadata['TARGETID'], metadata['FIBER'])
-            pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
-                    outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
+            title = 'Tile/thruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID'], metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-thru{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID']))
         elif coadd_type == 'pernight':
             title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
@@ -1357,7 +1357,7 @@ class ContinuumFit(ContinuumTools):
             title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
                     metadata['TARGETID'], metadata['FIBER'])
-            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+            pngfile = os.path.join(outdir, '{}-{}-{}-exp{:08d}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'],
                     metadata['EXPID'], metadata['TARGETID']))
         else:

@@ -144,7 +144,7 @@ class DESISpectra(object):
             # in a header.
             if ired == 0:
                 hdr = fitsio.read_header(specfile, ext=0)
-                if 'HPXNEST' in hdr and hdr['HPXNEST']:
+                if 'HPXPIXEL' in hdr:
                     coadd_type = 'healpix'
                     hpxpixel = np.int32(hdr['HPXPIXEL'])
                 else:
@@ -184,6 +184,8 @@ class DESISpectra(object):
             else:
                 thrunight = None
                 expfmcols = expfmcols + ['NIGHT']
+                if self.coadd_type == 'perexp':
+                    expfmcols = expfmcols + ['EXPID']
 
             ## older fibermaps are missing the WISE inverse variance
             #if 'FLUX_IVAR_W1' in allfmcols:
@@ -198,7 +200,7 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 4) * #(zb['SPECTYPE'] == 'GALAXY') *
+                fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
                                    (meta['OBJTYPE'] == 'TGT') *
                                    (meta['COADD_FIBERSTATUS'] == 0))[0]
                 #fitindx = np.where(np.logical_and((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') *
@@ -247,8 +249,8 @@ class DESISpectra(object):
             if np.count_nonzero(I) == 0:
                 log.warning('No matching targets in exposure table.')
                 raise ValueError
-            expmeta = expmeta[I]
-            tiles = np.unique(expmeta['TILEID'])
+            expmeta = Table(expmeta[I])
+            tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
 
             if thrunight:
                 meta['THRUNIGHT'] = thrunight
@@ -256,10 +258,28 @@ class DESISpectra(object):
             # Gather additional info about this pixel.
             if coadd_type == 'healpix':
                 pixinfo = os.path.basename(redrockfile).split('-') 
-                meta['SURVEY'] = pixinfo[1] # fragile...
+                meta['SURVEY'] = pixinfo[1] # a little fragile...
                 meta['FAPRGRM'] = pixinfo[2]
                 meta['HPXPIXEL'] = hpxpixel
-                
+            else:
+                # Initialize the columns to get the data type right and then
+                # populate them by targetid.
+                meta['TILEID'] = expmeta['TILEID'][0]
+                meta['FIBER'] = expmeta['FIBER'][0]
+                if coadd_type != 'cumulative':
+                    meta['NIGHT'] = expmeta['NIGHT'][0]
+                if coadd_type == 'perexp':
+                    meta['EXPID'] = expmeta['EXPID'][0]
+                    
+                for iobj, tid in enumerate(meta['TARGETID']):
+                    iexp = np.where(expmeta['TARGETID'] == tid)[0][0] # zeroth
+                    meta['TILEID'][iobj] = expmeta['TILEID'][iexp]
+                    meta['FIBER'][iobj] = expmeta['FIBER'][iexp]
+                    if coadd_type != 'cumulative':
+                        meta['NIGHT'][iobj] = expmeta['NIGHT'][iexp]
+                    if coadd_type == 'perexp':
+                        meta['EXPID'][iobj] = expmeta['EXPID'][iexp]
+
             self.redrock.append(Table(zb))
             self.meta.append(Table(meta))
             self.tiles.append(tiles)

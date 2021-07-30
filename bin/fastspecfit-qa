@@ -212,8 +212,17 @@ def main(args=None, comm=None):
                                                    'redrock-{}-{}-{}.fits'.format(petal, tile, night))
                         _wrap_qa(redrockfile, indx)
         elif coadd_type == 'perexp':
-            raise NotImplemented
-            # we probably want to *require* tile or night in this case...
+            allnights = metadata['NIGHT'].astype(str).data
+            allexpids = metadata['EXPID'].data
+            for night in set(allnights):
+                for expid in set(allexpids):
+                    for tile in set(alltiles):
+                        for petal in set(allpetals):
+                            indx = np.where((night == allnights) * (expid == allexpids) *
+                                            (tile == alltiles) * (petal == allpetals))[0]
+                            redrockfile = os.path.join(redrockdir, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid), 
+                                                       'redrock-{}-{}-exp{:08d}.fits'.format(petal, tile, expid))
+                            _wrap_qa(redrockfile, indx)
         else:
             pass
     log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))

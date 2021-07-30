@@ -24,7 +24,9 @@ FastSpec wrapper. Call with, e.g.,
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/redrock-9-80607-deep.fits -o fastspec2.fits --targetids 39633331528141827
 
 Fastphot wrapper. Call with, e.g.,
-  fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-0-80607-thru20201219.fits -o fastphot-cumu.fits --ntargets 2 --specprod everest
+  fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/perexp/80607/00068028/redrock-0-80607-exp00068028.fits -o fastphot-perexp.fits --ntargets 2 --specprod everest
+  fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/pernight/80607/20201218/redrock-0-80607-20201218.fits -o fastphot-pernight.fits --ntargets 2 --specprod everest
+  fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-0-80607-thru20201219.fits -o fastphot-thrunight.fits --ntargets 2 --specprod everest
   fastphot /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastphot-hpx.fits --ntargets 2 --specprod everest
 
 """
