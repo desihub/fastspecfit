@@ -6,6 +6,8 @@ fastspecfit.scripts.fastspec
 FastSpec wrapper. Call with, e.g.,
 
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastspec2.fits --ntargets 1
+
 
 # nice BGS example
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
@@ -85,9 +87,9 @@ def parse(options=None):
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
 
-    parser.add_argument('--specprod', type=str, default='denali', choices=['everest', 'denali', 'daily'],
+    parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production to process.')
-    parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
+    parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Type of spectral coadds corresponding to the input redrockfiles.')
 
     parser.add_argument('redrockfiles', nargs='*', help='Full path to input redrock file(s).')
@@ -122,7 +124,7 @@ def main(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit()
     EMFit = EMLineFit()
-    Spec = DESISpectra(specprod=args.specprod, coadd_type=args.coadd_type)
+    Spec = DESISpectra(specprod=args.specprod)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.

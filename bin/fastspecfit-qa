@@ -133,7 +133,7 @@ def main(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit()
     EMFit = EMLineFit()
-    Spec = DESISpectra()
+    Spec = DESISpectra(specprod=specprod)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     if args.outdir:
@@ -141,7 +141,10 @@ def main(args=None, comm=None):
             os.makedirs(args.outdir, exist_ok=True)
         
     # Construct the redrockfiles filenames based on the input.
+    pdb.set_trace()
+    
     redrockdir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux', specprod, 'tiles')
+    
     alltiles = metadata['TILEID'].astype(str).data
     allpetals = metadata['FIBER'].data // 500
     
@@ -152,8 +155,7 @@ def main(args=None, comm=None):
 
     def _wrap_qa(redrockfile, indx):
         targetids = fastfit['TARGETID'][indx]
-        Spec.find_specfiles(redrockfiles=redrockfile, specprod=specprod,
-                            coadd_type=coadd_type, targetids=targetids)
+        Spec.find_specfiles(redrockfiles=redrockfile, specprod=specprod, targetids=targetids)
         data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True, remember_coadd=True)
         qaargs = [(CFit, EMFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
                    coadd_type, fastphot, args.outdir, args.outprefix) for igal in np.arange(len(indx))]                

@@ -59,9 +59,9 @@ def parse(options=None):
     #parser.add_argument('--suffix', type=str, default=None, help='Optional suffix for output filename.')
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
 
-    parser.add_argument('--specprod', type=str, default='denali', choices=['everest', 'denali', 'daily'],
+    parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production to process.')
-    parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
+    parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Type of spectral coadds corresponding to the input redrock files.')
 
     parser.add_argument('redrockfiles', nargs='*', help='Full path to input zbest file(s).')
@@ -94,14 +94,13 @@ def main(args=None, comm=None):
     # Initialize the continuum-fitting classes.
     t0 = time.time()
     CFit = ContinuumFit()
-    Spec = DESISpectra()
+    Spec = DESISpectra(specprod=args.specprod, coadd_type=args.coadd_type)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
     t0 = time.time()
     Spec.find_specfiles(args.redrockfiles, firsttarget=args.firsttarget,
-                        targetids=targetids, ntargets=args.ntargets,
-                        coadd_type=args.coadd_type)
+                        targetids=targetids, ntargets=args.ntargets)
     if len(Spec.specfiles) == 0:
         return
     data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)

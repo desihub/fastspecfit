@@ -30,19 +30,19 @@ DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
     
 class DESISpectra(object):
-    def __init__(self, specprod='everest', coadd_type='cumulative'):
+    def __init__(self, specprod='everest'):
         """Class to read in the DESI data needed by fastspecfit.
 
         """
         desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
 
         self.specprod = specprod
-        self.coadd_type = coadd_type
         
         self.redux_dir = os.path.join(desi_root, 'spectro', 'redux')
         self.fiberassign_dir = os.path.join(desi_root, 'target', 'fiberassign', 'tiles', 'trunk')
-        self.tiles_dir = os.path.join(self.redux_dir, self.specprod, 'tiles', self.coadd_type)
-        self.healpix_dir = os.path.join(self.redux_dir, self.specprod, 'healpix')
+
+        #self.healpix_dir = os.path.join(self.redux_dir, self.specprod, 'healpix')
+        #self.tiles_dir = os.path.join(self.redux_dir, self.specprod, 'tiles', self.coadd_type)
 
     def _get_targetdirs(self, tileid):
         """Get the targets catalog used to build a given fiberassign catalog.
@@ -125,55 +125,63 @@ class DESISpectra(object):
         #    self.specprod = specprod
         #    log.info('Parsed specprod={}'.format(specprod))
 
-        ## Try to figure out coadd_type from the first filename. Fragile! Assumes
-        ## that coadd_type is a scalar...
-        #if coadd_type is None:
-        #    import re
-        #    if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile[0]) is not None:
-        #        coadd_type = 'cumulative'
-        #    elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile[0]) is not None:
-        #        coadd_type = 'pernight'
-        #    else:
-        #        coadd_type = 'perexp'
-        #self.coadd_type = coadd_type
-        #log.info('Parsed coadd_type={}'.format(coadd_type))
-
         # Should we not sort...?
         #redrockfiles = np.array(set(np.atleast_1d(redrockfiles)))
         redrockfiles = np.array(sorted(set(np.atleast_1d(redrockfiles))))
         log.info('Reading and parsing {} unique redrockfile(s)'.format(len(redrockfiles)))
 
-        self.redrock, self.meta = [], []
+        self.redrock, self.meta, self.tiles = [], [], []
         self.redrockfiles, self.specfiles = [], []
-        for redrockfile in np.atleast_1d(redrockfiles):
+        for ired, redrockfile in enumerate(np.atleast_1d(redrockfiles)):
             specfile = redrockfile.replace('redrock-', 'coadd-')
+
+            # Try to figure out coadd_type from the first filename. Fragile! Assumes
+            # that coadd_type is a scalar...
+            if ired == 0:
+                hdr = fitsio.read_header(specfile, ext=0)
+                if 'HPXNEST' in hdr and hdr['HPXNEST']:
+                    coadd_type = 'healpix'
+                else:
+                    import re
+                    if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
+                        coadd_type = 'cumulative'
+                    elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
+                        coadd_type = 'pernight'
+                    else:
+                        coadd_type = 'perexp'
+                self.coadd_type = coadd_type
+                log.info('Parsed coadd_type={}'.format(coadd_type))
 
             # Figure out which fibermap columns to put into the metadata
             # table. Note that the fibermap includes all the spectra that went
             # into the coadd (based on the unique TARGETID which is in the redrock
             # table).  See https://github.com/desihub/desispec/issues/1104
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
-            fmcols = ['TARGETID', 'TILEID', 'FIBER', 'TARGET_RA', 'TARGET_DEC',
-                      'COADD_FIBERSTATUS', 'OBJTYPE', 'PHOTSYS',
-                      'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-                      'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-                      'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
-                      'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z']
+            fmcols = ['TARGETID', 'TARGET_RA', 'TARGET_DEC',
+                      'COADD_FIBERSTATUS', 'OBJTYPE'] 
+                      #'FIBER', 'PHOTSYS', 'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+                      #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+                      #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
+                      #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+                      #'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
+            expfmcols = ['TARGETID', 'TILEID']
                 
             # add targeting bit columns
             fmcols = np.array(fmcols + [col for col in TARGETINGBITCOLS if col in allfmcols]).tolist()
                 
             # For the cumulative coadds, NIGHT is defined to be the last night
             # contributing to the coadd.
-            if self.coadd_type == 'cumulative':
+            if self.coadd_type == 'healpix':
+                thrunight = None
+            elif self.coadd_type == 'cumulative':
                 thrunight = np.int32(os.path.basename(os.path.dirname(specfile)))
             else:
                 thrunight = None
-                fmcols = fmcols + ['NIGHT']
+                expfmcols = expfmcols + ['NIGHT']
 
-            # older fibermaps are missing the WISE inverse variance
-            if 'FLUX_IVAR_W1' in allfmcols:
-                fmcols = fmcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
+            ## older fibermaps are missing the WISE inverse variance
+            #if 'FLUX_IVAR_W1' in allfmcols:
+            #    fmcols = fmcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
 
             zbcols = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
 
@@ -183,10 +191,14 @@ class DESISpectra(object):
                 zb = fitsio.read(redrockfile, 'REDSHIFTS', columns=zbcols)
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
+                expmeta = fitsio.read(specfile, 'EXP_FIBERMAP', columns=expfmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                fitindx = np.where(np.logical_and((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') *
-                                                  (meta['OBJTYPE'] == 'TGT') * (meta['COADD_FIBERSTATUS'] == 0),
-                                                  np.logical_or(meta['PHOTSYS'] == 'N', meta['PHOTSYS'] == 'S')))[0]
+                fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 4) * #(zb['SPECTYPE'] == 'GALAXY') *
+                                   (meta['OBJTYPE'] == 'TGT') *
+                                   (meta['COADD_FIBERSTATUS'] == 0))[0]
+                #fitindx = np.where(np.logical_and((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') *
+                #                                  (meta['OBJTYPE'] == 'TGT') * (meta['COADD_FIBERSTATUS'] == 0),
+                #                                  np.logical_or(meta['PHOTSYS'] == 'N', meta['PHOTSYS'] == 'S')))[0]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -227,8 +239,17 @@ class DESISpectra(object):
                 
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
+            # Get the unique set of tiles contributing to the coadded spectra from EXP_FIBERMAP
+            I = np.isin(expmeta['TARGETID'], meta['TARGETID'])
+            if np.count_nonzero(I) == 0:
+                log.critical('No matching targets in exposure table.')
+                raise ValueError
+            expmeta = expmeta[I]
+            tiles = np.unique(expmeta['TILEID'])
+
             self.redrock.append(Table(zb))
             self.meta.append(Table(meta))
+            self.tiles.append(tiles)
             self.redrockfiles.append(redrockfile)
             self.specfiles.append(specfile)
 
@@ -244,10 +265,16 @@ class DESISpectra(object):
         targetcols = ['TARGETID', 'RA', 'DEC']
         #targetcols = targetcols + ['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
         #                           'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
-        if not 'FLUX_IVAR_W1' in fmcols:
-            targetcols = targetcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
-        
-        alltileid = [meta['TILEID'][0] for meta in self.meta]
+        #if not 'FLUX_IVAR_W1' in fmcols:
+        #    targetcols = targetcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
+        targetcols = targetcols + ['PHOTSYS', 'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+                                   'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+                                   'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
+                                   'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+                                   'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
+
+        alltileid = np.hstack(self.tiles)
+        #alltileid = [meta['TILEID'][0] for meta in self.meta]
         info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
         targets = []
         for tileid in set(alltileid):
