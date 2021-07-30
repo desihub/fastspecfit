@@ -39,6 +39,8 @@ def parse(options=None):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
+    parser.add_argument('--hpxpixel', default=None, type=str, nargs='*', help="""Generate QA for all objects
+        with this healpixels (only defined for coadd-type 'healpix').""")
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
         night (only defined for coadd-type 'pernight' and 'perexp').""")
@@ -109,25 +111,33 @@ def main(args=None, comm=None):
         fastfit = fastfit[keep]
         metadata = metadata[keep]
 
-    # optionally trim to a particular tile and/or night
-    def _select_tiles_nights_targets(fastfit, metadata, tiles=None, nights=None):
+    # optionally trim to a particular healpix or tile and/or night
+    def _select(fastfit, metadata, hpxpixels=None, tiles=None, nights=None):
         keep = np.ones(len(fastfit), bool)
-        if tiles:
-            tilekeep = np.zeros(len(fastfit), bool)
-            for tile in tiles:
-                tilekeep = np.logical_or(tilekeep, metadata['TILEID'].astype(str) == tile)
-            keep = np.logical_and(keep, tilekeep)
-            log.info('Keeping {} objects from tile(s) {}'.format(len(fastfit), ','.join(tiles)))
-        if nights and 'NIGHT' in metadata:
-            nightkeep = np.zeros(len(fastfit), bool)
-            for night in nights:
-                nightkeep = np.logical_or(nightkeep, metadata['NIGHT'].astype(str) == night)
-            keep = np.logical_and(keep, nightkeep)
-            log.info('Keeping {} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
+        if coadd_type == 'healpix':
+            if hpxpixels:
+                pixelkeep = np.zeros(len(fastfit), bool)
+                for hpxpixel in hpxpixels:
+                    pixelkeep = np.logical_or(pixelkeep, metadata['HPXPIXEL'].astype(str) == hpxpixel)
+                keep = np.logical_and(keep, pixelkeep)
+                log.info('Keeping {} objects from healpixels(s) {}'.format(len(fastfit), ','.join(hpxpixels)))
+        else:
+            if tiles:
+                tilekeep = np.zeros(len(fastfit), bool)
+                for tile in tiles:
+                    tilekeep = np.logical_or(tilekeep, metadata['TILEID'].astype(str) == tile)
+                keep = np.logical_and(keep, tilekeep)
+                log.info('Keeping {} objects from tile(s) {}'.format(len(fastfit), ','.join(tiles)))
+            if nights and 'NIGHT' in metadata:
+                nightkeep = np.zeros(len(fastfit), bool)
+                for night in nights:
+                    nightkeep = np.logical_or(nightkeep, metadata['NIGHT'].astype(str) == night)
+                keep = np.logical_and(keep, nightkeep)
+                log.info('Keeping {} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
         return fastfit[keep], metadata[keep]
     
-    fastfit, metadata = _select_tiles_nights_targets(
-        fastfit, metadata, tiles=args.tile, nights=args.night)
+    fastfit, metadata = _select(fastfit, metadata, hpxpixels=args.hpxpixel,
+                                tiles=args.tile, nights=args.night)
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
@@ -140,13 +150,7 @@ def main(args=None, comm=None):
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
         
-    # Construct the redrockfiles filenames based on the input.
-    pdb.set_trace()
-    
-    redrockdir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux', specprod, 'tiles')
-    
-    alltiles = metadata['TILEID'].astype(str).data
-    allpetals = metadata['FIBER'].data // 500
+    redrockdir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux', specprod)
     
     #if fastphot:
     #    synthphot = False
@@ -155,7 +159,7 @@ def main(args=None, comm=None):
 
     def _wrap_qa(redrockfile, indx):
         targetids = fastfit['TARGETID'][indx]
-        Spec.find_specfiles(redrockfiles=redrockfile, specprod=specprod, targetids=targetids)
+        Spec.find_specfiles(redrockfiles=redrockfile, targetids=targetids)
         data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True, remember_coadd=True)
         qaargs = [(CFit, EMFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
                    coadd_type, fastphot, args.outdir, args.outprefix) for igal in np.arange(len(indx))]                
@@ -168,30 +172,50 @@ def main(args=None, comm=None):
             [desiqa_one(*_qaargs) for _qaargs in qaargs]
 
     t0 = time.time()
-    if coadd_type == 'cumulative':
-        thrunights = metadata['THRUNIGHT'].astype(str).data
-        for tile in set(alltiles):
-            for petal in set(allpetals):
-                indx = np.where((tile == alltiles) * (petal == allpetals))[0]
-                if len(indx) == 0:
-                    log.warning('No object found with tileid={} and petal={}!'.format(
-                        tile, petal))
-                    continue
-                redrockfile = os.path.join(redrockdir, 'cumulative', str(tile), thrunights[indx[0]], 'redrock-{}-{}-thru{}.fits'.format(petal, tile, thrunights[indx[0]]))
-                _wrap_qa(redrockfile, indx)
-    elif coadd_type == 'pernight':
-        allnights = metadata['NIGHT'].astype(str).data
-        for night in set(allnights):
+    if coadd_type == 'healpix':
+        allsurveys = metadata['SURVEY'].data
+        allprograms = metadata['FAPRGRM'].data
+        allpixels = metadata['HPXPIXEL'].data
+        for survey in set(allsurveys):
+            for program in set(allprograms):
+                for pixel in set(allpixels):
+                    indx = np.where((survey == allsurveys) * (program == allprograms) * (pixel == allpixels))[0]
+                    if len(indx) == 0:
+                        log.warning('No object found with survey={}, program={}, and healpixel={}!'.format(
+                            survey, program, pixel))
+                        continue
+                    redrockfile = os.path.join(redrockdir, 'healpix', str(survey), str(program), str(pixel // 100), str(pixel), 
+                                               'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
+                    _wrap_qa(redrockfile, indx)
+    else:
+        alltiles = metadata['TILEID'].astype(str).data
+        allpetals = metadata['FIBER'].data // 500
+        if coadd_type == 'cumulative':
+            thrunights = metadata['THRUNIGHT'].astype(str).data
             for tile in set(alltiles):
                 for petal in set(allpetals):
-                    indx = np.where((night == allnights) * (tile == alltiles) * (petal == allpetals))[0]
-                    redrockfile = os.path.join(redrockdir, 'pernight', str(tile), str(night), 'redrock-{}-{}-{}.fits'.format(petal, tile, night))
+                    indx = np.where((tile == alltiles) * (petal == allpetals))[0]
+                    if len(indx) == 0:
+                        log.warning('No object found with tileid={} and petal={}!'.format(
+                            tile, petal))
+                        continue
+                    redrockfile = os.path.join(redrockdir, 'tiles', 'cumulative', str(tile), thrunights[indx[0]],
+                                               'redrock-{}-{}-thru{}.fits'.format(petal, tile, thrunights[indx[0]]))
                     _wrap_qa(redrockfile, indx)
-    elif coadd_type == 'perexp':
-        raise NotImplemented
-        # we probably want to *require* tile or night in this case...
-    else:
-        pass
+        elif coadd_type == 'pernight':
+            allnights = metadata['NIGHT'].astype(str).data
+            for night in set(allnights):
+                for tile in set(alltiles):
+                    for petal in set(allpetals):
+                        indx = np.where((night == allnights) * (tile == alltiles) * (petal == allpetals))[0]
+                        redrockfile = os.path.join(redrockdir, 'tiles', 'pernight', str(tile), str(night),
+                                                   'redrock-{}-{}-{}.fits'.format(petal, tile, night))
+                        _wrap_qa(redrockfile, indx)
+        elif coadd_type == 'perexp':
+            raise NotImplemented
+            # we probably want to *require* tile or night in this case...
+        else:
+            pass
     log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
 
 if __name__ == '__main__':

@@ -5,8 +5,8 @@ fastspecfit.fastspecfit
 
 FastSpec wrapper. Call with, e.g.,
 
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastspec2.fits --ntargets 1
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465 --specprod everest
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastspec2.fits --ntargets 1 --specprod everest
 
 # nice BGS example
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
@@ -24,7 +24,8 @@ FastSpec wrapper. Call with, e.g.,
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/redrock-9-80607-deep.fits -o fastspec2.fits --targetids 39633331528141827
 
 Fastphot wrapper. Call with, e.g.,
-  fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-0-80607-thru20201219.fits -o fastphot.fits --ntargets 1
+  fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-0-80607-thru20201219.fits -o fastphot-cumu.fits --ntargets 2 --specprod everest
+  fastphot /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastphot-hpx.fits --ntargets 2 --specprod everest
 
 """
 import pdb # for debugging
@@ -113,10 +114,12 @@ def parse(options=None):
 
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
 
+    # make specprod required until this ticket is addressed--
+    # https://github.com/desihub/desispec/issues/1077
     parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
-                        help='Spectroscopic production to process.')
-    parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
-                        help='Type of spectral coadds corresponding to the input redrockfiles.')
+                        required=True, help='Spectroscopic production.')
+    #parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
+    #                    help='Type of spectral coadds corresponding to the input redrockfiles.')
 
     parser.add_argument('redrockfiles', nargs='*', help='Full path to input redrock file(s).')
 
@@ -204,7 +207,7 @@ def fastphot(args=None, comm=None):
     # Initialize the continuum-fitting classes.
     t0 = time.time()
     CFit = ContinuumFit()
-    Spec = DESISpectra(specprod=args.specprod, coadd_type=args.coadd_type)
+    Spec = DESISpectra(specprod=args.specprod)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.

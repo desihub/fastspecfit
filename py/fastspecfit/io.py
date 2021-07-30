@@ -30,11 +30,15 @@ DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
     
 class DESISpectra(object):
-    def __init__(self, specprod='everest'):
+    def __init__(self, specprod=None):
         """Class to read in the DESI data needed by fastspecfit.
 
         """
         desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
+
+        if specprod is None:
+            log.warning('specprod input is required.')
+            raise IOError
 
         self.specprod = specprod
         
@@ -135,12 +139,14 @@ class DESISpectra(object):
         for ired, redrockfile in enumerate(np.atleast_1d(redrockfiles)):
             specfile = redrockfile.replace('redrock-', 'coadd-')
 
-            # Try to figure out coadd_type from the first filename. Fragile! Assumes
-            # that coadd_type is a scalar...
+            # Try to figure out coadd_type from the first filename. Fragile!
+            # Assumes that coadd_type is a scalar... And, really, this should be
+            # in a header.
             if ired == 0:
                 hdr = fitsio.read_header(specfile, ext=0)
                 if 'HPXNEST' in hdr and hdr['HPXNEST']:
                     coadd_type = 'healpix'
+                    hpxpixel = np.int32(hdr['HPXPIXEL'])
                 else:
                     import re
                     if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
@@ -164,8 +170,8 @@ class DESISpectra(object):
                       #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                       #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
                       #'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
-            expfmcols = ['TARGETID', 'TILEID']
-                
+            expfmcols = ['TARGETID', 'TILEID', 'FIBER']
+            
             # add targeting bit columns
             fmcols = np.array(fmcols + [col for col in TARGETINGBITCOLS if col in allfmcols]).tolist()
                 
@@ -191,7 +197,6 @@ class DESISpectra(object):
                 zb = fitsio.read(redrockfile, 'REDSHIFTS', columns=zbcols)
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
-                expmeta = fitsio.read(specfile, 'EXP_FIBERMAP', columns=expfmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
                 fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] == 4) * #(zb['SPECTYPE'] == 'GALAXY') *
                                    (meta['OBJTYPE'] == 'TGT') *
@@ -234,19 +239,27 @@ class DESISpectra(object):
                 zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=zbcols))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=fmcols))
 
-            if thrunight:
-                meta['THRUNIGHT'] = thrunight
-                
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
             # Get the unique set of tiles contributing to the coadded spectra from EXP_FIBERMAP
+            expmeta = fitsio.read(specfile, 'EXP_FIBERMAP', columns=expfmcols)
             I = np.isin(expmeta['TARGETID'], meta['TARGETID'])
             if np.count_nonzero(I) == 0:
-                log.critical('No matching targets in exposure table.')
+                log.warning('No matching targets in exposure table.')
                 raise ValueError
             expmeta = expmeta[I]
             tiles = np.unique(expmeta['TILEID'])
 
+            if thrunight:
+                meta['THRUNIGHT'] = thrunight
+
+            # Gather additional info about this pixel.
+            if coadd_type == 'healpix':
+                pixinfo = os.path.basename(redrockfile).split('-') 
+                meta['SURVEY'] = pixinfo[1] # fragile...
+                meta['FAPRGRM'] = pixinfo[2]
+                meta['HPXPIXEL'] = hpxpixel
+                
             self.redrock.append(Table(zb))
             self.meta.append(Table(meta))
             self.tiles.append(tiles)

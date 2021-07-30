@@ -1305,7 +1305,7 @@ class ContinuumFit(ContinuumTools):
         
         return result, continuummodel, smooth_continuum
     
-    def qa_fastphot(self, data, fastphot, metadata, coadd_type='cumulative',
+    def qa_fastphot(self, data, fastphot, metadata, coadd_type='healpix',
                     outdir=None, outprefix=None):
         """QA of the best-fitting continuum.
 
@@ -1337,7 +1337,12 @@ class ContinuumFit(ContinuumTools):
         if outprefix is None:
             outprefix = 'fastphot'
 
-        if coadd_type == 'cumulative':
+        if coadd_type == 'healpix':
+            title = 'Survey/Program/Pixel: {}/{}/{}, TargetID: {}'.format(
+                    metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))
+        elif coadd_type == 'cumulative':
             title = 'Tile/Coadd: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], coadd_type, metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
@@ -1467,8 +1472,13 @@ class ContinuumFit(ContinuumTools):
         #for hndl in leg.legendHandles:
         #    hndl.set_markersize(8)
 
+        if coadd_type == 'healpix':
+            targetid_str = str(metadata['TARGETID'])
+        else:
+            targetid_str = '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
+
         leg = {
-            'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
+            'targetid': targetid_str,
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_CHI2']),
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),

@@ -1021,7 +1021,7 @@ class EMLineFit(ContinuumTools):
             
         return result
     
-    def qa_fastspec(self, data, fastspec, metadata, coadd_type='cumulative',
+    def qa_fastspec(self, data, fastspec, metadata, coadd_type='healpix',
                     wavelims=(3600, 9800), outprefix=None, outdir=None):
         """QA plot the emission-line spectrum and best-fitting model.
 
@@ -1045,7 +1045,12 @@ class EMLineFit(ContinuumTools):
         if outprefix is None:
             outprefix = 'fastspec'
 
-        if coadd_type == 'cumulative':
+        if coadd_type == 'healpix':
+            title = 'Survey/Program/Pixel: {}/{}/{}, TargetID: {}'.format(
+                    metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))
+        elif coadd_type == 'cumulative':
             title = 'Tile/Coadd: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], coadd_type, metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
