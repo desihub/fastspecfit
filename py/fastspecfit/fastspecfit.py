@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 """
-fastspecfit.scripts.fastspec
-============================
+fastspecfit.fastspecfit
+=======================
 
 FastSpec wrapper. Call with, e.g.,
 
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastspec2.fits --ntargets 1
-
 
 # nice BGS example
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
@@ -23,6 +22,9 @@ FastSpec wrapper. Call with, e.g.,
 
   # nice QSO with broad lines
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/redrock-9-80607-deep.fits -o fastspec2.fits --targetids 39633331528141827
+
+Fastphot wrapper. Call with, e.g.,
+  fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-0-80607-thru20201219.fits -o fastphot.fits --ntargets 1
 
 """
 import pdb # for debugging
@@ -71,6 +73,30 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False):
 
     return out, meta
 
+def _fastphot_one(args):
+    """Multiprocessing wrapper."""
+    return fastphot_one(*args)
+
+def fastphot_one(iobj, data, out, meta, CFit):
+    """Fit one spectrum."""
+    #log.info('Continuum-fitting object {}'.format(iobj))
+    t0 = time.time()
+    cfit, _ = CFit.continuum_fastphot(data)
+    for col in cfit.colnames:
+        out[col] = cfit[col]
+
+    # Copy over the reddening-corrected fluxes -- messy!
+    for iband, band in enumerate(CFit.fiber_bands):
+        meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
+        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+    for iband, band in enumerate(CFit.bands):
+        meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
+        meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
+        
+    log.info('Continuum-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
+    
+    return out, meta
+
 def parse(options=None):
     """Parse input arguments.
 
@@ -83,9 +109,9 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
-    #parser.add_argument('--suffix', type=str, default=None, help='Optional suffix for output filename.')
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
-    parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion.')
+
+    parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
 
     parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production to process.')
@@ -103,8 +129,8 @@ def parse(options=None):
 
     return args
 
-def main(args=None, comm=None):
-    """Main module.
+def fastspec(args=None, comm=None):
+    """Main fastspec module.
 
     """
     from astropy.table import Table
@@ -158,3 +184,56 @@ def main(args=None, comm=None):
     # Write out.
     write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=False)
+
+def fastphot(args=None, comm=None):
+    """Main fastphot module.
+
+    """
+    from astropy.table import Table
+    from fastspecfit.continuum import ContinuumFit
+    from fastspecfit.io import DESISpectra, write_fastspecfit
+
+    if isinstance(args, (list, tuple, type(None))):
+        args = parse(args)
+
+    if args.targetids:
+        targetids = [int(x) for x in args.targetids.split(',')]
+    else:
+        targetids = args.targetids
+
+    # Initialize the continuum-fitting classes.
+    t0 = time.time()
+    CFit = ContinuumFit()
+    Spec = DESISpectra(specprod=args.specprod, coadd_type=args.coadd_type)
+    log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
+
+    # Read the data.
+    t0 = time.time()
+    Spec.find_specfiles(args.redrockfiles, firsttarget=args.firsttarget,
+                        targetids=targetids, ntargets=args.ntargets)
+    if len(Spec.specfiles) == 0:
+        return
+    data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)
+    
+    out, meta = Spec.init_output(CFit=CFit, fastphot=True)
+    log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
+        Spec.ntargets, time.time()-t0))
+
+    # Fit in parallel
+    t0 = time.time()
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit)
+               for iobj in np.arange(Spec.ntargets)]
+    if args.mp > 1:
+        import multiprocessing
+        with multiprocessing.Pool(args.mp) as P:
+            _out = P.map(_fastphot_one, fitargs)
+    else:
+        _out = [fastphot_one(*_fitargs) for _fitargs in fitargs]
+    _out = list(zip(*_out))
+    out = Table(np.hstack(_out[0]))
+    meta = Table(np.hstack(_out[1]))
+    log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
+
+    # Write out.
+    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
+                      coadd_type=Spec.coadd_type, fastphot=True)

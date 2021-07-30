@@ -5,11 +5,5 @@ Example call:
   fastphot /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80608/20201215/zbest-9-80608-20201215.fits -o fastphot.fits --ntargets 2 --mp 1
 
 """
-import os
-from desiutil.log import get_logger
-from fastspecfit.scripts import fastphot
-
-log = get_logger()
-
-fastphot.main(comm=None)
-
+from fastspecfit.fastspecfit import fastphot
+fastphot(comm=None)
