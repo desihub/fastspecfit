@@ -138,6 +138,12 @@ class DESISpectra(object):
         self.redrockfiles, self.specfiles = [], []
         for ired, redrockfile in enumerate(np.atleast_1d(redrockfiles)):
             specfile = redrockfile.replace('redrock-', 'coadd-')
+            if not os.path.isfile(redrockfile):
+                log.warning('File {} not found!'.format(redrockfile))
+                continue
+            if not os.path.isfile(specfile):
+                log.warning('File {} not found!'.format(specfile))
+                continue
 
             # Try to figure out coadd_type from the first filename. Fragile!
             # Assumes that coadd_type is a scalar... And, really, this should be
@@ -164,8 +170,8 @@ class DESISpectra(object):
             # table).  See https://github.com/desihub/desispec/issues/1104
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
             fmcols = ['TARGETID', 'TARGET_RA', 'TARGET_DEC',
-                      'COADD_FIBERSTATUS', 'OBJTYPE'] 
-                      #'FIBER', 'PHOTSYS', 'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+                      'COADD_FIBERSTATUS', 'OBJTYPE', 'PHOTSYS']
+                      #'PHOTSYS', 'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
                       #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                       #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                       #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
@@ -200,12 +206,14 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
-                                   (meta['OBJTYPE'] == 'TGT') *
-                                   (meta['COADD_FIBERSTATUS'] == 0))[0]
-                #fitindx = np.where(np.logical_and((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') *
-                #                                  (meta['OBJTYPE'] == 'TGT') * (meta['COADD_FIBERSTATUS'] == 0),
-                #                                  np.logical_or(meta['PHOTSYS'] == 'N', meta['PHOTSYS'] == 'S')))[0]
+                if False:
+                    fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
+                                       (meta['OBJTYPE'] == 'TGT') *
+                                       (meta['COADD_FIBERSTATUS'] == 0))[0]
+                else:
+                    fitindx = np.where(np.logical_and((zb['Z'] > 0) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
+                                                      (meta['OBJTYPE'] == 'TGT') * (meta['COADD_FIBERSTATUS'] == 0),
+                                                      np.logical_or(meta['PHOTSYS'] == 'N', meta['PHOTSYS'] == 'S')))[0]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -313,8 +321,11 @@ class DESISpectra(object):
         for tileid in set(alltileid):
             targetdirs = self._get_targetdirs(tileid)
             for targetdir in targetdirs:
-                # handle secondary targets, which have a different data model
+                # Handle secondary targets, which have a different data model;
+                # update on 2021 July 31: these catalogs are missing DR9
+                # photometry, so we have to skip them for now.
                 if 'secondary' in targetdir:
+                    continue
                     targetfiles = glob(os.path.join(targetdir, '*-secondary.fits'))
                 else:
                     targetfiles = glob(os.path.join(targetdir, '*-hp-*.fits'))
@@ -329,8 +340,13 @@ class DESISpectra(object):
                     if np.sum(match) > 0:
                         alltargets = alltargets[match]
                         targets.append(alltargets)
-                        
+
         targets = Table(np.hstack(targets))
+        
+        #from desitarget.io import releasedict
+        #from desitarget.targets import decode_targetid  
+        #_, _, releases, _, _, _ = decode_targetid(targets['TARGETID'])  
+        #photsys = [releasedict[release] if release >= 9000 else None for release in releases]
 
         # targets table can include duplicates from secondary programs...
         _, uindx = np.unique(targets['TARGETID'], return_index=True) 
@@ -342,10 +358,10 @@ class DESISpectra(object):
         metas = []
         for meta in self.meta:
             srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in meta['TARGETID']])
+            assert(np.all(meta['TARGETID'] == targets['TARGETID'][srt]))
             for col in targetcols:
                 if col not in meta.colnames:
                     meta[col] = targets[col][srt]
-                    assert(np.all(meta['TARGETID'] == targets['TARGETID'][srt]))
             metas.append(Table(meta))
         log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
