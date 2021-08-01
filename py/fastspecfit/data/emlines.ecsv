@@ -24,8 +24,7 @@
 #
 #     J. Moustakas, Siena College, 2020 Nov 11
 #     jm21mar19 - more lines added
-#     jm21aug01 - [OI], HeI, HeII and more added}
-#
+#     jm21aug01 - [OI], HeI, HeII and more added'}
 name restwave amp isbalmer isbroad nicename plotgroup
     nv_1240   1240.81      1.0   False  True   NV                  01
  silii_1265   1264.738     1.0   False  True   SiII$^{*}$          01
@@ -36,7 +35,7 @@ name restwave amp isbalmer isbroad nicename plotgroup
    civ_1549   1549.48      1.0   True   True   CIV                 03
   heii_1640   1640.42      0.1   True   False  HeII                04
   oiii_1661   1660.809     1.0   False  True   OIII]               04
-  oiii_1666   1666.150     1.0   False  True   OIII]]              04
+  oiii_1666   1666.150     1.0   False  True   OIII]               04
 siliii_1882   1882.468     1.0   False  True   SiIII]              05
 siliii_1892   1892.030     1.0   False  True   SiIII]              05
   ciii_1907   1907.640     1.0   False  True   CIII]               05
@@ -65,3 +64,5 @@ siliii_1892   1892.030     1.0   False  True   SiIII]              05
    nii_6584   6585.277   2.936   False  False  H$\alpha$+[NII]     15
    sii_6716   6718.294     1.0   False  False  [SII]               16
    sii_6731   6732.673     1.0   False  False  [SII]               16
+  siii_9069   9071.1034    0.3   False  False  [SIII]              17
+  siii_9532   9533.2274    0.3   False  False  [SIII]              17

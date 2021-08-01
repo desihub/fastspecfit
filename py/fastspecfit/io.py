@@ -170,7 +170,8 @@ class DESISpectra(object):
             # table).  See https://github.com/desihub/desispec/issues/1104
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
             fmcols = ['TARGETID', 'TARGET_RA', 'TARGET_DEC',
-                      'COADD_FIBERSTATUS', 'OBJTYPE', 'PHOTSYS']
+                      'COADD_FIBERSTATUS', 'OBJTYPE',
+                      'PHOTSYS']
                       #'PHOTSYS', 'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
                       #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                       #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
@@ -308,11 +309,13 @@ class DESISpectra(object):
         #                           'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
         #if not 'FLUX_IVAR_W1' in fmcols:
         #    targetcols = targetcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
-        targetcols = targetcols + ['PHOTSYS', 'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-                                   'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-                                   'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
-                                   'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-                                   'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
+        targetcols = targetcols + [
+            #'PHOTSYS',
+            'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+            'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+            'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
+            'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+            'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
 
         alltileid = np.hstack(self.tiles)
         #alltileid = [meta['TILEID'][0] for meta in self.meta]

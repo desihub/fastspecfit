@@ -42,6 +42,7 @@ def _tie_oiii_4959_sigma(model):
     return model.oiii_5007_sigma
 def _tie_nii_6548_sigma(model):
     return model.nii_6584_sigma
+
 def _tie_sii_6731_sigma(model):
     return model.sii_6716_sigma
 def _tie_siii_9532_sigma(model):
@@ -57,16 +58,21 @@ def _tie_oiii_5007_sigma(model):
 def _tie_oiii_5007_vshift(model):
     return model.oiii_5007_vshift
 
-def _tie_mgii_2800_sigma(model):
-    return model.mgii_2800_sigma
-def _tie_mgii_2800_vshift(model):
-    return model.mgii_2800_vshift
+def _tie_mgii_2803_sigma(model):
+    return model.mgii_2803_sigma
+def _tie_mgii_2803_vshift(model):
+    return model.mgii_2803_vshift
 
 def _tie_balmer_lines(model):
     for pp in model.param_names:
-        if 'sigma' in pp and pp[0] == 'h' and pp != 'hbeta_sigma':
+        if ('sigma' in pp and pp != 'hbeta_sigma' and (
+            'hei' in pp or 'alpha' in pp or 'beta' in pp or
+            'gamma' in pp or 'delta' in pp or 'epsilon' in pp)):
             getattr(model, pp).tied = _tie_hbeta_sigma
-        if 'vshift' in pp and pp[0] == 'h' and pp != 'hbeta_vshift':
+            
+        if ('vshift' in pp and pp != 'hbeta_vshift' and (
+            'hei' in pp or 'alpha' in pp or 'beta' in pp or
+            'gamma' in pp or 'delta' in pp or 'epsilon' in pp)):
             getattr(model, pp).tied = _tie_hbeta_vshift
             
     model.hbeta_sigma.tied = False
@@ -75,10 +81,16 @@ def _tie_balmer_lines(model):
     return model
 
 def _tie_forbidden_lines(model):
+
     for pp in model.param_names:
-        if 'sigma' in pp and pp[0] != 'h' and 'mgii' not in pp and pp != 'oiii_5007_sigma':
+        if ('sigma' in pp and pp != 'oiii_5007_sigma' and
+            ('nev' in pp or 'oii' in pp or 'neiii' in pp or
+             'nii' in pp or 'sii' in pp and 'oiii_16' not in pp)):
             getattr(model, pp).tied = _tie_oiii_5007_sigma
-        if 'vshift' in pp and pp[0] != 'h' and 'mgii' not in pp and pp != 'oiii_5007_vshift':
+            
+        if ('vshift' in pp and pp != 'oiii_5007_vshift' and
+            ('nev' in pp or 'oii' in pp or 'neiii' in pp or
+             'nii' in pp or 'sii' in pp and 'oiii_16' not in pp)):
             getattr(model, pp).tied = _tie_oiii_5007_vshift
             
     model.oiii_5007_sigma.tied = False
@@ -87,22 +99,24 @@ def _tie_forbidden_lines(model):
     return model
 
 def _tie_broad_lines(model):
-    """For now, the only *broad* line is MgII, so let it float. However, it's pretty
-    fragile that the line-name is hard-coded...
+    for pp in model.param_names:
+        if ('sigma' in pp and pp != 'mgii_2803_sigma' and
+            ('nv' in pp or 'sil' in pp or 'civ' in pp or
+             'oiii_16' in pp or 'ciii' in pp or 'mgii' in pp)):
+            getattr(model, pp).tied = _tie_mgii_2803_sigma
 
-    """
-    #for pp in model.param_names:
-    #    if 'sigma' in pp and 'mgii' in pp:
-    #        getattr(model, pp).tied = _tie_mgii_2800_sigma
-    #    if 'vshift' in pp and 'mgii' in pp:
-    #        getattr(model, pp).tied = _tie_mgii_2800_vshift
-    model.mgii_2800_sigma.tied = False
-    model.mgii_2800_vshift.tied = False
+        if ('vshift' in pp and pp != 'mgii_2803_vshift' and
+            ('nv' in pp or 'sil' in pp or 'civ' in pp or
+             'oiii_16' in pp or 'ciii' in pp or 'mgii' in pp)):
+            getattr(model, pp).tied = _tie_mgii_2803_vshift
+
+    model.mgii_2803_sigma.tied = False
+    model.mgii_2803_vshift.tied = False
 
     # update / improve the initial guess
-    model.mgii_2800_sigma.value = model.initsigma_broad
-    model.mgii_2800_sigma._default = model.initsigma_broad
-    model.mgii_2800_sigma.bounds = [0.0, model.maxsigma_broad]
+    model.mgii_2803_sigma.value = model.initsigma_broad
+    model.mgii_2803_sigma._default = model.initsigma_broad
+    model.mgii_2803_sigma.bounds = [model.minsigma, model.maxsigma_broad]
     
     return model
 
@@ -129,75 +143,139 @@ class EMLineModel(Fittable1DModel):
     vmaxshift = 300.0
     initvshift = 0.0
 
+    minsigma = 30.0
     maxsigma_narrow = 500.0
-    maxsigma_broad = 3000.0
+    maxsigma_broad = 5000.0
 
     initsigma_narrow = 75.0
     initsigma_broad = 300.0
 
-    # Fragile because the lines are hard-coded--
-    mgii_2800_amp = Parameter(name='mgii_2800_amp', default=3.0, bounds=(-1e3, 1e5))
-    #mgii_2800b_amp = Parameter(name='mgii_2800b_amp', default=1.0)
-    nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=(-1e3, 1e5))
-    nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=(-1e3, 1e5))
-    oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0, bounds=(-1e3, 1e5))
-    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=(-1e3, 1e5))
-    neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=(-1e3, 1e5))
-    oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0, bounds=(-1e3, 1e5))
-    oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=(-1e3, 1e5))
-    hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=(-1e3, 1e5))
-    hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=(-1e3, 1e5))
-    hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=(-1e3, 1e5))
-    hbeta_amp = Parameter(name='hbeta_amp', default=1.0, bounds=(-1e3, 1e5))
-    halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=(-1e3, 1e5))
-    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=(-1e3, 1e5))
-    nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=(-1e3, 1e5))
-    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=(-1e3, 1e5))
-    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=(-1e3, 1e5))
-    siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=(-1e3, 1e5))
-    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=(-1e3, 1e5))
+    minamp = -1e3
+    maxamp = +1e5
 
-    mgii_2800_vshift = Parameter(name='mgii_2800_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    #mgii_2800b_vshift = Parameter(name='mgii_2800b_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    # Fragile because the lines are hard-coded--
+    nv_1240_amp = Parameter(name='nv_1240_amp', default=3.0, bounds=[minamp, maxamp])
+    silii_1265_amp = Parameter(name='silii_1265_amp', default=3.0, bounds=[minamp, maxamp])
+    silii_1309_amp = Parameter(name='silii_1309_amp', default=3.0, bounds=[minamp, maxamp])
+    siliv_1394_amp = Parameter(name='siliv_1394_amp', default=3.0, bounds=[minamp, maxamp])
+    siliv_1403_amp = Parameter(name='siliv_1403_amp', default=3.0, bounds=[minamp, maxamp])
+    silii_1533_amp = Parameter(name='silii_1533_amp', default=3.0, bounds=[minamp, maxamp])
+    civ_1549_amp = Parameter(name='civ_1549_amp', default=3.0, bounds=[minamp, maxamp])
+    heii_1640_amp = Parameter(name='heii_1640_amp', default=3.0, bounds=[minamp, maxamp])
+    oiii_1661_amp = Parameter(name='oiii_1661_amp', default=3.0, bounds=[minamp, maxamp])
+    oiii_1666_amp = Parameter(name='oiii_1666_amp', default=3.0, bounds=[minamp, maxamp])
+    siliii_1882_amp = Parameter(name='siliii_1882_amp', default=3.0, bounds=[minamp, maxamp])
+    siliii_1892_amp = Parameter(name='siliii_1892_amp', default=3.0, bounds=[minamp, maxamp])
+    ciii_1907_amp = Parameter(name='ciii_1907_amp', default=3.0, bounds=[minamp, maxamp])
+    ciii_1908_amp = Parameter(name='ciii_1908_amp', default=3.0, bounds=[minamp, maxamp])
+    mgii_2796_amp = Parameter(name='mgii_2796_amp', default=3.0, bounds=[minamp, maxamp])
+    mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
+    nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=[minamp, maxamp])
+    nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=[minamp, maxamp])
+    oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0, bounds=[minamp, maxamp])
+    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=[minamp, maxamp])
+    neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=[minamp, maxamp])
+    hei_3889_amp = Parameter(name='hei_3889_amp', default=0.3, bounds=[minamp, maxamp])
+    hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=[minamp, maxamp])
+    hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=[minamp, maxamp])
+    hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=[minamp, maxamp])
+    oiii_4363_amp = Parameter(name='oiii_4363_amp', default=0.3, bounds=[minamp, maxamp])
+    hei_4471_amp = Parameter(name='hei_4471_amp', default=0.3, bounds=[minamp, maxamp])
+    heii_4686_amp = Parameter(name='heii_4686_amp', default=0.3, bounds=[minamp, maxamp])
+    hbeta_amp = Parameter(name='hbeta_amp', default=1.0, bounds=[minamp, maxamp])
+    oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0, bounds=[minamp, maxamp])
+    oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=[minamp, maxamp])
+    hei_5876_amp = Parameter(name='hei_5876_amp', default=0.3, bounds=[minamp, maxamp])
+    oi_6300_amp = Parameter(name='oi_6300_amp', default=0.3, bounds=[minamp, maxamp])
+    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=[minamp, maxamp])
+    halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=[minamp, maxamp])
+    nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=[minamp, maxamp])
+    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=[minamp, maxamp])
+    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=[minamp, maxamp])
+    siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=[minamp, maxamp])
+    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=[minamp, maxamp])
+
+    nv_1240_vshift = Parameter(name='nv_1240_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    silii_1265_vshift = Parameter(name='silii_1265_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    silii_1309_vshift = Parameter(name='silii_1309_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    siliv_1394_vshift = Parameter(name='siliv_1395_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    siliv_1403_vshift = Parameter(name='siliv_1403_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    silii_1533_vshift = Parameter(name='silii_1533_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    civ_1549_vshift = Parameter(name='civ_1549_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    heii_1640_vshift = Parameter(name='heii_1640_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    oiii_1661_vshift = Parameter(name='oiii_1661_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    oiii_1666_vshift = Parameter(name='oiii_1666_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    siliii_1882_vshift = Parameter(name='siliii_1882_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    siliii_1892_vshift = Parameter(name='siliii_1892_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    ciii_1907_vshift = Parameter(name='ciii_1907_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    ciii_1908_vshift = Parameter(name='ciii_1908_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    mgii_2803_vshift = Parameter(name='mgii_2803_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     nev_3346_vshift = Parameter(name='nev_3346_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     nev_3426_vshift = Parameter(name='nev_3426_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     oii_3729_vshift = Parameter(name='oii_3729_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    hei_3889_vshift = Parameter(name='hei_3889_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     hepsilon_vshift = Parameter(name='hepsilon_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     hdelta_vshift = Parameter(name='hdelta_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     hgamma_vshift = Parameter(name='hgamma_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    oiii_4363_vshift = Parameter(name='oiii_4363_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    hei_4471_vshift = Parameter(name='hei_4471_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    heii_4686_vshift = Parameter(name='heii_4686_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     hbeta_vshift = Parameter(name='hbeta_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    halpha_vshift = Parameter(name='halpha_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    hei_5876_vshift = Parameter(name='hei_5876_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    oi_6300_vshift = Parameter(name='oi_6300_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     nii_6548_vshift = Parameter(name='nii_6548_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    halpha_vshift = Parameter(name='halpha_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     nii_6584_vshift = Parameter(name='nii_6584_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
     siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
 
-    mgii_2800_sigma = Parameter(name='mgii_2800_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    #mgii_2800b_sigma = Parameter(name='mgii_2800b_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    oiii_4959_sigma = Parameter(name='oiii_4959_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    oiii_5007_sigma = Parameter(name='oiii_5007_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    siii_9069_sigma = Parameter(name='siii_9069_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    siii_9532_sigma = Parameter(name='siii_9532_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    nv_1240_sigma = Parameter(name='nv_1240_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    silii_1265_sigma = Parameter(name='silii_1265_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    silii_1309_sigma = Parameter(name='silii_1309_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    siliv_1394_sigma = Parameter(name='siliv_1395_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    siliv_1403_sigma = Parameter(name='siliv_1403_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    silii_1533_sigma = Parameter(name='silii_1533_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    civ_1549_sigma = Parameter(name='civ_1549_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    heii_1640_sigma = Parameter(name='heii_1640_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    oiii_1661_sigma = Parameter(name='oiii_1661_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    oiii_1666_sigma = Parameter(name='oiii_1666_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    siliii_1882_sigma = Parameter(name='siliii_1882_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    siliii_1892_sigma = Parameter(name='siliii_1892_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    ciii_1907_sigma = Parameter(name='ciii_1907_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    ciii_1908_sigma = Parameter(name='ciii_1908_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hei_3889_sigma = Parameter(name='hei_3889_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    oiii_4363_sigma = Parameter(name='oiii_4363_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hei_4471_sigma = Parameter(name='hei_4471_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    heii_4686_sigma = Parameter(name='heii_4686_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    oiii_4959_sigma = Parameter(name='oiii_4959_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    oiii_5007_sigma = Parameter(name='oiii_5007_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hei_5876_sigma = Parameter(name='hei_5876_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    oi_6300_sigma = Parameter(name='oi_6300_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    siii_9069_sigma = Parameter(name='siii_9069_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    siii_9532_sigma = Parameter(name='siii_9532_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
 
     # doublet ratios are always tied
     def _tie_nii_amp(model):
@@ -209,69 +287,129 @@ class EMLineModel(Fittable1DModel):
     oiii_4959_amp.tied = _tie_oiii_amp
     
     def __init__(self,
-                 mgii_2800_amp=mgii_2800_amp.default,
-                 #mgii_2800b_amp=mgii_2800b_amp.default,
+                 nv_1240_amp=nv_1240_amp.default,
+                 silii_1265_amp=silii_1265_amp.default,
+                 silii_1309_amp=silii_1309_amp.default,
+                 siliv_1394_amp=siliv_1394_amp.default,
+                 siliv_1403_amp=siliv_1403_amp.default,
+                 silii_1533_amp=silii_1533_amp.default,
+                 civ_1549_amp=civ_1549_amp.default,
+                 heii_1640_amp=heii_1640_amp.default,
+                 oiii_1661_amp=oiii_1661_amp.default,
+                 oiii_1666_amp=oiii_1666_amp.default,
+                 siliii_1882_amp=siliii_1882_amp.default,
+                 siliii_1892_amp=siliii_1892_amp.default,
+                 ciii_1907_amp=ciii_1907_amp.default,
+                 ciii_1908_amp=ciii_1908_amp.default,
+                 mgii_2796_amp=mgii_2796_amp.default,
+                 mgii_2803_amp=mgii_2803_amp.default,
                  nev_3346_amp=nev_3346_amp.default,
                  nev_3426_amp=nev_3426_amp.default,
-                 oii_3726_amp=oii_3726_amp.default, 
-                 oii_3729_amp=oii_3729_amp.default, 
+                 oii_3726_amp=oii_3726_amp.default,
+                 oii_3729_amp=oii_3729_amp.default,
                  neiii_3869_amp=neiii_3869_amp.default,
-                 oiii_4959_amp=oiii_4959_amp.default, 
-                 oiii_5007_amp=oiii_5007_amp.default, 
-                 hepsilon_amp=hepsilon_amp.default, 
-                 hdelta_amp=hdelta_amp.default, 
-                 hgamma_amp=hgamma_amp.default, 
-                 hbeta_amp=hbeta_amp.default, 
+                 hei_3889_amp=hei_3889_amp.default,
+                 hepsilon_amp=hepsilon_amp.default,
+                 hdelta_amp=hdelta_amp.default,
+                 hgamma_amp=hgamma_amp.default,
+                 oiii_4363_amp=oiii_4363_amp.default,
+                 hei_4471_amp=hei_4471_amp.default,
+                 heii_4686_amp=heii_4686_amp.default,
+                 hbeta_amp=hbeta_amp.default,
+                 oiii_4959_amp=oiii_4959_amp.default,
+                 oiii_5007_amp=oiii_5007_amp.default,
+                 hei_5876_amp=hei_5876_amp.default,
+                 oi_6300_amp=oi_6300_amp.default,
+                 nii_6548_amp=nii_6548_amp.default,
                  halpha_amp=halpha_amp.default,
-                 nii_6548_amp=nii_6548_amp.default, 
-                 nii_6584_amp=nii_6584_amp.default, 
-                 sii_6716_amp=sii_6716_amp.default, 
+                 nii_6584_amp=nii_6584_amp.default,
+                 sii_6716_amp=sii_6716_amp.default,
                  sii_6731_amp=sii_6731_amp.default,
                  siii_9069_amp=siii_9069_amp.default,
                  siii_9532_amp=siii_9532_amp.default,
-                 
-                 mgii_2800_vshift=mgii_2800_vshift.default,
-                 #mgii_2800b_vshift=mgii_2800b_vshift.default,
+                     
+                 nv_1240_vshift=nv_1240_vshift.default,
+                 silii_1265_vshift=silii_1265_vshift.default,
+                 silii_1309_vshift=silii_1309_vshift.default,
+                 siliv_1394_vshift=siliv_1394_vshift.default,
+                 siliv_1403_vshift=siliv_1403_vshift.default,
+                 silii_1533_vshift=silii_1533_vshift.default,
+                 civ_1549_vshift=civ_1549_vshift.default,
+                 heii_1640_vshift=heii_1640_vshift.default,
+                 oiii_1661_vshift=oiii_1661_vshift.default,
+                 oiii_1666_vshift=oiii_1666_vshift.default,
+                 siliii_1882_vshift=siliii_1882_vshift.default,
+                 siliii_1892_vshift=siliii_1892_vshift.default,
+                 ciii_1907_vshift=ciii_1907_vshift.default,
+                 ciii_1908_vshift=ciii_1908_vshift.default,
+                 mgii_2796_vshift=mgii_2796_vshift.default,
+                 mgii_2803_vshift=mgii_2803_vshift.default,
                  nev_3346_vshift=nev_3346_vshift.default,
                  nev_3426_vshift=nev_3426_vshift.default,
-                 oii_3726_vshift=oii_3726_vshift.default, 
-                 oii_3729_vshift=oii_3729_vshift.default, 
+                 oii_3726_vshift=oii_3726_vshift.default,
+                 oii_3729_vshift=oii_3729_vshift.default,
                  neiii_3869_vshift=neiii_3869_vshift.default,
-                 oiii_4959_vshift=oiii_4959_vshift.default, 
-                 oiii_5007_vshift=oiii_5007_vshift.default, 
-                 hepsilon_vshift=hepsilon_vshift.default, 
-                 hdelta_vshift=hdelta_vshift.default, 
-                 hgamma_vshift=hgamma_vshift.default, 
-                 hbeta_vshift=hbeta_vshift.default, 
+                 hei_3889_vshift=hei_3889_vshift.default,
+                 hepsilon_vshift=hepsilon_vshift.default,
+                 hdelta_vshift=hdelta_vshift.default,
+                 hgamma_vshift=hgamma_vshift.default,
+                 oiii_4363_vshift=oiii_4363_vshift.default,
+                 hei_4471_vshift=hei_4471_vshift.default,
+                 heii_4686_vshift=heii_4686_vshift.default,
+                 hbeta_vshift=hbeta_vshift.default,
+                 oiii_4959_vshift=oiii_4959_vshift.default,
+                 oiii_5007_vshift=oiii_5007_vshift.default,
+                 hei_5876_vshift=hei_5876_vshift.default,
+                 oi_6300_vshift=oi_6300_vshift.default,
+                 nii_6548_vshift=nii_6548_vshift.default,
                  halpha_vshift=halpha_vshift.default,
-                 nii_6548_vshift=nii_6548_vshift.default, 
-                 nii_6584_vshift=nii_6584_vshift.default, 
-                 sii_6716_vshift=sii_6716_vshift.default, 
+                 nii_6584_vshift=nii_6584_vshift.default,
+                 sii_6716_vshift=sii_6716_vshift.default,
                  sii_6731_vshift=sii_6731_vshift.default,
                  siii_9069_vshift=siii_9069_vshift.default,
                  siii_9532_vshift=siii_9532_vshift.default,
-                 
-                 mgii_2800_sigma=mgii_2800_sigma.default,
-                 #mgii_2800b_sigma=mgii_2800b_sigma.default,
+                     
+                 nv_1240_sigma=nv_1240_sigma.default,
+                 silii_1265_sigma=silii_1265_sigma.default,
+                 silii_1309_sigma=silii_1309_sigma.default,
+                 siliv_1394_sigma=siliv_1394_sigma.default,
+                 siliv_1403_sigma=siliv_1403_sigma.default,
+                 silii_1533_sigma=silii_1533_sigma.default,
+                 civ_1549_sigma=civ_1549_sigma.default,
+                 heii_1640_sigma=heii_1640_sigma.default,
+                 oiii_1661_sigma=oiii_1661_sigma.default,
+                 oiii_1666_sigma=oiii_1666_sigma.default,
+                 siliii_1882_sigma=siliii_1882_sigma.default,
+                 siliii_1892_sigma=siliii_1892_sigma.default,
+                 ciii_1907_sigma=ciii_1907_sigma.default,
+                 ciii_1908_sigma=ciii_1908_sigma.default,
+                 mgii_2796_sigma=mgii_2796_sigma.default,
+                 mgii_2803_sigma=mgii_2803_sigma.default,
                  nev_3346_sigma=nev_3346_sigma.default,
                  nev_3426_sigma=nev_3426_sigma.default,
-                 oii_3726_sigma=oii_3726_sigma.default, 
-                 oii_3729_sigma=oii_3729_sigma.default, 
+                 oii_3726_sigma=oii_3726_sigma.default,
+                 oii_3729_sigma=oii_3729_sigma.default,
                  neiii_3869_sigma=neiii_3869_sigma.default,
-                 oiii_4959_sigma=oiii_4959_sigma.default, 
-                 oiii_5007_sigma=oiii_5007_sigma.default, 
-                 hepsilon_sigma=hepsilon_sigma.default, 
-                 hdelta_sigma=hdelta_sigma.default, 
-                 hgamma_sigma=hgamma_sigma.default, 
-                 hbeta_sigma=hbeta_sigma.default, 
+                 hei_3889_sigma=hei_3889_sigma.default,
+                 hepsilon_sigma=hepsilon_sigma.default,
+                 hdelta_sigma=hdelta_sigma.default,
+                 hgamma_sigma=hgamma_sigma.default,
+                 oiii_4363_sigma=oiii_4363_sigma.default,
+                 hei_4471_sigma=hei_4471_sigma.default,
+                 heii_4686_sigma=heii_4686_sigma.default,
+                 hbeta_sigma=hbeta_sigma.default,
+                 oiii_4959_sigma=oiii_4959_sigma.default,
+                 oiii_5007_sigma=oiii_5007_sigma.default,
+                 hei_5876_sigma=hei_5876_sigma.default,
+                 oi_6300_sigma=oi_6300_sigma.default,
+                 nii_6548_sigma=nii_6548_sigma.default,
                  halpha_sigma=halpha_sigma.default,
-                 nii_6548_sigma=nii_6548_sigma.default, 
-                 nii_6584_sigma=nii_6584_sigma.default, 
-                 sii_6716_sigma=sii_6716_sigma.default, 
+                 nii_6584_sigma=nii_6584_sigma.default,
+                 sii_6716_sigma=sii_6716_sigma.default,
                  sii_6731_sigma=sii_6731_sigma.default,
                  siii_9069_sigma=siii_9069_sigma.default,
                  siii_9532_sigma=siii_9532_sigma.default,
-                 
+                     
                  redshift=None,
                  emlineR=None,
                  npixpercamera=None,
@@ -303,63 +441,123 @@ class EMLineModel(Fittable1DModel):
         self.log10wave = log10wave
             
         super(EMLineModel, self).__init__(
-            mgii_2800_amp=mgii_2800_amp,
-            #mgii_2800b_amp=mgii_2800b_amp,
+            nv_1240_amp=nv_1240_amp,
+            silii_1265_amp=silii_1265_amp,
+            silii_1309_amp=silii_1309_amp,
+            siliv_1394_amp=siliv_1394_amp,
+            siliv_1403_amp=siliv_1403_amp,
+            silii_1533_amp=silii_1533_amp,
+            civ_1549_amp=civ_1549_amp,
+            heii_1640_amp=heii_1640_amp,
+            oiii_1661_amp=oiii_1661_amp,
+            oiii_1666_amp=oiii_1666_amp,
+            siliii_1882_amp=siliii_1882_amp,
+            siliii_1892_amp=siliii_1892_amp,
+            ciii_1907_amp=ciii_1907_amp,
+            ciii_1908_amp=ciii_1908_amp,
+            mgii_2796_amp=mgii_2796_amp,
+            mgii_2803_amp=mgii_2803_amp,
             nev_3346_amp=nev_3346_amp,
             nev_3426_amp=nev_3426_amp,
             oii_3726_amp=oii_3726_amp,
             oii_3729_amp=oii_3729_amp,
             neiii_3869_amp=neiii_3869_amp,
-            oiii_4959_amp=oiii_4959_amp,
-            oiii_5007_amp=oiii_5007_amp,
+            hei_3889_amp=hei_3889_amp,
             hepsilon_amp=hepsilon_amp,
             hdelta_amp=hdelta_amp,
             hgamma_amp=hgamma_amp,
+            oiii_4363_amp=oiii_4363_amp,
+            hei_4471_amp=hei_4471_amp,
+            heii_4686_amp=heii_4686_amp,
             hbeta_amp=hbeta_amp,
-            halpha_amp=halpha_amp,
+            oiii_4959_amp=oiii_4959_amp,
+            oiii_5007_amp=oiii_5007_amp,
+            hei_5876_amp=hei_5876_amp,
+            oi_6300_amp=oi_6300_amp,
             nii_6548_amp=nii_6548_amp,
+            halpha_amp=halpha_amp,
             nii_6584_amp=nii_6584_amp,
             sii_6716_amp=sii_6716_amp,
             sii_6731_amp=sii_6731_amp,
             siii_9069_amp=siii_9069_amp,
             siii_9532_amp=siii_9532_amp,
-            
-            mgii_2800_vshift=mgii_2800_vshift,
-            #mgii_2800b_vshift=mgii_2800b_vshift,
+
+            nv_1240_vshift=nv_1240_vshift,
+            silii_1265_vshift=silii_1265_vshift,
+            silii_1309_vshift=silii_1309_vshift,
+            siliv_1394_vshift=siliv_1394_vshift,
+            siliv_1403_vshift=siliv_1403_vshift,
+            silii_1533_vshift=silii_1533_vshift,
+            civ_1549_vshift=civ_1549_vshift,
+            heii_1640_vshift=heii_1640_vshift,
+            oiii_1661_vshift=oiii_1661_vshift,
+            oiii_1666_vshift=oiii_1666_vshift,
+            siliii_1882_vshift=siliii_1882_vshift,
+            siliii_1892_vshift=siliii_1892_vshift,
+            ciii_1907_vshift=ciii_1907_vshift,
+            ciii_1908_vshift=ciii_1908_vshift,
+            mgii_2796_vshift=mgii_2796_vshift,
+            mgii_2803_vshift=mgii_2803_vshift,
             nev_3346_vshift=nev_3346_vshift,
             nev_3426_vshift=nev_3426_vshift,
             oii_3726_vshift=oii_3726_vshift,
             oii_3729_vshift=oii_3729_vshift,
             neiii_3869_vshift=neiii_3869_vshift,
-            oiii_4959_vshift=oiii_4959_vshift,
-            oiii_5007_vshift=oiii_5007_vshift,
+            hei_3889_vshift=hei_3889_vshift,
             hepsilon_vshift=hepsilon_vshift,
             hdelta_vshift=hdelta_vshift,
             hgamma_vshift=hgamma_vshift,
+            oiii_4363_vshift=oiii_4363_vshift,
+            hei_4471_vshift=hei_4471_vshift,
+            heii_4686_vshift=heii_4686_vshift,
             hbeta_vshift=hbeta_vshift,
-            halpha_vshift=halpha_vshift,
+            oiii_4959_vshift=oiii_4959_vshift,
+            oiii_5007_vshift=oiii_5007_vshift,
+            hei_5876_vshift=hei_5876_vshift,
+            oi_6300_vshift=oi_6300_vshift,
             nii_6548_vshift=nii_6548_vshift,
+            halpha_vshift=halpha_vshift,
             nii_6584_vshift=nii_6584_vshift,
             sii_6716_vshift=sii_6716_vshift,
             sii_6731_vshift=sii_6731_vshift,
             siii_9069_vshift=siii_9069_vshift,
             siii_9532_vshift=siii_9532_vshift,
-            
-            mgii_2800_sigma=mgii_2800_sigma,
-            #mgii_2800b_sigma=mgii_2800b_sigma,
+
+            nv_1240_sigma=nv_1240_sigma,
+            silii_1265_sigma=silii_1265_sigma,
+            silii_1309_sigma=silii_1309_sigma,
+            siliv_1394_sigma=siliv_1394_sigma,
+            siliv_1403_sigma=siliv_1403_sigma,
+            silii_1533_sigma=silii_1533_sigma,
+            civ_1549_sigma=civ_1549_sigma,
+            heii_1640_sigma=heii_1640_sigma,
+            oiii_1661_sigma=oiii_1661_sigma,
+            oiii_1666_sigma=oiii_1666_sigma,
+            siliii_1882_sigma=siliii_1882_sigma,
+            siliii_1892_sigma=siliii_1892_sigma,
+            ciii_1907_sigma=ciii_1907_sigma,
+            ciii_1908_sigma=ciii_1908_sigma,
+            mgii_2796_sigma=mgii_2796_sigma,
+            mgii_2803_sigma=mgii_2803_sigma,
             nev_3346_sigma=nev_3346_sigma,
             nev_3426_sigma=nev_3426_sigma,
             oii_3726_sigma=oii_3726_sigma,
             oii_3729_sigma=oii_3729_sigma,
             neiii_3869_sigma=neiii_3869_sigma,
-            oiii_4959_sigma=oiii_4959_sigma,
-            oiii_5007_sigma=oiii_5007_sigma,
+            hei_3889_sigma=hei_3889_sigma,
             hepsilon_sigma=hepsilon_sigma,
             hdelta_sigma=hdelta_sigma,
             hgamma_sigma=hgamma_sigma,
+            oiii_4363_sigma=oiii_4363_sigma,
+            hei_4471_sigma=hei_4471_sigma,
+            heii_4686_sigma=heii_4686_sigma,
             hbeta_sigma=hbeta_sigma,
-            halpha_sigma=halpha_sigma,
+            oiii_4959_sigma=oiii_4959_sigma,
+            oiii_5007_sigma=oiii_5007_sigma,
+            hei_5876_sigma=hei_5876_sigma,
+            oi_6300_sigma=oi_6300_sigma,
             nii_6548_sigma=nii_6548_sigma,
+            halpha_sigma=halpha_sigma,
             nii_6584_sigma=nii_6584_sigma,
             sii_6716_sigma=sii_6716_sigma,
             sii_6731_sigma=sii_6731_sigma,
@@ -499,15 +697,6 @@ class EMLineFit(ContinuumTools):
         out.add_column(Column(name='BROAD_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
         #out.add_column(Column(name='BROAD_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
 
-        #out.add_column(Column(name='BALMER_VSHIFT', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-        #out.add_column(Column(name='BALMER_VSHIFT_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        #out.add_column(Column(name='BALMER_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='BALMER_SIGMA_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        #out.add_column(Column(name='FORBIDDEN_VSHIFT', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-        #out.add_column(Column(name='FORBIDDEN_VSHIFT_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        #out.add_column(Column(name='FORBIDDEN_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='FORBIDDEN_SIGMA_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-
         for line in linetable['name']:
             line = line.upper()
             out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
@@ -525,12 +714,8 @@ class EMLineFit(ContinuumTools):
             
             out.add_column(Column(name='{}_VSHIFT'.format(line), length=nobj, dtype='f4',
                                   unit=u.kilometer/u.second))
-            #out.add_column(Column(name='{}_VSHIFT_IVAR'.format(line), length=nobj, dtype='f4',
-            #                      unit=u.second**2 / u.kilometer**2))
             out.add_column(Column(name='{}_SIGMA'.format(line), length=nobj, dtype='f4',
                                   unit=u.kilometer / u.second))
-            #out.add_column(Column(name='{}_SIGMA_IVAR'.format(line), length=nobj, dtype='f4',
-            #                      unit=u.second**2 / u.kilometer**2))
             
             out.add_column(Column(name='{}_CONT'.format(line), length=nobj, dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
@@ -664,7 +849,7 @@ class EMLineFit(ContinuumTools):
                         lineamp = np.abs(lineflux / linenorm)
 
                         # estimate the velocity width from potentially strong, isolated lines; fragile!
-                        if lineflux > 0 and linename in ['mgii_2800', 'oiii_5007', 'hbeta', 'halpha']:
+                        if lineflux > 0 and linename in ['mgii_2803', 'oiii_5007', 'hbeta', 'halpha']:
                             linevar = np.sum(emlineflux[lineindx] * (emlinewave[lineindx] - linezwave)**2) / np.sum(emlineflux[lineindx]) / linezwave * C_LIGHT # [km/s]
                             if linevar > 0:
                                 linesigma = np.sqrt(linevar)
@@ -732,8 +917,7 @@ class EMLineFit(ContinuumTools):
             vshift = getattr(bestfit, '{}_vshift'.format(linename))
 
             # drop the line if:
-            #  sigma = 0
-            #  amp = default or amp = max bound (not optimized!)
+            #  sigma = 0, amp = default, or amp = max bound (not optimized!)
             if ((sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1]) or (amp.value == amp.default) or
                 (amp.value >= amp.bounds[1]) or (amp.value <= amp.bounds[0])):
                 setattr(bestfit, '{}_amp'.format(linename), 0.0)
@@ -846,7 +1030,7 @@ class EMLineFit(ContinuumTools):
 
         # get continuum fluxes, EWs, and upper limits
 
-        verbose = False
+        verbose = True
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
@@ -1096,10 +1280,10 @@ class EMLineFit(ContinuumTools):
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
         # QA choices
-        inches_wide = 16
+        inches_wide = 20
         inches_fullspec = 6
         inches_perline = inches_fullspec / 2.0
-        nlinepanels = 4
+        nlinepanels = 5
 
         nline = len(set(self.linetable['plotgroup']))
         nlinerows = np.ceil(nline / nlinepanels).astype(int)
