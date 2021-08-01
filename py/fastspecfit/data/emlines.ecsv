@@ -12,37 +12,56 @@
 # - {description: 'Emission lines to be fit by fastspec.
 #     Wavelengths are in the vacuum rest-frame in Angstroms.
 #
-# Lines to consider adding in the future:
-# mgii_2800a   2796.352     1.0    False  MgII                01
-# mgii_2800b   2803.530     1.0    False  MgII                01
-#  ariii_7135 7137.7550    0.3    False  [AIII]              12
-#  ariii_7751 7753.2378    0.3    False  [AIII]              12
+#     Most wavelengths computed using https://github.com/Morisset/PyNeb_devel
+#     supplemented at times with data from:
+#       https://db.chiantidatabase.org/
+#       https://github.com/cconroy20/fsps/blob/master/data/emlines_info.dat
 #
-#       J. Moustakas, Siena College, 2020 Nov 11
-#       jm21mar19 - more lines added'}
+#     Lines not includes:
+#       MgII (one line) mgii_2800   2799.941
+#       siii_9069   9071.1034
+#       siii_9532   9533.2274
+#
+#     J. Moustakas, Siena College, 2020 Nov 11
+#     jm21mar19 - more lines added
+#     jm21aug01 - [OI], HeI, HeII and more added}
 #
 name restwave amp isbalmer isbroad nicename plotgroup
- mgii_2800   2799.941     3.0   False  True   MgII                01
-  nev_3346   3346.7828    0.1   False  False  [NeV]               02
-  nev_3426   3426.8637    0.1   False  False  [NeV]               02
-  oii_3726   3727.092    0.73   False  False  [OII]               03
-  oii_3729   3729.874     1.0   False  False  [OII]               03
-neiii_3869   3869.8611    0.1   False  False  [NeIII]             04
- oiii_4959   4960.295     1.0   False  False  [OIII]              05
- oiii_5007   5008.239   2.875   False  False  [OIII]              05
-  hepsilon   3971.195   0.159   True   False  H$\epsilon$         06
-    hdelta   4102.892   0.259   True   False  H$\delta$           07
-    hgamma   4341.684   0.468   True   False  H$\gamma$           08
-     hbeta   4862.683     1.0   True   False  H$\beta$            09
-    halpha   6564.613   2.863   True   False  H$\alpha$+[NII]     10
-  nii_6548   6549.852     1.0   False  False  H$\alpha$+[NII]     10
-  nii_6584   6585.277   2.936   False  False  H$\alpha$+[NII]     10
-  sii_6716   6718.294     1.0   False  False  [SII]               11
-  sii_6731   6732.673     1.0   False  False  [SII]               11
- siii_9069   9071.1034    0.3   False  False  [SIII]              12
- siii_9532   9533.2274    0.3   False  False  [SIII]              12
-
-
-
-
-
+    nv_1240   1240.81      1.0   False  True   NV                  01
+ silii_1265   1264.738     1.0   False  True   SiII$^{*}$          01
+ silii_1309   1309.276     1.0   False  True   SiII$^{*}$          02
+ siliv_1394   1393.75      1.0   False  True   SiIV                02
+ siliv_1403   1402.77      1.0   False  True   SiIV                02
+ silii_1533   1533.431     1.0   False  True   SiII$^{*}$          03
+   civ_1549   1549.48      1.0   True   True   CIV                 03
+  heii_1640   1640.42      0.1   True   False  HeII                04
+  oiii_1661   1660.809     1.0   False  True   OIII]               04
+  oiii_1666   1666.150     1.0   False  True   OIII]]              04
+siliii_1882   1882.468     1.0   False  True   SiIII]              05
+siliii_1892   1892.030     1.0   False  True   SiIII]              05
+  ciii_1907   1907.640     1.0   False  True   CIII]               05
+  ciii_1908   1908.734     1.0   False  True   CIII]               05
+  mgii_2796   2796.352     1.0   False  True   MgII                06
+  mgii_2803   2803.53      1.0   False  True   MgII                06
+   nev_3346   3346.7828    0.1   False  False  [NeV]               07
+   nev_3426   3426.8637    0.1   False  False  [NeV]               07
+   oii_3726   3727.092    0.73   False  False  [OII]               08
+   oii_3729   3729.874     1.0   False  False  [OII]               08
+ neiii_3869   3869.8611    0.1   False  False  [NeIII]             09
+   hei_3889   3889.751     0.1   True   False  HeI                 09
+   hepsilon   3971.195   0.159   True   False  H$\epsilon$         09
+     hdelta   4102.892   0.259   True   False  H$\delta$           09
+     hgamma   4341.684   0.468   True   False  H$\gamma$           10
+  oiii_4363   4364.4351   0.10   False  False  [OIII]              10
+   hei_4471   4472.7290	   0.1   True   False  HeI                 10
+  heii_4686   4686.8655    0.1   True   False  HeII                11
+      hbeta   4862.683     1.0   True   False  H$\beta$            11
+  oiii_4959   4960.295     1.0   False  False  [OIII]              12
+  oiii_5007   5008.239   2.875   False  False  [OIII]              12
+   hei_5876   5877.2690	   0.1   True   False  HeI                 13
+    oi_6300   6302.0435    0.1   False  False  [OI]                14
+   nii_6548   6549.852     1.0   False  False  H$\alpha$+[NII]     15
+     halpha   6564.613   2.863   True   False  H$\alpha$+[NII]     15
+   nii_6584   6585.277   2.936   False  False  H$\alpha$+[NII]     15
+   sii_6716   6718.294     1.0   False  False  [SII]               16
+   sii_6731   6732.673     1.0   False  False  [SII]               16
