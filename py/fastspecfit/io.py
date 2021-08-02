@@ -447,7 +447,7 @@ class DESISpectra(object):
         # Read everything into a simple dictionary.
         t0 = time.time()
         alldata = []
-        for specfile, redrock, meta in zip(self.specfiles, self.redrock, self.meta):
+        for ispec, (specfile, redrock, meta) in enumerate(zip(self.specfiles, self.redrock, self.meta)):
             log.info('Reading {} spectra from {}'.format(len(redrock), specfile))
 
             # sometimes these are an astropy.table.Row!
@@ -460,7 +460,13 @@ class DESISpectra(object):
                 spec = read_spectra(specfile).select(targets=redrock['TARGETID'])
                 assert(np.all(spec.fibermap['TARGETID'] == redrock['TARGETID']))
                 assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
-            
+
+                # Coadd across cameras.
+                t1 = time.time()                
+                coadd_spec = coadd_cameras(spec)
+                coadd_bands = coadd_spec.bands[0]
+                log.info('Coadded the cameras in {:.2f} sec'.format(time.time()-t1))
+                
             for igal in np.arange(len(redrock)):
                 ra, dec = meta['RA'][igal], meta['DEC'][igal]
                 ebv = CFit.SFDMap.ebv(ra, dec)
@@ -488,7 +494,8 @@ class DESISpectra(object):
                 #mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
                 mw_transmission_flux = np.array([mwdust_transmission(ebv, band, data['photsys'], match_legacy_surveys=False) for band in CFit.bands])
                 for band, mwdust in zip(CFit.bands, mw_transmission_flux):
-                    self.meta[igal]['MW_TRANSMISSION_{}'.format(band.upper())] = mwdust
+                    #print(band, mwdust)
+                    self.meta[ispec]['MW_TRANSMISSION_{}'.format(band.upper())][igal] = mwdust
                 
                 maggies = np.zeros(len(CFit.bands))
                 ivarmaggies = np.zeros(len(CFit.bands))
@@ -544,34 +551,27 @@ class DESISpectra(object):
                         #data['std'][icam] = np.std(spec.flux[camera][igal, :][linemask])
 
                     # Coadd across cameras.
-                    t1 = time.time()
-                    if False:
-                        coadd_wave = np.unique(np.hstack(data['wave']))
-                        coadd_flux3d = np.zeros((len(coadd_wave), 3))
-                        coadd_ivar3d = np.zeros_like(coadd_flux3d)
-                        coadd_linemask3d = np.ones((len(coadd_wave), 3), bool)
-                        for icam in np.arange(len(data['cameras'])):
-                            I = np.where(np.isin(data['wave'][icam], coadd_wave))[0]
-                            J = np.where(np.isin(coadd_wave, data['wave'][icam]))[0]
-                            coadd_flux3d[J, icam] = data['flux'][icam][I]
-                            coadd_ivar3d[J, icam] = data['ivar'][icam][I]
-                            coadd_linemask3d[J, icam] = data['linemask'][icam][I]
-
-                        coadd_ivar = np.sum(coadd_ivar3d, axis=1)
-                        coadd_flux = np.zeros_like(coadd_ivar)
-                        good = np.where(coadd_ivar > 0)[0]
-                        coadd_flux[good] = np.sum(coadd_ivar3d[good, :] * coadd_flux3d[good, :], axis=1) / coadd_ivar[good]
-                        coadd_linemask = np.all(coadd_linemask3d, axis=1)
-                    else:
-                        coadd_spec = coadd_cameras(spec)
-                        coadd_bands = coadd_spec.bands[0]
-                        coadd_wave = coadd_spec.wave[coadd_bands]
-                        coadd_flux = coadd_spec.flux[coadd_bands]
-                        coadd_ivar = coadd_spec.ivar[coadd_bands]
-                        coadd_res = Resolution(coadd_spec.resolution_data[coadd_bands].squeeze())
-                        del coadd_spec
-                        coadd_linemask = CFit.build_linemask(coadd_wave, redshift=data['zredrock'])
-                    log.info('Coadded the cameras in {:.2f} sec'.format(time.time()-t1))
+                    #coadd_wave = np.unique(np.hstack(data['wave']))
+                    #coadd_flux3d = np.zeros((len(coadd_wave), 3))
+                    #coadd_ivar3d = np.zeros_like(coadd_flux3d)
+                    #coadd_linemask3d = np.ones((len(coadd_wave), 3), bool)
+                    #for icam in np.arange(len(data['cameras'])):
+                    #    I = np.where(np.isin(data['wave'][icam], coadd_wave))[0]
+                    #    J = np.where(np.isin(coadd_wave, data['wave'][icam]))[0]
+                    #    coadd_flux3d[J, icam] = data['flux'][icam][I]
+                    #    coadd_ivar3d[J, icam] = data['ivar'][icam][I]
+                    #    coadd_linemask3d[J, icam] = data['linemask'][icam][I]
+                    #
+                    #coadd_ivar = np.sum(coadd_ivar3d, axis=1)
+                    #coadd_flux = np.zeros_like(coadd_ivar)
+                    #good = np.where(coadd_ivar > 0)[0]
+                    #coadd_flux[good] = np.sum(coadd_ivar3d[good, :] * coadd_flux3d[good, :], axis=1) / coadd_ivar[good]
+                    #coadd_linemask = np.all(coadd_linemask3d, axis=1)
+                    coadd_wave = coadd_spec.wave[coadd_bands]
+                    coadd_flux = coadd_spec.flux[coadd_bands][igal, :]
+                    coadd_ivar = coadd_spec.ivar[coadd_bands][igal, :]
+                    coadd_res = Resolution(coadd_spec.resolution_data[coadd_bands][igal, :])
+                    coadd_linemask = CFit.build_linemask(coadd_wave, redshift=data['zredrock'])
 
                     #import matplotlib.pyplot as plt
                     #plt.clf()
