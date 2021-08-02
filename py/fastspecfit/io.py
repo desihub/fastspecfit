@@ -305,8 +305,6 @@ class DESISpectra(object):
         t0 = time.time()
 
         targetcols = ['TARGETID', 'RA', 'DEC']
-        #targetcols = targetcols + ['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
-        #                           'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
         #if not 'FLUX_IVAR_W1' in fmcols:
         #    targetcols = targetcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
         targetcols = targetcols + [
@@ -316,6 +314,9 @@ class DESISpectra(object):
             'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
             'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
             'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
+        targetcols = targetcols + [
+            'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+            'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
 
         alltileid = np.hstack(self.tiles)
         #alltileid = [meta['TILEID'][0] for meta in self.meta]
@@ -477,11 +478,17 @@ class DESISpectra(object):
                 # Unpack the imaging photometry and correct for MW dust.
                 #if fastphot:
                 
-                # all photometry
+                # all photometry; do not match the Legacy Surveys here because
+                # we want the MW dust extinction correction we apply to the
+                # spectra to be self-consistent with how we correct the
+                # photometry for dust.
+                
                 #meta['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
                 #mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
-                mw_transmission_flux = np.array([mwdust_transmission(ebv, band, data['photsys']) for band in CFit.bands])
-
+                mw_transmission_flux = np.array([mwdust_transmission(ebv, band, data['photsys'], match_legacy_surveys=False) for band in CFit.bands])
+                for band, mwdust in zip(CFit.bands, mw_transmission_flux):
+                    self.meta[igal]['MW_TRANSMISSION_{}'.format(band.upper())] = mwdust
+                
                 maggies = np.zeros(len(CFit.bands))
                 ivarmaggies = np.zeros(len(CFit.bands))
                 for iband, band in enumerate(CFit.bands):
