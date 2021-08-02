@@ -438,7 +438,7 @@ class DESISpectra(object):
 
         """
         from desispec.resolution import Resolution
-        from desiutil.dust import ext_odonnell
+        from desiutil.dust import mwdust_transmission, dust_transmission#, ext_odonnell
         from desispec.io import read_spectra # read_tile_spectra # 
         from fastspecfit.util import C_LIGHT
 
@@ -479,7 +479,8 @@ class DESISpectra(object):
                 
                 # all photometry
                 #meta['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
-                mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
+                #mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
+                mw_transmission_flux = np.array([mwdust_transmission(ebv, band, data['photsys']) for band in CFit.bands])
 
                 maggies = np.zeros(len(CFit.bands))
                 ivarmaggies = np.zeros(len(CFit.bands))
@@ -496,7 +497,8 @@ class DESISpectra(object):
                     lambda_eff=allfilters.effective_wavelengths.value)
 
                 # fiber fluxes
-                mw_transmission_fiberflux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
+                #mw_transmission_fiberflux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
+                mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, band, data['photsys']) for band in CFit.fiber_bands])
 
                 fibermaggies = np.zeros(len(CFit.fiber_bands))
                 fibertotmaggies = np.zeros(len(CFit.fiber_bands))
@@ -520,7 +522,8 @@ class DESISpectra(object):
                                  #'std': np.zeros(3).astype('f4'), # emission-line free standard deviation, per-camera
                                  'cameras': spec.bands})
                     for icam, camera in enumerate(data['cameras']):
-                        mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))       
+                        #mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))
+                        mw_transmission_spec = dust_transmission(spec.wave[camera], ebv, Rv=CFit.RV)
                         data['wave'].append(spec.wave[camera])
                         data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
                         data['ivar'].append(spec.ivar[camera][igal, :] * mw_transmission_spec**2)
