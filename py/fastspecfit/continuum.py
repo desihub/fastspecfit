@@ -1265,9 +1265,13 @@ class ContinuumFit(ContinuumTools):
 
         # Do a quick median-smoothing of the stellar continuum-subtracted
         # residuals, to help with the emission-line fitting.
-        _smooth_continuum = self.smooth_residuals(
-            bestfit, specwave, specflux, np.hstack(data['ivar']),
-            np.hstack(data['linemask']))
+        if True:
+            log.warning('Skipping smoothing residuals!')
+            _smooth_continuum = np.zeros_like(bestfit)
+        else:
+            _smooth_continuum = self.smooth_residuals(
+                bestfit, specwave, specflux, np.hstack(data['ivar']),
+                np.hstack(data['linemask']))
         #smooth_continuum = self.smooth_residuals(
         #    bestfit, data['coadd_wave'], data['coadd_flux'],
         #    data['coadd_ivar'], data['coadd_linemask'],

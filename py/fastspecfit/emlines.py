@@ -885,18 +885,19 @@ class EMLineFit(ContinuumTools):
         # separately, and refit.
         self.EMLineModel = bestfit_init
         #self.EMLineModel = _tie_all_lines(self.EMLineModel) # this will reset our updates, above, so don't do it!
+        
         self.EMLineModel = _tie_balmer_lines(self.EMLineModel)
         self.EMLineModel = _tie_forbidden_lines(self.EMLineModel)
         self.EMLineModel = _tie_broad_lines(self.EMLineModel)
 
-        # In the initial fit the lines can wander, especially Mg II on the
-        # edges, so reset the line-amplitudes.
+        # In the initial fit the lines can wander, especially on the edges, so
+        # reset the line-amplitudes.
         for pp in self.EMLineModel.param_names:
-            if 'amp' in pp:
-                amp = getattr(self.EMLineModel, pp)
-                if (amp.value <= amp.bounds[0]) or (amp.value >= amp.bounds[1]):
-                    #print(pp, amp.value, amp.bounds[1])
-                    setattr(self.EMLineModel, pp, amp.default)
+            #if 'amp' in pp:
+            param = getattr(self.EMLineModel, pp)
+            if (param.value <= param.bounds[0]) or (param.value >= param.bounds[1]):
+                #print(pp, param.value, param.bounds[1])
+                setattr(self.EMLineModel, pp, param.default)
 
         t0 = time.time()        
         bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
@@ -923,6 +924,12 @@ class EMLineFit(ContinuumTools):
                 setattr(bestfit, '{}_amp'.format(linename), 0.0)
                 setattr(bestfit, '{}_sigma'.format(linename), sigma.default)
                 setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
+
+        # special case the tied doublets
+        if bestfit.nii_6584_amp == 0.0 and bestfit.nii_6548_amp != 0.0:
+            bestfit.nii_6548_amp = 0.0
+        if bestfit.oiii_5007_amp == 0.0 and bestfit.oiii_4959_amp != 0.0:
+            bestfit.oiii_4959_amp = 0.0
 
         # Now fill the output table.
         for pp in bestfit.param_names:
