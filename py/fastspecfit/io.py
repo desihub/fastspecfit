@@ -439,8 +439,9 @@ class DESISpectra(object):
 
         """
         from desispec.resolution import Resolution
-        from desiutil.dust import mwdust_transmission, dust_transmission#, ext_odonnell
+        from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra # read_tile_spectra # 
+        from desiutil.dust import mwdust_transmission, dust_transmission#, ext_odonnell
         from fastspecfit.util import C_LIGHT
 
         # Read everything into a simple dictionary.
@@ -537,40 +538,40 @@ class DESISpectra(object):
                         data['res'].append(Resolution(spec.resolution_data[camera][igal, :, :]))
                         data['snr'][icam] = np.median(spec.flux[camera][igal, :] * np.sqrt(spec.ivar[camera][igal, :]))
 
-                        linemask = np.ones_like(spec.wave[camera], bool)
-                        for line in CFit.linetable:
-                            zwave = line['restwave'] * (1 + data['zredrock'])
-                            if line['isbroad']:
-                                sigma = CFit.linemask_sigma_broad
-                            else:
-                                sigma = CFit.linemask_sigma
-                            I = np.where((spec.wave[camera] >= (zwave - 1.5*sigma * zwave / C_LIGHT)) *
-                                         (spec.wave[camera] <= (zwave + 1.5*sigma * zwave / C_LIGHT)))[0]
-                            if len(I) > 0:
-                                linemask[I] = False  # False = affected by line
-
-                        #data['std'][icam] = np.std(spec.flux[camera][igal, :][linemask])
+                        linemask = CFit.build_linemask(spec.wave[camera], redshift=data['zredrock'])
                         data['linemask'].append(linemask)
 
-                    # Synthesize photometry from a quick coadded (inverse-variance
-                    # weighted) spectrum, being careful to resolve between the north and
-                    # south.
-                    coadd_wave = np.unique(np.hstack(data['wave']))
-                    coadd_flux3d = np.zeros((len(coadd_wave), 3))
-                    coadd_ivar3d = np.zeros_like(coadd_flux3d)
-                    coadd_linemask3d = np.ones((len(coadd_wave), 3), bool)
-                    for icam in np.arange(len(data['cameras'])):
-                        I = np.where(np.isin(data['wave'][icam], coadd_wave))[0]
-                        J = np.where(np.isin(coadd_wave, data['wave'][icam]))[0]
-                        coadd_flux3d[J, icam] = data['flux'][icam][I]
-                        coadd_ivar3d[J, icam] = data['ivar'][icam][I]
-                        coadd_linemask3d[J, icam] = data['linemask'][icam][I]
+                        #data['std'][icam] = np.std(spec.flux[camera][igal, :][linemask])
 
-                    coadd_ivar = np.sum(coadd_ivar3d, axis=1)
-                    coadd_flux = np.zeros_like(coadd_ivar)
-                    good = np.where(coadd_ivar > 0)[0]
-                    coadd_flux[good] = np.sum(coadd_ivar3d[good, :] * coadd_flux3d[good, :], axis=1) / coadd_ivar[good]
-                    coadd_linemask = np.all(coadd_linemask3d, axis=1)
+                    # Coadd across cameras.
+                    t1 = time.time()
+                    if False:
+                        coadd_wave = np.unique(np.hstack(data['wave']))
+                        coadd_flux3d = np.zeros((len(coadd_wave), 3))
+                        coadd_ivar3d = np.zeros_like(coadd_flux3d)
+                        coadd_linemask3d = np.ones((len(coadd_wave), 3), bool)
+                        for icam in np.arange(len(data['cameras'])):
+                            I = np.where(np.isin(data['wave'][icam], coadd_wave))[0]
+                            J = np.where(np.isin(coadd_wave, data['wave'][icam]))[0]
+                            coadd_flux3d[J, icam] = data['flux'][icam][I]
+                            coadd_ivar3d[J, icam] = data['ivar'][icam][I]
+                            coadd_linemask3d[J, icam] = data['linemask'][icam][I]
+
+                        coadd_ivar = np.sum(coadd_ivar3d, axis=1)
+                        coadd_flux = np.zeros_like(coadd_ivar)
+                        good = np.where(coadd_ivar > 0)[0]
+                        coadd_flux[good] = np.sum(coadd_ivar3d[good, :] * coadd_flux3d[good, :], axis=1) / coadd_ivar[good]
+                        coadd_linemask = np.all(coadd_linemask3d, axis=1)
+                    else:
+                        coadd_spec = coadd_cameras(spec)
+                        coadd_bands = coadd_spec.bands[0]
+                        coadd_wave = coadd_spec.wave[coadd_bands]
+                        coadd_flux = coadd_spec.flux[coadd_bands]
+                        coadd_ivar = coadd_spec.ivar[coadd_bands]
+                        coadd_res = Resolution(coadd_spec.resolution_data[coadd_bands].squeeze())
+                        del coadd_spec
+                        coadd_linemask = CFit.build_linemask(coadd_wave, redshift=data['zredrock'])
+                    log.info('Coadded the cameras in {:.2f} sec'.format(time.time()-t1))
 
                     #import matplotlib.pyplot as plt
                     #plt.clf()
@@ -583,8 +584,10 @@ class DESISpectra(object):
 
                     if remember_coadd:
                         data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux,
-                                     'coadd_ivar': coadd_ivar, 'coadd_linemask': coadd_linemask})
+                                     'coadd_ivar': coadd_ivar, 'coadd_res': coadd_res,
+                                     'coadd_linemask': coadd_linemask})
 
+                    # Optionally synthesize photometry from the coadded spectrum.
                     if synthphot:
                         padflux, padwave = filters.pad_spectrum(coadd_flux, coadd_wave, method='edge')
                         synthmaggies = filters.get_ab_maggies(padflux / CFit.fluxnorm, padwave)
@@ -595,7 +598,7 @@ class DESISpectra(object):
                         #padvar, padwave = filters.pad_spectrum(var[mask], data['coadd_wave'][mask], method='edge')
                         #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
                         #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
-                        #
+
                         #data['synthphot'] = CFit.parse_photometry(CFit.bands,
                         #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
                         #    ivarmaggies=synthivarmaggies, nanomaggies=False)

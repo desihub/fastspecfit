@@ -159,13 +159,16 @@ class ContinuumTools(object):
             nage = len(sspinfo)
 
         self.sspwave = sspwave
-        self.sspflux = sspflux                     # no dust, no velocity broadening [npix,nage]
+        self.sspflux = sspflux # no dust, no velocity broadening [npix,nage]
         self.sspinfo = sspinfo
         self.nage = nage
         self.npix = npix
 
         # emission lines
         self.linetable = read_emlines()
+
+        self.linemask_sigma = 200.0 # [km/s]
+        self.linemask_sigma_broad = 1000.0 # [km/s]
 
         # photometry
         self.bands = ['g', 'r', 'z', 'W1', 'W2']
@@ -415,6 +418,27 @@ class ContinuumTools(object):
 
         """
         return 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
+
+    def build_linemask(self, wave, redshift=0.0):
+        """Generate a mask which identifies pixels potentially affected by emission
+        lines.
+
+        wave - observed-frame wavelength array
+
+        """
+        linemask = np.ones_like(wave, bool)
+        for line in self.linetable:
+            zlinewave = line['restwave'] * (1 + redshift)
+            if line['isbroad']:
+                sigma = self.linemask_sigma_broad
+            else:
+                sigma = self.linemask_sigma
+            I = ((wave >= (zlinewave - 1.5*sigma * zlinewave / C_LIGHT)) *
+                 (wave <= (zlinewave + 1.5*sigma * zlinewave / C_LIGHT)))
+            if np.count_nonzero(I) > 0:
+                linemask[I] = False  # False = affected by line
+
+        return linemask
 
     def smooth_and_resample(self, sspflux, sspwave, specwave=None, specres=None):
         """Given a single template, apply the resolution matrix and resample in
@@ -750,10 +774,6 @@ class ContinuumFit(ContinuumTools):
 
         # nominal velocity broadening on a grid of A(V) [npix,nage,nAV]
         self.sspflux_dustvdisp = np.stack(sspflux_dustvdisp, axis=-1) # [npix,nage,nAV]
-
-        # table of emission lines to fit
-        self.linemask_sigma = 200.0 # [km/s]
-        self.linemask_sigma_broad = 1000.0 # [km/s]
 
         # Do a throw-away trapezoidal resampling so we can compile the numba
         # code when instantiating this class.
