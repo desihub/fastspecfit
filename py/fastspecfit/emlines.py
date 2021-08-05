@@ -133,6 +133,17 @@ def _tie_all_lines(model):
             
     return model
 
+def _fix_on_redshift(model, linetable, obswave, redshift=0.0):
+    """Do not fit lines that are outside the observed wavelength range."""
+    nline = len(linetable)
+    minwave, maxwave = np.min(obswave), np.max(obswave)
+    for iline in np.arange(nline):
+        linezwave = linetable['restwave'][iline] * (1 + redshift)
+        if linezwave < minwave or linezwave > maxwave:
+            setattr(model, '{}_amp'.format(linetable['name'][iline]), 0.0)
+            getattr(model, '{}_amp'.format(linetable['name'][iline])).fixed = True
+    return model
+
 class EMLineModel(Fittable1DModel):
     """Class to model the emission-line spectra.
 
@@ -566,6 +577,13 @@ class EMLineModel(Fittable1DModel):
             
             **kwargs)
 
+        #delattr(self.__class__, 'sii_6716_amp')
+        #delattr(self.__class__, 'sii_6716_sigma')
+        #delattr(self.__class__, 'sii_6716_vshift')
+        #delattr(self.__class__, 'sii_6731_amp')
+        #delattr(self.__class__, 'sii_6731_sigma')
+        #delattr(self.__class__, 'sii_6731_vshift')
+        
     def _emline_spectrum(self, *lineargs):
         """Simple wrapper to build an emission-line spectrum.
 
@@ -806,6 +824,7 @@ class EMLineFit(ContinuumTools):
                                        emlineR=data['res'],
                                        npixpercamera=npixpercamera,
                                        log10wave=self.log10wave)
+
         nparam = len(self.EMLineModel.parameters)
         #params = np.repeat(self.EMLineModel.parameters, self.nball).reshape(nparam, self.nball)
 
@@ -867,40 +886,42 @@ class EMLineFit(ContinuumTools):
                         if 'sigma' in pp:
                             setattr(self.EMLineModel, pp, init_linesigma)
 
-        # Fit [1]: tie all lines together
-        self.EMLineModel = _tie_all_lines(self.EMLineModel)
         weights = np.sqrt(emlineivar)
         emlinebad = np.logical_not(emlinegood)
         if np.count_nonzero(emlinebad) > 0:
             weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
 
-        t0 = time.time()
-        bestfit_init = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
-        #bestfit_init = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
-        #                           weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
-        log.info('Initial line-fitting took {:.2f} sec'.format(time.time()-t0))
-        #print(bestfit_init.parameters)
+        # Fit [1]: tie all lines together
+        if False:        
+            self.EMLineModel = _tie_all_lines(self.EMLineModel)
+            t0 = time.time()
+            bestfit_init = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
+            #bestfit_init = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
+            #                           weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
+            log.info('Initial line-fitting took {:.2f} sec'.format(time.time()-t0))
+            #print(bestfit_init.parameters)
 
-        # Fit [2]: tie Balmer, narrow forbidden, and QSO/broad lines together,
-        # separately, and refit.
-        self.EMLineModel = bestfit_init
-        #self.EMLineModel = _tie_all_lines(self.EMLineModel) # this will reset our updates, above, so don't do it!
+            # Fit [2]: tie Balmer, narrow forbidden, and QSO/broad lines together,
+            # separately, and refit.
+            self.EMLineModel = bestfit_init
+            #self.EMLineModel = _tie_all_lines(self.EMLineModel) # this will reset our updates, above, so don't do it!
         
+            # In the initial fit the lines can wander, especially on the edges, so
+            # reset the line-amplitudes.
+            for pp in self.EMLineModel.param_names:
+                #if 'amp' in pp:
+                param = getattr(self.EMLineModel, pp)
+                if (param.value <= param.bounds[0]) or (param.value >= param.bounds[1]):
+                    #print(pp, param.value, param.bounds[1])
+                    setattr(self.EMLineModel, pp, param.default)
+
         self.EMLineModel = _tie_balmer_lines(self.EMLineModel)
         self.EMLineModel = _tie_forbidden_lines(self.EMLineModel)
         self.EMLineModel = _tie_broad_lines(self.EMLineModel)
-
-        # In the initial fit the lines can wander, especially on the edges, so
-        # reset the line-amplitudes.
-        for pp in self.EMLineModel.param_names:
-            #if 'amp' in pp:
-            param = getattr(self.EMLineModel, pp)
-            if (param.value <= param.bounds[0]) or (param.value >= param.bounds[1]):
-                #print(pp, param.value, param.bounds[1])
-                setattr(self.EMLineModel, pp, param.default)
+        #self.EMLineModel = _fix_on_redshift(self.EMLineModel, self.linetable, emlinewave, redshift=redshift)
 
         t0 = time.time()        
-        bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
+        bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights)#, maxiter=1000)
         #bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
         #                      weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
         log.info('Final line-fitting took {:.2f} sec'.format(time.time()-t0))
@@ -913,6 +934,9 @@ class EMLineFit(ContinuumTools):
         # amplitude is still at its default (or its upper bound!), it means the
         # line wasn't fit or the fit failed (right??), so set it to zero.
         for linename in self.linetable['name'].data:
+            if not hasattr(bestfit, '{}_amp'.format(linename)): # line not fitted
+                continue
+            
             amp = getattr(bestfit, '{}_amp'.format(linename))
             sigma = getattr(bestfit, '{}_sigma'.format(linename))
             vshift = getattr(bestfit, '{}_vshift'.format(linename))
@@ -935,8 +959,6 @@ class EMLineFit(ContinuumTools):
         for pp in bestfit.param_names:
             pinfo = getattr(bestfit, pp)
             val = pinfo.value
-            #if '9532' in pp:
-            #    pdb.set_trace()
             result[pinfo.name.upper()] = val
                 
         emlinemodel = bestfit(emlinewave)

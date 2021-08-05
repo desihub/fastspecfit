@@ -5,11 +5,9 @@ fastspecfit.fastspecfit
 
 FastSpec wrapper. Call with, e.g.,
 
+# nice BGS example
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465 --specprod everest
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastspec2.fits --ntargets 1 --specprod everest
-
-# nice BGS example
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
 
   # redrock is wrong!
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80605/redrock-0-80605-deep.fits -o fastspec.fits --targetids 39627652595714901
