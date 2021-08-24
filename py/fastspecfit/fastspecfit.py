@@ -63,7 +63,7 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False):
         
     log.info('Continuum-fitting object {} [targetid {}] took {:.2f} sec'.format(
         iobj, meta['TARGETID'], time.time()-t0))
-    
+
     # Fit the emission-line spectrum.
     t0 = time.time()
     emfit = EMFit.fit(data, continuummodel, smooth_continuum)

@@ -13,6 +13,7 @@ import multiprocessing
 
 import astropy.units as u
 from astropy.modeling import Fittable1DModel
+from astropy.modeling.fitting import LevMarLSQFitter
 
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
@@ -34,20 +35,12 @@ def read_emlines():
     
     return linetable    
 
-def _tie_neon_sigma(model):
-    return model.nev_3426_sigma
-def _tie_oii_3726_sigma(model):
-    return model.oii_3729_sigma
-def _tie_oiii_4959_sigma(model):
-    return model.oiii_5007_sigma
-def _tie_nii_6548_sigma(model):
-    return model.nii_6584_sigma
-
-def _tie_sii_6731_sigma(model):
-    return model.sii_6716_sigma
-def _tie_siii_9532_sigma(model):
-    return model.siii_9069_sigma
-
+# doublet ratios are always tied
+def _tie_nii_amp(model):
+    return model.nii_6584_amp / 2.936
+def _tie_oiii_amp(model):
+    return model.oiii_5007_amp / 2.8875
+    
 def _tie_hbeta_sigma(model):
     return model.hbeta_sigma
 def _tie_hbeta_vshift(model):
@@ -63,86 +56,183 @@ def _tie_mgii_2803_sigma(model):
 def _tie_mgii_2803_vshift(model):
     return model.mgii_2803_vshift
 
-def _tie_balmer_lines(model):
-    for pp in model.param_names:
-        if ('sigma' in pp and pp != 'hbeta_sigma' and (
-            'hei' in pp or 'alpha' in pp or 'beta' in pp or
-            'gamma' in pp or 'delta' in pp or 'epsilon' in pp)):
-            getattr(model, pp).tied = _tie_hbeta_sigma
+def _tie_lines(model):
+    """Tie emission lines together using sensible constrains based on galaxy & QSO
+    physics.
+
+    """
+    for iline in np.arange(len(model.linetable)):
+        linename = model.linetable['name'][iline]
+
+        if model.inrange[iline] == False: # not in the wavelength range
+            setattr(model, '{}_amp'.format(linename), 0.0)
+            getattr(model, '{}_amp'.format(linename)).fixed = True
+            getattr(model, '{}_sigma'.format(linename)).fixed = True
+            getattr(model, '{}_vshift'.format(linename)).fixed = True
+
+        # Balmer & He lines
+        if model.inrange[iline] and model.linetable['isbalmer'][iline] and linename != 'hbeta':
+            getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_sigma
+            getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_vshift
             
-        if ('vshift' in pp and pp != 'hbeta_vshift' and (
-            'hei' in pp or 'alpha' in pp or 'beta' in pp or
-            'gamma' in pp or 'delta' in pp or 'epsilon' in pp)):
-            getattr(model, pp).tied = _tie_hbeta_vshift
+        # broad lines
+        if (model.inrange[iline] and model.linetable['isbroad'][iline] and
+            model.linetable['isbalmer'][iline] == False and linename != 'mgii_2803'):
+            getattr(model, '{}_sigma'.format(linename)).tied = _tie_mgii_2803_sigma
+            getattr(model, '{}_vshift'.format(linename)).tied = _tie_mgii_2803_vshift
             
-    model.hbeta_sigma.tied = False
-    model.hbeta_vshift.tied = False
+        # forbidden lines
+        if (model.inrange[iline] and model.linetable['isbroad'][iline] == False and
+            model.linetable['isbalmer'][iline] == False and linename != 'oiii_5007'):
+            getattr(model, '{}_sigma'.format(linename)).tied = _tie_oiii_5007_sigma
+            getattr(model, '{}_vshift'.format(linename)).tied = _tie_oiii_5007_vshift
+
+    #for pp in model.param_names:
+    #    print(getattr(model, pp))
     
     return model
 
-def _tie_forbidden_lines(model):
+#def _tie_all_lines(model):
+#    for pp in model.param_names:
+#        if 'sigma' in pp and pp != 'hbeta_sigma':
+#            getattr(model, pp).tied = _tie_hbeta_sigma
+#        if 'vshift' in pp and pp != 'hbeta_vshift':
+#            getattr(model, pp).tied = _tie_hbeta_vshift
+#            
+#    # reset the amplitudes of the tied doublets; fragile...
+#    model.oiii_4959_amp = model.oiii_4959_amp.tied(model)
+#    model.nii_6548_amp = model.nii_6548_amp.tied(model)
+#            
+#    return model
 
-    for pp in model.param_names:
-        if ('sigma' in pp and pp != 'oiii_5007_sigma' and
-            ('nev' in pp or 'oii' in pp or 'neiii' in pp or
-             'nii' in pp or 'sii' in pp and 'oiii_16' not in pp)):
-            getattr(model, pp).tied = _tie_oiii_5007_sigma
-            
-        if ('vshift' in pp and pp != 'oiii_5007_vshift' and
-            ('nev' in pp or 'oii' in pp or 'neiii' in pp or
-             'nii' in pp or 'sii' in pp and 'oiii_16' not in pp)):
-            getattr(model, pp).tied = _tie_oiii_5007_vshift
-            
-    model.oiii_5007_sigma.tied = False
-    model.oiii_5007_vshift.tied = False
+class FastLevMarLSQFitter(LevMarLSQFitter):
+    """Adopted in part from
+      https://github.com/astropy/astropy/blob/v4.2.x/astropy/modeling/fitting.py#L1580-L1671
     
-    return model
+    Copyright (c) 2011-2021, Astropy Developers
 
-def _tie_broad_lines(model):
-    for pp in model.param_names:
-        if ('sigma' in pp and pp != 'mgii_2803_sigma' and
-            ('nv' in pp or 'sil' in pp or 'civ' in pp or
-             'oiii_16' in pp or 'ciii' in pp or 'mgii' in pp)):
-            getattr(model, pp).tied = _tie_mgii_2803_sigma
+    See https://github.com/astropy/astropy/issues/12089 for details. 
 
-        if ('vshift' in pp and pp != 'mgii_2803_vshift' and
-            ('nv' in pp or 'sil' in pp or 'civ' in pp or
-             'oiii_16' in pp or 'ciii' in pp or 'mgii' in pp)):
-            getattr(model, pp).tied = _tie_mgii_2803_vshift
+    """
+    def __init__(self, model):
 
-    model.mgii_2803_sigma.tied = False
-    model.mgii_2803_vshift.tied = False
+        import operator        
+        from functools import reduce
 
-    # update / improve the initial guess
-    model.mgii_2803_sigma.value = model.initsigma_broad
-    model.mgii_2803_sigma._default = model.initsigma_broad
-    model.mgii_2803_sigma.bounds = [model.minsigma, model.maxsigma_broad]
-    
-    return model
+        self.has_tied = any(model.tied.values())
+        self.has_fixed = any(model.fixed.values())
+        self.has_bound = any(b != (None, None) for b in model.bounds.values())
 
-def _tie_all_lines(model):
-    for pp in model.param_names:
-        if 'sigma' in pp and pp != 'hbeta_sigma':
-            getattr(model, pp).tied = _tie_hbeta_sigma
-        if 'vshift' in pp and pp != 'hbeta_vshift':
-            getattr(model, pp).tied = _tie_hbeta_vshift
-            
-    # reset the amplitudes of the tied doublets; fragile...
-    model.oiii_4959_amp = model.oiii_4959_amp.tied(model)
-    model.nii_6548_amp = model.nii_6548_amp.tied(model)
-            
-    return model
+        _, fit_param_indices = self.model_to_fit_params(model)
 
-def _fix_on_redshift(model, linetable, obswave, redshift=0.0):
-    """Do not fit lines that are outside the observed wavelength range."""
-    nline = len(linetable)
-    minwave, maxwave = np.min(obswave), np.max(obswave)
-    for iline in np.arange(nline):
-        linezwave = linetable['restwave'][iline] * (1 + redshift)
-        if linezwave < minwave or linezwave > maxwave:
-            setattr(model, '{}_amp'.format(linetable['name'][iline]), 0.0)
-            getattr(model, '{}_amp'.format(linetable['name'][iline])).fixed = True
-    return model
+        self._fit_param_names = [model.param_names[iparam] for iparam in np.unique(fit_param_indices)]
+
+        self._fit_istart = []
+        self._fit_iend = []
+        self._fit_slice = []
+        self._fit_ibounds = []
+        self._tied_slice = []
+        self._tied_func = []
+
+        offset = 0
+        for name in self._fit_param_names:
+            slice_ = model._param_metrics[name]['slice']
+            shape = model._param_metrics[name]['shape']
+            # This is determining which range of fps (the fitted parameters) maps
+            # to parameters of the model
+            size = reduce(operator.mul, shape, 1)
+            self._fit_slice.append(slice_)
+            self._fit_istart.append(offset)
+            self._fit_iend.append(offset + size)
+
+            imin, imax = model.bounds[name]
+            self._fit_ibounds.append(((imin, imax) != (None, None), imin, imax))
+            offset += size            
+
+        if self.has_tied:
+            self._tied_param_names = [_param_name for _param_name in model.param_names if model.tied[_param_name]]
+            for name in self._tied_param_names:
+                self._tied_slice.append(model._param_metrics[name]['slice'])
+                self._tied_func.append(model.tied[name])
+        
+        super().__init__()
+
+    def objective_function(self, fps, *args):
+
+        model = args[0]
+        weights = args[1]
+        self.fitter_to_model_params(model, fps)
+
+        meas = args[-1]
+        if weights is None:
+            return np.ravel(model(*args[2: -1]) - meas)
+        else:
+            return np.ravel(weights * (model(*args[2: -1]) - meas))
+
+    def fitter_to_model_params(self, model, fps):
+        """Constructs the full list of model parameters from the fitted and constrained
+        parameters.
+
+        """
+        parameters = model.parameters
+
+        if not (self.has_tied or self.has_fixed or self.has_bound):
+            # We can just assign directly
+            model.parameters = fps
+            return
+
+        for name, istart, iend, islice, (ibounds, imin, imax) in zip(
+                        self._fit_param_names, self._fit_istart, self._fit_iend,
+                        self._fit_slice, self._fit_ibounds):
+            values = fps[istart:iend]
+
+            # Check bounds constraints
+            if ibounds:
+                if imin is not None:
+                    values = np.fmax(values, imin)
+                if imax is not None:
+                    values = np.fmin(values, imax)
+                    
+            parameters[islice] = values
+            setattr(model, name, values)
+
+        # Update model parameters before calling ``tied`` constraints.
+
+        # This has to be done in a separate loop due to how tied parameters are
+        # currently evaluated (the fitted parameters need to actually be *set* on
+        # the model first, for use in evaluating the "tied" expression--it might be
+        # better to change this at some point
+        if self.has_tied:
+            for name, islice, func in zip(
+                    self._tied_param_names, self._tied_slice,
+                    self._tied_func):
+                #value = model.tied[name](model)
+
+                # To handle multiple tied constraints, model parameters
+                # need to be updated after each iteration.
+                value = func(model)
+                parameters[islice] = value
+                setattr(model, name, value)
+                
+    def model_to_fit_params(self, model):
+        """Convert a model instance's parameter array to an array that can be used with
+        a fitter that doesn't natively support fixed or tied parameters.  In
+        particular, it removes fixed/tied parameters from the parameter array.
+        These may be a subset of the model parameters, if some of them are held
+        constant or tied.
+
+        """
+        fitparam_indices = list(range(len(model.param_names)))
+        if self.has_fixed or self.has_tied:
+            params = list(model.parameters)
+            param_metrics = model._param_metrics
+            for idx, name in list(enumerate(model.param_names))[::-1]:
+                if model.fixed[name] or model.tied[name]:
+                    slice_ = param_metrics[name]['slice']
+                    del params[slice_]
+                    del fitparam_indices[idx]
+            return (np.array(params), fitparam_indices)
+        return (model.parameters, fitparam_indices)
 
 class EMLineModel(Fittable1DModel):
     """Class to model the emission-line spectra.
@@ -288,12 +378,6 @@ class EMLineModel(Fittable1DModel):
     siii_9069_sigma = Parameter(name='siii_9069_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     siii_9532_sigma = Parameter(name='siii_9532_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
 
-    # doublet ratios are always tied
-    def _tie_nii_amp(model):
-        return model.nii_6584_amp / 2.936
-    def _tie_oiii_amp(model):
-        return model.oiii_5007_amp / 2.8875
-    
     nii_6548_amp.tied = _tie_nii_amp
     oiii_4959_amp.tied = _tie_oiii_amp
     
@@ -577,12 +661,10 @@ class EMLineModel(Fittable1DModel):
             
             **kwargs)
 
-        #delattr(self.__class__, 'sii_6716_amp')
-        #delattr(self.__class__, 'sii_6716_sigma')
-        #delattr(self.__class__, 'sii_6716_vshift')
-        #delattr(self.__class__, 'sii_6731_amp')
-        #delattr(self.__class__, 'sii_6731_sigma')
-        #delattr(self.__class__, 'sii_6731_vshift')
+        #print('HACK!!!!!!!!!!!!!!!')
+        #self.param_names = ('hbeta_amp', 'hbeta_vshift', 'hbeta_sigma')
+        #self.parameters = [1.0, 0.0, 75.0]
+        #self._parameters = [1.0, 0.0, 75.0]
         
     def _emline_spectrum(self, *lineargs):
         """Simple wrapper to build an emission-line spectrum.
@@ -679,7 +761,7 @@ class EMLineFit(ContinuumTools):
         self.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), self.dlogwave)
         #self.log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
 
-        self.fitter = fitting.LevMarLSQFitter()#calc_uncertainties=True)
+        #self.fitter = fitting.LevMarLSQFitter()#calc_uncertainties=True)
         #self.fitter_nouncertainties = fitting.LevMarLSQFitter(calc_uncertainties=False)
 
     def init_output(self, linetable, nobj=1, chi2_default=1e6):
@@ -878,7 +960,7 @@ class EMLineFit(ContinuumTools):
                         setattr(self.EMLineModel, pp, lineamp)
                     #print(pinfo.name, len(lineindx), lineflux, lineamp, linesigma)
 
-            # update the initial velocity widths
+            # update the initial veolocity widths
             if len(init_linesigmas) >= 3:
                 init_linesigma = np.median(init_linesigmas)
                 if init_linesigma > 0 and init_linesigma < 300:
@@ -919,6 +1001,12 @@ class EMLineFit(ContinuumTools):
         self.EMLineModel = _tie_forbidden_lines(self.EMLineModel)
         self.EMLineModel = _tie_broad_lines(self.EMLineModel)
         #self.EMLineModel = _fix_on_redshift(self.EMLineModel, self.linetable, emlinewave, redshift=redshift)
+
+        self.EMLineModel = EMLineModel(redshift=redshift, wavelims=(np.min(wave), np.max(wave)))
+        self.EMLineModel = _tie_lines(self.EMLineModel1)
+
+        #fitter = LevMarLSQFitter()
+        fitter = MyLevMarLSQFitter(EMModel1)
 
         t0 = time.time()        
         bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights)#, maxiter=1000)

@@ -17,11 +17,6 @@
 #       https://db.chiantidatabase.org/
 #       https://github.com/cconroy20/fsps/blob/master/data/emlines_info.dat
 #
-#     Lines not includes:
-#       MgII (one line) mgii_2800   2799.941
-#       siii_9069   9071.1034
-#       siii_9532   9533.2274
-#
 #     J. Moustakas, Siena College, 2020 Nov 11
 #     jm21mar19 - more lines added
 #     jm21aug01 - [OI], HeI, HeII and more added'}
