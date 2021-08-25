@@ -15,6 +15,9 @@ import astropy.units as u
 from astropy.modeling import Fittable1DModel
 from astropy.modeling.fitting import LevMarLSQFitter
 
+from redrock.rebin import trapz_rebin
+from desispec.interpolation import resample_flux
+
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger
@@ -521,14 +524,10 @@ class EMLineModel(Fittable1DModel):
         self.nline = len(self.linetable)
         self.linenames = np.array([linename.replace('_amp', '') for linename in self.param_names[:self.nline]])
 
-        #self.nparam_perline = 3 # amplitude, velocity shift, and line-width
-        #self.nline = len(self.param_names) // self.nparam_perline
-
         self.redshift = redshift
         self.emlineR = emlineR
         if npixpercamera is not None:
             self.npixpercamera = np.hstack([0, npixpercamera])
-        #self.goodpixpercam = goodpixpercam
 
         # internal wavelength vector for building the emission-line model
         if log10wave is None:
@@ -541,137 +540,136 @@ class EMLineModel(Fittable1DModel):
         zline = self.linetable['restwave'] * (1 + self.redshift)
         self.inrange = (zline > wavelims[0]) * (zline < wavelims[1])
 
-        super(EMLineModel, self).__init__(
-            nv_1240_amp=nv_1240_amp,
-            silii_1265_amp=silii_1265_amp,
-            silii_1309_amp=silii_1309_amp,
-            siliv_1394_amp=siliv_1394_amp,
-            siliv_1403_amp=siliv_1403_amp,
-            silii_1533_amp=silii_1533_amp,
-            civ_1549_amp=civ_1549_amp,
-            heii_1640_amp=heii_1640_amp,
-            oiii_1661_amp=oiii_1661_amp,
-            oiii_1666_amp=oiii_1666_amp,
-            siliii_1882_amp=siliii_1882_amp,
-            siliii_1892_amp=siliii_1892_amp,
-            ciii_1907_amp=ciii_1907_amp,
-            ciii_1908_amp=ciii_1908_amp,
-            mgii_2796_amp=mgii_2796_amp,
-            mgii_2803_amp=mgii_2803_amp,
-            nev_3346_amp=nev_3346_amp,
-            nev_3426_amp=nev_3426_amp,
-            oii_3726_amp=oii_3726_amp,
-            oii_3729_amp=oii_3729_amp,
-            neiii_3869_amp=neiii_3869_amp,
-            hei_3889_amp=hei_3889_amp,
-            hepsilon_amp=hepsilon_amp,
-            hdelta_amp=hdelta_amp,
-            hgamma_amp=hgamma_amp,
-            oiii_4363_amp=oiii_4363_amp,
-            hei_4471_amp=hei_4471_amp,
-            heii_4686_amp=heii_4686_amp,
-            hbeta_amp=hbeta_amp,
-            oiii_4959_amp=oiii_4959_amp,
-            oiii_5007_amp=oiii_5007_amp,
-            hei_5876_amp=hei_5876_amp,
-            oi_6300_amp=oi_6300_amp,
-            nii_6548_amp=nii_6548_amp,
-            halpha_amp=halpha_amp,
-            nii_6584_amp=nii_6584_amp,
-            sii_6716_amp=sii_6716_amp,
-            sii_6731_amp=sii_6731_amp,
-            siii_9069_amp=siii_9069_amp,
-            siii_9532_amp=siii_9532_amp,
+        #_tie_lines(self)
 
-            nv_1240_vshift=nv_1240_vshift,
-            silii_1265_vshift=silii_1265_vshift,
-            silii_1309_vshift=silii_1309_vshift,
-            siliv_1394_vshift=siliv_1394_vshift,
-            siliv_1403_vshift=siliv_1403_vshift,
-            silii_1533_vshift=silii_1533_vshift,
-            civ_1549_vshift=civ_1549_vshift,
-            heii_1640_vshift=heii_1640_vshift,
-            oiii_1661_vshift=oiii_1661_vshift,
-            oiii_1666_vshift=oiii_1666_vshift,
-            siliii_1882_vshift=siliii_1882_vshift,
-            siliii_1892_vshift=siliii_1892_vshift,
-            ciii_1907_vshift=ciii_1907_vshift,
-            ciii_1908_vshift=ciii_1908_vshift,
-            mgii_2796_vshift=mgii_2796_vshift,
-            mgii_2803_vshift=mgii_2803_vshift,
-            nev_3346_vshift=nev_3346_vshift,
-            nev_3426_vshift=nev_3426_vshift,
-            oii_3726_vshift=oii_3726_vshift,
-            oii_3729_vshift=oii_3729_vshift,
-            neiii_3869_vshift=neiii_3869_vshift,
-            hei_3889_vshift=hei_3889_vshift,
-            hepsilon_vshift=hepsilon_vshift,
-            hdelta_vshift=hdelta_vshift,
-            hgamma_vshift=hgamma_vshift,
-            oiii_4363_vshift=oiii_4363_vshift,
-            hei_4471_vshift=hei_4471_vshift,
-            heii_4686_vshift=heii_4686_vshift,
-            hbeta_vshift=hbeta_vshift,
-            oiii_4959_vshift=oiii_4959_vshift,
-            oiii_5007_vshift=oiii_5007_vshift,
-            hei_5876_vshift=hei_5876_vshift,
-            oi_6300_vshift=oi_6300_vshift,
-            nii_6548_vshift=nii_6548_vshift,
-            halpha_vshift=halpha_vshift,
-            nii_6584_vshift=nii_6584_vshift,
-            sii_6716_vshift=sii_6716_vshift,
-            sii_6731_vshift=sii_6731_vshift,
-            siii_9069_vshift=siii_9069_vshift,
-            siii_9532_vshift=siii_9532_vshift,
+        super().__init__()        
 
-            nv_1240_sigma=nv_1240_sigma,
-            silii_1265_sigma=silii_1265_sigma,
-            silii_1309_sigma=silii_1309_sigma,
-            siliv_1394_sigma=siliv_1394_sigma,
-            siliv_1403_sigma=siliv_1403_sigma,
-            silii_1533_sigma=silii_1533_sigma,
-            civ_1549_sigma=civ_1549_sigma,
-            heii_1640_sigma=heii_1640_sigma,
-            oiii_1661_sigma=oiii_1661_sigma,
-            oiii_1666_sigma=oiii_1666_sigma,
-            siliii_1882_sigma=siliii_1882_sigma,
-            siliii_1892_sigma=siliii_1892_sigma,
-            ciii_1907_sigma=ciii_1907_sigma,
-            ciii_1908_sigma=ciii_1908_sigma,
-            mgii_2796_sigma=mgii_2796_sigma,
-            mgii_2803_sigma=mgii_2803_sigma,
-            nev_3346_sigma=nev_3346_sigma,
-            nev_3426_sigma=nev_3426_sigma,
-            oii_3726_sigma=oii_3726_sigma,
-            oii_3729_sigma=oii_3729_sigma,
-            neiii_3869_sigma=neiii_3869_sigma,
-            hei_3889_sigma=hei_3889_sigma,
-            hepsilon_sigma=hepsilon_sigma,
-            hdelta_sigma=hdelta_sigma,
-            hgamma_sigma=hgamma_sigma,
-            oiii_4363_sigma=oiii_4363_sigma,
-            hei_4471_sigma=hei_4471_sigma,
-            heii_4686_sigma=heii_4686_sigma,
-            hbeta_sigma=hbeta_sigma,
-            oiii_4959_sigma=oiii_4959_sigma,
-            oiii_5007_sigma=oiii_5007_sigma,
-            hei_5876_sigma=hei_5876_sigma,
-            oi_6300_sigma=oi_6300_sigma,
-            nii_6548_sigma=nii_6548_sigma,
-            halpha_sigma=halpha_sigma,
-            nii_6584_sigma=nii_6584_sigma,
-            sii_6716_sigma=sii_6716_sigma,
-            sii_6731_sigma=sii_6731_sigma,
-            siii_9069_sigma=siii_9069_sigma,
-            siii_9532_sigma=siii_9532_sigma,
-            
-            **kwargs)
+        #super(EMLineModel, self).__init__(
+        #    nv_1240_amp=nv_1240_amp,
+        #    silii_1265_amp=silii_1265_amp,
+        #    silii_1309_amp=silii_1309_amp,
+        #    siliv_1394_amp=siliv_1394_amp,
+        #    siliv_1403_amp=siliv_1403_amp,
+        #    silii_1533_amp=silii_1533_amp,
+        #    civ_1549_amp=civ_1549_amp,
+        #    heii_1640_amp=heii_1640_amp,
+        #    oiii_1661_amp=oiii_1661_amp,
+        #    oiii_1666_amp=oiii_1666_amp,
+        #    siliii_1882_amp=siliii_1882_amp,
+        #    siliii_1892_amp=siliii_1892_amp,
+        #    ciii_1907_amp=ciii_1907_amp,
+        #    ciii_1908_amp=ciii_1908_amp,
+        #    mgii_2796_amp=mgii_2796_amp,
+        #    mgii_2803_amp=mgii_2803_amp,
+        #    nev_3346_amp=nev_3346_amp,
+        #    nev_3426_amp=nev_3426_amp,
+        #    oii_3726_amp=oii_3726_amp,
+        #    oii_3729_amp=oii_3729_amp,
+        #    neiii_3869_amp=neiii_3869_amp,
+        #    hei_3889_amp=hei_3889_amp,
+        #    hepsilon_amp=hepsilon_amp,
+        #    hdelta_amp=hdelta_amp,
+        #    hgamma_amp=hgamma_amp,
+        #    oiii_4363_amp=oiii_4363_amp,
+        #    hei_4471_amp=hei_4471_amp,
+        #    heii_4686_amp=heii_4686_amp,
+        #    hbeta_amp=hbeta_amp,
+        #    oiii_4959_amp=oiii_4959_amp,
+        #    oiii_5007_amp=oiii_5007_amp,
+        #    hei_5876_amp=hei_5876_amp,
+        #    oi_6300_amp=oi_6300_amp,
+        #    nii_6548_amp=nii_6548_amp,
+        #    halpha_amp=halpha_amp,
+        #    nii_6584_amp=nii_6584_amp,
+        #    sii_6716_amp=sii_6716_amp,
+        #    sii_6731_amp=sii_6731_amp,
+        #    siii_9069_amp=siii_9069_amp,
+        #    siii_9532_amp=siii_9532_amp,
+        #
+        #    nv_1240_vshift=nv_1240_vshift,
+        #    silii_1265_vshift=silii_1265_vshift,
+        #    silii_1309_vshift=silii_1309_vshift,
+        #    siliv_1394_vshift=siliv_1394_vshift,
+        #    siliv_1403_vshift=siliv_1403_vshift,
+        #    silii_1533_vshift=silii_1533_vshift,
+        #    civ_1549_vshift=civ_1549_vshift,
+        #    heii_1640_vshift=heii_1640_vshift,
+        #    oiii_1661_vshift=oiii_1661_vshift,
+        #    oiii_1666_vshift=oiii_1666_vshift,
+        #    siliii_1882_vshift=siliii_1882_vshift,
+        #    siliii_1892_vshift=siliii_1892_vshift,
+        #    ciii_1907_vshift=ciii_1907_vshift,
+        #    ciii_1908_vshift=ciii_1908_vshift,
+        #    mgii_2796_vshift=mgii_2796_vshift,
+        #    mgii_2803_vshift=mgii_2803_vshift,
+        #    nev_3346_vshift=nev_3346_vshift,
+        #    nev_3426_vshift=nev_3426_vshift,
+        #    oii_3726_vshift=oii_3726_vshift,
+        #    oii_3729_vshift=oii_3729_vshift,
+        #    neiii_3869_vshift=neiii_3869_vshift,
+        #    hei_3889_vshift=hei_3889_vshift,
+        #    hepsilon_vshift=hepsilon_vshift,
+        #    hdelta_vshift=hdelta_vshift,
+        #    hgamma_vshift=hgamma_vshift,
+        #    oiii_4363_vshift=oiii_4363_vshift,
+        #    hei_4471_vshift=hei_4471_vshift,
+        #    heii_4686_vshift=heii_4686_vshift,
+        #    hbeta_vshift=hbeta_vshift,
+        #    oiii_4959_vshift=oiii_4959_vshift,
+        #    oiii_5007_vshift=oiii_5007_vshift,
+        #    hei_5876_vshift=hei_5876_vshift,
+        #    oi_6300_vshift=oi_6300_vshift,
+        #    nii_6548_vshift=nii_6548_vshift,
+        #    halpha_vshift=halpha_vshift,
+        #    nii_6584_vshift=nii_6584_vshift,
+        #    sii_6716_vshift=sii_6716_vshift,
+        #    sii_6731_vshift=sii_6731_vshift,
+        #    siii_9069_vshift=siii_9069_vshift,
+        #    siii_9532_vshift=siii_9532_vshift,
+        #
+        #    nv_1240_sigma=nv_1240_sigma,
+        #    silii_1265_sigma=silii_1265_sigma,
+        #    silii_1309_sigma=silii_1309_sigma,
+        #    siliv_1394_sigma=siliv_1394_sigma,
+        #    siliv_1403_sigma=siliv_1403_sigma,
+        #    silii_1533_sigma=silii_1533_sigma,
+        #    civ_1549_sigma=civ_1549_sigma,
+        #    heii_1640_sigma=heii_1640_sigma,
+        #    oiii_1661_sigma=oiii_1661_sigma,
+        #    oiii_1666_sigma=oiii_1666_sigma,
+        #    siliii_1882_sigma=siliii_1882_sigma,
+        #    siliii_1892_sigma=siliii_1892_sigma,
+        #    ciii_1907_sigma=ciii_1907_sigma,
+        #    ciii_1908_sigma=ciii_1908_sigma,
+        #    mgii_2796_sigma=mgii_2796_sigma,
+        #    mgii_2803_sigma=mgii_2803_sigma,
+        #    nev_3346_sigma=nev_3346_sigma,
+        #    nev_3426_sigma=nev_3426_sigma,
+        #    oii_3726_sigma=oii_3726_sigma,
+        #    oii_3729_sigma=oii_3729_sigma,
+        #    neiii_3869_sigma=neiii_3869_sigma,
+        #    hei_3889_sigma=hei_3889_sigma,
+        #    hepsilon_sigma=hepsilon_sigma,
+        #    hdelta_sigma=hdelta_sigma,
+        #    hgamma_sigma=hgamma_sigma,
+        #    oiii_4363_sigma=oiii_4363_sigma,
+        #    hei_4471_sigma=hei_4471_sigma,
+        #    heii_4686_sigma=heii_4686_sigma,
+        #    hbeta_sigma=hbeta_sigma,
+        #    oiii_4959_sigma=oiii_4959_sigma,
+        #    oiii_5007_sigma=oiii_5007_sigma,
+        #    hei_5876_sigma=hei_5876_sigma,
+        #    oi_6300_sigma=oi_6300_sigma,
+        #    nii_6548_sigma=nii_6548_sigma,
+        #    halpha_sigma=halpha_sigma,
+        #    nii_6584_sigma=nii_6584_sigma,
+        #    sii_6716_sigma=sii_6716_sigma,
+        #    sii_6731_sigma=sii_6731_sigma,
+        #    siii_9069_sigma=siii_9069_sigma,
+        #    siii_9532_sigma=siii_9532_sigma,
+        #    
+        #    **kwargs)
 
-        #print('HACK!!!!!!!!!!!!!!!')
-        #self.param_names = ('hbeta_amp', 'hbeta_vshift', 'hbeta_sigma')
-        #self.parameters = [1.0, 0.0, 75.0]
-        #self._parameters = [1.0, 0.0, 75.0]
-        
     def _emline_spectrum(self, *lineargs):
         """Simple wrapper to build an emission-line spectrum.
 
@@ -705,9 +703,6 @@ class EMLineModel(Fittable1DModel):
         """Evaluate the emission-line model.
 
         """ 
-        from redrock.rebin import trapz_rebin
-        from desispec.interpolation import resample_flux
-
         # build the emission-line model [erg/s/cm2/A, observed frame]
         log10model = self._emline_spectrum(*lineargs)
 
@@ -715,13 +710,9 @@ class EMLineModel(Fittable1DModel):
         # resolution
         emlinemodel = []
         for ii in np.arange(len(self.npixpercamera)-1): # iterate over cameras
-            #ipix = np.sum(self.ngoodpixpercamera[:ii+1]) # unmasked pixels!
-            #jpix = np.sum(self.ngoodpixpercamera[:ii+2])
-
             ipix = np.sum(self.npixpercamera[:ii+1]) # all pixels!
             jpix = np.sum(self.npixpercamera[:ii+2])
             #_emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
-        
             #_emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
             try:
                 _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
@@ -891,16 +882,15 @@ class EMLineFit(ContinuumTools):
         emlinewave = np.hstack(data['wave'])
         emlineivar = np.hstack(data['ivar'])
         specflux = np.hstack(data['flux'])
+
         continuummodelflux = np.hstack(continuummodel)
         smoothcontinuummodelflux = np.hstack(smooth_continuum)
-
         emlineflux = specflux - continuummodelflux - smoothcontinuummodelflux
-
-        emlinevar, emlinegood = ivar2var(emlineivar)
 
         npixpercamera = [len(gw) for gw in data['wave']] # all pixels
         npixpercam = np.hstack([0, npixpercamera])
 
+        emlinevar, emlinegood = ivar2var(emlineivar)
         weights = np.sqrt(emlineivar)
         emlinebad = np.logical_not(emlinegood)
         if np.count_nonzero(emlinebad) > 0:
@@ -1055,7 +1045,7 @@ class EMLineFit(ContinuumTools):
 
         # get continuum fluxes, EWs, and upper limits
 
-        verbose = True
+        verbose = False
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
