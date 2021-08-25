@@ -518,9 +518,11 @@ class EMLineModel(Fittable1DModel):
         
         """
         self.linetable = read_emlines()
+        self.nline = len(self.linetable)
+        self.linenames = np.array([linename.replace('_amp', '') for linename in self.param_names[:self.nline]])
 
-        self.nparam_perline = 3 # amplitude, velocity shift, and line-width
-        self.nline = len(self.param_names) // self.nparam_perline
+        #self.nparam_perline = 3 # amplitude, velocity shift, and line-width
+        #self.nline = len(self.param_names) // self.nparam_perline
 
         self.redshift = redshift
         self.emlineR = emlineR
@@ -535,6 +537,10 @@ class EMLineModel(Fittable1DModel):
             log10wave = np.arange(np.log10(3000), np.log10(1e4), dlogwave)
         self.log10wave = log10wave
             
+        wavelims = (10**np.min(log10wave), 10**np.max(log10wave))
+        zline = self.linetable['restwave'] * (1 + self.redshift)
+        self.inrange = (zline > wavelims[0]) * (zline < wavelims[1])
+
         super(EMLineModel, self).__init__(
             nv_1240_amp=nv_1240_amp,
             silii_1265_amp=silii_1265_amp,
@@ -672,19 +678,15 @@ class EMLineModel(Fittable1DModel):
         # build the emission-line model [erg/s/cm2/A, observed frame]
 
         """
-        linenames = np.array([linename.replace('_amp', '') for linename in self.param_names[:self.nline]])
-        lineamps = np.hstack(lineargs[0:self.nline])
-        linevshifts = np.hstack(lineargs[self.nline:2*self.nline])
-        linesigmas = np.hstack(lineargs[2*self.nline:])
+        linenames = self.linenames[self.inrange]
+        lineamps = np.hstack(lineargs[0:self.nline])[self.inrange]
+        linevshifts = np.hstack(lineargs[self.nline:2*self.nline])[self.inrange]
+        linesigmas = np.hstack(lineargs[2*self.nline:])[self.inrange]
 
         log10model = np.zeros_like(self.log10wave)
         for linename, lineamp, linevshift, linesigma in zip(linenames, lineamps, linevshifts, linesigmas):
             
             iline = np.where(self.linetable['name'] == linename)[0]
-            if len(iline) != 1:
-                log.warning('No matching line found!')
-                raise ValueError
-                
             restlinewave = self.linetable[iline]['restwave'][0]
             
             linez = self.redshift + linevshift / C_LIGHT
@@ -692,7 +694,7 @@ class EMLineModel(Fittable1DModel):
 
             log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]
             
-            ww = np.abs(self.log10wave - linezwave) < (100 * log10sigma)
+            ww = np.abs(self.log10wave - linezwave) < (10 * log10sigma)
             if np.count_nonzero(ww) > 0:
                 #log.info(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
                 log10model[ww] += lineamp * np.exp(-0.5 * (self.log10wave[ww]-linezwave)**2 / log10sigma**2)
@@ -760,9 +762,6 @@ class EMLineFit(ContinuumTools):
         self.dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
         self.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), self.dlogwave)
         #self.log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
-
-        #self.fitter = fitting.LevMarLSQFitter()#calc_uncertainties=True)
-        #self.fitter_nouncertainties = fitting.LevMarLSQFitter(calc_uncertainties=False)
 
     def init_output(self, linetable, nobj=1, chi2_default=1e6):
         """Initialize the output data table for this class.
@@ -902,117 +901,26 @@ class EMLineFit(ContinuumTools):
         npixpercamera = [len(gw) for gw in data['wave']] # all pixels
         npixpercam = np.hstack([0, npixpercamera])
 
-        self.EMLineModel = EMLineModel(redshift=redshift,
-                                       emlineR=data['res'],
-                                       npixpercamera=npixpercamera,
-                                       log10wave=self.log10wave)
-
-        nparam = len(self.EMLineModel.parameters)
-        #params = np.repeat(self.EMLineModel.parameters, self.nball).reshape(nparam, self.nball)
-
-        # Do a fast box-car integration to get the initial line-amplitudes and
-        # line-widths...actually these initial guesses are not really working
-        # but keep the code here.
-        initguess = False
-        if initguess:
-            sigma_cont = 200.0
-            init_linesigmas = []
-            for pp in self.EMLineModel.param_names:
-                if getattr(self.EMLineModel, pp).tied:
-                    #print('Skipping tied parameter {}'.format(pp))
-                    continue
-
-                if 'amp' in pp:
-                    pinfo = getattr(self.EMLineModel, pp)
-                    linename = pinfo.name.replace('_amp', '')
-
-                    iline = np.where(self.linetable['name'] == linename)[0]
-                    if len(iline) != 1:
-                        log.warning('No matching line found!')
-                        raise ValueError
-
-                    oneline = self.linetable[iline][0]
-                    linezwave = oneline['restwave'] * (1 + redshift)
-                    lineindx = np.where((emlinewave > (linezwave - 5*sigma_cont * linezwave / C_LIGHT)) *
-                                        (emlinewave < (linezwave + 5.*sigma_cont * linezwave / C_LIGHT)) *
-                                        #(emlineflux * np.sqrt(emlineivar) > 1)
-                                        (emlineivar > 0))[0]
-
-                    linesigma = getattr(self.EMLineModel, '{}_sigma'.format(linename)).default # initial guess
-                    #print(linename, linesigma, len(lineindx))
-
-                    lineamp = pinfo.default # backup
-                    if len(lineindx) > 10:
-                        linesigma_ang = linezwave * sigma_cont / C_LIGHT # [observed-frame Angstrom]
-                        linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
-
-                        lineflux = np.sum(emlineflux[lineindx])
-                        lineamp = np.abs(lineflux / linenorm)
-
-                        # estimate the velocity width from potentially strong, isolated lines; fragile!
-                        if lineflux > 0 and linename in ['mgii_2803', 'oiii_5007', 'hbeta', 'halpha']:
-                            linevar = np.sum(emlineflux[lineindx] * (emlinewave[lineindx] - linezwave)**2) / np.sum(emlineflux[lineindx]) / linezwave * C_LIGHT # [km/s]
-                            if linevar > 0:
-                                linesigma = np.sqrt(linevar)
-                                init_linesigmas.append(linesigma)
-
-                    if not pinfo.tied:# and False:
-                        setattr(self.EMLineModel, pp, lineamp)
-                    #print(pinfo.name, len(lineindx), lineflux, lineamp, linesigma)
-
-            # update the initial veolocity widths
-            if len(init_linesigmas) >= 3:
-                init_linesigma = np.median(init_linesigmas)
-                if init_linesigma > 0 and init_linesigma < 300:
-                    for pp in self.EMLineModel.param_names:
-                        if 'sigma' in pp:
-                            setattr(self.EMLineModel, pp, init_linesigma)
-
         weights = np.sqrt(emlineivar)
         emlinebad = np.logical_not(emlinegood)
         if np.count_nonzero(emlinebad) > 0:
             weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
 
-        # Fit [1]: tie all lines together
-        if False:        
-            self.EMLineModel = _tie_all_lines(self.EMLineModel)
-            t0 = time.time()
-            bestfit_init = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
-            #bestfit_init = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
-            #                           weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
-            log.info('Initial line-fitting took {:.2f} sec'.format(time.time()-t0))
-            #print(bestfit_init.parameters)
+        self.EMLineModel = EMLineModel(redshift=redshift,
+                                       emlineR=data['res'],
+                                       npixpercamera=npixpercamera,
+                                       log10wave=self.log10wave)
+        self.EMLineModel = _tie_lines(self.EMLineModel)
 
-            # Fit [2]: tie Balmer, narrow forbidden, and QSO/broad lines together,
-            # separately, and refit.
-            self.EMLineModel = bestfit_init
-            #self.EMLineModel = _tie_all_lines(self.EMLineModel) # this will reset our updates, above, so don't do it!
-        
-            # In the initial fit the lines can wander, especially on the edges, so
-            # reset the line-amplitudes.
-            for pp in self.EMLineModel.param_names:
-                #if 'amp' in pp:
-                param = getattr(self.EMLineModel, pp)
-                if (param.value <= param.bounds[0]) or (param.value >= param.bounds[1]):
-                    #print(pp, param.value, param.bounds[1])
-                    setattr(self.EMLineModel, pp, param.default)
+        fitter = FastLevMarLSQFitter(self.EMLineModel)
 
-        self.EMLineModel = _tie_balmer_lines(self.EMLineModel)
-        self.EMLineModel = _tie_forbidden_lines(self.EMLineModel)
-        self.EMLineModel = _tie_broad_lines(self.EMLineModel)
-        #self.EMLineModel = _fix_on_redshift(self.EMLineModel, self.linetable, emlinewave, redshift=redshift)
-
-        self.EMLineModel = EMLineModel(redshift=redshift, wavelims=(np.min(wave), np.max(wave)))
-        self.EMLineModel = _tie_lines(self.EMLineModel1)
-
-        #fitter = LevMarLSQFitter()
-        fitter = MyLevMarLSQFitter(EMModel1)
+        #pdb.set_trace()
 
         t0 = time.time()        
-        bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights)#, maxiter=1000)
+        bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
         #bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
         #                      weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
-        log.info('Final line-fitting took {:.2f} sec'.format(time.time()-t0))
+        log.info('Line-fitting took {:.2f} sec'.format(time.time()-t0))
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
