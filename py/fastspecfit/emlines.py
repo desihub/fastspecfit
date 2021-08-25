@@ -4,6 +4,8 @@ fastspecfit.emlines
 
 Methods and tools for fitting emission lines.
 
+python -m cProfile -o fastspec.prof /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465 --specprod everest
+
 """
 import pdb # for debugging
 
@@ -525,6 +527,7 @@ class EMLineModel(Fittable1DModel):
         self.linetable = read_emlines()
         self.nline = len(self.linetable)
         self.linenames = np.array([linename.replace('_amp', '') for linename in self.param_names[:self.nline]])
+        self.restlinewaves = self.linetable['restwave'].data
 
         self.redshift = redshift
         self.emlineR = emlineR
@@ -559,8 +562,8 @@ class EMLineModel(Fittable1DModel):
         log10model = np.zeros_like(self.log10wave)
         for linename, lineamp, linevshift, linesigma in zip(linenames, lineamps, linevshifts, linesigmas):
             
-            iline = np.where(self.linetable['name'] == linename)[0]
-            restlinewave = self.linetable[iline]['restwave'][0]
+            iline = self.linenames == linename
+            restlinewave = self.restlinewaves[iline]
             
             linez = self.redshift + linevshift / C_LIGHT
             linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
@@ -782,7 +785,7 @@ class EMLineFit(ContinuumTools):
 
         t0 = time.time()        
         bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
-        log.info('Line-fitting took {:.2f} sec'.format(time.time()-t0))
+        log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
@@ -1415,7 +1418,6 @@ class EMLineFit(ContinuumTools):
                     
                 xx.text(0.06, 0.89, linename, ha='left', va='center',
                         transform=xx.transAxes, fontsize=18)
-
                 
         for iax, xx in enumerate(ax):
             if removelabels[iax]:
