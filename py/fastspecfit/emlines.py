@@ -198,7 +198,7 @@ class FastLevMarLSQFitter(LevMarLSQFitter):
                 if imax is not None:
                     values = np.fmin(values, imax)
                     
-            parameters[islice] = values
+            #parameters[islice] = values
             setattr(model, name, values)
 
         # Update model parameters before calling ``tied`` constraints.
@@ -216,7 +216,7 @@ class FastLevMarLSQFitter(LevMarLSQFitter):
                 # To handle multiple tied constraints, model parameters
                 # need to be updated after each iteration.
                 value = func(model)
-                parameters[islice] = value
+                #parameters[islice] = value
                 setattr(model, name, value)
                 
     def model_to_fit_params(self, model):
@@ -739,7 +739,8 @@ class EMLineFit(ContinuumTools):
 
         return emlinemodel
     
-    def fit(self, data, continuummodel, smooth_continuum, synthphot=True):
+    def fit(self, data, continuummodel, smooth_continuum, synthphot=True,
+            maxiter=1000, accuracy=1e-3):
         """Perform the fit minimization / chi2 minimization.
         
         EMLineModel object
@@ -784,7 +785,8 @@ class EMLineFit(ContinuumTools):
         #pdb.set_trace()
 
         t0 = time.time()        
-        bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
+        bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
+                         maxiter=maxiter, acc=accuracy)
         log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
 
         # Initialize the output table; see init_fastspecfit for the data model.
@@ -823,7 +825,7 @@ class EMLineFit(ContinuumTools):
             result[pinfo.name.upper()] = val
                 
         emlinemodel = bestfit(emlinewave)
-        chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
+        chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar)
 
         # Synthesize photometry from the best-fitting model (continuum+emission lines).
         if synthphot:

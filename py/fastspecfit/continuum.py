@@ -316,13 +316,13 @@ class ContinuumTools(object):
         #    log.warning('Gaia-only targets not supported.')
         #    raise ValueError
 
-        phot['lambda_eff'] = lambda_eff.astype('f4')
+        phot['lambda_eff'] = lambda_eff#.astype('f4')
         if nanomaggies:
-            phot['nanomaggies'] = maggies.astype('f4')
-            phot['nanomaggies_ivar'] = ivarmaggies.astype('f4')
+            phot['nanomaggies'] = maggies#.astype('f4')
+            phot['nanomaggies_ivar'] = ivarmaggies#.astype('f4')
         else:
-            phot['nanomaggies'] = (maggies * 1e9).astype('f4')
-            phot['nanomaggies_ivar'] = (ivarmaggies * 1e-18).astype('f4')
+            phot['nanomaggies'] = (maggies * 1e9)#.astype('f4')
+            phot['nanomaggies_ivar'] = (ivarmaggies * 1e-18)#.astype('f4')
 
         if nanomaggies:
             nanofactor = 1e-9 # [nanomaggies-->maggies]
@@ -344,7 +344,7 @@ class ContinuumTools(object):
             else:
                 igood, jgood = good, [0]
                 goodmaggies = maggies[igood]
-            phot['abmag'][igood, jgood] = (-2.5 * np.log10(nanofactor * goodmaggies)).astype('f4')
+            phot['abmag'][igood, jgood] = (-2.5 * np.log10(nanofactor * goodmaggies))#.astype('f4')
         
         # deal with the uncertainties
         snr = maggies * np.sqrt(ivarmaggies)
@@ -373,17 +373,17 @@ class ContinuumTools(object):
 
         # significant detections
         if len(good) > 0:
-            phot['abmag_brighterr'][igood, jgood] = errmaggies / (0.4 * np.log(10) * (maggies+errmaggies)).astype('f4') # bright end (flux upper limit)
-            phot['abmag_fainterr'][igood, jgood] = errmaggies / (0.4 * np.log(10) * (maggies-errmaggies)).astype('f4') # faint end (flux lower limit)
+            phot['abmag_brighterr'][igood, jgood] = errmaggies / (0.4 * np.log(10) * (maggies+errmaggies))#.astype('f4') # bright end (flux upper limit)
+            phot['abmag_fainterr'][igood, jgood] = errmaggies / (0.4 * np.log(10) * (maggies-errmaggies))#.astype('f4') # faint end (flux lower limit)
             #phot['abmag_loerr'][igood, jgood] = +2.5 * np.log10(1 + fracerr) # bright end (flux upper limit)
             #phot['abmag_uperr'][igood, jgood] = +2.5 * np.log10(1 - fracerr) # faint end (flux lower limit)
             #test = 2.5 * np.log(np.exp(1)) * fracerr # symmetric in magnitude (approx)
 
             # approximate the uncertainty as being symmetric in magnitude
-            phot['abmag_ivar'][igood, jgood] = (ivarmaggies * (maggies * 0.4 * np.log(10))**2).astype('f4')
+            phot['abmag_ivar'][igood, jgood] = (ivarmaggies * (maggies * 0.4 * np.log(10))**2)#.astype('f4')
             
         if len(upper) > 0:
-            phot['abmag_limit'][iupper, jupper] = abmag_limit.astype('f4')
+            phot['abmag_limit'][iupper, jupper] = abmag_limit#.astype('f4')
             
         return phot
 
@@ -738,10 +738,10 @@ class ContinuumFit(ContinuumTools):
         # the nominal values are in the grid.
         vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 20.0, 150.0)
         #vdispmin, vdispmax, dvdisp, vdisp_nominal = (0.0, 0.0, 30.0, 150.0)
-        nvdisp = np.ceil((vdispmax - vdispmin) / dvdisp).astype(int)
+        nvdisp = np.int(np.ceil((vdispmax - vdispmin) / dvdisp))
         if nvdisp == 0:
             nvdisp = 1
-        vdisp = np.linspace(vdispmin, vdispmax, nvdisp).astype('f4') # [km/s]
+        vdisp = np.linspace(vdispmin, vdispmax, nvdisp)#.astype('f4') # [km/s]
 
         if not vdisp_nominal in vdisp:
             vdisp = np.sort(np.hstack((vdisp, vdisp_nominal)))
@@ -751,10 +751,10 @@ class ContinuumFit(ContinuumTools):
 
         #AVmin, AVmax, dAV, AV_nominal = (0.0, 0.0, 0.1, 0.0)
         AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.1, 0.0)
-        nAV = np.ceil((AVmax - AVmin) / dAV).astype(int)
+        nAV = np.int(np.ceil((AVmax - AVmin) / dAV))
         if nAV == 0:
             nAV = 1
-        AV = np.linspace(AVmin, AVmax, nAV).astype('f4')
+        AV = np.linspace(AVmin, AVmax, nAV)#.astype('f4')
         assert(AV[0] == 0.0) # minimum value has to be zero (assumed in fnnls_continuum)
 
         if not AV_nominal in AV:

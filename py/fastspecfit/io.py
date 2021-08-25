@@ -533,8 +533,8 @@ class DESISpectra(object):
                 if not fastphot:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                                  'linemask': [],
-                                 'snr': np.zeros(3).astype('f4'),
-                                 #'std': np.zeros(3).astype('f4'), # emission-line free standard deviation, per-camera
+                                 'snr': np.zeros(3, 'f4'),
+                                 #'std': np.zeros(3, 'f4'), # emission-line free standard deviation, per-camera
                                  'cameras': spec.bands})
                     for icam, camera in enumerate(data['cameras']):
                         #mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))
