@@ -854,72 +854,7 @@ class EMLineFit(ContinuumTools):
             dn4000_nolines, _ = self.get_dn4000(emlinewave, specflux_nolines, redshift=redshift)
             result['DN4000_NOLINES'] = dn4000_nolines
 
-        ## Determine the uncertainties from the diagonal terms of the covariance
-        ## matrix. If the covariance matrix is not known, estimate it from the
-        ## Jacobian following:
-        ##   https://github.com/scipy/scipy/blob/master/scipy/optimize/minpack.py#L805
-        #pcov = self.fitter.fit_info['param_cov']
-        #if pcov is None:
-        #    pcov = np.zeros((nparam, nparam))
-        #    #from scipy.linalg import svd
-        #    #fjac = self.fitter.fit_info['fjac']
-        #    #if fjac is not None:
-        #    #    _, s, VT = svd(fjac, full_matrices=False)
-        #    #    threshold = np.finfo(float).eps * max(fjac.shape) * s[0]
-        #    #    s = s[s > threshold]
-        #    #    VT = VT[:s.size]
-        #    #    pcov = np.dot(VT.T / s**2, VT)
-        #paramvar = np.diag(pcov)
-        #ivar = np.zeros(nparam)
-
-        # Need to be careful about uncertainties for tied parameters--
-        # https://github.com/astropy/astropy/issues/7202
-        
-        #err_params = np.sqrt(np.diag(fitter.fit_info['param_cov']))
-        #err = model.copy()
-        #fitting._fitter_to_model_params(err, err_params)            
-
-        # populate the output table
-        #count = 0
-        #for ii, pp in enumerate(bestfit.param_names):
-        #    pinfo = getattr(bestfit, pp)
-        #    result[pinfo.name.upper()] = pinfo.value.astype('f4')
-        #    #iinfo = getattr(self.EMLineModel, pp)
-        #
-        #    # need to think about this more deeply
-        #    #if pinfo.value == iinfo.value: # not fitted
-        #    #    result.update({pinfo.name: np.float(0.0)})
-        #    #else:
-        #    #    result.update({pinfo.name: pinfo.value.astype('f4')})
-        #    #result.update({pinfo.name: pinfo.value.astype('f4')})
-        #    result[pinfo.name.upper()] = pinfo.value.astype('f4')
-        #        
-        #    #if pinfo.fixed:
-        #    #    #result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
-        #    #    result['{}_IVAR'.format(pinfo.name.upper())] = pinfo.value.astype('f4')
-        #    #elif pinfo.tied:
-        #    #    # hack! see https://github.com/astropy/astropy/issues/7202
-        #    #    #result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
-        #    #    result['{}_IVAR'.format(pinfo.name.upper())] = np.float32(0.0)
-        #    #else:
-        #    #    result['{}_IVAR'.format(pinfo.name.upper())] = ivar[count].astype('f4')
-        #    #    #result.update({'{}_ivar'.format(pinfo.name): ivar[count].astype('f4')})
-        #    #    count += 1
-
-        ## hack for tied parameters---gotta be a better way to do this
-        ##result['oiii_4959_amp_ivar'] = result['oiii_5007_amp_ivar'] * 2.8875**2
-        #result['OIII_4959_AMP_IVAR'] = result['OIII_5007_AMP_IVAR'] * 2.8875**2
-        #result['NII_6548_AMP_IVAR'] = result['NII_6548_AMP_IVAR'] * 2.936**2
-
-        ## now loop back through and if ivar==0 then set the parameter value to zero
-        #if False:
-        #    if self.fitter.fit_info['param_cov'] is not None:
-        #        for pp in bestfit.param_names:
-        #            if result['{}_IVAR'.format(pp.upper())] == 0.0:
-        #                result[pp] = np.float(0.0)
-
         # get continuum fluxes, EWs, and upper limits
-
         verbose = False
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
