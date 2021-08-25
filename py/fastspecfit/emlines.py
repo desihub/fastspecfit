@@ -520,6 +520,8 @@ class EMLineModel(Fittable1DModel):
         redshift - required keyword
         
         """
+        super().__init__()        
+
         self.linetable = read_emlines()
         self.nline = len(self.linetable)
         self.linenames = np.array([linename.replace('_amp', '') for linename in self.param_names[:self.nline]])
@@ -540,135 +542,8 @@ class EMLineModel(Fittable1DModel):
         zline = self.linetable['restwave'] * (1 + self.redshift)
         self.inrange = (zline > wavelims[0]) * (zline < wavelims[1])
 
-        #_tie_lines(self)
-
-        super().__init__()        
-
-        #super(EMLineModel, self).__init__(
-        #    nv_1240_amp=nv_1240_amp,
-        #    silii_1265_amp=silii_1265_amp,
-        #    silii_1309_amp=silii_1309_amp,
-        #    siliv_1394_amp=siliv_1394_amp,
-        #    siliv_1403_amp=siliv_1403_amp,
-        #    silii_1533_amp=silii_1533_amp,
-        #    civ_1549_amp=civ_1549_amp,
-        #    heii_1640_amp=heii_1640_amp,
-        #    oiii_1661_amp=oiii_1661_amp,
-        #    oiii_1666_amp=oiii_1666_amp,
-        #    siliii_1882_amp=siliii_1882_amp,
-        #    siliii_1892_amp=siliii_1892_amp,
-        #    ciii_1907_amp=ciii_1907_amp,
-        #    ciii_1908_amp=ciii_1908_amp,
-        #    mgii_2796_amp=mgii_2796_amp,
-        #    mgii_2803_amp=mgii_2803_amp,
-        #    nev_3346_amp=nev_3346_amp,
-        #    nev_3426_amp=nev_3426_amp,
-        #    oii_3726_amp=oii_3726_amp,
-        #    oii_3729_amp=oii_3729_amp,
-        #    neiii_3869_amp=neiii_3869_amp,
-        #    hei_3889_amp=hei_3889_amp,
-        #    hepsilon_amp=hepsilon_amp,
-        #    hdelta_amp=hdelta_amp,
-        #    hgamma_amp=hgamma_amp,
-        #    oiii_4363_amp=oiii_4363_amp,
-        #    hei_4471_amp=hei_4471_amp,
-        #    heii_4686_amp=heii_4686_amp,
-        #    hbeta_amp=hbeta_amp,
-        #    oiii_4959_amp=oiii_4959_amp,
-        #    oiii_5007_amp=oiii_5007_amp,
-        #    hei_5876_amp=hei_5876_amp,
-        #    oi_6300_amp=oi_6300_amp,
-        #    nii_6548_amp=nii_6548_amp,
-        #    halpha_amp=halpha_amp,
-        #    nii_6584_amp=nii_6584_amp,
-        #    sii_6716_amp=sii_6716_amp,
-        #    sii_6731_amp=sii_6731_amp,
-        #    siii_9069_amp=siii_9069_amp,
-        #    siii_9532_amp=siii_9532_amp,
-        #
-        #    nv_1240_vshift=nv_1240_vshift,
-        #    silii_1265_vshift=silii_1265_vshift,
-        #    silii_1309_vshift=silii_1309_vshift,
-        #    siliv_1394_vshift=siliv_1394_vshift,
-        #    siliv_1403_vshift=siliv_1403_vshift,
-        #    silii_1533_vshift=silii_1533_vshift,
-        #    civ_1549_vshift=civ_1549_vshift,
-        #    heii_1640_vshift=heii_1640_vshift,
-        #    oiii_1661_vshift=oiii_1661_vshift,
-        #    oiii_1666_vshift=oiii_1666_vshift,
-        #    siliii_1882_vshift=siliii_1882_vshift,
-        #    siliii_1892_vshift=siliii_1892_vshift,
-        #    ciii_1907_vshift=ciii_1907_vshift,
-        #    ciii_1908_vshift=ciii_1908_vshift,
-        #    mgii_2796_vshift=mgii_2796_vshift,
-        #    mgii_2803_vshift=mgii_2803_vshift,
-        #    nev_3346_vshift=nev_3346_vshift,
-        #    nev_3426_vshift=nev_3426_vshift,
-        #    oii_3726_vshift=oii_3726_vshift,
-        #    oii_3729_vshift=oii_3729_vshift,
-        #    neiii_3869_vshift=neiii_3869_vshift,
-        #    hei_3889_vshift=hei_3889_vshift,
-        #    hepsilon_vshift=hepsilon_vshift,
-        #    hdelta_vshift=hdelta_vshift,
-        #    hgamma_vshift=hgamma_vshift,
-        #    oiii_4363_vshift=oiii_4363_vshift,
-        #    hei_4471_vshift=hei_4471_vshift,
-        #    heii_4686_vshift=heii_4686_vshift,
-        #    hbeta_vshift=hbeta_vshift,
-        #    oiii_4959_vshift=oiii_4959_vshift,
-        #    oiii_5007_vshift=oiii_5007_vshift,
-        #    hei_5876_vshift=hei_5876_vshift,
-        #    oi_6300_vshift=oi_6300_vshift,
-        #    nii_6548_vshift=nii_6548_vshift,
-        #    halpha_vshift=halpha_vshift,
-        #    nii_6584_vshift=nii_6584_vshift,
-        #    sii_6716_vshift=sii_6716_vshift,
-        #    sii_6731_vshift=sii_6731_vshift,
-        #    siii_9069_vshift=siii_9069_vshift,
-        #    siii_9532_vshift=siii_9532_vshift,
-        #
-        #    nv_1240_sigma=nv_1240_sigma,
-        #    silii_1265_sigma=silii_1265_sigma,
-        #    silii_1309_sigma=silii_1309_sigma,
-        #    siliv_1394_sigma=siliv_1394_sigma,
-        #    siliv_1403_sigma=siliv_1403_sigma,
-        #    silii_1533_sigma=silii_1533_sigma,
-        #    civ_1549_sigma=civ_1549_sigma,
-        #    heii_1640_sigma=heii_1640_sigma,
-        #    oiii_1661_sigma=oiii_1661_sigma,
-        #    oiii_1666_sigma=oiii_1666_sigma,
-        #    siliii_1882_sigma=siliii_1882_sigma,
-        #    siliii_1892_sigma=siliii_1892_sigma,
-        #    ciii_1907_sigma=ciii_1907_sigma,
-        #    ciii_1908_sigma=ciii_1908_sigma,
-        #    mgii_2796_sigma=mgii_2796_sigma,
-        #    mgii_2803_sigma=mgii_2803_sigma,
-        #    nev_3346_sigma=nev_3346_sigma,
-        #    nev_3426_sigma=nev_3426_sigma,
-        #    oii_3726_sigma=oii_3726_sigma,
-        #    oii_3729_sigma=oii_3729_sigma,
-        #    neiii_3869_sigma=neiii_3869_sigma,
-        #    hei_3889_sigma=hei_3889_sigma,
-        #    hepsilon_sigma=hepsilon_sigma,
-        #    hdelta_sigma=hdelta_sigma,
-        #    hgamma_sigma=hgamma_sigma,
-        #    oiii_4363_sigma=oiii_4363_sigma,
-        #    hei_4471_sigma=hei_4471_sigma,
-        #    heii_4686_sigma=heii_4686_sigma,
-        #    hbeta_sigma=hbeta_sigma,
-        #    oiii_4959_sigma=oiii_4959_sigma,
-        #    oiii_5007_sigma=oiii_5007_sigma,
-        #    hei_5876_sigma=hei_5876_sigma,
-        #    oi_6300_sigma=oi_6300_sigma,
-        #    nii_6548_sigma=nii_6548_sigma,
-        #    halpha_sigma=halpha_sigma,
-        #    nii_6584_sigma=nii_6584_sigma,
-        #    sii_6716_sigma=sii_6716_sigma,
-        #    sii_6731_sigma=sii_6731_sigma,
-        #    siii_9069_sigma=siii_9069_sigma,
-        #    siii_9532_sigma=siii_9532_sigma,
-        #    
-        #    **kwargs)
+        # tie lines together
+        _tie_lines(self)
 
     def _emline_spectrum(self, *lineargs):
         """Simple wrapper to build an emission-line spectrum.
@@ -900,16 +775,13 @@ class EMLineFit(ContinuumTools):
                                        emlineR=data['res'],
                                        npixpercamera=npixpercamera,
                                        log10wave=self.log10wave)
-        self.EMLineModel = _tie_lines(self.EMLineModel)
-
+        
         fitter = FastLevMarLSQFitter(self.EMLineModel)
 
         #pdb.set_trace()
 
         t0 = time.time()        
         bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
-        #bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
-        #                      weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
         log.info('Line-fitting took {:.2f} sec'.format(time.time()-t0))
 
         # Initialize the output table; see init_fastspecfit for the data model.
@@ -1464,7 +1336,7 @@ class EMLineFit(ContinuumTools):
         meanwaves, deltawaves, sigmas, linenames = [], [], [], []
         for plotgroup in set(self.linetable['plotgroup']):
             I = np.where(plotgroup == self.linetable['plotgroup'])[0]
-            linenames.append(self.linetable['nicename'][I[0]])
+            linenames.append(self.linetable['nicename'][I[0]].replace('-', ' '))
             meanwaves.append(np.mean(self.linetable['restwave'][I]))
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
@@ -1541,8 +1413,8 @@ class EMLineFit(ContinuumTools):
                     if _ymin < ymin[iax]:
                         ymin[iax] = _ymin
                     
-                xx.text(0.08, 0.89, linename, ha='left', va='center',
-                        transform=xx.transAxes, fontsize=20)
+                xx.text(0.06, 0.89, linename, ha='left', va='center',
+                        transform=xx.transAxes, fontsize=18)
 
                 
         for iax, xx in enumerate(ax):
