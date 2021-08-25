@@ -554,24 +554,19 @@ class EMLineModel(Fittable1DModel):
         # build the emission-line model [erg/s/cm2/A, observed frame]
 
         """
-        linenames = self.linenames[self.inrange]
+        #linenames = self.linenames[self.inrange]
         lineamps = np.hstack(lineargs[0:self.nline])[self.inrange]
         linevshifts = np.hstack(lineargs[self.nline:2*self.nline])[self.inrange]
         linesigmas = np.hstack(lineargs[2*self.nline:])[self.inrange]
 
-        log10model = np.zeros_like(self.log10wave)
-        for linename, lineamp, linevshift, linesigma in zip(linenames, lineamps, linevshifts, linesigmas):
-            
-            iline = self.linenames == linename
-            restlinewave = self.restlinewaves[iline]
-            
-            linez = self.redshift + linevshift / C_LIGHT
-            linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
+        # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
+        log10sigmas = linesigmas / C_LIGHT / np.log(10) 
+        linezwaves = np.log10(self.restlinewaves[self.inrange] * (1.0 + self.redshift + linevshifts / C_LIGHT)) 
 
-            log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]
-            
+        log10model = np.zeros_like(self.log10wave)
+        for lineamp, linezwave, log10sigma in zip(lineamps, linezwaves, log10sigmas):
             ww = np.abs(self.log10wave - linezwave) < (10 * log10sigma)
-            if np.count_nonzero(ww) > 0:
+            if np.sum(ww) > 0:
                 #log.info(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
                 log10model[ww] += lineamp * np.exp(-0.5 * (self.log10wave[ww]-linezwave)**2 / log10sigma**2)
 
@@ -740,7 +735,7 @@ class EMLineFit(ContinuumTools):
         return emlinemodel
     
     def fit(self, data, continuummodel, smooth_continuum, synthphot=True,
-            maxiter=1000, accuracy=1e-3):
+            maxiter=1000, accuracy=1e-2):
         """Perform the fit minimization / chi2 minimization.
         
         EMLineModel object
@@ -1113,7 +1108,7 @@ class EMLineFit(ContinuumTools):
         nlinepanels = 5
 
         nline = len(set(self.linetable['plotgroup']))
-        nlinerows = np.ceil(nline / nlinepanels).astype(int)
+        nlinerows = np.int(np.ceil(nline / nlinepanels))
         nrows = 2 + nlinerows
 
         height_ratios = np.hstack([1, 1, [0.5]*nlinerows])
