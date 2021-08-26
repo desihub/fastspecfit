@@ -42,9 +42,25 @@ def read_emlines():
 
 # doublet ratios are always tied
 def _tie_nii_amp(model):
-    return model.nii_6584_amp / 2.936
+    """
+    [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.022e-21
+    [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.949e-21
+    """
+    return model.nii_6584_amp / 2.9421 # 2.936
+
 def _tie_oiii_amp(model):
-    return model.oiii_5007_amp / 2.8875
+    """
+    [O3] (4-->2): airwave: 4958.9097 vacwave: 4960.2937 emissivity: 1.172e-21
+    [O3] (4-->3): airwave: 5006.8417 vacwave: 5008.2383 emissivity: 3.497e-21
+    """
+    return model.oiii_5007_amp / 2.9839 # 2.8875
+
+def _tie_oii_amp(model):
+    """
+    [O2] (2-->1): airwave: 3728.8145 vacwave: 3729.8750 emissivity: 1.948e-21
+    [O2] (3-->1): airwave: 3726.0322 vacwave: 3727.0919 emissivity: 1.444e-21
+    """
+    return model.oii_3726_amp / 1.3490
     
 def _tie_hbeta_sigma(model):
     return model.hbeta_sigma
@@ -385,6 +401,7 @@ class EMLineModel(Fittable1DModel):
 
     nii_6548_amp.tied = _tie_nii_amp
     oiii_4959_amp.tied = _tie_oiii_amp
+    oii_3726_amp.tied = _tie_oii_amp
     
     def __init__(self,
                  nv_1240_amp=nv_1240_amp.default,
@@ -812,6 +829,8 @@ class EMLineFit(ContinuumTools):
             bestfit.nii_6548_amp = 0.0
         if bestfit.oiii_5007_amp == 0.0 and bestfit.oiii_4959_amp != 0.0:
             bestfit.oiii_4959_amp = 0.0
+        if bestfit.oii_3726_amp == 0.0 and bestfit.oii_3726_amp != 0.0:
+            bestfit.oii_3726_amp = 0.0
 
         # Now fill the output table.
         for pp in bestfit.param_names:
@@ -831,7 +850,8 @@ class EMLineFit(ContinuumTools):
 
             # The wavelengths overlap between the cameras a bit...
             srt = np.argsort(emlinewave)
-            padflux, padwave = filters.pad_spectrum((continuummodelflux+smoothcontinuummodelflux+emlinemodel)[srt], emlinewave[srt], method='edge')
+            padflux, padwave = filters.pad_spectrum((continuummodelflux+smoothcontinuummodelflux+emlinemodel)[srt],
+                                                    emlinewave[srt], method='edge')
             synthmaggies = filters.get_ab_maggies(padflux / self.fluxnorm, padwave)
             synthmaggies = synthmaggies.as_array().view('f8')
             model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
@@ -856,7 +876,7 @@ class EMLineFit(ContinuumTools):
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
-        for oneline in self.EMLineModel.linetable:
+        for oneline in self.EMLineModel.linetable[self.inrange]:
 
             linename = oneline['name'].upper()
             linez = redshift + result['{}_VSHIFT'.format(linename)][0] / C_LIGHT
@@ -866,8 +886,8 @@ class EMLineFit(ContinuumTools):
             log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]            
 
             # number of pixels, chi2, and boxcar integration
-            lineindx = np.where((emlinewave > (linezwave - 4.*linesigma * linezwave / C_LIGHT)) *
-                                (emlinewave < (linezwave + 4.*linesigma * linezwave / C_LIGHT)) *
+            lineindx = np.where((emlinewave > (linezwave - 2.*linesigma * linezwave / C_LIGHT)) *
+                                (emlinewave < (linezwave + 2.*linesigma * linezwave / C_LIGHT)) *
                                 (emlineivar > 0))[0]
             npix = len(lineindx)
             #if 'BETA' in linename:
