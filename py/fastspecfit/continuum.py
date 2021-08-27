@@ -701,8 +701,8 @@ class ContinuumTools(object):
 
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 
-    def smooth_residuals(self, continuummodel, specwave, specflux, specivar,
-                         linemask, linepix, contpix, percamera=False, binwave=0.8*120):#binwave=0.8*160):
+    def smooth_residuals(self, residuals, wave, specivar, linemask,
+                         linepix, contpix, binwave=0.8*120):#binwave=0.8*160):
         """Derive a median-smoothed correction to the continuum fit in order to pick up
         any unmodeled flux, before emission-line fitting.
 
@@ -747,36 +747,48 @@ class ContinuumTools(object):
         medbin = np.int(binwave * 2)
         #print(binwave, medbin)
 
-        if percamera:
-            smooth_continuum = []
-            for icam in np.arange(len(specflux)): # iterate over cameras        
-                residuals = specflux[icam] - continuummodel[icam]
-                if False:
-                    smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
-                    #smooth1 = robust_median(specwave[icam], residuals, specivar[icam] * linemask[icam], binwave)
-                    smooth2 = median_filter(smooth1, medbin, mode='nearest')
-                    smooth_continuum.append(smooth2)
-                else:
-                    # Fragile...replace the line-affected pixels with noise to make the
-                    # smoothing better-behaved.
-                    pix_nolines = linemask[icam]      # unaffected by a line = True
-                    pix_emlines = np.logical_not(pix_nolines) # affected by line = True
-                    residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
-                                              np.std(residuals[pix_nolines]) +
-                                              np.median(residuals[pix_nolines]))
-                    smooth1 = median_filter(residuals, medbin, mode='nearest')
-                    #smooth2 = savgol_filter(smooth1, 151, 2)
-                    smooth2 = median_filter(smooth1, medbin//2, mode='nearest')
-                    smooth_continuum.append(smooth2)
-        else:
-            residuals = specflux - continuummodel
-            pix_nolines = linemask      # unaffected by a line = True
-            pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+        # Replace pixels potentially affected by lines by the ivar-weighted mean
+        # of the surrounding (local) continuum.
+        residuals_clean = []
+        for icam in np.arange(len(residuals)): # iterate over cameras
+            _residuals = residuals[icam].copy()
+            for _linepix, _contpix in zip(linepix[icam], contpix[icam]):
+                #_smooth_continuum[_linepix] = np.median(residuals[icam][_contpix])
+                _residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(residuals[icam][_contpix])) + np.median(residuals[icam][_contpix])
+            residuals_clean.append(_residuals)
 
-            residuals[pix_emlines] = (self.rand.normal(size=np.sum(pix_emlines)) *
-                                      np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
-            smooth1 = median_filter(residuals, medbin, mode='nearest')
-            smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
+        residuals_clean = np.hstack(residuals_clean)
+        smooth1 = median_filter(residuals_clean, medbin, mode='nearest')
+        smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
+
+        #if percamera:
+        #    smooth_continuum = []
+        #    for icam in np.arange(len(specflux)): # iterate over cameras        
+        #        residuals = specflux[icam] - continuummodel[icam]
+        #        if False:
+        #            smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
+        #            #smooth1 = robust_median(specwave[icam], residuals, specivar[icam] * linemask[icam], binwave)
+        #            smooth2 = median_filter(smooth1, medbin, mode='nearest')
+        #            smooth_continuum.append(smooth2)
+        #        else:
+        #            # Fragile...replace the line-affected pixels with noise to make the
+        #            # smoothing better-behaved.
+        #            pix_nolines = linemask[icam]      # unaffected by a line = True
+        #            pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+        #            residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
+        #                                      np.std(residuals[pix_nolines]) +
+        #                                      np.median(residuals[pix_nolines]))
+        #            smooth1 = median_filter(residuals, medbin, mode='nearest')
+        #            #smooth2 = savgol_filter(smooth1, 151, 2)
+        #            smooth2 = median_filter(smooth1, medbin//2, mode='nearest')
+        #            smooth_continuum.append(smooth2)
+        #else:
+        #    pix_nolines = linemask      # unaffected by a line = True
+        #    pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+        #    residuals[pix_emlines] = (self.rand.normal(size=np.sum(pix_emlines)) *
+        #                              np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
+        #    smooth1 = median_filter(residuals, medbin, mode='nearest')
+        #    smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
 
         return smooth_continuum
 
@@ -1342,8 +1354,10 @@ class ContinuumFit(ContinuumTools):
             log.warning('Skipping smoothing residuals!')
             _smooth_continuum = np.zeros_like(bestfit)
         else:
+            _residuals = specflux - bestfit
+            residuals = [_residuals[np.sum(npixpercam[:icam+1]):np.sum(npixpercam[:icam+2])] for icam in np.arange(len(data['cameras']))]
             _smooth_continuum = self.smooth_residuals(
-                bestfit, data['wave'], data['flux'], data['ivar'],
+                residuals, data['wave'], data['ivar'],
                 data['linemask'], data['linepix'], data['contpix'])
             #_smooth_continuum = self.smooth_residuals(
             #    bestfit, specwave, specflux, np.hstack(data['ivar']),

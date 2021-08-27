@@ -1116,9 +1116,13 @@ class EMLineFit(ContinuumTools):
                                      coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)
         
+        residuals = [data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
         _smooth_continuum = self.smooth_residuals(
-            np.hstack(continuum), np.hstack(data['wave']), np.hstack(data['flux']),
-            np.hstack(data['ivar']), np.hstack(data['linemask']))
+            residuals, data['wave'], data['ivar'],
+            data['linemask'], data['linepix'], data['contpix'])
+        #_smooth_continuum = self.smooth_residuals(
+        #    np.hstack(continuum), np.hstack(data['wave']), np.hstack(data['flux']),
+        #    np.hstack(data['ivar']), np.hstack(data['linemask']))
         smooth_continuum = []
         for icam in np.arange(len(data['cameras'])): # iterate over cameras
             ipix = np.sum(npixpercam[:icam+1])
@@ -1332,8 +1336,8 @@ class EMLineFit(ContinuumTools):
             xx = fig.add_subplot(gs[irow, icol])
             ax.append(xx)
 
-            wmin = (meanwave - deltawave) * (1+redshift) - 8 * sig * meanwave / C_LIGHT
-            wmax = (meanwave + deltawave) * (1+redshift) + 8 * sig * meanwave / C_LIGHT
+            wmin = (meanwave - deltawave) * (1+redshift) - 3 * sig * meanwave * (1+redshift) / C_LIGHT
+            wmax = (meanwave + deltawave) * (1+redshift) + 3 * sig * meanwave * (1+redshift) / C_LIGHT
             #print(linename, wmin, wmax)
 
             # iterate over cameras
