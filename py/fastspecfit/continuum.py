@@ -168,7 +168,7 @@ class ContinuumTools(object):
         self.linetable = read_emlines()
 
         self.linemask_sigma = 200.0 # [km/s]
-        self.linemask_sigma_broad = 1000.0 # [km/s]
+        self.linemask_sigma_broad = 2000.0 # [km/s]
 
         # photometry
         self.bands = ['g', 'r', 'z', 'W1', 'W2']
@@ -419,23 +419,79 @@ class ContinuumTools(object):
         """
         return 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
 
-    def build_linemask(self, wave, redshift=0.0):
+    def build_linemask(self, wave, flux, ivar, redshift=0.0):
         """Generate a mask which identifies pixels potentially affected by emission
         lines.
 
         wave - observed-frame wavelength array
 
         """
-        linemask = np.ones_like(wave, bool)
-        for line in self.linetable:
-            zlinewave = line['restwave'] * (1 + redshift)
-            if line['isbroad']:
-                sigma = self.linemask_sigma_broad
+        # estimate the velocity width from potentially strong, isolated lines;
+        # somewhat fragile!
+        def _estimate_linesigma(zlinewaves, sigma, junkplot=None):
+            linesigma, medsnr = 0.0, 0.0
+            inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
+            if np.sum(inrange) > 0:
+                stackdvel, stackflux, stackivar = [], [], []
+                for zlinewave in zlinewaves[inrange]:
+                    I = ((wave >= (zlinewave - 2*sigma * zlinewave / C_LIGHT)) *
+                         (wave <= (zlinewave + 2*sigma * zlinewave / C_LIGHT)))
+                    if np.max(flux[I]) > 0:
+                        stackdvel.append((wave[I] - zlinewave) / zlinewave * C_LIGHT)
+                        stackflux.append(flux[I] / np.max(flux[I]))
+                        stackivar.append(ivar[I] * np.max(flux[I])**2)
+                if len(stackflux) > 0:
+                    stackdvel = np.hstack(stackdvel)
+                    stackflux = np.hstack(stackflux)
+                    stackivar = np.hstack(stackivar)
+
+                    stacksnr = stackflux * np.sqrt(stackivar)
+                    noneg = stacksnr > 0
+                    if np.sum(noneg) > 0:
+                        linewidth = np.sum(stacksnr[noneg] * stackdvel[noneg]**2 / np.sum(stacksnr[noneg]))
+                        #linewidth = np.sum(stackflux * stackdvel**2 / np.sum(stackflux))
+                        if linewidth > 0:
+                            linesigma = np.sqrt(linewidth)
+                            medsnr = np.median(stacksnr[noneg])
+
+                        if junkplot:
+                            print(linesigma, medsnr)
+                            import matplotlib.pyplot as plt
+                            plt.clf()
+                            plt.plot(stackdvel, stackflux)
+                            plt.plot(stackdvel, np.exp(-0.5*stackdvel**2/linewidth), color='k')
+                            plt.savefig(junkplot)
+                        
+            return linesigma, medsnr
+                
+        # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
+        zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
+        linesigma_broad, broad_snr = _estimate_linesigma(zlinewaves, self.linemask_sigma_broad, junkplot='cosmo-www/tmp/junk-broad.png')
+        if (linesigma_broad < 500) or (linesigma_broad > 4000) or (broad_snr < 3):
+            linesigma_broad = self.linemask_sigma_broad
+
+        # [OII] doublet, [OIII] 5007
+        zlinewaves = np.array([3728.483, 5008.239]) * (1 + redshift)
+        linesigma_narrow, narrow_snr = _estimate_linesigma(zlinewaves, self.linemask_sigma, junkplot='cosmo-www/tmp/junk-narrow.png')
+        if (linesigma_narrow < 50) or (linesigma_narrow > 200) or (narrow_snr < 3):
+            linesigma_narrow = self.linemask_sigma
+
+        # now build the mask
+        linemask = np.ones_like(wave, bool) # True = not affected by emission line
+
+        linenames = np.hstack(('Lya', self.linetable['name'])) # include Lyman-alpha
+        zlinewaves = np.hstack((1215.0, self.linetable['restwave'])) * (1 + redshift)
+        isbroads = np.hstack((True, self.linetable['isbroad']))
+
+        inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
+        for zlinewave, isbroad in zip(zlinewaves[inrange], isbroads[inrange]):
+            if isbroad:
+                sigma = linesigma_broad
             else:
-                sigma = self.linemask_sigma
-            I = ((wave >= (zlinewave - 1.5*sigma * zlinewave / C_LIGHT)) *
-                 (wave <= (zlinewave + 1.5*sigma * zlinewave / C_LIGHT)))
-            if np.count_nonzero(I) > 0:
+                sigma = linesigma_narrow
+            I = ((wave >= (zlinewave - 2*sigma * zlinewave / C_LIGHT)) *
+                 (wave <= (zlinewave + 2*sigma * zlinewave / C_LIGHT)))
+            if np.sum(I) > 0:
                 linemask[I] = False  # False = affected by line
 
         return linemask
@@ -629,7 +685,7 @@ class ContinuumTools(object):
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 
     def smooth_residuals(self, continuummodel, specwave, specflux, specivar,
-                         linemask, percamera=False, binwave=0.8*160):
+                         linemask, percamera=False, binwave=0.8*120):#binwave=0.8*160):
         """Derive a median-smoothed correction to the continuum fit in order to pick up
         any unmodeled flux, before emission-line fitting.
 
@@ -699,9 +755,9 @@ class ContinuumTools(object):
             residuals = specflux - continuummodel
             pix_nolines = linemask      # unaffected by a line = True
             pix_emlines = np.logical_not(pix_nolines) # affected by line = True
-            
-            residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
-                                      np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
+
+            #residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
+            #                          np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
             smooth1 = median_filter(residuals, medbin, mode='nearest')
             smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
 
@@ -1265,7 +1321,7 @@ class ContinuumFit(ContinuumTools):
 
         # Do a quick median-smoothing of the stellar continuum-subtracted
         # residuals, to help with the emission-line fitting.
-        if True:
+        if False:
             log.warning('Skipping smoothing residuals!')
             _smooth_continuum = np.zeros_like(bestfit)
         else:

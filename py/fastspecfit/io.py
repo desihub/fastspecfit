@@ -545,8 +545,8 @@ class DESISpectra(object):
                         data['res'].append(Resolution(spec.resolution_data[camera][igal, :, :]))
                         data['snr'][icam] = np.median(spec.flux[camera][igal, :] * np.sqrt(spec.ivar[camera][igal, :]))
 
-                        linemask = CFit.build_linemask(spec.wave[camera], redshift=data['zredrock'])
-                        data['linemask'].append(linemask)
+                        #linemask = CFit.build_linemask(spec.wave[camera], redshift=data['zredrock'])
+                        #data['linemask'].append(linemask)
 
                         #data['std'][icam] = np.std(spec.flux[camera][igal, :][linemask])
 
@@ -571,7 +571,11 @@ class DESISpectra(object):
                     coadd_flux = coadd_spec.flux[coadd_bands][igal, :]
                     coadd_ivar = coadd_spec.ivar[coadd_bands][igal, :]
                     coadd_res = Resolution(coadd_spec.resolution_data[coadd_bands][igal, :])
-                    coadd_linemask = CFit.build_linemask(coadd_wave, redshift=data['zredrock'])
+                    coadd_linemask = CFit.build_linemask(coadd_wave, coadd_flux, coadd_ivar, redshift=data['zredrock'])
+
+                    for icam in np.arange(len(data['cameras'])):
+                        linemask = np.interp(data['wave'][icam], coadd_wave, coadd_linemask*1) > 0
+                        data['linemask'].append(linemask)
 
                     #import matplotlib.pyplot as plt
                     #plt.clf()
@@ -773,8 +777,8 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None,
         if coadd_type:
             hdr.append({'name': 'COADDTYP', 'value': coadd_type, 'comment': 'spectral coadd fitted'})
         
-        fitsio.write(outfile, out.as_array(), clobber=True, header=hdr)
-        fitsio.write(outfile, meta.as_array())
+        fitsio.write(outfile, out.as_array(), header=hdr, clobber=True)
+        fitsio.write(outfile, meta.as_array(), header=hdr)
 
         # update the extension name
         if fastphot:

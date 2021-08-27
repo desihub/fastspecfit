@@ -24,10 +24,10 @@
 #     jm21mar19 - more lines added
 #     jm21aug01 - [OI], HeI, HeII and more added'}
 name restwave amp isbalmer isbroad nicename plotgroup
-    nv_1239   1238.821     1.0   False  True   NV-$\lambda$1238                        nv_1239_43
-    nv_1243   1242.804     1.0   False  True   NV-$\lambda$1242                        nv_1239_43
-    oi_1304   1304.35      1.0   False  True   OI~$\lambda$1304                        oi_1304_silii_1307
- silii_1307   1306.82      1.0   False  True   SiII~$\lambda$1307                      oi_1304_silii_1307
+    nv_1239   1238.821     1.0   False  True   NV-$\lambda\lambda$1239,43              nv_1239_43
+    nv_1243   1242.804     1.0   False  True   NV-$\lambda\lambda$1239,43              nv_1239_43
+    oi_1304   1304.35      1.0   False  True   OI-$\lambda$1304+SiII-$\lambda$1307     oi_1304_silii_1307
+ silii_1307   1306.82      1.0   False  True   OI-$\lambda$1304+SiII-$\lambda$1307     oi_1304_silii_1307
  siliv_1394   1393.755     1.0   False  True   SiIV-$\lambda\lambda$1394,1403          siliv_1394_1403
  siliv_1403   1402.770     1.0   False  True   SiIV-$\lambda\lambda$1394,1403          siliv_1394_1403
    civ_1548   1548.187     1.0   True   True   CIV-$\lambda\lambda$1548,50             civ_1548_50
@@ -40,15 +40,15 @@ siliii_1892   1892.030     1.0   False  True   SiIII]-$\lambda$1892             
    nev_3426   3426.8637    0.1   False  False  [NeV]-$\lambda\lambda$3346,3426         nev_3346_3426
    oii_3726   3727.092    0.73   False  False  [OII]-$\lambda\lambda$3726,29           oii_3726_29
    oii_3729   3729.874     1.0   False  False  [OII]-$\lambda\lambda$3726,29           oii_3726_29
- neiii_3869   3869.8611    0.1   False  False  [NeIII]-$\lambda$3869                   neiii_3869_hei_3889
-   hei_3889   3889.751     0.1   True   False  HeI-$\lambda$3889                       neiii_3869_hei_3889
-   hepsilon   3971.195   0.159   True   False  H$\epsilon$                             hepsilon
-     hdelta   4102.892   0.259   True   False  H$\delta$                               hdelta
-     hgamma   4341.684   0.468   True   False  H$\gamma$                               hgamma
+ neiii_3869   3869.8611    0.1   False  False  [NeIII]-$\lambda$3869+HeI-$\lambda$3889 neiii_3869_hei_3889
+   hei_3889   3889.751     0.1   True   False  [NeIII]-$\lambda$3869+HeI-$\lambda$3889 neiii_3869_hei_3889
+   hepsilon   3971.195   0.159   True   False  H$\epsilon$-$\lambda$3970               hepsilon
+     hdelta   4102.892   0.259   True   False  H$\delta$-$\lambda$4101                 hdelta
+     hgamma   4341.684   0.468   True   False  H$\gamma$-$\lambda$4340                 hgamma
   oiii_4363   4364.4351   0.10   False  False  [OIII]-$\lambda$4363                    oiii_4363
    hei_4471   4472.7290	   0.1   True   False  HeI-$\lambda$4471                       hei_4471
   heii_4686   4686.8655    0.1   True   False  HeII-$\lambda$4686                      heii_4686
-      hbeta   4862.683     1.0   True   False  H$\beta$                                hbeta
+      hbeta   4862.683     1.0   True   False  H$\beta$-$\lambda$4861                  hbeta
   oiii_4959   4960.295     1.0   False  False  [OIII]-$\lambda\lambda$4959,5007        oiii_doublet
   oiii_5007   5008.239   2.875   False  False  [OIII]-$\lambda\lambda$4959,5007        oiii_doublet
    nii_5755   5756.1887	   0.1   False  False  [NII]-$\lambda$5755                     nii_5755
