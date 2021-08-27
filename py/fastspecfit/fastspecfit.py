@@ -5,7 +5,7 @@ fastspecfit.fastspecfit
 
 FastSpec wrapper. Call with, e.g.,
 
-# nice BGS example
+  # nice BGS example
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465 --specprod everest
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastspec2.fits --ntargets 1 --specprod everest
 
@@ -20,6 +20,9 @@ FastSpec wrapper. Call with, e.g.,
 
   # nice QSO with broad lines
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec2.fits --targetids 39633331528141827 --specprod everest
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec2.fits --targetids 39633321176600909 --specprod everest
+  fastspecfit-qa --fastspecfile ./fastspec2.fits -o cosmo-www/tmp/
+
 
 ff = Table.read('/global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits', 'FIBERMAP')
 tt = Table.read('/global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits', 'REDSHIFTS')

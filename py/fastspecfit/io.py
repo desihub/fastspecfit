@@ -438,6 +438,7 @@ class DESISpectra(object):
         Hard-coded to assume that all three cameras (grz) have spectra.
 
         """
+        #from scipy.interpolate import interp1d        
         from desispec.resolution import Resolution
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra # read_tile_spectra # 
@@ -454,6 +455,8 @@ class DESISpectra(object):
             redrock = Table(redrock)
             meta = Table(meta)
 
+            ebv = CFit.SFDMap.ebv(meta['RA'], meta['DEC'])
+
             if not fastphot:
                 #spec = read_tile_spectra(meta['TILEID'][0], self.coadd_type, specprod=self.specprod,
                 #                         targets=redrock['TARGETID'])
@@ -468,9 +471,6 @@ class DESISpectra(object):
                 log.info('Coadded the cameras in {:.2f} sec'.format(time.time()-t1))
                 
             for igal in np.arange(len(redrock)):
-                ra, dec = meta['RA'][igal], meta['DEC'][igal]
-                ebv = CFit.SFDMap.ebv(ra, dec)
-
                 # Unpack the data and correct for Galactic extinction. Also flag pixels that
                 # may be affected by emission lines.
                 data = {'zredrock': redrock['Z'][igal], 'photsys': meta['PHOTSYS'][igal]}#, 'photsys_south': dec < self.desitarget_resolve_dec()}
@@ -492,7 +492,7 @@ class DESISpectra(object):
                 
                 #meta['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
                 #mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
-                mw_transmission_flux = np.array([mwdust_transmission(ebv, band, data['photsys'], match_legacy_surveys=False) for band in CFit.bands])
+                mw_transmission_flux = np.array([mwdust_transmission(ebv[igal], band, data['photsys'], match_legacy_surveys=False) for band in CFit.bands])
                 for band, mwdust in zip(CFit.bands, mw_transmission_flux):
                     #print(band, mwdust)
                     self.meta[ispec]['MW_TRANSMISSION_{}'.format(band.upper())][igal] = mwdust
@@ -512,8 +512,8 @@ class DESISpectra(object):
                     lambda_eff=allfilters.effective_wavelengths.value)
 
                 # fiber fluxes
-                #mw_transmission_fiberflux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
-                mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, band, data['photsys']) for band in CFit.fiber_bands])
+                #mw_transmission_fiberflux = 10**(-0.4 * ebv[igal] * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
+                mw_transmission_fiberflux = np.array([mwdust_transmission(ebv[igal], band, data['photsys']) for band in CFit.fiber_bands])
 
                 fibermaggies = np.zeros(len(CFit.fiber_bands))
                 fibertotmaggies = np.zeros(len(CFit.fiber_bands))
@@ -532,13 +532,13 @@ class DESISpectra(object):
 
                 if not fastphot:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
-                                 'linemask': [],
+                                 'linemask': [], 'linepix': [], 'contpix': [],
                                  'snr': np.zeros(3, 'f4'),
                                  #'std': np.zeros(3, 'f4'), # emission-line free standard deviation, per-camera
                                  'cameras': spec.bands})
                     for icam, camera in enumerate(data['cameras']):
                         #mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))
-                        mw_transmission_spec = dust_transmission(spec.wave[camera], ebv, Rv=CFit.RV)
+                        mw_transmission_spec = dust_transmission(spec.wave[camera], ebv[igal], Rv=CFit.RV)
                         data['wave'].append(spec.wave[camera])
                         data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
                         data['ivar'].append(spec.ivar[camera][igal, :] * mw_transmission_spec**2)
@@ -571,12 +571,25 @@ class DESISpectra(object):
                     coadd_flux = coadd_spec.flux[coadd_bands][igal, :]
                     coadd_ivar = coadd_spec.ivar[coadd_bands][igal, :]
                     coadd_res = Resolution(coadd_spec.resolution_data[coadd_bands][igal, :])
-                    coadd_linemask = CFit.build_linemask(coadd_wave, coadd_flux, coadd_ivar, redshift=data['zredrock'])
+                    coadd_linemask_dict = CFit.build_linemask(coadd_wave, coadd_flux, coadd_ivar, redshift=data['zredrock'])
 
+                    # Map the pixels belonging to individual emission lines and
+                    # their local continuum back onto the original per-camera
+                    # spectra. These lists of arrays are used in
+                    # continuum.ContinnuumTools.smooth_residuals.
                     for icam in np.arange(len(data['cameras'])):
-                        linemask = np.interp(data['wave'][icam], coadd_wave, coadd_linemask*1) > 0
-                        data['linemask'].append(linemask)
-
+                        data['linemask'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask']*1) > 0)
+                        _linenpix, _contpix = [], []
+                        for ii in np.arange(len(coadd_linemask_dict['linepix'])):
+                            I = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linepix'][ii]*1) > 0
+                            J = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['contpix'][ii]*1) > 0
+                            if np.sum(I) > 0:
+                                _linenpix.append(np.where(I)[0])
+                            if np.sum(J) > 0:
+                                _contpix.append(np.where(J)[0])
+                        data['linepix'].append(_linenpix)
+                        data['contpix'].append(_contpix)
+                        
                     #import matplotlib.pyplot as plt
                     #plt.clf()
                     #for ii in np.arange(3):
@@ -589,7 +602,9 @@ class DESISpectra(object):
                     if remember_coadd:
                         data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux,
                                      'coadd_ivar': coadd_ivar, 'coadd_res': coadd_res,
-                                     'coadd_linemask': coadd_linemask})
+                                     'coadd_linemask': coadd_linemask_dict['linemask']})
+                                     #'linepix': np.where(coadd_linemask_dict['linepix'])[0],
+                                     #'contpix': np.where(coadd_linemask_dict['contpix'])[0]})
 
                     # Optionally synthesize photometry from the coadded spectrum.
                     if synthphot:
