@@ -19,9 +19,12 @@ FastSpec wrapper. Call with, e.g.,
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/redrock-0-80606-deep.fits -o fastspec.fits --ntargets 2
 
   # nice QSO with broad lines
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec2.fits --targetids 39633331528141827 --specprod everest
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits --targetids 39633331528141827 --specprod everest
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec2.fits --targetids 39633321176600909 --specprod everest
   fastspecfit-qa --fastspecfile ./fastspec2.fits -o cosmo-www/tmp/
+
+fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits --specprod everest --targetids 39633321180792100,39633321176600909,39633321180791247,39633321180791630,39633328097199918,39633331528143479,39633324653676573,39633324653676217,39633321176598475,39633331532336872,39633328097202474,39633321189179675,39633321176598312,39633328097199634,39633321172405812,39633321172405061 --mp 16
+
 
 
 ff = Table.read('/global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits', 'FIBERMAP')

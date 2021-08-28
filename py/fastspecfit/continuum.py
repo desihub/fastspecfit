@@ -167,8 +167,9 @@ class ContinuumTools(object):
         # emission lines
         self.linetable = read_emlines()
 
-        self.linemask_sigma = 200.0 # [km/s]
-        self.linemask_sigma_broad = 2000.0 # [km/s]
+        self.linemask_sigma_narrow = 200.0  # [km/s]
+        self.linemask_sigma_balmer = 1000.0 # [km/s]
+        self.linemask_sigma_broad = 2000.0  # [km/s]
 
         # photometry
         self.bands = ['g', 'r', 'z', 'W1', 'W2']
@@ -457,7 +458,7 @@ class ContinuumTools(object):
                             medsnr = np.median(stacksnr[noneg])
 
                         if junkplot:
-                            print(linesigma, medsnr)
+                            log.debug('Masking sigma={:.3f} and S/N={:.3f}'.format(linesigma, medsnr))
                             import matplotlib.pyplot as plt
                             plt.clf()
                             plt.plot(stackdvel, stackflux)
@@ -468,15 +469,24 @@ class ContinuumTools(object):
                 
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
         zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
-        linesigma_broad, broad_snr = _estimate_linesigma(zlinewaves, self.linemask_sigma_broad, junkplot='cosmo-www/tmp/junk-broad.png')
-        if (linesigma_broad < 500) or (linesigma_broad > 4000) or (broad_snr < 3):
+        linesigma_broad, broad_snr = _estimate_linesigma(
+            zlinewaves, self.linemask_sigma_broad)#, junkplot='cosmo-www/tmp/junk-broad.png')
+        if (linesigma_broad < 300) or (linesigma_broad > 2500) or (broad_snr < 3):
             linesigma_broad = self.linemask_sigma_broad
 
-        # [OII] doublet, [OIII] 5007
-        zlinewaves = np.array([3728.483, 5008.239]) * (1 + redshift)
-        linesigma_narrow, narrow_snr = _estimate_linesigma(zlinewaves, self.linemask_sigma, junkplot='cosmo-www/tmp/junk-narrow.png')
-        if (linesigma_narrow < 50) or (linesigma_narrow > 200) or (narrow_snr < 3):
-            linesigma_narrow = self.linemask_sigma
+        # [OII] doublet, [OIII] 4959,5007
+        zlinewaves = np.array([3728.483, 4960.295, 5008.239]) * (1 + redshift)
+        linesigma_narrow, narrow_snr = _estimate_linesigma(
+            zlinewaves, self.linemask_sigma_narrow)#, junkplot='cosmo-www/tmp/junk-narrow.png')
+        if (linesigma_narrow < 50) or (linesigma_narrow > 250) or (narrow_snr < 3):
+            linesigma_narrow = self.linemask_sigma_narrow
+
+        # Hbeta, Halpha
+        zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
+        linesigma_balmer, narrow_balmer = _estimate_linesigma(
+            zlinewaves, self.linemask_sigma_balmer)#, junkplot='cosmo-www/tmp/junk-balmer.png')
+        if (linesigma_balmer < 50) or (linesigma_balmer > 2500) or (narrow_balmer < 3):
+            linesigma_balmer = self.linemask_sigma_balmer
 
         # now build the mask
         linemask = np.zeros_like(wave, bool) # False = unaffected by emission line
@@ -484,13 +494,16 @@ class ContinuumTools(object):
         linenames = np.hstack(('Lya', self.linetable['name'])) # include Lyman-alpha
         zlinewaves = np.hstack((1215.0, self.linetable['restwave'])) * (1 + redshift)
         isbroads = np.hstack((True, self.linetable['isbroad']))
+        isbalmers = np.hstack((True, self.linetable['isbalmer']))
 
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
 
-        linepix, contpix = [], []
-        for zlinewave, isbroad in zip(zlinewaves[inrange], isbroads[inrange]):
+        linepix = []
+        for zlinewave, isbroad, isbalmer in zip(zlinewaves[inrange], isbroads[inrange], isbalmers[inrange]):
             if isbroad:
                 sigma = linesigma_broad
+            elif isbalmer:
+                sigma = linesigma_balmer
             else:
                 sigma = linesigma_narrow
             sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
@@ -502,8 +515,21 @@ class ContinuumTools(object):
                 #linepix.append(np.where(I)[0])
                 linemask[I] = True  # True = affected by line
 
-            Jblu = (wave > (zlinewave - 4*sigma)) * (wave < (zlinewave - 2*sigma))
-            Jred = (wave < (zlinewave + 4*sigma)) * (wave > (zlinewave + 2*sigma))
+        contpix = []
+        for zlinewave, isbroad, isbalmer in zip(zlinewaves[inrange], isbroads[inrange], isbalmers[inrange]):
+            if isbroad:
+                sigma = linesigma_broad
+            elif isbalmer:
+                sigma = linesigma_balmer
+            else:
+                sigma = linesigma_narrow
+            sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
+            Jblu = (wave > (zlinewave - 4*sigma)) * (wave < (zlinewave - 2*sigma)) * (linemask == False)
+            Jred = (wave < (zlinewave + 4*sigma)) * (wave > (zlinewave + 2*sigma)) * (linemask == False)
+
+            #if zlinewave > 8230:
+            #    pdb.set_trace()
+            
             J = np.logical_or(Jblu, Jred)
             if np.sum(J) > 0:
                 contpix.append(J)

@@ -287,7 +287,8 @@ class EMLineModel(Fittable1DModel):
     from astropy.modeling import Parameter
 
     # NB! The order of the parameters here matters!
-    vmaxshift = 300.0
+    vmaxshift_narrow = 300.0
+    vmaxshift_broad = 3000.0
     initvshift = 0.0
 
     minsigma = 30.0
@@ -301,17 +302,17 @@ class EMLineModel(Fittable1DModel):
     maxamp = +1e5
 
     # Fragile because the lines are hard-coded--
-    nv_1239_amp = Parameter(name='nv_1239_amp', default=3.0, bounds=[minamp, maxamp])
+    nv_1239_amp = Parameter(name='nv_1239_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
     nv_1243_amp = Parameter(name='nv_1243_amp', default=3.0, bounds=[minamp, maxamp])
     oi_1304_amp = Parameter(name='oi_1304_amp', default=3.0, bounds=[minamp, maxamp])
-    silii_1307_amp = Parameter(name='silii_1307_amp', default=3.0, bounds=[minamp, maxamp])
+    silii_1307_amp = Parameter(name='silii_1307_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
     siliv_1394_amp = Parameter(name='siliv_1394_amp', default=3.0, bounds=[minamp, maxamp])
     siliv_1403_amp = Parameter(name='siliv_1403_amp', default=3.0, bounds=[minamp, maxamp])
-    civ_1548_amp = Parameter(name='civ_1548_amp', default=3.0, bounds=[minamp, maxamp])
+    civ_1548_amp = Parameter(name='civ_1548_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
     civ_1550_amp = Parameter(name='civ_1550_amp', default=3.0, bounds=[minamp, maxamp])
     siliii_1892_amp = Parameter(name='siliii_1892_amp', default=3.0, bounds=[minamp, maxamp])
     ciii_1908_amp = Parameter(name='ciii_1908_amp', default=3.0, bounds=[minamp, maxamp])
-    mgii_2796_amp = Parameter(name='mgii_2796_amp', default=3.0, bounds=[minamp, maxamp])
+    mgii_2796_amp = Parameter(name='mgii_2796_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
     mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
     nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=[minamp, maxamp])
     nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=[minamp, maxamp])
@@ -319,6 +320,7 @@ class EMLineModel(Fittable1DModel):
     oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=[minamp, maxamp])
     neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=[minamp, maxamp])
     hei_3889_amp = Parameter(name='hei_3889_amp', default=0.3, bounds=[minamp, maxamp])
+    h6_amp = Parameter(name='h6_amp', default=0.3, bounds=[minamp, maxamp])
     hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=[minamp, maxamp])
     hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=[minamp, maxamp])
     hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=[minamp, maxamp])
@@ -339,62 +341,64 @@ class EMLineModel(Fittable1DModel):
     siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=[minamp, maxamp])
     siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=[minamp, maxamp])
 
-    nv_1239_vshift = Parameter(name='nv_1239_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    nv_1243_vshift = Parameter(name='nv_1243_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oi_1304_vshift = Parameter(name='oi_1304_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    silii_1307_vshift = Parameter(name='silii_1307_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    siliv_1394_vshift = Parameter(name='siliv_1395_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    siliv_1403_vshift = Parameter(name='siliv_1403_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    civ_1548_vshift = Parameter(name='civ_1548_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    civ_1550_vshift = Parameter(name='civ_1550_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    siliii_1892_vshift = Parameter(name='siliii_1892_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    ciii_1908_vshift = Parameter(name='ciii_1908_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    mgii_2803_vshift = Parameter(name='mgii_2803_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    nev_3346_vshift = Parameter(name='nev_3346_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    nev_3426_vshift = Parameter(name='nev_3426_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oii_3729_vshift = Parameter(name='oii_3729_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hei_3889_vshift = Parameter(name='hei_3889_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hepsilon_vshift = Parameter(name='hepsilon_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hdelta_vshift = Parameter(name='hdelta_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hgamma_vshift = Parameter(name='hgamma_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oiii_4363_vshift = Parameter(name='oiii_4363_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hei_4471_vshift = Parameter(name='hei_4471_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    heii_4686_vshift = Parameter(name='heii_4686_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hbeta_vshift = Parameter(name='hbeta_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    nii_5755_vshift = Parameter(name='nii_5755_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hei_5876_vshift = Parameter(name='hei_5876_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oi_6300_vshift = Parameter(name='oi_6300_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    nii_6548_vshift = Parameter(name='nii_6548_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    halpha_vshift = Parameter(name='halpha_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    nii_6584_vshift = Parameter(name='nii_6584_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    nv_1239_vshift = Parameter(name='nv_1239_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    nv_1243_vshift = Parameter(name='nv_1243_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    oi_1304_vshift = Parameter(name='oi_1304_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    silii_1307_vshift = Parameter(name='silii_1307_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    siliv_1394_vshift = Parameter(name='siliv_1395_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    siliv_1403_vshift = Parameter(name='siliv_1403_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    civ_1548_vshift = Parameter(name='civ_1548_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    civ_1550_vshift = Parameter(name='civ_1550_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    siliii_1892_vshift = Parameter(name='siliii_1892_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    ciii_1908_vshift = Parameter(name='ciii_1908_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    mgii_2803_vshift = Parameter(name='mgii_2803_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    nev_3346_vshift = Parameter(name='nev_3346_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    nev_3426_vshift = Parameter(name='nev_3426_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oii_3729_vshift = Parameter(name='oii_3729_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hei_3889_vshift = Parameter(name='hei_3889_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    h6_vshift = Parameter(name='h6_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hepsilon_vshift = Parameter(name='hepsilon_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hdelta_vshift = Parameter(name='hdelta_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hgamma_vshift = Parameter(name='hgamma_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oiii_4363_vshift = Parameter(name='oiii_4363_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hei_4471_vshift = Parameter(name='hei_4471_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    heii_4686_vshift = Parameter(name='heii_4686_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hbeta_vshift = Parameter(name='hbeta_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    nii_5755_vshift = Parameter(name='nii_5755_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hei_5876_vshift = Parameter(name='hei_5876_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oi_6300_vshift = Parameter(name='oi_6300_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    nii_6548_vshift = Parameter(name='nii_6548_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    halpha_vshift = Parameter(name='halpha_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    nii_6584_vshift = Parameter(name='nii_6584_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
 
-    nv_1239_sigma = Parameter(name='nv_1239_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    nv_1243_sigma = Parameter(name='nv_1243_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    oi_1304_sigma = Parameter(name='oi_1304_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    silii_1307_sigma = Parameter(name='silii_1307_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    siliv_1394_sigma = Parameter(name='siliv_1395_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    siliv_1403_sigma = Parameter(name='siliv_1403_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    civ_1548_sigma = Parameter(name='civ_1548_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    civ_1550_sigma = Parameter(name='civ_1550_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    siliii_1892_sigma = Parameter(name='siliii_1892_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    ciii_1908_sigma = Parameter(name='ciii_1908_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    nv_1239_sigma = Parameter(name='nv_1239_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    nv_1243_sigma = Parameter(name='nv_1243_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    oi_1304_sigma = Parameter(name='oi_1304_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    silii_1307_sigma = Parameter(name='silii_1307_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    siliv_1394_sigma = Parameter(name='siliv_1395_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    siliv_1403_sigma = Parameter(name='siliv_1403_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    civ_1548_sigma = Parameter(name='civ_1548_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    civ_1550_sigma = Parameter(name='civ_1550_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    siliii_1892_sigma = Parameter(name='siliii_1892_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    ciii_1908_sigma = Parameter(name='ciii_1908_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     hei_3889_sigma = Parameter(name='hei_3889_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    h6_sigma = Parameter(name='h6_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
     hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
     hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
     hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
@@ -438,6 +442,7 @@ class EMLineModel(Fittable1DModel):
                  oii_3729_amp=oii_3729_amp.default,
                  neiii_3869_amp=neiii_3869_amp.default,
                  hei_3889_amp=hei_3889_amp.default,
+                 h6_amp=h6_amp.default,
                  hepsilon_amp=hepsilon_amp.default,
                  hdelta_amp=hdelta_amp.default,
                  hgamma_amp=hgamma_amp.default,
@@ -476,6 +481,7 @@ class EMLineModel(Fittable1DModel):
                  oii_3729_vshift=oii_3729_vshift.default,
                  neiii_3869_vshift=neiii_3869_vshift.default,
                  hei_3889_vshift=hei_3889_vshift.default,
+                 h6_vshift=h6_vshift.default,
                  hepsilon_vshift=hepsilon_vshift.default,
                  hdelta_vshift=hdelta_vshift.default,
                  hgamma_vshift=hgamma_vshift.default,
@@ -514,6 +520,7 @@ class EMLineModel(Fittable1DModel):
                  oii_3729_sigma=oii_3729_sigma.default,
                  neiii_3869_sigma=neiii_3869_sigma.default,
                  hei_3889_sigma=hei_3889_sigma.default,
+                 h6_sigma=h6_sigma.default,
                  hepsilon_sigma=hepsilon_sigma.default,
                  hdelta_sigma=hdelta_sigma.default,
                  hgamma_sigma=hgamma_sigma.default,
@@ -896,7 +903,7 @@ class EMLineFit(ContinuumTools):
                                 (emlinewave < (linezwave + 2.*linesigma * linezwave / C_LIGHT)) *
                                 (emlineivar > 0))[0]
             npix = len(lineindx)
-            #if 'BETA' in linename:
+            #if 'MGII' in linename:
             #    pdb.set_trace()
                 
             if npix > 3: # magic number: required at least XX unmasked pixels centered on the line
@@ -932,6 +939,7 @@ class EMLineFit(ContinuumTools):
                         forbidden_sigmas.append(linesigma)
                         forbidden_redshifts.append(linez)
             else:
+                result['{}_AMP'.format(linename)] = 0.0 # overwrite
                 npix, chi2, boxflux, boxflux_ivar = 0, 1e6, 0.0, 0.0
                 
             result['{}_NPIX'.format(linename)] = npix
@@ -939,6 +947,9 @@ class EMLineFit(ContinuumTools):
             result['{}_BOXFLUX'.format(linename)] = boxflux
             #result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar
 
+            #if '5876' in linename:
+            #    pdb.set_trace()
+            
             # get the emission-line flux
             linesigma_ang = linezwave * linesigma / C_LIGHT # [observed-frame Angstrom]
             linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
@@ -1151,15 +1162,15 @@ class EMLineFit(ContinuumTools):
 
         leg = {
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            'dv_balmer': '$\Delta v_{{\\rm Balmer}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BALMER_Z']-redshift)),
+            'dv_balmer': '$\Delta v_{{\\rm H+He}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BALMER_Z']-redshift)),
             'dv_forbid': '$\Delta v_{{\\rm forbid}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['FORBIDDEN_Z']-redshift)),
-            'dv_broad': '$\Delta v_{{\\rm MgII}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
+            'dv_broad': '$\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
             #'zbalmer': '$z_{{\\rm Balmer}}$={:.6f}'.format(fastspec['BALMER_Z']),
             #'zforbidden': '$z_{{\\rm forbidden}}$={:.6f}'.format(fastspec['FORBIDDEN_Z']),
             #'zbroad': '$z_{{\\rm MgII}}$={:.6f}'.format(fastspec['BROAD_Z']),
-            'sigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(fastspec['BALMER_SIGMA']),
+            'sigma_balmer': '$\sigma_{{\\rm H+He}}$={:.1f} km/s'.format(fastspec['BALMER_SIGMA']),
             'sigma_forbid': '$\sigma_{{\\rm forbid}}$={:.1f} km/s'.format(fastspec['FORBIDDEN_SIGMA']),
-            'sigma_broad': '$\sigma_{{\\rm MgII}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
+            'sigma_broad': '$\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
             #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_CHI2']),
@@ -1336,8 +1347,8 @@ class EMLineFit(ContinuumTools):
             xx = fig.add_subplot(gs[irow, icol])
             ax.append(xx)
 
-            wmin = (meanwave - deltawave) * (1+redshift) - 3 * sig * meanwave * (1+redshift) / C_LIGHT
-            wmax = (meanwave + deltawave) * (1+redshift) + 3 * sig * meanwave * (1+redshift) / C_LIGHT
+            wmin = (meanwave - deltawave) * (1+redshift) - 5 * sig * meanwave * (1+redshift) / C_LIGHT
+            wmax = (meanwave + deltawave) * (1+redshift) + 5 * sig * meanwave * (1+redshift) / C_LIGHT
             #print(linename, wmin, wmax)
 
             # iterate over cameras
@@ -1378,8 +1389,8 @@ class EMLineFit(ContinuumTools):
                     if _ymin < ymin[iax]:
                         ymin[iax] = _ymin
                     
-                xx.text(0.06, 0.89, linename, ha='left', va='center',
-                        transform=xx.transAxes, fontsize=18)
+                xx.text(0.04, 0.89, linename, ha='left', va='center',
+                        transform=xx.transAxes, fontsize=16)
                 
         for iax, xx in enumerate(ax):
             if removelabels[iax]:

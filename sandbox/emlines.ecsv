@@ -42,6 +42,9 @@ See also:
 
  silii_1260   1260.422     1.0   False  True   SiII$^{*}$-$\lambda\lambda$1260,65      siliii_1260_65
  silii_1265   1264.730     1.0   False  True   SiII$^{*}$-$\lambda\lambda$1260,65      siliii_1260_65
+   civ_1549   1549.06      1.0   False  True   CIV-$\lambda\lambda$1549                 civ_1549
+   civ_1548   1548.187     1.0   True   True   CIV-$\lambda\lambda$1548,50             civ_1548_50
+   civ_1550   1550.772     1.0   True   True   CIV-$\lambda\lambda$1548,50             civ_1548_50
   heii_1640   1640.42      0.1   True   False  HeII-$\lambda$1640                      heii_1640
   oiii_1661   1660.809     1.0   False  True   OIII]-$\lambda\lambda$1661,66           oiii_1661_66
   oiii_1666   1666.150     1.0   False  True   OIII]-$\lambda\lambda$1666,66           oiii_1661_66
