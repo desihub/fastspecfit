@@ -352,6 +352,8 @@ class DESISpectra(object):
         #_, _, releases, _, _, _ = decode_targetid(targets['TARGETID'])  
         #photsys = [releasedict[release] if release >= 9000 else None for release in releases]
 
+        pdb.set_trace()
+
         # targets table can include duplicates from secondary programs...
         _, uindx = np.unique(targets['TARGETID'], return_index=True) 
         targets = targets[uindx]
@@ -580,14 +582,15 @@ class DESISpectra(object):
                     for icam in np.arange(len(data['cameras'])):
                         data['linemask'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask']*1) > 0)
                         _linenpix, _contpix = [], []
-                        for ii in np.arange(len(coadd_linemask_dict['linepix'])):
-                            I = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linepix'][ii]*1) > 0
-                            J = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['contpix'][ii]*1) > 0
+                        for ipix in np.arange(len(coadd_linemask_dict['linepix'])):
+                            I = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linepix'][ipix]*1) > 0
                             if np.sum(I) > 0:
                                 _linenpix.append(np.where(I)[0])
+                        data['linepix'].append(_linenpix)
+                        for ipix in np.arange(len(coadd_linemask_dict['contpix'])):
+                            J = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['contpix'][ipix]*1) > 0
                             if np.sum(J) > 0:
                                 _contpix.append(np.where(J)[0])
-                        data['linepix'].append(_linenpix)
                         data['contpix'].append(_contpix)
                         
                     #import matplotlib.pyplot as plt

@@ -77,20 +77,20 @@ def _tie_mgii_2803_sigma(model):
 def _tie_mgii_2803_vshift(model):
     return model.mgii_2803_vshift
 
-def _tie_civ_1550_sigma(model):
-    return model.civ_1550_sigma
-def _tie_civ_1550_vshift(model):
-    return model.civ_1550_vshift
+#def _tie_civ_1550_sigma(model):
+#    return model.civ_1550_sigma
+#def _tie_civ_1550_vshift(model):
+#    return model.civ_1550_vshift
 
-def _tie_siliv_1403_sigma(model):
-    return model.siliv_1403_sigma
-def _tie_siliv_1403_vshift(model):
-    return model.siliv_1403_vshift
+#def _tie_siliv_1403_sigma(model):
+#    return model.siliv_1403_sigma
+#def _tie_siliv_1403_vshift(model):
+#    return model.siliv_1403_vshift
 
-def _tie_nv_1243_sigma(model):
-    return model.nv_1243_sigma
-def _tie_nv_1243_vshift(model):
-    return model.nv_1243_vshift
+#def _tie_nv_1243_sigma(model):
+#    return model.nv_1243_sigma
+#def _tie_nv_1243_vshift(model):
+#    return model.nv_1243_vshift
 
 def _tie_lines(model):
     """Tie emission lines together using sensible constrains based on galaxy & QSO
@@ -116,15 +116,15 @@ def _tie_lines(model):
             if linename == 'mgii_2796':
                 getattr(model, '{}_sigma'.format(linename)).tied = _tie_mgii_2803_sigma
                 getattr(model, '{}_vshift'.format(linename)).tied = _tie_mgii_2803_vshift
-            if linename == 'civ_1548':
-                getattr(model, '{}_sigma'.format(linename)).tied = _tie_civ_1550_sigma
-                getattr(model, '{}_vshift'.format(linename)).tied = _tie_civ_1550_vshift
-            if linename == 'siliv_1394':
-                getattr(model, '{}_sigma'.format(linename)).tied = _tie_siliv_1403_sigma
-                getattr(model, '{}_vshift'.format(linename)).tied = _tie_siliv_1403_vshift
-            if linename == 'nv_1239':
-                getattr(model, '{}_sigma'.format(linename)).tied = _tie_nv_1243_sigma
-                getattr(model, '{}_vshift'.format(linename)).tied = _tie_nv_1243_vshift
+            #if linename == 'civ_1548':
+            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_civ_1550_sigma
+            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_civ_1550_vshift
+            #if linename == 'siliv_1394':
+            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_siliv_1403_sigma
+            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_siliv_1403_vshift
+            #if linename == 'nv_1239':
+            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_nv_1243_sigma
+            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_nv_1243_vshift
             
         # forbidden lines
         if (model.inrange[iline] and model.linetable['isbroad'][iline] == False and
@@ -296,20 +296,19 @@ class EMLineModel(Fittable1DModel):
     maxsigma_broad = 5000.0
 
     initsigma_narrow = 75.0
-    initsigma_broad = 300.0
+    initsigma_broad = 1000.0
 
     minamp = -1e3
     maxamp = +1e5
 
     # Fragile because the lines are hard-coded--
-    nv_1239_amp = Parameter(name='nv_1239_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
-    nv_1243_amp = Parameter(name='nv_1243_amp', default=3.0, bounds=[minamp, maxamp])
+    #nv_1239_amp = Parameter(name='nv_1239_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
+    #nv_1243_amp = Parameter(name='nv_1243_amp', default=3.0, bounds=[minamp, maxamp])
     oi_1304_amp = Parameter(name='oi_1304_amp', default=3.0, bounds=[minamp, maxamp])
-    silii_1307_amp = Parameter(name='silii_1307_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
-    siliv_1394_amp = Parameter(name='siliv_1394_amp', default=3.0, bounds=[minamp, maxamp])
-    siliv_1403_amp = Parameter(name='siliv_1403_amp', default=3.0, bounds=[minamp, maxamp])
-    civ_1548_amp = Parameter(name='civ_1548_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
-    civ_1550_amp = Parameter(name='civ_1550_amp', default=3.0, bounds=[minamp, maxamp])
+    #silii_1307_amp = Parameter(name='silii_1307_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
+    siliv_1396_amp = Parameter(name='siliv_1396_amp', default=3.0, bounds=[minamp, maxamp])
+    #siliv_1403_amp = Parameter(name='siliv_1403_amp', default=3.0, bounds=[minamp, maxamp])
+    civ_1549_amp = Parameter(name='civ_1549_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
     siliii_1892_amp = Parameter(name='siliii_1892_amp', default=3.0, bounds=[minamp, maxamp])
     ciii_1908_amp = Parameter(name='ciii_1908_amp', default=3.0, bounds=[minamp, maxamp])
     mgii_2796_amp = Parameter(name='mgii_2796_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
@@ -341,14 +340,13 @@ class EMLineModel(Fittable1DModel):
     siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=[minamp, maxamp])
     siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=[minamp, maxamp])
 
-    nv_1239_vshift = Parameter(name='nv_1239_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    nv_1243_vshift = Parameter(name='nv_1243_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    #nv_1239_vshift = Parameter(name='nv_1239_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    #nv_1243_vshift = Parameter(name='nv_1243_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oi_1304_vshift = Parameter(name='oi_1304_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    silii_1307_vshift = Parameter(name='silii_1307_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    siliv_1394_vshift = Parameter(name='siliv_1395_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    siliv_1403_vshift = Parameter(name='siliv_1403_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    civ_1548_vshift = Parameter(name='civ_1548_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    civ_1550_vshift = Parameter(name='civ_1550_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    #silii_1307_vshift = Parameter(name='silii_1307_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    siliv_1396_vshift = Parameter(name='siliv_1396_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    #siliv_1403_vshift = Parameter(name='siliv_1403_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    civ_1549_vshift = Parameter(name='civ_1549_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     siliii_1892_vshift = Parameter(name='siliii_1892_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     ciii_1908_vshift = Parameter(name='ciii_1908_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
@@ -380,14 +378,13 @@ class EMLineModel(Fittable1DModel):
     siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
 
-    nv_1239_sigma = Parameter(name='nv_1239_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    nv_1243_sigma = Parameter(name='nv_1243_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    #nv_1239_sigma = Parameter(name='nv_1239_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    #nv_1243_sigma = Parameter(name='nv_1243_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     oi_1304_sigma = Parameter(name='oi_1304_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    silii_1307_sigma = Parameter(name='silii_1307_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    siliv_1394_sigma = Parameter(name='siliv_1395_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    siliv_1403_sigma = Parameter(name='siliv_1403_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    civ_1548_sigma = Parameter(name='civ_1548_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    civ_1550_sigma = Parameter(name='civ_1550_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    #silii_1307_sigma = Parameter(name='silii_1307_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    siliv_1396_sigma = Parameter(name='siliv_1396_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    #siliv_1403_sigma = Parameter(name='siliv_1403_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    civ_1549_sigma = Parameter(name='civ_1549_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     siliii_1892_sigma = Parameter(name='siliii_1892_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     ciii_1908_sigma = Parameter(name='ciii_1908_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
@@ -424,14 +421,13 @@ class EMLineModel(Fittable1DModel):
     oii_3726_amp.tied = _tie_oii_amp
     
     def __init__(self,
-                 nv_1239_amp=nv_1239_amp.default,
-                 nv_1243_amp=nv_1243_amp.default,
+                 #nv_1239_amp=nv_1239_amp.default,
+                 #nv_1243_amp=nv_1243_amp.default,
                  oi_1304_amp=oi_1304_amp.default,
-                 silii_1307_amp=silii_1307_amp.default,
-                 siliv_1394_amp=siliv_1394_amp.default,
-                 siliv_1403_amp=siliv_1403_amp.default,
-                 civ_1548_amp=civ_1548_amp.default,
-                 civ_1550_amp=civ_1550_amp.default,
+                 #silii_1307_amp=silii_1307_amp.default,
+                 siliv_1396_amp=siliv_1396_amp.default,
+                 #siliv_1403_amp=siliv_1403_amp.default,
+                 civ_1549_amp=civ_1549_amp.default,
                  siliii_1892_amp=siliii_1892_amp.default,
                  ciii_1908_amp=ciii_1908_amp.default,
                  mgii_2796_amp=mgii_2796_amp.default,
@@ -463,14 +459,13 @@ class EMLineModel(Fittable1DModel):
                  siii_9069_amp=siii_9069_amp.default,
                  siii_9532_amp=siii_9532_amp.default,
                      
-                 nv_1239_vshift=nv_1239_vshift.default,
-                 nv_1243_vshift=nv_1243_vshift.default,
+                 #nv_1239_vshift=nv_1239_vshift.default,
+                 #nv_1243_vshift=nv_1243_vshift.default,
                  oi_1304_vshift=oi_1304_vshift.default,
-                 silii_1307_vshift=silii_1307_vshift.default,
-                 siliv_1394_vshift=siliv_1394_vshift.default,
-                 siliv_1403_vshift=siliv_1403_vshift.default,
-                 civ_1548_vshift=civ_1548_vshift.default,
-                 civ_1550_vshift=civ_1550_vshift.default,
+                 #silii_1307_vshift=silii_1307_vshift.default,
+                 siliv_1396_vshift=siliv_1396_vshift.default,
+                 #siliv_1403_vshift=siliv_1403_vshift.default,
+                 civ_1549_vshift=civ_1549_vshift.default,
                  siliii_1892_vshift=siliii_1892_vshift.default,
                  ciii_1908_vshift=ciii_1908_vshift.default,
                  mgii_2796_vshift=mgii_2796_vshift.default,
@@ -502,14 +497,13 @@ class EMLineModel(Fittable1DModel):
                  siii_9069_vshift=siii_9069_vshift.default,
                  siii_9532_vshift=siii_9532_vshift.default,
                      
-                 nv_1239_sigma=nv_1239_sigma.default,
-                 nv_1243_sigma=nv_1243_sigma.default,
+                 #nv_1239_sigma=nv_1239_sigma.default,
+                 #nv_1243_sigma=nv_1243_sigma.default,
                  oi_1304_sigma=oi_1304_sigma.default,
-                 silii_1307_sigma=silii_1307_sigma.default,
-                 siliv_1394_sigma=siliv_1394_sigma.default,
-                 siliv_1403_sigma=siliv_1403_sigma.default,
-                 civ_1548_sigma=civ_1548_sigma.default,
-                 civ_1550_sigma=civ_1550_sigma.default,
+                 #silii_1307_sigma=silii_1307_sigma.default,
+                 siliv_1396_sigma=siliv_1396_sigma.default,
+                 #siliv_1403_sigma=siliv_1403_sigma.default,
+                 civ_1549_sigma=civ_1549_sigma.default,
                  siliii_1892_sigma=siliii_1892_sigma.default,
                  ciii_1908_sigma=ciii_1908_sigma.default,
                  mgii_2796_sigma=mgii_2796_sigma.default,
@@ -885,7 +879,7 @@ class EMLineFit(ContinuumTools):
             result['DN4000_NOLINES'] = dn4000_nolines
 
         # get continuum fluxes, EWs, and upper limits
-        verbose = False
+        verbose = True
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
@@ -1347,8 +1341,8 @@ class EMLineFit(ContinuumTools):
             xx = fig.add_subplot(gs[irow, icol])
             ax.append(xx)
 
-            wmin = (meanwave - deltawave) * (1+redshift) - 5 * sig * meanwave * (1+redshift) / C_LIGHT
-            wmax = (meanwave + deltawave) * (1+redshift) + 5 * sig * meanwave * (1+redshift) / C_LIGHT
+            wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
+            wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
             #print(linename, wmin, wmax)
 
             # iterate over cameras

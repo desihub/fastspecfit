@@ -23,9 +23,13 @@ FastSpec wrapper. Call with, e.g.,
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec2.fits --targetids 39633321176600909 --specprod everest
   fastspecfit-qa --fastspecfile ./fastspec2.fits -o cosmo-www/tmp/
 
-fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits --specprod everest --targetids 39633321180792100,39633321176600909,39633321180791247,39633321180791630,39633328097199918,39633331528143479,39633324653676573,39633324653676217,39633321176598475,39633331532336872,39633328097202474,39633321189179675,39633321176598312,39633328097199634,39633321172405812,39633321172405061 --mp 16
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits --specprod everest \
+    --targetids 39633321180792100,39633321176600909,39633321180791247,39633321180791630,39633328097199918,39633331528143479,39633324653676573,39633324653676217,\
+    39633321176598475,39633331532336872,39633328097202474,39633321189179675,39633321176598312,39633328097199634,39633321172405812,39633321172405061 --mp 16
 
-
+  # Raga's secondary targets
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/dark/91/9157/redrock-sv1-dark-9157.fits -o fastspec.fits --specprod everest --mp 7 \
+    --targetids 39632936277902799,39632931181824699,39632936277905113,39632936273709365,39632936282096442,39632936273708359,39632931177631304
 
 ff = Table.read('/global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits', 'FIBERMAP')
 tt = Table.read('/global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits', 'REDSHIFTS')
