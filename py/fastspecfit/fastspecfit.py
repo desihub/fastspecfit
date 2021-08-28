@@ -21,7 +21,7 @@ FastSpec wrapper. Call with, e.g.,
   # nice QSO with broad lines
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits --targetids 39633331528141827 --specprod everest
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec2.fits --targetids 39633321176600909 --specprod everest
-  fastspecfit-qa --fastspecfile ./fastspec2.fits -o cosmo-www/tmp/
+  fastspecfit-qa --fastspecfile ./fastspec2.fits -o desi-users/ioannis/tmp/
 
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits --specprod everest \
     --targetids 39633321180792100,39633321176600909,39633321180791247,39633321180791630,39633328097199918,39633331528143479,39633324653676573,39633324653676217,\
@@ -93,13 +93,13 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False):
     for col in cfit.colnames:
         out[col] = cfit[col]
 
-    ## Copy over the reddening-corrected fluxes -- messy!
-    #for iband, band in enumerate(CFit.fiber_bands):
-    #    meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
-    #    #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
-    #for iband, band in enumerate(CFit.bands):
-    #    meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
-    #    meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
+    # Copy over the reddening-corrected fluxes -- messy!
+    for iband, band in enumerate(CFit.fiber_bands):
+        meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
+        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+    for iband, band in enumerate(CFit.bands):
+        meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
+        meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
         
     log.info('Continuum-fitting object {} [targetid {}] took {:.2f} sec'.format(
         iobj, meta['TARGETID'], time.time()-t0))
@@ -134,7 +134,8 @@ def fastphot_one(iobj, data, out, meta, CFit):
         meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
         meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
         
-    log.info('Continuum-fitting object {} took {:.2f} sec'.format(iobj, time.time()-t0))
+    log.info('Continuum-fitting object {} [targetid {}] took {:.2f} sec'.format(
+        iobj, meta['TARGETID'], time.time()-t0))
     
     return out, meta
 

@@ -68,7 +68,8 @@ class DESISpectra(object):
         targetdirs = [fahdr['TARG']]
         for moretarg in ['TARG2', 'TARG3', 'TARG4']:
             if moretarg in fahdr:
-                targetdirs += [fahdr[moretarg]]
+                if 'gaia' not in fahdr[moretarg]: # skip
+                    targetdirs += [fahdr[moretarg]]
         if 'SCND' in fahdr:
             if fahdr['SCND'].strip() != '-':
                 targetdirs += [fahdr['SCND']]
@@ -170,8 +171,7 @@ class DESISpectra(object):
             # table).  See https://github.com/desihub/desispec/issues/1104
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
             fmcols = ['TARGETID', 'TARGET_RA', 'TARGET_DEC',
-                      'COADD_FIBERSTATUS', 'OBJTYPE',
-                      'PHOTSYS']
+                      'COADD_FIBERSTATUS', 'OBJTYPE']#,'PHOTSYS']
                       #'PHOTSYS', 'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
                       #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                       #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
@@ -207,7 +207,7 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                if False:
+                if True:
                     fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
                                        (meta['OBJTYPE'] == 'TGT') *
                                        (meta['COADD_FIBERSTATUS'] == 0))[0]
@@ -308,7 +308,7 @@ class DESISpectra(object):
         #if not 'FLUX_IVAR_W1' in fmcols:
         #    targetcols = targetcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
         targetcols = targetcols + [
-            #'PHOTSYS',
+            'PHOTSYS',
             'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
             'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
             'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
@@ -329,15 +329,18 @@ class DESISpectra(object):
                 # update on 2021 July 31: these catalogs are missing DR9
                 # photometry, so we have to skip them for now.
                 if 'secondary' in targetdir:
-                    continue
-                    targetfiles = glob(os.path.join(targetdir, '*-secondary.fits'))
+                    #continue                    
+                    if 'sv1' in targetdir: # special case
+                        targetfiles = glob(os.path.join(targetdir, '*-secondary-dr9photometry.fits'))
+                    else:
+                        targetfiles = glob(os.path.join(targetdir, '*-secondary.fits'))
                 else:
                     targetfiles = glob(os.path.join(targetdir, '*-hp-*.fits'))
                     filenside = fitsio.read_header(targetfiles[0], ext=1)['FILENSID']
                     pixlist = radec2pix(filenside, info['TARGET_RA'], info['TARGET_DEC'])
                     targetfiles = [targetfiles[0].split('hp-')[0]+'hp-{}.fits'.format(pix) for pix in set(pixlist)]
                     
-                for targetfile in targetfiles:
+                for ifile, targetfile in enumerate(targetfiles):
                     alltargets = fitsio.read(targetfile, columns=targetcols)
                     match = np.isin(alltargets['TARGETID'], info['TARGETID'])
                     log.info('Matched {} targets in {}'.format(np.sum(match), targetfile))
@@ -352,11 +355,10 @@ class DESISpectra(object):
         #_, _, releases, _, _, _ = decode_targetid(targets['TARGETID'])  
         #photsys = [releasedict[release] if release >= 9000 else None for release in releases]
 
-        pdb.set_trace()
-
         # targets table can include duplicates from secondary programs...
         _, uindx = np.unique(targets['TARGETID'], return_index=True) 
         targets = targets[uindx]
+
         if len(targets) != len(info):
             log.warning('Missing targeting info for {} objects!'.format(len(info) - len(targets)))
             raise ValueError
@@ -485,8 +487,7 @@ class DESISpectra(object):
                     allfilters = CFit.bassmzlswise
 
                 # Unpack the imaging photometry and correct for MW dust.
-                #if fastphot:
-                
+
                 # all photometry; do not match the Legacy Surveys here because
                 # we want the MW dust extinction correction we apply to the
                 # spectra to be self-consistent with how we correct the
@@ -805,7 +806,7 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None,
             extname = 'FASTSPEC'
 
         with fitsio.FITS(outfile, 'rw') as fits:
-            fits[1].write_key('EXTNAME', 'FASTSPEC')
+            fits[1].write_key('EXTNAME', extname)
             fits[2].write_key('EXTNAME', 'METADATA')
         
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
