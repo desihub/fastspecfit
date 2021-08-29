@@ -20,7 +20,7 @@ from desiutil.log import get_logger
 log = get_logger()
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
-                    makeqa=False, base_datadir='.', base_htmldir='.'):
+                    makeqa=False, base_datadir='.'):
 
     import sys, subprocess
     from fastspecfit.mpi import backup_logs, plan
@@ -38,8 +38,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
     _, zbestfiles, outfiles, groups, grouptimes = plan(args, comm=comm, fastphot=fastphot,
                                                        specprod_dir=specprod_dir,
-                                                       base_datadir=base_datadir,
-                                                       base_htmldir=base_htmldir)
+                                                       base_datadir=base_datadir)
 
     if rank == 0:
         log.info('Initial setup took {:.1f} sec'.format(time.time() - t0))
@@ -72,11 +71,11 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                 cmd += ' --ntargets {}'.format(args.ntargets)
         else:
             if fastphot:
-                cmd = 'fastphot {} -o {} --mp {} --coadd-type {}'.format(zbestfiles[ii], outfiles[ii],
-                                                                         args.mp, args.coadd_type)
+                cmd = 'fastphot {} -o {} --mp {} --specprod {}'.format(zbestfiles[ii], outfiles[ii],
+                                                                                       args.mp, args.specprod)
             else:
-                cmd = 'fastspec {} -o {} --mp {} --coadd-type {}'.format(zbestfiles[ii], outfiles[ii],
-                                                                         args.mp, args.coadd_type)
+                cmd = 'fastspec {} -o {} --mp {} --specprod {}'.format(zbestfiles[ii], outfiles[ii],
+                                                                                       args.mp, args.specprod)
                 if args.solve_vdisp:
                     cmd += ' --solve-vdisp'
                     
@@ -141,7 +140,7 @@ def main():
     from fastspecfit.mpi import plan
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--specprod', type=str, default='denali', choices=['everest', 'denali', 'daily'],
+    parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production to process.')
     parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
@@ -165,7 +164,6 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands')
 
-    parser.add_argument('--base-htmldir', default='.', type=str, help='Base output html directory.')
     parser.add_argument('--base-datadir', default='.', type=str, help='Base output data directory.')
     
     specprod_dir = None
@@ -184,18 +182,15 @@ def main():
     if args.merge:
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(args, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                          base_datadir=args.base_datadir,
-                          base_htmldir=base_htmldir)
+                          base_datadir=args.base_datadir)
     elif args.plan:
         plan(args, comm=comm, fastphot=args.fastphot,
              specprod_dir=specprod_dir,
-             base_datadir=args.base_datadir,
-             base_htmldir=base_htmldir)
+             base_datadir=args.base_datadir)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot,
                         specprod_dir=specprod_dir, makeqa=args.makeqa,
-                        base_datadir=args.base_datadir,
-                        base_htmldir=base_htmldir)
+                        base_datadir=args.base_datadir)
 
 if __name__ == '__main__':
     main()

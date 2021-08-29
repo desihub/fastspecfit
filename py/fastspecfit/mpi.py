@@ -74,14 +74,15 @@ def group_redrockfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
         if makeqa:
             ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
         else:
-            zb = fitsio.read(specfiles[j], 'REDSHIFTS', columns=['Z', 'ZWARN', 'TARGETID'])
-            fm = fitsio.read(specfiles[j], 'FIBERMAP', columns=['OBJTYPE', 'COADD_FIBERSTATUS', 'TARGETID'])
-            _, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)
-            fm = fm[I]
-            assert(np.all(zb['TARGETID'] == fm['TARGETID']))
-            J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
-                 (fm['OBJTYPE'] == 'TGT') * (fm['COADD_FIBERSTATUS'] == 0))
-            ntargets[i] = np.count_nonzero(J)
+            ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
+            #zb = fitsio.read(specfiles[j], 'REDSHIFTS', columns=['Z', 'ZWARN', 'TARGETID'])
+            #fm = fitsio.read(specfiles[j], 'FIBERMAP', columns=['OBJTYPE', 'COADD_FIBERSTATUS', 'TARGETID'])
+            #_, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)
+            #fm = fm[I]
+            #assert(np.all(zb['TARGETID'] == fm['TARGETID']))
+            #J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
+            #     (fm['OBJTYPE'] == 'TGT') * (fm['COADD_FIBERSTATUS'] == 0))
+            #ntargets[i] = np.count_nonzero(J)
 
     if comm is not None:
         ntargets = comm.gather(ntargets)
