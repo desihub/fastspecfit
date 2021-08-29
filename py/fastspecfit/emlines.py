@@ -832,13 +832,13 @@ class EMLineFit(ContinuumTools):
                 setattr(bestfit, '{}_sigma'.format(linename), sigma.default)
                 setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
 
-        # special case the tied doublets
-        if bestfit.nii_6584_amp == 0.0 and bestfit.nii_6548_amp != 0.0:
-            bestfit.nii_6548_amp = 0.0
-        if bestfit.oiii_5007_amp == 0.0 and bestfit.oiii_4959_amp != 0.0:
-            bestfit.oiii_4959_amp = 0.0
-        if bestfit.oii_3729_amp == 0.0 and bestfit.oii_3726_amp != 0.0:
-            bestfit.oii_3726_amp = 0.0
+        ## special case the tied doublets
+        #if bestfit.nii_6584_amp == 0.0 and bestfit.nii_6548_amp != 0.0:
+        #    bestfit.nii_6548_amp = 0.0
+        #if bestfit.oiii_5007_amp == 0.0 and bestfit.oiii_4959_amp != 0.0:
+        #    bestfit.oiii_4959_amp = 0.0
+        #if bestfit.oii_3729_amp == 0.0 and bestfit.oii_3726_amp != 0.0:
+        #    bestfit.oii_3726_amp = 0.0
 
         # Now fill the output table.
         for pp in bestfit.param_names:
@@ -880,7 +880,7 @@ class EMLineFit(ContinuumTools):
             result['DN4000_NOLINES'] = dn4000_nolines
 
         # get continuum fluxes, EWs, and upper limits
-        verbose = False#True
+        verbose = True
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
@@ -895,12 +895,12 @@ class EMLineFit(ContinuumTools):
             #log10sigma = linesigma / C_LIGHT / np.log(10)     # line-width [log-10 Angstrom]            
 
             # number of pixels, chi2, and boxcar integration
-            lineindx = np.where((emlinewave >= (linezwave - 2.*linesigma_ang)) *
-                                (emlinewave <= (linezwave + 2.*linesigma_ang)) *
+            lineindx = np.where((emlinewave >= (linezwave - 2.*linesigma_ang)) * (emlinewave <= (linezwave + 2.*linesigma_ang)) *
                                 (emlineivar > 0))[0]
 
             # can happen if sigma is small (depending on the wavelength)
-            if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * len(lineindx) > 0 and len(lineindx) <= 3: 
+            #if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * len(lineindx) > 0 and len(lineindx) <= 3: 
+            if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * (len(lineindx) <= 3):
                 dwave = emlinewave - linezwave
                 lineindx = np.argmin(np.abs(dwave))
                 if lineindx > 0:
@@ -911,7 +911,7 @@ class EMLineFit(ContinuumTools):
                 
             npix = len(lineindx)
 
-            #if 'BETA' in linename:
+            #if '9069' in linename:
             #    pdb.set_trace()
                 
             if npix > 3: # magic number: required at least XX unmasked pixels centered on the line
@@ -955,7 +955,7 @@ class EMLineFit(ContinuumTools):
             result['{}_BOXFLUX'.format(linename)] = boxflux
             #result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar
 
-            #if 'BETA' in linename:
+            #if '4959' in linename:
             #    pdb.set_trace()
             
             # get the emission-line flux
@@ -1038,12 +1038,15 @@ class EMLineFit(ContinuumTools):
                 plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
                 plt.savefig('junk.png')
 
-        if result['NII_6584_AMP'] > 0:
-            assert(result['NII_6548_AMP'] > 0)
-        if result['OIII_5007_AMP'] > 0:
-            assert(result['OIII_4959_AMP'] > 0)
-        if result['OII_3729_AMP'] > 0:
-            assert(result['OII_3726_AMP'] > 0)
+        #try:
+        #    if result['NII_6584_AMP'] > 0:
+        #        assert(result['NII_6548_AMP'] > 0)
+        #    if result['OIII_5007_AMP'] > 0:
+        #        assert(result['OIII_4959_AMP'] > 0)
+        #    if result['OII_3729_AMP'] > 0:
+        #        assert(result['OII_3726_AMP'] > 0)
+        #except:
+        #    pdb.set_trace()
 
         # get the average emission-line redshifts and velocity widths
         if len(balmer_redshifts) > 0:
@@ -1322,8 +1325,8 @@ class EMLineFit(ContinuumTools):
         #bigax2.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
         
         # zoom in on individual emission lines - use linetable!
-        plotsig_default = 300.0 # [km/s]
-        plotsig_default_broad = 3000.0 # [km/s]
+        plotsig_default = 200.0 # [km/s]
+        plotsig_default_broad = 2000.0 # [km/s]
 
         meanwaves, deltawaves, sigmas, linenames = [], [], [], []
         for plotgroup in set(self.linetable['plotgroup']):
@@ -1338,11 +1341,11 @@ class EMLineFit(ContinuumTools):
                     plotsig = plotsig_default_broad
             elif np.any(self.linetable['isbalmer'][I]):
                 plotsig = np.max((fastspec['BALMER_SIGMA'], fastspec['FORBIDDEN_SIGMA']))
-                if plotsig == 0:
+                if plotsig < 50:
                     plotsig = plotsig_default
             else:
                 plotsig = fastspec['FORBIDDEN_SIGMA']
-                if plotsig == 0:
+                if plotsig < 50:
                     plotsig = plotsig_default
             sigmas.append(plotsig)
 
