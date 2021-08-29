@@ -880,7 +880,7 @@ class EMLineFit(ContinuumTools):
             result['DN4000_NOLINES'] = dn4000_nolines
 
         # get continuum fluxes, EWs, and upper limits
-        verbose = True#False
+        verbose = False#True
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
@@ -989,13 +989,11 @@ class EMLineFit(ContinuumTools):
                 clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
                 # corner case: if a portion of a camera is masked
                 if len(clipflux) > 0:
-                    cmed, csig = np.median(clipflux), np.std(clipflux)
+                    cmed, csig = np.mean(clipflux), np.std(clipflux)
                 if csig > 0:
                     civar = (np.sqrt(len(indx)) / csig)**2
                     #result['{}_AMP_IVAR'.format(linename)] = 1 / csig**2
 
-            #if '3726' in linename:
-            #    pdb.set_trace()
             result['{}_CONT'.format(linename)] = cmed
             result['{}_CONT_IVAR'.format(linename)] = civar
 
@@ -1023,6 +1021,9 @@ class EMLineFit(ContinuumTools):
                     print('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
                 print()
 
+            #if '1549' in linename:
+            #    pdb.set_trace()
+                
             # simple QA
             if 'alpha' in linename and False:
                 sigma_cont = 150.0
@@ -1322,6 +1323,7 @@ class EMLineFit(ContinuumTools):
         
         # zoom in on individual emission lines - use linetable!
         plotsig_default = 300.0 # [km/s]
+        plotsig_default_broad = 3000.0 # [km/s]
 
         meanwaves, deltawaves, sigmas, linenames = [], [], [], []
         for plotgroup in set(self.linetable['plotgroup']):
@@ -1330,17 +1332,19 @@ class EMLineFit(ContinuumTools):
             meanwaves.append(np.mean(self.linetable['restwave'][I]))
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
-            plotsig = None
             if np.any(self.linetable['isbroad'][I]):
                 plotsig = fastspec['BROAD_SIGMA']
+                if plotsig == 0:
+                    plotsig = plotsig_default_broad
             elif np.any(self.linetable['isbalmer'][I]):
                 plotsig = np.max((fastspec['BALMER_SIGMA'], fastspec['FORBIDDEN_SIGMA']))
+                if plotsig == 0:
+                    plotsig = plotsig_default
             else:
                 plotsig = fastspec['FORBIDDEN_SIGMA']
-            if plotsig:
-                sigmas.append(plotsig)
-            else:
-                sigmas.append(plotsig_default)
+                if plotsig == 0:
+                    plotsig = plotsig_default
+            sigmas.append(plotsig)
 
         srt = np.argsort(meanwaves)
         meanwaves = np.hstack(meanwaves)[srt]
@@ -1364,6 +1368,9 @@ class EMLineFit(ContinuumTools):
             wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
             wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
             #print(linename, wmin, wmax)
+
+            #if '1549' in linename:
+            #    pdb.set_trace()
 
             # iterate over cameras
             for ii in np.arange(len(data['cameras'])): # iterate over cameras
