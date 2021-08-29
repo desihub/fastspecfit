@@ -432,7 +432,10 @@ class ContinuumTools(object):
             fragile!
 
             """
+            from scipy.optimize import curve_fit
+
             linesigma, medsnr = 0.0, 0.0
+            
             inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
             if np.sum(inrange) > 0:
                 stackdvel, stackflux, stackivar = [], [], []
@@ -448,21 +451,28 @@ class ContinuumTools(object):
                     stackflux = np.hstack(stackflux)
                     stackivar = np.hstack(stackivar)
 
-                    stacksnr = stackflux * np.sqrt(stackivar)
-                    noneg = stacksnr > 0
+                    onegauss = lambda x, amp, sigma, cont: amp * np.exp(-0.5 * x**2 / sigma**2) + cont
+                    noneg = stackivar > 0
                     if np.sum(noneg) > 0:
-                        linewidth = np.sum(stacksnr[noneg] * stackdvel[noneg]**2 / np.sum(stacksnr[noneg]))
-                        #linewidth = np.sum(stackflux * stackdvel**2 / np.sum(stackflux))
-                        if linewidth > 0:
-                            linesigma = np.sqrt(linewidth)
-                            medsnr = np.median(stacksnr[noneg])
+                        medsnr = np.median(stackflux*np.sqrt(stackivar))
+                        stacksigma = 1 / np.sqrt(stackivar[noneg])
+                        try:
+                            popt, _ = curve_fit(onegauss, xdata=stackdvel[noneg], ydata=stackflux[noneg],
+                                                sigma=stacksigma, p0=[1.0, sigma, np.median(stackflux)])
+                            if popt[0] > 0 and popt[1] > 0:
+                                linesigma = popt[1]
+                            else:
+                                popt = None
+                        except RuntimeError:
+                            popt = None
 
                         if junkplot:
-                            log.debug('Masking sigma={:.3f} and S/N={:.3f}'.format(linesigma, medsnr))
+                            log.info('Masking sigma={:.3f} and S/N={:.3f}'.format(linesigma, medsnr))
                             import matplotlib.pyplot as plt
                             plt.clf()
                             plt.plot(stackdvel, stackflux)
-                            plt.plot(stackdvel, np.exp(-0.5*stackdvel**2/linewidth), color='k')
+                            if popt is not None:
+                                plt.plot(stackdvel, onegauss(stackdvel, *popt))
                             plt.savefig(junkplot)
                         
             return linesigma, medsnr
@@ -494,7 +504,7 @@ class ContinuumTools(object):
         linenames = np.hstack(('Lya', self.linetable['name'])) # include Lyman-alpha
         zlinewaves = np.hstack((1215.0, self.linetable['restwave'])) * (1 + redshift)
         isbroads = np.hstack((True, self.linetable['isbroad']))
-        isbalmers = np.hstack((True, self.linetable['isbalmer']))
+        isbalmers = np.hstack((False, self.linetable['isbalmer']))
 
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
 
@@ -509,7 +519,7 @@ class ContinuumTools(object):
             sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
             # I for building the line-mask; J for estimating the local continuum
             # (to be used in self.smooth_residuals).
-            I = (wave >= (zlinewave - 2*sigma)) * (wave <= (zlinewave + 2*sigma))
+            I = (wave >= (zlinewave - 3*sigma)) * (wave <= (zlinewave + 3*sigma))
             if np.sum(I) > 0:
                 linepix.append(I)
                 #linepix.append(np.where(I)[0])
@@ -524,8 +534,8 @@ class ContinuumTools(object):
             else:
                 sigma = linesigma_narrow
             sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
-            Jblu = (wave > (zlinewave - 4*sigma)) * (wave < (zlinewave - 2*sigma)) * (linemask == False)
-            Jred = (wave < (zlinewave + 4*sigma)) * (wave > (zlinewave + 2*sigma)) * (linemask == False)
+            Jblu = (wave > (zlinewave - 6*sigma)) * (wave < (zlinewave - 4*sigma)) * (linemask == False)
+            Jred = (wave < (zlinewave + 6*sigma)) * (wave > (zlinewave + 4*sigma)) * (linemask == False)
 
             #if zlinewave > 8230:
             #    pdb.set_trace()

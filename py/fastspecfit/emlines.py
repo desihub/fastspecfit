@@ -880,7 +880,7 @@ class EMLineFit(ContinuumTools):
             result['DN4000_NOLINES'] = dn4000_nolines
 
         # get continuum fluxes, EWs, and upper limits
-        verbose = True
+        verbose = True#False
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
@@ -900,7 +900,7 @@ class EMLineFit(ContinuumTools):
                                 (emlineivar > 0))[0]
 
             # can happen if sigma is small (depending on the wavelength)
-            if len(lineindx) > 0 and len(lineindx) <= 3: 
+            if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * len(lineindx) > 0 and len(lineindx) <= 3: 
                 dwave = emlinewave - linezwave
                 lineindx = np.argmin(np.abs(dwave))
                 if lineindx > 0:
@@ -1037,15 +1037,12 @@ class EMLineFit(ContinuumTools):
                 plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
                 plt.savefig('junk.png')
 
-        try:
-            if result['NII_6584_AMP'] > 0:
-                assert(result['NII_6548_AMP'] > 0)
-            if result['OIII_5007_AMP'] > 0:
-                assert(result['OIII_4959_AMP'] > 0)
-            if result['OII_3729_AMP'] > 0:
-                assert(result['OII_3726_AMP'] > 0)
-        except:
-            pdb.set_trace()
+        if result['NII_6584_AMP'] > 0:
+            assert(result['NII_6548_AMP'] > 0)
+        if result['OIII_5007_AMP'] > 0:
+            assert(result['OIII_4959_AMP'] > 0)
+        if result['OII_3729_AMP'] > 0:
+            assert(result['OII_3726_AMP'] > 0)
 
         # get the average emission-line redshifts and velocity widths
         if len(balmer_redshifts) > 0:
