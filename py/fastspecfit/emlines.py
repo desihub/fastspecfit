@@ -812,10 +812,10 @@ class EMLineFit(ContinuumTools):
         # Do a fast update of the initial line-amplitudes which especially helps
         # with cases like 39633354915582193 (tile 80613, petal 05), which has
         # strong narrow lines.
-        doneline = []
+        init = {}#'line': [], 'amp': []}
         for icam in np.arange(len(data['cameras'])):
             for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
-                if linename in doneline:
+                if linename in init.keys():
                     continue
                 npix = len(linepix)
                 if npix > 5:
@@ -831,8 +831,10 @@ class EMLineFit(ContinuumTools):
                 #if 'alpha' in linename:
                 #    pdb.set_trace()
                 setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
-                pdb.set_trace()
-                doneline.append(linename)
+                #getattr(self.EMLineModel, '{}_amp'.format(linename)).default = amp
+                #if '4686' in linename:
+                #    pdb.set_trace()
+                init.update({linename: amp})
                 
         self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)
         self.EMLineModel.oiii_4959_amp = _tie_oiii_amp(self.EMLineModel)
@@ -852,10 +854,10 @@ class EMLineFit(ContinuumTools):
         # parameters. If sigma is zero, restore the default value and if the
         # amplitude is still at its default (or its upper bound!), it means the
         # line wasn't fit or the fit failed (right??), so set it to zero.
+        initkeys = init.keys()
         for linename in self.linetable['name'][self.EMLineModel.inrange].data:
             #if not hasattr(bestfit, '{}_amp'.format(linename)): # line not fitted
             #    continue
-            
             amp = getattr(bestfit, '{}_amp'.format(linename))
             sigma = getattr(bestfit, '{}_sigma'.format(linename))
             vshift = getattr(bestfit, '{}_vshift'.format(linename))
@@ -863,7 +865,7 @@ class EMLineFit(ContinuumTools):
             # drop the line if:
             #  sigma = 0, amp = default, or amp = max bound (not optimized!)
             if ((amp.value == amp.default) or (amp.value >= amp.bounds[1]) or
-                (amp.value <= amp.bounds[0])# or
+                (amp.value <= amp.bounds[0]) or (linename in initkeys and init[linename] == amp.value)
                 #(sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1])
                 ):
                 setattr(bestfit, '{}_amp'.format(linename), 0.0)
