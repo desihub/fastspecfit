@@ -580,16 +580,23 @@ class DESISpectra(object):
                         _linename, _linenpix, _contpix = [], [], []
                         for ipix in np.arange(len(coadd_linemask_dict['linepix'])):
                             I = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linepix'][ipix]*1) > 0
-                            if np.sum(I) > 0:
+                            J = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['contpix'][ipix]*1) > 0
+                            #if '4686' in coadd_linemask_dict['linename'][ipix]:
+                            #    pdb.set_trace()
+                            if np.sum(I) > 3 and np.sum(J) > 3:
                                 _linename.append(coadd_linemask_dict['linename'][ipix])
                                 _linenpix.append(np.where(I)[0])
+                                _contpix.append(np.where(J)[0])
                         data['linename'].append(_linename)
                         data['linepix'].append(_linenpix)
-                        for ipix in np.arange(len(coadd_linemask_dict['contpix'])):
-                            J = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['contpix'][ipix]*1) > 0
-                            if np.sum(J) > 0:
-                                _contpix.append(np.where(J)[0])
                         data['contpix'].append(_contpix)
+                        #for ipix in np.arange(len(coadd_linemask_dict['contpix'])):
+                        #    if icam == 1:
+                        #        pdb.set_trace()
+                        #    J = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['contpix'][ipix]*1) > 0
+                        #    if np.sum(J) > 0:
+                        #        _contpix.append(np.where(J)[0])
+                        #data['contpix'].append(_contpix)
                         
                     #import matplotlib.pyplot as plt
                     #plt.clf()

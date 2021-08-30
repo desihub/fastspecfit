@@ -831,6 +831,7 @@ class EMLineFit(ContinuumTools):
                 #if 'alpha' in linename:
                 #    pdb.set_trace()
                 setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
+                pdb.set_trace()
                 doneline.append(linename)
                 
         self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)

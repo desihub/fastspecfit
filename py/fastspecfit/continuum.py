@@ -194,7 +194,7 @@ class ContinuumTools(object):
                                           0.1, 0.1, 0.0])
 
         # used in one place...
-        self.rand = np.random.RandomState(seed=seed)
+        #self.rand = np.random.RandomState(seed=seed)
 
     @staticmethod
     def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
@@ -496,7 +496,7 @@ class ContinuumTools(object):
         # Hbeta, Halpha
         zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
         linesigma_balmer, narrow_balmer = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line')#, junkplot='cosmo-www/tmp/junk-balmer.png')
+            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line', junkplot='desi-users/ioannis/tmp2/junk-balmer.png')
         if (linesigma_balmer < 50) or (linesigma_balmer > 2500) or (narrow_balmer < 3):
             linesigma_balmer = self.linemask_sigma_balmer
 
@@ -512,9 +512,9 @@ class ContinuumTools(object):
 
         # Index I for building the line-mask; J for estimating the local
         # continuum (to be used in self.smooth_residuals).
-        linepix, linename = [], []
+        linepix, contpix, linename = [], [], []        
         for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
-                                                          isbroads[inrange], isbalmers[inrange]):
+                                                           isbroads[inrange], isbalmers[inrange]):
             if isbroad:
                 sigma = linesigma_broad
             elif isbalmer:
@@ -523,29 +523,44 @@ class ContinuumTools(object):
                 sigma = linesigma_narrow
             sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
             I = (wave >= (zlinewave - 3*sigma)) * (wave <= (zlinewave + 3*sigma))
-            if np.sum(I) > 0:
-                linename.append(_linename)
-                linepix.append(I)
-                linemask[I] = True  # True = affected by line
 
-        contpix = []
-        for zlinewave, isbroad, isbalmer in zip(zlinewaves[inrange], isbroads[inrange], isbalmers[inrange]):
-            if isbroad:
-                sigma = linesigma_broad
-            elif isbalmer:
-                sigma = linesigma_balmer
-            else:
-                sigma = linesigma_narrow
-            sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
-            Jblu = (wave > (zlinewave - 6*sigma)) * (wave < (zlinewave - 4*sigma)) * (linemask == False)
-            Jred = (wave < (zlinewave + 6*sigma)) * (wave > (zlinewave + 4*sigma)) * (linemask == False)
-
-            #if zlinewave > 8230:
+            #if np.sum(I) > 0:
+            #    linename.append(_linename)
+            #    linepix.append(I)
+            #    linemask[I] = True  # True = affected by line
+                
+            Jblu = (wave > (zlinewave - 5*sigma)) * (wave < (zlinewave - 3*sigma)) * (linemask == False)
+            Jred = (wave < (zlinewave + 5*sigma)) * (wave > (zlinewave + 3*sigma)) * (linemask == False)
+            J = np.logical_or(Jblu, Jred)
+            #if '4686' in _linename:
             #    pdb.set_trace()
             
-            J = np.logical_or(Jblu, Jred)
-            if np.sum(J) > 0:
+            if np.sum(I) > 0 and np.sum(J) > 0:
+                linename.append(_linename)
+                linepix.append(I)
                 contpix.append(J)
+                linemask[I] = True  # True = affected by line
+
+        #pdb.set_trace()
+
+        #for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
+        #                                                   isbroads[inrange], isbalmers[inrange]):
+        #    if isbroad:
+        #        sigma = linesigma_broad
+        #    elif isbalmer:
+        #        sigma = linesigma_balmer
+        #    else:
+        #        sigma = linesigma_narrow
+        #    sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
+        #    Jblu = (wave > (zlinewave - 6*sigma)) * (wave < (zlinewave - 4*sigma)) * (linemask == False)
+        #    Jred = (wave < (zlinewave + 6*sigma)) * (wave > (zlinewave + 4*sigma)) * (linemask == False)
+        #
+        #    if '4686' in _linename:
+        #        pdb.set_trace()
+        #    
+        #    J = np.logical_or(Jblu, Jred)
+        #    if np.sum(J) > 0:
+        #        contpix.append(J)
 
         linemask_dict = {'linemask': linemask, 'linename': linename, 'linepix': linepix, 'contpix': contpix}
 
@@ -742,7 +757,7 @@ class ContinuumTools(object):
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 
     def smooth_residuals(self, residuals, wave, specivar, linemask,
-                         linepix, contpix, binwave=0.8*120):#binwave=0.8*160):
+                         linepix, contpix, seed=1, binwave=0.8*120):#binwave=0.8*160):
         """Derive a median-smoothed correction to the continuum fit in order to pick up
         any unmodeled flux, before emission-line fitting.
 
@@ -762,8 +777,11 @@ class ContinuumTools(object):
         https://github.com/moustakas/moustakas-projects/blob/master/ages/ppxf/ages_gandalf_specfit.pro#L138-L145
 
         """
-        from scipy.stats import sigmaclip
+        #from scipy.stats import sigmaclip
         from scipy.ndimage import median_filter
+        from fastspecfit.util import ivar2var
+
+        rand = np.random.RandomState(seed=seed)
 
         #def robust_median(wave, flux, ivar, binwave):
         #    from scipy import ptp
@@ -792,12 +810,31 @@ class ContinuumTools(object):
         # of the surrounding (local) continuum.
         residuals_clean = []
         for icam in np.arange(len(residuals)): # iterate over cameras
+            #var, I = ivar2var(specivar[icam])
+            ivar = specivar[icam]
+            I = ivar > 0
             _residuals = residuals[icam].copy()
             for _linepix, _contpix in zip(linepix[icam], contpix[icam]):
+                norm = np.sum(ivar[I][_contpix])
+                mn = np.sum(ivar[I][_contpix] * _residuals[I][_contpix]) / norm # weighted mean
+                sig = np.sqrt(np.sum(ivar[I][_contpix] * (_residuals[I][_contpix] - mn)**2) / norm) # weighted standard deviation
+                #sig = np.sqrt(np.sum(ivar[I][_contpix]**2 * (_residuals[I][_contpix] - mn)**2) / norm**2) # weighted error in the mean
                 #_residuals[_linepix] = np.median(residuals[icam][_contpix])
                 #_residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(residuals[icam][_contpix])) + np.median(residuals[icam][_contpix])
-                clipflux, _, _ = sigmaclip(residuals[icam][_contpix], low=3.0, high=3.0)
-                _residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(clipflux)) + np.median(clipflux)
+                #clipflux, _, _ = sigmaclip(residuals[icam][_contpix], low=3.0, high=3.0)
+                #if icam == 1:
+                #    import matplotlib.pyplot as plt
+                #    plt.clf()
+                #    plt.scatter(wave[icam][_linepix], _residuals[_linepix], color='blue', s=1)
+                #    plt.scatter(wave[icam][_contpix], _residuals[_contpix], color='green', s=1)
+                #    plt.axhline(y=mn, color='k')
+                #    plt.axhline(y=mn+sig, ls='--', color='k')
+                #    plt.axhline(y=mn-sig, ls='--', color='k')
+                #    plt.plot(wave[icam][_linepix], (rand.normal(size=len(_linepix)) * sig) + mn, color='orange', alpha=0.5)
+                #    plt.savefig('desi-users/ioannis/tmp2/junk.png')
+                #    pdb.set_trace()
+                _residuals[_linepix] = (rand.normal(size=len(_linepix)) * sig) + mn
+                #_residuals[_linepix] = (rand.normal(size=len(_linepix)) * np.std(clipflux)) + np.median(clipflux)
             residuals_clean.append(_residuals)
 
         residuals_clean = np.hstack(residuals_clean)
