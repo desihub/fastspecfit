@@ -291,7 +291,7 @@ class EMLineModel(Fittable1DModel):
     vmaxshift_broad = 3000.0
     initvshift = 0.0
 
-    minsigma = 10.0
+    minsigma = 1.0
     maxsigma_narrow = 500.0
     maxsigma_broad = 5000.0
 
@@ -889,7 +889,7 @@ class EMLineFit(ContinuumTools):
             result['DN4000_NOLINES'] = dn4000_nolines
 
         # get continuum fluxes, EWs, and upper limits
-        verbose = True
+        verbose = False
 
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
@@ -1063,8 +1063,6 @@ class EMLineFit(ContinuumTools):
             result['OII_3726_FLUX'] = 0.0
             result['OII_3726_EW'] = 0.0
 
-        pdb.set_trace()
-            
         #try:
         #    if result['NII_6584_AMP'] > 0:
         #        assert(result['NII_6548_AMP'] > 0)
