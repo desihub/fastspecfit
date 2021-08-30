@@ -475,7 +475,7 @@ class ContinuumTools(object):
                                 plt.plot(stackdvel, onegauss(stackdvel, *popt))
                             plt.savefig(junkplot)
                         
-            log.info('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
+            log.debug('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
             
             return linesigma, snr
                 
