@@ -207,7 +207,7 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                fitindx = np.where((zb['Z'] > 0) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
+                fitindx = np.where((zb['Z'] > 0.01) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
                                    (meta['OBJTYPE'] == 'TGT') *
                                    (meta['COADD_FIBERSTATUS'] == 0))[0]
             else:

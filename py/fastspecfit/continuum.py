@@ -427,14 +427,14 @@ class ContinuumTools(object):
         wave - observed-frame wavelength array
 
         """
-        def _estimate_linesigma(zlinewaves, sigma, junkplot=None):
+        def _estimate_linesigma(zlinewaves, sigma, label='Broad-line', junkplot=None):
             """Estimate the velocity width from potentially strong, isolated lines; somewhat
             fragile!
 
             """
             from scipy.optimize import curve_fit
 
-            linesigma, medsnr = 0.0, 0.0
+            linesigma, snr = 0.0, 0.0
             
             inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
             if np.sum(inrange) > 0:
@@ -454,20 +454,20 @@ class ContinuumTools(object):
                     onegauss = lambda x, amp, sigma, cont: amp * np.exp(-0.5 * x**2 / sigma**2) + cont
                     noneg = stackivar > 0
                     if np.sum(noneg) > 0:
-                        medsnr = np.median(stackflux*np.sqrt(stackivar))
+                        #snr = np.median(stackflux*np.sqrt(stackivar))
                         stacksigma = 1 / np.sqrt(stackivar[noneg])
                         try:
                             popt, _ = curve_fit(onegauss, xdata=stackdvel[noneg], ydata=stackflux[noneg],
                                                 sigma=stacksigma, p0=[1.0, sigma, np.median(stackflux)])
                             if popt[0] > 0 and popt[1] > 0:
                                 linesigma = popt[1]
+                                snr = popt[0] / np.std(stackflux[noneg])
                             else:
                                 popt = None
                         except RuntimeError:
                             popt = None
 
                         if junkplot:
-                            log.info('Masking sigma={:.3f} and S/N={:.3f}'.format(linesigma, medsnr))
                             import matplotlib.pyplot as plt
                             plt.clf()
                             plt.plot(stackdvel, stackflux)
@@ -475,26 +475,28 @@ class ContinuumTools(object):
                                 plt.plot(stackdvel, onegauss(stackdvel, *popt))
                             plt.savefig(junkplot)
                         
-            return linesigma, medsnr
+            log.info('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
+            
+            return linesigma, snr
                 
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
         zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
         linesigma_broad, broad_snr = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_broad)#, junkplot='cosmo-www/tmp/junk-broad.png')
+            zlinewaves, self.linemask_sigma_broad, label='Broad-line')#, junkplot='cosmo-www/tmp/junk-broad.png')
         if (linesigma_broad < 300) or (linesigma_broad > 2500) or (broad_snr < 3):
             linesigma_broad = self.linemask_sigma_broad
 
         # [OII] doublet, [OIII] 4959,5007
         zlinewaves = np.array([3728.483, 4960.295, 5008.239]) * (1 + redshift)
         linesigma_narrow, narrow_snr = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_narrow)#, junkplot='cosmo-www/tmp/junk-narrow.png')
+            zlinewaves, self.linemask_sigma_narrow, label='Narrow-line')#, junkplot='cosmo-www/tmp/junk-narrow.png')
         if (linesigma_narrow < 50) or (linesigma_narrow > 250) or (narrow_snr < 3):
             linesigma_narrow = self.linemask_sigma_narrow
 
         # Hbeta, Halpha
         zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
         linesigma_balmer, narrow_balmer = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_balmer)#, junkplot='cosmo-www/tmp/junk-balmer.png')
+            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line')#, junkplot='cosmo-www/tmp/junk-balmer.png')
         if (linesigma_balmer < 50) or (linesigma_balmer > 2500) or (narrow_balmer < 3):
             linesigma_balmer = self.linemask_sigma_balmer
 
@@ -508,6 +510,8 @@ class ContinuumTools(object):
 
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
 
+        # Index I for building the line-mask; J for estimating the local
+        # continuum (to be used in self.smooth_residuals).
         linepix = []
         for zlinewave, isbroad, isbalmer in zip(zlinewaves[inrange], isbroads[inrange], isbalmers[inrange]):
             if isbroad:
@@ -517,12 +521,9 @@ class ContinuumTools(object):
             else:
                 sigma = linesigma_narrow
             sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
-            # I for building the line-mask; J for estimating the local continuum
-            # (to be used in self.smooth_residuals).
             I = (wave >= (zlinewave - 3*sigma)) * (wave <= (zlinewave + 3*sigma))
             if np.sum(I) > 0:
                 linepix.append(I)
-                #linepix.append(np.where(I)[0])
                 linemask[I] = True  # True = affected by line
 
         contpix = []
@@ -543,7 +544,6 @@ class ContinuumTools(object):
             J = np.logical_or(Jblu, Jred)
             if np.sum(J) > 0:
                 contpix.append(J)
-                #contpix.append(np.where(J)[0])
 
         linemask_dict = {'linemask': linemask, 'linepix': linepix, 'contpix': contpix}
 
@@ -758,27 +758,28 @@ class ContinuumTools(object):
         https://github.com/moustakas/moustakas-projects/blob/master/ages/ppxf/ages_gandalf_specfit.pro#L138-L145
 
         """
+        from scipy.stats import sigmaclip
         from scipy.ndimage import median_filter
 
-        def robust_median(wave, flux, ivar, binwave):
-            from scipy import ptp
-            from scipy.stats import sigmaclip
-            #from scipy.signal import savgol_filter
-            
-            smoothflux = np.zeros_like(flux)
-            minwave, maxwave = np.min(wave), np.max(wave)
-            nbin = int(ptp(wave) / binwave)
-            wavebins = np.linspace(minwave, maxwave, nbin)
-            idx  = np.digitize(wave, wavebins)
-            for kk in np.arange(nbin):
-                I = (idx == kk)
-                J = I * (ivar > 0)
-                #print(kk, np.sum(I), np.sum(J))
-                if np.sum(J) > 10:
-                    clipflux, _, _ = sigmaclip(flux[J], low=5.0, high=5.0)
-                    smoothflux[I] = np.median(clipflux)
-                    #print(kk, np.sum(J), np.sum(I), np.median(wave[I]), smoothflux[I][0])
-            return smoothflux
+        #def robust_median(wave, flux, ivar, binwave):
+        #    from scipy import ptp
+        #    from scipy.stats import sigmaclip
+        #    #from scipy.signal import savgol_filter
+        #    
+        #    smoothflux = np.zeros_like(flux)
+        #    minwave, maxwave = np.min(wave), np.max(wave)
+        #    nbin = int(ptp(wave) / binwave)
+        #    wavebins = np.linspace(minwave, maxwave, nbin)
+        #    idx  = np.digitize(wave, wavebins)
+        #    for kk in np.arange(nbin):
+        #        I = (idx == kk)
+        #        J = I * (ivar > 0)
+        #        #print(kk, np.sum(I), np.sum(J))
+        #        if np.sum(J) > 10:
+        #            clipflux, _, _ = sigmaclip(flux[J], low=5.0, high=5.0)
+        #            smoothflux[I] = np.median(clipflux)
+        #            #print(kk, np.sum(J), np.sum(I), np.median(wave[I]), smoothflux[I][0])
+        #    return smoothflux
                 
         medbin = np.int(binwave * 2)
         #print(binwave, medbin)
@@ -789,8 +790,10 @@ class ContinuumTools(object):
         for icam in np.arange(len(residuals)): # iterate over cameras
             _residuals = residuals[icam].copy()
             for _linepix, _contpix in zip(linepix[icam], contpix[icam]):
-                #_smooth_continuum[_linepix] = np.median(residuals[icam][_contpix])
-                _residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(residuals[icam][_contpix])) + np.median(residuals[icam][_contpix])
+                #_residuals[_linepix] = np.median(residuals[icam][_contpix])
+                #_residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(residuals[icam][_contpix])) + np.median(residuals[icam][_contpix])
+                clipflux, _, _ = sigmaclip(residuals[icam][_contpix], low=3.0, high=3.0)
+                _residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(clipflux)) + np.median(clipflux)
             residuals_clean.append(_residuals)
 
         residuals_clean = np.hstack(residuals_clean)
