@@ -808,7 +808,35 @@ class EMLineFit(ContinuumTools):
                                        emlineR=data['res'],
                                        npixpercamera=npixpercamera,
                                        log10wave=self.log10wave)
-        
+
+        # Do a fast update of the initial line-amplitudes which especially helps
+        # with cases like 39633354915582193 (tile 80613, petal 05), which has
+        # strong narrow lines.
+        doneline = []
+        for icam in np.arange(len(data['cameras'])):
+            for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
+                if linename in doneline:
+                    continue
+                npix = len(linepix)
+                if npix > 5:
+                    mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
+                    if mnpx < 0:
+                        mnpx = 0
+                    if mxpx > len(data['flux'][icam]):
+                        mxpx = len(data['flux'][icam])
+                    amp = np.max(data['flux'][icam][mnpx:mxpx])
+                else:
+                    amp = np.max(data['flux'][icam][linepix])
+                #print(linename, amp)
+                #if 'alpha' in linename:
+                #    pdb.set_trace()
+                setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
+                doneline.append(linename)
+                
+        self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)
+        self.EMLineModel.oiii_4959_amp = _tie_oiii_amp(self.EMLineModel)
+        self.EMLineModel.oii_3726_amp = _tie_oii_amp(self.EMLineModel)
+
         fitter = FastLevMarLSQFitter(self.EMLineModel)
 
         t0 = time.time()        

@@ -530,7 +530,7 @@ class DESISpectra(object):
 
                 if not fastphot:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
-                                 'linemask': [], 'linepix': [], 'contpix': [],
+                                 'linemask': [], 'linename': [], 'linepix': [], 'contpix': [],
                                  'snr': np.zeros(3, 'f4'),
                                  #'std': np.zeros(3, 'f4'), # emission-line free standard deviation, per-camera
                                  'cameras': spec.bands})
@@ -577,11 +577,13 @@ class DESISpectra(object):
                     # continuum.ContinnuumTools.smooth_residuals.
                     for icam in np.arange(len(data['cameras'])):
                         data['linemask'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask']*1) > 0)
-                        _linenpix, _contpix = [], []
+                        _linename, _linenpix, _contpix = [], [], []
                         for ipix in np.arange(len(coadd_linemask_dict['linepix'])):
                             I = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linepix'][ipix]*1) > 0
                             if np.sum(I) > 0:
+                                _linename.append(coadd_linemask_dict['linename'][ipix])
                                 _linenpix.append(np.where(I)[0])
+                        data['linename'].append(_linename)
                         data['linepix'].append(_linenpix)
                         for ipix in np.arange(len(coadd_linemask_dict['contpix'])):
                             J = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['contpix'][ipix]*1) > 0

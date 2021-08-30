@@ -512,8 +512,9 @@ class ContinuumTools(object):
 
         # Index I for building the line-mask; J for estimating the local
         # continuum (to be used in self.smooth_residuals).
-        linepix = []
-        for zlinewave, isbroad, isbalmer in zip(zlinewaves[inrange], isbroads[inrange], isbalmers[inrange]):
+        linepix, linename = [], []
+        for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
+                                                          isbroads[inrange], isbalmers[inrange]):
             if isbroad:
                 sigma = linesigma_broad
             elif isbalmer:
@@ -523,6 +524,7 @@ class ContinuumTools(object):
             sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
             I = (wave >= (zlinewave - 3*sigma)) * (wave <= (zlinewave + 3*sigma))
             if np.sum(I) > 0:
+                linename.append(_linename)
                 linepix.append(I)
                 linemask[I] = True  # True = affected by line
 
@@ -545,7 +547,7 @@ class ContinuumTools(object):
             if np.sum(J) > 0:
                 contpix.append(J)
 
-        linemask_dict = {'linemask': linemask, 'linepix': linepix, 'contpix': contpix}
+        linemask_dict = {'linemask': linemask, 'linename': linename, 'linepix': linepix, 'contpix': contpix}
 
         return linemask_dict
 
