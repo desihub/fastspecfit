@@ -1450,14 +1450,15 @@ class ContinuumFit(ContinuumTools):
         result['DN4000_MODEL'][0] = dn4000_model
 
         for icam, cam in enumerate(data['cameras']):
-            nonzero = np.abs(continuummodel[icam]) > 1e-5
+            nonzero = continuummodel[icam] != 0
+            #nonzero = np.abs(continuummodel[icam]) > 1e-5
             if np.sum(nonzero) > 0:
-                corr = np.mean(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
-                result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr
-                
+                corr = np.median(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
+                result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
+
         log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
-            100*result['CONTINUUM_SMOOTHCORR_B'][0], 100*result['CONTINUUM_SMOOTHCORR_R'][0],
-            100*result['CONTINUUM_SMOOTHCORR_Z'][0]))
+            result['CONTINUUM_SMOOTHCORR_B'][0], result['CONTINUUM_SMOOTHCORR_R'][0],
+            result['CONTINUUM_SMOOTHCORR_Z'][0]))
         
         return result, continuummodel, smooth_continuum
     
