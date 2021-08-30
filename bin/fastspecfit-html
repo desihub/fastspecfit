@@ -24,10 +24,10 @@ def parse(options=None):
     import sys, argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--specprod', type=str, default='denali', choices=['denali', 'cascades', 'daily'],
+    parser.add_argument('--specprod', type=str, default='everest', choices=['denali', 'cascades', 'daily'],
                         help='Spectroscopic production to process.')
-    parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
-                        help='Type of spectral coadds corresponding to the input zbestfiles.')
+    #parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
+    #                    help='Type of spectral coadds corresponding to the input zbestfiles.')
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
     

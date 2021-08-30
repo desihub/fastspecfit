@@ -287,7 +287,7 @@ class EMLineModel(Fittable1DModel):
     from astropy.modeling import Parameter
 
     # NB! The order of the parameters here matters!
-    vmaxshift_narrow = 300.0
+    vmaxshift_narrow = 300
     vmaxshift_broad = 3000.0
     initvshift = 0.0
 
@@ -536,6 +536,7 @@ class EMLineModel(Fittable1DModel):
                  siii_9532_sigma=siii_9532_sigma.default,
                      
                  redshift=None,
+                 wavelims=[None, None],
                  emlineR=None,
                  npixpercamera=None,
                  #goodpixpercam=None,
@@ -565,10 +566,15 @@ class EMLineModel(Fittable1DModel):
             dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
             log10wave = np.arange(np.log10(3000), np.log10(1e4), dlogwave)
         self.log10wave = log10wave
+
+        if wavelims[0] is None:
+            wavelims[0] = 10**np.min(log10wave)
+        if wavelims[1] is None:
+            wavelims[1] = 10**np.max(log10wave)
             
-        wavelims = (10**np.min(log10wave), 10**np.max(log10wave))
         zline = self.linetable['restwave'] * (1 + self.redshift)
-        self.inrange = (zline > wavelims[0]) * (zline < wavelims[1])
+        #self.inrange = (zline > 4600) * (zline < 6300)
+        self.inrange = (zline > (wavelims[0]+20)) * (zline < wavelims[1])
 
         # tie lines together
         _tie_lines(self)
@@ -792,10 +798,13 @@ class EMLineFit(ContinuumTools):
         emlinevar, emlinegood = ivar2var(emlineivar)
         weights = np.sqrt(emlineivar)
         emlinebad = np.logical_not(emlinegood)
-        if np.count_nonzero(emlinebad) > 0:
+        if np.sum(emlinebad) > 0:
             weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
 
+        wavelims = (np.min(emlinewave), np.max(emlinewave))
+
         self.EMLineModel = EMLineModel(redshift=redshift,
+                                       wavelims=wavelims,
                                        emlineR=data['res'],
                                        npixpercamera=npixpercamera,
                                        log10wave=self.log10wave)
@@ -1038,11 +1047,27 @@ class EMLineFit(ContinuumTools):
                 plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
                 plt.savefig('junk.png')
 
+        # clean up the doublets; 
+        if result['OIII_5007_AMP'] == 0 and result['OIII_5007_NPIX'] > 0 and result['OIII_4959_AMP'] > 0:
+            result['OIII_4959_AMP'] = 0.0
+            result['OIII_4959_FLUX'] = 0.0
+            result['OIII_4959_EW'] = 0.0
+
+        if result['NII_6584_AMP'] == 0 and result['NII_6584_NPIX'] > 0 and result['NII_6548_AMP'] > 0:
+            result['NII_6548_AMP'] = 0.0
+            result['NII_6548_FLUX'] = 0.0
+            result['NII_6548_EW'] = 0.0
+
+        if result['OII_3729_AMP'] == 0 and result['OII_3729_NPIX'] > 0 and result['OII_3726_AMP'] > 0:
+            result['OII_3726_AMP'] = 0.0
+            result['OII_3726_FLUX'] = 0.0
+            result['OII_3726_EW'] = 0.0
+
+        pdb.set_trace()
+            
         #try:
         #    if result['NII_6584_AMP'] > 0:
         #        assert(result['NII_6548_AMP'] > 0)
-        #    if result['OIII_5007_AMP'] > 0:
-        #        assert(result['OIII_4959_AMP'] > 0)
         #    if result['OII_3729_AMP'] > 0:
         #        assert(result['OII_3726_AMP'] > 0)
         #except:
