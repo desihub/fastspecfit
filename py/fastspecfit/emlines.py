@@ -1167,7 +1167,7 @@ class EMLineFit(ContinuumTools):
                                      vdisp=fastspec['CONTINUUM_VDISP'],
                                      coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)
-        
+
         residuals = [data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
         _smooth_continuum = self.smooth_residuals(
             residuals, data['wave'], data['ivar'],
@@ -1238,13 +1238,13 @@ class EMLineFit(ContinuumTools):
         bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
         
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
-            sigma, _ = ivar2var(data['ivar'][ii], sigma=True)
+            sigma, good = ivar2var(data['ivar'][ii], sigma=True)
 
             bigax1.fill_between(data['wave'][ii], data['flux'][ii]-sigma,
-                             data['flux'][ii]+sigma, color=col1[ii])
-            #bigax1.plot(data['wave'][ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
+                                data['flux'][ii]+sigma, color=col1[ii])
             #bigax1.plot(data['wave'][ii], continuum_nodust[ii], alpha=0.5, color='k')
             #bigax1.plot(data['wave'][ii], smooth_continuum[ii], color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+            #bigax1.plot(data['wave'][ii], continuum[ii], color=col2[ii])
             bigax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii], color=col2[ii])
             
             # get the robust range
@@ -1307,7 +1307,7 @@ class EMLineFit(ContinuumTools):
             emlinemodel = emlinemodel[good]
 
             bigax2.fill_between(emlinewave, emlineflux-emlinesigma,
-                               emlineflux+emlinesigma, color=col1[ii], alpha=0.7)
+                                emlineflux+emlinesigma, color=col1[ii], alpha=0.7)
             bigax2.plot(emlinewave, emlinemodel, color=col2[ii], lw=2)
 
             # get the robust range

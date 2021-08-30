@@ -718,7 +718,7 @@ class ContinuumTools(object):
                     maggies /= self.fluxnorm * self.massnorm
                     sspphot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False)
         else:
-            # loop over cameras and then multiprocess over age
+            # loop over cameras
             datasspflux = []
             for icamera in np.arange(len(cameras)): # iterate on cameras
                 _datasspflux = []
@@ -732,6 +732,8 @@ class ContinuumTools(object):
                 if coeff is not None:
                     _datasspflux = _datasspflux.dot(coeff)
                 datasspflux.append(_datasspflux)
+                #if icamera == 1:
+                #    pdb.set_trace()
                 
         #log.info('Resampling took: {:.2f} sec'.format(time.time()-t0))
 
