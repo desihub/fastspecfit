@@ -84,7 +84,7 @@ def _fastspec_one(args):
     """Multiprocessing wrapper."""
     return fastspec_one(*args)
 
-def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False):
+def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False, verbose=False):
     """Fit one spectrum."""
     #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
@@ -106,7 +106,7 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False):
 
     # Fit the emission-line spectrum.
     t0 = time.time()
-    emfit = EMFit.fit(data, continuummodel, smooth_continuum)
+    emfit = EMFit.fit(data, continuummodel, smooth_continuum, verbose=verbose)
     for col in emfit.colnames:
         out[col] = emfit[col]
     log.info('Line-fitting object {} (targetid={}) took {:.2f} sec'.format(
@@ -154,6 +154,7 @@ def parse(options=None):
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
 
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
     # make specprod required until this ticket is addressed--
     # https://github.com/desihub/desispec/issues/1077
@@ -212,7 +213,7 @@ def fastspec(args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.solve_vdisp)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.solve_vdisp, args.verbose)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing

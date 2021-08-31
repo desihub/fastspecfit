@@ -8,7 +8,7 @@ mpi-fastspecfit --fastphot --mp 32 --tile 80608
 mpi-fastspecfit --mp 32 --coadd-type cumulative --merge --nompi
 mpi-fastspecfit --mp 32 --coadd-type cumulative --merge --nompi --fastphot
 
-mpi-fastspecfit --mp 32 --makeqa --tile 80607 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit -o /global/cfs/cdirs/desi/users/ioannis/fastspecfit --dry-run
+mpi-fastspecfit --mp 32 --makeqa --tile 80607 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit --dry-run
 
 """
 import pdb # for debugging
@@ -20,7 +20,7 @@ from desiutil.log import get_logger
 log = get_logger()
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
-                    makeqa=False, base_datadir='.'):
+                    makeqa=False, base_datadir='.', base_htmldir='.'):
 
     import sys, subprocess
     from fastspecfit.mpi import backup_logs, plan
@@ -38,7 +38,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
     _, zbestfiles, outfiles, groups, grouptimes = plan(args, comm=comm, fastphot=fastphot,
                                                        specprod_dir=specprod_dir,
-                                                       base_datadir=base_datadir)
+                                                       base_datadir=base_datadir,
+                                                       base_htmldir=base_htmldir)
 
     if rank == 0:
         log.info('Initial setup took {:.1f} sec'.format(time.time() - t0))
@@ -164,6 +165,7 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands')
 
+    parser.add_argument('--base-htmldir', default='.', type=str, help='Base output HTML directory.')
     parser.add_argument('--base-datadir', default='.', type=str, help='Base output data directory.')
     
     specprod_dir = None
@@ -182,15 +184,17 @@ def main():
     if args.merge:
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(args, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                          base_datadir=args.base_datadir)
+                          base_datadir=args.base_datadir, base_htmldir=args.base_htmldir)
     elif args.plan:
         plan(args, comm=comm, fastphot=args.fastphot,
              specprod_dir=specprod_dir,
-             base_datadir=args.base_datadir)
+             base_datadir=args.base_datadir,
+             base_htmldir=args.base_htmldir)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot,
                         specprod_dir=specprod_dir, makeqa=args.makeqa,
-                        base_datadir=args.base_datadir)
+                        base_datadir=args.base_datadir,
+                        base_htmldir=args.base_htmldir)
 
 if __name__ == '__main__':
     main()

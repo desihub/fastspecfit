@@ -574,7 +574,7 @@ class EMLineModel(Fittable1DModel):
             
         zline = self.linetable['restwave'] * (1 + self.redshift)
         #self.inrange = (zline > 4600) * (zline < 6300)
-        self.inrange = (zline > (wavelims[0]+20)) * (zline < wavelims[1])
+        self.inrange = (zline > (wavelims[0]+10)) * (zline < (wavelims[1]-10))
 
         # tie lines together
         _tie_lines(self)
@@ -766,7 +766,7 @@ class EMLineFit(ContinuumTools):
         return emlinemodel
     
     def fit(self, data, continuummodel, smooth_continuum, synthphot=True,
-            maxiter=1000, accuracy=1e-2):
+            maxiter=1000, accuracy=1e-2, verbose=False):
         """Perform the fit minimization / chi2 minimization.
         
         EMLineModel object
@@ -801,7 +801,7 @@ class EMLineFit(ContinuumTools):
         if np.sum(emlinebad) > 0:
             weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
 
-        wavelims = (np.min(emlinewave), np.max(emlinewave))
+        wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
 
         self.EMLineModel = EMLineModel(redshift=redshift,
                                        wavelims=wavelims,
@@ -850,12 +850,12 @@ class EMLineFit(ContinuumTools):
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
 
-        # Populate the output table. First do a pass through the sigma
-        # parameters. If sigma is zero, restore the default value and if the
-        # amplitude is still at its default (or its upper bound!), it means the
-        # line wasn't fit or the fit failed (right??), so set it to zero.
+        # Populate the output table. If the amplitude is still at its default
+        # (or its upper or lower bound!), it means the line wasn't fit or the
+        # fit failed (right??), so set it to zero. Important: need to loop over
+        # *all* lines (not just those in range).
         initkeys = init.keys()
-        for linename in self.linetable['name'][self.EMLineModel.inrange].data:
+        for linename in self.linetable['name'].data:
             #if not hasattr(bestfit, '{}_amp'.format(linename)): # line not fitted
             #    continue
             amp = getattr(bestfit, '{}_amp'.format(linename))
@@ -920,8 +920,6 @@ class EMLineFit(ContinuumTools):
             result['DN4000_NOLINES'] = dn4000_nolines
 
         # get continuum fluxes, EWs, and upper limits
-        verbose = False
-
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
         for oneline in self.EMLineModel.linetable[self.EMLineModel.inrange]:
@@ -1132,8 +1130,7 @@ class EMLineFit(ContinuumTools):
                 for col in ('Z', 'SIGMA'):
                 #for col in ('Z', 'Z_ERR', 'SIGMA', 'SIGMA_ERR'):
                     print('{}_{}: {:.12f}'.format(line, col, result['{}_{}'.format(line, col)][0]))
-            #pdb.set_trace()
-            
+
         return result
     
     def qa_fastspec(self, data, fastspec, metadata, coadd_type='healpix',
@@ -1466,6 +1463,8 @@ class EMLineFit(ContinuumTools):
                         ymax[iax] = _ymax
                     if _ymin < ymin[iax]:
                         ymin[iax] = _ymin
+
+                    xx.set_xlim(wmin, wmax)
                     
                 xx.text(0.04, 0.89, linename, ha='left', va='center',
                         transform=xx.transAxes, fontsize=16)
