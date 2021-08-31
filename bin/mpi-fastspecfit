@@ -8,7 +8,7 @@ mpi-fastspecfit --fastphot --mp 32 --tile 80608
 mpi-fastspecfit --mp 32 --coadd-type cumulative --merge --nompi
 mpi-fastspecfit --mp 32 --coadd-type cumulative --merge --nompi --fastphot
 
-mpi-fastspecfit --mp 32 --makeqa --tile 80607
+mpi-fastspecfit --mp 32 --makeqa --tile 80607 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit -o /global/cfs/cdirs/desi/users/ioannis/fastspecfit --dry-run
 
 """
 import pdb # for debugging

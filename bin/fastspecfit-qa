@@ -73,7 +73,7 @@ def main(args=None, comm=None):
     from astropy.table import Table
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
-    from fastspecfit.io import DESISpectra, read_fastspecfit, DESI_ROOT_NERSC
+    from fastspecfit.io import DESISpectra, read_fastspecfit, DESI_ROOT_NERSC, select
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
@@ -97,7 +97,6 @@ def main(args=None, comm=None):
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
-
         keep = np.where(np.isin(fastfit['TARGETID'], targetids))[0]
         if len(keep) == 0:
             log.warning('No matching targetids found!')
@@ -110,34 +109,9 @@ def main(args=None, comm=None):
         log.info('Keeping {} targets.'.format(args.ntargets))
         fastfit = fastfit[keep]
         metadata = metadata[keep]
-
-    # optionally trim to a particular healpix or tile and/or night
-    def _select(fastfit, metadata, hpxpixels=None, tiles=None, nights=None):
-        keep = np.ones(len(fastfit), bool)
-        if coadd_type == 'healpix':
-            if hpxpixels:
-                pixelkeep = np.zeros(len(fastfit), bool)
-                for hpxpixel in hpxpixels:
-                    pixelkeep = np.logical_or(pixelkeep, metadata['HPXPIXEL'].astype(str) == hpxpixel)
-                keep = np.logical_and(keep, pixelkeep)
-                log.info('Keeping {} objects from healpixels(s) {}'.format(len(fastfit), ','.join(hpxpixels)))
-        else:
-            if tiles:
-                tilekeep = np.zeros(len(fastfit), bool)
-                for tile in tiles:
-                    tilekeep = np.logical_or(tilekeep, metadata['TILEID'].astype(str) == tile)
-                keep = np.logical_and(keep, tilekeep)
-                log.info('Keeping {} objects from tile(s) {}'.format(len(fastfit), ','.join(tiles)))
-            if nights and 'NIGHT' in metadata:
-                nightkeep = np.zeros(len(fastfit), bool)
-                for night in nights:
-                    nightkeep = np.logical_or(nightkeep, metadata['NIGHT'].astype(str) == night)
-                keep = np.logical_and(keep, nightkeep)
-                log.info('Keeping {} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
-        return fastfit[keep], metadata[keep]
     
-    fastfit, metadata = _select(fastfit, metadata, hpxpixels=args.hpxpixel,
-                                tiles=args.tile, nights=args.night)
+    fastfit, metadata = select(fastfit, metadata, coadd_type, hpxpixels=args.hpxpixel,
+                               tiles=args.tile, nights=args.night)
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
@@ -150,7 +124,7 @@ def main(args=None, comm=None):
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
         
-    redrockdir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux', specprod)
+    specproddir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux', specprod)
     
     #if fastphot:
     #    synthphot = False
@@ -184,7 +158,7 @@ def main(args=None, comm=None):
                         log.warning('No object found with survey={}, program={}, and healpixel={}!'.format(
                             survey, program, pixel))
                         continue
-                    redrockfile = os.path.join(redrockdir, 'healpix', str(survey), str(program), str(pixel // 100), str(pixel), 
+                    redrockfile = os.path.join(specproddir, 'healpix', str(survey), str(program), str(pixel // 100), str(pixel), 
                                                'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
                     _wrap_qa(redrockfile, indx)
     else:
@@ -199,7 +173,7 @@ def main(args=None, comm=None):
                         log.warning('No object found with tileid={} and petal={}!'.format(
                             tile, petal))
                         continue
-                    redrockfile = os.path.join(redrockdir, 'tiles', 'cumulative', str(tile), thrunights[indx[0]],
+                    redrockfile = os.path.join(specproddir, 'tiles', 'cumulative', str(tile), thrunights[indx[0]],
                                                'redrock-{}-{}-thru{}.fits'.format(petal, tile, thrunights[indx[0]]))
                     _wrap_qa(redrockfile, indx)
         elif coadd_type == 'pernight':
@@ -208,7 +182,7 @@ def main(args=None, comm=None):
                 for tile in set(alltiles):
                     for petal in set(allpetals):
                         indx = np.where((night == allnights) * (tile == alltiles) * (petal == allpetals))[0]
-                        redrockfile = os.path.join(redrockdir, 'tiles', 'pernight', str(tile), str(night),
+                        redrockfile = os.path.join(specproddir, 'tiles', 'pernight', str(tile), str(night),
                                                    'redrock-{}-{}-{}.fits'.format(petal, tile, night))
                         _wrap_qa(redrockfile, indx)
         elif coadd_type == 'perexp':
@@ -220,7 +194,7 @@ def main(args=None, comm=None):
                         for petal in set(allpetals):
                             indx = np.where((night == allnights) * (expid == allexpids) *
                                             (tile == alltiles) * (petal == allpetals))[0]
-                            redrockfile = os.path.join(redrockdir, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid), 
+                            redrockfile = os.path.join(specproddir, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid), 
                                                        'redrock-{}-{}-exp{:08d}.fits'.format(petal, tile, expid))
                             _wrap_qa(redrockfile, indx)
         else:

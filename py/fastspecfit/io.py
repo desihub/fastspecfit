@@ -814,3 +814,28 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None,
             fits[2].write_key('EXTNAME', 'METADATA')
         
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
+
+def select(fastfit, metadata, coadd_type, hpxpixels=None, tiles=None, nights=None):
+    """Optionally trim to a particular healpix or tile and/or night."""
+    keep = np.ones(len(fastfit), bool)
+    if coadd_type == 'healpix':
+        if hpxpixels:
+            pixelkeep = np.zeros(len(fastfit), bool)
+            for hpxpixel in hpxpixels:
+                pixelkeep = np.logical_or(pixelkeep, metadata['HPXPIXEL'].astype(str) == hpxpixel)
+            keep = np.logical_and(keep, pixelkeep)
+            log.info('Keeping {} objects from healpixels(s) {}'.format(len(fastfit), ','.join(hpxpixels)))
+    else:
+        if tiles:
+            tilekeep = np.zeros(len(fastfit), bool)
+            for tile in tiles:
+                tilekeep = np.logical_or(tilekeep, metadata['TILEID'].astype(str) == tile)
+            keep = np.logical_and(keep, tilekeep)
+            log.info('Keeping {} objects from tile(s) {}'.format(len(fastfit), ','.join(tiles)))
+        if nights and 'NIGHT' in metadata:
+            nightkeep = np.zeros(len(fastfit), bool)
+            for night in nights:
+                nightkeep = np.logical_or(nightkeep, metadata['NIGHT'].astype(str) == night)
+            keep = np.logical_and(keep, nightkeep)
+            log.info('Keeping {} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
+    return fastfit[keep], metadata[keep]

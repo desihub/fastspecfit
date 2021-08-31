@@ -6,6 +6,9 @@ fastspecfit-html --fastspecfile ./fastspect.fits
 fastspecfit-html --fastphotfile /global/cfs/cdirs/desi/spectro/fastspecfit/denali/tiles/merged/fastphot-denali-cumulative.fits \
   --fastspecfile /global/cfs/cdirs/desi/spectro/fastspecfit/denali/tiles/merged/fastspec-denali-cumulative.fits
 
+fastspecfit-html --fastspecfile /global/cfs/cdirs/desi/spectro/fastspecfit/everest/tiles/cumulative/80607/20201219/fastspec-0-80607-thru20201219.fits \
+  -o /global/cfs/cdirs/desi/users/ioannis/fastspecfit/everest
+
 """
 import pdb # for debugging
 import os, sys, time
@@ -14,9 +17,6 @@ import numpy as np
 from desiutil.log import get_logger
 log = get_logger()
 
-cfsroot = '/global/cfs/cdirs/'
-httpsroot = 'https://data.desi.lbl.gov/'
-
 def parse(options=None):
     """Parse input arguments.
 
@@ -24,23 +24,21 @@ def parse(options=None):
     import sys, argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--specprod', type=str, default='everest', choices=['denali', 'cascades', 'daily'],
-                        help='Spectroscopic production to process.')
-    #parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
-    #                    help='Type of spectral coadds corresponding to the input zbestfiles.')
+
+    parser.add_argument('--hpxpixel', default=None, type=str, nargs='*', help="""Generate QA for all objects
+        with this healpixels (only defined for coadd-type 'healpix').""")
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
-    
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
 
-    parser.add_argument('--htmlhome', type=str, default='index.html', help='Main HTML page name.')
-    parser.add_argument('--htmldir', type=str, help='Output directory for HTML files.')
-
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
     parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
+
+    parser.add_argument('--htmlhome', type=str, default='index.html', help='Main HTML page name.')
+    #parser.add_argument('--htmldir', type=str, help='Output directory for HTML files.')
 
     parser.add_argument('--fastphotfile', default=None, type=str, help='Full path to fastphot fitting results.')
     parser.add_argument('--fastspecfile', default=None, type=str, help='Full path to fastphot fitting results.')
@@ -59,23 +57,25 @@ def main(args=None, comm=None):
 
     """
     from astropy.table import Table
-    from fastspecfit.io import read_fastspecfit
+    from fastspecfit.io import read_fastspecfit, DESI_ROOT_NERSC, select
+    from fastspecfit.html import build_htmlhome
     
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    if args.htmldir is None:
-        htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod)
-    else:
-        htmldir = args.htmldir
-    if not os.path.isdir(htmldir):
-        os.makedirs(htmldir, exist_ok=True)
+    #if args.htmldir is None:
+    #    htmldir = os.path.join(os.getenv('FASTSPECFIT_HTML'), args.specprod)
+    #else:
+    #    htmldir = args.htmldir
+        
+    if not os.path.isdir(args.outdir):
+        log.info('Creating output directory {}'.format(args.outdir))
+        os.makedirs(args.outdir, exist_ok=True)
 
     # Read the fitting results and get all the unique targetids.
     if (args.fastphotfile is None and args.fastspecfile is None):
         log.warning('Must provide one of --fastphotfile or --fastspecfile.')
         return
-    
     elif (args.fastphotfile is not None and args.fastspecfile is not None):
         fastspec, metaspec, specprod, coadd_type = read_fastspecfit(args.fastspecfile)
         fastphot, metaphot, _specprod, _coadd_type = read_fastspecfit(args.fastphotfile, fastphot=True)
@@ -84,10 +84,12 @@ def main(args=None, comm=None):
             return
 
         from astropy.table import join
-        fastspec['TILEID'] = metaspec['TILEID']
-        fastphot['TILEID'] = metaphot['TILEID']
+        joinkeys = ['TARGETID']
+        if 'TILEID' in fastspec.colnames:
+            joinkeys += 'TILEID'
+            fastspec['TILEID'] = metaspec['TILEID']
+            fastphot['TILEID'] = metaphot['TILEID']
 
-        joinkeys = ['TARGETID', 'TILEID']
         if 'NIGHT' in fastspec.colnames:
             joinkeys += 'NIGHT'
             fastspec['NIGHT'] = metaspec['NIGHT']
@@ -102,39 +104,14 @@ def main(args=None, comm=None):
 
     elif args.fastphotfile is None and args.fastspecfile is not None:
         fastfit, metadata, specprod, coadd_type = read_fastspecfit(args.fastspecfile)
-        
     elif args.fastphotfile is not None and args.fastspecfile is None:
         fastfit, metadata, specprod, coadd_type = read_fastspecfit(args.fastphotfile, fastphot=True)
-
     else:
         pass # should never get here
-
-    # optionally trim to a particular tile and/or night
-    def _select_tiles_nights_targets(fastfit, metadata, tiles=None, nights=None):
-        if fastfit is None or metadata is None:
-            return fastfit, metadata
-        keep = np.ones(len(fastfit), bool)
-        if tiles:
-            tilekeep = np.zeros(len(fastfit), bool)
-            for tile in tiles:
-                tilekeep = np.logical_or(tilekeep, metadata['TILEID'].astype(str) == tile)
-            keep = np.logical_and(keep, tilekeep)
-            log.info('Keeping {} objects from tile(s) {}'.format(len(fastfit), ','.join(tiles)))
-        if nights and 'NIGHT' in metadata:
-            nightkeep = np.zeros(len(fastfit), bool)
-            for night in nights:
-                nightkeep = np.logical_or(nightkeep, metadata['NIGHT'].astype(str) == night)
-            keep = np.logical_and(keep, nightkeep)
-            log.info('Keeping {} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
-        return fastfit[keep], metadata[keep]
     
-    fastfit, metadata = _select_tiles_nights_targets(
-        fastfit, metadata, tiles=args.tile, nights=args.night)
-
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
-
         keep = np.where(np.isin(fastfit['TARGETID'], targetids))[0]
         if len(keep) == 0:
             log.warning('No matching targetids found!')
@@ -148,44 +125,30 @@ def main(args=None, comm=None):
         fastfit = fastfit[keep]
         metadata = metadata[keep]
 
+    fastfit, metadata = select(fastfit, metadata, coadd_type, hpxpixels=args.hpxpixel,
+                               tiles=args.tile, nights=args.night)
+
     # read the tile info file for this production
-    tilefile = os.path.join(os.getenv('DESI_SPECTRO_REDUX'), specprod, 'tiles-{}.csv'.format(specprod))
-    tileinfo = Table.read(tilefile)
-    tileinfo = tileinfo[np.isin(tileinfo['TILEID'], np.unique(metadata['TILEID']))]
+    specproddir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux', specprod)
+    infofile = os.path.join(specproddir, 'tiles-{}.csv'.format(specprod))
+    info = Table.read(infofile)
+    log.info('Read {} tiles from {}'.format(len(info), infofile))
+    assert(len(info) == len(np.unique(info['TILEID'])))
 
-    #log.info('Fix SURVEY for tiles 80605-80610, which are incorrectly identified as cmx tiles.')    
-    #surveyfix = np.where((tileinfo['TILEID'] >= 80605) * (tileinfo['TILEID'] <= 80610))[0]
-    #if len(surveyfix) > 0:
-    #    tileinfo['SURVEY'][surveyfix] = 'sv1'
-    log.info('Read survey info for {} tiles'.format(len(tileinfo)))
+    # add tileid --> healpix mapping
+    if coadd_type == 'healpix':
+        hpxinfo = Table.read(os.path.join(specproddir, 'healpix', 'tilepix.fits'))
+        info['HEALPIX'] = hpxinfo[np.isin(info['TILEID'], hpxinfo['TILEID'])]
 
-    t0 = time.time()
+    itile = np.isin(info['TILEID'], metadata['TILEID'])
+    info = info[itile]
+    log.info('Selecting {} tiles.'.format(len(info)))
 
     # Build the home (index.html) page (always, irrespective of clobber)--
-    build_htmlhome(htmldir, fastfit, metadata, tileinfo, htmlhome=args.htmlhome,
-                   specprod=specprod)
-
-    ## Now the individual pages.
-    #htmltargetids = [specfile.replace(cfsroot, httpsroot).replace('.png', '.html') for specfile in fastspecfiles]
-    #
-    #nexttargetids = np.roll(np.atleast_1d(targetids), -1)
-    #prevtargetids = np.roll(np.atleast_1d(targetids), 1)
-    #nexthtmltargetids = np.roll(np.atleast_1d(htmltargetids), -1)
-    #prevhtmltargetids = np.roll(np.atleast_1d(htmltargetids), 1)
-    #
-    #htmlargs = []
-    #for ii, (targetid, htmltargetid, specfile, nexttargetid, prevtargetid, nexthtmltargetid, prevhtmltargetid) in enumerate(
-    #        zip(targetids, htmltargetids, fastspecfiles, nexttargetids, prevtargetids, nexthtmltargetids, prevhtmltargetids)):
-    #    htmlargs.append([ii, targetid, htmltargetid, specfile, nexttargetid, prevtargetid, nexthtmltargetid, prevhtmltargetid])
-    #
-    #if args.mp > 1:
-    #    import multiprocessing
-    #    with multiprocessing.Pool(args.mp) as P:
-    #        P.map(_build_htmlpage_one, htmlargs)
-    #else:
-    #    [build_htmlpage_one(*_htmlargs) for _htmlargs in htmlargs]
-
-    log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
+    t0 = time.time()
+    build_htmlhome(args.outdir, fastfit, metadata, info, htmlhome=args.htmlhome,
+                   specprod=specprod, coadd_type=coadd_type)
+    log.info('HTML for everything took: {:.2f} sec'.format(time.time()-t0))
 
 if __name__ == '__main__':
     main()
