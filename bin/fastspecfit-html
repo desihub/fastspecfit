@@ -147,7 +147,7 @@ def main(args=None, comm=None):
     # Build the home (index.html) page (always, irrespective of clobber)--
     t0 = time.time()
     build_htmlhome(args.outdir, fastfit, metadata, info, htmlhome=args.htmlhome,
-                   specprod=specprod, coadd_type=coadd_type)
+                   specprod=specprod, coadd_type=coadd_type, mp=args.mp)
     log.info('HTML for everything took: {:.2f} sec'.format(time.time()-t0))
 
 if __name__ == '__main__':
