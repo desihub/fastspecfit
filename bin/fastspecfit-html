@@ -3,8 +3,9 @@
 
 fastspecfit-html --fastspecfile ./fastspect.fits
 
-fastspecfit-html --fastphotfile /global/cfs/cdirs/desi/spectro/fastspecfit/denali/tiles/merged/fastphot-denali-cumulative.fits \
-  --fastspecfile /global/cfs/cdirs/desi/spectro/fastspecfit/denali/tiles/merged/fastspec-denali-cumulative.fits
+fastspecfit-html --fastphotfile /global/cfs/cdirs/desi/spectro/fastspecfit/everest/tiles/merged/fastphot-everest-cumulative.fits \
+  --fastspecfile /global/cfs/cdirs/desi/spectro/fastspecfit/everest/tiles/merged/fastspec-everest-cumulative.fits \
+  -o /global/cfs/cdirs/desi/users/ioannis/fastspecfit/everest
 
 fastspecfit-html --fastspecfile /global/cfs/cdirs/desi/spectro/fastspecfit/everest/tiles/cumulative/80607/20201219/fastspec-0-80607-thru20201219.fits \
   -o /global/cfs/cdirs/desi/users/ioannis/fastspecfit/everest
@@ -85,18 +86,19 @@ def main(args=None, comm=None):
 
         from astropy.table import join
         joinkeys = ['TARGETID']
-        if 'TILEID' in fastspec.colnames:
-            joinkeys += 'TILEID'
+        if 'TILEID' in metaspec.colnames:
+            joinkeys += ['TILEID']
             fastspec['TILEID'] = metaspec['TILEID']
             fastphot['TILEID'] = metaphot['TILEID']
 
-        if 'NIGHT' in fastspec.colnames:
-            joinkeys += 'NIGHT'
+        if 'NIGHT' in metaspec.colnames:
+            joinkeys += ['NIGHT']
             fastspec['NIGHT'] = metaspec['NIGHT']
             fastphot['NIGHT'] = metaphot['NIGHT']
             
         fastfit = join(fastspec, fastphot, keys=joinkeys, join_type='outer',
                        table_names=['SPEC', 'PHOT'])
+        
         metadata = join(metaspec, metaphot, keys=joinkeys, join_type='outer',
                        table_names=['SPEC', 'PHOT'])
         assert(np.all(fastfit['TARGETID'] == metadata['TARGETID']))

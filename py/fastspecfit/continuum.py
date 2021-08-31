@@ -812,29 +812,30 @@ class ContinuumTools(object):
         for icam in np.arange(len(residuals)): # iterate over cameras
             #var, I = ivar2var(specivar[icam])
             ivar = specivar[icam]
-            I = ivar > 0
             _residuals = residuals[icam].copy()
             for _linepix, _contpix in zip(linepix[icam], contpix[icam]):
-                norm = np.sum(ivar[I][_contpix])
-                mn = np.sum(ivar[I][_contpix] * _residuals[I][_contpix]) / norm # weighted mean
-                sig = np.sqrt(np.sum(ivar[I][_contpix] * (_residuals[I][_contpix] - mn)**2) / norm) # weighted standard deviation
-                #sig = np.sqrt(np.sum(ivar[I][_contpix]**2 * (_residuals[I][_contpix] - mn)**2) / norm**2) # weighted error in the mean
-                #_residuals[_linepix] = np.median(residuals[icam][_contpix])
-                #_residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(residuals[icam][_contpix])) + np.median(residuals[icam][_contpix])
-                #clipflux, _, _ = sigmaclip(residuals[icam][_contpix], low=3.0, high=3.0)
-                #if icam == 1:
-                #    import matplotlib.pyplot as plt
-                #    plt.clf()
-                #    plt.scatter(wave[icam][_linepix], _residuals[_linepix], color='blue', s=1)
-                #    plt.scatter(wave[icam][_contpix], _residuals[_contpix], color='green', s=1)
-                #    plt.axhline(y=mn, color='k')
-                #    plt.axhline(y=mn+sig, ls='--', color='k')
-                #    plt.axhline(y=mn-sig, ls='--', color='k')
-                #    plt.plot(wave[icam][_linepix], (rand.normal(size=len(_linepix)) * sig) + mn, color='orange', alpha=0.5)
-                #    plt.savefig('desi-users/ioannis/tmp2/junk.png')
-                #    pdb.set_trace()
-                _residuals[_linepix] = (rand.normal(size=len(_linepix)) * sig) + mn
-                #_residuals[_linepix] = (rand.normal(size=len(_linepix)) * np.std(clipflux)) + np.median(clipflux)
+                I = ivar[_contpix] > 0
+                if np.sum(I) > 0:
+                    norm = np.sum(ivar[_contpix][I])
+                    mn = np.sum(ivar[_contpix][I] * _residuals[_contpix][I]) / norm # weighted mean
+                    sig = np.sqrt(np.sum(ivar[_contpix][I] * (_residuals[_contpix][I] - mn)**2) / norm) # weighted standard deviation
+                    #sig = np.sqrt(np.sum(ivar[I][_contpix]**2 * (_residuals[I][_contpix] - mn)**2) / norm**2) # weighted error in the mean
+                    #_residuals[_linepix] = np.median(residuals[icam][_contpix])
+                    #_residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(residuals[icam][_contpix])) + np.median(residuals[icam][_contpix])
+                    #clipflux, _, _ = sigmaclip(residuals[icam][_contpix], low=3.0, high=3.0)
+                    #if icam == 1:
+                    #    import matplotlib.pyplot as plt
+                    #    plt.clf()
+                    #    plt.scatter(wave[icam][_linepix], _residuals[_linepix], color='blue', s=1)
+                    #    plt.scatter(wave[icam][_contpix], _residuals[_contpix], color='green', s=1)
+                    #    plt.axhline(y=mn, color='k')
+                    #    plt.axhline(y=mn+sig, ls='--', color='k')
+                    #    plt.axhline(y=mn-sig, ls='--', color='k')
+                    #    plt.plot(wave[icam][_linepix], (rand.normal(size=len(_linepix)) * sig) + mn, color='orange', alpha=0.5)
+                    #    plt.savefig('desi-users/ioannis/tmp2/junk.png')
+                    #    pdb.set_trace()
+                    _residuals[_linepix] = (rand.normal(size=len(_linepix)) * sig) + mn
+                    #_residuals[_linepix] = (rand.normal(size=len(_linepix)) * np.std(clipflux)) + np.median(clipflux)
             residuals_clean.append(_residuals)
 
         residuals_clean = np.hstack(residuals_clean)
@@ -1541,8 +1542,8 @@ class ContinuumFit(ContinuumTools):
         elif coadd_type == 'cumulative':
             title = 'Tile/thruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID'], metadata['FIBER'])
-            pngfile = os.path.join(outdir, '{}-{}-thru{}-{}.png'.format(
-                    outprefix, metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID']))
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
             title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
@@ -1553,7 +1554,7 @@ class ContinuumFit(ContinuumTools):
             title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
                     metadata['TARGETID'], metadata['FIBER'])
-            pngfile = os.path.join(outdir, '{}-{}-{}-exp{:08d}-{}.png'.format(
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'],
                     metadata['EXPID'], metadata['TARGETID']))
         else:

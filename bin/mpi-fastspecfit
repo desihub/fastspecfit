@@ -5,10 +5,11 @@ MPI wrapper for fastphot and fastspec.
 mpi-fastspecfit --mp 32 --coadd-type cumulative --tile 80608 --night 20201220 --plan --nompi
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
 
-mpi-fastspecfit --mp 32 --coadd-type cumulative --merge --nompi
-mpi-fastspecfit --mp 32 --coadd-type cumulative --merge --nompi --fastphot
+mpi-fastspecfit --merge --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest
+mpi-fastspecfit --merge --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest --fastphot
 
-mpi-fastspecfit --mp 32 --makeqa --tile 80607 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit --dry-run
+mpi-fastspecfit --mp 32 --makeqa --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit --specprod everest --dry-run
+mpi-fastspecfit --mp 32 --makeqa --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit --specprod everest --fastphot --dry-run
 
 """
 import pdb # for debugging
@@ -184,7 +185,7 @@ def main():
     if args.merge:
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(args, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                          base_datadir=args.base_datadir, base_htmldir=args.base_htmldir)
+                          base_datadir=args.base_datadir)
     elif args.plan:
         plan(args, comm=comm, fastphot=args.fastphot,
              specprod_dir=specprod_dir,

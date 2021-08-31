@@ -342,7 +342,7 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
 
     return outdir, redrockfiles, outfiles, groups, grouptimes
 
-def merge_fastspecfit(args, fastphot=False, specprod_dir=None):
+def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.'):
     """Merge all the individual catalogs into a single large catalog. Runs only on
     rank 0.
 
@@ -361,7 +361,7 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None):
         extname = 'FASTSPEC'
 
     outdir, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
-                                     specprod_dir=specprod_dir)
+                                     specprod_dir=specprod_dir, base_datadir=base_datadir)
 
     mergedir = os.path.join(outdir, 'merged')
     if not os.path.isdir(mergedir):

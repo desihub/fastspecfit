@@ -180,6 +180,13 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
         
         # need to account for the join suffix when we have both fastspec and
         # fastphot output
+        if 'Z_SPEC' in metadata.colnames:
+            zcolumn = 'Z_SPEC'
+        elif 'Z_PHOT' in metadata.colnames:
+            zcolumn = 'Z_PHOT'
+        else:
+            zcolumn = 'Z'
+        
         if 'DESI_TARGET_SPEC' in metadata.colnames:
             desibit = desibit+'_SPEC'
             bgsbit = bgsbit+'_SPEC'
@@ -280,14 +287,14 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
                             
                             targhtml.write('<tr>\n')
                             targhtml.write('<td><a href="{}">{}</a></td>\n'.format(targidhtmlfile, targetid))
-                            targhtml.write('<td>{:.5f}</td>\n'.format(meta['Z']))
+                            targhtml.write('<td>{:.5f}</td>\n'.format(meta[zcolumn]))
                             targhtml.write('</tr>\n')
                         targhtml.write('</table>\n')
                         targhtml.write('<br /><br />\n')
                         targhtml.write('</html></body>\n')
 
                 #html.write('<h3>Secondary Targets</h3>\n')
-x                #html.write('<table>\n')
+                #html.write('<table>\n')
                 #html.write('<tr>\n')
                 #html.write('<th>Secondary Program</th>\n')
                 #html.write('<th>N</th>\n')
