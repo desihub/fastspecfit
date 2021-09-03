@@ -326,7 +326,8 @@ class DESISpectra(object):
                 if 'secondary' in targetdir:
                     #continue                    
                     if 'sv1' in targetdir: # special case
-                        targetfiles = glob(os.path.join(targetdir, '*-secondary-dr9photometry.fits'))
+                        targetfiles = ['/global/cfs/cdirs/desi/users/raga19/data/0.51.0/sv1targets_dark_secondary_dr9.fits']
+                        #targetfiles = glob(os.path.join(targetdir, '*-secondary-dr9photometry.fits'))
                     else:
                         targetfiles = glob(os.path.join(targetdir, '*-secondary.fits'))
                 else:
@@ -340,7 +341,15 @@ class DESISpectra(object):
                     match = np.isin(alltargets['TARGETID'], info['TARGETID'])
                     log.info('Matched {} targets in {}'.format(np.sum(match), targetfile))
                     if np.sum(match) > 0:
-                        alltargets = alltargets[match]
+                        # hack to fix hacked SV1 target catalogs
+                        if not np.all(np.array(targetcols) == np.array(alltargets.dtype.names)):
+                            _alltargets = Table(alltargets[match])
+                            _newtargets = Table()
+                            for col in targetcols:
+                                _newtargets[col] = _alltargets[col]
+                            alltargets = _newtargets.as_array()
+                        else:
+                            alltargets = alltargets[match]
                         targets.append(alltargets)
 
         targets = Table(np.hstack(targets))
