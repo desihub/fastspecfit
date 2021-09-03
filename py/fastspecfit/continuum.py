@@ -172,9 +172,9 @@ class ContinuumTools(object):
         self.linemask_sigma_broad = 2000.0  # [km/s]
 
         # photometry
-        self.bands = ['g', 'r', 'z', 'W1', 'W2']
-        self.synth_bands = ['g', 'r', 'z'] # for synthesized photometry
-        self.fiber_bands = ['g', 'r', 'z'] # for fiber fluxes
+        self.bands = np.array(['g', 'r', 'z', 'W1', 'W2'])
+        self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
+        self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
 
         self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
         self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z')
@@ -184,6 +184,9 @@ class ContinuumTools(object):
         self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z',
                                                  'wise2010-W1', 'wise2010-W2')
 
+        self.bands_to_fit = np.ones(len(self.bands), bool)
+        self.bands_to_fit[self.bands == 'W2'] = False # drop W2
+
         # rest-frame filters
         self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1']
         self.absmag_filters = filters.load_filters('bessell-U', 'bessell-B', 'bessell-V',
@@ -192,6 +195,8 @@ class ContinuumTools(object):
         self.absmag_bandshift = np.array([0.0, 0.0, 0.0,
                                           0.1, 0.1, 0.1,
                                           0.1, 0.1, 0.0])
+        
+        self.min_uncertainty = np.array([0.01, 0.01, 0.01, 0.02, 0.02])
 
         # used in one place...
         #self.rand = np.random.RandomState(seed=seed)
@@ -266,7 +271,7 @@ class ContinuumTools(object):
 
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
-                         nanomaggies=True, nsigma=1.0):
+                         nanomaggies=True, nsigma=1.0, min_uncertainty=None):
         """Parse input (nano)maggies to various outputs and pack into a table.
 
         Parameters
@@ -311,6 +316,9 @@ class ContinuumTools(object):
         if ivarmaggies is None:
             ivarmaggies = np.zeros_like(maggies)
 
+        if min_uncertainty is None:
+            min_uncertainty = np.zeros_like(maggies)
+
         ## Gaia-only targets all have grz=-99 fluxes (we now cut these out in
         ## io.DESISpectra.find_specfiles)
         #if np.all(maggies==-99):
@@ -329,6 +337,12 @@ class ContinuumTools(object):
             nanofactor = 1e-9 # [nanomaggies-->maggies]
         else:
             nanofactor = 1.0
+
+        #pdb.set_trace()
+        #factor=(2.5/alog(10.))
+        #err=factor/sqrt(maggies_ivar[k,igood])/maggies[k,igood]
+        #err2=err^2+minerrors[k]^2
+        #maggies_ivar[k,igood]=factor^2/(maggies[k,igood]^2*err2)
 
         factor = nanofactor * 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
         if ngal > 1:
@@ -1232,7 +1246,7 @@ class ContinuumFit(ContinuumTools):
         log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
         
         objflam = data['phot']['flam'].data * self.fluxnorm
-        objflamivar = data['phot']['flam_ivar'].data / self.fluxnorm**2
+        objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
         zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
         assert(np.all(objflamivar >= 0))
 
@@ -1638,11 +1652,20 @@ class ContinuumFit(ContinuumTools):
         if np.count_nonzero(lolims) > 0:
             abmag[lolims] = abmag_limit[lolims]
 
-        ax.errorbar(phot['lambda_eff']/1e4, abmag, lolims=lolims,
-                    yerr=yerr,
-                    fmt='s', markersize=11, markeredgewidth=3, markeredgecolor='k',
-                    markerfacecolor='red', elinewidth=3, ecolor='red', capsize=4,
-                    label=r'$grz\,W_{1}W_{2}$', zorder=2)
+        dofit = np.where((abmag > 0) * self.bands_to_fit)[0]
+        if len(dofit) > 0:
+            ax.errorbar(phot['lambda_eff'][dofit]/1e4, abmag[dofit], lolims=lolims[dofit],
+                        yerr=yerr[:, dofit],
+                        fmt='s', markersize=11, markeredgewidth=3, markeredgecolor='k',
+                        markerfacecolor='red', elinewidth=3, ecolor='red', capsize=4,
+                        label=r'$grz\,W_{1}W_{2}$', zorder=2)
+            
+        ignorefit = np.where((abmag > 0) * (self.bands_to_fit == False))[0]
+        if len(ignorefit) > 0:
+            ax.errorbar(phot['lambda_eff'][ignorefit]/1e4, abmag[ignorefit], lolims=lolims[ignorefit],
+                        yerr=yerr[:, ignorefit],
+                        fmt='s', markersize=11, markeredgewidth=3, markeredgecolor='k',
+                        markerfacecolor='none', elinewidth=3, ecolor='k', capsize=4)
 
         good = np.where(fiberphot['abmag'] > 0)[0]
         if len(good) > 0:

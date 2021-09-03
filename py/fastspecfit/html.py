@@ -19,8 +19,9 @@ def _build_htmlpage_one(args):
     """Wrapper function for the multiprocessing."""
     return build_htmlpage_one(*args)
 
-def build_htmlpage_one(htmlhome, meta, httpfile, pngfile, targiddatafile, nexttargetid,
-                       prevtargetid, nexttargidhtmlfile, prevtargidhtmlfile):
+def build_htmlpage_one(htmlhome, survey, targetclass, zcolumn, meta, httpfile,
+                       pngfile, targiddatafile, nexttargetid, prevtargetid,
+                       nexttargidhtmlfile, prevtargidhtmlfile):
     """Build the web page for a single object.
 
     """
@@ -43,8 +44,14 @@ def build_htmlpage_one(htmlhome, meta, httpfile, pngfile, targiddatafile, nextta
         html.write('<a href="{}">Previous ({})</a>\n'.format(prevtargidhtmlfile, prevtargetid))
         html.write('<br />\n')
 
-        html.write('<h2>TargetID {}</h2>'.format(targetid))
+        html.write('<h2>{} - {} - TargetID {}</h2>'.format(survey, targetclass, targetid))
         #html.write('<br /><br />\n')
+
+        html.write('<table>\n')
+        html.write('<tr><td>Redrock Redshift</td></tr>\n')
+        html.write('<tr><td>{:.5f}</td></tr>\n'.format(meta[zcolumn]))
+        html.write('</table>\n')
+        html.write('<br />\n')
         
         html.write('<table>\n')
         html.write('<tr width="90%">\n')
@@ -60,9 +67,10 @@ def build_htmlpage_one(htmlhome, meta, httpfile, pngfile, targiddatafile, nextta
             else:
                 html.write('<td>Not Available</td>\n')
         html.write('</tr>\n')
+        html.write('</table>\n')
                 
         #html.write('<br /><b><i>Last updated {}</b></i>\n'.format(js))
-        html.write('<br />\n')
+        html.write('<br /><br />\n')
         html.write('</html></body>\n')
 
 def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative',
@@ -275,7 +283,9 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
                         targhtml.write('<th>TargetID</th>\n')
                         targhtml.write('<th>Redshift</th>\n')
                         targhtml.write('</tr>\n')
-                        for meta in metadata[targintile]:
+
+                        zsrt = np.argsort(metadata[targintile][zcolumn])
+                        for meta in metadata[targintile][zsrt]:
                             targetid = meta['TARGETID']
                             targidhtmlfile = os.path.join(htmldir_https, survey.lower(), 'tiles', coadd_type, str(tile), targetclass.lower(),
                                                           '{}-{}-{}-{}-{}.html'.format(survey.lower(), targetclass.lower(), tile, targetid, coadd_type))
@@ -284,11 +294,11 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
                                 survey.lower(), targetclass.lower(), tile, targetid, coadd_type))
                             if not os.path.isdir(targiddatadir):
                                 os.makedirs(targiddatadir, exist_ok=True)
-                            
                             targhtml.write('<tr>\n')
                             targhtml.write('<td><a href="{}">{}</a></td>\n'.format(targidhtmlfile, targetid))
                             targhtml.write('<td>{:.5f}</td>\n'.format(meta[zcolumn]))
                             targhtml.write('</tr>\n')
+                            
                         targhtml.write('</table>\n')
                         targhtml.write('<br /><br />\n')
                         targhtml.write('</html></body>\n')
@@ -311,7 +321,9 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
                     if len(targintile) == 0:
                         continue
 
-                    targetids = metadata[targintile]['TARGETID'].data
+                    zsrt = np.argsort(metadata[targintile][zcolumn])
+                    targetids = metadata[targintile]['TARGETID'][zsrt].data
+                    
                     targidhtmlfiles, targiddatafiles, httpfiles, pngfiles = [], [], [], []
                     for targetid in targetids:
                         targidhtmlfiles.append(os.path.join(htmldir_https, survey.lower(), 'tiles', coadd_type, str(tile), targetclass.lower(),
@@ -332,9 +344,10 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
 
                     htmlargs = []
                     for meta, targiddatafile, httpfile, pngfile, nexttargetid, prevtargetid, nexttargidhtmlfile, prevtargidhtmlfile in zip(
-                            metadata, targiddatafiles, httpfiles, pngfiles, nexttargetids, prevtargetids, nexttargidhtmlfiles, prevtargidhtmlfiles):
-                        htmlargs.append([htmlhomefile_https, meta, httpfile, pngfile, targiddatafile, nexttargetid,
-                                         prevtargetid, nexttargidhtmlfile, prevtargidhtmlfile])
+                            metadata[targintile][zsrt], targiddatafiles, httpfiles, pngfiles, nexttargetids, prevtargetids, nexttargidhtmlfiles, prevtargidhtmlfiles):
+                        htmlargs.append([htmlhomefile_https, survey, targetclass, zcolumn, meta, httpfile,
+                                         pngfile, targiddatafile, nexttargetid, prevtargetid, nexttargidhtmlfile,
+                                         prevtargidhtmlfile])
 
                     if mp > 1:
                         import multiprocessing
