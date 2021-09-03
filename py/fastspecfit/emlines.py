@@ -55,12 +55,19 @@ def _tie_oiii_amp(model):
     """
     return model.oiii_5007_amp / 2.9839 # 2.8875
 
-def _tie_oii_amp(model):
+def _tie_oii_blue_amp(model):
     """
     [O2] (2-->1): airwave: 3728.8145 vacwave: 3729.8750 emissivity: 1.948e-21
     [O2] (3-->1): airwave: 3726.0322 vacwave: 3727.0919 emissivity: 1.444e-21
     """
     return model.oii_3729_amp / 1.3490
+    
+def _tie_oii_red_amp(model):
+    """
+    [O2] (4-->2): airwave: 7319.9849 vacwave: 7322.0018 emissivity: 3.229e-22
+    [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.692e-22
+    """
+    return model.oii_7320_amp / 1.9085
     
 def _tie_hbeta_sigma(model):
     return model.hbeta_sigma
@@ -337,6 +344,8 @@ class EMLineModel(Fittable1DModel):
     nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=[minamp, maxamp])
     sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=[minamp, maxamp])
     sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=[minamp, maxamp])
+    oii_7320_amp = Parameter(name='oii_7320_amp', default=1.0, bounds=[minamp, maxamp])
+    oii_7330_amp = Parameter(name='oii_7330_amp', default=1.0, bounds=[minamp, maxamp])
     siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=[minamp, maxamp])
     siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=[minamp, maxamp])
 
@@ -375,6 +384,8 @@ class EMLineModel(Fittable1DModel):
     nii_6584_vshift = Parameter(name='nii_6584_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oii_7320_vshift = Parameter(name='oii_7320_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oii_7330_vshift = Parameter(name='oii_7330_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
 
@@ -413,12 +424,15 @@ class EMLineModel(Fittable1DModel):
     nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    oii_7320_sigma = Parameter(name='oii_7320_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    oii_7330_sigma = Parameter(name='oii_7330_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     siii_9069_sigma = Parameter(name='siii_9069_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     siii_9532_sigma = Parameter(name='siii_9532_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
 
     nii_6548_amp.tied = _tie_nii_amp
     oiii_4959_amp.tied = _tie_oiii_amp
-    oii_3726_amp.tied = _tie_oii_amp
+    oii_3726_amp.tied = _tie_oii_blue_amp
+    oii_7330_amp.tied = _tie_oii_red_amp
     
     def __init__(self,
                  #nv_1239_amp=nv_1239_amp.default,
@@ -456,6 +470,8 @@ class EMLineModel(Fittable1DModel):
                  nii_6584_amp=nii_6584_amp.default,
                  sii_6716_amp=sii_6716_amp.default,
                  sii_6731_amp=sii_6731_amp.default,
+                 oii_7320_amp=oii_7320_amp.default,
+                 oii_7330_amp=oii_7330_amp.default,
                  siii_9069_amp=siii_9069_amp.default,
                  siii_9532_amp=siii_9532_amp.default,
                      
@@ -494,6 +510,8 @@ class EMLineModel(Fittable1DModel):
                  nii_6584_vshift=nii_6584_vshift.default,
                  sii_6716_vshift=sii_6716_vshift.default,
                  sii_6731_vshift=sii_6731_vshift.default,
+                 oii_7320_vshift=oii_7320_vshift.default,
+                 oii_7330_vshift=oii_7330_vshift.default,
                  siii_9069_vshift=siii_9069_vshift.default,
                  siii_9532_vshift=siii_9532_vshift.default,
                      
@@ -532,6 +550,8 @@ class EMLineModel(Fittable1DModel):
                  nii_6584_sigma=nii_6584_sigma.default,
                  sii_6716_sigma=sii_6716_sigma.default,
                  sii_6731_sigma=sii_6731_sigma.default,
+                 oii_7320_sigma=oii_7320_sigma.default,
+                 oii_7330_sigma=oii_7330_sigma.default,
                  siii_9069_sigma=siii_9069_sigma.default,
                  siii_9532_sigma=siii_9532_sigma.default,
                      
@@ -838,7 +858,8 @@ class EMLineFit(ContinuumTools):
                 
         self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)
         self.EMLineModel.oiii_4959_amp = _tie_oiii_amp(self.EMLineModel)
-        self.EMLineModel.oii_3726_amp = _tie_oii_amp(self.EMLineModel)
+        self.EMLineModel.oii_3726_amp = _tie_oii_blue_amp(self.EMLineModel)
+        self.EMLineModel.oii_7330_amp = _tie_oii_red_amp(self.EMLineModel)
 
         fitter = FastLevMarLSQFitter(self.EMLineModel)
 
@@ -1092,13 +1113,10 @@ class EMLineFit(ContinuumTools):
             result['OII_3726_FLUX'] = 0.0
             result['OII_3726_EW'] = 0.0
 
-        #try:
-        #    if result['NII_6584_AMP'] > 0:
-        #        assert(result['NII_6548_AMP'] > 0)
-        #    if result['OII_3729_AMP'] > 0:
-        #        assert(result['OII_3726_AMP'] > 0)
-        #except:
-        #    pdb.set_trace()
+        if result['OII_7320_AMP'] == 0 and result['OII_7320_NPIX'] > 0 and result['OII_7330_AMP'] > 0:
+            result['OII_7330_AMP'] = 0.0
+            result['OII_7330_FLUX'] = 0.0
+            result['OII_7330_EW'] = 0.0
 
         # get the average emission-line redshifts and velocity widths
         if len(balmer_redshifts) > 0:
