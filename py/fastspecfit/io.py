@@ -326,8 +326,8 @@ class DESISpectra(object):
                 if 'secondary' in targetdir:
                     #continue                    
                     if 'sv1' in targetdir: # special case
-                        targetfiles = ['/global/cfs/cdirs/desi/users/raga19/data/0.51.0/sv1targets_dark_secondary_dr9.fits']
-                        #targetfiles = glob(os.path.join(targetdir, '*-secondary-dr9photometry.fits'))
+                        #targetfiles = ['/global/cfs/cdirs/desi/users/raga19/data/0.51.0/sv1targets_dark_secondary_dr9.fits']
+                        targetfiles = glob(os.path.join(targetdir, '*-secondary-dr9photometry.fits'))
                     else:
                         targetfiles = glob(os.path.join(targetdir, '*-secondary.fits'))
                 else:
