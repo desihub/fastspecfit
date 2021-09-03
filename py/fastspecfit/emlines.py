@@ -4,6 +4,8 @@ fastspecfit.emlines
 
 Methods and tools for fitting emission lines.
 
+python -m cProfile -o fastspec.prof /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465 --specprod everest
+
 """
 import pdb # for debugging
 
@@ -13,6 +15,10 @@ import multiprocessing
 
 import astropy.units as u
 from astropy.modeling import Fittable1DModel
+from astropy.modeling.fitting import LevMarLSQFitter
+
+from redrock.rebin import trapz_rebin
+from desispec.interpolation import resample_flux
 
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
@@ -34,19 +40,35 @@ def read_emlines():
     
     return linetable    
 
-def _tie_neon_sigma(model):
-    return model.nev_3426_sigma
-def _tie_oii_3726_sigma(model):
-    return model.oii_3729_sigma
-def _tie_oiii_4959_sigma(model):
-    return model.oiii_5007_sigma
-def _tie_nii_6548_sigma(model):
-    return model.nii_6584_sigma
-def _tie_sii_6731_sigma(model):
-    return model.sii_6716_sigma
-def _tie_siii_9532_sigma(model):
-    return model.siii_9069_sigma
+# doublet ratios are always tied
+def _tie_nii_amp(model):
+    """
+    [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.022e-21
+    [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.949e-21
+    """
+    return model.nii_6584_amp / 2.9421 # 2.936
 
+def _tie_oiii_amp(model):
+    """
+    [O3] (4-->2): airwave: 4958.9097 vacwave: 4960.2937 emissivity: 1.172e-21
+    [O3] (4-->3): airwave: 5006.8417 vacwave: 5008.2383 emissivity: 3.497e-21
+    """
+    return model.oiii_5007_amp / 2.9839 # 2.8875
+
+def _tie_oii_blue_amp(model):
+    """
+    [O2] (2-->1): airwave: 3728.8145 vacwave: 3729.8750 emissivity: 1.948e-21
+    [O2] (3-->1): airwave: 3726.0322 vacwave: 3727.0919 emissivity: 1.444e-21
+    """
+    return model.oii_3729_amp / 1.3490
+    
+def _tie_oii_red_amp(model):
+    """
+    [O2] (4-->2): airwave: 7319.9849 vacwave: 7322.0018 emissivity: 3.229e-22
+    [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.692e-22
+    """
+    return model.oii_7320_amp / 1.9085
+    
 def _tie_hbeta_sigma(model):
     return model.hbeta_sigma
 def _tie_hbeta_vshift(model):
@@ -57,67 +79,213 @@ def _tie_oiii_5007_sigma(model):
 def _tie_oiii_5007_vshift(model):
     return model.oiii_5007_vshift
 
-def _tie_mgii_2800_sigma(model):
-    return model.mgii_2800_sigma
-def _tie_mgii_2800_vshift(model):
-    return model.mgii_2800_vshift
+def _tie_mgii_2803_sigma(model):
+    return model.mgii_2803_sigma
+def _tie_mgii_2803_vshift(model):
+    return model.mgii_2803_vshift
 
-def _tie_balmer_lines(model):
-    for pp in model.param_names:
-        if 'sigma' in pp and pp[0] == 'h' and pp != 'hbeta_sigma':
-            getattr(model, pp).tied = _tie_hbeta_sigma
-        if 'vshift' in pp and pp[0] == 'h' and pp != 'hbeta_vshift':
-            getattr(model, pp).tied = _tie_hbeta_vshift
-            
-    model.hbeta_sigma.tied = False
-    model.hbeta_vshift.tied = False
-    
-    return model
+#def _tie_civ_1550_sigma(model):
+#    return model.civ_1550_sigma
+#def _tie_civ_1550_vshift(model):
+#    return model.civ_1550_vshift
 
-def _tie_forbidden_lines(model):
-    for pp in model.param_names:
-        if 'sigma' in pp and pp[0] != 'h' and 'mgii' not in pp and pp != 'oiii_5007_sigma':
-            getattr(model, pp).tied = _tie_oiii_5007_sigma
-        if 'vshift' in pp and pp[0] != 'h' and 'mgii' not in pp and pp != 'oiii_5007_vshift':
-            getattr(model, pp).tied = _tie_oiii_5007_vshift
-            
-    model.oiii_5007_sigma.tied = False
-    model.oiii_5007_vshift.tied = False
-    
-    return model
+#def _tie_siliv_1403_sigma(model):
+#    return model.siliv_1403_sigma
+#def _tie_siliv_1403_vshift(model):
+#    return model.siliv_1403_vshift
 
-def _tie_broad_lines(model):
-    """For now, the only *broad* line is MgII, so let it float. However, it's pretty
-    fragile that the line-name is hard-coded...
+#def _tie_nv_1243_sigma(model):
+#    return model.nv_1243_sigma
+#def _tie_nv_1243_vshift(model):
+#    return model.nv_1243_vshift
+
+def _tie_lines(model):
+    """Tie emission lines together using sensible constrains based on galaxy & QSO
+    physics.
 
     """
-    #for pp in model.param_names:
-    #    if 'sigma' in pp and 'mgii' in pp:
-    #        getattr(model, pp).tied = _tie_mgii_2800_sigma
-    #    if 'vshift' in pp and 'mgii' in pp:
-    #        getattr(model, pp).tied = _tie_mgii_2800_vshift
-    model.mgii_2800_sigma.tied = False
-    model.mgii_2800_vshift.tied = False
+    for iline in np.arange(len(model.linetable)):
+        linename = model.linetable['name'][iline]
 
-    # update / improve the initial guess
-    model.mgii_2800_sigma.value = model.initsigma_broad
-    model.mgii_2800_sigma._default = model.initsigma_broad
-    model.mgii_2800_sigma.bounds = [0.0, model.maxsigma_broad]
+        if model.inrange[iline] == False: # not in the wavelength range
+            setattr(model, '{}_amp'.format(linename), 0.0)
+            getattr(model, '{}_amp'.format(linename)).fixed = True
+            getattr(model, '{}_sigma'.format(linename)).fixed = True
+            getattr(model, '{}_vshift'.format(linename)).fixed = True
+
+        # Balmer & He lines
+        if model.inrange[iline] and model.linetable['isbalmer'][iline] and linename != 'hbeta':
+            getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_sigma
+            getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_vshift
+            
+        # broad lines
+        if model.inrange[iline] and model.linetable['isbroad'][iline] and model.linetable['isbalmer'][iline] == False:
+            if linename == 'mgii_2796':
+                getattr(model, '{}_sigma'.format(linename)).tied = _tie_mgii_2803_sigma
+                getattr(model, '{}_vshift'.format(linename)).tied = _tie_mgii_2803_vshift
+            #if linename == 'civ_1548':
+            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_civ_1550_sigma
+            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_civ_1550_vshift
+            #if linename == 'siliv_1394':
+            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_siliv_1403_sigma
+            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_siliv_1403_vshift
+            #if linename == 'nv_1239':
+            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_nv_1243_sigma
+            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_nv_1243_vshift
+            
+        # forbidden lines
+        if (model.inrange[iline] and model.linetable['isbroad'][iline] == False and
+            model.linetable['isbalmer'][iline] == False and linename != 'oiii_5007'):
+            getattr(model, '{}_sigma'.format(linename)).tied = _tie_oiii_5007_sigma
+            getattr(model, '{}_vshift'.format(linename)).tied = _tie_oiii_5007_vshift
+
+    #for pp in model.param_names:
+    #    print(getattr(model, pp))
     
     return model
 
-def _tie_all_lines(model):
-    for pp in model.param_names:
-        if 'sigma' in pp and pp != 'hbeta_sigma':
-            getattr(model, pp).tied = _tie_hbeta_sigma
-        if 'vshift' in pp and pp != 'hbeta_vshift':
-            getattr(model, pp).tied = _tie_hbeta_vshift
-            
-    # reset the amplitudes of the tied doublets; fragile...
-    model.oiii_4959_amp = model.oiii_4959_amp.tied(model)
-    model.nii_6548_amp = model.nii_6548_amp.tied(model)
-            
-    return model
+#def _tie_all_lines(model):
+#    for pp in model.param_names:
+#        if 'sigma' in pp and pp != 'hbeta_sigma':
+#            getattr(model, pp).tied = _tie_hbeta_sigma
+#        if 'vshift' in pp and pp != 'hbeta_vshift':
+#            getattr(model, pp).tied = _tie_hbeta_vshift
+#            
+#    # reset the amplitudes of the tied doublets; fragile...
+#    model.oiii_4959_amp = model.oiii_4959_amp.tied(model)
+#    model.nii_6548_amp = model.nii_6548_amp.tied(model)
+#            
+#    return model
+
+class FastLevMarLSQFitter(LevMarLSQFitter):
+    """
+    Adopted in part from
+      https://github.com/astropy/astropy/blob/v4.2.x/astropy/modeling/fitting.py#L1580-L1671
+    
+    Copyright (c) 2011-2021, Astropy Developers
+
+    See https://github.com/astropy/astropy/issues/12089 for details.  
+
+    """
+    def __init__(self, model):
+
+        import operator        
+        from functools import reduce
+
+        self.has_tied = any(model.tied.values())
+        self.has_fixed = any(model.fixed.values())
+        self.has_bound = any(b != (None, None) for b in model.bounds.values())
+
+        _, fit_param_indices = self.model_to_fit_params(model)
+
+        self._fit_param_names = [model.param_names[iparam] for iparam in np.unique(fit_param_indices)]
+
+        self._fit_istart = []
+        self._fit_iend = []
+        self._fit_slice = []
+        self._fit_ibounds = []
+        self._tied_slice = []
+        self._tied_func = []
+
+        offset = 0
+        for name in self._fit_param_names:
+            slice_ = model._param_metrics[name]['slice']
+            shape = model._param_metrics[name]['shape']
+            # This is determining which range of fps (the fitted parameters) maps
+            # to parameters of the model
+            size = reduce(operator.mul, shape, 1)
+            self._fit_slice.append(slice_)
+            self._fit_istart.append(offset)
+            self._fit_iend.append(offset + size)
+
+            imin, imax = model.bounds[name]
+            self._fit_ibounds.append(((imin, imax) != (None, None), imin, imax))
+            offset += size            
+
+        if self.has_tied:
+            self._tied_param_names = [_param_name for _param_name in model.param_names if model.tied[_param_name]]
+            for name in self._tied_param_names:
+                self._tied_slice.append(model._param_metrics[name]['slice'])
+                self._tied_func.append(model.tied[name])
+        
+        super().__init__()
+
+    def objective_function(self, fps, *args):
+
+        model = args[0]
+        weights = args[1]
+        self.fitter_to_model_params(model, fps)
+
+        meas = args[-1]
+        if weights is None:
+            return np.ravel(model(*args[2: -1]) - meas)
+        else:
+            return np.ravel(weights * (model(*args[2: -1]) - meas))
+
+    def fitter_to_model_params(self, model, fps):
+        """Constructs the full list of model parameters from the fitted and constrained
+        parameters.
+
+        """
+        parameters = model.parameters
+
+        if not (self.has_tied or self.has_fixed or self.has_bound):
+            # We can just assign directly
+            model.parameters = fps
+            return
+
+        for name, istart, iend, islice, (ibounds, imin, imax) in zip(
+                        self._fit_param_names, self._fit_istart, self._fit_iend,
+                        self._fit_slice, self._fit_ibounds):
+            values = fps[istart:iend]
+
+            # Check bounds constraints
+            if ibounds:
+                if imin is not None:
+                    values = np.fmax(values, imin)
+                if imax is not None:
+                    values = np.fmin(values, imax)
+                    
+            #parameters[islice] = values
+            setattr(model, name, values)
+
+        # Update model parameters before calling ``tied`` constraints.
+
+        # This has to be done in a separate loop due to how tied parameters are
+        # currently evaluated (the fitted parameters need to actually be *set* on
+        # the model first, for use in evaluating the "tied" expression--it might be
+        # better to change this at some point
+        if self.has_tied:
+            for name, islice, func in zip(
+                    self._tied_param_names, self._tied_slice,
+                    self._tied_func):
+                #value = model.tied[name](model)
+
+                # To handle multiple tied constraints, model parameters
+                # need to be updated after each iteration.
+                value = func(model)
+                #parameters[islice] = value
+                setattr(model, name, value)
+                
+    def model_to_fit_params(self, model):
+        """Convert a model instance's parameter array to an array that can be used with
+        a fitter that doesn't natively support fixed or tied parameters.  In
+        particular, it removes fixed/tied parameters from the parameter array.
+        These may be a subset of the model parameters, if some of them are held
+        constant or tied.
+
+        """
+        fitparam_indices = list(range(len(model.param_names)))
+        if self.has_fixed or self.has_tied:
+            params = list(model.parameters)
+            param_metrics = model._param_metrics
+            for idx, name in list(enumerate(model.param_names))[::-1]:
+                if model.fixed[name] or model.tied[name]:
+                    slice_ = param_metrics[name]['slice']
+                    del params[slice_]
+                    del fitparam_indices[idx]
+            return (np.array(params), fitparam_indices)
+        return (model.parameters, fitparam_indices)
 
 class EMLineModel(Fittable1DModel):
     """Class to model the emission-line spectra.
@@ -126,153 +294,269 @@ class EMLineModel(Fittable1DModel):
     from astropy.modeling import Parameter
 
     # NB! The order of the parameters here matters!
-    vmaxshift = 300.0
+    vmaxshift_narrow = 300
+    vmaxshift_broad = 3000.0
     initvshift = 0.0
 
+    minsigma = 1.0
     maxsigma_narrow = 500.0
-    maxsigma_broad = 3000.0
+    maxsigma_broad = 5000.0
 
     initsigma_narrow = 75.0
-    initsigma_broad = 300.0
+    initsigma_broad = 1000.0
+
+    minamp = -1e3
+    maxamp = +1e5
 
     # Fragile because the lines are hard-coded--
-    mgii_2800_amp = Parameter(name='mgii_2800_amp', default=3.0, bounds=(-1e3, 1e5))
-    #mgii_2800b_amp = Parameter(name='mgii_2800b_amp', default=1.0)
-    nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=(-1e3, 1e5))
-    nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=(-1e3, 1e5))
-    oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0, bounds=(-1e3, 1e5))
-    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=(-1e3, 1e5))
-    neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=(-1e3, 1e5))
-    oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0, bounds=(-1e3, 1e5))
-    oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=(-1e3, 1e5))
-    hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=(-1e3, 1e5))
-    hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=(-1e3, 1e5))
-    hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=(-1e3, 1e5))
-    hbeta_amp = Parameter(name='hbeta_amp', default=1.0, bounds=(-1e3, 1e5))
-    halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=(-1e3, 1e5))
-    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=(-1e3, 1e5))
-    nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=(-1e3, 1e5))
-    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=(-1e3, 1e5))
-    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=(-1e3, 1e5))
-    siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=(-1e3, 1e5))
-    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=(-1e3, 1e5))
+    #nv_1239_amp = Parameter(name='nv_1239_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
+    #nv_1243_amp = Parameter(name='nv_1243_amp', default=3.0, bounds=[minamp, maxamp])
+    oi_1304_amp = Parameter(name='oi_1304_amp', default=3.0, bounds=[minamp, maxamp])
+    #silii_1307_amp = Parameter(name='silii_1307_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
+    siliv_1396_amp = Parameter(name='siliv_1396_amp', default=3.0, bounds=[minamp, maxamp])
+    #siliv_1403_amp = Parameter(name='siliv_1403_amp', default=3.0, bounds=[minamp, maxamp])
+    civ_1549_amp = Parameter(name='civ_1549_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
+    siliii_1892_amp = Parameter(name='siliii_1892_amp', default=3.0, bounds=[minamp, maxamp])
+    ciii_1908_amp = Parameter(name='ciii_1908_amp', default=3.0, bounds=[minamp, maxamp])
+    mgii_2796_amp = Parameter(name='mgii_2796_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
+    mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
+    nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=[minamp, maxamp])
+    nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=[minamp, maxamp])
+    oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0, bounds=[minamp, maxamp])
+    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=[minamp, maxamp])
+    neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=[minamp, maxamp])
+    hei_3889_amp = Parameter(name='hei_3889_amp', default=0.3, bounds=[minamp, maxamp])
+    h6_amp = Parameter(name='h6_amp', default=0.3, bounds=[minamp, maxamp])
+    hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=[minamp, maxamp])
+    hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=[minamp, maxamp])
+    hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=[minamp, maxamp])
+    oiii_4363_amp = Parameter(name='oiii_4363_amp', default=0.3, bounds=[minamp, maxamp])
+    hei_4471_amp = Parameter(name='hei_4471_amp', default=0.3, bounds=[minamp, maxamp])
+    heii_4686_amp = Parameter(name='heii_4686_amp', default=0.3, bounds=[minamp, maxamp])
+    hbeta_amp = Parameter(name='hbeta_amp', default=1.0, bounds=[minamp, maxamp])
+    oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0, bounds=[minamp, maxamp])
+    oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=[minamp, maxamp])
+    nii_5755_amp = Parameter(name='nii_5755_amp', default=0.3, bounds=[minamp, maxamp])
+    hei_5876_amp = Parameter(name='hei_5876_amp', default=0.3, bounds=[minamp, maxamp])
+    oi_6300_amp = Parameter(name='oi_6300_amp', default=0.3, bounds=[minamp, maxamp])
+    nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=[minamp, maxamp])
+    halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=[minamp, maxamp])
+    nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=[minamp, maxamp])
+    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=[minamp, maxamp])
+    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=[minamp, maxamp])
+    oii_7320_amp = Parameter(name='oii_7320_amp', default=1.0, bounds=[minamp, maxamp])
+    oii_7330_amp = Parameter(name='oii_7330_amp', default=1.0, bounds=[minamp, maxamp])
+    siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=[minamp, maxamp])
+    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=[minamp, maxamp])
 
-    mgii_2800_vshift = Parameter(name='mgii_2800_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    #mgii_2800b_vshift = Parameter(name='mgii_2800b_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    nev_3346_vshift = Parameter(name='nev_3346_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    nev_3426_vshift = Parameter(name='nev_3426_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oii_3729_vshift = Parameter(name='oii_3729_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hepsilon_vshift = Parameter(name='hepsilon_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hdelta_vshift = Parameter(name='hdelta_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hgamma_vshift = Parameter(name='hgamma_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    hbeta_vshift = Parameter(name='hbeta_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    halpha_vshift = Parameter(name='halpha_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    nii_6548_vshift = Parameter(name='nii_6548_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    nii_6584_vshift = Parameter(name='nii_6584_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
-    siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift, +vmaxshift])
+    #nv_1239_vshift = Parameter(name='nv_1239_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    #nv_1243_vshift = Parameter(name='nv_1243_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    oi_1304_vshift = Parameter(name='oi_1304_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    #silii_1307_vshift = Parameter(name='silii_1307_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    siliv_1396_vshift = Parameter(name='siliv_1396_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    #siliv_1403_vshift = Parameter(name='siliv_1403_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    civ_1549_vshift = Parameter(name='civ_1549_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    siliii_1892_vshift = Parameter(name='siliii_1892_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    ciii_1908_vshift = Parameter(name='ciii_1908_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    mgii_2803_vshift = Parameter(name='mgii_2803_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    nev_3346_vshift = Parameter(name='nev_3346_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    nev_3426_vshift = Parameter(name='nev_3426_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oii_3729_vshift = Parameter(name='oii_3729_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hei_3889_vshift = Parameter(name='hei_3889_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    h6_vshift = Parameter(name='h6_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hepsilon_vshift = Parameter(name='hepsilon_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hdelta_vshift = Parameter(name='hdelta_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hgamma_vshift = Parameter(name='hgamma_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oiii_4363_vshift = Parameter(name='oiii_4363_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hei_4471_vshift = Parameter(name='hei_4471_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    heii_4686_vshift = Parameter(name='heii_4686_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hbeta_vshift = Parameter(name='hbeta_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    nii_5755_vshift = Parameter(name='nii_5755_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hei_5876_vshift = Parameter(name='hei_5876_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oi_6300_vshift = Parameter(name='oi_6300_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    nii_6548_vshift = Parameter(name='nii_6548_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    halpha_vshift = Parameter(name='halpha_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    nii_6584_vshift = Parameter(name='nii_6584_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oii_7320_vshift = Parameter(name='oii_7320_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    oii_7330_vshift = Parameter(name='oii_7330_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
 
-    mgii_2800_sigma = Parameter(name='mgii_2800_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    #mgii_2800b_sigma = Parameter(name='mgii_2800b_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    oiii_4959_sigma = Parameter(name='oiii_4959_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    oiii_5007_sigma = Parameter(name='oiii_5007_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_broad])
-    nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    siii_9069_sigma = Parameter(name='siii_9069_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
-    siii_9532_sigma = Parameter(name='siii_9532_sigma', default=initsigma_narrow, bounds=[30.0, maxsigma_narrow])
+    #nv_1239_sigma = Parameter(name='nv_1239_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    #nv_1243_sigma = Parameter(name='nv_1243_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    oi_1304_sigma = Parameter(name='oi_1304_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    #silii_1307_sigma = Parameter(name='silii_1307_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    siliv_1396_sigma = Parameter(name='siliv_1396_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    #siliv_1403_sigma = Parameter(name='siliv_1403_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    civ_1549_sigma = Parameter(name='civ_1549_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    siliii_1892_sigma = Parameter(name='siliii_1892_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    ciii_1908_sigma = Parameter(name='ciii_1908_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hei_3889_sigma = Parameter(name='hei_3889_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    h6_sigma = Parameter(name='h6_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    oiii_4363_sigma = Parameter(name='oiii_4363_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hei_4471_sigma = Parameter(name='hei_4471_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    heii_4686_sigma = Parameter(name='heii_4686_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    oiii_4959_sigma = Parameter(name='oiii_4959_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    oiii_5007_sigma = Parameter(name='oiii_5007_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    nii_5755_sigma = Parameter(name='nii_5755_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hei_5876_sigma = Parameter(name='hei_5876_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    oi_6300_sigma = Parameter(name='oi_6300_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    oii_7320_sigma = Parameter(name='oii_7320_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    oii_7330_sigma = Parameter(name='oii_7330_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    siii_9069_sigma = Parameter(name='siii_9069_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    siii_9532_sigma = Parameter(name='siii_9532_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
 
-    # doublet ratios are always tied
-    def _tie_nii_amp(model):
-        return model.nii_6584_amp / 2.936
-    def _tie_oiii_amp(model):
-        return model.oiii_5007_amp / 2.8875
-    
     nii_6548_amp.tied = _tie_nii_amp
     oiii_4959_amp.tied = _tie_oiii_amp
+    oii_3726_amp.tied = _tie_oii_blue_amp
+    oii_7330_amp.tied = _tie_oii_red_amp
     
     def __init__(self,
-                 mgii_2800_amp=mgii_2800_amp.default,
-                 #mgii_2800b_amp=mgii_2800b_amp.default,
+                 #nv_1239_amp=nv_1239_amp.default,
+                 #nv_1243_amp=nv_1243_amp.default,
+                 oi_1304_amp=oi_1304_amp.default,
+                 #silii_1307_amp=silii_1307_amp.default,
+                 siliv_1396_amp=siliv_1396_amp.default,
+                 #siliv_1403_amp=siliv_1403_amp.default,
+                 civ_1549_amp=civ_1549_amp.default,
+                 siliii_1892_amp=siliii_1892_amp.default,
+                 ciii_1908_amp=ciii_1908_amp.default,
+                 mgii_2796_amp=mgii_2796_amp.default,
+                 mgii_2803_amp=mgii_2803_amp.default,
                  nev_3346_amp=nev_3346_amp.default,
                  nev_3426_amp=nev_3426_amp.default,
-                 oii_3726_amp=oii_3726_amp.default, 
-                 oii_3729_amp=oii_3729_amp.default, 
+                 oii_3726_amp=oii_3726_amp.default,
+                 oii_3729_amp=oii_3729_amp.default,
                  neiii_3869_amp=neiii_3869_amp.default,
-                 oiii_4959_amp=oiii_4959_amp.default, 
-                 oiii_5007_amp=oiii_5007_amp.default, 
-                 hepsilon_amp=hepsilon_amp.default, 
-                 hdelta_amp=hdelta_amp.default, 
-                 hgamma_amp=hgamma_amp.default, 
-                 hbeta_amp=hbeta_amp.default, 
+                 hei_3889_amp=hei_3889_amp.default,
+                 h6_amp=h6_amp.default,
+                 hepsilon_amp=hepsilon_amp.default,
+                 hdelta_amp=hdelta_amp.default,
+                 hgamma_amp=hgamma_amp.default,
+                 oiii_4363_amp=oiii_4363_amp.default,
+                 hei_4471_amp=hei_4471_amp.default,
+                 heii_4686_amp=heii_4686_amp.default,
+                 hbeta_amp=hbeta_amp.default,
+                 oiii_4959_amp=oiii_4959_amp.default,
+                 oiii_5007_amp=oiii_5007_amp.default,
+                 nii_5755_amp=nii_5755_amp.default,
+                 hei_5876_amp=hei_5876_amp.default,
+                 oi_6300_amp=oi_6300_amp.default,
+                 nii_6548_amp=nii_6548_amp.default,
                  halpha_amp=halpha_amp.default,
-                 nii_6548_amp=nii_6548_amp.default, 
-                 nii_6584_amp=nii_6584_amp.default, 
-                 sii_6716_amp=sii_6716_amp.default, 
+                 nii_6584_amp=nii_6584_amp.default,
+                 sii_6716_amp=sii_6716_amp.default,
                  sii_6731_amp=sii_6731_amp.default,
+                 oii_7320_amp=oii_7320_amp.default,
+                 oii_7330_amp=oii_7330_amp.default,
                  siii_9069_amp=siii_9069_amp.default,
                  siii_9532_amp=siii_9532_amp.default,
-                 
-                 mgii_2800_vshift=mgii_2800_vshift.default,
-                 #mgii_2800b_vshift=mgii_2800b_vshift.default,
+                     
+                 #nv_1239_vshift=nv_1239_vshift.default,
+                 #nv_1243_vshift=nv_1243_vshift.default,
+                 oi_1304_vshift=oi_1304_vshift.default,
+                 #silii_1307_vshift=silii_1307_vshift.default,
+                 siliv_1396_vshift=siliv_1396_vshift.default,
+                 #siliv_1403_vshift=siliv_1403_vshift.default,
+                 civ_1549_vshift=civ_1549_vshift.default,
+                 siliii_1892_vshift=siliii_1892_vshift.default,
+                 ciii_1908_vshift=ciii_1908_vshift.default,
+                 mgii_2796_vshift=mgii_2796_vshift.default,
+                 mgii_2803_vshift=mgii_2803_vshift.default,
                  nev_3346_vshift=nev_3346_vshift.default,
                  nev_3426_vshift=nev_3426_vshift.default,
-                 oii_3726_vshift=oii_3726_vshift.default, 
-                 oii_3729_vshift=oii_3729_vshift.default, 
+                 oii_3726_vshift=oii_3726_vshift.default,
+                 oii_3729_vshift=oii_3729_vshift.default,
                  neiii_3869_vshift=neiii_3869_vshift.default,
-                 oiii_4959_vshift=oiii_4959_vshift.default, 
-                 oiii_5007_vshift=oiii_5007_vshift.default, 
-                 hepsilon_vshift=hepsilon_vshift.default, 
-                 hdelta_vshift=hdelta_vshift.default, 
-                 hgamma_vshift=hgamma_vshift.default, 
-                 hbeta_vshift=hbeta_vshift.default, 
+                 hei_3889_vshift=hei_3889_vshift.default,
+                 h6_vshift=h6_vshift.default,
+                 hepsilon_vshift=hepsilon_vshift.default,
+                 hdelta_vshift=hdelta_vshift.default,
+                 hgamma_vshift=hgamma_vshift.default,
+                 oiii_4363_vshift=oiii_4363_vshift.default,
+                 hei_4471_vshift=hei_4471_vshift.default,
+                 heii_4686_vshift=heii_4686_vshift.default,
+                 hbeta_vshift=hbeta_vshift.default,
+                 oiii_4959_vshift=oiii_4959_vshift.default,
+                 oiii_5007_vshift=oiii_5007_vshift.default,
+                 nii_5755_vshift=nii_5755_vshift.default,
+                 hei_5876_vshift=hei_5876_vshift.default,
+                 oi_6300_vshift=oi_6300_vshift.default,
+                 nii_6548_vshift=nii_6548_vshift.default,
                  halpha_vshift=halpha_vshift.default,
-                 nii_6548_vshift=nii_6548_vshift.default, 
-                 nii_6584_vshift=nii_6584_vshift.default, 
-                 sii_6716_vshift=sii_6716_vshift.default, 
+                 nii_6584_vshift=nii_6584_vshift.default,
+                 sii_6716_vshift=sii_6716_vshift.default,
                  sii_6731_vshift=sii_6731_vshift.default,
+                 oii_7320_vshift=oii_7320_vshift.default,
+                 oii_7330_vshift=oii_7330_vshift.default,
                  siii_9069_vshift=siii_9069_vshift.default,
                  siii_9532_vshift=siii_9532_vshift.default,
-                 
-                 mgii_2800_sigma=mgii_2800_sigma.default,
-                 #mgii_2800b_sigma=mgii_2800b_sigma.default,
+                     
+                 #nv_1239_sigma=nv_1239_sigma.default,
+                 #nv_1243_sigma=nv_1243_sigma.default,
+                 oi_1304_sigma=oi_1304_sigma.default,
+                 #silii_1307_sigma=silii_1307_sigma.default,
+                 siliv_1396_sigma=siliv_1396_sigma.default,
+                 #siliv_1403_sigma=siliv_1403_sigma.default,
+                 civ_1549_sigma=civ_1549_sigma.default,
+                 siliii_1892_sigma=siliii_1892_sigma.default,
+                 ciii_1908_sigma=ciii_1908_sigma.default,
+                 mgii_2796_sigma=mgii_2796_sigma.default,
+                 mgii_2803_sigma=mgii_2803_sigma.default,
                  nev_3346_sigma=nev_3346_sigma.default,
                  nev_3426_sigma=nev_3426_sigma.default,
-                 oii_3726_sigma=oii_3726_sigma.default, 
-                 oii_3729_sigma=oii_3729_sigma.default, 
+                 oii_3726_sigma=oii_3726_sigma.default,
+                 oii_3729_sigma=oii_3729_sigma.default,
                  neiii_3869_sigma=neiii_3869_sigma.default,
-                 oiii_4959_sigma=oiii_4959_sigma.default, 
-                 oiii_5007_sigma=oiii_5007_sigma.default, 
-                 hepsilon_sigma=hepsilon_sigma.default, 
-                 hdelta_sigma=hdelta_sigma.default, 
-                 hgamma_sigma=hgamma_sigma.default, 
-                 hbeta_sigma=hbeta_sigma.default, 
+                 hei_3889_sigma=hei_3889_sigma.default,
+                 h6_sigma=h6_sigma.default,
+                 hepsilon_sigma=hepsilon_sigma.default,
+                 hdelta_sigma=hdelta_sigma.default,
+                 hgamma_sigma=hgamma_sigma.default,
+                 oiii_4363_sigma=oiii_4363_sigma.default,
+                 hei_4471_sigma=hei_4471_sigma.default,
+                 heii_4686_sigma=heii_4686_sigma.default,
+                 hbeta_sigma=hbeta_sigma.default,
+                 oiii_4959_sigma=oiii_4959_sigma.default,
+                 oiii_5007_sigma=oiii_5007_sigma.default,
+                 nii_5755_sigma=nii_5755_sigma.default,
+                 hei_5876_sigma=hei_5876_sigma.default,
+                 oi_6300_sigma=oi_6300_sigma.default,
+                 nii_6548_sigma=nii_6548_sigma.default,
                  halpha_sigma=halpha_sigma.default,
-                 nii_6548_sigma=nii_6548_sigma.default, 
-                 nii_6584_sigma=nii_6584_sigma.default, 
-                 sii_6716_sigma=sii_6716_sigma.default, 
+                 nii_6584_sigma=nii_6584_sigma.default,
+                 sii_6716_sigma=sii_6716_sigma.default,
                  sii_6731_sigma=sii_6731_sigma.default,
+                 oii_7320_sigma=oii_7320_sigma.default,
+                 oii_7330_sigma=oii_7330_sigma.default,
                  siii_9069_sigma=siii_9069_sigma.default,
                  siii_9532_sigma=siii_9532_sigma.default,
-                 
+                     
                  redshift=None,
+                 wavelims=[None, None],
                  emlineR=None,
                  npixpercamera=None,
                  #goodpixpercam=None,
@@ -284,16 +568,17 @@ class EMLineModel(Fittable1DModel):
         redshift - required keyword
         
         """
-        self.linetable = read_emlines()
+        super().__init__()        
 
-        self.nparam_perline = 3 # amplitude, velocity shift, and line-width
-        self.nline = len(self.param_names) // self.nparam_perline
+        self.linetable = read_emlines()
+        self.nline = len(self.linetable)
+        self.linenames = np.array([linename.replace('_amp', '') for linename in self.param_names[:self.nline]])
+        self.restlinewaves = self.linetable['restwave'].data
 
         self.redshift = redshift
         self.emlineR = emlineR
         if npixpercamera is not None:
             self.npixpercamera = np.hstack([0, npixpercamera])
-        #self.goodpixpercam = goodpixpercam
 
         # internal wavelength vector for building the emission-line model
         if log10wave is None:
@@ -301,72 +586,18 @@ class EMLineModel(Fittable1DModel):
             dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
             log10wave = np.arange(np.log10(3000), np.log10(1e4), dlogwave)
         self.log10wave = log10wave
+
+        if wavelims[0] is None:
+            wavelims[0] = 10**np.min(log10wave)
+        if wavelims[1] is None:
+            wavelims[1] = 10**np.max(log10wave)
             
-        super(EMLineModel, self).__init__(
-            mgii_2800_amp=mgii_2800_amp,
-            #mgii_2800b_amp=mgii_2800b_amp,
-            nev_3346_amp=nev_3346_amp,
-            nev_3426_amp=nev_3426_amp,
-            oii_3726_amp=oii_3726_amp,
-            oii_3729_amp=oii_3729_amp,
-            neiii_3869_amp=neiii_3869_amp,
-            oiii_4959_amp=oiii_4959_amp,
-            oiii_5007_amp=oiii_5007_amp,
-            hepsilon_amp=hepsilon_amp,
-            hdelta_amp=hdelta_amp,
-            hgamma_amp=hgamma_amp,
-            hbeta_amp=hbeta_amp,
-            halpha_amp=halpha_amp,
-            nii_6548_amp=nii_6548_amp,
-            nii_6584_amp=nii_6584_amp,
-            sii_6716_amp=sii_6716_amp,
-            sii_6731_amp=sii_6731_amp,
-            siii_9069_amp=siii_9069_amp,
-            siii_9532_amp=siii_9532_amp,
-            
-            mgii_2800_vshift=mgii_2800_vshift,
-            #mgii_2800b_vshift=mgii_2800b_vshift,
-            nev_3346_vshift=nev_3346_vshift,
-            nev_3426_vshift=nev_3426_vshift,
-            oii_3726_vshift=oii_3726_vshift,
-            oii_3729_vshift=oii_3729_vshift,
-            neiii_3869_vshift=neiii_3869_vshift,
-            oiii_4959_vshift=oiii_4959_vshift,
-            oiii_5007_vshift=oiii_5007_vshift,
-            hepsilon_vshift=hepsilon_vshift,
-            hdelta_vshift=hdelta_vshift,
-            hgamma_vshift=hgamma_vshift,
-            hbeta_vshift=hbeta_vshift,
-            halpha_vshift=halpha_vshift,
-            nii_6548_vshift=nii_6548_vshift,
-            nii_6584_vshift=nii_6584_vshift,
-            sii_6716_vshift=sii_6716_vshift,
-            sii_6731_vshift=sii_6731_vshift,
-            siii_9069_vshift=siii_9069_vshift,
-            siii_9532_vshift=siii_9532_vshift,
-            
-            mgii_2800_sigma=mgii_2800_sigma,
-            #mgii_2800b_sigma=mgii_2800b_sigma,
-            nev_3346_sigma=nev_3346_sigma,
-            nev_3426_sigma=nev_3426_sigma,
-            oii_3726_sigma=oii_3726_sigma,
-            oii_3729_sigma=oii_3729_sigma,
-            neiii_3869_sigma=neiii_3869_sigma,
-            oiii_4959_sigma=oiii_4959_sigma,
-            oiii_5007_sigma=oiii_5007_sigma,
-            hepsilon_sigma=hepsilon_sigma,
-            hdelta_sigma=hdelta_sigma,
-            hgamma_sigma=hgamma_sigma,
-            hbeta_sigma=hbeta_sigma,
-            halpha_sigma=halpha_sigma,
-            nii_6548_sigma=nii_6548_sigma,
-            nii_6584_sigma=nii_6584_sigma,
-            sii_6716_sigma=sii_6716_sigma,
-            sii_6731_sigma=sii_6731_sigma,
-            siii_9069_sigma=siii_9069_sigma,
-            siii_9532_sigma=siii_9532_sigma,
-            
-            **kwargs)
+        zline = self.linetable['restwave'] * (1 + self.redshift)
+        #self.inrange = (zline > 4600) * (zline < 6300)
+        self.inrange = (zline > (wavelims[0]+10)) * (zline < (wavelims[1]-10))
+
+        # tie lines together
+        _tie_lines(self)
 
     def _emline_spectrum(self, *lineargs):
         """Simple wrapper to build an emission-line spectrum.
@@ -374,28 +605,19 @@ class EMLineModel(Fittable1DModel):
         # build the emission-line model [erg/s/cm2/A, observed frame]
 
         """
-        linenames = np.array([linename.replace('_amp', '') for linename in self.param_names[:self.nline]])
-        lineamps = np.hstack(lineargs[0:self.nline])
-        linevshifts = np.hstack(lineargs[self.nline:2*self.nline])
-        linesigmas = np.hstack(lineargs[2*self.nline:])
+        #linenames = self.linenames[self.inrange]
+        lineamps = np.hstack(lineargs[0:self.nline])[self.inrange]
+        linevshifts = np.hstack(lineargs[self.nline:2*self.nline])[self.inrange]
+        linesigmas = np.hstack(lineargs[2*self.nline:])[self.inrange]
+
+        # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
+        log10sigmas = linesigmas / C_LIGHT / np.log(10) 
+        linezwaves = np.log10(self.restlinewaves[self.inrange] * (1.0 + self.redshift + linevshifts / C_LIGHT)) 
 
         log10model = np.zeros_like(self.log10wave)
-        for linename, lineamp, linevshift, linesigma in zip(linenames, lineamps, linevshifts, linesigmas):
-            
-            iline = np.where(self.linetable['name'] == linename)[0]
-            if len(iline) != 1:
-                log.warning('No matching line found!')
-                raise ValueError
-                
-            restlinewave = self.linetable[iline]['restwave'][0]
-            
-            linez = self.redshift + linevshift / C_LIGHT
-            linezwave = np.log10(restlinewave * (1.0 + linez)) # redshifted wavelength [log-10 Angstrom]
-
-            log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]
-            
-            ww = np.abs(self.log10wave - linezwave) < (100 * log10sigma)
-            if np.count_nonzero(ww) > 0:
+        for lineamp, linezwave, log10sigma in zip(lineamps, linezwaves, log10sigmas):
+            ww = np.abs(self.log10wave - linezwave) < (10 * log10sigma)
+            if np.sum(ww) > 0:
                 #log.info(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
                 log10model[ww] += lineamp * np.exp(-0.5 * (self.log10wave[ww]-linezwave)**2 / log10sigma**2)
 
@@ -405,9 +627,6 @@ class EMLineModel(Fittable1DModel):
         """Evaluate the emission-line model.
 
         """ 
-        from redrock.rebin import trapz_rebin
-        from desispec.interpolation import resample_flux
-
         # build the emission-line model [erg/s/cm2/A, observed frame]
         log10model = self._emline_spectrum(*lineargs)
 
@@ -415,13 +634,9 @@ class EMLineModel(Fittable1DModel):
         # resolution
         emlinemodel = []
         for ii in np.arange(len(self.npixpercamera)-1): # iterate over cameras
-            #ipix = np.sum(self.ngoodpixpercamera[:ii+1]) # unmasked pixels!
-            #jpix = np.sum(self.ngoodpixpercamera[:ii+2])
-
             ipix = np.sum(self.npixpercamera[:ii+1]) # all pixels!
             jpix = np.sum(self.npixpercamera[:ii+2])
             #_emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**self.log10wave, log10model)
-        
             #_emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
             try:
                 _emlinemodel = trapz_rebin(10**self.log10wave, log10model, emlinewave[ipix:jpix])
@@ -463,9 +678,6 @@ class EMLineFit(ContinuumTools):
         self.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), self.dlogwave)
         #self.log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
 
-        self.fitter = fitting.LevMarLSQFitter()#calc_uncertainties=True)
-        #self.fitter_nouncertainties = fitting.LevMarLSQFitter(calc_uncertainties=False)
-
     def init_output(self, linetable, nobj=1, chi2_default=1e6):
         """Initialize the output data table for this class.
 
@@ -499,15 +711,6 @@ class EMLineFit(ContinuumTools):
         out.add_column(Column(name='BROAD_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
         #out.add_column(Column(name='BROAD_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
 
-        #out.add_column(Column(name='BALMER_VSHIFT', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-        #out.add_column(Column(name='BALMER_VSHIFT_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        #out.add_column(Column(name='BALMER_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='BALMER_SIGMA_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        #out.add_column(Column(name='FORBIDDEN_VSHIFT', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-        #out.add_column(Column(name='FORBIDDEN_VSHIFT_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-        #out.add_column(Column(name='FORBIDDEN_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='FORBIDDEN_SIGMA_IVAR', length=nobj, dtype='f4', unit=u.second**2 / u.kilometer**2))
-
         for line in linetable['name']:
             line = line.upper()
             out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
@@ -525,12 +728,8 @@ class EMLineFit(ContinuumTools):
             
             out.add_column(Column(name='{}_VSHIFT'.format(line), length=nobj, dtype='f4',
                                   unit=u.kilometer/u.second))
-            #out.add_column(Column(name='{}_VSHIFT_IVAR'.format(line), length=nobj, dtype='f4',
-            #                      unit=u.second**2 / u.kilometer**2))
             out.add_column(Column(name='{}_SIGMA'.format(line), length=nobj, dtype='f4',
                                   unit=u.kilometer / u.second))
-            #out.add_column(Column(name='{}_SIGMA_IVAR'.format(line), length=nobj, dtype='f4',
-            #                      unit=u.second**2 / u.kilometer**2))
             
             out.add_column(Column(name='{}_CONT'.format(line), length=nobj, dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
@@ -586,7 +785,8 @@ class EMLineFit(ContinuumTools):
 
         return emlinemodel
     
-    def fit(self, data, continuummodel, smooth_continuum, synthphot=True):
+    def fit(self, data, continuummodel, smooth_continuum, synthphot=True,
+            maxiter=1000, accuracy=1e-2, verbose=False):
         """Perform the fit minimization / chi2 minimization.
         
         EMLineModel object
@@ -607,149 +807,108 @@ class EMLineFit(ContinuumTools):
         emlinewave = np.hstack(data['wave'])
         emlineivar = np.hstack(data['ivar'])
         specflux = np.hstack(data['flux'])
+
         continuummodelflux = np.hstack(continuummodel)
         smoothcontinuummodelflux = np.hstack(smooth_continuum)
-
         emlineflux = specflux - continuummodelflux - smoothcontinuummodelflux
-
-        emlinevar, emlinegood = ivar2var(emlineivar)
 
         npixpercamera = [len(gw) for gw in data['wave']] # all pixels
         npixpercam = np.hstack([0, npixpercamera])
 
+        emlinevar, emlinegood = ivar2var(emlineivar)
+        weights = np.sqrt(emlineivar)
+        emlinebad = np.logical_not(emlinegood)
+        if np.sum(emlinebad) > 0:
+            weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
+
+        wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
+
         self.EMLineModel = EMLineModel(redshift=redshift,
+                                       wavelims=wavelims,
                                        emlineR=data['res'],
                                        npixpercamera=npixpercamera,
                                        log10wave=self.log10wave)
-        nparam = len(self.EMLineModel.parameters)
-        #params = np.repeat(self.EMLineModel.parameters, self.nball).reshape(nparam, self.nball)
 
-        # Do a fast box-car integration to get the initial line-amplitudes and
-        # line-widths...actually these initial guesses are not really working
-        # but keep the code here.
-        initguess = False
-        if initguess:
-            sigma_cont = 200.0
-            init_linesigmas = []
-            for pp in self.EMLineModel.param_names:
-                if getattr(self.EMLineModel, pp).tied:
-                    #print('Skipping tied parameter {}'.format(pp))
+        # Do a fast update of the initial line-amplitudes which especially helps
+        # with cases like 39633354915582193 (tile 80613, petal 05), which has
+        # strong narrow lines.
+        init = {}#'line': [], 'amp': []}
+        for icam in np.arange(len(data['cameras'])):
+            for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
+                if linename in init.keys():
                     continue
+                npix = len(linepix)
+                if npix > 5:
+                    mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
+                    if mnpx < 0:
+                        mnpx = 0
+                    if mxpx > len(data['flux'][icam]):
+                        mxpx = len(data['flux'][icam])
+                    amp = np.max(data['flux'][icam][mnpx:mxpx])
+                else:
+                    amp = np.max(data['flux'][icam][linepix])
+                #print(linename, amp)
+                #if 'alpha' in linename:
+                #    pdb.set_trace()
+                setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
+                #getattr(self.EMLineModel, '{}_amp'.format(linename)).default = amp
+                #if '4686' in linename:
+                #    pdb.set_trace()
+                init.update({linename: amp})
+                
+        self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)
+        self.EMLineModel.oiii_4959_amp = _tie_oiii_amp(self.EMLineModel)
+        self.EMLineModel.oii_3726_amp = _tie_oii_blue_amp(self.EMLineModel)
+        self.EMLineModel.oii_7330_amp = _tie_oii_red_amp(self.EMLineModel)
 
-                if 'amp' in pp:
-                    pinfo = getattr(self.EMLineModel, pp)
-                    linename = pinfo.name.replace('_amp', '')
-
-                    iline = np.where(self.linetable['name'] == linename)[0]
-                    if len(iline) != 1:
-                        log.warning('No matching line found!')
-                        raise ValueError
-
-                    oneline = self.linetable[iline][0]
-                    linezwave = oneline['restwave'] * (1 + redshift)
-                    lineindx = np.where((emlinewave > (linezwave - 5*sigma_cont * linezwave / C_LIGHT)) *
-                                        (emlinewave < (linezwave + 5.*sigma_cont * linezwave / C_LIGHT)) *
-                                        #(emlineflux * np.sqrt(emlineivar) > 1)
-                                        (emlineivar > 0))[0]
-
-                    linesigma = getattr(self.EMLineModel, '{}_sigma'.format(linename)).default # initial guess
-                    #print(linename, linesigma, len(lineindx))
-
-                    lineamp = pinfo.default # backup
-                    if len(lineindx) > 10:
-                        linesigma_ang = linezwave * sigma_cont / C_LIGHT # [observed-frame Angstrom]
-                        linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
-
-                        lineflux = np.sum(emlineflux[lineindx])
-                        lineamp = np.abs(lineflux / linenorm)
-
-                        # estimate the velocity width from potentially strong, isolated lines; fragile!
-                        if lineflux > 0 and linename in ['mgii_2800', 'oiii_5007', 'hbeta', 'halpha']:
-                            linevar = np.sum(emlineflux[lineindx] * (emlinewave[lineindx] - linezwave)**2) / np.sum(emlineflux[lineindx]) / linezwave * C_LIGHT # [km/s]
-                            if linevar > 0:
-                                linesigma = np.sqrt(linevar)
-                                init_linesigmas.append(linesigma)
-
-                    if not pinfo.tied:# and False:
-                        setattr(self.EMLineModel, pp, lineamp)
-                    #print(pinfo.name, len(lineindx), lineflux, lineamp, linesigma)
-
-            # update the initial velocity widths
-            if len(init_linesigmas) >= 3:
-                init_linesigma = np.median(init_linesigmas)
-                if init_linesigma > 0 and init_linesigma < 300:
-                    for pp in self.EMLineModel.param_names:
-                        if 'sigma' in pp:
-                            setattr(self.EMLineModel, pp, init_linesigma)
-
-        # Fit [1]: tie all lines together
-        self.EMLineModel = _tie_all_lines(self.EMLineModel)
-        weights = np.sqrt(emlineivar)
-        emlinebad = np.logical_not(emlinegood)
-        if np.count_nonzero(emlinebad) > 0:
-            weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
-
-        t0 = time.time()
-        bestfit_init = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
-        #bestfit_init = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
-        #                           weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
-        log.info('Initial line-fitting took {:.2f} sec'.format(time.time()-t0))
-        #print(bestfit_init.parameters)
-
-        # Fit [2]: tie Balmer, narrow forbidden, and QSO/broad lines together,
-        # separately, and refit.
-        self.EMLineModel = bestfit_init
-        #self.EMLineModel = _tie_all_lines(self.EMLineModel) # this will reset our updates, above, so don't do it!
-        self.EMLineModel = _tie_balmer_lines(self.EMLineModel)
-        self.EMLineModel = _tie_forbidden_lines(self.EMLineModel)
-        self.EMLineModel = _tie_broad_lines(self.EMLineModel)
-
-        # In the initial fit the lines can wander, especially Mg II on the
-        # edges, so reset the line-amplitudes.
-        for pp in self.EMLineModel.param_names:
-            if 'amp' in pp:
-                amp = getattr(self.EMLineModel, pp)
-                if (amp.value <= amp.bounds[0]) or (amp.value >= amp.bounds[1]):
-                    #print(pp, amp.value, amp.bounds[1])
-                    setattr(self.EMLineModel, pp, amp.default)
+        fitter = FastLevMarLSQFitter(self.EMLineModel)
 
         t0 = time.time()        
-        bestfit = self.fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=1000)
-        #bestfit = self.fitter(self.EMLineModel, emlinewave[emlinegood], emlineflux[emlinegood],
-        #                      weights=np.sqrt(emlineivar[emlinegood]), maxiter=1000)
-        log.info('Final line-fitting took {:.2f} sec'.format(time.time()-t0))
+        bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
+                         maxiter=maxiter, acc=accuracy)
+        log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
 
-        # Populate the output table. First do a pass through the sigma
-        # parameters. If sigma is zero, restore the default value and if the
-        # amplitude is still at its default (or its upper bound!), it means the
-        # line wasn't fit or the fit failed (right??), so set it to zero.
+        # Populate the output table. If the amplitude is still at its default
+        # (or its upper or lower bound!), it means the line wasn't fit or the
+        # fit failed (right??), so set it to zero. Important: need to loop over
+        # *all* lines (not just those in range).
+        initkeys = init.keys()
         for linename in self.linetable['name'].data:
+            #if not hasattr(bestfit, '{}_amp'.format(linename)): # line not fitted
+            #    continue
             amp = getattr(bestfit, '{}_amp'.format(linename))
             sigma = getattr(bestfit, '{}_sigma'.format(linename))
             vshift = getattr(bestfit, '{}_vshift'.format(linename))
 
             # drop the line if:
-            #  sigma = 0
-            #  amp = default or amp = max bound (not optimized!)
-            if ((sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1]) or (amp.value == amp.default) or
-                (amp.value >= amp.bounds[1]) or (amp.value <= amp.bounds[0])):
+            #  sigma = 0, amp = default, or amp = max bound (not optimized!)
+            if ((amp.value == amp.default) or (amp.value >= amp.bounds[1]) or
+                (amp.value <= amp.bounds[0]) or (linename in initkeys and init[linename] == amp.value)
+                #(sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1])
+                ):
                 setattr(bestfit, '{}_amp'.format(linename), 0.0)
                 setattr(bestfit, '{}_sigma'.format(linename), sigma.default)
                 setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
+
+        ## special case the tied doublets
+        #if bestfit.nii_6584_amp == 0.0 and bestfit.nii_6548_amp != 0.0:
+        #    bestfit.nii_6548_amp = 0.0
+        #if bestfit.oiii_5007_amp == 0.0 and bestfit.oiii_4959_amp != 0.0:
+        #    bestfit.oiii_4959_amp = 0.0
+        #if bestfit.oii_3729_amp == 0.0 and bestfit.oii_3726_amp != 0.0:
+        #    bestfit.oii_3726_amp = 0.0
 
         # Now fill the output table.
         for pp in bestfit.param_names:
             pinfo = getattr(bestfit, pp)
             val = pinfo.value
-            #if '9532' in pp:
-            #    pdb.set_trace()
             result[pinfo.name.upper()] = val
                 
         emlinemodel = bestfit(emlinewave)
-        chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar).astype('f4')
+        chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar)
 
         # Synthesize photometry from the best-fitting model (continuum+emission lines).
         if synthphot:
@@ -760,7 +919,8 @@ class EMLineFit(ContinuumTools):
 
             # The wavelengths overlap between the cameras a bit...
             srt = np.argsort(emlinewave)
-            padflux, padwave = filters.pad_spectrum((continuummodelflux+smoothcontinuummodelflux+emlinemodel)[srt], emlinewave[srt], method='edge')
+            padflux, padwave = filters.pad_spectrum((continuummodelflux+smoothcontinuummodelflux+emlinemodel)[srt],
+                                                    emlinewave[srt], method='edge')
             synthmaggies = filters.get_ab_maggies(padflux / self.fluxnorm, padwave)
             synthmaggies = synthmaggies.as_array().view('f8')
             model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
@@ -780,91 +940,37 @@ class EMLineFit(ContinuumTools):
             dn4000_nolines, _ = self.get_dn4000(emlinewave, specflux_nolines, redshift=redshift)
             result['DN4000_NOLINES'] = dn4000_nolines
 
-        ## Determine the uncertainties from the diagonal terms of the covariance
-        ## matrix. If the covariance matrix is not known, estimate it from the
-        ## Jacobian following:
-        ##   https://github.com/scipy/scipy/blob/master/scipy/optimize/minpack.py#L805
-        #pcov = self.fitter.fit_info['param_cov']
-        #if pcov is None:
-        #    pcov = np.zeros((nparam, nparam))
-        #    #from scipy.linalg import svd
-        #    #fjac = self.fitter.fit_info['fjac']
-        #    #if fjac is not None:
-        #    #    _, s, VT = svd(fjac, full_matrices=False)
-        #    #    threshold = np.finfo(float).eps * max(fjac.shape) * s[0]
-        #    #    s = s[s > threshold]
-        #    #    VT = VT[:s.size]
-        #    #    pcov = np.dot(VT.T / s**2, VT)
-        #paramvar = np.diag(pcov)
-        #ivar = np.zeros(nparam)
-
-        # Need to be careful about uncertainties for tied parameters--
-        # https://github.com/astropy/astropy/issues/7202
-        
-        #err_params = np.sqrt(np.diag(fitter.fit_info['param_cov']))
-        #err = model.copy()
-        #fitting._fitter_to_model_params(err, err_params)            
-
-        # populate the output table
-        #count = 0
-        #for ii, pp in enumerate(bestfit.param_names):
-        #    pinfo = getattr(bestfit, pp)
-        #    result[pinfo.name.upper()] = pinfo.value.astype('f4')
-        #    #iinfo = getattr(self.EMLineModel, pp)
-        #
-        #    # need to think about this more deeply
-        #    #if pinfo.value == iinfo.value: # not fitted
-        #    #    result.update({pinfo.name: np.float(0.0)})
-        #    #else:
-        #    #    result.update({pinfo.name: pinfo.value.astype('f4')})
-        #    #result.update({pinfo.name: pinfo.value.astype('f4')})
-        #    result[pinfo.name.upper()] = pinfo.value.astype('f4')
-        #        
-        #    #if pinfo.fixed:
-        #    #    #result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
-        #    #    result['{}_IVAR'.format(pinfo.name.upper())] = pinfo.value.astype('f4')
-        #    #elif pinfo.tied:
-        #    #    # hack! see https://github.com/astropy/astropy/issues/7202
-        #    #    #result.update({'{}_ivar'.format(pinfo.name): np.float32(0.0)})
-        #    #    result['{}_IVAR'.format(pinfo.name.upper())] = np.float32(0.0)
-        #    #else:
-        #    #    result['{}_IVAR'.format(pinfo.name.upper())] = ivar[count].astype('f4')
-        #    #    #result.update({'{}_ivar'.format(pinfo.name): ivar[count].astype('f4')})
-        #    #    count += 1
-
-        ## hack for tied parameters---gotta be a better way to do this
-        ##result['oiii_4959_amp_ivar'] = result['oiii_5007_amp_ivar'] * 2.8875**2
-        #result['OIII_4959_AMP_IVAR'] = result['OIII_5007_AMP_IVAR'] * 2.8875**2
-        #result['NII_6548_AMP_IVAR'] = result['NII_6548_AMP_IVAR'] * 2.936**2
-
-        ## now loop back through and if ivar==0 then set the parameter value to zero
-        #if False:
-        #    if self.fitter.fit_info['param_cov'] is not None:
-        #        for pp in bestfit.param_names:
-        #            if result['{}_IVAR'.format(pp.upper())] == 0.0:
-        #                result[pp] = np.float(0.0)
-
         # get continuum fluxes, EWs, and upper limits
-
-        verbose = False
-
         balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
         balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
-        for oneline in self.EMLineModel.linetable:
+        for oneline in self.EMLineModel.linetable[self.EMLineModel.inrange]:
 
             linename = oneline['name'].upper()
             linez = redshift + result['{}_VSHIFT'.format(linename)][0] / C_LIGHT
             linezwave = oneline['restwave'] * (1 + linez)
 
             linesigma = result['{}_SIGMA'.format(linename)][0] # [km/s]
-            log10sigma = linesigma / C_LIGHT / np.log(10)      # line-width [log-10 Angstrom]            
+            linesigma_ang = linesigma * linezwave / C_LIGHT    # [observed-frame Angstrom]
+            #log10sigma = linesigma / C_LIGHT / np.log(10)     # line-width [log-10 Angstrom]            
 
             # number of pixels, chi2, and boxcar integration
-            lineindx = np.where((emlinewave > (linezwave - 4.*linesigma * linezwave / C_LIGHT)) *
-                                (emlinewave < (linezwave + 4.*linesigma * linezwave / C_LIGHT)) *
+            lineindx = np.where((emlinewave >= (linezwave - 2.*linesigma_ang)) * (emlinewave <= (linezwave + 2.*linesigma_ang)) *
                                 (emlineivar > 0))[0]
+
+            # can happen if sigma is small (depending on the wavelength)
+            #if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * len(lineindx) > 0 and len(lineindx) <= 3: 
+            if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * (len(lineindx) <= 3):
+                dwave = emlinewave - linezwave
+                lineindx = np.argmin(np.abs(dwave))
+                if lineindx > 0:
+                    pad = np.array([-2, -1, 0, +1])
+                else:
+                    pad = np.array([-1, 0, +1, +2])
+                lineindx += pad
+                
             npix = len(lineindx)
-            #if 'BETA' in linename:
+
+            #if '9069' in linename:
             #    pdb.set_trace()
                 
             if npix > 3: # magic number: required at least XX unmasked pixels centered on the line
@@ -900,6 +1006,7 @@ class EMLineFit(ContinuumTools):
                         forbidden_sigmas.append(linesigma)
                         forbidden_redshifts.append(linez)
             else:
+                result['{}_AMP'.format(linename)] = 0.0 # overwrite
                 npix, chi2, boxflux, boxflux_ivar = 0, 1e6, 0.0, 0.0
                 
             result['{}_NPIX'.format(linename)] = npix
@@ -907,8 +1014,10 @@ class EMLineFit(ContinuumTools):
             result['{}_BOXFLUX'.format(linename)] = boxflux
             #result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar
 
+            #if '4959' in linename:
+            #    pdb.set_trace()
+            
             # get the emission-line flux
-            linesigma_ang = linezwave * linesigma / C_LIGHT # [observed-frame Angstrom]
             linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
 
             #print('{} sigma={:.3f} km/s npix={} chi2={:.3f} boxflux={:.3f} amp={:.3f}'.format(
@@ -939,13 +1048,11 @@ class EMLineFit(ContinuumTools):
                 clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
                 # corner case: if a portion of a camera is masked
                 if len(clipflux) > 0:
-                    cmed, csig = np.median(clipflux), np.std(clipflux)
+                    cmed, csig = np.mean(clipflux), np.std(clipflux)
                 if csig > 0:
                     civar = (np.sqrt(len(indx)) / csig)**2
                     #result['{}_AMP_IVAR'.format(linename)] = 1 / csig**2
 
-            #if '3726' in linename:
-            #    pdb.set_trace()
             result['{}_CONT'.format(linename)] = cmed
             result['{}_CONT_IVAR'.format(linename)] = civar
 
@@ -973,6 +1080,9 @@ class EMLineFit(ContinuumTools):
                     print('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
                 print()
 
+            #if '1549' in linename:
+            #    pdb.set_trace()
+                
             # simple QA
             if 'alpha' in linename and False:
                 sigma_cont = 150.0
@@ -986,6 +1096,27 @@ class EMLineFit(ContinuumTools):
                 plt.axhline(y=cmed+csig/np.sqrt(len(indx)), color='k', ls='--')
                 plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
                 plt.savefig('junk.png')
+
+        # clean up the doublets; 
+        if result['OIII_5007_AMP'] == 0 and result['OIII_5007_NPIX'] > 0 and result['OIII_4959_AMP'] > 0:
+            result['OIII_4959_AMP'] = 0.0
+            result['OIII_4959_FLUX'] = 0.0
+            result['OIII_4959_EW'] = 0.0
+
+        if result['NII_6584_AMP'] == 0 and result['NII_6584_NPIX'] > 0 and result['NII_6548_AMP'] > 0:
+            result['NII_6548_AMP'] = 0.0
+            result['NII_6548_FLUX'] = 0.0
+            result['NII_6548_EW'] = 0.0
+
+        if result['OII_3729_AMP'] == 0 and result['OII_3729_NPIX'] > 0 and result['OII_3726_AMP'] > 0:
+            result['OII_3726_AMP'] = 0.0
+            result['OII_3726_FLUX'] = 0.0
+            result['OII_3726_EW'] = 0.0
+
+        if result['OII_7320_AMP'] == 0 and result['OII_7320_NPIX'] > 0 and result['OII_7330_AMP'] > 0:
+            result['OII_7330_AMP'] = 0.0
+            result['OII_7330_FLUX'] = 0.0
+            result['OII_7330_EW'] = 0.0
 
         # get the average emission-line redshifts and velocity widths
         if len(balmer_redshifts) > 0:
@@ -1017,11 +1148,10 @@ class EMLineFit(ContinuumTools):
                 for col in ('Z', 'SIGMA'):
                 #for col in ('Z', 'Z_ERR', 'SIGMA', 'SIGMA_ERR'):
                     print('{}_{}: {:.12f}'.format(line, col, result['{}_{}'.format(line, col)][0]))
-            #pdb.set_trace()
-            
+
         return result
     
-    def qa_fastspec(self, data, fastspec, metadata, coadd_type='cumulative',
+    def qa_fastspec(self, data, fastspec, metadata, coadd_type='healpix',
                     wavelims=(3600, 9800), outprefix=None, outdir=None):
         """QA plot the emission-line spectrum and best-fitting model.
 
@@ -1045,7 +1175,12 @@ class EMLineFit(ContinuumTools):
         if outprefix is None:
             outprefix = 'fastspec'
 
-        if coadd_type == 'cumulative':
+        if coadd_type == 'healpix':
+            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+                    metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))
+        elif coadd_type == 'cumulative':
             title = 'Tile/Coadd: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], coadd_type, metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
@@ -1078,10 +1213,14 @@ class EMLineFit(ContinuumTools):
                                      vdisp=fastspec['CONTINUUM_VDISP'],
                                      coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)
-        
+
+        residuals = [data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
         _smooth_continuum = self.smooth_residuals(
-            np.hstack(continuum), np.hstack(data['wave']), np.hstack(data['flux']),
-            np.hstack(data['ivar']), np.hstack(data['linemask']))
+            residuals, data['wave'], data['ivar'],
+            data['linemask'], data['linepix'], data['contpix'])
+        #_smooth_continuum = self.smooth_residuals(
+        #    np.hstack(continuum), np.hstack(data['wave']), np.hstack(data['flux']),
+        #    np.hstack(data['ivar']), np.hstack(data['linemask']))
         smooth_continuum = []
         for icam in np.arange(len(data['cameras'])): # iterate over cameras
             ipix = np.sum(npixpercam[:icam+1])
@@ -1091,13 +1230,13 @@ class EMLineFit(ContinuumTools):
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
         # QA choices
-        inches_wide = 16
+        inches_wide = 20
         inches_fullspec = 6
         inches_perline = inches_fullspec / 2.0
-        nlinepanels = 4
+        nlinepanels = 5
 
         nline = len(set(self.linetable['plotgroup']))
-        nlinerows = np.ceil(nline / nlinepanels).astype(int)
+        nlinerows = np.int(np.ceil(nline / nlinepanels))
         nrows = 2 + nlinerows
 
         height_ratios = np.hstack([1, 1, [0.5]*nlinerows])
@@ -1110,15 +1249,15 @@ class EMLineFit(ContinuumTools):
 
         leg = {
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            'dv_balmer': '$\Delta v_{{\\rm Balmer}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BALMER_Z']-redshift)),
+            'dv_balmer': '$\Delta v_{{\\rm H+He}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BALMER_Z']-redshift)),
             'dv_forbid': '$\Delta v_{{\\rm forbid}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['FORBIDDEN_Z']-redshift)),
-            'dv_broad': '$\Delta v_{{\\rm MgII}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
+            'dv_broad': '$\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
             #'zbalmer': '$z_{{\\rm Balmer}}$={:.6f}'.format(fastspec['BALMER_Z']),
             #'zforbidden': '$z_{{\\rm forbidden}}$={:.6f}'.format(fastspec['FORBIDDEN_Z']),
             #'zbroad': '$z_{{\\rm MgII}}$={:.6f}'.format(fastspec['BROAD_Z']),
-            'sigma_balmer': '$\sigma_{{\\rm Balmer}}$={:.1f} km/s'.format(fastspec['BALMER_SIGMA']),
+            'sigma_balmer': '$\sigma_{{\\rm H+He}}$={:.1f} km/s'.format(fastspec['BALMER_SIGMA']),
             'sigma_forbid': '$\sigma_{{\\rm forbid}}$={:.1f} km/s'.format(fastspec['FORBIDDEN_SIGMA']),
-            'sigma_broad': '$\sigma_{{\\rm MgII}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
+            'sigma_broad': '$\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
             #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_CHI2']),
@@ -1145,13 +1284,13 @@ class EMLineFit(ContinuumTools):
         bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
         
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
-            sigma, _ = ivar2var(data['ivar'][ii], sigma=True)
+            sigma, good = ivar2var(data['ivar'][ii], sigma=True)
 
             bigax1.fill_between(data['wave'][ii], data['flux'][ii]-sigma,
-                             data['flux'][ii]+sigma, color=col1[ii])
-            #bigax1.plot(data['wave'][ii], continuum[ii], color=col2[ii], alpha=1.0)#, color='k')
+                                data['flux'][ii]+sigma, color=col1[ii])
             #bigax1.plot(data['wave'][ii], continuum_nodust[ii], alpha=0.5, color='k')
             #bigax1.plot(data['wave'][ii], smooth_continuum[ii], color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+            #bigax1.plot(data['wave'][ii], continuum[ii], color=col2[ii])
             bigax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii], color=col2[ii])
             
             # get the robust range
@@ -1214,7 +1353,7 @@ class EMLineFit(ContinuumTools):
             emlinemodel = emlinemodel[good]
 
             bigax2.fill_between(emlinewave, emlineflux-emlinesigma,
-                               emlineflux+emlinesigma, color=col1[ii], alpha=0.7)
+                                emlineflux+emlinesigma, color=col1[ii], alpha=0.7)
             bigax2.plot(emlinewave, emlinemodel, color=col2[ii], lw=2)
 
             # get the robust range
@@ -1255,26 +1394,29 @@ class EMLineFit(ContinuumTools):
         #bigax2.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
         
         # zoom in on individual emission lines - use linetable!
-        plotsig_default = 300.0 # [km/s]
+        plotsig_default = 200.0 # [km/s]
+        plotsig_default_broad = 2000.0 # [km/s]
 
         meanwaves, deltawaves, sigmas, linenames = [], [], [], []
         for plotgroup in set(self.linetable['plotgroup']):
             I = np.where(plotgroup == self.linetable['plotgroup'])[0]
-            linenames.append(self.linetable['nicename'][I[0]])
+            linenames.append(self.linetable['nicename'][I[0]].replace('-', ' '))
             meanwaves.append(np.mean(self.linetable['restwave'][I]))
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
-            plotsig = None
             if np.any(self.linetable['isbroad'][I]):
                 plotsig = fastspec['BROAD_SIGMA']
+                if plotsig == 0:
+                    plotsig = plotsig_default_broad
             elif np.any(self.linetable['isbalmer'][I]):
                 plotsig = np.max((fastspec['BALMER_SIGMA'], fastspec['FORBIDDEN_SIGMA']))
+                if plotsig < 50:
+                    plotsig = plotsig_default
             else:
                 plotsig = fastspec['FORBIDDEN_SIGMA']
-            if plotsig:
-                sigmas.append(plotsig)
-            else:
-                sigmas.append(plotsig_default)
+                if plotsig < 50:
+                    plotsig = plotsig_default
+            sigmas.append(plotsig)
 
         srt = np.argsort(meanwaves)
         meanwaves = np.hstack(meanwaves)[srt]
@@ -1295,9 +1437,12 @@ class EMLineFit(ContinuumTools):
             xx = fig.add_subplot(gs[irow, icol])
             ax.append(xx)
 
-            wmin = (meanwave - deltawave) * (1+redshift) - 8 * sig * meanwave / C_LIGHT
-            wmax = (meanwave + deltawave) * (1+redshift) + 8 * sig * meanwave / C_LIGHT
+            wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
+            wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
             #print(linename, wmin, wmax)
+
+            #if '1549' in linename:
+            #    pdb.set_trace()
 
             # iterate over cameras
             for ii in np.arange(len(data['cameras'])): # iterate over cameras
@@ -1336,10 +1481,11 @@ class EMLineFit(ContinuumTools):
                         ymax[iax] = _ymax
                     if _ymin < ymin[iax]:
                         ymin[iax] = _ymin
-                    
-                xx.text(0.08, 0.89, linename, ha='left', va='center',
-                        transform=xx.transAxes, fontsize=20)
 
+                    xx.set_xlim(wmin, wmax)
+                    
+                xx.text(0.04, 0.89, linename, ha='left', va='center',
+                        transform=xx.transAxes, fontsize=16)
                 
         for iax, xx in enumerate(ax):
             if removelabels[iax]:

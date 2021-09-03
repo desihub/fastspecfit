@@ -5,10 +5,11 @@ MPI wrapper for fastphot and fastspec.
 mpi-fastspecfit --mp 32 --coadd-type cumulative --tile 80608 --night 20201220 --plan --nompi
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
 
-mpi-fastspecfit --mp 32 --coadd-type cumulative --merge --nompi
-mpi-fastspecfit --mp 32 --coadd-type cumulative --merge --nompi --fastphot
+mpi-fastspecfit --merge --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest
+mpi-fastspecfit --merge --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest --fastphot
 
-mpi-fastspecfit --mp 32 --makeqa --tile 80607
+mpi-fastspecfit --mp 32 --makeqa --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit --specprod everest --dry-run
+mpi-fastspecfit --mp 32 --makeqa --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit --specprod everest --fastphot --dry-run
 
 """
 import pdb # for debugging
@@ -72,11 +73,11 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                 cmd += ' --ntargets {}'.format(args.ntargets)
         else:
             if fastphot:
-                cmd = 'fastphot {} -o {} --mp {} --coadd-type {}'.format(zbestfiles[ii], outfiles[ii],
-                                                                         args.mp, args.coadd_type)
+                cmd = 'fastphot {} -o {} --mp {} --specprod {}'.format(zbestfiles[ii], outfiles[ii],
+                                                                                       args.mp, args.specprod)
             else:
-                cmd = 'fastspec {} -o {} --mp {} --coadd-type {}'.format(zbestfiles[ii], outfiles[ii],
-                                                                         args.mp, args.coadd_type)
+                cmd = 'fastspec {} -o {} --mp {} --specprod {}'.format(zbestfiles[ii], outfiles[ii],
+                                                                                       args.mp, args.specprod)
                 if args.solve_vdisp:
                     cmd += ' --solve-vdisp'
                     
@@ -141,7 +142,7 @@ def main():
     from fastspecfit.mpi import plan
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--specprod', type=str, default='denali', choices=['denali', 'cascades', 'daily'],
+    parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production to process.')
     parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
@@ -165,7 +166,7 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands')
 
-    parser.add_argument('--base-htmldir', default='.', type=str, help='Base output html directory.')
+    parser.add_argument('--base-htmldir', default='.', type=str, help='Base output HTML directory.')
     parser.add_argument('--base-datadir', default='.', type=str, help='Base output data directory.')
     
     specprod_dir = None
@@ -184,18 +185,17 @@ def main():
     if args.merge:
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(args, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                          base_datadir=args.base_datadir,
-                          base_htmldir=base_htmldir)
+                          base_datadir=args.base_datadir)
     elif args.plan:
         plan(args, comm=comm, fastphot=args.fastphot,
              specprod_dir=specprod_dir,
              base_datadir=args.base_datadir,
-             base_htmldir=base_htmldir)
+             base_htmldir=args.base_htmldir)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot,
                         specprod_dir=specprod_dir, makeqa=args.makeqa,
                         base_datadir=args.base_datadir,
-                        base_htmldir=base_htmldir)
+                        base_htmldir=args.base_htmldir)
 
 if __name__ == '__main__':
     main()

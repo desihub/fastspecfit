@@ -43,9 +43,9 @@ def weighted_partition(weights, n):
 
     return groups, np.array([np.sum(x) for x in sumweights])
 
-def group_zbestfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
+def group_redrockfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
     '''
-    Group zbestfiles to balance runtimes
+    Group redrockfiles to balance runtimes
 
     Args:
         specfiles: list of spectra filepaths
@@ -74,14 +74,15 @@ def group_zbestfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
         if makeqa:
             ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
         else:
-            zb = fitsio.read(specfiles[j], 'ZBEST', columns=['Z', 'ZWARN', 'TARGETID'])
-            fm = fitsio.read(specfiles[j], 'FIBERMAP', columns=['OBJTYPE', 'FIBERSTATUS', 'TARGETID'])
-            _, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)
-            fm = fm[I]
-            assert(np.all(zb['TARGETID'] == fm['TARGETID']))
-            J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
-                 (fm['OBJTYPE'] == 'TGT') * (fm['FIBERSTATUS'] == 0))
-            ntargets[i] = np.count_nonzero(J)
+            ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
+            #zb = fitsio.read(specfiles[j], 'REDSHIFTS', columns=['Z', 'ZWARN', 'TARGETID'])
+            #fm = fitsio.read(specfiles[j], 'FIBERMAP', columns=['OBJTYPE', 'COADD_FIBERSTATUS', 'TARGETID'])
+            #_, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)
+            #fm = fm[I]
+            #assert(np.all(zb['TARGETID'] == fm['TARGETID']))
+            #J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
+            #     (fm['OBJTYPE'] == 'TGT') * (fm['COADD_FIBERSTATUS'] == 0))
+            #ntargets[i] = np.count_nonzero(J)
 
     if comm is not None:
         ntargets = comm.gather(ntargets)
@@ -176,7 +177,7 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
         outdir = os.path.join(base_datadir, args.specprod, 'tiles')
         htmldir = os.path.join(base_htmldir, args.specprod, 'tiles')
 
-        def _findfiles(filedir, prefix='zbest'):
+        def _findfiles(filedir, prefix='redrock'):
             if args.coadd_type == 'cumulative':
                 if args.tile is not None:
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
@@ -217,34 +218,34 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             return thesefiles
 
         if args.merge:
-            zbestfiles = None
+            redrockfiles = None
             outfiles = _findfiles(outdir, prefix=outprefix)
             log.info('Found {} {} files to be merged.'.format(len(outfiles), outprefix))
         elif args.makeqa:
-            zbestfiles = None
+            redrockfiles = None
             outfiles = _findfiles(outdir, prefix=outprefix)
             log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
         else:
-            zbestfiles = _findfiles(specprod_dir, prefix='zbest')
-            nfile = len(zbestfiles)
+            redrockfiles = _findfiles(specprod_dir, prefix='redrock')
+            nfile = len(redrockfiles)
 
-            outfiles = np.array([zbestfile.replace(specprod_dir, outdir).replace('zbest-', '{}-'.format(outprefix)) for zbestfile in zbestfiles])
-            todo = np.ones(len(zbestfiles), bool)
+            outfiles = np.array([redrockfile.replace(specprod_dir, outdir).replace('redrock-', '{}-'.format(outprefix)) for redrockfile in redrockfiles])
+            todo = np.ones(len(redrockfiles), bool)
             for ii, outfile in enumerate(outfiles):
                 if os.path.isfile(outfile) and not args.overwrite:
                     todo[ii] = False
-            zbestfiles = zbestfiles[todo]
+            redrockfiles = redrockfiles[todo]
             outfiles = outfiles[todo]
 
-            log.info('Found {}/{} zbestfiles (left) to do.'.format(len(zbestfiles), nfile))
+            log.info('Found {}/{} redrockfiles (left) to do.'.format(len(redrockfiles), nfile))
     else:
         outdir = None
-        zbestfiles = None
+        redrockfiles = None
         outfiles = None
 
     if comm:
         outdir = comm.bcast(outdir, root=0)
-        zbestfiles = comm.bcast(zbestfiles, root=0)
+        redrockfiles = comm.bcast(redrockfiles, root=0)
         outfiles = comm.bcast(outfiles, root=0)
 
     if args.merge:
@@ -252,33 +253,33 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             if rank == 0:
                 log.info('No {} files in {} found!'.format(outprefix, outdir))
             return '', list(), list(), list(), list()
-        return outdir, zbestfiles, outfiles, None, None
+        return outdir, redrockfiles, outfiles, None, None
     elif args.makeqa:
         if len(outfiles) == 0:
             if rank == 0:
                 log.info('No {} files in {} found!'.format(outprefix, outdir))
             return '', list(), list(), list(), list()
-        #  hack--build the output directories and pass them in the 'zbestfiles'
+        #  hack--build the output directories and pass them in the 'redrockfiles'
         #  position! for coadd_type==cumulative, strip out the 'lastnight' argument
         if args.coadd_type == 'cumulative':
-            #zbestfiles = []
+            #redrockfiles = []
             #for outfile in outfiles:
             #    dd = os.path.split(outfile)
-            #    zbestfiles.append(os.path.dirname(dd[0]).replace(outdir, htmldir))
+            #    redrockfiles.append(os.path.dirname(dd[0]).replace(outdir, htmldir))
             #    os.path.dirname(dd[0])
-            zbestfiles = np.array([os.path.dirname(os.path.dirname(outfile)).replace(outdir, htmldir) for outfile in outfiles])
+            redrockfiles = np.array([os.path.dirname(os.path.dirname(outfile)).replace(outdir, htmldir) for outfile in outfiles])
         else:
-            zbestfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir) for outfile in outfiles])
+            redrockfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir) for outfile in outfiles])
     else:
-        if len(zbestfiles) == 0:
+        if len(redrockfiles) == 0:
             if rank == 0:
                 log.info('All files have been processed!')
             return '', list(), list(), list(), list()
 
     if args.makeqa:
-        groups, ntargets, grouptimes = group_zbestfiles(outfiles, args.maxnodes, comm=comm, makeqa=True)
+        groups, ntargets, grouptimes = group_redrockfiles(outfiles, args.maxnodes, comm=comm, makeqa=True)
     else:
-        groups, ntargets, grouptimes = group_zbestfiles(zbestfiles, args.maxnodes, comm=comm)
+        groups, ntargets, grouptimes = group_redrockfiles(redrockfiles, args.maxnodes, comm=comm)
 
     if args.plan and rank == 0:
         plantime = time.time() - t0
@@ -315,7 +316,7 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             print('#SBATCH -C haswell')
         print('#SBATCH -t {:02d}:{:02d}:{:02d}'.format(jobhours, jobminutes, jobseconds))
         print()
-        print('# {} pixels with {} targets'.format(len(zbestfiles), np.sum(ntargets)))
+        print('# {} pixels with {} targets'.format(len(redrockfiles), np.sum(ntargets)))
         ### print('# plan time {:.1f} minutes'.format(plantime / 60))
         print('# Using {} nodes in {} queue'.format(numnodes, queue))
         print('# expected rank runtimes ({:.1f}, {:.1f}, {:.1f}) min/mid/max minutes'.format(
@@ -339,9 +340,9 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
                 rrcmd += ' --outdir {}'.format(os.path.abspath(args.outdir))
             print('srun -N $nodes -n $nodes -c {} {}'.format(maxproc, rrcmd))
 
-    return outdir, zbestfiles, outfiles, groups, grouptimes
+    return outdir, redrockfiles, outfiles, groups, grouptimes
 
-def merge_fastspecfit(args, fastphot=False, specprod_dir=None):
+def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.'):
     """Merge all the individual catalogs into a single large catalog. Runs only on
     rank 0.
 
@@ -360,7 +361,7 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None):
         extname = 'FASTSPEC'
 
     outdir, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
-                                     specprod_dir=specprod_dir)
+                                     specprod_dir=specprod_dir, base_datadir=base_datadir)
 
     mergedir = os.path.join(outdir, 'merged')
     if not os.path.isdir(mergedir):

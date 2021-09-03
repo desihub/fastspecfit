@@ -1,0 +1,62 @@
+# %ECSV 0.9
+# ---
+# datatype:
+# - {name: name, datatype: string}
+# - {name: restwave, datatype: float64}
+# - {name: amp, datatype: float32}
+# - {name: isbalmer, datatype: bool}
+# - {name: isbroad, datatype: bool}
+# - {name: nicename, datatype: string}
+# - {name: plotgroup, datatype: string}
+# meta: !!omap
+# - {description: 'Emission lines to be fit by fastspec.
+#     Wavelengths are in the vacuum rest-frame in Angstroms.
+#
+#     Most wavelengths computed using https://github.com/Morisset/PyNeb_devel
+#     supplemented with data (especially for the rest-frame UV lines) from:
+#       http://astronomy.nmsu.edu/drewski/tableofemissionlines.html
+#       https://db.chiantidatabase.org/
+#       https://github.com/cconroy20/fsps/blob/master/data/emlines_info.dat
+#
+#     J. Moustakas, Siena College, 2020 Nov 11
+#     jm21mar19 - more lines added
+#     jm21aug01 - [OI], HeI, HeII and more added'}
+name restwave amp isbalmer isbroad nicename plotgroup
+
+Table 1
+======
+25.291 1546.15 0.14 1494 1620  25.291 0.106  23.78 0.10 14.33   -0.04 CIV          1549.06
+15.943 1905.97 0.12 1830 1976  15.943 0.041  21.19 0.05 23.58   -0.27 CIII]        1908.73
+8.916 1398.33 0.31 1360 1446   8.916 0.097   8.13 0.09 12.50    0.06 SiIV         1396.76
+8.916 1398.33 0.31 1360 1446   8.916 0.097   8.13 0.09 12.50    0.06 OIV]         1402.06
+2.461 1239.85 0.67 1230 1252   2.461 0.189   1.11 0.09  2.71   -0.21 NV           1240.14
+1.992 1305.42 0.71 1290 1318   1.992 0.076   1.66 0.06  5.42   -0.21 SiII         1306.82
+1.992 1305.42 0.71 1290 1318   1.992 0.076   1.66 0.06  5.42   -0.21 OI           1304.35
+
+Weaker rest-frame UV lines from Vanden Berk to potential include (see email from
+Adam Myers on 2021 Aug 25):
+
+0.688 1336.60 1.13 1325 1348   0.688 0.059   0.59 0.05  3.86   -0.02 CII          1335.30
+0.521 1637.84 0.83 1622 1648   0.521 0.027   0.51 0.03  4.43   -0.22 HeII         1640.42
+0.480 1664.74 1.04 1648 1682   0.480 0.028   0.50 0.03  5.50    0.11 OIII]        1663.48
+0.480 1664.74 1.04 1648 1682   0.480 0.028   0.50 0.03  5.50    0.11 AlII         1670.79
+0.437 2423.46 0.44 2402 2448   0.437 0.012   0.77 0.02  8.42    0.25 [NeIV]       2423.83
+0.382 1748.31 0.75 1735 1765   0.382 0.021   0.44 0.03  5.12    0.04 NIII]        1750.26
+0.333 1856.76 1.18 1840 1875   0.333 0.021   0.40 0.03  4.95    0.01 AlIII        1857.40
+0.306 1265.22 3.20 1257 1274   0.306 0.081   0.21 0.06  2.74    0.25 SiII         1262.59
+
+See also:
+  http://astronomy.nmsu.edu/drewski/tableofemissionlines.html
+
+    nv_1239   1238.821     1.0   False  True   NV-$\lambda\lambda$1239,43                   nv_1239_43
+    nv_1243   1242.804     1.0   False  True   NV-$\lambda\lambda$1239,43                   nv_1239_43
+ silii_1260   1260.422     1.0   False  True   SiII$^{*}$-$\lambda\lambda$1260,65      siliii_1260_65
+ silii_1265   1264.730     1.0   False  True   SiII$^{*}$-$\lambda\lambda$1260,65      siliii_1260_65
+ silii_1307   1306.82      1.0   False  True   OI-$\lambda$1304+SiII-$\lambda$1307          oi_1304_silii_1307
+ siliv_1394   1393.755     1.0   False  True   SiIV-$\lambda\lambda$1394,1403               siliv_1394_1403
+ siliv_1403   1402.770     1.0   False  True   SiIV-$\lambda\lambda$1394,1403               siliv_1394_1403
+   civ_1548   1548.187     1.0   True   True   CIV-$\lambda\lambda$1548,50             civ_1548_50
+   civ_1550   1550.772     1.0   True   True   CIV-$\lambda\lambda$1548,50             civ_1548_50
+  heii_1640   1640.42      0.1   True   False  HeII-$\lambda$1640                      heii_1640
+  oiii_1661   1660.809     1.0   False  True   OIII]-$\lambda\lambda$1661,66           oiii_1661_66
+  oiii_1666   1666.150     1.0   False  True   OIII]-$\lambda\lambda$1666,66           oiii_1661_66

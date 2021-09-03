@@ -97,7 +97,8 @@ class ContinuumTools(object):
 
         # dust maps
         mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
-        self.SFDMap = SFDMap(scaling=0.86, mapdir=mapdir) # SF11 recalibration of the SFD maps
+        self.SFDMap = SFDMap(scaling=1.0, mapdir=mapdir)
+        #self.SFDMap = SFDMap(scaling=0.86, mapdir=mapdir) # SF11 recalibration of the SFD maps
         self.RV = 3.1
         self.dustslope = 0.7
 
@@ -158,7 +159,7 @@ class ContinuumTools(object):
             nage = len(sspinfo)
 
         self.sspwave = sspwave
-        self.sspflux = sspflux                     # no dust, no velocity broadening [npix,nage]
+        self.sspflux = sspflux # no dust, no velocity broadening [npix,nage]
         self.sspinfo = sspinfo
         self.nage = nage
         self.npix = npix
@@ -166,10 +167,14 @@ class ContinuumTools(object):
         # emission lines
         self.linetable = read_emlines()
 
+        self.linemask_sigma_narrow = 200.0  # [km/s]
+        self.linemask_sigma_balmer = 1000.0 # [km/s]
+        self.linemask_sigma_broad = 2000.0  # [km/s]
+
         # photometry
-        self.bands = ['g', 'r', 'z', 'W1', 'W2']
-        self.synth_bands = ['g', 'r', 'z'] # for synthesized photometry
-        self.fiber_bands = ['g', 'r', 'z'] # for fiber fluxes
+        self.bands = np.array(['g', 'r', 'z', 'W1', 'W2'])
+        self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
+        self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
 
         self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
         self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z')
@@ -179,17 +184,25 @@ class ContinuumTools(object):
         self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z',
                                                  'wise2010-W1', 'wise2010-W2')
 
+        self.bands_to_fit = np.ones(len(self.bands), bool)
+        self.bands_to_fit[self.bands == 'W2'] = False # drop W2
+
         # rest-frame filters
         self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1']
         self.absmag_filters = filters.load_filters('bessell-U', 'bessell-B', 'bessell-V',
                                                    'sdss2010-u', 'sdss2010-g', 'sdss2010-r',
                                                    'sdss2010-i', 'sdss2010-z', 'wise2010-W1')
         self.absmag_bandshift = np.array([0.0, 0.0, 0.0,
-                                          0.1, 0.1, 0.1,
-                                          0.1, 0.1, 0.0])
+                                          0.0, 0.0, 0.0,
+                                          0.0, 0.0, 0.0])
+        #self.absmag_bandshift = np.array([0.0, 0.0, 0.0,
+        #                                  0.1, 0.1, 0.1,
+        #                                  0.1, 0.1, 0.0])
+        
+        self.min_uncertainty = np.array([0.01, 0.01, 0.01, 0.02, 0.02])
 
         # used in one place...
-        self.rand = np.random.RandomState(seed=seed)
+        #self.rand = np.random.RandomState(seed=seed)
 
     @staticmethod
     def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
@@ -261,7 +274,7 @@ class ContinuumTools(object):
 
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
-                         nanomaggies=True, nsigma=1.0):
+                         nanomaggies=True, nsigma=1.0, min_uncertainty=None):
         """Parse input (nano)maggies to various outputs and pack into a table.
 
         Parameters
@@ -306,24 +319,33 @@ class ContinuumTools(object):
         if ivarmaggies is None:
             ivarmaggies = np.zeros_like(maggies)
 
+        if min_uncertainty is None:
+            min_uncertainty = np.zeros_like(maggies)
+
         ## Gaia-only targets all have grz=-99 fluxes (we now cut these out in
         ## io.DESISpectra.find_specfiles)
         #if np.all(maggies==-99):
         #    log.warning('Gaia-only targets not supported.')
         #    raise ValueError
 
-        phot['lambda_eff'] = lambda_eff.astype('f4')
+        phot['lambda_eff'] = lambda_eff#.astype('f4')
         if nanomaggies:
-            phot['nanomaggies'] = maggies.astype('f4')
-            phot['nanomaggies_ivar'] = ivarmaggies.astype('f4')
+            phot['nanomaggies'] = maggies#.astype('f4')
+            phot['nanomaggies_ivar'] = ivarmaggies#.astype('f4')
         else:
-            phot['nanomaggies'] = (maggies * 1e9).astype('f4')
-            phot['nanomaggies_ivar'] = (ivarmaggies * 1e-18).astype('f4')
+            phot['nanomaggies'] = (maggies * 1e9)#.astype('f4')
+            phot['nanomaggies_ivar'] = (ivarmaggies * 1e-18)#.astype('f4')
 
         if nanomaggies:
             nanofactor = 1e-9 # [nanomaggies-->maggies]
         else:
             nanofactor = 1.0
+
+        #pdb.set_trace()
+        #factor=(2.5/alog(10.))
+        #err=factor/sqrt(maggies_ivar[k,igood])/maggies[k,igood]
+        #err2=err^2+minerrors[k]^2
+        #maggies_ivar[k,igood]=factor^2/(maggies[k,igood]^2*err2)
 
         factor = nanofactor * 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
         if ngal > 1:
@@ -340,7 +362,7 @@ class ContinuumTools(object):
             else:
                 igood, jgood = good, [0]
                 goodmaggies = maggies[igood]
-            phot['abmag'][igood, jgood] = (-2.5 * np.log10(nanofactor * goodmaggies)).astype('f4')
+            phot['abmag'][igood, jgood] = (-2.5 * np.log10(nanofactor * goodmaggies))#.astype('f4')
         
         # deal with the uncertainties
         snr = maggies * np.sqrt(ivarmaggies)
@@ -369,17 +391,17 @@ class ContinuumTools(object):
 
         # significant detections
         if len(good) > 0:
-            phot['abmag_brighterr'][igood, jgood] = errmaggies / (0.4 * np.log(10) * (maggies+errmaggies)).astype('f4') # bright end (flux upper limit)
-            phot['abmag_fainterr'][igood, jgood] = errmaggies / (0.4 * np.log(10) * (maggies-errmaggies)).astype('f4') # faint end (flux lower limit)
+            phot['abmag_brighterr'][igood, jgood] = errmaggies / (0.4 * np.log(10) * (maggies+errmaggies))#.astype('f4') # bright end (flux upper limit)
+            phot['abmag_fainterr'][igood, jgood] = errmaggies / (0.4 * np.log(10) * (maggies-errmaggies))#.astype('f4') # faint end (flux lower limit)
             #phot['abmag_loerr'][igood, jgood] = +2.5 * np.log10(1 + fracerr) # bright end (flux upper limit)
             #phot['abmag_uperr'][igood, jgood] = +2.5 * np.log10(1 - fracerr) # faint end (flux lower limit)
             #test = 2.5 * np.log(np.exp(1)) * fracerr # symmetric in magnitude (approx)
 
             # approximate the uncertainty as being symmetric in magnitude
-            phot['abmag_ivar'][igood, jgood] = (ivarmaggies * (maggies * 0.4 * np.log(10))**2).astype('f4')
+            phot['abmag_ivar'][igood, jgood] = (ivarmaggies * (maggies * 0.4 * np.log(10))**2)#.astype('f4')
             
         if len(upper) > 0:
-            phot['abmag_limit'][iupper, jupper] = abmag_limit.astype('f4')
+            phot['abmag_limit'][iupper, jupper] = abmag_limit#.astype('f4')
             
         return phot
 
@@ -414,6 +436,152 @@ class ContinuumTools(object):
 
         """
         return 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
+
+    def build_linemask(self, wave, flux, ivar, redshift=0.0):
+        """Generate a mask which identifies pixels potentially affected by emission
+        lines.
+
+        wave - observed-frame wavelength array
+
+        """
+        def _estimate_linesigma(zlinewaves, sigma, label='Broad-line', junkplot=None):
+            """Estimate the velocity width from potentially strong, isolated lines; somewhat
+            fragile!
+
+            """
+            from scipy.optimize import curve_fit
+
+            linesigma, snr = 0.0, 0.0
+            
+            inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
+            if np.sum(inrange) > 0:
+                stackdvel, stackflux, stackivar = [], [], []
+                for zlinewave in zlinewaves[inrange]:
+                    I = ((wave >= (zlinewave - 2*sigma * zlinewave / C_LIGHT)) *
+                         (wave <= (zlinewave + 2*sigma * zlinewave / C_LIGHT)))
+                    if np.max(flux[I]) > 0:
+                        stackdvel.append((wave[I] - zlinewave) / zlinewave * C_LIGHT)
+                        stackflux.append(flux[I] / np.max(flux[I]))
+                        stackivar.append(ivar[I] * np.max(flux[I])**2)
+                if len(stackflux) > 0:
+                    stackdvel = np.hstack(stackdvel)
+                    stackflux = np.hstack(stackflux)
+                    stackivar = np.hstack(stackivar)
+
+                    onegauss = lambda x, amp, sigma, cont: amp * np.exp(-0.5 * x**2 / sigma**2) + cont
+                    noneg = stackivar > 0
+                    if np.sum(noneg) > 0:
+                        #snr = np.median(stackflux*np.sqrt(stackivar))
+                        stacksigma = 1 / np.sqrt(stackivar[noneg])
+                        try:
+                            popt, _ = curve_fit(onegauss, xdata=stackdvel[noneg], ydata=stackflux[noneg],
+                                                sigma=stacksigma, p0=[1.0, sigma, np.median(stackflux)])
+                            if popt[0] > 0 and popt[1] > 0:
+                                linesigma = popt[1]
+                                snr = popt[0] / np.std(stackflux[noneg])
+                            else:
+                                popt = None
+                        except RuntimeError:
+                            popt = None
+
+                        if junkplot:
+                            import matplotlib.pyplot as plt
+                            plt.clf()
+                            plt.plot(stackdvel, stackflux)
+                            if popt is not None:
+                                plt.plot(stackdvel, onegauss(stackdvel, *popt))
+                            plt.savefig(junkplot)
+                        
+            log.debug('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
+            
+            return linesigma, snr
+                
+        # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
+        zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
+        linesigma_broad, broad_snr = _estimate_linesigma(
+            zlinewaves, self.linemask_sigma_broad, label='Broad-line')#, junkplot='cosmo-www/tmp/junk-broad.png')
+        if (linesigma_broad < 300) or (linesigma_broad > 2500) or (broad_snr < 3):
+            linesigma_broad = self.linemask_sigma_broad
+
+        # [OII] doublet, [OIII] 4959,5007
+        zlinewaves = np.array([3728.483, 4960.295, 5008.239]) * (1 + redshift)
+        linesigma_narrow, narrow_snr = _estimate_linesigma(
+            zlinewaves, self.linemask_sigma_narrow, label='Narrow-line')#, junkplot='cosmo-www/tmp/junk-narrow.png')
+        if (linesigma_narrow < 50) or (linesigma_narrow > 250) or (narrow_snr < 3):
+            linesigma_narrow = self.linemask_sigma_narrow
+
+        # Hbeta, Halpha
+        zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
+        linesigma_balmer, narrow_balmer = _estimate_linesigma(
+            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line', junkplot='desi-users/ioannis/tmp2/junk-balmer.png')
+        if (linesigma_balmer < 50) or (linesigma_balmer > 2500) or (narrow_balmer < 3):
+            linesigma_balmer = self.linemask_sigma_balmer
+
+        # now build the mask
+        linemask = np.zeros_like(wave, bool) # False = unaffected by emission line
+
+        linenames = np.hstack(('Lya', self.linetable['name'])) # include Lyman-alpha
+        zlinewaves = np.hstack((1215.0, self.linetable['restwave'])) * (1 + redshift)
+        isbroads = np.hstack((True, self.linetable['isbroad']))
+        isbalmers = np.hstack((False, self.linetable['isbalmer']))
+
+        inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
+
+        # Index I for building the line-mask; J for estimating the local
+        # continuum (to be used in self.smooth_residuals).
+        linepix, contpix, linename = [], [], []        
+        for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
+                                                           isbroads[inrange], isbalmers[inrange]):
+            if isbroad:
+                sigma = linesigma_broad
+            elif isbalmer:
+                sigma = linesigma_balmer
+            else:
+                sigma = linesigma_narrow
+            sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
+            I = (wave >= (zlinewave - 3*sigma)) * (wave <= (zlinewave + 3*sigma))
+
+            #if np.sum(I) > 0:
+            #    linename.append(_linename)
+            #    linepix.append(I)
+            #    linemask[I] = True  # True = affected by line
+                
+            Jblu = (wave > (zlinewave - 5*sigma)) * (wave < (zlinewave - 3*sigma)) * (linemask == False)
+            Jred = (wave < (zlinewave + 5*sigma)) * (wave > (zlinewave + 3*sigma)) * (linemask == False)
+            J = np.logical_or(Jblu, Jred)
+            #if '4686' in _linename:
+            #    pdb.set_trace()
+            
+            if np.sum(I) > 0 and np.sum(J) > 0:
+                linename.append(_linename)
+                linepix.append(I)
+                contpix.append(J)
+                linemask[I] = True  # True = affected by line
+
+        #pdb.set_trace()
+
+        #for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
+        #                                                   isbroads[inrange], isbalmers[inrange]):
+        #    if isbroad:
+        #        sigma = linesigma_broad
+        #    elif isbalmer:
+        #        sigma = linesigma_balmer
+        #    else:
+        #        sigma = linesigma_narrow
+        #    sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
+        #    Jblu = (wave > (zlinewave - 6*sigma)) * (wave < (zlinewave - 4*sigma)) * (linemask == False)
+        #    Jred = (wave < (zlinewave + 6*sigma)) * (wave > (zlinewave + 4*sigma)) * (linemask == False)
+        #
+        #    if '4686' in _linename:
+        #        pdb.set_trace()
+        #    
+        #    J = np.logical_or(Jblu, Jred)
+        #    if np.sum(J) > 0:
+        #        contpix.append(J)
+
+        linemask_dict = {'linemask': linemask, 'linename': linename, 'linepix': linepix, 'contpix': contpix}
+
+        return linemask_dict
 
     def smooth_and_resample(self, sspflux, sspwave, specwave=None, specres=None):
         """Given a single template, apply the resolution matrix and resample in
@@ -584,7 +752,7 @@ class ContinuumTools(object):
                     maggies /= self.fluxnorm * self.massnorm
                     sspphot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False)
         else:
-            # loop over cameras and then multiprocess over age
+            # loop over cameras
             datasspflux = []
             for icamera in np.arange(len(cameras)): # iterate on cameras
                 _datasspflux = []
@@ -598,13 +766,15 @@ class ContinuumTools(object):
                 if coeff is not None:
                     _datasspflux = _datasspflux.dot(coeff)
                 datasspflux.append(_datasspflux)
+                #if icamera == 1:
+                #    pdb.set_trace()
                 
         #log.info('Resampling took: {:.2f} sec'.format(time.time()-t0))
 
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 
-    def smooth_residuals(self, continuummodel, specwave, specflux, specivar,
-                         linemask, percamera=False, binwave=0.8*160):
+    def smooth_residuals(self, residuals, wave, specivar, linemask,
+                         linepix, contpix, seed=1, binwave=0.8*120):#binwave=0.8*160):
         """Derive a median-smoothed correction to the continuum fit in order to pick up
         any unmodeled flux, before emission-line fitting.
 
@@ -624,61 +794,99 @@ class ContinuumTools(object):
         https://github.com/moustakas/moustakas-projects/blob/master/ages/ppxf/ages_gandalf_specfit.pro#L138-L145
 
         """
+        #from scipy.stats import sigmaclip
         from scipy.ndimage import median_filter
+        from fastspecfit.util import ivar2var
 
-        def robust_median(wave, flux, ivar, binwave):
-            from scipy import ptp
-            from scipy.stats import sigmaclip
-            #from scipy.signal import savgol_filter
-            
-            smoothflux = np.zeros_like(flux)
-            minwave, maxwave = np.min(wave), np.max(wave)
-            nbin = int(ptp(wave) / binwave)
-            wavebins = np.linspace(minwave, maxwave, nbin)
-            idx  = np.digitize(wave, wavebins)
-            for kk in np.arange(nbin):
-                I = (idx == kk)
-                J = I * (ivar > 0)
-                #print(kk, np.sum(I), np.sum(J))
-                if np.sum(J) > 10:
-                    clipflux, _, _ = sigmaclip(flux[J], low=5.0, high=5.0)
-                    smoothflux[I] = np.median(clipflux)
-                    #print(kk, np.sum(J), np.sum(I), np.median(wave[I]), smoothflux[I][0])
-            return smoothflux
+        rand = np.random.RandomState(seed=seed)
+
+        #def robust_median(wave, flux, ivar, binwave):
+        #    from scipy import ptp
+        #    from scipy.stats import sigmaclip
+        #    #from scipy.signal import savgol_filter
+        #    
+        #    smoothflux = np.zeros_like(flux)
+        #    minwave, maxwave = np.min(wave), np.max(wave)
+        #    nbin = int(ptp(wave) / binwave)
+        #    wavebins = np.linspace(minwave, maxwave, nbin)
+        #    idx  = np.digitize(wave, wavebins)
+        #    for kk in np.arange(nbin):
+        #        I = (idx == kk)
+        #        J = I * (ivar > 0)
+        #        #print(kk, np.sum(I), np.sum(J))
+        #        if np.sum(J) > 10:
+        #            clipflux, _, _ = sigmaclip(flux[J], low=5.0, high=5.0)
+        #            smoothflux[I] = np.median(clipflux)
+        #            #print(kk, np.sum(J), np.sum(I), np.median(wave[I]), smoothflux[I][0])
+        #    return smoothflux
                 
         medbin = np.int(binwave * 2)
         #print(binwave, medbin)
 
-        if percamera:
-            smooth_continuum = []
-            for icam in np.arange(len(specflux)): # iterate over cameras        
-                residuals = specflux[icam] - continuummodel[icam]
-                if False:
-                    smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
-                    #smooth1 = robust_median(specwave[icam], residuals, specivar[icam] * linemask[icam], binwave)
-                    smooth2 = median_filter(smooth1, medbin, mode='nearest')
-                    smooth_continuum.append(smooth2)
-                else:
-                    # Fragile...replace the line-affected pixels with noise to make the
-                    # smoothing better-behaved.
-                    pix_nolines = linemask[icam]      # unaffected by a line = True
-                    pix_emlines = np.logical_not(pix_nolines) # affected by line = True
-                    residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
-                                              np.std(residuals[pix_nolines]) +
-                                              np.median(residuals[pix_nolines]))
-                    smooth1 = median_filter(residuals, medbin, mode='nearest')
-                    #smooth2 = savgol_filter(smooth1, 151, 2)
-                    smooth2 = median_filter(smooth1, medbin//2, mode='nearest')
-                    smooth_continuum.append(smooth2)
-        else:
-            residuals = specflux - continuummodel
-            pix_nolines = linemask      # unaffected by a line = True
-            pix_emlines = np.logical_not(pix_nolines) # affected by line = True
-            
-            residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
-                                      np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
-            smooth1 = median_filter(residuals, medbin, mode='nearest')
-            smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
+        # Replace pixels potentially affected by lines by the ivar-weighted mean
+        # of the surrounding (local) continuum.
+        residuals_clean = []
+        for icam in np.arange(len(residuals)): # iterate over cameras
+            #var, I = ivar2var(specivar[icam])
+            ivar = specivar[icam]
+            _residuals = residuals[icam].copy()
+            for _linepix, _contpix in zip(linepix[icam], contpix[icam]):
+                I = ivar[_contpix] > 0
+                if np.sum(I) > 0:
+                    norm = np.sum(ivar[_contpix][I])
+                    mn = np.sum(ivar[_contpix][I] * _residuals[_contpix][I]) / norm # weighted mean
+                    sig = np.sqrt(np.sum(ivar[_contpix][I] * (_residuals[_contpix][I] - mn)**2) / norm) # weighted standard deviation
+                    #sig = np.sqrt(np.sum(ivar[I][_contpix]**2 * (_residuals[I][_contpix] - mn)**2) / norm**2) # weighted error in the mean
+                    #_residuals[_linepix] = np.median(residuals[icam][_contpix])
+                    #_residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(residuals[icam][_contpix])) + np.median(residuals[icam][_contpix])
+                    #clipflux, _, _ = sigmaclip(residuals[icam][_contpix], low=3.0, high=3.0)
+                    #if icam == 1:
+                    #    import matplotlib.pyplot as plt
+                    #    plt.clf()
+                    #    plt.scatter(wave[icam][_linepix], _residuals[_linepix], color='blue', s=1)
+                    #    plt.scatter(wave[icam][_contpix], _residuals[_contpix], color='green', s=1)
+                    #    plt.axhline(y=mn, color='k')
+                    #    plt.axhline(y=mn+sig, ls='--', color='k')
+                    #    plt.axhline(y=mn-sig, ls='--', color='k')
+                    #    plt.plot(wave[icam][_linepix], (rand.normal(size=len(_linepix)) * sig) + mn, color='orange', alpha=0.5)
+                    #    plt.savefig('desi-users/ioannis/tmp2/junk.png')
+                    #    pdb.set_trace()
+                    _residuals[_linepix] = (rand.normal(size=len(_linepix)) * sig) + mn
+                    #_residuals[_linepix] = (rand.normal(size=len(_linepix)) * np.std(clipflux)) + np.median(clipflux)
+            residuals_clean.append(_residuals)
+
+        residuals_clean = np.hstack(residuals_clean)
+        smooth1 = median_filter(residuals_clean, medbin, mode='nearest')
+        smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
+
+        #if percamera:
+        #    smooth_continuum = []
+        #    for icam in np.arange(len(specflux)): # iterate over cameras        
+        #        residuals = specflux[icam] - continuummodel[icam]
+        #        if False:
+        #            smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
+        #            #smooth1 = robust_median(specwave[icam], residuals, specivar[icam] * linemask[icam], binwave)
+        #            smooth2 = median_filter(smooth1, medbin, mode='nearest')
+        #            smooth_continuum.append(smooth2)
+        #        else:
+        #            # Fragile...replace the line-affected pixels with noise to make the
+        #            # smoothing better-behaved.
+        #            pix_nolines = linemask[icam]      # unaffected by a line = True
+        #            pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+        #            residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
+        #                                      np.std(residuals[pix_nolines]) +
+        #                                      np.median(residuals[pix_nolines]))
+        #            smooth1 = median_filter(residuals, medbin, mode='nearest')
+        #            #smooth2 = savgol_filter(smooth1, 151, 2)
+        #            smooth2 = median_filter(smooth1, medbin//2, mode='nearest')
+        #            smooth_continuum.append(smooth2)
+        #else:
+        #    pix_nolines = linemask      # unaffected by a line = True
+        #    pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+        #    residuals[pix_emlines] = (self.rand.normal(size=np.sum(pix_emlines)) *
+        #                              np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
+        #    smooth1 = median_filter(residuals, medbin, mode='nearest')
+        #    smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
 
         return smooth_continuum
 
@@ -713,10 +921,10 @@ class ContinuumFit(ContinuumTools):
         # the nominal values are in the grid.
         vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 20.0, 150.0)
         #vdispmin, vdispmax, dvdisp, vdisp_nominal = (0.0, 0.0, 30.0, 150.0)
-        nvdisp = np.ceil((vdispmax - vdispmin) / dvdisp).astype(int)
+        nvdisp = np.int(np.ceil((vdispmax - vdispmin) / dvdisp))
         if nvdisp == 0:
             nvdisp = 1
-        vdisp = np.linspace(vdispmin, vdispmax, nvdisp).astype('f4') # [km/s]
+        vdisp = np.linspace(vdispmin, vdispmax, nvdisp)#.astype('f4') # [km/s]
 
         if not vdisp_nominal in vdisp:
             vdisp = np.sort(np.hstack((vdisp, vdisp_nominal)))
@@ -726,10 +934,10 @@ class ContinuumFit(ContinuumTools):
 
         #AVmin, AVmax, dAV, AV_nominal = (0.0, 0.0, 0.1, 0.0)
         AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.1, 0.0)
-        nAV = np.ceil((AVmax - AVmin) / dAV).astype(int)
+        nAV = np.int(np.ceil((AVmax - AVmin) / dAV))
         if nAV == 0:
             nAV = 1
-        AV = np.linspace(AVmin, AVmax, nAV).astype('f4')
+        AV = np.linspace(AVmin, AVmax, nAV)#.astype('f4')
         assert(AV[0] == 0.0) # minimum value has to be zero (assumed in fnnls_continuum)
 
         if not AV_nominal in AV:
@@ -749,10 +957,6 @@ class ContinuumFit(ContinuumTools):
 
         # nominal velocity broadening on a grid of A(V) [npix,nage,nAV]
         self.sspflux_dustvdisp = np.stack(sspflux_dustvdisp, axis=-1) # [npix,nage,nAV]
-
-        # table of emission lines to fit
-        self.linemask_sigma = 200.0 # [km/s]
-        self.linemask_sigma_broad = 1000.0 # [km/s]
 
         # Do a throw-away trapezoidal resampling so we can compile the numba
         # code when instantiating this class.
@@ -819,6 +1023,10 @@ class ContinuumFit(ContinuumTools):
         out.add_column(Column(name='CONTINUUM_AV', length=nobj, dtype='f4', unit=u.mag))
         out.add_column(Column(name='CONTINUUM_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
         out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
+        
+        # observed-frame photometry synthesized from the best-fitting continuum model fit
+        for band in self.bands:
+            out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy))
 
         if False:
             for band in self.fiber_bands:
@@ -858,7 +1066,7 @@ class ContinuumFit(ContinuumTools):
         """
         return np.where(self.sspinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
 
-    def kcorr_and_absmag(self, data, continuum, coeff, band_shift=0.0, snrmin=2.0):
+    def kcorr_and_absmag(self, data, continuum, coeff, snrmin=2.0):
         """Computer K-corrections and absolute magnitudes.
 
         # To get the absolute r-band magnitude we would do:
@@ -867,6 +1075,8 @@ class ContinuumFit(ContinuumTools):
 
         """
         redshift = data['zredrock']
+        band_shift = self.absmag_bandshift
+        bands_to_fit = self.bands_to_fit
         
         if data['photsys'] == 'S':
             filters_in = self.decamwise
@@ -875,6 +1085,7 @@ class ContinuumFit(ContinuumTools):
         filters_out = self.absmag_filters
         nout = len(filters_out)
 
+        # shift the bandpasses blueward by a factor of 1+band_shift
         lambda_in = filters_in.effective_wavelengths.value
         lambda_out = filters_out.effective_wavelengths.value / (1 + band_shift)
 
@@ -883,7 +1094,7 @@ class ContinuumFit(ContinuumTools):
         dmod = self.cosmo.distmod(redshift).value
 
         maggies = data['phot']['nanomaggies'].data * 1e-9
-        ivarmaggies = data['phot']['nanomaggies_ivar'].data / 1e-9**2
+        ivarmaggies = (data['phot']['nanomaggies_ivar'].data / 1e-9**2) * bands_to_fit
 
         # input bandpasses, observed frame; maggies and bestmaggies should be
         # very close.
@@ -931,7 +1142,7 @@ class ContinuumFit(ContinuumTools):
         #https://researchportal.port.ac.uk/ws/files/328938/MNRAS_2011_Taylor_1587_620.pdf
         #mstar = 1.15 + 0.7*(absmag[1]-absmag[3]) - 0.4*absmag[3]
 
-        return kcorr, absmag, ivarabsmag
+        return kcorr, absmag, ivarabsmag, bestmaggies
 
     def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False):
         """Wrapper on fnnls to set up the multiprocessing. Works with both spectroscopic
@@ -1045,7 +1256,7 @@ class ContinuumFit(ContinuumTools):
         log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
         
         objflam = data['phot']['flam'].data * self.fluxnorm
-        objflamivar = data['phot']['flam_ivar'].data / self.fluxnorm**2
+        objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
         zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
         assert(np.all(objflamivar >= 0))
 
@@ -1083,10 +1294,11 @@ class ContinuumFit(ContinuumTools):
             kcorr = np.zeros(len(self.absmag_bands))
             absmag = np.zeros(len(self.absmag_bands))-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
+            synth_bestmaggies = np.zeros(len(self.bands))
         else:
             dn4000, _ = self.get_dn4000(self.sspwave, continuummodel, rest=True)
             meanage = self.get_meanage(coeff)
-            kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel, coeff)
+            kcorr, absmag, ivarabsmag, synth_bestmaggies = self.kcorr_and_absmag(data, continuummodel, coeff)
 
             log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
                 dn4000, meanage, absmag[1]))
@@ -1109,6 +1321,8 @@ class ContinuumFit(ContinuumTools):
             result['KCORR_{}'.format(band.upper())] = kcorr[iband]
             result['ABSMAG_{}'.format(band.upper())] = absmag[iband]
             result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband]
+        for iband, band in enumerate(self.bands):
+            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband]
 
         return result, continuummodel
     
@@ -1163,7 +1377,7 @@ class ContinuumFit(ContinuumTools):
         
         specwave = np.hstack(data['wave'])
         specflux = np.hstack(data['flux'])
-        specivar = np.hstack(data['ivar']) * np.hstack(data['linemask']) # mask emission lines
+        specivar = np.hstack(data['ivar']) * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
         zsspflux_dustvdisp = np.concatenate(zsspflux_dustvdisp, axis=0)  # [npix,nage*nAV]
         assert(np.all(specivar >= 0))
 
@@ -1244,9 +1458,18 @@ class ContinuumFit(ContinuumTools):
 
         # Do a quick median-smoothing of the stellar continuum-subtracted
         # residuals, to help with the emission-line fitting.
-        _smooth_continuum = self.smooth_residuals(
-            bestfit, specwave, specflux, np.hstack(data['ivar']),
-            np.hstack(data['linemask']))
+        if False:
+            log.warning('Skipping smoothing residuals!')
+            _smooth_continuum = np.zeros_like(bestfit)
+        else:
+            _residuals = specflux - bestfit
+            residuals = [_residuals[np.sum(npixpercam[:icam+1]):np.sum(npixpercam[:icam+2])] for icam in np.arange(len(data['cameras']))]
+            _smooth_continuum = self.smooth_residuals(
+                residuals, data['wave'], data['ivar'],
+                data['linemask'], data['linepix'], data['contpix'])
+            #_smooth_continuum = self.smooth_residuals(
+            #    bestfit, specwave, specflux, np.hstack(data['ivar']),
+            #    np.hstack(data['linemask']))
         #smooth_continuum = self.smooth_residuals(
         #    bestfit, data['coadd_wave'], data['coadd_flux'],
         #    data['coadd_ivar'], data['coadd_linemask'],
@@ -1279,7 +1502,6 @@ class ContinuumFit(ContinuumTools):
                 ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
                 ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
             plt.savefig('junk.png')
-            pdb.set_trace()
 
         # Pack it in and return.
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
@@ -1294,18 +1516,19 @@ class ContinuumFit(ContinuumTools):
         result['DN4000_MODEL'][0] = dn4000_model
 
         for icam, cam in enumerate(data['cameras']):
-            nonzero = np.abs(continuummodel[icam]) > 1e-5
+            nonzero = continuummodel[icam] != 0
+            #nonzero = np.abs(continuummodel[icam]) > 1e-5
             if np.sum(nonzero) > 0:
-                corr = np.mean(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
-                result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr
-                
+                corr = np.median(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
+                result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
+
         log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
-            100*result['CONTINUUM_SMOOTHCORR_B'][0], 100*result['CONTINUUM_SMOOTHCORR_R'][0],
-            100*result['CONTINUUM_SMOOTHCORR_Z'][0]))
+            result['CONTINUUM_SMOOTHCORR_B'][0], result['CONTINUUM_SMOOTHCORR_R'][0],
+            result['CONTINUUM_SMOOTHCORR_Z'][0]))
         
         return result, continuummodel, smooth_continuum
     
-    def qa_fastphot(self, data, fastphot, metadata, coadd_type='cumulative',
+    def qa_fastphot(self, data, fastphot, metadata, coadd_type='healpix',
                     outdir=None, outprefix=None):
         """QA of the best-fitting continuum.
 
@@ -1337,9 +1560,14 @@ class ContinuumFit(ContinuumTools):
         if outprefix is None:
             outprefix = 'fastphot'
 
-        if coadd_type == 'cumulative':
-            title = 'Tile/Coadd: {}/{}, TargetID/Fiber: {}/{}'.format(
-                    metadata['TILEID'], coadd_type, metadata['TARGETID'], metadata['FIBER'])
+        if coadd_type == 'healpix':
+            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+                    metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))
+        elif coadd_type == 'cumulative':
+            title = 'Tile/thruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
@@ -1436,11 +1664,20 @@ class ContinuumFit(ContinuumTools):
         if np.count_nonzero(lolims) > 0:
             abmag[lolims] = abmag_limit[lolims]
 
-        ax.errorbar(phot['lambda_eff']/1e4, abmag, lolims=lolims,
-                    yerr=yerr,
-                    fmt='s', markersize=11, markeredgewidth=3, markeredgecolor='k',
-                    markerfacecolor='red', elinewidth=3, ecolor='red', capsize=4,
-                    label=r'$grz\,W_{1}W_{2}$', zorder=2)
+        dofit = np.where((abmag > 0) * self.bands_to_fit)[0]
+        if len(dofit) > 0:
+            ax.errorbar(phot['lambda_eff'][dofit]/1e4, abmag[dofit], lolims=lolims[dofit],
+                        yerr=yerr[:, dofit],
+                        fmt='s', markersize=11, markeredgewidth=3, markeredgecolor='k',
+                        markerfacecolor='red', elinewidth=3, ecolor='red', capsize=4,
+                        label=r'$grz\,W_{1}W_{2}$', zorder=2)
+            
+        ignorefit = np.where((abmag > 0) * (self.bands_to_fit == False))[0]
+        if len(ignorefit) > 0:
+            ax.errorbar(phot['lambda_eff'][ignorefit]/1e4, abmag[ignorefit], lolims=lolims[ignorefit],
+                        yerr=yerr[:, ignorefit],
+                        fmt='s', markersize=11, markeredgewidth=3, markeredgecolor='k',
+                        markerfacecolor='none', elinewidth=3, ecolor='k', capsize=4)
 
         good = np.where(fiberphot['abmag'] > 0)[0]
         if len(good) > 0:
@@ -1467,16 +1704,21 @@ class ContinuumFit(ContinuumTools):
         #for hndl in leg.legendHandles:
         #    hndl.set_markersize(8)
 
+        if coadd_type == 'healpix':
+            targetid_str = str(metadata['TARGETID'])
+        else:
+            targetid_str = '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
+
         leg = {
-            'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
+            'targetid': targetid_str,
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_CHI2']),
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
             #'zfastfastphot': '$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
-            'absmag_r': '$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_R']),
-            'absmag_gr': '$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_G']-fastphot['ABSMAG_R']),
+            'absmag_r': '$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
+            'absmag_gr': '$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R']),
             }
         if fastphot['CONTINUUM_AV_IVAR'] == 0:
             leg.update({'AV': '$A(V)$={:.2f} mag'.format(fastphot['CONTINUUM_AV'])})
