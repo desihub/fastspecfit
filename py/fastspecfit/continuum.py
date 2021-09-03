@@ -1101,8 +1101,6 @@ class ContinuumFit(ContinuumTools):
         bestmaggies = filters_in.get_ab_maggies(continuum / self.fluxnorm, zsspwave)
         bestmaggies = np.array(bestmaggies.as_array().tolist()[0])
 
-        pdb.set_trace()
-
         # output bandpasses, rest frame -- need to shift the filter curves
         # blueward by a factor of 1+band_shift!
         synth_outmaggies_rest = filters_out.get_ab_maggies(continuum * (1 + redshift) / self.fluxnorm, self.sspwave) 
@@ -1504,7 +1502,6 @@ class ContinuumFit(ContinuumTools):
                 ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
                 ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
             plt.savefig('junk.png')
-            pdb.set_trace()
 
         # Pack it in and return.
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
