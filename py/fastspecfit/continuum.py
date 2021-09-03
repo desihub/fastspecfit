@@ -1020,6 +1020,10 @@ class ContinuumFit(ContinuumTools):
         out.add_column(Column(name='CONTINUUM_AV', length=nobj, dtype='f4', unit=u.mag))
         out.add_column(Column(name='CONTINUUM_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
         out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
+        
+        # observed-frame photometry synthesized from the best-fitting continuum model fit
+        for band in self.bands:
+            out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy))
 
         if False:
             for band in self.fiber_bands:
@@ -1059,7 +1063,7 @@ class ContinuumFit(ContinuumTools):
         """
         return np.where(self.sspinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
 
-    def kcorr_and_absmag(self, data, continuum, coeff, band_shift=0.0, snrmin=2.0):
+    def kcorr_and_absmag(self, data, continuum, coeff, snrmin=2.0):
         """Computer K-corrections and absolute magnitudes.
 
         # To get the absolute r-band magnitude we would do:
@@ -1068,6 +1072,8 @@ class ContinuumFit(ContinuumTools):
 
         """
         redshift = data['zredrock']
+        band_shift = self.absmag_bandshift
+        bands_to_fit = self.bands_to_fit
         
         if data['photsys'] == 'S':
             filters_in = self.decamwise
@@ -1084,12 +1090,14 @@ class ContinuumFit(ContinuumTools):
         dmod = self.cosmo.distmod(redshift).value
 
         maggies = data['phot']['nanomaggies'].data * 1e-9
-        ivarmaggies = data['phot']['nanomaggies_ivar'].data / 1e-9**2
+        ivarmaggies = (data['phot']['nanomaggies_ivar'].data / 1e-9**2) * bands_to_fit
 
         # input bandpasses, observed frame; maggies and bestmaggies should be
         # very close.
         bestmaggies = filters_in.get_ab_maggies(continuum / self.fluxnorm, zsspwave)
         bestmaggies = np.array(bestmaggies.as_array().tolist()[0])
+
+        pdb.set_trace()
 
         # output bandpasses, rest frame -- need to shift the filter curves
         # blueward by a factor of 1+band_shift!
@@ -1132,7 +1140,7 @@ class ContinuumFit(ContinuumTools):
         #https://researchportal.port.ac.uk/ws/files/328938/MNRAS_2011_Taylor_1587_620.pdf
         #mstar = 1.15 + 0.7*(absmag[1]-absmag[3]) - 0.4*absmag[3]
 
-        return kcorr, absmag, ivarabsmag
+        return kcorr, absmag, ivarabsmag, bestmaggies
 
     def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False):
         """Wrapper on fnnls to set up the multiprocessing. Works with both spectroscopic
@@ -1284,10 +1292,11 @@ class ContinuumFit(ContinuumTools):
             kcorr = np.zeros(len(self.absmag_bands))
             absmag = np.zeros(len(self.absmag_bands))-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
+            synth_bestmaggies = np.zeros(len(self.bands))
         else:
             dn4000, _ = self.get_dn4000(self.sspwave, continuummodel, rest=True)
             meanage = self.get_meanage(coeff)
-            kcorr, absmag, ivarabsmag = self.kcorr_and_absmag(data, continuummodel, coeff)
+            kcorr, absmag, ivarabsmag, synth_bestmaggies = self.kcorr_and_absmag(data, continuummodel, coeff)
 
             log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
                 dn4000, meanage, absmag[1]))
@@ -1310,6 +1319,8 @@ class ContinuumFit(ContinuumTools):
             result['KCORR_{}'.format(band.upper())] = kcorr[iband]
             result['ABSMAG_{}'.format(band.upper())] = absmag[iband]
             result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband]
+        for iband, band in enumerate(self.bands):
+            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband]
 
         return result, continuummodel
     
