@@ -193,8 +193,11 @@ class ContinuumTools(object):
                                                    'sdss2010-u', 'sdss2010-g', 'sdss2010-r',
                                                    'sdss2010-i', 'sdss2010-z', 'wise2010-W1')
         self.absmag_bandshift = np.array([0.0, 0.0, 0.0,
-                                          0.1, 0.1, 0.1,
-                                          0.1, 0.1, 0.0])
+                                          0.0, 0.0, 0.0,
+                                          0.0, 0.0, 0.0])
+        #self.absmag_bandshift = np.array([0.0, 0.0, 0.0,
+        #                                  0.1, 0.1, 0.1,
+        #                                  0.1, 0.1, 0.0])
         
         self.min_uncertainty = np.array([0.01, 0.01, 0.01, 0.02, 0.02])
 
@@ -1082,6 +1085,7 @@ class ContinuumFit(ContinuumTools):
         filters_out = self.absmag_filters
         nout = len(filters_out)
 
+        # shift the bandpasses blueward by a factor of 1+band_shift
         lambda_in = filters_in.effective_wavelengths.value
         lambda_out = filters_out.effective_wavelengths.value / (1 + band_shift)
 
