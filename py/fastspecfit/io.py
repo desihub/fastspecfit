@@ -343,6 +343,7 @@ class DESISpectra(object):
                     if np.sum(match) > 0:
                         # hack to fix hacked SV1 target catalogs
                         if not np.all(np.array(targetcols) == np.array(alltargets.dtype.names)):
+                            #_alltargets = Table(alltargets[match])[targetcols].as_array() # this doesn't work
                             _alltargets = Table(alltargets[match])
                             _newtargets = Table()
                             for col in targetcols:
