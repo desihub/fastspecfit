@@ -2,8 +2,21 @@
 FastSpecFit Change Log
 ======================
 
-0.0.3 (unreleased)
--------------------
+0.3 (not release yet)
+---------------------
+
+
+
+
+0.2 (2021-09-04)
+----------------
+
+* Major update to support Everest data release [`PR #40`_].
+
+.. _`PR #40`: https://github.com/desihub/fastspecfit/pull/40
+
+0.1 (2021-07-29
+----------------
 
 * Fix spectroscopic Dn(4000) calculation bug [`PR #35`_].
 * Add UBV rest-frame photometry [`PR #34`_].
