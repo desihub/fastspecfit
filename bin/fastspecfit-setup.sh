@@ -3,8 +3,8 @@
 
 if [ $1 = "shifter" ]; then
     # Load the desigal Docker container using shifter
-    SHIFTER=docker:desihub/fastspecfit:latest
-    #SHIFTER=docker:desihub/fastspecfit:v0.1
+    #SHIFTER=docker:desihub/fastspecfit:latest
+    SHIFTER=docker:desihub/fastspecfit:v0.2
     
     echo 'Updating and loading the shifter image '$SHIFTER
     echo 'Load the environment with: '
@@ -16,7 +16,7 @@ elif [ $1 = "env" ]; then
     package=fastspecfit
 
     if [ "$NERSC_HOST" == "cori" ]; then
-        export PATH=/opt/conda/bin:$PATH # NERSC hack!
+        #export PATH=/opt/conda/bin:$PATH # NERSC hack!
         
         export DESI_ROOT=/global/cfs/cdirs/desi
         export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z

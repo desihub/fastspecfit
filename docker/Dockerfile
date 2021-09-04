@@ -153,11 +153,12 @@ RUN for package in \
     desitarget \
     desispec \
     desisim \
+    specter \
     specsim; do \
       git clone https://github.com/desihub/$package \
       && cd $package \
       && python setup.py install; \
-    done && echo 3
+    done && echo 4
 
 RUN git clone https://github.com/desihub/redrock
 RUN cd redrock \
@@ -177,7 +178,7 @@ RUN git clone https://github.com/desihub/fastspecfit.git fastspecfit \
     && cd fastspecfit && git describe --always
 
 # update 
-RUN cd /src/fastspecfit && git pull && git describe --always && echo 2
+RUN cd /src/fastspecfit && git pull && git describe --always && echo 3
 
 ENV PYTHONPATH /src/fastspecfit/py
 ENV PATH /src/fastspecfit/bin:/opt/conda/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
