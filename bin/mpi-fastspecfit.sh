@@ -6,7 +6,7 @@
 
 # Example: build the coadds using 16 MPI tasks with 8 cores per node (and therefore 16*8/32=4 nodes)
 
-#salloc -N 16 -C haswell -A desi -L cfs -t 02:00:00 --qos interactive --image=docker:desihub/fastspecfit:latest
+#salloc -N 16 -C haswell -A desi -L cfs -t 04:00:00 --qos interactive --image=docker:desihub/fastspecfit:v0.2
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastphot 32 > fastphot-everest.log.1 2>&1 &
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec 32 > fastspec-everest.log.1 2>&1 &
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit.sh qafastspec 32 > qafastspec-everest.log.1 2>&1 &
@@ -24,11 +24,11 @@ package=fastspecfit
 export PATH=/global/homes/i/ioannis/repos/desihub/$package/bin:$PATH
 export PYTHONPATH=/global/homes/i/ioannis/repos/desihub/$package/py:$PYTHONPATH
 
-#for package in desispec desitarget desiutil desimodel speclite specsim; do
-for package in desiutil desispec specter; do
-    export PATH=/global/homes/i/ioannis/repos/desihub/$package/bin:$PATH
-    export PYTHONPATH=/global/homes/i/ioannis/repos/desihub/$package/py:$PYTHONPATH
-done
+##for package in desispec desitarget desiutil desimodel speclite specsim; do
+#for package in desiutil desispec specter; do
+#    export PATH=/global/homes/i/ioannis/repos/desihub/$package/bin:$PATH
+#    export PYTHONPATH=/global/homes/i/ioannis/repos/desihub/$package/py:$PYTHONPATH
+#done
 
 export DESI_ROOT='/global/cfs/cdirs/desi'
 export DUST_DIR='/global/cfs/cdirs/cosmo/data/dust/v0_1'
@@ -42,7 +42,8 @@ export MPICH_GNI_FORK_MODE=FULLCOPY
 if [ $stage = "test" ]; then
     time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --help
 elif [ $stage = "fastspec" ]; then
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit
+    #time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey main --program dark --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit
 elif [ $stage = "fastphot" ]; then
     time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit
 elif [ $stage = "qafastspec" ]; then

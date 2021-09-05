@@ -22,8 +22,19 @@ TARGETINGBITCOLS = [
     'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
     'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
     'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
-    'SCND_TARGET', 'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET',
+    'SCND_TARGET',
+    'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET',
     ]
+
+TARGETCOLS = np.array([
+    'PHOTSYS',
+    'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+    'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
+    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+    'FLUX_IVAR_W1', 'FLUX_IVAR_W2'])#,
+    #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+    #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
 
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
@@ -80,11 +91,16 @@ class DESISpectra(object):
 
             # sometimes this is a KPNO directory!
             if not os.path.isdir(targetdir):
-                log.warning('Targets directory not found {}'.format(targetdir))
-                targetdir = os.path.join(desi_root, targetdir.replace('/data/', ''))
+                # for secondary targets, targetdir can be a filename
+                if os.path.isfile(targetdir):
+                    targetdir = os.path.dirname(targetdir)
                 if not os.path.isdir(targetdir):
-                    log.fatal('Targets directory not found {}'.format(targetdir))
-                    raise IOError
+                    log.warning('Targets directory not found {}'.format(targetdir))
+                    targetdir = os.path.join(desi_root, targetdir.replace('/data/', ''))
+                    if not os.path.isdir(targetdir):
+                        log.fatal('Targets directory not found {}'.format(targetdir))
+                        pdb.set_trace()
+                        raise IOError
                 
             targetdirs[ii] = targetdir
 
@@ -179,9 +195,12 @@ class DESISpectra(object):
                       #'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
             expfmcols = ['TARGETID', 'TILEID', 'FIBER']
             
-            # add targeting bit columns
+            # add targeting columns
             fmcols = np.array(fmcols + [col for col in TARGETINGBITCOLS if col in allfmcols]).tolist()
-                
+            morecols = np.isin(TARGETCOLS, allfmcols)
+            if np.sum(morecols) > 0:
+                fmcols = np.hstack((fmcols, TARGETCOLS[morecols]))
+
             # For the cumulative coadds, NIGHT is defined to be the last night
             # contributing to the coadd.
             if self.coadd_type == 'healpix':
@@ -210,11 +229,13 @@ class DESISpectra(object):
                 fitindx = np.where((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
                                    (meta['OBJTYPE'] == 'TGT') *
                                    (meta['COADD_FIBERSTATUS'] == 0))[0]
+                #if use_targetfile is False:
+                #    pdb.set_trace()
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
                 alltargetids = fitsio.read(redrockfile, 'REDSHIFTS', columns='TARGETID')
-                fitindx = np.where([tid in targetids for tid in alltargetids])[0]
+                fitindx = np.where([tid in targetids for tid in alltargetids])[0]                
                 
             if len(fitindx) == 0:
                 log.info('No requested targets found in redrockfile {}'.format(redrockfile))
@@ -302,16 +323,15 @@ class DESISpectra(object):
         targetcols = ['TARGETID', 'RA', 'DEC']
         #if not 'FLUX_IVAR_W1' in fmcols:
         #    targetcols = targetcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
-        targetcols = targetcols + [
-            'PHOTSYS',
-            'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-            'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-            'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
-            'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-            'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
-        targetcols = targetcols + [
-            'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
-            'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
+        #targetcols = targetcols + [
+        #    'PHOTSYS',
+        #    'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+        #    'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+        #    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
+        #    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+        #    'FLUX_IVAR_W1', 'FLUX_IVAR_W2',
+        #    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+        #    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
 
         alltileid = np.hstack(self.tiles)
         #alltileid = [meta['TILEID'][0] for meta in self.meta]
@@ -337,16 +357,28 @@ class DESISpectra(object):
                     targetfiles = [targetfiles[0].split('hp-')[0]+'hp-{}.fits'.format(pix) for pix in set(pixlist)]
                     
                 for ifile, targetfile in enumerate(targetfiles):
-                    alltargets = fitsio.read(targetfile, columns=targetcols)
+                    tinfo = fitsio.FITS(targetfile)
+                    for _tinfo in tinfo:
+                        extname = _tinfo.get_extname()
+                        if 'TARGETS' in extname:
+                            break
+                    if extname == '':
+                        extname = 1
+                    alltargetcols = tinfo[extname].get_colnames()
+                    morecols = np.isin(TARGETCOLS, alltargetcols)
+                    if np.sum(morecols) > 0:
+                        readtargetcols = np.hstack((targetcols, TARGETCOLS[morecols]))
+                    alltargets = tinfo[extname].read(columns=readtargetcols)
+                    
                     match = np.isin(alltargets['TARGETID'], info['TARGETID'])
                     log.info('Matched {} targets in {}'.format(np.sum(match), targetfile))
                     if np.sum(match) > 0:
                         # hack to fix hacked SV1 target catalogs
-                        if not np.all(np.array(targetcols) == np.array(alltargets.dtype.names)):
-                            #_alltargets = Table(alltargets[match])[targetcols].as_array() # this doesn't work
+                        if not np.all(readtargetcols == np.array(alltargets.dtype.names)):
+                            #_alltargets = Table(alltargets[match])[readtargetcols].as_array() # this doesn't work
                             _alltargets = Table(alltargets[match])
                             _newtargets = Table()
-                            for col in targetcols:
+                            for col in readtargetcols:
                                 _newtargets[col] = _alltargets[col]
                             alltargets = _newtargets.as_array()
                         else:
@@ -372,10 +404,13 @@ class DESISpectra(object):
         for meta in self.meta:
             srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in meta['TARGETID']])
             assert(np.all(meta['TARGETID'] == targets['TARGETID'][srt]))
-            for col in targetcols:
-                if col not in meta.colnames:
-                    meta[col] = targets[col][srt]
-            metas.append(Table(meta))
+            # prefer the target catalog quantities over those in the fiberassign table
+            for col in readtargetcols:
+                meta[col] = targets[col][srt]
+                #if col not in meta.colnames:
+                #    meta[col] = targets[col][srt]
+            meta = Table(meta)
+            metas.append(meta)
         log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
         self.meta = metas # update

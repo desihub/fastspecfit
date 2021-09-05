@@ -136,49 +136,74 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
     if rank == 0:
         desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
         # look for data in the standard location
+
+        if args.coadd_type == 'healpix':
+            subdir = 'healpix'
+            if args.hpxpixel is not None:
+                args.hpxpixel = args.hpxpixel.split(',')
+            args.survey = args.survey.split(',')
+            args.program = args.program.split(',')
+        else:
+            subdir = 'tiles'
+
+            # figure out which tiles belong to the SV programs
+            if args.tile is None:
+                tilefile = os.path.join(desi_root, 'spectro', 'redux', args.specprod, 'tiles-{}.csv'.format(args.specprod))
+                alltileinfo = Table.read(tilefile)
+                tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
+                #tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
+
+                #log.info('Add tiles 80605-80610 which are incorrectly identified as cmx tiles.')
+                #tileinfo = vstack((tileinfo, alltileinfo[np.where((alltileinfo['TILEID'] >= 80605) * (alltileinfo['TILEID'] <= 80610))[0]]))
+                #tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
+
+                log.info('Retrieved a list of {} {} tiles from {}'.format(
+                    len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
+
+                # old 
+                #tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
+                #tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
+                #tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
+                #log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
+
+                #alltiles = np.array(list(set(tileinfo['TILEID'])))
+                #ireduced = [os.path.isdir(os.path.join(specprod_dir, args.coadd_type, str(tile1))) for tile1 in alltiles]
+                #log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
+                #    args.specprod, np.sum(ireduced), len(alltiles)))
+                #args.tile = alltiles[ireduced]
+                #tileinfo = tileinfo[ireduced]
+
+                args.tile = np.array(list(set(tileinfo['TILEID'])))
+                #print(args.tile)
+
+                #if True:
+                #    tileinfo = tileinfo[['lrg' in program or 'elg' in program for program in tileinfo['FAPRGRM']]]
+                #    args.tile = np.array(list(set(tileinfo['TILEID'])))
+                #print(tileinfo)
+
         if specprod_dir is None:
-            specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod, 'tiles')
-
-        # figure out which tiles belong to the SV programs
-        if args.tile is None:
-            tilefile = os.path.join(desi_root, 'spectro', 'redux', args.specprod, 'tiles-{}.csv'.format(args.specprod))
-            alltileinfo = Table.read(tilefile)
-            tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
-            #tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
-
-            #log.info('Add tiles 80605-80610 which are incorrectly identified as cmx tiles.')
-            #tileinfo = vstack((tileinfo, alltileinfo[np.where((alltileinfo['TILEID'] >= 80605) * (alltileinfo['TILEID'] <= 80610))[0]]))
-            #tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
-
-            log.info('Retrieved a list of {} {} tiles from {}'.format(
-                len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
-
-            # old 
-            #tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
-            #tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
-            #tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
-            #log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
-
-            #alltiles = np.array(list(set(tileinfo['TILEID'])))
-            #ireduced = [os.path.isdir(os.path.join(specprod_dir, args.coadd_type, str(tile1))) for tile1 in alltiles]
-            #log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
-            #    args.specprod, np.sum(ireduced), len(alltiles)))
-            #args.tile = alltiles[ireduced]
-            #tileinfo = tileinfo[ireduced]
-
-            args.tile = np.array(list(set(tileinfo['TILEID'])))
-            #print(args.tile)
-
-            #if True:
-            #    tileinfo = tileinfo[['lrg' in program or 'elg' in program for program in tileinfo['FAPRGRM']]]
-            #    args.tile = np.array(list(set(tileinfo['TILEID'])))
-            #print(tileinfo)
-
-        outdir = os.path.join(base_datadir, args.specprod, 'tiles')
-        htmldir = os.path.join(base_htmldir, args.specprod, 'tiles')
+            specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod, subdir)
+            
+        outdir = os.path.join(base_datadir, args.specprod, subdir)
+        htmldir = os.path.join(base_htmldir, args.specprod, subdir)
 
         def _findfiles(filedir, prefix='redrock'):
-            if args.coadd_type == 'cumulative':
+            if args.coadd_type == 'healpix':
+                thesefiles = []
+                for survey in args.survey:
+                    for program in args.program:
+                        log.info('Building file list for survey {} and program {}'.format(survey, program))
+                        if args.hpxpixel is not None:
+                            for onepix in args.hpxpixel:
+                                _thesefiles = glob(os.path.join(filedir, survey, program, onepix, '{}-{}-{}-*.fits'.format(prefix, survey, program)))
+                                thesefiles.append(_thesefiles)
+                        else:
+                            allpix = glob(os.path.join(filedir, survey, program, '*'))
+                            for onepix in allpix:
+                                _thesefiles = glob(os.path.join(onepix, '*', '{}-{}-{}-*.fits'.format(prefix, survey, program)))
+                                thesefiles.append(_thesefiles)
+                thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
+            elif args.coadd_type == 'cumulative':
                 if args.tile is not None:
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
                         filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
@@ -228,7 +253,6 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
         else:
             redrockfiles = _findfiles(specprod_dir, prefix='redrock')
             nfile = len(redrockfiles)
-
             outfiles = np.array([redrockfile.replace(specprod_dir, outdir).replace('redrock-', '{}-'.format(outprefix)) for redrockfile in redrockfiles])
             todo = np.ones(len(redrockfiles), bool)
             for ii, outfile in enumerate(outfiles):

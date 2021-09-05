@@ -9,11 +9,14 @@ FastSpec wrapper. Call with, e.g.,
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465 --specprod everest
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastspec2.fits --ntargets 1 --specprod everest
 
+  # Issue #32 test
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80696/20210309/redrock-7-80696-thru20210309.fits -o fastspec.fits --targetids 39633489506601735
+
   # redrock is wrong!
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80605/redrock-0-80605-deep.fits -o fastspec.fits --targetids 39627652595714901
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80605/20210205/redrock-0-80605-thru20210205.fits --specprod everest -o fastspec.fits --targetids 39627652595714901
 
   # good test of needing smoothing continuum residuals before line-fitting
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80605/redrock-9-80605-deep.fits -o fastspec.fits --targetids 39627658622930703
+  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80605/20210205/redrock-9-80605-thru20210205.fits --specprod everest -o fastspec.fits --targetids 39627658622930703
 
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/redrock-0-80613-deep.fits -o fastspec.fits --targetids 39633314155332057
   fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/redrock-0-80606-deep.fits -o fastspec.fits --ntargets 2
@@ -159,7 +162,7 @@ def parse(options=None):
     # make specprod required until this ticket is addressed--
     # https://github.com/desihub/desispec/issues/1077
     parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
-                        required=True, help='Spectroscopic production.')
+                        help='Spectroscopic production.')
     #parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
     #                    help='Type of spectral coadds corresponding to the input redrockfiles.')
 

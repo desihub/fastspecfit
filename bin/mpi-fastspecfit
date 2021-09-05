@@ -5,6 +5,9 @@ MPI wrapper for fastphot and fastspec.
 mpi-fastspecfit --mp 32 --coadd-type cumulative --tile 80608 --night 20201220 --plan --nompi
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
 
+mpi-fastspecfit --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest
+mpi-fastspecfit --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest --fastphot
+
 mpi-fastspecfit --merge --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest
 mpi-fastspecfit --merge --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest --fastphot
 
@@ -142,11 +145,15 @@ def main():
     from fastspecfit.mpi import plan
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
+                        help='Specify which type of spectra/zbest files to process.')
     parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production to process.')
-    parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
-                        help='Specify which type of spectra/zbest files to process.')
     
+    parser.add_argument('--hpxpixel', type=str, default=None, help='Comma-separated list of healpixels to process.')
+    parser.add_argument('--survey', type=str, default='main,sv1,sv2,sv3', help='Survey to process.')
+    parser.add_argument('--program', type=str, default='bright,dark', help='Program to process.') # backup not supported
+
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
     
