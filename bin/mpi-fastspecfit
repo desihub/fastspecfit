@@ -188,6 +188,10 @@ def main():
             comm = MPI.COMM_WORLD
         except ImportError:
             comm = None
+
+    if args.coadd_type == 'healpix':
+        args.survey = args.survey.split(',')
+        args.program = args.program.split(',')
             
     if args.merge:
         from fastspecfit.mpi import merge_fastspecfit

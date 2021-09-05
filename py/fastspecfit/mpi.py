@@ -141,8 +141,6 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             subdir = 'healpix'
             if args.hpxpixel is not None:
                 args.hpxpixel = args.hpxpixel.split(',')
-            args.survey = args.survey.split(',')
-            args.program = args.program.split(',')
         else:
             subdir = 'tiles'
 
@@ -372,11 +370,12 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
 
     """
     import fitsio
+    from copy import copy
     from astropy.io import fits
     from astropy.table import Table, vstack
     from fastspecfit.mpi import plan
     from fastspecfit.io import write_fastspecfit
-
+    
     if fastphot:
         outprefix = 'fastphot'
         extname = 'FASTPHOT'
@@ -384,10 +383,13 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
         outprefix = 'fastspec'
         extname = 'FASTSPEC'
 
-    outdir, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
-                                     specprod_dir=specprod_dir, base_datadir=base_datadir)
+    #if args.coadd_type == 'healpix':
+    #    subdir = 'healpix'
+    #else:
+    #    subdir = 'tiles'
+    #outdir = os.path.join(base_datadir, args.specprod, subdir)
 
-    mergedir = os.path.join(outdir, 'merged')
+    mergedir = os.path.join(base_datadir, args.specprod, 'catalogs')
     if not os.path.isdir(mergedir):
         os.makedirs(mergedir, exist_ok=True)
 
@@ -397,20 +399,40 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
     #    mergeprefix = ''
     #elif args.coadd_type == 'night-coadds':
 
-    mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
-    if os.path.isfile(mergefile) and not args.overwrite:
-        log.info('Merged output file {} exists!'.format(mergefile))
-        return
+    def _domerge(outfiles, survey=None, program=None):
+        t0 = time.time()
+        out, meta = [], []
+        for outfile in outfiles:
+            out.append(Table(fitsio.read(outfile, ext=extname)))
+            meta.append(Table(fitsio.read(outfile, ext='METADATA')))
+        out = vstack(out)
+        meta = vstack(meta)
+        log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
+            len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
+        
+        write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod,
+                          coadd_type=args.coadd_type, survey=survey, program=program,
+                          fastphot=fastphot)
 
-    t0 = time.time()
-    out, meta = [], []
-    for outfile in outfiles:
-        out.append(Table(fitsio.read(outfile, ext=extname)))
-        meta.append(Table(fitsio.read(outfile, ext='METADATA')))
-    out = vstack(out)
-    meta = vstack(meta)
-    log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
-        len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
-
-    write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod,
-                      coadd_type=args.coadd_type, fastphot=fastphot)
+    if args.coadd_type == 'healpix':
+        surveys = copy(args.survey)
+        programs = copy(args.program)
+        for survey in surveys:
+            for program in programs:
+                mergefile = os.path.join(mergedir, '{}-{}-{}-{}.fits'.format(outprefix, args.specprod, survey, program))
+                if os.path.isfile(mergefile) and not args.overwrite:
+                    log.info('Merged output file {} exists!'.format(mergefile))
+                    continue
+                args.survey = np.atleast_1d(survey)
+                args.program = np.atleast_1d(program)
+                _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
+                                            specprod_dir=specprod_dir, base_datadir=base_datadir)
+                _domerge(outfiles, survey=survey, program=program)
+            else:
+                mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
+                if os.path.isfile(mergefile) and not args.overwrite:
+                    log.info('Merged output file {} exists!'.format(mergefile))
+                    return
+                _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
+                                            specprod_dir=specprod_dir, base_datadir=base_datadir)
+                _domerge(outfiles)

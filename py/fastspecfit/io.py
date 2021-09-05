@@ -812,7 +812,8 @@ def read_fastspecfit(fastfitfile, fastphot=False):
         return None, None, None
 
 def write_fastspecfit(out, meta, outfile=None, specprod=None,
-                      coadd_type=None, fastphot=False):
+                      coadd_type=None, survey=None, program=None,
+                      fastphot=False):
     """Write out.
 
     """
@@ -823,45 +824,49 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None,
 
     log.info('Writing results for {} objects to {}'.format(len(out), outfile))
 
-    if False:
-        from astropy.io import fits
-        hduprim = fits.PrimaryHDU()
+    # astropy is really slow!
+    #from astropy.io import fits
+    #hduprim = fits.PrimaryHDU()
+    #
+    #hduout = fits.convenience.table_to_hdu(out)
+    #if fastphot:
+    #    hduout.header['EXTNAME'] = 'FASTPHOT'
+    #else:
+    #    hduout.header['EXTNAME'] = 'FASTSPEC'
+    #
+    #hdumeta = fits.convenience.table_to_hdu(meta)
+    #hdumeta.header['EXTNAME'] = 'METADATA'
+    #
+    #if specprod:
+    #    hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
+    #if coadd_type:
+    #    hdumeta.header['COADDTYP'] = (coadd_type, 'spectral coadd fitted')
+    #
+    #hx = fits.HDUList([hduprim, hduout, hdumeta])
+    #hx.writeto(outfile, overwrite=True, checksum=True)
 
-        hduout = fits.convenience.table_to_hdu(out)
-        if fastphot:
-            hduout.header['EXTNAME'] = 'FASTPHOT'
-        else:
-            hduout.header['EXTNAME'] = 'FASTSPEC'
-            
-        hdumeta = fits.convenience.table_to_hdu(meta)
-        hdumeta.header['EXTNAME'] = 'METADATA'
-        
-        if specprod:
-            hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
-        if coadd_type:
-            hdumeta.header['COADDTYP'] = (coadd_type, 'spectral coadd fitted')
+    hdr = []
+    if specprod:
+        hdr.append({'name': 'SPECPROD', 'value': specprod, 'comment': 'spectroscopic production name'})
+    if coadd_type:
+        hdr.append({'name': 'COADDTYP', 'value': coadd_type, 'comment': 'spectral coadd fitted'})
+    if survey:
+        hdr.append({'name': 'SURVEY', 'value': survey, 'comment': 'survey name'})
+    if program:
+        hdr.append({'name': 'FAPRGRM', 'value': program, 'comment': 'program name'})
 
-        hx = fits.HDUList([hduprim, hduout, hdumeta])
-        hx.writeto(outfile, overwrite=True, checksum=True)
+    fitsio.write(outfile, out.as_array(), header=hdr, clobber=True)
+    fitsio.write(outfile, meta.as_array(), header=hdr)
+
+    # update the extension name
+    if fastphot:
+        extname = 'FASTPHOT'
     else:
-        hdr = []
-        if specprod:
-            hdr.append({'name': 'SPECPROD', 'value': specprod, 'comment': 'spectroscopic production name'})
-        if coadd_type:
-            hdr.append({'name': 'COADDTYP', 'value': coadd_type, 'comment': 'spectral coadd fitted'})
-        
-        fitsio.write(outfile, out.as_array(), header=hdr, clobber=True)
-        fitsio.write(outfile, meta.as_array(), header=hdr)
+        extname = 'FASTSPEC'
 
-        # update the extension name
-        if fastphot:
-            extname = 'FASTPHOT'
-        else:
-            extname = 'FASTSPEC'
-
-        with fitsio.FITS(outfile, 'rw') as fits:
-            fits[1].write_key('EXTNAME', extname)
-            fits[2].write_key('EXTNAME', 'METADATA')
+    with fitsio.FITS(outfile, 'rw') as fits:
+        fits[1].write_key('EXTNAME', extname)
+        fits[2].write_key('EXTNAME', 'METADATA')
         
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
 
