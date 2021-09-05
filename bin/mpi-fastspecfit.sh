@@ -47,8 +47,7 @@ elif [ $stage = "fastspec" ]; then
     #time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit
     time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit
 elif [ $stage = "fastphot" ]; then
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --mp $mp --specprod $specprod --survey $survey --program $program --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit
-    #time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --fastphot 
 elif [ $stage = "qafastspec" ]; then
     time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --makeqa --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit
 elif [ $stage = "qafastphot" ]; then
