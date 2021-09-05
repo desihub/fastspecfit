@@ -122,6 +122,7 @@ class DESISpectra(object):
 
         """
         from glob import glob
+        from astropy.table import Column
         from desimodel.footprint import radec2pix
 
         if redrockfiles is None:
@@ -410,6 +411,10 @@ class DESISpectra(object):
                 #if col not in meta.colnames:
                 #    meta[col] = targets[col][srt]
             meta = Table(meta)
+            nobj = len(meta)
+            # placeholder (to be added in DESISpectra.read_and_unpack)
+            for band in ['G', 'R', 'Z', 'W1', 'W2']:
+                meta.add_column(Column(name='MW_TRANSMISSION_{}'.format(band), dtype='f4', length=nobj))
             metas.append(meta)
         log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
