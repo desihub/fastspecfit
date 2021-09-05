@@ -39,7 +39,11 @@ TARGETCOLS = np.array([
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
-    
+
+#SCDNDIR = {'81097': '/global/cfs/cdirs/desi/target/catalogs/dr9/0.53.0/targets/sv2/resolve/dark'}
+
+VETO_TILES = np.array([81097, 81098, 81099])
+
 class DESISpectra(object):
     def __init__(self, specprod=None):
         """Class to read in the DESI data needed by fastspecfit.
@@ -83,24 +87,29 @@ class DESISpectra(object):
                     targetdirs += [fahdr[moretarg]]
         if 'SCND' in fahdr:
             if fahdr['SCND'].strip() != '-':
+                #if tileid in SCDNDIR.keys():
+                #    targetdirs += [SCDNDIR[tileid]]
+                #else:
                 targetdirs += [fahdr['SCND']]
 
         desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
         for ii, targetdir in enumerate(targetdirs):
-            targetdir = os.path.join(desi_root, targetdir.replace('DESIROOT/', ''))
-
-            # sometimes this is a KPNO directory!
+            # for secondary targets, targetdir can be a filename
+            #if os.path.isfile(targetdir):
+            if targetdir[-4:] == 'fits': # fragile...
+                targetdir = os.path.dirname(targetdir)
             if not os.path.isdir(targetdir):
-                # for secondary targets, targetdir can be a filename
-                if os.path.isfile(targetdir):
-                    targetdir = os.path.dirname(targetdir)
-                if not os.path.isdir(targetdir):
-                    log.warning('Targets directory not found {}'.format(targetdir))
+                log.warning('Targets directory not found {}'.format(targetdir))
+                # can be a KPNO directory!
+                if 'DESIROOT' in targetdir:
+                    targetdir = os.path.join(desi_root, targetdir.replace('DESIROOT/', ''))
+                if targetdir[:6] == '/data/':
                     targetdir = os.path.join(desi_root, targetdir.replace('/data/', ''))
-                    if not os.path.isdir(targetdir):
-                        log.fatal('Targets directory not found {}'.format(targetdir))
-                        pdb.set_trace()
-                        raise IOError
+                
+            if not os.path.isdir(targetdir):
+                log.warning('Targets directory not found {}'.format(targetdir))
+                pdb.set_trace()
+                raise IOError
                 
             targetdirs[ii] = targetdir
 
@@ -230,8 +239,6 @@ class DESISpectra(object):
                 fitindx = np.where((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
                                    (meta['OBJTYPE'] == 'TGT') *
                                    (meta['COADD_FIBERSTATUS'] == 0))[0]
-                #if use_targetfile is False:
-                #    pdb.set_trace()
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -277,6 +284,20 @@ class DESISpectra(object):
                 raise ValueError
             expmeta = Table(expmeta[I])
             tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
+
+            if np.any(np.isin(tiles, VETO_TILES)):
+                remtargets = np.array(expmeta[np.isin(expmeta['TILEID'], VETO_TILES)]['TARGETID'].tolist())
+                remindx = np.isin(meta['TARGETID'], remtargets)
+                if np.sum(remindx) > 0:
+                    log.info('Removing {} targets from VETO_TILES.'.format(np.sum(remindx)))
+                    keepindx = np.where(np.logical_not(remindx))[0]
+                    meta = meta[keepindx]
+                    if len(meta) == 0:
+                        log.info('All targets have been removed from redrockfile {}'.format(redrockfile))
+                        continue
+                    zb = zb[keepindx]
+                    fitindx = fitindx[keepindx]
+                    tiles = tiles[np.logical_not(np.isin(tiles, VETO_TILES))]
 
             if thrunight:
                 meta['THRUNIGHT'] = thrunight
@@ -386,6 +407,7 @@ class DESISpectra(object):
                             alltargets = alltargets[match]
                         targets.append(alltargets)
 
+        #x=pdb.set_trace()
         targets = Table(np.hstack(targets))
         
         #from desitarget.io import releasedict
