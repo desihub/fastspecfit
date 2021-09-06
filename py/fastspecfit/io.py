@@ -358,7 +358,7 @@ class DESISpectra(object):
         alltileid = np.hstack(self.tiles)
         #alltileid = [meta['TILEID'][0] for meta in self.meta]
         info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
-        targets = []
+        targets, scndtargets = [], []
         for tileid in set(alltileid):
             targetdirs = self._get_targetdirs(tileid)
             for targetdir in targetdirs:
@@ -386,16 +386,23 @@ class DESISpectra(object):
                             break
                     if extname == '':
                         extname = 1
-                    alltargetcols = tinfo[extname].get_colnames()
-                    morecols = np.isin(TARGETCOLS, alltargetcols)
-                    if np.sum(morecols) > 0:
-                        readtargetcols = np.hstack((targetcols, TARGETCOLS[morecols]))
+                    alltargetcols = np.array(tinfo[extname].get_colnames())
+
+                    # secondary target catalogs are missing some or all of the
+                    # DR9 photometry columns we need
+                    # fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/153/15343/redrock-sv3-bright-15343.fits -o fastspec
+                    thesecols = np.isin(alltargetcols, TARGETCOLS)
+                    if np.sum(thesecols) == 0:
+                        log.warning('Problem reading target catalog {}'.format(targetfile))
+
+                    readtargetcols = np.hstack((targetcols, alltargetcols[thesecols]))
+                    #readtargetcols = np.hstack((targetcols, TARGETCOLS[thesecols]))
                     alltargets = tinfo[extname].read(columns=readtargetcols)
-                    
                     match = np.isin(alltargets['TARGETID'], info['TARGETID'])
                     log.info('Matched {} targets in {}'.format(np.sum(match), targetfile))
+                    
                     if np.sum(match) > 0:
-                        # hack to fix hacked SV1 target catalogs
+                        # hack for SV1 target catalogs---need to resort the column order
                         if not np.all(readtargetcols == np.array(alltargets.dtype.names)):
                             #_alltargets = Table(alltargets[match])[readtargetcols].as_array() # this doesn't work
                             _alltargets = Table(alltargets[match])
@@ -405,17 +412,40 @@ class DESISpectra(object):
                             alltargets = _newtargets.as_array()
                         else:
                             alltargets = alltargets[match]
-                        targets.append(alltargets)
 
-        #x=pdb.set_trace()
-        targets = Table(np.hstack(targets))
-        
+                        # handle secondary target catalogs in SV3 and main
+                        if np.sum(thesecols) < len(TARGETCOLS):
+                            scndtargets.append(alltargets)
+                        else:
+                            targets.append(alltargets)
+
+        if len(targets) > 0:
+            targets = Table(np.hstack(targets))
+        if len(scndtargets) > 0:
+            scndtargets = Table(np.hstack(scndtargets))
+            if len(targets) == 0:
+                targets = scndtargets
+            
         #from desitarget.io import releasedict
         #from desitarget.targets import decode_targetid  
         #_, _, releases, _, _, _ = decode_targetid(targets['TARGETID'])  
         #photsys = [releasedict[release] if release >= 9000 else None for release in releases]
 
-        # targets table can include duplicates from secondary programs...
+        if len(scndtargets) > 0:
+            _, uindx = np.unique(scndtargets['TARGETID'], return_index=True) 
+            scndtargets = scndtargets[uindx]
+
+            # add the missing columns, if any
+            _scndtargets = Table()
+            for col in targets.colnames:
+                if col in scndtargets.colnames:
+                    _scndtargets[col] = scndtargets[col]
+                else:
+                    _scndtargets.add_column(Column(name=col, dtype=targets[col].dtype, length=len(scndtargets)))
+            scndtargets = _scndtargets.as_array()
+            targets = np.hstack([targets, scndtargets])
+
+        # targets table can include duplicates...
         _, uindx = np.unique(targets['TARGETID'], return_index=True) 
         targets = targets[uindx]
 
@@ -428,15 +458,16 @@ class DESISpectra(object):
             srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in meta['TARGETID']])
             assert(np.all(meta['TARGETID'] == targets['TARGETID'][srt]))
             # prefer the target catalog quantities over those in the fiberassign table
-            for col in readtargetcols:
+            for col in targets.dtype.names:
                 meta[col] = targets[col][srt]
                 #if col not in meta.colnames:
                 #    meta[col] = targets[col][srt]
             meta = Table(meta)
+            #pdb.set_trace()
             nobj = len(meta)
             # placeholder (to be added in DESISpectra.read_and_unpack)
             for band in ['G', 'R', 'Z', 'W1', 'W2']:
-                meta.add_column(Column(name='MW_TRANSMISSION_{}'.format(band), dtype='f4', length=nobj))
+                meta.add_column(Column(name='MW_TRANSMISSION_{}'.format(band), data=np.ones(nobj, 'f4')))
             metas.append(meta)
         log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
@@ -562,11 +593,14 @@ class DESISpectra(object):
                 
                 #meta['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
                 #mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
-                mw_transmission_flux = np.array([mwdust_transmission(ebv[igal], band, data['photsys'], match_legacy_surveys=False) for band in CFit.bands])
-                for band, mwdust in zip(CFit.bands, mw_transmission_flux):
-                    #print(band, mwdust)
-                    self.meta[ispec]['MW_TRANSMISSION_{}'.format(band.upper())][igal] = mwdust
-                
+                if data['photsys'] != '':
+                    mw_transmission_flux = np.array([mwdust_transmission(ebv[igal], band, data['photsys'], match_legacy_surveys=False) for band in CFit.bands])
+                    for band, mwdust in zip(CFit.bands, mw_transmission_flux):
+                        #print(band, mwdust)
+                        self.meta[ispec]['MW_TRANSMISSION_{}'.format(band.upper())][igal] = mwdust
+                else:
+                    mw_transmission_flux = np.array([self.meta[ispec]['MW_TRANSMISSION_{}'.format(band.upper())][igal] for band in CFit.bands])
+
                 maggies = np.zeros(len(CFit.bands))
                 ivarmaggies = np.zeros(len(CFit.bands))
                 for iband, band in enumerate(CFit.bands):
@@ -583,7 +617,10 @@ class DESISpectra(object):
 
                 # fiber fluxes
                 #mw_transmission_fiberflux = 10**(-0.4 * ebv[igal] * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
-                mw_transmission_fiberflux = np.array([mwdust_transmission(ebv[igal], band, data['photsys']) for band in CFit.fiber_bands])
+                if data['photsys'] != '':                
+                    mw_transmission_fiberflux = np.array([mwdust_transmission(ebv[igal], band, data['photsys']) for band in CFit.fiber_bands])
+                else:
+                    mw_transmission_fiberflux = np.ones(len(CFit.fiber_bands))
 
                 fibermaggies = np.zeros(len(CFit.fiber_bands))
                 fibertotmaggies = np.zeros(len(CFit.fiber_bands))
