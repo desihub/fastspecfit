@@ -1257,35 +1257,43 @@ class ContinuumFit(ContinuumTools):
         
         objflam = data['phot']['flam'].data * self.fluxnorm
         objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
-        zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
         assert(np.all(objflamivar >= 0))
 
-        inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0
-
-        npix, nmodel = zsspflux_dustvdisp.shape
-        nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
-
-        zsspflam_dustvdisp = zsspflam_dustvdisp.reshape(len(self.bands), nage, self.nAV) # [nband,nage,nAV]
-
-        t0 = time.time()
-        AVchi2min, AVbest, AVivar = self._fnnls_parallel(zsspflam_dustvdisp, objflam,
-                                                         objflamivar, xparam=self.AV)
-        log.info('Fitting the photometry took: {:.2f} sec'.format(time.time()-t0))
-        if AVivar > 0:
-            log.info('Best-fitting photometric A(V)={:.4f}+/-{:.4f} with chi2={:.3f}'.format(
-                AVbest, 1/np.sqrt(AVivar), AVchi2min))
+        if np.all(objflamivar == 0): # can happen for secondary targets
+            log.info('All photometry is masked or not available!')
+            AVbest, AVivar = self.AV_nominal, 0.0
+            nage = self.nage
+            coeff = np.zeros(self.nage)
+            continuummodel = np.zeros(len(self.sspwave))
         else:
-            AVbest = self.AV_nominal
-            log.info('Finding photometric A(V) failed; adopting A(V)={:.4f}'.format(self.AV_nominal))
+            zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
 
-        # Get the final set of coefficients and chi2 at the best-fitting
-        # reddening and nominal velocity dispersion.
-        bestsspflux, bestphot = self.SSP2data(self.sspflux_dustvdisp[:, agekeep, inodust], # equivalent to calling with self.sspflux[:, agekeep]
-                                              self.sspwave, AV=AVbest, redshift=redshift,
-                                              south=data['photsys'] == 'S')
-        coeff, chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
-                                              objflam, objflamivar) # bestphot['flam'] is [nband, nage]
-        continuummodel = bestsspflux.dot(coeff)
+            inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0
+
+            npix, nmodel = zsspflux_dustvdisp.shape
+            nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
+
+            zsspflam_dustvdisp = zsspflam_dustvdisp.reshape(len(self.bands), nage, self.nAV) # [nband,nage,nAV]
+
+            t0 = time.time()
+            AVchi2min, AVbest, AVivar = self._fnnls_parallel(zsspflam_dustvdisp, objflam,
+                                                             objflamivar, xparam=self.AV)
+            log.info('Fitting the photometry took: {:.2f} sec'.format(time.time()-t0))
+            if AVivar > 0:
+                log.info('Best-fitting photometric A(V)={:.4f}+/-{:.4f} with chi2={:.3f}'.format(
+                    AVbest, 1/np.sqrt(AVivar), AVchi2min))
+            else:
+                AVbest = self.AV_nominal
+                log.info('Finding photometric A(V) failed; adopting A(V)={:.4f}'.format(self.AV_nominal))
+
+            # Get the final set of coefficients and chi2 at the best-fitting
+            # reddening and nominal velocity dispersion.
+            bestsspflux, bestphot = self.SSP2data(self.sspflux_dustvdisp[:, agekeep, inodust], # equivalent to calling with self.sspflux[:, agekeep]
+                                                  self.sspwave, AV=AVbest, redshift=redshift,
+                                                  south=data['photsys'] == 'S')
+            coeff, chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
+                                                  objflam, objflamivar) # bestphot['flam'] is [nband, nage]
+            continuummodel = bestsspflux.dot(coeff)
 
         # Compute DN4000, K-corrections, and rest-frame quantities.
         if np.count_nonzero(coeff > 0) == 0:
@@ -1630,8 +1638,17 @@ class ContinuumFit(ContinuumTools):
         # we have to set the limits *before* we call errorbar, below!
         dm = 0.75
         good = phot['abmag_ivar'] > 0
-        ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(continuum_phot_abmag[indx]))) + dm
-        ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(continuum_phot_abmag[indx]))) - dm
+        if np.sum(good) > 0:
+            ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(continuum_phot_abmag[indx]))) + dm
+            ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(continuum_phot_abmag[indx]))) - dm
+        else:
+            good = phot['abmag'] > 0
+            if np.sum(good) > 0:
+                ymin = np.nanmax(phot['abmag'][good]) + dm
+                ymax = np.nanmin(phot['abmag'][good]) - dm
+            else:
+                ymin, ymax = [30, 20]
+            
         if ymin > 31:
             ymin = 31
         if np.isnan(ymin) or np.isnan(ymax):
