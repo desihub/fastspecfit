@@ -402,12 +402,13 @@ class DESISpectra(object):
                     log.info('Matched {} targets in {}'.format(np.sum(match), targetfile))
                     
                     if np.sum(match) > 0:
-                        # hack for SV1 target catalogs---need to resort the column order
-                        if not np.all(readtargetcols == np.array(alltargets.dtype.names)):
+                        # need to make sure the column order is the same                        
+                        if len(targets) > 0 and not np.all(targets[len(targets)-1].dtype.names == alltargets.dtype.names):
+                        #if not np.all(readtargetcols == np.array(alltargets.dtype.names)):                            
                             #_alltargets = Table(alltargets[match])[readtargetcols].as_array() # this doesn't work
                             _alltargets = Table(alltargets[match])
                             _newtargets = Table()
-                            for col in readtargetcols:
+                            for col in targets[len(targets)-1].dtype.names:
                                 _newtargets[col] = _alltargets[col]
                             alltargets = _newtargets.as_array()
                         else:
@@ -421,6 +422,7 @@ class DESISpectra(object):
 
         if len(targets) > 0:
             targets = Table(np.hstack(targets))
+                
         if len(scndtargets) > 0:
             scndtargets = Table(np.hstack(scndtargets))
             if len(targets) == 0:
@@ -785,7 +787,9 @@ class DESISpectra(object):
 
         # The information stored in the metadata table depends on which spectra
         # were fitted (exposures, nightly coadds, deep coadds).
-        fluxcols = ['FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
+        fluxcols = ['PHOTSYS',
+                    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 
+                    'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
                     'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                     'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                     'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
