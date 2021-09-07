@@ -42,7 +42,7 @@ FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-
 
 #SCDNDIR = {'81097': '/global/cfs/cdirs/desi/target/catalogs/dr9/0.53.0/targets/sv2/resolve/dark'}
 
-VETO_TILES = np.array([81097, 81098, 81099])
+#VETO_TILES = np.array([81097, 81098, 81099])
 
 class DESISpectra(object):
     def __init__(self, specprod=None):
@@ -99,20 +99,21 @@ class DESISpectra(object):
             if targetdir[-4:] == 'fits': # fragile...
                 targetdir = os.path.dirname(targetdir)
             if not os.path.isdir(targetdir):
-                log.warning('Targets directory not found {}'.format(targetdir))
+                #log.warning('Targets directory not found {}'.format(targetdir))
                 # can be a KPNO directory!
                 if 'DESIROOT' in targetdir:
                     targetdir = os.path.join(desi_root, targetdir.replace('DESIROOT/', ''))
                 if targetdir[:6] == '/data/':
                     targetdir = os.path.join(desi_root, targetdir.replace('/data/', ''))
                 
-            if not os.path.isdir(targetdir):
-                log.warning('Targets directory not found {}'.format(targetdir))
-                pdb.set_trace()
-                raise IOError
+            if os.path.isdir(targetdir):
+                log.info('Found targets directory {}'.format(targetdir))
+                targetdirs[ii] = targetdir
+            else:
+                log.warning('Targets directory {} not found.'.format(targetdir))
+                #raise IOError
+                continue
                 
-            targetdirs[ii] = targetdir
-
         return targetdirs
 
     def find_specfiles(self, redrockfiles=None, firsttarget=0,
@@ -285,19 +286,21 @@ class DESISpectra(object):
             expmeta = Table(expmeta[I])
             tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
 
-            if np.any(np.isin(tiles, VETO_TILES)):
-                remtargets = np.array(expmeta[np.isin(expmeta['TILEID'], VETO_TILES)]['TARGETID'].tolist())
-                remindx = np.isin(meta['TARGETID'], remtargets)
-                if np.sum(remindx) > 0:
-                    log.info('Removing {} targets from VETO_TILES.'.format(np.sum(remindx)))
-                    keepindx = np.where(np.logical_not(remindx))[0]
-                    meta = meta[keepindx]
-                    if len(meta) == 0:
-                        log.info('All targets have been removed from redrockfile {}'.format(redrockfile))
-                        continue
-                    zb = zb[keepindx]
-                    fitindx = fitindx[keepindx]
-                    tiles = tiles[np.logical_not(np.isin(tiles, VETO_TILES))]
+            # this code is good for vetoing specific tiles
+            if False:
+                if np.any(np.isin(tiles, VETO_TILES)):
+                    remtargets = np.array(expmeta[np.isin(expmeta['TILEID'], VETO_TILES)]['TARGETID'].tolist())
+                    remindx = np.isin(meta['TARGETID'], remtargets)
+                    if np.sum(remindx) > 0:
+                        log.info('Removing {} targets from VETO_TILES.'.format(np.sum(remindx)))
+                        keepindx = np.where(np.logical_not(remindx))[0]
+                        meta = meta[keepindx]
+                        if len(meta) == 0:
+                            log.info('All targets have been removed from redrockfile {}'.format(redrockfile))
+                            continue
+                        zb = zb[keepindx]
+                        fitindx = fitindx[keepindx]
+                        tiles = tiles[np.logical_not(np.isin(tiles, VETO_TILES))]
 
             if thrunight:
                 meta['THRUNIGHT'] = thrunight
