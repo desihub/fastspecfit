@@ -470,7 +470,7 @@ class ContinuumTools(object):
 
                     onegauss = lambda x, amp, sigma, cont: amp * np.exp(-0.5 * x**2 / sigma**2) + cont
                     noneg = stackivar > 0
-                    if np.sum(noneg) > 0:
+                    if np.sum(noneg) > 10:
                         #snr = np.median(stackflux*np.sqrt(stackivar))
                         stacksigma = 1 / np.sqrt(stackivar[noneg])
                         try:

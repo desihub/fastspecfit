@@ -971,8 +971,7 @@ class EMLineFit(ContinuumTools):
 
                 # the padded pixels can have ivar==0
                 good = emlineivar[lineindx] > 0
-                if np.sum(good) > 0:
-                    lineindx = lineindx[good]
+                lineindx = lineindx[good]
                 
             npix = len(lineindx)
 
@@ -985,6 +984,8 @@ class EMLineFit(ContinuumTools):
                 boxflux = np.sum(emlineflux[lineindx])
                 
                 boxflux_ivar = 1 / np.sum(1 / emlineivar[lineindx])
+                if np.any(emlineivar[lineindx] == 0):
+                    pdb.set_trace()
                 #if np.any(emlineivar[lineindx] == 0):
                 #    pdb.set_trace()
 
