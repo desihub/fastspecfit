@@ -25,6 +25,8 @@ package=fastspecfit
 #export PATH=/opt/conda/bin:$PATH # nersc hack!
 export PATH=/global/homes/i/ioannis/repos/desihub/$package/bin:$PATH
 export PYTHONPATH=/global/homes/i/ioannis/repos/desihub/$package/py:$PYTHONPATH
+base_datadir=/global/cfs/cdirs/desi/spectro/fastspecfit
+base_htmldir=/global/cfs/cdirs/desi/users/ioannis/fastspecfit
 
 ##for package in desispec desitarget desiutil desimodel speclite specsim; do
 #for package in desiutil desispec specter; do
@@ -36,6 +38,11 @@ export DESI_ROOT='/global/cfs/cdirs/desi'
 export DUST_DIR='/global/cfs/cdirs/cosmo/data/dust/v0_1'
 export FASTSPECFIT_TEMPLATES='/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
 
+# matplotlib
+export MPLCONFIGDIR=$TMPCACHE/matplotlib
+mkdir $MPLCONFIGDIR
+cp -r $HOME/.config/matplotlib $MPLCONFIGDIR
+
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export KMP_AFFINITY=disabled
@@ -44,14 +51,14 @@ export MPICH_GNI_FORK_MODE=FULLCOPY
 if [ $stage = "test" ]; then
     time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --help
 elif [ $stage = "fastspec" ]; then
-    #time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit
+    #time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir $base_datadir
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --base-datadir $base_datadir
 elif [ $stage = "fastphot" ]; then
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --fastphot 
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --base-datadir $base_datadir --fastphot 
 elif [ $stage = "qafastspec" ]; then
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --makeqa --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --makeqa --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir $base_datadir --base-htmldir $base_htmldir
 elif [ $stage = "qafastphot" ]; then
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --makeqa --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --fastphot --makeqa --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir $base_datadir --base-htmldir $base_htmldir
 else
     echo "Unrecognized stage "$stage
 fi
