@@ -40,10 +40,9 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
     if rank == 0:
         log.info('Starting at {}'.format(time.asctime()))
 
-    _, zbestfiles, outfiles, groups, grouptimes = plan(args, comm=comm, fastphot=fastphot,
-                                                       specprod_dir=specprod_dir,
-                                                       base_datadir=base_datadir,
-                                                       base_htmldir=base_htmldir)
+    _, zbestfiles, outfiles, groups, ntargets, grouptimes = plan(
+        args, comm=comm, fastphot=fastphot, specprod_dir=specprod_dir,
+        base_datadir=base_datadir, base_htmldir=base_htmldir)
 
     if rank == 0:
         log.info('Initial setup took {:.1f} sec'.format(time.time() - t0))
@@ -53,6 +52,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         zbestfiles = comm.bcast(zbestfiles, root=0)
         outfiles = comm.bcast(outfiles, root=0)
         groups = comm.bcast(groups, root=0)
+        ntargets = comm.bcast(ntargets, root=0)
 
     # all done
     if len(zbestfiles) == 0:
@@ -65,6 +65,10 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
     for ii in groups[rank]:
         log.info('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
+
+        if ntargets[ii] == 0:
+            log.info('All done: no targets in {}'.format(zbestfiles[ii]))
+            continue
 
         if args.makeqa:
             #  hack--the desired output directories are in the 'zbestfiles' variable!
@@ -113,7 +117,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             dt1 = time.time() - t1
             if err == 0:
                 log.info('  rank {} done in {:.2f} sec'.format(rank, dt1))
-                if not os.path.exists(outfiles[ii]):
+                if not os.path.exists(outfiles[ii]) and ntargets[ii] > 0:
                     log.warning('  rank {} missing {}'.format(rank, outfiles[ii]))
             else:
                 log.warning('  rank {} broke after {:.1f} sec with error code {}'.format(rank, dt1, err))
@@ -130,7 +134,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
     if rank == 0 and not args.dry_run:
         for outfile in outfiles:
-            if not os.path.exists(outfile):
+            if not os.path.exists(outfile) and ntargets[ii] > 0:
                 log.warning('Missing {}'.format(outfile))
 
         log.info('All done at {}'.format(time.asctime()))

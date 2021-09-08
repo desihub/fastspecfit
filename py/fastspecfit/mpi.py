@@ -74,33 +74,38 @@ def group_redrockfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
         if makeqa:
             ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
         else:
-            ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
-            #zb = fitsio.read(specfiles[j], 'REDSHIFTS', columns=['Z', 'ZWARN', 'TARGETID'])
-            #fm = fitsio.read(specfiles[j], 'FIBERMAP', columns=['OBJTYPE', 'COADD_FIBERSTATUS', 'TARGETID'])
-            #_, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)
-            #fm = fm[I]
-            #assert(np.all(zb['TARGETID'] == fm['TARGETID']))
-            #J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
-            #     (fm['OBJTYPE'] == 'TGT') * (fm['COADD_FIBERSTATUS'] == 0))
-            #ntargets[i] = np.count_nonzero(J)
+            #ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
+            zb = fitsio.read(specfiles[j], 'REDSHIFTS', columns=['Z', 'ZWARN'])
+            fm = fitsio.read(specfiles[j], 'FIBERMAP', columns=['OBJTYPE', 'COADD_FIBERSTATUS'])
+            J = ((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') * 
+                 (fm['OBJTYPE'] == 'TGT') * (fm['COADD_FIBERSTATUS'] == 0))
+            nt = np.sum(J)
+            ntargets[i] = nt
+        log.debug(i, j, specfiles[j], ntargets[i])
 
-    if comm is not None:
-        ntargets = comm.gather(ntargets)
-        if rank == 0:
-            ntargets = np.concatenate(ntargets)
-        ntargets = comm.bcast(ntargets, root=0)
+    if False:
+        if comm is not None:
+            ntargets = comm.gather(ntargets)
+            if rank == 0:
+                ntargets = np.concatenate(ntargets)
+            ntargets = comm.bcast(ntargets, root=0)
 
-    runtimes = 30 + 0.4*ntargets
+        sumntargets = np.sum(sumntargets)
+        runtimes = 30 + 0.4*sumntargets
 
-    # Aim for 25 minutes, but don't exceed maxnodes number of nodes.
-    ntime = 25
-    if comm is not None:
-        numnodes = comm.size
+        # Aim for 25 minutes, but don't exceed maxnodes number of nodes.
+        ntime = 25
+        if comm is not None:
+            numnodes = comm.size
+        else:
+            numnodes = min(maxnodes, int(np.ceil(np.sum(runtimes)/(ntime*60))))
+
+        groups, grouptimes = weighted_partition(runtimes, numnodes)
+        ntargets = np.array([np.sum(ntargets[ii]) for ii in groups])
     else:
-        numnodes = min(maxnodes, int(np.ceil(np.sum(runtimes)/(ntime*60))))
+        groups = pixgroups
+        grouptimes = None
 
-    groups, grouptimes = weighted_partition(runtimes, numnodes)
-    ntargets = np.array([np.sum(ntargets[ii]) for ii in groups])
     return groups, ntargets, grouptimes
 
 def backup_logs(logfile):
@@ -200,7 +205,8 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
                             for onepix in allpix:
                                 _thesefiles = glob(os.path.join(onepix, '*', '{}-{}-{}-*.fits'.format(prefix, survey, program)))
                                 thesefiles.append(_thesefiles)
-                thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
+                if len(thesefiles) > 0:
+                    thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
             elif args.coadd_type == 'cumulative':
                 if args.tile is not None:
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
@@ -216,7 +222,8 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
                         for night in args.night:
                             thesefiles.append(glob(os.path.join(
                                 filedir, 'pernight', str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
-                    thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
+                    if len(thesefiles) > 0:
+                        thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
                 elif args.tile is not None and args.night is None:
                     thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
                         filedir, 'pernight', str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
@@ -299,11 +306,13 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             return '', list(), list(), list(), list()
 
     if args.makeqa:
-        groups, ntargets, grouptimes = group_redrockfiles(outfiles, args.maxnodes, comm=comm, makeqa=True)
+        groups, ntargets, grouptimes = group_redrockfiles(
+            outfiles, args.maxnodes, comm=comm, makeqa=True)
     else:
-        groups, ntargets, grouptimes = group_redrockfiles(redrockfiles, args.maxnodes, comm=comm)
+        groups, ntargets, grouptimes = group_redrockfiles(
+            redrockfiles, args.maxnodes, comm=comm)
 
-    if args.plan and rank == 0:
+    if args.plan and rank == 0 and False:
         plantime = time.time() - t0
         if plantime + np.max(grouptimes) <= (30*60):
             queue = 'debug'
@@ -362,7 +371,7 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
                 rrcmd += ' --outdir {}'.format(os.path.abspath(args.outdir))
             print('srun -N $nodes -n $nodes -c {} {}'.format(maxproc, rrcmd))
 
-    return outdir, redrockfiles, outfiles, groups, grouptimes
+    return outdir, redrockfiles, outfiles, groups, ntargets, grouptimes
 
 def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.'):
     """Merge all the individual catalogs into a single large catalog. Runs only on
@@ -399,12 +408,20 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
     #    mergeprefix = ''
     #elif args.coadd_type == 'night-coadds':
 
-    def _domerge(outfiles, survey=None, program=None):
+    def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None):
         t0 = time.time()
         out, meta = [], []
         for outfile in outfiles:
-            out.append(Table(fitsio.read(outfile, ext=extname)))
-            meta.append(Table(fitsio.read(outfile, ext='METADATA')))
+            info = fitsio.FITS(outfile)
+            ext = [_info.get_extname() for _info in info]
+            if extname not in ext:
+                log.warning('Missing extension {} in file {}'.format(extname, outfile))
+                continue
+            if 'METADATA' not in ext:
+                log.warning('Missing extension METADATA in file {}'.format(outfile))
+                continue
+            out.append(Table(info[extname].read()))
+            meta.append(Table(info['METADATA'].read()))
         out = vstack(out)
         meta = vstack(meta)
         log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
@@ -427,12 +444,14 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
                 args.program = np.atleast_1d(program)
                 _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
                                             specprod_dir=specprod_dir, base_datadir=base_datadir)
-                _domerge(outfiles, survey=survey, program=program)
-            else:
-                mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
-                if os.path.isfile(mergefile) and not args.overwrite:
-                    log.info('Merged output file {} exists!'.format(mergefile))
-                    return
-                _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
-                                            specprod_dir=specprod_dir, base_datadir=base_datadir)
-                _domerge(outfiles)
+                if len(outfiles) > 0:
+                    _domerge(outfiles, extname=extname, survey=survey, program=program)
+    else:
+        mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
+        if os.path.isfile(mergefile) and not args.overwrite:
+            log.info('Merged output file {} exists!'.format(mergefile))
+            return
+        _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
+                                    specprod_dir=specprod_dir, base_datadir=base_datadir)
+        if len(outfiles) > 0:
+            _domerge(outfiles, extname=extname)
