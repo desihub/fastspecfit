@@ -34,26 +34,27 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
     else:
         rank, size = comm.rank, comm.size
 
-    args.maxnodes = min(args.maxnodes, size)
-
     t0 = time.time()
     if rank == 0:
-        log.info('Starting at {}'.format(time.asctime()))
-
+        #log.info('Starting at {}'.format(time.asctime()))
         _, zbestfiles, outfiles, groups, ntargets = plan(
             args, comm=comm, fastphot=fastphot, specprod_dir=specprod_dir,
             base_datadir=base_datadir, base_htmldir=base_htmldir)
+        log.info('Planning took {:.2f} sec'.format(time.time() - t0))
+    else:
+        zbestfiles, outfiles, groups, ntargets = [], [], [], []
 
-    if rank == 0:
-        log.info('Initial setup took {:.1f} sec'.format(time.time() - t0))
-
-    sys.stdout.flush()
     if comm:
         zbestfiles = comm.bcast(zbestfiles, root=0)
         outfiles = comm.bcast(outfiles, root=0)
         groups = comm.bcast(groups, root=0)
         ntargets = comm.bcast(ntargets, root=0)
 
+    #if comm:
+    #    comm.barrier()
+
+    sys.stdout.flush()
+    
     # all done
     if len(zbestfiles) == 0:
         return
@@ -159,7 +160,6 @@ def main():
     parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
-    parser.add_argument('--maxnodes', type=int, default=256, help='maximum number of nodes to use')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
@@ -181,7 +181,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.merge or args.makeqa or args.nompi:
+    if args.merge or args.nompi:
         comm = None
     else:
         try:
@@ -198,11 +198,18 @@ def main():
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(args, fastphot=args.fastphot, specprod_dir=specprod_dir,
                           base_datadir=args.base_datadir)
-    elif args.plan:
-        plan(args, comm=comm, fastphot=args.fastphot,
-             specprod_dir=specprod_dir,
-             base_datadir=args.base_datadir,
-             base_htmldir=args.base_htmldir)
+        return
+        
+    if args.plan:
+        if comm is None:
+            rank = 0
+        else:
+            rank = comm.rank
+        if rank == 0:
+            plan(args, comm=comm, fastphot=args.fastphot,
+                 specprod_dir=specprod_dir,
+                 base_datadir=args.base_datadir,
+                 base_htmldir=args.base_htmldir)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot,
                         specprod_dir=specprod_dir, makeqa=args.makeqa,

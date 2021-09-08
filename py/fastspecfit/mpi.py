@@ -154,188 +154,181 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
     else:
         outprefix = 'fastspec'
 
-    if rank == 0:
-        desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
-        # look for data in the standard location
+    desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
+    # look for data in the standard location
 
-        if args.coadd_type == 'healpix':
-            subdir = 'healpix'
-            if args.hpxpixel is not None:
-                args.hpxpixel = args.hpxpixel.split(',')
-        else:
-            subdir = 'tiles'
-
-            # figure out which tiles belong to the SV programs
-            if args.tile is None:
-                tilefile = os.path.join(desi_root, 'spectro', 'redux', args.specprod, 'tiles-{}.csv'.format(args.specprod))
-                alltileinfo = Table.read(tilefile)
-                tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
-                #tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
-
-                #log.info('Add tiles 80605-80610 which are incorrectly identified as cmx tiles.')
-                #tileinfo = vstack((tileinfo, alltileinfo[np.where((alltileinfo['TILEID'] >= 80605) * (alltileinfo['TILEID'] <= 80610))[0]]))
-                #tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
-
-                log.info('Retrieved a list of {} {} tiles from {}'.format(
-                    len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
-
-                # old 
-                #tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
-                #tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
-                #tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
-                #log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
-
-                #alltiles = np.array(list(set(tileinfo['TILEID'])))
-                #ireduced = [os.path.isdir(os.path.join(specprod_dir, args.coadd_type, str(tile1))) for tile1 in alltiles]
-                #log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
-                #    args.specprod, np.sum(ireduced), len(alltiles)))
-                #args.tile = alltiles[ireduced]
-                #tileinfo = tileinfo[ireduced]
-
-                args.tile = np.array(list(set(tileinfo['TILEID'])))
-                #print(args.tile)
-
-                #if True:
-                #    tileinfo = tileinfo[['lrg' in program or 'elg' in program for program in tileinfo['FAPRGRM']]]
-                #    args.tile = np.array(list(set(tileinfo['TILEID'])))
-                #print(tileinfo)
-
-        if specprod_dir is None:
-            specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod, subdir)
-            
-        outdir = os.path.join(base_datadir, args.specprod, subdir)
-        htmldir = os.path.join(base_htmldir, args.specprod, subdir)
-
-        def _findfiles(filedir, prefix='redrock'):
-            if args.coadd_type == 'healpix':
-                thesefiles = []
-                for survey in args.survey:
-                    for program in args.program:
-                        log.info('Building file list for survey {} and program {}'.format(survey, program))
-                        if args.hpxpixel is not None:
-                            for onepix in args.hpxpixel:
-                                _thesefiles = glob(os.path.join(filedir, survey, program, onepix, '{}-{}-{}-*.fits'.format(prefix, survey, program)))
-                                thesefiles.append(_thesefiles)
-                        else:
-                            allpix = glob(os.path.join(filedir, survey, program, '*'))
-                            for onepix in allpix:
-                                _thesefiles = glob(os.path.join(onepix, '*', '{}-{}-{}-*.fits'.format(prefix, survey, program)))
-                                thesefiles.append(_thesefiles)
-                if len(thesefiles) > 0:
-                    thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
-            elif args.coadd_type == 'cumulative':
-                if args.tile is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                        filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
-                        prefix, tile))) for tile in args.tile]))))
-                else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(
-                        filedir, 'cumulative', '?????', '????????', '{}-[0-9]-?????-thru????????.fits'.format(prefix))))))
-            elif args.coadd_type == 'pernight':
-                if args.tile is not None and args.night is not None:
-                    thesefiles = []
-                    for tile in args.tile:
-                        for night in args.night:
-                            thesefiles.append(glob(os.path.join(
-                                filedir, 'pernight', str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
-                    if len(thesefiles) > 0:
-                        thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
-                elif args.tile is not None and args.night is None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                        filedir, 'pernight', str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
-                        prefix, tile))) for tile in args.tile]))))
-                elif args.tile is None and args.night is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                        filedir, 'pernight', '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
-                        prefix, night))) for night in args.night]))))
-                else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(
-                        filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
-            elif args.coadd_type == 'perexp':
-                if args.tile is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                        filedir, 'perexp', str(tile), '????????', '{}-[0-9]-{}-exp????????.fits'.format(
-                        prefix, tile))) for tile in args.tile]))))
-                else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(
-                        filedir, 'perexp', '?????', '????????', '{}-[0-9]-?????-exp????????.fits'.format(prefix))))))
-            else:
-                pass
-            return thesefiles
-
-        if args.merge:
-            redrockfiles = None
-            outfiles = _findfiles(outdir, prefix=outprefix)
-            log.info('Found {} {} files to be merged.'.format(len(outfiles), outprefix))
-        elif args.makeqa:
-            redrockfiles = None
-            outfiles = _findfiles(outdir, prefix=outprefix)
-            log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
-            ntargs = [(outfile, True) for outfile in outfiles]
-        else:
-            redrockfiles = _findfiles(specprod_dir, prefix='redrock')
-            nfile = len(redrockfiles)
-            outfiles = np.array([redrockfile.replace(specprod_dir, outdir).replace('redrock-', '{}-'.format(outprefix)) for redrockfile in redrockfiles])
-            todo = np.ones(len(redrockfiles), bool)
-            for ii, outfile in enumerate(outfiles):
-                if os.path.isfile(outfile) and not args.overwrite:
-                    todo[ii] = False
-            redrockfiles = redrockfiles[todo]
-            outfiles = outfiles[todo]
-            log.info('Found {}/{} redrockfiles (left) to do.'.format(len(redrockfiles), nfile))
-            ntargs = [(redrockfile, False) for redrockfile in redrockfiles]
-
-        # create groups weighted by the number of targets
-        if args.merge:
-            groups = [np.arange(len(outfiles))]
-            ntargets = None
-        else:
-            if args.mp > 1:
-                with multiprocessing.Pool(args.mp) as P:
-                    ntargets = P.map(_get_ntargets_one, ntargs)
-            else:
-                ntargets = [get_ntargets_one(*_ntargs) for _ntargs in ntargs]
-            ntargets = np.array(ntargets)
-
-            iempty = np.where(ntargets==0)[0]
-            if len(iempty) > 0:
-                log.info('Skipping {} files with no targets.'.format(len(iempty)))
-
-            itodo = np.where(ntargets > 0)[0]
-            if len(itodo) > 0:
-                ntargets = ntargets[itodo]
-                indices = np.arange(len(ntargets))
-                if redrockfiles is not None:
-                    redrockfiles = redrockfiles[itodo]
-                if outfiles is not None:
-                    outfiles = outfiles[itodo]
-
-                # Assign the sample to ranks to make the ntargets distribution per rank ~flat.
-                # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
-                cumuweight = ntargets.cumsum() / ntargets.sum()
-                idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
-                if len(idx) < size: # can happen in corner cases or with 1 rank
-                    groups = np.array_split(indices, size) # unweighted
-                else:
-                    groups = np.array_split(indices, idx) # weighted
-                for ii in range(size): # sort by weight
-                    srt = np.argsort(ntargets[groups[ii]])
-                    groups[ii] = groups[ii][srt]
-            else:
-                groups = [np.array([])]
+    if args.coadd_type == 'healpix':
+        subdir = 'healpix'
+        if args.hpxpixel is not None:
+            args.hpxpixel = args.hpxpixel.split(',')
     else:
-        outdir = None
-        redrockfiles = None
-        outfiles = None
-        groups = None
-        ntargets = None
+        subdir = 'tiles'
 
-    if comm:
-        outdir = comm.bcast(outdir, root=0)
-        redrockfiles = comm.bcast(redrockfiles, root=0)
-        outfiles = comm.bcast(outfiles, root=0)
-        groups = comm.bcast(groups, root=0)
-        ntargets = comm.bcast(ntargets, root=0)
+        # figure out which tiles belong to the SV programs
+        if args.tile is None:
+            tilefile = os.path.join(desi_root, 'spectro', 'redux', args.specprod, 'tiles-{}.csv'.format(args.specprod))
+            alltileinfo = Table.read(tilefile)
+            tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
+            #tileinfo = tileinfo[['sv' in survey or 'cmx' in survey for survey in tileinfo['SURVEY']]]
+
+            #log.info('Add tiles 80605-80610 which are incorrectly identified as cmx tiles.')
+            #tileinfo = vstack((tileinfo, alltileinfo[np.where((alltileinfo['TILEID'] >= 80605) * (alltileinfo['TILEID'] <= 80610))[0]]))
+            #tileinfo = tileinfo[np.argsort(tileinfo['TILEID'])]
+
+            log.info('Retrieved a list of {} {} tiles from {}'.format(
+                len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
+
+            # old 
+            #tilefile = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-tiles.fits'
+            #tileinfo = fitsio.read(tilefile)#, columns='PROGRAM')
+            #tileinfo = tileinfo[tileinfo['PROGRAM'] == 'SV1']
+            #log.info('Retrieved a list of {} SV1 tiles from {}'.format(len(tileinfo), tilefile))
+
+            #alltiles = np.array(list(set(tileinfo['TILEID'])))
+            #ireduced = [os.path.isdir(os.path.join(specprod_dir, args.coadd_type, str(tile1))) for tile1 in alltiles]
+            #log.info('In specprod={}, {}/{} of these tiles have been reduced.'.format(
+            #    args.specprod, np.sum(ireduced), len(alltiles)))
+            #args.tile = alltiles[ireduced]
+            #tileinfo = tileinfo[ireduced]
+
+            args.tile = np.array(list(set(tileinfo['TILEID'])))
+            #print(args.tile)
+
+            #if True:
+            #    tileinfo = tileinfo[['lrg' in program or 'elg' in program for program in tileinfo['FAPRGRM']]]
+            #    args.tile = np.array(list(set(tileinfo['TILEID'])))
+            #print(tileinfo)
+
+    if specprod_dir is None:
+        specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod, subdir)
+
+    outdir = os.path.join(base_datadir, args.specprod, subdir)
+    htmldir = os.path.join(base_htmldir, args.specprod, subdir)
+
+    def _findfiles(filedir, prefix='redrock'):
+        if args.coadd_type == 'healpix':
+            thesefiles = []
+            for survey in args.survey:
+                for program in args.program:
+                    log.info('Building file list for survey {} and program {}'.format(survey, program))
+                    if args.hpxpixel is not None:
+                        for onepix in args.hpxpixel:
+                            _thesefiles = glob(os.path.join(filedir, survey, program, onepix, '{}-{}-{}-*.fits'.format(prefix, survey, program)))
+                            thesefiles.append(_thesefiles)
+                    else:
+                        allpix = glob(os.path.join(filedir, survey, program, '*'))
+                        for onepix in allpix:
+                            _thesefiles = glob(os.path.join(onepix, '*', '{}-{}-{}-*.fits'.format(prefix, survey, program)))
+                            thesefiles.append(_thesefiles)
+            if len(thesefiles) > 0:
+                thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
+        elif args.coadd_type == 'cumulative':
+            if args.tile is not None:
+                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                    filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
+                    prefix, tile))) for tile in args.tile]))))
+            else:
+                thesefiles = np.array(sorted(set(glob(os.path.join(
+                    filedir, 'cumulative', '?????', '????????', '{}-[0-9]-?????-thru????????.fits'.format(prefix))))))
+        elif args.coadd_type == 'pernight':
+            if args.tile is not None and args.night is not None:
+                thesefiles = []
+                for tile in args.tile:
+                    for night in args.night:
+                        thesefiles.append(glob(os.path.join(
+                            filedir, 'pernight', str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
+                if len(thesefiles) > 0:
+                    thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
+            elif args.tile is not None and args.night is None:
+                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                    filedir, 'pernight', str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
+                    prefix, tile))) for tile in args.tile]))))
+            elif args.tile is None and args.night is not None:
+                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                    filedir, 'pernight', '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
+                    prefix, night))) for night in args.night]))))
+            else:
+                thesefiles = np.array(sorted(set(glob(os.path.join(
+                    filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
+        elif args.coadd_type == 'perexp':
+            if args.tile is not None:
+                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                    filedir, 'perexp', str(tile), '????????', '{}-[0-9]-{}-exp????????.fits'.format(
+                    prefix, tile))) for tile in args.tile]))))
+            else:
+                thesefiles = np.array(sorted(set(glob(os.path.join(
+                    filedir, 'perexp', '?????', '????????', '{}-[0-9]-?????-exp????????.fits'.format(prefix))))))
+        else:
+            pass
+        return thesefiles
+
+    if args.merge:
+        redrockfiles = None
+        outfiles = _findfiles(outdir, prefix=outprefix)
+        log.info('Found {} {} files to be merged.'.format(len(outfiles), outprefix))
+    elif args.makeqa:
+        redrockfiles = None
+        outfiles = _findfiles(outdir, prefix=outprefix)
+        log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
+        ntargs = [(outfile, True) for outfile in outfiles]
+    else:
+        redrockfiles = _findfiles(specprod_dir, prefix='redrock')
+        nfile = len(redrockfiles)
+        outfiles = np.array([redrockfile.replace(specprod_dir, outdir).replace('redrock-', '{}-'.format(outprefix)) for redrockfile in redrockfiles])
+        todo = np.ones(len(redrockfiles), bool)
+        for ii, outfile in enumerate(outfiles):
+            if os.path.isfile(outfile) and not args.overwrite:
+                todo[ii] = False
+        redrockfiles = redrockfiles[todo]
+        outfiles = outfiles[todo]
+        log.info('Found {}/{} redrockfiles (left) to do.'.format(len(redrockfiles), nfile))
+        ntargs = [(redrockfile, False) for redrockfile in redrockfiles]
+
+    # create groups weighted by the number of targets
+    if args.merge:
+        groups = [np.arange(len(outfiles))]
+        ntargets = None
+    else:
+        if args.mp > 1:
+            with multiprocessing.Pool(args.mp) as P:
+                ntargets = P.map(_get_ntargets_one, ntargs)
+        else:
+            ntargets = [get_ntargets_one(*_ntargs) for _ntargs in ntargs]
+        ntargets = np.array(ntargets)
+
+        iempty = np.where(ntargets==0)[0]
+        if len(iempty) > 0:
+            log.info('Skipping {} files with no targets.'.format(len(iempty)))
+
+        itodo = np.where(ntargets > 0)[0]
+        if len(itodo) > 0:
+            ntargets = ntargets[itodo]
+            indices = np.arange(len(ntargets))
+            if redrockfiles is not None:
+                redrockfiles = redrockfiles[itodo]
+            if outfiles is not None:
+                outfiles = outfiles[itodo]
+
+            # Assign the sample to ranks to make the ntargets distribution per rank ~flat.
+            # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
+            cumuweight = ntargets.cumsum() / ntargets.sum()
+            idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
+            if len(idx) < size: # can happen in corner cases or with 1 rank
+                groups = np.array_split(indices, size) # unweighted
+            else:
+                groups = np.array_split(indices, idx) # weighted
+            for ii in range(size): # sort by weight
+                srt = np.argsort(ntargets[groups[ii]])
+                groups[ii] = groups[ii][srt]
+        else:
+            groups = [np.array([])]
+
+    #if comm:
+    #    outdir = comm.bcast(outdir, root=0)
+    #    redrockfiles = comm.bcast(redrockfiles, root=0)
+    #    outfiles = comm.bcast(outfiles, root=0)
+    #    groups = comm.bcast(groups, root=0)
+    #    ntargets = comm.bcast(ntargets, root=0)
 
     if args.merge:
         if len(outfiles) == 0:

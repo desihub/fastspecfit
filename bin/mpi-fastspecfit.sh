@@ -39,6 +39,7 @@ export DUST_DIR='/global/cfs/cdirs/cosmo/data/dust/v0_1'
 export FASTSPECFIT_TEMPLATES='/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
 
 # matplotlib
+export TMPCACHE=$(mktemp -d)
 export MPLCONFIGDIR=$TMPCACHE/matplotlib
 mkdir $MPLCONFIGDIR
 cp -r $HOME/.config/matplotlib $MPLCONFIGDIR
