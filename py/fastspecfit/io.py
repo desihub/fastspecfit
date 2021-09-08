@@ -411,9 +411,13 @@ class DESISpectra(object):
                             #_alltargets = Table(alltargets[match])[readtargetcols].as_array() # this doesn't work
                             _alltargets = Table(alltargets[match])
                             _newtargets = Table()
-                            for col in targets[len(targets)-1].dtype.names:
-                                _newtargets[col] = _alltargets[col]
-                            alltargets = _newtargets.as_array()
+                            I = len(targets) - 1
+                            for col in targets[I].dtype.names:
+                                if col in _alltargets.colnames:
+                                    _newtargets[col] = _alltargets[col]
+                                else:
+                                    _newtargets.add_column(Column(name=col, dtype=targets[I][col].dtype, length=len(_alltargets)))
+                                alltargets = _newtargets.as_array()
                         else:
                             alltargets = alltargets[match]
 
