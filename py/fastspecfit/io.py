@@ -207,7 +207,8 @@ class DESISpectra(object):
             expfmcols = ['TARGETID', 'TILEID', 'FIBER']
             
             # add targeting columns
-            fmcols = np.array(fmcols + [col for col in TARGETINGBITCOLS if col in allfmcols]).tolist()
+            HAVE_TARGETINGBITCOLS = [col for col in TARGETINGBITCOLS if col in allfmcols]
+            fmcols = np.array(fmcols + HAVE_TARGETINGBITCOLS).tolist()
             morecols = np.isin(TARGETCOLS, allfmcols)
             if np.sum(morecols) > 0:
                 fmcols = np.hstack((fmcols, TARGETCOLS[morecols]))
@@ -240,6 +241,16 @@ class DESISpectra(object):
                 fitindx = np.where((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
                                    (meta['OBJTYPE'] == 'TGT') *
                                    (meta['COADD_FIBERSTATUS'] == 0))[0]
+                # bug in ToOs -- they don't get targeting info propagated 
+                # fastphot /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/259/25969/redrock-sv3-bright-25969.fits -o fastphot.fits --targetids
+                check = np.sum(meta[HAVE_TARGETINGBITCOLS][fitindx].tolist(), axis=1)
+                good = check != 0
+                bad = check == 0
+                if np.sum(bad) > 0:
+                    tbad = [str(tid) for tid in meta['TARGETID'][fitindx][bad]]
+                    log.warning('Missing _TARGET info for the following objects: {}'.format(' '.join(tbad)))
+                if np.sum(good) > 0:
+                    fitindx = fitindx[good]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -459,7 +470,9 @@ class DESISpectra(object):
         targets = targets[uindx]
 
         if len(targets) != len(info):
+            miss = np.delete(np.arange(len(info)), np.where(np.isin(info['TARGETID'], targets['TARGETID']))[0])
             log.warning('Missing targeting info for {} objects!'.format(len(info) - len(targets)))
+            pdb.set_trace()
             raise ValueError
 
         metas = []
