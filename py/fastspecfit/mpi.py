@@ -24,9 +24,9 @@ def get_ntargets_one(specfile, makeqa=False):
         ntargets = fitsio.FITS(specfile)[1].get_nrows() # fragile?
     else:
         zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z', 'ZWARN'])
-        fm = fitsio.read(specfile, 'FIBERMAP', columns=['OBJTYPE', 'COADD_FIBERSTATUS'])
-        J = ((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') * 
-             (fm['OBJTYPE'] == 'TGT') * (fm['COADD_FIBERSTATUS'] == 0))
+        fm = fitsio.read(specfile, 'FIBERMAP', columns=['OBJTYPE', 'COADD_FIBERSTATUS', 'PHOTSYS'])
+        J = ((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
+             (fm['PHOTSYS'] != 'G') * (fm['OBJTYPE'] == 'TGT') * (fm['COADD_FIBERSTATUS'] == 0))
         ntargets = np.sum(J)
     return ntargets
 

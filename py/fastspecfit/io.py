@@ -258,6 +258,7 @@ class DESISpectra(object):
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
                 fitindx = np.where((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
                                    (meta['OBJTYPE'] == 'TGT') *
+                                   (meta['PHOTSYS'] != 'G') *
                                    (meta['COADD_FIBERSTATUS'] == 0))[0]
                 # bug in ToOs -- they don't get targeting info propagated 
                 # fastphot /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/259/25969/redrock-sv3-bright-25969.fits -o fastphot.fits --targetids
