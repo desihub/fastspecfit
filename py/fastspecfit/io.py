@@ -388,80 +388,87 @@ class DESISpectra(object):
         #    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
         #    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
 
-        alltileid = np.hstack(self.tiles)
-        #alltileid = [meta['TILEID'][0] for meta in self.meta]
         info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
-        targets, scndtargets, TOOtargets, TOO = [], [], [], None
-        for tileid in set(alltileid):
-            targetdirs, TOOfile = self._get_targetdirs(tileid)
-            for targetdir in targetdirs:
-                # Handle secondary targets, which have a different data model;
-                # update on 2021 July 31: these catalogs are missing DR9
-                # photometry, so we have to skip them for now.
-                if 'secondary' in targetdir:
-                    #continue                    
-                    if 'sv1' in targetdir: # special case
-                        #targetfiles = ['/global/cfs/cdirs/desi/users/raga19/data/0.51.0/sv1targets_dark_secondary_dr9.fits']
-                        targetfiles = glob(os.path.join(targetdir, '*-secondary-dr9photometry.fits'))
-                    else:
-                        targetfiles = glob(os.path.join(targetdir, '*-secondary.fits'))
+        
+        alltileid = np.unique(self.tiles)
+        targetdirs, TOOfiles = [], []
+        for tileid in alltileid:
+            _targetdirs, TOOfile = self._get_targetdirs(tileid)
+            targetdirs.append(_targetdirs)
+            if TOOfile is not None:
+                TOOfiles.append(TOOfile)
+        
+        targets, scndtargets = [], []
+        for targetdir in np.unique(targetdirs):
+            # Handle secondary targets, which have a different data model;
+            # update on 2021 July 31: these catalogs are missing DR9
+            # photometry, so we have to skip them for now.
+            if 'secondary' in targetdir:
+                #continue                    
+                if 'sv1' in targetdir: # special case
+                    #targetfiles = ['/global/cfs/cdirs/desi/users/raga19/data/0.51.0/sv1targets_dark_secondary_dr9.fits']
+                    targetfiles = glob(os.path.join(targetdir, '*-secondary-dr9photometry.fits'))
                 else:
-                    targetfiles = glob(os.path.join(targetdir, '*-hp-*.fits'))
-                    filenside = fitsio.read_header(targetfiles[0], ext=1)['FILENSID']
-                    pixlist = radec2pix(filenside, info['TARGET_RA'], info['TARGET_DEC'])
-                    targetfiles = [targetfiles[0].split('hp-')[0]+'hp-{}.fits'.format(pix) for pix in set(pixlist)]
-                    
-                for ifile, targetfile in enumerate(targetfiles):
-                    tinfo = fitsio.FITS(targetfile)
-                    for _tinfo in tinfo:
-                        extname = _tinfo.get_extname()
-                        if 'TARGETS' in extname:
-                            break
-                    if extname == '':
-                        extname = 1
-                    alltargetcols = np.array(tinfo[extname].get_colnames())
+                    targetfiles = glob(os.path.join(targetdir, '*-secondary.fits'))
+            else:
+                targetfiles = glob(os.path.join(targetdir, '*-hp-*.fits'))
+                filenside = fitsio.read_header(targetfiles[0], ext=1)['FILENSID']
+                pixlist = radec2pix(filenside, info['TARGET_RA'], info['TARGET_DEC'])
+                targetfiles = [targetfiles[0].split('hp-')[0]+'hp-{}.fits'.format(pix) for pix in set(pixlist)]
 
-                    # secondary target catalogs are missing some or all of the
-                    # DR9 photometry columns we need
-                    # fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/153/15343/redrock-sv3-bright-15343.fits -o fastspec
-                    thesecols = np.isin(alltargetcols, TARGETCOLS)
-                    if np.sum(thesecols) == 0:
-                        log.warning('Problem reading target catalog {}'.format(targetfile))
+            for ifile, targetfile in enumerate(targetfiles):
+                tinfo = fitsio.FITS(targetfile)
+                for _tinfo in tinfo:
+                    extname = _tinfo.get_extname()
+                    if 'TARGETS' in extname:
+                        break
+                if extname == '':
+                    extname = 1
+                alltargetcols = np.array(tinfo[extname].get_colnames())
 
-                    readtargetcols = np.hstack((targetcols, alltargetcols[thesecols]))
-                    #readtargetcols = np.hstack((targetcols, TARGETCOLS[thesecols]))
-                    alltargets = tinfo[extname].read(columns=readtargetcols)
-                    match = np.isin(alltargets['TARGETID'], info['TARGETID'])
-                    log.info('Matched {} targets in {}'.format(np.sum(match), targetfile))
-                    
-                    if np.sum(match) > 0:
-                        # need to make sure the column order is the same                        
-                        if len(targets) > 0 and not np.all(targets[len(targets)-1].dtype.names == alltargets.dtype.names):
-                        #if not np.all(readtargetcols == np.array(alltargets.dtype.names)):                            
-                            #_alltargets = Table(alltargets[match])[readtargetcols].as_array() # this doesn't work
-                            _alltargets = Table(alltargets[match])
-                            _newtargets = Table()
-                            I = len(targets) - 1
-                            for col in targets[I].dtype.names:
-                                if col in _alltargets.colnames:
-                                    _newtargets[col] = _alltargets[col]
-                                else:
-                                    _newtargets.add_column(Column(name=col, dtype=targets[I][col].dtype, length=len(_alltargets)))
-                            alltargets = _newtargets.as_array()
-                        else:
-                            alltargets = alltargets[match]
+                # secondary target catalogs are missing some or all of the
+                # DR9 photometry columns we need
+                # fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/153/15343/redrock-sv3-bright-15343.fits -o fastspec
+                thesecols = np.isin(alltargetcols, TARGETCOLS)
+                if np.sum(thesecols) == 0:
+                    log.warning('Problem reading target catalog {}'.format(targetfile))
 
-                        # handle secondary target catalogs in SV3 and main
-                        if np.sum(thesecols) < len(TARGETCOLS):
-                            scndtargets.append(alltargets)
-                        else:
-                            targets.append(alltargets)
+                readtargetcols = np.hstack((targetcols, alltargetcols[thesecols]))
+                #readtargetcols = np.hstack((targetcols, TARGETCOLS[thesecols]))
+                alltargets = tinfo[extname].read(columns=readtargetcols)
+                match = np.isin(alltargets['TARGETID'], info['TARGETID'])
+                log.info('Matched {} targets in {}'.format(np.sum(match), targetfile))
 
-            # handle secondary targets
-            if TOOfile:
-                if TOO is None:
-                    log.info('Reading {}'.format(TOOfile))
-                    TOO = Table.read(TOOfile) # ecsv file
+                if np.sum(match) > 0:
+                    # need to make sure the column order is the same                        
+                    if len(targets) > 0 and not np.all(targets[len(targets)-1].dtype.names == alltargets.dtype.names):
+                    #if not np.all(readtargetcols == np.array(alltargets.dtype.names)):                            
+                        #_alltargets = Table(alltargets[match])[readtargetcols].as_array() # this doesn't work
+                        _alltargets = Table(alltargets[match])
+                        _newtargets = Table()
+                        I = len(targets) - 1
+                        for col in targets[I].dtype.names:
+                            if col in _alltargets.colnames:
+                                _newtargets[col] = _alltargets[col]
+                            else:
+                                _newtargets.add_column(Column(name=col, dtype=targets[I][col].dtype, length=len(_alltargets)))
+                        alltargets = _newtargets.as_array()
+                    else:
+                        alltargets = alltargets[match]
+
+                    # handle secondary target catalogs in SV3 and main
+                    if np.sum(thesecols) < len(TARGETCOLS):
+                        scndtargets.append(alltargets)
+                    else:
+                        targets.append(alltargets)
+
+        # handle ToO targets
+        TOOtargets = []
+        if len(TOOfiles) > 0:
+            for TOOfile in np.unique(TOOfiles):
+                log.info('Reading {}'.format(TOOfile))
+                TOO = Table.read(TOOfile) # ecsv file
+                
                 match = np.isin(TOO['TARGETID'], info['TARGETID'])
                 log.info('Matched {} ToOs in {}'.format(np.sum(match), TOOfile))
                 if np.sum(match) > 0:

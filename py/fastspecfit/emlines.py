@@ -985,7 +985,8 @@ class EMLineFit(ContinuumTools):
                 
                 boxflux_ivar = 1 / np.sum(1 / emlineivar[lineindx])
                 if np.any(emlineivar[lineindx] == 0):
-                    pdb.set_trace()
+                    log.warning('Ivar should never be zero here!')
+                    raise ValueError
                 #if np.any(emlineivar[lineindx] == 0):
                 #    pdb.set_trace()
 

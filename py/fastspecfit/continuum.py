@@ -513,7 +513,7 @@ class ContinuumTools(object):
         # Hbeta, Halpha
         zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
         linesigma_balmer, narrow_balmer = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line', junkplot='desi-users/ioannis/tmp2/junk-balmer.png')
+            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line')#, junkplot='desi-users/ioannis/tmp2/junk-balmer.png')
         if (linesigma_balmer < 50) or (linesigma_balmer > 2500) or (narrow_balmer < 3):
             linesigma_balmer = self.linemask_sigma_balmer
 
