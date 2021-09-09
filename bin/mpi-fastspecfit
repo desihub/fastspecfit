@@ -5,14 +5,14 @@ MPI wrapper for fastphot and fastspec.
 mpi-fastspecfit --mp 32 --coadd-type cumulative --tile 80608 --night 20201220 --plan --nompi
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
 
-mpi-fastspecfit --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest
-mpi-fastspecfit --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest --fastphot
+mpi-fastspecfit --specprod everest
+mpi-fastspecfit --specprod everest --fastphot
 
-mpi-fastspecfit --merge --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest
-mpi-fastspecfit --merge --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest --fastphot
+mpi-fastspecfit --merge --specprod everest
+mpi-fastspecfit --merge --specprod everest --fastphot
 
-mpi-fastspecfit --mp 32 --makeqa --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit --specprod everest --dry-run
-mpi-fastspecfit --mp 32 --makeqa --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit --specprod everest --fastphot --dry-run
+mpi-fastspecfit --mp 32 --makeqa --specprod everest --dry-run
+mpi-fastspecfit --mp 32 --makeqa --specprod everest --fastphot --dry-run
 
 """
 import pdb # for debugging
@@ -174,8 +174,10 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands')
 
-    parser.add_argument('--base-htmldir', default='.', type=str, help='Base output HTML directory.')
-    parser.add_argument('--base-datadir', default='.', type=str, help='Base output data directory.')
+    parser.add_argument('--base-htmldir', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
+                        type=str, help='Base output HTML directory.')
+    parser.add_argument('--base-datadir', default='/global/cfs/cdirs/desi/spectro/fastspecfit',
+                        type=str, help='Base output data directory.')
     
     specprod_dir = None
 
