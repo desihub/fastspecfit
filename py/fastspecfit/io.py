@@ -11,7 +11,7 @@ import pdb # for debugging
 import os, time
 import numpy as np
 import fitsio
-from astropy.table import Table
+from astropy.table import Table, vstack
 
 from desiutil.log import get_logger
 log = get_logger()
@@ -111,10 +111,27 @@ class DESISpectra(object):
                 targetdirs[ii] = targetdir
             else:
                 log.warning('Targets directory {} not found.'.format(targetdir))
+                #pdb.set_trace()
                 #raise IOError
                 continue
-                
-        return targetdirs
+
+        # any ToOs?
+        if 'TOO' in fahdr:
+            # special case, fragile!
+            if 'sv3' in fahdr['TOO']:
+                ddir = 'sv3'
+            else:
+                ddir = 'main'
+            TOOfile = os.path.join(desi_root, 'survey', 'ops', 'surveyops', 'trunk', 'mtl', ddir, 'ToO', 'ToO.ecsv')
+            if os.path.isfile(TOOfile):
+                log.info('Found ToO file {}'.format(TOOfile))
+            else:
+                log.warning('ToO file {} not found.'.format(TOOfile))
+                TOOfile = None                
+        else:
+            TOOfile = None
+            
+        return targetdirs, TOOfile
 
     def find_specfiles(self, redrockfiles=None, firsttarget=0,
                        targetids=None, ntargets=None):
@@ -134,7 +151,8 @@ class DESISpectra(object):
         from glob import glob
         from astropy.table import Column
         from desimodel.footprint import radec2pix
-
+        from desitarget.targets import decode_targetid
+        
         if redrockfiles is None:
             log.warning('At least one redrockfiles file is required.')
             raise ValueError
@@ -249,6 +267,7 @@ class DESISpectra(object):
                 if np.sum(bad) > 0:
                     tbad = [str(tid) for tid in meta['TARGETID'][fitindx][bad]]
                     log.warning('Missing _TARGET info for the following objects: {}'.format(' '.join(tbad)))
+                #pdb.set_trace()
                 if np.sum(good) > 0:
                     fitindx = fitindx[good]
             else:
@@ -372,9 +391,9 @@ class DESISpectra(object):
         alltileid = np.hstack(self.tiles)
         #alltileid = [meta['TILEID'][0] for meta in self.meta]
         info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
-        targets, scndtargets = [], []
+        targets, scndtargets, TOOtargets, TOO = [], [], [], None
         for tileid in set(alltileid):
-            targetdirs = self._get_targetdirs(tileid)
+            targetdirs, TOOfile = self._get_targetdirs(tileid)
             for targetdir in targetdirs:
                 # Handle secondary targets, which have a different data model;
                 # update on 2021 July 31: these catalogs are missing DR9
@@ -428,7 +447,7 @@ class DESISpectra(object):
                                     _newtargets[col] = _alltargets[col]
                                 else:
                                     _newtargets.add_column(Column(name=col, dtype=targets[I][col].dtype, length=len(_alltargets)))
-                                alltargets = _newtargets.as_array()
+                            alltargets = _newtargets.as_array()
                         else:
                             alltargets = alltargets[match]
 
@@ -438,6 +457,29 @@ class DESISpectra(object):
                         else:
                             targets.append(alltargets)
 
+            # handle secondary targets
+            if TOOfile:
+                if TOO is None:
+                    log.info('Reading {}'.format(TOOfile))
+                    TOO = Table.read(TOOfile) # ecsv file
+                match = np.isin(TOO['TARGETID'], info['TARGETID'])
+                log.info('Matched {} ToOs in {}'.format(np.sum(match), TOOfile))
+                if np.sum(match) > 0:
+                    # build a Table that looks like the target catalog
+                    TOOmatch = TOO[match]
+                    nt = len(targets)
+                    if nt > 0:
+                        _TOOtargets = Table()
+                        for col in targets[nt-1].dtype.names:
+                            if col in TOOmatch.colnames:
+                                _TOOtargets[col] = TOOmatch[col]
+                            else:
+                                _TOOtargets.add_column(Column(name=col, dtype=targets[nt-1][col].dtype, length=len(TOOmatch)))
+                        #TOOtargets.append(_TOOtargets.as_array())
+                        TOOtargets.append(_TOOtargets)
+                    else:
+                        TOOtargets.append(TOOmatch)
+
         if len(targets) > 0:
             targets = Table(np.hstack(targets))
                 
@@ -446,6 +488,14 @@ class DESISpectra(object):
             if len(targets) == 0:
                 targets = scndtargets
             
+        if len(TOOtargets) > 0:
+            TOOtargets = vstack(TOOtargets)
+            #TOOtargets = Table(np.hstack(TOOtargets))
+            if len(targets) > 0:
+                targets = vstack((targets, TOOtargets))
+            else:
+                targets = TOOtargets
+                
         #from desitarget.io import releasedict
         #from desitarget.targets import decode_targetid  
         #_, _, releases, _, _, _ = decode_targetid(targets['TARGETID'])  
@@ -462,8 +512,8 @@ class DESISpectra(object):
                     _scndtargets[col] = scndtargets[col]
                 else:
                     _scndtargets.add_column(Column(name=col, dtype=targets[col].dtype, length=len(scndtargets)))
-            scndtargets = _scndtargets.as_array()
-            targets = np.hstack([targets, scndtargets])
+            #scndtargets = _scndtargets.as_array()
+            targets = vstack((targets, scndtargets))
 
         # targets table can include duplicates...
         _, uindx = np.unique(targets['TARGETID'], return_index=True) 
@@ -472,7 +522,7 @@ class DESISpectra(object):
         if len(targets) != len(info):
             miss = np.delete(np.arange(len(info)), np.where(np.isin(info['TARGETID'], targets['TARGETID']))[0])
             log.warning('Missing targeting info for {} objects!'.format(len(info) - len(targets)))
-            pdb.set_trace()
+            #_, _, release, _, _, _ = decode_targetid(info[miss])
             raise ValueError
 
         metas = []
