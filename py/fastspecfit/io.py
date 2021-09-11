@@ -398,9 +398,9 @@ class DESISpectra(object):
             targetdirs.append(_targetdirs)
             if TOOfile is not None:
                 TOOfiles.append(TOOfile)
-        
+
         targets, scndtargets = [], []
-        for targetdir in np.unique(targetdirs):
+        for targetdir in set(np.hstack(targetdirs)):
             # Handle secondary targets, which have a different data model;
             # update on 2021 July 31: these catalogs are missing DR9
             # photometry, so we have to skip them for now.
@@ -466,7 +466,7 @@ class DESISpectra(object):
         # handle ToO targets
         TOOtargets = []
         if len(TOOfiles) > 0:
-            for TOOfile in np.unique(TOOfiles):
+            for TOOfile in set(np.hstack(TOOfiles)):
                 log.info('Reading {}'.format(TOOfile))
                 TOO = Table.read(TOOfile) # ecsv file
                 
