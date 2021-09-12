@@ -150,9 +150,9 @@ class DESISpectra(object):
         """
         from glob import glob
         from astropy.table import Column
+        import numpy.ma as ma
         from desimodel.footprint import radec2pix
-        from desitarget.targets import decode_targetid
-        
+                
         if redrockfiles is None:
             log.warning('At least one redrockfiles file is required.')
             raise ValueError
@@ -533,6 +533,19 @@ class DESISpectra(object):
             #_, _, release, _, _, _ = decode_targetid(info[miss])
             raise ValueError
 
+        # convert masked and negative fluxes and ivarfluxes to zero
+        for band in ['G', 'R', 'Z', 'W1', 'W2']:
+            for suffix in ['', '_IVAR']:
+                col = 'FLUX{}_{}'.format(suffix, band)
+                if col in targets.colnames:
+                    if ma.is_masked(targets[col]):
+                        targets[col] = ma.filled(targets[col], 0.0)
+                    bad = np.logical_or(targets[col] < 0, np.isnan(targets[col]))
+                    if np.sum(bad) > 0:
+                        targets[col][bad] = 0.0
+        if ma.is_masked(targets['PHOTSYS']):
+            targets['PHOTSYS'] = ma.filled(targets['PHOTSYS'], '')
+                        
         metas = []
         for meta in self.meta:
             srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in meta['TARGETID']])
