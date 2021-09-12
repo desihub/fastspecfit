@@ -1,0 +1,23 @@
+#! /bin/bash
+# Merge individual files in preparation of a data release.
+
+mpi-fastspecfit --survey main --program dark --mp 32 --merge --overwrite
+mpi-fastspecfit --survey main --program dark --mp 32 --merge --overwrite --fastphot
+mpi-fastspecfit --survey main --program bright --mp 32 --merge --overwrite
+mpi-fastspecfit --survey main --program bright --mp 32 --merge --overwrite --fastphot
+
+mpi-fastspecfit --survey sv1 --program dark --mp 32 --merge --overwrite
+mpi-fastspecfit --survey sv1 --program dark --mp 32 --merge --overwrite --fastphot
+mpi-fastspecfit --survey sv1 --program bright --mp 32 --merge --overwrite
+mpi-fastspecfit --survey sv1 --program bright --mp 32 --merge --overwrite --fastphot
+
+mpi-fastspecfit --survey sv2 --program dark --mp 32 --merge --overwrite
+mpi-fastspecfit --survey sv2 --program dark --mp 32 --merge --overwrite --fastphot
+mpi-fastspecfit --survey sv2 --program bright --mp 32 --merge --overwrite
+mpi-fastspecfit --survey sv2 --program bright --mp 32 --merge --overwrite --fastphot
+
+mpi-fastspecfit --survey sv3 --program dark --mp 32 --merge --overwrite
+mpi-fastspecfit --survey sv3 --program dark --mp 32 --merge --overwrite --fastphot
+mpi-fastspecfit --survey sv3 --program bright --mp 32 --merge --overwrite
+mpi-fastspecfit --survey sv3 --program bright --mp 32 --merge --overwrite --fastphot
+
