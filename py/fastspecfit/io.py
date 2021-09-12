@@ -535,14 +535,15 @@ class DESISpectra(object):
 
         # convert masked and negative fluxes and ivarfluxes to zero
         for band in ['G', 'R', 'Z', 'W1', 'W2']:
-            for suffix in ['', '_IVAR']:
-                col = 'FLUX{}_{}'.format(suffix, band)
-                if col in targets.colnames:
-                    if ma.is_masked(targets[col]):
-                        targets[col] = ma.filled(targets[col], 0.0)
-                    bad = np.logical_or(targets[col] < 0, np.isnan(targets[col]))
-                    if np.sum(bad) > 0:
-                        targets[col][bad] = 0.0
+            for prefix in ['', 'FIBER', 'FIBERTOT']:
+                for suffix in ['', '_IVAR']:
+                    col = '{}FLUX{}_{}'.format(prefix, suffix, band)
+                    if col in targets.colnames:
+                        if ma.is_masked(targets[col]):
+                            targets[col] = ma.filled(targets[col], 0.0)
+                        bad = np.logical_or(targets[col] < 0, np.isnan(targets[col]))
+                        if np.sum(bad) > 0:
+                            targets[col][bad] = 0.0
         if ma.is_masked(targets['PHOTSYS']):
             targets['PHOTSYS'] = ma.filled(targets['PHOTSYS'], '')
                         
