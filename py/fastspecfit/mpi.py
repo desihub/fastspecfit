@@ -10,9 +10,25 @@ import pdb # for debuggin
 import os, time
 import numpy as np
 from glob import glob
+import multiprocessing
+import fitsio
 
 from desiutil.log import get_logger
 log = get_logger()
+
+def _get_ntargets_one(args):
+    return get_ntargets_one(*args)
+
+def get_ntargets_one(specfile, makeqa=False):
+    if makeqa:
+        ntargets = fitsio.FITS(specfile)[1].get_nrows() # fragile?
+    else:
+        zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z', 'ZWARN'])
+        fm = fitsio.read(specfile, 'FIBERMAP', columns=['OBJTYPE', 'COADD_FIBERSTATUS', 'PHOTSYS'])
+        J = ((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
+             (fm['PHOTSYS'] != 'G') * (fm['OBJTYPE'] == 'TGT') * (fm['COADD_FIBERSTATUS'] == 0))
+        ntargets = np.sum(J)
+    return ntargets
 
 def weighted_partition(weights, n):
     '''
@@ -74,33 +90,38 @@ def group_redrockfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
         if makeqa:
             ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
         else:
-            ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
-            #zb = fitsio.read(specfiles[j], 'REDSHIFTS', columns=['Z', 'ZWARN', 'TARGETID'])
-            #fm = fitsio.read(specfiles[j], 'FIBERMAP', columns=['OBJTYPE', 'COADD_FIBERSTATUS', 'TARGETID'])
-            #_, I, _ = np.intersect1d(fm['TARGETID'], zb['TARGETID'], return_indices=True)
-            #fm = fm[I]
-            #assert(np.all(zb['TARGETID'] == fm['TARGETID']))
-            #J = ((zb['Z'] > 0) * (zb['ZWARN'] == 0) * #(zb['SPECTYPE'] == 'GALAXY') * 
-            #     (fm['OBJTYPE'] == 'TGT') * (fm['COADD_FIBERSTATUS'] == 0))
-            #ntargets[i] = np.count_nonzero(J)
+            #ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
+            zb = fitsio.read(specfiles[j], 'REDSHIFTS', columns=['Z', 'ZWARN'])
+            fm = fitsio.read(specfiles[j], 'FIBERMAP', columns=['OBJTYPE', 'COADD_FIBERSTATUS'])
+            J = ((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') * 
+                 (fm['OBJTYPE'] == 'TGT') * (fm['COADD_FIBERSTATUS'] == 0))
+            nt = np.sum(J)
+            ntargets[i] = nt
+        log.debug(i, j, specfiles[j], ntargets[i])
 
-    if comm is not None:
-        ntargets = comm.gather(ntargets)
-        if rank == 0:
-            ntargets = np.concatenate(ntargets)
-        ntargets = comm.bcast(ntargets, root=0)
+    if False:
+        if comm is not None:
+            ntargets = comm.gather(ntargets)
+            if rank == 0:
+                ntargets = np.concatenate(ntargets)
+            ntargets = comm.bcast(ntargets, root=0)
 
-    runtimes = 30 + 0.4*ntargets
+        sumntargets = np.sum(sumntargets)
+        runtimes = 30 + 0.4*sumntargets
 
-    # Aim for 25 minutes, but don't exceed maxnodes number of nodes.
-    ntime = 25
-    if comm is not None:
-        numnodes = comm.size
+        # Aim for 25 minutes, but don't exceed maxnodes number of nodes.
+        ntime = 25
+        if comm is not None:
+            numnodes = comm.size
+        else:
+            numnodes = min(maxnodes, int(np.ceil(np.sum(runtimes)/(ntime*60))))
+
+        groups, grouptimes = weighted_partition(runtimes, numnodes)
+        ntargets = np.array([np.sum(ntargets[ii]) for ii in groups])
     else:
-        numnodes = min(maxnodes, int(np.ceil(np.sum(runtimes)/(ntime*60))))
+        groups = pixgroups
+        grouptimes = None
 
-    groups, grouptimes = weighted_partition(runtimes, numnodes)
-    ntargets = np.array([np.sum(ntargets[ii]) for ii in groups])
     return groups, ntargets, grouptimes
 
 def backup_logs(logfile):
@@ -133,11 +154,15 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
     else:
         outprefix = 'fastspec'
 
-    if rank == 0:
-        desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
-        # look for data in the standard location
-        if specprod_dir is None:
-            specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod, 'tiles')
+    desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
+    # look for data in the standard location
+
+    if args.coadd_type == 'healpix':
+        subdir = 'healpix'
+        if args.hpxpixel is not None:
+            args.hpxpixel = args.hpxpixel.split(',')
+    else:
+        subdir = 'tiles'
 
         # figure out which tiles belong to the SV programs
         if args.tile is None:
@@ -174,91 +199,148 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             #    args.tile = np.array(list(set(tileinfo['TILEID'])))
             #print(tileinfo)
 
-        outdir = os.path.join(base_datadir, args.specprod, 'tiles')
-        htmldir = os.path.join(base_htmldir, args.specprod, 'tiles')
+    if specprod_dir is None:
+        specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod, subdir)
 
-        def _findfiles(filedir, prefix='redrock'):
-            if args.coadd_type == 'cumulative':
-                if args.tile is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                        filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
-                        prefix, tile))) for tile in args.tile]))))
-                else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(
-                        filedir, 'cumulative', '?????', '????????', '{}-[0-9]-?????-thru????????.fits'.format(prefix))))))
-            elif args.coadd_type == 'pernight':
-                if args.tile is not None and args.night is not None:
-                    thesefiles = []
-                    for tile in args.tile:
-                        for night in args.night:
-                            thesefiles.append(glob(os.path.join(
-                                filedir, 'pernight', str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
-                    thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
-                elif args.tile is not None and args.night is None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                        filedir, 'pernight', str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
-                        prefix, tile))) for tile in args.tile]))))
-                elif args.tile is None and args.night is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                        filedir, 'pernight', '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
-                        prefix, night))) for night in args.night]))))
-                else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(
-                        filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
-            elif args.coadd_type == 'perexp':
-                if args.tile is not None:
-                    thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                        filedir, 'perexp', str(tile), '????????', '{}-[0-9]-{}-exp????????.fits'.format(
-                        prefix, tile))) for tile in args.tile]))))
-                else:
-                    thesefiles = np.array(sorted(set(glob(os.path.join(
-                        filedir, 'perexp', '?????', '????????', '{}-[0-9]-?????-exp????????.fits'.format(prefix))))))
+    outdir = os.path.join(base_datadir, args.specprod, subdir)
+    htmldir = os.path.join(base_htmldir, args.specprod, subdir)
+
+    def _findfiles(filedir, prefix='redrock'):
+        if args.coadd_type == 'healpix':
+            thesefiles = []
+            for survey in args.survey:
+                for program in args.program:
+                    log.info('Building file list for survey {} and program {}'.format(survey, program))
+                    if args.hpxpixel is not None:
+                        for onepix in args.hpxpixel:
+                            _thesefiles = glob(os.path.join(filedir, survey, program, onepix, '{}-{}-{}-*.fits'.format(prefix, survey, program)))
+                            thesefiles.append(_thesefiles)
+                    else:
+                        allpix = glob(os.path.join(filedir, survey, program, '*'))
+                        for onepix in allpix:
+                            _thesefiles = glob(os.path.join(onepix, '*', '{}-{}-{}-*.fits'.format(prefix, survey, program)))
+                            thesefiles.append(_thesefiles)
+            if len(thesefiles) > 0:
+                thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
+        elif args.coadd_type == 'cumulative':
+            if args.tile is not None:
+                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                    filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
+                    prefix, tile))) for tile in args.tile]))))
             else:
-                pass
-            return thesefiles
-
-        if args.merge:
-            redrockfiles = None
-            outfiles = _findfiles(outdir, prefix=outprefix)
-            log.info('Found {} {} files to be merged.'.format(len(outfiles), outprefix))
-        elif args.makeqa:
-            redrockfiles = None
-            outfiles = _findfiles(outdir, prefix=outprefix)
-            log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
+                thesefiles = np.array(sorted(set(glob(os.path.join(
+                    filedir, 'cumulative', '?????', '????????', '{}-[0-9]-?????-thru????????.fits'.format(prefix))))))
+        elif args.coadd_type == 'pernight':
+            if args.tile is not None and args.night is not None:
+                thesefiles = []
+                for tile in args.tile:
+                    for night in args.night:
+                        thesefiles.append(glob(os.path.join(
+                            filedir, 'pernight', str(tile), str(night), '{}-[0-9]-{}-{}.fits'.format(prefix, tile, night))))
+                if len(thesefiles) > 0:
+                    thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
+            elif args.tile is not None and args.night is None:
+                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                    filedir, 'pernight', str(tile), '????????', '{}-[0-9]-{}-????????.fits'.format(
+                    prefix, tile))) for tile in args.tile]))))
+            elif args.tile is None and args.night is not None:
+                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                    filedir, 'pernight', '?????', str(night), '{}-[0-9]-?????-{}.fits'.format(
+                    prefix, night))) for night in args.night]))))
+            else:
+                thesefiles = np.array(sorted(set(glob(os.path.join(
+                    filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
+        elif args.coadd_type == 'perexp':
+            if args.tile is not None:
+                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                    filedir, 'perexp', str(tile), '????????', '{}-[0-9]-{}-exp????????.fits'.format(
+                    prefix, tile))) for tile in args.tile]))))
+            else:
+                thesefiles = np.array(sorted(set(glob(os.path.join(
+                    filedir, 'perexp', '?????', '????????', '{}-[0-9]-?????-exp????????.fits'.format(prefix))))))
         else:
-            redrockfiles = _findfiles(specprod_dir, prefix='redrock')
-            nfile = len(redrockfiles)
+            pass
+        return thesefiles
 
-            outfiles = np.array([redrockfile.replace(specprod_dir, outdir).replace('redrock-', '{}-'.format(outprefix)) for redrockfile in redrockfiles])
-            todo = np.ones(len(redrockfiles), bool)
-            for ii, outfile in enumerate(outfiles):
-                if os.path.isfile(outfile) and not args.overwrite:
-                    todo[ii] = False
-            redrockfiles = redrockfiles[todo]
-            outfiles = outfiles[todo]
-
-            log.info('Found {}/{} redrockfiles (left) to do.'.format(len(redrockfiles), nfile))
-    else:
-        outdir = None
+    if args.merge:
         redrockfiles = None
-        outfiles = None
+        outfiles = _findfiles(outdir, prefix=outprefix)
+        log.info('Found {} {} files to be merged.'.format(len(outfiles), outprefix))
+    elif args.makeqa:
+        redrockfiles = None
+        outfiles = _findfiles(outdir, prefix=outprefix)
+        log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
+        ntargs = [(outfile, True) for outfile in outfiles]
+    else:
+        redrockfiles = _findfiles(specprod_dir, prefix='redrock')
+        nfile = len(redrockfiles)
+        outfiles = np.array([redrockfile.replace(specprod_dir, outdir).replace('redrock-', '{}-'.format(outprefix)) for redrockfile in redrockfiles])
+        todo = np.ones(len(redrockfiles), bool)
+        for ii, outfile in enumerate(outfiles):
+            if os.path.isfile(outfile) and not args.overwrite:
+                todo[ii] = False
+        redrockfiles = redrockfiles[todo]
+        outfiles = outfiles[todo]
+        log.info('Found {}/{} redrockfiles (left) to do.'.format(len(redrockfiles), nfile))
+        ntargs = [(redrockfile, False) for redrockfile in redrockfiles]
 
-    if comm:
-        outdir = comm.bcast(outdir, root=0)
-        redrockfiles = comm.bcast(redrockfiles, root=0)
-        outfiles = comm.bcast(outfiles, root=0)
+    # create groups weighted by the number of targets
+    if args.merge:
+        groups = [np.arange(len(outfiles))]
+        ntargets = None
+    else:
+        if args.mp > 1:
+            with multiprocessing.Pool(args.mp) as P:
+                ntargets = P.map(_get_ntargets_one, ntargs)
+        else:
+            ntargets = [get_ntargets_one(*_ntargs) for _ntargs in ntargs]
+        ntargets = np.array(ntargets)
+
+        iempty = np.where(ntargets==0)[0]
+        if len(iempty) > 0:
+            log.info('Skipping {} files with no targets.'.format(len(iempty)))
+
+        itodo = np.where(ntargets > 0)[0]
+        if len(itodo) > 0:
+            ntargets = ntargets[itodo]
+            indices = np.arange(len(ntargets))
+            if redrockfiles is not None:
+                redrockfiles = redrockfiles[itodo]
+            if outfiles is not None:
+                outfiles = outfiles[itodo]
+
+            # Assign the sample to ranks to make the ntargets distribution per rank ~flat.
+            # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
+            cumuweight = ntargets.cumsum() / ntargets.sum()
+            idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
+            if len(idx) < size: # can happen in corner cases or with 1 rank
+                groups = np.array_split(indices, size) # unweighted
+            else:
+                groups = np.array_split(indices, idx) # weighted
+            for ii in range(size): # sort by weight
+                srt = np.argsort(ntargets[groups[ii]])
+                groups[ii] = groups[ii][srt]
+        else:
+            groups = [np.array([])]
+
+    #if comm:
+    #    outdir = comm.bcast(outdir, root=0)
+    #    redrockfiles = comm.bcast(redrockfiles, root=0)
+    #    outfiles = comm.bcast(outfiles, root=0)
+    #    groups = comm.bcast(groups, root=0)
+    #    ntargets = comm.bcast(ntargets, root=0)
 
     if args.merge:
         if len(outfiles) == 0:
             if rank == 0:
                 log.info('No {} files in {} found!'.format(outprefix, outdir))
-            return '', list(), list(), list(), list()
+            return '', list(), list(), list(), None
         return outdir, redrockfiles, outfiles, None, None
     elif args.makeqa:
         if len(outfiles) == 0:
             if rank == 0:
                 log.info('No {} files in {} found!'.format(outprefix, outdir))
-            return '', list(), list(), list(), list()
+            return '', list(), list(), list(), None
         #  hack--build the output directories and pass them in the 'redrockfiles'
         #  position! for coadd_type==cumulative, strip out the 'lastnight' argument
         if args.coadd_type == 'cumulative':
@@ -274,73 +356,76 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
         if len(redrockfiles) == 0:
             if rank == 0:
                 log.info('All files have been processed!')
-            return '', list(), list(), list(), list()
+            return '', list(), list(), list(), None
 
-    if args.makeqa:
-        groups, ntargets, grouptimes = group_redrockfiles(outfiles, args.maxnodes, comm=comm, makeqa=True)
-    else:
-        groups, ntargets, grouptimes = group_redrockfiles(redrockfiles, args.maxnodes, comm=comm)
-
-    if args.plan and rank == 0:
-        plantime = time.time() - t0
-        if plantime + np.max(grouptimes) <= (30*60):
-            queue = 'debug'
+    if False:
+        if args.makeqa:
+            groups, ntargets, grouptimes = group_redrockfiles(
+                outfiles, args.maxnodes, comm=comm, makeqa=True)
         else:
-            queue = 'regular'
+            groups, ntargets, grouptimes = group_redrockfiles(
+                redrockfiles, args.maxnodes, comm=comm)
 
-        numnodes = len(groups)
+        if args.plan and rank == 0:
+            plantime = time.time() - t0
+            if plantime + np.max(grouptimes) <= (30*60):
+                queue = 'debug'
+            else:
+                queue = 'regular'
 
-        if os.getenv('NERSC_HOST') == 'cori':
-            maxproc = 64
-        else:
-            maxproc = 8
+            numnodes = len(groups)
 
-        if args.mp is None:
-            args.mp = maxproc // 2
+            if os.getenv('NERSC_HOST') == 'cori':
+                maxproc = 64
+            else:
+                maxproc = 8
 
-        #- scale longer if purposefullying using fewer cores (e.g. for memory)
-        if args.mp < maxproc // 2:
-            scale = (maxproc//2) / args.mp
-            grouptimes *= scale
+            if args.mp is None:
+                args.mp = maxproc // 2
 
-        jobtime = int(1.15 * (plantime + np.max(grouptimes)))
-        jobhours = jobtime // 3600
-        jobminutes = (jobtime - jobhours*3600) // 60
-        jobseconds = jobtime - jobhours*3600 - jobminutes*60
+            #- scale longer if purposefullying using fewer cores (e.g. for memory)
+            if args.mp < maxproc // 2:
+                scale = (maxproc//2) / args.mp
+                grouptimes *= scale
 
-        print('#!/bin/bash')
-        print('#SBATCH -N {}'.format(numnodes))
-        print('#SBATCH -q {}'.format(queue))
-        print('#SBATCH -J fastphot')
-        if os.getenv('NERSC_HOST') == 'cori':
-            print('#SBATCH -C haswell')
-        print('#SBATCH -t {:02d}:{:02d}:{:02d}'.format(jobhours, jobminutes, jobseconds))
-        print()
-        print('# {} pixels with {} targets'.format(len(redrockfiles), np.sum(ntargets)))
-        ### print('# plan time {:.1f} minutes'.format(plantime / 60))
-        print('# Using {} nodes in {} queue'.format(numnodes, queue))
-        print('# expected rank runtimes ({:.1f}, {:.1f}, {:.1f}) min/mid/max minutes'.format(
-            np.min(grouptimes)/60, np.median(grouptimes)/60, np.max(grouptimes)/60
-        ))
-        ibiggest = np.argmax(grouptimes)
-        print('# Largest node has {} specfile(s) with {} total targets'.format(
-            len(groups[ibiggest]), ntargets[ibiggest]))
+            jobtime = int(1.15 * (plantime + np.max(grouptimes)))
+            jobhours = jobtime // 3600
+            jobminutes = (jobtime - jobhours*3600) // 60
+            jobseconds = jobtime - jobhours*3600 - jobminutes*60
 
-        print()
-        print('export OMP_NUM_THREADS=1')
-        print('unset OMP_PLACES')
-        print('unset OMP_PROC_BIND')
-        print('export MPICH_GNI_FORK_MODE=FULLCOPY')
-        print()
-        print('nodes=$SLURM_JOB_NUM_NODES')
-        if False:
-            rrcmd = '{} --mp {} --reduxdir {}'.format(
-                os.path.abspath(__file__), args.mp, args.reduxdir)
-            if args.outdir is not None:
-                rrcmd += ' --outdir {}'.format(os.path.abspath(args.outdir))
-            print('srun -N $nodes -n $nodes -c {} {}'.format(maxproc, rrcmd))
+            print('#!/bin/bash')
+            print('#SBATCH -N {}'.format(numnodes))
+            print('#SBATCH -q {}'.format(queue))
+            print('#SBATCH -J fastphot')
+            if os.getenv('NERSC_HOST') == 'cori':
+                print('#SBATCH -C haswell')
+            print('#SBATCH -t {:02d}:{:02d}:{:02d}'.format(jobhours, jobminutes, jobseconds))
+            print()
+            print('# {} pixels with {} targets'.format(len(redrockfiles), np.sum(ntargets)))
+            ### print('# plan time {:.1f} minutes'.format(plantime / 60))
+            print('# Using {} nodes in {} queue'.format(numnodes, queue))
+            print('# expected rank runtimes ({:.1f}, {:.1f}, {:.1f}) min/mid/max minutes'.format(
+                np.min(grouptimes)/60, np.median(grouptimes)/60, np.max(grouptimes)/60
+            ))
+            ibiggest = np.argmax(grouptimes)
+            print('# Largest node has {} specfile(s) with {} total targets'.format(
+                len(groups[ibiggest]), ntargets[ibiggest]))
 
-    return outdir, redrockfiles, outfiles, groups, grouptimes
+            print()
+            print('export OMP_NUM_THREADS=1')
+            print('unset OMP_PLACES')
+            print('unset OMP_PROC_BIND')
+            print('export MPICH_GNI_FORK_MODE=FULLCOPY')
+            print()
+            print('nodes=$SLURM_JOB_NUM_NODES')
+            if False:
+                rrcmd = '{} --mp {} --reduxdir {}'.format(
+                    os.path.abspath(__file__), args.mp, args.reduxdir)
+                if args.outdir is not None:
+                    rrcmd += ' --outdir {}'.format(os.path.abspath(args.outdir))
+                print('srun -N $nodes -n $nodes -c {} {}'.format(maxproc, rrcmd))
+
+    return outdir, redrockfiles, outfiles, groups, ntargets
 
 def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.'):
     """Merge all the individual catalogs into a single large catalog. Runs only on
@@ -348,11 +433,12 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
 
     """
     import fitsio
+    from copy import copy
     from astropy.io import fits
     from astropy.table import Table, vstack
     from fastspecfit.mpi import plan
     from fastspecfit.io import write_fastspecfit
-
+    
     if fastphot:
         outprefix = 'fastphot'
         extname = 'FASTPHOT'
@@ -360,10 +446,13 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
         outprefix = 'fastspec'
         extname = 'FASTSPEC'
 
-    outdir, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
-                                     specprod_dir=specprod_dir, base_datadir=base_datadir)
+    #if args.coadd_type == 'healpix':
+    #    subdir = 'healpix'
+    #else:
+    #    subdir = 'tiles'
+    #outdir = os.path.join(base_datadir, args.specprod, subdir)
 
-    mergedir = os.path.join(outdir, 'merged')
+    mergedir = os.path.join(base_datadir, args.specprod, 'catalogs')
     if not os.path.isdir(mergedir):
         os.makedirs(mergedir, exist_ok=True)
 
@@ -373,20 +462,50 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
     #    mergeprefix = ''
     #elif args.coadd_type == 'night-coadds':
 
-    mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
-    if os.path.isfile(mergefile) and not args.overwrite:
-        log.info('Merged output file {} exists!'.format(mergefile))
-        return
+    def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None):
+        t0 = time.time()
+        out, meta = [], []
+        for outfile in outfiles:
+            info = fitsio.FITS(outfile)
+            ext = [_info.get_extname() for _info in info]
+            if extname not in ext:
+                log.warning('Missing extension {} in file {}'.format(extname, outfile))
+                continue
+            if 'METADATA' not in ext:
+                log.warning('Missing extension METADATA in file {}'.format(outfile))
+                continue
+            out.append(Table(info[extname].read()))
+            meta.append(Table(info['METADATA'].read()))
+        out = vstack(out)
+        meta = vstack(meta)
+        log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
+            len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
+        
+        write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod,
+                          coadd_type=args.coadd_type, survey=survey, program=program,
+                          fastphot=fastphot)
 
-    t0 = time.time()
-    out, meta = [], []
-    for outfile in outfiles:
-        out.append(Table(fitsio.read(outfile, ext=extname)))
-        meta.append(Table(fitsio.read(outfile, ext='METADATA')))
-    out = vstack(out)
-    meta = vstack(meta)
-    log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
-        len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
-
-    write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod,
-                      coadd_type=args.coadd_type, fastphot=fastphot)
+    if args.coadd_type == 'healpix':
+        surveys = copy(args.survey)
+        programs = copy(args.program)
+        for survey in surveys:
+            for program in programs:
+                mergefile = os.path.join(mergedir, '{}-{}-{}-{}.fits'.format(outprefix, args.specprod, survey, program))
+                if os.path.isfile(mergefile) and not args.overwrite:
+                    log.info('Merged output file {} exists!'.format(mergefile))
+                    continue
+                args.survey = np.atleast_1d(survey)
+                args.program = np.atleast_1d(program)
+                _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
+                                            specprod_dir=specprod_dir, base_datadir=base_datadir)
+                if len(outfiles) > 0:
+                    _domerge(outfiles, extname=extname, survey=survey, program=program)
+    else:
+        mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
+        if os.path.isfile(mergefile) and not args.overwrite:
+            log.info('Merged output file {} exists!'.format(mergefile))
+            return
+        _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
+                                    specprod_dir=specprod_dir, base_datadir=base_datadir)
+        if len(outfiles) > 0:
+            _domerge(outfiles, extname=extname)

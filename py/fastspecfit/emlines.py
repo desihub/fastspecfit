@@ -954,7 +954,8 @@ class EMLineFit(ContinuumTools):
             #log10sigma = linesigma / C_LIGHT / np.log(10)     # line-width [log-10 Angstrom]            
 
             # number of pixels, chi2, and boxcar integration
-            lineindx = np.where((emlinewave >= (linezwave - 2.*linesigma_ang)) * (emlinewave <= (linezwave + 2.*linesigma_ang)) *
+            lineindx = np.where((emlinewave >= (linezwave - 2.*linesigma_ang)) *
+                                (emlinewave <= (linezwave + 2.*linesigma_ang)) *
                                 (emlineivar > 0))[0]
 
             # can happen if sigma is small (depending on the wavelength)
@@ -962,12 +963,20 @@ class EMLineFit(ContinuumTools):
             if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * (len(lineindx) <= 3):
                 dwave = emlinewave - linezwave
                 lineindx = np.argmin(np.abs(dwave))
-                if lineindx > 0:
+                if dwave[lineindx] > 0:
                     pad = np.array([-2, -1, 0, +1])
                 else:
                     pad = np.array([-1, 0, +1, +2])
-                lineindx += pad
-                
+
+                # check to make sure we don't hit the edges
+                if (lineindx-pad[0]) < 0 or (lineindx+pad[-1]) >= len(emlineivar):
+                    lineindx = np.array([])
+                else:
+                    lineindx += pad
+                    # the padded pixels can have ivar==0
+                    good = emlineivar[lineindx] > 0
+                    lineindx = lineindx[good]
+                    
             npix = len(lineindx)
 
             #if '9069' in linename:
@@ -977,7 +986,13 @@ class EMLineFit(ContinuumTools):
                 dof = npix - 3 # ??? [redshift, sigma, and amplitude]
                 chi2 = np.sum(emlineivar[lineindx]*(emlineflux[lineindx]-emlinemodel[lineindx])**2) / dof
                 boxflux = np.sum(emlineflux[lineindx])
+                
                 boxflux_ivar = 1 / np.sum(1 / emlineivar[lineindx])
+                if np.any(emlineivar[lineindx] == 0):
+                    log.warning('Ivar should never be zero here!')
+                    raise ValueError
+                #if np.any(emlineivar[lineindx] == 0):
+                #    pdb.set_trace()
 
                 # Get the uncertainty in the line-amplitude based on the scatter
                 # in the pixel values.

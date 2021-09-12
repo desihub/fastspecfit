@@ -5,11 +5,14 @@ MPI wrapper for fastphot and fastspec.
 mpi-fastspecfit --mp 32 --coadd-type cumulative --tile 80608 --night 20201220 --plan --nompi
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
 
-mpi-fastspecfit --merge --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest
-mpi-fastspecfit --merge --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --specprod everest --fastphot
+mpi-fastspecfit --specprod everest
+mpi-fastspecfit --specprod everest --fastphot
 
-mpi-fastspecfit --mp 32 --makeqa --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit --specprod everest --dry-run
-mpi-fastspecfit --mp 32 --makeqa --base-datadir /global/cfs/cdirs/desi/spectro/fastspecfit --base-htmldir /global/cfs/cdirs/desi/users/ioannis/fastspecfit --specprod everest --fastphot --dry-run
+mpi-fastspecfit --merge --specprod everest
+mpi-fastspecfit --merge --specprod everest --fastphot
+
+mpi-fastspecfit --mp 32 --makeqa --specprod everest --dry-run
+mpi-fastspecfit --mp 32 --makeqa --specprod everest --fastphot --dry-run
 
 """
 import pdb # for debugging
@@ -31,26 +34,27 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
     else:
         rank, size = comm.rank, comm.size
 
-    args.maxnodes = min(args.maxnodes, size)
-
     t0 = time.time()
     if rank == 0:
-        log.info('Starting at {}'.format(time.asctime()))
+        #log.info('Starting at {}'.format(time.asctime()))
+        _, zbestfiles, outfiles, groups, ntargets = plan(
+            args, comm=comm, fastphot=fastphot, specprod_dir=specprod_dir,
+            base_datadir=base_datadir, base_htmldir=base_htmldir)
+        log.info('Planning took {:.2f} sec'.format(time.time() - t0))
+    else:
+        zbestfiles, outfiles, groups, ntargets = [], [], [], []
 
-    _, zbestfiles, outfiles, groups, grouptimes = plan(args, comm=comm, fastphot=fastphot,
-                                                       specprod_dir=specprod_dir,
-                                                       base_datadir=base_datadir,
-                                                       base_htmldir=base_htmldir)
-
-    if rank == 0:
-        log.info('Initial setup took {:.1f} sec'.format(time.time() - t0))
-
-    sys.stdout.flush()
     if comm:
         zbestfiles = comm.bcast(zbestfiles, root=0)
         outfiles = comm.bcast(outfiles, root=0)
         groups = comm.bcast(groups, root=0)
+        ntargets = comm.bcast(ntargets, root=0)
 
+    #if comm:
+    #    comm.barrier()
+
+    sys.stdout.flush()
+    
     # all done
     if len(zbestfiles) == 0:
         return
@@ -60,7 +64,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
     #pixels = np.array([int(os.path.basename(os.path.dirname(x))) for x in zbestfiles])
     for ii in groups[rank]:
-        log.info('Rank {} started at {}'.format(rank, time.asctime()))
+        log.debug('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
 
         if args.makeqa:
@@ -87,7 +91,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         logfile = outfiles[ii].replace('.fits', '.log')
         assert(logfile != outfiles[ii])
 
-        log.info('  rank {}: {}'.format(rank, cmd))
+        log.info('Rank {}, ntargets={}: {}'.format(rank, ntargets[ii], cmd))
+        #log.info('  rank {}: {}'.format(rank, cmd))
         #log.info('LOGGING to {}'.format(logfile))
         sys.stdout.flush()
 
@@ -119,7 +124,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             import traceback
             traceback.print_exc()
 
-    log.info('  rank {} is done'.format(rank))
+    log.debug('  rank {} is done'.format(rank))
     sys.stdout.flush()
 
     if comm is not None:
@@ -142,16 +147,19 @@ def main():
     from fastspecfit.mpi import plan
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
+                        help='Specify which type of spectra/zbest files to process.')
     parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production to process.')
-    parser.add_argument('--coadd-type', type=str, default='cumulative', choices=['cumulative', 'pernight', 'perexp'],
-                        help='Specify which type of spectra/zbest files to process.')
     
+    parser.add_argument('--hpxpixel', type=str, default=None, help='Comma-separated list of healpixels to process.')
+    parser.add_argument('--survey', type=str, default='main,sv1,sv2,sv3', help='Survey to process.')
+    parser.add_argument('--program', type=str, default='bright,dark', help='Program to process.') # backup not supported
+
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
-    parser.add_argument('--maxnodes', type=int, default=256, help='maximum number of nodes to use')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
@@ -166,14 +174,16 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands')
 
-    parser.add_argument('--base-htmldir', default='.', type=str, help='Base output HTML directory.')
-    parser.add_argument('--base-datadir', default='.', type=str, help='Base output data directory.')
+    parser.add_argument('--base-htmldir', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
+                        type=str, help='Base output HTML directory.')
+    parser.add_argument('--base-datadir', default='/global/cfs/cdirs/desi/spectro/fastspecfit',
+                        type=str, help='Base output data directory.')
     
     specprod_dir = None
 
     args = parser.parse_args()
 
-    if args.merge or args.makeqa or args.nompi:
+    if args.merge or args.nompi:
         comm = None
     else:
         try:
@@ -181,16 +191,27 @@ def main():
             comm = MPI.COMM_WORLD
         except ImportError:
             comm = None
+
+    if args.coadd_type == 'healpix':
+        args.survey = args.survey.split(',')
+        args.program = args.program.split(',')
             
     if args.merge:
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(args, fastphot=args.fastphot, specprod_dir=specprod_dir,
                           base_datadir=args.base_datadir)
-    elif args.plan:
-        plan(args, comm=comm, fastphot=args.fastphot,
-             specprod_dir=specprod_dir,
-             base_datadir=args.base_datadir,
-             base_htmldir=args.base_htmldir)
+        return
+        
+    if args.plan:
+        if comm is None:
+            rank = 0
+        else:
+            rank = comm.rank
+        if rank == 0:
+            plan(args, comm=comm, fastphot=args.fastphot,
+                 specprod_dir=specprod_dir,
+                 base_datadir=args.base_datadir,
+                 base_htmldir=args.base_htmldir)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot,
                         specprod_dir=specprod_dir, makeqa=args.makeqa,

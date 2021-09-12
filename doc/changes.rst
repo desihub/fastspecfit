@@ -5,7 +5,9 @@ FastSpecFit Change Log
 0.3 (not release yet)
 ---------------------
 
+* Additional updates needed to complete Everest release [`PR #44`_].
 
+.. _`PR #44`: https://github.com/desihub/fastspecfit/pull/44
 
 
 0.2 (2021-09-04)
