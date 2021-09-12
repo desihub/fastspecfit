@@ -669,7 +669,8 @@ class DESISpectra(object):
             for igal in np.arange(len(redrock)):
                 # Unpack the data and correct for Galactic extinction. Also flag pixels that
                 # may be affected by emission lines.
-                data = {'zredrock': redrock['Z'][igal], 'photsys': meta['PHOTSYS'][igal]}#, 'photsys_south': dec < self.desitarget_resolve_dec()}
+                data = {'targetid': meta['TARGETID'][igal], 'zredrock': redrock['Z'][igal],
+                        'photsys': meta['PHOTSYS'][igal]}#, 'photsys_south': dec < self.desitarget_resolve_dec()}
 
                 if data['photsys'] == 'S':
                     filters = CFit.decam

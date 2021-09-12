@@ -963,16 +963,20 @@ class EMLineFit(ContinuumTools):
             if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * (len(lineindx) <= 3):
                 dwave = emlinewave - linezwave
                 lineindx = np.argmin(np.abs(dwave))
-                if lineindx > 0:
+                if dwave[lineindx] > 0:
                     pad = np.array([-2, -1, 0, +1])
                 else:
                     pad = np.array([-1, 0, +1, +2])
-                lineindx += pad
 
-                # the padded pixels can have ivar==0
-                good = emlineivar[lineindx] > 0
-                lineindx = lineindx[good]
-                
+                # check to make sure we don't hit the edges
+                if (lineindx-pad[0]) < 0 or (lineindx+pad[-1]) >= len(emlineivar):
+                    lineindx = np.array([])
+                else:
+                    lineindx += pad
+                    # the padded pixels can have ivar==0
+                    good = emlineivar[lineindx] > 0
+                    lineindx = lineindx[good]
+                    
             npix = len(lineindx)
 
             #if '9069' in linename:
