@@ -944,7 +944,7 @@ class DESISpectra(object):
 
         return out, meta
 
-def read_fastspecfit(fastfitfile, fastphot=False):
+def read_fastspecfit(fastfitfile, fastphot=False, rows=None, columns=None):
     """Read the fitting results.
 
     """
@@ -957,8 +957,8 @@ def read_fastspecfit(fastfitfile, fastphot=False):
         hdr = fitsio.read_header(fastfitfile, ext='METADATA')
         specprod, coadd_type = hdr['SPECPROD'], hdr['COADDTYP']
 
-        fastfit = Table(fitsio.read(fastfitfile, ext=ext))
-        meta = Table(fitsio.read(fastfitfile, ext='METADATA'))
+        fastfit = Table(fitsio.read(fastfitfile, ext=ext, rows=rows, columns=columns))
+        meta = Table(fitsio.read(fastfitfile, ext='METADATA', rows=rows, columns=columns))
         log.info('Read {} object(s) from {} and specprod={}'.format(len(fastfit), fastfitfile, specprod))
 
         return fastfit, meta, specprod, coadd_type
