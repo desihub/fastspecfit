@@ -18,7 +18,7 @@ mp=$2
 survey=$3
 program=$4
 
-specprod=everest
+specprod=f3 # everest
 coadd_type=cumulative
 
 package=fastspecfit
@@ -53,7 +53,8 @@ if [ $stage = "test" ]; then
     time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --help
 elif [ $stage = "fastspec" ]; then
     #time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type --tile 80605 80606 80613 --base-datadir $base_datadir
-    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --base-datadir $base_datadir
+    time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --coadd-type $coadd_type --survey $survey --program $program --base-datadir $base_datadir
+    #time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --base-datadir $base_datadir
 elif [ $stage = "fastphot" ]; then
     time python /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --base-datadir $base_datadir --fastphot 
 elif [ $stage = "qafastspec" ]; then

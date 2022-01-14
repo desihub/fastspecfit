@@ -161,7 +161,7 @@ def parse(options=None):
 
     # make specprod required until this ticket is addressed--
     # https://github.com/desihub/desispec/issues/1077
-    parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
+    parser.add_argument('--specprod', type=str, default='everest', #choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production.')
     #parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
     #                    help='Type of spectral coadds corresponding to the input redrockfiles.')

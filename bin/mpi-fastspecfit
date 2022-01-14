@@ -149,7 +149,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
-    parser.add_argument('--specprod', type=str, default='everest', choices=['everest', 'denali', 'daily'],
+    parser.add_argument('--specprod', type=str, default='everest', #choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production to process.')
     
     parser.add_argument('--hpxpixel', type=str, default=None, help='Comma-separated list of healpixels to process.')
