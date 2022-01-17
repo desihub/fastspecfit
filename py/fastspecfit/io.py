@@ -133,7 +133,7 @@ class DESISpectra(object):
             
         return targetdirs, TOOfile
 
-    def find_specfiles(self, redrockfiles=None, firsttarget=0,
+    def find_specfiles(self, redrockfiles=None, firsttarget=0, coadd_type=None,
                        targetids=None, ntargets=None):
         """Initialize the fastspecfit output data table.
 
@@ -194,22 +194,25 @@ class DESISpectra(object):
             # Try to figure out coadd_type from the first filename. Fragile!
             # Assumes that coadd_type is a scalar... And, really, this should be
             # in a header.
-            if ired == 0:
-                hdr = fitsio.read_header(specfile, ext=0)
-                if 'HPXPIXEL' in hdr:
-                    coadd_type = 'healpix'
-                    hpxpixel = np.int32(hdr['HPXPIXEL'])
-                else:
-                    import re
-                    if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
-                        coadd_type = 'cumulative'
-                    elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
-                        coadd_type = 'pernight'
-                    else:
-                        coadd_type = 'perexp'
+            if coadd_type is not None:
                 self.coadd_type = coadd_type
-                log.info('Parsed coadd_type={}'.format(coadd_type))
-
+            else:
+                if ired == 0:
+                    hdr = fitsio.read_header(specfile, ext=0)
+                    if 'HPXPIXEL' in hdr:
+                        coadd_type = 'healpix'
+                        hpxpixel = np.int32(hdr['HPXPIXEL'])
+                    else:
+                        import re
+                        if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
+                            coadd_type = 'cumulative'
+                        elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
+                            coadd_type = 'pernight'
+                        else:
+                            coadd_type = 'perexp'
+                    self.coadd_type = coadd_type
+            log.info('Parsed coadd_type={}'.format(coadd_type))
+    
             # Figure out which fibermap columns to put into the metadata
             # table. Note that the fibermap includes all the spectra that went
             # into the coadd (based on the unique TARGETID which is in the redrock
@@ -222,7 +225,10 @@ class DESISpectra(object):
                       #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
                       #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
                       #'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
-            expfmcols = ['TARGETID', 'TILEID', 'FIBER']
+            if coadd_type == 'custom':
+                expfmcols = ['TARGETID', 'FIBER'] # hack for M31 project
+            else:
+                expfmcols = ['TARGETID', 'TILEID', 'FIBER']
             
             # add targeting columns
             HAVE_TARGETINGBITCOLS = [col for col in TARGETINGBITCOLS if col in allfmcols]
@@ -233,7 +239,9 @@ class DESISpectra(object):
 
             # For the cumulative coadds, NIGHT is defined to be the last night
             # contributing to the coadd.
-            if self.coadd_type == 'healpix':
+            if self.coadd_type == 'custom':
+                thrunight = None
+            elif self.coadd_type == 'healpix':
                 thrunight = None
             elif self.coadd_type == 'cumulative':
                 thrunight = np.int32(os.path.basename(os.path.dirname(specfile)))
@@ -256,6 +264,7 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
+                pdb.set_trace()
                 fitindx = np.where((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
                                    (meta['OBJTYPE'] == 'TGT') *
                                    (meta['PHOTSYS'] != 'G') *
@@ -315,23 +324,26 @@ class DESISpectra(object):
                 log.warning('No matching targets in exposure table.')
                 raise ValueError
             expmeta = Table(expmeta[I])
+            if coadd_type == 'custom':
+                expmeta['TILEID'] = 80715 # M31 hack!
+
             tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
 
-            # this code is good for vetoing specific tiles
-            if False:
-                if np.any(np.isin(tiles, VETO_TILES)):
-                    remtargets = np.array(expmeta[np.isin(expmeta['TILEID'], VETO_TILES)]['TARGETID'].tolist())
-                    remindx = np.isin(meta['TARGETID'], remtargets)
-                    if np.sum(remindx) > 0:
-                        log.info('Removing {} targets from VETO_TILES.'.format(np.sum(remindx)))
-                        keepindx = np.where(np.logical_not(remindx))[0]
-                        meta = meta[keepindx]
-                        if len(meta) == 0:
-                            log.info('All targets have been removed from redrockfile {}'.format(redrockfile))
-                            continue
-                        zb = zb[keepindx]
-                        fitindx = fitindx[keepindx]
-                        tiles = tiles[np.logical_not(np.isin(tiles, VETO_TILES))]
+            ## this code is good for vetoing specific tiles
+            #if False:
+            #    if np.any(np.isin(tiles, VETO_TILES)):
+            #        remtargets = np.array(expmeta[np.isin(expmeta['TILEID'], VETO_TILES)]['TARGETID'].tolist())
+            #        remindx = np.isin(meta['TARGETID'], remtargets)
+            #        if np.sum(remindx) > 0:
+            #            log.info('Removing {} targets from VETO_TILES.'.format(np.sum(remindx)))
+            #            keepindx = np.where(np.logical_not(remindx))[0]
+            #            meta = meta[keepindx]
+            #            if len(meta) == 0:
+            #                log.info('All targets have been removed from redrockfile {}'.format(redrockfile))
+            #                continue
+            #            zb = zb[keepindx]
+            #            fitindx = fitindx[keepindx]
+            #            tiles = tiles[np.logical_not(np.isin(tiles, VETO_TILES))]
 
             if thrunight:
                 meta['THRUNIGHT'] = thrunight
@@ -347,20 +359,26 @@ class DESISpectra(object):
                 # populate them by targetid.
                 meta['TILEID'] = expmeta['TILEID'][0]
                 meta['FIBER'] = expmeta['FIBER'][0]
-                if coadd_type != 'cumulative':
-                    meta['NIGHT'] = expmeta['NIGHT'][0]
-                if coadd_type == 'perexp':
-                    meta['EXPID'] = expmeta['EXPID'][0]
-                    
+                if coadd_type == 'custom':
+                    pass
+                else:
+                    if coadd_type != 'cumulative':
+                        meta['NIGHT'] = expmeta['NIGHT'][0]
+                    if coadd_type == 'perexp':
+                        meta['EXPID'] = expmeta['EXPID'][0]
+                        
                 for iobj, tid in enumerate(meta['TARGETID']):
                     iexp = np.where(expmeta['TARGETID'] == tid)[0][0] # zeroth
                     meta['TILEID'][iobj] = expmeta['TILEID'][iexp]
                     meta['FIBER'][iobj] = expmeta['FIBER'][iexp]
-                    if coadd_type != 'cumulative':
-                        meta['NIGHT'][iobj] = expmeta['NIGHT'][iexp]
-                    if coadd_type == 'perexp':
-                        meta['EXPID'][iobj] = expmeta['EXPID'][iexp]
-
+                    if coadd_type == 'custom':
+                        pass
+                    else:
+                        if coadd_type != 'cumulative':
+                            meta['NIGHT'][iobj] = expmeta['NIGHT'][iexp]
+                        if coadd_type == 'perexp':
+                            meta['EXPID'][iobj] = expmeta['EXPID'][iexp]
+    
             self.redrock.append(Table(zb))
             self.meta.append(Table(meta))
             self.tiles.append(tiles)

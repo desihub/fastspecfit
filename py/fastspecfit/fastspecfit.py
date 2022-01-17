@@ -83,6 +83,22 @@ log = get_logger()
 #import tempfile
 #os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 
+def _desiqa_one(args):
+    """Multiprocessing wrapper."""
+    return desiqa_one(*args)
+
+def desiqa_one(CFit, EMFit, data, fastfit, metadata, coadd_type,
+               fastphot=False, outdir=None, outprefix=None):
+    """QA on one spectrum."""
+    #t0 = time.time()
+    if fastphot:
+        CFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
+                         outprefix=outprefix, outdir=outdir)
+    else:
+        EMFit.qa_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
+                          outprefix=outprefix, outdir=outdir)
+    #log.info('Building took {:.2f} sec'.format(time.time()-t0))
+
 def _fastspec_one(args):
     """Multiprocessing wrapper."""
     return fastspec_one(*args)

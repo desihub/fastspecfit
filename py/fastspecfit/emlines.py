@@ -1213,6 +1213,11 @@ class EMLineFit(ContinuumTools):
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'],
                     metadata['EXPID'], metadata['TARGETID']))
+        elif coadd_type == 'custom':
+            title = 'Tile: {}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['TARGETID'], metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], metadata['TARGETID']))
         else:
             pass
 
