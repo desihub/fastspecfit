@@ -133,8 +133,8 @@ class DESISpectra(object):
             
         return targetdirs, TOOfile
 
-    def find_specfiles(self, redrockfiles=None, firsttarget=0, coadd_type=None,
-                       targetids=None, ntargets=None):
+    def find_specfiles(self, redrockfiles=None, firsttarget=0, zmin=0.001, zmax=None,
+                       zwarnmax=0, coadd_type=None, targetids=None, ntargets=None):
         """Initialize the fastspecfit output data table.
 
         Parameters
@@ -152,7 +152,10 @@ class DESISpectra(object):
         from astropy.table import Column
         import numpy.ma as ma
         from desimodel.footprint import radec2pix
-                
+
+        if zmax is None:
+            zmax = 99.0
+        
         if redrockfiles is None:
             log.warning('At least one redrockfiles file is required.')
             raise ValueError
@@ -264,11 +267,15 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                pdb.set_trace()
-                fitindx = np.where((zb['Z'] > 0.001) * (zb['ZWARN'] <= 4) * #(zb['SPECTYPE'] == 'GALAXY') *
-                                   (meta['OBJTYPE'] == 'TGT') *
-                                   (meta['PHOTSYS'] != 'G') *
-                                   (meta['COADD_FIBERSTATUS'] == 0))[0]
+                fitindx = np.where(
+                    (zb['Z'] > zmin) *
+                    (zb['Z'] < zmax) *
+                    (zb['ZWARN'] <= zwarnmax) * 
+                    (meta['OBJTYPE'] == 'TGT') *
+                    #(meta['PHOTSYS'] != 'G') * #(zb['SPECTYPE'] == 'GALAXY') *
+                    (meta['COADD_FIBERSTATUS'] == 0)
+                    )[0]
+
                 # bug in ToOs -- they don't get targeting info propagated 
                 # fastphot /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/259/25969/redrock-sv3-bright-25969.fits -o fastphot.fits --targetids
                 check = np.sum(meta[HAVE_TARGETINGBITCOLS][fitindx].tolist(), axis=1)
