@@ -307,7 +307,7 @@ class EMLineModel(Fittable1DModel):
     sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.67, 1.2]) # [SII] 6730/6716
     mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
     oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=[minamp, maxamp])
-    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=[minamp, maxamp])
+    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=[minamp, maxamp])
 
     # Fragile because the lines are hard-coded--
     oi_1304_amp = Parameter(name='oi_1304_amp', default=3.0, bounds=[minamp, maxamp])
@@ -315,12 +315,8 @@ class EMLineModel(Fittable1DModel):
     civ_1549_amp = Parameter(name='civ_1549_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
     siliii_1892_amp = Parameter(name='siliii_1892_amp', default=3.0, bounds=[minamp, maxamp])
     ciii_1908_amp = Parameter(name='ciii_1908_amp', default=3.0, bounds=[minamp, maxamp])
-    #mgii_2796_amp = Parameter(name='mgii_2796_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
-    #mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
     nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=[minamp, maxamp])
     nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=[minamp, maxamp])
-    #oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0, bounds=[minamp, maxamp])
-    #oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=[minamp, maxamp])
     neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=[minamp, maxamp])
     hei_3889_amp = Parameter(name='hei_3889_amp', default=0.3, bounds=[minamp, maxamp])
     h6_amp = Parameter(name='h6_amp', default=0.3, bounds=[minamp, maxamp])
@@ -339,8 +335,6 @@ class EMLineModel(Fittable1DModel):
     nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=[minamp, maxamp])
     halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=[minamp, maxamp])
     nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=[minamp, maxamp])
-    #sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=[minamp, maxamp])
-    #sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=[minamp, maxamp])
     oii_7320_amp = Parameter(name='oii_7320_amp', default=1.0, bounds=[minamp, maxamp])
     oii_7330_amp = Parameter(name='oii_7330_amp', default=1.0, bounds=[minamp, maxamp])
     siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=[minamp, maxamp])
@@ -348,10 +342,10 @@ class EMLineModel(Fittable1DModel):
 
     mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
-    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     mgii_2803_vshift = Parameter(name='mgii_2803_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oii_3729_vshift = Parameter(name='oii_3729_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
-    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     
     oi_1304_vshift = Parameter(name='oi_1304_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     siliv_1396_vshift = Parameter(name='siliv_1396_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
@@ -385,10 +379,10 @@ class EMLineModel(Fittable1DModel):
 
     mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
 
     oi_1304_sigma = Parameter(name='oi_1304_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     siliv_1396_sigma = Parameter(name='siliv_1396_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
@@ -422,7 +416,6 @@ class EMLineModel(Fittable1DModel):
 
     nii_6548_amp.tied = _tie_nii_amp
     oiii_4959_amp.tied = _tie_oiii_amp
-    #oii_3726_amp.tied = _tie_oii_blue_amp
     oii_7330_amp.tied = _tie_oii_red_amp
     
     def __init__(self,
@@ -431,7 +424,7 @@ class EMLineModel(Fittable1DModel):
                  sii_doublet_ratio=sii_doublet_ratio.default,
                  mgii_2803_amp=mgii_2803_amp.default,
                  oii_3729_amp=oii_3729_amp.default,
-                 sii_6731_amp=sii_6731_amp.default,
+                 sii_6716_amp=sii_6716_amp.default,
                      
                  oi_1304_amp=oi_1304_amp.default,
                  siliv_1396_amp=siliv_1396_amp.default,
@@ -465,10 +458,10 @@ class EMLineModel(Fittable1DModel):
 
                  mgii_2796_vshift=mgii_2796_vshift.default,
                  oii_3726_vshift=oii_3726_vshift.default,
-                 sii_6716_vshift=sii_6716_vshift.default,
+                 sii_6731_vshift=sii_6731_vshift.default,
                  mgii_2803_vshift=mgii_2803_vshift.default,
                  oii_3729_vshift=oii_3729_vshift.default,
-                 sii_6731_vshift=sii_6731_vshift.default,
+                 sii_6716_vshift=sii_6716_vshift.default,
 
                  oi_1304_vshift=oi_1304_vshift.default,
                  siliv_1396_vshift=siliv_1396_vshift.default,
@@ -502,10 +495,10 @@ class EMLineModel(Fittable1DModel):
 
                  mgii_2796_sigma=mgii_2796_sigma.default,
                  oii_3726_sigma=oii_3726_sigma.default,
-                 sii_6716_sigma=sii_6716_sigma.default,
+                 sii_6731_sigma=sii_6731_sigma.default,
                  mgii_2803_sigma=mgii_2803_sigma.default,
                  oii_3729_sigma=oii_3729_sigma.default,
-                 sii_6731_sigma=sii_6731_sigma.default,
+                 sii_6716_sigma=sii_6716_sigma.default,
                  
                  oi_1304_sigma=oi_1304_sigma.default,
                  siliv_1396_sigma=siliv_1396_sigma.default,
@@ -605,7 +598,7 @@ class EMLineModel(Fittable1DModel):
         doublet_ratios = _lineamps[:self.ndoublet]
         doublet_amps = _lineamps[self.ndoublet:2*self.ndoublet] * doublet_ratios
         lineamps = np.hstack((doublet_amps, _lineamps[self.ndoublet:]))
-        print(doublet_ratios)
+        #print(doublet_ratios)
 
         # cut to lines in range
         linevshifts = linevshifts[self.inrange]
@@ -935,7 +928,7 @@ class EMLineFit(ContinuumTools):
                 result['OII_3726_AMP'] = val * bestfit.oii_3729_amp
             elif pp == 'sii_doublet_ratio':
                 result['SII_DOUBLET_RATIO'] = val
-                result['SII_6716_AMP'] = val * bestfit.sii_6731_amp
+                result['SII_6731_AMP'] = val * bestfit.sii_6716_amp
             else:
                 result[pinfo.name.upper()] = val
 
