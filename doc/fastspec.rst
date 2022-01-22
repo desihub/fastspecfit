@@ -312,6 +312,21 @@ Name                      Type        Units                         Description
               H6_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
                   H6_CHI2     float32                               Reduced chi^2 of the line-fit.
                   H6_NPIX       int32                               Number of pixels attributed to the emission line.
+             H6_BROAD_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
+        H6_BROAD_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
+            H6_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
+       H6_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
+         H6_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+          H6_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+           H6_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
+            H6_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
+       H6_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
+              H6_BROAD_EW     float32                      Angstrom Rest-frame emission-line equivalent width.
+         H6_BROAD_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
+      H6_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
+        H6_BROAD_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
+            H6_BROAD_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
+            H6_BROAD_NPIX       int32                               Number of pixels attributed to the emission line.
              HEPSILON_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
         HEPSILON_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
             HEPSILON_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
@@ -327,6 +342,21 @@ Name                      Type        Units                         Description
         HEPSILON_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
             HEPSILON_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
             HEPSILON_NPIX       int32                               Number of pixels attributed to the emission line.
+       HEPSILON_BROAD_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
+  HEPSILON_BROAD_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
+      HEPSILON_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
+ HEPSILON_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
+   HEPSILON_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+    HEPSILON_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+     HEPSILON_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
+      HEPSILON_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
+ HEPSILON_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
+        HEPSILON_BROAD_EW     float32                      Angstrom Rest-frame emission-line equivalent width.
+   HEPSILON_BROAD_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
+HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
+  HEPSILON_BROAD_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
+      HEPSILON_BROAD_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
+      HEPSILON_BROAD_NPIX       int32                               Number of pixels attributed to the emission line.
                HDELTA_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
           HDELTA_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
               HDELTA_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
@@ -342,6 +372,21 @@ Name                      Type        Units                         Description
           HDELTA_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
               HDELTA_CHI2     float32                               Reduced chi^2 of the line-fit.
               HDELTA_NPIX       int32                               Number of pixels attributed to the emission line.
+         HDELTA_BROAD_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
+    HDELTA_BROAD_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
+        HDELTA_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
+   HDELTA_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
+     HDELTA_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+      HDELTA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+       HDELTA_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
+        HDELTA_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
+   HDELTA_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
+          HDELTA_BROAD_EW     float32                      Angstrom Rest-frame emission-line equivalent width.
+     HDELTA_BROAD_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
+  HDELTA_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
+    HDELTA_BROAD_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
+        HDELTA_BROAD_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
+        HDELTA_BROAD_NPIX       int32                               Number of pixels attributed to the emission line.
                HGAMMA_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
           HGAMMA_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
               HGAMMA_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
@@ -357,6 +402,21 @@ Name                      Type        Units                         Description
           HGAMMA_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
               HGAMMA_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
               HGAMMA_NPIX       int32                               Number of pixels attributed to the emission line.
+         HGAMMA_BROAD_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
+    HGAMMA_BROAD_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
+        HGAMMA_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
+   HGAMMA_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
+     HGAMMA_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+      HGAMMA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+       HGAMMA_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
+        HGAMMA_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
+   HGAMMA_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
+          HGAMMA_BROAD_EW     float32                      Angstrom Rest-frame emission-line equivalent width.
+     HGAMMA_BROAD_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
+  HGAMMA_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
+    HGAMMA_BROAD_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
+        HGAMMA_BROAD_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
+        HGAMMA_BROAD_NPIX       int32                               Number of pixels attributed to the emission line.
             OIII_4363_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
        OIII_4363_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
            OIII_4363_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
@@ -417,6 +477,21 @@ Name                      Type        Units                         Description
            HBETA_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
                HBETA_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
                HBETA_NPIX       int32                               Number of pixels attributed to the emission line.
+          HBETA_BROAD_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
+     HBETA_BROAD_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
+         HBETA_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
+    HBETA_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
+      HBETA_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+       HBETA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+        HBETA_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
+         HBETA_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
+    HBETA_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
+           HBETA_BROAD_EW     float32                      Angstrom Rest-frame emission-line equivalent width.
+      HBETA_BROAD_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
+   HBETA_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
+     HBETA_BROAD_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
+         HBETA_BROAD_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
+         HBETA_BROAD_NPIX       int32                               Number of pixels attributed to the emission line.
             OIII_4959_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
        OIII_4959_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
            OIII_4959_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
@@ -522,6 +597,21 @@ Name                      Type        Units                         Description
           HALPHA_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
               HALPHA_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
               HALPHA_NPIX       int32                               Number of pixels attributed to the emission line.
+         HALPHA_BROAD_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
+    HALPHA_BROAD_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
+        HALPHA_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
+   HALPHA_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
+     HALPHA_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+      HALPHA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+       HALPHA_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
+        HALPHA_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
+   HALPHA_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
+          HALPHA_BROAD_EW     float32                      Angstrom Rest-frame emission-line equivalent width.
+     HALPHA_BROAD_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
+  HALPHA_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
+    HALPHA_BROAD_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
+        HALPHA_BROAD_CHI2     float32                               Reduced chi^2 of the line-fit (default value 1e6).
+        HALPHA_BROAD_NPIX       int32                               Number of pixels attributed to the emission line.
              NII_6584_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
         NII_6584_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
             NII_6584_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.

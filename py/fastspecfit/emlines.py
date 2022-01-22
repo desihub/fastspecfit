@@ -119,11 +119,6 @@ def _tie_lines(model):
             getattr(model, '{}_sigma'.format(linename)).fixed = True
             getattr(model, '{}_vshift'.format(linename)).fixed = True
 
-        ## narrow Balmer & He lines
-        #if model.inrange[iline] and model.linetable['isbalmer'][iline] and (model.linetable['isbroad'][iline] == False) and linename != 'hbeta':
-        #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_sigma
-        #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_vshift
-            
         # broad Balmer lines
         if model.inrange[iline] and model.linetable['isbalmer'][iline] and model.linetable['isbroad'][iline] and linename != 'hbeta_broad':
             getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_broad_sigma
@@ -144,6 +139,7 @@ def _tie_lines(model):
 
     #for pp in model.param_names:
     #    print(getattr(model, pp))
+    #pdb.set_trace()
     
     return model
 
@@ -1084,7 +1080,7 @@ class EMLineFit(ContinuumTools):
 
                 # only use 3-sigma lines
                 if result['{}_AMP'.format(linename)] * np.sqrt(result['{}_AMP_IVAR'.format(linename)]) > 3:
-                    if oneline['isbalmer']:
+                    if oneline['isbalmer'] and oneline['isbroad']:
                         balmer_sigmas.append(linesigma)
                         balmer_redshifts.append(linez)
                     elif oneline['isbroad']:
@@ -1488,6 +1484,7 @@ class EMLineFit(ContinuumTools):
         
         # zoom in on individual emission lines - use linetable!
         plotsig_default = 200.0 # [km/s]
+        plotsig_default_balmer = 500.0 # [km/s]
         plotsig_default_broad = 2000.0 # [km/s]
 
         meanwaves, deltawaves, sigmas, linenames = [], [], [], []
@@ -1498,13 +1495,14 @@ class EMLineFit(ContinuumTools):
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
             if np.any(self.linetable['isbroad'][I]):
-                plotsig = fastspec['BROAD_SIGMA']
-                if plotsig == 0:
-                    plotsig = plotsig_default_broad
-            elif np.any(self.linetable['isbalmer'][I]):
-                plotsig = np.max((fastspec['BALMER_SIGMA'], fastspec['FORBIDDEN_SIGMA']))
-                if plotsig < 50:
-                    plotsig = plotsig_default
+                if np.any(self.linetable['isbalmer'][I]):
+                    plotsig = fastspec['BALMER_SIGMA']
+                    if plotsig < 50:
+                        plotsig = plotsig_default_balmer
+                else:
+                    plotsig = fastspec['BROAD_SIGMA']
+                    if plotsig < 50:
+                        plotsig = plotsig_default_broad
             else:
                 plotsig = fastspec['FORBIDDEN_SIGMA']
                 if plotsig < 50:

@@ -63,5 +63,5 @@ hepsilon_broad   3971.195     0.1   True   True   H$\epsilon$-$\lambda$3970     
       sii_6731   6732.673     1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
       oii_7320   7322.0018    0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
       oii_7330   7332.7506    0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
-     siii_9069   9071.1034    0.3   False  False  [SIII]-$\lambda\lambda$9069,9532             siii_9069_9532
-     siii_9532   9533.2274    0.3   False  False  [SIII]-$\lambda\lambda$9069,9532             siii_9069_9532
+     siii_9069   9071.1034    0.3   False  False  [SIII]-$\lambda$9069                         siii_9069
+     siii_9532   9533.2274    0.3   False  False  [SIII]-$\lambda$9532                         siii_9532
