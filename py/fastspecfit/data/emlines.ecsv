@@ -53,8 +53,8 @@ siliii_1892   1892.030     1.0   False  True   SiIII]-$\lambda$1892+CIII]-$\lamb
    nii_6548   6549.852     0.1   False  False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
      halpha   6564.613     1.0   True   False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
    nii_6584   6585.277     0.1   False  False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
-   sii_6716   6718.294     1.0   False  False  [SII]-$\lambda\lambda$6716,32                sii_6716_31
-   sii_6731   6732.673     1.0   False  False  [SII]-$\lambda\lambda$6716,32                sii_6716_31
+   sii_6716   6718.294     1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
+   sii_6731   6732.673     1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
    oii_7320   7322.0018    0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
    oii_7330   7332.7506    0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
   siii_9069   9071.1034    0.3   False  False  [SIII]-$\lambda\lambda$9069,9532             siii_9069_9532

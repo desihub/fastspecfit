@@ -300,7 +300,8 @@ class EMLineModel(Fittable1DModel):
     maxamp = +1e5
 
     # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
-    # https://github.com/desihub/fastspecfit/issues/39
+    # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
+    # self.ndoublet, below!
     mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.5, 2.0]) # MgII 2796/2803
     oii_doublet_ratio = Parameter(name='oii_doublet_ratio', default=0.74, bounds=[0.66, 1.4]) # [OII] 3726/3729
     sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.67, 1.2]) # [SII] 6730/6716
@@ -562,6 +563,8 @@ class EMLineModel(Fittable1DModel):
         #self.restlinewaves = np.hstack([self.linetable['restwave'][self.linetable['name'] == linename] for linename in self.linenames])
         self.restlinewaves = self.linetable['restwave'].data
 
+        self.ndoublet = 3
+
         self.redshift = redshift
         self.emlineR = emlineR
         if npixpercamera is not None:
@@ -599,11 +602,10 @@ class EMLineModel(Fittable1DModel):
 
         # stupidly hard-coded
         _lineamps = np.hstack(linesplit[0])
-        ndoublet = 3
-        doublet_ratios = _lineamps[:ndoublet]
-        doublet_amps = _lineamps[ndoublet:2*ndoublet] * doublet_ratios
-        lineamps = np.hstack((doublet_amps, _lineamps[ndoublet:]))
-        #print(doublet_ratios)
+        doublet_ratios = _lineamps[:self.ndoublet]
+        doublet_amps = _lineamps[self.ndoublet:2*self.ndoublet] * doublet_ratios
+        lineamps = np.hstack((doublet_amps, _lineamps[self.ndoublet:]))
+        print(doublet_ratios)
 
         # cut to lines in range
         linevshifts = linevshifts[self.inrange]
@@ -716,6 +718,11 @@ class EMLineFit(ContinuumTools):
         out.add_column(Column(name='BROAD_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
         #out.add_column(Column(name='BROAD_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
 
+        # special columns for the fitted doublets
+        out.add_column(Column(name='MGII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+        out.add_column(Column(name='OII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+        out.add_column(Column(name='SII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+
         for line in linetable['name']:
             line = line.upper()
             out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
@@ -776,8 +783,7 @@ class EMLineFit(ContinuumTools):
             npixpercamera=npixpercamera,
             log10wave=self.log10wave)
 
-        pdb.set_trace()
-        
+        # old parameter model
         lineargs = [fastspecfit_table[linename.upper()] for linename in EMLine.param_names]#[4:]]
         
         _emlinemodel = EMLine.evaluate(np.hstack(specwave), *lineargs)
@@ -922,10 +928,13 @@ class EMLineFit(ContinuumTools):
             val = pinfo.value
             # special case the tied doublets
             if pp == 'mgii_doublet_ratio':
+                result['MGII_DOUBLET_RATIO'] = val
                 result['MGII_2796_AMP'] = val * bestfit.mgii_2803_amp
             elif pp == 'oii_doublet_ratio':
+                result['OII_DOUBLET_RATIO'] = val
                 result['OII_3726_AMP'] = val * bestfit.oii_3729_amp
             elif pp == 'sii_doublet_ratio':
+                result['SII_DOUBLET_RATIO'] = val
                 result['SII_6716_AMP'] = val * bestfit.sii_6731_amp
             else:
                 result[pinfo.name.upper()] = val
