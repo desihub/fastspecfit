@@ -74,6 +74,11 @@ def _tie_hbeta_sigma(model):
 def _tie_hbeta_vshift(model):
     return model.hbeta_vshift
 
+def _tie_hbeta_broad_sigma(model):
+    return model.hbeta_broad_sigma
+def _tie_hbeta_broad_vshift(model):
+    return model.hbeta_broad_vshift
+
 def _tie_oiii_5007_sigma(model):
     return model.oiii_5007_sigma
 def _tie_oiii_5007_vshift(model):
@@ -114,20 +119,26 @@ def _tie_lines(model):
             getattr(model, '{}_sigma'.format(linename)).fixed = True
             getattr(model, '{}_vshift'.format(linename)).fixed = True
 
-        # Balmer & He lines
-        if model.inrange[iline] and model.linetable['isbalmer'][iline] and linename != 'hbeta':
-            getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_sigma
-            getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_vshift
+        ## narrow Balmer & He lines
+        #if model.inrange[iline] and model.linetable['isbalmer'][iline] and (model.linetable['isbroad'][iline] == False) and linename != 'hbeta':
+        #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_sigma
+        #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_vshift
             
-        # broad lines
-        if model.inrange[iline] and model.linetable['isbroad'][iline] and model.linetable['isbalmer'][iline] == False:
+        # broad Balmer lines
+        if model.inrange[iline] and model.linetable['isbalmer'][iline] and model.linetable['isbroad'][iline] and linename != 'hbeta_broad':
+            getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_broad_sigma
+            getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_broad_vshift
+            
+        # other broad lines
+        if model.inrange[iline] and (model.linetable['isbalmer'][iline] == False) and model.linetable['isbroad'][iline]:
             if linename == 'mgii_2796':
                 getattr(model, '{}_sigma'.format(linename)).tied = _tie_mgii_2803_sigma
                 getattr(model, '{}_vshift'.format(linename)).tied = _tie_mgii_2803_vshift
             
-        # forbidden lines
-        if (model.inrange[iline] and model.linetable['isbroad'][iline] == False and
-            model.linetable['isbalmer'][iline] == False and linename != 'oiii_5007'):
+        # forbidden lines and narrow Balmer & He lines
+        if model.inrange[iline] and model.linetable['isbroad'][iline] == False and linename != 'oiii_5007':
+            #model.linetable['isbalmer'][iline] == False
+            #print(linename)
             getattr(model, '{}_sigma'.format(linename)).tied = _tie_oiii_5007_sigma
             getattr(model, '{}_vshift'.format(linename)).tied = _tie_oiii_5007_vshift
 
@@ -321,13 +332,18 @@ class EMLineModel(Fittable1DModel):
     neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=[minamp, maxamp])
     hei_3889_amp = Parameter(name='hei_3889_amp', default=0.3, bounds=[minamp, maxamp])
     h6_amp = Parameter(name='h6_amp', default=0.3, bounds=[minamp, maxamp])
+    h6_broad_amp = Parameter(name='h6_broad_amp', default=0.3, bounds=[minamp, maxamp])
     hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=[minamp, maxamp])
+    hepsilon_broad_amp = Parameter(name='hepsilon_broad_amp', default=0.5, bounds=[minamp, maxamp])
     hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=[minamp, maxamp])
+    hdelta_broad_amp = Parameter(name='hdelta_broad_amp', default=0.5, bounds=[minamp, maxamp])
     hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=[minamp, maxamp])
+    hgamma_broad_amp = Parameter(name='hgamma_broad_amp', default=0.5, bounds=[minamp, maxamp])
     oiii_4363_amp = Parameter(name='oiii_4363_amp', default=0.3, bounds=[minamp, maxamp])
     hei_4471_amp = Parameter(name='hei_4471_amp', default=0.3, bounds=[minamp, maxamp])
     heii_4686_amp = Parameter(name='heii_4686_amp', default=0.3, bounds=[minamp, maxamp])
     hbeta_amp = Parameter(name='hbeta_amp', default=1.0, bounds=[minamp, maxamp])
+    hbeta_broad_amp = Parameter(name='hbeta_broad_amp', default=1.0, bounds=[minamp, maxamp])
     oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0, bounds=[minamp, maxamp])
     oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=[minamp, maxamp])
     nii_5755_amp = Parameter(name='nii_5755_amp', default=0.3, bounds=[minamp, maxamp])
@@ -335,6 +351,7 @@ class EMLineModel(Fittable1DModel):
     oi_6300_amp = Parameter(name='oi_6300_amp', default=0.3, bounds=[minamp, maxamp])
     nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=[minamp, maxamp])
     halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=[minamp, maxamp])
+    halpha_broad_amp = Parameter(name='halpha_broad_amp', default=3.0, bounds=[minamp, maxamp])
     nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=[minamp, maxamp])
     oii_7320_amp = Parameter(name='oii_7320_amp', default=1.0, bounds=[minamp, maxamp])
     oii_7330_amp = Parameter(name='oii_7330_amp', default=1.0, bounds=[minamp, maxamp])
@@ -358,13 +375,18 @@ class EMLineModel(Fittable1DModel):
     neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     hei_3889_vshift = Parameter(name='hei_3889_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     h6_vshift = Parameter(name='h6_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    h6_broad_vshift = Parameter(name='h6_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     hepsilon_vshift = Parameter(name='hepsilon_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hepsilon_broad_vshift = Parameter(name='hepsilon_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     hdelta_vshift = Parameter(name='hdelta_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hdelta_broad_vshift = Parameter(name='hdelta_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     hgamma_vshift = Parameter(name='hgamma_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hgamma_broad_vshift = Parameter(name='hgamma_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oiii_4363_vshift = Parameter(name='oiii_4363_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     hei_4471_vshift = Parameter(name='hei_4471_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     heii_4686_vshift = Parameter(name='heii_4686_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     hbeta_vshift = Parameter(name='hbeta_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hbeta_broad_vshift = Parameter(name='hbeta_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     nii_5755_vshift = Parameter(name='nii_5755_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
@@ -372,6 +394,7 @@ class EMLineModel(Fittable1DModel):
     oi_6300_vshift = Parameter(name='oi_6300_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     nii_6548_vshift = Parameter(name='nii_6548_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     halpha_vshift = Parameter(name='halpha_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    halpha_broad_vshift = Parameter(name='halpha_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     nii_6584_vshift = Parameter(name='nii_6584_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     oii_7320_vshift = Parameter(name='oii_7320_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     oii_7330_vshift = Parameter(name='oii_7330_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
@@ -394,21 +417,27 @@ class EMLineModel(Fittable1DModel):
     nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     hei_3889_sigma = Parameter(name='hei_3889_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    h6_sigma = Parameter(name='h6_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    h6_sigma = Parameter(name='h6_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    h6_broad_sigma = Parameter(name='h6_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hepsilon_broad_sigma = Parameter(name='hepsilon_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hdelta_broad_sigma = Parameter(name='hdelta_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hgamma_broad_sigma = Parameter(name='hgamma_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     oiii_4363_sigma = Parameter(name='oiii_4363_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     hei_4471_sigma = Parameter(name='hei_4471_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
     heii_4686_sigma = Parameter(name='heii_4686_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hbeta_broad_sigma = Parameter(name='hbeta_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     oiii_4959_sigma = Parameter(name='oiii_4959_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oiii_5007_sigma = Parameter(name='oiii_5007_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nii_5755_sigma = Parameter(name='nii_5755_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     hei_5876_sigma = Parameter(name='hei_5876_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
     oi_6300_sigma = Parameter(name='oi_6300_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    halpha_broad_sigma = Parameter(name='halpha_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oii_7320_sigma = Parameter(name='oii_7320_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oii_7330_sigma = Parameter(name='oii_7330_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
@@ -437,13 +466,18 @@ class EMLineModel(Fittable1DModel):
                  neiii_3869_amp=neiii_3869_amp.default,
                  hei_3889_amp=hei_3889_amp.default,
                  h6_amp=h6_amp.default,
+                 h6_broad_amp=h6_broad_amp.default,
                  hepsilon_amp=hepsilon_amp.default,
+                 hepsilon_broad_amp=hepsilon_broad_amp.default,
                  hdelta_amp=hdelta_amp.default,
+                 hdelta_broad_amp=hdelta_broad_amp.default,
                  hgamma_amp=hgamma_amp.default,
+                 hgamma_broad_amp=hgamma_broad_amp.default,
                  oiii_4363_amp=oiii_4363_amp.default,
                  hei_4471_amp=hei_4471_amp.default,
                  heii_4686_amp=heii_4686_amp.default,
                  hbeta_amp=hbeta_amp.default,
+                 hbeta_broad_amp=hbeta_broad_amp.default,
                  oiii_4959_amp=oiii_4959_amp.default,
                  oiii_5007_amp=oiii_5007_amp.default,
                  nii_5755_amp=nii_5755_amp.default,
@@ -451,6 +485,7 @@ class EMLineModel(Fittable1DModel):
                  oi_6300_amp=oi_6300_amp.default,
                  nii_6548_amp=nii_6548_amp.default,
                  halpha_amp=halpha_amp.default,
+                 halpha_broad_amp=halpha_broad_amp.default,
                  nii_6584_amp=nii_6584_amp.default,
                  oii_7320_amp=oii_7320_amp.default,
                  oii_7330_amp=oii_7330_amp.default,
@@ -474,13 +509,18 @@ class EMLineModel(Fittable1DModel):
                  neiii_3869_vshift=neiii_3869_vshift.default,
                  hei_3889_vshift=hei_3889_vshift.default,
                  h6_vshift=h6_vshift.default,
+                 h6_broad_vshift=h6_broad_vshift.default,
                  hepsilon_vshift=hepsilon_vshift.default,
+                 hepsilon_broad_vshift=hepsilon_broad_vshift.default,
                  hdelta_vshift=hdelta_vshift.default,
+                 hdelta_broad_vshift=hdelta_broad_vshift.default,
                  hgamma_vshift=hgamma_vshift.default,
+                 hgamma_broad_vshift=hgamma_broad_vshift.default,
                  oiii_4363_vshift=oiii_4363_vshift.default,
                  hei_4471_vshift=hei_4471_vshift.default,
                  heii_4686_vshift=heii_4686_vshift.default,
                  hbeta_vshift=hbeta_vshift.default,
+                 hbeta_broad_vshift=hbeta_broad_vshift.default,
                  oiii_4959_vshift=oiii_4959_vshift.default,
                  oiii_5007_vshift=oiii_5007_vshift.default,
                  nii_5755_vshift=nii_5755_vshift.default,
@@ -488,6 +528,7 @@ class EMLineModel(Fittable1DModel):
                  oi_6300_vshift=oi_6300_vshift.default,
                  nii_6548_vshift=nii_6548_vshift.default,
                  halpha_vshift=halpha_vshift.default,
+                 halpha_broad_vshift=halpha_broad_vshift.default,
                  nii_6584_vshift=nii_6584_vshift.default,
                  oii_7320_vshift=oii_7320_vshift.default,
                  oii_7330_vshift=oii_7330_vshift.default,
@@ -511,13 +552,18 @@ class EMLineModel(Fittable1DModel):
                  neiii_3869_sigma=neiii_3869_sigma.default,
                  hei_3889_sigma=hei_3889_sigma.default,
                  h6_sigma=h6_sigma.default,
+                 h6_broad_sigma=h6_broad_sigma.default,
                  hepsilon_sigma=hepsilon_sigma.default,
+                 hepsilon_broad_sigma=hepsilon_broad_sigma.default,
                  hdelta_sigma=hdelta_sigma.default,
+                 hdelta_broad_sigma=hdelta_broad_sigma.default,
                  hgamma_sigma=hgamma_sigma.default,
+                 hgamma_broad_sigma=hgamma_broad_sigma.default,
                  oiii_4363_sigma=oiii_4363_sigma.default,
                  hei_4471_sigma=hei_4471_sigma.default,
                  heii_4686_sigma=heii_4686_sigma.default,
                  hbeta_sigma=hbeta_sigma.default,
+                 hbeta_broad_sigma=hbeta_broad_sigma.default,
                  oiii_4959_sigma=oiii_4959_sigma.default,
                  oiii_5007_sigma=oiii_5007_sigma.default,
                  nii_5755_sigma=nii_5755_sigma.default,
@@ -525,6 +571,7 @@ class EMLineModel(Fittable1DModel):
                  oi_6300_sigma=oi_6300_sigma.default,
                  nii_6548_sigma=nii_6548_sigma.default,
                  halpha_sigma=halpha_sigma.default,
+                 halpha_broad_sigma=halpha_broad_sigma.default,
                  nii_6584_sigma=nii_6584_sigma.default,
                  oii_7320_sigma=oii_7320_sigma.default,
                  oii_7330_sigma=oii_7330_sigma.default,
@@ -879,7 +926,6 @@ class EMLineFit(ContinuumTools):
         bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
         log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
-        #pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
