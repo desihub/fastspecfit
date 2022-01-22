@@ -108,8 +108,9 @@ def _tie_lines(model):
         linename = model.linetable['name'][iline]
 
         if model.inrange[iline] == False: # not in the wavelength range
-            setattr(model, '{}_amp'.format(linename), 0.0)
-            getattr(model, '{}_amp'.format(linename)).fixed = True
+            if linename not in model.doublet_names:
+                setattr(model, '{}_amp'.format(linename), 0.0)
+                getattr(model, '{}_amp'.format(linename)).fixed = True
             getattr(model, '{}_sigma'.format(linename)).fixed = True
             getattr(model, '{}_vshift'.format(linename)).fixed = True
 
@@ -301,7 +302,7 @@ class EMLineModel(Fittable1DModel):
 
     # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
     # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
-    # self.ndoublet, below!
+    # self.doublet_names, below!
     mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.5, 2.0]) # MgII 2796/2803
     oii_doublet_ratio = Parameter(name='oii_doublet_ratio', default=0.74, bounds=[0.66, 1.4]) # [OII] 3726/3729
     sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.67, 1.2]) # [SII] 6730/6716
@@ -556,7 +557,8 @@ class EMLineModel(Fittable1DModel):
         #self.restlinewaves = np.hstack([self.linetable['restwave'][self.linetable['name'] == linename] for linename in self.linenames])
         self.restlinewaves = self.linetable['restwave'].data
 
-        self.ndoublet = 3
+        self.doublet_names = ['mgii_2796', 'oii_3726', 'sii_6731']
+        self.ndoublet = len(self.doublet_names)
 
         self.redshift = redshift
         self.emlineR = emlineR
