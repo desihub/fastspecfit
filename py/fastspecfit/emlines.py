@@ -318,7 +318,7 @@ class EMLineModel(Fittable1DModel):
     # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
     # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
     # self.doublet_names, below!
-    mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.5, 2.0]) # MgII 2796/2803
+    mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.5, 3.0]) # MgII 2796/2803
     oii_doublet_ratio = Parameter(name='oii_doublet_ratio', default=0.74, bounds=[0.66, 1.4]) # [OII] 3726/3729
     sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.67, 1.2]) # [SII] 6731/6716
     mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
