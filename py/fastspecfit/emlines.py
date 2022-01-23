@@ -55,12 +55,12 @@ def _tie_oiii_amp(model):
     """
     return model.oiii_5007_amp / 2.9839 # 2.8875
 
-def _tie_oii_blue_amp(model):
-    """
-    [O2] (2-->1): airwave: 3728.8145 vacwave: 3729.8750 emissivity: 1.948e-21
-    [O2] (3-->1): airwave: 3726.0322 vacwave: 3727.0919 emissivity: 1.444e-21
-    """
-    return model.oii_3729_amp / 1.3490
+#def _tie_oii_blue_amp(model):
+#    """
+#    [O2] (2-->1): airwave: 3728.8145 vacwave: 3729.8750 emissivity: 1.948e-21
+#    [O2] (3-->1): airwave: 3726.0322 vacwave: 3727.0919 emissivity: 1.444e-21
+#    """
+#    return model.oii_3729_amp / 1.3490
     
 def _tie_oii_red_amp(model):
     """
@@ -68,6 +68,13 @@ def _tie_oii_red_amp(model):
     [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.692e-22
     """
     return model.oii_7320_amp / 1.9085
+    
+#def _tie_siii_amp(model):
+#    """
+#    [S3] (4-->2): airwave: 9068.6140 vacwave: 9071.1034 emissivity: 8.10672e-21
+#    [S3] (4-->3): airwave: 9530.6129 vacwave: 9533.2274 emissivity: 2.00141e-20
+#    """
+#    return model.siii_9532_amp / 2.4688
     
 def _tie_hbeta_sigma(model):
     return model.hbeta_sigma
@@ -300,6 +307,7 @@ class EMLineModel(Fittable1DModel):
     minsigma = 1.0
     maxsigma_narrow = 500.0
     maxsigma_broad = 5000.0
+    minsigma_balmer_broad = minsigma
 
     initsigma_narrow = 75.0
     initsigma_broad = 1000.0
@@ -352,7 +360,7 @@ class EMLineModel(Fittable1DModel):
     oii_7320_amp = Parameter(name='oii_7320_amp', default=1.0, bounds=[minamp, maxamp])
     oii_7330_amp = Parameter(name='oii_7330_amp', default=1.0, bounds=[minamp, maxamp])
     siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=[minamp, maxamp])
-    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=[minamp, maxamp])
+    siii_9532_amp = Parameter(name='siii_9532_amp', default=1.0, bounds=[minamp, maxamp])
 
     mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
@@ -414,18 +422,18 @@ class EMLineModel(Fittable1DModel):
     neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     hei_3889_sigma = Parameter(name='hei_3889_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
     h6_sigma = Parameter(name='h6_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    h6_broad_sigma = Parameter(name='h6_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    h6_broad_sigma = Parameter(name='h6_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    hepsilon_broad_sigma = Parameter(name='hepsilon_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    hepsilon_broad_sigma = Parameter(name='hepsilon_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    hdelta_broad_sigma = Parameter(name='hdelta_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    hdelta_broad_sigma = Parameter(name='hdelta_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    hgamma_broad_sigma = Parameter(name='hgamma_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    hgamma_broad_sigma = Parameter(name='hgamma_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     oiii_4363_sigma = Parameter(name='oiii_4363_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     hei_4471_sigma = Parameter(name='hei_4471_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
     heii_4686_sigma = Parameter(name='heii_4686_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
     hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    hbeta_broad_sigma = Parameter(name='hbeta_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    hbeta_broad_sigma = Parameter(name='hbeta_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     oiii_4959_sigma = Parameter(name='oiii_4959_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oiii_5007_sigma = Parameter(name='oiii_5007_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nii_5755_sigma = Parameter(name='nii_5755_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
@@ -433,7 +441,7 @@ class EMLineModel(Fittable1DModel):
     oi_6300_sigma = Parameter(name='oi_6300_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    halpha_broad_sigma = Parameter(name='halpha_broad_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    halpha_broad_sigma = Parameter(name='halpha_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oii_7320_sigma = Parameter(name='oii_7320_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oii_7330_sigma = Parameter(name='oii_7330_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
@@ -443,6 +451,7 @@ class EMLineModel(Fittable1DModel):
     nii_6548_amp.tied = _tie_nii_amp
     oiii_4959_amp.tied = _tie_oiii_amp
     oii_7330_amp.tied = _tie_oii_red_amp
+    #siii_9069_amp.tied = _tie_siii_amp
     
     def __init__(self,
                  mgii_doublet_ratio=mgii_doublet_ratio.default,
@@ -914,14 +923,15 @@ class EMLineFit(ContinuumTools):
         self.EMLineModel.oiii_4959_amp = _tie_oiii_amp(self.EMLineModel)
         #self.EMLineModel.oii_3726_amp = _tie_oii_blue_amp(self.EMLineModel)
         self.EMLineModel.oii_7330_amp = _tie_oii_red_amp(self.EMLineModel)
+        #self.EMLineModel.siii_9069_amp = _tie_siii_amp(self.EMLineModel)
 
         fitter = FastLevMarLSQFitter(self.EMLineModel)
 
         t0 = time.time()        
-        #bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights, maxiter=10000)
         bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
         log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
+        #pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
@@ -949,6 +959,18 @@ class EMLineFit(ContinuumTools):
                 ):
                 setattr(bestfit, '{}_amp'.format(linename), 0.0)
                 setattr(bestfit, '{}_sigma'.format(linename), sigma.default)
+                setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
+
+        # Now loop back through and drop Broad balmer lines that are narrower
+        # than their narrow-line counterparts.
+        IB = self.linetable['isbalmer'] * self.linetable['isbroad']
+        for linename in self.linetable['name'][IB]:
+            sigma = getattr(bestfit, '{}_sigma'.format(linename.replace('_broad', ''))) # fragile
+            sigma_broad = getattr(bestfit, '{}_sigma'.format(linename))
+            if sigma_broad <= sigma:
+                vshift = getattr(bestfit, '{}_vshift'.format(linename))
+                setattr(bestfit, '{}_amp'.format(linename), 0.0)
+                setattr(bestfit, '{}_sigma'.format(linename), sigma_broad.default)
                 setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
                 
         ## special case the tied doublets
