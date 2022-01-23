@@ -468,7 +468,8 @@ class ContinuumTools(object):
                     stackflux = np.hstack(stackflux)
                     stackivar = np.hstack(stackivar)
 
-                    onegauss = lambda x, amp, sigma, cont: amp * np.exp(-0.5 * x**2 / sigma**2) + cont
+                    onegauss = lambda x, amp, sigma, const: amp * np.exp(-0.5 * x**2 / sigma**2) + const
+                    #onegauss = lambda x, amp, sigma, const, slope: amp * np.exp(-0.5 * x**2 / sigma**2) + const + slope*x
                     noneg = stackivar > 0
                     if np.sum(noneg) > 10:
                         #snr = np.median(stackflux*np.sqrt(stackivar))
@@ -476,6 +477,8 @@ class ContinuumTools(object):
                         try:
                             popt, _ = curve_fit(onegauss, xdata=stackdvel[noneg], ydata=stackflux[noneg],
                                                 sigma=stacksigma, p0=[1.0, sigma, np.median(stackflux)])
+                                                #sigma=stacksigma, p0=[1.0, sigma, np.median(stackflux), 0.0])
+                            popt[1] = np.abs(popt[1])
                             if popt[0] > 0 and popt[1] > 0:
                                 linesigma = popt[1]
                                 snr = popt[0] / np.std(stackflux[noneg])
@@ -489,31 +492,33 @@ class ContinuumTools(object):
                             plt.clf()
                             plt.plot(stackdvel, stackflux)
                             if popt is not None:
-                                plt.plot(stackdvel, onegauss(stackdvel, *popt))
+                                plt.plot(stackdvel, onegauss(stackdvel, *popt), color='k')
+                            #print('Writing {}'.format(junkplot))
                             plt.savefig(junkplot)
                         
-            log.debug('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
+            log.info('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
             
             return linesigma, snr
                 
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
         zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
         linesigma_broad, broad_snr = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_broad, label='Broad-line')#, junkplot='cosmo-www/tmp/junk-broad.png')
+            zlinewaves, self.linemask_sigma_broad, label='Broad-line')#, junkplot='desi-users/ioannis/tmp/junk-broad.png')
         if (linesigma_broad < 300) or (linesigma_broad > 2500) or (broad_snr < 3):
             linesigma_broad = self.linemask_sigma_broad
 
         # [OII] doublet, [OIII] 4959,5007
         zlinewaves = np.array([3728.483, 4960.295, 5008.239]) * (1 + redshift)
         linesigma_narrow, narrow_snr = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_narrow, label='Narrow-line')#, junkplot='cosmo-www/tmp/junk-narrow.png')
+            zlinewaves, self.linemask_sigma_narrow, label='Narrow-line')#, junkplot='desi-users/ioannis/tmp/junk-narrow.png')
         if (linesigma_narrow < 50) or (linesigma_narrow > 250) or (narrow_snr < 3):
             linesigma_narrow = self.linemask_sigma_narrow
 
         # Hbeta, Halpha
         zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
         linesigma_balmer, narrow_balmer = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line')#, junkplot='desi-users/ioannis/tmp2/junk-balmer.png')
+            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line', junkplot='/global/homes/i/ioannis/desi-users/ioannis/tmp/junk-balmer.png')
+
         if (linesigma_balmer < 50) or (linesigma_balmer > 2500) or (narrow_balmer < 3):
             linesigma_balmer = self.linemask_sigma_balmer
 
@@ -522,11 +527,10 @@ class ContinuumTools(object):
 
         linenames = np.hstack(('Lya', self.linetable['name'])) # include Lyman-alpha
         zlinewaves = np.hstack((1215.0, self.linetable['restwave'])) * (1 + redshift)
-        isbroads = np.hstack((True, self.linetable['isbroad']))
-        isbalmers = np.hstack((False, self.linetable['isbalmer']))
+        isbroads = np.hstack((True, self.linetable['isbroad'] * (self.linetable['isbalmer'] == False)))
+        isbalmers = np.hstack((False, self.linetable['isbalmer'] * (self.linetable['isbroad'] == False)))
 
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
-
         # Index I for building the line-mask; J for estimating the local
         # continuum (to be used in self.smooth_residuals).
         linepix, contpix, linename = [], [], []        
