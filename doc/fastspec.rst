@@ -96,12 +96,15 @@ Name                      Type        Units                         Description
        FLUX_SYNTH_MODEL_G     float32                          nmgy g-band flux synthesized from the best-fitting continuum model.
        FLUX_SYNTH_MODEL_R     float32                          nmgy r-band flux synthesized from the best-fitting continuum model.
        FLUX_SYNTH_MODEL_Z     float32                          nmgy z-band flux synthesized from the best-fitting continuum model.
-                 BALMER_Z     float32                        km / s Mean redshift of well-measured Balmer emission lines (defaults to the redrock redshift).
-              FORBIDDEN_Z     float32                        km / s Mean redshift of well-measured forbidden emission lines (defaults to the redrock redshift).
-                  BROAD_Z     float32                        km / s Mean redshift of well-measured broad emission lines (defaults to the redrock redshift).
-             BALMER_SIGMA     float32                        km / s Mean line-width of well-measured Balmer emission lines.
-          FORBIDDEN_SIGMA     float32                        km / s Mean line-width of well-measured forbidden emission lines.
-              BROAD_SIGMA     float32                        km / s Mean line-width of well-measured broad emission lines.
+                 BALMER_Z     float32                        km / s Mean redshift of well-measured broad Balmer emission lines (defaults to the redrock redshift).
+              FORBIDDEN_Z     float32                        km / s Mean redshift of well-measured forbidden and narrow Balmer emission lines (defaults to the redrock redshift).
+                  BROAD_Z     float32                        km / s Mean redshift of well-measured broad UV emission lines (defaults to the redrock redshift).
+             BALMER_SIGMA     float32                        km / s Mean line-width of well-measured broad Balmer emission lines.
+          FORBIDDEN_SIGMA     float32                        km / s Mean line-width of well-measured forbidden and narrow Balmer emission lines.
+              BROAD_SIGMA     float32                        km / s Mean line-width of well-measured broad UV emission lines.
+       MGII_DOUBLET_RATIO     float32                               MgII 2796 / 2803 doublet line-ratio.
+        OII_DOUBLET_RATIO     float32                               [OII] 3726 / 3729 doublet line-ratio.
+        SII_DOUBLET_RATIO     float32                               [SII] 6731 / 6716 doublet line-ratio.
               OI_1304_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
          OI_1304_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
              OI_1304_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.

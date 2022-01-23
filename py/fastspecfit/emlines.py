@@ -320,7 +320,7 @@ class EMLineModel(Fittable1DModel):
     # self.doublet_names, below!
     mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.5, 2.0]) # MgII 2796/2803
     oii_doublet_ratio = Parameter(name='oii_doublet_ratio', default=0.74, bounds=[0.66, 1.4]) # [OII] 3726/3729
-    sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.67, 1.2]) # [SII] 6730/6716
+    sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.67, 1.2]) # [SII] 6731/6716
     mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
     oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=[minamp, maxamp])
     sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=[minamp, maxamp])
