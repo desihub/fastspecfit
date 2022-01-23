@@ -1,0 +1,238 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html prefix="og: http://ogp.me/ns# article: http://ogp.me/ns/article# " lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Index | Legacy Survey</title>
+<!-- <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css" rel="stylesheet"> --><!-- <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous"> --><link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootswatch/3.4.1/readable/bootstrap.min.css" type="text/css">
+<link href="{% static "assets/css/rst.css" %}" rel="stylesheet" type="text/css">
+<link href="{% static "assets/css/code.css" %}" rel="stylesheet" type="text/css">
+<link href="{% static "assets/css/colorbox.css" %}" rel="stylesheet" type="text/css">
+<link href="{% static "assets/css/theme.css" %}" rel="stylesheet" type="text/css">
+<link href="{% static "assets/css/custom.css" %}" rel="stylesheet" type="text/css">
+<link rel="alternate" type="application/rss+xml" title="RSS" href="rss.xml">
+<link rel="canonical" href="https://www.legacysurvey.org/">
+<link rel="icon" href="{% static "files/logo_script_32x32.png" %}" sizes="32x32">
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script><script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script><meta name="author" content="Legacy Survey">
+<meta property="og:site_name" content="Legacy Survey">
+<meta property="og:title" content="Index">
+<meta property="og:url" content="https://www.legacysurvey.org/">
+<meta property="og:description" content="DESI Legacy Imaging Surveys
+The DESI Legacy Imaging Surveys are producing an inference model catalog of the sky
+from a set of optical and infrared imaging data, comprising
+14,000 deg² of extragalactic">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2012-11-08T00:06:06Z">
+<meta property="article:tag" content="mathjax">
+<script>document.write('<script src="http://'
+            + (location.host || 'localhost').split(':')[0]
+            + ':8000/livereload.js?snipver=1"></'
+            + 'script>')</script>
+        </head>
+<body>
+<a href="#content" class="sr-only sr-only-focusable">Skip to main content</a>
+
+<!-- Menubar -->
+<nav class="navbar navbar-default navbar-fixed-top">
+<div class="container">
+    <!-- This keeps the margins nice -->
+  <div class="navbar-header">
+    <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-ex1-collapse">
+      <span class="sr-only">Toggle navigation</span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </button>
+    <a class="navbar-brand" href="https://www.legacysurvey.org/">
+      <img src="{% static "files/logo_tiny.jpg" %}" alt="Legacy Survey" id="logo"></a>
+  </div>
+  <!-- /.navbar-header -->
+  <div class="collapse navbar-collapse navbar-ex1-collapse">
+    <ul class="nav navbar-nav">
+      <li class="active">
+        <a href=".">Home</a>
+      </li>
+      <li class="dropdown">
+        <a href="#" class="dropdown-toggle" data-toggle="dropdown">DR9<b class="caret"></b></a>
+        <ul class="dropdown-menu">
+          <li>
+            <a href="https://www.legacysurvey.org/dr9/description">Description</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr9/files">Files</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr9/catalogs">Catalogs</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr9/updates">Updates</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr9/bitmasks">Bitmasks</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr9/external">External Catalogs</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr9/issues">Known Issues</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr9/issues/#the-dr9sv-data-release">DR9sv</a>
+          </li>
+        </ul>
+      </li>
+      <li class="dropdown">
+        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Other Data<b class="caret"></b></a>
+        <ul class="dropdown-menu">
+          <li>
+            <a href="https://www.legacysurvey.org/dr1">Data Release 1</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr2">Data Release 2</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr3">Data Release 3</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr4">Data Release 4</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr5">Data Release 5</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr6">Data Release 6</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr7">Data Release 7</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr8">Data Release 8</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr9/issues/#the-dr9sv-data-release">DR9sv</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/bass">BASS</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/decamls">DECaLS</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/mzls">MzLS</a>
+          </li>
+          <li>
+            <a href="https://www.darkenergysurvey.org">DES</a>
+          </li>
+          <li>
+            <a href="http://unwise.me">unWISE</a>
+          </li>
+        </ul>
+      </li>
+      <li class="dropdown">
+        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Viewer<b class="caret"></b></a>
+        <ul class="dropdown-menu">
+          <li>
+            <a href="https://www.legacysurvey.org/viewer">Go to the Sky Viewer</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/svtips">Sky Viewer Tips &amp; Tricks</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/viewer/urls">List of Cutout/URL Patterns</a>
+          </li>
+        </ul>
+      </li>
+      <li class="dropdown">
+        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Gallery<b class="caret"></b></a>
+        <ul class="dropdown-menu">
+          <li>
+            <a href="https://www.legacysurvey.org/dr9/gallery">DR9</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr8/gallery">DR8</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr7/gallery">DR7</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr6/gallery">DR6</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr5/gallery">DR5</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr2/gallery">DR4</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr2/gallery">DR3</a>
+          </li>
+          <li>
+            <a href="https://www.legacysurvey.org/dr2/gallery">DR2</a>
+          </li>
+        </ul>
+      </li>
+      <li class="dropdown">
+        <a href="#" class="dropdown-toggle" data-toggle="dropdown">SGA<b class="caret"></b></a>
+        <ul class="dropdown-menu"><li>
+            <a href="https://www.legacysurvey.org/sga/sga2020">SGA-2020</a>
+        </li></ul>
+      </li>
+      <li>
+        <a href="https://www.legacysurvey.org/status">Status</a>
+      </li>
+      <li>
+        <a href="https://www.legacysurvey.org/pubs">Publications</a>
+      </li>
+      <li>
+        <a href="https://www.legacysurvey.org/contact">Contacts</a>
+      </li>
+      </ul>
+    <ul class="nav navbar-nav navbar-right"></ul>
+  </div> <!-- /.navbar-collapse -->
+</div> <!-- /.container -->
+</nav><!-- End of Menubar --><div class="container" id="content" role="main">
+
+<div class="body-content">
+  <!--Body content-->
+  <div class="row">
+    <article class="storypage" itemscope="itemscope"
+             itemtype="http://schema.org/Article"><header></header> 
+        {% block content %}
+        {% endblock %}
+      <script type="text/x-mathjax-config">MathJax.Hub.Config({tex2jax:
+      {inlineMath: [['$latex ','$'],
+      ['\\(','\\)']]}});</script><script src="assets/js/mathjax.js"></script> 
+    </article> 
+  </div>
+</div>
+  <!--End of body content-->
+  
+  <!--
+    <footer><hr>
+    <p class="text-muted">Contents © 2021  <a href="mailto:no-reply@legacysurvey.org">Legacy Survey</a> |
+    Powered by <a href="https://getnikola.com" rel="nofollow">Nikola</a> |
+    Theme is <a href="https://bootswatch.com/3/readable/">Readable</a> |
+    <a href="https://github.com/legacysurvey/legacysurvey">Source</a></p>
+    </footer>
+  -->
+  
+  <!-- <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script> -->
+  <!-- <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.1/js/bootstrap.min.js"></script> -->
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+      integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0="
+      crossorigin="anonymous"></script>
+  <script src="assets/js/jquery-migrate-3.3.0.min.js"></script>
+      <!-- <script src="https://code.jquery.com/jquery-1.12.4.min.js"
+      integrity="sha384-nvAa0+6Qg9clwYCGGPpDQLVpLNn0fRaROjHqs13t4Ggj3Ez50XnGQqc/r8MhnRDZ"
+      crossorigin="anonymous"></script>
+      -->
+   <script src="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"
+        integrity="sha384-aJ21OjlMXNL5UyIl/XNwTMqvzeRMZH2w8c5cRVpzpU8Y5bApTppSuUkhZXN0VxHd"
+        crossorigin="anonymous"></script><script src="assets/js/moment-with-locales.min.js"></script><script src="assets/js/fancydates.js"></script><script src="assets/js/jquery.colorbox-min.js"></script>
+   <script>jQuery("a.image-reference,!.islink").colorbox({rel:"gal",maxWidth:"100%",maxHeight:"100%",scalePhotos:true});</script><!-- fancy dates -->
+   <script>moment.locale(""); fancydates(0, "YYYY-MM-DD HH:mm");</script><!-- end fancy dates -->
+</div>
+</body>
+</html>

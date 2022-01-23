@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% comment %}
+<style type="text/css">
+table, td, th {padding: 5px; text-align: center; border: 1px solid black}
+</style>
+{% endcomment %}
+
+<style type="text/css">
+td, th {text-align: center}
+</style>
+
+{% if result_index > -1 %}
+<br />
+<form style="display:inline;" action="{% url 'group-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 
+<form style="display:inline;" action="{% url 'group-next' result_index %}"><button{% if not has_next %} disabled{% endif %}>Next</button></form> 
+<form style="display:inline;" action="{% url 'index' %}#query"><button>New</button></form> 
+<br />
+{% endif %}
+
+<!--<h2><a href="https://www.legacysurvey.org/viewer/?ra={{ primary.group_ra --
+  --}}&dec={{ primary.group_dec}}&zoom=15&layer=ls-dr9&sga" target="_blank">{{ --
+  --nice_group_name }}</a></h2>--> 
+<h2>{{ nice_group_name }}</h2>
+
+<h4><a href="https://www.legacysurvey.org/viewer/?ra={{ primary.group_ra
+       }}&dec={{ primary.group_dec}}&zoom=15&layer=ls-dr9&sga"
+       target="_blank">Sky Viewer</a></h4> 
+<h4><a href="{{ primary.data_base_url }}">Images &amp; Catalogs</a></h4> 
+
+{% comment %}
+<a href="https://portal.nersc.gov/project/cosmo/temp/ioannis/sga-dr9/sga/sga2020#group-files">(documentation)</a>
+{% endcomment %}
+
+<h3>Group Properties</h3>
+<table class="table table-bordered table-hover">
+<tr>
+<th>SGA ID<br />of Primary Galaxy</th>
+<th>Group Name</th>
+<th>Group RA<br />(degree)</th>
+<th>Group Dec<br />(degree)</th>
+<th>Group Diameter<br />(arcmin)</th>
+<th>Mosaic Diameter<br />(arcmin)</th>
+<th>Number of Group<br />Members</th>
+</tr>
+<tr>
+<td>{{primary.sga_id}}</td>
+<td>{{primary.group_name}}</td>
+<td>{{primary.group_ra_string}}</td>
+<td>{{primary.group_dec_string}}</td>
+<td>{{primary.group_diameter_string}}</td>
+<td>{{primary.mosaic_diam}}</td>
+<td>{{members|length}}</td>
+</tr>
+</table>
+
+<br />
+<h4>Group Members</h4>
+<table class="table table-bordered table-hover">
+<tr>
+<th>SGA ID</th>
+<th>Galaxy</th>
+<th>Visual<br />Morphology</th>
+<th>RA<br />(degree)</th>
+<th>Dec<br />(degree)</th>
+<th>HyperLeda</th>
+</tr>
+<tr>
+{% for mem in members %}
+    <td>{{ mem.sga_id_string }}</td>
+    <td>{{ mem.galaxy }}</td>
+    <td>{{ mem.morphtype }}</td>
+    <td>{{ mem.ra_string }}</td>
+    <td>{{ mem.dec_string }}</td>
+    <td><a href="{{ mem.hyperleda_html }}" target="_blank">Link</a></td>
+    </tr>
+{% endfor %}
+</table>
+
+<br />
+<h3>Image Mosaics</h3>
+<p>Color mosaics showing the data (left panel), model (middle panel), and residuals (right panel).</p>
+<table class="table table-bordered">
+<tr><td><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-grz-montage.png"><img class="img-responsive" width="100%" src="{{ primary.png_base_url }}thumb-{{primary.group_name}}-largegalaxy-grz-montage.png" alt="Missing file {{ primary.group_name }}-largegalaxy-grz-montage.png"></a></td></tr>
+</table>
+
+<br /><br />
+<h3>Elliptical Isophote Analysis</h3>
+<h4>Geometry</h4>
+<p>This table provides several different measurements of the geometry and size
+  of each galaxy.</p>
+
+<table class="table table-bordered table-hover">
+<tr><th colspan="2"></th>
+<th colspan="5"><br /><br />Tractor</th>
+<th colspan="3"><br /><br />HyperLeda</th>
+<th colspan="3"><br /><br />Ellipse Moments</th>
+<th colspan="3">Surface Brightness<br />Threshold Radii<br />(arcsec)</th>
+<th colspan="3"><br />Half-light Radii<br />(arcsec)</th>
+</tr>
+<tr>
+  <th>SGA ID</th><th><br />Galaxy</th>
+  <th><br />Type</th><th><br />n</th><th>r(50)<br />(arcsec)</th><th>PA<br />(degree)</th><th>e</th>
+  <th>R(25)</th><th>PA<br />(degree)</th><th><br />e</th>
+  <th>Size<br />(arcsec)</th><th>PA<br />(degree)</th><th><br />e</th>
+  <th><br />R(24)</th><th><br />R(25)</th><th><br />R(26)</th>
+  <th><br />g(50)</th><th><br />r(50)</th><th><br />z(50)</th>
+</tr>
+{% for mem in members %}
+    <tr>
+    <td>{{ mem.sga_id_string }}</td><td>{{ mem.galaxy }}</td>
+    <td>{{ mem.tractortype }}</td><td>{{ mem.sersic_string }}</td><td>{{ mem.shape_r_string }}</td><td>{{ mem.tractor_pa_string }}</td><td>{{ mem.tractor_eps_string }}</td>
+    <td>{{ mem.r25_leda_string }}</td><td>{{ mem.pa_leda_string }}</td><td>{{ mem.eps_leda_string }}</td>
+    <td>{{ mem.sma_moment_string }}</td><td>{{ mem.pa_string }}</td><td>{{ mem.eps_string }}</td>
+    <td>{{ mem.sma_sb24_string }}</td><td>{{ mem.sma_sb25_string }}</td><td>{{ mem.sma_sb26_string }}</td>
+    <td>{{ mem.g_sma50_string }}</td><td>{{ mem.r_sma50_string }}</td><td>{{ mem.z_sma50_string }}</td>
+    </tr>
+{% endfor %}    
+</table>
+
+<br />
+<h4>Photometry</h4>
+<p>This table provides the Tractor model photometry and the cumulative flux
+measured within the R(24), R(25), and R(26) radii (corresponding to the
+semi-major axis length of the galaxy at the 24, 25, and 26 magnitude per square
+arcsec surface brightness threshold, respectively).</p>
+
+<table class="table table-bordered table-hover">
+<tr><th></th><th></th>
+<th colspan="3"></th>
+<th colspan="12">Curve of Growth Photometry</th>
+</tr>
+<tr><th></th><th></th>
+<th colspan="3">Tractor Photometry</th>
+<th colspan="3">&lt R(24)</th>
+<th colspan="3">&lt R(25)</th>
+<th colspan="3">&lt R(26)</th>
+<th colspan="3">Integrated</th>
+</tr>
+<tr><th>SGA ID</th><th>Galaxy</th>
+<th>g</th><th>r</th><th>z</th>
+<th>g</th><th>r</th><th>z</th>
+<th>g</th><th>r</th><th>z</th>
+<th>g</th><th>r</th><th>z</th>
+<th>g</th><th>r</th><th>z</th>
+</tr>
+{% for mem in members %}
+    <tr>
+    <td>{{ mem.sga_id_string }}</td>
+    <td>{{ mem.galaxy }}</td>
+    <td>{{ mem.tractor_gmag }}</td><td>{{ mem.tractor_rmag }}</td><td>{{ mem.tractor_zmag }}</td>
+    <td>{{ mem.gmag_sb24 }}</td><td>{{ mem.rmag_sb24 }}</td><td>{{ mem.zmag_sb24 }}</td>
+    <td>{{ mem.gmag_sb25 }}</td><td>{{ mem.rmag_sb25 }}</td><td>{{ mem.zmag_sb25 }}</td>
+    <td>{{ mem.gmag_sb26 }}</td><td>{{ mem.rmag_sb26 }}</td><td>{{ mem.zmag_sb26 }}</td>
+    <td>{{ mem.cog_gtot }}</td><td>{{ mem.cog_rtot }}</td><td>{{ mem.cog_rtot }}</td>
+    </tr>
+{% endfor %}
+</table>
+
+<br />
+{% for mem in members %}
+    <h5>{{ mem.galaxy }} (SGA ID {{ mem.sga_id_string }})</h5>
+    {% if mem.ellipse_exists %}
+        <table class="table table-bordered">
+        <tr>
+          <td colspan="2"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png"><img width="100%" class="img-responsive" src="{{ primary.png_base_url }}thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png" alt="Missing file thumb-{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-multiband.png"></a></td>
+        </tr>
+        <tr>
+          <td style="vertical-align:middle;"><a href="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"><img class="img-responsive" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-sbprofile.png"></a></td>
+
+          <td style="vertical-align:middle;"><a href="{{primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"><img class="img-responsive" src="{{ primary.png_base_url }}{{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png" alt="Missing file {{ primary.group_name }}-largegalaxy-{{ mem.sga_id_string }}-ellipse-cog.png"></a></td>
+        </tr>
+        </table>
+        <!--
+        <p>In the curve-of-growth figure, the thin dashed line is the empirical
+         model fitted to the data (see
+         the <a href="https://portal.nersc.gov/project/cosmo/temp/ioannis/sga-dr9/sga/sga2020#ellipse-fitting">ellipse-fitting
+         documentation</a>).</p>   -->
+    {% else %}
+        <p>Ellipse-fitting not done or failed.</p>
+    {% endif %}
+<br />
+{% endfor %}
+
+{% if result_index > -1 %}
+<form style="display:inline;" action="{% url 'group-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 
+<form style="display:inline;" action="{% url 'group-next' result_index %}"><button{% if not has_next %} disabled{% endif %}>Next</button></form> 
+<form style="display:inline;" action="{% url 'index' %}#query"><button>New</button></form> 
+<br /><br /><br />
+{% endif %}
+
+
+{% endblock %}
+

@@ -1,0 +1,14 @@
+module use /global/common/software/desi/users/dstn/modulefiles/
+module load legacypipe/DR9
+export PYTHONPATH=/global/cfs/cdirs/cosmo/webapp/sga-webapp/py:$PYTHONPATH
+export DJANGO_SETTINGS_MODULE=SGA.webapp.settings
+
+cd /global/cfs/cdirs/cosmo/webapp/sga-webapp/py/SGA/webapp
+python manage.py makemigrations
+python manage.py migrate
+python load.py
+chmod 666 db/db.sqlite3
+
+touch wsgi.py
+
+convert sga-2020-sky.png -thumbnail 400  sga-2020-thumb.png

@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% load my_templatetag %}
+
+{% block title %}
+Central Galaxy ...
+{% endblock %}
+
+{% block content %}
+
+<div class="sample-wrapper">
+<h1>Central Galaxy {{ cen.mem_match_id_string }}</h1>
+<a href="../">Home</a>
+<br />
+<a href="../list?">Search</a>
+<br />
+<br />
+<a href="?{% url_replace request 'index' prev_index %}" style="float:left;">Previous Central Galaxy</a>
+<a href="?{% url_replace request 'index' next_index %}" style="float:right">Next Central Galaxy</a>
+<br />
+<br />
+
+<table class="cen_table" border="1" cellpadding="8">
+<thead>
+<tr>
+<th>Number</th>
+<th>redMaPPer ID</th>
+<th>RA</th>
+<th>Dec</th>
+<th>Redshift</th>
+<th>Richness</th>
+<th>Viewer</th>
+<th>SkyServer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td> {{ index }}</td>
+<td>{{ cen.mem_match_id_string }}</td>
+<td><script>
+  var ra = {{ cen.ra }};
+  ra = ra.toFixed(7);
+  document.write(ra);
+</script></td>
+<td><script>
+  var dec = {{ cen.dec }};
+  dec = dec.toFixed(7);
+  document.write(dec);
+</script></td>
+<td><script>
+  var z = {{ cen.z }};
+  z = z.toFixed(3);
+  document.write(z);
+</script></td>
+<td><script>
+  var la = {{ cen.la }};
+  la = la.toFixed(3);
+  document.write(la);
+</script></td>
+<td><a href = "{% viewer_link cen.ra cen.dec %}">link</a></td>
+<td><a href = "{% skyserver_link cen.sdss_objid %}">link</a></td></tr>
+</tbody>
+  </table>
+
+
+<h2>Image mosaics</h2>
+<p>Each mosaic (left to right: data, model of all but the central galaxy, residual image containing just the central galaxy) is 300 kpc by 300 kpc.</p>
+<table width="100%">
+<tr><td><a href="{% photo_pull request cen.mem_match_id_string 'coadd-montage.png' %}"><img src="{% photo_pull request cen.mem_match_id_string 'coadd-montage.png' %}" alt="Missing file {{ cen.mem_match_id_string }}-coadd-montage.png" height="auto" width="100%" ></a></td></tr>
+</table>
+<h2>Elliptical Isophote Analysis</h2>
+<table width="100%">
+<tr>
+<td><a href="{% photo_pull request cen.mem_match_id_string 'ellipse-multiband.png' %}"><img src="{% photo_pull request cen.mem_match_id_string 'ellipse-multiband.png' %}" alt="Missing file {{ cen.mem_match_id_string }}-ellipse-multiband.png" height="auto" width="100%"></a></td>
+</tr>
+</table>
+<table width="100%">
+<tr>
+<td width="50%"><a href="{% photo_pull request cen.mem_match_id_string 'ellipse-sbprofile.png'%}"><img src="{% photo_pull request cen.mem_match_id_string 'ellipse-sbprofile.png'%}" alt="Missing file {{ cen.mem_match_id_string }}-ellipse-sbprofile.png" height="auto" width="100%"></a></td>
+<td></td>
+</tr>
+</table>
+<h2>Surface Brightness Profile Modeling</h2>
+<table width="100%">
+<tr>
+<th>Single Sersic (No Wavelength Dependence)</th><th>Single Sersic</th>
+</tr>
+<tr>
+<td><a href="{% photo_pull request cen.mem_match_id_string 'sersic-single-nowavepower.png' %}"><img src="{% photo_pull request cen.mem_match_id_string 'sersic-single-nowavepower.png' %}" alt="Missing file {{ cen.mem_match_id_string }}-sersic-single-nowavepower.png" height="auto" width="100%"></a></td>
+<td><a href="{% photo_pull request cen.mem_match_id_string 'sersic-single.png' %}"><img src="{% photo_pull request cen.mem_match_id_string 'sersic-single.png' %}" alt="Missing file {{ cen.mem_match_id_string }}-sersic-single.png" height="auto" width="100%"></a></td>
+</tr>
+<tr>
+<th>Sersic+Exponential (No Wavelength Dependence)</th><th>Sersic+Exponential</th>
+</tr>
+<tr>
+<td><a href="{% photo_pull request cen.mem_match_id_string 'sersic-exponential-nowavepower.png' %}"><img src="{% photo_pull request cen.mem_match_id_string 'sersic-exponential-nowavepower.png' %}" alt="Missing file {{ cen.mem_match_id_string }}-sersic-exponential-nowavepower.png" height="auto" width="100%"></a></td>
+<td><a href="{% photo_pull request cen.mem_match_id_string 'sersic-exponential.png' %}"><img src="{% photo_pull request cen.mem_match_id_string 'sersic-exponential.png' %}" alt="Missing file {{ cen.mem_match_id_string }}-sersic-exponential.png" height="auto" width="100%"></a></td>
+</tr>
+<tr>
+<th>Double Sersic (No Wavelength Dependence)</th><th>Double Sersic</th>
+</tr>
+<tr>
+<td><a href="{% photo_pull request cen.mem_match_id_string 'sersic-double-nowavepower.png' %}"><img src="{% photo_pull request cen.mem_match_id_string 'sersic-double-nowavepower.png' %}" alt="Missing file {{ cen.mem_match_id_string }}-sersic-double-nowavepower.png" height="auto" width="100%"></a></td>
+<td><a href="{% photo_pull request cen.mem_match_id_string 'sersic-double.png' %}"><img src="{% photo_pull request cen.mem_match_id_string 'sersic-double.png' %}" alt="Missing file {{ cen.mem_match_id_string }}-sersic-double.png" height="auto" width="100%"></a></td>
+</tr>
+</table>
+<br />
+<a href="../">Home</a>
+<br />
+<a href="?{% url_replace request 'index' next_index %}">Next Central Galaxy</a>
+<br />
+<a href="?{% url_replace request 'index' prev_index %}">Previous Central Galaxy</a>
+<br />
+<br /><b><i>Last updated 
+<SCRIPT LANGUAGE="JavaScript">
+var months = new Array(13);
+months[1] = "January";
+months[2] = "February";
+months[3] = "March";
+months[4] = "April";
+months[5] = "May";
+months[6] = "June";
+months[7] = "July";
+months[8] = "August";
+months[9] = "September";
+months[10] = "October";
+months[11] = "November";
+months[12] = "December";
+var dateObj = new Date(document.lastModified)
+var lmonth = months[dateObj.getMonth() + 1]
+var date = dateObj.getDate()
+var fyear = dateObj.getYear()
+if (fyear < 2000)
+fyear = fyear + 1900
+document.write(" " + fyear + " " + lmonth + " " + date)
+</SCRIPT>
+</b></i>
+<br />
+<div>
+
+{% endblock %}
