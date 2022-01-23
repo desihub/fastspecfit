@@ -312,8 +312,10 @@ class EMLineModel(Fittable1DModel):
     initsigma_narrow = 75.0
     initsigma_broad = 1000.0
 
+    #minamp = 0.0
     minamp = -1e3
     maxamp = +1e5
+    minamp_balmer_broad = minamp # 0.0
 
     # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
     # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
@@ -336,18 +338,18 @@ class EMLineModel(Fittable1DModel):
     neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=[minamp, maxamp])
     hei_3889_amp = Parameter(name='hei_3889_amp', default=0.3, bounds=[minamp, maxamp])
     h6_amp = Parameter(name='h6_amp', default=0.3, bounds=[minamp, maxamp])
-    h6_broad_amp = Parameter(name='h6_broad_amp', default=0.3, bounds=[minamp, maxamp])
+    h6_broad_amp = Parameter(name='h6_broad_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
     hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=[minamp, maxamp])
-    hepsilon_broad_amp = Parameter(name='hepsilon_broad_amp', default=0.5, bounds=[minamp, maxamp])
+    hepsilon_broad_amp = Parameter(name='hepsilon_broad_amp', default=0.5, bounds=[minamp_balmer_broad, maxamp])
     hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=[minamp, maxamp])
-    hdelta_broad_amp = Parameter(name='hdelta_broad_amp', default=0.5, bounds=[minamp, maxamp])
+    hdelta_broad_amp = Parameter(name='hdelta_broad_amp', default=0.5, bounds=[minamp_balmer_broad, maxamp])
     hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=[minamp, maxamp])
-    hgamma_broad_amp = Parameter(name='hgamma_broad_amp', default=0.5, bounds=[minamp, maxamp])
+    hgamma_broad_amp = Parameter(name='hgamma_broad_amp', default=0.5, bounds=[minamp_balmer_broad, maxamp])
     oiii_4363_amp = Parameter(name='oiii_4363_amp', default=0.3, bounds=[minamp, maxamp])
     hei_4471_amp = Parameter(name='hei_4471_amp', default=0.3, bounds=[minamp, maxamp])
     heii_4686_amp = Parameter(name='heii_4686_amp', default=0.3, bounds=[minamp, maxamp])
     hbeta_amp = Parameter(name='hbeta_amp', default=1.0, bounds=[minamp, maxamp])
-    hbeta_broad_amp = Parameter(name='hbeta_broad_amp', default=1.0, bounds=[minamp, maxamp])
+    hbeta_broad_amp = Parameter(name='hbeta_broad_amp', default=1.0, bounds=[minamp_balmer_broad, maxamp])
     oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0, bounds=[minamp, maxamp])
     oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=[minamp, maxamp])
     nii_5755_amp = Parameter(name='nii_5755_amp', default=0.3, bounds=[minamp, maxamp])
@@ -355,7 +357,7 @@ class EMLineModel(Fittable1DModel):
     oi_6300_amp = Parameter(name='oi_6300_amp', default=0.3, bounds=[minamp, maxamp])
     nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=[minamp, maxamp])
     halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=[minamp, maxamp])
-    halpha_broad_amp = Parameter(name='halpha_broad_amp', default=3.0, bounds=[minamp, maxamp])
+    halpha_broad_amp = Parameter(name='halpha_broad_amp', default=3.0, bounds=[minamp_balmer_broad, maxamp])
     nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=[minamp, maxamp])
     oii_7320_amp = Parameter(name='oii_7320_amp', default=1.0, bounds=[minamp, maxamp])
     oii_7330_amp = Parameter(name='oii_7330_amp', default=1.0, bounds=[minamp, maxamp])
@@ -897,7 +899,7 @@ class EMLineFit(ContinuumTools):
             for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
                 if linename in init.keys():
                     continue
-                if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): # skip the physical doubleta
+                if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): # skip the physical doublets
                     continue
                 npix = len(linepix)
                 if npix > 5:
@@ -908,14 +910,25 @@ class EMLineFit(ContinuumTools):
                         mxpx = len(data['flux'][icam])
                     amp = np.max(data['flux'][icam][mnpx:mxpx])
                 else:
-                    amp = np.max(data['flux'][icam][linepix])
+                    amp = np.percentile(data['flux'][icam][linepix], 97.5)
+
+                # update the bounds on the line-amplitude
+                bounds = [-np.min(np.abs(data['flux'][icam][linepix])), 2*np.max(data['flux'][icam][linepix])]
+                
+                ## force broad lines to be positive
+                #if 'broad' in linename:
+                #    bounds = [0.0, 2*np.max(data['flux'][icam][linepix])]
+                #else:
+                #    bounds = [-np.min(np.abs(data['flux'][icam][linepix])), 2*np.max(data['flux'][icam][linepix])]
+                
                 #print(linename, amp)
                 #if 'alpha' in linename:
                 #    pdb.set_trace()
                 
                 setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
+                getattr(self.EMLineModel, '{}_amp'.format(linename)).bounds = bounds
                 #getattr(self.EMLineModel, '{}_amp'.format(linename)).default = amp
-                #if '4686' in linename:
+                #if 'halpha' in linename:
                 #    pdb.set_trace()
                 init.update({linename: amp})
                 

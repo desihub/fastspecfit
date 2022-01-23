@@ -444,6 +444,8 @@ class ContinuumTools(object):
         wave - observed-frame wavelength array
 
         """
+        from copy import copy
+        
         def _estimate_linesigma(zlinewaves, sigma, label='Broad-line', junkplot=None):
             """Estimate the velocity width from potentially strong, isolated lines; somewhat
             fragile!
@@ -517,7 +519,7 @@ class ContinuumTools(object):
         # Hbeta, Halpha
         zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
         linesigma_balmer, narrow_balmer = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line', junkplot='/global/homes/i/ioannis/desi-users/ioannis/tmp/junk-balmer.png')
+            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line')#, junkplot='/global/homes/i/ioannis/desi-users/ioannis/tmp/junk-balmer.png')
 
         if (linesigma_balmer < 50) or (linesigma_balmer > 2500) or (narrow_balmer < 3):
             linesigma_balmer = self.linemask_sigma_balmer
@@ -537,11 +539,12 @@ class ContinuumTools(object):
         for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
                                                            isbroads[inrange], isbalmers[inrange]):
             if isbroad:
-                sigma = linesigma_broad
-            elif isbalmer:
-                sigma = linesigma_balmer
+                sigma = copy(linesigma_broad)
+            elif isbalmer or 'broad' in _linename:
+                sigma = copy(linesigma_balmer)
             else:
-                sigma = linesigma_narrow
+                sigma = copy(linesigma_narrow)
+                
             sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
             I = (wave >= (zlinewave - 3*sigma)) * (wave <= (zlinewave + 3*sigma))
 
@@ -553,7 +556,7 @@ class ContinuumTools(object):
             Jblu = (wave > (zlinewave - 5*sigma)) * (wave < (zlinewave - 3*sigma)) * (linemask == False)
             Jred = (wave < (zlinewave + 5*sigma)) * (wave > (zlinewave + 3*sigma)) * (linemask == False)
             J = np.logical_or(Jblu, Jred)
-            #if '4686' in _linename:
+            #if 'h6' in _linename:
             #    pdb.set_trace()
             
             if np.sum(I) > 0 and np.sum(J) > 0:
@@ -561,8 +564,6 @@ class ContinuumTools(object):
                 linepix.append(I)
                 contpix.append(J)
                 linemask[I] = True  # True = affected by line
-
-        #pdb.set_trace()
 
         #for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
         #                                                   isbroads[inrange], isbalmers[inrange]):
