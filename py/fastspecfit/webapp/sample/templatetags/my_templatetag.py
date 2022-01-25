@@ -46,7 +46,7 @@ def url_replace_sort(req, new_sort):
 
     """
     dict_ = req.GET.copy()
-    if 'sort' in dict_ and dict_['sort'] is not "":
+    if 'sort' in dict_ and dict_['sort'] != "":
         current_sort = dict_['sort']
         if current_sort == new_sort:
             dict_['sort'] = '-' + new_sort

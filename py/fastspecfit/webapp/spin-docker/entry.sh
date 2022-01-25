@@ -1,4 +1,4 @@
 #!/bin/bash
-export PYTHONPATH=$(pwd)/SGA/py:$PYTHONPATH && \
-cd /app/SGA/py/SGA/webapp
+export PYTHONPATH=$(pwd)/fastspecfit/py:$PYTHONPATH && \
+cd /app/fastspecfit/py/fastspecfit/webapp
 uwsgi --touch-reload wsgi.py --ini uwsgi.ini

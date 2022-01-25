@@ -135,14 +135,8 @@ def explore(req):
                                         'cone_ra':cone_ra, 'cone_dec':cone_dec,
                                         'cone_rad':cone_rad_arcmin})
 
-# FixMe
-def group(req, group_name):
-    # figure out the members of this group
-    members = Sample.objects.all().filter(group_name=group_name)
-    members.order_by('targetid')
-    nice_group_name = group_name.replace('_GROUP', ' Group')
-    primary = [m for m in members if m.group_primary]
-    primary = primary[0]
+def target(req, target_name):
+    nice_target_name = 'TargetID {}'.format(target_name)
 
     result_index = req.GET.get('index', '-1')
     try:
@@ -152,20 +146,18 @@ def group(req, group_name):
 
     has_next = has_prev = False
     if result_index > -1:
-        i_next,_ = get_next_group(req, result_index)
-        i_prev,_ = get_next_group(req, result_index, direction=-1)
+        i_next,_ = get_next_target(req, result_index)
+        i_prev,_ = get_next_target(req, result_index, direction=-1)
         has_next = i_next is not None
         has_prev = i_prev is not None
     
-    return render(req, 'group.html', {'group_name': group_name,
-                                      #'nice_group_name': nice_group_name,
-                                      #'primary': primary,
-                                      #'members': members,
+    return render(req, 'target.html', {'target_name': target_name,
+                                      'nice_target_name': nice_target_name,
                                       'result_index': result_index,
                                       'has_next': has_next,
                                       'has_prev': has_prev,})
 
-def get_next_group(req, index, qs=None, direction=1):
+def get_next_target(req, index, qs=None, direction=1):
     # "index" is actually 1-indexed...
     index -= 1
     if qs is None:
@@ -175,33 +167,33 @@ def get_next_group(req, index, qs=None, direction=1):
     N = qs.count()
     if index >= N or index < 0:
         return None,None
-    # Find the next group.
-    gal = qs[index]
-    grp = gal.group_name
+    # Find the next target.
+    obj = qs[index]
+    targ = obj.target_name
     while True:
         index += direction
         if index >= N or index < 0:
             return None,None
-        if qs[index].group_name != grp:
-            return index+1, qs[index].group_name
+        if qs[index].target_name != targ:
+            return index+1, qs[index].target_name
 
-def group_prev(req, index):
+def target_prev(req, index):
     from django.shortcuts import redirect
     from django.urls import reverse
     index = int(index,10)
-    nextindex,nextgroup = get_next_group(req, index, direction=-1)
+    nextindex, nexttarget = get_next_target(req, index, direction=-1)
     if nextindex is None:
         return HttpResponse('bad index')
-    return redirect(reverse(group, args=(nextgroup,)) + '?index=%i' % (nextindex))
+    return redirect(reverse(target, args=(nexttarget,)) + '?index=%i' % (nextindex))
 
-def group_next(req, index):
+def target_next(req, index):
     from django.shortcuts import redirect
     from django.urls import reverse
     index = int(index,10)
-    nextindex,nextgroup = get_next_group(req, index)
+    nextindex, nexttarget = get_next_target(req, index)
     if nextindex is None:
         return HttpResponse('bad index')
-    return redirect(reverse(group, args=(nextgroup,)) + '?index=%i' % (nextindex))
+    return redirect(reverse(target, args=(nexttarget,)) + '?index=%i' % (nextindex))
 
 def index(req):
     """

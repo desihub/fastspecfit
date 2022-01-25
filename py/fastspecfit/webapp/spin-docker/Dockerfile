@@ -37,5 +37,5 @@ WORKDIR /app
 COPY entry.sh /app
 ENTRYPOINT ["/app/entry.sh"]
 
-#RUN git clone https://github.com/moustakas/SGA.git SGA && \
+#RUN git clone https://github.com/desihub/fastspecfit.git fastspecfit && \
 #    git checkout webapp

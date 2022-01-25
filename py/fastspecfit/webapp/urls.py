@@ -20,15 +20,15 @@ from django.contrib import admin
 from django.conf.urls import url
 from django.views.generic import TemplateView
 
-import SGA.webapp.sample.views as sample
+import fastspecfit.webapp.sample.views as sample
 
 urlpatterns = [
     #url(r'^$', TemplateView.as_view(template_name='index.html'), name='index'),
     #url(r'^explore$', sample.explore),
     url(r'^$', sample.explore, name='index'),
-    url(r'^group/(.+)$', sample.group, name='group'),
-    url(r'^group-prev/(\d+)$', sample.group_prev, name='group-prev'),
-    url(r'^group-next/(\d+)$', sample.group_next, name='group-next'),
+    url(r'^target/(.+)$', sample.target, name='target'),
+    url(r'^target-prev/(\d+)$', sample.target_prev, name='target-prev'),
+    url(r'^target-next/(\d+)$', sample.target_next, name='target-next'),
 
 #   path('admin/', admin.site.urls),
 

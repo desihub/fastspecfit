@@ -29,16 +29,21 @@ class Sample(Model):
     uy = FloatField(default=-2.0)
     uz = FloatField(default=-2.0)
 
+    specprod = 'everest'
+    survey = 'sv3'
+    program = 'dark'
+    tile = '80605'
+
     def base_html_dir(self):
-        return '/global/cfs/cdirs/cosmo/data/sga/2020/html/'
+        return '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/html/'.format(specprod)
 
     def png_base_url(self):
-        baseurl = 'https://portal.nersc.gov/project/cosmo/data/sga/2020/html/'
+        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/{}/html/'.format(specprod)
         baseurl += self.ra_slice() + '/' + self.group_name + '/';
         return baseurl
 
     def data_base_url(self):
-        baseurl = 'https://portal.nersc.gov/project/cosmo/data/sga/2020/data/'
+        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/{}/'.format(specprod)
         baseurl += self.ra_slice() + '/' + self.group_name + '/';
         return baseurl
 

@@ -31,12 +31,12 @@ DEBUG = True
 ALLOWED_HOSTS = ['127.0.0.1',
                  'testserver']
                  #'lb.cosmo-sga.development.svc.spin.nersc.org',
-                 #'sga.legacysurvey.org']
-
+                 #'fastspecfit.desi.lbl.gov']
 
 # Application definition
 
 INSTALLED_APPS = [
+    #'django_filters',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -56,7 +56,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'SGA.webapp.urls'
+ROOT_URLCONF = 'fastspecfit.webapp.urls'
 
 TEMPLATES = [
     {
@@ -78,12 +78,10 @@ TEMPLATE_CONTEXT_PROCESSORS = (
     'django.core.context_processors.request',
 )
 
-WSGI_APPLICATION = 'SGA.webapp.wsgi.application'
+WSGI_APPLICATION = 'fastspecfit.webapp.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
-
-
 
 DATABASES = {
     'default': {
@@ -91,7 +89,6 @@ DATABASES = {
         'NAME': os.path.join(BASE_DIR, 'db', 'db.sqlite3'),
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/2.0/ref/settings/#auth-password-validators
