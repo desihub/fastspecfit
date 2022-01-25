@@ -25,14 +25,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'eok&i&(7=!8u%9lr48%pks9x7pfp7b=a6^p)^ldscte+t&_tz+')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# DEBUG = True
 DEBUG = bool( os.environ.get('DJANGO_DEBUG', True) )
 DEBUG = True
 
 ALLOWED_HOSTS = ['127.0.0.1',
-                 'testserver',
-                 'lb.cosmo-sga.development.svc.spin.nersc.org',
-                 'sga.legacysurvey.org']
+                 'testserver']
+                 #'lb.cosmo-sga.development.svc.spin.nersc.org',
+                 #'sga.legacysurvey.org']
 
 
 # Application definition
@@ -44,8 +43,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    #'SGA.webapp.sample.app.SgaApp',
-    'SGA.webapp.sample',
+    'fastspecfit.webapp.sample',
 ]
 
 MIDDLEWARE = [

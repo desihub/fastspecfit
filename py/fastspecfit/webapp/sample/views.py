@@ -16,7 +16,7 @@ import astropy.io.fits
 from astropy.table import Table, Column
 
 if __name__ == '__main__':
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "SGA.webapp.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fastspecfit.webapp.settings")
     import django
     django.setup()
 
@@ -24,8 +24,8 @@ from django.shortcuts import render
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.http import HttpResponse
 
-from SGA.webapp.sample.filters import SampleFilter
-from SGA.webapp.sample.models import Sample
+from fastspecfit.webapp.sample.filters import SampleFilter
+from fastspecfit.webapp.sample.models import Sample
 
 def explore(req):
     """Returns the explore.html file, or renders the explore.html page after it
@@ -38,9 +38,9 @@ def explore(req):
         File stream if user clicked download, otherwise render for explore.html
 
     """
-    ##if download button was pressed return the selected subset of the FITS table.
+    # If download button was pressed return the selected subset of the FITS table.
     if req.method == 'POST':
-        from SGA.webapp.load import DATADIR
+        from fastspecfit.webapp.load import DATADIR, fastspecfile
         
         print('download: req.GET:', req.GET)
         query = pickle.loads(req.session['sample_query'])
@@ -48,32 +48,32 @@ def explore(req):
         qs = Sample.objects.all()
         qs.query = query
         inds = qs.values_list('row_index')
-        datafile = os.path.join(DATADIR, 'SGA-2020.fits')
+        datafile = os.path.join(DATADIR, fastspecfile)
         inds = np.array(inds)
         inds = inds[:,0]
         print('Query indices:', inds.shape)
         import fitsio
         fin = fitsio.FITS(datafile)
-        hdu = fin['ELLIPSE']
+        hdu = fin['METADATA'] # fragile!
         t = hdu.read(rows=inds)
         hdr = hdu.read_header()
         phdr = fin[0].read_header()
-        hdu2 = fin['TRACTOR']
+        hdu2 = fin['FASTSPEC'] # fragile!
         t2 = hdu2.read(rows=inds)
         hdr2 = hdu2.read_header()
         #print('Read', t)
         fits = fitsio.FITS('mem://', 'rw')
         fits.write(None, header=phdr)
-        fits.write(t, header=hdr, extname='ELLIPSE')
-        fits.write(t2, header=hdr2, extname='TRACTOR')
+        fits.write(t, header=hdr, extname='METADATA')
+        fits.write(t2, header=hdr2, extname='FASTSPEC')
         rawdata = fits.read_raw()
         fits.close()
-        filename = 'sga-query.fits'
+        filename = 'fastspecfit-query.fits'
         res = HttpResponse(rawdata, content_type='application/fits')
         res['Content-Disposition'] = 'attachment; filename="%s"' % filename
         return res
 
-    # Render the page based on new filter. Automatically sort by sga_id if no
+    # Render the page based on new filter. Automatically sort by targetid if no
     # other sort value given.
     sort = None
     if "sort" in req.GET:
@@ -84,6 +84,7 @@ def explore(req):
     cone_ra  = req.GET.get('conera','')
     cone_dec = req.GET.get('conedec','')
     cone_rad = req.GET.get('coneradius','')
+
     # save for form default
     cone_rad_arcmin = cone_rad
     if len(cone_ra) and len(cone_dec) and len(cone_rad):
@@ -112,11 +113,11 @@ def explore(req):
         queryset = Sample.objects.all()
 
     if sort is None:
-        sort = 'sga_id'
+        sort = 'targetid'
 
     queryset = queryset.order_by(sort)
 
-    #apply filter to Sample model, then store in queryset
+    #apply filter to Sample model, then store in queryset.
     sample_filter = SampleFilter(req.GET, queryset)
     sample_filtered = sample_filter.qs
 
@@ -133,11 +134,12 @@ def explore(req):
     return render(req, 'explore.html', {'page': page, 'paginator': paginator,
                                         'cone_ra':cone_ra, 'cone_dec':cone_dec,
                                         'cone_rad':cone_rad_arcmin})
-    
+
+# FixMe
 def group(req, group_name):
     # figure out the members of this group
     members = Sample.objects.all().filter(group_name=group_name)
-    members.order_by('sga_id')
+    members.order_by('targetid')
     nice_group_name = group_name.replace('_GROUP', ' Group')
     primary = [m for m in members if m.group_primary]
     primary = primary[0]
@@ -156,9 +158,9 @@ def group(req, group_name):
         has_prev = i_prev is not None
     
     return render(req, 'group.html', {'group_name': group_name,
-                                      'nice_group_name': nice_group_name,
-                                      'primary': primary,
-                                      'members': members,
+                                      #'nice_group_name': nice_group_name,
+                                      #'primary': primary,
+                                      #'members': members,
                                       'result_index': result_index,
                                       'has_next': has_next,
                                       'has_prev': has_prev,})

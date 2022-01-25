@@ -1,13 +1,11 @@
 #!/usr/bin/env python
-
-"""
-Used to run the server for this Django project
+"""Used to run the server for this Django project.
 
 """
 import os, sys
 
 if __name__ == "__main__":
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "SGA.webapp.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fastspecfit.webapp.settings")
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

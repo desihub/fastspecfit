@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
-from SGA.webapp.sample.templatetags import *
+from fastspecfit.webapp.sample.templatetags import *
 
-class SgaApp(AppConfig):
+class FastSpecFitApp(AppConfig):
     name = 'sample'

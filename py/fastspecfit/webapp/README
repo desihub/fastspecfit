@@ -1,9 +1,9 @@
 module use /global/common/software/desi/users/dstn/modulefiles/
 module load legacypipe/DR9
-export PYTHONPATH=/global/u2/i/ioannis/code/desihub/fastspecfit/py:$PYTHONPATH
+export PYTHONPATH=/global/cscratch1/sd/ioannis/fuji-dev/fastspecfit/py:$PYTHONPATH
 export DJANGO_SETTINGS_MODULE=fastspecfit.webapp.settings
 
-cd /global/cfs/cdirs/cosmo/webapp/sga-webapp/py/SGA/webapp
+cd /global/cscratch1/sd/ioannis/fuji-dev/fastspecfit/py/fastspecfit/webapp
 python manage.py makemigrations
 python manage.py migrate
 python load.py
