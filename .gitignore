@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 .ipynb_checkpoints
 
+# database/webapp stuff
+db
+
 # EMACS backup files
 *~
 
