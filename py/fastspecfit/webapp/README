@@ -1,19 +1,23 @@
 # module use /global/common/software/desi/users/dstn/modulefiles/
 # module load legacypipe/DR9
 
-conda create -n fastspecfit-webapp python numpy scipy matplotlib astropy Django
-conda activate fastspecfit-webapp
-pip install fitsio django-filter
+# one time--
+  conda create -n fastspecfit-webapp python numpy scipy matplotlib astropy Django
+  conda activate fastspecfit-webapp
+  pip install fitsio django-filter
 
 export PYTHONPATH=/global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py:$PYTHONPATH
 export DJANGO_SETTINGS_MODULE=fastspecfit.webapp.settings
 
 cd /global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py/fastspecfit/webapp
+
+# one time--
+  python manage.py makemigrations sample
+
+# every time--
 python manage.py makemigrations
 python manage.py migrate
 python load.py
 chmod 666 db/db.sqlite3
 
 touch wsgi.py
-
-convert sga-2020-sky.png -thumbnail 400  sga-2020-thumb.png

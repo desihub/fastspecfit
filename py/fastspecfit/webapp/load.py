@@ -9,7 +9,19 @@ import fitsio
 import django
 
 from astropy.table import Table, hstack
-from astrometry.util.starutil_numpy import radectoxyz
+#from astrometry.util.starutil_numpy import radectoxyz
+
+# RA, Dec in degrees: scalars or 1-d arrays.
+# returns xyz of shape (N,3)
+def radectoxyz(ra_deg, dec_deg):
+    ra  = np.deg2rad(ra_deg)
+    dec = np.deg2rad(dec_deg)
+    cosd = np.cos(dec)
+    xyz = np.vstack((cosd * np.cos(ra),
+                  cosd * np.sin(ra),
+                  np.sin(dec))).T
+    assert(xyz.shape[1] == 3)
+    return xyz
 
 def main():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fastspecfit.webapp.settings")

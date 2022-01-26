@@ -29,14 +29,14 @@ DEBUG = bool( os.environ.get('DJANGO_DEBUG', True) )
 DEBUG = True
 
 ALLOWED_HOSTS = ['127.0.0.1',
-                 'testserver']
+                 'testserver',
                  #'lb.cosmo-sga.development.svc.spin.nersc.org',
-                 #'fastspecfit.desi.lbl.gov']
+                 'fastspecfit.legacysurvey.org']
 
 # Application definition
 
 INSTALLED_APPS = [
-    #'django_filters',
+    'django_filters',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',

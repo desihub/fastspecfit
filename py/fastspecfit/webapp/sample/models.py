@@ -10,7 +10,7 @@ import numpy as np
 from django.db.models import (Model, IntegerField, CharField, FloatField, IPAddressField,
                               DateTimeField, ManyToManyField, TextField, BooleanField)
 
-# python manage.py makemigrations fastspecfit
+# python manage.py makemigrations sample
 # python manage.py migrate
 
 class Sample(Model):
