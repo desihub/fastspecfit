@@ -1035,7 +1035,7 @@ class EMLineFit(ContinuumTools):
             else:
                 result[pinfo.name.upper()] = val
 
-        emlinemodel = bestfit(emlinewave)
+        emlinemodel = bestfit(emlinewave) # FixMe -- only build for "significant" lines.
         chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar)
 
         # Synthesize photometry from the best-fitting model (continuum+emission lines).
