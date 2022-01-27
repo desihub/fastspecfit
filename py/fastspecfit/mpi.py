@@ -203,7 +203,8 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
         specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod, subdir)
 
     outdir = os.path.join(base_datadir, args.specprod, subdir)
-    htmldir = os.path.join(base_htmldir, args.specprod, subdir)
+    htmldir = os.path.join(base_datadir, args.specprod, 'html', subdir)
+    #htmldir = os.path.join(base_htmldir, args.specprod, subdir)
 
     def _findfiles(filedir, prefix='redrock'):
         if args.coadd_type == 'healpix':
