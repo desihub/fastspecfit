@@ -214,7 +214,8 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
                     log.info('Building file list for survey {} and program {}'.format(survey, program))
                     if args.hpxpixel is not None:
                         for onepix in args.hpxpixel:
-                            _thesefiles = glob(os.path.join(filedir, survey, program, onepix, '{}-{}-{}-*.fits'.format(prefix, survey, program)))
+                            _thesefiles = glob(os.path.join(filedir, survey, program, str(int(onepix)//100), onepix,
+                                                            '{}-{}-{}-*.fits'.format(prefix, survey, program)))
                             thesefiles.append(_thesefiles)
                     else:
                         allpix = glob(os.path.join(filedir, survey, program, '*'))
