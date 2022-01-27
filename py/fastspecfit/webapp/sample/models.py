@@ -27,8 +27,9 @@ class Sample(Model):
     dec = FloatField(null=True)
     survey = CharField(max_length=4, default='')
     program = CharField(max_length=6, default='')
-    tileid = IntegerField(null=True)
-    fiber = IntegerField(null=True)
+    hpxpixel = IntegerField(null=True)
+    #tileid = IntegerField(null=True)
+    #fiber = IntegerField(null=True)
     
     # redrock
     z = FloatField(null=True)
@@ -49,8 +50,11 @@ class Sample(Model):
     uy = FloatField(default=-2.0)
     uz = FloatField(default=-2.0)
 
-    def str_tileid(self):
-        return str(self.tileid)
+    #def str_tileid(self):
+    #    return str(self.tileid)
+
+    def str_hpxpixel(self):
+        return str(self.hpxpixel)
 
     def str_targetid(self):
         return '{}'.format(self.targetid)
@@ -62,28 +66,20 @@ class Sample(Model):
         return '{:.7f}'.format(self.dec)
 
     def base_html_dir(self):
-        return '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/html/'.format(specprod)
+        return '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/html/'.format(specprod)
+        #return '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/html/'.format(specprod)
 
     def png_base_url(self):
-        # different for healpix coadds!
-        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/{}/html/tiles/cumulative/'.format(specprod)
-        baseurl += self.str_tileid()
+        # different for cumulative coadds!
+        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/{}/html/healpix/'.format(specprod)
+        baseurl += str(self.hpxpixel//100) +'/'+ self.str_hpxpixel()
         return baseurl
 
     def data_base_url(self):
-        # different for healpix coadds!
-        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/{}/tiles/cumulative/'.format(specprod) # no html subdir
-        baseurl += self.str_tileid()
+        # different for cumulative coadds!
+        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/{}/healpix/'.format(specprod) # no html subdir
+        baseurl += str(self.hpxpixel//100) +'/'+ self.str_hpxpixel()
         return baseurl
-
-    #def mosaic_diam(self):
-    #    if self.group_diameter > 30: # NGC0598=M33 is 61 arcmin in diameter!
-    #        mosaic_diam = self.group_diameter * 2 * 0.7 # [arcmin]
-    #    elif self.group_diameter > 14 and self.group_diameter < 30:
-    #        mosaic_diam = self.group_diameter * 2 * 1.0 # [arcmin]
-    #    else:
-    #        mosaic_diam = self.group_diameter * 2 * 1.5 # [arcmin]
-    #    return '{:.3f}'.format(mosaic_diam) # [arcmin]
 
     def targetid_string(self):
         return '{}'.format(self.targetid)

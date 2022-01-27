@@ -104,7 +104,6 @@
     <table class="table table-bordered table-hover">
     <thead>
     <tr>
-    <th></th>
     <th style="vertical-align: middle; text-align: center;">Number</th>
     <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
     <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
@@ -113,12 +112,14 @@
     </thead>
     
     <tbody>
-      {% for sam in page %}
-      <tr>
-          <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</td>
-          <td style="vertical-align: middle; text-align: center;">{{ sam.str_targetid }}</td>
+    {% for sam in page %}
+    <tr>
+          <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
+          
+          <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.str_targetid }}</a></td>
           <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
           <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
+    </tr>
     {% endfor %}
     </tbody>
     </table>

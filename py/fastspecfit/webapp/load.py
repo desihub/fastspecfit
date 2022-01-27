@@ -31,12 +31,14 @@ def main():
 
     # change me!
     specprod = 'everest'
-    DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
+    DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/catalogs'.format(specprod)
+    #DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
 
     # generate a merged catalog here!
     fastspecfile = os.path.join(DATADIR, 'fastspec-{}-sv3-bright.fits'.format(specprod))
 
     meta_columns = ['TARGETID', 'RA', 'DEC', 'SURVEY', 'FAPRGRM',
+                    'HPXPIXEL', 
                     #'TILEID', 'FIBER',
                     'Z', 'ZWARN']
     fastspec_cols = ['CONTINUUM_Z', 'OII_3726_AMP', 'OII_3726_AMP_IVAR']
@@ -46,10 +48,10 @@ def main():
     fast = hstack((meta, fastspec))
     print('Read {} rows from {}'.format(len(fast), fastspecfile))
 
-    # This will be different for healpix vs tile coadds. E.g., sv3-bright-80613-TARGETID
-    meta['NICE_TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, tileid, targetid) for
-                                survey, program, tileid, targetid in zip(
-                                    meta['SURVEY'], meta['FAPRGRM'], meta['TILEID'], meta['TARGETID'])]
+    # This will be different for healpix vs tile coadds. E.g., sv3-bright-HPXPIXEL-TARGETID
+    meta['NICE_TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, hpxpixel, targetid) for
+                                survey, program, hpxpixel, targetid in zip(
+                                    meta['SURVEY'], meta['FAPRGRM'], meta['HPXPIXEL'], meta['TARGETID'])]
     print(fast.colnames)
 
     xyz = radectoxyz(fast['RA'], fast['DEC'])
@@ -69,7 +71,7 @@ def main():
 
         for col in fast.colnames:
             val = onegal[col]
-            if type(val) == np.str or type(val) == np.str_:
+            if type(val) == np.str_:
                 val.strip()
             setattr(sam, col.lower(), val)
 
