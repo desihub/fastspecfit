@@ -36,7 +36,8 @@ def main():
     # generate a merged catalog here!
     fastspecfile = os.path.join(DATADIR, 'fastspec-{}-sv3-bright.fits'.format(specprod))
 
-    meta_columns = ['TARGETID', 'RA', 'DEC', 'SURVEY', 'FAPRGRM', 'TILEID', 'FIBER',
+    meta_columns = ['TARGETID', 'RA', 'DEC', 'SURVEY', 'FAPRGRM',
+                    #'TILEID', 'FIBER',
                     'Z', 'ZWARN']
     fastspec_cols = ['CONTINUUM_Z', 'OII_3726_AMP', 'OII_3726_AMP_IVAR']
        
