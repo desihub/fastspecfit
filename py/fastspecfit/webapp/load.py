@@ -52,8 +52,8 @@ def main():
     meta['NICE_TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, hpxpixel, targetid) for
                                 survey, program, hpxpixel, targetid in zip(
                                     meta['SURVEY'], meta['FAPRGRM'], meta['HPXPIXEL'], meta['TARGETID'])]
-    print(meta['NICE_TARGET_NAME', 'SURVEY'])
-    print(fast.colnames)
+    #print(meta)
+    print(meta.colnames, fast.colnames)
 
     xyz = radectoxyz(fast['RA'], fast['DEC'])
 

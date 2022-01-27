@@ -55,7 +55,6 @@ class Sample(Model):
 
     def nice_target_name(self):
         nice = '{}-{}-{}-{}'.format(self.survey, self.program, self.hpxpixel, self.targetid)
-        print(nice)
         return nice
 
     def str_hpxpixel(self):

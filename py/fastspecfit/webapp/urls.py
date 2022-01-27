@@ -24,7 +24,7 @@ import fastspecfit.webapp.sample.views as sample
 
 urlpatterns = [
     path('', sample.explore, name='index'),
-    path('target/', sample.nice_target_name, name='nice_target_name'),
+    path('nice_target_name/(.*)', sample.nice_target_name, name='nice_target_name'),
     path('target-prev/', sample.target_prev, name='target-prev'),
     path('target-next/', sample.target_next, name='target-next'),
 
