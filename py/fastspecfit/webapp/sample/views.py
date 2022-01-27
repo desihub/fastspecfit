@@ -135,9 +135,12 @@ def explore(req):
                                         'cone_ra':cone_ra, 'cone_dec':cone_dec,
                                         'cone_rad':cone_rad_arcmin})
 
-def target(req, target_name):
-    nice_target_name = 'TargetID {}'.format(target_name)
+def target(req, nice_target_name):
 
+    # grab this one (unique) target
+    target = Sample.objects.all().filter(nice_target_name=nice_target_name)
+    target.order_by('targetid')
+    
     result_index = req.GET.get('index', '-1')
     try:
         result_index = int(result_index, 10)
@@ -151,7 +154,7 @@ def target(req, target_name):
         has_next = i_next is not None
         has_prev = i_prev is not None
     
-    return render(req, 'target.html', {'target_name': target_name,
+    return render(req, 'target.html', {'target': target,
                                       'nice_target_name': nice_target_name,
                                       'result_index': result_index,
                                       'has_next': has_next,

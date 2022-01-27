@@ -53,6 +53,11 @@ class Sample(Model):
     #def str_tileid(self):
     #    return str(self.tileid)
 
+    def nice_target_name(self):
+        nice = '{}-{}-{}-{}'.format(self.survey, self.program, self.hpxpixel, self.targetid)
+        print(nice)
+        return nice
+
     def str_hpxpixel(self):
         return str(self.hpxpixel)
 
