@@ -10,7 +10,7 @@ from fastspecfit.webapp.sample.models import Sample
 class SampleFilter(django_filters.FilterSet):
     """Custom filter for the Sample model.  Filter options include greater than or
     equal to, and less than or equal to on the following fields: ra, dec,
-    sga_id, and diameter.
+    targetid, ...
 
     The filter can be used in a form (see, e.g., list.html).
 
@@ -35,4 +35,4 @@ class SampleFilter(django_filters.FilterSet):
         fields = []
 
         def id(self):
-            return self.target_id
+            return self.targetid

@@ -29,22 +29,26 @@ def main():
 
     from fastspecfit.webapp.sample.models import Sample
 
-    DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/everest/catalogs'
-    #DATADIR = '/global/cfs/cdirs/cosmo/work/legacysurvey/sga/2020'
+    # change me!
+    SPECPROD = 'everest'
+    DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(SPECPROD)
 
-    fastspecfile = os.path.join(DATADIR, 'fastspec-everest-sv3-bright.fits')
+    # generate a merged catalog here!
+    fastspecfile = os.path.join(DATADIR, 'fastspec-{}-sv3-bright.fits'.format(SPECPROD))
 
-    meta_columns = ['TARGETID', 'RA', 'DEC']
-    fastspec_cols = ['CONTINUUM_Z']
+    meta_columns = ['TARGETID', 'RA', 'DEC', 'SURVEY', 'FAPRGRM', 'TILEID', 'FIBER',
+                    'Z', 'ZWARN']
+    fastspec_cols = ['CONTINUUM_Z', 'OII_3726_AMP', 'OII_3726_AMP_IVAR']
        
     meta = Table(fitsio.read(fastspecfile, ext='METADATA', columns=meta_columns))
     fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC', columns=fastspec_cols))
     fast = hstack((meta, fastspec))
     print('Read {} rows from {}'.format(len(fast), fastspecfile))
 
-    #sga.rename_column('TYPE', 'TRACTORTYPE')
-    #sga['NICE_GROUP_NAME'] = [gname.replace('_GROUP', ' Group') for gname in sga['GROUP_NAME']]
-
+    # This will be different for healpix vs tile coadds. E.g., sv3-bright-80613-TARGETID
+    meta['NICE_TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, tileid, targetid) for
+                                survey, program, tileid, targetid in zip(
+                                    meta['SURVEY'], meta['FAPRGRM'], meta['TILEID'], meta['TARGETID'])]
     print(fast.colnames)
 
     xyz = radectoxyz(fast['RA'], fast['DEC'])
