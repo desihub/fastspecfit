@@ -6,6 +6,7 @@ __pycache__/
 
 # database/webapp stuff
 db
+migrations
 
 # EMACS backup files
 *~

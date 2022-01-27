@@ -30,11 +30,11 @@ def main():
     from fastspecfit.webapp.sample.models import Sample
 
     # change me!
-    SPECPROD = 'everest'
-    DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(SPECPROD)
+    specprod = 'everest'
+    DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
 
     # generate a merged catalog here!
-    fastspecfile = os.path.join(DATADIR, 'fastspec-{}-sv3-bright.fits'.format(SPECPROD))
+    fastspecfile = os.path.join(DATADIR, 'fastspec-{}-sv3-bright.fits'.format(specprod))
 
     meta_columns = ['TARGETID', 'RA', 'DEC', 'SURVEY', 'FAPRGRM', 'TILEID', 'FIBER',
                     'Z', 'ZWARN']

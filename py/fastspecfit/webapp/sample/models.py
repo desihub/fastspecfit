@@ -17,8 +17,6 @@ class Sample(Model):
     """Model to represent a single object.
 
     """
-    from fastspecfit.webapp.load import SPECPROD
-    
     # in FITS table
     row_index = IntegerField(default=-1)
 
@@ -64,17 +62,17 @@ class Sample(Model):
         return '{:.7f}'.format(self.dec)
 
     def base_html_dir(self):
-        return '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/html/'.format(SPECPROD)
+        return '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/html/'.format(specprod)
 
     def png_base_url(self):
         # different for healpix coadds!
-        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/{}/html/tiles/cumulative/'.format(SPECPROD)
+        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/{}/html/tiles/cumulative/'.format(specprod)
         baseurl += self.str_tileid()
         return baseurl
 
     def data_base_url(self):
         # different for healpix coadds!
-        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/{}/tiles/cumulative/'.format(SPECPROD) # no html subdir
+        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/{}/tiles/cumulative/'.format(specprod) # no html subdir
         baseurl += self.str_tileid()
         return baseurl
 

@@ -6,6 +6,8 @@
   conda activate fastspecfit-webapp
   pip install fitsio django-filter
 
+conda activate fastspecfit-webapp
+
 export PYTHONPATH=/global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py:$PYTHONPATH
 export DJANGO_SETTINGS_MODULE=fastspecfit.webapp.settings
 
