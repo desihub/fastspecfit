@@ -43,7 +43,7 @@ class Sample(Model):
     oii_3726_amp_ivar = FloatField(null=True)
 
     # derived target name, e.g., sv3-bright-80613-TARGETID
-    nice_target_name = CharField(max_length=40, default='')
+    target_name = CharField(max_length=40, default='')
 
     # radec2xyz, for cone search in the database
     ux = FloatField(default=-2.0)
@@ -53,9 +53,8 @@ class Sample(Model):
     #def str_tileid(self):
     #    return str(self.tileid)
 
-    def nice_target_name(self):
-        nice = '{}-{}-{}-{}'.format(self.survey, self.program, self.hpxpixel, self.targetid)
-        return nice
+    #def nice_target_name(self):
+    #    return self.target_name
 
     def str_hpxpixel(self):
         return str(self.hpxpixel)
@@ -84,9 +83,6 @@ class Sample(Model):
         baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/{}/healpix/'.format(specprod) # no html subdir
         baseurl += str(self.hpxpixel//100) +'/'+ self.str_hpxpixel()
         return baseurl
-
-    def targetid_string(self):
-        return '{}'.format(self.targetid)
 
     #def ellipsefile(self):
     #    ellipsefile = '{}{}-largegalaxy-{}-ellipse-sbprofile.png'.format(self.png_base_url(), self.group_name, self.sga_id_string())

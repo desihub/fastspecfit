@@ -116,7 +116,7 @@
     <tr>
           <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
           
-          <td style="vertical-align: middle; text-align: center;"><a href="{% url 'nice_target_name' sam.nice_target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.str_targetid }}</a></td>
+          <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.target_name }}</a></td>
           <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
           <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
     </tr>

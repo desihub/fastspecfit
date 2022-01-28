@@ -45,15 +45,17 @@ def main():
        
     meta = Table(fitsio.read(fastspecfile, ext='METADATA', columns=meta_columns))
     fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC', columns=fastspec_cols))
-    fast = hstack((meta, fastspec))
-    print('Read {} rows from {}'.format(len(fast), fastspecfile))
 
     # This will be different for healpix vs tile coadds. E.g., sv3-bright-HPXPIXEL-TARGETID
-    meta['NICE_TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, hpxpixel, targetid) for
-                                survey, program, hpxpixel, targetid in zip(
-                                    meta['SURVEY'], meta['FAPRGRM'], meta['HPXPIXEL'], meta['TARGETID'])]
+    meta['TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, hpxpixel, targetid) for
+                           survey, program, hpxpixel, targetid in zip(
+                               meta['SURVEY'], meta['FAPRGRM'], meta['HPXPIXEL'], meta['TARGETID'])]
     #print(meta)
-    print(meta.colnames, fast.colnames)
+    #print(meta.colnames, fast.colnames)
+
+    fast = hstack((meta, fastspec))
+    print(fast.colnames)
+    print('Read {} rows from {}'.format(len(fast), fastspecfile))
 
     xyz = radectoxyz(fast['RA'], fast['DEC'])
 

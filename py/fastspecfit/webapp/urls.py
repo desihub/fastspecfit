@@ -17,16 +17,22 @@ Including another URLconf
 
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import re_path, path
 from django.views.generic import TemplateView
 
 import fastspecfit.webapp.sample.views as sample
 
 urlpatterns = [
     path('', sample.explore, name='index'),
-    path('nice_target_name/(.*)', sample.nice_target_name, name='nice_target_name'),
-    path('target-prev/', sample.target_prev, name='target-prev'),
-    path('target-next/', sample.target_next, name='target-next'),
-
+    path('target/<str:target_name>', sample.target, name='target'),
+    re_path(r'target-prev/(\d+)$', sample.target_prev, name='target-prev'),
+    re_path(r'target-next/(\d+)$', sample.target_next, name='target-next'),
 ]
+    
+# urlpatterns = [
+#     re_path(r'^$', sample.explore, name='index'),
+#     re_path(r'^target/(.+)$', sample.target, name='target'),
+#     re_path(r'^target-prev/(\d+)$', sample.target_prev, name='target-prev'),
+#     re_path(r'^target-next/(\d+)$', sample.target_next, name='target-next'),
+# ]
 
