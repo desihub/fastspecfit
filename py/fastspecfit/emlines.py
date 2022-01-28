@@ -357,7 +357,7 @@ class EMLineModel(Fittable1DModel):
     oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=[minamp, maxamp])
     nii_5755_amp = Parameter(name='nii_5755_amp', default=0.3, bounds=[minamp, maxamp])
     hei_5876_amp = Parameter(name='hei_5876_amp', default=0.3, bounds=[minamp, maxamp])
-    hei_5876_broad_amp = Parameter(name='hei_broad_5876_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
+    hei_broad_5876_amp = Parameter(name='hei_broad_5876_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
     oi_6300_amp = Parameter(name='oi_6300_amp', default=0.3, bounds=[minamp, maxamp])
     nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=[minamp, maxamp])
     halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=[minamp, maxamp])

@@ -498,7 +498,7 @@ class ContinuumTools(object):
                             #print('Writing {}'.format(junkplot))
                             plt.savefig(junkplot)
                         
-            log.info('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
+            log.debug('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
             
             return linesigma, snr
                 
