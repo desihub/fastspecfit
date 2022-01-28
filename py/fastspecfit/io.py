@@ -572,7 +572,7 @@ class DESISpectra(object):
                         bad = np.logical_or(targets[col] < 0, np.isnan(targets[col]))
                         if np.sum(bad) > 0:
                             targets[col][bad] = 0.0
-        if ma.is_masked(targets['PHOTSYS']):
+        if 'PHOTSYS' in targets.colnames and ma.is_masked(targets['PHOTSYS']):
             targets['PHOTSYS'] = ma.filled(targets['PHOTSYS'], '')
                         
         metas = []
