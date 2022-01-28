@@ -17,6 +17,9 @@ class Sample(Model):
     """Model to represent a single object.
 
     """
+    #def __str__(self):
+    #    return 'Sample '+self.target_name
+    
     # in FITS table
     row_index = IntegerField(default=-1)
 
@@ -26,7 +29,7 @@ class Sample(Model):
     ra = FloatField(null=True)
     dec = FloatField(null=True)
     survey = CharField(max_length=4, default='')
-    program = CharField(max_length=6, default='')
+    faprgrm = CharField(max_length=6, default='')
     hpxpixel = IntegerField(null=True)
     #tileid = IntegerField(null=True)
     #fiber = IntegerField(null=True)
@@ -69,18 +72,18 @@ class Sample(Model):
         return '{:.7f}'.format(self.dec)
 
     def base_html_dir(self):
-        return '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/html/'.format(specprod)
+        return '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/html/'.format(self.specprod)
         #return '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/html/'.format(specprod)
 
     def png_base_url(self):
         # different for cumulative coadds!
-        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/{}/html/healpix/'.format(specprod)
+        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/{}/html/healpix/{}/{}/'.format(self.specprod, self.survey, self.faprgrm)
         baseurl += str(self.hpxpixel//100) +'/'+ self.str_hpxpixel()
         return baseurl
 
     def data_base_url(self):
         # different for cumulative coadds!
-        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/{}/healpix/'.format(specprod) # no html subdir
+        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/{}/healpix/{}/{}/'.format(self.specprod, self.survey, self.faprgrm) # no html subdir
         baseurl += str(self.hpxpixel//100) +'/'+ self.str_hpxpixel()
         return baseurl
 

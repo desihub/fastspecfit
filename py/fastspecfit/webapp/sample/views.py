@@ -131,9 +131,16 @@ def explore(req):
     
     # Include pagination values we will use in html page in the return
     # statement.
+    for sam in page:
+        print(sam)
+
     return render(req, 'explore.html', {'page': page, 'paginator': paginator,
                                         'cone_ra':cone_ra, 'cone_dec':cone_dec,
                                         'cone_rad':cone_rad_arcmin})
+
+def target_test(req):
+
+    return render(req, 'target-test.html')
 
 def target(req, target_name):
 
@@ -154,10 +161,11 @@ def target(req, target_name):
         has_next = i_next is not None
         has_prev = i_prev is not None
     
-    return render(req, 'target.html', {'target_name': target_name,
-                                      'result_index': result_index,
-                                      'has_next': has_next,
-                                      'has_prev': has_prev,})
+    return render(req, 'target.html', {'target': target[0],
+                                       'target_name': target_name,
+                                       'result_index': result_index,
+                                       'has_next': has_next,
+                                       'has_prev': has_prev,})
 
 def get_next_target(req, index, qs=None, direction=1):
     # "index" is actually 1-indexed...
@@ -283,4 +291,22 @@ def main():
     print('Took', t1-t0, 'cpu', wt1-wt0, 'wall')
 
 if __name__ == '__main__':
+    # fix this
+    import os, sys
+    os.environ['DJANGO_SETTINGS_MODULE'] = 'fastspecfit.webapp.settings'
+    import django
+    django.setup()
+    import logging
+    lvl = logging.DEBUG
+    logging.basicConfig(level=lvl, format='%(message)s', stream=sys.stdout)
+
+    from django.test import Client
+    c = Client()
+    r = c.get('/')
+    f = open('debug.txt', 'wb')
+    for x in r:
+        f.write(x)
+    f.close()
+
     main()
+    

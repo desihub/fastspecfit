@@ -23,8 +23,9 @@ from django.views.generic import TemplateView
 import fastspecfit.webapp.sample.views as sample
 
 urlpatterns = [
-    path('', sample.explore, name='index'),
-    path('target/<str:target_name>', sample.target, name='target'),
+    re_path('^$', sample.explore, name='index'),
+    #path('target/', sample.target_test, name='target-test'),
+    re_path(r'target/(?P<target_name>[^/]*)\Z', sample.target, name='target'),
     re_path(r'target-prev/(\d+)$', sample.target_prev, name='target-prev'),
     re_path(r'target-next/(\d+)$', sample.target_next, name='target-next'),
 ]

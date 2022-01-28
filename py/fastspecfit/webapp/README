@@ -17,9 +17,7 @@ cd /global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py/fastspecfit/webapp
   python manage.py makemigrations sample
 
 # every time--
-python manage.py makemigrations
-python manage.py migrate
-python load.py
-chmod 666 db/db.sqlite3
-
+/bin/rm db/db.sqlite3
+python manage.py makemigrations ; python manage.py migrate
+python load.py ; chmod 666 db/db.sqlite3 ; chgrp -R desi *
 touch wsgi.py

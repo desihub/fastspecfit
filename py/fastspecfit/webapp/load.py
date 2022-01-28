@@ -24,6 +24,7 @@ def radectoxyz(ra_deg, dec_deg):
     return xyz
 
 def main():
+
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fastspecfit.webapp.settings")
     django.setup()
 
@@ -50,6 +51,7 @@ def main():
     meta['TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, hpxpixel, targetid) for
                            survey, program, hpxpixel, targetid in zip(
                                meta['SURVEY'], meta['FAPRGRM'], meta['HPXPIXEL'], meta['TARGETID'])]
+    meta['SPECPROD'] = specprod
     #print(meta)
     #print(meta.colnames, fast.colnames)
 
@@ -76,6 +78,8 @@ def main():
             val = onegal[col]
             if type(val) == np.str_:
                 val.strip()
+            #if 'TARGET' in col:
+            #    print(col, val)
             setattr(sam, col.lower(), val)
 
         objs.append(sam)
