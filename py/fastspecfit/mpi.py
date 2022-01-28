@@ -225,13 +225,20 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             if len(thesefiles) > 0:
                 thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
         elif args.coadd_type == 'cumulative':
+            # Scrape the disk to get the tiles, but since we read the csv file I don't think this ever happens.
+            if args.tile is None:
+                tiledirs = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', '?????')))))
+                if len(tiledirs) > 0:
+                    args.tile = [int(os.path.basename(tiledir)) for tiledir in tiledirs]
             if args.tile is not None:
-                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                    filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
-                    prefix, tile))) for tile in args.tile]))))
-            else:
-                thesefiles = np.array(sorted(set(glob(os.path.join(
-                    filedir, 'cumulative', '?????', '????????', '{}-[0-9]-?????-thru????????.fits'.format(prefix))))))
+                thesefiles = []
+                for tile in args.tile:
+                    nightdirs = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', str(tile), '????????')))))
+                    if len(nightdirs) > 0:
+                        # for a given tile, take just the most recent night
+                        thisnightdir = nightdirs[-1]
+                        thesefiles.append(glob(os.path.join(thisnightdir, '{}-[0-9]-{}-thru????????.fits'.format(prefix, tile))))
+                thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
         elif args.coadd_type == 'pernight':
             if args.tile is not None and args.night is not None:
                 thesefiles = []
