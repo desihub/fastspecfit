@@ -4,147 +4,138 @@
 
 {% block content %}
 
+{% comment %}
+{% endcomment %}
+
 <div class="e-content entry-content" itemprop="articleBody text">
-<div>
-<br />
-<h2><a href="https://fastspecfit.legacysurvey.org"</a>DESI FastSpecFit</h2>
-<br />
-<div class="col-md-6 col-left docutils container">
-  <p>Welcome to the data portal for the DESI FastSpecFit Value-Added Catalogs!</p>
-  
-  <p>Please refer to
-  the <a href="https://fastspecfit.readthedocs.io/en/latest/">FastSpecFit
-  documentation</a> for full details regarding this data release, particularly 
-  the <a href="https://fastspecfit.readthedocs.io/en/latest#acknowledgments">required
-  acknowledgments and conditions of use section</a>.</p> 
-
-  <img style="width: 400px;" src="{% static "files/logo.png" %}"
-  alt="FastSpecFit Logo"/>
-</div>
-
-<!--
-<div class="col-md-6 col-right docutils container">
-  <div class="jumbotron">
-    <h4>Full Catalog [675
-      MB]</h4><a href="https://portal.nersc.gov/project/cosmo/data/sga/2020/SGA-2020.fits" download="SGA-2020.fits">SGA-2020.fits</a><a href="https://portal.nersc.gov/project/cosmo/temp/ioannis/sga-dr9/sga/sga2020/#sga-2020-fits">
-      (data model)</a> 
-    <h4>On the web</h4>
-    <a href="https://portal.nersc.gov/project/cosmo/data/sga/2020/data">https://portal.nersc.gov/project/cosmo/data/sga/2020/data</a>
-    <h4>At NERSC (for collaborators)</h4>/global/cfs/cdirs/cosmo/data/sga/2020
-  </div>
-</div>
--->
-
-<div class="container"></div>
-
-<hr />
-
-<div><a id="query"></a></div>
-<div style="text-align: center;">
-  <div style="text-align: center;">
-    <h3>Cone Search</h3>
-    <form style="display: inline-block;" method="get" action="#results">
-      <table>
-      <tr>
-        <td class="search_th"><label for="conera">Search RA</label></td>
-        <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="degrees" min="0" max="360"/></td> 
-       </tr>
-      <tr>
-        <td class="search_th"><label for="conedec">Search Dec</label></td>
-        <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="degrees" min="-90" max="90"/></td> 
-      </tr>
-      <tr>
-        <td class="search_th"><label for="coneradius">Search Radius</label>&nbsp; &nbsp;</td>
-        <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
-       </tr>
-      </table>
-    <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
-    </form>
-
-    <hr />
-    
-    <h3>Filter the Sample</h3>
-    <br />
-    <form style="display: inline-block;" method="get" action="#results">
-      <table>
-      <tr>
-           <th class="search_th"><label for="idlo">TargetID</label></th>
-           <td><input id="idlo" name="targetid__gte" step="1" type="number" value="" placeholder="min" min="0"/></td> 
-           <td><input id="idhi" name="targetid__lte" step="1" type="number" value="" placeholder="max" min="0"/></td> 
-      </tr>
-
-      {% comment %}
-      {% endcomment %}
-    
-      </table>
-    <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
-    </form>
-    
-    <hr />
-  </div>
-  
-  <div><a id="results"></a></div>
-    <h3>Results</h3>
-    
-    <p class="search_log">Showing {{ page.start_index }} - {{ page.end_index }} of {{paginator.count}}</p>
-    
-    {% comment %}
-    <pre class="search_log" > {% url_pull request %} </pre>
-    {% endcomment %}
-    
-    <form method="post">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-primary" name="dbutn" >Download</button>
-    </form>
-    
-    <br />
-  </div>
-  
   <div>
-    <table class="table table-bordered table-hover">
-    <thead>
-    <tr>
-    <th style="vertical-align: middle; text-align: center;">Number</th>
-    <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
-    <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
-    <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br />(degrees)</a></th>
-    </tr>
-    </thead>
-    
-    <tbody>
-    {% for sam in page %}
-    <tr>
-          <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
+    <br />
+    <h2><a href="https://fastspecfit.legacysurvey.org"</a>DESI FastSpecFit</h2>
+    <br />
+    <div class="col-md-6 col-left docutils container">
+      <p>Welcome to the data portal for the DESI FastSpecFit Value-Added Catalogs!</p>
 
-          <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.target_name }}</a></td>
-          <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
-          <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-    </table>
-  </div>
+      <p>Please refer to
+         the <a href="https://fastspecfit.readthedocs.io/en/latest/">FastSpecFit
+         documentation</a> for full details regarding this data release,
+         particularly
+         the <a href="https://fastspecfit.readthedocs.io/en/latest#acknowledgments">required
+         acknowledgments and conditions of use section</a>.</p> 
+
+      <img style="width: 400px;" src="{% static "files/logo.png" %}"  alt="FastSpecFit Logo"/>
+    </div>
+
+  <div class="container"></div>
+    <hr />
   
-  <div style="text-align:center; padding: 10px;">
-      <span class="step-links">
+    <div>
+      <a id="query"></a>
+    </div>
+    <div style="text-align: center;">
+      <div style="text-align: center;">
+        <h3>Cone Search</h3>
+        <form style="display: inline-block;" method="get" action="#results">
+          <table>
+            <tr>
+              <td class="search_th"><label for="conera">Search RA</label></td>
+              <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="degrees" min="0" max="360"/></td> 
+            </tr>
+            <tr>
+              <td class="search_th"><label for="conedec">Search Dec</label></td>
+              <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="degrees" min="-90" max="90"/></td> 
+            </tr>
+            <tr>
+              <td class="search_th"><label for="coneradius">Search Radius</label>&nbsp; &nbsp;</td>
+              <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
+            </tr>
+          </table>
+          <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
+        </form>
+        <hr />
+
+        <h3>Filter the Sample</h3>
+        <br />
+        <form style="display: inline-block;" method="get" action="#results">
+          <table>
+            <tr>
+              <th class="search_th"><label for="idlo">TargetID</label></th>
+              <td><input id="idlo" name="targetid__gte" step="1" type="number" value="" placeholder="min" min="0"/></td> 
+              <td><input id="idhi" name="targetid__lte" step="1" type="number" value="" placeholder="max" min="0"/></td> 
+            </tr>
+          </table>
+          <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
+        </form>
+        <hr />
+      </div>
+  
+      <div><a id="results"></a></div>
+        <h3>Results</h3>
+    
+        <p class="search_log">Showing {{ page.start_index }} - {{ page.end_index }} of {{paginator.count}}</p>
+    
+        <form method="post">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary" name="dbutn" >Download</button>
+        </form>
+        <br />
+      </div>
+
+      <br /><hr />
+
+      <div class="panel panel-primary accordion"> <!-- Panel (collapasable) -->
+          <div class="panel-heading"> <!-- Panel head -->
+              <a class="accordion-toggle" data-toggle="collapse" data-parent=".accordion" href="#collapseOne">
+                <button type="submit" class="btn btn-primary" style="margin-top:15px;">Expand/Collapse Results</button>
+              </a>           
+          </div> <!-- END Panel head -->
+          <br /><br />
+          <div id="collapseOne" class="panel-collapse collapse in"> <!-- Collapsable section -->
+              <div class="panel-body"> <!-- Panel body -->
+                <table class="table table-bordered table-hover">
+                  <thead>
+                    <tr>
+                      <th style="vertical-align: middle; text-align: center;">Number</th>
+                      <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
+                      <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
+                      <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br />(degrees)</a></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for sam in page %}
+                      <tr>
+                        <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
+                        <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.target_name }}</a></td>
+                        <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
+                        <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div> <!-- END Panel body -->
+          </div> <!-- END Collapse section -->
+      </div> <!-- end accordian div -->
+  
+      <div style="text-align:center; padding: 10px;">
+        <span class="step-links">
           {% if page.has_previous %}
-              <a href="?{% url_replace request 'page' 1 %}">&laquo; first</a>
-              <a href="?{% url_replace request 'page' page.previous_page_number %}">previous</a>
+            <a href="?{% url_replace request 'page' 1 %}">&laquo; first</a>
+            <a href="?{% url_replace request 'page' page.previous_page_number %}">previous</a>
           {% endif %}
-  
+            
           <span class="current">
-              Page {{ page.number }} of {{ page.paginator.num_pages }}
+            Page {{ page.number }} of {{ page.paginator.num_pages }}
           </span>
-  
+          
           {% if page.has_next %}
-              <a href="?{% url_replace request 'page' page.next_page_number %}#results">next</a>
-              <a href="?{% url_replace request 'page' paginator.num_pages %}#results">last &raquo;</a>
+            <a href="?{% url_replace request 'page' page.next_page_number %}#results">next</a>
+            <a href="?{% url_replace request 'page' paginator.num_pages %}#results">last &raquo;</a>
           {% endif %}
-      </span>
-  </div>
-  
-  <br /><br />
-</div>
+        </span>
+      </div>
+      <br /><br />
+    </div>
+
+  </div> 
 </div>
 
 {% endblock %}

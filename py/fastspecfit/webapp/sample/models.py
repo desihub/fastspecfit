@@ -48,6 +48,8 @@ class Sample(Model):
     # derived target name, e.g., sv3-bright-80613-TARGETID
     target_name = CharField(max_length=40, default='')
 
+    DATADIR = CharField(max_length=150, default='')
+
     # radec2xyz, for cone search in the database
     ux = FloatField(default=-2.0)
     uy = FloatField(default=-2.0)
