@@ -202,18 +202,24 @@ class DESISpectra(object):
             else:
                 if ired == 0:
                     hdr = fitsio.read_header(specfile, ext=0)
-                    if 'HPXPIXEL' in hdr:
-                        coadd_type = 'healpix'
-                        hpxpixel = np.int32(hdr['HPXPIXEL'])
+                    # Fuji & Guadalupe headers
+                    if 'SPGRP' in hdr:
+                        coadd_type = hdr['SPGRP']
+                        if coadd_type == 'healpix':
+                            hpxpixel = np.int32(hdr['HPXPIXEL'])
                     else:
-                        import re
-                        if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
-                            coadd_type = 'cumulative'
-                        elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
-                            coadd_type = 'pernight'
+                        if 'HPXPIXEL' in hdr:
+                            coadd_type = 'healpix'
+                            hpxpixel = np.int32(hdr['HPXPIXEL'])
                         else:
-                            coadd_type = 'perexp'
-                    self.coadd_type = coadd_type
+                            import re
+                            if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
+                                coadd_type = 'cumulative'
+                            elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
+                                coadd_type = 'pernight'
+                            else:
+                                coadd_type = 'perexp'
+                        self.coadd_type = coadd_type
             log.info('Parsed coadd_type={}'.format(coadd_type))
     
             # Figure out which fibermap columns to put into the metadata
