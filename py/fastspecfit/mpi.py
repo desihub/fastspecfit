@@ -436,9 +436,12 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
 
     return outdir, redrockfiles, outfiles, groups, ntargets
 
-def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.'):
+def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.',
+                      supermerge=False):
     """Merge all the individual catalogs into a single large catalog. Runs only on
     rank 0.
+
+    supermerge - merge previously merged catalogs
 
     """
     import fitsio
@@ -455,23 +458,11 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
         outprefix = 'fastspec'
         extname = 'FASTSPEC'
 
-    #if args.coadd_type == 'healpix':
-    #    subdir = 'healpix'
-    #else:
-    #    subdir = 'tiles'
-    #outdir = os.path.join(base_datadir, args.specprod, subdir)
-
     mergedir = os.path.join(base_datadir, args.specprod, 'catalogs')
     if not os.path.isdir(mergedir):
         os.makedirs(mergedir, exist_ok=True)
 
-    #if args.coadd_type == 'deep-coadds':
-    #    mergeprefix = 'deep'
-    #elif args.coadd_type == 'night-coadds':
-    #    mergeprefix = ''
-    #elif args.coadd_type == 'night-coadds':
-
-    def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None):
+    def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None, mergefile=None):
         t0 = time.time()
         out, meta = [], []
         for outfile in outfiles:
@@ -491,8 +482,15 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
             len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
         
         write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod,
-                          coadd_type=args.coadd_type, survey=survey, program=program,
-                          fastphot=fastphot)
+                          coadd_type=args.coadd_type, fastphot=fastphot)
+
+    # merge previously merged catalogs into one big catalog (and then return)
+    if supermerge:
+        outfiles = glob(os.path.join(mergedir, '{}-{}-*.fits'.format(outprefix, args.specprod)))
+        if len(outfiles) > 0:
+            mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, args.specprod))
+            _domerge(outfiles, extname=extname, mergefile=mergefile)
+        return
 
     if args.coadd_type == 'healpix':
         surveys = copy(args.survey)
@@ -508,7 +506,7 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
                 _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
                                             specprod_dir=specprod_dir, base_datadir=base_datadir)
                 if len(outfiles) > 0:
-                    _domerge(outfiles, extname=extname, survey=survey, program=program)
+                    _domerge(outfiles, extname=extname, survey=survey, program=program, mergefile=mergefile)
     else:
         mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
         if os.path.isfile(mergefile) and not args.overwrite:
@@ -517,4 +515,4 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
         _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
                                     specprod_dir=specprod_dir, base_datadir=base_datadir)
         if len(outfiles) > 0:
-            _domerge(outfiles, extname=extname)
+            _domerge(outfiles, extname=extname, mergefile=mergefile)

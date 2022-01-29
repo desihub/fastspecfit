@@ -165,7 +165,8 @@ def main():
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion (only used with fastspec).')
 
-    parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs into one large file.')
+    parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
+    parser.add_argument('--mergeall', action='store_true', help='Merge all the individual merged catalogs into a single merged catalog.')
     parser.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
     
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
@@ -183,7 +184,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.merge or args.nompi:
+    if args.merge or args.mergeall or args.nompi:
         comm = None
     else:
         try:
@@ -196,10 +197,10 @@ def main():
         args.survey = args.survey.split(',')
         args.program = args.program.split(',')
             
-    if args.merge:
+    if args.merge or args.mergeall:
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(args, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                          base_datadir=args.base_datadir)
+                          base_datadir=args.base_datadir, supermerge=args.mergeall)
         return
         
     if args.plan:

@@ -1002,8 +1002,7 @@ def read_fastspecfit(fastfitfile, fastphot=False, rows=None, columns=None):
         return None, None, None
 
 def write_fastspecfit(out, meta, outfile=None, specprod=None,
-                      coadd_type=None, survey=None, program=None,
-                      fastphot=False):
+                      coadd_type=None, fastphot=False):
     """Write out.
 
     """
