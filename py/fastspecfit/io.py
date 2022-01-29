@@ -1034,10 +1034,10 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None,
         hdr.append({'name': 'SPECPROD', 'value': specprod, 'comment': 'spectroscopic production name'})
     if coadd_type:
         hdr.append({'name': 'COADDTYP', 'value': coadd_type, 'comment': 'spectral coadd fitted'})
-    if survey:
-        hdr.append({'name': 'SURVEY', 'value': survey, 'comment': 'survey name'})
-    if program:
-        hdr.append({'name': 'FAPRGRM', 'value': program, 'comment': 'program name'})
+    #if survey:
+    #    hdr.append({'name': 'SURVEY', 'value': survey, 'comment': 'survey name'})
+    #if program:
+    #    hdr.append({'name': 'FAPRGRM', 'value': program, 'comment': 'program name'})
 
     fitsio.write(outfile, out.as_array(), header=hdr, clobber=True)
     fitsio.write(outfile, meta.as_array(), header=hdr)
