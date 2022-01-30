@@ -94,12 +94,12 @@ td, th {text-align: center}
 
 <div class="panel panel-primary accordion"> <!-- Panel (collapasable) -->
     <div class="panel-heading"> <!-- Panel head -->
-        <a class="accordion-toggle" data-toggle="collapse" data-parent=".accordion" href="#collapseOne">
+        <a class="accordion-toggle" data-toggle="collapse" data-parent=".accordion" href="#collapseTarget">
           <button type="submit" class="btn btn-primary" style="margin-top:15px;">Additional Targeting Information</button>
         </a>           
     </div> <!-- END Panel head -->
     <br /><br />
-    <div id="collapseOne" class="panel-collapse collapse in"> <!-- Collapsable section -->
+    <div id="collapseTarget" class="panel-collapse collapse in"> <!-- Collapsable section -->
         <div class="panel-body"> <!-- Panel body -->
           <table class="table table-bordered table-hover">
             <tr>
@@ -258,8 +258,8 @@ td, th {text-align: center}
 <table class="table table-bordered table-hover">
   <tr>
     <th colspan="2">UV / QSO</th>
-    <th colspan="2">Broad Balmer & Helium</th>
-    <th colspan="2">Narrow Balmer & Forbidden</th>
+    <th colspan="2">Broad H & He</th>
+    <th colspan="2">Narrow H, He, & Forbidden</th>
     <th colspan="3">Doublet Ratios</th>
   </tr>
   <tr>
@@ -287,135 +287,633 @@ td, th {text-align: center}
 </table>
 <br />
 
-<h6>UV / QSO Emission Lines</h6>
-<table class="table table-bordered table-hover">
-  <tr>
-    <th>Line</th>
-    <th>S/N</th>
-    <th>&#916;v<br />(km/s)</th>
-    <th>&sigma;<br />(km/s)</th>
-    <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-    <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
-    <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-    <th>EW<br />(&#8491;)</th>
-    <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-    <th>Npix</th>
-  </tr>
-  <tr>
-    {% comment %}
-      {% if target.mgii_2796_amp_ivar > 0 %}
-      {% else %}
-      {% endif %}
-    {% endcomment %}
-    <td>Mg II &lambda;2796</td>
-    <td>{{ target.mgii_2796_snr|floatformat:2 }}</td>
-    <td>{{ target.mgii_2796_vshift|floatformat:2 }}</td>
-    <td>{{ target.mgii_2796_sigma|floatformat:2 }}</td>
-    <td>{{ target.mgii_2796_amp|floatformat:3 }}{{ target.mgii_2803_amp_err|safe }}</td>
-    <td>{{ target.mgii_2796_flux|floatformat:3 }}{{ target.mgii_2803_flux_err|safe }}</td>
-    <td>{{ target.mgii_2796_cont|floatformat:3 }}{{ target.mgii_2803_cont_err|safe }}</td>
-    <td>{{ target.mgii_2796_ew|floatformat:2 }}{{ target.mgii_2803_ew_err|safe }}</td>
-    <td>{{ target.mgii_2796_chi2|floatformat:3 }}</td>
-    <td>{{ target.mgii_2796_npix }}</td>
-  </tr>
-  <tr>
-    <td>Mg II &lambda;2803</td>
-    <td>{{ target.mgii_2803_snr|floatformat:2 }}</td>
-    <td>{{ target.mgii_2803_vshift|floatformat:2 }}</td>
-    <td>{{ target.mgii_2803_sigma|floatformat:2 }}</td>
-    <td>{{ target.mgii_2803_amp|floatformat:3 }}{{ target.mgii_2803_amp_err|safe }}</td>
-    <td>{{ target.mgii_2803_flux|floatformat:3 }}{{ target.mgii_2803_flux_err|safe }}</td>
-    <td>{{ target.mgii_2803_cont|floatformat:3 }}{{ target.mgii_2803_cont_err|safe }}</td>
-    <td>{{ target.mgii_2803_ew|floatformat:2 }}{{ target.mgii_2803_ew_err|safe }}</td>
-    <td>{{ target.mgii_2803_chi2|floatformat:3 }}</td>
-    <td>{{ target.mgii_2803_npix }}</td>
-  </tr>
-</table>
+<h6>Detailed Line-Properties</h6>
+
+<div class="panel panel-primary accordion"> <!-- Panel (collapasable) -->
+    <div class="panel-heading"> <!-- Panel head -->
+        <a class="accordion-toggle" data-toggle="collapse" data-parent=".accordion" href="#collapseUVQSO">
+          <button type="submit" class="btn btn-primary" style="margin-top:15px;">UV / QSO Emission Lines</button>
+        </a>           
+    </div> <!-- END Panel head -->
+    <br /><br />
+    <div id="collapseUVQSO" class="panel-collapse collapse in"> <!-- Collapsable section -->
+        <div class="panel-body"> <!-- Panel body -->
+          <table class="table table-bordered table-hover">
+            <tr>
+              <th>Line</th>
+              <th>S/N</th>
+              <th>&#916;v<br />(km/s)</th>
+              <th>&sigma;<br />(km/s)</th>
+              <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+              <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
+              <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+              <th>EW<br />(&#8491;)</th>
+              <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+              <th>Npix</th>
+            </tr>
+            <tr>
+              <td>O I &lambda;1304</td>
+              <td>{{ target.oi_1304_snr|floatformat:2 }}</td>
+              <td>{{ target.oi_1304_vshift|floatformat:2 }}</td>
+              <td>{{ target.oi_1304_sigma|floatformat:2 }}</td>
+              <td>{{ target.oi_1304_amp|floatformat:3 }}{{ target.oi_1304_amp_err|safe }}</td>
+              <td>{{ target.oi_1304_flux|floatformat:3 }}{{ target.oi_1304_flux_err|safe }}</td>
+              <td>{{ target.oi_1304_cont|floatformat:3 }}{{ target.oi_1304_cont_err|safe }}</td>
+              <td>{{ target.oi_1304_ew|floatformat:2 }}{{ target.oi_1304_ew_err|safe }}</td>
+              <td>{{ target.oi_1304_chi2|floatformat:3 }}</td>
+              <td>{{ target.oi_1304_npix }}</td>
+            </tr>
+            <tr>
+              <td>Si IV &lambda;1396</td>
+              <td>{{ target.siliv_1396_snr|floatformat:2 }}</td>
+              <td>{{ target.siliv_1396_vshift|floatformat:2 }}</td>
+              <td>{{ target.siliv_1396_sigma|floatformat:2 }}</td>
+              <td>{{ target.siliv_1396_amp|floatformat:3 }}{{ target.siliv_1396_amp_err|safe }}</td>
+              <td>{{ target.siliv_1396_flux|floatformat:3 }}{{ target.siliv_1396_flux_err|safe }}</td>
+              <td>{{ target.siliv_1396_cont|floatformat:3 }}{{ target.siliv_1396_cont_err|safe }}</td>
+              <td>{{ target.siliv_1396_ew|floatformat:2 }}{{ target.siliv_1396_ew_err|safe }}</td>
+              <td>{{ target.siliv_1396_chi2|floatformat:3 }}</td>
+              <td>{{ target.siliv_1396_npix }}</td>
+            </tr>
+            <tr>
+              <td>C IV &lambda;1549</td>
+              <td>{{ target.civ_1549_snr|floatformat:2 }}</td>
+              <td>{{ target.civ_1549_vshift|floatformat:2 }}</td>
+              <td>{{ target.civ_1549_sigma|floatformat:2 }}</td>
+              <td>{{ target.civ_1549_amp|floatformat:3 }}{{ target.civ_1549_amp_err|safe }}</td>
+              <td>{{ target.civ_1549_flux|floatformat:3 }}{{ target.civ_1549_flux_err|safe }}</td>
+              <td>{{ target.civ_1549_cont|floatformat:3 }}{{ target.civ_1549_cont_err|safe }}</td>
+              <td>{{ target.civ_1549_ew|floatformat:2 }}{{ target.civ_1549_ew_err|safe }}</td>
+              <td>{{ target.civ_1549_chi2|floatformat:3 }}</td>
+              <td>{{ target.civ_1549_npix }}</td>
+            </tr>
+            <tr>
+              <td>Si III] &lambda;1892</td>
+              <td>{{ target.siliii_1892_snr|floatformat:2 }}</td>
+              <td>{{ target.siliii_1892_vshift|floatformat:2 }}</td>
+              <td>{{ target.siliii_1892_sigma|floatformat:2 }}</td>
+              <td>{{ target.siliii_1892_amp|floatformat:3 }}{{ target.siliii_1892_amp_err|safe }}</td>
+              <td>{{ target.siliii_1892_flux|floatformat:3 }}{{ target.siliii_1892_flux_err|safe }}</td>
+              <td>{{ target.siliii_1892_cont|floatformat:3 }}{{ target.siliii_1892_cont_err|safe }}</td>
+              <td>{{ target.siliii_1892_ew|floatformat:2 }}{{ target.siliii_1892_ew_err|safe }}</td>
+              <td>{{ target.siliii_1892_chi2|floatformat:3 }}</td>
+              <td>{{ target.siliii_1892_npix }}</td>
+            </tr>
+            <tr>
+              <td>C III] &lambda;1908</td>
+              <td>{{ target.ciii_1908_snr|floatformat:2 }}</td>
+              <td>{{ target.ciii_1908_vshift|floatformat:2 }}</td>
+              <td>{{ target.ciii_1908_sigma|floatformat:2 }}</td>
+              <td>{{ target.ciii_1908_amp|floatformat:3 }}{{ target.ciii_1908_amp_err|safe }}</td>
+              <td>{{ target.ciii_1908_flux|floatformat:3 }}{{ target.ciii_1908_flux_err|safe }}</td>
+              <td>{{ target.ciii_1908_cont|floatformat:3 }}{{ target.ciii_1908_cont_err|safe }}</td>
+              <td>{{ target.ciii_1908_ew|floatformat:2 }}{{ target.ciii_1908_ew_err|safe }}</td>
+              <td>{{ target.ciii_1908_chi2|floatformat:3 }}</td>
+              <td>{{ target.ciii_1908_npix }}</td>
+            </tr>
+            <tr>
+              {% comment %}
+                {% if target.mgii_2796_amp_ivar > 0 %}
+                {% else %}
+                {% endif %}
+              {% endcomment %}
+              <td>Mg II &lambda;2796</td>
+              <td>{{ target.mgii_2796_snr|floatformat:2 }}</td>
+              <td>{{ target.mgii_2796_vshift|floatformat:2 }}</td>
+              <td>{{ target.mgii_2796_sigma|floatformat:2 }}</td>
+              <td>{{ target.mgii_2796_amp|floatformat:3 }}{{ target.mgii_2796_amp_err|safe }}</td>
+              <td>{{ target.mgii_2796_flux|floatformat:3 }}{{ target.mgii_2796_flux_err|safe }}</td>
+              <td>{{ target.mgii_2796_cont|floatformat:3 }}{{ target.mgii_2796_cont_err|safe }}</td>
+              <td>{{ target.mgii_2796_ew|floatformat:2 }}{{ target.mgii_2796_ew_err|safe }}</td>
+              <td>{{ target.mgii_2796_chi2|floatformat:3 }}</td>
+              <td>{{ target.mgii_2796_npix }}</td>
+            </tr>
+            <tr>
+              <td>Mg II &lambda;2803</td>
+              <td>{{ target.mgii_2803_snr|floatformat:2 }}</td>
+              <td>{{ target.mgii_2803_vshift|floatformat:2 }}</td>
+              <td>{{ target.mgii_2803_sigma|floatformat:2 }}</td>
+              <td>{{ target.mgii_2803_amp|floatformat:3 }}{{ target.mgii_2803_amp_err|safe }}</td>
+              <td>{{ target.mgii_2803_flux|floatformat:3 }}{{ target.mgii_2803_flux_err|safe }}</td>
+              <td>{{ target.mgii_2803_cont|floatformat:3 }}{{ target.mgii_2803_cont_err|safe }}</td>
+              <td>{{ target.mgii_2803_ew|floatformat:2 }}{{ target.mgii_2803_ew_err|safe }}</td>
+              <td>{{ target.mgii_2803_chi2|floatformat:3 }}</td>
+              <td>{{ target.mgii_2803_npix }}</td>
+            </tr>
+          </table>
+        </div> <!-- END Panel body -->
+    </div> <!-- END Collapse section -->
+</div> <!-- end accordian div -->
+          
+<div class="panel panel-primary accordion"> <!-- Panel (collapasable) -->
+    <div class="panel-heading"> <!-- Panel head -->
+        <a class="accordion-toggle" data-toggle="collapse" data-parent=".accordion" href="#collapseForbid">
+          <button type="submit" class="btn btn-primary" style="margin-top:15px;">Forbidden and Narrow H & He Lines</button>
+        </a>           
+    </div> <!-- END Panel head -->
+    <br /><br />
+    <div id="collapseForbid" class="panel-collapse collapse in"> <!-- Collapsable section -->
+        <div class="panel-body"> <!-- Panel body -->
+          <table class="table table-bordered table-hover">
+            <tr>
+              <th>Line</th>
+              <th>S/N</th>
+              <th>&#916;v<br />(km/s)</th>
+              <th>&sigma;<br />(km/s)</th>
+              <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+              <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
+              <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+              <th>EW<br />(&#8491;)</th>
+              <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+              <th>Npix</th>
+            </tr>
+            <tr>
+              <td>[Ne V] &lambda;3346</td>
+              <td>{{ target.nev_3346_snr|floatformat:2 }}</td>
+              <td>{{ target.nev_3346_vshift|floatformat:2 }}</td>
+              <td>{{ target.nev_3346_sigma|floatformat:2 }}</td>
+              <td>{{ target.nev_3346_amp|floatformat:3 }} {{ target.nev_3346_amp_err|safe }}</td>
+              <td>{{ target.nev_3346_flux|floatformat:3 }}{{ target.nev_3346_flux_err|safe }}</td>
+              <td>{{ target.nev_3346_cont|floatformat:3 }}{{ target.nev_3346_cont_err|safe }}</td>
+              <td>{{ target.nev_3346_ew|floatformat:2 }}  {{ target.nev_3346_ew_err|safe }}</td>
+              <td>{{ target.nev_3346_chi2|floatformat:3 }}</td>
+              <td>{{ target.nev_3346_npix }}</td>
+            </tr>
+            <tr>
+              <td>[Ne V] &lambda;3426</td>
+              <td>{{ target.nev_3426_snr|floatformat:2 }}</td>
+              <td>{{ target.nev_3426_vshift|floatformat:2 }}</td>
+              <td>{{ target.nev_3426_sigma|floatformat:2 }}</td>
+              <td>{{ target.nev_3426_amp|floatformat:3 }} {{ target.nev_3426_amp_err|safe }}</td>
+              <td>{{ target.nev_3426_flux|floatformat:3 }}{{ target.nev_3426_flux_err|safe }}</td>
+              <td>{{ target.nev_3426_cont|floatformat:3 }}{{ target.nev_3426_cont_err|safe }}</td>
+              <td>{{ target.nev_3426_ew|floatformat:2 }}  {{ target.nev_3426_ew_err|safe }}</td>
+              <td>{{ target.nev_3426_chi2|floatformat:3 }}</td>
+              <td>{{ target.nev_3426_npix }}</td>
+            </tr>
+            <tr>
+              <td>[O II] &lambda;3726</td>
+              <td>{{ target.oii_3726_snr|floatformat:2 }}</td>
+              <td>{{ target.oii_3726_vshift|floatformat:2 }}</td>
+              <td>{{ target.oii_3726_sigma|floatformat:2 }}</td>
+              <td>{{ target.oii_3726_amp|floatformat:3 }} {{ target.oii_3726_amp_err|safe }}</td>
+              <td>{{ target.oii_3726_flux|floatformat:3 }}{{ target.oii_3726_flux_err|safe }}</td>
+              <td>{{ target.oii_3726_cont|floatformat:3 }}{{ target.oii_3726_cont_err|safe }}</td>
+              <td>{{ target.oii_3726_ew|floatformat:2 }}  {{ target.oii_3726_ew_err|safe }}</td>
+              <td>{{ target.oii_3726_chi2|floatformat:3 }}</td>
+              <td>{{ target.oii_3726_npix }}</td>
+            </tr>
+            <tr>
+              <td>[O II] &lambda;3729</td>
+              <td>{{ target.oii_3729_snr|floatformat:2 }}</td>
+              <td>{{ target.oii_3729_vshift|floatformat:2 }}</td>
+              <td>{{ target.oii_3729_sigma|floatformat:2 }}</td>
+              <td>{{ target.oii_3729_amp|floatformat:3 }} {{ target.oii_3729_amp_err|safe }}</td>
+              <td>{{ target.oii_3729_flux|floatformat:3 }}{{ target.oii_3729_flux_err|safe }}</td>
+              <td>{{ target.oii_3729_cont|floatformat:3 }}{{ target.oii_3729_cont_err|safe }}</td>
+              <td>{{ target.oii_3729_ew|floatformat:2 }}  {{ target.oii_3729_ew_err|safe }}</td>
+              <td>{{ target.oii_3729_chi2|floatformat:3 }}</td>
+              <td>{{ target.oii_3729_npix }}</td>
+            </tr>
+            <tr>
+              <td>[Ne III] &lambda;3869</td>
+              <td>{{ target.neiii_3869_snr|floatformat:2 }}</td>
+              <td>{{ target.neiii_3869_vshift|floatformat:2 }}</td>
+              <td>{{ target.neiii_3869_sigma|floatformat:2 }}</td>
+              <td>{{ target.neiii_3869_amp|floatformat:3 }} {{ target.neiii_3869_amp_err|safe }}</td>
+              <td>{{ target.neiii_3869_flux|floatformat:3 }}{{ target.neiii_3869_flux_err|safe }}</td>
+              <td>{{ target.neiii_3869_cont|floatformat:3 }}{{ target.neiii_3869_cont_err|safe }}</td>
+              <td>{{ target.neiii_3869_ew|floatformat:2 }}  {{ target.neiii_3869_ew_err|safe }}</td>
+              <td>{{ target.neiii_3869_chi2|floatformat:3 }}</td>
+              <td>{{ target.neiii_3869_npix }}</td>
+            </tr>
+            <tr>
+              <td>He I &lambda;3889 (narrow)</td>
+              <td>{{ target.hei_3889_snr|floatformat:2 }}</td>
+              <td>{{ target.hei_3889_vshift|floatformat:2 }}</td>
+              <td>{{ target.hei_3889_sigma|floatformat:2 }}</td>
+              <td>{{ target.hei_3889_amp|floatformat:3 }} {{ target.hei_3889_amp_err|safe }}</td>
+              <td>{{ target.hei_3889_flux|floatformat:3 }}{{ target.hei_3889_flux_err|safe }}</td>
+              <td>{{ target.hei_3889_cont|floatformat:3 }}{{ target.hei_3889_cont_err|safe }}</td>
+              <td>{{ target.hei_3889_ew|floatformat:2 }}  {{ target.hei_3889_ew_err|safe }}</td>
+              <td>{{ target.hei_3889_chi2|floatformat:3 }}</td>
+              <td>{{ target.hei_3889_npix }}</td>
+            </tr>
+            <tr>
+              <td>H6 (narrow)</td>
+              <td>{{ target.h6_snr|floatformat:2 }}</td>
+              <td>{{ target.h6_vshift|floatformat:2 }}</td>
+              <td>{{ target.h6_sigma|floatformat:2 }}</td>
+              <td>{{ target.h6_amp|floatformat:3 }} {{ target.h6_amp_err|safe }}</td>
+              <td>{{ target.h6_flux|floatformat:3 }}{{ target.h6_flux_err|safe }}</td>
+              <td>{{ target.h6_cont|floatformat:3 }}{{ target.h6_cont_err|safe }}</td>
+              <td>{{ target.h6_ew|floatformat:2 }}  {{ target.h6_ew_err|safe }}</td>
+              <td>{{ target.h6_chi2|floatformat:3 }}</td>
+              <td>{{ target.h6_npix }}</td>
+            </tr>
+            <tr>
+              <td>H&epsilon; (narrow)</td>
+              <td>{{ target.hepsilon_snr|floatformat:2 }}</td>
+              <td>{{ target.hepsilon_vshift|floatformat:2 }}</td>
+              <td>{{ target.hepsilon_sigma|floatformat:2 }}</td>
+              <td>{{ target.hepsilon_amp|floatformat:3 }} {{ target.hepsilon_amp_err|safe }}</td>
+              <td>{{ target.hepsilon_flux|floatformat:3 }}{{ target.hepsilon_flux_err|safe }}</td>
+              <td>{{ target.hepsilon_cont|floatformat:3 }}{{ target.hepsilon_cont_err|safe }}</td>
+              <td>{{ target.hepsilon_ew|floatformat:2 }}  {{ target.hepsilon_ew_err|safe }}</td>
+              <td>{{ target.hepsilon_chi2|floatformat:3 }}</td>
+              <td>{{ target.hepsilon_npix }}</td>
+            </tr>
+            <tr>
+              <td>H&delta; (narow)</td>
+              <td>{{ target.hdelta_snr|floatformat:2 }}</td>
+              <td>{{ target.hdelta_vshift|floatformat:2 }}</td>
+              <td>{{ target.hdelta_sigma|floatformat:2 }}</td>
+              <td>{{ target.hdelta_amp|floatformat:3 }} {{ target.hdelta_amp_err|safe }}</td>
+              <td>{{ target.hdelta_flux|floatformat:3 }}{{ target.hdelta_flux_err|safe }}</td>
+              <td>{{ target.hdelta_cont|floatformat:3 }}{{ target.hdelta_cont_err|safe }}</td>
+              <td>{{ target.hdelta_ew|floatformat:2 }}  {{ target.hdelta_ew_err|safe }}</td>
+              <td>{{ target.hdelta_chi2|floatformat:3 }}</td>
+              <td>{{ target.hdelta_npix }}</td>
+            </tr>
+            <tr>
+              <td>H&gamma; (narrow)</td>
+              <td>{{ target.hgamma_snr|floatformat:2 }}</td>
+              <td>{{ target.hgamma_vshift|floatformat:2 }}</td>
+              <td>{{ target.hgamma_sigma|floatformat:2 }}</td>
+              <td>{{ target.hgamma_amp|floatformat:3 }} {{ target.hgamma_amp_err|safe }}</td>
+              <td>{{ target.hgamma_flux|floatformat:3 }}{{ target.hgamma_flux_err|safe }}</td>
+              <td>{{ target.hgamma_cont|floatformat:3 }}{{ target.hgamma_cont_err|safe }}</td>
+              <td>{{ target.hgamma_ew|floatformat:2 }}  {{ target.hgamma_ew_err|safe }}</td>
+              <td>{{ target.hgamma_chi2|floatformat:3 }}</td>
+              <td>{{ target.hgamma_npix }}</td>
+            </tr>
+            <tr>
+              <td>[O III] &lambda;4363</td>
+              <td>{{ target.oiii_4363_snr|floatformat:2 }}</td>
+              <td>{{ target.oiii_4363_vshift|floatformat:2 }}</td>
+              <td>{{ target.oiii_4363_sigma|floatformat:2 }}</td>
+              <td>{{ target.oiii_4363_amp|floatformat:3 }} {{ target.oiii_4363_amp_err|safe }}</td>
+              <td>{{ target.oiii_4363_flux|floatformat:3 }}{{ target.oiii_4363_flux_err|safe }}</td>
+              <td>{{ target.oiii_4363_cont|floatformat:3 }}{{ target.oiii_4363_cont_err|safe }}</td>
+              <td>{{ target.oiii_4363_ew|floatformat:2 }}  {{ target.oiii_4363_ew_err|safe }}</td>
+              <td>{{ target.oiii_4363_chi2|floatformat:3 }}</td>
+              <td>{{ target.oiii_4363_npix }}</td>
+            </tr>
+            <tr>
+              <td>He I &lambda;4471 (narrow)</td>
+              <td>{{ target.hei_4471_snr|floatformat:2 }}</td>
+              <td>{{ target.hei_4471_vshift|floatformat:2 }}</td>
+              <td>{{ target.hei_4471_sigma|floatformat:2 }}</td>
+              <td>{{ target.hei_4471_amp|floatformat:3 }} {{ target.hei_4471_amp_err|safe }}</td>
+              <td>{{ target.hei_4471_flux|floatformat:3 }}{{ target.hei_4471_flux_err|safe }}</td>
+              <td>{{ target.hei_4471_cont|floatformat:3 }}{{ target.hei_4471_cont_err|safe }}</td>
+              <td>{{ target.hei_4471_ew|floatformat:2 }}  {{ target.hei_4471_ew_err|safe }}</td>
+              <td>{{ target.hei_4471_chi2|floatformat:3 }}</td>
+              <td>{{ target.hei_4471_npix }}</td>
+            </tr>
+            <tr>
+              <td>He II &lambda;4686 (narrow)</td>
+              <td>{{ target.heii_4686_snr|floatformat:2 }}</td>
+              <td>{{ target.heii_4686_vshift|floatformat:2 }}</td>
+              <td>{{ target.heii_4686_sigma|floatformat:2 }}</td>
+              <td>{{ target.heii_4686_amp|floatformat:3 }} {{ target.heii_4686_amp_err|safe }}</td>
+              <td>{{ target.heii_4686_flux|floatformat:3 }}{{ target.heii_4686_flux_err|safe }}</td>
+              <td>{{ target.heii_4686_cont|floatformat:3 }}{{ target.heii_4686_cont_err|safe }}</td>
+              <td>{{ target.heii_4686_ew|floatformat:2 }}  {{ target.heii_4686_ew_err|safe }}</td>
+              <td>{{ target.heii_4686_chi2|floatformat:3 }}</td>
+              <td>{{ target.heii_4686_npix }}</td>
+            </tr>
+            <tr>
+              <td>H&beta; (narrow)</td>
+              <td>{{ target.hbeta_snr|floatformat:2 }}</td>
+              <td>{{ target.hbeta_vshift|floatformat:2 }}</td>
+              <td>{{ target.hbeta_sigma|floatformat:2 }}</td>
+              <td>{{ target.hbeta_amp|floatformat:3 }} {{ target.hbeta_amp_err|safe }}</td>
+              <td>{{ target.hbeta_flux|floatformat:3 }}{{ target.hbeta_flux_err|safe }}</td>
+              <td>{{ target.hbeta_cont|floatformat:3 }}{{ target.hbeta_cont_err|safe }}</td>
+              <td>{{ target.hbeta_ew|floatformat:2 }}  {{ target.hbeta_ew_err|safe }}</td>
+              <td>{{ target.hbeta_chi2|floatformat:3 }}</td>
+              <td>{{ target.hbeta_npix }}</td>
+            </tr>
+            <tr>
+              <td>[O III] &lambda;4959</td>
+              <td>{{ target.oiii_4959_snr|floatformat:2 }}</td>
+              <td>{{ target.oiii_4959_vshift|floatformat:2 }}</td>
+              <td>{{ target.oiii_4959_sigma|floatformat:2 }}</td>
+              <td>{{ target.oiii_4959_amp|floatformat:3 }} {{ target.oiii_4959_amp_err|safe }}</td>
+              <td>{{ target.oiii_4959_flux|floatformat:3 }}{{ target.oiii_4959_flux_err|safe }}</td>
+              <td>{{ target.oiii_4959_cont|floatformat:3 }}{{ target.oiii_4959_cont_err|safe }}</td>
+              <td>{{ target.oiii_4959_ew|floatformat:2 }}  {{ target.oiii_4959_ew_err|safe }}</td>
+              <td>{{ target.oiii_4959_chi2|floatformat:3 }}</td>
+              <td>{{ target.oiii_4959_npix }}</td>
+            </tr>
+            <tr>
+              <td>[O III] &lambda;5007</td>
+              <td>{{ target.oiii_5007_snr|floatformat:2 }}</td>
+              <td>{{ target.oiii_5007_vshift|floatformat:2 }}</td>
+              <td>{{ target.oiii_5007_sigma|floatformat:2 }}</td>
+              <td>{{ target.oiii_5007_amp|floatformat:3 }} {{ target.oiii_5007_amp_err|safe }}</td>
+              <td>{{ target.oiii_5007_flux|floatformat:3 }}{{ target.oiii_5007_flux_err|safe }}</td>
+              <td>{{ target.oiii_5007_cont|floatformat:3 }}{{ target.oiii_5007_cont_err|safe }}</td>
+              <td>{{ target.oiii_5007_ew|floatformat:2 }}  {{ target.oiii_5007_ew_err|safe }}</td>
+              <td>{{ target.oiii_5007_chi2|floatformat:3 }}</td>
+              <td>{{ target.oiii_5007_npix }}</td>
+            </tr>
+            <tr>
+              <td>[N II] &lambda;5755</td>
+              <td>{{ target.nii_5755_snr|floatformat:2 }}</td>
+              <td>{{ target.nii_5755_vshift|floatformat:2 }}</td>
+              <td>{{ target.nii_5755_sigma|floatformat:2 }}</td>
+              <td>{{ target.nii_5755_amp|floatformat:3 }} {{ target.nii_5755_amp_err|safe }}</td>
+              <td>{{ target.nii_5755_flux|floatformat:3 }}{{ target.nii_5755_flux_err|safe }}</td>
+              <td>{{ target.nii_5755_cont|floatformat:3 }}{{ target.nii_5755_cont_err|safe }}</td>
+              <td>{{ target.nii_5755_ew|floatformat:2 }}  {{ target.nii_5755_ew_err|safe }}</td>
+              <td>{{ target.nii_5755_chi2|floatformat:3 }}</td>
+              <td>{{ target.nii_5755_npix }}</td>
+            </tr>
+            <tr>
+              <td>He I &lambda;5876 (narrow)</td>
+              <td>{{ target.hei_5876_snr|floatformat:2 }}</td>
+              <td>{{ target.hei_5876_vshift|floatformat:2 }}</td>
+              <td>{{ target.hei_5876_sigma|floatformat:2 }}</td>
+              <td>{{ target.hei_5876_amp|floatformat:3 }} {{ target.hei_5876_amp_err|safe }}</td>
+              <td>{{ target.hei_5876_flux|floatformat:3 }}{{ target.hei_5876_flux_err|safe }}</td>
+              <td>{{ target.hei_5876_cont|floatformat:3 }}{{ target.hei_5876_cont_err|safe }}</td>
+              <td>{{ target.hei_5876_ew|floatformat:2 }}  {{ target.hei_5876_ew_err|safe }}</td>
+              <td>{{ target.hei_5876_chi2|floatformat:3 }}</td>
+              <td>{{ target.hei_5876_npix }}</td>
+            </tr>
+            <tr>
+              <td>[O I] &lambda;6300</td>
+              <td>{{ target.oi_6300_snr|floatformat:2 }}</td>
+              <td>{{ target.oi_6300_vshift|floatformat:2 }}</td>
+              <td>{{ target.oi_6300_sigma|floatformat:2 }}</td>
+              <td>{{ target.oi_6300_amp|floatformat:3 }} {{ target.oi_6300_amp_err|safe }}</td>
+              <td>{{ target.oi_6300_flux|floatformat:3 }}{{ target.oi_6300_flux_err|safe }}</td>
+              <td>{{ target.oi_6300_cont|floatformat:3 }}{{ target.oi_6300_cont_err|safe }}</td>
+              <td>{{ target.oi_6300_ew|floatformat:2 }}  {{ target.oi_6300_ew_err|safe }}</td>
+              <td>{{ target.oi_6300_chi2|floatformat:3 }}</td>
+              <td>{{ target.oi_6300_npix }}</td>
+            </tr>
+            <tr>
+              <td>[N II] &lambda;6548</td>
+              <td>{{ target.nii_6548_snr|floatformat:2 }}</td>
+              <td>{{ target.nii_6548_vshift|floatformat:2 }}</td>
+              <td>{{ target.nii_6548_sigma|floatformat:2 }}</td>
+              <td>{{ target.nii_6548_amp|floatformat:3 }} {{ target.nii_6548_amp_err|safe }}</td>
+              <td>{{ target.nii_6548_flux|floatformat:3 }}{{ target.nii_6548_flux_err|safe }}</td>
+              <td>{{ target.nii_6548_cont|floatformat:3 }}{{ target.nii_6548_cont_err|safe }}</td>
+              <td>{{ target.nii_6548_ew|floatformat:2 }}  {{ target.nii_6548_ew_err|safe }}</td>
+              <td>{{ target.nii_6548_chi2|floatformat:3 }}</td>
+              <td>{{ target.nii_6548_npix }}</td>
+            </tr>
+            <tr>
+              <td>H&alpha; (narrow)</td>
+              <td>{{ target.halpha_snr|floatformat:2 }}</td>
+              <td>{{ target.halpha_vshift|floatformat:2 }}</td>
+              <td>{{ target.halpha_sigma|floatformat:2 }}</td>
+              <td>{{ target.halpha_amp|floatformat:3 }} {{ target.halpha_amp_err|safe }}</td>
+              <td>{{ target.halpha_flux|floatformat:3 }}{{ target.halpha_flux_err|safe }}</td>
+              <td>{{ target.halpha_cont|floatformat:3 }}{{ target.halpha_cont_err|safe }}</td>
+              <td>{{ target.halpha_ew|floatformat:2 }}  {{ target.halpha_ew_err|safe }}</td>
+              <td>{{ target.halpha_chi2|floatformat:3 }}</td>
+              <td>{{ target.halpha_npix }}</td>
+            </tr>
+            <tr>
+              <td>[N II] &lambda;6584</td>
+              <td>{{ target.nii_6584_snr|floatformat:2 }}</td>
+              <td>{{ target.nii_6584_vshift|floatformat:2 }}</td>
+              <td>{{ target.nii_6584_sigma|floatformat:2 }}</td>
+              <td>{{ target.nii_6584_amp|floatformat:3 }} {{ target.nii_6584_amp_err|safe }}</td>
+              <td>{{ target.nii_6584_flux|floatformat:3 }}{{ target.nii_6584_flux_err|safe }}</td>
+              <td>{{ target.nii_6584_cont|floatformat:3 }}{{ target.nii_6584_cont_err|safe }}</td>
+              <td>{{ target.nii_6584_ew|floatformat:2 }}  {{ target.nii_6584_ew_err|safe }}</td>
+              <td>{{ target.nii_6584_chi2|floatformat:3 }}</td>
+              <td>{{ target.nii_6584_npix }}</td>
+            </tr>
+            <tr>
+              <td>[S II] &lambda;6716</td>
+              <td>{{ target.sii_6716_snr|floatformat:2 }}</td>
+              <td>{{ target.sii_6716_vshift|floatformat:2 }}</td>
+              <td>{{ target.sii_6716_sigma|floatformat:2 }}</td>
+              <td>{{ target.sii_6716_amp|floatformat:3 }} {{ target.sii_6716_amp_err|safe }}</td>
+              <td>{{ target.sii_6716_flux|floatformat:3 }}{{ target.sii_6716_flux_err|safe }}</td>
+              <td>{{ target.sii_6716_cont|floatformat:3 }}{{ target.sii_6716_cont_err|safe }}</td>
+              <td>{{ target.sii_6716_ew|floatformat:2 }}  {{ target.sii_6716_ew_err|safe }}</td>
+              <td>{{ target.sii_6716_chi2|floatformat:3 }}</td>
+              <td>{{ target.sii_6716_npix }}</td>
+            </tr>
+            <tr>
+              <td>[S II] &lambda;6731</td>
+              <td>{{ target.sii_6731_snr|floatformat:2 }}</td>
+              <td>{{ target.sii_6731_vshift|floatformat:2 }}</td>
+              <td>{{ target.sii_6731_sigma|floatformat:2 }}</td>
+              <td>{{ target.sii_6731_amp|floatformat:3 }} {{ target.sii_6731_amp_err|safe }}</td>
+              <td>{{ target.sii_6731_flux|floatformat:3 }}{{ target.sii_6731_flux_err|safe }}</td>
+              <td>{{ target.sii_6731_cont|floatformat:3 }}{{ target.sii_6731_cont_err|safe }}</td>
+              <td>{{ target.sii_6731_ew|floatformat:2 }}  {{ target.sii_6731_ew_err|safe }}</td>
+              <td>{{ target.sii_6731_chi2|floatformat:3 }}</td>
+              <td>{{ target.sii_6731_npix }}</td>
+            </tr>
+            <tr>
+              <td>[O II] &lambda;7320</td>
+              <td>{{ target.oii_7320_snr|floatformat:2 }}</td>
+              <td>{{ target.oii_7320_vshift|floatformat:2 }}</td>
+              <td>{{ target.oii_7320_sigma|floatformat:2 }}</td>
+              <td>{{ target.oii_7320_amp|floatformat:3 }} {{ target.oii_7320_amp_err|safe }}</td>
+              <td>{{ target.oii_7320_flux|floatformat:3 }}{{ target.oii_7320_flux_err|safe }}</td>
+              <td>{{ target.oii_7320_cont|floatformat:3 }}{{ target.oii_7320_cont_err|safe }}</td>
+              <td>{{ target.oii_7320_ew|floatformat:2 }}  {{ target.oii_7320_ew_err|safe }}</td>
+              <td>{{ target.oii_7320_chi2|floatformat:3 }}</td>
+              <td>{{ target.oii_7320_npix }}</td>
+            </tr>
+            <tr>
+              <td>[O II] &lambda;7330</td>
+              <td>{{ target.oii_7330_snr|floatformat:2 }}</td>
+              <td>{{ target.oii_7330_vshift|floatformat:2 }}</td>
+              <td>{{ target.oii_7330_sigma|floatformat:2 }}</td>
+              <td>{{ target.oii_7330_amp|floatformat:3 }} {{ target.oii_7330_amp_err|safe }}</td>
+              <td>{{ target.oii_7330_flux|floatformat:3 }}{{ target.oii_7330_flux_err|safe }}</td>
+              <td>{{ target.oii_7330_cont|floatformat:3 }}{{ target.oii_7330_cont_err|safe }}</td>
+              <td>{{ target.oii_7330_ew|floatformat:2 }}  {{ target.oii_7330_ew_err|safe }}</td>
+              <td>{{ target.oii_7330_chi2|floatformat:3 }}</td>
+              <td>{{ target.oii_7330_npix }}</td>
+            </tr>
+            <tr>
+              <td>[S III] &lambda;9069</td>
+              <td>{{ target.siii_9069_snr|floatformat:2 }}</td>
+              <td>{{ target.siii_9069_vshift|floatformat:2 }}</td>
+              <td>{{ target.siii_9069_sigma|floatformat:2 }}</td>
+              <td>{{ target.siii_9069_amp|floatformat:3 }} {{ target.siii_9069_amp_err|safe }}</td>
+              <td>{{ target.siii_9069_flux|floatformat:3 }}{{ target.siii_9069_flux_err|safe }}</td>
+              <td>{{ target.siii_9069_cont|floatformat:3 }}{{ target.siii_9069_cont_err|safe }}</td>
+              <td>{{ target.siii_9069_ew|floatformat:2 }}  {{ target.siii_9069_ew_err|safe }}</td>
+              <td>{{ target.siii_9069_chi2|floatformat:3 }}</td>
+              <td>{{ target.siii_9069_npix }}</td>
+            </tr>
+            <tr>
+              <td>[S III] &lambda;9532</td>
+              <td>{{ target.siii_9532_snr|floatformat:2 }}</td>
+              <td>{{ target.siii_9532_vshift|floatformat:2 }}</td>
+              <td>{{ target.siii_9532_sigma|floatformat:2 }}</td>
+              <td>{{ target.siii_9532_amp|floatformat:3 }} {{ target.siii_9532_amp_err|safe }}</td>
+              <td>{{ target.siii_9532_flux|floatformat:3 }}{{ target.siii_9532_flux_err|safe }}</td>
+              <td>{{ target.siii_9532_cont|floatformat:3 }}{{ target.siii_9532_cont_err|safe }}</td>
+              <td>{{ target.siii_9532_ew|floatformat:2 }}  {{ target.siii_9532_ew_err|safe }}</td>
+              <td>{{ target.siii_9532_chi2|floatformat:3 }}</td>
+              <td>{{ target.siii_9532_npix }}</td>
+            </tr>
+          </table>
+        </div> <!-- END Panel body -->
+    </div> <!-- END Collapse section -->
+</div> <!-- end accordian div -->
+          
+<div class="panel panel-primary accordion"> <!-- Panel (collapasable) -->
+    <div class="panel-heading"> <!-- Panel head -->
+        <a class="accordion-toggle" data-toggle="collapse" data-parent=".accordion" href="#collapseBroadLines">
+          <button type="submit" class="btn btn-primary" style="margin-top:15px;">Broad H & He Lines</button>
+        </a>           
+    </div> <!-- END Panel head -->
+    <div id="collapseBroadLines" class="panel-collapse collapse in"> <!-- Collapsable section -->
+        <div class="panel-body"> <!-- Panel body -->
+          <table class="table table-bordered table-hover">
+            <tr>
+              <th>Line</th>
+              <th>S/N</th>
+              <th>&#916;v<br />(km/s)</th>
+              <th>&sigma;<br />(km/s)</th>
+              <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+              <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
+              <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+              <th>EW<br />(&#8491;)</th>
+              <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+              <th>Npix</th>
+            </tr>
+            <tr>
+              <td>He I &lambda;3889 (broad)</td>
+              <td>{{ target.hei_broad_3889_snr|floatformat:2 }}</td>
+              <td>{{ target.hei_broad_3889_vshift|floatformat:2 }}</td>
+              <td>{{ target.hei_broad_3889_sigma|floatformat:2 }}</td>
+              <td>{{ target.hei_broad_3889_amp|floatformat:3 }} {{ target.hei_broad_3889_amp_err|safe }}</td>
+              <td>{{ target.hei_broad_3889_flux|floatformat:3 }}{{ target.hei_broad_3889_flux_err|safe }}</td>
+              <td>{{ target.hei_broad_3889_cont|floatformat:3 }}{{ target.hei_broad_3889_cont_err|safe }}</td>
+              <td>{{ target.hei_broad_3889_ew|floatformat:2 }}  {{ target.hei_broad_3889_ew_err|safe }}</td>
+              <td>{{ target.hei_broad_3889_chi2|floatformat:3 }}</td>
+              <td>{{ target.hei_broad_3889_npix }}</td>
+            </tr>
+            <tr>
+              <td>H6 (broad)</td>
+              <td>{{ target.h6_broad_snr|floatformat:2 }}</td>
+              <td>{{ target.h6_broad_vshift|floatformat:2 }}</td>
+              <td>{{ target.h6_broad_sigma|floatformat:2 }}</td>
+              <td>{{ target.h6_broad_amp|floatformat:3 }} {{ target.h6_broad_amp_err|safe }}</td>
+              <td>{{ target.h6_broad_flux|floatformat:3 }}{{ target.h6_broad_flux_err|safe }}</td>
+              <td>{{ target.h6_broad_cont|floatformat:3 }}{{ target.h6_broad_cont_err|safe }}</td>
+              <td>{{ target.h6_broad_ew|floatformat:2 }}  {{ target.h6_broad_ew_err|safe }}</td>
+              <td>{{ target.h6_broad_chi2|floatformat:3 }}</td>
+              <td>{{ target.h6_broad_npix }}</td>
+            </tr>
+            <tr>
+              <td>H&epsilon; (broad)</td>
+              <td>{{ target.hepsilon_broad_snr|floatformat:2 }}</td>
+              <td>{{ target.hepsilon_broad_vshift|floatformat:2 }}</td>
+              <td>{{ target.hepsilon_broad_sigma|floatformat:2 }}</td>
+              <td>{{ target.hepsilon_broad_amp|floatformat:3 }} {{ target.hepsilon_broad_amp_err|safe }}</td>
+              <td>{{ target.hepsilon_broad_flux|floatformat:3 }}{{ target.hepsilon_broad_flux_err|safe }}</td>
+              <td>{{ target.hepsilon_broad_cont|floatformat:3 }}{{ target.hepsilon_broad_cont_err|safe }}</td>
+              <td>{{ target.hepsilon_broad_ew|floatformat:2 }}  {{ target.hepsilon_broad_ew_err|safe }}</td>
+              <td>{{ target.hepsilon_broad_chi2|floatformat:3 }}</td>
+              <td>{{ target.hepsilon_broad_npix }}</td>
+            </tr>
+            <tr>
+              <td>H&delta; (narow)</td>
+              <td>{{ target.hdelta_broad_snr|floatformat:2 }}</td>
+              <td>{{ target.hdelta_broad_vshift|floatformat:2 }}</td>
+              <td>{{ target.hdelta_broad_sigma|floatformat:2 }}</td>
+              <td>{{ target.hdelta_broad_amp|floatformat:3 }} {{ target.hdelta_broad_amp_err|safe }}</td>
+              <td>{{ target.hdelta_broad_flux|floatformat:3 }}{{ target.hdelta_broad_flux_err|safe }}</td>
+              <td>{{ target.hdelta_broad_cont|floatformat:3 }}{{ target.hdelta_broad_cont_err|safe }}</td>
+              <td>{{ target.hdelta_broad_ew|floatformat:2 }}  {{ target.hdelta_broad_ew_err|safe }}</td>
+              <td>{{ target.hdelta_broad_chi2|floatformat:3 }}</td>
+              <td>{{ target.hdelta_broad_npix }}</td>
+            </tr>
+            <tr>
+              <td>H&gamma; (broad)</td>
+              <td>{{ target.hgamma_broad_snr|floatformat:2 }}</td>
+              <td>{{ target.hgamma_broad_vshift|floatformat:2 }}</td>
+              <td>{{ target.hgamma_broad_sigma|floatformat:2 }}</td>
+              <td>{{ target.hgamma_broad_amp|floatformat:3 }} {{ target.hgamma_broad_amp_err|safe }}</td>
+              <td>{{ target.hgamma_broad_flux|floatformat:3 }}{{ target.hgamma_broad_flux_err|safe }}</td>
+              <td>{{ target.hgamma_broad_cont|floatformat:3 }}{{ target.hgamma_broad_cont_err|safe }}</td>
+              <td>{{ target.hgamma_broad_ew|floatformat:2 }}  {{ target.hgamma_broad_ew_err|safe }}</td>
+              <td>{{ target.hgamma_broad_chi2|floatformat:3 }}</td>
+              <td>{{ target.hgamma_broad_npix }}</td>
+            </tr>
+            <tr>
+              <td>He I &lambda;4471 (broad)</td>
+              <td>{{ target.hei_broad_4471_snr|floatformat:2 }}</td>
+              <td>{{ target.hei_broad_4471_vshift|floatformat:2 }}</td>
+              <td>{{ target.hei_broad_4471_sigma|floatformat:2 }}</td>
+              <td>{{ target.hei_broad_4471_amp|floatformat:3 }} {{ target.hei_broad_4471_amp_err|safe }}</td>
+              <td>{{ target.hei_broad_4471_flux|floatformat:3 }}{{ target.hei_broad_4471_flux_err|safe }}</td>
+              <td>{{ target.hei_broad_4471_cont|floatformat:3 }}{{ target.hei_broad_4471_cont_err|safe }}</td>
+              <td>{{ target.hei_broad_4471_ew|floatformat:2 }}  {{ target.hei_broad_4471_ew_err|safe }}</td>
+              <td>{{ target.hei_broad_4471_chi2|floatformat:3 }}</td>
+              <td>{{ target.hei_broad_4471_npix }}</td>
+            </tr>
+            <tr>
+              <td>He II &lambda;4686 (broad)</td>
+              <td>{{ target.heii_broad_4686_snr|floatformat:2 }}</td>
+              <td>{{ target.heii_broad_4686_vshift|floatformat:2 }}</td>
+              <td>{{ target.heii_broad_4686_sigma|floatformat:2 }}</td>
+              <td>{{ target.heii_broad_4686_amp|floatformat:3 }} {{ target.heii_broad_4686_amp_err|safe }}</td>
+              <td>{{ target.heii_broad_4686_flux|floatformat:3 }}{{ target.heii_broad_4686_flux_err|safe }}</td>
+              <td>{{ target.heii_broad_4686_cont|floatformat:3 }}{{ target.heii_broad_4686_cont_err|safe }}</td>
+              <td>{{ target.heii_broad_4686_ew|floatformat:2 }}  {{ target.heii_broad_4686_ew_err|safe }}</td>
+              <td>{{ target.heii_broad_4686_chi2|floatformat:3 }}</td>
+              <td>{{ target.heii_broad_4686_npix }}</td>
+            </tr>
+            <tr>
+              <td>H&beta; (broad)</td>
+              <td>{{ target.hbeta_broad_snr|floatformat:2 }}</td>
+              <td>{{ target.hbeta_broad_vshift|floatformat:2 }}</td>
+              <td>{{ target.hbeta_broad_sigma|floatformat:2 }}</td>
+              <td>{{ target.hbeta_broad_amp|floatformat:3 }} {{ target.hbeta_broad_amp_err|safe }}</td>
+              <td>{{ target.hbeta_broad_flux|floatformat:3 }}{{ target.hbeta_broad_flux_err|safe }}</td>
+              <td>{{ target.hbeta_broad_cont|floatformat:3 }}{{ target.hbeta_broad_cont_err|safe }}</td>
+              <td>{{ target.hbeta_broad_ew|floatformat:2 }}  {{ target.hbeta_broad_ew_err|safe }}</td>
+              <td>{{ target.hbeta_broad_chi2|floatformat:3 }}</td>
+              <td>{{ target.hbeta_broad_npix }}</td>
+            </tr>
+            <tr>
+              <td>He I &lambda;5876 (broad)</td>
+              <td>{{ target.hei_broad_5876_snr|floatformat:2 }}</td>
+              <td>{{ target.hei_broad_5876_vshift|floatformat:2 }}</td>
+              <td>{{ target.hei_broad_5876_sigma|floatformat:2 }}</td>
+              <td>{{ target.hei_broad_5876_amp|floatformat:3 }} {{ target.hei_broad_5876_amp_err|safe }}</td>
+              <td>{{ target.hei_broad_5876_flux|floatformat:3 }}{{ target.hei_broad_5876_flux_err|safe }}</td>
+              <td>{{ target.hei_broad_5876_cont|floatformat:3 }}{{ target.hei_broad_5876_cont_err|safe }}</td>
+              <td>{{ target.hei_broad_5876_ew|floatformat:2 }}  {{ target.hei_broad_5876_ew_err|safe }}</td>
+              <td>{{ target.hei_broad_5876_chi2|floatformat:3 }}</td>
+              <td>{{ target.hei_broad_5876_npix }}</td>
+            </tr>
+            <tr>
+              <td>H&alpha; (broad)</td>
+              <td>{{ target.halpha_broad_snr|floatformat:2 }}</td>
+              <td>{{ target.halpha_broad_vshift|floatformat:2 }}</td>
+              <td>{{ target.halpha_broad_sigma|floatformat:2 }}</td>
+              <td>{{ target.halpha_broad_amp|floatformat:3 }} {{ target.halpha_broad_amp_err|safe }}</td>
+              <td>{{ target.halpha_broad_flux|floatformat:3 }}{{ target.halpha_broad_flux_err|safe }}</td>
+              <td>{{ target.halpha_broad_cont|floatformat:3 }}{{ target.halpha_broad_cont_err|safe }}</td>
+              <td>{{ target.halpha_broad_ew|floatformat:2 }}  {{ target.halpha_broad_ew_err|safe }}</td>
+              <td>{{ target.halpha_broad_chi2|floatformat:3 }}</td>
+              <td>{{ target.halpha_broad_npix }}</td>
+            </tr>
+          </table>
+        </div> <!-- END Panel body -->
+    </div> <!-- END Collapse section -->
+</div> <!-- end accordian div -->
 <br />
-
-<h6>Forbidden and Narrow Balmer & Helium Lines</h6>
-<table class="table table-bordered table-hover">
-  <tr>
-    <th>Line</th>
-    <th>S/N</th>
-    <th>&#916;v<br />(km/s)</th>
-    <th>&sigma;<br />(km/s)</th>
-    <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-    <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
-    <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-    <th>EW<br />(&#8491;)</th>
-    <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-    <th>Npix</th>
-  </tr>
-  <tr>
-    <td>[OII] &lambda;3726</td>
-    <td>{{ target.oii_3726_snr|floatformat:2 }}</td>
-    <td>{{ target.oii_3726_vshift|floatformat:2 }}</td>
-    <td>{{ target.oii_3726_sigma|floatformat:2 }}</td>
-    <td>{{ target.oii_3726_amp|floatformat:3 }} {{ target.oii_3726_amp_err|safe }}</td>
-    <td>{{ target.oii_3726_flux|floatformat:3 }}{{ target.oii_3726_flux_err|safe }}</td>
-    <td>{{ target.oii_3726_cont|floatformat:3 }}{{ target.oii_3726_cont_err|safe }}</td>
-    <td>{{ target.oii_3726_ew|floatformat:2 }}  {{ target.oii_3726_ew_err|safe }}</td>
-    <td>{{ target.oii_3726_chi2|floatformat:3 }}</td>
-    <td>{{ target.oii_3726_npix }}</td>
-  </tr>
-  <tr>
-    <td>[OII] &lambda;3729</td>
-    <td>{{ target.oii_3729_snr|floatformat:2 }}</td>
-    <td>{{ target.oii_3729_vshift|floatformat:2 }}</td>
-    <td>{{ target.oii_3729_sigma|floatformat:2 }}</td>
-    <td>{{ target.oii_3729_amp|floatformat:3 }} {{ target.oii_3729_amp_err|safe }}</td>
-    <td>{{ target.oii_3729_flux|floatformat:3 }}{{ target.oii_3729_flux_err|safe }}</td>
-    <td>{{ target.oii_3729_cont|floatformat:3 }}{{ target.oii_3729_cont_err|safe }}</td>
-    <td>{{ target.oii_3729_ew|floatformat:2 }}  {{ target.oii_3729_ew_err|safe }}</td>
-    <td>{{ target.oii_3729_chi2|floatformat:3 }}</td>
-    <td>{{ target.oii_3729_npix }}</td>
-  </tr>
-  <tr>
-    <td>H&alpha; (narrow)</td>
-    <td>{{ target.halpha_snr|floatformat:2 }}</td>
-    <td>{{ target.halpha_vshift|floatformat:2 }}</td>
-    <td>{{ target.halpha_sigma|floatformat:2 }}</td>
-    <td>{{ target.halpha_amp|floatformat:3 }} {{ target.halpha_amp_err|safe }}</td>
-    <td>{{ target.halpha_flux|floatformat:3 }}{{ target.halpha_flux_err|safe }}</td>
-    <td>{{ target.halpha_cont|floatformat:3 }}{{ target.halpha_cont_err|safe }}</td>
-    <td>{{ target.halpha_ew|floatformat:2 }}  {{ target.halpha_ew_err|safe }}</td>
-    <td>{{ target.halpha_chi2|floatformat:3 }}</td>
-    <td>{{ target.halpha_npix }}</td>
-  </tr>
-</table>
-<br />
-
-<h6>Broad Balmer & Helium Lines</h6>
-<table class="table table-bordered table-hover">
-  <tr>
-    <th>Line</th>
-    <th>S/N</th>
-    <th>&#916;v<br />(km/s)</th>
-    <th>&sigma;<br />(km/s)</th>
-    <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-    <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
-    <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-    <th>EW<br />(&#8491;)</th>
-    <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-    <th>Npix</th>
-  </tr>
-  <tr>
-    <td>H&alpha; (broad)</td>
-    <td>{{ target.halpha_broad_snr|floatformat:2 }}</td>
-    <td>{{ target.halpha_broad_vshift|floatformat:2 }}</td>
-    <td>{{ target.halpha_broad_sigma|floatformat:2 }}</td>
-    <td>{{ target.halpha_broad_amp|floatformat:3 }} {{ target.halpha_broad_amp_err|safe }}</td>
-    <td>{{ target.halpha_broad_flux|floatformat:3 }}{{ target.halpha_broad_flux_err|safe }}</td>
-    <td>{{ target.halpha_broad_cont|floatformat:3 }}{{ target.halpha_broad_cont_err|safe }}</td>
-    <td>{{ target.halpha_broad_ew|floatformat:2 }}  {{ target.halpha_broad_ew_err|safe }}</td>
-    <td>{{ target.halpha_broad_chi2|floatformat:3 }}</td>
-    <td>{{ target.halpha_broad_npix }}</td>
-  </tr>
-</table>
-<br />
-
-
 
 {% comment %}
 <table class="table table-bordered">
