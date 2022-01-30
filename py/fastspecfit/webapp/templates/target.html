@@ -4,6 +4,10 @@
 
 {% comment %}
 <style type="text/css">
+.table-hover tbody tr:hover td, .table-hover tbody tr:hover th { background-color: blue; }
+</style>
+
+<style type="text/css">
 .top-crop { max-height: 620px; overflow: hidden; }
 .cropped {
     width: 752px; /* width of container */
@@ -42,22 +46,24 @@ td, th {text-align: center}
 <br />
 
 <table class="table table-bordered table-hover">
-  <tr>
-    <th colspan="6"></th>
-    <th colspan="4">{{ target.survey|upper }} Targeting Bits</th>
-  </tr>
-  <tr>
-    <th>Survey</th>
-    <th>Program</th>
-    <th>TargetID</th>
-    <th>Healpixel</th>
-    <th>RA<br />(degree)</th>
-    <th>Dec<br />(degree)</th>
-    <th>DESI</th>
-    <th>BGS</th>
-    <th>MWS</th>
-    <th>Secondary</th>
-  </tr>
+  <thead class="alert alert-info">
+    <tr>
+      <th colspan="6"></th>
+      <th colspan="4">{{ target.survey|upper }} Targeting Bits</th>
+    </tr>
+    <tr>
+      <th>Survey</th>
+      <th>Program</th>
+      <th>TargetID</th>
+      <th>Healpixel</th>
+      <th>RA<br />(degree)</th>
+      <th>Dec<br />(degree)</th>
+      <th>DESI</th>
+      <th>BGS</th>
+      <th>MWS</th>
+      <th>Secondary</th>
+    </tr>
+  </thead>
   <tr>
     <td>{{ target.survey|upper }}</td>
     <td>{{ target.faprgrm|upper }}</td>
@@ -131,12 +137,14 @@ td, th {text-align: center}
 
 <h6>RedRock</h6>
 <table class="table table-bordered table-hover">
-  <tr>
-    <th>z</th>
-    <th>ZWarn</th>
-    <th>&#916;&#967;<sup>2</sup></th> <!-- Delta-chi^2 -->
-    <th>SpecType</th>
-  </tr>
+  <thead class="alert alert-info">
+    <tr>
+      <th>z</th>
+      <th>ZWarn</th>
+      <th>&#916;&#967;<sup>2</sup></th> <!-- Delta-chi^2 -->
+      <th>SpecType</th>
+    </tr>
+  </thead>
   <tr>
     <td>{{ target.z|floatformat:8 }}</td>
     <td>{{ target.zwarn }}</td>
@@ -147,15 +155,17 @@ td, th {text-align: center}
 
 <h6>Legacy Imaging Surveys (Photsys {{ target.photsys }})</h6>
 <table class="table table-bordered table-hover">
-  <tr>
-    <!--<th>AB mag<br />(extinction<br />corrected)</th>-->
-    <th>AB mag<br />(ext. corr)</th>
-    <th>g</th>
-    <th>r</th>
-    <th>z</th>
-    <th>W1</th>
-    <th>W2</th>
-  </tr>
+  <thead class="alert alert-info">
+    <tr>
+      <!--<th>AB mag<br />(extinction<br />corrected)</th>-->
+      <th>AB mag<br />(ext. corr)</th>
+      <th>g</th>
+      <th>r</th>
+      <th>z</th>
+      <th>W1</th>
+      <th>W2</th>
+    </tr>
+  </thead>
   <tr>
     <td>Total</td>
     <td>{{ target.abmag_g }}{{ target.abmag_err_g|safe }}</td> <!--https://stackoverflow.com/questions/12521567/prevent-from-being-converted-to-amp-in-jinja -->
@@ -187,22 +197,24 @@ td, th {text-align: center}
 
 <h6>Spectral Properties & Fitting</h6>
 <table class="table table-bordered table-hover">
-  <tr>
-    <th colspan="3">Median S/N (pixel<sup>-1</sup>)</th>
-    <th colspan="7">Continuum</th>
-  </tr>
-  <tr>
-    <th>b camera</th>
-    <th>r camera</th>
-    <th>z camera</th>
-    <th>z</th>
-    <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-    <th>Age<br />(Gyr)</th>
-    <th>A<sub>V</sub><br />(mag)</th>
-    <th>&sigma;<br />(km/s)</th>
-    <th>D<sub>n</sub>(4000)<br />(data)</th>
-    <th>D<sub>n</sub>(4000)<br />(model)</th>
-  </tr>
+  <thead class="alert alert-info">
+    <tr>
+      <th colspan="3">Median S/N (pixel<sup>-1</sup>)</th>
+      <th colspan="7">Continuum</th>
+    </tr>
+    <tr>
+      <th>b camera</th>
+      <th>r camera</th>
+      <th>z camera</th>
+      <th>z</th>
+      <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+      <th>Age<br />(Gyr)</th>
+      <th>A<sub>V</sub><br />(mag)</th>
+      <th>&sigma;<br />(km/s)</th>
+      <th>D<sub>n</sub>(4000)<br />(data)</th>
+      <th>D<sub>n</sub>(4000)<br />(model)</th>
+    </tr>
+  </thead>
   <tr>
     <td>{{ target.continuum_snr_b|floatformat:3 }}</td>
     <td>{{ target.continuum_snr_r|floatformat:3 }}</td>
@@ -220,12 +232,14 @@ td, th {text-align: center}
 
 <h6>Synthesized Photometry (Photsys {{ target.photsys }})</h6>
 <table class="table table-bordered table-hover">
-  <tr>
-    <th>AB mag<br />(ext. corr)</th>
-    <th>g</th>
-    <th>r</th>
-    <th>z</th>
-  </tr>
+  <thead class="alert alert-info">
+    <tr>
+      <th>AB mag<br />(ext. corr)</th>
+      <th>g</th>
+      <th>r</th>
+      <th>z</th>
+    </tr>
+  </thead>
   <tr>
     <td>Data</td>
     <td>{{ target.abmag_synth_g|safe }}</td>
@@ -256,23 +270,25 @@ td, th {text-align: center}
 
 <h6>Average Line-Properties</h6>
 <table class="table table-bordered table-hover">
-  <tr>
-    <th colspan="2">UV / QSO</th>
-    <th colspan="2">Broad H & He</th>
-    <th colspan="2">Narrow H, He, & Forbidden</th>
-    <th colspan="3">Doublet Ratios</th>
-  </tr>
-  <tr>
-    <th>z</th>
-    <th>&sigma;<br />(km/s)</th>
-    <th>z</th>
-    <th>&sigma;<br />(km/s)</th>
-    <th>z</th>
-    <th>&sigma;<br />(km/s)</th>
-    <th>Mg II<br />&lambda;2796/&lambda;2803</th>
-    <th>[OII]<br />&lambda;3726/&lambda;3729</th>
-    <th>[SII]<br />&lambda;6731/&lambda;6716</th>
-  </tr>
+  <thead class="alert alert-info">
+    <tr>
+      <th colspan="2">UV / QSO</th>
+      <th colspan="2">Broad H & He</th>
+      <th colspan="2">Narrow H, He, & Forbidden</th>
+      <th colspan="3">Doublet Ratios</th>
+    </tr>
+    <tr>
+      <th>z</th>
+      <th>&sigma;<br />(km/s)</th>
+      <th>z</th>
+      <th>&sigma;<br />(km/s)</th>
+      <th>z</th>
+      <th>&sigma;<br />(km/s)</th>
+      <th>Mg II<br />&lambda;2796/&lambda;2803</th>
+      <th>[OII]<br />&lambda;3726/&lambda;3729</th>
+      <th>[SII]<br />&lambda;6731/&lambda;6716</th>
+    </tr>
+  </thead>
   <tr>
     <td>{{ target.broad_z|floatformat:8 }}</td>
     <td>{{ target.broad_sigma|floatformat:2 }}</td>
@@ -299,18 +315,20 @@ td, th {text-align: center}
     <div id="collapseUVQSO" class="panel-collapse collapse in"> <!-- Collapsable section -->
         <div class="panel-body"> <!-- Panel body -->
           <table class="table table-bordered table-hover">
-            <tr>
-              <th>Line</th>
-              <th>S/N</th>
-              <th>&#916;v<br />(km/s)</th>
-              <th>&sigma;<br />(km/s)</th>
-              <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-              <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
-              <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-              <th>EW<br />(&#8491;)</th>
-              <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-              <th>Npix</th>
-            </tr>
+            <thead class="alert alert-info">
+              <tr>
+                <th>Line</th>
+                <th>S/N</th>
+                <th>&#916;v<br />(km/s)</th>
+                <th>&sigma;<br />(km/s)</th>
+                <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+                <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
+                <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+                <th>EW<br />(&#8491;)</th>
+                <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+                <th>Npix</th>
+              </tr>
+            </thead>
             <tr>
               <td>O I &lambda;1304</td>
               <td>{{ target.oi_1304_snr|floatformat:2 }}</td>
@@ -415,18 +433,20 @@ td, th {text-align: center}
     <div id="collapseForbid" class="panel-collapse collapse in"> <!-- Collapsable section -->
         <div class="panel-body"> <!-- Panel body -->
           <table class="table table-bordered table-hover">
-            <tr>
-              <th>Line</th>
-              <th>S/N</th>
-              <th>&#916;v<br />(km/s)</th>
-              <th>&sigma;<br />(km/s)</th>
-              <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-              <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
-              <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-              <th>EW<br />(&#8491;)</th>
-              <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-              <th>Npix</th>
-            </tr>
+            <thead class="alert alert-info">
+              <tr>
+                <th>Line</th>
+                <th>S/N</th>
+                <th>&#916;v<br />(km/s)</th>
+                <th>&sigma;<br />(km/s)</th>
+                <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+                <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
+                <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+                <th>EW<br />(&#8491;)</th>
+                <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+                <th>Npix</th>
+              </tr>
+            </thead>
             <tr>
               <td>[Ne V] &lambda;3346</td>
               <td>{{ target.nev_3346_snr|floatformat:2 }}</td>
@@ -777,18 +797,20 @@ td, th {text-align: center}
     <div id="collapseBroadLines" class="panel-collapse collapse in"> <!-- Collapsable section -->
         <div class="panel-body"> <!-- Panel body -->
           <table class="table table-bordered table-hover">
-            <tr>
-              <th>Line</th>
-              <th>S/N</th>
-              <th>&#916;v<br />(km/s)</th>
-              <th>&sigma;<br />(km/s)</th>
-              <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-              <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
-              <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
-              <th>EW<br />(&#8491;)</th>
-              <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-              <th>Npix</th>
-            </tr>
+            <thead class="alert alert-info">
+              <tr>
+                <th>Line</th>
+                <th>S/N</th>
+                <th>&#916;v<br />(km/s)</th>
+                <th>&sigma;<br />(km/s)</th>
+                <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+                <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
+                <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+                <th>EW<br />(&#8491;)</th>
+                <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+                <th>Npix</th>
+              </tr>
+            </thead>
             <tr>
               <td>He I &lambda;3889 (broad)</td>
               <td>{{ target.hei_broad_3889_snr|floatformat:2 }}</td>
@@ -930,12 +952,14 @@ td, th {text-align: center}
 
 <h6>Stellar Continuum Fitting</h6>
 <table class="table table-bordered table-hover">
-  <tr>
-    <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-    <th>Age<br />(Gyr)</th>
-    <th>A<sub>V</sub><br />(mag)</th>
-    <th>D<sub>n</sub>(4000)<br />(model)</th>
-  </tr>
+  <thead class="alert alert-info">
+    <tr>
+      <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+      <th>Age<br />(Gyr)</th>
+      <th>A<sub>V</sub><br />(mag)</th>
+      <th>D<sub>n</sub>(4000)<br />(model)</th>
+    </tr>
+  </thead>
   <tr>
     <td>{{ target.phot_continuum_chi2|floatformat:3 }}</td>
     <td>{{ target.phot_continuum_age|floatformat:3 }}</td>
@@ -947,14 +971,16 @@ td, th {text-align: center}
 
 <h6>Legacy Imaging Surveys (Photsys {{ target.photsys }})</h6>
 <table class="table table-bordered table-hover">
-  <tr>
-    <th>AB mag<br />(ext. corr)</th>
-    <th>g</th>
-    <th>r</th>
-    <th>z</th>
-    <th>W1</th>
-    <th>W2</th>
-  </tr>
+  <thead class="alert alert-info">
+    <tr>
+      <th>AB mag<br />(ext. corr)</th>
+      <th>g</th>
+      <th>r</th>
+      <th>z</th>
+      <th>W1</th>
+      <th>W2</th>
+    </tr>
+  </thead>
   <tr>
     <td>Data</td>
     <td>{{ target.abmag_g }}{{ target.abmag_err_g|safe }}</td>
@@ -976,24 +1002,26 @@ td, th {text-align: center}
 
 <h6>K-corrections & Absolute Magnitudes (band-shifted to z=0.0)</h6>
 <table class="table table-bordered table-hover">
-  <tr>
-    <th></th>
-    <th colspan="5">SDSS</th>
-    <th colspan="3">Johnson-Morgan</th>
-    <th>WISE</th>
-  </tr>
-  <tr>
-    <th>AB mag</th>
-    <th>u</th>
-    <th>g</th>
-    <th>r</th>
-    <th>i</th>
-    <th>z</th>
-    <th>U</th>
-    <th>B</th>
-    <th>V</th>
-    <th>W1</th>
-  </tr>
+  <thead class="alert alert-info">
+    <tr>
+      <th></th>
+      <th colspan="5">SDSS</th>
+      <th colspan="3">Johnson-Morgan</th>
+      <th>WISE</th>
+    </tr>
+    <tr>
+      <th>AB mag</th>
+      <th>u</th>
+      <th>g</th>
+      <th>r</th>
+      <th>i</th>
+      <th>z</th>
+      <th>U</th>
+      <th>B</th>
+      <th>V</th>
+      <th>W1</th>
+    </tr>
+  </thead>
   <tr>
     <td>M<sub>abs</sub></td>
     <td>{{ target.phot_absmag_sdss_u|floatformat:3 }}</td>

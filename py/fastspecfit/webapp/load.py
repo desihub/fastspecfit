@@ -11,6 +11,15 @@ import django
 from astropy.table import Table, hstack
 #from astrometry.util.starutil_numpy import radectoxyz
 
+# change me!
+specprod = 'everest'
+
+DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/catalogs'.format(specprod)
+#DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
+
+fastspecfile = os.path.join(DATADIR, 'fastspec-{}.fits'.format(specprod))
+fastphotfile = os.path.join(DATADIR, 'fastphot-{}.fits'.format(specprod))
+
 # RA, Dec in degrees: scalars or 1-d arrays.
 # returns xyz of shape (N,3)
 def radectoxyz(ra_deg, dec_deg):
@@ -29,15 +38,6 @@ def main():
     django.setup()
 
     from fastspecfit.webapp.sample.models import Sample
-
-    # change me!
-    specprod = 'everest'
-
-    DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/catalogs'.format(specprod)
-    #DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
-
-    fastspecfile = os.path.join(DATADIR, 'fastspec-{}.fits'.format(specprod))
-    fastphotfile = os.path.join(DATADIR, 'fastphot-{}.fits'.format(specprod))
 
     meta_columns = [
         'TARGETID',
