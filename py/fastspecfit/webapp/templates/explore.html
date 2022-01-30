@@ -10,62 +10,104 @@
 <div class="e-content entry-content" itemprop="articleBody text">
   <div>
     <br />
-    <h2><a href="https://fastspecfit.legacysurvey.org"</a>DESI FastSpecFit</h2>
+    <h2><a href="https://fastspecfit.legacysurvey.org">DESI FastSpecFit</a></h2>
+    <h4>Everest Data Release</h4>
     <br />
-    <div class="col-md-6 col-left docutils container">
-      <p>Welcome to the data portal for the DESI FastSpecFit Value-Added Catalogs!</p>
 
-      <p>Please refer to
-         the <a href="https://fastspecfit.readthedocs.io/en/latest/">FastSpecFit
-         documentation</a> for full details regarding this data release,
-         particularly
-         the <a href="https://fastspecfit.readthedocs.io/en/latest#acknowledgments">required
-         acknowledgments and conditions of use section</a>.</p> 
-
-      <img style="width: 400px;" src="{% static "files/logo.png" %}"  alt="FastSpecFit Logo"/>
+    <div class="row">
+      <!--<div class="col-md-8 col-left docutils container">-->
+      <div class="col">
+        <br />
+        <p>Welcome to the data portal for the DESI FastSpecFit value-added
+        catalogs! FastSpecFit is a stellar continuum and emission-line modeling
+        code for DESI optimized for speed and simplicity, which can be
+        called independently to model the broadband photometry (FastPhot) or the
+          three-camera optical spectroscopy from DESI (FastSpec).</p>
+        
+        <p>Please refer to
+           the <a href="https://fastspecfit.readthedocs.io/en/latest/">FastSpecFit
+           documentation</a> for full details regarding this data release,
+           particularly
+           the <a href="https://fastspecfit.readthedocs.io/en/latest#acknowledgments">required
+           acknowledgments and conditions of use section</a>.</p> 
+  
+        <p><img style="width: 400px;" src="{% static "files/logo.png" %}" alt="TBD FastSpecFit Logo"/></p>
+      </div>
+  
+      <!--<div class="col-md-8 col-right docutils container">-->
+      <div class="col">
+        <div class="jumbotron">
+          <h4>Full Catalogs</h4>
+          <p>
+            <a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/everest/catalogs/fastspec-everest.fits" download="fastspec-everest.fits">fastspec-everest.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastspec.html">(data model)</a><br />
+            <a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/everest/catalogs/fastphot-everest.fits" download="fastphot-everest.fits">fastphot-everest.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastphot.html">(data model)</a>
+          </p>
+          
+          <h4>On the web</h4>
+          <p><a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/everest">https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/everest</a></p>
+          
+          <h4>At NERSC (for collaborators)</h4><p>/global/cfs/cdirs/desi/spectro/fastspecfit/test/everest</p>
+        </div>
+      </div>
     </div>
-
+    
   <div class="container"></div>
     <hr />
-  
     <div>
       <a id="query"></a>
     </div>
-    <div style="text-align: center;">
-      <div style="text-align: center;">
-        <h3>Cone Search</h3>
-        <form style="display: inline-block;" method="get" action="#results">
-          <table>
-            <tr>
-              <td class="search_th"><label for="conera">Search RA</label></td>
-              <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="degrees" min="0" max="360"/></td> 
-            </tr>
-            <tr>
-              <td class="search_th"><label for="conedec">Search Dec</label></td>
-              <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="degrees" min="-90" max="90"/></td> 
-            </tr>
-            <tr>
-              <td class="search_th"><label for="coneradius">Search Radius</label>&nbsp; &nbsp;</td>
-              <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
-            </tr>
-          </table>
-          <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
-        </form>
-        <hr />
 
-        <h3>Filter the Sample</h3>
-        <br />
-        <form style="display: inline-block;" method="get" action="#results">
-          <table>
-            <tr>
-              <th class="search_th"><label for="idlo">TargetID</label></th>
-              <td><input id="idlo" name="targetid__gte" step="1" type="number" value="" placeholder="min" min="0"/></td> 
-              <td><input id="idhi" name="targetid__lte" step="1" type="number" value="" placeholder="max" min="0"/></td> 
-            </tr>
-          </table>
-          <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
-        </form>
-        <hr />
+    <div style="text-align: center;">
+      <div class="row">    
+        <div class="col" style="text-align: center;">
+          <h3>Select</h3>
+          <form style="display: inline-block;" method="get" action="#results">
+            <table>
+              <tr>
+                <th class="search_th"><label for="surveymatch">Survey</label></th>
+                <td><input id="surveymatch" name="survey__match" type="text" value="" placeholder="main,sv1,sv2,sv3"/></td> 
+              </tr>
+              <tr>
+                <th class="search_th"><label for="faprgrmmatch">Program</label></th>
+                <td><input id="faprgrmmatch" name="faprgrm__match" type="text" value="" placeholder="bright,dark"/></td> 
+              </tr>
+              <tr>
+                <th class="search_th"><label for="idlo">TargetID</label></th>
+                <td><input id="idlo" name="targetid__gte" step="1" type="number" value="" placeholder="min" min="0"/></td> 
+                <td><input id="idhi" name="targetid__lte" step="1" type="number" value="" placeholder="max" min="0"/></td> 
+              </tr>
+              <tr>
+                <th class="search_th"><label for="pixlo">Healpixel</label></th>
+                <td><input id="pixlo" name="hpxpixel__gte" step="1" type="number" value="" placeholder="min" min="0"/></td> 
+                <td><input id="pixhi" name="hpxpixel__lte" step="1" type="number" value="" placeholder="max" min="0"/></td> 
+              </tr>
+            </table>
+            <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
+          </form>
+          <hr />
+        </div>
+        
+        <div class="col" style="text-align: center;">        
+          <h3>Cone Search</h3>
+          <form style="display: inline-block;" method="get" action="#results">
+            <table>
+              <tr>
+                <td class="search_th"><label for="conera">Search RA</label></td>
+                <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="degrees" min="0" max="360"/></td> 
+              </tr>
+              <tr>
+                <td class="search_th"><label for="conedec">Search Dec</label></td>
+                <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="degrees" min="-90" max="90"/></td> 
+              </tr>
+              <tr>
+                <td class="search_th"><label for="coneradius">Search Radius</label>&nbsp; &nbsp;</td>
+                <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
+              </tr>
+            </table>
+            <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
+          </form>
+          <hr />
+        </div>
       </div>
   
       <div><a id="results"></a></div>
@@ -82,6 +124,34 @@
 
       <br /><hr />
 
+      <table class="table table-bordered table-hover">
+        <thead>
+          <tr>
+            <th style="vertical-align: middle; text-align: center;">Number</th>
+            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'survey' %}#results">Survey</a></th>
+            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'faprgrm' %}#results">Program</a></th>
+            <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
+            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'hpxpixel' %}#results">Healpixel</a></th>
+            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
+            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br />(degrees)</a></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sam in page %}
+            <tr>
+              <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.survey|upper }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.faprgrm|upper }}</td>
+              <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.targetid }}</a></td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.hpxpixel }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      
+      {% comment %}
       <div class="panel panel-primary accordion"> <!-- Panel (collapasable) -->
           <div class="panel-heading"> <!-- Panel head -->
               <a class="accordion-toggle" data-toggle="collapse" data-parent=".accordion" href="#collapseOne">
@@ -114,6 +184,7 @@
               </div> <!-- END Panel body -->
           </div> <!-- END Collapse section -->
       </div> <!-- end accordian div -->
+      {% endcomment %}
   
       <div style="text-align:center; padding: 10px;">
         <span class="step-links">

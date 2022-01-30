@@ -15,15 +15,15 @@
     <div class="container">
       <!--Body content-->
       <div class="body-content">
-        <div class="row">
-          <article class="storypage" itemscope="itemscope" itemtype="http://schema.org/Article">
-            <header></header> 
-            {% block content %}
-            {% endblock %}
-            <script type="text/x-mathjax-config">MathJax.Hub.Config({tex2jax: {inlineMath: [['$latex ','$'], ['\\(','\\)']]}});</script>
-            <script src="assets/js/mathjax.js"></script> 
-          </article> 
-        </div>
+        <article class="storypage" itemscope="itemscope" itemtype="http://schema.org/Article">
+          <header></header> 
+          {% block content %}
+          {% endblock %}
+          {% comment %}
+          <script type="text/x-mathjax-config">MathJax.Hub.Config({tex2jax: {inlineMath: [['$latex ','$'], ['\\(','\\)']]}});</script>
+          <script src="assets/js/mathjax.js"></script> 
+          {% endcomment %}
+        </article> 
       </div>
       <!--End of body content-->
     
