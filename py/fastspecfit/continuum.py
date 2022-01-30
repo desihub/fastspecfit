@@ -1313,6 +1313,9 @@ class ContinuumFit(ContinuumTools):
             meanage = self.get_meanage(coeff)
             kcorr, absmag, ivarabsmag, synth_bestmaggies = self.kcorr_and_absmag(data, continuummodel, coeff)
 
+            # convert to nanomaggies
+            synth_bestmaggies *= 1e9
+
             log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
                 dn4000, meanage, absmag[1]))
 
