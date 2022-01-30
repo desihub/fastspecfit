@@ -24,36 +24,160 @@ td, th {text-align: center}
 
 <h4><a href="https://www.legacysurvey.org/viewer/?ra={{ target.ra }}&dec={{ target.dec}}&zoom=15&layer=ls-dr9"
        target="_blank">Sky Viewer</a></h4> 
-<h4><a href="{{ target.data_base_url }}">Fitting Catalogs</a></h4> 
+<h4><a href="{{ target.data_base_url }}">Fitting Catalogs</a></h4>
 
-<h3>Target Properties</h3>
+<h3>Target Properties</h3><br />
+
 <table class="table table-bordered table-hover">
-<tr>
-<th>TargetID</th>
-<th>RA<br />(degree)</th>
-<th>Dec<br />(degree)</th>
-</tr>
-<tr>
-<td>{{target.targetid}}</td>
-<td>{{target.str_ra}}</td>
-<td>{{target.str_dec}}</td>
-</tr>
+  <tr>
+    <th>Survey</th>
+    <th>Program</th>
+    <th>TargetID</th>
+    <th>Healpixel</th>
+    <th>RA<br />(degree)</th>
+    <th>Dec<br />(degree)</th>
+  </tr>
+  <tr>
+    <td>{{ target.survey|upper }}</td>
+    <td>{{ target.faprgrm|upper }}</td>
+    <td>{{ target.targetid }}</td>
+    <td>{{ target.hpxpixel }}</td>
+    <td>{{ target.ra|floatformat:7 }}</td>
+    <td>{{ target.dec|floatformat:6 }}</td>
+  </tr>
+</table><br />
+
+<h3>Redshift and Photometry</h3><br />
+
+<h6>RedRock</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <th>z</th>
+    <th>ZWarn</th>
+    <th>&#916;&#967;<sup>2</sup></th> <!-- Delta-chi^2 -->
+    <th>SpecType</th>
+  </tr>
+  <tr>
+    <td>{{ target.z|floatformat:8 }}</td>
+    <td>{{ target.zwarn }}</td>
+    <td>{{ target.deltachi2|floatformat:3 }}</td>
+    <td>{{ target.spectype }}</td>
+  </tr>
 </table>
+
+<h6>Legacy Imaging Surveys (Photsys {{ target.photsys }})</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <!--<th>AB mag<br />(extinction<br />corrected)</th>-->
+    <th>AB mag<br />(ext. corr)</th>
+    <th>g</th>
+    <th>r</th>
+    <th>z</th>
+    <th>W1</th>
+    <th>W2</th>
+  </tr>
+  <tr>
+    <td>Total</td>
+    <td>{{ target.abmag_g|safe }}</td> <!--https://stackoverflow.com/questions/12521567/prevent-from-being-converted-to-amp-in-jinja -->
+    <td>{{ target.abmag_r|safe }}</td>
+    <td>{{ target.abmag_z|safe }}</td>
+    <td>{{ target.abmag_w1|safe }}</td>
+    <td>{{ target.abmag_w2|safe }}</td>
+  </tr>
+  <tr>
+    <td>Fiber</td>
+    <td>{{ target.fiberabmag_g|safe }}</td>
+    <td>{{ target.fiberabmag_r|safe }}</td>
+    <td>{{ target.fiberabmag_z|safe }}</td>
+    <td>&nbsp</td>
+    <td>&nbsp</td>
+  </tr>
+  <tr>
+    <td>FiberTot</td>
+    <td>{{ target.fibertotabmag_g|safe }}</td>
+    <td>{{ target.fibertotabmag_r|safe }}</td>
+    <td>{{ target.fibertotabmag_z|safe }}</td>
+    <td>&nbsp</td>
+    <td>&nbsp</td>
+  </tr>
+</table>
+<br />
+
+<h3>Stellar Continuum Modeling</h3><br />
+
+<h6>Spectral Properties</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <th colspan="3">Median S/N (pixel<sup>-1</sup>)</th>
+    <th colspan="7"></th>
+  </tr>
+  <tr>
+    <th>b camera</th>
+    <th>r camera</th>
+    <th>z camera</th>
+    <th>z</th>
+    <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+    <th>Age<br />(Gyr)</th>
+    <th>A<sub>V</sub><br />(mag)</th>
+    <th>&sigma;<br />(km/s)</th>
+    <th>D<sub>n</sub>(4000)<br />(data)</th>
+    <th>D<sub>n</sub>(4000)<br />(model)</th>
+  </tr>
+  <tr>
+    <td>{{ target.continuum_snr_b|floatformat:3 }}</td>
+    <td>{{ target.continuum_snr_r|floatformat:3 }}</td>
+    <td>{{ target.continuum_snr_z|floatformat:3 }}</td>
+    <td>{{ target.continuum_z|floatformat:8 }}</td>
+    <td>{{ target.continuum_chi2|floatformat:3 }}</td>
+    <td>{{ target.continuum_age|floatformat:3 }}</td>
+    <td>{{ target.continuum_av|floatformat:2 }}</td>
+    <td>{{ target.continuum_vdisp|floatformat:1 }}</td>
+    <td>{{ target.dn4000|floatformat:3 }}</td>
+    <td>{{ target.dn4000_model|floatformat:3 }}</td>
+  </tr>
+</table>
+<br />
+
+<h6>Synthesized Photometry (Photsys {{ target.photsys }})</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <th>AB mag<br />(ext. corr)</th>
+    <th>g</th>
+    <th>r</th>
+    <th>z</th>
+  </tr>
+  <tr>
+    <td>Data</td>
+    <td>{{ target.abmag_synth_g|safe }}</td>
+    <td>{{ target.abmag_synth_r|safe }}</td>
+    <td>{{ target.abmag_synth_z|safe }}</td>
+  </tr>
+  <tr>
+    <td>Model</td>
+    <td>{{ target.abmag_synth_model_g|safe }}</td>
+    <td>{{ target.abmag_synth_model_r|safe }}</td>
+    <td>{{ target.abmag_synth_model_z|safe }}</td>
+  </tr>
+</table>
+<br />
 
 <br />
 <h3>Visualizations</h3>
 <p>Write me.</p>
+
 <table class="table table-bordered">
-<tr><td><a href="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"><img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"></a></td></tr> 
+  <tr>
+    <td><a href="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"><img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"></a></td>
+    <td><a href="{{ target.png_base_url }}/fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"><img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"></a></td>
+  </tr> 
 </table>
 
 {% if result_index > -1 %}
-<form style="display:inline;" action="{% url 'target-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 
-<form style="display:inline;" action="{% url 'target-next' result_index %}"><button{% if not has_next %} disabled{% endif %}>Next</button></form> 
-<form style="display:inline;" action="{% url 'index' %}#query"><button>New</button></form> 
-<br /><br /><br />
+  <form style="display:inline;" action="{% url 'target-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 
+  <form style="display:inline;" action="{% url 'target-next' result_index %}"><button{% if not has_next %} disabled{% endif %}>Next</button></form> 
+  <form style="display:inline;" action="{% url 'index' %}#query"><button>New</button></form> 
+  <br /><br /><br />
 {% endif %}
-
 
 {% endblock %}
 
