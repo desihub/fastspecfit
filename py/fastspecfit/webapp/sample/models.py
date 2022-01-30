@@ -60,6 +60,11 @@ class Sample(Model):
     sv2_scnd_target = IntegerField(null=True)
     sv3_scnd_target = IntegerField(null=True)
 
+    desi_bitnames = CharField(max_length=150, default='')
+    bgs_bitnames = CharField(max_length=150, default='')
+    mws_bitnames = CharField(max_length=150, default='')
+    scnd_bitnames = CharField(max_length=150, default='')
+
     z = FloatField(null=True)
     zwarn = IntegerField(null=True)
     deltachi2 = FloatField(null=True)

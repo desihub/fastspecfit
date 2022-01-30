@@ -853,6 +853,73 @@ def main():
     #print(meta)
     #print(meta.colnames, fast.colnames)
 
+    # build the list of tiles contributing to the observation of each target
+    #if specprod == 'everest': # bug in the everest tilepix.fits file, so read the .json file
+    #    #import json
+    #    #with open('/global/cfs/cdirs/desi/spectro/redux/everest/healpix/tilepix.json', 'r') as F: 
+    #    #    tilepix = json.load(F)
+    #    tilepix = Table.read('/global/cfs/cdirs/desi/users/ioannis/tmp/new-tilepix.fits')
+    #else:
+    #    tilepix = Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/healpix/tilepix.fits'.format(specprod))
+        
+    #tiles = np.zeros(len(meta), dtype='U50') # 5 characters per tile, max of 10 tiles??
+    #tilepix = Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/healpix/tilepix.fits'.format(specprod))
+    #
+    #for pixel in set(meta['HPXPIXEL']):
+    #    # should take into account PETAL_LOC
+    #    I = meta['HPXPIXEL'] == pixel
+    #    J = tilepix['HEALPIX'] == pixel
+    #    assert(np.sum(J) > 0)
+    #
+    #    tt = Table(fitsio.FITS('/global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/100/10016/coadd-sv3-bright-10016.fits')['EXP_FIBERMAP'].read(columns=['TARGETID', 'TILEID', 'FIBER']))
+    #    meta['TARGETID'][I]
+    #    ' '.join(tilepix[J]['TILEID'].astype(str))       
+    #    
+    #    import pdb ; pdb.set_trace()
+
+    # parse the targeting bit names
+    desi_bitnames = np.zeros(len(meta), dtype='U150')
+    bgs_bitnames = np.zeros(len(meta), dtype='U150')
+    mws_bitnames = np.zeros(len(meta), dtype='U150')
+    scnd_bitnames = np.zeros(len(meta), dtype='U150')
+    for survey, prefix in zip(['SV1', 'SV2', 'SV3', 'MAIN'], ['SV1_', 'SV2_', 'SV3_', '']):
+        I = meta['SURVEY'] == survey.lower()
+
+        if np.sum(I) > 0:
+            if survey == 'MAIN':
+                from desitarget.targetmask import desi_mask, bgs_mask, mws_mask, scnd_mask
+            elif survey == 'SV1':
+                from desitarget.sv1.sv1_targetmask import desi_mask, bgs_mask, mws_mask, scnd_mask
+            elif survey == 'SV2':
+                from desitarget.sv2.sv2_targetmask import desi_mask, bgs_mask, mws_mask, scnd_mask
+            elif survey == 'SV3':
+                from desitarget.sv3.sv3_targetmask import desi_mask, bgs_mask, mws_mask, scnd_mask
+
+            for name in desi_mask.names():
+                J = meta['{}DESI_TARGET'.format(prefix)] & desi_mask.mask(name) != 0
+                if np.sum(J) > 0:
+                    desi_bitnames[J] = [' '.join([bit, name]) for bit in desi_bitnames[J]]
+                    
+            for name in bgs_mask.names():
+                J = meta['{}BGS_TARGET'.format(prefix)] & bgs_mask.mask(name) != 0
+                if np.sum(J) > 0:
+                    bgs_bitnames[J] = [' '.join([bit, name]) for bit in bgs_bitnames[J]]
+                    
+            for name in mws_mask.names():
+                J = meta['{}MWS_TARGET'.format(prefix)] & mws_mask.mask(name) != 0
+                if np.sum(J) > 0:
+                    mws_bitnames[J] = [' '.join([bit, name]) for bit in mws_bitnames[J]]
+                    
+            for name in scnd_mask.names():
+                J = meta['{}SCND_TARGET'.format(prefix)] & scnd_mask.mask(name) != 0
+                if np.sum(J) > 0:
+                    scnd_bitnames[J] = [' '.join([bit, name]) for bit in scnd_bitnames[J]]
+                    
+    meta['DESI_BITNAMES'] = desi_bitnames
+    meta['BGS_BITNAMES'] = bgs_bitnames
+    meta['MWS_BITNAMES'] = mws_bitnames
+    meta['SCND_BITNAMES'] = scnd_bitnames
+            
     # join metadata and fastspec fitting results
     data = hstack((meta, fastspec))
 

@@ -92,6 +92,41 @@ td, th {text-align: center}
   </tr>
 </table><br />
 
+<div class="panel panel-primary accordion"> <!-- Panel (collapasable) -->
+    <div class="panel-heading"> <!-- Panel head -->
+        <a class="accordion-toggle" data-toggle="collapse" data-parent=".accordion" href="#collapseOne">
+          <button type="submit" class="btn btn-primary" style="margin-top:15px;">Additional Targeting Information</button>
+        </a>           
+    </div> <!-- END Panel head -->
+    <br /><br />
+    <div id="collapseOne" class="panel-collapse collapse in"> <!-- Collapsable section -->
+        <div class="panel-body"> <!-- Panel body -->
+          <table class="table table-bordered table-hover">
+            <tr>
+              <th></th>
+              <th>{{ target.survey|upper }} Targeting Bit Names</th>
+            </tr>
+            <tr>
+              <td>DESI</td>
+              <td>{{ target.desi_bitnames }}</td>
+            </tr>
+            <tr>
+              <td>BGS</td>
+              <td>{{ target.bgs_bitnames }}</td>
+            </tr>
+            <tr>
+              <td>MWS</td>
+              <td>{{ target.mws_bitnames }}</td>
+            </tr>
+            <tr>
+              <td>Secondary</td>
+              <td>{{ target.scnd_bitnames }}</td>
+            </tr>
+          </table><br />
+        </div> <!-- END Panel body -->
+    </div> <!-- END Collapse section -->
+</div> <!-- end accordian div -->
+
 <h3>Redshift and Photometry</h3><br />
 
 <h6>RedRock</h6>
