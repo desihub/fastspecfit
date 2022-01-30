@@ -26,7 +26,6 @@ class Sample(Model):
     # derived target name, e.g., sv3-bright-80613-TARGETID
     specprod = CharField(max_length=15, default='')
     target_name = CharField(max_length=40, default='')
-    DATADIR = CharField(max_length=150, default='')
 
     # for col in tt.colnames:
     #     if tt[col].dtype.name == 'float64':
