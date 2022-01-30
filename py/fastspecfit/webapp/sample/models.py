@@ -1055,10 +1055,10 @@ class Sample(Model):
     # fastphot properties
 
     #continuum_coeff = FloatField(null=True)
-    continuum_chi2 = FloatField(null=True)
-    continuum_age = FloatField(null=True)
-    continuum_av = FloatField(null=True)
-    continuum_av_ivar = FloatField(null=True)
+    phot_continuum_chi2 = FloatField(null=True)
+    phot_continuum_age = FloatField(null=True)
+    phot_continuum_av = FloatField(null=True)
+    phot_continuum_av_ivar = FloatField(null=True)
     phot_dn4000_model = FloatField(null=True)
 
     phot_kcorr_u = FloatField(null=True)

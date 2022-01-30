@@ -25,15 +25,27 @@ td, th {text-align: center}
 <br />
 {% endif %}
 
-<h2>{{ nice_target_name }}</h2>
+<br />
+<h2>
+  <a href="https://www.legacysurvey.org/viewer-desi/?ra={{ target.ra }}&dec={{ target.dec}}&zoom=15&layer=ls-dr9&targets-dr9-{{ target.survey }}-{{ target.faprgrm }}" target="_blank">{{ target.target_name }}</a>
+</h2>
+<br />
 
-<h4><a href="https://www.legacysurvey.org/viewer/?ra={{ target.ra }}&dec={{ target.dec}}&zoom=15&layer=ls-dr9"
-       target="_blank">Sky Viewer</a></h4> 
+<a href="https://www.legacysurvey.org/viewer/jpeg-cutout?ra={{ target.ra }}&dec={{ target.dec}}&zoom=15&layer=ls-dr9"><img class="img-responsive" width="10%" src="https://www.legacysurvey.org/viewer/jpeg-cutout?ra={{ target.ra }}&dec={{ target.dec}}&zoom=15&layer=ls-dr9"></a>
+
+{% comment %}
 <h4><a href="{{ target.data_base_url }}">Fitting Catalogs</a></h4>
+{% endcomment %}
 
-<h3>Target Properties</h3><br />
+<br /><br />
+<h3>Target Properties</h3>
+<br />
 
 <table class="table table-bordered table-hover">
+  <tr>
+    <th colspan="6"></th>
+    <th colspan="4">{{ target.survey|upper }} Targeting Bits</th>
+  </tr>
   <tr>
     <th>Survey</th>
     <th>Program</th>
@@ -41,6 +53,10 @@ td, th {text-align: center}
     <th>Healpixel</th>
     <th>RA<br />(degree)</th>
     <th>Dec<br />(degree)</th>
+    <th>DESI</th>
+    <th>BGS</th>
+    <th>MWS</th>
+    <th>Secondary</th>
   </tr>
   <tr>
     <td>{{ target.survey|upper }}</td>
@@ -49,6 +65,30 @@ td, th {text-align: center}
     <td>{{ target.hpxpixel }}</td>
     <td>{{ target.ra|floatformat:7 }}</td>
     <td>{{ target.dec|floatformat:6 }}</td>
+    {% if target.survey == 'sv1' %}
+      <td>{{ target.sv1_desi_target }}</td>
+      <td>{{ target.sv1_bgs_target }}</td>
+      <td>{{ target.sv1_mws_target }}</td>
+      <td>{{ target.sv1_scnd_target }}</td>
+    {% endif %}    
+    {% if target.survey == 'sv2' %}
+      <td>{{ target.sv2_desi_target }}</td>
+      <td>{{ target.sv2_bgs_target }}</td>
+      <td>{{ target.sv2_mws_target }}</td>
+      <td>{{ target.sv2_scnd_target }}</td>
+    {% endif %}    
+    {% if target.survey == 'sv3' %}
+      <td>{{ target.sv3_desi_target }}</td>
+      <td>{{ target.sv3_bgs_target }}</td>
+      <td>{{ target.sv3_mws_target }}</td>
+      <td>{{ target.sv3_scnd_target }}</td>
+    {% endif %}    
+    {% if target.survey == 'main' %}
+      <td>{{ target.desi_target }}</td>
+      <td>{{ target.bgs_target }}</td>
+      <td>{{ target.mws_target }}</td>
+      <td>{{ target.scnd_target }}</td>
+    {% endif %}    
   </tr>
 </table><br />
 
@@ -110,7 +150,7 @@ td, th {text-align: center}
 
 <h3>Stellar Continuum Modeling</h3><br />
 
-<h6>Spectral Properties</h6>
+<h6>Spectral Properties & Fitting</h6>
 <table class="table table-bordered table-hover">
   <tr>
     <th colspan="3">Median S/N (pixel<sup>-1</sup>)</th>
@@ -353,7 +393,24 @@ td, th {text-align: center}
 <br />
 {% endcomment %}
 
-<h3>Broadband Photometry Modeling</h3>
+<h3>Broadband Photometry Modeling</h3><br />
+
+<h6>Stellar Continuum Fitting</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+    <th>Age<br />(Gyr)</th>
+    <th>A<sub>V</sub><br />(mag)</th>
+    <th>D<sub>n</sub>(4000)<br />(model)</th>
+  </tr>
+  <tr>
+    <td>{{ target.phot_continuum_chi2|floatformat:3 }}</td>
+    <td>{{ target.phot_continuum_age|floatformat:3 }}</td>
+    <td>{{ target.phot_continuum_av|floatformat:2 }}</td>
+    <td>{{ target.phot_dn4000_model|floatformat:3 }}</td>
+  </tr>
+</table>
+<br />
 
 <h6>Legacy Imaging Surveys (Photsys {{ target.photsys }})</h6>
 <table class="table table-bordered table-hover">
@@ -384,6 +441,52 @@ td, th {text-align: center}
 </table>
 <br />
 
+<h6>K-corrections & Absolute Magnitudes (band-shifted to z=0.0)</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <th></th>
+    <th colspan="5">SDSS</th>
+    <th colspan="3">Johnson-Morgan</th>
+    <th>WISE</th>
+  </tr>
+  <tr>
+    <th>AB mag</th>
+    <th>u</th>
+    <th>g</th>
+    <th>r</th>
+    <th>i</th>
+    <th>z</th>
+    <th>U</th>
+    <th>B</th>
+    <th>V</th>
+    <th>W1</th>
+  </tr>
+  <tr>
+    <td>M<sub>abs</sub></td>
+    <td>{{ target.phot_absmag_sdss_u|floatformat:3 }}</td>
+    <td>{{ target.phot_absmag_sdss_g|floatformat:3 }}</td>
+    <td>{{ target.phot_absmag_sdss_r|floatformat:3 }}</td>
+    <td>{{ target.phot_absmag_sdss_i|floatformat:3 }}</td>
+    <td>{{ target.phot_absmag_sdss_z|floatformat:3 }}</td>
+    <td>{{ target.phot_absmag_u|floatformat:3 }}</td>
+    <td>{{ target.phot_absmag_b|floatformat:3 }}</td>
+    <td>{{ target.phot_absmag_v|floatformat:3 }}</td>
+    <td>{{ target.phot_absmag_w1|floatformat:3 }}</td>
+  </tr>
+  <tr>
+    <td>K<sub>corr</sub></td>
+    <td>{{ target.phot_kcorr_sdss_u|floatformat:3 }}</td>
+    <td>{{ target.phot_kcorr_sdss_g|floatformat:3 }}</td>
+    <td>{{ target.phot_kcorr_sdss_r|floatformat:3 }}</td>
+    <td>{{ target.phot_kcorr_sdss_i|floatformat:3 }}</td>
+    <td>{{ target.phot_kcorr_sdss_z|floatformat:3 }}</td>
+    <td>{{ target.phot_kcorr_u|floatformat:3 }}</td>
+    <td>{{ target.phot_kcorr_b|floatformat:3 }}</td>
+    <td>{{ target.phot_kcorr_v|floatformat:3 }}</td>
+    <td>{{ target.phot_kcorr_w1|floatformat:3 }}</td>
+  </tr>
+</table>
+<br />
 
 <table class="table table-bordered">
   <tr>
