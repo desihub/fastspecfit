@@ -8,7 +8,7 @@ import numpy as np
 import fitsio
 import django
 
-from astropy.table import Table, hstack, Column
+from astropy.table import Table, hstack
 #from astrometry.util.starutil_numpy import radectoxyz
 
 # RA, Dec in degrees: scalars or 1-d arrays.
@@ -37,6 +37,7 @@ def main():
     #DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
 
     fastspecfile = os.path.join(DATADIR, 'fastspec-{}.fits'.format(specprod))
+    fastphotfile = os.path.join(DATADIR, 'fastphot-{}.fits'.format(specprod))
 
     meta_columns = [
         'TARGETID',
@@ -797,9 +798,52 @@ def main():
         'SIII_9532_CHI2',
         'SIII_9532_NPIX'
         ]
+
+    fastphot_cols = [
+        'TARGETID', # need this to make sure the tables match
+         #'CONTINUUM_COEFF',
+         'CONTINUUM_CHI2',
+         'CONTINUUM_AGE',
+         'CONTINUUM_AV',
+         'CONTINUUM_AV_IVAR',
+         'DN4000_MODEL',
+         'FLUX_SYNTH_MODEL_G',
+         'FLUX_SYNTH_MODEL_R',
+         'FLUX_SYNTH_MODEL_Z',
+         'FLUX_SYNTH_MODEL_W1',
+         'FLUX_SYNTH_MODEL_W2',
+         'KCORR_U',
+         'ABSMAG_U',
+         'ABSMAG_IVAR_U',
+         'KCORR_B',
+         'ABSMAG_B',
+         'ABSMAG_IVAR_B',
+         'KCORR_V',
+         'ABSMAG_V',
+         'ABSMAG_IVAR_V',
+         'KCORR_SDSS_U',
+         'ABSMAG_SDSS_U',
+         'ABSMAG_IVAR_SDSS_U',
+         'KCORR_SDSS_G',
+         'ABSMAG_SDSS_G',
+         'ABSMAG_IVAR_SDSS_G',
+         'KCORR_SDSS_R',
+         'ABSMAG_SDSS_R',
+         'ABSMAG_IVAR_SDSS_R',
+         'KCORR_SDSS_I',
+         'ABSMAG_SDSS_I',
+         'ABSMAG_IVAR_SDSS_I',
+         'KCORR_SDSS_Z',
+         'ABSMAG_SDSS_Z',
+         'ABSMAG_IVAR_SDSS_Z',
+         'KCORR_W1',
+         'ABSMAG_W1',
+         'ABSMAG_IVAR_W1']
        
     meta = Table(fitsio.read(fastspecfile, ext='METADATA', columns=meta_columns))
     fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC', columns=fastspec_cols))
+    fastphot = Table(fitsio.read(fastphotfile, ext='FASTPHOT', columns=fastphot_cols))
+    assert(np.all(meta['TARGETID'] == fastphot['TARGETID']))
 
     # This will be different for healpix vs tile coadds. E.g., sv3-bright-HPXPIXEL-TARGETID
     meta['TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, hpxpixel, targetid) for
@@ -809,7 +853,14 @@ def main():
     #print(meta)
     #print(meta.colnames, fast.colnames)
 
+    # join metadata and fastspec fitting results
     data = hstack((meta, fastspec))
+
+    # join everything with fastphot fitting results but we need to add a prefix
+    for col in fastphot.colnames:
+        fastphot.rename_column(col, 'PHOT_{}'.format(col))
+    fastphot.remove_column('PHOT_TARGETID')
+    data = hstack((data, fastphot))
 
     # Parse the photometry into strings with limits. Most of this code is taken
     # from continuum.ContinuumTools.parse_photometry deal with measurements
@@ -859,14 +910,14 @@ def main():
                     
         return data
 
-    for prefix, suffix, bands in zip(['', 'FIBER', 'FIBERTOT', '', ''],
-                                     ['', '', '', '_SYNTH', '_SYNTH_MODEL'],
-                                     [['G', 'R', 'Z', 'W1', 'W2'],
-                                      ['G', 'R', 'Z'],
-                                      ['G', 'R', 'Z'],
-                                      ['G', 'R', 'Z'],
-                                     ['G', 'R', 'Z']]):
+    for prefix, suffix, bands in zip(
+            ['', 'FIBER', 'FIBERTOT', '', '', 'PHOT_'],
+            ['', '', '', '_SYNTH', '_SYNTH_MODEL', '_SYNTH_MODEL'],
+            [['G', 'R', 'Z', 'W1', 'W2'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z', 'W1', 'W2']
+             ]):
         data = convert_phot(data, prefix, suffix, bands)
+
+    #import pdb ; pdb.set_trace()                
 
     # get uncertainties on the emission-line measurements
     lines = np.array([col[:-4] for col in data.colnames if col[-4:] == '_AMP'])
@@ -884,8 +935,6 @@ def main():
                 data['{}_{}_ERR'.format(line, suffix)][good] = np.array(list(map(lambda x: '&#177;{:.3g}'.format(x),
                                                                                  1 / np.sqrt(data['{}_{}_IVAR'.format(line, suffix)][good]))))
                 
-    #import pdb ; pdb.set_trace()                
-
     print(data.colnames)
     print('Read {} rows from {}'.format(len(data), fastspecfile))
 

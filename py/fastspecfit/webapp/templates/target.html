@@ -355,6 +355,36 @@ td, th {text-align: center}
 
 <h3>Broadband Photometry Modeling</h3>
 
+<h6>Legacy Imaging Surveys (Photsys {{ target.photsys }})</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <th>AB mag<br />(ext. corr)</th>
+    <th>g</th>
+    <th>r</th>
+    <th>z</th>
+    <th>W1</th>
+    <th>W2</th>
+  </tr>
+  <tr>
+    <td>Data</td>
+    <td>{{ target.abmag_g }}{{ target.abmag_err_g|safe }}</td>
+    <td>{{ target.abmag_r }}{{ target.abmag_err_r|safe }}</td>
+    <td>{{ target.abmag_z }}{{ target.abmag_err_z|safe }}</td>
+    <td>{{ target.abmag_w1 }}{{ target.abmag_err_w1|safe }}</td>
+    <td>{{ target.abmag_w2 }}{{ target.abmag_err_w2|safe }}</td>
+  </tr>
+  <tr>
+    <td>Model</td>
+    <td>{{ target.phot_abmag_synth_model_g }}</td>
+    <td>{{ target.phot_abmag_synth_model_r }}</td>
+    <td>{{ target.phot_abmag_synth_model_z }}</td>
+    <td>{{ target.phot_abmag_synth_model_w1 }}</td>
+    <td>{{ target.phot_abmag_synth_model_w2 }}</td>
+  </tr>
+</table>
+<br />
+
+
 <table class="table table-bordered">
   <tr>
     <td><a href="{{ target.png_base_url }}/fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"><img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"></a></td>

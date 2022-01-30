@@ -1051,6 +1051,41 @@ class Sample(Model):
     siii_9532_flux_err = CharField(max_length=15, default='')
     siii_9532_cont_err = CharField(max_length=15, default='')
     siii_9532_ew_err = CharField(max_length=15, default='')
+
+    # fastphot properties
+
+    #continuum_coeff = FloatField(null=True)
+    continuum_chi2 = FloatField(null=True)
+    continuum_age = FloatField(null=True)
+    continuum_av = FloatField(null=True)
+    continuum_av_ivar = FloatField(null=True)
+    phot_dn4000_model = FloatField(null=True)
+
+    phot_kcorr_u = FloatField(null=True)
+    phot_kcorr_b = FloatField(null=True)
+    phot_kcorr_v = FloatField(null=True)
+    phot_kcorr_w1 = FloatField(null=True)
+    phot_absmag_u = FloatField(null=True)
+    phot_absmag_b = FloatField(null=True)
+    phot_absmag_v = FloatField(null=True)
+    phot_absmag_w1 = FloatField(null=True)
+
+    phot_kcorr_sdss_u = FloatField(null=True)
+    phot_kcorr_sdss_g = FloatField(null=True)
+    phot_kcorr_sdss_r = FloatField(null=True)
+    phot_kcorr_sdss_i = FloatField(null=True)
+    phot_kcorr_sdss_z = FloatField(null=True)
+    phot_absmag_sdss_u = FloatField(null=True)
+    phot_absmag_sdss_g = FloatField(null=True)
+    phot_absmag_sdss_r = FloatField(null=True)
+    phot_absmag_sdss_i = FloatField(null=True)
+    phot_absmag_sdss_z = FloatField(null=True)
+
+    phot_abmag_synth_model_g = CharField(max_length=6, default='')
+    phot_abmag_synth_model_r = CharField(max_length=6, default='')
+    phot_abmag_synth_model_z = CharField(max_length=6, default='')
+    phot_abmag_synth_model_w1 = CharField(max_length=6, default='')
+    phot_abmag_synth_model_w2 = CharField(max_length=6, default='')
     
     # radec2xyz, for cone search in the database
     ux = FloatField(default=-2.0)
