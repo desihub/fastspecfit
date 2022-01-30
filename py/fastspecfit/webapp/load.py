@@ -818,7 +818,8 @@ def main():
         for band in bands:
             maggies = data['{}FLUX{}_{}'.format(prefix, suffix, band)]
             if 'FIBER' in prefix or 'SYNTH' in suffix:
-                data['{}ABMAG{}_{}'.format(prefix, suffix, band)] = np.array('', dtype='U6')
+                # e.g., FIBERABMAG_G, FIBERTOTMAG_G, ABMAG_SYNTH_G, and ABMAG_SYNTH_MODEL_G
+                data['{}ABMAG{}_{}'.format(prefix, suffix, band)] = np.array('', dtype='U6') 
                 good = np.where(maggies > 0)[0]
                 if len(good) > 0:
                     data['{}ABMAG{}_{}'.format(prefix, suffix, band)][good] = np.array(list(
@@ -828,9 +829,11 @@ def main():
                 if len(neg) > 0:
                     data['{}ABMAG{}_{}'.format(prefix, suffix, band)][neg] = '...'
             else:
-                data['{}ABMAG_{}'.format(prefix, band)] = np.array('', dtype='U17')
+                # e.g., ABMAG_G and ABMAG_ERR_G
+                data['ABMAG_{}'.format(band)] = np.array('', dtype='U7')
+                data['ABMAG_ERR_{}'.format(band)] = np.array('', dtype='U13')
             
-                ivarmaggies = data['{}FLUX_IVAR_{}'.format(prefix, band)]
+                ivarmaggies = data['FLUX_IVAR_{}'.format(band)]
         
                 # deal with the uncertainties
                 snr = maggies * np.sqrt(ivarmaggies)
@@ -838,10 +841,7 @@ def main():
                 # upper limits
                 upper = np.where((ivarmaggies > 0) * (snr <= nsigma))[0]
                 if len(upper) > 0:
-                    data['{}ABMAG_{}'.format(prefix, band)][upper] = np.array(list(
-                        map(lambda x: '>{:.3f}'.format(x),
-                            -2.5 * np.log10(1e-9 * nsigma / np.sqrt(ivarmaggies[upper])))))
-                            #+2.5 * np.log10(np.sqrt(ivarmaggies[upper]) / nsigma))))
+                    data['ABMAG_{}'.format(band)][upper] = np.array(list(map(lambda x: '>{:.3f}'.format(x), -2.5 * np.log10(1e-9 * nsigma / np.sqrt(ivarmaggies[upper])))))
                             
                 # significant detections
                 good = np.where(snr > nsigma)[0]
@@ -854,9 +854,9 @@ def main():
                     #abmag_brighter = errmaggies / (0.4 * np.log(10) * (maggies[good]+errmaggies)) # bright end (flux upper limit)
                     #abmag_fainterr = errmaggies / (0.4 * np.log(10) * (maggies[good]-errmaggies)) # faint end (flux lower limit)
         
-                    data['{}ABMAG_{}'.format(prefix, band)][good] = np.array(list(
-                        map(lambda x, y: '{:.3f}&#177;{:.3f}'.format(x, y),
-                            -2.5 * np.log10(1e-9 * maggies[good]), abmag_err)))
+                    data['ABMAG_{}'.format(band)][good] = np.array(list(map(lambda x: '{:.3f}'.format(x), -2.5 * np.log10(1e-9 * maggies[good]))))
+                    data['ABMAG_ERR_{}'.format(band)][good] = np.array(list(map(lambda x: '&#177;{:.3f}'.format(x), abmag_err)))
+                    
         return data
 
     for prefix, suffix, bands in zip(['', 'FIBER', 'FIBERTOT', '', ''],
@@ -867,6 +867,24 @@ def main():
                                       ['G', 'R', 'Z'],
                                      ['G', 'R', 'Z']]):
         data = convert_phot(data, prefix, suffix, bands)
+
+    # get uncertainties on the emission-line measurements
+    lines = np.array([col[:-4] for col in data.colnames if col[-4:] == '_AMP'])
+    for line in lines:
+        # S/N
+        #print('{}_SNR'.format(line).lower()+" = FloatField(null=True)")
+        data['{}_SNR'.format(line)] = data['{}_AMP'.format(line)]*np.sqrt(data['{}_AMP_IVAR'.format(line)])
+        for suffix in ['AMP', 'FLUX', 'CONT', 'EW']:
+            #print('{}_{}_ERR'.format(line, suffix).lower()+" = CharField(max_length=15, default='')")
+            #data['{}_{}_ERR'.format(line, suffix)] = np.zeros(len(data), 'f4')
+            data['{}_{}_ERR'.format(line, suffix)] = np.array('', dtype='U15')
+            good = np.where(data['{}_{}_IVAR'.format(line, suffix)] > 0)[0]
+            if len(good) > 0:
+                #data['{}_{}_ERR'.format(line, suffix)][good] = 1 / np.sqrt(data['{}_{}_IVAR'.format(line, suffix)][good])
+                data['{}_{}_ERR'.format(line, suffix)][good] = np.array(list(map(lambda x: '&#177;{:.3g}'.format(x),
+                                                                                 1 / np.sqrt(data['{}_{}_IVAR'.format(line, suffix)][good]))))
+                
+    #import pdb ; pdb.set_trace()                
 
     print(data.colnames)
     print('Read {} rows from {}'.format(len(data), fastspecfile))

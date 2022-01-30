@@ -4,7 +4,12 @@
 
 {% comment %}
 <style type="text/css">
-table, td, th {padding: 5px; text-align: center; border: 1px solid black}
+.top-crop { max-height: 620px; overflow: hidden; }
+.cropped {
+    width: 752px; /* width of container */
+    height: 300px; /* height of container */
+    overflow: hidden;
+}
 </style>
 {% endcomment %}
 
@@ -78,11 +83,11 @@ td, th {text-align: center}
   </tr>
   <tr>
     <td>Total</td>
-    <td>{{ target.abmag_g|safe }}</td> <!--https://stackoverflow.com/questions/12521567/prevent-from-being-converted-to-amp-in-jinja -->
-    <td>{{ target.abmag_r|safe }}</td>
-    <td>{{ target.abmag_z|safe }}</td>
-    <td>{{ target.abmag_w1|safe }}</td>
-    <td>{{ target.abmag_w2|safe }}</td>
+    <td>{{ target.abmag_g }}{{ target.abmag_err_g|safe }}</td> <!--https://stackoverflow.com/questions/12521567/prevent-from-being-converted-to-amp-in-jinja -->
+    <td>{{ target.abmag_r }}{{ target.abmag_err_r|safe }}</td>
+    <td>{{ target.abmag_z }}{{ target.abmag_err_z|safe }}</td>
+    <td>{{ target.abmag_w1 }}{{ target.abmag_err_w1|safe }}</td>
+    <td>{{ target.abmag_w2 }}{{ target.abmag_err_w2|safe }}</td>
   </tr>
   <tr>
     <td>Fiber</td>
@@ -109,7 +114,7 @@ td, th {text-align: center}
 <table class="table table-bordered table-hover">
   <tr>
     <th colspan="3">Median S/N (pixel<sup>-1</sup>)</th>
-    <th colspan="7"></th>
+    <th colspan="7">Continuum</th>
   </tr>
   <tr>
     <th>b camera</th>
@@ -161,13 +166,197 @@ td, th {text-align: center}
 </table>
 <br />
 
+<table class="table table-bordered">
+  <tr>
+    <td><a href="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png">
+    <div class="top-crop">
+      <img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png">
+    </div>
+    </a></td>
+  </tr> 
+</table>
 <br />
-<h3>Visualizations</h3>
-<p>Write me.</p>
+
+<h3>Emission-line Modeling</h3><br />
+
+<h6>Average Line-Properties</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <th colspan="2">UV / QSO</th>
+    <th colspan="2">Broad Balmer & Helium</th>
+    <th colspan="2">Narrow Balmer & Forbidden</th>
+    <th colspan="3">Doublet Ratios</th>
+  </tr>
+  <tr>
+    <th>z</th>
+    <th>&sigma;<br />(km/s)</th>
+    <th>z</th>
+    <th>&sigma;<br />(km/s)</th>
+    <th>z</th>
+    <th>&sigma;<br />(km/s)</th>
+    <th>Mg II<br />&lambda;2796/&lambda;2803</th>
+    <th>[OII]<br />&lambda;3726/&lambda;3729</th>
+    <th>[SII]<br />&lambda;6731/&lambda;6716</th>
+  </tr>
+  <tr>
+    <td>{{ target.broad_z|floatformat:8 }}</td>
+    <td>{{ target.broad_sigma|floatformat:2 }}</td>
+    <td>{{ target.balmer_z|floatformat:8 }}</td>
+    <td>{{ target.balmer_sigma|floatformat:2 }}</td>
+    <td>{{ target.forbidden_z|floatformat:8 }}</td>
+    <td>{{ target.forbidden_sigma|floatformat:2 }}</td>
+    <td>{{ target.mgii_doublet_ratio|floatformat:3 }}</td>
+    <td>{{ target.oii_doublet_ratio|floatformat:3 }}</td>
+    <td>{{ target.sii_doublet_ratio|floatformat:3 }}</td>
+  </tr>
+</table>
+<br />
+
+<h6>UV / QSO Emission Lines</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <th>Line</th>
+    <th>S/N</th>
+    <th>&#916;v<br />(km/s)</th>
+    <th>&sigma;<br />(km/s)</th>
+    <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+    <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
+    <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+    <th>EW<br />(&#8491;)</th>
+    <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+    <th>Npix</th>
+  </tr>
+  <tr>
+    {% comment %}
+      {% if target.mgii_2796_amp_ivar > 0 %}
+      {% else %}
+      {% endif %}
+    {% endcomment %}
+    <td>Mg II &lambda;2796</td>
+    <td>{{ target.mgii_2796_snr|floatformat:2 }}</td>
+    <td>{{ target.mgii_2796_vshift|floatformat:2 }}</td>
+    <td>{{ target.mgii_2796_sigma|floatformat:2 }}</td>
+    <td>{{ target.mgii_2796_amp|floatformat:3 }}{{ target.mgii_2803_amp_err|safe }}</td>
+    <td>{{ target.mgii_2796_flux|floatformat:3 }}{{ target.mgii_2803_flux_err|safe }}</td>
+    <td>{{ target.mgii_2796_cont|floatformat:3 }}{{ target.mgii_2803_cont_err|safe }}</td>
+    <td>{{ target.mgii_2796_ew|floatformat:2 }}{{ target.mgii_2803_ew_err|safe }}</td>
+    <td>{{ target.mgii_2796_chi2|floatformat:3 }}</td>
+    <td>{{ target.mgii_2796_npix }}</td>
+  </tr>
+  <tr>
+    <td>Mg II &lambda;2803</td>
+    <td>{{ target.mgii_2803_snr|floatformat:2 }}</td>
+    <td>{{ target.mgii_2803_vshift|floatformat:2 }}</td>
+    <td>{{ target.mgii_2803_sigma|floatformat:2 }}</td>
+    <td>{{ target.mgii_2803_amp|floatformat:3 }}{{ target.mgii_2803_amp_err|safe }}</td>
+    <td>{{ target.mgii_2803_flux|floatformat:3 }}{{ target.mgii_2803_flux_err|safe }}</td>
+    <td>{{ target.mgii_2803_cont|floatformat:3 }}{{ target.mgii_2803_cont_err|safe }}</td>
+    <td>{{ target.mgii_2803_ew|floatformat:2 }}{{ target.mgii_2803_ew_err|safe }}</td>
+    <td>{{ target.mgii_2803_chi2|floatformat:3 }}</td>
+    <td>{{ target.mgii_2803_npix }}</td>
+  </tr>
+</table>
+<br />
+
+<h6>Forbidden and Narrow Balmer & Helium Lines</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <th>Line</th>
+    <th>S/N</th>
+    <th>&#916;v<br />(km/s)</th>
+    <th>&sigma;<br />(km/s)</th>
+    <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+    <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
+    <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+    <th>EW<br />(&#8491;)</th>
+    <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+    <th>Npix</th>
+  </tr>
+  <tr>
+    <td>[OII] &lambda;3726</td>
+    <td>{{ target.oii_3726_snr|floatformat:2 }}</td>
+    <td>{{ target.oii_3726_vshift|floatformat:2 }}</td>
+    <td>{{ target.oii_3726_sigma|floatformat:2 }}</td>
+    <td>{{ target.oii_3726_amp|floatformat:3 }} {{ target.oii_3726_amp_err|safe }}</td>
+    <td>{{ target.oii_3726_flux|floatformat:3 }}{{ target.oii_3726_flux_err|safe }}</td>
+    <td>{{ target.oii_3726_cont|floatformat:3 }}{{ target.oii_3726_cont_err|safe }}</td>
+    <td>{{ target.oii_3726_ew|floatformat:2 }}  {{ target.oii_3726_ew_err|safe }}</td>
+    <td>{{ target.oii_3726_chi2|floatformat:3 }}</td>
+    <td>{{ target.oii_3726_npix }}</td>
+  </tr>
+  <tr>
+    <td>[OII] &lambda;3729</td>
+    <td>{{ target.oii_3729_snr|floatformat:2 }}</td>
+    <td>{{ target.oii_3729_vshift|floatformat:2 }}</td>
+    <td>{{ target.oii_3729_sigma|floatformat:2 }}</td>
+    <td>{{ target.oii_3729_amp|floatformat:3 }} {{ target.oii_3729_amp_err|safe }}</td>
+    <td>{{ target.oii_3729_flux|floatformat:3 }}{{ target.oii_3729_flux_err|safe }}</td>
+    <td>{{ target.oii_3729_cont|floatformat:3 }}{{ target.oii_3729_cont_err|safe }}</td>
+    <td>{{ target.oii_3729_ew|floatformat:2 }}  {{ target.oii_3729_ew_err|safe }}</td>
+    <td>{{ target.oii_3729_chi2|floatformat:3 }}</td>
+    <td>{{ target.oii_3729_npix }}</td>
+  </tr>
+  <tr>
+    <td>H&alpha; (narrow)</td>
+    <td>{{ target.halpha_snr|floatformat:2 }}</td>
+    <td>{{ target.halpha_vshift|floatformat:2 }}</td>
+    <td>{{ target.halpha_sigma|floatformat:2 }}</td>
+    <td>{{ target.halpha_amp|floatformat:3 }} {{ target.halpha_amp_err|safe }}</td>
+    <td>{{ target.halpha_flux|floatformat:3 }}{{ target.halpha_flux_err|safe }}</td>
+    <td>{{ target.halpha_cont|floatformat:3 }}{{ target.halpha_cont_err|safe }}</td>
+    <td>{{ target.halpha_ew|floatformat:2 }}  {{ target.halpha_ew_err|safe }}</td>
+    <td>{{ target.halpha_chi2|floatformat:3 }}</td>
+    <td>{{ target.halpha_npix }}</td>
+  </tr>
+</table>
+<br />
+
+<h6>Broad Balmer & Helium Lines</h6>
+<table class="table table-bordered table-hover">
+  <tr>
+    <th>Line</th>
+    <th>S/N</th>
+    <th>&#916;v<br />(km/s)</th>
+    <th>&sigma;<br />(km/s)</th>
+    <th>Amplitude<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+    <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
+    <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
+    <th>EW<br />(&#8491;)</th>
+    <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
+    <th>Npix</th>
+  </tr>
+  <tr>
+    <td>H&alpha; (broad)</td>
+    <td>{{ target.halpha_broad_snr|floatformat:2 }}</td>
+    <td>{{ target.halpha_broad_vshift|floatformat:2 }}</td>
+    <td>{{ target.halpha_broad_sigma|floatformat:2 }}</td>
+    <td>{{ target.halpha_broad_amp|floatformat:3 }} {{ target.halpha_broad_amp_err|safe }}</td>
+    <td>{{ target.halpha_broad_flux|floatformat:3 }}{{ target.halpha_broad_flux_err|safe }}</td>
+    <td>{{ target.halpha_broad_cont|floatformat:3 }}{{ target.halpha_broad_cont_err|safe }}</td>
+    <td>{{ target.halpha_broad_ew|floatformat:2 }}  {{ target.halpha_broad_ew_err|safe }}</td>
+    <td>{{ target.halpha_broad_chi2|floatformat:3 }}</td>
+    <td>{{ target.halpha_broad_npix }}</td>
+  </tr>
+</table>
+<br />
+
+
+
+{% comment %}
+<table class="table table-bordered">
+  <tr>
+    <td><a href="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png">
+        <img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png">
+    </a></td>
+  </tr> 
+</table>
+<br />
+{% endcomment %}
+
+<h3>Broadband Photometry Modeling</h3>
 
 <table class="table table-bordered">
   <tr>
-    <td><a href="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"><img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"></a></td>
     <td><a href="{{ target.png_base_url }}/fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"><img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"></a></td>
   </tr> 
 </table>
