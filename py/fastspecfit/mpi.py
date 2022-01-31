@@ -478,6 +478,12 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.',
             meta.append(Table(info['METADATA'].read()))
         out = vstack(out)
         meta = vstack(meta)
+
+        # sort?
+        srt = np.argsort(meta['TARGETID'])
+        out = out[srt]
+        meta = meta[srt]
+        
         log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
             len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
         
