@@ -37,6 +37,7 @@ class Sample(Model):
     targetid = IntegerField(null=True)
     ra = FloatField(null=True)
     dec = FloatField(null=True)
+    tileid_list = CharField(max_length=100, default='')
     survey = CharField(max_length=4, default='')
     faprgrm = CharField(max_length=6, default='')
     hpxpixel = IntegerField(null=True)

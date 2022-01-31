@@ -43,6 +43,7 @@ def main():
         'TARGETID',
         'RA',
         'DEC',
+        'TILEID_LIST',
         'SURVEY',
         'FAPRGRM',
         'HPXPIXEL',

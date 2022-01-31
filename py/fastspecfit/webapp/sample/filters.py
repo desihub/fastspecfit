@@ -20,6 +20,8 @@ class SampleFilter(django_filters.FilterSet):
     survey__match = django_filters.CharFilter(field_name='survey', lookup_expr='icontains')
     faprgrm__match = django_filters.CharFilter(field_name='faprgrm', lookup_expr='icontains')
 
+    tileid__match = django_filters.CharFilter(field_name='tileid_list', lookup_expr='icontains')
+
     targetid__gte = django_filters.NumberFilter(field_name='targetid', lookup_expr='gte')
     targetid__lte = django_filters.NumberFilter(field_name='targetid', lookup_expr='lte')
 

@@ -48,12 +48,13 @@ td, th {text-align: center}
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
-      <th colspan="6"></th>
+      <th colspan="7"></th>
       <th colspan="4">{{ target.survey|upper }} Targeting Bits</th>
     </tr>
     <tr>
       <th>Survey</th>
       <th>Program</th>
+      <th>TileIDs</th>
       <th>TargetID</th>
       <th>Healpixel</th>
       <th>RA<br />(degree)</th>
@@ -67,6 +68,7 @@ td, th {text-align: center}
   <tr>
     <td>{{ target.survey|upper }}</td>
     <td>{{ target.faprgrm|upper }}</td>
+    <td>{{ target.tileid_list }}</td>
     <td>{{ target.targetid }}</td>
     <td>{{ target.hpxpixel }}</td>
     <td>{{ target.ra|floatformat:7 }}</td>

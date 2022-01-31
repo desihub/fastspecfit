@@ -72,6 +72,10 @@
                 <td><input id="faprgrmmatch" name="faprgrm__match" type="text" value="" placeholder="bright,dark"/></td> 
               </tr>
               <tr>
+                <th class="search_th"><label for="tileidmatch">TileIDs</label></th>
+                <td><input id="tileidmatch" name="tileid__match" type="text" value="" placeholder="1"/></td> 
+              </tr>
+              <tr>
                 <th class="search_th"><label for="idlo">TargetID</label></th>
                 <td><input id="idlo" name="targetid__gte" step="1" type="number" value="" placeholder="min" min="0"/></td> 
                 <td><input id="idhi" name="targetid__lte" step="1" type="number" value="" placeholder="max" min="0"/></td> 
@@ -130,6 +134,7 @@
             <th style="vertical-align: middle; text-align: center;">Number</th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'survey' %}#results">Survey</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'faprgrm' %}#results">Program</a></th>
+            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'tileid_list' %}#results">TileIDs</a></th>
             <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'hpxpixel' %}#results">Healpixel</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
@@ -142,6 +147,7 @@
               <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.survey|upper }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.faprgrm|upper }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.tileid_list }}</td>
               <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.targetid }}</a></td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.hpxpixel }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
