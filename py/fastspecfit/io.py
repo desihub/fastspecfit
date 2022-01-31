@@ -327,7 +327,6 @@ class DESISpectra(object):
             else:
                 zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=zbcols))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=fmcols))
-
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
             # Get the unique set of tiles contributing to the coadded spectra from EXP_FIBERMAP
@@ -341,6 +340,9 @@ class DESISpectra(object):
                 expmeta['TILEID'] = 80715 # M31 hack!
 
             tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
+
+            # build the list of tiles that went into each unique target / coadd
+            meta['TILEID_LIST'] = [' '.join(np.unique(expmeta[tid == expmeta['TARGETID']]['TILEID']).astype(str)) for tid in meta['TARGETID']]
 
             ## this code is good for vetoing specific tiles
             #if False:
@@ -939,7 +941,7 @@ class DESISpectra(object):
 
         # All of this business is so we can get the columns in the order we want
         # (i.e., the order that matches the data model).
-        for metacol in ['TARGETID', 'RA', 'DEC', 'TILEID', 'FIBER', 'NIGHT', 'THRUNIGHT']:
+        for metacol in ['TARGETID', 'RA', 'DEC', 'TILEID', 'FIBER', 'NIGHT', 'THRUNIGHT', 'TILEID_LIST']:
             if metacol in metacols:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():
