@@ -33,6 +33,8 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
 
+    parser.add_argument('--nolegend', action='store_true', help='Exclude legends from QA.')
+
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
     parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
     
@@ -100,8 +102,8 @@ def main(args=None, comm=None):
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit()
-    EMFit = EMLineFit()
+    CFit = ContinuumFit(nolegend=args.nolegend)
+    EMFit = EMLineFit(nolegend=args.nolegend)
     Spec = DESISpectra(specprod=specprod)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 

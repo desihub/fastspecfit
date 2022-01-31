@@ -68,11 +68,12 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         sys.stdout.flush()
 
         if args.makeqa:
-            #  hack--the desired output directories are in the 'zbestfiles' variable!
+            # hack--the desired output directories are in the 'zbestfiles' variable!
+            # note: by default don't render the legend
             if fastphot:
-                cmd = 'fastspecfit-qa --fastphotfile {} -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
+                cmd = 'fastspecfit-qa --fastphotfile {} --nolegend -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
             else:
-                cmd = 'fastspecfit-qa --fastspecfile {} -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
+                cmd = 'fastspecfit-qa --fastspecfile {} --nolegend -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
             if args.ntargets:
                 cmd += ' --ntargets {}'.format(args.ntargets)
         else:
@@ -173,7 +174,7 @@ def main():
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
-    parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands')
+    parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
     parser.add_argument('--base-htmldir', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
                         type=str, help='Base output HTML directory.')

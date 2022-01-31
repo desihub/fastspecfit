@@ -742,7 +742,7 @@ class EMLineFit(ContinuumTools):
 
     """
     def __init__(self, nball=10, chi2fail=1e6, minwave=3000.0,
-                 maxwave=10000.0, pixkms=10.0):
+                 maxwave=10000.0, pixkms=10.0, nolegend=False):
         """Write me.
         
         """
@@ -752,6 +752,7 @@ class EMLineFit(ContinuumTools):
         
         self.nball = nball
         self.chi2fail = chi2fail
+        self.nolegend = nolegend
 
         self.pixkms = 10.0 # pixel size for internal wavelength array [km/s]
         self.dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
@@ -1324,8 +1325,8 @@ class EMLineFit(ContinuumTools):
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
-            title = 'Tile/Coadd: {}/{}, TargetID/Fiber: {}/{}'.format(
-                    metadata['TILEID'], coadd_type, metadata['TARGETID'], metadata['FIBER'])
+            title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
@@ -1465,18 +1466,19 @@ class EMLineFit(ContinuumTools):
 
         bigax1.plot(np.hstack(data['wave']), _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
 
-        txt = '\n'.join((
-            r'{}'.format(leg['zredrock']),
-            r'{} {}'.format(leg['chi2'], leg['age']),
-            r'{}'.format(leg['AV']),
-            #r'{}'.format(leg['vdisp']),
-            ))
-        bigax1.text(legxpos, legypos, txt, ha='right', va='top',
-                    transform=bigax1.transAxes, fontsize=legfntsz,
-                    bbox=bbox)
         bigax1.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
-                    ha='left', va='center', transform=bigax1.transAxes, fontsize=22)
-        bigax1.set_title(title, fontsize=22)
+                    ha='left', va='center', transform=bigax1.transAxes, fontsize=30)
+        if not self.nolegend:
+            txt = '\n'.join((
+                r'{}'.format(leg['zredrock']),
+                r'{} {}'.format(leg['chi2'], leg['age']),
+                r'{}'.format(leg['AV']),
+                #r'{}'.format(leg['vdisp']),
+                ))
+            bigax1.text(legxpos, legypos, txt, ha='right', va='top',
+                        transform=bigax1.transAxes, fontsize=legfntsz,
+                        bbox=bbox)
+            bigax1.set_title(title, fontsize=22)
         
         bigax1.set_xlim(wavelims)
         bigax1.set_ylim(ymin, ymax)
@@ -1523,17 +1525,18 @@ class EMLineFit(ContinuumTools):
                 ymax = np.max(emlinemodel) * 1.2
             #print(ymin, ymax)
 
-        txt = '\n'.join((
-            r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),
-            r'{} {}'.format(leg['dv_forbid'], leg['sigma_forbid']),
-            r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),
-            ))
-        bigax2.text(legxpos, legypos, txt, ha='right', va='top',
-                    transform=bigax2.transAxes, fontsize=legfntsz,
-                    bbox=bbox)
+        if not self.nolegend:
+            txt = '\n'.join((
+                r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),
+                r'{} {}'.format(leg['dv_forbid'], leg['sigma_forbid']),
+                r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),
+                ))
+            bigax2.text(legxpos, legypos, txt, ha='right', va='top',
+                        transform=bigax2.transAxes, fontsize=legfntsz,
+                        bbox=bbox)
         bigax2.text(0.03, 0.9, 'Residual Spectrum + Emission-Line Model',
                     ha='left', va='center', transform=bigax2.transAxes,
-                    fontsize=22)
+                    fontsize=30)
                 
         bigax2.set_xlim(wavelims)
         bigax2.set_ylim(ymin, ymax)
@@ -1652,13 +1655,16 @@ class EMLineFit(ContinuumTools):
                 #    pdb.set_trace()
 
         # common axis labels
-        tp, bt, lf, rt = 0.95, 0.09, 0.10, 0.94
+        tp, bt, lf, rt = 0.95, 0.08, 0.10, 0.94
         
-        fig.text(lf-0.07, (tp-bt)/2+bt,
+        fig.text(lf-0.07, (tp-bt)/4+bt+(tp-bt)/1.9,
                  r'Flux Density ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
-                 ha='center', va='center', rotation='vertical')
-        fig.text((rt-lf)/2+lf, bt-0.05, r'Observed-frame Wavelength ($\AA$)',
-                 ha='center', va='center')
+                 ha='center', va='center', rotation='vertical', fontsize=30)
+        fig.text(lf-0.07, (tp-bt)/4+bt,
+                 r'Flux Density ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
+                 ha='center', va='center', rotation='vertical', fontsize=30)
+        fig.text((rt-lf)/2+lf, bt-0.04, r'Observed-frame Wavelength ($\AA$)',
+                 ha='center', va='center', fontsize=30)
             
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
 

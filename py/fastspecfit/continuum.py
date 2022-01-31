@@ -896,7 +896,7 @@ class ContinuumTools(object):
         return smooth_continuum
 
 class ContinuumFit(ContinuumTools):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4):
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, nolegend=False):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -969,6 +969,8 @@ class ContinuumFit(ContinuumTools):
         #t0 = time.time()
         #_ = trapz_rebin(np.arange(4), np.ones(4), np.arange(2)+1)
         #print('Initial rebin ', time.time() - t0)
+
+        self.nolegend = nolegend
 
     def init_spec_output(self, nobj=1):
         """Initialize the output data table for this class.
@@ -1582,7 +1584,7 @@ class ContinuumFit(ContinuumTools):
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
-            title = 'Tile/thruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
+            title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
@@ -1672,7 +1674,8 @@ class ContinuumFit(ContinuumTools):
         ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
         ax.set_xticks([0.3, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0])
 
-        ax.set_title(title, fontsize=20)
+        if not self.nolegend:
+            ax.set_title(title, fontsize=20)
 
         # integrated flux / photometry
         #ax.scatter(phot['lambda_eff']/1e4, phot['abmag'],
@@ -1754,27 +1757,26 @@ class ContinuumFit(ContinuumTools):
         bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
         legfntsz = 20
 
-        txt = '\n'.join((
-            r'{}'.format(leg['absmag_r']),
-            r'{}'.format(leg['absmag_gr'])
-            ))
-        
-        legxpos, legypos = 0.04, 0.94
-        ax.text(legxpos, legypos, txt, ha='left', va='top',
-                transform=ax.transAxes, fontsize=legfntsz,
-                bbox=bbox)
-        
-        txt = '\n'.join((
-            r'{}'.format(leg['zredrock']),
-            r'{} {}'.format(leg['chi2'], leg['age']),
-            r'{}'.format(leg['AV']),
-            ))
-        
-        legxpos, legypos = 0.98, 0.06
-        ax.text(legxpos, legypos, txt, ha='right', va='bottom',
-                transform=ax.transAxes, fontsize=legfntsz,
-                bbox=bbox)
-
+        if not self.nolegend:
+            legxpos, legypos = 0.04, 0.94
+            txt = '\n'.join((
+                r'{}'.format(leg['absmag_r']),
+                r'{}'.format(leg['absmag_gr'])
+                ))
+            ax.text(legxpos, legypos, txt, ha='left', va='top',
+                    transform=ax.transAxes, fontsize=legfntsz,
+                    bbox=bbox)
+            
+            legxpos, legypos = 0.98, 0.06
+            txt = '\n'.join((
+                r'{}'.format(leg['zredrock']),
+                r'{} {}'.format(leg['chi2'], leg['age']),
+                r'{}'.format(leg['AV']),
+                ))
+            ax.text(legxpos, legypos, txt, ha='right', va='bottom',
+                    transform=ax.transAxes, fontsize=legfntsz,
+                    bbox=bbox)
+    
         plt.subplots_adjust(bottom=0.14, right=0.95, top=0.93)
 
         log.info('Writing {}'.format(pngfile))
