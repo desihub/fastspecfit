@@ -28,6 +28,9 @@ class SampleFilter(django_filters.FilterSet):
     hpxpixel__gte = django_filters.NumberFilter(field_name='hpxpixel', lookup_expr='gte')
     hpxpixel__lte = django_filters.NumberFilter(field_name='hpxpixel', lookup_expr='lte')
 
+    z__gte = django_filters.NumberFilter(field_name='z', lookup_expr='gte')
+    z__lte = django_filters.NumberFilter(field_name='z', lookup_expr='lte')
+
     class Meta:
         model = Sample
         #add variable to fields[] if looking for exact match
