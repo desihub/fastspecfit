@@ -1,0 +1,71 @@
+# %ECSV 0.9
+# ---
+# datatype:
+# - {name: name, datatype: string}
+# - {name: restwave, datatype: float64}
+# - {name: amp, datatype: float32}
+# - {name: isbalmer, datatype: bool}
+# - {name: isbroad, datatype: bool}
+# - {name: nicename, datatype: string}
+# - {name: plotgroup, datatype: string}
+# meta: !!omap
+# - {description: 'Emission lines to be fit by fastspec.
+#     Wavelengths are in the vacuum rest-frame in Angstroms.
+#
+#     References:
+#       https://github.com/Morisset/PyNeb_devel
+#       http://astronomy.nmsu.edu/drewski/tableofemissionlines.html
+#       https://db.chiantidatabase.org/
+#       https://github.com/cconroy20/fsps/blob/master/data/emlines_info.dat
+#       Shull, Stevans, & Danforth 2018, Table 4 - https://arxiv.org/pdf/1204.3908.pdf
+#       vanden Berk et al. 2001, Table 2 - https://iopscience.iop.org/article/10.1086/321167/pdf
+#
+#     J. Moustakas, Siena College, 2020 Nov 11
+#     jm21mar19 - more lines added
+#     jm21aug01 - [OI], HeI, HeII and more added'}
+name restwave amp isbalmer isbroad nicename plotgroup
+        oi_1304   1304.35      1.0   False  True   OI-$\lambda$1304                             oi_1304
+     siliv_1396   1396.76      1.0   False  True   SiIV-$\lambda$1396                           siliv_1396
+       civ_1549   1549.06      1.0   False  True   CIV-$\lambda$1549                            civ_1549
+    siliii_1892   1892.030     1.0   False  True   SiIII]-$\lambda$1892+CIII]-$\lambda$1908     siliii_1892_ciii_1908
+      ciii_1908   1908.734     1.0   False  True   SiIII]-$\lambda$1892+CIII]-$\lambda$1908     siliii_1892_ciii_1908
+      mgii_2796   2796.352     1.0   False  True   MgII-$\lambda\lambda$2796,2803               mgii_2796_2803
+      mgii_2803   2803.53      1.0   False  True   MgII-$\lambda\lambda$2796,2803               mgii_2796_2803
+       nev_3346   3346.7828    0.1   False  False  [NeV]-$\lambda$3346                          nev_3346
+       nev_3426   3426.8637    0.1   False  False  [NeV]-$\lambda$3426                          nev_3426
+       oii_3726   3727.092     1.0   False  False  [OII]-$\lambda\lambda$3726,29                oii_3726_29
+       oii_3729   3729.874     1.0   False  False  [OII]-$\lambda\lambda$3726,29                oii_3726_29
+     neiii_3869   3869.8611    0.1   False  False  [NeIII]-$\lambda$3869+HeI+H6                 neiii_3869_hei_3889_h6
+       hei_3889   3889.751     0.1   True   False  [NeIII]-$\lambda$3869+HeI+H6                 neiii_3869_hei_3889_h6
+ hei_broad_3889   3889.751     0.1   True   True   [NeIII]-$\lambda$3869+HeI+H6                 neiii_3869_hei_3889_h6
+             h6   3890.1576    0.1   True   False  [NeIII]-$\lambda$3869+HeI+H6                 neiii_3869_hei_3889_h6
+       h6_broad   3890.1576    0.1   True   True   [NeIII]-$\lambda$3869+HeI+H6                 neiii_3869_hei_3889_h6
+       hepsilon   3971.195     0.1   True   False  H$\epsilon$-$\lambda$3970                    hepsilon
+ hepsilon_broad   3971.195     0.1   True   True   H$\epsilon$-$\lambda$3970                    hepsilon
+         hdelta   4102.892     0.1   True   False  H$\delta$-$\lambda$4101                      hdelta
+   hdelta_broad   4102.892     0.1   True   True   H$\delta$-$\lambda$4101                      hdelta
+         hgamma   4341.684     0.1   True   False  H$\gamma$-$\lambda$4340+[OIII]-$\lambda$4363 hgamma_oiii_4363
+   hgamma_broad   4341.684     0.1   True   True   H$\gamma$-$\lambda$4340+[OIII]-$\lambda$4363 hgamma_oiii_4363
+      oiii_4363   4364.4351    0.1   False  False  H$\gamma$-$\lambda$4340+[OIII]-$\lambda$4363 hgamma_oiii_4363
+       hei_4471   4472.7290    0.1   True   False  HeI-$\lambda$4471                            hei_4471
+ hei_broad_4471   4472.7290    0.1   True   True   HeI-$\lambda$4471                            hei_4471
+      heii_4686   4686.8655    0.1   True   False  HeII-$\lambda$4686                           heii_4686
+heii_broad_4686   4686.8655    0.1   True   True   HeII-$\lambda$4686                           heii_4686
+          hbeta   4862.683     1.0   True   False  H$\beta$-$\lambda$4861                       hbeta
+    hbeta_broad   4862.683     1.0   True   True   H$\beta$-$\lambda$4861                       hbeta
+      oiii_4959   4960.295     1.0   False  False  [OIII]-$\lambda\lambda$4959,5007             oiii_doublet
+      oiii_5007   5008.239     1.0   False  False  [OIII]-$\lambda\lambda$4959,5007             oiii_doublet
+       nii_5755   5756.1887    0.1   False  False  [NII]-$\lambda$5755                          nii_5755
+       hei_5876   5877.2690    0.1   True   False  HeI-$\lambda$5876                            hei_5876
+ hei_broad_5876   5877.2690    0.1   True   True   HeI-$\lambda$5876                            hei_5876
+        oi_6300   6302.0435    0.1   False  False  [OI]-$\lambda$6300                           oi_6300
+       nii_6548   6549.852     0.1   False  False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
+         halpha   6564.613     1.0   True   False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
+   halpha_broad   6564.613     1.0   True   True   H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
+       nii_6584   6585.277     0.1   False  False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
+       sii_6716   6718.294     1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
+       sii_6731   6732.673     1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
+       oii_7320   7322.0018    0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
+       oii_7330   7332.7506    0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
+      siii_9069   9071.1034    0.3   False  False  [SIII]-$\lambda$9069                         siii_9069
+      siii_9532   9533.2274    0.3   False  False  [SIII]-$\lambda$9532                         siii_9532
