@@ -17,45 +17,48 @@ from desiutil.log import get_logger
 log = get_logger()
 
 def _fnnls_continuum(myargs):
-    """Multiprocessing wrapper."""
+    """fNNLS multiprocessing wrapper."""
     return fnnls_continuum(*myargs)
 
-def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
-                    support=None, get_chi2=False, jvendrow=False):
-    """Fit a continuum using fNNLS. This function is a simple wrapper on fnnls; see
-    the ContinuumFit.fnnls_continuum method for documentation.
+def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None, get_chi2=False):
+    """Fit a stellar continuum using fNNLS. 
 
-        Mapping between mikeiovine fnnls(AtA, Aty) and jvendrow fnnls(Z, x) inputs:
-          Z [mxn] --> A [mxn]
-          x [mx1] --> y [mx1]
+    Parameters
+    ----------
+    ZZ : :class:`~numpy.ndarray`
+        Array.
+    xx : :class:`~numpy.ndarray`
+        Array.
+    flux : :class:`~numpy.ndarray`, optional, defaults to ``None``
+        Input flux spectrum. 
+    ivar : :class:`~numpy.ndarray`, optional, defaults to ``None``
+        Input inverse variance spectrum corresponding to ``flux``.
+    modelflux : :class:`~numpy.ndarray`, optional, defaults to ``None``
+        Input model flux spectrum. 
 
-        And mikeiovine wants:
-          A^T * A
-          A^T * y
+    Returns
+    -------
+    :class:`bool`
+        Boolean flag indicating whether the non-negative fit did not converge.
+    :class:`~numpy.ndarray`
+        Coefficients of the best-fitting spectrum.
+    :class:`float`
+        Reduced chi-squared of the fit. Only returned if ``get_chi2=True``.
 
-          AtA = A.T.dot(A)
-          Aty = A.T.dot(y)
+    Notes
+    -----
+    - This function is a simple wrapper on fastspecfit.fnnls.fnnls(); see the
+      ContinuumFit.fnnls_continuum method for documentation.
+    - The arguments ``flux``, ``ivar`` and ``modelflux`` are only used when
+      ``get_chi2=True``.
 
     """
-    if jvendrow:
-        from fnnls import fnnls
-
-        if support is None:
-            support = np.zeros(0, dtype=int)
-            
-        try:
-            warn, coeff, _ = fnnls(ZZ, xx)#, P_initial=support)
-        except:
-            log.warning('fnnls failed to converge.')
-            warn, coeff = True, np.zeros(modelflux.shape[1])
-    else:
-        #from fastnnls import fnnls
-        from fastspecfit.fnnls import fnnls
-
-        AtA = ZZ.T.dot(ZZ)
-        Aty = ZZ.T.dot(xx)
-        coeff = fnnls(AtA, Aty)
-        warn = False
+    from fastspecfit.fnnls import fnnls
+ 
+    AtA = ZZ.T.dot(ZZ)
+    Aty = ZZ.T.dot(xx)
+    coeff = fnnls(AtA, Aty)
+    warn = False
         
     #if warn:
     #    print('WARNING: fnnls did not converge after 5 iterations.')

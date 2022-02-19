@@ -56,6 +56,7 @@ def fnnls(AtA, Aty, epsilon=None, iter_max=None):
                       30 * [number of cols in A] (the same value that is used
                       in the publication this algorithm comes from).
     :type iter_max:   int, optional
+
     """
     if epsilon is None:
         epsilon = np.finfo(np.float64).eps
