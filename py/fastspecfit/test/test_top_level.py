@@ -6,7 +6,7 @@ test top-level fastspecfit functions
 """
 import unittest
 import re
-from .. import __version__ as theVersion
+from fastspecfit import __version__ as theVersion
 
 class TestTopLevel(unittest.TestCase):
 
