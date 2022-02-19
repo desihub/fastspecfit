@@ -492,10 +492,14 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.',
 
     # merge previously merged catalogs into one big catalog (and then return)
     if supermerge:
-        outfiles = glob(os.path.join(mergedir, '{}-{}-*.fits'.format(outprefix, args.specprod)))
+        _outfiles = os.path.join(mergedir, '{}-{}-*.fits'.format(outprefix, args.specprod))
+        outfiles = glob(_outfiles)
         if len(outfiles) > 0:
+            log.info('Merging {} catalogs'.format(len(outfiles)))
             mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, args.specprod))
             _domerge(outfiles, extname=extname, mergefile=mergefile)
+        else:
+            log.info('No catalogs found: {}'.format(_outfiles))
         return
 
     if args.coadd_type == 'healpix':
