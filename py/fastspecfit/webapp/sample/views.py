@@ -286,12 +286,13 @@ def index(req, **kwargs):
         return m33(req)
     return _index(req, **kwargs)
 
-def upload_cat(req):
+def upload_catalog(req):
     import tempfile
     from astropy.table import Table
     #from astrometry.util.fits import fits_table
     from django.http import HttpResponseRedirect
     #from map.views import index
+    from fastspecfit.webapp import settings
 
     if req.method != 'POST':
         return HttpResponse('POST only')
@@ -348,7 +349,8 @@ def upload_cat(req):
         catname = catname[1:]
 
     #from map.views import my_reverse
-    return HttpResponseRedirect(reverse(req, sample.explore) + '?catalog=%s' % (catname))
+    #return HttpResponseRedirect(reverse(req, sample.explore) + '?catalog=%s' % (catname))
+    return HttpResponseRedirect(req + '?catalog=%s' % (catname))
 
 
 def main():

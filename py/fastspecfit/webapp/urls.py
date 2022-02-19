@@ -27,7 +27,7 @@ urlpatterns = [
     re_path(r'target/(?P<target_name>[^/]*)\Z', sample.target, name='target'),
     re_path(r'target-prev/(\d+)$', sample.target_prev, name='target-prev'),
     re_path(r'target-next/(\d+)$', sample.target_next, name='target-next'),
-    #re_path(r'upload-catalog$', sample.upload_cat, name='upload-cat'),
+    re_path(r'upload-catalog$', sample.upload_catalog, name='upload-catalog'),
 ]
     
 # urlpatterns = [

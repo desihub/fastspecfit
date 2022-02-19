@@ -57,7 +57,7 @@
       <a id="query"></a>
     </div>
 
-    <div style="text-align: center;">
+    <div style="text-align: center; vertical-align: middle;">
       <div class="row">    
         <div class="col" style="text-align: center;">
           <h3>Select</h3>
@@ -93,7 +93,6 @@
             </table>
             <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
           </form>
-          <hr />
         </div>
         
         <div class="col" style="text-align: center;">        
@@ -115,9 +114,20 @@
             </table>
             <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
           </form>
-          <hr />
         </div>
+        
+        <div class="col" style="text-align: center;">        
+          <h3>Upload Sample</h3>
+            <form action="{% url 'upload-catalog' %}" method="POST" enctype="multipart/form-data">{% csrf_token %}
+              <input type="file" name="catalog" />
+              <button type="submit" value="Upload" id="usercat_submit" class="btn btn-primary" style="margin-top: 15px;">Upload</button>
+              <!--<input type="submit" value="Upload" id="usercat_submit" />-->
+            </form>
+        </div>
+
       </div>
+
+      <hr />
 
       <div><a id="results"></a></div>
         <h3>Results</h3>
@@ -131,7 +141,7 @@
         <br />
       </div>
 
-      <br /><hr />
+      <br />
 
       <table class="table table-bordered table-hover">
         <thead>
