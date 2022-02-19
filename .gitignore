@@ -18,6 +18,7 @@ migrations
 .Python
 env/
 build/
+_build/
 develop-eggs/
 dist/
 downloads/
