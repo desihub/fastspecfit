@@ -444,6 +444,8 @@ class ContinuumTools(object):
         wave - observed-frame wavelength array
 
         """
+        from copy import copy
+        
         def _estimate_linesigma(zlinewaves, sigma, label='Broad-line', junkplot=None):
             """Estimate the velocity width from potentially strong, isolated lines; somewhat
             fragile!
@@ -468,7 +470,8 @@ class ContinuumTools(object):
                     stackflux = np.hstack(stackflux)
                     stackivar = np.hstack(stackivar)
 
-                    onegauss = lambda x, amp, sigma, cont: amp * np.exp(-0.5 * x**2 / sigma**2) + cont
+                    onegauss = lambda x, amp, sigma, const: amp * np.exp(-0.5 * x**2 / sigma**2) + const
+                    #onegauss = lambda x, amp, sigma, const, slope: amp * np.exp(-0.5 * x**2 / sigma**2) + const + slope*x
                     noneg = stackivar > 0
                     if np.sum(noneg) > 10:
                         #snr = np.median(stackflux*np.sqrt(stackivar))
@@ -476,6 +479,8 @@ class ContinuumTools(object):
                         try:
                             popt, _ = curve_fit(onegauss, xdata=stackdvel[noneg], ydata=stackflux[noneg],
                                                 sigma=stacksigma, p0=[1.0, sigma, np.median(stackflux)])
+                                                #sigma=stacksigma, p0=[1.0, sigma, np.median(stackflux), 0.0])
+                            popt[1] = np.abs(popt[1])
                             if popt[0] > 0 and popt[1] > 0:
                                 linesigma = popt[1]
                                 snr = popt[0] / np.std(stackflux[noneg])
@@ -489,7 +494,8 @@ class ContinuumTools(object):
                             plt.clf()
                             plt.plot(stackdvel, stackflux)
                             if popt is not None:
-                                plt.plot(stackdvel, onegauss(stackdvel, *popt))
+                                plt.plot(stackdvel, onegauss(stackdvel, *popt), color='k')
+                            #print('Writing {}'.format(junkplot))
                             plt.savefig(junkplot)
                         
             log.debug('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
@@ -499,21 +505,22 @@ class ContinuumTools(object):
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
         zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
         linesigma_broad, broad_snr = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_broad, label='Broad-line')#, junkplot='cosmo-www/tmp/junk-broad.png')
+            zlinewaves, self.linemask_sigma_broad, label='Broad-line')#, junkplot='desi-users/ioannis/tmp/junk-broad.png')
         if (linesigma_broad < 300) or (linesigma_broad > 2500) or (broad_snr < 3):
             linesigma_broad = self.linemask_sigma_broad
 
         # [OII] doublet, [OIII] 4959,5007
         zlinewaves = np.array([3728.483, 4960.295, 5008.239]) * (1 + redshift)
         linesigma_narrow, narrow_snr = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_narrow, label='Narrow-line')#, junkplot='cosmo-www/tmp/junk-narrow.png')
+            zlinewaves, self.linemask_sigma_narrow, label='Narrow-line')#, junkplot='desi-users/ioannis/tmp/junk-narrow.png')
         if (linesigma_narrow < 50) or (linesigma_narrow > 250) or (narrow_snr < 3):
             linesigma_narrow = self.linemask_sigma_narrow
 
         # Hbeta, Halpha
         zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
         linesigma_balmer, narrow_balmer = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line')#, junkplot='desi-users/ioannis/tmp2/junk-balmer.png')
+            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line')#, junkplot='/global/homes/i/ioannis/desi-users/ioannis/tmp/junk-balmer.png')
+
         if (linesigma_balmer < 50) or (linesigma_balmer > 2500) or (narrow_balmer < 3):
             linesigma_balmer = self.linemask_sigma_balmer
 
@@ -522,22 +529,22 @@ class ContinuumTools(object):
 
         linenames = np.hstack(('Lya', self.linetable['name'])) # include Lyman-alpha
         zlinewaves = np.hstack((1215.0, self.linetable['restwave'])) * (1 + redshift)
-        isbroads = np.hstack((True, self.linetable['isbroad']))
-        isbalmers = np.hstack((False, self.linetable['isbalmer']))
+        isbroads = np.hstack((True, self.linetable['isbroad'] * (self.linetable['isbalmer'] == False)))
+        isbalmers = np.hstack((False, self.linetable['isbalmer'] * (self.linetable['isbroad'] == False)))
 
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
-
         # Index I for building the line-mask; J for estimating the local
         # continuum (to be used in self.smooth_residuals).
         linepix, contpix, linename = [], [], []        
         for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
                                                            isbroads[inrange], isbalmers[inrange]):
             if isbroad:
-                sigma = linesigma_broad
-            elif isbalmer:
-                sigma = linesigma_balmer
+                sigma = copy(linesigma_broad)
+            elif isbalmer or 'broad' in _linename:
+                sigma = copy(linesigma_balmer)
             else:
-                sigma = linesigma_narrow
+                sigma = copy(linesigma_narrow)
+                
             sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
             I = (wave >= (zlinewave - 3*sigma)) * (wave <= (zlinewave + 3*sigma))
 
@@ -549,7 +556,7 @@ class ContinuumTools(object):
             Jblu = (wave > (zlinewave - 5*sigma)) * (wave < (zlinewave - 3*sigma)) * (linemask == False)
             Jred = (wave < (zlinewave + 5*sigma)) * (wave > (zlinewave + 3*sigma)) * (linemask == False)
             J = np.logical_or(Jblu, Jred)
-            #if '4686' in _linename:
+            #if 'h6' in _linename:
             #    pdb.set_trace()
             
             if np.sum(I) > 0 and np.sum(J) > 0:
@@ -557,8 +564,6 @@ class ContinuumTools(object):
                 linepix.append(I)
                 contpix.append(J)
                 linemask[I] = True  # True = affected by line
-
-        #pdb.set_trace()
 
         #for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
         #                                                   isbroads[inrange], isbalmers[inrange]):
@@ -891,7 +896,7 @@ class ContinuumTools(object):
         return smooth_continuum
 
 class ContinuumFit(ContinuumTools):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4):
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, nolegend=False):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -964,6 +969,8 @@ class ContinuumFit(ContinuumTools):
         #t0 = time.time()
         #_ = trapz_rebin(np.arange(4), np.ones(4), np.arange(2)+1)
         #print('Initial rebin ', time.time() - t0)
+
+        self.nolegend = nolegend
 
     def init_spec_output(self, nobj=1):
         """Initialize the output data table for this class.
@@ -1308,6 +1315,9 @@ class ContinuumFit(ContinuumTools):
             meanage = self.get_meanage(coeff)
             kcorr, absmag, ivarabsmag, synth_bestmaggies = self.kcorr_and_absmag(data, continuummodel, coeff)
 
+            # convert to nanomaggies
+            synth_bestmaggies *= 1e9
+
             log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
                 dn4000, meanage, absmag[1]))
 
@@ -1574,7 +1584,7 @@ class ContinuumFit(ContinuumTools):
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
-            title = 'Tile/thruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
+            title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
@@ -1664,7 +1674,8 @@ class ContinuumFit(ContinuumTools):
         ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
         ax.set_xticks([0.3, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0])
 
-        ax.set_title(title, fontsize=20)
+        if not self.nolegend:
+            ax.set_title(title, fontsize=20)
 
         # integrated flux / photometry
         #ax.scatter(phot['lambda_eff']/1e4, phot['abmag'],
@@ -1746,27 +1757,26 @@ class ContinuumFit(ContinuumTools):
         bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
         legfntsz = 20
 
-        txt = '\n'.join((
-            r'{}'.format(leg['absmag_r']),
-            r'{}'.format(leg['absmag_gr'])
-            ))
-        
-        legxpos, legypos = 0.04, 0.94
-        ax.text(legxpos, legypos, txt, ha='left', va='top',
-                transform=ax.transAxes, fontsize=legfntsz,
-                bbox=bbox)
-        
-        txt = '\n'.join((
-            r'{}'.format(leg['zredrock']),
-            r'{} {}'.format(leg['chi2'], leg['age']),
-            r'{}'.format(leg['AV']),
-            ))
-        
-        legxpos, legypos = 0.98, 0.06
-        ax.text(legxpos, legypos, txt, ha='right', va='bottom',
-                transform=ax.transAxes, fontsize=legfntsz,
-                bbox=bbox)
-
+        if not self.nolegend:
+            legxpos, legypos = 0.04, 0.94
+            txt = '\n'.join((
+                r'{}'.format(leg['absmag_r']),
+                r'{}'.format(leg['absmag_gr'])
+                ))
+            ax.text(legxpos, legypos, txt, ha='left', va='top',
+                    transform=ax.transAxes, fontsize=legfntsz,
+                    bbox=bbox)
+            
+            legxpos, legypos = 0.98, 0.06
+            txt = '\n'.join((
+                r'{}'.format(leg['zredrock']),
+                r'{} {}'.format(leg['chi2'], leg['age']),
+                r'{}'.format(leg['AV']),
+                ))
+            ax.text(legxpos, legypos, txt, ha='right', va='bottom',
+                    transform=ax.transAxes, fontsize=legfntsz,
+                    bbox=bbox)
+    
         plt.subplots_adjust(bottom=0.14, right=0.95, top=0.93)
 
         log.info('Writing {}'.format(pngfile))

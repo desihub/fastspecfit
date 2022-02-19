@@ -203,7 +203,8 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
         specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod, subdir)
 
     outdir = os.path.join(base_datadir, args.specprod, subdir)
-    htmldir = os.path.join(base_htmldir, args.specprod, subdir)
+    htmldir = os.path.join(base_datadir, args.specprod, 'html', subdir)
+    #htmldir = os.path.join(base_htmldir, args.specprod, subdir)
 
     def _findfiles(filedir, prefix='redrock'):
         if args.coadd_type == 'healpix':
@@ -213,7 +214,8 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
                     log.info('Building file list for survey {} and program {}'.format(survey, program))
                     if args.hpxpixel is not None:
                         for onepix in args.hpxpixel:
-                            _thesefiles = glob(os.path.join(filedir, survey, program, onepix, '{}-{}-{}-*.fits'.format(prefix, survey, program)))
+                            _thesefiles = glob(os.path.join(filedir, survey, program, str(int(onepix)//100), onepix,
+                                                            '{}-{}-{}-*.fits'.format(prefix, survey, program)))
                             thesefiles.append(_thesefiles)
                     else:
                         allpix = glob(os.path.join(filedir, survey, program, '*'))
@@ -223,13 +225,20 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             if len(thesefiles) > 0:
                 thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
         elif args.coadd_type == 'cumulative':
+            # Scrape the disk to get the tiles, but since we read the csv file I don't think this ever happens.
+            if args.tile is None:
+                tiledirs = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', '?????')))))
+                if len(tiledirs) > 0:
+                    args.tile = [int(os.path.basename(tiledir)) for tiledir in tiledirs]
             if args.tile is not None:
-                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                    filedir, 'cumulative', str(tile), '????????', '{}-[0-9]-{}-thru????????.fits'.format(
-                    prefix, tile))) for tile in args.tile]))))
-            else:
-                thesefiles = np.array(sorted(set(glob(os.path.join(
-                    filedir, 'cumulative', '?????', '????????', '{}-[0-9]-?????-thru????????.fits'.format(prefix))))))
+                thesefiles = []
+                for tile in args.tile:
+                    nightdirs = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', str(tile), '????????')))))
+                    if len(nightdirs) > 0:
+                        # for a given tile, take just the most recent night
+                        thisnightdir = nightdirs[-1]
+                        thesefiles.append(glob(os.path.join(thisnightdir, '{}-[0-9]-{}-thru????????.fits'.format(prefix, tile))))
+                thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
         elif args.coadd_type == 'pernight':
             if args.tile is not None and args.night is not None:
                 thesefiles = []
@@ -427,9 +436,12 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
 
     return outdir, redrockfiles, outfiles, groups, ntargets
 
-def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.'):
+def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.',
+                      supermerge=False):
     """Merge all the individual catalogs into a single large catalog. Runs only on
     rank 0.
+
+    supermerge - merge previously merged catalogs
 
     """
     import fitsio
@@ -446,23 +458,11 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
         outprefix = 'fastspec'
         extname = 'FASTSPEC'
 
-    #if args.coadd_type == 'healpix':
-    #    subdir = 'healpix'
-    #else:
-    #    subdir = 'tiles'
-    #outdir = os.path.join(base_datadir, args.specprod, subdir)
-
     mergedir = os.path.join(base_datadir, args.specprod, 'catalogs')
     if not os.path.isdir(mergedir):
         os.makedirs(mergedir, exist_ok=True)
 
-    #if args.coadd_type == 'deep-coadds':
-    #    mergeprefix = 'deep'
-    #elif args.coadd_type == 'night-coadds':
-    #    mergeprefix = ''
-    #elif args.coadd_type == 'night-coadds':
-
-    def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None):
+    def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None, mergefile=None):
         t0 = time.time()
         out, meta = [], []
         for outfile in outfiles:
@@ -478,12 +478,29 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
             meta.append(Table(info['METADATA'].read()))
         out = vstack(out)
         meta = vstack(meta)
+
+        # sort?
+        srt = np.argsort(meta['TARGETID'])
+        out = out[srt]
+        meta = meta[srt]
+        
         log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
             len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
         
         write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod,
-                          coadd_type=args.coadd_type, survey=survey, program=program,
-                          fastphot=fastphot)
+                          coadd_type=args.coadd_type, fastphot=fastphot)
+
+    # merge previously merged catalogs into one big catalog (and then return)
+    if supermerge:
+        _outfiles = os.path.join(mergedir, '{}-{}-*.fits'.format(outprefix, args.specprod))
+        outfiles = glob(_outfiles)
+        if len(outfiles) > 0:
+            log.info('Merging {} catalogs'.format(len(outfiles)))
+            mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, args.specprod))
+            _domerge(outfiles, extname=extname, mergefile=mergefile)
+        else:
+            log.info('No catalogs found: {}'.format(_outfiles))
+        return
 
     if args.coadd_type == 'healpix':
         surveys = copy(args.survey)
@@ -499,7 +516,7 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
                 _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
                                             specprod_dir=specprod_dir, base_datadir=base_datadir)
                 if len(outfiles) > 0:
-                    _domerge(outfiles, extname=extname, survey=survey, program=program)
+                    _domerge(outfiles, extname=extname, survey=survey, program=program, mergefile=mergefile)
     else:
         mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
         if os.path.isfile(mergefile) and not args.overwrite:
@@ -508,4 +525,4 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.')
         _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
                                     specprod_dir=specprod_dir, base_datadir=base_datadir)
         if len(outfiles) > 0:
-            _domerge(outfiles, extname=extname)
+            _domerge(outfiles, extname=extname, mergefile=mergefile)

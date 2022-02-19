@@ -55,12 +55,12 @@ def _tie_oiii_amp(model):
     """
     return model.oiii_5007_amp / 2.9839 # 2.8875
 
-def _tie_oii_blue_amp(model):
-    """
-    [O2] (2-->1): airwave: 3728.8145 vacwave: 3729.8750 emissivity: 1.948e-21
-    [O2] (3-->1): airwave: 3726.0322 vacwave: 3727.0919 emissivity: 1.444e-21
-    """
-    return model.oii_3729_amp / 1.3490
+#def _tie_oii_blue_amp(model):
+#    """
+#    [O2] (2-->1): airwave: 3728.8145 vacwave: 3729.8750 emissivity: 1.948e-21
+#    [O2] (3-->1): airwave: 3726.0322 vacwave: 3727.0919 emissivity: 1.444e-21
+#    """
+#    return model.oii_3729_amp / 1.3490
     
 def _tie_oii_red_amp(model):
     """
@@ -69,10 +69,22 @@ def _tie_oii_red_amp(model):
     """
     return model.oii_7320_amp / 1.9085
     
+#def _tie_siii_amp(model):
+#    """
+#    [S3] (4-->2): airwave: 9068.6140 vacwave: 9071.1034 emissivity: 8.10672e-21
+#    [S3] (4-->3): airwave: 9530.6129 vacwave: 9533.2274 emissivity: 2.00141e-20
+#    """
+#    return model.siii_9532_amp / 2.4688
+    
 def _tie_hbeta_sigma(model):
     return model.hbeta_sigma
 def _tie_hbeta_vshift(model):
     return model.hbeta_vshift
+
+def _tie_hbeta_broad_sigma(model):
+    return model.hbeta_broad_sigma
+def _tie_hbeta_broad_vshift(model):
+    return model.hbeta_broad_vshift
 
 def _tie_oiii_5007_sigma(model):
     return model.oiii_5007_sigma
@@ -108,39 +120,33 @@ def _tie_lines(model):
         linename = model.linetable['name'][iline]
 
         if model.inrange[iline] == False: # not in the wavelength range
-            setattr(model, '{}_amp'.format(linename), 0.0)
-            getattr(model, '{}_amp'.format(linename)).fixed = True
+            if linename not in model.doublet_names:
+                setattr(model, '{}_amp'.format(linename), 0.0)
+                getattr(model, '{}_amp'.format(linename)).fixed = True
             getattr(model, '{}_sigma'.format(linename)).fixed = True
             getattr(model, '{}_vshift'.format(linename)).fixed = True
 
-        # Balmer & He lines
-        if model.inrange[iline] and model.linetable['isbalmer'][iline] and linename != 'hbeta':
-            getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_sigma
-            getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_vshift
+        # broad Balmer lines
+        if model.inrange[iline] and model.linetable['isbalmer'][iline] and model.linetable['isbroad'][iline] and linename != 'hbeta_broad':
+            getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_broad_sigma
+            getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_broad_vshift
             
-        # broad lines
-        if model.inrange[iline] and model.linetable['isbroad'][iline] and model.linetable['isbalmer'][iline] == False:
+        # other broad lines
+        if model.inrange[iline] and (model.linetable['isbalmer'][iline] == False) and model.linetable['isbroad'][iline]:
             if linename == 'mgii_2796':
                 getattr(model, '{}_sigma'.format(linename)).tied = _tie_mgii_2803_sigma
                 getattr(model, '{}_vshift'.format(linename)).tied = _tie_mgii_2803_vshift
-            #if linename == 'civ_1548':
-            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_civ_1550_sigma
-            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_civ_1550_vshift
-            #if linename == 'siliv_1394':
-            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_siliv_1403_sigma
-            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_siliv_1403_vshift
-            #if linename == 'nv_1239':
-            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_nv_1243_sigma
-            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_nv_1243_vshift
             
-        # forbidden lines
-        if (model.inrange[iline] and model.linetable['isbroad'][iline] == False and
-            model.linetable['isbalmer'][iline] == False and linename != 'oiii_5007'):
+        # forbidden lines and narrow Balmer & He lines
+        if model.inrange[iline] and model.linetable['isbroad'][iline] == False and linename != 'oiii_5007':
+            #model.linetable['isbalmer'][iline] == False
+            #print(linename)
             getattr(model, '{}_sigma'.format(linename)).tied = _tie_oiii_5007_sigma
             getattr(model, '{}_vshift'.format(linename)).tied = _tie_oiii_5007_vshift
 
     #for pp in model.param_names:
     #    print(getattr(model, pp))
+    #pdb.set_trace()
     
     return model
 
@@ -301,129 +307,156 @@ class EMLineModel(Fittable1DModel):
     minsigma = 1.0
     maxsigma_narrow = 500.0
     maxsigma_broad = 5000.0
+    minsigma_balmer_broad = minsigma
 
     initsigma_narrow = 75.0
     initsigma_broad = 1000.0
 
+    #minamp = 0.0
     minamp = -1e3
     maxamp = +1e5
+    minamp_balmer_broad = minamp # 0.0
+
+    # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
+    # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
+    # self.doublet_names, below!
+    mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.5, 3.0]) # MgII 2796/2803
+    oii_doublet_ratio = Parameter(name='oii_doublet_ratio', default=0.74, bounds=[0.66, 1.4]) # [OII] 3726/3729
+    sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.67, 1.2]) # [SII] 6731/6716
+    mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
+    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=[minamp, maxamp])
+    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=[minamp, maxamp])
 
     # Fragile because the lines are hard-coded--
-    #nv_1239_amp = Parameter(name='nv_1239_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
-    #nv_1243_amp = Parameter(name='nv_1243_amp', default=3.0, bounds=[minamp, maxamp])
     oi_1304_amp = Parameter(name='oi_1304_amp', default=3.0, bounds=[minamp, maxamp])
-    #silii_1307_amp = Parameter(name='silii_1307_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
     siliv_1396_amp = Parameter(name='siliv_1396_amp', default=3.0, bounds=[minamp, maxamp])
-    #siliv_1403_amp = Parameter(name='siliv_1403_amp', default=3.0, bounds=[minamp, maxamp])
     civ_1549_amp = Parameter(name='civ_1549_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
     siliii_1892_amp = Parameter(name='siliii_1892_amp', default=3.0, bounds=[minamp, maxamp])
     ciii_1908_amp = Parameter(name='ciii_1908_amp', default=3.0, bounds=[minamp, maxamp])
-    mgii_2796_amp = Parameter(name='mgii_2796_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
-    mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
     nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=[minamp, maxamp])
     nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=[minamp, maxamp])
-    oii_3726_amp = Parameter(name='oii_3726_amp', default=1.0, bounds=[minamp, maxamp])
-    oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=[minamp, maxamp])
     neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=[minamp, maxamp])
     hei_3889_amp = Parameter(name='hei_3889_amp', default=0.3, bounds=[minamp, maxamp])
+    hei_broad_3889_amp = Parameter(name='hei_broad_3889_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
     h6_amp = Parameter(name='h6_amp', default=0.3, bounds=[minamp, maxamp])
+    h6_broad_amp = Parameter(name='h6_broad_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
     hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=[minamp, maxamp])
+    hepsilon_broad_amp = Parameter(name='hepsilon_broad_amp', default=0.5, bounds=[minamp_balmer_broad, maxamp])
     hdelta_amp = Parameter(name='hdelta_amp', default=0.5, bounds=[minamp, maxamp])
+    hdelta_broad_amp = Parameter(name='hdelta_broad_amp', default=0.5, bounds=[minamp_balmer_broad, maxamp])
     hgamma_amp = Parameter(name='hgamma_amp', default=0.5, bounds=[minamp, maxamp])
+    hgamma_broad_amp = Parameter(name='hgamma_broad_amp', default=0.5, bounds=[minamp_balmer_broad, maxamp])
     oiii_4363_amp = Parameter(name='oiii_4363_amp', default=0.3, bounds=[minamp, maxamp])
     hei_4471_amp = Parameter(name='hei_4471_amp', default=0.3, bounds=[minamp, maxamp])
+    hei_broad_4471_amp = Parameter(name='hei_broad_4471_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
     heii_4686_amp = Parameter(name='heii_4686_amp', default=0.3, bounds=[minamp, maxamp])
+    heii_broad_4686_amp = Parameter(name='heii_broad_4686_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
     hbeta_amp = Parameter(name='hbeta_amp', default=1.0, bounds=[minamp, maxamp])
+    hbeta_broad_amp = Parameter(name='hbeta_broad_amp', default=1.0, bounds=[minamp_balmer_broad, maxamp])
     oiii_4959_amp = Parameter(name='oiii_4959_amp', default=1.0, bounds=[minamp, maxamp])
     oiii_5007_amp = Parameter(name='oiii_5007_amp', default=3.0, bounds=[minamp, maxamp])
     nii_5755_amp = Parameter(name='nii_5755_amp', default=0.3, bounds=[minamp, maxamp])
     hei_5876_amp = Parameter(name='hei_5876_amp', default=0.3, bounds=[minamp, maxamp])
+    hei_broad_5876_amp = Parameter(name='hei_broad_5876_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
     oi_6300_amp = Parameter(name='oi_6300_amp', default=0.3, bounds=[minamp, maxamp])
     nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=[minamp, maxamp])
     halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=[minamp, maxamp])
+    halpha_broad_amp = Parameter(name='halpha_broad_amp', default=3.0, bounds=[minamp_balmer_broad, maxamp])
     nii_6584_amp = Parameter(name='nii_6584_amp', default=3.0, bounds=[minamp, maxamp])
-    sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=[minamp, maxamp])
-    sii_6731_amp = Parameter(name='sii_6731_amp', default=1.0, bounds=[minamp, maxamp])
     oii_7320_amp = Parameter(name='oii_7320_amp', default=1.0, bounds=[minamp, maxamp])
     oii_7330_amp = Parameter(name='oii_7330_amp', default=1.0, bounds=[minamp, maxamp])
     siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=[minamp, maxamp])
-    siii_9532_amp = Parameter(name='siii_9532_amp', default=0.3, bounds=[minamp, maxamp])
+    siii_9532_amp = Parameter(name='siii_9532_amp', default=1.0, bounds=[minamp, maxamp])
 
-    #nv_1239_vshift = Parameter(name='nv_1239_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    #nv_1243_vshift = Parameter(name='nv_1243_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    mgii_2803_vshift = Parameter(name='mgii_2803_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    oii_3729_vshift = Parameter(name='oii_3729_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    
     oi_1304_vshift = Parameter(name='oi_1304_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    #silii_1307_vshift = Parameter(name='silii_1307_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     siliv_1396_vshift = Parameter(name='siliv_1396_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    #siliv_1403_vshift = Parameter(name='siliv_1403_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     civ_1549_vshift = Parameter(name='civ_1549_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     siliii_1892_vshift = Parameter(name='siliii_1892_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     ciii_1908_vshift = Parameter(name='ciii_1908_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    mgii_2803_vshift = Parameter(name='mgii_2803_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     nev_3346_vshift = Parameter(name='nev_3346_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     nev_3426_vshift = Parameter(name='nev_3426_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
-    oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
-    oii_3729_vshift = Parameter(name='oii_3729_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     hei_3889_vshift = Parameter(name='hei_3889_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hei_broad_3889_vshift = Parameter(name='hei_broad_3889_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     h6_vshift = Parameter(name='h6_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    h6_broad_vshift = Parameter(name='h6_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     hepsilon_vshift = Parameter(name='hepsilon_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hepsilon_broad_vshift = Parameter(name='hepsilon_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     hdelta_vshift = Parameter(name='hdelta_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hdelta_broad_vshift = Parameter(name='hdelta_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     hgamma_vshift = Parameter(name='hgamma_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hgamma_broad_vshift = Parameter(name='hgamma_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oiii_4363_vshift = Parameter(name='oiii_4363_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     hei_4471_vshift = Parameter(name='hei_4471_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hei_broad_4471_vshift = Parameter(name='hei_broad_4471_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     heii_4686_vshift = Parameter(name='heii_4686_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    heii_broad_4686_vshift = Parameter(name='heii_broad_4686_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     hbeta_vshift = Parameter(name='hbeta_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hbeta_broad_vshift = Parameter(name='hbeta_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oiii_4959_vshift = Parameter(name='oiii_4959_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     oiii_5007_vshift = Parameter(name='oiii_5007_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     nii_5755_vshift = Parameter(name='nii_5755_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     hei_5876_vshift = Parameter(name='hei_5876_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    hei_broad_5876_vshift = Parameter(name='hei_broad_5876_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oi_6300_vshift = Parameter(name='oi_6300_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     nii_6548_vshift = Parameter(name='nii_6548_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     halpha_vshift = Parameter(name='halpha_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    halpha_broad_vshift = Parameter(name='halpha_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     nii_6584_vshift = Parameter(name='nii_6584_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
-    sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
-    sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     oii_7320_vshift = Parameter(name='oii_7320_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     oii_7330_vshift = Parameter(name='oii_7330_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
 
-    #nv_1239_sigma = Parameter(name='nv_1239_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    #nv_1243_sigma = Parameter(name='nv_1243_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+
     oi_1304_sigma = Parameter(name='oi_1304_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    #silii_1307_sigma = Parameter(name='silii_1307_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     siliv_1396_sigma = Parameter(name='siliv_1396_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    #siliv_1403_sigma = Parameter(name='siliv_1403_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     civ_1549_sigma = Parameter(name='civ_1549_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     siliii_1892_sigma = Parameter(name='siliii_1892_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     ciii_1908_sigma = Parameter(name='ciii_1908_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    hei_3889_sigma = Parameter(name='hei_3889_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    h6_sigma = Parameter(name='h6_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hei_3889_sigma = Parameter(name='hei_3889_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hei_broad_3889_sigma = Parameter(name='hei_broad_3889_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
+    h6_sigma = Parameter(name='h6_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    h6_broad_sigma = Parameter(name='h6_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
+    hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hepsilon_broad_sigma = Parameter(name='hepsilon_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
+    hdelta_sigma = Parameter(name='hdelta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hdelta_broad_sigma = Parameter(name='hdelta_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
+    hgamma_sigma = Parameter(name='hgamma_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hgamma_broad_sigma = Parameter(name='hgamma_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     oiii_4363_sigma = Parameter(name='oiii_4363_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    hei_4471_sigma = Parameter(name='hei_4471_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    heii_4686_sigma = Parameter(name='heii_4686_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
-    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hei_4471_sigma = Parameter(name='hei_4471_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hei_broad_4471_sigma = Parameter(name='hei_broad_4471_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
+    heii_4686_sigma = Parameter(name='heii_4686_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    heii_broad_4686_sigma = Parameter(name='heii_broad_4686_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
+    hbeta_sigma = Parameter(name='hbeta_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hbeta_broad_sigma = Parameter(name='hbeta_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     oiii_4959_sigma = Parameter(name='oiii_4959_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oiii_5007_sigma = Parameter(name='oiii_5007_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nii_5755_sigma = Parameter(name='nii_5755_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    hei_5876_sigma = Parameter(name='hei_5876_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    hei_5876_sigma = Parameter(name='hei_5876_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    hei_broad_5876_sigma = Parameter(name='hei_broad_5876_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     oi_6300_sigma = Parameter(name='oi_6300_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_broad])
+    halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    halpha_broad_sigma = Parameter(name='halpha_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     nii_6584_sigma = Parameter(name='nii_6584_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oii_7320_sigma = Parameter(name='oii_7320_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     oii_7330_sigma = Parameter(name='oii_7330_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     siii_9069_sigma = Parameter(name='siii_9069_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
@@ -431,125 +464,146 @@ class EMLineModel(Fittable1DModel):
 
     nii_6548_amp.tied = _tie_nii_amp
     oiii_4959_amp.tied = _tie_oiii_amp
-    oii_3726_amp.tied = _tie_oii_blue_amp
     oii_7330_amp.tied = _tie_oii_red_amp
+    #siii_9069_amp.tied = _tie_siii_amp
     
     def __init__(self,
-                 #nv_1239_amp=nv_1239_amp.default,
-                 #nv_1243_amp=nv_1243_amp.default,
+                 mgii_doublet_ratio=mgii_doublet_ratio.default,
+                 oii_doublet_ratio=oii_doublet_ratio.default,
+                 sii_doublet_ratio=sii_doublet_ratio.default,
+                 mgii_2803_amp=mgii_2803_amp.default,
+                 oii_3729_amp=oii_3729_amp.default,
+                 sii_6716_amp=sii_6716_amp.default,
+                     
                  oi_1304_amp=oi_1304_amp.default,
-                 #silii_1307_amp=silii_1307_amp.default,
                  siliv_1396_amp=siliv_1396_amp.default,
-                 #siliv_1403_amp=siliv_1403_amp.default,
                  civ_1549_amp=civ_1549_amp.default,
                  siliii_1892_amp=siliii_1892_amp.default,
                  ciii_1908_amp=ciii_1908_amp.default,
-                 mgii_2796_amp=mgii_2796_amp.default,
-                 mgii_2803_amp=mgii_2803_amp.default,
                  nev_3346_amp=nev_3346_amp.default,
                  nev_3426_amp=nev_3426_amp.default,
-                 oii_3726_amp=oii_3726_amp.default,
-                 oii_3729_amp=oii_3729_amp.default,
                  neiii_3869_amp=neiii_3869_amp.default,
                  hei_3889_amp=hei_3889_amp.default,
+                 hei_broad_3889_amp=hei_broad_3889_amp.default,
                  h6_amp=h6_amp.default,
+                 h6_broad_amp=h6_broad_amp.default,
                  hepsilon_amp=hepsilon_amp.default,
+                 hepsilon_broad_amp=hepsilon_broad_amp.default,
                  hdelta_amp=hdelta_amp.default,
+                 hdelta_broad_amp=hdelta_broad_amp.default,
                  hgamma_amp=hgamma_amp.default,
+                 hgamma_broad_amp=hgamma_broad_amp.default,
                  oiii_4363_amp=oiii_4363_amp.default,
                  hei_4471_amp=hei_4471_amp.default,
+                 hei_broad_4471_amp=hei_broad_4471_amp.default,
                  heii_4686_amp=heii_4686_amp.default,
+                 heii_broad_4686_amp=heii_broad_4686_amp.default,
                  hbeta_amp=hbeta_amp.default,
+                 hbeta_broad_amp=hbeta_broad_amp.default,
                  oiii_4959_amp=oiii_4959_amp.default,
                  oiii_5007_amp=oiii_5007_amp.default,
                  nii_5755_amp=nii_5755_amp.default,
                  hei_5876_amp=hei_5876_amp.default,
+                 hei_broad_5876_amp=hei_broad_5876_amp.default,
                  oi_6300_amp=oi_6300_amp.default,
                  nii_6548_amp=nii_6548_amp.default,
                  halpha_amp=halpha_amp.default,
+                 halpha_broad_amp=halpha_broad_amp.default,
                  nii_6584_amp=nii_6584_amp.default,
-                 sii_6716_amp=sii_6716_amp.default,
-                 sii_6731_amp=sii_6731_amp.default,
                  oii_7320_amp=oii_7320_amp.default,
                  oii_7330_amp=oii_7330_amp.default,
                  siii_9069_amp=siii_9069_amp.default,
                  siii_9532_amp=siii_9532_amp.default,
-                     
-                 #nv_1239_vshift=nv_1239_vshift.default,
-                 #nv_1243_vshift=nv_1243_vshift.default,
+
+                 mgii_2796_vshift=mgii_2796_vshift.default,
+                 oii_3726_vshift=oii_3726_vshift.default,
+                 sii_6731_vshift=sii_6731_vshift.default,
+                 mgii_2803_vshift=mgii_2803_vshift.default,
+                 oii_3729_vshift=oii_3729_vshift.default,
+                 sii_6716_vshift=sii_6716_vshift.default,
+
                  oi_1304_vshift=oi_1304_vshift.default,
-                 #silii_1307_vshift=silii_1307_vshift.default,
                  siliv_1396_vshift=siliv_1396_vshift.default,
-                 #siliv_1403_vshift=siliv_1403_vshift.default,
                  civ_1549_vshift=civ_1549_vshift.default,
                  siliii_1892_vshift=siliii_1892_vshift.default,
                  ciii_1908_vshift=ciii_1908_vshift.default,
-                 mgii_2796_vshift=mgii_2796_vshift.default,
-                 mgii_2803_vshift=mgii_2803_vshift.default,
                  nev_3346_vshift=nev_3346_vshift.default,
                  nev_3426_vshift=nev_3426_vshift.default,
-                 oii_3726_vshift=oii_3726_vshift.default,
-                 oii_3729_vshift=oii_3729_vshift.default,
                  neiii_3869_vshift=neiii_3869_vshift.default,
                  hei_3889_vshift=hei_3889_vshift.default,
+                 hei_broad_3889_vshift=hei_broad_3889_vshift.default,
                  h6_vshift=h6_vshift.default,
+                 h6_broad_vshift=h6_broad_vshift.default,
                  hepsilon_vshift=hepsilon_vshift.default,
+                 hepsilon_broad_vshift=hepsilon_broad_vshift.default,
                  hdelta_vshift=hdelta_vshift.default,
+                 hdelta_broad_vshift=hdelta_broad_vshift.default,
                  hgamma_vshift=hgamma_vshift.default,
+                 hgamma_broad_vshift=hgamma_broad_vshift.default,
                  oiii_4363_vshift=oiii_4363_vshift.default,
                  hei_4471_vshift=hei_4471_vshift.default,
+                 hei_broad_4471_vshift=hei_broad_4471_vshift.default,
                  heii_4686_vshift=heii_4686_vshift.default,
+                 heii_broad_4686_vshift=heii_broad_4686_vshift.default,
                  hbeta_vshift=hbeta_vshift.default,
+                 hbeta_broad_vshift=hbeta_broad_vshift.default,
                  oiii_4959_vshift=oiii_4959_vshift.default,
                  oiii_5007_vshift=oiii_5007_vshift.default,
                  nii_5755_vshift=nii_5755_vshift.default,
                  hei_5876_vshift=hei_5876_vshift.default,
+                 hei_broad_5876_vshift=hei_broad_5876_vshift.default,
                  oi_6300_vshift=oi_6300_vshift.default,
                  nii_6548_vshift=nii_6548_vshift.default,
                  halpha_vshift=halpha_vshift.default,
+                 halpha_broad_vshift=halpha_broad_vshift.default,
                  nii_6584_vshift=nii_6584_vshift.default,
-                 sii_6716_vshift=sii_6716_vshift.default,
-                 sii_6731_vshift=sii_6731_vshift.default,
                  oii_7320_vshift=oii_7320_vshift.default,
                  oii_7330_vshift=oii_7330_vshift.default,
                  siii_9069_vshift=siii_9069_vshift.default,
                  siii_9532_vshift=siii_9532_vshift.default,
-                     
-                 #nv_1239_sigma=nv_1239_sigma.default,
-                 #nv_1243_sigma=nv_1243_sigma.default,
+
+                 mgii_2796_sigma=mgii_2796_sigma.default,
+                 oii_3726_sigma=oii_3726_sigma.default,
+                 sii_6731_sigma=sii_6731_sigma.default,
+                 mgii_2803_sigma=mgii_2803_sigma.default,
+                 oii_3729_sigma=oii_3729_sigma.default,
+                 sii_6716_sigma=sii_6716_sigma.default,
+                 
                  oi_1304_sigma=oi_1304_sigma.default,
-                 #silii_1307_sigma=silii_1307_sigma.default,
                  siliv_1396_sigma=siliv_1396_sigma.default,
-                 #siliv_1403_sigma=siliv_1403_sigma.default,
                  civ_1549_sigma=civ_1549_sigma.default,
                  siliii_1892_sigma=siliii_1892_sigma.default,
                  ciii_1908_sigma=ciii_1908_sigma.default,
-                 mgii_2796_sigma=mgii_2796_sigma.default,
-                 mgii_2803_sigma=mgii_2803_sigma.default,
                  nev_3346_sigma=nev_3346_sigma.default,
                  nev_3426_sigma=nev_3426_sigma.default,
-                 oii_3726_sigma=oii_3726_sigma.default,
-                 oii_3729_sigma=oii_3729_sigma.default,
                  neiii_3869_sigma=neiii_3869_sigma.default,
                  hei_3889_sigma=hei_3889_sigma.default,
+                 hei_broad_3889_sigma=hei_broad_3889_sigma.default,
                  h6_sigma=h6_sigma.default,
+                 h6_broad_sigma=h6_broad_sigma.default,
                  hepsilon_sigma=hepsilon_sigma.default,
+                 hepsilon_broad_sigma=hepsilon_broad_sigma.default,
                  hdelta_sigma=hdelta_sigma.default,
+                 hdelta_broad_sigma=hdelta_broad_sigma.default,
                  hgamma_sigma=hgamma_sigma.default,
+                 hgamma_broad_sigma=hgamma_broad_sigma.default,
                  oiii_4363_sigma=oiii_4363_sigma.default,
                  hei_4471_sigma=hei_4471_sigma.default,
+                 hei_broad_4471_sigma=hei_broad_4471_sigma.default,
                  heii_4686_sigma=heii_4686_sigma.default,
+                 heii_broad_4686_sigma=heii_broad_4686_sigma.default,
                  hbeta_sigma=hbeta_sigma.default,
+                 hbeta_broad_sigma=hbeta_broad_sigma.default,
                  oiii_4959_sigma=oiii_4959_sigma.default,
                  oiii_5007_sigma=oiii_5007_sigma.default,
                  nii_5755_sigma=nii_5755_sigma.default,
                  hei_5876_sigma=hei_5876_sigma.default,
+                 hei_broad_5876_sigma=hei_broad_5876_sigma.default,
                  oi_6300_sigma=oi_6300_sigma.default,
                  nii_6548_sigma=nii_6548_sigma.default,
                  halpha_sigma=halpha_sigma.default,
+                 halpha_broad_sigma=halpha_broad_sigma.default,
                  nii_6584_sigma=nii_6584_sigma.default,
-                 sii_6716_sigma=sii_6716_sigma.default,
-                 sii_6731_sigma=sii_6731_sigma.default,
                  oii_7320_sigma=oii_7320_sigma.default,
                  oii_7330_sigma=oii_7330_sigma.default,
                  siii_9069_sigma=siii_9069_sigma.default,
@@ -570,10 +624,19 @@ class EMLineModel(Fittable1DModel):
         """
         super().__init__()        
 
-        self.linetable = read_emlines()
-        self.nline = len(self.linetable)
-        self.linenames = np.array([linename.replace('_amp', '') for linename in self.param_names[:self.nline]])
+        # re-arrange the default linetable according to our parameters
+        linetable = read_emlines()
+        self.nline = len(linetable)
+        self.linenames = np.array([linename.replace('_sigma', '') for linename in self.param_names[-self.nline:]])
+        
+        lineindx = np.hstack([np.where(linetable['name'] == linename)[0] for linename in self.linenames])
+        self.linetable = linetable[lineindx]
+        
+        #self.restlinewaves = np.hstack([self.linetable['restwave'][self.linetable['name'] == linename] for linename in self.linenames])
         self.restlinewaves = self.linetable['restwave'].data
+
+        self.doublet_names = ['mgii_2796', 'oii_3726', 'sii_6731']
+        self.ndoublet = len(self.doublet_names)
 
         self.redshift = redshift
         self.emlineR = emlineR
@@ -592,7 +655,7 @@ class EMLineModel(Fittable1DModel):
         if wavelims[1] is None:
             wavelims[1] = 10**np.max(log10wave)
             
-        zline = self.linetable['restwave'] * (1 + self.redshift)
+        zline = self.restlinewaves * (1 + self.redshift)
         #self.inrange = (zline > 4600) * (zline < 6300)
         self.inrange = (zline > (wavelims[0]+10)) * (zline < (wavelims[1]-10))
 
@@ -605,10 +668,27 @@ class EMLineModel(Fittable1DModel):
         # build the emission-line model [erg/s/cm2/A, observed frame]
 
         """
+        # carefull parse the parameters (order matters!)
+        linesplit = np.array_split(lineargs, 3) # 3 parameters per line
+        linevshifts = np.hstack(linesplit[1])
+        linesigmas = np.hstack(linesplit[2])
+
+        # stupidly hard-coded
+        _lineamps = np.hstack(linesplit[0])
+        doublet_ratios = _lineamps[:self.ndoublet]
+        doublet_amps = _lineamps[self.ndoublet:2*self.ndoublet] * doublet_ratios
+        lineamps = np.hstack((doublet_amps, _lineamps[self.ndoublet:]))
+        #print(doublet_ratios)
+
+        # cut to lines in range
+        linevshifts = linevshifts[self.inrange]
+        linesigmas = linesigmas[self.inrange]
+        lineamps = lineamps[self.inrange]
+
         #linenames = self.linenames[self.inrange]
-        lineamps = np.hstack(lineargs[0:self.nline])[self.inrange]
-        linevshifts = np.hstack(lineargs[self.nline:2*self.nline])[self.inrange]
-        linesigmas = np.hstack(lineargs[2*self.nline:])[self.inrange]
+        #lineamps = np.hstack(lineargs[0:self.nline])[self.inrange]
+        #linevshifts = np.hstack(lineargs[self.nline:2*self.nline])[self.inrange]
+        #linesigmas = np.hstack(lineargs[2*self.nline:])[self.inrange]
 
         # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
         log10sigmas = linesigmas / C_LIGHT / np.log(10) 
@@ -662,7 +742,7 @@ class EMLineFit(ContinuumTools):
 
     """
     def __init__(self, nball=10, chi2fail=1e6, minwave=3000.0,
-                 maxwave=10000.0, pixkms=10.0):
+                 maxwave=10000.0, pixkms=10.0, nolegend=False):
         """Write me.
         
         """
@@ -672,6 +752,7 @@ class EMLineFit(ContinuumTools):
         
         self.nball = nball
         self.chi2fail = chi2fail
+        self.nolegend = nolegend
 
         self.pixkms = 10.0 # pixel size for internal wavelength array [km/s]
         self.dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
@@ -710,6 +791,11 @@ class EMLineFit(ContinuumTools):
         #out.add_column(Column(name='FORBIDDEN_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
         out.add_column(Column(name='BROAD_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
         #out.add_column(Column(name='BROAD_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+
+        # special columns for the fitted doublets
+        out.add_column(Column(name='MGII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+        out.add_column(Column(name='OII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+        out.add_column(Column(name='SII_DOUBLET_RATIO', length=nobj, dtype='f4'))
 
         for line in linetable['name']:
             line = line.upper()
@@ -770,7 +856,8 @@ class EMLineFit(ContinuumTools):
             redshift=redshift, emlineR=specres,
             npixpercamera=npixpercamera,
             log10wave=self.log10wave)
-        
+
+        # old parameter model
         lineargs = [fastspecfit_table[linename.upper()] for linename in EMLine.param_names]#[4:]]
         
         _emlinemodel = EMLine.evaluate(np.hstack(specwave), *lineargs)
@@ -837,6 +924,8 @@ class EMLineFit(ContinuumTools):
             for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
                 if linename in init.keys():
                     continue
+                if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): # skip the physical doublets
+                    continue
                 npix = len(linepix)
                 if npix > 5:
                     mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
@@ -846,20 +935,33 @@ class EMLineFit(ContinuumTools):
                         mxpx = len(data['flux'][icam])
                     amp = np.max(data['flux'][icam][mnpx:mxpx])
                 else:
-                    amp = np.max(data['flux'][icam][linepix])
+                    amp = np.percentile(data['flux'][icam][linepix], 97.5)
+
+                # update the bounds on the line-amplitude
+                bounds = [-np.min(np.abs(data['flux'][icam][linepix])), 2*np.max(data['flux'][icam][linepix])]
+                
+                ## force broad lines to be positive
+                #if 'broad' in linename:
+                #    bounds = [0.0, 2*np.max(data['flux'][icam][linepix])]
+                #else:
+                #    bounds = [-np.min(np.abs(data['flux'][icam][linepix])), 2*np.max(data['flux'][icam][linepix])]
+                
                 #print(linename, amp)
                 #if 'alpha' in linename:
                 #    pdb.set_trace()
+                
                 setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
+                getattr(self.EMLineModel, '{}_amp'.format(linename)).bounds = bounds
                 #getattr(self.EMLineModel, '{}_amp'.format(linename)).default = amp
-                #if '4686' in linename:
+                #if 'halpha' in linename:
                 #    pdb.set_trace()
                 init.update({linename: amp})
                 
         self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)
         self.EMLineModel.oiii_4959_amp = _tie_oiii_amp(self.EMLineModel)
-        self.EMLineModel.oii_3726_amp = _tie_oii_blue_amp(self.EMLineModel)
+        #self.EMLineModel.oii_3726_amp = _tie_oii_blue_amp(self.EMLineModel)
         self.EMLineModel.oii_7330_amp = _tie_oii_red_amp(self.EMLineModel)
+        #self.EMLineModel.siii_9069_amp = _tie_siii_amp(self.EMLineModel)
 
         fitter = FastLevMarLSQFitter(self.EMLineModel)
 
@@ -867,6 +969,7 @@ class EMLineFit(ContinuumTools):
         bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
         log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
+        #pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
@@ -877,11 +980,14 @@ class EMLineFit(ContinuumTools):
         # *all* lines (not just those in range).
         initkeys = init.keys()
         for linename in self.linetable['name'].data:
-            #if not hasattr(bestfit, '{}_amp'.format(linename)): # line not fitted
-            #    continue
+            if not hasattr(bestfit, '{}_amp'.format(linename)): # skip the physical doubleta
+                continue
             amp = getattr(bestfit, '{}_amp'.format(linename))
             sigma = getattr(bestfit, '{}_sigma'.format(linename))
             vshift = getattr(bestfit, '{}_vshift'.format(linename))
+
+            #if linename == 'oii_3729':
+            #    pdb.set_trace()
 
             # drop the line if:
             #  sigma = 0, amp = default, or amp = max bound (not optimized!)
@@ -893,6 +999,18 @@ class EMLineFit(ContinuumTools):
                 setattr(bestfit, '{}_sigma'.format(linename), sigma.default)
                 setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
 
+        # Now loop back through and drop Broad balmer lines that are narrower
+        # than their narrow-line counterparts.
+        IB = self.linetable['isbalmer'] * self.linetable['isbroad']
+        for linename in self.linetable['name'][IB]:
+            sigma = getattr(bestfit, '{}_sigma'.format(linename.replace('_broad', ''))) # fragile
+            sigma_broad = getattr(bestfit, '{}_sigma'.format(linename))
+            if sigma_broad <= sigma:
+                vshift = getattr(bestfit, '{}_vshift'.format(linename))
+                setattr(bestfit, '{}_amp'.format(linename), 0.0)
+                setattr(bestfit, '{}_sigma'.format(linename), sigma_broad.default)
+                setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
+                
         ## special case the tied doublets
         #if bestfit.nii_6584_amp == 0.0 and bestfit.nii_6548_amp != 0.0:
         #    bestfit.nii_6548_amp = 0.0
@@ -905,9 +1023,20 @@ class EMLineFit(ContinuumTools):
         for pp in bestfit.param_names:
             pinfo = getattr(bestfit, pp)
             val = pinfo.value
-            result[pinfo.name.upper()] = val
-                
-        emlinemodel = bestfit(emlinewave)
+            # special case the tied doublets
+            if pp == 'mgii_doublet_ratio':
+                result['MGII_DOUBLET_RATIO'] = val
+                result['MGII_2796_AMP'] = val * bestfit.mgii_2803_amp
+            elif pp == 'oii_doublet_ratio':
+                result['OII_DOUBLET_RATIO'] = val
+                result['OII_3726_AMP'] = val * bestfit.oii_3729_amp
+            elif pp == 'sii_doublet_ratio':
+                result['SII_DOUBLET_RATIO'] = val
+                result['SII_6731_AMP'] = val * bestfit.sii_6716_amp
+            else:
+                result[pinfo.name.upper()] = val
+
+        emlinemodel = bestfit(emlinewave) # FixMe -- only build for "significant" lines.
         chi2 = self.chi2(bestfit, emlinewave, emlineflux, emlineivar)
 
         # Synthesize photometry from the best-fitting model (continuum+emission lines).
@@ -1011,7 +1140,7 @@ class EMLineFit(ContinuumTools):
 
                 # only use 3-sigma lines
                 if result['{}_AMP'.format(linename)] * np.sqrt(result['{}_AMP_IVAR'.format(linename)]) > 3:
-                    if oneline['isbalmer']:
+                    if oneline['isbalmer'] and oneline['isbroad']:
                         balmer_sigmas.append(linesigma)
                         balmer_redshifts.append(linez)
                     elif oneline['isbroad']:
@@ -1196,8 +1325,8 @@ class EMLineFit(ContinuumTools):
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
-            title = 'Tile/Coadd: {}/{}, TargetID/Fiber: {}/{}'.format(
-                    metadata['TILEID'], coadd_type, metadata['TARGETID'], metadata['FIBER'])
+            title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
@@ -1337,18 +1466,19 @@ class EMLineFit(ContinuumTools):
 
         bigax1.plot(np.hstack(data['wave']), _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
 
-        txt = '\n'.join((
-            r'{}'.format(leg['zredrock']),
-            r'{} {}'.format(leg['chi2'], leg['age']),
-            r'{}'.format(leg['AV']),
-            #r'{}'.format(leg['vdisp']),
-            ))
-        bigax1.text(legxpos, legypos, txt, ha='right', va='top',
-                    transform=bigax1.transAxes, fontsize=legfntsz,
-                    bbox=bbox)
         bigax1.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
-                    ha='left', va='center', transform=bigax1.transAxes, fontsize=22)
-        bigax1.set_title(title, fontsize=22)
+                    ha='left', va='center', transform=bigax1.transAxes, fontsize=30)
+        if not self.nolegend:
+            txt = '\n'.join((
+                r'{}'.format(leg['zredrock']),
+                r'{} {}'.format(leg['chi2'], leg['age']),
+                r'{}'.format(leg['AV']),
+                #r'{}'.format(leg['vdisp']),
+                ))
+            bigax1.text(legxpos, legypos, txt, ha='right', va='top',
+                        transform=bigax1.transAxes, fontsize=legfntsz,
+                        bbox=bbox)
+            bigax1.set_title(title, fontsize=22)
         
         bigax1.set_xlim(wavelims)
         bigax1.set_ylim(ymin, ymax)
@@ -1395,17 +1525,18 @@ class EMLineFit(ContinuumTools):
                 ymax = np.max(emlinemodel) * 1.2
             #print(ymin, ymax)
 
-        txt = '\n'.join((
-            r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),
-            r'{} {}'.format(leg['dv_forbid'], leg['sigma_forbid']),
-            r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),
-            ))
-        bigax2.text(legxpos, legypos, txt, ha='right', va='top',
-                    transform=bigax2.transAxes, fontsize=legfntsz,
-                    bbox=bbox)
+        if not self.nolegend:
+            txt = '\n'.join((
+                r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),
+                r'{} {}'.format(leg['dv_forbid'], leg['sigma_forbid']),
+                r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),
+                ))
+            bigax2.text(legxpos, legypos, txt, ha='right', va='top',
+                        transform=bigax2.transAxes, fontsize=legfntsz,
+                        bbox=bbox)
         bigax2.text(0.03, 0.9, 'Residual Spectrum + Emission-Line Model',
                     ha='left', va='center', transform=bigax2.transAxes,
-                    fontsize=22)
+                    fontsize=30)
                 
         bigax2.set_xlim(wavelims)
         bigax2.set_ylim(ymin, ymax)
@@ -1415,6 +1546,7 @@ class EMLineFit(ContinuumTools):
         
         # zoom in on individual emission lines - use linetable!
         plotsig_default = 200.0 # [km/s]
+        plotsig_default_balmer = 500.0 # [km/s]
         plotsig_default_broad = 2000.0 # [km/s]
 
         meanwaves, deltawaves, sigmas, linenames = [], [], [], []
@@ -1425,13 +1557,14 @@ class EMLineFit(ContinuumTools):
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
             if np.any(self.linetable['isbroad'][I]):
-                plotsig = fastspec['BROAD_SIGMA']
-                if plotsig == 0:
-                    plotsig = plotsig_default_broad
-            elif np.any(self.linetable['isbalmer'][I]):
-                plotsig = np.max((fastspec['BALMER_SIGMA'], fastspec['FORBIDDEN_SIGMA']))
-                if plotsig < 50:
-                    plotsig = plotsig_default
+                if np.any(self.linetable['isbalmer'][I]):
+                    plotsig = fastspec['BALMER_SIGMA']
+                    if plotsig < 50:
+                        plotsig = plotsig_default_balmer
+                else:
+                    plotsig = fastspec['BROAD_SIGMA']
+                    if plotsig < 50:
+                        plotsig = plotsig_default_broad
             else:
                 plotsig = fastspec['FORBIDDEN_SIGMA']
                 if plotsig < 50:
@@ -1522,13 +1655,16 @@ class EMLineFit(ContinuumTools):
                 #    pdb.set_trace()
 
         # common axis labels
-        tp, bt, lf, rt = 0.95, 0.09, 0.10, 0.94
+        tp, bt, lf, rt = 0.95, 0.08, 0.10, 0.94
         
-        fig.text(lf-0.07, (tp-bt)/2+bt,
+        fig.text(lf-0.07, (tp-bt)/4+bt+(tp-bt)/1.9,
                  r'Flux Density ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
-                 ha='center', va='center', rotation='vertical')
-        fig.text((rt-lf)/2+lf, bt-0.05, r'Observed-frame Wavelength ($\AA$)',
-                 ha='center', va='center')
+                 ha='center', va='center', rotation='vertical', fontsize=30)
+        fig.text(lf-0.07, (tp-bt)/4+bt,
+                 r'Flux Density ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
+                 ha='center', va='center', rotation='vertical', fontsize=30)
+        fig.text((rt-lf)/2+lf, bt-0.04, r'Observed-frame Wavelength ($\AA$)',
+                 ha='center', va='center', fontsize=30)
             
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
 

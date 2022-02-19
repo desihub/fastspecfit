@@ -202,18 +202,24 @@ class DESISpectra(object):
             else:
                 if ired == 0:
                     hdr = fitsio.read_header(specfile, ext=0)
-                    if 'HPXPIXEL' in hdr:
-                        coadd_type = 'healpix'
-                        hpxpixel = np.int32(hdr['HPXPIXEL'])
+                    # Fuji & Guadalupe headers
+                    if 'SPGRP' in hdr:
+                        coadd_type = hdr['SPGRP']
+                        if coadd_type == 'healpix':
+                            hpxpixel = np.int32(hdr['HPXPIXEL'])
                     else:
-                        import re
-                        if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
-                            coadd_type = 'cumulative'
-                        elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
-                            coadd_type = 'pernight'
+                        if 'HPXPIXEL' in hdr:
+                            coadd_type = 'healpix'
+                            hpxpixel = np.int32(hdr['HPXPIXEL'])
                         else:
-                            coadd_type = 'perexp'
-                    self.coadd_type = coadd_type
+                            import re
+                            if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
+                                coadd_type = 'cumulative'
+                            elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
+                                coadd_type = 'pernight'
+                            else:
+                                coadd_type = 'perexp'
+                        self.coadd_type = coadd_type
             log.info('Parsed coadd_type={}'.format(coadd_type))
     
             # Figure out which fibermap columns to put into the metadata
@@ -321,7 +327,6 @@ class DESISpectra(object):
             else:
                 zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=zbcols))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=fmcols))
-
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
             # Get the unique set of tiles contributing to the coadded spectra from EXP_FIBERMAP
@@ -335,6 +340,9 @@ class DESISpectra(object):
                 expmeta['TILEID'] = 80715 # M31 hack!
 
             tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
+
+            # build the list of tiles that went into each unique target / coadd
+            meta['TILEID_LIST'] = [' '.join(np.unique(expmeta[tid == expmeta['TARGETID']]['TILEID']).astype(str)) for tid in meta['TARGETID']]
 
             ## this code is good for vetoing specific tiles
             #if False:
@@ -572,7 +580,7 @@ class DESISpectra(object):
                         bad = np.logical_or(targets[col] < 0, np.isnan(targets[col]))
                         if np.sum(bad) > 0:
                             targets[col][bad] = 0.0
-        if ma.is_masked(targets['PHOTSYS']):
+        if 'PHOTSYS' in targets.colnames and ma.is_masked(targets['PHOTSYS']):
             targets['PHOTSYS'] = ma.filled(targets['PHOTSYS'], '')
                         
         metas = []
@@ -933,7 +941,7 @@ class DESISpectra(object):
 
         # All of this business is so we can get the columns in the order we want
         # (i.e., the order that matches the data model).
-        for metacol in ['TARGETID', 'RA', 'DEC', 'TILEID', 'FIBER', 'NIGHT', 'THRUNIGHT']:
+        for metacol in ['TARGETID', 'RA', 'DEC', 'TILEID', 'FIBER', 'NIGHT', 'THRUNIGHT', 'TILEID_LIST']:
             if metacol in metacols:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():
@@ -996,8 +1004,7 @@ def read_fastspecfit(fastfitfile, fastphot=False, rows=None, columns=None):
         return None, None, None
 
 def write_fastspecfit(out, meta, outfile=None, specprod=None,
-                      coadd_type=None, survey=None, program=None,
-                      fastphot=False):
+                      coadd_type=None, fastphot=False):
     """Write out.
 
     """
@@ -1034,10 +1041,10 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None,
         hdr.append({'name': 'SPECPROD', 'value': specprod, 'comment': 'spectroscopic production name'})
     if coadd_type:
         hdr.append({'name': 'COADDTYP', 'value': coadd_type, 'comment': 'spectral coadd fitted'})
-    if survey:
-        hdr.append({'name': 'SURVEY', 'value': survey, 'comment': 'survey name'})
-    if program:
-        hdr.append({'name': 'FAPRGRM', 'value': program, 'comment': 'program name'})
+    #if survey:
+    #    hdr.append({'name': 'SURVEY', 'value': survey, 'comment': 'survey name'})
+    #if program:
+    #    hdr.append({'name': 'FAPRGRM', 'value': program, 'comment': 'program name'})
 
     fitsio.write(outfile, out.as_array(), header=hdr, clobber=True)
     fitsio.write(outfile, meta.as_array(), header=hdr)
