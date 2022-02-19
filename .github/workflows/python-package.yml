@@ -19,6 +19,7 @@ jobs:
                 os: [ubuntu-latest]
                 python-version: [3.8] 
         env:
+            DESIUTIL_VERSION: 3.2.5
             FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
             DESI_ROOT: ${FASTSPECFIT}/desi
             DUST_DIR: ${FASTSPECFIT}/dust
@@ -39,6 +40,7 @@ jobs:
               run: |
                 python -m pip install --upgrade pip wheel
                 python -m pip install pytest
+                python -m pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
                 python -m pip install -r requirements.txt
 
             - name: Verify Installation
