@@ -19,6 +19,8 @@ import os
 # This is the "webapp" dir.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+USER_QUERY_DIR = '/user-uploads'
+
 # See https://docs.djangoproject.com/en/2.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!

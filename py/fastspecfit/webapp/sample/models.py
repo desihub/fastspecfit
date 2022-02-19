@@ -1109,7 +1109,9 @@ class Sample(Model):
 
     def png_base_url(self):
         # different for cumulative coadds!
-        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/{}/html/healpix/{}/{}/'.format(self.specprod, self.survey, self.faprgrm)
+        # /data is mounted to /global/cfs/cdirs/desi/spectro/fastspecfit in the Spin server configuration
+        baseurl = '/data/test/{}/html/healpix/{}/{}/'.format(self.specprod, self.survey, self.faprgrm)
+        #baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/{}/html/healpix/{}/{}/'.format(self.specprod, self.survey, self.faprgrm)
         baseurl += str(self.hpxpixel//100) +'/'+ self.str_hpxpixel()
         return baseurl
 

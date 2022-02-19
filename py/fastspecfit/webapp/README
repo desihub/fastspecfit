@@ -1,6 +1,3 @@
-# module use /global/common/software/desi/users/dstn/modulefiles/
-# module load legacypipe/DR9
-
 # one time--
   conda create -n fastspecfit-webapp python numpy scipy matplotlib astropy Django
   conda activate fastspecfit-webapp

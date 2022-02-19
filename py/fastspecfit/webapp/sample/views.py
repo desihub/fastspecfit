@@ -23,6 +23,7 @@ if __name__ == '__main__':
 from django.shortcuts import render
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.http import HttpResponse
+from django.urls import reverse
 
 from fastspecfit.webapp.sample.filters import SampleFilter
 from fastspecfit.webapp.sample.models import Sample
@@ -189,7 +190,6 @@ def get_next_target(req, index, qs=None, direction=1):
 
 def target_prev(req, index):
     from django.shortcuts import redirect
-    from django.urls import reverse
     index = int(index,10)
     nextindex, nexttarget = get_next_target(req, index, direction=-1)
     if nextindex is None:
@@ -277,6 +277,78 @@ def sample_near_radec(ra, dec, rad, tablename='sample',
         (x,x,y,y,z,z, tablename, r2, extra_where))
     
     return sample
+
+def index(req, **kwargs):
+    print('Host is', req.META.get('HTTP_HOST', None))
+    if is_decaps(req):
+        return decaps(req)
+    if is_m33(req):
+        return m33(req)
+    return _index(req, **kwargs)
+
+def upload_cat(req):
+    import tempfile
+    from astropy.table import Table
+    #from astrometry.util.fits import fits_table
+    from django.http import HttpResponseRedirect
+    #from map.views import index
+
+    if req.method != 'POST':
+        return HttpResponse('POST only')
+    print('Files:', req.FILES)
+    cat = req.FILES['catalog']
+
+    dirnm = settings.USER_QUERY_DIR
+    if not os.path.exists(dirnm):
+        try:
+            os.makedirs(dirnm)
+        except:
+            pass
+    f,tmpfn = tempfile.mkstemp(suffix='.fits', dir=dirnm)
+    os.close(f)
+    os.unlink(tmpfn)
+    print('Saving to', tmpfn)
+    with open(tmpfn, 'wb+') as destination:
+        for chunk in cat.chunks():
+            destination.write(chunk)
+    print('Wrote', tmpfn)
+
+    errtxt = ('<html><body>%s<p>Custom catalogs must be either a: <ul>'
+              + '<li><b>FITS binary table</b> with columns named "SURVEY", "FAPRGRM" (not case sensitive) and "TARGETID".'
+              + '<li><b>CSV text file</b> with columns "RA", "DEC", and optionally "NAME" (also not case sensitive)</ul>'
+              +'See <a href="https://www.legacysurvey.org/svtips/">Tips & Tricks</a> for some hints on how to produce such a catalog.</p></body></html>')
+
+    T = None
+    emsg = ''
+    try:
+        T = Table.read(tmpfn)
+    except Exception as e:
+        emsg = str(e)
+    if T is None:
+        try:
+            # Try CSV...
+            from astropy.table import Table
+            T = Table.read(tmpfn)#, format='ascii')
+        except Exception as e:
+            emsg += '; ' + str(e)
+    if T is None:
+        return HttpResponse(errtxt % ('Error: '+emsg))
+
+    # Rename and resave columns if necessary
+    #if rename_cols(T):
+    #    T.write_to(tmpfn)
+
+    #cols = T.colnames
+    #if not (('ra' in cols) and ('dec' in cols)):
+    #    return HttpResponse(errtxt % '<p>Did not find column "RA" and "DEC" in table.</p>')
+
+    survey, faprgrm, targetid = T['SURVEY'], T['FAPRGRM'], T['TARGETID']
+    catname = tmpfn.replace(dirnm, '').replace('.fits', '')
+    if catname.startswith('/'):
+        catname = catname[1:]
+
+    #from map.views import my_reverse
+    return HttpResponseRedirect(reverse(req, sample.explore) + '?catalog=%s' % (catname))
 
 
 def main():
