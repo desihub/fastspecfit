@@ -1,5 +1,10 @@
-# Licensed under a 3-clause BSD style license - see LICENSE.rst
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import
+import unittest
 
-from .desigal_test_suite import runtests
+def test_suite():
+    """Returns unittest.TestSuite of fastspecfit tests for use by setup.py"""
+
+    from os.path import dirname
+    fastspecfit_dir = dirname(dirname(__file__))
+    print(fastspecfit_dir)
+    return unittest.defaultTestLoader.discover(fastspecfit_dir,
+        top_level_dir=dirname(fastspecfit_dir))
