@@ -73,7 +73,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'fastspecfit'
-copyright = u'2014-2021, DESI Collaboration'
+copyright = u'2014-2022, John Moustakas & the DESI Collaboration'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -132,8 +132,7 @@ napoleon_include_private_with_doc = True
 # some external dependencies are not met at build time and break the
 # building process.
 autodoc_mock_imports = []
-for missing in ('astropy', 'desimodel', 'desitarget', 'desiutil', 'fitsio', 
-                'matplotlib', 'numba', 'numpy', 'redrock', 
+for missing in ('desitarget', 'astropy', 'fitsio', 'matplotlib', 'numpy', 'redrock', 
                 'scipy', 'speclite', 'yaml'):
     try:
         foo = import_module(missing)

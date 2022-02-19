@@ -39,13 +39,14 @@ def weighted_partition(weights, n):
         n: number of groups
 
     Returns (groups, groupweights):
-        * groups: list of lists of indices of weights for each group
-        * groupweights: sum of weights assigned to each group
+        groups: list of lists of indices of weights for each group
+        groupweights: sum of weights assigned to each group
 
     Notes:
         similar to `redrock.utils.distribute_work`, which was written
             independently; these have not yet been compared.
         within each group, the weights are sorted largest to smallest
+    
     '''
     sumweights = np.zeros(n, dtype=float)
     groups = list()
