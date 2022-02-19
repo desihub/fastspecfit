@@ -5,9 +5,11 @@ FastSpecFit Change Log
 1.0 (not release yet)
 ---------------------
 
+* Initial version of the web-application [`PR #60`_].
 * First round of development work in preparation for Fuji [`PR #55`_].
 
 .. _`PR #55`: https://github.com/desihub/fastspecfit/pull/55
+.. _`PR #60`: https://github.com/desihub/fastspecfit/pull/60
 
 0.3 (2022-01-19)
 ----------------

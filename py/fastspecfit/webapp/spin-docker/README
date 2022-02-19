@@ -1,0 +1,27 @@
+Build a Docker container for the fastspecfit web-app.
+=====================================================
+
+```
+docker build . -t desihub/fastspecfit-webapp
+docker push desihub/fastspecfit-webapp:latest
+
+docker tag desihub/fastspecfit-webapp:latest desihub/fastspecfit-webapp:v0.1
+docker push desihub/fastspecfit-webapp:v0.1
+```
+
+To enter the container (with a shell prompt) on a laptop do:
+```
+docker pull desihub/fastspecfit-webapp:latest
+docker run -it desihub/fastspecfit-webapp:latest
+```
+or
+```
+docker pull desihub/fastspecfit-webapp:v0.1
+docker run -it desihub/fastspecfit-webapp:v0.1
+```
+
+Or at NERSC:
+```
+shifterimg pull docker:desihub/fastspecfit-webapp:latest
+shifter --image docker:desihub/fastspecfit-webapp:latest bash
+```

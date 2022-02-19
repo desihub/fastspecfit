@@ -1,0 +1,24 @@
+# one time--
+  conda create -n fastspecfit-webapp python numpy scipy matplotlib astropy Django
+  conda activate fastspecfit-webapp
+  pip install fitsio django-filter
+  tdir=$(mktemp -d)
+  pushd $tdir
+  for package in desiutil desitarget; do git clone https://github.com/desihub/$package && cd $package && python setup.py install && cd ..; done
+  popd
+
+conda activate fastspecfit-webapp
+
+export PYTHONPATH=/global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py:$PYTHONPATH
+export DJANGO_SETTINGS_MODULE=fastspecfit.webapp.settings
+
+cd /global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py/fastspecfit/webapp
+
+# one time--
+  python manage.py makemigrations sample
+
+# every time--
+/bin/rm db/db.sqlite3
+python manage.py makemigrations ; python manage.py migrate
+python load.py ; chmod 666 db/db.sqlite3 ; chgrp -R desi *
+touch wsgi.py
