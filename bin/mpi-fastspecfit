@@ -68,11 +68,12 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         sys.stdout.flush()
 
         if args.makeqa:
-            #  hack--the desired output directories are in the 'zbestfiles' variable!
+            # hack--the desired output directories are in the 'zbestfiles' variable!
+            # note: by default don't render the legend
             if fastphot:
-                cmd = 'fastspecfit-qa --fastphotfile {} -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
+                cmd = 'fastspecfit-qa --fastphotfile {} --nolegend -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
             else:
-                cmd = 'fastspecfit-qa --fastspecfile {} -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
+                cmd = 'fastspecfit-qa --fastspecfile {} --nolegend -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
             if args.ntargets:
                 cmd += ' --ntargets {}'.format(args.ntargets)
         else:
@@ -165,14 +166,15 @@ def main():
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity disperion (only used with fastspec).')
 
-    parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs into one large file.')
+    parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
+    parser.add_argument('--mergeall', action='store_true', help='Merge all the individual merged catalogs into a single merged catalog.')
     parser.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
     
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
-    parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands')
+    parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
     parser.add_argument('--base-htmldir', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
                         type=str, help='Base output HTML directory.')
@@ -183,7 +185,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.merge or args.nompi:
+    if args.merge or args.mergeall or args.nompi:
         comm = None
     else:
         try:
@@ -196,10 +198,10 @@ def main():
         args.survey = args.survey.split(',')
         args.program = args.program.split(',')
             
-    if args.merge:
+    if args.merge or args.mergeall:
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(args, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                          base_datadir=args.base_datadir)
+                          base_datadir=args.base_datadir, supermerge=args.mergeall)
         return
         
     if args.plan:

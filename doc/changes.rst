@@ -2,13 +2,19 @@
 FastSpecFit Change Log
 ======================
 
-0.3 (not release yet)
+1.0 (not release yet)
 ---------------------
+
+* First round of development work in preparation for Fuji [`PR #55`_].
+
+.. _`PR #55`: https://github.com/desihub/fastspecfit/pull/55
+
+0.3 (2022-01-19)
+----------------
 
 * Additional updates needed to complete Everest release [`PR #44`_].
 
 .. _`PR #44`: https://github.com/desihub/fastspecfit/pull/44
-
 
 0.2 (2021-09-04)
 ----------------
