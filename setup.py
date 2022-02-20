@@ -4,15 +4,75 @@
 # Standard imports
 
 import glob
-import os
+import os, re
 import sys
+from os.path import abspath, basename, exists, isdir, isfile, join
 
-from distutils.command.sdist import sdist as DistutilsSdist
 from setuptools import setup, find_packages
 
 # DESI support code.
 
-from desiutil.setup import DesiTest, DesiVersion, get_version
+#from desiutil.setup import DesiTest, DesiVersion, get_version
+
+def find_version_directory(productname):
+    """Return the name of a directory containing version information.
+
+    Looks for files in the following places:
+
+    * py/`productname`/_version.py
+    * `productname`/_version.py
+
+    Parameters
+    ----------
+    productname : :class:`str`
+        The name of the package.
+
+    Returns
+    -------
+    :class:`str`
+        Name of a directory that can or does contain version information.
+
+    Raises
+    ------
+    IOError
+        If no valid directory can be found.
+    """
+    setup_dir = abspath('.')
+    if isdir(join(setup_dir, 'py', productname)):
+        version_dir = join(setup_dir, 'py', productname)
+    elif isdir(join(setup_dir, productname)):
+        version_dir = join(setup_dir, productname)
+    else:
+        raise IOError("Could not find a directory containing version information!")
+    return version_dir
+
+def get_version(productname):
+    """Get the value of ``__version__`` without having to import the module.
+
+    Parameters
+    ----------
+    productname : :class:`str`
+        The name of the package.
+
+    Returns
+    -------
+    :class:`str`
+        The value of ``__version__``.
+    """
+    ver = 'unknown'
+    try:
+        version_dir = find_version_directory(productname)
+    except IOError:
+        return ver
+    version_file = join(version_dir, '_version.py')
+    if not isfile(version_file):
+        update_version(productname)
+    with open(version_file, "r") as f:
+        for line in f.readlines():
+            mo = re.match("__version__ = '(.*)'", line)
+            if mo:
+                ver = mo.group(1)
+    return ver
 
 # Begin setup
 
