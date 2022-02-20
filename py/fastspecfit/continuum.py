@@ -17,7 +17,7 @@ from desiutil.log import get_logger
 log = get_logger()
 
 def _fnnls_continuum(myargs):
-    """fNNLS multiprocessing wrapper."""
+    """Multiprocessing wrapper for fnnls_continuum."""
     return fnnls_continuum(*myargs)
 
 def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None, get_chi2=False):
@@ -71,10 +71,25 @@ def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None, get_chi2=False
         return warn, coeff
     
 class ContinuumTools(object):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, seed=1):
-        """Tools for dealing with stellar continua..
+    """Tools for dealing with stellar continua.
 
-        """
+    Parameters
+    ----------
+    metallicity : :class:`str`, optional, defaults to `Z0.0190`.
+        Stellar metallicity of the SSPs. Currently fixed at solar
+        metallicity, Z=0.0190.
+    minwave : :class:`float`, optional, defaults to None
+        Minimum SSP wavelength to read into memory. If ``None``, the minimum
+        available wavelength is used (around 100 Angstrom).
+    maxwave : :class:`float`, optional, defaults to 6e4
+        Maximum SSP wavelength to read into memory. 
+
+    .. note::
+        Need to document all the attributes.
+
+    """
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, seed=1):
+
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
         from astropy.table import Table, Column
@@ -1155,8 +1170,10 @@ class ContinuumFit(ContinuumTools):
         return kcorr, absmag, ivarabsmag, bestmaggies
 
     def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False):
-        """Wrapper on fnnls to set up the multiprocessing. Works with both spectroscopic
-        and photometric input and with both 2D and 3D model spectra.
+        """Wrapper on fnnls to set up the multiprocessing. 
+
+        Works with both spectroscopic and photometric input and with both 2D and
+        3D model spectra.
 
         To be documented.
 
@@ -1171,7 +1188,6 @@ class ContinuumFit(ContinuumTools):
         # If xparam is None (equivalent to modelflux having just two
         # dimensions, [npix,nage]), assume we are just finding the
         # coefficients at some best-fitting value...
-        #if modelflux.ndim == 2:
         if xparam is None:
             ZZ = modelflux * ww[:, np.newaxis]
             warn, coeff, chi2 = fnnls_continuum(ZZ, xx, flux=flux, ivar=ivar,
@@ -1240,12 +1256,9 @@ class ContinuumFit(ContinuumTools):
             Table with all the continuum-fitting results with columns documented
             in `init_phot_output`.
 
-        Notes
-        -----
-        See
-          https://github.com/jvendrow/fnnls
-          https://github.com/mikeiovine/fast-nnls
-        for the fNNLS algorithm(s).
+        .. note::
+
+            See https://github.com/mikeiovine/fast-nnls for the fNNLS algorithm(s).
 
         """
         # Initialize the output table; see init_fastspecfit for the data model.

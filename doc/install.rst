@@ -3,7 +3,7 @@
 Installation
 ============
 
-**FastSpecFit** and all its dependencies are installed inside a Docker
+``FastSpecFit`` and all its dependencies are installed inside a Docker
 container, making it easy to run either on a personal laptop (if you have the
 necessary data) or at NERSC using *shifter*.
 
