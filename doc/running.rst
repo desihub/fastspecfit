@@ -1,4 +1,4 @@
-.. _running:
+.. _running_fastspecfit:
 
 Running FastSpecFit
 ===================

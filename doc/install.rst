@@ -7,13 +7,39 @@ Installation & Setup
 standard dependencies. Here, we describe three different ways of setting up
 ``FastSpecFit``:
 
-  1. :ref:`on a laptop<laptop installation>`; 
-  2. :ref:`at NERSC (for DESI collaborators)<nersc installation>`; or
-  3. :ref:`mounting the Docker container<docker installation>`.
+  1. :ref:`at NERSC (for DESI collaborators)<nersc installation>`;
+  2. :ref:`on a laptop<laptop installation>`; or
+  3. :ref:`using the Docker container<docker installation>`.
+
+.. _nersc installation:
+
+1. NERSC Installation
+---------------------
+
+At `NERSC`_ ``FastSpecFit`` is part of the standard DESI software stack and can
+be loaded trivially. In a login or interactive node simply run the following
+commands and you are read to go::
+
+  source /global/cfs/cdirs/desi/software/desi_environment.sh main
+  module load fastspecfit/main
+  
+  export DESI_ROOT=/global/cfs/cdirs/desi
+  export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z
+  export DUST_DIR=/global/cfs/cdirs/cosmo/data/dust/v0_1
+
+Alternatively, some users may want to access ``FastSpecFit`` through `NERSC`_'s
+`JupyterHub`_ notebook server. To set up the kernel first do::
+
+  mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit
+  wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit/kernel.json \
+    https://raw.githubusercontent.com/desihub/fastspecfit/main/etc/jupyter-kernel.json
+
+Then, in `JupyterHub`_, simply select the *fastspecfit* kernel and you are all
+set!
 
 .. _laptop installation:
 
-1. Laptop Installation
+2. Laptop Installation
 ----------------------
 
 To install ``FastSpecFit`` and all its dependencies on a laptop we recommend a
@@ -66,43 +92,46 @@ with::
   export DESI_ROOT=/path/to/desi/data
   export DUST_DIR=/path/to/dust/maps
   export FASTSPECFIT_TEMPLATES=/path/to/fastspecfit/templates
-
-**Finish writing these instructions.**
-
-.. _nersc installation:
-
-2. NERSC Installation
----------------------
-
-At `NERSC`_ ``FastSpecFit`` is part of the standard DESI software stack and can
-be loaded trivially. In a login or interactive node simply run the following
-commands and you are read to go!::
-
-  source /global/cfs/cdirs/desi/software/desi_environment.sh main
-  module load fastspecfit/main
   
-  export DESI_ROOT=/global/cfs/cdirs/desi
-  export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z
-  export DUST_DIR=/global/cfs/cdirs/cosmo/data/dust/v0_1
-
-Alternatively, some users may want to access ``FastSpecFit`` through NERSC's
-`JupyterHub notebook server`_. To set up the kernel first do::
-
-  wget 
-
-
-
+  **Finish writing these instructions.**
 
 .. _docker installation:
 
-3. Docker Installation
-----------------------
+3. Using Docker
+---------------
 
-Docker.
+Finally, for production runs and for expert users, ``FastSpecFit`` is also
+available as a Docker container which is served publicly in the
+`DockerHub/desihub`_ repository.
 
-and all its dependencies are installed inside a Docker container, making it easy
-to run either on a personal laptop (if you have the necessary data) or at NERSC
-using *shifter*.
+For example, on a laptop one would retrieve (or update) and enter the *v1.0.0*
+version of the container with::
+  
+  docker pull desihub/fastspecfit:v1.0.0
+  docker run -it desihub/fastspecfit:v1.0.0
+
+Alternatively, at `NERSC`_ one would need to use `shifter`_::
+
+  shifterimg pull docker:desihub/fastspecfit:v1.0.0
+  shifter --image docker:desihub/fastspecfit:v1.0.0 bash
+
+However, neither of the preceding commands define the required environment
+variables, although we provide a simple setup script which does. For simple
+interactive work at `NERSC`_ (e.g., in a login node) do::
+
+  mkdir -p /path/to/fastspecfit/setup/script
+  wget https://raw.githubusercontent.com/desihub/fastspecfit/main/bin/fastspecfit-setup.sh \
+    -O /path/to/fastspecfit/setup/script/fastspecfit-setup.sh
+
+  /path/to/fastspecfit/setup/script/fastspecfit-setup.sh shifter
+  source /path/to/fastspecfit/setup/script/fastspecfit-setup.sh env
+
+  **Need to update this shell script so the version can be specified.**
+
+.. note::
+  To run ``FastSpecFit`` on a large sample of objects (or for a full production
+  or data release), please do not use a login node; instead, see the
+  :ref:`running_fastspecfit` documentation for instructions and best practices.
 
 .. _`conda`: https://anaconda.org/
 
@@ -110,4 +139,9 @@ using *shifter*.
 
 .. _`NERSC`: https://www.nersc.gov/
 
-.. _`JupyterHub notebook server`: https://jupyter.nersc.gov/ 
+.. _`JupyterHub`: https://jupyter.nersc.gov/ 
+
+.. _`DockerHub/desihub`: https://hub.docker.com/u/desihub
+
+.. _`shifter`: https://docs.nersc.gov/development/shifter/
+

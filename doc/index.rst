@@ -10,7 +10,7 @@ Overview
 
 ``FastSpecFit`` can be called independently to fit the broadband photometry
 (``fastphot``) or the three-camera optical spectrophotometry from DESI
-(``fastspec``), although in either case a DESI redshift is a required input.
+(``fastspec``), although in either case DESI redshifts are required.
 
 Contents
 --------
