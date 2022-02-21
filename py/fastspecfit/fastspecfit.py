@@ -19,6 +19,95 @@ log = get_logger()
 #import tempfile
 #os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 
+def parse(options=None):
+    """Parse input arguments.
+
+    """
+    import argparse, sys
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument('redrockfiles', nargs='*', help='Full path to input redrock file(s).')
+    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
+    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
+    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
+
+    # make specprod required until this ticket is addressed--
+    # https://github.com/desihub/desispec/issues/1077
+    #parser.add_argument('--specprod', type=str, default='everest', #choices=['everest', 'denali', 'daily'],
+    #                    help='Spectroscopic production.')
+    #parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
+    #                    help='Type of spectral coadds corresponding to the input redrockfiles.')
+
+    if options is None:
+        args = parser.parse_args()
+        log.info(' '.join(sys.argv))
+    else:
+        args = parser.parse_args(options)
+        log.info('fastspec {}'.format(' '.join(options)))
+
+    return args
+
+def fastspec(args=None, comm=None):
+    """Main fastspec module.
+
+    """
+    from astropy.table import Table
+    from fastspecfit.continuum import ContinuumFit
+    from fastspecfit.emlines import EMLineFit
+    from fastspecfit.io import DESISpectra, write_fastspecfit
+
+    if isinstance(args, (list, tuple, type(None))):
+        args = parse(args)
+
+    if args.targetids:
+        targetids = [int(x) for x in args.targetids.split(',')]
+    else:
+        targetids = args.targetids
+
+    # Initialize the continuum- and emission-line fitting classes.
+    t0 = time.time()
+    CFit = ContinuumFit()
+    EMFit = EMLineFit()
+    Spec = DESISpectra(specprod=args.specprod)
+    log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
+
+    # Read the data.
+    t0 = time.time()
+
+    Spec.find_specfiles(args.redrockfiles, firsttarget=args.firsttarget,
+                        targetids=targetids, ntargets=args.ntargets)
+    if len(Spec.specfiles) == 0:
+        return
+    data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True, remember_coadd=True)
+
+    out, meta = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=False)
+    log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
+        Spec.ntargets, time.time()-t0))
+
+    # Fit in parallel
+    t0 = time.time()
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.solve_vdisp, args.verbose)
+               for iobj in np.arange(Spec.ntargets)]
+    if args.mp > 1:
+        import multiprocessing
+        with multiprocessing.Pool(args.mp) as P:
+            _out = P.map(_fastspec_one, fitargs)
+    else:
+        _out = [fastspec_one(*_fitargs) for _fitargs in fitargs]
+    _out = list(zip(*_out))
+    out = Table(np.hstack(_out[0]))
+    meta = Table(np.hstack(_out[1]))
+    log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
+
+    # Write out.
+    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
+                      coadd_type=Spec.coadd_type, fastphot=False)
+
 def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
@@ -93,97 +182,6 @@ def fastphot_one(iobj, data, out, meta, CFit):
         iobj, meta['TARGETID'], time.time()-t0))
     
     return out, meta
-
-def parse(options=None):
-    """Parse input arguments.
-
-    """
-    import argparse, sys
-
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
-    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
-    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
-    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
-    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
-
-    parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
-    parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
-
-    # make specprod required until this ticket is addressed--
-    # https://github.com/desihub/desispec/issues/1077
-    parser.add_argument('--specprod', type=str, default='everest', #choices=['everest', 'denali', 'daily'],
-                        help='Spectroscopic production.')
-    #parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
-    #                    help='Type of spectral coadds corresponding to the input redrockfiles.')
-
-    parser.add_argument('redrockfiles', nargs='*', help='Full path to input redrock file(s).')
-
-    if options is None:
-        args = parser.parse_args()
-        log.info(' '.join(sys.argv))
-    else:
-        args = parser.parse_args(options)
-        log.info('fastspec {}'.format(' '.join(options)))
-
-    return args
-
-def fastspec(args=None, comm=None):
-    """Main fastspec module.
-
-    """
-    from astropy.table import Table
-    from fastspecfit.continuum import ContinuumFit
-    from fastspecfit.emlines import EMLineFit
-    from fastspecfit.io import DESISpectra, write_fastspecfit
-
-    if isinstance(args, (list, tuple, type(None))):
-        args = parse(args)
-
-    if args.targetids:
-        targetids = [int(x) for x in args.targetids.split(',')]
-    else:
-        targetids = args.targetids
-
-    # Initialize the continuum- and emission-line fitting classes.
-    t0 = time.time()
-    CFit = ContinuumFit()
-    EMFit = EMLineFit()
-    Spec = DESISpectra(specprod=args.specprod)
-    log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
-
-    # Read the data.
-    t0 = time.time()
-
-    Spec.find_specfiles(args.redrockfiles, firsttarget=args.firsttarget,
-                        targetids=targetids, ntargets=args.ntargets)
-    if len(Spec.specfiles) == 0:
-        return
-    data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True, remember_coadd=True)
-
-    out, meta = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=False)
-    log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
-        Spec.ntargets, time.time()-t0))
-
-    # Fit in parallel
-    t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.solve_vdisp, args.verbose)
-               for iobj in np.arange(Spec.ntargets)]
-    if args.mp > 1:
-        import multiprocessing
-        with multiprocessing.Pool(args.mp) as P:
-            _out = P.map(_fastspec_one, fitargs)
-    else:
-        _out = [fastspec_one(*_fitargs) for _fitargs in fitargs]
-    _out = list(zip(*_out))
-    out = Table(np.hstack(_out[0]))
-    meta = Table(np.hstack(_out[1]))
-    log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
-
-    # Write out.
-    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
-                      coadd_type=Spec.coadd_type, fastphot=False)
 
 def fastphot(args=None, comm=None):
     """Main fastphot module.

@@ -20,10 +20,17 @@ Contents
 
    install.rst
    running.rst
-   fastphot.rst
-   fastspec.rst
    api.rst
    changes.rst
+
+Data Model
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   fastspec.rst
+   fastphot.rst
 
 Indices and tables
 ------------------
