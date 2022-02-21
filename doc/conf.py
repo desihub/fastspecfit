@@ -45,9 +45,7 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
-    napoleon_extension,
-    'myst_parser', # make local docs look like readthedocs (need pip install myst-parser)
-                   # https://myst-parser.readthedocs.io/en/latest/sphinx/intro.html
+    napoleon_extension
 ]
 
 # Configuration for intersphinx, copied from astropy.
