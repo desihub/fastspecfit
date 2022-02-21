@@ -135,8 +135,8 @@ napoleon_include_special_with_doc = False
 # some external dependencies are not met at build time and break the
 # building process.
 autodoc_mock_imports = []
-for missing in ('desiutil', 'desitarget', 'astropy', 'fitsio', 'matplotlib',
-                'numpy', 'redrock', 'scipy', 'speclite', 'yaml'):
+for missing in ('numpy', 'scipy', 'fitsio', 'astropy', 'speclite', 'seaborn',
+                'matplotlib', 'desiutil', 'desitarget', 'desispec', 'redrock'):
     try:
         foo = import_module(missing)
     except ImportError:
