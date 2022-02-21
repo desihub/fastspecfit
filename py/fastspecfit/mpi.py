@@ -31,8 +31,8 @@ def get_ntargets_one(specfile, makeqa=False):
     return ntargets
 
 def weighted_partition(weights, n):
-    '''
-    Partition `weights` into `n` groups with approximately same sum(weights)
+    """
+    Partition ``weights`` into ``n`` groups with approximately same sum(weights).
 
     Args:
         weights: array-like weights
@@ -42,12 +42,8 @@ def weighted_partition(weights, n):
         groups: list of lists of indices of weights for each group
         groupweights: sum of weights assigned to each group
 
-    Notes:
-        similar to `redrock.utils.distribute_work`, which was written
-            independently; these have not yet been compared.
-        within each group, the weights are sorted largest to smallest
     
-    '''
+    """
     sumweights = np.zeros(n, dtype=float)
     groups = list()
     for i in range(n):
