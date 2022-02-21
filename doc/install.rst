@@ -46,7 +46,7 @@ To install ``FastSpecFit`` and all its dependencies on a laptop we recommend a
 dedicated `conda`_ environment. For example, to install everything transparently
 into an environment called *fastspec* one would do::
 
-  conda create -y --name fastspec python numpy scipy astropy matplotlib seaborn
+  conda create -y --name fastspec python numpy scipy numba astropy matplotlib seaborn
   conda activate fastspec
   pip install fitsio speclite
   
