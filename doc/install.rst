@@ -44,33 +44,40 @@ set!
 
 To install ``FastSpecFit`` and all its dependencies on a laptop we recommend a
 dedicated `conda`_ environment. For example, to install everything transparently
-into an environment called *fastspec* one would do::
+into an environment called *fastspecfit* one would do::
 
-  conda create -y --name fastspec python numpy scipy numba astropy matplotlib seaborn
-  conda activate fastspec
-  pip install fitsio speclite
+  conda create -y --name fastspecfit python numpy scipy numba astropy matplotlib seaborn
+  conda activate fastspecfit
+  pip install fitsio healpy speclite
   
-  for package in desiutil desitarget desispec redrock fastspecfit; do
+  for package in desiutil desimodel desitarget desispec redrock fastspecfit; do
     python -m pip install git+https://github.com/desihub/$package.git@main#egg=$package
   done
 
 Alternatively, some users may want the DESI software to be installed in a more
 accessible location (e.g., */path/to/desi/code*), in which case one would do::
   
-  conda create -y --name fastspec python numpy scipy astropy matplotlib seaborn
-  conda activate fastspec
-  pip install fitsio speclite
+  conda create -y --name fastspecfit python numpy scipy numba astropy matplotlib seaborn
+  conda activate fastspecfit
+  pip install fitsio healpy speclite
 
   export DESI_CODE=/path/to/desi/code
   mkdir -p $DESI_CODE
   
   pushd $DESI_CODE 
-  for package in desiutil desitarget desispec redrock fastspecfit; do
+  for package in desiutil desimodel desitarget desispec redrock fastspecfit; do
     git clone https://github.com/desihub/$package.git
     export PATH=$DESI_CODE/$package/bin:$PATH
     export PYTHONPATH=$DESI_CODE/$package/py:$PYTHONPATH
   done
   popd
+
+In addition, we need some larger data files associated with the ``desimodel``
+code base which are stored in an SVN repository::
+
+  export DESIMODEL=$DESI_PRODUCT_ROOT/desimodel
+  cd $DESIMODEL
+  svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data
 
 Finally, ``FastSpecFit`` has three more data dependencies, each specified with
 their own environment variable:

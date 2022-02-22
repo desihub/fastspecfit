@@ -58,7 +58,9 @@ The arguments to ``fastspec`` can be inspected by invoking the script with the
     --solve-vdisp         Solve for the velocity dispersion (only when using fastspec). (default: False)
     --verbose             Be verbose (for debugging purposes). (default: False)
 
+For example, do::
 
+  fastspec ${DESI_ROOT}/spectro/redux/fuji/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465
 
 
 Write me.
