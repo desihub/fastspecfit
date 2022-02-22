@@ -1201,7 +1201,7 @@ class ContinuumFit(ContinuumTools):
         # dimension.
         ZZ = modelflux * ww[:, np.newaxis, np.newaxis] # reshape into [npix/nband,nage,nAV/nvdisp]
 
-        fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], None, True) for ii in np.arange(nn)]
+        fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], True) for ii in np.arange(nn)]
         rr = [fnnls_continuum(*_fitargs) for _fitargs in fitargs]
         
         warn, _, chi2grid = list(zip(*rr)) # unpack

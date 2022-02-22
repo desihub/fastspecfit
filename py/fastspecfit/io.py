@@ -3,7 +3,7 @@
 fastspecfit.io
 ==============
 
-Tools for reading and writing.
+Tools for reading DESI spectra and reading and writing fastspecfit files.
 
 """
 import pdb # for debugging
@@ -36,6 +36,7 @@ TARGETCOLS = np.array([
     #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
     #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
 
+# Default environment variables.
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
@@ -51,11 +52,11 @@ class DESISpectra(object):
         """
         desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
 
-        if specprod is None:
-            log.warning('specprod input is required.')
-            raise IOError
-
-        self.specprod = specprod
+        #if specprod is None:
+        #    log.warning('specprod input is required.')
+        #    raise IOError
+        #
+        #self.specprod = specprod
         
         self.redux_dir = os.path.join(desi_root, 'spectro', 'redux')
         self.fiberassign_dir = os.path.join(desi_root, 'target', 'fiberassign', 'tiles', 'trunk')
@@ -197,9 +198,7 @@ class DESISpectra(object):
             # Try to figure out coadd_type from the first filename. Fragile!
             # Assumes that coadd_type is a scalar... And, really, this should be
             # in a header.
-            if coadd_type is not None:
-                self.coadd_type = coadd_type
-            else:
+            if coadd_type is None:
                 if ired == 0:
                     hdr = fitsio.read_header(specfile, ext=0)
                     # Fuji & Guadalupe headers
@@ -219,9 +218,9 @@ class DESISpectra(object):
                                 coadd_type = 'pernight'
                             else:
                                 coadd_type = 'perexp'
-                        self.coadd_type = coadd_type
-            log.info('Parsed coadd_type={}'.format(coadd_type))
-    
+            self.coadd_type = coadd_type
+            log.info('Parsed coadd_type={}'.format(self.coadd_type))
+
             # Figure out which fibermap columns to put into the metadata
             # table. Note that the fibermap includes all the spectra that went
             # into the coadd (based on the unique TARGETID which is in the redrock
@@ -449,6 +448,9 @@ class DESISpectra(object):
                     targetfiles = glob(os.path.join(targetdir, '*-secondary.fits'))
             else:
                 targetfiles = glob(os.path.join(targetdir, '*-hp-*.fits'))
+                if len(targetfiles) == 0:
+                    log.critical('No target catalogs found in {}'.format(targetdir))
+                    raise IOError
                 filenside = fitsio.read_header(targetfiles[0], ext=1)['FILENSID']
                 pixlist = radec2pix(filenside, info['TARGET_RA'], info['TARGET_DEC'])
                 targetfiles = [targetfiles[0].split('hp-')[0]+'hp-{}.fits'.format(pix) for pix in set(pixlist)]

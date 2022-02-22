@@ -163,7 +163,7 @@ def fastspec(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit()
     EMFit = EMLineFit()
-    Spec = DESISpectra(specprod=args.specprod)
+    Spec = DESISpectra()#specprod=args.specprod)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
@@ -195,7 +195,7 @@ def fastspec(args=None, comm=None):
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
-    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
+    write_fastspecfit(out, meta, outfile=args.outfile, #specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=False)
 
 def fastphot(args=None, comm=None):
@@ -229,7 +229,7 @@ def fastphot(args=None, comm=None):
     # Initialize the continuum-fitting classes.
     t0 = time.time()
     CFit = ContinuumFit()
-    Spec = DESISpectra(specprod=args.specprod)
+    Spec = DESISpectra()#specprod=args.specprod)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
@@ -260,5 +260,5 @@ def fastphot(args=None, comm=None):
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
-    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
+    write_fastspecfit(out, meta, outfile=args.outfile, #specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=True)
