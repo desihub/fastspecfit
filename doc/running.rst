@@ -36,27 +36,30 @@ fastspec
 The arguments to ``fastspec`` can be inspected by invoking the script with the
 `--help` option::
 
-  fastspec --help
-  usage: fastspec [-h] [-n NTARGETS] [--firsttarget FIRSTTARGET] [--targetids TARGETIDS] \
-    [--mp MP] -o OUTFILE [--solve-vdisp] [--verbose] [--specprod SPECPROD] [redrockfiles ...]
+  $> fastspec --help
+  
+  usage: fastspec [-h] -o OUTFILE [--mp MP] [-n NTARGETS] [--firsttarget FIRSTTARGET] \
+    [--targetids TARGETIDS] [--solve-vdisp] [--verbose] [redrockfiles ...]
   
   positional arguments:
     redrockfiles          Full path to input redrock file(s). (default: None)
   
-  optional arguments:
+  options:
     -h, --help            show this help message and exit
+    -o OUTFILE, --outfile OUTFILE
+                          Full path to output filename (required). (default: None)
+    --mp MP               Number of multiprocessing threads per MPI rank. (default: 1)
     -n NTARGETS, --ntargets NTARGETS
                           Number of targets to process in each file. (default: None)
     --firsttarget FIRSTTARGET
-                          Index of first object to to process in each file (0-indexed). (default: 0)
+                          Index of first object to to process in each file, zero-indexed. (default: 0)
     --targetids TARGETIDS
-                          Comma-separated list of target IDs to process. (default: None)
-    --mp MP               Number of multiprocessing processes per MPI rank or node. (default: 1)
-    -o OUTFILE, --outfile OUTFILE
-                          Full path to output filename. (default: None)
+                          Comma-separated list of TARGETIDs to process. (default: None)
     --solve-vdisp         Solve for the velocity dispersion (only when using fastspec). (default: False)
     --verbose             Be verbose (for debugging purposes). (default: False)
-    --specprod SPECPROD   Spectroscopic production. (default: everest)
+
+
+
 
 Write me.
 

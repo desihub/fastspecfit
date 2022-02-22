@@ -19,8 +19,86 @@ log = get_logger()
 #import tempfile
 #os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
 
+def _fastspec_one(args):
+    """Multiprocessing wrapper."""
+    return _fastspec_one(*args)
+
+def _fastphot_one(args):
+    """Multiprocessing wrapper."""
+    return _fastphot_one(*args)
+
+def _desiqa_one(args):
+    """Multiprocessing wrapper."""
+    return _desiqa_one(*args)
+
+def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False, verbose=False):
+    """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
+    
+    #log.info('Continuum-fitting object {}'.format(iobj))
+    t0 = time.time()
+
+    cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
+    for col in cfit.colnames:
+        out[col] = cfit[col]
+
+    # Copy over the reddening-corrected fluxes -- messy!
+    for iband, band in enumerate(CFit.fiber_bands):
+        meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
+        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+    for iband, band in enumerate(CFit.bands):
+        meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
+        meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
+        
+    log.info('Continuum-fitting object {} [targetid {}] took {:.2f} sec'.format(
+        iobj, meta['TARGETID'], time.time()-t0))
+
+    # Fit the emission-line spectrum.
+    t0 = time.time()
+    emfit = EMFit.fit(data, continuummodel, smooth_continuum, verbose=verbose)
+    for col in emfit.colnames:
+        out[col] = emfit[col]
+    log.info('Line-fitting object {} (targetid={}) took {:.2f} sec'.format(
+        iobj, meta['TARGETID'], time.time()-t0))
+
+    return out, meta
+
+def fastphot_one(iobj, data, out, meta, CFit):
+    """Multiprocessing wrapper to run :func:`fastphot` on a single object."""
+
+    #log.info('Continuum-fitting object {}'.format(iobj))
+    t0 = time.time()
+    cfit, _ = CFit.continuum_fastphot(data)
+    for col in cfit.colnames:
+        out[col] = cfit[col]
+
+    # Copy over the reddening-corrected fluxes -- messy!
+    for iband, band in enumerate(CFit.fiber_bands):
+        meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
+        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+    for iband, band in enumerate(CFit.bands):
+        meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
+        meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
+        
+    log.info('Continuum-fitting object {} [targetid {}] took {:.2f} sec'.format(
+        iobj, meta['TARGETID'], time.time()-t0))
+    
+    return out, meta
+
+def desiqa_one(CFit, EMFit, data, fastfit, metadata, coadd_type,
+               fastphot=False, outdir=None, outprefix=None):
+    """Multiprocessing wrapper to generate QA for a single object."""
+
+    #t0 = time.time()
+    if fastphot:
+        CFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
+                         outprefix=outprefix, outdir=outdir)
+    else:
+        EMFit.qa_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
+                          outprefix=outprefix, outdir=outdir)
+    #log.info('Building took {:.2f} sec'.format(time.time()-t0))
+
 def parse(options=None):
-    """Parse input arguments.
+    """Parse input arguments to fastspec and fastphot scripts.
 
     """
     import argparse, sys
@@ -28,11 +106,11 @@ def parse(options=None):
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('redrockfiles', nargs='*', help='Full path to input redrock file(s).')
-    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename.')
+    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename (required).')
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads per MPI rank.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
-    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
-    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
-    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
+    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
@@ -53,7 +131,19 @@ def parse(options=None):
     return args
 
 def fastspec(args=None, comm=None):
-    """Main fastspec module.
+    """Main fastspec script.
+
+    This script is the engine to model one or more DESI spectra. It initializes
+    the :class:`ContinuumFit` and :class:`EMLineFit` classes, reads the data, fits
+    each spectrum (with the option of fitting in parallel), and writes out the
+    results as a multi-extension binary FITS table.
+
+    Parameters
+    ----------
+    args : :class:`argparse.Namespace` or ``None``
+        Required and optional arguments parsed via inputs to the command line. 
+    comm : :class:`mpi4py.MPI.MPI.COMM_WORLD` or `None`
+        Intracommunicator used with MPI parallelism.
 
     """
     from astropy.table import Table
@@ -108,83 +198,20 @@ def fastspec(args=None, comm=None):
     write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=False)
 
-def _desiqa_one(args):
-    """Multiprocessing wrapper."""
-    return desiqa_one(*args)
-
-def desiqa_one(CFit, EMFit, data, fastfit, metadata, coadd_type,
-               fastphot=False, outdir=None, outprefix=None):
-    """QA on one spectrum."""
-    #t0 = time.time()
-    if fastphot:
-        CFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
-                         outprefix=outprefix, outdir=outdir)
-    else:
-        EMFit.qa_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
-                          outprefix=outprefix, outdir=outdir)
-    #log.info('Building took {:.2f} sec'.format(time.time()-t0))
-
-def _fastspec_one(args):
-    """Multiprocessing wrapper."""
-    return fastspec_one(*args)
-
-def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False, verbose=False):
-    """Fit one spectrum."""
-    #log.info('Continuum-fitting object {}'.format(iobj))
-    t0 = time.time()
-
-    cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
-    for col in cfit.colnames:
-        out[col] = cfit[col]
-
-    # Copy over the reddening-corrected fluxes -- messy!
-    for iband, band in enumerate(CFit.fiber_bands):
-        meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
-        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
-    for iband, band in enumerate(CFit.bands):
-        meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
-        meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
-        
-    log.info('Continuum-fitting object {} [targetid {}] took {:.2f} sec'.format(
-        iobj, meta['TARGETID'], time.time()-t0))
-
-    # Fit the emission-line spectrum.
-    t0 = time.time()
-    emfit = EMFit.fit(data, continuummodel, smooth_continuum, verbose=verbose)
-    for col in emfit.colnames:
-        out[col] = emfit[col]
-    log.info('Line-fitting object {} (targetid={}) took {:.2f} sec'.format(
-        iobj, meta['TARGETID'], time.time()-t0))
-
-    return out, meta
-
-def _fastphot_one(args):
-    """Multiprocessing wrapper."""
-    return fastphot_one(*args)
-
-def fastphot_one(iobj, data, out, meta, CFit):
-    """Fit one spectrum."""
-    #log.info('Continuum-fitting object {}'.format(iobj))
-    t0 = time.time()
-    cfit, _ = CFit.continuum_fastphot(data)
-    for col in cfit.colnames:
-        out[col] = cfit[col]
-
-    # Copy over the reddening-corrected fluxes -- messy!
-    for iband, band in enumerate(CFit.fiber_bands):
-        meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
-        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
-    for iband, band in enumerate(CFit.bands):
-        meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
-        meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
-        
-    log.info('Continuum-fitting object {} [targetid {}] took {:.2f} sec'.format(
-        iobj, meta['TARGETID'], time.time()-t0))
-    
-    return out, meta
-
 def fastphot(args=None, comm=None):
-    """Main fastphot module.
+    """Main fastphot script.
+
+    This script is the engine to model the broadband photometry of one or more
+    DESI objects. It initializes the :class:`ContinuumFit` class, reads the
+    data, fits each object (with the option of fitting in parallel), and writes
+    out the results as a multi-extension binary FITS table.
+
+    Parameters
+    ----------
+    args : :class:`argparse.Namespace` or ``None``
+        Required and optional arguments parsed via inputs to the command line. 
+    comm : :class:`mpi4py.MPI.MPI.COMM_WORLD` or `None`
+        Intracommunicator used with MPI parallelism.
 
     """
     from astropy.table import Table
