@@ -1295,7 +1295,7 @@ class ContinuumFit(ContinuumTools):
         else:
             zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
 
-            inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0
+            inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0
 
             npix, nmodel = zsspflux_dustvdisp.shape
             nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
@@ -1419,7 +1419,7 @@ class ContinuumFit(ContinuumTools):
         zsspflux_dustvdisp = np.concatenate(zsspflux_dustvdisp, axis=0)  # [npix,nage*nAV]
         assert(np.all(specivar >= 0))
 
-        inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0
+        inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0
 
         npix, nmodel = zsspflux_dustvdisp.shape
         nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
