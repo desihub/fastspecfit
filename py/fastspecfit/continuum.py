@@ -88,7 +88,8 @@ class ContinuumTools(object):
         Need to document all the attributes.
 
     """
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, seed=1):
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
+                 seed=1, mapdir=None):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
@@ -114,7 +115,8 @@ class ContinuumTools(object):
         self.imf = 'Kroupa'
 
         # dust maps
-        mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
+        if mapdir is None:
+            mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
         self.SFDMap = SFDMap(scaling=1.0, mapdir=mapdir)
         #self.SFDMap = SFDMap(scaling=0.86, mapdir=mapdir) # SF11 recalibration of the SFD maps
         self.RV = 3.1
@@ -914,7 +916,8 @@ class ContinuumTools(object):
         return smooth_continuum
 
 class ContinuumFit(ContinuumTools):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, nolegend=False):
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
+                 nolegend=False, mapdir=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -938,7 +941,8 @@ class ContinuumFit(ContinuumTools):
             distribution of the form x**2*np.exp(-2*x/scale).
 
         """
-        super(ContinuumFit, self).__init__(metallicity=metallicity, minwave=minwave, maxwave=maxwave)
+        super(ContinuumFit, self).__init__(metallicity=metallicity, minwave=minwave, 
+                                           maxwave=maxwave, mapdir=mapdir)
         
         # Initialize the velocity dispersion and reddening parameters. Make sure
         # the nominal values are in the grid.

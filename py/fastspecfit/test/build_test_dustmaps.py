@@ -1,9 +1,7 @@
-# ADM For the record (and future updates):
-# ADM This code was used to generate small dust maps for testing.
-# ADM The hardcoded paths are for NERSC, but you can swap out any
-# ADM path as needed (08/28/18).
+"""Build miniature dust maps centered on tile 80613: (RA, Dec)=(104-107, 56-58). 
 
-import os, pdb
+"""
+import os
 import numpy as np
 
 from astropy.io import fits
@@ -36,18 +34,17 @@ for pole in ['ngp', 'sgp']:
     # above. Code taken from desiutil.dust.SFDMap.ebv and
     # desiutil.dust._Hemisphere.
     x1 = np.round((crpix1 - 1.0 + lam_scal * np.cos(l1) * np.sqrt(1.0 - sign * np.sin(b1)))).astype(np.int32)
-    y1 = np.round((crpix2 - 1.0 - sign * lam_scal * np.sin(l1) * np.sqrt(1.0 - sign * np.sin(b1)))).astype(np.int32)
-
     x2 = np.round((crpix1 - 1.0 + lam_scal * np.cos(l2) * np.sqrt(1.0 - sign * np.sin(b2)))).astype(np.int32)
+
+    y1 = np.round((crpix2 - 1.0 - sign * lam_scal * np.sin(l1) * np.sqrt(1.0 - sign * np.sin(b1)))).astype(np.int32)
     y2 = np.round((crpix2 - 1.0 - sign * lam_scal * np.sin(l2) * np.sqrt(1.0 - sign * np.sin(b2)))).astype(np.int32)
 
-    # some valid coordinates are right on the border (e.g., x/y = 4096)
     x1 = np.clip(x1, 0, data.shape[1]-1)
-    y1 = np.clip(y1, 0, data.shape[0]-1)
-
     x2 = np.clip(x2, 0, data.shape[1]-1)
+    y1 = np.clip(y1, 0, data.shape[0]-1)
     y2 = np.clip(y2, 0, data.shape[0]-1)
 
+    # slice
     wcs = wcs[y2:y1, x1:2]
     data = data[y2:y1, x1:x2]
 
