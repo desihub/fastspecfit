@@ -112,6 +112,7 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
+    parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
     # make specprod required until this ticket is addressed--
@@ -161,8 +162,8 @@ def fastspec(args=None, comm=None):
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit()
-    EMFit = EMLineFit()
+    CFit = ContinuumFit(mapdir=args.mapdir)
+    EMFit = EMLineFit(mapdir=args.mapdir)
     Spec = DESISpectra()#specprod=args.specprod)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
@@ -228,7 +229,7 @@ def fastphot(args=None, comm=None):
 
     # Initialize the continuum-fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit()
+    CFit = ContinuumFit(mapdir=args.mapdir)
     Spec = DESISpectra()#specprod=args.specprod)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 

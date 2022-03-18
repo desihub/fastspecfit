@@ -252,7 +252,12 @@ class DESISpectra(object):
             elif self.coadd_type == 'healpix':
                 thrunight = None
             elif self.coadd_type == 'cumulative':
-                thrunight = np.int32(os.path.basename(os.path.dirname(specfile)))
+                hdr = fitsio.read_header(specfile, ext=0)
+                if 'SPGRPVAL' in hdr:
+                    thrunight = hdr['SPGRPVAL']
+                else:
+                    # Fragile!
+                    thrunight = np.int32(os.path.basename(os.path.dirname(specfile)))
             else:
                 thrunight = None
                 expfmcols = expfmcols + ['NIGHT']
