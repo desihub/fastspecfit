@@ -15,6 +15,7 @@ class TestFastspec(unittest.TestCase):
     """Test fastspecfit.fastspecfit.fastspec"""
     @classmethod
     def setUpClass(cls):
+        os.environ['DESI_ROOT'] = resource_filename('fastspecfit.test', 'data')
         os.environ['FASTSPECFIT_TEMPLATES'] = resource_filename('fastspecfit.test', 'data')
         cls.mapdir = resource_filename('fastspecfit.test', 'data')
         cls.redrockfile = resource_filename('fastspecfit.test', 'data/redrock-4-80613-thru20210324.fits')
@@ -25,10 +26,6 @@ class TestFastspec(unittest.TestCase):
 
         #self.ra = np.array([84.56347552,  88.25858593,
         #                    85.18114653,  84.04246538, 83.22215524])
-        #self.dec = np.array([32.14649459,  26.61522843,  30.10225407,
-        #                     32.34100748, 33.22330424])
-        #self.ebv = np.array([1.45868814,  1.59562695,  1.78565359,
-        #                     0.95239526,  0.87789094], dtype='<f4')
 
     def setUp(self):
         pass
