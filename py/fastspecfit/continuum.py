@@ -845,7 +845,7 @@ class ContinuumTools(object):
         #            #print(kk, np.sum(J), np.sum(I), np.median(wave[I]), smoothflux[I][0])
         #    return smoothflux
                 
-        medbin = np.int(binwave * 2)
+        medbin = int(binwave * 2)
         #print(binwave, medbin)
 
         # Replace pixels potentially affected by lines by the ivar-weighted mean
@@ -948,7 +948,7 @@ class ContinuumFit(ContinuumTools):
         # the nominal values are in the grid.
         vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 20.0, 150.0)
         #vdispmin, vdispmax, dvdisp, vdisp_nominal = (0.0, 0.0, 30.0, 150.0)
-        nvdisp = np.int(np.ceil((vdispmax - vdispmin) / dvdisp))
+        nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp))
         if nvdisp == 0:
             nvdisp = 1
         vdisp = np.linspace(vdispmin, vdispmax, nvdisp)#.astype('f4') # [km/s]
@@ -961,7 +961,7 @@ class ContinuumFit(ContinuumTools):
 
         #AVmin, AVmax, dAV, AV_nominal = (0.0, 0.0, 0.1, 0.0)
         AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.1, 0.0)
-        nAV = np.int(np.ceil((AVmax - AVmin) / dAV))
+        nAV = int(np.ceil((AVmax - AVmin) / dAV))
         if nAV == 0:
             nAV = 1
         AV = np.linspace(AVmin, AVmax, nAV)#.astype('f4')
