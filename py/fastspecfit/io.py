@@ -393,15 +393,30 @@ class DESISpectra(object):
         for meta in self.meta:
             srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in meta['TARGETID']])
             assert(np.all(meta['TARGETID'] == targets['TARGETID'][srt]))
-            # prefer the target catalog quantities over those in the fiberassign table
+            # Prefer the target catalog quantities over those in the fiberassign
+            # table, unless the target catalog is zero.
             for col in targets.colnames:
                 meta[col] = targets[col][srt]
+                #if col in meta.colnames:
+                #    I = (targets[col][srt] == 0) * (meta[col] != 0)
+                #    if np.sum(I) > 0:
+                #        meta[col][I] = targets[col][srt][I]
+                #else:
+                #    meta[col] = targets[col][srt]
+            # special case for some secondary and ToOs
+            I = (meta['RA'] == 0) * (meta['DEC'] == 0) * (meta['TARGET_RA'] != 0) * (meta['TARGET_DEC'] != 0)
+            if np.sum(I) > 0:
+                meta['RA'][I] = meta['TARGET_RA'][I]
+                meta['DEC'][I] = meta['TARGET_DEC'][I]
+            assert(np.all((meta['RA'] != 0) * (meta['DEC'] != 0)))
             nobj = len(meta)
             # placeholder (to be added in DESISpectra.read_and_unpack)
             for band in ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']:
                 meta.add_column(Column(name='MW_TRANSMISSION_{}'.format(band), data=np.ones(nobj, 'f4')))
             metas.append(meta)
         log.info('Gathered targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
+
+        pdb.set_trace()
 
         self.meta = metas # update
 
