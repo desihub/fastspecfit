@@ -4,6 +4,15 @@ fastspecfit.test.test_continuum
 
 Test fastspecfit.fastspecfit.fastspec
 
+# ToOs -- no broadband photometry
+fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/19/20210501/redrock-4-19-thru20210501.fits -o fastspec.fits --targetids 43977515642913220,43977515642913243
+
+# secondary targets with good targetphot photometry
+fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80895/20210403/redrock-7-80895-thru20210403.fits -o fastspec.fits --targetids 39632936277902799,39632931181824699,39632931173436143,39632936273709365,39632936273708359
+
+# secondary targets with no good targetphot photometry
+fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80856/20210318/redrock-9-80856-thru20210318.fits -o fastspec.fits --targetids 6432023904256,6448025174016
+
 """
 import pdb
 import unittest, os, shutil, tempfile, subprocess
