@@ -41,10 +41,6 @@ DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
 
-#SCDNDIR = {'81097': '/global/cfs/cdirs/desi/target/catalogs/dr9/0.53.0/targets/sv2/resolve/dark'}
-
-#VETO_TILES = np.array([81097, 81098, 81099])
-
 class DESISpectra(object):
     def __init__(self, specprod=None):
         """Class to read in the DESI data needed by fastspecfit.
@@ -160,24 +156,10 @@ class DESISpectra(object):
         if redrockfiles is None:
             log.warning('At least one redrockfiles file is required.')
             raise ValueError
-        #if redrockfiles is None and fastfit is None and metadata is None:
-        #    log.warning('At least one of redrockfiles or fastfit (and metadata, specprod, and coadd_type) are required.')
-        #    raise ValueError
 
         if len(np.atleast_1d(redrockfiles)) == 0:
             log.warning('No redrockfiles found!')
             raise IOError
-
-        ## Try to glean specprod so we can write it to the output file. This
-        ## should really be in the file header--- see
-        ## https://github.com/desihub/desispec/issues/1077
-        #if specprod is None:            
-        #    #import desiutil.depend
-        #    #hdr = fitsio.read_header(np.atleast_1d(redrockfiles)[0].replace('redrock-', 'coadd-'))
-        #    # stupidly fragile!
-        #    specprod = np.atleast_1d(redrockfiles)[0].replace(self.redux_dir, '').split(os.sep)[1]
-        #    self.specprod = specprod
-        #    log.info('Parsed specprod={}'.format(specprod))
 
         # Should we not sort...?
         #redrockfiles = np.array(set(np.atleast_1d(redrockfiles)))
@@ -223,22 +205,22 @@ class DESISpectra(object):
 
             # Figure out which fibermap columns to put into the metadata
             # table. Note that the fibermap includes all the spectra that went
-            # into the coadd (based on the unique TARGETID which is in the redrock
-            # table).  See https://github.com/desihub/desispec/issues/1104
+            # into the coadd (based on the unique TARGETID which is in the
+            # redrock table).  See
+            # https://github.com/desihub/desispec/issues/1104 Also do not read
+            # columns like PHOTSYS, FIBERFLUX_[G,R,Z], FIBERTOTFLUX_[G,R,Z],
+            # FLUX_[G,R,Z,W1,W2], and FLUX_IVAR_[G,R,Z,W1,W2] because those
+            # columns are incorrect in early SV observations or not provided for
+            # all secondary targets.
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
             fmcols = ['TARGETID', 'TARGET_RA', 'TARGET_DEC',
-                      'COADD_FIBERSTATUS', 'OBJTYPE']#,'PHOTSYS']
-                      #'PHOTSYS', 'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-                      #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-                      #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
-                      #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-                      #'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
+                      'COADD_FIBERSTATUS', 'OBJTYPE']
             if coadd_type == 'custom':
                 expfmcols = ['TARGETID', 'FIBER'] # hack for M31 project
             else:
                 expfmcols = ['TARGETID', 'TILEID', 'FIBER']
             
-            # add targeting columns
+            # add targeting columns -- necessary??
             HAVE_TARGETINGBITCOLS = [col for col in TARGETINGBITCOLS if col in allfmcols]
             fmcols = np.array(fmcols + HAVE_TARGETINGBITCOLS).tolist()
             morecols = np.isin(TARGETCOLS, allfmcols)
@@ -264,10 +246,6 @@ class DESISpectra(object):
                 if self.coadd_type == 'perexp':
                     expfmcols = expfmcols + ['EXPID']
 
-            ## older fibermaps are missing the WISE inverse variance
-            #if 'FLUX_IVAR_W1' in allfmcols:
-            #    fmcols = fmcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
-
             zbcols = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
 
             # If targetids is *not* given we have to choose "good" objects
@@ -286,17 +264,17 @@ class DESISpectra(object):
                     (meta['COADD_FIBERSTATUS'] == 0)
                     )[0]
 
-                # bug in ToOs -- they don't get targeting info propagated 
-                # fastphot /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/259/25969/redrock-sv3-bright-25969.fits -o fastphot.fits --targetids
-                check = np.sum(meta[HAVE_TARGETINGBITCOLS][fitindx].tolist(), axis=1)
-                good = check != 0
-                bad = check == 0
-                if np.sum(bad) > 0:
-                    tbad = [str(tid) for tid in meta['TARGETID'][fitindx][bad]]
-                    log.warning('Missing _TARGET info for the following objects: {}'.format(' '.join(tbad)))
-                #pdb.set_trace()
-                if np.sum(good) > 0:
-                    fitindx = fitindx[good]
+                ## bug in ToOs -- they don't get targeting info propagated 
+                ## fastphot /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/259/25969/redrock-sv3-bright-25969.fits -o fastphot.fits --targetids
+                #check = np.sum(meta[HAVE_TARGETINGBITCOLS][fitindx].tolist(), axis=1)
+                #good = check != 0
+                #bad = check == 0
+                #if np.sum(bad) > 0:
+                #    tbad = [str(tid) for tid in meta['TARGETID'][fitindx][bad]]
+                #    log.warning('Missing _TARGET info for the following objects: {}'.format(' '.join(tbad)))
+                ##pdb.set_trace()
+                #if np.sum(good) > 0:
+                #    fitindx = fitindx[good]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -348,27 +326,12 @@ class DESISpectra(object):
             # build the list of tiles that went into each unique target / coadd
             meta['TILEID_LIST'] = [' '.join(np.unique(expmeta[tid == expmeta['TARGETID']]['TILEID']).astype(str)) for tid in meta['TARGETID']]
 
-            ## this code is good for vetoing specific tiles
-            #if False:
-            #    if np.any(np.isin(tiles, VETO_TILES)):
-            #        remtargets = np.array(expmeta[np.isin(expmeta['TILEID'], VETO_TILES)]['TARGETID'].tolist())
-            #        remindx = np.isin(meta['TARGETID'], remtargets)
-            #        if np.sum(remindx) > 0:
-            #            log.info('Removing {} targets from VETO_TILES.'.format(np.sum(remindx)))
-            #            keepindx = np.where(np.logical_not(remindx))[0]
-            #            meta = meta[keepindx]
-            #            if len(meta) == 0:
-            #                log.info('All targets have been removed from redrockfile {}'.format(redrockfile))
-            #                continue
-            #            zb = zb[keepindx]
-            #            fitindx = fitindx[keepindx]
-            #            tiles = tiles[np.logical_not(np.isin(tiles, VETO_TILES))]
-
             if thrunight:
                 meta['THRUNIGHT'] = thrunight
 
             # Gather additional info about this pixel.
             if coadd_type == 'healpix':
+                raise ValueError('Fix me!') # this is all in the header now!
                 pixinfo = os.path.basename(redrockfile).split('-') 
                 meta['SURVEY'] = pixinfo[1] # a little fragile...
                 meta['FAPRGRM'] = pixinfo[2]
@@ -407,6 +370,15 @@ class DESISpectra(object):
         if len(self.redrock) == 0:
             log.warning('No targets read!')
             return
+
+        from desispec.io.photo import build_targetphot
+
+        alltiles = np.unique(self.tiles)
+        info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
+
+        targetphot = build_targetphot(info, alltiles)
+
+        pdb.set_trace()
 
         # The targets catalogs are organized on a much larger spatial scale, so
         # grab additional targeting info outside the main loop. See

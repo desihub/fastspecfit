@@ -1,36 +1,36 @@
 FastSpec wrapper. Call with, e.g.,
 
   # nice BGS example
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465 --specprod everest
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastspec2.fits --ntargets 1 --specprod everest
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465 
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastspec2.fits --ntargets 1 
 
   # Issue #32 test
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80696/20210309/redrock-7-80696-thru20210309.fits -o fastspec.fits --targetids 39633489506601735
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80696/20210309/redrock-7-80696-thru20210309.fits -o fastspec.fits --targetids 39633489506601735
 
   # redrock is wrong!
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80605/20210205/redrock-0-80605-thru20210205.fits --specprod everest -o fastspec.fits --targetids 39627652595714901
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80605/20210205/redrock-0-80605-thru20210205.fits  -o fastspec.fits --targetids 39627652595714901
 
   # good test of needing smoothing continuum residuals before line-fitting
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80605/20210205/redrock-9-80605-thru20210205.fits --specprod everest -o fastspec.fits --targetids 39627658622930703
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80605/20210205/redrock-9-80605-thru20210205.fits  -o fastspec.fits --targetids 39627658622930703
 
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/redrock-0-80613-deep.fits -o fastspec.fits --targetids 39633314155332057
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/redrock-0-80606-deep.fits -o fastspec.fits --ntargets 2
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80613/redrock-0-80613-deep.fits -o fastspec.fits --targetids 39633314155332057
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80613/redrock-0-80606-deep.fits -o fastspec.fits --ntargets 2
 
   # nice QSO with broad lines
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits --targetids 39633331528141827 --specprod everest
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec2.fits --targetids 39633321176600909 --specprod everest
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits --targetids 39633331528141827 
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec2.fits --targetids 39633321176600909 
   fastspecfit-qa --fastspecfile ./fastspec2.fits -o desi-users/ioannis/tmp/
 
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits --specprod everest \
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits  \
     --targetids 39633321180792100,39633321176600909,39633321180791247,39633321180791630,39633328097199918,39633331528143479,39633324653676573,39633324653676217,\
     39633321176598475,39633331532336872,39633328097202474,39633321189179675,39633321176598312,39633328097199634,39633321172405812,39633321172405061 --mp 16
 
   # Raga's secondary targets
-  fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/dark/91/9157/redrock-sv1-dark-9157.fits -o fastspec.fits --specprod everest --mp 7 \
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/healpix/sv1/dark/91/9157/redrock-sv1-dark-9157.fits -o fastspec.fits  --mp 7 \
     --targetids 39632936277902799,39632931181824699,39632936277905113,39632936273709365,39632936282096442,39632936273708359,39632931177631304
 
-  ff = Table.read('/global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits', 'FIBERMAP')
-  tt = Table.read('/global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits', 'REDSHIFTS')
+  ff = Table.read('/global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits', 'FIBERMAP')
+  tt = Table.read('/global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits', 'REDSHIFTS')
 
   In [16]: tt[(tt['Z'] > 2) * (ff['COADD_FIBERSTATUS'] == 0)]
   Out[16]:
@@ -60,7 +60,7 @@ FastSpec wrapper. Call with, e.g.,
 
 
   Fastphot wrapper. Call with, e.g.,
-    fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/perexp/80607/00068028/redrock-0-80607-exp00068028.fits -o fastphot-perexp.fits --ntargets 2 --specprod everest
-    fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/pernight/80607/20201218/redrock-0-80607-20201218.fits -o fastphot-pernight.fits --ntargets 2 --specprod everest
-    fastphot /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80607/20201219/redrock-0-80607-thru20201219.fits -o fastphot-thrunight.fits --ntargets 2 --specprod everest
-    fastphot /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastphot-hpx.fits --ntargets 2 --specprod everest
+    fastphot /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/perexp/80607/00068028/redrock-0-80607-exp00068028.fits -o fastphot-perexp.fits --ntargets 2 
+    fastphot /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/pernight/80607/20201218/redrock-0-80607-20201218.fits -o fastphot-pernight.fits --ntargets 2 
+    fastphot /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80607/20201219/redrock-0-80607-thru20201219.fits -o fastphot-thrunight.fits --ntargets 2 
+    fastphot /global/cfs/cdirs/desi/spectro/redux/fuji/healpix/sv1/bright/70/7022/redrock-sv1-bright-7022.fits -o fastphot-hpx.fits --ntargets 2 
