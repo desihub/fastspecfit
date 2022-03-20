@@ -13,19 +13,11 @@ import numpy as np
 import fitsio
 from astropy.table import Table, vstack
 
+from desitarget.io import releasedict
+
 from desiutil.log import get_logger
 log = get_logger()
 
-#TARGETINGBITCOLS = [
-#    #'CMX_TARGET',
-#    'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET',
-#    'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
-#    'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
-#    'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
-#    'SCND_TARGET',
-#    'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET',
-#    ]
-#
 #TARGETCOLS = np.array([
 #    'PHOTSYS',
 #    'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
@@ -35,6 +27,29 @@ log = get_logger()
 #    'FLUX_IVAR_W1', 'FLUX_IVAR_W2'])#,
 #    #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
 #    #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
+
+# list of all possible targeting bit columns
+TARGETINGBITCOLS = [
+    'CMX_TARGET',
+    'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET',
+    'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
+    'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
+    'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
+    'SCND_TARGET',
+    'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET',
+    ]
+
+# fibermap and exp_fibermap columns to read
+FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE']
+EXPFMCOLS = {
+    'perexp': ['TARGETID', 'TILEID', 'FIBER', 'NIGHT', 'EXPID'],
+    'pernight': ['TARGETID', 'TILEID', 'FIBER', 'NIGHT'],
+    'cumulative': ['TARGETID', 'TILEID', 'FIBER'],
+    'healpix': ['TARGETID']
+    }
+
+# redshift columns to read
+REDSHIFTCOLS = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
 
 # targeting and Tractor columns to read from disk
 TARGETCOLS = ['TARGETID', 'RA', 'DEC', 
@@ -201,6 +216,7 @@ class DESISpectra(object):
             # Try to figure out coadd_type from the first filename. Fragile!
             # Assumes that coadd_type is a scalar... And, really, this should be
             # in a header.
+            thrunight = None
             if coadd_type is None:
                 if ired == 0:
                     hdr = fitsio.read_header(specfile, ext=0)
@@ -209,6 +225,8 @@ class DESISpectra(object):
                         coadd_type = hdr['SPGRP']
                         if coadd_type == 'healpix':
                             hpxpixel = np.int32(hdr['HPXPIXEL'])
+                        elif coadd_type == 'cumulative':
+                            thrunight = hdr['SPGRPVAL']
                     else:
                         if 'HPXPIXEL' in hdr:
                             coadd_type = 'healpix'
@@ -233,55 +251,44 @@ class DESISpectra(object):
             # FLUX_[G,R,Z,W1,W2], and FLUX_IVAR_[G,R,Z,W1,W2] because those
             # columns are incorrect in early SV observations or not provided for
             # all secondary targets.
-            allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
-            fmcols = ['TARGETID', 'TARGET_RA', 'TARGET_DEC',
-                      'COADD_FIBERSTATUS', 'OBJTYPE']
-            if coadd_type == 'custom':
-                expfmcols = ['TARGETID', 'FIBER'] # hack for M31 project
-            else:
-                expfmcols = ['TARGETID', 'TILEID', 'FIBER']
+            #allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
             
-            # add targeting columns -- necessary??
-            HAVE_TARGETINGBITCOLS = [col for col in TARGETINGBITCOLS if col in allfmcols]
-            fmcols = np.array(fmcols + HAVE_TARGETINGBITCOLS).tolist()
-            morecols = np.isin(TARGETCOLS, allfmcols)
-            if np.sum(morecols) > 0:
-                fmcols = np.hstack((fmcols, TARGETCOLS[morecols]))
+            ## add targeting columns -- necessary??
+            #HAVE_TARGETINGBITCOLS = [col for col in TARGETINGBITCOLS if col in allfmcols]
+            #fmcols = np.array(fmcols + HAVE_TARGETINGBITCOLS).tolist()
+            #morecols = np.isin(TARGETCOLS, allfmcols)
+            #if np.sum(morecols) > 0:
+            #    fmcols = np.hstack((fmcols, TARGETCOLS[morecols]))
 
-            # For the cumulative coadds, NIGHT is defined to be the last night
-            # contributing to the coadd.
-            if self.coadd_type == 'custom':
-                thrunight = None
-            elif self.coadd_type == 'healpix':
-                thrunight = None
-            elif self.coadd_type == 'cumulative':
-                hdr = fitsio.read_header(specfile, ext=0)
-                if 'SPGRPVAL' in hdr:
-                    thrunight = hdr['SPGRPVAL']
-                else:
-                    # Fragile!
-                    thrunight = np.int32(os.path.basename(os.path.dirname(specfile)))
-            else:
-                thrunight = None
-                expfmcols = expfmcols + ['NIGHT']
-                if self.coadd_type == 'perexp':
-                    expfmcols = expfmcols + ['EXPID']
-
-            zbcols = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
+            ## For the cumulative coadds, NIGHT is defined to be the last night
+            ## contributing to the coadd.
+            #if self.coadd_type == 'custom':
+            #    thrunight = None
+            #elif self.coadd_type == 'healpix':
+            #    thrunight = None
+            #elif self.coadd_type == 'cumulative':
+            #    hdr = fitsio.read_header(specfile, ext=0)
+            #    if 'SPGRPVAL' in hdr:
+            #        thrunight = hdr['SPGRPVAL']
+            #    else:
+            #        # Fragile!
+            #        thrunight = np.int32(os.path.basename(os.path.dirname(specfile)))
+            #else:
+            #    thrunight = None
+            #    EXPFMCOLS = EXPCOLS + ['NIGHT']
+            #    if self.coadd_type == 'perexp':
+            #        EXPFMCOLS = EXPCOLS + ['EXPID']
 
             # If targetids is *not* given we have to choose "good" objects
             # before subselecting (e.g., we don't want sky spectra).
             if targetids is None:
-                zb = fitsio.read(redrockfile, 'REDSHIFTS', columns=zbcols)
+                zb = fitsio.read(redrockfile, 'REDSHIFTS', columns=REDSHIFTCOLS)
                 # Are we reading individual exposures or coadds?
-                meta = fitsio.read(specfile, 'FIBERMAP', columns=fmcols)
+                meta = fitsio.read(specfile, 'FIBERMAP', columns=FMCOLS)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
                 fitindx = np.where(
-                    (zb['Z'] > zmin) *
-                    (zb['Z'] < zmax) *
-                    (zb['ZWARN'] <= zwarnmax) * 
-                    (meta['OBJTYPE'] == 'TGT') *
-                    #(meta['PHOTSYS'] != 'G') * #(zb['SPECTYPE'] == 'GALAXY') *
+                    (zb['Z'] > zmin) * (zb['Z'] < zmax) *
+                    (zb['ZWARN'] <= zwarnmax) * (meta['OBJTYPE'] == 'TGT') *
                     (meta['COADD_FIBERSTATUS'] == 0)
                     )[0]
 
@@ -328,26 +335,26 @@ class DESISpectra(object):
                 zb = Table(zb[fitindx])
                 meta = Table(meta[fitindx])
             else:
-                zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=zbcols))
-                meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=fmcols))
+                zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=REDSHIFTCOLS))
+                meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=FMCOLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
             # Get the unique set of tiles contributing to the coadded spectra from EXP_FIBERMAP
-            expmeta = fitsio.read(specfile, 'EXP_FIBERMAP', columns=expfmcols)
+            expmeta = fitsio.read(specfile, 'EXP_FIBERMAP', columns=EXPFMCOLS[coadd_type])
             I = np.isin(expmeta['TARGETID'], meta['TARGETID'])
             if np.count_nonzero(I) == 0:
                 log.warning('No matching targets in exposure table.')
                 raise ValueError
             expmeta = Table(expmeta[I])
-            if coadd_type == 'custom':
-                expmeta['TILEID'] = 80715 # M31 hack!
+            #if coadd_type == 'custom':
+            #    expmeta['TILEID'] = 80715 # M31 hack!
 
             tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
 
             # build the list of tiles that went into each unique target / coadd
             meta['TILEID_LIST'] = [' '.join(np.unique(expmeta[tid == expmeta['TARGETID']]['TILEID']).astype(str)) for tid in meta['TARGETID']]
 
-            if thrunight:
+            if thrunight is not None:
                 meta['THRUNIGHT'] = thrunight
 
             # Gather additional info about this pixel.
@@ -398,7 +405,18 @@ class DESISpectra(object):
 
         targets = gather_targetphot(info, alltiles, columns=TARGETCOLS)
 
-        pdb.set_trace()
+        # If all the photometry is zero, look for it in the Tractor catalogs
+        # themselves. This step can also be made "not optional" in order to
+        # gather additional Tractor quantities, if needed or wanted.
+        I = np.where((targets['FLUX_IVAR_G'] == 0) * (targets['FLUX_IVAR_R'] == 0) *
+                     (targets['FLUX_IVAR_Z'] == 0) * (targets['FLUX_IVAR_W1'] == 0) *
+                     (targets['FLUX_IVAR_W2'] == 0))[0]
+        if len(I) > 0:
+            tractor = gather_tractorphot(info[I])
+            targets['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in tractor['RELEASE']]
+            for col in targets.colnames:
+                if col in tractor.colnames:
+                    targets[col][I] = tractor[col]
 
         metas = []
         for meta in self.meta:
