@@ -16,25 +16,45 @@ from astropy.table import Table, vstack
 from desiutil.log import get_logger
 log = get_logger()
 
-TARGETINGBITCOLS = [
-    #'CMX_TARGET',
-    'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET',
-    'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
-    'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
-    'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
-    'SCND_TARGET',
-    'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET',
-    ]
+#TARGETINGBITCOLS = [
+#    #'CMX_TARGET',
+#    'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET',
+#    'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
+#    'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
+#    'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
+#    'SCND_TARGET',
+#    'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET',
+#    ]
+#
+#TARGETCOLS = np.array([
+#    'PHOTSYS',
+#    'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+#    'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+#    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
+#    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+#    'FLUX_IVAR_W1', 'FLUX_IVAR_W2'])#,
+#    #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+#    #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
 
-TARGETCOLS = np.array([
-    'PHOTSYS',
-    'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-    'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
-    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-    'FLUX_IVAR_W1', 'FLUX_IVAR_W2'])#,
-    #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
-    #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
+# targeting and Tractor columns to read from disk
+TARGETCOLS = ['TARGETID', 'RA', 'DEC', 
+              'PHOTSYS',
+              'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+              'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+              'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
+              'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+              'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']#,
+              #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+              #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
+
+TRACTORCOLS = ['TARGETID', 'RA', 'DEC', 
+              'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+              'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+              'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
+              'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+              'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']#,
+              #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+              #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
 
 # Default environment variables.
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
@@ -60,75 +80,75 @@ class DESISpectra(object):
         #self.healpix_dir = os.path.join(self.redux_dir, self.specprod, 'healpix')
         #self.tiles_dir = os.path.join(self.redux_dir, self.specprod, 'tiles', self.coadd_type)
 
-    def _get_targetdirs(self, tileid):
-        """Get the targets catalog used to build a given fiberassign catalog.
-
-        """
-        from astropy.io import fits
-        #thistile = self.tiles[self.tiles['TILEID'] == tileid]
-        stileid = '{:06d}'.format(tileid)
-        fiberfile = os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid))
-        if not os.path.isfile(fiberfile):
-            fiberfile = fiberfile.replace('.gz', '')
-            if not os.path.isfile(fiberfile):
-                log.warning('Fiber assignment file {} not found!'.format(fiberfile))
-        log.info('Reading {} header.'.format(fiberfile))
-        # fitsio can't handle CONTINUE header cards!
-        #fahdr = fitsio.read_header(fiberfile, ext=0)
-        # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/redrock-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
-        fahdr = fits.getheader(fiberfile, ext=0)
-        targetdirs = [fahdr['TARG']]
-        for moretarg in ['TARG2', 'TARG3', 'TARG4']:
-            if moretarg in fahdr:
-                if 'gaia' not in fahdr[moretarg]: # skip
-                    targetdirs += [fahdr[moretarg]]
-        if 'SCND' in fahdr:
-            if fahdr['SCND'].strip() != '-':
-                #if tileid in SCDNDIR.keys():
-                #    targetdirs += [SCDNDIR[tileid]]
-                #else:
-                targetdirs += [fahdr['SCND']]
-
-        desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
-        for ii, targetdir in enumerate(targetdirs):
-            # for secondary targets, targetdir can be a filename
-            #if os.path.isfile(targetdir):
-            if targetdir[-4:] == 'fits': # fragile...
-                targetdir = os.path.dirname(targetdir)
-            if not os.path.isdir(targetdir):
-                #log.warning('Targets directory not found {}'.format(targetdir))
-                # can be a KPNO directory!
-                if 'DESIROOT' in targetdir:
-                    targetdir = os.path.join(desi_root, targetdir.replace('DESIROOT/', ''))
-                if targetdir[:6] == '/data/':
-                    targetdir = os.path.join(desi_root, targetdir.replace('/data/', ''))
-                
-            if os.path.isdir(targetdir):
-                log.info('Found targets directory {}'.format(targetdir))
-                targetdirs[ii] = targetdir
-            else:
-                log.warning('Targets directory {} not found.'.format(targetdir))
-                #pdb.set_trace()
-                #raise IOError
-                continue
-
-        # any ToOs?
-        if 'TOO' in fahdr:
-            # special case, fragile!
-            if 'sv3' in fahdr['TOO']:
-                ddir = 'sv3'
-            else:
-                ddir = 'main'
-            TOOfile = os.path.join(desi_root, 'survey', 'ops', 'surveyops', 'trunk', 'mtl', ddir, 'ToO', 'ToO.ecsv')
-            if os.path.isfile(TOOfile):
-                log.info('Found ToO file {}'.format(TOOfile))
-            else:
-                log.warning('ToO file {} not found.'.format(TOOfile))
-                TOOfile = None                
-        else:
-            TOOfile = None
-            
-        return targetdirs, TOOfile
+    #def _get_targetdirs(self, tileid):
+    #    """Get the targets catalog used to build a given fiberassign catalog.
+    #
+    #    """
+    #    from astropy.io import fits
+    #    #thistile = self.tiles[self.tiles['TILEID'] == tileid]
+    #    stileid = '{:06d}'.format(tileid)
+    #    fiberfile = os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid))
+    #    if not os.path.isfile(fiberfile):
+    #        fiberfile = fiberfile.replace('.gz', '')
+    #        if not os.path.isfile(fiberfile):
+    #            log.warning('Fiber assignment file {} not found!'.format(fiberfile))
+    #    log.info('Reading {} header.'.format(fiberfile))
+    #    # fitsio can't handle CONTINUE header cards!
+    #    #fahdr = fitsio.read_header(fiberfile, ext=0)
+    #    # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/redrock-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
+    #    fahdr = fits.getheader(fiberfile, ext=0)
+    #    targetdirs = [fahdr['TARG']]
+    #    for moretarg in ['TARG2', 'TARG3', 'TARG4']:
+    #        if moretarg in fahdr:
+    #            if 'gaia' not in fahdr[moretarg]: # skip
+    #                targetdirs += [fahdr[moretarg]]
+    #    if 'SCND' in fahdr:
+    #        if fahdr['SCND'].strip() != '-':
+    #            #if tileid in SCDNDIR.keys():
+    #            #    targetdirs += [SCDNDIR[tileid]]
+    #            #else:
+    #            targetdirs += [fahdr['SCND']]
+    #
+    #    desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
+    #    for ii, targetdir in enumerate(targetdirs):
+    #        # for secondary targets, targetdir can be a filename
+    #        #if os.path.isfile(targetdir):
+    #        if targetdir[-4:] == 'fits': # fragile...
+    #            targetdir = os.path.dirname(targetdir)
+    #        if not os.path.isdir(targetdir):
+    #            #log.warning('Targets directory not found {}'.format(targetdir))
+    #            # can be a KPNO directory!
+    #            if 'DESIROOT' in targetdir:
+    #                targetdir = os.path.join(desi_root, targetdir.replace('DESIROOT/', ''))
+    #            if targetdir[:6] == '/data/':
+    #                targetdir = os.path.join(desi_root, targetdir.replace('/data/', ''))
+    #            
+    #        if os.path.isdir(targetdir):
+    #            log.info('Found targets directory {}'.format(targetdir))
+    #            targetdirs[ii] = targetdir
+    #        else:
+    #            log.warning('Targets directory {} not found.'.format(targetdir))
+    #            #pdb.set_trace()
+    #            #raise IOError
+    #            continue
+    #
+    #    # any ToOs?
+    #    if 'TOO' in fahdr:
+    #        # special case, fragile!
+    #        if 'sv3' in fahdr['TOO']:
+    #            ddir = 'sv3'
+    #        else:
+    #            ddir = 'main'
+    #        TOOfile = os.path.join(desi_root, 'survey', 'ops', 'surveyops', 'trunk', 'mtl', ddir, 'ToO', 'ToO.ecsv')
+    #        if os.path.isfile(TOOfile):
+    #            log.info('Found ToO file {}'.format(TOOfile))
+    #        else:
+    #            log.warning('ToO file {} not found.'.format(TOOfile))
+    #            TOOfile = None                
+    #    else:
+    #        TOOfile = None
+    #        
+    #    return targetdirs, TOOfile
 
     def find_specfiles(self, redrockfiles=None, firsttarget=0, zmin=0.001, zmax=None,
                        zwarnmax=0, coadd_type=None, targetids=None, ntargets=None):
@@ -149,7 +169,7 @@ class DESISpectra(object):
         from astropy.table import Column
         import numpy.ma as ma
         from desimodel.footprint import radec2pix
-        from desispec.io.photo import build_targetphot
+        from desispec.io.photo import gather_targetphot, gather_tractorphot
 
         if zmax is None:
             zmax = 99.0
@@ -376,18 +396,9 @@ class DESISpectra(object):
         alltiles = np.unique(self.tiles)
         info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
 
-        targets = build_targetphot(info, alltiles)
+        targets = gather_targetphot(info, alltiles, columns=TARGETCOLS)
 
-        targetcols = ['TARGETID', 'RA', 'DEC', 
-                      'PHOTSYS',
-                      'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-                      'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-                      'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
-                      'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-                      'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']#,
-                      #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
-                      #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
-        targets = targets[targetcols]
+        pdb.set_trace()
 
         metas = []
         for meta in self.meta:
@@ -415,8 +426,6 @@ class DESISpectra(object):
                 meta.add_column(Column(name='MW_TRANSMISSION_{}'.format(band), data=np.ones(nobj, 'f4')))
             metas.append(meta)
         log.info('Gathered targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
-
-        pdb.set_trace()
 
         self.meta = metas # update
 

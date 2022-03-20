@@ -21,15 +21,15 @@ log = get_logger()
 
 def _fastspec_one(args):
     """Multiprocessing wrapper."""
-    return _fastspec_one(*args)
+    return fastspec_one(*args)
 
 def _fastphot_one(args):
     """Multiprocessing wrapper."""
-    return _fastphot_one(*args)
+    return fastphot_one(*args)
 
 def _desiqa_one(args):
     """Multiprocessing wrapper."""
-    return _desiqa_one(*args)
+    return desiqa_one(*args)
 
 def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False, verbose=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
