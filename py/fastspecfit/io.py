@@ -18,16 +18,6 @@ from desitarget.io import releasedict
 from desiutil.log import get_logger
 log = get_logger()
 
-#TARGETCOLS = np.array([
-#    'PHOTSYS',
-#    'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-#    'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-#    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
-#    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-#    'FLUX_IVAR_W1', 'FLUX_IVAR_W2'])#,
-#    #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
-#    #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
-
 # list of all possible targeting bit columns
 TARGETINGBITCOLS = [
     'CMX_TARGET',
@@ -62,15 +52,6 @@ TARGETCOLS = ['TARGETID', 'RA', 'DEC',
               #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
               #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
 
-TRACTORCOLS = ['TARGETID', 'RA', 'DEC', 
-              'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-              'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-              'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
-              'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-              'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']#,
-              #'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
-              #'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
-
 # Default environment variables.
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
@@ -83,87 +64,8 @@ class DESISpectra(object):
         """
         desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
 
-        #if specprod is None:
-        #    log.warning('specprod input is required.')
-        #    raise IOError
-        #
-        #self.specprod = specprod
-        
         self.redux_dir = os.path.join(desi_root, 'spectro', 'redux')
         self.fiberassign_dir = os.path.join(desi_root, 'target', 'fiberassign', 'tiles', 'trunk')
-
-        #self.healpix_dir = os.path.join(self.redux_dir, self.specprod, 'healpix')
-        #self.tiles_dir = os.path.join(self.redux_dir, self.specprod, 'tiles', self.coadd_type)
-
-    #def _get_targetdirs(self, tileid):
-    #    """Get the targets catalog used to build a given fiberassign catalog.
-    #
-    #    """
-    #    from astropy.io import fits
-    #    #thistile = self.tiles[self.tiles['TILEID'] == tileid]
-    #    stileid = '{:06d}'.format(tileid)
-    #    fiberfile = os.path.join(self.fiberassign_dir, stileid[:3], 'fiberassign-{}.fits.gz'.format(stileid))
-    #    if not os.path.isfile(fiberfile):
-    #        fiberfile = fiberfile.replace('.gz', '')
-    #        if not os.path.isfile(fiberfile):
-    #            log.warning('Fiber assignment file {} not found!'.format(fiberfile))
-    #    log.info('Reading {} header.'.format(fiberfile))
-    #    # fitsio can't handle CONTINUE header cards!
-    #    #fahdr = fitsio.read_header(fiberfile, ext=0)
-    #    # fastspec /global/cfs/cdirs/desi/spectro/redux/blanc/tiles/80605/20201222/redrock-6-80605-20201222.fits -o /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80605/20201222/fastspec-6-80605-20201222.fits --mp 32
-    #    fahdr = fits.getheader(fiberfile, ext=0)
-    #    targetdirs = [fahdr['TARG']]
-    #    for moretarg in ['TARG2', 'TARG3', 'TARG4']:
-    #        if moretarg in fahdr:
-    #            if 'gaia' not in fahdr[moretarg]: # skip
-    #                targetdirs += [fahdr[moretarg]]
-    #    if 'SCND' in fahdr:
-    #        if fahdr['SCND'].strip() != '-':
-    #            #if tileid in SCDNDIR.keys():
-    #            #    targetdirs += [SCDNDIR[tileid]]
-    #            #else:
-    #            targetdirs += [fahdr['SCND']]
-    #
-    #    desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
-    #    for ii, targetdir in enumerate(targetdirs):
-    #        # for secondary targets, targetdir can be a filename
-    #        #if os.path.isfile(targetdir):
-    #        if targetdir[-4:] == 'fits': # fragile...
-    #            targetdir = os.path.dirname(targetdir)
-    #        if not os.path.isdir(targetdir):
-    #            #log.warning('Targets directory not found {}'.format(targetdir))
-    #            # can be a KPNO directory!
-    #            if 'DESIROOT' in targetdir:
-    #                targetdir = os.path.join(desi_root, targetdir.replace('DESIROOT/', ''))
-    #            if targetdir[:6] == '/data/':
-    #                targetdir = os.path.join(desi_root, targetdir.replace('/data/', ''))
-    #            
-    #        if os.path.isdir(targetdir):
-    #            log.info('Found targets directory {}'.format(targetdir))
-    #            targetdirs[ii] = targetdir
-    #        else:
-    #            log.warning('Targets directory {} not found.'.format(targetdir))
-    #            #pdb.set_trace()
-    #            #raise IOError
-    #            continue
-    #
-    #    # any ToOs?
-    #    if 'TOO' in fahdr:
-    #        # special case, fragile!
-    #        if 'sv3' in fahdr['TOO']:
-    #            ddir = 'sv3'
-    #        else:
-    #            ddir = 'main'
-    #        TOOfile = os.path.join(desi_root, 'survey', 'ops', 'surveyops', 'trunk', 'mtl', ddir, 'ToO', 'ToO.ecsv')
-    #        if os.path.isfile(TOOfile):
-    #            log.info('Found ToO file {}'.format(TOOfile))
-    #        else:
-    #            log.warning('ToO file {} not found.'.format(TOOfile))
-    #            TOOfile = None                
-    #    else:
-    #        TOOfile = None
-    #        
-    #    return targetdirs, TOOfile
 
     def find_specfiles(self, redrockfiles=None, firsttarget=0, zmin=0.001, zmax=None,
                        zwarnmax=0, coadd_type=None, targetids=None, ntargets=None):
@@ -242,43 +144,6 @@ class DESISpectra(object):
             self.coadd_type = coadd_type
             log.info('Parsed coadd_type={}'.format(self.coadd_type))
 
-            # Figure out which fibermap columns to put into the metadata
-            # table. Note that the fibermap includes all the spectra that went
-            # into the coadd (based on the unique TARGETID which is in the
-            # redrock table).  See
-            # https://github.com/desihub/desispec/issues/1104 Also do not read
-            # columns like PHOTSYS, FIBERFLUX_[G,R,Z], FIBERTOTFLUX_[G,R,Z],
-            # FLUX_[G,R,Z,W1,W2], and FLUX_IVAR_[G,R,Z,W1,W2] because those
-            # columns are incorrect in early SV observations or not provided for
-            # all secondary targets.
-            #allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
-            
-            ## add targeting columns -- necessary??
-            #HAVE_TARGETINGBITCOLS = [col for col in TARGETINGBITCOLS if col in allfmcols]
-            #fmcols = np.array(fmcols + HAVE_TARGETINGBITCOLS).tolist()
-            #morecols = np.isin(TARGETCOLS, allfmcols)
-            #if np.sum(morecols) > 0:
-            #    fmcols = np.hstack((fmcols, TARGETCOLS[morecols]))
-
-            ## For the cumulative coadds, NIGHT is defined to be the last night
-            ## contributing to the coadd.
-            #if self.coadd_type == 'custom':
-            #    thrunight = None
-            #elif self.coadd_type == 'healpix':
-            #    thrunight = None
-            #elif self.coadd_type == 'cumulative':
-            #    hdr = fitsio.read_header(specfile, ext=0)
-            #    if 'SPGRPVAL' in hdr:
-            #        thrunight = hdr['SPGRPVAL']
-            #    else:
-            #        # Fragile!
-            #        thrunight = np.int32(os.path.basename(os.path.dirname(specfile)))
-            #else:
-            #    thrunight = None
-            #    EXPFMCOLS = EXPCOLS + ['NIGHT']
-            #    if self.coadd_type == 'perexp':
-            #        EXPFMCOLS = EXPCOLS + ['EXPID']
-
             # If targetids is *not* given we have to choose "good" objects
             # before subselecting (e.g., we don't want sky spectra).
             if targetids is None:
@@ -291,18 +156,6 @@ class DESISpectra(object):
                     (zb['ZWARN'] <= zwarnmax) * (meta['OBJTYPE'] == 'TGT') *
                     (meta['COADD_FIBERSTATUS'] == 0)
                     )[0]
-
-                ## bug in ToOs -- they don't get targeting info propagated 
-                ## fastphot /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/259/25969/redrock-sv3-bright-25969.fits -o fastphot.fits --targetids
-                #check = np.sum(meta[HAVE_TARGETINGBITCOLS][fitindx].tolist(), axis=1)
-                #good = check != 0
-                #bad = check == 0
-                #if np.sum(bad) > 0:
-                #    tbad = [str(tid) for tid in meta['TARGETID'][fitindx][bad]]
-                #    log.warning('Missing _TARGET info for the following objects: {}'.format(' '.join(tbad)))
-                ##pdb.set_trace()
-                #if np.sum(good) > 0:
-                #    fitindx = fitindx[good]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -426,12 +279,6 @@ class DESISpectra(object):
             # table, unless the target catalog is zero.
             for col in targets.colnames:
                 meta[col] = targets[col][srt]
-                #if col in meta.colnames:
-                #    I = (targets[col][srt] == 0) * (meta[col] != 0)
-                #    if np.sum(I) > 0:
-                #        meta[col][I] = targets[col][srt][I]
-                #else:
-                #    meta[col] = targets[col][srt]
             # special case for some secondary and ToOs
             I = (meta['RA'] == 0) * (meta['DEC'] == 0) * (meta['TARGET_RA'] != 0) * (meta['TARGET_DEC'] != 0)
             if np.sum(I) > 0:
@@ -446,214 +293,6 @@ class DESISpectra(object):
         log.info('Gathered targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
         self.meta = metas # update
-
-        ## The targets catalogs are organized on a much larger spatial scale, so
-        ## grab additional targeting info outside the main loop. See
-        ## desitarget.io.read_targets_in_tiles for the algorithm.
-        #t0 = time.time()
-        #
-        #targetcols = ['TARGETID', 'RA', 'DEC']
-        ##if not 'FLUX_IVAR_W1' in fmcols:
-        ##    targetcols = targetcols + ['FLUX_IVAR_W1', 'FLUX_IVAR_W2']
-        ##targetcols = targetcols + [
-        ##    'PHOTSYS',
-        ##    'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-        ##    'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-        ##    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
-        ##    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-        ##    'FLUX_IVAR_W1', 'FLUX_IVAR_W2',
-        ##    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
-        ##    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
-        #
-        #info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
-        #
-        #alltileid = np.unique(self.tiles)
-        #targetdirs, TOOfiles = [], []
-        #for tileid in alltileid:
-        #    _targetdirs, TOOfile = self._get_targetdirs(tileid)
-        #    targetdirs.append(_targetdirs)
-        #    if TOOfile is not None:
-        #        TOOfiles.append(TOOfile)
-        #
-        #targets, scndtargets = [], []
-        #for targetdir in set(np.hstack(targetdirs)):
-        #    # Handle secondary targets, which have a different data model;
-        #    # update on 2021 July 31: these catalogs are missing DR9
-        #    # photometry, so we have to skip them for now.
-        #    if 'secondary' in targetdir:
-        #        #continue                    
-        #        if 'sv1' in targetdir: # special case
-        #            if 'dedicated' in targetdir:
-        #                targetfiles = glob(os.path.join(targetdir, 'DC3R2_GAMA_priorities.fits'))
-        #            else:
-        #                #targetfiles = ['/global/cfs/cdirs/desi/users/raga19/data/0.51.0/sv1targets_dark_secondary_dr9.fits']
-        #                targetfiles = glob(os.path.join(targetdir, '*-secondary-dr9photometry.fits'))
-        #        else:
-        #            targetfiles = glob(os.path.join(targetdir, '*-secondary.fits'))
-        #    else:
-        #        targetfiles = glob(os.path.join(targetdir, '*-hp-*.fits'))
-        #        if len(targetfiles) == 0:
-        #            log.critical('No target catalogs found in {}'.format(targetdir))
-        #            raise IOError
-        #        filenside = fitsio.read_header(targetfiles[0], ext=1)['FILENSID']
-        #        pixlist = radec2pix(filenside, info['TARGET_RA'], info['TARGET_DEC'])
-        #        targetfiles = [targetfiles[0].split('hp-')[0]+'hp-{}.fits'.format(pix) for pix in set(pixlist)]
-        #
-        #    for ifile, targetfile in enumerate(targetfiles):
-        #        tinfo = fitsio.FITS(targetfile)
-        #        for _tinfo in tinfo:
-        #            extname = _tinfo.get_extname()
-        #            if 'TARGETS' in extname:
-        #                break
-        #        if extname == '':
-        #            extname = 1
-        #        alltargetcols = np.array(tinfo[extname].get_colnames())
-        #
-        #        # secondary target catalogs are missing some or all of the
-        #        # DR9 photometry columns we need
-        #        # fastspec /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/153/15343/redrock-sv3-bright-15343.fits -o fastspec
-        #        thesecols = np.isin(alltargetcols, TARGETCOLS)
-        #        if np.sum(thesecols) == 0:
-        #            log.warning('Problem reading target catalog {}'.format(targetfile))
-        #
-        #        readtargetcols = np.hstack((targetcols, alltargetcols[thesecols]))
-        #        #readtargetcols = np.hstack((targetcols, TARGETCOLS[thesecols]))
-        #        alltargets = tinfo[extname].read(columns=readtargetcols)
-        #        match = np.isin(alltargets['TARGETID'], info['TARGETID'])
-        #        log.info('Matched {} targets in {}'.format(np.sum(match), targetfile))
-        #
-        #        if np.sum(match) > 0:
-        #            # need to make sure the column order is the same                        
-        #            if len(targets) > 0 and not np.all(targets[len(targets)-1].dtype.names == alltargets.dtype.names):
-        #            #if not np.all(readtargetcols == np.array(alltargets.dtype.names)):                            
-        #                #_alltargets = Table(alltargets[match])[readtargetcols].as_array() # this doesn't work
-        #                _alltargets = Table(alltargets[match])
-        #                _newtargets = Table()
-        #                I = len(targets) - 1
-        #                for col in targets[I].dtype.names:
-        #                    if col in _alltargets.colnames:
-        #                        _newtargets[col] = _alltargets[col]
-        #                    else:
-        #                        _newtargets.add_column(Column(name=col, dtype=targets[I][col].dtype, length=len(_alltargets)))
-        #                alltargets = _newtargets.as_array()
-        #            else:
-        #                alltargets = alltargets[match]
-        #
-        #            # handle secondary target catalogs in SV3 and main
-        #            if np.sum(thesecols) < len(TARGETCOLS):
-        #                scndtargets.append(alltargets)
-        #            else:
-        #                targets.append(alltargets)
-        #
-        ## handle ToO targets
-        #TOOtargets = []
-        #if len(TOOfiles) > 0:
-        #    for TOOfile in set(np.hstack(TOOfiles)):
-        #        log.info('Reading {}'.format(TOOfile))
-        #        TOO = Table.read(TOOfile) # ecsv file
-        #        
-        #        match = np.isin(TOO['TARGETID'], info['TARGETID'])
-        #        log.info('Matched {} ToOs in {}'.format(np.sum(match), TOOfile))
-        #        if np.sum(match) > 0:
-        #            # build a Table that looks like the target catalog
-        #            TOOmatch = TOO[match]
-        #            nt = len(targets)
-        #            if nt > 0:
-        #                _TOOtargets = Table()
-        #                for col in targets[nt-1].dtype.names:
-        #                    if col in TOOmatch.colnames:
-        #                        _TOOtargets[col] = TOOmatch[col]
-        #                    else:
-        #                        _TOOtargets.add_column(Column(name=col, dtype=targets[nt-1][col].dtype, length=len(TOOmatch)))
-        #                #TOOtargets.append(_TOOtargets.as_array())
-        #                TOOtargets.append(_TOOtargets)
-        #            else:
-        #                TOOtargets.append(TOOmatch)
-        #
-        #if len(targets) > 0:
-        #    targets = Table(np.hstack(targets))
-        #        
-        #if len(scndtargets) > 0:
-        #    scndtargets = Table(np.hstack(scndtargets))
-        #    if len(targets) == 0:
-        #        targets = scndtargets
-        #    
-        #if len(TOOtargets) > 0:
-        #    TOOtargets = vstack(TOOtargets)
-        #    #TOOtargets = Table(np.hstack(TOOtargets))
-        #    if len(targets) > 0:
-        #        targets = vstack((targets, TOOtargets))
-        #    else:
-        #        targets = TOOtargets
-        #        
-        ##from desitarget.io import releasedict
-        ##from desitarget.targets import decode_targetid  
-        ##_, _, releases, _, _, _ = decode_targetid(targets['TARGETID'])  
-        ##photsys = [releasedict[release] if release >= 9000 else None for release in releases]
-        #
-        #if len(scndtargets) > 0:
-        #    _, uindx = np.unique(scndtargets['TARGETID'], return_index=True) 
-        #    scndtargets = scndtargets[uindx]
-        #
-        #    # add the missing columns, if any
-        #    _scndtargets = Table()
-        #    for col in targets.colnames:
-        #        if col in scndtargets.colnames:
-        #            _scndtargets[col] = scndtargets[col]
-        #        else:
-        #            _scndtargets.add_column(Column(name=col, dtype=targets[col].dtype, length=len(scndtargets)))
-        #    #scndtargets = _scndtargets.as_array()
-        #    targets = vstack((targets, scndtargets))
-        #
-        ## targets table can include duplicates...
-        #_, uindx = np.unique(targets['TARGETID'], return_index=True) 
-        #targets = targets[uindx]
-        #
-        #if len(targets) != len(info):
-        #    miss = np.delete(np.arange(len(info)), np.where(np.isin(info['TARGETID'], targets['TARGETID']))[0])
-        #    log.warning('Missing targeting info for {} objects!'.format(len(info) - len(targets)))
-        #    #_, _, release, _, _, _ = decode_targetid(info[miss])
-        #    raise ValueError
-        #
-        ## convert masked and negative fluxes and ivarfluxes to zero
-        #for band in ['G', 'R', 'Z', 'W1', 'W2']:
-        #    for prefix in ['', 'FIBER', 'FIBERTOT']:
-        #        for suffix in ['', '_IVAR']:
-        #            col = '{}FLUX{}_{}'.format(prefix, suffix, band)
-        #            if col in targets.colnames:
-        #                if ma.is_masked(targets[col]):
-        #                    targets[col] = ma.filled(targets[col], 0.0)
-        #                bad = np.logical_or(targets[col] < 0, np.isnan(targets[col]))
-        #                if np.sum(bad) > 0:
-        #                    targets[col][bad] = 0.0
-        #if 'PHOTSYS' in targets.colnames and ma.is_masked(targets['PHOTSYS']):
-        #    targets['PHOTSYS'] = ma.filled(targets['PHOTSYS'], '')
-        #                
-        #metas = []
-        #for meta in self.meta:
-        #    srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in meta['TARGETID']])
-        #    assert(np.all(meta['TARGETID'] == targets['TARGETID'][srt]))
-        #    # prefer the target catalog quantities over those in the fiberassign table
-        #    for col in targets.dtype.names:
-        #        meta[col] = targets[col][srt]
-        #        #if col not in meta.colnames:
-        #        #    meta[col] = targets[col][srt]
-        #    meta = Table(meta)
-        #    #pdb.set_trace()
-        #    nobj = len(meta)
-        #    # placeholder (to be added in DESISpectra.read_and_unpack)
-        #    for band in ['G', 'R', 'Z', 'W1', 'W2']:
-        #        meta.add_column(Column(name='MW_TRANSMISSION_{}'.format(band), data=np.ones(nobj, 'f4')))
-        #    metas.append(meta)
-        #log.info('Read and parsed targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
-        #
-        #self.meta = metas # update
-
-    #@staticmethod
-    #def desitarget_resolve_dec():
-    #    """Default Dec cut to separate targets in BASS/MzLS from DECaLS."""
-    #    dec = 32.375
-    #    return dec
 
     def read_and_unpack(self, CFit, fastphot=False, synthphot=True,
                         remember_coadd=False):
