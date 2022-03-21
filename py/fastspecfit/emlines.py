@@ -1432,7 +1432,9 @@ class EMLineFit(ContinuumTools):
 
         legxpos, legypos, legfntsz = 0.98, 0.94, 20
         bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
-        
+
+        #ymin = np.zeros(len(data['cameras']))
+        #ymax = np.zeros(len(data['cameras']))
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
             sigma, good = ivar2var(data['ivar'][ii], sigma=True)
 
@@ -1451,19 +1453,28 @@ class EMLineFit(ContinuumTools):
             #sigflux = np.std(filtflux[data['ivar'][ii] > 0])
             #if -2 * perc[0] < ymin:
             #    ymin = -2 * perc[0]
-            if -2 * sigflux < ymin:
-                ymin = -2 * sigflux
+            #ymin[ii] = np.min(data['flux'][ii])
+            #ymax[ii] = np.max(data['flux'][ii])
+            #if ymin < _ymin:
+            #    ymin = _ymin
+            #if ymax > _ymax:
+            #    ymax = _ymax
+            if -1.5 * sigflux < ymin:
+                ymin = -1.5 * sigflux
             #if perc[1] > ymax:
             #    ymax = perc[1]
             #if np.min(filtflux) < ymin:
             #    ymin = np.min(filtflux) * 0.5
-            if sigflux * 5 > ymax:
-                ymax = sigflux * 5
+            if sigflux * 8 > ymax:
+                ymax = sigflux * 8 # 5
             if np.max(filtflux) > ymax:
                 ymax = np.max(filtflux) * 1.4
             #print(ymin, ymax)
             #if ii == 2:
             #    pdb.set_trace()
+
+        #ymin = np.min(ymin)
+        #ymax = np.max(ymax)
 
         bigax1.plot(np.hstack(data['wave']), _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
 

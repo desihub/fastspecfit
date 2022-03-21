@@ -35,7 +35,7 @@ EXPFMCOLS = {
     'perexp': ['TARGETID', 'TILEID', 'FIBER', 'NIGHT', 'EXPID'],
     'pernight': ['TARGETID', 'TILEID', 'FIBER', 'NIGHT'],
     'cumulative': ['TARGETID', 'TILEID', 'FIBER'],
-    'healpix': ['TARGETID']
+    'healpix': ['TARGETID', 'TILEID']
     }
 
 # redshift columns to read
@@ -127,12 +127,17 @@ class DESISpectra(object):
                         coadd_type = hdr['SPGRP']
                         if coadd_type == 'healpix':
                             hpxpixel = np.int32(hdr['HPXPIXEL'])
+                            survey = hdr['SURVEY']
+                            program = hdr['PROGRAM']
                         elif coadd_type == 'cumulative':
                             thrunight = hdr['SPGRPVAL']
                     else:
                         if 'HPXPIXEL' in hdr:
                             coadd_type = 'healpix'
                             hpxpixel = np.int32(hdr['HPXPIXEL'])
+                            pixinfo = os.path.basename(redrockfile).split('-')  # fragile!
+                            survey = pixinfo[1]
+                            program = pixinfo[2]
                         else:
                             import re
                             if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
@@ -212,10 +217,14 @@ class DESISpectra(object):
 
             # Gather additional info about this pixel.
             if coadd_type == 'healpix':
-                raise ValueError('Fix me!') # this is all in the header now!
-                pixinfo = os.path.basename(redrockfile).split('-') 
-                meta['SURVEY'] = pixinfo[1] # a little fragile...
-                meta['FAPRGRM'] = pixinfo[2]
+                #pdb.set_trace()
+                #raise ValueError('Fix me!') # this is all in the header now!
+                #pixinfo = os.path.basename(redrockfile).split('-') 
+                #meta['SURVEY'] = pixinfo[1] # a little fragile...
+                #meta['FAPRGRM'] = pixinfo[2]
+                #meta['HPXPIXEL'] = hpxpixel
+                meta['SURVEY'] = survey
+                meta['FAPRGRM'] = program
                 meta['HPXPIXEL'] = hpxpixel
             else:
                 # Initialize the columns to get the data type right and then
@@ -676,13 +685,14 @@ def read_fastspecfit(fastfitfile, fastphot=False, rows=None, columns=None):
             ext = 'FASTSPEC'
             
         hdr = fitsio.read_header(fastfitfile, ext='METADATA')
-        specprod, coadd_type = hdr['SPECPROD'], hdr['COADDTYP']
+        #specprod, coadd_type = hdr['SPECPROD'], hdr['COADDTYP']
+        coadd_type = hdr['COADDTYP']
 
         fastfit = Table(fitsio.read(fastfitfile, ext=ext, rows=rows, columns=columns))
         meta = Table(fitsio.read(fastfitfile, ext='METADATA', rows=rows, columns=columns))
-        log.info('Read {} object(s) from {} and specprod={}'.format(len(fastfit), fastfitfile, specprod))
+        log.info('Read {} object(s) from {}'.format(len(fastfit), fastfitfile))
 
-        return fastfit, meta, specprod, coadd_type
+        return fastfit, meta, coadd_type
     
     else:
         log.warning('File {} not found.'.format(fastfitfile))
