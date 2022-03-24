@@ -17,7 +17,8 @@ jobs:
             fail-fast: true
             matrix:
                 os: [ubuntu-latest]
-                python-version: [3.8] 
+                python-version: [3.9] 
+                fitsio-version: ['==1.1.7']
         env:
             DESIUTIL_VERSION: 3.2.5
             FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
@@ -42,12 +43,51 @@ jobs:
                 python -m pip install pytest
                 python -m pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
                 python -m pip install -r requirements.txt
+                python -m pip cache remove fitsio
+                python -m pip install --no-deps --force-reinstall --ignore-installed 'fitsio${{ matrix.fitsio-version }}'
 
             - name: Verify Installation
               run: pip list
 
             - name: Run the test
               run: PYTHONPATH=${GITHUB_WORKSPACE}/py FASTSPECFIT=${GITHUB_WORKSPACE} DESI_ROOT=${GITHUB_WORKSPACE}/desi pytest
+
+    coverage:
+        name: Test coverage
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: true
+            matrix:
+                os: [ubuntu-latest]
+                python-version: [3.9]
+                fitsio-version: ['==1.1.7']
+        env:
+            DESIUTIL_VERSION: 3.2.5
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v2
+              with:
+                fetch-depth: 0
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v2
+              with:
+                python-version: ${{ matrix.python-version }}
+            - name: Install Python dependencies
+              run: |
+                python -m pip install --upgrade pip wheel
+                python -m pip install pytest pytest-cov coveralls
+                python -m pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
+                python -m pip install -r requirements.txt
+                python -m pip cache remove fitsio
+                python -m pip install --no-deps --force-reinstall --ignore-installed 'fitsio${{ matrix.fitsio-version }}'
+            - name: Run the test with coverage
+              run: pytest --cov
+            - name: Coveralls
+              env:
+                COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: coveralls
 
     docs:
         name: Doc test
@@ -56,7 +96,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest]
-                python-version: [3.8]
+                python-version: [3.9]
 
         steps:
             - name: Checkout code
@@ -82,7 +122,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest]
-                python-version: [3.8]
+                python-version: [3.9]
 
         steps:
             - name: Checkout code

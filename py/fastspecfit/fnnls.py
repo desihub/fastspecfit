@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 fastspecfit.fnnls
 =================
@@ -56,6 +55,7 @@ def fnnls(AtA, Aty, epsilon=None, iter_max=None):
                       30 * [number of cols in A] (the same value that is used
                       in the publication this algorithm comes from).
     :type iter_max:   int, optional
+
     """
     if epsilon is None:
         epsilon = np.finfo(np.float64).eps
@@ -72,7 +72,7 @@ def fnnls(AtA, Aty, epsilon=None, iter_max=None):
     # Represents passive and active sets.
     # If sets[j] is 0, then index j is in the active set (R in literature).
     # Else, it is in the passive set (P).
-    sets = np.zeros(n, dtype=np.bool)
+    sets = np.zeros(n, dtype=bool)
     # The set of all possible indices. Construct P, R by using `sets` as a mask
     ind = np.arange(n, dtype=int)
     P = ind[sets]

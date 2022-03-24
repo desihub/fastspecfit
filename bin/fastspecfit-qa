@@ -79,7 +79,7 @@ def main(args=None, comm=None):
     else:
         pass # should never get here
     
-    fastfit, metadata, specprod, coadd_type = read_fastspecfit(fastfitfile, fastphot=fastphot)
+    fastfit, metadata, coadd_type = read_fastspecfit(fastfitfile, fastphot=fastphot)
 
     # parse the targetids optional input
     if args.targetids:
@@ -104,13 +104,15 @@ def main(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit(nolegend=args.nolegend)
     EMFit = EMLineFit(nolegend=args.nolegend)
-    Spec = DESISpectra(specprod=specprod)
+    Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     if args.outdir:
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
-        
+
+    print('Hacking specprod!!!')
+    specprod = 'fuji'
     specproddir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux', specprod)
     
     #if fastphot:

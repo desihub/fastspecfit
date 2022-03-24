@@ -17,45 +17,48 @@ from desiutil.log import get_logger
 log = get_logger()
 
 def _fnnls_continuum(myargs):
-    """Multiprocessing wrapper."""
+    """Multiprocessing wrapper for fnnls_continuum."""
     return fnnls_continuum(*myargs)
 
-def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
-                    support=None, get_chi2=False, jvendrow=False):
-    """Fit a continuum using fNNLS. This function is a simple wrapper on fnnls; see
-    the ContinuumFit.fnnls_continuum method for documentation.
+def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None, get_chi2=False):
+    """Fit a stellar continuum using fNNLS. 
 
-        Mapping between mikeiovine fnnls(AtA, Aty) and jvendrow fnnls(Z, x) inputs:
-          Z [mxn] --> A [mxn]
-          x [mx1] --> y [mx1]
+    Parameters
+    ----------
+    ZZ : :class:`~numpy.ndarray`
+        Array.
+    xx : :class:`~numpy.ndarray`
+        Array.
+    flux : :class:`~numpy.ndarray`, optional, defaults to ``None``
+        Input flux spectrum. 
+    ivar : :class:`~numpy.ndarray`, optional, defaults to ``None``
+        Input inverse variance spectrum corresponding to ``flux``.
+    modelflux : :class:`~numpy.ndarray`, optional, defaults to ``None``
+        Input model flux spectrum. 
 
-        And mikeiovine wants:
-          A^T * A
-          A^T * y
+    Returns
+    -------
+    :class:`bool`
+        Boolean flag indicating whether the non-negative fit did not converge.
+    :class:`~numpy.ndarray`
+        Coefficients of the best-fitting spectrum.
+    :class:`float`
+        Reduced chi-squared of the fit. Only returned if ``get_chi2=True``.
 
-          AtA = A.T.dot(A)
-          Aty = A.T.dot(y)
+    Notes
+    -----
+    - This function is a simple wrapper on fastspecfit.fnnls.fnnls(); see the
+      ContinuumFit.fnnls_continuum method for documentation.
+    - The arguments ``flux``, ``ivar`` and ``modelflux`` are only used when
+      ``get_chi2=True``.
 
     """
-    if jvendrow:
-        from fnnls import fnnls
-
-        if support is None:
-            support = np.zeros(0, dtype=int)
-            
-        try:
-            warn, coeff, _ = fnnls(ZZ, xx)#, P_initial=support)
-        except:
-            log.warning('fnnls failed to converge.')
-            warn, coeff = True, np.zeros(modelflux.shape[1])
-    else:
-        #from fastnnls import fnnls
-        from fastspecfit.fnnls import fnnls
-
-        AtA = ZZ.T.dot(ZZ)
-        Aty = ZZ.T.dot(xx)
-        coeff = fnnls(AtA, Aty)
-        warn = False
+    from fastspecfit.fnnls import fnnls
+ 
+    AtA = ZZ.T.dot(ZZ)
+    Aty = ZZ.T.dot(xx)
+    coeff = fnnls(AtA, Aty)
+    warn = False
         
     #if warn:
     #    print('WARNING: fnnls did not converge after 5 iterations.')
@@ -68,10 +71,26 @@ def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None,
         return warn, coeff
     
 class ContinuumTools(object):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, seed=1):
-        """Tools for dealing with stellar continua..
+    """Tools for dealing with stellar continua.
 
-        """
+    Parameters
+    ----------
+    metallicity : :class:`str`, optional, defaults to `Z0.0190`.
+        Stellar metallicity of the SSPs. Currently fixed at solar
+        metallicity, Z=0.0190.
+    minwave : :class:`float`, optional, defaults to None
+        Minimum SSP wavelength to read into memory. If ``None``, the minimum
+        available wavelength is used (around 100 Angstrom).
+    maxwave : :class:`float`, optional, defaults to 6e4
+        Maximum SSP wavelength to read into memory. 
+
+    .. note::
+        Need to document all the attributes.
+
+    """
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
+                 seed=1, mapdir=None):
+
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
         from astropy.table import Table, Column
@@ -96,7 +115,8 @@ class ContinuumTools(object):
         self.imf = 'Kroupa'
 
         # dust maps
-        mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
+        if mapdir is None:
+            mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
         self.SFDMap = SFDMap(scaling=1.0, mapdir=mapdir)
         #self.SFDMap = SFDMap(scaling=0.86, mapdir=mapdir) # SF11 recalibration of the SFD maps
         self.RV = 3.1
@@ -825,7 +845,7 @@ class ContinuumTools(object):
         #            #print(kk, np.sum(J), np.sum(I), np.median(wave[I]), smoothflux[I][0])
         #    return smoothflux
                 
-        medbin = np.int(binwave * 2)
+        medbin = int(binwave * 2)
         #print(binwave, medbin)
 
         # Replace pixels potentially affected by lines by the ivar-weighted mean
@@ -896,7 +916,8 @@ class ContinuumTools(object):
         return smooth_continuum
 
 class ContinuumFit(ContinuumTools):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, nolegend=False):
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
+                 nolegend=False, mapdir=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -920,13 +941,14 @@ class ContinuumFit(ContinuumTools):
             distribution of the form x**2*np.exp(-2*x/scale).
 
         """
-        super(ContinuumFit, self).__init__(metallicity=metallicity, minwave=minwave, maxwave=maxwave)
+        super(ContinuumFit, self).__init__(metallicity=metallicity, minwave=minwave, 
+                                           maxwave=maxwave, mapdir=mapdir)
         
         # Initialize the velocity dispersion and reddening parameters. Make sure
         # the nominal values are in the grid.
         vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 20.0, 150.0)
         #vdispmin, vdispmax, dvdisp, vdisp_nominal = (0.0, 0.0, 30.0, 150.0)
-        nvdisp = np.int(np.ceil((vdispmax - vdispmin) / dvdisp))
+        nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp))
         if nvdisp == 0:
             nvdisp = 1
         vdisp = np.linspace(vdispmin, vdispmax, nvdisp)#.astype('f4') # [km/s]
@@ -939,7 +961,7 @@ class ContinuumFit(ContinuumTools):
 
         #AVmin, AVmax, dAV, AV_nominal = (0.0, 0.0, 0.1, 0.0)
         AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.1, 0.0)
-        nAV = np.int(np.ceil((AVmax - AVmin) / dAV))
+        nAV = int(np.ceil((AVmax - AVmin) / dAV))
         if nAV == 0:
             nAV = 1
         AV = np.linspace(AVmin, AVmax, nAV)#.astype('f4')
@@ -1152,8 +1174,10 @@ class ContinuumFit(ContinuumTools):
         return kcorr, absmag, ivarabsmag, bestmaggies
 
     def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False):
-        """Wrapper on fnnls to set up the multiprocessing. Works with both spectroscopic
-        and photometric input and with both 2D and 3D model spectra.
+        """Wrapper on fnnls to set up the multiprocessing. 
+
+        Works with both spectroscopic and photometric input and with both 2D and
+        3D model spectra.
 
         To be documented.
 
@@ -1168,7 +1192,6 @@ class ContinuumFit(ContinuumTools):
         # If xparam is None (equivalent to modelflux having just two
         # dimensions, [npix,nage]), assume we are just finding the
         # coefficients at some best-fitting value...
-        #if modelflux.ndim == 2:
         if xparam is None:
             ZZ = modelflux * ww[:, np.newaxis]
             warn, coeff, chi2 = fnnls_continuum(ZZ, xx, flux=flux, ivar=ivar,
@@ -1182,7 +1205,7 @@ class ContinuumFit(ContinuumTools):
         # dimension.
         ZZ = modelflux * ww[:, np.newaxis, np.newaxis] # reshape into [npix/nband,nage,nAV/nvdisp]
 
-        fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], None, True) for ii in np.arange(nn)]
+        fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], True) for ii in np.arange(nn)]
         rr = [fnnls_continuum(*_fitargs) for _fitargs in fitargs]
         
         warn, _, chi2grid = list(zip(*rr)) # unpack
@@ -1237,12 +1260,9 @@ class ContinuumFit(ContinuumTools):
             Table with all the continuum-fitting results with columns documented
             in `init_phot_output`.
 
-        Notes
-        -----
-        See
-          https://github.com/jvendrow/fnnls
-          https://github.com/mikeiovine/fast-nnls
-        for the fNNLS algorithm(s).
+        .. note::
+
+            See https://github.com/mikeiovine/fast-nnls for the fNNLS algorithm(s).
 
         """
         # Initialize the output table; see init_fastspecfit for the data model.
@@ -1275,7 +1295,7 @@ class ContinuumFit(ContinuumTools):
         else:
             zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
 
-            inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0
+            inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0
 
             npix, nmodel = zsspflux_dustvdisp.shape
             nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
@@ -1399,7 +1419,7 @@ class ContinuumFit(ContinuumTools):
         zsspflux_dustvdisp = np.concatenate(zsspflux_dustvdisp, axis=0)  # [npix,nage*nAV]
         assert(np.all(specivar >= 0))
 
-        inodust = np.asscalar(np.where(self.AV == 0)[0]) # should always be index 0
+        inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0
 
         npix, nmodel = zsspflux_dustvdisp.shape
         nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)

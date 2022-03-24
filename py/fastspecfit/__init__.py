@@ -4,7 +4,8 @@
 fastspecfit
 ===========
 
-Fast stellar continuum and emission-line fitting.
+Tools for fast stellar continuum, emission-line, and broadband photometric
+modeling.
 
 """
 from ._version import __version__

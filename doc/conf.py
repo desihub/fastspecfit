@@ -126,14 +126,17 @@ pygments_style = 'sphinx'
 keep_warnings = True
 
 # Include functions that begin with an underscore, e.g. _private().
-napoleon_include_private_with_doc = True
+napoleon_include_private_with_doc = False
+
+# Include functions that begin with a doublet underscore, e.g. __private().
+napoleon_include_special_with_doc = False
 
 # This value contains a list of modules to be mocked up. This is useful when
 # some external dependencies are not met at build time and break the
 # building process.
 autodoc_mock_imports = []
-for missing in ('desitarget', 'astropy', 'fitsio', 'matplotlib', 'numpy', 'redrock', 
-                'scipy', 'speclite', 'yaml'):
+for missing in ('numpy', 'scipy', 'fitsio', 'astropy', 'speclite', 'seaborn',
+                'matplotlib', 'desiutil', 'desitarget', 'desispec', 'redrock'):
     try:
         foo = import_module(missing)
     except ImportError:
@@ -146,7 +149,7 @@ for missing in ('desitarget', 'astropy', 'fitsio', 'matplotlib', 'numpy', 'redro
 #html_theme = 'default'
 #html_theme = 'haiku'
 try:
-    import sphinx_rtd_theme
+    import sphinx_rtd_theme # pip install sphinx-rtd-theme
     html_theme = 'sphinx_rtd_theme'
     html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 except ImportError:
