@@ -72,13 +72,6 @@ accessible location (e.g., */path/to/desi/code*), in which case one would do::
   done
   popd
 
-In addition, we need some larger data files associated with the ``desimodel``
-code base which are stored in an SVN repository::
-
-  export DESIMODEL=$DESI_PRODUCT_ROOT/desimodel
-  cd $DESIMODEL
-  svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data
-
 Finally, ``FastSpecFit`` has three more data dependencies, each specified with
 their own environment variable:
 
