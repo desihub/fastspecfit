@@ -153,7 +153,7 @@ def main():
     parser.add_argument('--specprod', type=str, default='everest', #choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production to process.')
     
-    parser.add_argument('--hpxpixel', type=str, default=None, help='Comma-separated list of healpixels to process.')
+    parser.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpixels to process.')
     parser.add_argument('--survey', type=str, default='main,sv1,sv2,sv3', help='Survey to process.')
     parser.add_argument('--program', type=str, default='bright,dark', help='Program to process.') # backup not supported
 

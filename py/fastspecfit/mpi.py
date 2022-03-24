@@ -156,8 +156,8 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
 
     if args.coadd_type == 'healpix':
         subdir = 'healpix'
-        if args.hpxpixel is not None:
-            args.hpxpixel = args.hpxpixel.split(',')
+        if args.healpix is not None:
+            args.healpix = args.healpix.split(',')
     else:
         subdir = 'tiles'
 
@@ -192,7 +192,7 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             #print(args.tile)
 
             #if True:
-            #    tileinfo = tileinfo[['lrg' in program or 'elg' in program for program in tileinfo['FAPRGRM']]]
+            #    tileinfo = tileinfo[['lrg' in program or 'elg' in program for program in tileinfo['PROGRAM']]]
             #    args.tile = np.array(list(set(tileinfo['TILEID'])))
             #print(tileinfo)
 
@@ -209,8 +209,8 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
             for survey in args.survey:
                 for program in args.program:
                     log.info('Building file list for survey {} and program {}'.format(survey, program))
-                    if args.hpxpixel is not None:
-                        for onepix in args.hpxpixel:
+                    if args.healpix is not None:
+                        for onepix in args.healpix:
                             _thesefiles = glob(os.path.join(filedir, survey, program, str(int(onepix)//100), onepix,
                                                             '{}-{}-{}-*.fits'.format(prefix, survey, program)))
                             thesefiles.append(_thesefiles)

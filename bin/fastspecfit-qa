@@ -23,7 +23,7 @@ def parse(options=None):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--hpxpixel', default=None, type=str, nargs='*', help="""Generate QA for all objects
+    parser.add_argument('--healpix', default=None, type=str, nargs='*', help="""Generate QA for all objects
         with this healpixels (only defined for coadd-type 'healpix').""")
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
@@ -97,7 +97,7 @@ def main(args=None, comm=None):
         fastfit = fastfit[keep]
         metadata = metadata[keep]
     
-    fastfit, metadata = select(fastfit, metadata, coadd_type, hpxpixels=args.hpxpixel,
+    fastfit, metadata = select(fastfit, metadata, coadd_type, healpixs=args.healpix,
                                tiles=args.tile, nights=args.night)
 
     # Initialize the continuum- and emission-line fitting classes.
@@ -110,6 +110,8 @@ def main(args=None, comm=None):
     if args.outdir:
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
+
+    pdb.set_trace()
 
     print('Hacking specprod!!!')
     specprod = 'fuji'
@@ -137,8 +139,8 @@ def main(args=None, comm=None):
     t0 = time.time()
     if coadd_type == 'healpix':
         allsurveys = metadata['SURVEY'].data
-        allprograms = metadata['FAPRGRM'].data
-        allpixels = metadata['HPXPIXEL'].data
+        allprograms = metadata['PROGRAM'].data
+        allpixels = metadata['HEALPIX'].data
         for survey in set(allsurveys):
             for program in set(allprograms):
                 for pixel in set(allpixels):

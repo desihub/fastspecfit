@@ -1322,9 +1322,9 @@ class EMLineFit(ContinuumTools):
 
         if coadd_type == 'healpix':
             title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
-                    metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID'])
+                    metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
-                    outprefix, metadata['SURVEY'], metadata['FAPRGRM'], metadata['HPXPIXEL'], metadata['TARGETID']))
+                    outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
             title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID'], metadata['FIBER'])

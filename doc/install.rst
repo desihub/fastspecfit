@@ -90,10 +90,12 @@ With the preceding caveat in mind, one can set up the remaining dependencies
 with::
   
   export DESI_ROOT=/path/to/desi/data
-  export DUST_DIR=/path/to/dust/maps
+  export DUST_DIR=/path/to/dustmaps
   export FASTSPECFIT_TEMPLATES=/path/to/fastspecfit/templates
+
+  mkdir -p $DUST_DIR/maps
   
-  **Finish writing these instructions.**
+**Finish writing these instructions.**
 
 .. _docker installation:
 

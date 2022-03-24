@@ -217,15 +217,13 @@ class DESISpectra(object):
 
             # Gather additional info about this pixel.
             if coadd_type == 'healpix':
-                #pdb.set_trace()
-                #raise ValueError('Fix me!') # this is all in the header now!
                 #pixinfo = os.path.basename(redrockfile).split('-') 
                 #meta['SURVEY'] = pixinfo[1] # a little fragile...
-                #meta['FAPRGRM'] = pixinfo[2]
-                #meta['HPXPIXEL'] = hpxpixel
+                #meta['PROGRAM'] = pixinfo[2]
+                #meta['HEALPIX'] = hpxpixel
                 meta['SURVEY'] = survey
-                meta['FAPRGRM'] = program
-                meta['HPXPIXEL'] = hpxpixel
+                meta['PROGRAM'] = program
+                meta['HEALPIX'] = hpxpixel
             else:
                 # Initialize the columns to get the data type right and then
                 # populate them by targetid.
@@ -739,7 +737,7 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None,
     #if survey:
     #    hdr.append({'name': 'SURVEY', 'value': survey, 'comment': 'survey name'})
     #if program:
-    #    hdr.append({'name': 'FAPRGRM', 'value': program, 'comment': 'program name'})
+    #    hdr.append({'name': 'PROGRAM', 'value': program, 'comment': 'program name'})
 
     fitsio.write(outfile, out.as_array(), header=hdr, clobber=True)
     fitsio.write(outfile, meta.as_array(), header=hdr)
