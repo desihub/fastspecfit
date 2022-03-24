@@ -737,7 +737,8 @@ KEY      Example Value    Type Comment
 ======== ================ ==== ==============================================
 NAXIS1   155              int  length of dimension 1
 NAXIS2   3000             int  length of dimension 2
-SPECPROD daily            str  spectroscopic production name
+SPECPROD fuji             str  spectroscopic production name
+COADDTYP healpix          str  type of spectral coadd (*healpix*, *cumulative*, *pernight*, *perexp*)
 CHECKSUM EAnFF7l9EAlEE5l9 str  HDU checksum updated 2018-03-29T22:45:34
 DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
 ======== ================ ==== ==============================================
@@ -751,17 +752,17 @@ Name                   Type        Units      Description
               TARGETID   int64                Unique target ID.
                     RA float64            deg Right ascension from target catalog.
                    DEC float64            deg Declination from target catalog.
-                SURVEY  bytes3                Survey name (e.g., 'SV3'); only present when fitting healpix coadds.
-               FAPRGRM  bytes6                Program name (*bright* or *dark*); only present when fitting healpix coadds.
-              HPXPIXEL   int32                Healpixel number (nside=64); only present when fitting healpix coadds.
+                SURVEY  bytes3                Survey name (e.g., 'sv1'); only present when fitting healpix coadds.
+               PROGRAM  bytes6                Program name (e.g., *bright*, *dark*); only present when fitting healpix coadds.
+               HEALPIX   int32                Healpixel number (nside=64); only present when fitting healpix coadds.
                 TILEID   int32                Tile ID number; only present when fitting tile-level (not healpix) coadds.
                  FIBER   int32                Fiber ID number; only present with TILEID.
-             THRUNIGHT   int32                Last night of coadded data; only present when fitting cumulative coadds.
-                 NIGHT   int32                Night; only present when fitting per-night or per-exposure spectra.
-                 EXPID   int32                Exposure ID number; only present when fitting per-exposure spectra.
+                 NIGHT   int32                Night (or *thrunight* for cumulative coadds); only present with TILEID.
+                 EXPID   int32                Exposure ID number; only present with TILEID and when fitting per-exposure spectra.
            DESI_TARGET   int64                DESI targeting bit.
             BGS_TARGET   int64                BGS targeting bit.
             MWS_TARGET   int64                MWS targeting bit.
+           SCND_TARGET   int64                Secondary target targeting bit.
        SV1_DESI_TARGET   int64                SV1 DESI targeting bit.
         SV1_BGS_TARGET   int64                SV1 BGS targeting bit.
         SV1_MWS_TARGET   int64                SV1 MWS targeting bit.
@@ -771,7 +772,6 @@ Name                   Type        Units      Description
        SV3_DESI_TARGET   int64                SV3 DESI targeting bit.
         SV3_BGS_TARGET   int64                SV3 BGS targeting bit.
         SV3_MWS_TARGET   int64                SV3 MWS targeting bit.
-           SCND_TARGET   int64                Secondary target targeting bit.
        SV1_SCND_TARGET   int64                SV1 secondary targeting bit.
        SV2_SCND_TARGET   int64                SV2 secondary targeting bit.
        SV3_SCND_TARGET   int64                SV3 secondary targeting bit.
@@ -785,6 +785,8 @@ Name                   Type        Units      Description
      MW_TRANSMISSION_Z float32                Milky Way foreground dust transmission factor [0-1] in the z-band.
     MW_TRANSMISSION_W1 float32                Milky Way foreground dust transmission factor [0-1] in the W1-band.
     MW_TRANSMISSION_W2 float32                Milky Way foreground dust transmission factor [0-1] in the W2-band.
+    MW_TRANSMISSION_W3 float32                Milky Way foreground dust transmission factor [0-1] in the W3-band.
+    MW_TRANSMISSION_W4 float32                Milky Way foreground dust transmission factor [0-1] in the W4-band.
            FIBERFLUX_G float32           nmgy Fiber g-band flux from targeting catalog.
            FIBERFLUX_R float32           nmgy Fiber r-band flux from targeting catalog.
            FIBERFLUX_Z float32           nmgy Fiber z-band flux from targeting catalog.
@@ -796,11 +798,15 @@ Name                   Type        Units      Description
                 FLUX_Z float32           nmgy Total z-band flux from targeting catalog.
                FLUX_W1 float32           nmgy Total W1-band flux from targeting catalog.
                FLUX_W2 float32           nmgy Total W2-band flux from targeting catalog.
+               FLUX_W3 float32           nmgy Total W3-band flux from targeting catalog.
+               FLUX_W4 float32           nmgy Total W4-band flux from targeting catalog.
            FLUX_IVAR_G float32     1 / nmgy^2 Inverse variance of FLUX_G from targeting catalog.
            FLUX_IVAR_R float32     1 / nmgy^2 Inverse variance of FLUX_R from targeting catalog.
            FLUX_IVAR_Z float32     1 / nmgy^2 Inverse variance of FLUX_Z from targeting catalog.
           FLUX_IVAR_W1 float32     1 / nmgy^2 Inverse variance of FLUX_W1 from targeting catalog.
           FLUX_IVAR_W2 float32     1 / nmgy^2 Inverse variance of FLUX_W2 from targeting catalog.
+          FLUX_IVAR_W3 float32     1 / nmgy^2 Inverse variance of FLUX_W3 from targeting catalog.
+          FLUX_IVAR_W4 float32     1 / nmgy^2 Inverse variance of FLUX_W4 from targeting catalog.
 ====================== =========== ========== ==========================================
 
 Notes and Examples

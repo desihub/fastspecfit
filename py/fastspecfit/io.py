@@ -19,23 +19,22 @@ from desiutil.log import get_logger
 log = get_logger()
 
 # list of all possible targeting bit columns
-TARGETINGBITCOLS = [
-    'CMX_TARGET',
-    'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET',
-    'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
-    'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
-    'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
-    'SCND_TARGET',
-    'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET',
-    ]
+TARGETINGBITS = {
+    'fuji': ['CMX_TARGET', 'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET',
+             'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
+             'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
+             'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
+             'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET'],
+    'default': ['DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET'],
+    }
 
 # fibermap and exp_fibermap columns to read
 FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE']
 EXPFMCOLS = {
-    'perexp': ['TARGETID', 'TILEID', 'FIBER', 'NIGHT', 'EXPID'],
-    'pernight': ['TARGETID', 'TILEID', 'FIBER', 'NIGHT'],
+    'perexp': ['TARGETID', 'TILEID', 'FIBER', 'EXPID'],
+    'pernight': ['TARGETID', 'TILEID', 'FIBER'],
     'cumulative': ['TARGETID', 'TILEID', 'FIBER'],
-    'healpix': ['TARGETID', 'TILEID']
+    'healpix': ['TARGETID', 'TILEID'] # tileid will be an array
     }
 
 # redshift columns to read
@@ -58,7 +57,7 @@ DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
 
 class DESISpectra(object):
-    def __init__(self, specprod=None):
+    def __init__(self):
         """Class to read in the DESI data needed by fastspecfit.
 
         """
@@ -68,7 +67,8 @@ class DESISpectra(object):
         self.fiberassign_dir = os.path.join(desi_root, 'target', 'fiberassign', 'tiles', 'trunk')
 
     def find_specfiles(self, redrockfiles=None, firsttarget=0, zmin=0.001, zmax=None,
-                       zwarnmax=0, coadd_type=None, targetids=None, ntargets=None):
+                       zwarnmax=0, redrockfile_prefix='redrock-', specfile_prefix='coadd-',
+                       targetids=None, ntargets=None):
         """Initialize the fastspecfit output data table.
 
         Parameters
@@ -79,13 +79,10 @@ class DESISpectra(object):
 
         Notes
         -----
-        fastfit - results table (overrides redrockfiles and then specprod is required
+        fastfit - results table (overrides redrockfiles)
 
         """
-        from glob import glob
-        from astropy.table import Column
-        import numpy.ma as ma
-        from desimodel.footprint import radec2pix
+        from desiutil.depend import getdep
         from desispec.io.photo import gather_targetphot, gather_tractorphot
 
         if zmax is None:
@@ -107,7 +104,7 @@ class DESISpectra(object):
         self.redrock, self.meta, self.tiles = [], [], []
         self.redrockfiles, self.specfiles = [], []
         for ired, redrockfile in enumerate(np.atleast_1d(redrockfiles)):
-            specfile = redrockfile.replace('redrock-', 'coadd-')
+            specfile = redrockfile.replace(redrockfile_prefix, specfile_prefix)
             if not os.path.isfile(redrockfile):
                 log.warning('File {} not found!'.format(redrockfile))
                 continue
@@ -115,46 +112,51 @@ class DESISpectra(object):
                 log.warning('File {} not found!'.format(specfile))
                 continue
 
-            # Try to figure out coadd_type from the first filename. Fragile!
-            # Assumes that coadd_type is a scalar... And, really, this should be
-            # in a header.
-            thrunight = None
-            if coadd_type is None:
-                if ired == 0:
-                    hdr = fitsio.read_header(specfile, ext=0)
-                    # Fuji & Guadalupe headers
-                    if 'SPGRP' in hdr:
-                        coadd_type = hdr['SPGRP']
-                        if coadd_type == 'healpix':
-                            hpxpixel = np.int32(hdr['HPXPIXEL'])
-                            survey = hdr['SURVEY']
-                            program = hdr['PROGRAM']
-                        elif coadd_type == 'cumulative':
-                            thrunight = hdr['SPGRPVAL']
-                    else:
-                        if 'HPXPIXEL' in hdr:
-                            coadd_type = 'healpix'
-                            hpxpixel = np.int32(hdr['HPXPIXEL'])
-                            pixinfo = os.path.basename(redrockfile).split('-')  # fragile!
-                            survey = pixinfo[1]
-                            program = pixinfo[2]
-                        else:
-                            import re
-                            if re.search('-thru20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
-                                coadd_type = 'cumulative'
-                            elif re.search('-20[0-9]+[0-9]+[0-9]+\.fits', redrockfile) is not None:
-                                coadd_type = 'pernight'
-                            else:
-                                coadd_type = 'perexp'
-            self.coadd_type = coadd_type
-            log.info('Parsed coadd_type={}'.format(self.coadd_type))
+            # Gather the information we need from the header of the first
+            # redrock file and crash if these values change. Note: this code is
+            # only compatible with Fuji & Guadalupe headers and later.
+            if ired == 0:
+                hdr = fitsio.read_header(specfile, ext=0)
+                if not 'SPGRP' in hdr:
+                    errmsg = 'SPGRP header card missing from spectral file {}'.format(specfile)
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
 
+                specprod = getdep(hdr, 'SPECPROD')
+                self.specprod = specprod
+                if specprod == 'fuji': # EDR
+                    TARGETINGCOLS = TARGETINGBITS[specprod]
+                else:
+                    TARGETINGCOLS = TARGETINGBITS['default']
+
+                coadd_type = hdr['SPGRP']
+                self.coadd_type = coadd_type
+                log.info('specprod={}, coadd_type={}'.format(self.specprod, self.coadd_type))
+
+                if coadd_type == 'healpix':
+                    survey = hdr['SURVEY']
+                    program = hdr['PROGRAM']
+                    healpix = np.int32(hdr['SPGRPVAL'])
+                    self.hpxnside = hdr['HPXNSIDE']
+                    self.hpxnest = hdr['HPXNEST']
+                    thrunight = None
+                    log.info('survey={}, program={}, healpix={}'.format(survey, program, healpix))
+                else:
+                    tileid = hdr['TILEID']
+                    petal = hdr['PETAL']
+                    night = hdr['SPGRPVAL'] # thrunight for coadd_type==cumulative
+                    log.info('tileid={}, petal={}, night={}'.format(tileid, petal, night))
+
+            # add targeting columns
+            allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
+            READFMCOLS = FMCOLS + [col for col in TARGETINGCOLS if col in allfmcols]
+                    
             # If targetids is *not* given we have to choose "good" objects
             # before subselecting (e.g., we don't want sky spectra).
             if targetids is None:
                 zb = fitsio.read(redrockfile, 'REDSHIFTS', columns=REDSHIFTCOLS)
                 # Are we reading individual exposures or coadds?
-                meta = fitsio.read(specfile, 'FIBERMAP', columns=FMCOLS)
+                meta = fitsio.read(specfile, 'FIBERMAP', columns=READFMCOLS)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
                 fitindx = np.where(
                     (zb['Z'] > zmin) * (zb['Z'] < zmax) *
@@ -194,36 +196,28 @@ class DESISpectra(object):
                 meta = Table(meta[fitindx])
             else:
                 zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=REDSHIFTCOLS))
-                meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=FMCOLS))
+                meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=READFMCOLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
             # Get the unique set of tiles contributing to the coadded spectra from EXP_FIBERMAP
             expmeta = fitsio.read(specfile, 'EXP_FIBERMAP', columns=EXPFMCOLS[coadd_type])
             I = np.isin(expmeta['TARGETID'], meta['TARGETID'])
             if np.count_nonzero(I) == 0:
-                log.warning('No matching targets in exposure table.')
-                raise ValueError
+                errmsg = 'No matching targets in exposure table.'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
             expmeta = Table(expmeta[I])
-            #if coadd_type == 'custom':
-            #    expmeta['TILEID'] = 80715 # M31 hack!
 
             tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
 
             # build the list of tiles that went into each unique target / coadd
             meta['TILEID_LIST'] = [' '.join(np.unique(expmeta[tid == expmeta['TARGETID']]['TILEID']).astype(str)) for tid in meta['TARGETID']]
 
-            if thrunight is not None:
-                meta['THRUNIGHT'] = thrunight
-
             # Gather additional info about this pixel.
             if coadd_type == 'healpix':
-                #pixinfo = os.path.basename(redrockfile).split('-') 
-                #meta['SURVEY'] = pixinfo[1] # a little fragile...
-                #meta['PROGRAM'] = pixinfo[2]
-                #meta['HEALPIX'] = hpxpixel
                 meta['SURVEY'] = survey
                 meta['PROGRAM'] = program
-                meta['HEALPIX'] = hpxpixel
+                meta['HEALPIX'] = healpix
             else:
                 # Initialize the columns to get the data type right and then
                 # populate them by targetid.
@@ -295,7 +289,7 @@ class DESISpectra(object):
             nobj = len(meta)
             # placeholder (to be added in DESISpectra.read_and_unpack)
             for band in ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']:
-                meta.add_column(Column(name='MW_TRANSMISSION_{}'.format(band), data=np.ones(nobj, 'f4')))
+                meta['MW_TRANSMISSION_{}'.format(band)] = np.ones(shape=(1,), dtype='f4')
             metas.append(meta)
         log.info('Gathered targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
@@ -609,19 +603,22 @@ class DESISpectra(object):
         # The information stored in the metadata table depends on which spectra
         # were fitted (exposures, nightly coadds, deep coadds).
         fluxcols = ['PHOTSYS',
-                    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 
+                    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+                    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4', 
                     'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
                     'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-                    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
-                    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2']
+                    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
+                    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+                    'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
         colunit = {'RA': u.deg, 'DEC': u.deg,
                    'FIBERFLUX_G': u.nanomaggy, 'FIBERFLUX_R': u.nanomaggy, 'FIBERFLUX_Z': u.nanomaggy,
                    'FIBERTOTFLUX_G': u.nanomaggy, 'FIBERTOTFLUX_R': u.nanomaggy, 'FIBERTOTFLUX_Z': u.nanomaggy,
-                   'FLUX_G': u.nanomaggy, 'FLUX_R': u.nanomaggy,
-                   'FLUX_Z': u.nanomaggy, 'FLUX_W1': u.nanomaggy, 'FLUX_W2': u.nanomaggy, 
+                   'FLUX_G': u.nanomaggy, 'FLUX_R': u.nanomaggy, 'FLUX_Z': u.nanomaggy,
+                   'FLUX_W1': u.nanomaggy, 'FLUX_W2': u.nanomaggy, 'FLUX_W3': u.nanomaggy, 'FLUX_W4': u.nanomaggy, 
                    'FLUX_IVAR_G': 1/u.nanomaggy**2, 'FLUX_IVAR_R': 1/u.nanomaggy**2,
                    'FLUX_IVAR_Z': 1/u.nanomaggy**2, 'FLUX_IVAR_W1': 1/u.nanomaggy**2,
-                   'FLUX_IVAR_W2': 1/u.nanomaggy**2,
+                   'FLUX_IVAR_W2': 1/u.nanomaggy**2, 'FLUX_IVAR_W3': 1/u.nanomaggy**2,
+                   'FLUX_IVAR_W4': 1/u.nanomaggy**2,
                    }
 
         skipcols = ['COADD_FIBERSTATUS', 'OBJTYPE', 'TARGET_RA', 'TARGET_DEC'] + fluxcols
@@ -633,25 +630,30 @@ class DESISpectra(object):
 
         # All of this business is so we can get the columns in the order we want
         # (i.e., the order that matches the data model).
-        for metacol in ['TARGETID', 'RA', 'DEC', 'TILEID', 'FIBER', 'NIGHT', 'THRUNIGHT', 'TILEID_LIST']:
+        for metacol in ['TARGETID', 'RA', 'DEC', 'TILEID', 'FIBER', 'NIGHT', 'TILEID_LIST']:
             if metacol in metacols:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():
                     meta[metacol].unit = colunit[metacol]
 
+        if self.specprod == 'fuji': # EDR
+            TARGETINGCOLS = TARGETINGBITS[self.specprod]
+        else:
+            TARGETINGCOLS = TARGETINGBITS['default']
+
         for metacol in metacols:
-            if metacol in skipcols or metacol in TARGETINGBITCOLS or metacol in meta.colnames:
+            if metacol in skipcols or metacol in TARGETINGCOLS or metacol in meta.colnames:
                 continue
             else:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():
                     meta[metacol].unit = colunit[metacol]
 
-        for bitcol in TARGETINGBITCOLS:
+        for bitcol in TARGETINGCOLS:
             if bitcol in metacols:
                 meta[bitcol] = self.meta[bitcol]
             else:
-                meta.add_column(Column(name=bitcol, dtype=np.int64, length=nobj))
+                meta[bitcol] = np.zeros(shape=(1,), dtype=np.int64)
 
         for zcol in zcols:
             meta[zcol] = self.redrock[zcol]
@@ -754,16 +756,16 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None,
         
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
 
-def select(fastfit, metadata, coadd_type, hpxpixels=None, tiles=None, nights=None):
+def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None, nights=None):
     """Optionally trim to a particular healpix or tile and/or night."""
     keep = np.ones(len(fastfit), bool)
     if coadd_type == 'healpix':
-        if hpxpixels:
+        if healpixels:
             pixelkeep = np.zeros(len(fastfit), bool)
-            for hpxpixel in hpxpixels:
-                pixelkeep = np.logical_or(pixelkeep, metadata['HPXPIXEL'].astype(str) == hpxpixel)
+            for healpixel in healpixels:
+                pixelkeep = np.logical_or(pixelkeep, metadata['HEALPIX'].astype(str) == healpixel)
             keep = np.logical_and(keep, pixelkeep)
-            log.info('Keeping {} objects from healpixels(s) {}'.format(len(fastfit), ','.join(hpxpixels)))
+            log.info('Keeping {} objects from healpixels(s) {}'.format(len(fastfit), ','.join(healpixels)))
     else:
         if tiles:
             tilekeep = np.zeros(len(fastfit), bool)

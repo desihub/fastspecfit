@@ -1605,7 +1605,7 @@ class ContinuumFit(ContinuumTools):
                     outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
             title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
-                    metadata['TILEID'], metadata['THRUNIGHT'], metadata['TARGETID'], metadata['FIBER'])
+                    metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
