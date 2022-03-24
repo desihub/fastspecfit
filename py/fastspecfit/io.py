@@ -67,7 +67,7 @@ class DESISpectra(object):
         self.fiberassign_dir = os.path.join(desi_root, 'target', 'fiberassign', 'tiles', 'trunk')
 
     def find_specfiles(self, redrockfiles=None, firsttarget=0, zmin=0.001, zmax=None,
-                       zwarnmax=0, redrockfile_prefix='redrock-', specfile_prefix='coadd-',
+                       zwarnmax=99999, redrockfile_prefix='redrock-', specfile_prefix='coadd-',
                        targetids=None, ntargets=None):
         """Initialize the fastspecfit output data table.
 
@@ -163,11 +163,9 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=READFMCOLS)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                fitindx = np.where(
-                    (zb['Z'] > zmin) * (zb['Z'] < zmax) *
-                    (zb['ZWARN'] <= zwarnmax) * (meta['OBJTYPE'] == 'TGT') *
-                    (meta['COADD_FIBERSTATUS'] == 0)
-                    )[0]
+                fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
+                                   (meta['OBJTYPE'] == 'TGT') *
+                                   (zb['ZWARN'] <= zwarnmax))[0]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
