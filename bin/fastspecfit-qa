@@ -28,19 +28,16 @@ def parse(options=None):
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
         night (only defined for coadd-type 'pernight' and 'perexp').""")
+    parser.add_argument('--redux_dir', default=None, type=str, help='Top-level path to the reduced spectra.')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
-
     parser.add_argument('--nolegend', action='store_true', help='Exclude legends from QA.')
-
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
     parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
     
-    parser.add_argument('--fastphotfile', default=None, type=str, help='Full path to fastphot fitting results.')
-    parser.add_argument('--fastspecfile', default=None, type=str, help='Full path to fastphot fitting results.')
-    #parser.add_argument('redrockdata', nargs='*', help='Full path to redrock file(s) or a directory containing redrock file(s).')
+    parser.add_argument('fastfitfile', nargs=1, help='Full path to fastspec or fastphot fitting results.')
     
     if options is None:
         args = parser.parse_args()
@@ -65,21 +62,18 @@ def main(args=None, comm=None):
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    # Read the fitting results.
-    if ((args.fastphotfile is None and args.fastspecfile is None) or
-        (args.fastphotfile is not None and args.fastspecfile is not None)):
-        log.warning('Must provide one (but not both) of --fastphotfile or --fastspecfile.')
-        return
-    elif args.fastphotfile is None and args.fastspecfile is not None:
-        fastphot = False
-        fastfitfile = args.fastspecfile
-    elif args.fastphotfile is not None and args.fastspecfile is None:
-        fastphot = True
-        fastfitfile = args.fastphotfile
-    else:
-        pass # should never get here
+    if args.redux_dir is None:
+        args.redux_dir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux')
+        if not os.path.isdir(args.redux_dir):
+            errmsg = 'Data reduction directory {} not found.'.format(args.redux_dir)
+            log.critical(errmsg)
+            raise IOError(errmsg)
     
-    fastfit, metadata, coadd_type = read_fastspecfit(fastfitfile, fastphot=fastphot)
+    # Read the fitting results.
+    if not os.path.isfile(args.fastfitfile[0]):
+        log.warning('File {} not found.'.format(args.fastfitfile[0]))
+        return
+    fastfit, metadata, coadd_type, fastphot = read_fastspecfit(args.fastfitfile[0])
 
     # parse the targetids optional input
     if args.targetids:
@@ -97,30 +91,19 @@ def main(args=None, comm=None):
         fastfit = fastfit[keep]
         metadata = metadata[keep]
     
-    fastfit, metadata = select(fastfit, metadata, coadd_type, healpixs=args.healpix,
+    fastfit, metadata = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
                                tiles=args.tile, nights=args.night)
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
     CFit = ContinuumFit(nolegend=args.nolegend)
     EMFit = EMLineFit(nolegend=args.nolegend)
-    Spec = DESISpectra()
+    Spec = DESISpectra(redux_dir=args.redux_dir)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     if args.outdir:
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
-
-    pdb.set_trace()
-
-    print('Hacking specprod!!!')
-    specprod = 'fuji'
-    specproddir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux', specprod)
-    
-    #if fastphot:
-    #    synthphot = False
-    #else:
-    #    synthphot = True
 
     def _wrap_qa(redrockfile, indx):
         targetids = fastfit['TARGETID'][indx]
@@ -138,58 +121,64 @@ def main(args=None, comm=None):
 
     t0 = time.time()
     if coadd_type == 'healpix':
+        allspecprods = metadata['SPECPROD'].data
         allsurveys = metadata['SURVEY'].data
         allprograms = metadata['PROGRAM'].data
         allpixels = metadata['HEALPIX'].data
-        for survey in set(allsurveys):
-            for program in set(allprograms):
-                for pixel in set(allpixels):
-                    indx = np.where((survey == allsurveys) * (program == allprograms) * (pixel == allpixels))[0]
-                    if len(indx) == 0:
-                        log.warning('No object found with survey={}, program={}, and healpixel={}!'.format(
-                            survey, program, pixel))
-                        continue
-                    redrockfile = os.path.join(specproddir, 'healpix', str(survey), str(program), str(pixel // 100), str(pixel), 
-                                               'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
-                    _wrap_qa(redrockfile, indx)
+        for specprod in set(allspecprods):
+            for survey in set(allsurveys):
+                for program in set(allprograms):
+                    for pixel in set(allpixels):
+                        indx = np.where((specprod == allspecprods) * (survey == allsurveys) *
+                                        (program == allprograms) * (pixel == allpixels))[0]
+                        if len(indx) == 0:
+                            log.warning('No object found with specprod={}, survey={}, program={}, and healpixel={}!'.format(
+                                specprod, survey, program, pixel))
+                            continue
+                        redrockfile = os.path.join(args.redux_dir, specprod, 'healpix', str(survey), str(program), str(pixel // 100), 
+                                                   str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
+                        _wrap_qa(redrockfile, indx)
     else:
+        allspecprods = metadata['SPECPROD'].data
         alltiles = metadata['TILEID'].astype(str).data
+        allnights = metadata['NIGHT'].astype(str).data
         allpetals = metadata['FIBER'].data // 500
         if coadd_type == 'cumulative':
-            thrunights = metadata['THRUNIGHT'].astype(str).data
-            for tile in set(alltiles):
-                for petal in set(allpetals):
-                    indx = np.where((tile == alltiles) * (petal == allpetals))[0]
-                    if len(indx) == 0:
-                        log.warning('No object found with tileid={} and petal={}!'.format(
-                            tile, petal))
-                        continue
-                    redrockfile = os.path.join(specproddir, 'tiles', 'cumulative', str(tile), thrunights[indx[0]],
-                                               'redrock-{}-{}-thru{}.fits'.format(petal, tile, thrunights[indx[0]]))
-                    _wrap_qa(redrockfile, indx)
-        elif coadd_type == 'pernight':
-            allnights = metadata['NIGHT'].astype(str).data
-            for night in set(allnights):
+            for specprod in set(allspecprods):
                 for tile in set(alltiles):
                     for petal in set(allpetals):
-                        indx = np.where((night == allnights) * (tile == alltiles) * (petal == allpetals))[0]
-                        redrockfile = os.path.join(specproddir, 'tiles', 'pernight', str(tile), str(night),
-                                                   'redrock-{}-{}-{}.fits'.format(petal, tile, night))
+                        indx = np.where((specprod == allspecprods) * (tile == alltiles) * (petal == allpetals))[0]
+                        if len(indx) == 0:
+                            log.warning('No object found with tileid={} and petal={}!'.format(
+                                tile, petal))
+                            continue
+                        redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'cumulative', str(tile), allnights[indx[0]],
+                                                   'redrock-{}-{}-thru{}.fits'.format(petal, tile, allnights[indx[0]]))
                         _wrap_qa(redrockfile, indx)
-        elif coadd_type == 'perexp':
-            allnights = metadata['NIGHT'].astype(str).data
-            allexpids = metadata['EXPID'].data
-            for night in set(allnights):
-                for expid in set(allexpids):
+        elif coadd_type == 'pernight':
+            for specprod in set(allspecprods):
+                for night in set(allnights):
                     for tile in set(alltiles):
                         for petal in set(allpetals):
-                            indx = np.where((night == allnights) * (expid == allexpids) *
+                            indx = np.where((specprod == allspecprods) * (night == allnights) *
                                             (tile == alltiles) * (petal == allpetals))[0]
-                            redrockfile = os.path.join(specproddir, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid), 
-                                                       'redrock-{}-{}-exp{:08d}.fits'.format(petal, tile, expid))
+                            redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'pernight', str(tile), str(night),
+                                                       'redrock-{}-{}-{}.fits'.format(petal, tile, night))
                             _wrap_qa(redrockfile, indx)
-        else:
-            pass
+        elif coadd_type == 'perexp':
+            allexpids = metadata['EXPID'].data
+            for specprod in set(allspecprods):
+                for night in set(allnights):
+                    for expid in set(allexpids):
+                        for tile in set(alltiles):
+                            for petal in set(allpetals):
+                                indx = np.where((specprod == allspecprods) * (night == allnights) *
+                                                (expid == allexpids) * (tile == alltiles) *
+                                                (petal == allpetals))[0]
+                                redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid), 
+                                                           'redrock-{}-{}-exp{:08d}.fits'.format(petal, tile, expid))
+                                _wrap_qa(redrockfile, indx)
+                                
     log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
 
 if __name__ == '__main__':

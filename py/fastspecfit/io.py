@@ -57,14 +57,17 @@ DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
 
 class DESISpectra(object):
-    def __init__(self):
+    def __init__(self, redux_dir=None, fiberassign_dir=None):
         """Class to read in the DESI data needed by fastspecfit.
 
         """
         desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
 
-        self.redux_dir = os.path.join(desi_root, 'spectro', 'redux')
-        self.fiberassign_dir = os.path.join(desi_root, 'target', 'fiberassign', 'tiles', 'trunk')
+        if redux_dir is None:
+            self.redux_dir = os.path.join(desi_root, 'spectro', 'redux')
+            
+        if fiberassign_dir is None:
+            self.fiberassign_dir = os.path.join(desi_root, 'target', 'fiberassign', 'tiles', 'trunk')
 
     def find_specfiles(self, redrockfiles=None, firsttarget=0, zmin=0.001, zmax=None,
                        zwarnmax=99999, redrockfile_prefix='redrock-', specfile_prefix='coadd-',
@@ -248,7 +251,8 @@ class DESISpectra(object):
         alltiles = np.unique(self.tiles)
         info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
 
-        targets = gather_targetphot(info, alltiles, columns=TARGETCOLS)
+        targets = gather_targetphot(info, alltiles, columns=TARGETCOLS,
+                                    fiberassign_dir=self.fiberassign_dir)
 
         # If all the photometry is zero, look for it in the Tractor catalogs
         # themselves. This step can also be made "not optional" in order to
@@ -665,25 +669,30 @@ class DESISpectra(object):
 
         return out, meta
 
-def read_fastspecfit(fastfitfile, fastphot=False, rows=None, columns=None):
+def read_fastspecfit(fastfitfile, rows=None, columns=None):
     """Read the fitting results.
 
     """
     if os.path.isfile(fastfitfile):
-        if fastphot:
-            ext = 'FASTPHOT'
-        else:
+        if 'FASTSPEC' in fitsio.FITS(fastfitfile):
+            fastphot = False
             ext = 'FASTSPEC'
+        else:
+            fastphot = True
+            ext = 'FASTPHOT'
             
         hdr = fitsio.read_header(fastfitfile, ext='METADATA')
-        #specprod, coadd_type = hdr['SPECPROD'], hdr['COADDTYP']
-        coadd_type = hdr['COADDTYP']
+        specprod, coadd_type = hdr['SPECPROD'], hdr['COADDTYP']
 
         fastfit = Table(fitsio.read(fastfitfile, ext=ext, rows=rows, columns=columns))
         meta = Table(fitsio.read(fastfitfile, ext='METADATA', rows=rows, columns=columns))
         log.info('Read {} object(s) from {}'.format(len(fastfit), fastfitfile))
 
-        return fastfit, meta, coadd_type
+        # Add specprod to the metadata table so that we can stack across
+        # productions (e.g., Fuji+Guadalupe).
+        meta['SPECPROD'] = specprod
+
+        return fastfit, meta, coadd_type, fastphot
     
     else:
         log.warning('File {} not found.'.format(fastfitfile))
