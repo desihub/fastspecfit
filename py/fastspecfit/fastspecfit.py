@@ -115,13 +115,6 @@ def parse(options=None):
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
-    # make specprod required until this ticket is addressed--
-    # https://github.com/desihub/desispec/issues/1077
-    #parser.add_argument('--specprod', type=str, default='everest', #choices=['everest', 'denali', 'daily'],
-    #                    help='Spectroscopic production.')
-    #parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
-    #                    help='Type of spectral coadds corresponding to the input redrockfiles.')
-
     if options is None:
         args = parser.parse_args()
         log.info(' '.join(sys.argv))
@@ -164,7 +157,7 @@ def fastspec(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit(mapdir=args.mapdir)
     EMFit = EMLineFit(mapdir=args.mapdir)
-    Spec = DESISpectra()#specprod=args.specprod)
+    Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
@@ -196,7 +189,7 @@ def fastspec(args=None, comm=None):
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
-    write_fastspecfit(out, meta, outfile=args.outfile, #specprod=Spec.specprod,
+    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=False)
 
 def fastphot(args=None, comm=None):
@@ -261,5 +254,5 @@ def fastphot(args=None, comm=None):
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
-    write_fastspecfit(out, meta, outfile=args.outfile, #specprod=Spec.specprod,
+    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=True)

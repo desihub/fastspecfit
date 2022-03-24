@@ -755,6 +755,7 @@ Name                   Type        Units      Description
                 SURVEY  bytes3                Survey name (e.g., 'sv1'); only present when fitting healpix coadds.
                PROGRAM  bytes6                Program name (e.g., *bright*, *dark*); only present when fitting healpix coadds.
                HEALPIX   int32                Healpixel number (nside=64); only present when fitting healpix coadds.
+           TILEID_LIST    str5                List of tile IDs that went into healpix coadd.
                 TILEID   int32                Tile ID number; only present when fitting tile-level (not healpix) coadds.
                  FIBER   int32                Fiber ID number; only present with TILEID.
                  NIGHT   int32                Night (or *thrunight* for cumulative coadds); only present with TILEID.
@@ -763,18 +764,18 @@ Name                   Type        Units      Description
             BGS_TARGET   int64                BGS targeting bit.
             MWS_TARGET   int64                MWS targeting bit.
            SCND_TARGET   int64                Secondary target targeting bit.
-       SV1_DESI_TARGET   int64                SV1 DESI targeting bit.
-        SV1_BGS_TARGET   int64                SV1 BGS targeting bit.
-        SV1_MWS_TARGET   int64                SV1 MWS targeting bit.
-       SV2_DESI_TARGET   int64                SV2 DESI targeting bit.
-        SV2_BGS_TARGET   int64                SV2 BGS targeting bit.
-        SV2_MWS_TARGET   int64                SV2 MWS targeting bit.
-       SV3_DESI_TARGET   int64                SV3 DESI targeting bit.
-        SV3_BGS_TARGET   int64                SV3 BGS targeting bit.
-        SV3_MWS_TARGET   int64                SV3 MWS targeting bit.
-       SV1_SCND_TARGET   int64                SV1 secondary targeting bit.
-       SV2_SCND_TARGET   int64                SV2 secondary targeting bit.
-       SV3_SCND_TARGET   int64                SV3 secondary targeting bit.
+       SV1_DESI_TARGET   int64                SV1 DESI targeting bit; only present in fuji / Early Data Release.
+        SV1_BGS_TARGET   int64                SV1 BGS targeting bit; only present in fuji / Early Data Release.
+        SV1_MWS_TARGET   int64                SV1 MWS targeting bit; only present in fuji / Early Data Release.
+       SV2_DESI_TARGET   int64                SV2 DESI targeting bit; only present in fuji / Early Data Release.
+        SV2_BGS_TARGET   int64                SV2 BGS targeting bit; only present in fuji / Early Data Release.
+        SV2_MWS_TARGET   int64                SV2 MWS targeting bit; only present in fuji / Early Data Release.
+       SV3_DESI_TARGET   int64                SV3 DESI targeting bit; only present in fuji / Early Data Release.
+        SV3_BGS_TARGET   int64                SV3 BGS targeting bit; only present in fuji / Early Data Release.
+        SV3_MWS_TARGET   int64                SV3 MWS targeting bit; only present in fuji / Early Data Release.
+       SV1_SCND_TARGET   int64                SV1 secondary targeting bit; only present in fuji / Early Data Release.
+       SV2_SCND_TARGET   int64                SV2 secondary targeting bit; only present in fuji / Early Data Release.
+       SV3_SCND_TARGET   int64                SV3 secondary targeting bit; only present in fuji / Early Data Release.
                      Z float64                Redrock redshift.
                  ZWARN    int8                Redrock zwarning bit.
              DELTACHI2 float64                Redrock delta-chi-squared.

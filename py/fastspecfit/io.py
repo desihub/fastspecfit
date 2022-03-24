@@ -142,10 +142,15 @@ class DESISpectra(object):
                     thrunight = None
                     log.info('survey={}, program={}, healpix={}'.format(survey, program, healpix))
                 else:
-                    tileid = hdr['TILEID']
-                    petal = hdr['PETAL']
-                    night = hdr['SPGRPVAL'] # thrunight for coadd_type==cumulative
-                    log.info('tileid={}, petal={}, night={}'.format(tileid, petal, night))
+                    tileid = np.int32(hdr['TILEID'])
+                    petal = np.int16(hdr['PETAL'])
+                    night = np.int32(hdr['NIGHT']) # thrunight for coadd_type==cumulative
+                    if coadd_type == 'perexp':
+                        expid = np.int32(hdr['EXPID'])
+                        log.info('tileid={}, petal={}, night={}, expid={}'.format(tileid, petal, night, expid))
+                    else:
+                        expid = None
+                        log.info('tileid={}, petal={}, night={}'.format(tileid, petal, night))
 
             # add targeting columns
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
@@ -219,29 +224,17 @@ class DESISpectra(object):
                 meta['PROGRAM'] = program
                 meta['HEALPIX'] = healpix
             else:
-                # Initialize the columns to get the data type right and then
-                # populate them by targetid.
-                meta['TILEID'] = expmeta['TILEID'][0]
-                meta['FIBER'] = expmeta['FIBER'][0]
-                if coadd_type == 'custom':
-                    pass
-                else:
-                    if coadd_type != 'cumulative':
-                        meta['NIGHT'] = expmeta['NIGHT'][0]
-                    if coadd_type == 'perexp':
-                        meta['EXPID'] = expmeta['EXPID'][0]
-                        
-                for iobj, tid in enumerate(meta['TARGETID']):
-                    iexp = np.where(expmeta['TARGETID'] == tid)[0][0] # zeroth
-                    meta['TILEID'][iobj] = expmeta['TILEID'][iexp]
-                    meta['FIBER'][iobj] = expmeta['FIBER'][iexp]
-                    if coadd_type == 'custom':
-                        pass
-                    else:
-                        if coadd_type != 'cumulative':
-                            meta['NIGHT'][iobj] = expmeta['NIGHT'][iexp]
-                        if coadd_type == 'perexp':
-                            meta['EXPID'][iobj] = expmeta['EXPID'][iexp]
+                meta['NIGHT'] = night
+                meta['TILEID'] = tileid
+                if expid:
+                    meta['EXPID'] = expid
+
+                # get the correct fiber number
+                if 'FIBER' in expmeta.colnames:
+                    meta['FIBER'] = np.zeros(len(meta), dtype=expmeta['FIBER'].dtype)
+                    for iobj, tid in enumerate(meta['TARGETID']):
+                        iexp = np.where(expmeta['TARGETID'] == tid)[0][0] # zeroth
+                        meta['FIBER'][iobj] = expmeta['FIBER'][iexp]
     
             self.redrock.append(Table(zb))
             self.meta.append(Table(meta))
@@ -630,7 +623,7 @@ class DESISpectra(object):
 
         # All of this business is so we can get the columns in the order we want
         # (i.e., the order that matches the data model).
-        for metacol in ['TARGETID', 'RA', 'DEC', 'TILEID', 'FIBER', 'NIGHT', 'TILEID_LIST']:
+        for metacol in ['TARGETID', 'RA', 'DEC', 'TILEID_LIST', 'TILEID', 'FIBER', 'NIGHT']:
             if metacol in metacols:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():
@@ -710,36 +703,11 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None,
 
     log.info('Writing results for {} objects to {}'.format(len(out), outfile))
 
-    # astropy is really slow!
-    #from astropy.io import fits
-    #hduprim = fits.PrimaryHDU()
-    #
-    #hduout = fits.convenience.table_to_hdu(out)
-    #if fastphot:
-    #    hduout.header['EXTNAME'] = 'FASTPHOT'
-    #else:
-    #    hduout.header['EXTNAME'] = 'FASTSPEC'
-    #
-    #hdumeta = fits.convenience.table_to_hdu(meta)
-    #hdumeta.header['EXTNAME'] = 'METADATA'
-    #
-    #if specprod:
-    #    hdumeta.header['SPECPROD'] = (specprod, 'spectroscopic production name')
-    #if coadd_type:
-    #    hdumeta.header['COADDTYP'] = (coadd_type, 'spectral coadd fitted')
-    #
-    #hx = fits.HDUList([hduprim, hduout, hdumeta])
-    #hx.writeto(outfile, overwrite=True, checksum=True)
-
     hdr = []
     if specprod:
         hdr.append({'name': 'SPECPROD', 'value': specprod, 'comment': 'spectroscopic production name'})
     if coadd_type:
         hdr.append({'name': 'COADDTYP', 'value': coadd_type, 'comment': 'spectral coadd fitted'})
-    #if survey:
-    #    hdr.append({'name': 'SURVEY', 'value': survey, 'comment': 'survey name'})
-    #if program:
-    #    hdr.append({'name': 'PROGRAM', 'value': program, 'comment': 'program name'})
 
     fitsio.write(outfile, out.as_array(), header=hdr, clobber=True)
     fitsio.write(outfile, meta.as_array(), header=hdr)
