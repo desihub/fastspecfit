@@ -107,7 +107,7 @@ def main(args=None, comm=None):
 
     def _wrap_qa(redrockfile, indx):
         targetids = fastfit['TARGETID'][indx]
-        Spec.find_specfiles(redrockfiles=redrockfile, targetids=targetids)
+        Spec.select(redrockfiles=redrockfile, targetids=targetids)
         data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True, remember_coadd=True)
         qaargs = [(CFit, EMFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
                    coadd_type, fastphot, args.outdir, args.outprefix) for igal in np.arange(len(indx))]                
@@ -132,8 +132,8 @@ def main(args=None, comm=None):
                         indx = np.where((specprod == allspecprods) * (survey == allsurveys) *
                                         (program == allprograms) * (pixel == allpixels))[0]
                         if len(indx) == 0:
-                            log.warning('No object found with specprod={}, survey={}, program={}, and healpixel={}!'.format(
-                                specprod, survey, program, pixel))
+                            #log.warning('No object found with specprod={}, survey={}, program={}, and healpixel={}!'.format(
+                            #    specprod, survey, program, pixel))
                             continue
                         redrockfile = os.path.join(args.redux_dir, specprod, 'healpix', str(survey), str(program), str(pixel // 100), 
                                                    str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
@@ -149,8 +149,8 @@ def main(args=None, comm=None):
                     for petal in set(allpetals):
                         indx = np.where((specprod == allspecprods) * (tile == alltiles) * (petal == allpetals))[0]
                         if len(indx) == 0:
-                            log.warning('No object found with tileid={} and petal={}!'.format(
-                                tile, petal))
+                            #log.warning('No object found with tileid={} and petal={}!'.format(
+                            #    tile, petal))
                             continue
                         redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'cumulative', str(tile), allnights[indx[0]],
                                                    'redrock-{}-{}-thru{}.fits'.format(petal, tile, allnights[indx[0]]))
@@ -162,6 +162,8 @@ def main(args=None, comm=None):
                         for petal in set(allpetals):
                             indx = np.where((specprod == allspecprods) * (night == allnights) *
                                             (tile == alltiles) * (petal == allpetals))[0]
+                            if len(indx) == 0:
+                                continue
                             redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'pernight', str(tile), str(night),
                                                        'redrock-{}-{}-{}.fits'.format(petal, tile, night))
                             _wrap_qa(redrockfile, indx)
@@ -175,6 +177,8 @@ def main(args=None, comm=None):
                                 indx = np.where((specprod == allspecprods) * (night == allnights) *
                                                 (expid == allexpids) * (tile == alltiles) *
                                                 (petal == allpetals))[0]
+                                if len(indx) == 0:
+                                    continue
                                 redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid), 
                                                            'redrock-{}-{}-exp{:08d}.fits'.format(petal, tile, expid))
                                 _wrap_qa(redrockfile, indx)

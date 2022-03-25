@@ -163,10 +163,11 @@ def fastspec(args=None, comm=None):
     # Read the data.
     t0 = time.time()
 
-    Spec.find_specfiles(args.redrockfiles, firsttarget=args.firsttarget,
-                        targetids=targetids, ntargets=args.ntargets)
+    Spec.select(args.redrockfiles, firsttarget=args.firsttarget,
+                targetids=targetids, ntargets=args.ntargets)
     if len(Spec.specfiles) == 0:
         return
+
     data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True, remember_coadd=True)
 
     out, meta = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=False)
@@ -223,13 +224,13 @@ def fastphot(args=None, comm=None):
     # Initialize the continuum-fitting classes.
     t0 = time.time()
     CFit = ContinuumFit(mapdir=args.mapdir)
-    Spec = DESISpectra()#specprod=args.specprod)
+    Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
     t0 = time.time()
-    Spec.find_specfiles(args.redrockfiles, firsttarget=args.firsttarget,
-                        targetids=targetids, ntargets=args.ntargets)
+    Spec.select(args.redrockfiles, firsttarget=args.firsttarget,
+                targetids=targetids, ntargets=args.ntargets)
     if len(Spec.specfiles) == 0:
         return
     data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)

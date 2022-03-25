@@ -342,11 +342,11 @@ class ContinuumTools(object):
         if min_uncertainty is None:
             min_uncertainty = np.zeros_like(maggies)
 
-        ## Gaia-only targets all have grz=-99 fluxes (we now cut these out in
-        ## io.DESISpectra.find_specfiles)
-        #if np.all(maggies==-99):
-        #    log.warning('Gaia-only targets not supported.')
-        #    raise ValueError
+        # Gaia-only targets can sometimes have grz=-99.
+        if np.any(ivarmaggies < 0) or np.any(maggies == -99.0):
+            errmsg = 'All ivarmaggies must be zero or positive!'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
         phot['lambda_eff'] = lambda_eff#.astype('f4')
         if nanomaggies:
@@ -943,7 +943,7 @@ class ContinuumFit(ContinuumTools):
         """
         super(ContinuumFit, self).__init__(metallicity=metallicity, minwave=minwave, 
                                            maxwave=maxwave, mapdir=mapdir)
-        
+
         # Initialize the velocity dispersion and reddening parameters. Make sure
         # the nominal values are in the grid.
         vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 20.0, 150.0)
