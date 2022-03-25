@@ -363,71 +363,85 @@ class DESISpectra(object):
 
     def read_and_unpack(self, CFit, fastphot=False, synthphot=True,
                         remember_coadd=False):
-        """Unpack and pre-process a single DESI spectrum.
+        """Read and unpack selected spectra or broadband photometry.
         
         Parameters
         ----------
-        specobj : :class:`desispec.spectra.Spectra`
-            DESI spectra (in the standard format).
-        redrock : :class:`astropy.table.Table`
-            Redrock redshift table (row-aligned to `specobj`).
-        CFit : :class:`fastspecfit.continuum.ContinuumFit`
+        CFit : :class:`fastspecfit.continuum.ContinuumFit` class
             Continuum-fitting class which contains filter curves and some additional
             photometric convenience functions.
-        indx : :class:`int`
-            Index number (0-indexed) of the spectrum to unpack and pre-process.
+        fastphot : bool
+            Read and unpack the broadband photometry; otherwise, handle the DESI
+            three-camera spectroscopy. Optional; defaults to `False`.
+        synthphot : bool
+            Synthesize photometry from the coadded optical spectrum. Optional;
+            defaults to `True`.
+        remember_coadd : bool
+            Add the coadded spectrum to the returned dictionary. Optional;
+            defaults to `False` (in order to reduce memory usage).
 
         Returns
         -------
-        :class:`dict` with the following keys:
-            zredrock : :class:`numpy.float64`
+        List of dictionaries (:class:`dict`, one per object) the following keys:
+            targetid : numpy.int64
+                DESI target ID.
+            zredrock : numpy.float64
                 Redrock redshift.
-            wave : :class:`list`
+            cameras : list
+                List of camera names present for this spectrum.
+            wave : list
                 Three-element list of `numpy.ndarray` wavelength vectors, one for
                 each camera.    
-            flux : :class:`list`    
+            flux : list
                 Three-element list of `numpy.ndarray` flux spectra, one for each
                 camera and corrected for Milky Way extinction.
-            ivar : :class:`list`    
+            ivar : list
                 Three-element list of `numpy.ndarray` inverse variance spectra, one
                 for each camera.    
-            res : :class:`list`
-                Three-element list of `desispec.resolution.Resolution` objects, one
-                for each camera.
-            snr : :class:`numpy.ndarray`
+            res : list
+                Three-element list of :class:`desispec.resolution.Resolution`
+                objects, one for each camera.
+            snr : `numpy.ndarray`
                 Median per-pixel signal-to-noise ratio in the grz cameras.
-            linemask : :class:`list`
+            linemask : list
                 Three-element list of `numpy.ndarray` boolean emission-line masks,
                 one for each camera. This mask is used during continuum-fitting.
-            coadd_wave : :class:`numpy.ndarray`
+            linename : list
+                Three-element list of emission line names which might be present
+                in each of the three DESI cameras.
+            linepix : list
+                Three-element list of pixel indices, one per camera, which were
+                identified in :class:`CFit.build_linemask` to belong to emission
+                lines.
+            contpix : list
+                Three-element list of pixel indices, one per camera, which were
+                identified in :class:`CFit.build_linemask` to not be
+                "contaminated" by emission lines.
+            coadd_wave : `numpy.ndarray`
                 Coadded wavelength vector with all three cameras combined.
-            coadd_flux : :class:`numpy.ndarray`
+            coadd_flux : `numpy.ndarray`
                 Flux corresponding to `coadd_wave`.
-            coadd_ivar : :class:`numpy.ndarray`
+            coadd_ivar : `numpy.ndarray`
                 Inverse variance corresponding to `coadd_flux`.
-            photsys_south : :class:`bool`
-                Boolean indicating whether this object is on the south (True) or
-                north (False) photometric system based on the declination cut coded
-                in `desitarget.io.desispec.resolution.Resolution`.
-            phot : :class:`astropy.table.Table`
-                Imaging photometry in `grzW1W2`, corrected for Milky Way extinction.
+            photsys : str
+                Photometric system.
+            phot : `astropy.table.Table`
+                Total photometry in `grzW1W2`, corrected for Milky Way extinction.
+            fiberphot : `astropy.table.Table`
+                Fiber photometry in `grzW1W2`, corrected for Milky Way extinction.
+            fibertotphot : `astropy.table.Table`
+                Fibertot photometry in `grzW1W2`, corrected for Milky Way extinction.
             synthphot : :class:`astropy.table.Table`
-                Photometry in `grz` synthesized from the extinction-corrected
-                coadded spectra (with a mild extrapolation of the data blueward and
-                redward to accommodate the g-band and z-band filter curves,
-                respectively.
-
-        Notes
-        -----
-        Hard-coded to assume that all three cameras (grz) have spectra.
+                Photometry in `grz` synthesized from the Galactic
+                extinction-corrected coadded spectra (with a mild extrapolation
+                of the data blueward and redward to accommodate the g-band and
+                z-band filter curves, respectively.
 
         """
-        #from scipy.interpolate import interp1d        
         from desispec.resolution import Resolution
         from desispec.coaddition import coadd_cameras
-        from desispec.io import read_spectra # read_tile_spectra # 
-        from desiutil.dust import mwdust_transmission, dust_transmission#, ext_odonnell
-        from fastspecfit.util import C_LIGHT
+        from desispec.io import read_spectra
+        from desiutil.dust import mwdust_transmission, dust_transmission
 
         # Read everything into a simple dictionary.
         t0 = time.time()

@@ -170,6 +170,8 @@ def fastspec(args=None, comm=None):
 
     data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True, remember_coadd=True)
 
+    pdb.set_trace()
+
     out, meta = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=False)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
         Spec.ntargets, time.time()-t0))
