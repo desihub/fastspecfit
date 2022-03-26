@@ -548,26 +548,8 @@ class DESISpectra(object):
 
                         #linemask = CFit.build_linemask(spec.wave[camera], redshift=data['zredrock'])
                         #data['linemask'].append(linemask)
-
                         #data['std'][icam] = np.std(spec.flux[camera][igal, :][linemask])
 
-                    # Coadd across cameras.
-                    #coadd_wave = np.unique(np.hstack(data['wave']))
-                    #coadd_flux3d = np.zeros((len(coadd_wave), 3))
-                    #coadd_ivar3d = np.zeros_like(coadd_flux3d)
-                    #coadd_linemask3d = np.ones((len(coadd_wave), 3), bool)
-                    #for icam in np.arange(len(data['cameras'])):
-                    #    I = np.where(np.isin(data['wave'][icam], coadd_wave))[0]
-                    #    J = np.where(np.isin(coadd_wave, data['wave'][icam]))[0]
-                    #    coadd_flux3d[J, icam] = data['flux'][icam][I]
-                    #    coadd_ivar3d[J, icam] = data['ivar'][icam][I]
-                    #    coadd_linemask3d[J, icam] = data['linemask'][icam][I]
-                    #
-                    #coadd_ivar = np.sum(coadd_ivar3d, axis=1)
-                    #coadd_flux = np.zeros_like(coadd_ivar)
-                    #good = np.where(coadd_ivar > 0)[0]
-                    #coadd_flux[good] = np.sum(coadd_ivar3d[good, :] * coadd_flux3d[good, :], axis=1) / coadd_ivar[good]
-                    #coadd_linemask = np.all(coadd_linemask3d, axis=1)
                     coadd_wave = coadd_spec.wave[coadd_bands]
                     coadd_flux = coadd_spec.flux[coadd_bands][igal, :]
                     coadd_ivar = coadd_spec.ivar[coadd_bands][igal, :]

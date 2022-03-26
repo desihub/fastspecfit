@@ -779,19 +779,19 @@ class EMLineFit(ContinuumTools):
         for band in self.synth_bands:
             out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy))
 
-        out.add_column(Column(name='BALMER_Z', length=nobj, dtype='f8'))
-        #out.add_column(Column(name='BALMER_Z_ERR', length=nobj, dtype='f8'))
-        out.add_column(Column(name='FORBIDDEN_Z', length=nobj, dtype='f8'))
-        #out.add_column(Column(name='FORBIDDEN_Z_ERR', length=nobj, dtype='f8'))
+        out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
+        #out.add_column(Column(name='NARROW_Z_ERR', length=nobj, dtype='f8'))
         out.add_column(Column(name='BROAD_Z', length=nobj, dtype='f8'))
         #out.add_column(Column(name='BROAD_Z_ERR', length=nobj, dtype='f8'))
+        out.add_column(Column(name='UV_Z', length=nobj, dtype='f8'))
+        #out.add_column(Column(name='UV_Z_ERR', length=nobj, dtype='f8'))
 
-        out.add_column(Column(name='BALMER_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='BALMER_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        out.add_column(Column(name='FORBIDDEN_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='FORBIDDEN_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='NARROW_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        #out.add_column(Column(name='NARROW_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
         out.add_column(Column(name='BROAD_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
         #out.add_column(Column(name='BROAD_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='UV_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        #out.add_column(Column(name='UV_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
 
         # special columns for the fitted doublets
         out.add_column(Column(name='MGII_DOUBLET_RATIO', length=nobj, dtype='f4'))
@@ -1071,8 +1071,8 @@ class EMLineFit(ContinuumTools):
             result['DN4000_NOLINES'] = dn4000_nolines
 
         # get continuum fluxes, EWs, and upper limits
-        balmer_sigmas, forbidden_sigmas, broad_sigmas = [], [], []
-        balmer_redshifts, forbidden_redshifts, broad_redshifts = [], [], []
+        narrow_sigmas, broad_sigmas, uv_sigmas = [], [], []
+        narrow_redshifts, broad_redshifts, uv_redshifts = [], [], []
         for oneline in self.EMLineModel.linetable[self.EMLineModel.inrange]:
 
             linename = oneline['name'].upper()
@@ -1141,15 +1141,16 @@ class EMLineFit(ContinuumTools):
 
                 # only use 3-sigma lines
                 if result['{}_AMP'.format(linename)] * np.sqrt(result['{}_AMP_IVAR'.format(linename)]) > 3:
-                    if oneline['isbalmer'] and oneline['isbroad']:
-                        balmer_sigmas.append(linesigma)
-                        balmer_redshifts.append(linez)
-                    elif oneline['isbroad']:
-                        broad_sigmas.append(linesigma)
-                        broad_redshifts.append(linez)
+                    if oneline['isbroad']: # includes UV and broad Balmer lines
+                        if oneline['isbalmer']:
+                            broad_sigmas.append(linesigma)
+                            broad_redshifts.append(linez)
+                        else:
+                            uv_sigmas.append(linesigma)
+                            uv_redshifts.append(linez)
                     else:
-                        forbidden_sigmas.append(linesigma)
-                        forbidden_redshifts.append(linez)
+                        narrow_sigmas.append(linesigma)
+                        narrow_redshifts.append(linez)
             else:
                 result['{}_AMP'.format(linename)] = 0.0 # overwrite
                 npix, chi2, boxflux, boxflux_ivar = 0, 1e6, 0.0, 0.0
@@ -1264,21 +1265,13 @@ class EMLineFit(ContinuumTools):
             result['OII_7330_EW'] = 0.0
 
         # get the average emission-line redshifts and velocity widths
-        if len(balmer_redshifts) > 0:
-            result['BALMER_Z'] = np.mean(balmer_redshifts)
-            result['BALMER_SIGMA'] = np.mean(balmer_sigmas)
-            #result['BALMER_Z_ERR'] = np.std(balmer_redshifts)
-            #result['BALMER_SIGMA_ERR'] = np.std(balmer_sigmas)
+        if len(narrow_redshifts) > 0:
+            result['NARROW_Z'] = np.mean(narrow_redshifts)
+            result['NARROW_SIGMA'] = np.mean(narrow_sigmas)
+            #result['NARROW_Z_ERR'] = np.std(narrow_redshifts)
+            #result['NARROW_SIGMA_ERR'] = np.std(narrow_sigmas)
         else:
-            result['BALMER_Z'] = redshift
-            
-        if len(forbidden_redshifts) > 0:
-            result['FORBIDDEN_Z'] = np.mean(forbidden_redshifts)
-            result['FORBIDDEN_SIGMA'] = np.mean(forbidden_sigmas)
-            #result['FORBIDDEN_Z_ERR'] = np.std(forbidden_redshifts)
-            #result['FORBIDDEN_SIGMA_ERR'] = np.std(forbidden_sigmas)
-        else:
-            result['FORBIDDEN_Z'] = redshift
+            result['NARROW_Z'] = redshift
             
         if len(broad_redshifts) > 0:
             result['BROAD_Z'] = np.mean(broad_redshifts)
@@ -1288,8 +1281,16 @@ class EMLineFit(ContinuumTools):
         else:
             result['BROAD_Z'] = redshift
             
+        if len(uv_redshifts) > 0:
+            result['UV_Z'] = np.mean(uv_redshifts)
+            result['UV_SIGMA'] = np.mean(uv_sigmas)
+            #result['UV_Z_ERR'] = np.std(uv_redshifts)
+            #result['UV_SIGMA_ERR'] = np.std(uv_sigmas)
+        else:
+            result['UV_Z'] = redshift
+            
         if verbose:
-            for line in ('BALMER', 'FORBIDDEN', 'BROAD'):
+            for line in ('NARROW', 'BROAD', 'UV'):
                 for col in ('Z', 'SIGMA'):
                 #for col in ('Z', 'Z_ERR', 'SIGMA', 'SIGMA_ERR'):
                     print('{}_{}: {:.12f}'.format(line, col, result['{}_{}'.format(line, col)][0]))
@@ -1399,15 +1400,12 @@ class EMLineFit(ContinuumTools):
 
         leg = {
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            'dv_balmer': '$\Delta v_{{\\rm H+He}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BALMER_Z']-redshift)),
-            'dv_forbid': '$\Delta v_{{\\rm forbid}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['FORBIDDEN_Z']-redshift)),
-            'dv_broad': '$\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
-            #'zbalmer': '$z_{{\\rm Balmer}}$={:.6f}'.format(fastspec['BALMER_Z']),
-            #'zforbidden': '$z_{{\\rm forbidden}}$={:.6f}'.format(fastspec['FORBIDDEN_Z']),
-            #'zbroad': '$z_{{\\rm MgII}}$={:.6f}'.format(fastspec['BROAD_Z']),
-            'sigma_balmer': '$\sigma_{{\\rm H+He}}$={:.1f} km/s'.format(fastspec['BALMER_SIGMA']),
-            'sigma_forbid': '$\sigma_{{\\rm forbid}}$={:.1f} km/s'.format(fastspec['FORBIDDEN_SIGMA']),
-            'sigma_broad': '$\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
+            'dv_balmer': '$\Delta v_{{\\rm narrow}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift)),
+            'dv_forbid': '$\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
+            'dv_broad': '$\Delta v_{{\\rm UV}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift)),
+            'sigma_balmer': '$\sigma_{{\\rm narrow}}$={:.1f} km/s'.format(fastspec['NARROW_SIGMA']),
+            'sigma_forbid': '$\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
+            'sigma_broad': '$\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastspec['UV_SIGMA']),
             #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_CHI2']),
@@ -1570,7 +1568,7 @@ class EMLineFit(ContinuumTools):
 
             if np.any(self.linetable['isbroad'][I]):
                 if np.any(self.linetable['isbalmer'][I]):
-                    plotsig = fastspec['BALMER_SIGMA']
+                    plotsig = fastspec['NARROW_SIGMA']
                     if plotsig < 50:
                         plotsig = plotsig_default_balmer
                 else:
@@ -1578,7 +1576,7 @@ class EMLineFit(ContinuumTools):
                     if plotsig < 50:
                         plotsig = plotsig_default_broad
             else:
-                plotsig = fastspec['FORBIDDEN_SIGMA']
+                plotsig = fastspec['UV_SIGMA']
                 if plotsig < 50:
                     plotsig = plotsig_default
             sigmas.append(plotsig)
