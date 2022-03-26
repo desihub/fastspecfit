@@ -359,6 +359,7 @@ class EMLineModel(Fittable1DModel):
     hei_5876_amp = Parameter(name='hei_5876_amp', default=0.3, bounds=[minamp, maxamp])
     hei_broad_5876_amp = Parameter(name='hei_broad_5876_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
     oi_6300_amp = Parameter(name='oi_6300_amp', default=0.3, bounds=[minamp, maxamp])
+    siii_6312_amp = Parameter(name='siii_6312_amp', default=0.3, bounds=[minamp, maxamp])
     nii_6548_amp = Parameter(name='nii_6548_amp', default=1.0, bounds=[minamp, maxamp])
     halpha_amp = Parameter(name='halpha_amp', default=3.0, bounds=[minamp, maxamp])
     halpha_broad_amp = Parameter(name='halpha_broad_amp', default=3.0, bounds=[minamp_balmer_broad, maxamp])
@@ -406,6 +407,7 @@ class EMLineModel(Fittable1DModel):
     hei_5876_vshift = Parameter(name='hei_5876_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     hei_broad_5876_vshift = Parameter(name='hei_broad_5876_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oi_6300_vshift = Parameter(name='oi_6300_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    siii_6312_vshift = Parameter(name='siii_6312_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     nii_6548_vshift = Parameter(name='nii_6548_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     halpha_vshift = Parameter(name='halpha_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     halpha_broad_vshift = Parameter(name='halpha_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
@@ -453,6 +455,7 @@ class EMLineModel(Fittable1DModel):
     hei_5876_sigma = Parameter(name='hei_5876_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     hei_broad_5876_sigma = Parameter(name='hei_broad_5876_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     oi_6300_sigma = Parameter(name='oi_6300_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    siii_6312_sigma = Parameter(name='siii_6312_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nii_6548_sigma = Parameter(name='nii_6548_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     halpha_sigma = Parameter(name='halpha_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     halpha_broad_sigma = Parameter(name='halpha_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
@@ -506,6 +509,7 @@ class EMLineModel(Fittable1DModel):
                  hei_5876_amp=hei_5876_amp.default,
                  hei_broad_5876_amp=hei_broad_5876_amp.default,
                  oi_6300_amp=oi_6300_amp.default,
+                 siii_6312_amp=siii_6312_amp.default,
                  nii_6548_amp=nii_6548_amp.default,
                  halpha_amp=halpha_amp.default,
                  halpha_broad_amp=halpha_broad_amp.default,
@@ -553,6 +557,7 @@ class EMLineModel(Fittable1DModel):
                  hei_5876_vshift=hei_5876_vshift.default,
                  hei_broad_5876_vshift=hei_broad_5876_vshift.default,
                  oi_6300_vshift=oi_6300_vshift.default,
+                 siii_6312_vshift=siii_6312_vshift.default,
                  nii_6548_vshift=nii_6548_vshift.default,
                  halpha_vshift=halpha_vshift.default,
                  halpha_broad_vshift=halpha_broad_vshift.default,
@@ -600,6 +605,7 @@ class EMLineModel(Fittable1DModel):
                  hei_5876_sigma=hei_5876_sigma.default,
                  hei_broad_5876_sigma=hei_broad_5876_sigma.default,
                  oi_6300_sigma=oi_6300_sigma.default,
+                 siii_6312_sigma=siii_6312_sigma.default,
                  nii_6548_sigma=nii_6548_sigma.default,
                  halpha_sigma=halpha_sigma.default,
                  halpha_broad_sigma=halpha_broad_sigma.default,
