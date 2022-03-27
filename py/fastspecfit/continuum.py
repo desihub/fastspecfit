@@ -457,7 +457,7 @@ class ContinuumTools(object):
         """
         return 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
 
-    def build_linemask(self, wave, flux, ivar, redshift=0.0):
+    def everest_build_linemask(self, wave, flux, ivar, redshift=0.0):
         """Generate a mask which identifies pixels potentially affected by emission
         lines.
 
@@ -521,7 +521,9 @@ class ContinuumTools(object):
             log.debug('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
             
             return linesigma, snr
-                
+
+        #np.savetxt('linemask3.txt', np.vstack((wave, flux, ivar)).T)
+
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
         zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
         linesigma_broad, broad_snr = _estimate_linesigma(
@@ -614,113 +616,122 @@ class ContinuumTools(object):
 
         return linemask_dict
 
-    def test_build_linemask(self, wave, flux, ivar, redshift=0.0):
-        """Generate a mask which identifies pixels potentially affected by emission
-        lines.
+    def everest_smooth_residuals(self, residuals, wave, specivar, linemask,
+                                 linepix, contpix, seed=1, binwave=0.8*120):#binwave=0.8*160):
+        """Derive a median-smoothed correction to the continuum fit in order to pick up
+        any unmodeled flux, before emission-line fitting.
 
-        wave - observed-frame wavelength array
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        Notes
+        -----
+        There are a few different algorithms in here, but the default one is to
+        do a very simple median-smoothing on the camera-stacked
+        (percamera=False) spectrum, which prevents any crazy discontinuities
+        between the cameras.
+        
+        https://github.com/moustakas/moustakas-projects/blob/master/ages/ppxf/ages_gandalf_specfit.pro#L138-L145
 
         """
-        from scipy.interpolate import UnivariateSpline
+        #from scipy.stats import sigmaclip
+        from scipy.ndimage import median_filter
+        from fastspecfit.util import ivar2var
 
-        npix = len(wave)
-        npix2 = npix // 3
-        wave1, wave2 = [np.median(_) for _ in [wave[:npix2], wave[npix2:]]]
-        sp1, sp2 = [np.median(_) for _ in [flux[:npix2], flux[npix2:]]]
-        smooth = np.exp(UnivariateSpline([wave1, wave2], np.log(np.r_[sp1, sp2]), s=0, k=3, ext=0)(wave))
+        rand = np.random.RandomState(seed=seed)
 
-        import matplotlib.pyplot as plt
-        plt.clf() ; plt.plot(wave, flux) ; plt.plot(wave, smooth)
-        plt.savefig('/global/cfs/cdirs/desi/users/ioannis/tmp/junk-continuum.png')
-        
-        pdb.set_trace()
-        
-        
-        # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
-        zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
-        linesigma_broad, broad_snr = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_broad, label='Broad-line')#, junkplot='desi-users/ioannis/tmp/junk-broad.png')
-        if (linesigma_broad < 300) or (linesigma_broad > 2500) or (broad_snr < 3):
-            linesigma_broad = self.linemask_sigma_broad
-
-        # [OII] doublet, [OIII] 4959,5007
-        zlinewaves = np.array([3728.483, 4960.295, 5008.239]) * (1 + redshift)
-        linesigma_narrow, narrow_snr = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_narrow, label='Narrow-line')#, junkplot='desi-users/ioannis/tmp/junk-narrow.png')
-        if (linesigma_narrow < 50) or (linesigma_narrow > 250) or (narrow_snr < 3):
-            linesigma_narrow = self.linemask_sigma_narrow
-
-        # Hbeta, Halpha
-        zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
-        linesigma_balmer, narrow_balmer = _estimate_linesigma(
-            zlinewaves, self.linemask_sigma_balmer, label='Balmer-line')#, junkplot='/global/homes/i/ioannis/desi-users/ioannis/tmp/junk-balmer.png')
-
-        if (linesigma_balmer < 50) or (linesigma_balmer > 2500) or (narrow_balmer < 3):
-            linesigma_balmer = self.linemask_sigma_balmer
-
-        # now build the mask
-        linemask = np.zeros_like(wave, bool) # False = unaffected by emission line
-
-        linenames = np.hstack(('Lya', self.linetable['name'])) # include Lyman-alpha
-        zlinewaves = np.hstack((1215.0, self.linetable['restwave'])) * (1 + redshift)
-        isbroads = np.hstack((True, self.linetable['isbroad'] * (self.linetable['isbalmer'] == False)))
-        isbalmers = np.hstack((False, self.linetable['isbalmer'] * (self.linetable['isbroad'] == False)))
-
-        inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
-        # Index I for building the line-mask; J for estimating the local
-        # continuum (to be used in self.smooth_residuals).
-        linepix, contpix, linename = [], [], []        
-        for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
-                                                           isbroads[inrange], isbalmers[inrange]):
-            if isbroad:
-                sigma = copy(linesigma_broad)
-            elif isbalmer or 'broad' in _linename:
-                sigma = copy(linesigma_balmer)
-            else:
-                sigma = copy(linesigma_narrow)
-                
-            sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
-            I = (wave >= (zlinewave - 3*sigma)) * (wave <= (zlinewave + 3*sigma))
-
-            #if np.sum(I) > 0:
-            #    linename.append(_linename)
-            #    linepix.append(I)
-            #    linemask[I] = True  # True = affected by line
-                
-            Jblu = (wave > (zlinewave - 5*sigma)) * (wave < (zlinewave - 3*sigma)) * (linemask == False)
-            Jred = (wave < (zlinewave + 5*sigma)) * (wave > (zlinewave + 3*sigma)) * (linemask == False)
-            J = np.logical_or(Jblu, Jred)
-            #if 'h6' in _linename:
-            #    pdb.set_trace()
-            
-            if np.sum(I) > 0 and np.sum(J) > 0:
-                linename.append(_linename)
-                linepix.append(I)
-                contpix.append(J)
-                linemask[I] = True  # True = affected by line
-
-        #for _linename, zlinewave, isbroad, isbalmer in zip(linenames[inrange], zlinewaves[inrange],
-        #                                                   isbroads[inrange], isbalmers[inrange]):
-        #    if isbroad:
-        #        sigma = linesigma_broad
-        #    elif isbalmer:
-        #        sigma = linesigma_balmer
-        #    else:
-        #        sigma = linesigma_narrow
-        #    sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
-        #    Jblu = (wave > (zlinewave - 6*sigma)) * (wave < (zlinewave - 4*sigma)) * (linemask == False)
-        #    Jred = (wave < (zlinewave + 6*sigma)) * (wave > (zlinewave + 4*sigma)) * (linemask == False)
-        #
-        #    if '4686' in _linename:
-        #        pdb.set_trace()
+        #def robust_median(wave, flux, ivar, binwave):
+        #    from scipy import ptp
+        #    from scipy.stats import sigmaclip
+        #    #from scipy.signal import savgol_filter
         #    
-        #    J = np.logical_or(Jblu, Jred)
-        #    if np.sum(J) > 0:
-        #        contpix.append(J)
+        #    smoothflux = np.zeros_like(flux)
+        #    minwave, maxwave = np.min(wave), np.max(wave)
+        #    nbin = int(ptp(wave) / binwave)
+        #    wavebins = np.linspace(minwave, maxwave, nbin)
+        #    idx  = np.digitize(wave, wavebins)
+        #    for kk in np.arange(nbin):
+        #        I = (idx == kk)
+        #        J = I * (ivar > 0)
+        #        #print(kk, np.sum(I), np.sum(J))
+        #        if np.sum(J) > 10:
+        #            clipflux, _, _ = sigmaclip(flux[J], low=5.0, high=5.0)
+        #            smoothflux[I] = np.median(clipflux)
+        #            #print(kk, np.sum(J), np.sum(I), np.median(wave[I]), smoothflux[I][0])
+        #    return smoothflux
+                
+        medbin = int(binwave * 2)
+        #print(binwave, medbin)
 
-        linemask_dict = {'linemask': linemask, 'linename': linename, 'linepix': linepix, 'contpix': contpix}
+        # Replace pixels potentially affected by lines by the ivar-weighted mean
+        # of the surrounding (local) continuum.
+        residuals_clean = []
+        for icam in np.arange(len(residuals)): # iterate over cameras
+            #var, I = ivar2var(specivar[icam])
+            ivar = specivar[icam]
+            _residuals = residuals[icam].copy()
+            for _linepix, _contpix in zip(linepix[icam], contpix[icam]):
+                I = ivar[_contpix] > 0
+                if np.sum(I) > 0:
+                    norm = np.sum(ivar[_contpix][I])
+                    mn = np.sum(ivar[_contpix][I] * _residuals[_contpix][I]) / norm # weighted mean
+                    sig = np.sqrt(np.sum(ivar[_contpix][I] * (_residuals[_contpix][I] - mn)**2) / norm) # weighted standard deviation
+                    #sig = np.sqrt(np.sum(ivar[I][_contpix]**2 * (_residuals[I][_contpix] - mn)**2) / norm**2) # weighted error in the mean
+                    #_residuals[_linepix] = np.median(residuals[icam][_contpix])
+                    #_residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(residuals[icam][_contpix])) + np.median(residuals[icam][_contpix])
+                    #clipflux, _, _ = sigmaclip(residuals[icam][_contpix], low=3.0, high=3.0)
+                    #if icam == 1:
+                    #    import matplotlib.pyplot as plt
+                    #    plt.clf()
+                    #    plt.scatter(wave[icam][_linepix], _residuals[_linepix], color='blue', s=1)
+                    #    plt.scatter(wave[icam][_contpix], _residuals[_contpix], color='green', s=1)
+                    #    plt.axhline(y=mn, color='k')
+                    #    plt.axhline(y=mn+sig, ls='--', color='k')
+                    #    plt.axhline(y=mn-sig, ls='--', color='k')
+                    #    plt.plot(wave[icam][_linepix], (rand.normal(size=len(_linepix)) * sig) + mn, color='orange', alpha=0.5)
+                    #    plt.savefig('desi-users/ioannis/tmp2/junk.png')
+                    #    pdb.set_trace()
+                    _residuals[_linepix] = (rand.normal(size=len(_linepix)) * sig) + mn
+                    #_residuals[_linepix] = (rand.normal(size=len(_linepix)) * np.std(clipflux)) + np.median(clipflux)
+            residuals_clean.append(_residuals)
 
-        return linemask_dict
+        residuals_clean = np.hstack(residuals_clean)
+        smooth1 = median_filter(residuals_clean, medbin, mode='nearest')
+        smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
+
+        #if percamera:
+        #    smooth_continuum = []
+        #    for icam in np.arange(len(specflux)): # iterate over cameras        
+        #        residuals = specflux[icam] - continuummodel[icam]
+        #        if False:
+        #            smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
+        #            #smooth1 = robust_median(specwave[icam], residuals, specivar[icam] * linemask[icam], binwave)
+        #            smooth2 = median_filter(smooth1, medbin, mode='nearest')
+        #            smooth_continuum.append(smooth2)
+        #        else:
+        #            # Fragile...replace the line-affected pixels with noise to make the
+        #            # smoothing better-behaved.
+        #            pix_nolines = linemask[icam]      # unaffected by a line = True
+        #            pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+        #            residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
+        #                                      np.std(residuals[pix_nolines]) +
+        #                                      np.median(residuals[pix_nolines]))
+        #            smooth1 = median_filter(residuals, medbin, mode='nearest')
+        #            #smooth2 = savgol_filter(smooth1, 151, 2)
+        #            smooth2 = median_filter(smooth1, medbin//2, mode='nearest')
+        #            smooth_continuum.append(smooth2)
+        #else:
+        #    pix_nolines = linemask      # unaffected by a line = True
+        #    pix_emlines = np.logical_not(pix_nolines) # affected by line = True
+        #    residuals[pix_emlines] = (self.rand.normal(size=np.sum(pix_emlines)) *
+        #                              np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
+        #    smooth1 = median_filter(residuals, medbin, mode='nearest')
+        #    smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
+
+        return smooth_continuum
 
     def smooth_and_resample(self, sspflux, sspwave, specwave=None, specres=None):
         """Given a single template, apply the resolution matrix and resample in
@@ -911,123 +922,6 @@ class ContinuumTools(object):
         #log.info('Resampling took: {:.2f} sec'.format(time.time()-t0))
 
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
-
-    def smooth_residuals(self, residuals, wave, specivar, linemask,
-                         linepix, contpix, seed=1, binwave=0.8*120):#binwave=0.8*160):
-        """Derive a median-smoothed correction to the continuum fit in order to pick up
-        any unmodeled flux, before emission-line fitting.
-
-        Parameters
-        ----------
-
-        Returns
-        -------
-
-        Notes
-        -----
-        There are a few different algorithms in here, but the default one is to
-        do a very simple median-smoothing on the camera-stacked
-        (percamera=False) spectrum, which prevents any crazy discontinuities
-        between the cameras.
-        
-        https://github.com/moustakas/moustakas-projects/blob/master/ages/ppxf/ages_gandalf_specfit.pro#L138-L145
-
-        """
-        #from scipy.stats import sigmaclip
-        from scipy.ndimage import median_filter
-        from fastspecfit.util import ivar2var
-
-        rand = np.random.RandomState(seed=seed)
-
-        #def robust_median(wave, flux, ivar, binwave):
-        #    from scipy import ptp
-        #    from scipy.stats import sigmaclip
-        #    #from scipy.signal import savgol_filter
-        #    
-        #    smoothflux = np.zeros_like(flux)
-        #    minwave, maxwave = np.min(wave), np.max(wave)
-        #    nbin = int(ptp(wave) / binwave)
-        #    wavebins = np.linspace(minwave, maxwave, nbin)
-        #    idx  = np.digitize(wave, wavebins)
-        #    for kk in np.arange(nbin):
-        #        I = (idx == kk)
-        #        J = I * (ivar > 0)
-        #        #print(kk, np.sum(I), np.sum(J))
-        #        if np.sum(J) > 10:
-        #            clipflux, _, _ = sigmaclip(flux[J], low=5.0, high=5.0)
-        #            smoothflux[I] = np.median(clipflux)
-        #            #print(kk, np.sum(J), np.sum(I), np.median(wave[I]), smoothflux[I][0])
-        #    return smoothflux
-                
-        medbin = int(binwave * 2)
-        #print(binwave, medbin)
-
-        # Replace pixels potentially affected by lines by the ivar-weighted mean
-        # of the surrounding (local) continuum.
-        residuals_clean = []
-        for icam in np.arange(len(residuals)): # iterate over cameras
-            #var, I = ivar2var(specivar[icam])
-            ivar = specivar[icam]
-            _residuals = residuals[icam].copy()
-            for _linepix, _contpix in zip(linepix[icam], contpix[icam]):
-                I = ivar[_contpix] > 0
-                if np.sum(I) > 0:
-                    norm = np.sum(ivar[_contpix][I])
-                    mn = np.sum(ivar[_contpix][I] * _residuals[_contpix][I]) / norm # weighted mean
-                    sig = np.sqrt(np.sum(ivar[_contpix][I] * (_residuals[_contpix][I] - mn)**2) / norm) # weighted standard deviation
-                    #sig = np.sqrt(np.sum(ivar[I][_contpix]**2 * (_residuals[I][_contpix] - mn)**2) / norm**2) # weighted error in the mean
-                    #_residuals[_linepix] = np.median(residuals[icam][_contpix])
-                    #_residuals[_linepix] = (self.rand.normal(size=len(_linepix)) * np.std(residuals[icam][_contpix])) + np.median(residuals[icam][_contpix])
-                    #clipflux, _, _ = sigmaclip(residuals[icam][_contpix], low=3.0, high=3.0)
-                    #if icam == 1:
-                    #    import matplotlib.pyplot as plt
-                    #    plt.clf()
-                    #    plt.scatter(wave[icam][_linepix], _residuals[_linepix], color='blue', s=1)
-                    #    plt.scatter(wave[icam][_contpix], _residuals[_contpix], color='green', s=1)
-                    #    plt.axhline(y=mn, color='k')
-                    #    plt.axhline(y=mn+sig, ls='--', color='k')
-                    #    plt.axhline(y=mn-sig, ls='--', color='k')
-                    #    plt.plot(wave[icam][_linepix], (rand.normal(size=len(_linepix)) * sig) + mn, color='orange', alpha=0.5)
-                    #    plt.savefig('desi-users/ioannis/tmp2/junk.png')
-                    #    pdb.set_trace()
-                    _residuals[_linepix] = (rand.normal(size=len(_linepix)) * sig) + mn
-                    #_residuals[_linepix] = (rand.normal(size=len(_linepix)) * np.std(clipflux)) + np.median(clipflux)
-            residuals_clean.append(_residuals)
-
-        residuals_clean = np.hstack(residuals_clean)
-        smooth1 = median_filter(residuals_clean, medbin, mode='nearest')
-        smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
-
-        #if percamera:
-        #    smooth_continuum = []
-        #    for icam in np.arange(len(specflux)): # iterate over cameras        
-        #        residuals = specflux[icam] - continuummodel[icam]
-        #        if False:
-        #            smooth1 = robust_median(specwave[icam], residuals, specivar[icam], binwave)
-        #            #smooth1 = robust_median(specwave[icam], residuals, specivar[icam] * linemask[icam], binwave)
-        #            smooth2 = median_filter(smooth1, medbin, mode='nearest')
-        #            smooth_continuum.append(smooth2)
-        #        else:
-        #            # Fragile...replace the line-affected pixels with noise to make the
-        #            # smoothing better-behaved.
-        #            pix_nolines = linemask[icam]      # unaffected by a line = True
-        #            pix_emlines = np.logical_not(pix_nolines) # affected by line = True
-        #            residuals[pix_emlines] = (self.rand.normal(np.count_nonzero(pix_emlines)) *
-        #                                      np.std(residuals[pix_nolines]) +
-        #                                      np.median(residuals[pix_nolines]))
-        #            smooth1 = median_filter(residuals, medbin, mode='nearest')
-        #            #smooth2 = savgol_filter(smooth1, 151, 2)
-        #            smooth2 = median_filter(smooth1, medbin//2, mode='nearest')
-        #            smooth_continuum.append(smooth2)
-        #else:
-        #    pix_nolines = linemask      # unaffected by a line = True
-        #    pix_emlines = np.logical_not(pix_nolines) # affected by line = True
-        #    residuals[pix_emlines] = (self.rand.normal(size=np.sum(pix_emlines)) *
-        #                              np.std(residuals[pix_nolines]) + np.median(residuals[pix_nolines]))
-        #    smooth1 = median_filter(residuals, medbin, mode='nearest')
-        #    smooth_continuum = median_filter(smooth1, medbin//2, mode='nearest')
-
-        return smooth_continuum
 
 class ContinuumFit(ContinuumTools):
     def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
