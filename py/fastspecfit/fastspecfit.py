@@ -31,13 +31,13 @@ def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def fastspec_one(iobj, data, out, meta, CFit, EMFit, solve_vdisp=False, verbose=False):
+def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
     
     #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
 
-    cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data, solve_vdisp=solve_vdisp)
+    cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data)
     for col in cfit.colnames:
         out[col] = cfit[col]
 
@@ -155,7 +155,7 @@ def fastspec(args=None, comm=None):
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit(mapdir=args.mapdir)
+    CFit = ContinuumFit(mapdir=args.mapdir, solve_vdisp=args.solve_vdisp)
     EMFit = EMLineFit(mapdir=args.mapdir)
     Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
@@ -176,7 +176,7 @@ def fastspec(args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.solve_vdisp, args.verbose)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.verbose)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing

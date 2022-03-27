@@ -457,6 +457,326 @@ class ContinuumTools(object):
         """
         return 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
 
+    def smooth_continuum(self, wave, flux, ivar, redshift, linetable,
+                         maskkms_uv=5000.0, maskkms_balmer=5000.0, maskkms_narrow=500.0, 
+                         medbin=120, medpad=30, png=None):
+        """Build a smooth, nonparametric continuum.
+
+        """
+        from scipy.ndimage import median_filter
+
+        npix = len(wave)
+        linemask = np.zeros(npix, bool) # True = (possibly) affected by emission line
+        
+        for oneline in linetable:
+            zlinewave = oneline['restwave'] * (1 + redshift)
+            if oneline['isbroad']:
+                if oneline['isbalmer']:
+                    sigma = maskkms_balmer
+                else:
+                    sigma = maskkms_uv
+            else:
+                sigma = maskkms_narrow
+        
+            sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
+            I = (wave >= (zlinewave - 3*sigma)) * (wave <= (zlinewave + 3*sigma))
+            if len(I) > 0:
+                linemask[I] = True
+        
+        # https://stackoverflow.com/questions/27211835/numpy-split-array-into-parts-according-to-sequence-of-values
+        dd = np.diff(np.r_[0, ~linemask, 0])
+        start = np.where(dd == 1)[0]
+        end = np.where(dd == -1)[0]
+        mask = (end - start) >= 3
+        start = start[mask]
+        end = end[mask]
+        #for s, e in zip(start, end):
+        #    print(s, e, linemask[s:e])
+        
+        smooth1 = np.zeros_like(wave)
+        for ii, (ss, ee) in enumerate(zip(start, end)):
+            smooth1[ss:ee] = median_filter(flux[ss:ee], medbin, mode='nearest')
+            #smooth1[ss:ee] = median_filter(smooth1[ss:ee], medbin // 2, mode='nearest')
+            if ii > 0:
+                s2 = end[ii-1]
+                s1 = s2 - medpad
+                if s1 < 0:
+                    s1 = 0
+        
+                e1 = start[ii]
+                e2 = e1 + medpad
+                if e2 > npix:
+                    e2 = npix
+    
+                dx = (e1 - s2)
+                if dx > 5:
+                    bint = np.median(smooth1[s1:s2])
+                    slope = (np.median(smooth1[e1:e2]) - bint) / dx
+                    #print(bint, slope, s1, s2, e1, e2)
+                    smooth1[end[ii-1]:start[ii]] = bint + slope * np.arange(dx)
+                else:
+                    smooth1[end[ii-1]:start[ii]] = np.median(np.hstack((smooth1[s1:s2], smooth1[e1:e2])))
+
+        if png:
+            fig, ax = plt.subplots(2, 1, figsize=(8, 10))
+            ax[0].plot(wave, flux)
+            ax[0].scatter(wave[linemask], flux[linemask], s=10, marker='s', color='k')
+            ax[0].plot(wave, smooth1, color='red')
+            #[ax[0].axvline(x=zlinewave, color='k') for zlinewave in zlinewaves]
+    
+            ax[1].plot(wave, flux - smooth1)
+            ax[1].axhline(y=0, color='k')
+            #for xx in ax:
+            #    xx.set_xlim(4200, 4800)
+    
+            fig.savefig(png)
+    
+        return smooth1
+    
+    def estimate_linesigmas(self, wave, flux, ivar, redshift=0.0):
+        """Estimate the velocity width from potentially strong, isolated lines.
+    
+        """
+        def get_linesigma(zlinewaves, init_linesigma, label='Line', png=None):
+    
+            from scipy.optimize import curve_fit
+            
+            linesigma, snr = 0.0, 0.0
+            
+            inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
+            if np.sum(inrange) > 0:
+                stackdvel, stackflux, stackivar, contsigma = [], [], [], []
+                for zlinewave in zlinewaves[inrange]:
+                    I = ((wave >= (zlinewave - 5*init_linesigma * zlinewave / C_LIGHT)) *
+                         (wave <= (zlinewave + 5*init_linesigma * zlinewave / C_LIGHT)) *
+                         (ivar > 0))
+                    J = np.logical_or(
+                        (wave > (zlinewave - 8*init_linesigma * zlinewave / C_LIGHT)) *
+                        (wave < (zlinewave - 5*init_linesigma * zlinewave / C_LIGHT)) *
+                        (ivar > 0),
+                        (wave < (zlinewave + 8*init_linesigma * zlinewave / C_LIGHT)) *
+                        (wave > (zlinewave + 5*init_linesigma * zlinewave / C_LIGHT)) *
+                        (ivar > 0))
+    
+                    if (np.sum(I) > 3) and np.max(flux[I]*ivar[I]) > 1:
+                        stackdvel.append((wave[I] - zlinewave) / zlinewave * C_LIGHT)
+                        norm = np.percentile(flux[I], 99)
+                        stackflux.append(flux[I] / norm)
+                        stackivar.append(ivar[I] * norm**2)
+    
+                        if np.sum(J) > 3:
+                            contsigma.append(np.std(flux[J]) / np.sqrt(np.sum(J)) / norm) # error in the mean
+                        else:
+                            contsigma.append(np.std(flux[I]) / np.sqrt(np.sum(I)) / norm) # shouldn't happen...
+    
+                if len(stackflux) > 0: 
+                    stackdvel = np.hstack(stackdvel)
+                    stackflux = np.hstack(stackflux)
+                    stackivar = np.hstack(stackivar)
+                    contsigma = np.hstack(contsigma)
+    
+                    if len(stackflux) > 10: # require at least 10 pixels
+                        onegauss = lambda x, amp, sigma, const: amp * np.exp(-0.5 * x**2 / sigma**2) + const
+                        #onegauss = lambda x, amp, sigma, const, slope: amp * np.exp(-0.5 * x**2 / sigma**2) + const + slope*x
+        
+                        stacksigma = 1 / np.sqrt(stackivar)
+                        try:
+                            popt, _ = curve_fit(onegauss, xdata=stackdvel, ydata=stackflux,
+                                                sigma=stacksigma, p0=[1.0, init_linesigma, np.median(stackflux)])
+                                                #sigma=stacksigma, p0=[1.0, sigma, np.median(stackflux), 0.0])
+                            popt[1] = np.abs(popt[1])
+                            if popt[0] > 0 and popt[1] > 0:
+                                linesigma = popt[1]
+                                snr = popt[0] / np.median(contsigma)
+                                #if 'Narrow' in label:
+                                #    pdb.set_trace()
+                            else:
+                                popt = None
+                        except RuntimeError:
+                            popt = None
+                
+                        if png:
+                            import matplotlib.pyplot as plt
+                            plt.clf()
+                            plt.scatter(stackdvel, stackflux, s=10)
+                            if popt is not None:
+                                plt.plot(stackdvel, onegauss(stackdvel, *popt), color='k')
+                            #print('Writing {}'.format(png))
+                            plt.savefig(png)
+                        
+            #log.debug('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
+            print('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
+            
+            return linesigma, snr
+    
+        init_linesigma_balmer = 1000.0
+        init_linesigma_narrow = 200.0
+        init_linesigma_uv = 2000.0
+    
+        # [OII] doublet, [OIII] 4959,5007
+        #png = '{}-narrow.png'.format(txtfile.replace('.txt', ''))
+        png = None
+        zlinewaves = np.array([3728.483, 4960.295, 5008.239]) * (1 + redshift)
+        linesigma_narrow, snr_narrow = get_linesigma(zlinewaves, init_linesigma_narrow, 
+                                                     'Narrow', png=png)
+        if (linesigma_narrow < 50) or (linesigma_narrow > 300) or (snr_narrow < 2):
+            linesigma_narrow = init_linesigma_narrow
+    
+        # Hbeta, Halpha
+        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/junk-balmer.png'
+        png = None # 'balmer.png'
+        #png = '{}-balmer.png'.format(txtfile.replace('.txt', ''))
+        zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
+        linesigma_balmer, snr_balmer = get_linesigma(zlinewaves, init_linesigma_balmer, 
+                                                     label='Balmer', png=png)
+        if (linesigma_balmer < 50) or (snr_balmer < 2):
+            linesigma_balmer = init_linesigma_narrow # use narrow, not Balmer
+    
+        # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
+        #png = '{}-balmer.png'.format(txtfile.replace('.txt', ''))
+        png = None # 'broad.png'
+        zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
+        linesigma_uv, snr_uv = get_linesigma(zlinewaves, init_linesigma_uv, 
+                                             label='UV', png=png)
+        if (linesigma_uv < 300) or (snr_uv < 2):
+            linesigma_uv = init_linesigma_uv
+    
+        return linesigma_narrow, linesigma_balmer, linesigma_uv 
+
+    def build_linemask(self, wave, flux, ivar, redshift=0.0):
+        """Generate a mask which identifies pixels potentially affected by emission
+        lines.
+
+        wave - observed-frame wavelength array
+
+        """
+        npix = len(wave)
+        
+        linetable_strong = self.linetable[self.linetable['amp'] >= 1] # stronger lines
+        #inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
+        #if np.sum(inrange) > 0:
+        #    linetable = linetable[inrange]
+        #    linetable = linetable[linetable['amp'] >= 1] # stronger lines
+        
+        if len(linetable_strong) == 0:
+            # return something sensible
+            pdb.set_trace()
+        
+        # initially, mask aggressively 
+        initmask_narrow = 500.0 # [km/s]
+        initmask_balmer = 5000.0 # [km/s]
+        initmask_uv = 5000.0 # [km/s]
+        
+        # initial smooth continuum
+        smooth1 = self.smooth_continuum(wave, flux, ivar, redshift, linetable_strong, 
+                                        maskkms_uv=initmask_uv,
+                                        maskkms_balmer=initmask_balmer, 
+                                        maskkms_narrow=initmask_narrow)
+        
+        linesigma_narrow, linesigma_balmer, linesigma_uv = self.estimate_linesigmas(
+            wave, flux-smooth1, ivar, redshift)
+        
+        newmask_narrow = linesigma_narrow * 3 # [km/s]
+        newmask_balmer = linesigma_balmer * 3 # [km/s]
+        newmask_uv = linesigma_uv * 3 # [km/s]
+        
+        #png = txtfile.replace('.txt', '.png')
+        png = None
+        smooth2 = self.smooth_continuum(wave, flux, ivar, redshift, linetable_strong, 
+                                        png=png, maskkms_uv=newmask_uv,
+                                        maskkms_balmer=newmask_balmer, 
+                                        maskkms_narrow=newmask_narrow)
+    
+        # now build the mask
+        linemask = np.zeros_like(wave, bool) # True = affected by emission line
+    
+        linenames = np.hstack(('Lya', self.linetable['name'])) # include Lyman-alpha
+        zlinewaves = np.hstack((1215.0, self.linetable['restwave'])) * (1 + redshift)
+        isbroads = np.hstack((True, self.linetable['isbroad'] * (self.linetable['isbalmer'] == False)))
+        isbalmers = np.hstack((False, self.linetable['isbalmer'] * (self.linetable['isbroad'] == False)))
+    
+        #png = '{}-zoom.png'.format(txtfile.replace('.txt', ''))
+        png = None
+    
+        nsig = 5
+    
+        inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
+        nline = np.sum(inrange)
+        if nline > 0:
+            # Index I for building the line-mask; J for estimating the local
+            # continuum (to be used in self.smooth_continuum).
+    
+            # initial line-mask
+            for _linename, zlinewave, isbroad, isbalmer in zip(
+                    linenames[inrange], zlinewaves[inrange],
+                    isbroads[inrange], isbalmers[inrange]):
+                if isbroad:
+                    sigma = linesigma_uv
+                elif isbalmer or 'broad' in _linename:
+                    sigma = linesigma_balmer
+                else:
+                    sigma = linesigma_narrow
+                sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
+                I = (wave >= (zlinewave - nsig*sigma)) * (wave <= (zlinewave + nsig*sigma))
+                if np.sum(I) > 0:
+                    linemask[I] = True
+    
+            # now get the continuum, too
+            if png:
+                nrows = np.ceil(nline/4).astype(int)
+                fig, ax = plt.subplots(nrows, 4, figsize=(8, 2*nrows))
+                ax = ax.flatten()
+            else:
+                ax = [None] * nline
+    
+            linepix, contpix, linename = [], [], []        
+            for _linename, zlinewave, isbroad, isbalmer, xx in zip(
+                    linenames[inrange], zlinewaves[inrange],
+                    isbroads[inrange], isbalmers[inrange], ax):
+                
+                if isbroad:
+                    sigma = linesigma_uv
+                elif isbalmer or 'broad' in _linename:
+                    sigma = linesigma_balmer
+                else:
+                    sigma = linesigma_narrow
+                    
+                sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
+                I = (wave >= (zlinewave - nsig*sigma)) * (wave <= (zlinewave + nsig*sigma))
+    
+                Jblu = (wave > (zlinewave - 2*nsig*sigma)) * (wave < (zlinewave - nsig*sigma)) * (linemask == False)
+                Jred = (wave < (zlinewave + 2*nsig*sigma)) * (wave > (zlinewave + nsig*sigma)) * (linemask == False)
+                J = np.logical_or(Jblu, Jred)
+                
+                if np.sum(I) > 0 and np.sum(J) > 0:
+                    linename.append(_linename)
+                    linepix.append(I)
+                    contpix.append(J)
+    
+                    if png:
+                        _Jblu = np.where((wave > (zlinewave - 2*nsig*sigma)) * (wave < (zlinewave - nsig*sigma)))[0]
+                        _Jred = np.where((wave < (zlinewave + 2*nsig*sigma)) * (wave > (zlinewave + nsig*sigma)))[0]
+                        plotwave, plotflux = wave[_Jblu[0]:_Jred[-1]], flux[_Jblu[0]:_Jred[-1]]
+                        xx.plot(plotwave, plotflux, label=_linename)
+                        #xx.plot(np.hstack((wave[Jblu], wave[I], wave[Jred])), 
+                        #        np.hstack((flux[Jblu], flux[I], flux[Jred])), label=_linename)
+                        #xx.plot(wave[I], flux[I], label=_linename)
+                        xx.scatter(wave[I], flux[I], s=10, color='orange', marker='s')
+                        xx.scatter(wave[Jblu], flux[Jblu], color='blue', s=10)
+                        xx.scatter(wave[Jred], flux[Jred], color='red', s=10)
+                        xx.set_ylim(np.min(plotflux), np.max(flux[I]))
+                        xx.legend(frameon=False, fontsize=10, loc='upper left')
+        
+            linemask_dict = {'linemask': linemask, 'linename': linename, 'linepix': linepix, 'contpix': contpix}
+    
+            if png:
+                fig.savefig(png)
+    
+        else:
+            linemask_dict = {'linemask': [], 'linename': [], 'linepix': [], 'contpix': []}
+        
+        return linemask_dict
+
     def everest_build_linemask(self, wave, flux, ivar, redshift=0.0):
         """Generate a mask which identifies pixels potentially affected by emission
         lines.
@@ -616,8 +936,8 @@ class ContinuumTools(object):
 
         return linemask_dict
 
-    def everest_smooth_residuals(self, residuals, wave, specivar, linemask,
-                                 linepix, contpix, seed=1, binwave=0.8*120):#binwave=0.8*160):
+    def smooth_residuals(self, residuals, wave, specivar, linemask,
+                         linepix, contpix, seed=1, binwave=0.8*120):#binwave=0.8*160):
         """Derive a median-smoothed correction to the continuum fit in order to pick up
         any unmodeled flux, before emission-line fitting.
 
@@ -925,7 +1245,7 @@ class ContinuumTools(object):
 
 class ContinuumFit(ContinuumTools):
     def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
-                 nolegend=False, mapdir=None):
+                 nolegend=False, solve_vdisp=False, mapdir=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -950,10 +1270,13 @@ class ContinuumFit(ContinuumTools):
 
         """
         super(ContinuumFit, self).__init__(metallicity=metallicity, minwave=minwave, 
-                                           maxwave=maxwave, mapdir=mapdir)
+                                           maxwave=maxwave, mapdir=mapdir,
+                                           solve_vdisp=solve_vdisp)
 
         # Initialize the velocity dispersion and reddening parameters. Make sure
         # the nominal values are in the grid.
+        self.solve_vdisp = solve_vdisp
+        
         vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 20.0, 150.0)
         #vdispmin, vdispmax, dvdisp, vdisp_nominal = (0.0, 0.0, 30.0, 150.0)
         nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp))
@@ -1372,17 +1695,14 @@ class ContinuumFit(ContinuumTools):
 
         return result, continuummodel
     
-    def continuum_specfit(self, data, solve_vdisp=False):
-        """Fit the stellar continuum of a single spectrum using fast non-negative
-        least-squares fitting (fNNLS).
+    def continuum_specfit(self, data):
+        """Fit the non-negative stellar continuum of a single spectrum.
 
         Parameters
         ----------
         data : :class:`dict`
             Dictionary of input spectroscopy (plus ancillary data) populated by
-            `unpack_one_spectrum`.
-        solve_vdisp : :class:`bool`, optional, defaults to False
-            Solve for the velocity dispersion.
+            :func:`fastspecfit.io.DESISpectra.read_and_unpack`.
 
         Returns
         -------
@@ -1462,7 +1782,7 @@ class ContinuumFit(ContinuumTools):
 
         # Optionally build out the model spectra on our grid of velocity
         # dispersion and then solve.
-        if solve_vdisp:
+        if self.solve_vdisp:
             t0 = time.time()
             zsspflux_vdisp = []
             for vdisp in self.vdisp:
@@ -1510,6 +1830,7 @@ class ContinuumFit(ContinuumTools):
         else:
             _residuals = specflux - bestfit
             residuals = [_residuals[np.sum(npixpercam[:icam+1]):np.sum(npixpercam[:icam+2])] for icam in np.arange(len(data['cameras']))]
+            print('FIX ME HERE!!!')
             _smooth_continuum = self.smooth_residuals(
                 residuals, data['wave'], data['ivar'],
                 data['linemask'], data['linepix'], data['contpix'])

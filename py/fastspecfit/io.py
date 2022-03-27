@@ -387,33 +387,33 @@ class DESISpectra(object):
                 DESI target ID.
             zredrock : numpy.float64
                 Redrock redshift.
-            cameras : list
+            cameras : :class:`list`
                 List of camera names present for this spectrum.
-            wave : list
+            wave : :class:`list`
                 Three-element list of `numpy.ndarray` wavelength vectors, one for
                 each camera.    
-            flux : list
+            flux : :class:`list`
                 Three-element list of `numpy.ndarray` flux spectra, one for each
                 camera and corrected for Milky Way extinction.
-            ivar : list
+            ivar : :class:`list`
                 Three-element list of `numpy.ndarray` inverse variance spectra, one
                 for each camera.    
-            res : list
+            res : :class:`list`
                 Three-element list of :class:`desispec.resolution.Resolution`
                 objects, one for each camera.
             snr : `numpy.ndarray`
                 Median per-pixel signal-to-noise ratio in the grz cameras.
-            linemask : list
+            linemask : :class:`list`
                 Three-element list of `numpy.ndarray` boolean emission-line masks,
                 one for each camera. This mask is used during continuum-fitting.
-            linename : list
+            linename : :class:`list`
                 Three-element list of emission line names which might be present
                 in each of the three DESI cameras.
-            linepix : list
+            linepix : :class:`list`
                 Three-element list of pixel indices, one per camera, which were
                 identified in :class:`CFit.build_linemask` to belong to emission
                 lines.
-            contpix : list
+            contpix : :class:`list`
                 Three-element list of pixel indices, one per camera, which were
                 identified in :class:`CFit.build_linemask` to not be
                 "contaminated" by emission lines.
