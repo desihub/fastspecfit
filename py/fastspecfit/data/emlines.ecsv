@@ -35,7 +35,7 @@ name restwave amp isbalmer isbroad nicename plotgroup
        nev_3426   3426.8637    0.1   False  False  [NeV]-$\lambda$3426                          nev_3426
        oii_3726   3727.092     1.0   False  False  [OII]-$\lambda\lambda$3726,29                oii_3726_29
        oii_3729   3729.874     1.0   False  False  [OII]-$\lambda\lambda$3726,29                oii_3726_29
-     neiii_3869   3869.8611    0.1   False  False  [NeIII]-$\lambda$3869+HeI+H6                 neiii_3869_hei_3889_h6
+     neiii_3869   3869.8611    1.0   False  False  [NeIII]-$\lambda$3869+HeI+H6                 neiii_3869_hei_3889_h6
        hei_3889   3889.751     0.1   True   False  [NeIII]-$\lambda$3869+HeI+H6                 neiii_3869_hei_3889_h6
  hei_broad_3889   3889.751     0.1   True   True   [NeIII]-$\lambda$3869+HeI+H6                 neiii_3869_hei_3889_h6
              h6   3890.1576    0.1   True   False  [NeIII]-$\lambda$3869+HeI+H6                 neiii_3869_hei_3889_h6
@@ -44,8 +44,8 @@ name restwave amp isbalmer isbroad nicename plotgroup
  hepsilon_broad   3971.195     0.1   True   True   H$\epsilon$-$\lambda$3970                    hepsilon
          hdelta   4102.892     0.1   True   False  H$\delta$-$\lambda$4101                      hdelta
    hdelta_broad   4102.892     0.1   True   True   H$\delta$-$\lambda$4101                      hdelta
-         hgamma   4341.684     0.1   True   False  H$\gamma$-$\lambda$4340+[OIII]-$\lambda$4363 hgamma_oiii_4363
-   hgamma_broad   4341.684     0.1   True   True   H$\gamma$-$\lambda$4340+[OIII]-$\lambda$4363 hgamma_oiii_4363
+         hgamma   4341.684     1.0   True   False  H$\gamma$-$\lambda$4340+[OIII]-$\lambda$4363 hgamma_oiii_4363
+   hgamma_broad   4341.684     1.0   True   True   H$\gamma$-$\lambda$4340+[OIII]-$\lambda$4363 hgamma_oiii_4363
       oiii_4363   4364.4351    0.1   False  False  H$\gamma$-$\lambda$4340+[OIII]-$\lambda$4363 hgamma_oiii_4363
        hei_4471   4472.7290    0.1   True   False  HeI-$\lambda$4471                            hei_4471
  hei_broad_4471   4472.7290    0.1   True   True   HeI-$\lambda$4471                            hei_4471

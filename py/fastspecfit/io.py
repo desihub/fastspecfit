@@ -533,7 +533,8 @@ class DESISpectra(object):
 
                 if not fastphot:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
-                                 'linemask': [], 'linename': [], 'linepix': [], 'contpix': [],
+                                 'linemask': [], 'linemask_strong': [], 'linename': [],
+                                 'linepix': [], 'contpix': [],
                                  'snr': np.zeros(3, 'f4'),
                                  #'std': np.zeros(3, 'f4'), # emission-line free standard deviation, per-camera
                                  'cameras': spec.bands})
@@ -559,9 +560,10 @@ class DESISpectra(object):
                     # Map the pixels belonging to individual emission lines and
                     # their local continuum back onto the original per-camera
                     # spectra. These lists of arrays are used in
-                    # continuum.ContinnuumTools.smooth_residuals.
+                    # continuum.ContinnuumTools.smooth_continuum.
                     for icam in np.arange(len(data['cameras'])):
                         data['linemask'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask']*1) > 0)
+                        data['linemask_strong'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask_strong']*1) > 0)
                         _linename, _linenpix, _contpix = [], [], []
                         for ipix in np.arange(len(coadd_linemask_dict['linepix'])):
                             I = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linepix'][ipix]*1) > 0
@@ -595,7 +597,8 @@ class DESISpectra(object):
                     if remember_coadd:
                         data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux,
                                      'coadd_ivar': coadd_ivar, 'coadd_res': coadd_res,
-                                     'coadd_linemask': coadd_linemask_dict['linemask']})
+                                     'coadd_linemask': coadd_linemask_dict['linemask'],
+                                     'coadd_linemask_strong': coadd_linemask_dict['linemask_strong']})
                                      #'linepix': np.where(coadd_linemask_dict['linepix'])[0],
                                      #'contpix': np.where(coadd_linemask_dict['contpix'])[0]})
 
