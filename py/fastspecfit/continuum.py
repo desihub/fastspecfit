@@ -457,7 +457,7 @@ class ContinuumTools(object):
         """
         return 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
 
-    def smooth_continuum(self, wave, flux, ivar, redshift, medbin=150, medpad=30,
+    def smooth_continuum(self, wave, flux, ivar, redshift, medbin=50, medpad=30,
                          linemask=None, maskkms_uv=3000.0, maskkms_balmer=3000.0,
                          maskkms_narrow=300.0, seed=1, png=None):
         """Build a smooth, nonparametric continuum.
@@ -846,6 +846,9 @@ class ContinuumTools(object):
                 if np.sum(I) > 0:
                     linemask[I] = True
 
+                    #if 'broad' in _linename:
+                    #    linemask_strong[I] = True
+
                     # Now find "significant" lines
                     #if lineamp >= 1.0:
                     J = (ivar[I] > 0) * (smooth[I] != 0)
@@ -854,9 +857,10 @@ class ContinuumTools(object):
                         #snr = flux[I][J] / smooth[I][J]
                         # require peak S/N>3 and at least 5 pixels with S/N>3
                         #if '4959' in _linename:
-                        #    pdb.set_trace() 
-                        print(_linename, zlinewave, np.percentile(snr, 98), np.sum(snr > np.sqrt(2)))
-                        if np.percentile(snr, 98) > np.sqrt(2) and np.sum(snr > np.sqrt(2)) > 5:
+                        #    pdb.set_trace()
+                        snrthresh = 2
+                        print(_linename, zlinewave, np.percentile(snr, 98), np.sum(snr > snrthresh))
+                        if np.percentile(snr, 98) > snrthresh and np.sum(snr > snrthresh) > 5:
                             linemask_strong[I] = True
 
             #linemask_strong = np.copy(linemask) # True = affected by emission line with S/N>2
