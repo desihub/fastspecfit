@@ -19,7 +19,8 @@ FastSpec wrapper. Call with, e.g.,
   # nice QSO with broad lines
   fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits --targetids 39633331528141827 
   fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec2.fits --targetids 39633321176600909 
-  fastspecfit-qa --fastspecfile ./fastspec2.fits -o desi-users/ioannis/tmp/
+  fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80607/20201219/redrock-2-80607-thru20201219.fits -o fastspec.fits --targetids 39633324620121736
+  fastspecfit-qa --fastspecfile ./fastspec.fits -o desi-users/ioannis/tmp/
 
   fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80607/20201219/redrock-9-80607-thru20201219.fits -o fastspec3.fits  \
     --targetids 39633321180792100,39633321176600909,39633321180791247,39633321180791630,39633328097199918,39633331528143479,39633324653676573,39633324653676217,\

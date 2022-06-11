@@ -323,7 +323,7 @@ class EMLineModel(Fittable1DModel):
     minsigma_balmer_broad = minsigma
 
     initsigma_narrow = 75.0
-    initsigma_broad = 1000.0
+    initsigma_broad = 3000.0
 
     #minamp = 0.0
     minamp = -1e3
@@ -983,7 +983,7 @@ class EMLineFit(ContinuumTools):
         bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
         log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
-        pdb.set_trace()
+        #pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
