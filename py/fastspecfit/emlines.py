@@ -76,15 +76,25 @@ def _tie_oii_red_amp(model):
 #    """
 #    return model.siii_9532_amp / 2.4688
     
-def _tie_hbeta_sigma(model):
-    return model.hbeta_sigma
-def _tie_hbeta_vshift(model):
-    return model.hbeta_vshift
+#def _tie_hbeta_sigma(model):
+#    return model.hbeta_sigma
+#def _tie_hbeta_vshift(model):
+#    return model.hbeta_vshift
+#
+#def _tie_hbeta_broad_sigma(model):
+#    return model.hbeta_broad_sigma
+#def _tie_hbeta_broad_vshift(model):
+#    return model.hbeta_broad_vshift
 
-def _tie_hbeta_broad_sigma(model):
-    return model.hbeta_broad_sigma
-def _tie_hbeta_broad_vshift(model):
-    return model.hbeta_broad_vshift
+def _tie_halpha_sigma(model):
+    return model.halpha_sigma
+def _tie_halpha_vshift(model):
+    return model.halpha_vshift
+
+def _tie_halpha_broad_sigma(model):
+    return model.halpha_broad_sigma
+def _tie_halpha_broad_vshift(model):
+    return model.halpha_broad_vshift
 
 def _tie_oiii_5007_sigma(model):
     return model.oiii_5007_sigma
@@ -127,9 +137,12 @@ def _tie_lines(model):
             getattr(model, '{}_vshift'.format(linename)).fixed = True
 
         # broad Balmer lines
-        if model.inrange[iline] and model.linetable['isbalmer'][iline] and model.linetable['isbroad'][iline] and linename != 'hbeta_broad':
-            getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_broad_sigma
-            getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_broad_vshift
+        if model.inrange[iline] and model.linetable['isbalmer'][iline] and model.linetable['isbroad'][iline] and linename != 'halpha_broad':
+            getattr(model, '{}_sigma'.format(linename)).tied = _tie_halpha_broad_sigma
+            getattr(model, '{}_vshift'.format(linename)).tied = _tie_halpha_broad_vshift
+        #if model.inrange[iline] and model.linetable['isbalmer'][iline] and model.linetable['isbroad'][iline] and linename != 'hbeta_broad':
+        #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_broad_sigma
+        #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_broad_vshift
             
         # other broad lines
         if model.inrange[iline] and (model.linetable['isbalmer'][iline] == False) and model.linetable['isbroad'][iline]:
@@ -970,7 +983,7 @@ class EMLineFit(ContinuumTools):
         bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
         log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
-        #pdb.set_trace()
+        pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
