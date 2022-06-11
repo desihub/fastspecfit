@@ -170,6 +170,9 @@ def fastspec(args=None, comm=None):
 
     data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True, remember_coadd=True)
 
+    #pdb.set_trace()
+    #np.savetxt('linemask3.txt', np.array([np.hstack(data[0]['wave']), np.hstack(data[0]['flux']), np.hstack(data[0]['ivar'])]).T)
+
     out, meta = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=False)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
         Spec.ntargets, time.time()-t0))
