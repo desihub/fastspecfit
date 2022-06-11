@@ -533,7 +533,7 @@ class DESISpectra(object):
 
                 if not fastphot:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
-                                 'linemask': [], 'linemask_strong': [], 'linename': [],
+                                 'linemask': [], 'linemask_all': [], 'linename': [],
                                  'linepix': [], 'contpix': [],
                                  'snr': np.zeros(3, 'f4'),
                                  #'std': np.zeros(3, 'f4'), # emission-line free standard deviation, per-camera
@@ -563,7 +563,7 @@ class DESISpectra(object):
                     # continuum.ContinnuumTools.smooth_continuum.
                     for icam in np.arange(len(data['cameras'])):
                         data['linemask'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask']*1) > 0)
-                        data['linemask_strong'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask_strong']*1) > 0)
+                        data['linemask_all'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask_all']*1) > 0)
                         _linename, _linenpix, _contpix = [], [], []
                         for ipix in np.arange(len(coadd_linemask_dict['linepix'])):
                             I = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linepix'][ipix]*1) > 0
@@ -598,7 +598,7 @@ class DESISpectra(object):
                         data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux,
                                      'coadd_ivar': coadd_ivar, 'coadd_res': coadd_res,
                                      'coadd_linemask': coadd_linemask_dict['linemask'],
-                                     'coadd_linemask_strong': coadd_linemask_dict['linemask_strong']})
+                                     'coadd_linemask_all': coadd_linemask_dict['linemask_all']})
                                      #'linepix': np.where(coadd_linemask_dict['linepix'])[0],
                                      #'contpix': np.where(coadd_linemask_dict['contpix'])[0]})
 

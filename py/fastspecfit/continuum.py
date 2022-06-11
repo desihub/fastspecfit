@@ -1760,21 +1760,19 @@ class ContinuumFit(ContinuumTools):
         #_smooth_continuum = np.zeros_like(bestfit)
 
         png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/test.png'
-        linemask = np.hstack(data['linemask_strong'])
-        #linemask = np.hstack(data['linemask'])
-        _smooth_continuum = self.smooth_continuum(specwave, specflux - bestfit, specivar,
-                                                  redshift, linemask=linemask, png=png)
+        #linemask = np.hstack(data['linemask_all'])
+        linemask = np.hstack(data['linemask'])
+        _smooth_continuum, _ = self.smooth_continuum(specwave, specflux - bestfit, specivar,
+                                                     redshift, linemask=linemask, png=png)
 
         #_residuals = specflux - bestfit
         #residuals = [_residuals[np.sum(npixpercam[:icam+1]):np.sum(npixpercam[:icam+2])] for icam in np.arange(len(data['cameras']))]
-        #_smooth_continuum = self.smooth_continuum(data['wave'], residuals, data['ivar'], png=png,
-        #                                          redshift, linemask_dict=data['linemask_dict'])
+        #_smooth_continuum, _ = self.smooth_continuum(data['wave'], residuals, data['ivar'], png=png,
+        #                                             redshift, linemask_dict=data['linemask_dict'])
 
         #_smooth_continuum = self.smooth_residuals(
         #    residuals, data['wave'], data['ivar'],
         #    data['linemask'], data['linepix'], data['contpix'])
-        
-        pdb.set_trace()
         
         # Unpack the continuum into individual cameras.
         continuummodel = []

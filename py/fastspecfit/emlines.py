@@ -326,7 +326,7 @@ class EMLineModel(Fittable1DModel):
     initsigma_broad = 3000.0
 
     #minamp = 0.0
-    minamp = -1e3
+    minamp = -1e2
     maxamp = +1e5
     minamp_balmer_broad = minamp # 0.0
 
@@ -1010,26 +1010,38 @@ class EMLineFit(ContinuumTools):
             #    pdb.set_trace()
 
             # drop the line if:
-            #  sigma = 0, amp = default, or amp = max bound (not optimized!)
+            #  sigma = 0, amp = default or amp = max bound (not optimized!) or amp < 0
             if ((amp.value == amp.default) or (amp.value >= amp.bounds[1]) or
-                (amp.value <= amp.bounds[0]) or (linename in initkeys and init[linename] == amp.value)
+                #(amp.value <= amp.bounds[0]) or
+                (amp.value <= 0) or
+                (linename in initkeys and init[linename] == amp.value)
                 #(sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1])
                 ):
                 setattr(bestfit, '{}_amp'.format(linename), 0.0)
-                setattr(bestfit, '{}_sigma'.format(linename), sigma.default)
-                setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
+                setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma.default)
+                setattr(bestfit, '{}_vshift'.format(linename), 0.0) #vshift.default)
 
-        # Now loop back through and drop Broad balmer lines that are narrower
-        # than their narrow-line counterparts.
+        # Now loop back through and drop Broad balmer lines that:
+        #   (1) are narrower than their narrow-line counterparts;
+        #   (2) have a narrow line whose amplitude is smaller than that of the broad line
         IB = self.linetable['isbalmer'] * self.linetable['isbroad']
         for linename in self.linetable['name'][IB]:
             sigma = getattr(bestfit, '{}_sigma'.format(linename.replace('_broad', ''))) # fragile
             sigma_broad = getattr(bestfit, '{}_sigma'.format(linename))
+            amp = getattr(bestfit, '{}_amp'.format(linename.replace('_broad', ''))) # fragile
+            amp_broad = getattr(bestfit, '{}_amp'.format(linename))
             if sigma_broad <= sigma:
-                vshift = getattr(bestfit, '{}_vshift'.format(linename))
+                #vshift = getattr(bestfit, '{}_vshift'.format(linename))
                 setattr(bestfit, '{}_amp'.format(linename), 0.0)
-                setattr(bestfit, '{}_sigma'.format(linename), sigma_broad.default)
-                setattr(bestfit, '{}_vshift'.format(linename), vshift.default)
+                setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
+                setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
+            #if 'alpha' in linename:
+            #    pdb.set_trace()
+            if (amp <= 0) or (amp_broad <= 0) and ((amp+amp_broad) < amp_broad):
+                #vshift = getattr(bestfit, '{}_vshift'.format(linename))
+                setattr(bestfit, '{}_amp'.format(linename), 0.0)
+                setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
+                setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
                 
         ## special case the tied doublets
         #if bestfit.nii_6584_amp == 0.0 and bestfit.nii_6548_amp != 0.0:
@@ -1385,12 +1397,12 @@ class EMLineFit(ContinuumTools):
                                      synthphot=False)
 
         residuals = [data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
-        _smooth_continuum = self.smooth_residuals(
-            residuals, data['wave'], data['ivar'],
-            data['linemask'], data['linepix'], data['contpix'])
         #_smooth_continuum = self.smooth_residuals(
-        #    np.hstack(continuum), np.hstack(data['wave']), np.hstack(data['flux']),
-        #    np.hstack(data['ivar']), np.hstack(data['linemask']))
+        #    residuals, data['wave'], data['ivar'],
+        #    data['linemask'], data['linepix'], data['contpix'])
+        _smooth_continuum, _ = self.smooth_continuum(np.hstack(data['wave']), np.hstack(residuals),
+                                                     np.hstack(data['ivar']), redshift=redshift,
+                                                     linemask=np.hstack(data['linemask']))
         smooth_continuum = []
         for icam in np.arange(len(data['cameras'])): # iterate over cameras
             ipix = np.sum(npixpercam[:icam+1])
@@ -1585,17 +1597,31 @@ class EMLineFit(ContinuumTools):
             meanwaves.append(np.mean(self.linetable['restwave'][I]))
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
+            #if np.any(self.linetable['isbroad'][I]):
+            #    if np.any(self.linetable['isbalmer'][I]):
+            #        plotsig = fastspec['NARROW_SIGMA']
+            #        if plotsig < 50:
+            #            plotsig = plotsig_default_balmer
+            #    else:
+            #        plotsig = fastspec['BROAD_SIGMA']
+            #        if plotsig < 50:
+            #            plotsig = plotsig_default_broad
+            #else:
+            #    plotsig = fastspec['UV_SIGMA']
+            #    if plotsig < 50:
+            #        plotsig = plotsig_default
+                    
             if np.any(self.linetable['isbroad'][I]):
                 if np.any(self.linetable['isbalmer'][I]):
-                    plotsig = fastspec['NARROW_SIGMA']
-                    if plotsig < 50:
-                        plotsig = plotsig_default_balmer
-                else:
                     plotsig = fastspec['BROAD_SIGMA']
                     if plotsig < 50:
                         plotsig = plotsig_default_broad
+                else:
+                    plotsig = fastspec['UV_SIGMA']                    
+                    if plotsig < 50:
+                        plotsig = plotsig_default_broad
             else:
-                plotsig = fastspec['UV_SIGMA']
+                plotsig = fastspec['NARROW_SIGMA']
                 if plotsig < 50:
                     plotsig = plotsig_default
             sigmas.append(plotsig)
@@ -1639,6 +1665,8 @@ class EMLineFit(ContinuumTools):
                 emlinemodel = emlinemodel[good]
 
                 indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
+                #if 'alpha' in linename:
+                #    pdb.set_trace()
                 #log.info(ii, linename, len(indx))
                 if len(indx) > 1:
                     removelabels[iax] = False
