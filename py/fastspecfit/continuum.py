@@ -729,6 +729,7 @@ class ContinuumTools(object):
         init_linesigma_balmer = 1000.0
         init_linesigma_narrow = 200.0
         init_linesigma_uv = 2000.0
+        snrmin = 1.4
 
         refit = True
 
@@ -746,13 +747,13 @@ class ContinuumTools(object):
 
         # refit with the new value
         if refit:
-            if (linesigma_narrow > init_linesigma_narrow) and (linesigma_narrow < 3*init_linesigma_narrow) and (snr_narrow > 2):
+            if (linesigma_narrow > init_linesigma_narrow) and (linesigma_narrow < 3*init_linesigma_narrow) and (snr_narrow > snrmin):
                 if ax[0] is not None:
                     ax[0].clear()
                 linesigma_narrow, snr_narrow = get_linesigma(
                     zlinewaves, linesigma_narrow, label='Forbidden', ax=ax[0])
 
-        if (linesigma_narrow < 50) or (snr_narrow < 2):
+        if (linesigma_narrow < 50) or (snr_narrow < snrmin):
             linesigma_narrow = init_linesigma_narrow
     
         # Hbeta, Halpha
@@ -762,7 +763,7 @@ class ContinuumTools(object):
                                                      ax=ax[1])
         # refit with the new value
         if refit:
-            if (linesigma_balmer > init_linesigma_balmer) and (linesigma_balmer < 3*init_linesigma_balmer) and (snr_balmer > 2): 
+            if (linesigma_balmer > init_linesigma_balmer) and (linesigma_balmer < 3*init_linesigma_balmer) and (snr_balmer > snrmin): 
                 if ax[1] is not None:
                     ax[1].clear()
                 linesigma_balmer, snr_balmer = get_linesigma(zlinewaves, linesigma_balmer, 
@@ -770,7 +771,7 @@ class ContinuumTools(object):
                                                              ax=ax[1])
                 
         # if no good fit, use narrow, not Balmer
-        if (linesigma_balmer < 50) or (snr_balmer < 2):
+        if (linesigma_balmer < 50) or (snr_balmer < snrmin):
             linesigma_balmer = init_linesigma_narrow 
     
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
@@ -780,13 +781,13 @@ class ContinuumTools(object):
         
         # refit with the new value
         if refit:
-            if (linesigma_uv > init_linesigma_uv) and (linesigma_uv < 3*init_linesigma_uv) and (snr_uv > 2): 
+            if (linesigma_uv > init_linesigma_uv) and (linesigma_uv < 3*init_linesigma_uv) and (snr_uv > snrmin): 
                 if ax[2] is not None:
                     ax[2].clear()
                 linesigma_uv, snr_uv = get_linesigma(zlinewaves, linesigma_uv, 
                                                      label='UV/Broad', ax=ax[2])
                 
-        if (linesigma_uv < 300) or (snr_uv < 2):
+        if (linesigma_uv < 300) or (snr_uv < snrmin):
             linesigma_uv = init_linesigma_uv
 
         if png:
@@ -834,7 +835,7 @@ class ContinuumTools(object):
         # Initially, mask aggressively, especially the Balmer lines.
         png = None
         #png = 'smooth.png'
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
+        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
         smooth, smoothsigma = self.smooth_continuum(wave, flux, ivar, redshift, maskkms_uv=5000.0,
                                                     maskkms_balmer=5000.0, maskkms_narrow=500.0,
                                                     png=png)
@@ -858,7 +859,7 @@ class ContinuumTools(object):
     
         png = None
         #png = 'linemask.png'
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linemask.png'
+        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linemask.png'
 
         snr_strong = 3.0
     
@@ -1779,7 +1780,7 @@ class ContinuumFit(ContinuumTools):
         #_smooth_continuum = np.zeros_like(bestfit)
 
         png = None
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/test.png'
+        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'
         #linemask = np.hstack(data['linemask_all'])
         linemask = np.hstack(data['linemask'])
         _smooth_continuum, _ = self.smooth_continuum(specwave, specflux - bestfit, specivar,

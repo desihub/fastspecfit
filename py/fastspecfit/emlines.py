@@ -941,6 +941,8 @@ class EMLineFit(ContinuumTools):
         # strong narrow lines.
         init = {}#'line': [], 'amp': []}
         for icam in np.arange(len(data['cameras'])):
+            camemlineflux = data['flux'][icam] - continuummodel[icam] - smooth_continuum[icam]
+            ncampix = len(camemlineflux)
             for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
                 if linename in init.keys():
                     continue
@@ -951,23 +953,24 @@ class EMLineFit(ContinuumTools):
                     mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
                     if mnpx < 0:
                         mnpx = 0
-                    if mxpx > len(data['flux'][icam]):
-                        mxpx = len(data['flux'][icam])
-                    amp = np.max(data['flux'][icam][mnpx:mxpx])
+                    if mxpx > ncampix:
+                        mxpx = ncampix
+                    amp = np.max(camemlineflux[mnpx:mxpx])
                 else:
-                    amp = np.percentile(data['flux'][icam][linepix], 97.5)
+                    amp = np.percentile(camemlineflux[linepix], 97.5)
 
                 # update the bounds on the line-amplitude
-                bounds = [-np.min(np.abs(data['flux'][icam][linepix])), 2*np.max(data['flux'][icam][linepix])]
+                bounds = [-np.min(np.abs(camemlineflux[linepix])), 2*np.max(camemlineflux[linepix])]
+                #bounds = [0.0, 2*np.max(data['flux'][icam][linepix])]
                 
                 ## force broad lines to be positive
                 #if 'broad' in linename:
-                #    bounds = [0.0, 2*np.max(data['flux'][icam][linepix])]
+                #    bounds = [0.0, 2*np.max(camemlineflux[linepix])]
                 #else:
-                #    bounds = [-np.min(np.abs(data['flux'][icam][linepix])), 2*np.max(data['flux'][icam][linepix])]
+                #    bounds = [-np.min(np.abs(camemlineflux[linepix])), 2*np.max(camemlineflux[linepix])]
                 
                 #print(linename, amp)
-                #if 'alpha' in linename:
+                #if 'gamma' in linename:
                 #    pdb.set_trace()
                 
                 setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
@@ -1597,25 +1600,14 @@ class EMLineFit(ContinuumTools):
             meanwaves.append(np.mean(self.linetable['restwave'][I]))
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
-            #if np.any(self.linetable['isbroad'][I]):
-            #    if np.any(self.linetable['isbalmer'][I]):
-            #        plotsig = fastspec['NARROW_SIGMA']
-            #        if plotsig < 50:
-            #            plotsig = plotsig_default_balmer
-            #    else:
-            #        plotsig = fastspec['BROAD_SIGMA']
-            #        if plotsig < 50:
-            #            plotsig = plotsig_default_broad
-            #else:
-            #    plotsig = fastspec['UV_SIGMA']
-            #    if plotsig < 50:
-            #        plotsig = plotsig_default
-                    
             if np.any(self.linetable['isbroad'][I]):
                 if np.any(self.linetable['isbalmer'][I]):
                     plotsig = fastspec['BROAD_SIGMA']
                     if plotsig < 50:
-                        plotsig = plotsig_default_broad
+                        plotsig = fastspec['NARROW_SIGMA']
+                        if plotsig < 50:
+                            plotsig = plotsig_default
+                            #plotsig = plotsig_default_broad
                 else:
                     plotsig = fastspec['UV_SIGMA']                    
                     if plotsig < 50:
