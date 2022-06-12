@@ -315,7 +315,7 @@ class EMLineModel(Fittable1DModel):
     # NB! The order of the parameters here matters!
     vmaxshift_narrow = 300
     vmaxshift_broad = 3000.0
-    initvshift = 0.0
+    initvshift = 1.0
 
     minsigma = 1.0
     maxsigma_narrow = 500.0
