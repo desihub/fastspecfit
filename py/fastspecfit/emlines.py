@@ -322,8 +322,8 @@ class EMLineModel(Fittable1DModel):
     maxsigma_broad = 5000.0
     minsigma_balmer_broad = minsigma
 
-    initsigma_narrow = 75.0
-    initsigma_broad = 3000.0
+    initsigma_narrow = 260.0 # 75.0
+    initsigma_broad = 2600.0 # 3000.0
 
     #minamp = 0.0
     minamp = -1e2
@@ -940,45 +940,45 @@ class EMLineFit(ContinuumTools):
         # with cases like 39633354915582193 (tile 80613, petal 05), which has
         # strong narrow lines.
         init = {}#'line': [], 'amp': []}
-        for icam in np.arange(len(data['cameras'])):
-            camemlineflux = data['flux'][icam] - continuummodel[icam] - smooth_continuum[icam]
-            ncampix = len(camemlineflux)
-            for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
-                if linename in init.keys():
-                    continue
-                if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): # skip the physical doublets
-                    continue
-                npix = len(linepix)
-                if npix > 5:
-                    mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
-                    if mnpx < 0:
-                        mnpx = 0
-                    if mxpx > ncampix:
-                        mxpx = ncampix
-                    amp = np.max(camemlineflux[mnpx:mxpx])
-                else:
-                    amp = np.percentile(camemlineflux[linepix], 97.5)
+        coadd_emlineflux = data['coadd_flux'] - np.interp(data['coadd_wave'], emlinewave, continuummodelflux+smoothcontinuummodelflux)
+        for linename, linepix in zip(data['coadd_linename'], data['coadd_linepix']):
 
-                # update the bounds on the line-amplitude
-                bounds = [-np.min(np.abs(camemlineflux[linepix])), 2*np.max(camemlineflux[linepix])]
-                #bounds = [0.0, 2*np.max(data['flux'][icam][linepix])]
-                
-                ## force broad lines to be positive
-                #if 'broad' in linename:
-                #    bounds = [0.0, 2*np.max(camemlineflux[linepix])]
-                #else:
-                #    bounds = [-np.min(np.abs(camemlineflux[linepix])), 2*np.max(camemlineflux[linepix])]
-                
-                #print(linename, amp)
-                #if 'gamma' in linename:
-                #    pdb.set_trace()
-                
-                setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
-                getattr(self.EMLineModel, '{}_amp'.format(linename)).bounds = bounds
-                #getattr(self.EMLineModel, '{}_amp'.format(linename)).default = amp
-                #if 'halpha' in linename:
-                #    pdb.set_trace()
-                init.update({linename: amp})
+            if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): # skip the physical doublets
+                continue
+            
+            if linename in init.keys():
+                continue
+
+            npix = len(linepix)
+            if npix > 5:
+                mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
+                if mnpx < 0:
+                    mnpx = 0
+                if mxpx > linepix[-1]:
+                    mxpx = linepix[-1]
+                amp = np.max(coadd_emlineflux[mnpx:mxpx])
+            else:
+                amp = np.percentile(coadd_emlineflux[linepix], 97.5)
+
+            # update the bounds on the line-amplitude
+            bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 2*np.max(coadd_emlineflux[linepix])]
+            
+            ## force broad lines to be positive
+            #if 'broad' in linename:
+            #    bounds = [0.0, 2*np.max(coadd_emlineflux[linepix])]
+            #else:
+            #    bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 2*np.max(coadd_emlineflux[linepix])]
+            
+            #print(linename, amp)
+            #if 'alpha' in linename:
+            #    pdb.set_trace()
+            
+            setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
+            getattr(self.EMLineModel, '{}_amp'.format(linename)).bounds = bounds
+            #getattr(self.EMLineModel, '{}_amp'.format(linename)).default = amp
+            #if 'halpha' in linename:
+            #    pdb.set_trace()
+            init.update({linename: amp})
                 
         self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)
         self.EMLineModel.oiii_4959_amp = _tie_oiii_amp(self.EMLineModel)
@@ -986,13 +986,18 @@ class EMLineFit(ContinuumTools):
         self.EMLineModel.oii_7330_amp = _tie_oii_red_amp(self.EMLineModel)
         #self.EMLineModel.siii_9069_amp = _tie_siii_amp(self.EMLineModel)
 
+        #print('HACK!!!!!!!!!!!')
+        #self.EMLineModel.halpha_sigma.tied = False
+        #self.EMLineModel.nii_6584_sigma.tied = False
+        #self.EMLineModel.nii_6548_sigma.tied = False
+
         fitter = FastLevMarLSQFitter(self.EMLineModel)
 
         t0 = time.time()        
         bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
         log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
-        #pdb.set_trace()
+        pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)

@@ -555,7 +555,11 @@ class DESISpectra(object):
                     coadd_flux = coadd_spec.flux[coadd_bands][igal, :]
                     coadd_ivar = coadd_spec.ivar[coadd_bands][igal, :]
                     coadd_res = Resolution(coadd_spec.resolution_data[coadd_bands][igal, :])
+
                     coadd_linemask_dict = CFit.build_linemask(coadd_wave, coadd_flux, coadd_ivar, redshift=data['zredrock'])
+                    data['coadd_linename'] = coadd_linemask_dict['linename']
+                    data['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
+                    data['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
 
                     # Map the pixels belonging to individual emission lines and
                     # their local continuum back onto the original per-camera

@@ -835,7 +835,7 @@ class ContinuumTools(object):
         # Initially, mask aggressively, especially the Balmer lines.
         png = None
         #png = 'smooth.png'
-        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
+        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
         smooth, smoothsigma = self.smooth_continuum(wave, flux, ivar, redshift, maskkms_uv=5000.0,
                                                     maskkms_balmer=5000.0, maskkms_narrow=500.0,
                                                     png=png)
@@ -843,7 +843,7 @@ class ContinuumTools(object):
         # Get a better estimate of the Balmer, forbidden, and UV/QSO line-widths.
         png = None
         #png = 'linesigma.png'
-        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
+        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
         linesigma_narrow, linesigma_balmer, linesigma_uv = self.estimate_linesigmas(
             wave, flux-smooth, ivar, redshift, png=png)
 
@@ -859,7 +859,7 @@ class ContinuumTools(object):
     
         png = None
         #png = 'linemask.png'
-        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linemask.png'
+        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linemask.png'
 
         snr_strong = 3.0
     
@@ -983,6 +983,10 @@ class ContinuumTools(object):
                     if png:
                         _Jblu = np.where((wave > (zlinewave - 2*nsig*sigma)) * (wave < (zlinewave - nsig*sigma)))[0]
                         _Jred = np.where((wave < (zlinewave + 2*nsig*sigma)) * (wave > (zlinewave + nsig*sigma)))[0]
+                        if len(_Jblu) == 0:
+                            _Jblu = [0]
+                        if len(_Jred) == 0:
+                            _Jred = [len(wave)-1]
                         plotwave, plotflux = wave[_Jblu[0]:_Jred[-1]], flux[_Jblu[0]:_Jred[-1]]
                         xx.plot(plotwave, plotflux, label=_linename)
                         #xx.plot(np.hstack((wave[Jblu], wave[I], wave[Jred])), 
