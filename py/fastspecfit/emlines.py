@@ -322,8 +322,8 @@ class EMLineModel(Fittable1DModel):
     maxsigma_broad = 5000.0
     minsigma_balmer_broad = minsigma
 
-    initsigma_narrow = 260.0 # 75.0
-    initsigma_broad = 2600.0 # 3000.0
+    initsigma_narrow = 75.0 # 260.0 # 75.0
+    initsigma_broad = 3000.0  # 2600.0 # 3000.0
 
     #minamp = 0.0
     minamp = -1e2
@@ -939,15 +939,15 @@ class EMLineFit(ContinuumTools):
         # Do a fast update of the initial line-amplitudes which especially helps
         # with cases like 39633354915582193 (tile 80613, petal 05), which has
         # strong narrow lines.
-        init = {}#'line': [], 'amp': []}
+        init = {}
         coadd_emlineflux = data['coadd_flux'] - np.interp(data['coadd_wave'], emlinewave, continuummodelflux+smoothcontinuummodelflux)
         for linename, linepix in zip(data['coadd_linename'], data['coadd_linepix']):
 
             if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): # skip the physical doublets
                 continue
             
-            if linename in init.keys():
-                continue
+            #if linename in init.keys(): # should not happen
+            #    continue
 
             npix = len(linepix)
             if npix > 5:
@@ -968,18 +968,30 @@ class EMLineFit(ContinuumTools):
             #    bounds = [0.0, 2*np.max(coadd_emlineflux[linepix])]
             #else:
             #    bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 2*np.max(coadd_emlineflux[linepix])]
-            
-            #print(linename, amp)
-            #if 'alpha' in linename:
-            #    pdb.set_trace()
-            
+
             setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
             getattr(self.EMLineModel, '{}_amp'.format(linename)).bounds = bounds
             #getattr(self.EMLineModel, '{}_amp'.format(linename)).default = amp
             #if 'halpha' in linename:
             #    pdb.set_trace()
             init.update({linename: amp})
-                
+
+            # Optionally update the initial line-width.
+            iline = self.linetable[self.linetable['name'] == linename]
+            if iline['isbroad']:
+                if iline['isbalmer']: # broad Balmer lines
+                    if data['linesigma_balmer_snr'] > 0:
+                        setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
+                else:
+                    if data['linesigma_uv_snr'] > 0: # broad UV/QSO lines
+                        setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_uv'])
+            else:
+                if data['linesigma_narrow_snr'] > 0:
+                    setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_narrow'])
+                        
+            #if 'alpha' in linename:
+            #    pdb.set_trace()
+            
         self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)
         self.EMLineModel.oiii_4959_amp = _tie_oiii_amp(self.EMLineModel)
         #self.EMLineModel.oii_3726_amp = _tie_oii_blue_amp(self.EMLineModel)

@@ -533,8 +533,8 @@ class DESISpectra(object):
 
                 if not fastphot:
                     data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
-                                 'linemask': [], 'linemask_all': [], 'linename': [],
-                                 'linepix': [], 'contpix': [],
+                                 'linemask': [], 'linemask_all': [],
+                                 'linename': [], 'linepix': [], 'contpix': [],
                                  'snr': np.zeros(3, 'f4'),
                                  #'std': np.zeros(3, 'f4'), # emission-line free standard deviation, per-camera
                                  'cameras': spec.bands})
@@ -560,6 +560,14 @@ class DESISpectra(object):
                     data['coadd_linename'] = coadd_linemask_dict['linename']
                     data['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
                     data['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
+                    
+                    data['linesigma_narrow'] = coadd_linemask_dict['linesigma_narrow']
+                    data['linesigma_balmer'] = coadd_linemask_dict['linesigma_balmer']
+                    data['linesigma_uv'] = coadd_linemask_dict['linesigma_uv']
+                    
+                    data['linesigma_narrow_snr'] = coadd_linemask_dict['linesigma_narrow_snr']
+                    data['linesigma_balmer_snr'] = coadd_linemask_dict['linesigma_balmer_snr']
+                    data['linesigma_uv_snr'] = coadd_linemask_dict['linesigma_uv_snr']
 
                     # Map the pixels belonging to individual emission lines and
                     # their local continuum back onto the original per-camera

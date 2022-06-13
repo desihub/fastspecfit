@@ -631,7 +631,7 @@ class ContinuumTools(object):
     
             from scipy.optimize import curve_fit
             
-            linesigma, snr = 0.0, 0.0
+            linesigma, linesigma_snr = 0.0, 0.0
 
             if ax:
                 _empty = True
@@ -685,7 +685,7 @@ class ContinuumTools(object):
                             popt[1] = np.abs(popt[1])
                             if popt[0] > 0 and popt[1] > 0:
                                 linesigma = popt[1]
-                                snr = popt[0] / np.median(contsigma)
+                                linesigma_snr = popt[0] / np.median(contsigma)
                             else:
                                 popt = None
                         except RuntimeError:
@@ -694,7 +694,7 @@ class ContinuumTools(object):
                         #pdb.set_trace()
                         #plt.clf() ; plt.plot(stackdvel, stackflux) ; plt.savefig('desi-users/ioannis/tmp/junk.png')
                         if ax:
-                            _label = r'{} $\sigma$={:.0f} km/s S/N={:.1f}'.format(label, linesigma, snr)
+                            _label = r'{} $\sigma$={:.0f} km/s S/N={:.1f}'.format(label, linesigma, linesigma_snr)
                             ax.scatter(stackdvel, stackflux, s=10, label=_label)
                             if popt is not None:
                                 srt = np.argsort(stackdvel)
@@ -716,7 +716,7 @@ class ContinuumTools(object):
                             ax.legend(loc='upper left', fontsize=8, frameon=False)
                             _empty = False
                         
-            log.debug('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, snr))
+            log.debug('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, linesigma_snr))
 
             if ax and _empty:
                 ax.plot([0, 0], [0, 0], label='{}-No Data'.format(label))
@@ -724,12 +724,12 @@ class ContinuumTools(object):
                 ax.axes.yaxis.set_visible(False)
                 ax.legend(loc='upper left', fontsize=10)
             
-            return linesigma, snr
+            return linesigma, linesigma_snr
     
+        linesigma_snr_min = 1.4
         init_linesigma_balmer = 1000.0
         init_linesigma_narrow = 200.0
         init_linesigma_uv = 2000.0
-        snrmin = 1.4
 
         refit = True
 
@@ -741,60 +741,64 @@ class ContinuumTools(object):
             
         # [OII] doublet, [OIII] 4959,5007
         zlinewaves = np.array([3728.483, 4960.295, 5008.239]) * (1 + redshift)
-        linesigma_narrow, snr_narrow = get_linesigma(zlinewaves, init_linesigma_narrow, 
-                                                     label='Forbidden', #label='[OII]+[OIII]',
-                                                     ax=ax[0])
+        linesigma_narrow, linesigma_narrow_snr = get_linesigma(zlinewaves, init_linesigma_narrow, 
+                                                               label='Forbidden', #label='[OII]+[OIII]',
+                                                               ax=ax[0])
 
         # refit with the new value
         if refit:
-            if (linesigma_narrow > init_linesigma_narrow) and (linesigma_narrow < 3*init_linesigma_narrow) and (snr_narrow > snrmin):
+            if (linesigma_narrow > init_linesigma_narrow) and (linesigma_narrow < 3*init_linesigma_narrow) and (linesigma_narrow_snr > linesigma_snr_min):
                 if ax[0] is not None:
                     ax[0].clear()
-                linesigma_narrow, snr_narrow = get_linesigma(
+                linesigma_narrow, linesigma_narrow_snr = get_linesigma(
                     zlinewaves, linesigma_narrow, label='Forbidden', ax=ax[0])
 
-        if (linesigma_narrow < 50) or (snr_narrow < snrmin):
+        if (linesigma_narrow < 50) or (linesigma_narrow_snr < linesigma_snr_min):
+            linesigma_narrow_snr = 0.0
             linesigma_narrow = init_linesigma_narrow
     
         # Hbeta, Halpha
         zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
-        linesigma_balmer, snr_balmer = get_linesigma(zlinewaves, init_linesigma_balmer, 
-                                                     label='Balmer', #label=r'H$\alpha$+H$\beta$',
-                                                     ax=ax[1])
+        linesigma_balmer, linesigma_balmer_snr = get_linesigma(zlinewaves, init_linesigma_balmer, 
+                                                               label='Balmer', #label=r'H$\alpha$+H$\beta$',
+                                                               ax=ax[1])
         # refit with the new value
         if refit:
-            if (linesigma_balmer > init_linesigma_balmer) and (linesigma_balmer < 3*init_linesigma_balmer) and (snr_balmer > snrmin): 
+            if (linesigma_balmer > init_linesigma_balmer) and (linesigma_balmer < 3*init_linesigma_balmer) and (linesigma_balmer_snr > linesigma_snr_min): 
                 if ax[1] is not None:
                     ax[1].clear()
-                linesigma_balmer, snr_balmer = get_linesigma(zlinewaves, linesigma_balmer, 
-                                                             label='Balmer', #label=r'H$\alpha$+H$\beta$',
-                                                             ax=ax[1])
+                linesigma_balmer, linesigma_balmer_snr = get_linesigma(zlinewaves, linesigma_balmer, 
+                                                                       label='Balmer', #label=r'H$\alpha$+H$\beta$',
+                                                                       ax=ax[1])
                 
         # if no good fit, use narrow, not Balmer
-        if (linesigma_balmer < 50) or (snr_balmer < snrmin):
+        if (linesigma_balmer < 50) or (linesigma_balmer_snr < linesigma_snr_min):
+            linesigma_balmer_snr = 0.0
             linesigma_balmer = init_linesigma_narrow 
     
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
         zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
-        linesigma_uv, snr_uv = get_linesigma(zlinewaves, init_linesigma_uv, 
-                                             label='UV/Broad', ax=ax[2])
+        linesigma_uv, linesigma_uv_snr = get_linesigma(zlinewaves, init_linesigma_uv, 
+                                                       label='UV/Broad', ax=ax[2])
         
         # refit with the new value
         if refit:
-            if (linesigma_uv > init_linesigma_uv) and (linesigma_uv < 3*init_linesigma_uv) and (snr_uv > snrmin): 
+            if (linesigma_uv > init_linesigma_uv) and (linesigma_uv < 3*init_linesigma_uv) and (linesigma_uv_snr > linesigma_snr_min): 
                 if ax[2] is not None:
                     ax[2].clear()
-                linesigma_uv, snr_uv = get_linesigma(zlinewaves, linesigma_uv, 
-                                                     label='UV/Broad', ax=ax[2])
+                linesigma_uv, linesigma_uv_snr = get_linesigma(zlinewaves, linesigma_uv, 
+                                                               label='UV/Broad', ax=ax[2])
                 
-        if (linesigma_uv < 300) or (snr_uv < snrmin):
+        if (linesigma_uv < 300) or (linesigma_uv_snr < linesigma_snr_min):
+            linesigma_uv_snr = 0.0
             linesigma_uv = init_linesigma_uv
 
         if png:
             fig.subplots_adjust(left=0.1, bottom=0.15, wspace=0.2, right=0.95, top=0.95)
             fig.savefig(png)
 
-        return linesigma_narrow, linesigma_balmer, linesigma_uv 
+        return (linesigma_narrow, linesigma_balmer, linesigma_uv,
+                linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr)
 
     def build_linemask(self, wave, flux, ivar, redshift=0.0, nsig=5.0):
         """Generate a mask which identifies pixels impacted by emission lines.
@@ -844,8 +848,8 @@ class ContinuumTools(object):
         png = None
         #png = 'linesigma.png'
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
-        linesigma_narrow, linesigma_balmer, linesigma_uv = self.estimate_linesigmas(
-            wave, flux-smooth, ivar, redshift, png=png)
+        linesigma_narrow, linesigma_balmer, linesigma_uv, linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr = \
+          self.estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png)
 
         # Next, build the emission-line mask.
         linemask = np.zeros_like(wave, bool)      # True = affected by possible emission line.
@@ -894,28 +898,14 @@ class ContinuumTools(object):
                     # then we can sometimes be tricked into flagging lines (like
                     # the Helium lines) as strong because we pick up the high
                     # S/N of adjacent truly strong lines.
-                    if linesigma > 500:
+                    if linesigma > 500.0:
                         linesigma_strong = 500.0
                     else:
                         linesigma_strong = linesigma
                     sigma_strong = linesigma_strong * zlinewave / C_LIGHT # [km/s --> Angstrom]
                     J = (ivar > 0) * (smoothsigma > 0) * (wave >= (zlinewave - sigma_strong)) * (wave <= (zlinewave + sigma_strong))
                     if np.sum(J) > 0:
-                        #if '5876' in _linename:
-                        #    from scipy.ndimage import median_filter
-                        #    from scipy.signal import find_peaks#, find_peaks_cwt
-                        #    
-                        #    #snr = flux[J] * np.sqrt(ivar[J])
-                        #    snr = median_filter(flux[J] * np.sqrt(ivar[J]), 10, mode='nearest')
-                        #    peaks, _ = find_peaks(snr, width=10, distance=np.sum(J))
-                        #    #peaks, props = find_peaks(snr, width=10, threshold=0.5)
-                        #    #peaks = find_peaks_cwt(flux, 10)
-                        #    print(_linename, peaks)
-                        #    pdb.set_trace()
-                        
                         snr = (flux[J] - smooth[J]) / smoothsigma[J]
-                        #snr = flux[J] / np.median(smooth[J])
-                        #snr = flux[I][J] / smooth[I][J]
                         # require peak S/N>3 and at least 5 pixels with S/N>3
                         #print(_linename, zlinewave, np.percentile(snr, 98), np.sum(snr > snr_strong))
                         if np.percentile(snr, 98) > snr_strong and np.sum(snr > snr_strong) > 5:
@@ -923,8 +913,6 @@ class ContinuumTools(object):
                         #if '4686' in _linename:
                         #    pdb.set_trace()
 
-            #linemask_strong = np.copy(linemask) # True = affected by emission line with S/N>2
-        
             # now get the continuum, too
             if png:
                 import matplotlib.pyplot as plt
@@ -966,16 +954,6 @@ class ContinuumTools(object):
 
                 #print(_linename, np.sum(I), np.sum(J))
                 if np.sum(I) > 0 and np.sum(J) > 0:
-                    # high S/N pixels
-                    #I_strong = flux[I] / np.std(flux[J]) / np.sqrt(np.sum(J)) > 0.8
-                    #linemask_strong[I] *= I_strong
-                    #if lineamp >= 1.0:
-                    #    linemask_strong[I] = linemask[I]
-                    #    pdb.set_trace()
-
-                    #if '4959' in _linename:
-                    #    pdb.set_trace()
-                    
                     linename.append(_linename)
                     linepix.append(I)
                     contpix.append(J)
@@ -998,15 +976,17 @@ class ContinuumTools(object):
                         #if '4471' in _linename:
                         #    pdb.set_trace()
                         
-                        #if np.sum(I_strong) > 0:
-                        #    xx.scatter(wave[I][I_strong], flux[I][I_strong], s=10, color='green', marker='s')
                         xx.scatter(wave[Jblu], flux[Jblu], color='blue', s=10)
                         xx.scatter(wave[Jred], flux[Jred], color='red', s=10)
                         xx.set_ylim(np.min(plotflux), np.max(flux[I]))
                         xx.legend(frameon=False, fontsize=10, loc='upper left')
         
             linemask_dict = {'linemask_all': linemask, 'linemask': linemask_strong,
-                             'linename': linename, 'linepix': linepix, 'contpix': contpix}
+                             'linename': linename, 'linepix': linepix, 'contpix': contpix,
+                             'linesigma_narrow': linesigma_narrow, 'linesigma_narrow_snr': linesigma_narrow_snr, 
+                             'linesigma_balmer': linesigma_balmer, 'linesigma_balmer_snr': linesigma_balmer_snr, 
+                             'linesigma_uv': linesigma_uv, 'linesigma_uv_snr': linesigma_uv_snr, 
+                             }
     
             if png:
                 fig.savefig(png)
@@ -1784,7 +1764,7 @@ class ContinuumFit(ContinuumTools):
         #_smooth_continuum = np.zeros_like(bestfit)
 
         png = None
-        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'
+        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'
         #linemask = np.hstack(data['linemask_all'])
         linemask = np.hstack(data['linemask'])
         _smooth_continuum, _ = self.smooth_continuum(specwave, specflux - bestfit, specivar,
