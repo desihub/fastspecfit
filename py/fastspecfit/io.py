@@ -180,49 +180,47 @@ class DESISpectra(object):
                 log.warning('File {} not found!'.format(specfile))
                 continue
 
-            # Gather the information we need from the header of the first
-            # redrock file and crash if these values change. Note: this code is
+            # Gather some coadd information from the header. Note: this code is
             # only compatible with Fuji & Guadalupe headers and later.
-            if ired == 0:
-                hdr = fitsio.read_header(specfile, ext=0)
-                if not 'SPGRP' in hdr:
-                    errmsg = 'SPGRP header card missing from spectral file {}'.format(specfile)
-                    log.critical(errmsg)
-                    raise ValueError(errmsg)
+            hdr = fitsio.read_header(specfile, ext=0)
+            if not 'SPGRP' in hdr:
+                errmsg = 'SPGRP header card missing from spectral file {}'.format(specfile)
+                log.critical(errmsg)
+                raise ValueError(errmsg)
 
-                specprod = getdep(hdr, 'SPECPROD')
-                self.specprod = specprod
-                if specprod == 'fuji': # EDR
-                    TARGETINGCOLS = TARGETINGBITS[specprod]
+            specprod = getdep(hdr, 'SPECPROD')
+            self.specprod = specprod
+            if specprod == 'fuji': # EDR
+                TARGETINGCOLS = TARGETINGBITS[specprod]
+            else:
+                TARGETINGCOLS = TARGETINGBITS['default']
+
+            self.coadd_type = hdr['SPGRP']
+            log.info('specprod={}, coadd_type={}'.format(self.specprod, self.coadd_type))
+
+            if self.coadd_type == 'healpix':
+                survey = hdr['SURVEY']
+                program = hdr['PROGRAM']
+                healpix = np.int32(hdr['SPGRPVAL'])
+                thrunight = None
+                log.info('survey={}, program={}, healpix={}'.format(survey, program, healpix))
+
+                # I'm not sure we need these attributes but if we end up
+                # using them then be sure to document them as attributes of
+                # the class!
+                #self.hpxnside = hdr['HPXNSIDE']
+                #self.hpxnest = hdr['HPXNEST']
+                
+            else:
+                tileid = np.int32(hdr['TILEID'])
+                petal = np.int16(hdr['PETAL'])
+                night = np.int32(hdr['NIGHT']) # thrunight for coadd_type==cumulative
+                if self.coadd_type == 'perexp':
+                    expid = np.int32(hdr['EXPID'])
+                    log.info('tileid={}, petal={}, night={}, expid={}'.format(tileid, petal, night, expid))
                 else:
-                    TARGETINGCOLS = TARGETINGBITS['default']
-
-                self.coadd_type = hdr['SPGRP']
-                log.info('specprod={}, coadd_type={}'.format(self.specprod, self.coadd_type))
-
-                if self.coadd_type == 'healpix':
-                    survey = hdr['SURVEY']
-                    program = hdr['PROGRAM']
-                    healpix = np.int32(hdr['SPGRPVAL'])
-                    thrunight = None
-                    log.info('survey={}, program={}, healpix={}'.format(survey, program, healpix))
-
-                    # I'm not sure we need these attributes but if we end up
-                    # using them then be sure to document them as attributes of
-                    # the class!
-                    #self.hpxnside = hdr['HPXNSIDE']
-                    #self.hpxnest = hdr['HPXNEST']
-                    
-                else:
-                    tileid = np.int32(hdr['TILEID'])
-                    petal = np.int16(hdr['PETAL'])
-                    night = np.int32(hdr['NIGHT']) # thrunight for coadd_type==cumulative
-                    if self.coadd_type == 'perexp':
-                        expid = np.int32(hdr['EXPID'])
-                        log.info('tileid={}, petal={}, night={}, expid={}'.format(tileid, petal, night, expid))
-                    else:
-                        expid = None
-                        log.info('tileid={}, petal={}, night={}'.format(tileid, petal, night))
+                    expid = None
+                    log.info('tileid={}, petal={}, night={}'.format(tileid, petal, night))
 
             # add targeting columns
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
