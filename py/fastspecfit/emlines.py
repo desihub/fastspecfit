@@ -961,13 +961,15 @@ class EMLineFit(ContinuumTools):
                 amp = np.percentile(coadd_emlineflux[linepix], 97.5)
 
             # update the bounds on the line-amplitude
-            bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 2*np.max(coadd_emlineflux[linepix])]
+            bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 3*np.max(coadd_emlineflux[linepix])]
             
             ## force broad lines to be positive
+            #N = 3
             #if 'broad' in linename:
-            #    bounds = [0.0, 2*np.max(coadd_emlineflux[linepix])]
+            #    bounds = [0.0, N*np.max(coadd_emlineflux[linepix])]
             #else:
-            #    bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 2*np.max(coadd_emlineflux[linepix])]
+            #    bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), N*np.max(coadd_emlineflux[linepix])]
+            #    #bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 2*np.max(coadd_emlineflux[linepix])]
 
             setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
             getattr(self.EMLineModel, '{}_amp'.format(linename)).bounds = bounds
@@ -980,7 +982,11 @@ class EMLineFit(ContinuumTools):
             iline = self.linetable[self.linetable['name'] == linename]
             if iline['isbroad']:
                 if iline['isbalmer']: # broad Balmer lines
-                    if data['linesigma_balmer_snr'] > 0:
+                    if data['linesigma_balmer_snr'] == 0:
+                        # initialize the broad-line amplitude at zero
+                        if data['linesigma_balmer'] < data['linesigma_narrow']:
+                            setattr(self.EMLineModel, '{}_amp'.format(linename), 0.0)
+                    else:
                         setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
                 else:
                     if data['linesigma_uv_snr'] > 0: # broad UV/QSO lines
@@ -1009,7 +1015,7 @@ class EMLineFit(ContinuumTools):
         bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
         log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
-        #pdb.set_trace()
+        pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
