@@ -433,8 +433,9 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
 
     return outdir, redrockfiles, outfiles, groups, ntargets
 
-def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.',
-                      supermerge=False):
+def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
+                      outsuffix=None, fastphot=False, specprod_dir=None, base_datadir='.',
+                      mergedir=None, supermerge=False, overwrite=False):
     """Merge all the individual catalogs into a single large catalog. Runs only on
     rank 0.
 
@@ -455,9 +456,13 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.',
         outprefix = 'fastspec'
         extname = 'FASTSPEC'
 
-    mergedir = os.path.join(base_datadir, args.specprod, 'catalogs')
-    if not os.path.isdir(mergedir):
-        os.makedirs(mergedir, exist_ok=True)
+    if mergedir is None:
+        mergedir = os.path.join(base_datadir, specprod, 'catalogs')
+        if not os.path.isdir(mergedir):
+            os.makedirs(mergedir, exist_ok=True)
+
+    if outsuffix is None:
+        outsuffix = specprod
 
     def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None, mergefile=None):
         t0 = time.time()
@@ -484,39 +489,39 @@ def merge_fastspecfit(args, fastphot=False, specprod_dir=None, base_datadir='.',
         log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
             len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
         
-        write_fastspecfit(out, meta, outfile=mergefile, specprod=args.specprod,
-                          coadd_type=args.coadd_type, fastphot=fastphot)
+        write_fastspecfit(out, meta, outfile=mergefile, specprod=specprod,
+                          coadd_type=coadd_type, fastphot=fastphot)
 
     # merge previously merged catalogs into one big catalog (and then return)
     if supermerge:
-        _outfiles = os.path.join(mergedir, '{}-{}-*.fits'.format(outprefix, args.specprod))
+        _outfiles = os.path.join(mergedir, '{}-{}-*.fits'.format(outprefix, outsuffix))
         outfiles = glob(_outfiles)
         if len(outfiles) > 0:
             log.info('Merging {} catalogs'.format(len(outfiles)))
-            mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, args.specprod))
+            mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, outsuffix))
             _domerge(outfiles, extname=extname, mergefile=mergefile)
         else:
             log.info('No catalogs found: {}'.format(_outfiles))
         return
 
-    if args.coadd_type == 'healpix':
-        surveys = copy(args.survey)
-        programs = copy(args.program)
+    if coadd_type == 'healpix':
+        surveys = copy(survey)
+        programs = copy(program)
         for survey in surveys:
             for program in programs:
-                mergefile = os.path.join(mergedir, '{}-{}-{}-{}.fits'.format(outprefix, args.specprod, survey, program))
-                if os.path.isfile(mergefile) and not args.overwrite:
+                mergefile = os.path.join(mergedir, '{}-{}-{}-{}.fits'.format(outprefix, specprod, survey, program))
+                if os.path.isfile(mergefile) and not overwrite:
                     log.info('Merged output file {} exists!'.format(mergefile))
                     continue
-                args.survey = np.atleast_1d(survey)
-                args.program = np.atleast_1d(program)
+                survey = np.atleast_1d(survey)
+                program = np.atleast_1d(program)
                 _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,
                                             specprod_dir=specprod_dir, base_datadir=base_datadir)
                 if len(outfiles) > 0:
                     _domerge(outfiles, extname=extname, survey=survey, program=program, mergefile=mergefile)
     else:
-        mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, args.specprod, args.coadd_type))
-        if os.path.isfile(mergefile) and not args.overwrite:
+        mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, specprod, coadd_type))
+        if os.path.isfile(mergefile) and not overwrite:
             log.info('Merged output file {} exists!'.format(mergefile))
             return
         _, _, outfiles, _, _ = plan(args, merge=True, fastphot=fastphot,

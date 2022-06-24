@@ -982,11 +982,10 @@ class EMLineFit(ContinuumTools):
             iline = self.linetable[self.linetable['name'] == linename]
             if iline['isbroad']:
                 if iline['isbalmer']: # broad Balmer lines
-                    if data['linesigma_balmer_snr'] == 0:
+                    if data['linesigma_balmer_snr'] == 0 or data['linesigma_balmer'] < data['linesigma_narrow']:
                         # initialize the broad-line amplitude at zero
-                        if data['linesigma_balmer'] < data['linesigma_narrow']:
-                            setattr(self.EMLineModel, '{}_amp'.format(linename), 0.0)
-                    else:
+                        setattr(self.EMLineModel, '{}_amp'.format(linename), 0.0)
+                    if data['linesigma_balmer_snr'] > 0 and data['linesigma_balmer'] >= data['linesigma_narrow']:
                         setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
                 else:
                     if data['linesigma_uv_snr'] > 0: # broad UV/QSO lines
@@ -1015,7 +1014,7 @@ class EMLineFit(ContinuumTools):
         bestfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
         log.info('Line-fitting took {:.2f} sec (niter={})'.format(time.time()-t0, fitter.fit_info['nfev']))
-        pdb.set_trace()
+        #pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
@@ -1050,6 +1049,10 @@ class EMLineFit(ContinuumTools):
         # Now loop back through and drop Broad balmer lines that:
         #   (1) are narrower than their narrow-line counterparts;
         #   (2) have a narrow line whose amplitude is smaller than that of the broad line
+        #      --> Deprecated! main-dark-32303-39628176678192981 is an example
+        #          of an object where there's a broad H-alpha line but no other
+        #          forbidden lines!
+        
         IB = self.linetable['isbalmer'] * self.linetable['isbroad']
         for linename in self.linetable['name'][IB]:
             sigma = getattr(bestfit, '{}_sigma'.format(linename.replace('_broad', ''))) # fragile
@@ -1063,20 +1066,13 @@ class EMLineFit(ContinuumTools):
                 setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
             #if 'alpha' in linename:
             #    pdb.set_trace()
-            if (amp <= 0) or (amp_broad <= 0) and ((amp+amp_broad) < amp_broad):
+            
+            if False and (amp <= 0) or (amp_broad <= 0) and ((amp+amp_broad) < amp_broad):
                 #vshift = getattr(bestfit, '{}_vshift'.format(linename))
                 setattr(bestfit, '{}_amp'.format(linename), 0.0)
                 setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
                 setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
                 
-        ## special case the tied doublets
-        #if bestfit.nii_6584_amp == 0.0 and bestfit.nii_6548_amp != 0.0:
-        #    bestfit.nii_6548_amp = 0.0
-        #if bestfit.oiii_5007_amp == 0.0 and bestfit.oiii_4959_amp != 0.0:
-        #    bestfit.oiii_4959_amp = 0.0
-        #if bestfit.oii_3729_amp == 0.0 and bestfit.oii_3726_amp != 0.0:
-        #    bestfit.oii_3726_amp = 0.0
-
         # Now fill the output table.
         for pp in bestfit.param_names:
             pinfo = getattr(bestfit, pp)

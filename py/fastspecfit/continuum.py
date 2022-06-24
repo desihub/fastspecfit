@@ -14,7 +14,7 @@ import astropy.units as u
 
 from fastspecfit.util import C_LIGHT
 from desiutil.log import get_logger, DEBUG
-log = get_logger()#DEBUG)
+log = get_logger(DEBUG)
 
 def _fnnls_continuum(myargs):
     """Multiprocessing wrapper for fnnls_continuum."""
