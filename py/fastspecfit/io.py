@@ -274,7 +274,8 @@ class DESISpectra(object):
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=READFMCOLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
-            # Get the unique set of tiles contributing to the coadded spectra from EXP_FIBERMAP
+            # Get the unique set of tiles contributing to the coadded spectra
+            # from EXP_FIBERMAP.
             expmeta = fitsio.read(specfile, 'EXP_FIBERMAP', columns=EXPFMCOLS[self.coadd_type])
             I = np.isin(expmeta['TARGETID'], meta['TARGETID'])
             if np.count_nonzero(I) == 0:
@@ -283,11 +284,18 @@ class DESISpectra(object):
                 raise ValueError(errmsg)
             expmeta = Table(expmeta[I])
 
-            tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
-            alltiles.append(tiles)
+            #tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
+            #alltiles.append(tiles)
 
             # build the list of tiles that went into each unique target / coadd
-            meta['TILEID_LIST'] = [' '.join(np.unique(expmeta[tid == expmeta['TARGETID']]['TILEID']).astype(str)) for tid in meta['TARGETID']]
+            #meta['TILEID_LIST'] = [' '.join(np.unique(expmeta[tid == expmeta['TARGETID']]['TILEID']).astype(str)) for tid in meta['TARGETID']]
+            for tid in meta['TARGETID']:
+                I = tid == expmeta['TARGETID']
+                meta['TILEID_LIST'] = ' '.join(np.unique(expmeta['TILEID'][I]).astype(str))
+                if self.coadd_type == 'healpix':
+                    alltiles.append(expmeta['TILEID'][I][0]) # store just the zeroth tile for gather_targetphot, below
+                else:
+                    alltiles.append(tileid)
 
             # Gather additional info about this pixel.
             if self.coadd_type == 'healpix':
@@ -319,11 +327,12 @@ class DESISpectra(object):
             return
 
         t0 = time.time()
-        alltiles = np.unique(np.hstack(alltiles))
         info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
+        info['TILEID'] = alltiles
 
-        targets = gather_targetphot(info, alltiles, columns=TARGETCOLS,
-                                    fiberassign_dir=self.fiberassign_dir)
+        #alltiles = np.unique(np.hstack(alltiles))
+
+        targets = gather_targetphot(info, columns=TARGETCOLS, fiberassign_dir=self.fiberassign_dir)
 
         # If all the photometry is zero, look for it in the Tractor catalogs
         # themselves. This step can also be made "not optional" in order to
@@ -636,7 +645,8 @@ class DESISpectra(object):
 
                 alldata.append(data)
 
-        self.meta = Table(np.hstack(self.meta))
+        self.meta = vstack(self.meta)
+        #self.meta = Table(np.hstack(self.meta))
         self.ntargets = len(self.meta)
         log.info('Read data for {} objects in {:.2f} sec'.format(self.ntargets, time.time()-t0))
         
