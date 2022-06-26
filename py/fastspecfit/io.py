@@ -11,7 +11,7 @@ import pdb # for debugging
 import os, time
 import numpy as np
 import fitsio
-from astropy.table import Table, vstack, join
+from astropy.table import Table, vstack, hstack
 
 from desitarget.io import releasedict
 
@@ -196,14 +196,15 @@ class DESISpectra(object):
                 TARGETINGCOLS = TARGETINGBITS['default']
 
             self.coadd_type = hdr['SPGRP']
-            log.info('specprod={}, coadd_type={}'.format(self.specprod, self.coadd_type))
+            #log.info('specprod={}, coadd_type={}'.format(self.specprod, self.coadd_type))
 
             if self.coadd_type == 'healpix':
                 survey = hdr['SURVEY']
                 program = hdr['PROGRAM']
                 healpix = np.int32(hdr['SPGRPVAL'])
                 thrunight = None
-                log.info('survey={}, program={}, healpix={}'.format(survey, program, healpix))
+                log.info('specprod={}, coadd_type={}, survey={}, program={}, healpix={}'.format(
+                    self.specprod, self.coadd_type, survey, program, healpix))
 
                 # I'm not sure we need these attributes but if we end up
                 # using them then be sure to document them as attributes of
@@ -217,10 +218,12 @@ class DESISpectra(object):
                 night = np.int32(hdr['NIGHT']) # thrunight for coadd_type==cumulative
                 if self.coadd_type == 'perexp':
                     expid = np.int32(hdr['EXPID'])
-                    log.info('tileid={}, petal={}, night={}, expid={}'.format(tileid, petal, night, expid))
+                    log.info('specprod={}, coadd_type={}, tileid={}, petal={}, night={}, expid={}'.format(
+                        self.specprod, self.coadd_type, tileid, petal, night, expid))
                 else:
                     expid = None
-                    log.info('tileid={}, petal={}, night={}'.format(tileid, petal, night))
+                    log.info('specprod={}, coadd_type={}, tileid={}, petal={}, night={}'.format(
+                        self.specprod, self.coadd_type, tileid, petal, night))
 
             # add targeting columns
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
@@ -272,6 +275,12 @@ class DESISpectra(object):
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=READFMCOLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
+            # astropy 5.0 "feature" -- join no longer preserves order, ugh.
+            zb.remove_column('TARGETID')
+            meta = hstack((zb, meta))
+            #meta = join(zb, meta, keys='TARGETID')
+            del zb
+
             # Get the unique set of tiles contributing to the coadded spectra
             # from EXP_FIBERMAP.
             expmeta = fitsio.read(specfile, 'EXP_FIBERMAP', columns=EXPFMCOLS[self.coadd_type])
@@ -313,9 +322,6 @@ class DESISpectra(object):
                         iexp = np.where(expmeta['TARGETID'] == tid)[0][0] # zeroth
                         meta['FIBER'][iobj] = expmeta['FIBER'][iexp]
 
-            meta = join(zb, meta, keys='TARGETID')
-            del zb
-    
             self.meta.append(Table(meta))
             self.redrockfiles.append(redrockfile)
             self.specfiles.append(specfile)
@@ -329,7 +335,6 @@ class DESISpectra(object):
         info['TILEID'] = alltiles
 
         #alltiles = np.unique(np.hstack(alltiles))
-
         targets = gather_targetphot(info, columns=TARGETCOLS, fiberassign_dir=self.fiberassign_dir)
 
         # If all the photometry is zero, look for it in the Tractor catalogs
@@ -463,6 +468,9 @@ class DESISpectra(object):
 
             if not fastphot:
                 spec = read_spectra(specfile).select(targets=meta['TARGETID'])
+                ## Sometimes the order is shuffled, which is annoying.
+                #if not np.all(spec.fibermap['TARGETID'] == meta['TARGETID']):
+                #srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in meta['TARGETID']])
                 assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
 
                 # Coadd across cameras.
