@@ -22,8 +22,8 @@ from desispec.interpolation import resample_flux
 
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
-from desiutil.log import get_logger
-log = get_logger()
+from desiutil.log import get_logger, DEBUG
+log = get_logger(DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -856,7 +856,9 @@ class EMLineFit(ContinuumTools):
         
     def chi2(self, bestfit, emlinewave, emlineflux, emlineivar):
         """Compute the reduced chi^2."""
-        dof = np.sum(emlineivar > 0) - len(bestfit.parameters)
+        #nfree = len(bestfit.parameters)
+        nfree = np.sum([bestfit.tied[key] is not False for key in bestfit.tied.keys()])
+        dof = np.sum(emlineivar > 0) - nfree
         if dof > 0:
             emlinemodel = bestfit(emlinewave)
             chi2 = np.sum(emlineivar * (emlineflux - emlinemodel)**2) / dof
@@ -907,7 +909,7 @@ class EMLineFit(ContinuumTools):
         from scipy.stats import sigmaclip
         from scipy.ndimage.filters import median_filter
 
-        def _clean_linefit(bestfit, init_amplitudes, verbose=False):
+        def _clean_linefit(bestfit, init_amplitudes):
             """Clean up line-fitting results."""
             
             # If the amplitude is still at its default (or its upper or lower
@@ -935,8 +937,7 @@ class EMLineFit(ContinuumTools):
                     (linename in initkeys and init_amplitudes[linename] == amp.value)
                     #(sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1])
                     ):
-                    if verbose:
-                        log.info('Dropping {} (amp={:.3f})'.format(linename, amp.value))
+                    log.debug('Dropping {} (amp={:.3f})'.format(linename, amp.value))
 
                     #if '4686' in linename:
                     #    pdb.set_trace()
@@ -959,9 +960,8 @@ class EMLineFit(ContinuumTools):
                 amp = getattr(bestfit, '{}_amp'.format(linename.replace('_broad', ''))) # fragile
                 amp_broad = getattr(bestfit, '{}_amp'.format(linename))
                 if sigma_broad <= sigma:
-                    if verbose:
-                        log.info('Dropping {} (sigma_broad={:.2f}, sigma_narrow={:.2f})'.format(
-                            linename, sigma_broad.value, sigma.value))
+                    log.debug('Dropping {} (sigma_broad={:.2f}, sigma_narrow={:.2f})'.format(
+                        linename, sigma_broad.value, sigma.value))
                     #vshift = getattr(bestfit, '{}_vshift'.format(linename))
                     setattr(bestfit, '{}_amp'.format(linename), 0.0)
                     setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
@@ -1079,7 +1079,7 @@ class EMLineFit(ContinuumTools):
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
-        initfit = _clean_linefit(initfit, init_amplitudes, verbose=True)
+        initfit = _clean_linefit(initfit, init_amplitudes)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
         log.info('Initial line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
             time.time()-t0, fitter.fit_info['nfev'], initchi2))
@@ -1120,7 +1120,7 @@ class EMLineFit(ContinuumTools):
                 fitter = FastLevMarLSQFitter(self.EMLineModel)
                 broadfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                                   maxiter=maxiter, acc=accuracy)
-                broadfit = _clean_linefit(broadfit, init_amplitudes, verbose=True)
+                broadfit = _clean_linefit(broadfit, init_amplitudes)
                 broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar)
                 log.info('Second (broad) line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
                     time.time()-t0, fitter.fit_info['nfev'], broadchi2))
@@ -1158,8 +1158,6 @@ class EMLineFit(ContinuumTools):
                 time.time()-t0, fitter.fit_info['nfev'], chi2))
         else:
             finalfit = bestfit
-
-        pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
@@ -1332,7 +1330,7 @@ class EMLineFit(ContinuumTools):
             indx = np.hstack((indxlo, indxhi))
 
             cmed, civar = 0.0, 0.0
-            if len(indx) > 10: # require at least XX pixels to get the continuum level
+            if len(indx) >= 3: # require at least XX pixels to get the continuum level
                 #_, cmed, csig = sigma_clipped_stats(specflux_nolines[indx], sigma=3.0)
                 clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
                 # corner case: if a portion of a camera is masked
@@ -1362,16 +1360,12 @@ class EMLineFit(ContinuumTools):
             result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit
             result['{}_EW_LIMIT'.format(linename)] = ewlimit
 
-            if verbose:
-                for col in ('VSHIFT', 'SIGMA', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
-                    print('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
-                for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
-                    print('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
-                print()
+            for col in ('VSHIFT', 'SIGMA', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
+                log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
+            for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
+                log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
+            log.debug(' ')
 
-            #if '1549' in linename:
-            #    pdb.set_trace()
-                
             # simple QA
             if 'alpha' in linename and False:
                 sigma_cont = 150.0
@@ -1432,11 +1426,9 @@ class EMLineFit(ContinuumTools):
         else:
             result['UV_Z'] = redshift
             
-        if verbose:
-            for line in ('NARROW', 'BROAD', 'UV'):
-                for col in ('Z', 'SIGMA'):
-                #for col in ('Z', 'Z_ERR', 'SIGMA', 'SIGMA_ERR'):
-                    print('{}_{}: {:.12f}'.format(line, col, result['{}_{}'.format(line, col)][0]))
+        for line in ('NARROW', 'BROAD', 'UV'):
+            log.debug('{}_Z: {:.12f}'.format(line, result['{}_Z'.format(line)][0]))
+            log.debug('{}_SIGMA: {:.3f}'.format(line, result['{}_SIGMA'.format(line)][0]))
 
         return result
     
