@@ -659,10 +659,12 @@ class ContinuumTools(object):
                         stackflux.append(flux[I] / norm)
                         stackivar.append(ivar[I] * norm**2)
                         if np.sum(J) > 3:
-                            contsigma.append(np.std(flux[J]) / norm) # error in the mean
+                            contsigma.append(flux[J] / norm) # continuum pixels
+                            #contsigma.append(np.std(flux[J]) / norm) # error in the mean
                             #contsigma.append(np.std(flux[J]) / np.sqrt(np.sum(J)) / norm) # error in the mean
                         else:
-                            contsigma.append(np.std(flux[I]) / norm) # shouldn't happen...
+                            contsigma.append(flux[I] / norm) # shouldn't happen...
+                            #contsigma.append(np.std(flux[I]) / norm) # shouldn't happen...
                             #contsigma.append(np.std(flux[I]) / np.sqrt(np.sum(I)) / norm) # shouldn't happen...
     
                 if len(stackflux) > 0: 
@@ -685,13 +687,17 @@ class ContinuumTools(object):
                             popt[1] = np.abs(popt[1])
                             if popt[0] > 0 and popt[1] > 0:
                                 linesigma = popt[1]
-                                linesigma_snr = popt[0] / np.median(contsigma)
+                                robust_std = (np.percentile(contsigma, 75) - np.percentile(contsigma, 25)) / 1.349
+                                linesigma_snr = popt[0] / robust_std
+                                #linesigma_snr = popt[0] / np.std(contsigma)
+                                #linesigma_snr = popt[0] / np.median(contsigma)
                             else:
                                 popt = None
                         except RuntimeError:
                             popt = None
-                
-                        #pdb.set_trace()
+
+                        #if 'Balmer' in label:
+                        #    pdb.set_trace()
                         #plt.clf() ; plt.plot(stackdvel, stackflux) ; plt.savefig('desi-users/ioannis/tmp/junk.png')
                         if ax:
                             _label = r'{} $\sigma$={:.0f} km/s S/N={:.1f}'.format(label, linesigma, linesigma_snr)
