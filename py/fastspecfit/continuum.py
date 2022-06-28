@@ -687,10 +687,12 @@ class ContinuumTools(object):
                             popt[1] = np.abs(popt[1])
                             if popt[0] > 0 and popt[1] > 0:
                                 linesigma = popt[1]
-                                robust_std = (np.percentile(contsigma, 75) - np.percentile(contsigma, 25)) / 1.349
-                                linesigma_snr = popt[0] / robust_std
-                                #linesigma_snr = popt[0] / np.std(contsigma)
-                                #linesigma_snr = popt[0] / np.median(contsigma)
+                                robust_std = np.diff(np.percentile(contsigma, [25, 75])) / 1.349 # robust sigma
+                                robust_std = np.std(contsigma)
+                                if robust_std > 0:
+                                    linesigma_snr = popt[0] / robust_std
+                                else:
+                                    linesigma_snr = 0.0
                             else:
                                 popt = None
                         except RuntimeError:
