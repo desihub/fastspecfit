@@ -557,10 +557,14 @@ class ContinuumTools(object):
         
         wave_win = sliding_window_view(wave, window_shape=smooth_window)
         flux_win = sliding_window_view(flux, window_shape=smooth_window)
+        ivar_win = sliding_window_view(ivar, window_shape=smooth_window)
         noline_win = sliding_window_view(np.logical_not(linemask), window_shape=smooth_window)
 
         smooth_wave, smooth_flux, smooth_sigma, smooth_mask = [], [], [], []
-        for swave, sflux, noline in zip(wave_win[::smooth_step], flux_win[::smooth_step], noline_win[::smooth_step]):
+        for swave, sflux, sivar, noline in zip(wave_win[::smooth_step],
+                                               flux_win[::smooth_step],
+                                               ivar_win[::smooth_step],
+                                               noline_win[::smooth_step]):
 
             # if there are fewer than 10 good pixels after accounting for the
             # line-mask, skip this window.
@@ -569,6 +573,7 @@ class ContinuumTools(object):
                 smooth_mask.append(True)
                 continue
             swave = swave[noline]
+            sivar = sivar[noline]
 
             cflux = sigma_clip(sflux, sigma=2.0, cenfunc='median', stdfunc='std', masked=False, grow=1.5)
             if np.sum(np.isnan(cflux)) < 10:
@@ -576,10 +581,20 @@ class ContinuumTools(object):
                 continue
 
             I = np.isfinite(cflux)
-            smooth_sigma.append(np.std(cflux[I]))
-            smooth_flux.append(np.median(cflux[I]))
             smooth_wave.append(np.mean(swave[I]))
             smooth_mask.append(False)
+
+            ## simple median and sigma
+            #sig = np.std(cflux[I])
+            #mn = np.median(cflux[I])
+
+            # inverse-variance weighted mean and sigma
+            norm = np.sum(sivar[I])
+            mn = np.sum(sivar[I] * cflux[I]) / norm # weighted mean
+            sig = np.sqrt(np.sum(sivar[I] * (cflux[I] - mn)**2) / norm) # weighted sigma
+
+            smooth_sigma.append(sig)
+            smooth_flux.append(mn)
 
         smooth_wave = np.array(smooth_wave)
         smooth_sigma = np.array(smooth_sigma)
