@@ -702,8 +702,8 @@ class ContinuumTools(object):
                             popt[1] = np.abs(popt[1])
                             if popt[0] > 0 and popt[1] > 0:
                                 linesigma = popt[1]
-                                robust_std = np.diff(np.percentile(contsigma, [25, 75])) / 1.349 # robust sigma
-                                robust_std = np.std(contsigma)
+                                robust_std = np.diff(np.percentile(contsigma, [25, 75]))[0] / 1.349 # robust sigma
+                                #robust_std = np.std(contsigma)
                                 if robust_std > 0:
                                     linesigma_snr = popt[0] / robust_std
                                 else:
@@ -749,7 +749,7 @@ class ContinuumTools(object):
             
             return linesigma, linesigma_snr
     
-        linesigma_snr_min = 1.4
+        linesigma_snr_min = 1.5
         init_linesigma_balmer = 1000.0
         init_linesigma_narrow = 200.0
         init_linesigma_uv = 2000.0

@@ -808,8 +808,12 @@ class EMLineFit(ContinuumTools):
         for band in self.synth_bands:
             out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy))
 
-        out.add_column(Column(name='RCHI2', length=nobj, dtype='f8'))
-
+        # Add chi2 metrics
+        out.add_column(Column(name='RCHI2', length=nobj, dtype='f4')) # full-spectrum reduced chi2
+        #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
+        out.add_column(Column(name='RCHI2_BROAD', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
+        #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
+        out.add_column(Column(name='DELTARCHI2_BROAD', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
 
         out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
         #out.add_column(Column(name='NARROW_Z_ERR', length=nobj, dtype='f8'))
@@ -867,17 +871,25 @@ class EMLineFit(ContinuumTools):
 
         return out
         
-    def chi2(self, bestfit, emlinewave, emlineflux, emlineivar):
+    def chi2(self, bestfit, emlinewave, emlineflux, emlineivar, continuum_model=None, return_dof=False):
         """Compute the reduced chi^2."""
         #nfree = len(bestfit.parameters)
         nfree = np.sum([bestfit.tied[key] is not False for key in bestfit.tied.keys()])
         dof = np.sum(emlineivar > 0) - nfree
         if dof > 0:
             emlinemodel = bestfit(emlinewave)
-            chi2 = np.sum(emlineivar * (emlineflux - emlinemodel)**2) / dof
+            if continuum_model is None:
+                model = emlinemodel
+            else:
+                model = emlinemodel + continuum_model
+            chi2 = np.sum(emlineivar * (emlineflux - model)**2) / dof
         else:
             chi2 = self.chi2_default
-        return chi2
+            
+        if return_dof:
+            return chi2, dof
+        else:
+            return chi2
 
     def emlinemodel_bestfit(self, specwave, specres, fastspecfit_table):
         """Wrapper function to get the best-fitting emission-line model
@@ -920,7 +932,6 @@ class EMLineFit(ContinuumTools):
         """
         from fastspecfit.util import ivar2var
         from scipy.stats import sigmaclip
-        from scipy.ndimage.filters import median_filter
 
         def _clean_linefit(bestfit, init_amplitudes):
             """Clean up line-fitting results."""
@@ -1052,19 +1063,19 @@ class EMLineFit(ContinuumTools):
             # Optionally update the initial line-width.
             iline = self.linetable[self.linetable['name'] == linename]
             if iline['isbroad']:
-                if iline['isbalmer']: # broad Balmer lines
-                    #if data['linesigma_balmer_snr'] == 0 or data['linesigma_balmer'] < data['linesigma_narrow']:
-                    #    # initialize the broad-line amplitude at zero
-                    #    setattr(self.EMLineModel, '{}_amp'.format(linename), 0.0)
-                    if data['linesigma_balmer_snr'] > 0 and data['linesigma_balmer'] >= data['linesigma_narrow']:
+                if iline['isbalmer']:
+                    if data['linesigma_balmer_snr'] > 0: # broad Balmer lines
                         setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
                 else:
                     if data['linesigma_uv_snr'] > 0: # broad UV/QSO lines
                         setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_uv'])
             else:
+                # prefer narrow over Balmer
                 if data['linesigma_narrow_snr'] > 0:
                     setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_narrow'])
-                        
+                #elif data['linesigma_narrow_snr'] == 0 and data['linesigma_narrow_balmer'] > 0:
+                #    setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
+                            
         # Next, make sure the forbidden-line doublets have the correct initial amplitudes.
         self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)
         self.EMLineModel.oiii_4959_amp = _tie_oiii_amp(self.EMLineModel)
@@ -1102,51 +1113,54 @@ class EMLineFit(ContinuumTools):
             else:
                 pixoffset = len(data['wave'][icam-1]) # camera shift
             for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
-                if linename == 'halpha_broad' or linename == 'hbeta_broad':
+                if linename == 'halpha_broad' or linename == 'hbeta_broad' or linename == 'hgamma_broad':
                     broadlinepix.append(linepix + pixoffset)
                     #print(data['wave'][icam][linepix])
                     
-        if len(broadlinepix) > 0:
+        if len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10: # require 10 pixels
             broadlinepix = np.hstack(broadlinepix)
-            if len(broadlinepix) < 10:
-                log.info('Too few pixels centered on candidate broad emission lines.')
-            else:
-                for linename in data['coadd_linename']:
-                    # skip the physical doublets
-                    if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): 
-                        continue
-                    # Free the broad lines.
-                    if 'broad' in linename:
-                        setattr(self.EMLineModel, '{}_amp'.format(linename), init_amplitudes[linename])
-                        getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = False
-                        setattr(self.EMLineModel, '{}_vshift'.format(linename), 1.0)
-                        getattr(self.EMLineModel, '{}_vshift'.format(linename)).fixed = False
-                    else:
-                        # Should we also update amp and vshift of the narrow lines?
-                        setattr(self.EMLineModel, '{}_amp'.format(linename), getattr(initfit, '{}_amp'.format(linename)).value)
-                        setattr(self.EMLineModel, '{}_vshift'.format(linename), getattr(initfit, '{}_vshift'.format(linename)).value)
-        
-                t0 = time.time()        
-                fitter = FastLevMarLSQFitter(self.EMLineModel)
-                broadfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
-                                  maxiter=maxiter, acc=accuracy)
-                broadfit = _clean_linefit(broadfit, init_amplitudes)
-                broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar)
-                log.info('Second (broad) line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
-                    time.time()-t0, fitter.fit_info['nfev'], broadchi2))
-    
-                # Compare chi2 just in and around the broad lines.
-                initmodel = initfit(emlinewave)
-                broadmodel = broadfit(emlinewave)
-                linechi2_init = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - initmodel[broadlinepix])**2) / len(broadlinepix)
-                linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / len(broadlinepix)
-                log.info('Chi2 with broad lines = {:.3f} and without broad lines = {:.3f}'.format(linechi2_broad, linechi2_init))
-
-                # Make a decision!
-                if linechi2_broad < linechi2_init:
-                    bestfit = broadfit
+            for linename in data['coadd_linename']:
+                # skip the physical doublets
+                if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): 
+                    continue
+                # Free the broad lines.
+                if 'broad' in linename:
+                    setattr(self.EMLineModel, '{}_amp'.format(linename), init_amplitudes[linename])
+                    getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = False
+                    setattr(self.EMLineModel, '{}_vshift'.format(linename), 1.0)
+                    getattr(self.EMLineModel, '{}_vshift'.format(linename)).fixed = False
                 else:
-                    bestfit = initfit
+                    # Should we also update amp and vshift of the narrow lines?
+                    setattr(self.EMLineModel, '{}_amp'.format(linename), getattr(initfit, '{}_amp'.format(linename)).value)
+                    setattr(self.EMLineModel, '{}_vshift'.format(linename), getattr(initfit, '{}_vshift'.format(linename)).value)
+    
+            t0 = time.time()        
+            fitter = FastLevMarLSQFitter(self.EMLineModel)
+            broadfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
+                              maxiter=maxiter, acc=accuracy)
+            broadfit = _clean_linefit(broadfit, init_amplitudes)
+            broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar)
+            log.info('Second (broad) line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
+                time.time()-t0, fitter.fit_info['nfev'], broadchi2))
+
+            # Compare chi2 just in and around the broad lines. Need to account
+            # for the different number of degrees of freedom!
+            initmodel = initfit(emlinewave)
+            broadmodel = broadfit(emlinewave)
+            linechi2_init = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - initmodel[broadlinepix])**2) / len(broadlinepix)
+            linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / len(broadlinepix)
+            log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f}'.format(linechi2_broad, linechi2_init))
+
+            # Make a decision!
+            if linechi2_broad < linechi2_init:
+                bestfit = broadfit
+            else:
+                bestfit = initfit
+        else:
+            log.info('Too few pixels centered on candidate broad emission lines.')
+            bestfit = initfit
+            linechi2_init = 0.0
+            linechi2_broad = 0.0
 
         # Finally, one more fitting loop with all the line-constraints relaxed.
         if False:
@@ -1171,7 +1185,18 @@ class EMLineFit(ContinuumTools):
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
-                
+
+        emlinemodel = finalfit(emlinewave)
+
+        # get the full-spectrum reduced chi2
+        rchi2, dof = self.chi2(finalfit, emlinewave, specflux, emlineivar, return_dof=True,
+                               continuum_model=continuummodelflux + smoothcontinuummodelflux)
+
+        result['RCHI2'] = rchi2
+        #result['DOF'] = dof
+        result['RCHI2_BROAD'] = linechi2_broad
+        result['DELTARCHI2_BROAD'] = linechi2_init - linechi2_broad
+
         # Now fill the output table.
         for pp in finalfit.param_names:
             pinfo = getattr(finalfit, pp)
@@ -1188,8 +1213,6 @@ class EMLineFit(ContinuumTools):
                 result['SII_6731_AMP'] = val * finalfit.sii_6716_amp
             else:
                 result[pinfo.name.upper()] = val
-
-        emlinemodel = finalfit(emlinewave) # FixMe -- only build for "significant" lines.
 
         # Synthesize photometry from the best-fitting model (continuum+emission lines).
         if synthphot:
