@@ -798,8 +798,7 @@ class EMLineFit(ContinuumTools):
         from astropy.table import Table, Column
         
         out = Table()
-        if False:
-            out.add_column(Column(name='DN4000_NOLINES', length=nobj, dtype='f4'))
+        #out.add_column(Column(name='DN4000_NOLINES', length=nobj, dtype='f4'))
             
         # observed-frame photometry synthesized from the spectra
         for band in self.synth_bands:
@@ -808,6 +807,9 @@ class EMLineFit(ContinuumTools):
         # observed-frame photometry synthesized from the best-fitting continuum model fit
         for band in self.synth_bands:
             out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy))
+
+        out.add_column(Column(name='RCHI2', length=nobj, dtype='f8'))
+
 
         out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
         #out.add_column(Column(name='NARROW_Z_ERR', length=nobj, dtype='f8'))
@@ -1552,7 +1554,7 @@ class EMLineFit(ContinuumTools):
             'sigma_broad': '$\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastspec['UV_SIGMA']),
             #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
-            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_CHI2']),
+            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
             #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastspec['CONTINUUM_AGE']),

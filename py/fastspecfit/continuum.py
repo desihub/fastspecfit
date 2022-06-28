@@ -1298,7 +1298,7 @@ class ContinuumFit(ContinuumTools):
         out = Table()
         out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
-        out.add_column(Column(name='CONTINUUM_CHI2', length=nobj, dtype='f4')) # reduced chi2
+        out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
         #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
         out.add_column(Column(name='CONTINUUM_AGE', length=nobj, dtype='f4', unit=u.Gyr))
         out.add_column(Column(name='CONTINUUM_AV', length=nobj, dtype='f4', unit=u.mag))
@@ -1339,7 +1339,7 @@ class ContinuumFit(ContinuumTools):
         out = Table()
         #out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
-        out.add_column(Column(name='CONTINUUM_CHI2', length=nobj, dtype='f4')) # reduced chi2
+        out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
         #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
         out.add_column(Column(name='CONTINUUM_AGE', length=nobj, dtype='f4', unit=u.Gyr))
         out.add_column(Column(name='CONTINUUM_AV', length=nobj, dtype='f4', unit=u.mag))
@@ -1637,7 +1637,7 @@ class ContinuumFit(ContinuumTools):
 
         # Pack it up and return.
         result['CONTINUUM_COEFF'][0][:nage] = coeff
-        result['CONTINUUM_CHI2'][0] = chi2min
+        result['CONTINUUM_RCHI2'][0] = chi2min
         result['CONTINUUM_AGE'][0] = meanage
         result['CONTINUUM_AV'][0] = AVbest
         result['CONTINUUM_AV_IVAR'][0] = AVivar
@@ -1832,7 +1832,7 @@ class ContinuumFit(ContinuumTools):
 
         # Pack it in and return.
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
-        result['CONTINUUM_CHI2'][0] = chi2min
+        result['CONTINUUM_RCHI2'][0] = chi2min
         result['CONTINUUM_AV'][0] = AVbest
         result['CONTINUUM_AV_IVAR'][0] = AVivar
         result['CONTINUUM_VDISP'][0] = vdispbest
@@ -2049,7 +2049,7 @@ class ContinuumFit(ContinuumTools):
         leg = {
             'targetid': targetid_str,
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
-            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_CHI2']),
+            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_RCHI2']),
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
             #'zfastfastphot': '$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
