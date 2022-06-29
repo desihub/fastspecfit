@@ -314,11 +314,11 @@ class EMLineModel(Fittable1DModel):
 
     # NB! The order of the parameters here matters!
     vmaxshift_narrow = 300
-    vmaxshift_broad = 2000.0 # 3000.0
+    vmaxshift_broad = 3000.0 # 3000.0
     initvshift = 1.0
 
     minsigma = 1.0
-    minsigma_broad = 100.0
+    minsigma_broad = 1.0
     maxsigma_narrow = 500.0
     maxsigma_broad = 5000.0
     minsigma_balmer_broad = minsigma
@@ -455,14 +455,14 @@ class EMLineModel(Fittable1DModel):
     oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
 
-    oi_1304_sigma = Parameter(name='oi_1304_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    siliv_1396_sigma = Parameter(name='siliv_1396_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    civ_1549_sigma = Parameter(name='civ_1549_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    siliii_1892_sigma = Parameter(name='siliii_1892_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    ciii_1908_sigma = Parameter(name='ciii_1908_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    mgii_2800_sigma = Parameter(name='mgii_2800_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    #mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
-    #mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])    
+    oi_1304_sigma = Parameter(name='oi_1304_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
+    siliv_1396_sigma = Parameter(name='siliv_1396_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
+    civ_1549_sigma = Parameter(name='civ_1549_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
+    siliii_1892_sigma = Parameter(name='siliii_1892_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
+    ciii_1908_sigma = Parameter(name='ciii_1908_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
+    mgii_2800_sigma = Parameter(name='mgii_2800_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
+    #mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
+    #mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])    
     nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
@@ -1035,7 +1035,8 @@ class EMLineFit(ContinuumTools):
         weights = np.sqrt(emlineivar)
         emlinebad = np.logical_not(emlinegood)
         if np.sum(emlinebad) > 0:
-            weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
+            weights[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], weights[emlinegood])
+            #weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
 
         wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
 
@@ -1112,16 +1113,22 @@ class EMLineFit(ContinuumTools):
                 getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = True
                 getattr(self.EMLineModel, '{}_vshift'.format(linename)).fixed = True
 
-        #print('HACK!!!!!!!!!!!')
+        print('HACK!!!!!!!!!!!')
         #self.EMLineModel.halpha_sigma.tied = False
         #self.EMLineModel.nii_6584_sigma.tied = False
         #self.EMLineModel.nii_6548_sigma.tied = False
+        #self.EMLineModel.mgii_2800_vshift.bounds = [None, None]
+        #self.EMLineModel.mgii_2800_sigma = 5000.0
+        #self.EMLineModel.mgii_2800_sigma.bounds = [1, 1e4]
+        #self.EMLineModel.mgii_2800_amp.bounds = [None, None]
 
         t0 = time.time()        
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
+        print(initfit.mgii_2800_sigma, initfit.mgii_2800_vshift, initfit.mgii_2800_amp)
         pdb.set_trace()
+        
         initfit = _clean_linefit(initfit, init_amplitudes)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
         log.info('Initial line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
@@ -1572,6 +1579,8 @@ class EMLineFit(ContinuumTools):
             jpix = np.sum(npixpercam[:icam+2])
             smooth_continuum.append(_smooth_continuum[ipix:jpix])
 
+        stackwave = np.hstack(data['wave'])
+
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
         # QA choices
@@ -1668,7 +1677,8 @@ class EMLineFit(ContinuumTools):
         #ymin = np.min(ymin)
         #ymax = np.max(ymax)
 
-        bigax1.plot(np.hstack(data['wave']), _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+        bigax1.plot(stackwave, _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+        bigax1.plot(stackwave, np.hstack(continuum), color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
 
         bigax1.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
                     ha='left', va='center', transform=bigax1.transAxes, fontsize=30)

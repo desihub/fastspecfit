@@ -800,7 +800,8 @@ class ContinuumTools(object):
             linesigma_balmer = init_linesigma_narrow 
     
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
-        zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.941]) * (1 + redshift)
+        zlinewaves = np.array([1549.4795, 2799.942]) * (1 + redshift)
+        #zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.942]) * (1 + redshift)
         linesigma_uv, linesigma_uv_snr = get_linesigma(zlinewaves, init_linesigma_uv, 
                                                        label='UV/Broad', ax=ax[2])
         
@@ -862,7 +863,7 @@ class ContinuumTools(object):
         # Initially, mask aggressively, especially the Balmer lines.
         png = None
         #png = 'smooth.png'
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
+        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
         smooth, smoothsigma = self.smooth_continuum(wave, flux, ivar, redshift, maskkms_uv=5000.0,
                                                     maskkms_balmer=5000.0, maskkms_narrow=500.0,
                                                     png=png)
