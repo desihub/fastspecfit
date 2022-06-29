@@ -638,7 +638,7 @@ class ContinuumTools(object):
 
         return smooth, smoothsigma
     
-    def estimate_linesigmas(self, wave, flux, ivar, redshift=0.0, png=None):
+    def estimate_linesigmas(self, wave, flux, ivar, redshift=0.0, png=None, refit=True):
         """Estimate the velocity width from potentially strong, isolated lines.
     
         """
@@ -754,8 +754,6 @@ class ContinuumTools(object):
         init_linesigma_narrow = 200.0
         init_linesigma_uv = 2000.0
 
-        refit = True
-
         if png:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots(1, 3, figsize=(12, 4))
@@ -794,10 +792,11 @@ class ContinuumTools(object):
                                                                        label='Balmer', #label=r'H$\alpha$+H$\beta$',
                                                                        ax=ax[1])
                 
-        # if no good fit, use narrow, not Balmer
+        # if no good fit, should we use narrow or Balmer??
         if (linesigma_balmer < 50) or (linesigma_balmer_snr < linesigma_snr_min):
             linesigma_balmer_snr = 0.0
-            linesigma_balmer = init_linesigma_narrow 
+            linesigma_balmer = init_linesigma_balmer
+            #linesigma_balmer = init_linesigma_narrow 
     
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
         zlinewaves = np.array([1549.4795, 2799.942]) * (1 + redshift)
@@ -888,7 +887,6 @@ class ContinuumTools(object):
         png = None
         #png = 'linemask.png'
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linemask.png'
-
         snr_strong = 3.0
     
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
