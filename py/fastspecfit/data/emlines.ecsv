@@ -29,8 +29,8 @@ name restwave amp isbalmer isbroad nicename plotgroup
        civ_1549   1549.06      1.0   False  True   CIV-$\lambda$1549                            civ_1549
     siliii_1892   1892.030     1.0   False  True   SiIII]-$\lambda$1892+CIII]-$\lambda$1908     siliii_1892_ciii_1908
       ciii_1908   1908.734     1.0   False  True   SiIII]-$\lambda$1892+CIII]-$\lambda$1908     siliii_1892_ciii_1908
-      mgii_2796   2796.352     1.0   False  True   MgII-$\lambda\lambda$2796,2803               mgii_2796_2803
-      mgii_2803   2803.53      1.0   False  True   MgII-$\lambda\lambda$2796,2803               mgii_2796_2803
+      mgii_2796   2796.3511    1.0   False  True   MgII-$\lambda\lambda$2796,2803               mgii_2796_2803
+      mgii_2803   2803.5324    1.0   False  True   MgII-$\lambda\lambda$2796,2803               mgii_2796_2803
        nev_3346   3346.7828    0.1   False  False  [NeV]-$\lambda$3346                          nev_3346
        nev_3426   3426.8637    0.1   False  False  [NeV]-$\lambda$3426                          nev_3426
        oii_3726   3727.092     1.0   False  False  [OII]-$\lambda\lambda$3726,29                oii_3726_29
