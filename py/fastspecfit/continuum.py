@@ -870,7 +870,7 @@ class ContinuumTools(object):
         # Get a better estimate of the Balmer, forbidden, and UV/QSO line-widths.
         png = None
         #png = 'linesigma.png'
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
+        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
         linesigma_narrow, linesigma_balmer, linesigma_uv, linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr = \
           self.estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png)
 

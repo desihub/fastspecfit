@@ -23,7 +23,7 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger()#DEBUG)
+log = get_logger(DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -344,9 +344,9 @@ class EMLineModel(Fittable1DModel):
     # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
     # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
     # self.doublet_names, below!
-    mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.5, 3.0]) # MgII 2796/2803
-    oii_doublet_ratio = Parameter(name='oii_doublet_ratio', default=0.74, bounds=[0.66, 1.4]) # [OII] 3726/3729
-    sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.67, 1.2]) # [SII] 6731/6716
+    mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.1, 10.0]) # MgII 2796/2803
+    oii_doublet_ratio = Parameter(name='oii_doublet_ratio', default=0.74, bounds=[0.5, 1.5]) # [0.66, 1.4]) # [OII] 3726/3729
+    sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.5, 1.5]) # [0.67, 1.2]) # [SII] 6731/6716
     mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
     oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=[minamp, maxamp])
     sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=[minamp, maxamp])
@@ -1049,8 +1049,9 @@ class EMLineFit(ContinuumTools):
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 3*np.max(coadd_emlineflux[linepix])]
             
-            # force broad lines to be positive
-            if 'broad' in linename:
+            # force broad Balmer lines to be positive
+            iline = self.linetable[self.linetable['name'] == linename]
+            if iline['isbroad'] and iline['isbalmer']:
                 bounds = [0.0, 5*np.max(coadd_emlineflux[linepix])]
             else:
                 bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 5*np.max(coadd_emlineflux[linepix])]
@@ -1061,7 +1062,6 @@ class EMLineFit(ContinuumTools):
             init_amplitudes.update({linename: amp})
 
             # Optionally update the initial line-width.
-            iline = self.linetable[self.linetable['name'] == linename]
             if iline['isbroad']:
                 if iline['isbalmer']:
                     if data['linesigma_balmer_snr'] > 0: # broad Balmer lines
@@ -1083,9 +1083,10 @@ class EMLineFit(ContinuumTools):
         self.EMLineModel.oii_7330_amp = _tie_oii_red_amp(self.EMLineModel)
         #self.EMLineModel.siii_9069_amp = _tie_siii_amp(self.EMLineModel)
 
-        # Initial fit: set the broad-line amplitudes to zero and fixed.
+        # Initial fit: set the broad-line Balmer amplitudes to zero and fixed.
         for linename in data['coadd_linename']:
-            if 'broad' in linename:
+            iline = self.linetable[self.linetable['name'] == linename]
+            if iline['isbroad'] and iline['isbalmer']:
                 setattr(self.EMLineModel, '{}_amp'.format(linename), 0.0)
                 setattr(self.EMLineModel, '{}_vshift'.format(linename), 0.0)
                 getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = True
@@ -1100,6 +1101,7 @@ class EMLineFit(ContinuumTools):
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
+
         initfit = _clean_linefit(initfit, init_amplitudes)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
         log.info('Initial line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
@@ -1123,8 +1125,9 @@ class EMLineFit(ContinuumTools):
                 # skip the physical doublets
                 if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): 
                     continue
-                # Free the broad lines.
-                if 'broad' in linename:
+                # Free the broad Balmer lines.
+                iline = self.linetable[self.linetable['name'] == linename]
+                if iline['isbroad'] and iline['isbalmer']:
                     setattr(self.EMLineModel, '{}_amp'.format(linename), init_amplitudes[linename])
                     getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = False
                     setattr(self.EMLineModel, '{}_vshift'.format(linename), 1.0)
