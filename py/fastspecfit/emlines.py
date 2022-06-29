@@ -1035,8 +1035,9 @@ class EMLineFit(ContinuumTools):
         weights = np.sqrt(emlineivar)
         emlinebad = np.logical_not(emlinegood)
         if np.sum(emlinebad) > 0:
-            weights[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], weights[emlinegood])
             #weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
+            weights[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], weights[emlinegood])
+            emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
 
         wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
 

@@ -863,7 +863,7 @@ class ContinuumTools(object):
         # Initially, mask aggressively, especially the Balmer lines.
         png = None
         #png = 'smooth.png'
-        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
+        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
         smooth, smoothsigma = self.smooth_continuum(wave, flux, ivar, redshift, maskkms_uv=5000.0,
                                                     maskkms_balmer=5000.0, maskkms_narrow=500.0,
                                                     png=png)
@@ -871,7 +871,7 @@ class ContinuumTools(object):
         # Get a better estimate of the Balmer, forbidden, and UV/QSO line-widths.
         png = None
         #png = 'linesigma.png'
-        png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
+        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
         linesigma_narrow, linesigma_balmer, linesigma_uv, linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr = \
           self.estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png)
 
