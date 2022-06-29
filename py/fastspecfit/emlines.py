@@ -101,10 +101,10 @@ def _tie_oiii_5007_sigma(model):
 def _tie_oiii_5007_vshift(model):
     return model.oiii_5007_vshift
 
-#def _tie_mgii_2803_sigma(model):
-#    return model.mgii_2803_sigma
-#def _tie_mgii_2803_vshift(model):
-#    return model.mgii_2803_vshift
+def _tie_mgii_2803_sigma(model):
+    return model.mgii_2803_sigma
+def _tie_mgii_2803_vshift(model):
+    return model.mgii_2803_vshift
 
 #def _tie_civ_1550_sigma(model):
 #    return model.civ_1550_sigma
@@ -130,11 +130,16 @@ def _tie_lines(model):
         linename = model.linetable['name'][iline]
 
         if model.inrange[iline] == False: # not in the wavelength range
-            if linename not in model.doublet_names:
-                setattr(model, '{}_amp'.format(linename), 0.0)
-                getattr(model, '{}_amp'.format(linename)).fixed = True
-            getattr(model, '{}_sigma'.format(linename)).fixed = True
-            getattr(model, '{}_vshift'.format(linename)).fixed = True
+            if hasattr(model, '{}_amp'.format(linename)):
+            #if linename not in model.doublet_names:
+            #    setattr(model, '{}_amp'.format(linename), 0.0)
+            #    getattr(model, '{}_amp'.format(linename)).fixed = True
+               setattr(model, '{}_amp'.format(linename), 0.0)
+               setattr(model, '{}_sigma'.format(linename), 0.0)
+               setattr(model, '{}_vshift'.format(linename), 0.0)
+               getattr(model, '{}_amp'.format(linename)).fixed = True
+               getattr(model, '{}_sigma'.format(linename)).fixed = True
+               getattr(model, '{}_vshift'.format(linename)).fixed = True
 
         # broad Balmer lines
         if model.inrange[iline] and model.linetable['isbalmer'][iline] and model.linetable['isbroad'][iline] and linename != 'halpha_broad':
@@ -144,11 +149,11 @@ def _tie_lines(model):
         #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_hbeta_broad_sigma
         #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_broad_vshift
             
-        ## other broad lines
-        #if model.inrange[iline] and (model.linetable['isbalmer'][iline] == False) and model.linetable['isbroad'][iline]:
-        #    if linename == 'mgii_2796':
-        #        getattr(model, '{}_sigma'.format(linename)).tied = _tie_mgii_2803_sigma
-        #        getattr(model, '{}_vshift'.format(linename)).tied = _tie_mgii_2803_vshift
+        # other broad lines
+        if model.inrange[iline] and (model.linetable['isbalmer'][iline] == False) and model.linetable['isbroad'][iline]:
+            if linename == 'mgii_2796':
+                getattr(model, '{}_sigma'.format(linename)).tied = _tie_mgii_2803_sigma
+                getattr(model, '{}_vshift'.format(linename)).tied = _tie_mgii_2803_vshift
             
         # forbidden lines and narrow Balmer & He lines
         if model.inrange[iline] and model.linetable['isbroad'][iline] == False and linename != 'oiii_5007':
@@ -320,7 +325,7 @@ class EMLineModel(Fittable1DModel):
     minsigma = 1.0
     minsigma_broad = 1.0
     maxsigma_narrow = 500.0
-    maxsigma_broad = 5000.0
+    maxsigma_broad = 3000.0
     minsigma_balmer_broad = minsigma
 
     # Be very careful about changing the default broad line-sigma. Smaller
@@ -345,10 +350,10 @@ class EMLineModel(Fittable1DModel):
     # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
     # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
     # self.doublet_names, below!
-    #mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.1, 10.0]) # MgII 2796/2803
+    mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.1, 10.0]) # MgII 2796/2803
     oii_doublet_ratio = Parameter(name='oii_doublet_ratio', default=0.74, bounds=[0.5, 1.5]) # [0.66, 1.4]) # [OII] 3726/3729
     sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.5, 1.5]) # [0.67, 1.2]) # [SII] 6731/6716
-    #mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
+    mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
     oii_3729_amp = Parameter(name='oii_3729_amp', default=1.0, bounds=[minamp, maxamp])
     sii_6716_amp = Parameter(name='sii_6716_amp', default=1.0, bounds=[minamp, maxamp])
 
@@ -358,7 +363,7 @@ class EMLineModel(Fittable1DModel):
     civ_1549_amp = Parameter(name='civ_1549_amp', default=3.0, bounds=[minamp, maxamp]) # bounds=[0, maxamp])
     siliii_1892_amp = Parameter(name='siliii_1892_amp', default=3.0, bounds=[minamp, maxamp])
     ciii_1908_amp = Parameter(name='ciii_1908_amp', default=3.0, bounds=[minamp, maxamp])
-    mgii_2800_amp = Parameter(name='mgii_2800_amp', default=3.0, bounds=[minamp, maxamp])
+    #mgii_2800_amp = Parameter(name='mgii_2800_amp', default=3.0, bounds=[minamp, maxamp])
     #mgii_2796_amp = Parameter(name='mgii_2796_amp', default=3.0, bounds=[minamp, maxamp])
     #mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
     nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=[minamp, maxamp])
@@ -397,10 +402,10 @@ class EMLineModel(Fittable1DModel):
     siii_9069_amp = Parameter(name='siii_9069_amp', default=0.3, bounds=[minamp, maxamp])
     siii_9532_amp = Parameter(name='siii_9532_amp', default=1.0, bounds=[minamp, maxamp])
 
-    #mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oii_3726_vshift = Parameter(name='oii_3726_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     sii_6731_vshift = Parameter(name='sii_6731_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
-    #mgii_2803_vshift = Parameter(name='mgii_2803_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    mgii_2803_vshift = Parameter(name='mgii_2803_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     oii_3729_vshift = Parameter(name='oii_3729_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     sii_6716_vshift = Parameter(name='sii_6716_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     
@@ -409,7 +414,7 @@ class EMLineModel(Fittable1DModel):
     civ_1549_vshift = Parameter(name='civ_1549_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     siliii_1892_vshift = Parameter(name='siliii_1892_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     ciii_1908_vshift = Parameter(name='ciii_1908_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
-    mgii_2800_vshift = Parameter(name='mgii_2800_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    #mgii_2800_vshift = Parameter(name='mgii_2800_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     #mgii_2796_vshift = Parameter(name='mgii_2796_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     #mgii_2803_vshift = Parameter(name='mgii_2803_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])    
     nev_3346_vshift = Parameter(name='nev_3346_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
@@ -448,10 +453,10 @@ class EMLineModel(Fittable1DModel):
     siii_9069_vshift = Parameter(name='siii_9069_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     siii_9532_vshift = Parameter(name='siii_9532_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
 
-    #mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     oii_3726_sigma = Parameter(name='oii_3726_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     sii_6731_sigma = Parameter(name='sii_6731_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    #mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
+    mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_broad, bounds=[minsigma, maxsigma_broad])
     oii_3729_sigma = Parameter(name='oii_3729_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     sii_6716_sigma = Parameter(name='sii_6716_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
 
@@ -460,7 +465,7 @@ class EMLineModel(Fittable1DModel):
     civ_1549_sigma = Parameter(name='civ_1549_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
     siliii_1892_sigma = Parameter(name='siliii_1892_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
     ciii_1908_sigma = Parameter(name='ciii_1908_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
-    mgii_2800_sigma = Parameter(name='mgii_2800_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
+    #mgii_2800_sigma = Parameter(name='mgii_2800_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
     #mgii_2796_sigma = Parameter(name='mgii_2796_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])
     #mgii_2803_sigma = Parameter(name='mgii_2803_sigma', default=initsigma_broad, bounds=[minsigma_broad, maxsigma_broad])    
     nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
@@ -505,10 +510,10 @@ class EMLineModel(Fittable1DModel):
     #siii_9069_amp.tied = _tie_siii_amp
     
     def __init__(self,
-                 #mgii_doublet_ratio=mgii_doublet_ratio.default,
+                 mgii_doublet_ratio=mgii_doublet_ratio.default,
                  oii_doublet_ratio=oii_doublet_ratio.default,
                  sii_doublet_ratio=sii_doublet_ratio.default,
-                 #mgii_2803_amp=mgii_2803_amp.default,
+                 mgii_2803_amp=mgii_2803_amp.default,
                  oii_3729_amp=oii_3729_amp.default,
                  sii_6716_amp=sii_6716_amp.default,
                      
@@ -517,7 +522,7 @@ class EMLineModel(Fittable1DModel):
                  civ_1549_amp=civ_1549_amp.default,
                  siliii_1892_amp=siliii_1892_amp.default,
                  ciii_1908_amp=ciii_1908_amp.default,
-                 mgii_2800_amp=mgii_2800_amp.default,
+                 #mgii_2800_amp=mgii_2800_amp.default,
                  #mgii_2796_amp=mgii_2796_amp.default,
                  #mgii_2803_amp=mgii_2803_amp.default,
                  nev_3346_amp=nev_3346_amp.default,
@@ -568,7 +573,7 @@ class EMLineModel(Fittable1DModel):
                  civ_1549_vshift=civ_1549_vshift.default,
                  siliii_1892_vshift=siliii_1892_vshift.default,
                  ciii_1908_vshift=ciii_1908_vshift.default,
-                 mgii_2800_vshift=mgii_2800_vshift.default,
+                 #mgii_2800_vshift=mgii_2800_vshift.default,
                  #mgii_2796_vshift=mgii_2796_vshift.default,
                  #mgii_2803_vshift=mgii_2803_vshift.default,
                  nev_3346_vshift=nev_3346_vshift.default,
@@ -619,7 +624,7 @@ class EMLineModel(Fittable1DModel):
                  civ_1549_sigma=civ_1549_sigma.default,
                  siliii_1892_sigma=siliii_1892_sigma.default,
                  ciii_1908_sigma=ciii_1908_sigma.default,
-                 mgii_2800_sigma=mgii_2800_sigma.default,
+                 #mgii_2800_sigma=mgii_2800_sigma.default,
                  #mgii_2796_sigma=mgii_2796_sigma.default,
                  #mgii_2803_sigma=mgii_2803_sigma.default,
                  nev_3346_sigma=nev_3346_sigma.default,
@@ -684,8 +689,8 @@ class EMLineModel(Fittable1DModel):
         #self.restlinewaves = np.hstack([self.linetable['restwave'][self.linetable['name'] == linename] for linename in self.linenames])
         self.restlinewaves = self.linetable['restwave'].data
 
-        self.doublet_names = ['oii_3726', 'sii_6731']
-        #self.doublet_names = ['mgii_2796', 'oii_3726', 'sii_6731']
+        #self.doublet_names = ['oii_3726', 'sii_6731']
+        self.doublet_names = ['mgii_2796', 'oii_3726', 'sii_6731']
         self.ndoublet = len(self.doublet_names)
 
         self.redshift = redshift
@@ -850,7 +855,7 @@ class EMLineFit(ContinuumTools):
         #out.add_column(Column(name='UV_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
 
         # special columns for the fitted doublets
-        #out.add_column(Column(name='MGII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+        out.add_column(Column(name='MGII_DOUBLET_RATIO', length=nobj, dtype='f4'))
         out.add_column(Column(name='OII_DOUBLET_RATIO', length=nobj, dtype='f4'))
         out.add_column(Column(name='SII_DOUBLET_RATIO', length=nobj, dtype='f4'))
 
@@ -866,8 +871,8 @@ class EMLineFit(ContinuumTools):
                                   unit=10**34*u.second**2*u.cm**4/u.erg**2))
             out.add_column(Column(name='{}_BOXFLUX'.format(line), length=nobj, dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2)))
-            #out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
-            #                      unit=10**34*u.second**2*u.cm**4/u.erg**2))
+            out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4/u.erg**2))
             
             out.add_column(Column(name='{}_VSHIFT'.format(line), length=nobj, dtype='f4',
                                   unit=u.kilometer/u.second))
@@ -953,7 +958,7 @@ class EMLineFit(ContinuumTools):
         from fastspecfit.util import ivar2var
         from scipy.stats import sigmaclip
 
-        def _clean_linefit(bestfit, init_amplitudes):
+        def _clean_linefit(bestfit, init_amplitudes, init_sigmas):
             """Clean up line-fitting results."""
             
             # If the amplitude is still at its default (or its upper or lower
@@ -975,10 +980,11 @@ class EMLineFit(ContinuumTools):
                 if ((amp.value == amp.default) or (amp.value >= amp.bounds[1]) or
                     #(amp.value <= amp.bounds[0]) or
                     (amp.value <= 0) or
-                    (linename in initkeys and init_amplitudes[linename] == amp.value)
+                    (linename in initkeys and init_amplitudes[linename] == amp.value) or 
+                    (sigma.value == sigma.default)
                     #(sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1])
                     ):
-                    log.debug('Dropping {} (amp={:.3f})'.format(linename, amp.value))
+                    log.debug('Dropping {} (amp={:.3f}, sigma={:.3f})'.format(linename, amp.value, sigma.value))
 
                     #if '4686' in linename:
                     #    pdb.set_trace()
@@ -986,7 +992,7 @@ class EMLineFit(ContinuumTools):
                     setattr(bestfit, '{}_amp'.format(linename), 0.0)
                     setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma.default)
                     setattr(bestfit, '{}_vshift'.format(linename), 0.0) #vshift.default)
-    
+
             # Now loop back through and drop Broad balmer lines that:
             #   (1) are narrower than their narrow-line counterparts;
             #   (2) have a narrow line whose amplitude is smaller than that of the broad line
@@ -1050,7 +1056,7 @@ class EMLineFit(ContinuumTools):
         # Do a fast update of the initial line-amplitudes which especially helps
         # with cases like 39633354915582193 (tile 80613, petal 05), which has
         # strong narrow lines.
-        init_amplitudes = {}
+        init_amplitudes, init_sigmas = {}, {}
         coadd_emlineflux = data['coadd_flux'] - np.interp(data['coadd_wave'], emlinewave, continuummodelflux+smoothcontinuummodelflux)
         for linename, linepix in zip(data['coadd_linename'], data['coadd_linepix']):
             # skip the physical doublets
@@ -1082,21 +1088,26 @@ class EMLineFit(ContinuumTools):
             getattr(self.EMLineModel, '{}_amp'.format(linename)).bounds = bounds
 
             init_amplitudes.update({linename: amp})
+            init_sigmas.update({linename: getattr(self.EMLineModel, '{}_sigma'.format(linename)).value})
 
             # Optionally update the initial line-width.
             if iline['isbroad']:
                 if iline['isbalmer']:
                     if data['linesigma_balmer_snr'] > 0: # broad Balmer lines
                         setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
+                        init_sigmas[linename] = getattr(self.EMLineModel, '{}_sigma'.format(linename)).value                        
                 else:
                     if data['linesigma_uv_snr'] > 0: # broad UV/QSO lines
                         setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_uv'])
+                        init_sigmas[linename] = getattr(self.EMLineModel, '{}_sigma'.format(linename)).value                        
             else:
                 # prefer narrow over Balmer
                 if data['linesigma_narrow_snr'] > 0:
                     setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_narrow'])
+                    init_sigmas[linename] = getattr(self.EMLineModel, '{}_sigma'.format(linename)).value                        
                 #elif data['linesigma_narrow_snr'] == 0 and data['linesigma_narrow_balmer'] > 0:
                 #    setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
+                #    init_sigmas[linename] = getattr(self.EMLineModel, '{}_sigma'.format(linename)).value                        
                             
         # Next, make sure the forbidden-line doublets have the correct initial amplitudes.
         self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)
@@ -1114,7 +1125,7 @@ class EMLineFit(ContinuumTools):
                 getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = True
                 getattr(self.EMLineModel, '{}_vshift'.format(linename)).fixed = True
 
-        print('HACK!!!!!!!!!!!')
+        #print('HACK!!!!!!!!!!!')
         #self.EMLineModel.halpha_sigma.tied = False
         #self.EMLineModel.nii_6584_sigma.tied = False
         #self.EMLineModel.nii_6548_sigma.tied = False
@@ -1127,10 +1138,8 @@ class EMLineFit(ContinuumTools):
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
-        print(initfit.mgii_2800_sigma, initfit.mgii_2800_vshift, initfit.mgii_2800_amp)
-        pdb.set_trace()
-        
-        initfit = _clean_linefit(initfit, init_amplitudes)
+        #print(initfit.mgii_2800_sigma, initfit.mgii_2800_vshift, initfit.mgii_2800_amp)
+        initfit = _clean_linefit(initfit, init_amplitudes, init_sigmas)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
         log.info('Initial line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
             time.time()-t0, fitter.fit_info['nfev'], initchi2))
@@ -1169,7 +1178,7 @@ class EMLineFit(ContinuumTools):
             fitter = FastLevMarLSQFitter(self.EMLineModel)
             broadfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                               maxiter=maxiter, acc=accuracy)
-            broadfit = _clean_linefit(broadfit, init_amplitudes)
+            broadfit = _clean_linefit(broadfit, init_amplitudes, init_sigmas)
             broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar)
             log.info('Second (broad) line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
                 time.time()-t0, fitter.fit_info['nfev'], broadchi2))
@@ -1207,14 +1216,12 @@ class EMLineFit(ContinuumTools):
             fitter = FastLevMarLSQFitter(bestfit)
             finalfit = fitter(bestfit, emlinewave, emlineflux, weights=weights,
                               maxiter=maxiter, acc=accuracy)
-            finalfit = _clean_linefit(finalfit, init_amplitudes)        
+            finalfit = _clean_linefit(finalfit, init_amplitudes, init_sigmas)
             chi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar)
             log.info('Final line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
                 time.time()-t0, fitter.fit_info['nfev'], chi2))
         else:
             finalfit = bestfit
-
-        pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output(self.EMLineModel.linetable)
@@ -1230,6 +1237,8 @@ class EMLineFit(ContinuumTools):
         result['RCHI2_BROAD'] = linechi2_broad
         result['DELTARCHI2_BROAD'] = linechi2_init - linechi2_broad
 
+        pdb.set_trace()
+
         # Now fill the output table.
         for pp in finalfit.param_names:
             pinfo = getattr(finalfit, pp)
@@ -1241,9 +1250,9 @@ class EMLineFit(ContinuumTools):
             elif pp == 'sii_doublet_ratio':
                 result['SII_DOUBLET_RATIO'] = val
                 result['SII_6731_AMP'] = val * finalfit.sii_6716_amp
-            #elif pp == 'mgii_doublet_ratio':
-            #    result['MGII_DOUBLET_RATIO'] = val
-            #    result['MGII_2796_AMP'] = val * finalfit.mgii_2803_amp
+            elif pp == 'mgii_doublet_ratio':
+                result['MGII_DOUBLET_RATIO'] = val
+                result['MGII_2796_AMP'] = val * finalfit.mgii_2803_amp
             else:
                 result[pinfo.name.upper()] = val
 
@@ -1340,7 +1349,7 @@ class EMLineFit(ContinuumTools):
                 boxflux_ivar = 1 / np.sum(1 / emlineivar[lineindx])
 
                 result['{}_BOXFLUX'.format(linename)] = boxflux
-                #result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar
+                result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar
                 
                 # Get the uncertainty in the line-amplitude based on the scatter
                 # in the pixel values from the emission-line subtracted
@@ -1429,7 +1438,7 @@ class EMLineFit(ContinuumTools):
 
             for col in ('VSHIFT', 'SIGMA', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
                 log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
-            for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
+            for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
                 log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
             log.debug(' ')
 
