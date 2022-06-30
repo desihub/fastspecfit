@@ -870,7 +870,7 @@ class ContinuumTools(object):
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
         linesigma_narrow, linesigma_balmer, linesigma_uv, linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr = \
           self.estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png)
-        pdb.set_trace()
+
         # Next, build the emission-line mask.
         linemask = np.zeros_like(wave, bool)      # True = affected by possible emission line.
         linemask_strong = np.zeros_like(linemask) # True = affected by strong emission lines.

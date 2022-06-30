@@ -23,7 +23,7 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger()#DEBUG)
+log = get_logger(DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -1067,7 +1067,8 @@ class EMLineFit(ContinuumTools):
         # with cases like 39633354915582193 (tile 80613, petal 05), which has
         # strong narrow lines.
         init_amplitudes, init_sigmas = {}, {}
-        coadd_emlineflux = data['coadd_flux'] - np.interp(data['coadd_wave'], emlinewave, continuummodelflux+smoothcontinuummodelflux)
+        coadd_emlineflux = np.interp(data['coadd_wave'], emlinewave, emlineflux)
+        #coadd_emlineflux = data['coadd_flux'] - np.interp(data['coadd_wave'], emlinewave, continuummodelflux+smoothcontinuummodelflux)
         for linename, linepix in zip(data['coadd_linename'], data['coadd_linepix']):
             # skip the physical doublets
             if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): 
@@ -1086,13 +1087,16 @@ class EMLineFit(ContinuumTools):
 
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 3*np.max(coadd_emlineflux[linepix])]
+            mx = 5*np.max(coadd_emlineflux[linepix])
+            if mx < 0:
+                mx = 10.0 # ???
             
             # force broad Balmer lines to be positive
             iline = self.linetable[self.linetable['name'] == linename]
             if iline['isbroad'] and iline['isbalmer']:
-                bounds = [0.0, 5*np.max(coadd_emlineflux[linepix])]
+                bounds = [0.0, mx]
             else:
-                bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 5*np.max(coadd_emlineflux[linepix])]
+                bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), mx]
 
             setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
             getattr(self.EMLineModel, '{}_amp'.format(linename)).bounds = bounds
@@ -1148,6 +1152,7 @@ class EMLineFit(ContinuumTools):
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
+        pdb.set_trace()
         #print(initfit.mgii_2800_sigma, initfit.mgii_2800_vshift, initfit.mgii_2800_amp)
         initfit = _clean_linefit(initfit, init_amplitudes, init_sigmas)
 
@@ -1212,6 +1217,8 @@ class EMLineFit(ContinuumTools):
             bestfit = initfit
             linechi2_init = 0.0
             linechi2_broad = 0.0
+
+        pdb.set_trace()
 
         # Finally, one more fitting loop with all the line-constraints relaxed.
         if False:
@@ -1634,6 +1641,8 @@ class EMLineFit(ContinuumTools):
             #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
+            'rchi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['RCHI2']),
+            'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad}}$={:.3f}'.format(fastspec['DELTARCHI2_BROAD']),
             #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastspec['CONTINUUM_AGE']),
@@ -1763,6 +1772,7 @@ class EMLineFit(ContinuumTools):
 
         if not self.nolegend:
             txt = '\n'.join((
+                r'{} {}'.format(leg['rchi2'], leg['deltarchi2']),
                 r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),
                 r'{} {}'.format(leg['dv_forbid'], leg['sigma_forbid']),
                 r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),
