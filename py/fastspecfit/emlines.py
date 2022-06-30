@@ -106,6 +106,16 @@ def _tie_mgii_2803_sigma(model):
 def _tie_mgii_2803_vshift(model):
     return model.mgii_2803_vshift
 
+#def _tie_siliii_1892_sigma(model):
+#    return model.siliii_1892_sigma
+#def _tie_siliii_1892_vshift(model):
+#    return model.siliii_1892_vshift
+
+def _tie_ciii_1908_sigma(model):
+    return model.ciii_1908_sigma
+def _tie_ciii_1908_vshift(model):
+    return model.ciii_1908_vshift
+
 #def _tie_civ_1550_sigma(model):
 #    return model.civ_1550_sigma
 #def _tie_civ_1550_vshift(model):
@@ -151,6 +161,9 @@ def _tie_lines(model):
             
         # other broad lines
         if model.inrange[iline] and (model.linetable['isbalmer'][iline] == False) and model.linetable['isbroad'][iline]:
+            #if linename == 'siliii_1892':
+            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_ciii_1908_sigma
+            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_ciii_1908_vshift
             if linename == 'mgii_2796':
                 getattr(model, '{}_sigma'.format(linename)).tied = _tie_mgii_2803_sigma
                 getattr(model, '{}_vshift'.format(linename)).tied = _tie_mgii_2803_vshift
@@ -319,13 +332,13 @@ class EMLineModel(Fittable1DModel):
 
     # NB! The order of the parameters here matters!
     vmaxshift_narrow = 300
-    vmaxshift_broad = 3000.0 # 3000.0
+    vmaxshift_broad = 1000.0 # 3000.0
     initvshift = 1.0
 
     minsigma = 1.0
     minsigma_broad = 1.0
     maxsigma_narrow = 500.0
-    maxsigma_broad = 3000.0
+    maxsigma_broad = 1e4
     minsigma_balmer_broad = minsigma
 
     # Be very careful about changing the default broad line-sigma. Smaller
@@ -986,9 +999,6 @@ class EMLineFit(ContinuumTools):
                     ):
                     log.debug('Dropping {} (amp={:.3f}, sigma={:.3f})'.format(linename, amp.value, sigma.value))
 
-                    #if '4686' in linename:
-                    #    pdb.set_trace()
-                        
                     setattr(bestfit, '{}_amp'.format(linename), 0.0)
                     setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma.default)
                     setattr(bestfit, '{}_vshift'.format(linename), 0.0) #vshift.default)
@@ -1131,7 +1141,7 @@ class EMLineFit(ContinuumTools):
         #self.EMLineModel.nii_6548_sigma.tied = False
         #self.EMLineModel.mgii_2800_vshift.bounds = [None, None]
         #self.EMLineModel.mgii_2800_sigma = 5000.0
-        #self.EMLineModel.mgii_2800_sigma.bounds = [1, 1e4]
+        #self.EMLineModel.siliii_1892_sigma.bounds = [1, 1e4]
         #self.EMLineModel.mgii_2800_amp.bounds = [None, None]
 
         t0 = time.time()        
@@ -1140,6 +1150,7 @@ class EMLineFit(ContinuumTools):
                          maxiter=maxiter, acc=accuracy)
         #print(initfit.mgii_2800_sigma, initfit.mgii_2800_vshift, initfit.mgii_2800_amp)
         initfit = _clean_linefit(initfit, init_amplitudes, init_sigmas)
+
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
         log.info('Initial line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
             time.time()-t0, fitter.fit_info['nfev'], initchi2))
@@ -1565,6 +1576,8 @@ class EMLineFit(ContinuumTools):
         npixpercamera = [len(gw) for gw in data['wave']] # all pixels
         npixpercam = np.hstack([0, npixpercamera])
         
+        stackwave = np.hstack(data['wave'])
+
         # rebuild the best-fitting spectroscopic and photometric models
         continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
                                      specwave=data['wave'], specres=data['res'],
@@ -1578,16 +1591,17 @@ class EMLineFit(ContinuumTools):
         #_smooth_continuum = self.smooth_residuals(
         #    residuals, data['wave'], data['ivar'],
         #    data['linemask'], data['linepix'], data['contpix'])
-        _smooth_continuum, _ = self.smooth_continuum(np.hstack(data['wave']), np.hstack(residuals),
-                                                     np.hstack(data['ivar']), redshift=redshift,
-                                                     linemask=np.hstack(data['linemask']))
+        if np.all(fastspec['CONTINUUM_COEFF'] == 0):
+            _smooth_continuum = np.zeros_like(stackwave)
+        else:
+            _smooth_continuum, _ = self.smooth_continuum(np.hstack(data['wave']), np.hstack(residuals),
+                                                         np.hstack(data['ivar']), redshift=redshift,
+                                                         linemask=np.hstack(data['linemask']))
         smooth_continuum = []
         for icam in np.arange(len(data['cameras'])): # iterate over cameras
             ipix = np.sum(npixpercam[:icam+1])
             jpix = np.sum(npixpercam[:icam+2])
             smooth_continuum.append(_smooth_continuum[ipix:jpix])
-
-        stackwave = np.hstack(data['wave'])
 
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
@@ -1695,7 +1709,7 @@ class EMLineFit(ContinuumTools):
                 r'{}'.format(leg['zredrock']),
                 r'{} {}'.format(leg['chi2'], leg['age']),
                 r'{}'.format(leg['AV']),
-                #r'{}'.format(leg['vdisp']),
+                r'{}'.format(leg['vdisp']),
                 ))
             bigax1.text(legxpos, legypos, txt, ha='right', va='top',
                         transform=bigax1.transAxes, fontsize=legfntsz,

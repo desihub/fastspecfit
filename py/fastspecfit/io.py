@@ -655,7 +655,7 @@ class DESISpectra(object):
         #self.meta = Table(np.hstack(self.meta))
         self.ntargets = len(self.meta)
         log.info('Read data for {} objects in {:.2f} sec'.format(self.ntargets, time.time()-t0))
-        
+
         return alldata
         
     def init_output(self, CFit=None, EMFit=None, fastphot=False):
