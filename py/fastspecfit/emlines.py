@@ -23,7 +23,7 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger()#DEBUG)
+log = get_logger(DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -421,8 +421,8 @@ class EMLineModel(Fittable1DModel):
     nev_3346_amp = Parameter(name='nev_3346_amp', default=0.1, bounds=[minamp, maxamp])
     nev_3426_amp = Parameter(name='nev_3426_amp', default=0.1, bounds=[minamp, maxamp])
     neiii_3869_amp = Parameter(name='neiii_3869_amp', default=0.3, bounds=[minamp, maxamp])
-    hei_3889_amp = Parameter(name='hei_3889_amp', default=0.3, bounds=[minamp, maxamp])
-    hei_broad_3889_amp = Parameter(name='hei_broad_3889_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
+    #hei_3889_amp = Parameter(name='hei_3889_amp', default=0.3, bounds=[minamp, maxamp])
+    #hei_broad_3889_amp = Parameter(name='hei_broad_3889_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
     h6_amp = Parameter(name='h6_amp', default=0.3, bounds=[minamp, maxamp])
     h6_broad_amp = Parameter(name='h6_broad_amp', default=0.3, bounds=[minamp_balmer_broad, maxamp])
     hepsilon_amp = Parameter(name='hepsilon_amp', default=0.5, bounds=[minamp, maxamp])
@@ -472,8 +472,8 @@ class EMLineModel(Fittable1DModel):
     nev_3346_vshift = Parameter(name='nev_3346_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     nev_3426_vshift = Parameter(name='nev_3426_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     neiii_3869_vshift = Parameter(name='neiii_3869_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
-    hei_3889_vshift = Parameter(name='hei_3889_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
-    hei_broad_3889_vshift = Parameter(name='hei_broad_3889_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
+    #hei_3889_vshift = Parameter(name='hei_3889_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
+    #hei_broad_3889_vshift = Parameter(name='hei_broad_3889_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     h6_vshift = Parameter(name='h6_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
     h6_broad_vshift = Parameter(name='h6_broad_vshift', default=initvshift, bounds=[-vmaxshift_broad, +vmaxshift_broad])
     hepsilon_vshift = Parameter(name='hepsilon_vshift', default=initvshift, bounds=[-vmaxshift_narrow, +vmaxshift_narrow])
@@ -523,8 +523,8 @@ class EMLineModel(Fittable1DModel):
     nev_3346_sigma = Parameter(name='nev_3346_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     nev_3426_sigma = Parameter(name='nev_3426_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     neiii_3869_sigma = Parameter(name='neiii_3869_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    hei_3889_sigma = Parameter(name='hei_3889_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
-    hei_broad_3889_sigma = Parameter(name='hei_broad_3889_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
+    #hei_3889_sigma = Parameter(name='hei_3889_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
+    #hei_broad_3889_sigma = Parameter(name='hei_broad_3889_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     h6_sigma = Parameter(name='h6_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
     h6_broad_sigma = Parameter(name='h6_broad_sigma', default=initsigma_broad, bounds=[minsigma_balmer_broad, maxsigma_broad])
     hepsilon_sigma = Parameter(name='hepsilon_sigma', default=initsigma_narrow, bounds=[minsigma, maxsigma_narrow])
@@ -580,8 +580,8 @@ class EMLineModel(Fittable1DModel):
                  nev_3346_amp=nev_3346_amp.default,
                  nev_3426_amp=nev_3426_amp.default,
                  neiii_3869_amp=neiii_3869_amp.default,
-                 hei_3889_amp=hei_3889_amp.default,
-                 hei_broad_3889_amp=hei_broad_3889_amp.default,
+                 #hei_3889_amp=hei_3889_amp.default,
+                 #hei_broad_3889_amp=hei_broad_3889_amp.default,
                  h6_amp=h6_amp.default,
                  h6_broad_amp=h6_broad_amp.default,
                  hepsilon_amp=hepsilon_amp.default,
@@ -631,8 +631,8 @@ class EMLineModel(Fittable1DModel):
                  nev_3346_vshift=nev_3346_vshift.default,
                  nev_3426_vshift=nev_3426_vshift.default,
                  neiii_3869_vshift=neiii_3869_vshift.default,
-                 hei_3889_vshift=hei_3889_vshift.default,
-                 hei_broad_3889_vshift=hei_broad_3889_vshift.default,
+                 #hei_3889_vshift=hei_3889_vshift.default,
+                 #hei_broad_3889_vshift=hei_broad_3889_vshift.default,
                  h6_vshift=h6_vshift.default,
                  h6_broad_vshift=h6_broad_vshift.default,
                  hepsilon_vshift=hepsilon_vshift.default,
@@ -682,8 +682,8 @@ class EMLineModel(Fittable1DModel):
                  nev_3346_sigma=nev_3346_sigma.default,
                  nev_3426_sigma=nev_3426_sigma.default,
                  neiii_3869_sigma=neiii_3869_sigma.default,
-                 hei_3889_sigma=hei_3889_sigma.default,
-                 hei_broad_3889_sigma=hei_broad_3889_sigma.default,
+                 #hei_3889_sigma=hei_3889_sigma.default,
+                 #hei_broad_3889_sigma=hei_broad_3889_sigma.default,
                  h6_sigma=h6_sigma.default,
                  h6_broad_sigma=h6_broad_sigma.default,
                  hepsilon_sigma=hepsilon_sigma.default,
@@ -1289,8 +1289,6 @@ class EMLineFit(ContinuumTools):
             bestfit = initfit
             linechi2_init = 0.0
             linechi2_broad = 0.0
-
-        pdb.set_trace()
 
         # Finally, one more fitting loop with all the line-constraints relaxed.
         if False:
