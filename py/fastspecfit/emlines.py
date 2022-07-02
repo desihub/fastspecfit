@@ -23,7 +23,7 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger(DEBUG)
+log = get_logger()#DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -1235,7 +1235,7 @@ class EMLineFit(ContinuumTools):
         for icam in np.arange(len(data['cameras'])):
             pixoffset = int(np.sum(npixpercamera[:icam]))
             for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
-                if linename == 'halpha_broad' or linename == 'hbeta_broad':# or linename == 'hgamma_broad':
+                if linename == 'halpha_broad' or linename == 'hbeta_broad' or linename == 'hgamma_broad':
                     broadlinepix.append(linepix + pixoffset)
                     #print(data['wave'][icam][linepix])
 
@@ -1289,6 +1289,8 @@ class EMLineFit(ContinuumTools):
             bestfit = initfit
             linechi2_init = 0.0
             linechi2_broad = 0.0
+
+        pdb.set_trace()
 
         # Finally, one more fitting loop with all the line-constraints relaxed.
         if False:
@@ -1443,7 +1445,7 @@ class EMLineFit(ContinuumTools):
                 # Get the uncertainty in the line-amplitude based on the scatter
                 # in the pixel values from the emission-line subtracted
                 # spectrum.
-                amp_sigma = np.diff(np.percentile(specflux_nolines[lineindx], [25, 75])) / 1.349 # robust sigma
+                amp_sigma = np.diff(np.percentile(specflux_nolines[lineindx], [25, 75]))[0] / 1.349 # robust sigma
                 #clipflux, _, _ = sigmaclip(specflux_nolines[lineindx], low=3, high=3)
                 #amp_sigma = np.std(clipflux)
                 if amp_sigma > 0:
@@ -1467,9 +1469,10 @@ class EMLineFit(ContinuumTools):
 
                     result['{}_CHI2'.format(linename)] = chi2
 
-                    # keep track of sigma and z but only using 3-sigma lines
-                    if result['{}_AMP'.format(linename)] * np.sqrt(result['{}_AMP_IVAR'.format(linename)]) > 3:
-    
+                    # keep track of sigma and z but only using XX-sigma lines
+                    linesnr = result['{}_AMP'.format(linename)][0] * np.sqrt(result['{}_AMP_IVAR'.format(linename)][0])
+                    #print(linename, result['{}_AMP'.format(linename)][0], amp_sigma, linesnr)
+                    if linesnr > 2:
                         if oneline['isbroad']: # includes UV and broad Balmer lines
                             if oneline['isbalmer']:
                                 broad_sigmas.append(linesigma)
@@ -1603,6 +1606,7 @@ class EMLineFit(ContinuumTools):
         """QA plot the emission-line spectrum and best-fitting model.
 
         """
+        from astropy.table import Table, Column
         from scipy.ndimage import median_filter
         import matplotlib.pyplot as plt
         from matplotlib import colors
@@ -1684,7 +1688,41 @@ class EMLineFit(ContinuumTools):
             jpix = np.sum(npixpercam[:icam+2])
             smooth_continuum.append(_smooth_continuum[ipix:jpix])
 
+        # emission-line model with all lines, broad lines only, and narrow lines only
+        #allcols = np.array(fastspec.colnames)
+        #refline = 'HALPHA'
+        #linecols = [] # discover the data model
+        #for col in allcols:
+        #    if refline in col:
+        #        linecols.append(col.replace('{}_'.format(refline), ''))
+        #print(linecols)
+                
+        # required columns
+        fastspec_narrow = Table(fastspec['CONTINUUM_Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
+        fastspec_broad = Table(fastspec['CONTINUUM_Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
+        linecols = ['AMP', 'VSHIFT', 'SIGMA']
+        
+        for oneline in self.linetable:
+            # skip the narrow Balmer lines; we'll handle them below
+            if oneline['isbalmer'] and not oneline['isbroad']:
+                continue
+            linename = oneline['name']
+            for linecol in linecols:
+                col = '{}_{}'.format(linename.upper(), linecol)
+                if oneline['isbalmer'] and oneline['isbroad']:
+                    narrowcol = col.replace('_BROAD', '')
+                    fastspec_broad.add_column(Column(name=col, data=fastspec[col], dtype=fastspec[col].dtype))
+                    fastspec_broad.add_column(Column(name=narrowcol, data=0.0, dtype=fastspec[narrowcol].dtype))
+                    fastspec_narrow.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
+                    fastspec_narrow.add_column(Column(name=narrowcol, data=fastspec[narrowcol], dtype=fastspec[narrowcol].dtype))
+                else:
+                    # all zeros
+                    fastspec_broad.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
+                    fastspec_narrow.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
+
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
+        _emlinemodel_broad = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec_broad)
+        _emlinemodel_narrow = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec_narrow)
 
         # QA choices
         inches_wide = 20
@@ -1925,12 +1963,16 @@ class EMLineFit(ContinuumTools):
                 emlinewave = data['wave'][ii]
                 emlineflux = data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
                 emlinemodel = _emlinemodel[ii]
+                emlinemodel_broad = _emlinemodel_broad[ii]
+                emlinemodel_narrow = _emlinemodel_narrow[ii]
 
                 emlinesigma, good = ivar2var(data['ivar'][ii], sigma=True)
                 emlinewave = emlinewave[good]
                 emlineflux = emlineflux[good]
                 emlinesigma = emlinesigma[good]
                 emlinemodel = emlinemodel[good]
+                emlinemodel_broad = emlinemodel_broad[good]
+                emlinemodel_narrow = emlinemodel_narrow[good]
 
                 indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
                 #if 'alpha' in linename:
@@ -1941,7 +1983,12 @@ class EMLineFit(ContinuumTools):
                     xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
                                     emlineflux[indx]+emlinesigma[indx], color=col1[ii], alpha=0.5)
                     xx.plot(emlinewave[indx], emlinemodel[indx], color=col2[ii], lw=3)
-                    xx.axhline(y=0, color='gray', ls='-')
+                    if np.sum(emlinemodel_broad[indx]) > 0:
+                        xx.plot(emlinewave[indx], emlinemodel_broad[indx], lw=2, alpha=0.5, color='k')#col2[ii]
+                        xx.plot(emlinewave[indx], emlinemodel_narrow[indx], lw=2, alpha=0.5, color='k')#col2[ii])
+                        
+                    #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
+                    xx.axhline(y=0, color='gray', ls='--')
 
                     # get the robust range
                     sigflux = np.std(emlineflux[indx])
