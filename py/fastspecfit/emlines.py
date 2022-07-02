@@ -1233,10 +1233,7 @@ class EMLineFit(ContinuumTools):
         # do this test?
         broadlinepix = []
         for icam in np.arange(len(data['cameras'])):
-            if icam == 0:
-                pixoffset = 0
-            else:
-                pixoffset = len(data['wave'][icam-1]) # camera shift
+            pixoffset = int(np.sum(npixpercamera[:icam]))
             for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
                 if linename == 'halpha_broad' or linename == 'hbeta_broad':# or linename == 'hgamma_broad':
                     broadlinepix.append(linepix + pixoffset)
