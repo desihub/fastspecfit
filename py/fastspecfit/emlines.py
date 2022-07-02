@@ -131,28 +131,52 @@ def _tie_ciii_1908_vshift(model):
 #def _tie_nv_1243_vshift(model):
 #    return model.nv_1243_vshift
 
+def _count_free_parameters(model):
+    nfree = np.count_nonzero([model.tied[tiedkey] is False and model.fixed[fixedkey] is not False
+                              for tiedkey, fixedkey in zip(model.tied.keys(), model.fixed.keys())])
+    return nfree
+
 def _tie_lines(model):
     """Tie emission lines together using sensible constrains based on galaxy & QSO
     physics.
 
     """
+    # The following parameters are used as "tied" functions **even if the line
+    # is out of the wavelength range** so they should never be fixed!
+    neverfix = ['halpha_broad_sigma', 'halpha_broad_vshift',
+                'mgii_2803_sigma', 'mgii_2803_vshift',
+                'oiii_5007_sigma', 'oiii_5007_vshift']
+
+    # Set the doublet ratios to fixed if both lines are out of range.
+    for doublet in model.doublet_names:
+        if doublet == 'mgii_2796':
+            iline1 = model.linetable['name'] == 'mgii_2796'
+            iline2 = model.linetable['name'] == 'mgii_2803'
+            if not model.inrange[iline1] and not model.inrange[iline2]:
+                model.mgii_doublet_ratio.fixed = True
+        elif doublet == 'oii_3726':
+            iline1 = model.linetable['name'] == 'oii_3726'
+            iline2 = model.linetable['name'] == 'oii_3729'
+            if not model.inrange[iline1] and not model.inrange[iline2]:
+                model.oii_doublet_ratio.fixed = True
+        elif doublet == 'sii_6731':
+            iline1 = model.linetable['name'] == 'sii_6716'
+            iline2 = model.linetable['name'] == 'sii_6731'
+            if not model.inrange[iline1] and not model.inrange[iline2]:
+                model.sii_doublet_ratio.fixed = True
+        else:
+            errmsg = 'Unrecognized doublet -- need to add a case in _tie_lines.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+    # Now apply additional constraints **for all lines, not just those in
+    # range!**
     for iline in np.arange(len(model.linetable)):
+
         linename = model.linetable['name'][iline]
 
-        if model.inrange[iline] == False: # not in the wavelength range
-            if hasattr(model, '{}_amp'.format(linename)):
-            #if linename not in model.doublet_names:
-            #    setattr(model, '{}_amp'.format(linename), 0.0)
-            #    getattr(model, '{}_amp'.format(linename)).fixed = True
-               setattr(model, '{}_amp'.format(linename), 0.0)
-               setattr(model, '{}_sigma'.format(linename), 0.0)
-               setattr(model, '{}_vshift'.format(linename), 0.0)
-               getattr(model, '{}_amp'.format(linename)).fixed = True
-               getattr(model, '{}_sigma'.format(linename)).fixed = True
-               getattr(model, '{}_vshift'.format(linename)).fixed = True
-
-        # broad Balmer lines
-        if model.inrange[iline] and model.linetable['isbalmer'][iline] and model.linetable['isbroad'][iline] and linename != 'halpha_broad':
+        # Tie broad Balmer+He lines to Halpha.
+        if model.linetable['isbalmer'][iline] and model.linetable['isbroad'][iline] and linename != 'halpha_broad':
             getattr(model, '{}_sigma'.format(linename)).tied = _tie_halpha_broad_sigma
             getattr(model, '{}_vshift'.format(linename)).tied = _tie_halpha_broad_vshift
         #if model.inrange[iline] and model.linetable['isbalmer'][iline] and model.linetable['isbroad'][iline] and linename != 'hbeta_broad':
@@ -160,7 +184,7 @@ def _tie_lines(model):
         #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_hbeta_broad_vshift
             
         # other broad lines
-        if model.inrange[iline] and (model.linetable['isbalmer'][iline] == False) and model.linetable['isbroad'][iline]:
+        if (model.linetable['isbalmer'][iline] == False) and model.linetable['isbroad'][iline]:
             #if linename == 'siliii_1892':
             #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_ciii_1908_sigma
             #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_ciii_1908_vshift
@@ -169,11 +193,26 @@ def _tie_lines(model):
                 getattr(model, '{}_vshift'.format(linename)).tied = _tie_mgii_2803_vshift
             
         # forbidden lines and narrow Balmer & He lines
-        if model.inrange[iline] and model.linetable['isbroad'][iline] == False and linename != 'oiii_5007':
-            #model.linetable['isbalmer'][iline] == False
-            #print(linename)
+        if model.linetable['isbroad'][iline] == False and linename != 'oiii_5007':
             getattr(model, '{}_sigma'.format(linename)).tied = _tie_oiii_5007_sigma
             getattr(model, '{}_vshift'.format(linename)).tied = _tie_oiii_5007_vshift
+
+        # Now, for lines not in the wavelength range, set all their parameters
+        # to zero and fixed **except those in the neverfix list**, which are
+        # used as .tied functions below. This step should appear last.
+        if not model.inrange[iline]:
+            if hasattr(model, '{}_amp'.format(linename)): # doublet ratios have no amplitude
+               setattr(model, '{}_amp'.format(linename), 0.0)
+               getattr(model, '{}_amp'.format(linename)).fixed = True
+            if '{}_sigma'.format(linename) not in neverfix:
+                setattr(model, '{}_sigma'.format(linename), 0.0)
+                getattr(model, '{}_sigma'.format(linename)).fixed = True
+            if '{}_vshift'.format(linename) not in neverfix:
+                setattr(model, '{}_vshift'.format(linename), 0.0)
+                getattr(model, '{}_vshift'.format(linename)).fixed = True
+
+    #nfree = model.count_free_parameters()
+    #log.info('Number of free parameters to optimize: {}'.format(nfree))
 
     #for pp in model.param_names:
     #    print(getattr(model, pp))
@@ -801,6 +840,12 @@ class EMLineModel(Fittable1DModel):
             
         return np.hstack(emlinemodel)
 
+    def count_free_parameters(self):
+        """Count the number of free (not tied, not fixed) parameters in the model."""
+        nfree = np.count_nonzero([not self.tied[tiedkey] and not self.fixed[fixedkey]
+                                  for tiedkey, fixedkey in zip(self.tied.keys(), self.fixed.keys())])
+        return nfree
+
 class EMLineFit(ContinuumTools):
     """Class to fit an emission-line spectrum.
 
@@ -912,7 +957,7 @@ class EMLineFit(ContinuumTools):
     def chi2(self, bestfit, emlinewave, emlineflux, emlineivar, continuum_model=None, return_dof=False):
         """Compute the reduced chi^2."""
         #nfree = len(bestfit.parameters)
-        nfree = np.sum([bestfit.tied[key] is not False for key in bestfit.tied.keys()])
+        nfree = bestfit.count_free_parameters()
         dof = np.sum(emlineivar > 0) - nfree
         if dof > 0:
             emlinemodel = bestfit(emlinewave)
@@ -979,6 +1024,7 @@ class EMLineFit(ContinuumTools):
             # set it to zero. Important: need to loop over *all* lines (not just
             # those in range).
             initkeys = init_amplitudes.keys()
+
             for linename in self.linetable['name'].data:
                 if not hasattr(bestfit, '{}_amp'.format(linename)): # skip the physical doubleta
                     continue
@@ -998,7 +1044,8 @@ class EMLineFit(ContinuumTools):
                     (sigma.value == sigma.default)
                     #(sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1])
                     ):
-                    log.debug('Dropping {} (amp={:.3f}, sigma={:.3f})'.format(linename, amp.value, sigma.value))
+                    log.debug('Dropping {} (amp={:.3f}, sigma={:.3f}, vshift={:.3f})'.format(
+                        linename, amp.value, sigma.value, vshift.value))
 
                     setattr(bestfit, '{}_amp'.format(linename), 0.0)
                     setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma.default)
@@ -1067,17 +1114,16 @@ class EMLineFit(ContinuumTools):
                                        npixpercamera=npixpercamera,
                                        log10wave=self.log10wave)
 
-        # Do a fast update of the initial line-amplitudes which especially helps
-        # with cases like 39633354915582193 (tile 80613, petal 05), which has
-        # strong narrow lines.
-        init_amplitudes, init_sigmas = {}, {}
+        # For all lines in range, do a fast update of the initial
+        # line-amplitudes which especially helps with cases like
+        # 39633354915582193 (tile 80613, petal 05), which has strong narrow
+        # lines.
+        init_amplitudes = {}
         coadd_emlineflux = np.interp(data['coadd_wave'], emlinewave, emlineflux)
-        #coadd_emlineflux = data['coadd_flux'] - np.interp(data['coadd_wave'], emlinewave, continuummodelflux+smoothcontinuummodelflux)
         for linename, linepix in zip(data['coadd_linename'], data['coadd_linepix']):
             # skip the physical doublets
-            if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): 
+            if not hasattr(self.EMLineModel, '{}_amp'.format(linename)):
                 continue
-            
             npix = len(linepix)
             if npix > 5:
                 mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
@@ -1097,7 +1143,6 @@ class EMLineFit(ContinuumTools):
             
             # force broad Balmer lines to be positive
             iline = self.linetable[self.linetable['name'] == linename]
-            #if iline['isbroad']:
             if iline['isbroad']:
                 if iline['isbalmer']:
                     bounds = [0.0, mx]
@@ -1111,48 +1156,42 @@ class EMLineFit(ContinuumTools):
             setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
             getattr(self.EMLineModel, '{}_amp'.format(linename)).bounds = bounds
 
-            init_amplitudes.update({linename: amp})
-            init_sigmas.update({linename: getattr(self.EMLineModel, '{}_sigma'.format(linename)).value})
+            init_amplitudes[linename] = amp
 
-            # Optionally update the initial line-width.
+        # Now update the linewidth but here we need to loop over *all* lines
+        # (not just those in range). E.g., if H-alpha is out of range we need to
+        # set its initial value correctly since other lines are tied to it
+        # (e.g., main-bright-32406-39628257196245904).
+        init_sigmas = {}
+        for iline in self.linetable:
+            linename = iline['name']
+            # If sigma is zero here, it was set in _tie_lines because the line
+            # is out of range and not a "neverfix" line.
+            if getattr(self.EMLineModel, '{}_sigma'.format(linename)) == 0:
+                continue
+            init_sigmas['{}_fixed'.format(linename)] = getattr(self.EMLineModel, '{}_sigma'.format(linename)).fixed
+            init_sigmas['{}_vshift'.format(linename)] = getattr(self.EMLineModel, '{}_vshift'.format(linename)).value
             if iline['isbroad']:
                 if iline['isbalmer']:
                     if data['linesigma_balmer_snr'] > 0: # broad Balmer lines
                         setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
-                        init_sigmas[linename] = getattr(self.EMLineModel, '{}_sigma'.format(linename)).value                        
+                        #getattr(self.EMLineModel, '{}_sigma'.format(linename)).default = data['linesigma_balmer']
+                        init_sigmas[linename] = data['linesigma_balmer']
                 else:
                     if data['linesigma_uv_snr'] > 0: # broad UV/QSO lines
                         setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_uv'])
-                        init_sigmas[linename] = getattr(self.EMLineModel, '{}_sigma'.format(linename)).value                        
+                        #getattr(self.EMLineModel, '{}_sigma'.format(linename)).default = data['linesigma_uv']
+                        init_sigmas[linename] = data['linesigma_uv']
             else:
                 # prefer narrow over Balmer
                 if data['linesigma_narrow_snr'] > 0:
                     setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_narrow'])
-                    init_sigmas[linename] = getattr(self.EMLineModel, '{}_sigma'.format(linename)).value                        
+                    #getattr(self.EMLineModel, '{}_sigma'.format(linename)).default = data['linesigma_narrow']
+                    init_sigmas[linename] = data['linesigma_narrow']
                 #elif data['linesigma_narrow_snr'] == 0 and data['linesigma_narrow_balmer'] > 0:
                 #    setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
-                #    init_sigmas[linename] = getattr(self.EMLineModel, '{}_sigma'.format(linename)).value                        
-                            
-        # Next, make sure all the tied lines have the correct initial values.
-        for pp in self.EMLineModel.param_names:
-            tied = getattr(self.EMLineModel, pp).tied
-            if tied:
-                setattr(self.EMLineModel, pp, tied(self.EMLineModel))
-                
-        #self.EMLineModel.nii_6548_amp = _tie_nii_amp(self.EMLineModel)
-        #self.EMLineModel.oiii_4959_amp = _tie_oiii_amp(self.EMLineModel)
-        ##self.EMLineModel.oii_3726_amp = _tie_oii_blue_amp(self.EMLineModel)
-        #self.EMLineModel.oii_7330_amp = _tie_oii_red_amp(self.EMLineModel)
-        ##self.EMLineModel.siii_9069_amp = _tie_siii_amp(self.EMLineModel)
-
-        # Initial fit: set the broad-line Balmer amplitudes to zero and fixed.
-        for linename in data['coadd_linename']:
-            iline = self.linetable[self.linetable['name'] == linename]
-            if iline['isbroad'] and iline['isbalmer']:
-                setattr(self.EMLineModel, '{}_amp'.format(linename), 0.0)
-                setattr(self.EMLineModel, '{}_vshift'.format(linename), 0.0)
-                getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = True
-                getattr(self.EMLineModel, '{}_vshift'.format(linename)).fixed = True
+                #    getattr(self.EMLineModel, '{}_sigma'.format(linename)).default = data['linesigma_balmer']
+                #    init_sigmas[linename] = data['linesigma_balmer']
 
         #print('HACK!!!!!!!!!!!')
         #self.EMLineModel.halpha_sigma.tied = False
@@ -1162,24 +1201,36 @@ class EMLineFit(ContinuumTools):
         #self.EMLineModel.mgii_2800_sigma = 5000.0
         #self.EMLineModel.siliii_1892_sigma.bounds = [1, 1e4]
         #self.EMLineModel.mgii_2800_amp.bounds = [None, None]
-        
         #self.EMLineModel.mgii_2803_amp.bounds = [None, 5*5.202380598696401]
         #self.EMLineModel.mgii_2803_sigma.bounds = [None, None]
         #self.EMLineModel.mgii_2803_vshift.bounds = [None, None]
 
         t0 = time.time()        
+        # Initial fit: set the broad-line Balmer amplitudes to zero and
+        # fixed. Need to loop over all lines, not just those in range.
+        IB = self.linetable['isbroad'] * self.linetable['isbalmer']
+        for linename in self.linetable['name'][IB]:
+            setattr(self.EMLineModel, '{}_amp'.format(linename), 0.0)
+            setattr(self.EMLineModel, '{}_vshift'.format(linename), 0.0)
+            setattr(self.EMLineModel, '{}_sigma'.format(linename), 0.0)
+            getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = True
+            getattr(self.EMLineModel, '{}_vshift'.format(linename)).fixed = True
+            getattr(self.EMLineModel, '{}_sigma'.format(linename)).fixed = True
+        nfree = self.EMLineModel.count_free_parameters()
+        #for pp in self.EMLineModel.param_names:
+        #    print(getattr(self.EMLineModel, pp))
+    
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
-        
-        #print(initfit.mgii_2800_sigma, initfit.mgii_2800_vshift, initfit.mgii_2800_amp)
         initfit = _clean_linefit(initfit, init_amplitudes, init_sigmas)
-
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
-        log.info('Initial line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
-            time.time()-t0, fitter.fit_info['nfev'], initchi2))
+        log.info('Initial line-fitting with {} free parameters took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
+            nfree, time.time()-t0, fitter.fit_info['nfev'], initchi2))
 
-        # Now try adding bround Balmer and helium lines and see if we improve the chi2.
+        # Now try adding bround Balmer and helium lines and see if we improve
+        # the chi2. First, do we have enough pixels around Halpha and Hbeta to
+        # do this test?
         broadlinepix = []
         for icam in np.arange(len(data['cameras'])):
             if icam == 0:
@@ -1190,35 +1241,38 @@ class EMLineFit(ContinuumTools):
                 if linename == 'halpha_broad' or linename == 'hbeta_broad':# or linename == 'hgamma_broad':
                     broadlinepix.append(linepix + pixoffset)
                     #print(data['wave'][icam][linepix])
-                    
-        if len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10: # require 10 pixels
+
+        # Require minimum XX pixels.
+        if len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10: 
             broadlinepix = np.hstack(broadlinepix)
-            for linename in data['coadd_linename']:
-                # skip the physical doublets
-                if not hasattr(self.EMLineModel, '{}_amp'.format(linename)): 
-                    continue
-                # Free the broad Balmer lines.
-                iline = self.linetable[self.linetable['name'] == linename]
-                if iline['isbroad'] and iline['isbalmer']:
-                    setattr(self.EMLineModel, '{}_amp'.format(linename), init_amplitudes[linename])
+
+            t0 = time.time()
+            # Restore the broad lines. Need to loop over all lines, not just
+            # those in range. Do not update the narrow lines in case we hit a
+            # local minium in initfit.
+            IB = self.linetable['isbroad'] * self.linetable['isbalmer']
+            for linename in self.linetable['name'][IB]:
+                if linename in init_amplitudes.keys():
+                    setattr(self.EMLineModel, '{}_amp'.format(linename), 0.0)
                     getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = False
-                    setattr(self.EMLineModel, '{}_vshift'.format(linename), 1.0)
-                    getattr(self.EMLineModel, '{}_vshift'.format(linename)).fixed = False
-                else:
-                    # Should we also update amp and vshift of the narrow lines?
-                    setattr(self.EMLineModel, '{}_amp'.format(linename), getattr(initfit, '{}_amp'.format(linename)).value)
-                    setattr(self.EMLineModel, '{}_vshift'.format(linename), getattr(initfit, '{}_vshift'.format(linename)).value)
-    
-            t0 = time.time()        
+                # If sigma is not in the dictionary then keep sigma and vshift equal to zero and fixed.
+                if linename in init_sigmas.keys():
+                    setattr(self.EMLineModel, '{}_sigma'.format(linename), init_sigmas[linename])
+                    setattr(self.EMLineModel, '{}_vshift'.format(linename), init_sigmas['{}_vshift'.format(linename)])
+                    getattr(self.EMLineModel, '{}_sigma'.format(linename)).fixed = init_sigmas['{}_fixed'.format(linename)]
+                    getattr(self.EMLineModel, '{}_vshift'.format(linename)).fixed = init_sigmas['{}_fixed'.format(linename)]
+
+            #for pp in self.EMLineModel.param_names:
+            #    print(getattr(self.EMLineModel, pp))
+            nfree = self.EMLineModel.count_free_parameters()
+            
             fitter = FastLevMarLSQFitter(self.EMLineModel)
             broadfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                               maxiter=maxiter, acc=accuracy)
-            pdb.set_trace()
-            
             broadfit = _clean_linefit(broadfit, init_amplitudes, init_sigmas)
             broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar)
-            log.info('Second (broad) line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
-                time.time()-t0, fitter.fit_info['nfev'], broadchi2))
+            log.info('Second (broad) line-fitting with {} free parameters took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
+                nfree, time.time()-t0, fitter.fit_info['nfev'], broadchi2))
 
             # Compare chi2 just in and around the broad lines. Need to account
             # for the different number of degrees of freedom!
@@ -1253,7 +1307,7 @@ class EMLineFit(ContinuumTools):
             fitter = FastLevMarLSQFitter(bestfit)
             finalfit = fitter(bestfit, emlinewave, emlineflux, weights=weights,
                               maxiter=maxiter, acc=accuracy)
-            finalfit = _clean_linefit(finalfit, init_amplitudes, init_sigmas)
+            finalfit = _clean_linefit(finalfit, init_amplitudes)
             chi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar)
             log.info('Final line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
                 time.time()-t0, fitter.fit_info['nfev'], chi2))
@@ -1278,6 +1332,9 @@ class EMLineFit(ContinuumTools):
         for pp in finalfit.param_names:
             pinfo = getattr(finalfit, pp)
             val = pinfo.value
+            # If the parameter was not optimized, set its value to zero.
+            if pinfo.fixed:
+                val = 0.0
             # special case the tied doublets
             if pp == 'oii_doublet_ratio':
                 result['OII_DOUBLET_RATIO'] = val
@@ -1474,43 +1531,44 @@ class EMLineFit(ContinuumTools):
                 log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
             log.debug(' ')
 
-            #if 'MGII' in linename:
-            #    pdb.set_trace()
-
-            # simple QA
-            if 'alpha' in linename and False:
-                sigma_cont = 150.0
-                import matplotlib.pyplot as plt
-                _indx = np.where((emlinewave > (linezwave - 15*sigma_cont * linezwave / C_LIGHT)) *
-                                (emlinewave < (linezwave + 15*sigma_cont * linezwave / C_LIGHT)))[0]
-                plt.plot(emlinewave[_indx], emlineflux[_indx])
-                plt.plot(emlinewave[_indx], specflux_nolines[_indx])
-                plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
-                plt.axhline(y=cmed, color='k')
-                plt.axhline(y=cmed+csig/np.sqrt(len(indx)), color='k', ls='--')
-                plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
-                plt.savefig('junk.png')
+            ## simple QA
+            #if 'alpha' in linename and False:
+            #    sigma_cont = 150.0
+            #    import matplotlib.pyplot as plt
+            #    _indx = np.where((emlinewave > (linezwave - 15*sigma_cont * linezwave / C_LIGHT)) *
+            #                    (emlinewave < (linezwave + 15*sigma_cont * linezwave / C_LIGHT)))[0]
+            #    plt.plot(emlinewave[_indx], emlineflux[_indx])
+            #    plt.plot(emlinewave[_indx], specflux_nolines[_indx])
+            #    plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
+            #    plt.axhline(y=cmed, color='k')
+            #    plt.axhline(y=cmed+csig/np.sqrt(len(indx)), color='k', ls='--')
+            #    plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
+            #    plt.savefig('junk.png')
 
         # clean up the doublets; 
-        if result['OIII_5007_AMP'] == 0 and result['OIII_5007_NPIX'] > 0 and result['OIII_4959_AMP'] > 0:
+        if result['OIII_5007_AMP'] == 0 and result['OIII_5007_NPIX'] > 0:
             result['OIII_4959_AMP'] = 0.0
             result['OIII_4959_FLUX'] = 0.0
             result['OIII_4959_EW'] = 0.0
 
-        if result['NII_6584_AMP'] == 0 and result['NII_6584_NPIX'] > 0 and result['NII_6548_AMP'] > 0:
+        if result['NII_6584_AMP'] == 0 and result['NII_6584_NPIX'] > 0:
             result['NII_6548_AMP'] = 0.0
             result['NII_6548_FLUX'] = 0.0
             result['NII_6548_EW'] = 0.0
 
-        if result['OII_3729_AMP'] == 0 and result['OII_3729_NPIX'] > 0 and result['OII_3726_AMP'] > 0:
-            result['OII_3726_AMP'] = 0.0
-            result['OII_3726_FLUX'] = 0.0
-            result['OII_3726_EW'] = 0.0
+        #if result['OII_3729_AMP'] == 0 and result['OII_3729_NPIX'] > 0:
+        #    result['OII_3726_AMP'] = 0.0
+        #    result['OII_3726_FLUX'] = 0.0
+        #    result['OII_3726_EW'] = 0.0
 
-        if result['OII_7320_AMP'] == 0 and result['OII_7320_NPIX'] > 0 and result['OII_7330_AMP'] > 0:
+        if result['OII_7320_AMP'] == 0 and result['OII_7320_NPIX'] > 0:
             result['OII_7330_AMP'] = 0.0
             result['OII_7330_FLUX'] = 0.0
             result['OII_7330_EW'] = 0.0
+
+        for col in ('MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'):
+            log.debug('{}: {:.4f}'.format(col, result[col][0]))
+        log.debug(' ')
 
         # get the average emission-line redshifts and velocity widths
         if len(narrow_redshifts) > 0:
