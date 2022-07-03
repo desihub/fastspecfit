@@ -23,7 +23,7 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger(DEBUG)
+log = get_logger()#DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.

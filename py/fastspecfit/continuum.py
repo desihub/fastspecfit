@@ -576,11 +576,11 @@ class ContinuumTools(object):
             sivar = sivar[noline]
 
             cflux = sigma_clip(sflux, sigma=2.0, cenfunc='median', stdfunc='std', masked=False, grow=1.5)
-            if np.sum(np.isnan(cflux)) < 10:
+            if np.sum(np.isfinite(cflux)) < 10:
                 smooth_mask.append(True)
                 continue
 
-            I = np.isfinite(cflux)
+            I = np.isfinite(cflux) # should never be fully masked!
             smooth_wave.append(np.mean(swave[I]))
             smooth_mask.append(False)
 
@@ -1111,21 +1111,22 @@ class ContinuumTools(object):
             nmodel = nage*nprop
             sspflux = sspflux.reshape(npix, nmodel)
         else:
-            log.fatal('Input SSPs have an unrecognized number of dimensions, {}'.format(ndim))
-            raise ValueError
+            errmsg = 'Input SSPs have an unrecognized number of dimensions, {}'.format(ndim)
+            log.critical(errmsg)
+            raise ValueError(errmsg)
         
         #t0 = time.time()
         ##sspflux = sspflux.copy().reshape(npix, nmodel)
         #log.info('Copying the data took: {:.2f} sec'.format(time.time()-t0))
 
-        # apply reddening
+        # optionally apply reddening
         if AV:
             atten = self.dust_attenuation(sspwave, AV)
             sspflux *= atten[:, np.newaxis]
 
-        ## broaden for velocity dispersion
-        #if vdisp:
-        #    sspflux = self.convolve_vdisp(sspflux, vdisp)
+        # broaden for velocity dispersion
+        if vdisp:
+            sspflux = self.convolve_vdisp(sspflux, vdisp)
 
         # Apply the redshift factor. The models are normalized to 10 pc, so
         # apply the luminosity distance factor here. Also normalize to a nominal
@@ -1168,9 +1169,10 @@ class ContinuumTools(object):
             for imodel in np.arange(nmodel):
                 datasspflux.append(self.smooth_and_resample(zsspflux[:, imodel], zsspwave))
             datasspflux = np.vstack(datasspflux).T
-                
-            if vdisp:
-                 datasspflux = self.convolve_vdisp(datasspflux, vdisp)
+
+            ## This is wrong...
+            #if vdisp:
+            #     datasspflux = self.convolve_vdisp(datasspflux, vdisp)
                  
             # optionally compute the best-fitting model
             if coeff is not None:
@@ -1190,8 +1192,9 @@ class ContinuumTools(object):
                         zsspflux[:, imodel], zsspwave, specwave=specwave[icamera],
                         specres=specres[icamera]))
                 _datasspflux = np.vstack(_datasspflux).T
-                if vdisp:
-                    _datasspflux = self.convolve_vdisp(_datasspflux, vdisp)
+                ## This is wrong...
+                #if vdisp:
+                #    _datasspflux = self.convolve_vdisp(_datasspflux, vdisp)
                 if coeff is not None:
                     _datasspflux = _datasspflux.dot(coeff)
                 datasspflux.append(_datasspflux)
@@ -1229,6 +1232,8 @@ class ContinuumFit(ContinuumTools):
         super(ContinuumFit, self).__init__(metallicity=metallicity, minwave=minwave, 
                                            maxwave=maxwave, mapdir=mapdir)
 
+        self.nolegend = nolegend
+
         # Initialize the velocity dispersion and reddening parameters. Make sure
         # the nominal values are in the grid.
         self.solve_vdisp = solve_vdisp
@@ -1265,23 +1270,39 @@ class ContinuumFit(ContinuumTools):
         # Next, precompute a grid of spectra convolved to the nominal velocity
         # dispersion with reddening applied. This isn't quite right redward of
         # ~1 micron where the pixel size changes, but fix that later.
-        sspflux_dustvdisp = []
+        sspflux_dustnomvdisp = []
         for AV in self.AV:
             atten = self.dust_attenuation(self.sspwave, AV)
-            _sspflux_dustvdisp = self.convolve_vdisp(self.sspflux * atten[:, np.newaxis], self.vdisp_nominal)
-            sspflux_dustvdisp.append(_sspflux_dustvdisp)
+            _sspflux_dustnomvdisp = self.convolve_vdisp(self.sspflux * atten[:, np.newaxis], self.vdisp_nominal)
+            sspflux_dustnomvdisp.append(_sspflux_dustnomvdisp)
+
+        #import matplotlib.pyplot as plt
+        #plt.plot(self.sspwave, self.sspflux[:, 5])
+        #plt.plot(self.sspwave, sspflux_dustnomvdisp[3][:, 5])
+        #plt.xlim(3500, 4700)
+        #plt.savefig('desi-users/ioannis/tmp/test-vdisp.png')
 
         # nominal velocity broadening on a grid of A(V) [npix,nage,nAV]
-        self.sspflux_dustvdisp = np.stack(sspflux_dustvdisp, axis=-1) # [npix,nage,nAV]
+        self.sspflux_dustnomvdisp = np.stack(sspflux_dustnomvdisp, axis=-1) # [npix,nage,nAV]
 
-        # Do a throw-away trapezoidal resampling so we can compile the numba
-        # code when instantiating this class.
-        #from redrock.rebin import trapz_rebin
-        #t0 = time.time()
-        #_ = trapz_rebin(np.arange(4), np.ones(4), np.arange(2)+1)
-        #print('Initial rebin ', time.time() - t0)
+        # Finally, optionally precompute a grid of spectra with nominal
+        # reddening on a grid of velocity dispersion. Again, this isn't quite
+        # right redward of ~1 micron where the pixel size changes.
+        if self.solve_vdisp:
+            sspflux_vdispnomdust = []
+            for vdisp in self.vdisp:
+                _sspflux_vdispnomdust = self.convolve_vdisp(self.sspflux, vdisp)
+                sspflux_vdispnomdust.append(_sspflux_vdispnomdust)
 
-        self.nolegend = nolegend
+            #import matplotlib.pyplot as plt
+            #plt.plot(self.sspwave, self.sspflux[:, 5])
+            #plt.plot(self.sspwave, sspflux_vdispnomdust[3][:, 5])
+            #plt.plot(self.sspwave, sspflux_vdispnomdust[7][:, 5])
+            #plt.xlim(3500, 4700)
+            #plt.savefig('desi-users/ioannis/tmp/test-vdisp.png')
+    
+            # nominal dust on a grid of velocity broadening [npix,nage,nvdisp]
+            self.sspflux_vdispnomdust = np.stack(sspflux_vdispnomdust, axis=-1) # [npix,nage,nvdisp]
 
     def init_spec_output(self, nobj=1):
         """Initialize the output data table for this class.
@@ -1561,13 +1582,13 @@ class ContinuumFit(ContinuumTools):
         redshift = data['zredrock']
         #result['CONTINUUM_Z'] = redshift
 
-        # Prepare the reddened and unreddened SSP templates. Note that we ignore
-        # templates which are older than the age of the universe at the galaxy
-        # redshift.
+        # Prepare the reddened and unreddened SSP templates by redshifting and
+        # normalizing. Note that we ignore templates which are older than the
+        # age of the universe at the galaxy redshift.
         agekeep = self.younger_than_universe(redshift)
         t0 = time.time()
-        zsspflux_dustvdisp, zsspphot_dustvdisp = self.SSP2data(
-            self.sspflux_dustvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
+        zsspflux_dustnomvdisp, zsspphot_dustnomvdisp = self.SSP2data(
+            self.sspflux_dustnomvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
             redshift=redshift, specwave=None, specres=None,
             south=data['photsys'] == 'S')
         log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
@@ -1583,17 +1604,17 @@ class ContinuumFit(ContinuumTools):
             coeff = np.zeros(self.nage)
             continuummodel = np.zeros(len(self.sspwave))
         else:
-            zsspflam_dustvdisp = zsspphot_dustvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
+            zsspflam_dustnomvdisp = zsspphot_dustnomvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
 
             inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0
 
-            npix, nmodel = zsspflux_dustvdisp.shape
+            npix, nmodel = zsspflux_dustnomvdisp.shape
             nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
 
-            zsspflam_dustvdisp = zsspflam_dustvdisp.reshape(len(self.bands), nage, self.nAV) # [nband,nage,nAV]
+            zsspflam_dustnomvdisp = zsspflam_dustnomvdisp.reshape(len(self.bands), nage, self.nAV) # [nband,nage,nAV]
 
             t0 = time.time()
-            AVchi2min, AVbest, AVivar = self._fnnls_parallel(zsspflam_dustvdisp, objflam, objflamivar,
+            AVchi2min, AVbest, AVivar = self._fnnls_parallel(zsspflam_dustnomvdisp, objflam, objflamivar,
                                                              xparam=self.AV, debug=False)
             log.info('Fitting the photometry took: {:.2f} sec'.format(time.time()-t0))
             if AVivar > 0:
@@ -1605,7 +1626,7 @@ class ContinuumFit(ContinuumTools):
 
             # Get the final set of coefficients and chi2 at the best-fitting
             # reddening and nominal velocity dispersion.
-            bestsspflux, bestphot = self.SSP2data(self.sspflux_dustvdisp[:, agekeep, inodust], # equivalent to calling with self.sspflux[:, agekeep]
+            bestsspflux, bestphot = self.SSP2data(self.sspflux_dustnomvdisp[:, agekeep, inodust], # equivalent to calling with self.sspflux[:, agekeep]
                                                   self.sspwave, AV=AVbest, redshift=redshift,
                                                   south=data['photsys'] == 'S')
             coeff, chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
@@ -1681,17 +1702,6 @@ class ContinuumFit(ContinuumTools):
         for icam, cam in enumerate(data['cameras']):
             result['CONTINUUM_SNR_{}'.format(cam.upper())] = data['snr'][icam]
 
-        # Prepare the reddened and unreddened SSP templates. Note that we ignore
-        # templates which are older than the age of the universe at the redshift
-        # of the object.
-        agekeep = self.younger_than_universe(redshift)
-        t0 = time.time()
-        zsspflux_dustvdisp, _ = self.SSP2data(
-            self.sspflux_dustvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
-            redshift=redshift, specwave=data['wave'], specres=data['res'],
-            cameras=data['cameras'], synthphot=False)
-        log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
-        
         # Combine all three cameras; we will unpack them to build the
         # best-fitting model (per-camera) below.
         npixpercamera = [len(gw) for gw in data['wave']]
@@ -1700,25 +1710,31 @@ class ContinuumFit(ContinuumTools):
         specwave = np.hstack(data['wave'])
         specflux = np.hstack(data['flux'])
         specivar = np.hstack(data['ivar']) * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
-        if np.all(specivar == 0):
-            errmsg = 'All pixels are masked!'
+        if np.all(specivar == 0) or np.any(specivar < 0):
+            errmsg = 'All pixels are masked or some inverse variances are negative!'
             log.critical(errmsg)
             raise ValueError(errmsg)
         
-        zsspflux_dustvdisp = np.concatenate(zsspflux_dustvdisp, axis=0)  # [npix,nage*nAV]
-        assert(np.all(specivar >= 0))
-
-        inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0 here
-
-        npix, nmodel = zsspflux_dustvdisp.shape
+        # Prepare the reddened and unreddened SSP templates by redshifting and
+        # normalizing. Note that we ignore templates which are older than the
+        # age of the universe at the redshift of the object.
+        agekeep = self.younger_than_universe(redshift)
+        t0 = time.time()
+        zsspflux_dustnomvdisp, _ = self.SSP2data(
+            self.sspflux_dustnomvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
+            redshift=redshift, specwave=data['wave'], specres=data['res'],
+            cameras=data['cameras'], synthphot=False)
+        zsspflux_dustnomvdisp = np.concatenate(zsspflux_dustnomvdisp, axis=0)  # [npix,nage*nAV]
+        npix, nmodel = zsspflux_dustnomvdisp.shape
         nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
-
-        zsspflux_dustvdisp = zsspflux_dustvdisp.reshape(npix, nage, self.nAV)       # [npix,nage,nAV]
+        zsspflux_dustnomvdisp = zsspflux_dustnomvdisp.reshape(npix, nage, self.nAV)       # [npix,nage,nAV]
+        log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
 
         ## Fit the spectra with *no* dust reddening so we can identify potential
         ## calibration issues (again, at the nominal velocity dispersion).
         #t0 = time.time()
-        #coeff, chi2min = self._fnnls_parallel(zsspflux_dustvdisp[:, :, inodust],
+        #inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0 here
+        #coeff, chi2min = self._fnnls_parallel(zsspflux_dustnomvdisp[:, :, inodust],
         #                                      specflux, specivar)
         #log.info('No-dust model fit has chi2={:.3f} and took {:.2f} sec'.format(
         #    chi2min, time.time()-t0))
@@ -1729,7 +1745,7 @@ class ContinuumFit(ContinuumTools):
         # Fit the spectra for reddening using the models convolved to the
         # nominal velocity dispersion.
         t0 = time.time()
-        AVchi2min, AVbest, AVivar = self._fnnls_parallel(zsspflux_dustvdisp, specflux, specivar,
+        AVchi2min, AVbest, AVivar = self._fnnls_parallel(zsspflux_dustnomvdisp, specflux, specivar,
                                                          xparam=self.AV, debug=False)
         log.info('Fitting for the reddening took: {:.2f} sec'.format(time.time()-t0))
         if AVivar > 0:
@@ -1743,6 +1759,8 @@ class ContinuumFit(ContinuumTools):
         # Optionally build out the model spectra on our grid of velocity
         # dispersion and then solve.
         if self.solve_vdisp:
+            # Here!
+            pdb.set_trace()
             t0 = time.time()
             zsspflux_vdisp = []
             for vdisp in self.vdisp:
