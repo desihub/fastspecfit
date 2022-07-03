@@ -1909,22 +1909,27 @@ class EMLineFit(ContinuumTools):
             meanwaves.append(np.mean(self.linetable['restwave'][I]))
             deltawaves.append((np.max(self.linetable['restwave'][I]) - np.min(self.linetable['restwave'][I])) / 2)
 
-            if np.any(self.linetable['isbroad'][I]):
-                if np.any(self.linetable['isbalmer'][I]):
-                    plotsig = fastspec['BROAD_SIGMA']
-                    if plotsig < 50:
-                        plotsig = fastspec['NARROW_SIGMA']
-                        if plotsig < 50:
-                            plotsig = plotsig_default
-                            #plotsig = plotsig_default_broad
-                else:
-                    plotsig = fastspec['UV_SIGMA']                    
-                    if plotsig < 50:
-                        plotsig = plotsig_default_broad
+            sigmas1 = np.array([fastspec['{}_SIGMA'.format(line.upper())] for line in self.linetable[I]['name']])
+            sigmas1 = sigmas1[sigmas1 > 0]
+            if len(sigmas1) > 0:
+                plotsig = 1.5*np.mean(sigmas1)
             else:
-                plotsig = fastspec['NARROW_SIGMA']
-                if plotsig < 50:
-                    plotsig = plotsig_default
+                if np.any(self.linetable['isbroad'][I]):
+                    if np.any(self.linetable['isbalmer'][I]):
+                        plotsig = fastspec['BROAD_SIGMA']
+                        if plotsig < 50:
+                            plotsig = fastspec['NARROW_SIGMA']
+                            if plotsig < 50:
+                                plotsig = plotsig_default
+                                #plotsig = plotsig_default_broad
+                    else:
+                        plotsig = fastspec['UV_SIGMA']                    
+                        if plotsig < 50:
+                            plotsig = plotsig_default_broad
+                else:
+                    plotsig = fastspec['NARROW_SIGMA']
+                    if plotsig < 50:
+                        plotsig = plotsig_default
             sigmas.append(plotsig)
 
         srt = np.argsort(meanwaves)
@@ -1976,12 +1981,13 @@ class EMLineFit(ContinuumTools):
                 if len(indx) > 1:
                     removelabels[iax] = False
                     xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
-                                    emlineflux[indx]+emlinesigma[indx], color=col1[ii], alpha=0.5)
+                                    emlineflux[indx]+emlinesigma[indx], color=col1[ii],
+                                    alpha=0.5)
                     # plot the individual lines first then the total model
                     for emlinemodel_oneline1 in emlinemodel_oneline:
                         if np.sum(emlinemodel_oneline1[indx]) > 0:
-                            P = emlinemodel_oneline1[indx] > 0
-                            xx.plot(emlinewave[indx][P], emlinemodel_oneline1[indx][P], lw=2, alpha=0.5, color=col1[ii])
+                            #P = emlinemodel_oneline1[indx] > 0
+                            xx.plot(emlinewave[indx], emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[ii])
                     xx.plot(emlinewave[indx], emlinemodel[indx], color=col2[ii], lw=3)
                         
                     #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
