@@ -9,6 +9,9 @@ DESI at ~1 micron) but to save space every just fourth pixel longward of 1
 micron (so an effective pixel spacing of ~100 km/s) is written out.  Each SSP
 has ~83,000 pixels.
 
+version 1.0: 25 km/s pixels
+version 1.1: 10 km/s pixels
+
 """
 import os, pdb
 import numpy as np
@@ -16,7 +19,8 @@ import numpy as np
 from scipy import constants
 C_LIGHT = constants.c / 1000.0 # [km/s]
 
-ssppath = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z-loglam'
+ssppath = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
+version = 'v1.1'
 
 def _CKC2fits(metallicity='Z0.0190'):
     from astropy.io import fits
@@ -30,11 +34,11 @@ def _CKC2fits(metallicity='Z0.0190'):
 
     sspfile = os.path.join(ssppath, 'spec', 'SSP_{}_{}_{}_{}.out.spec'.format(
         isochrone, library, imf, metallicity))
-    outfile = os.path.join(ssppath, 'SSP_{}_{}_{}_{}.fits'.format(
+    outfile = os.path.join(ssppath, version, 'SSP_{}_{}_{}_{}.fits'.format(
         isochrone, library, imf, metallicity))
 
     skiprow = 8 # skip the informational header
-    nage, _npix = np.loadtxt(sspfile, skiprows=skiprow, max_rows=1, dtype=np.int, unpack=True)
+    nage, _npix = np.loadtxt(sspfile, skiprows=skiprow, max_rows=1, dtype=int, unpack=True)
     skiprow += 1
 
     wave = np.loadtxt(sspfile, skiprows=skiprow, max_rows=1) # vacuum wavelengths
@@ -43,7 +47,7 @@ def _CKC2fits(metallicity='Z0.0190'):
 
     # Resample to constant log-lambda / velocity. In the IR (starting at ~1
     # micron), take every fourth sampling, to save space.
-    pixkms = 25.0                            # pixel size [km/s]
+    pixkms = 10.0                            # pixel size [km/s]
     irfactor = 4
     wavesplit = 1e4
     dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
@@ -89,6 +93,7 @@ def _CKC2fits(metallicity='Z0.0190'):
     
     hduflux = fits.PrimaryHDU(flux.value)
     hduflux.header['EXTNAME'] = 'FLUX'
+    hduflux.header['VERSION'] = version
     hduflux.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
     hduwave = fits.ImageHDU(newwave.value)
@@ -113,4 +118,3 @@ if __name__ == '__main__':
     #for metallicity in [allZ[6]]:
     for metallicity in allZ:
         _CKC2fits(metallicity)
-
