@@ -401,8 +401,9 @@ class EMLineModel(Fittable1DModel):
 
     # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
     # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
-    # self.doublet_names, below!
-    mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=1.0, bounds=[0.1, 10.0]) # MgII 2796/2803
+    # self.doublet_names, below, and also note that any change in the order of
+    # these lines has to be handled in _emline_spectrum!
+    mgii_doublet_ratio = Parameter(name='mgii_doublet_ratio', default=0.5, bounds=[0.01, 10.0]) # MgII 2796/2803
     oii_doublet_ratio = Parameter(name='oii_doublet_ratio', default=0.74, bounds=[0.5, 1.5]) # [0.66, 1.4]) # [OII] 3726/3729
     sii_doublet_ratio = Parameter(name='sii_doublet_ratio', default=0.74, bounds=[0.5, 1.5]) # [0.67, 1.2]) # [SII] 6731/6716
     mgii_2803_amp = Parameter(name='mgii_2803_amp', default=3.0, bounds=[minamp, maxamp])
@@ -775,6 +776,8 @@ class EMLineModel(Fittable1DModel):
         # build the emission-line model [erg/s/cm2/A, observed frame]
 
         """
+        log10model = np.zeros_like(self.log10wave)
+
         # carefull parse the parameters (order matters!)
         linesplit = np.array_split(lineargs, 3) # 3 parameters per line
         linevshifts = np.hstack(linesplit[1])
@@ -787,10 +790,14 @@ class EMLineModel(Fittable1DModel):
         lineamps = np.hstack((doublet_amps, _lineamps[self.ndoublet:]))
         #print(doublet_ratios)
 
-        # cut to lines in range
-        linevshifts = linevshifts[self.inrange]
-        linesigmas = linesigmas[self.inrange]
-        lineamps = lineamps[self.inrange]
+        # cut to lines in range and non-zero
+        I = self.inrange * (lineamps > 0)
+        if np.count_nonzero(I) == 0:
+            return log10model
+        
+        linevshifts = linevshifts[I]
+        linesigmas = linesigmas[I]
+        lineamps = lineamps[I]
 
         #linenames = self.linenames[self.inrange]
         #lineamps = np.hstack(lineargs[0:self.nline])[self.inrange]
@@ -799,9 +806,8 @@ class EMLineModel(Fittable1DModel):
 
         # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
         log10sigmas = linesigmas / C_LIGHT / np.log(10) 
-        linezwaves = np.log10(self.restlinewaves[self.inrange] * (1.0 + self.redshift + linevshifts / C_LIGHT)) 
+        linezwaves = np.log10(self.restlinewaves[I] * (1.0 + self.redshift + linevshifts / C_LIGHT)) 
 
-        log10model = np.zeros_like(self.log10wave)
         for lineamp, linezwave, log10sigma in zip(lineamps, linezwaves, log10sigmas):
             ww = np.abs(self.log10wave - linezwave) < (10 * log10sigma)
             if np.sum(ww) > 0:
@@ -1615,8 +1621,10 @@ class EMLineFit(ContinuumTools):
 
         sns.set(context='talk', style='ticks', font_scale=1.5)#, rc=rc)
 
-        col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
-        col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
+        col1 = [colors.to_hex(col) for col in ['dodgerblue', 'darkseagreen', 'orangered']]
+        col2 = [colors.to_hex(col) for col in ['darkblue', 'darkgreen', 'darkred']]
+        #col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
+        #col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
         col3 = [colors.to_hex(col) for col in ['blue', 'green', 'red']]
 
         if outdir is None:
@@ -1686,41 +1694,30 @@ class EMLineFit(ContinuumTools):
             jpix = np.sum(npixpercam[:icam+2])
             smooth_continuum.append(_smooth_continuum[ipix:jpix])
 
-        # emission-line model with all lines, broad lines only, and narrow lines only
-        #allcols = np.array(fastspec.colnames)
-        #refline = 'HALPHA'
-        #linecols = [] # discover the data model
-        #for col in allcols:
-        #    if refline in col:
-        #        linecols.append(col.replace('{}_'.format(refline), ''))
-        #print(linecols)
-                
-        # required columns
-        fastspec_narrow = Table(fastspec['CONTINUUM_Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
-        fastspec_broad = Table(fastspec['CONTINUUM_Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
-        linecols = ['AMP', 'VSHIFT', 'SIGMA']
-        
-        for oneline in self.linetable:
-            # skip the narrow Balmer lines; we'll handle them below
-            if oneline['isbalmer'] and not oneline['isbroad']:
-                continue
-            linename = oneline['name']
-            for linecol in linecols:
-                col = '{}_{}'.format(linename.upper(), linecol)
-                if oneline['isbalmer'] and oneline['isbroad']:
-                    narrowcol = col.replace('_BROAD', '')
-                    fastspec_broad.add_column(Column(name=col, data=fastspec[col], dtype=fastspec[col].dtype))
-                    fastspec_broad.add_column(Column(name=narrowcol, data=0.0, dtype=fastspec[narrowcol].dtype))
-                    fastspec_narrow.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
-                    fastspec_narrow.add_column(Column(name=narrowcol, data=fastspec[narrowcol], dtype=fastspec[narrowcol].dtype))
-                else:
-                    # all zeros
-                    fastspec_broad.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
-                    fastspec_narrow.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
-
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
-        _emlinemodel_broad = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec_broad)
-        _emlinemodel_narrow = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec_narrow)
+
+        # individual-line spectra
+        _emlinemodel_oneline = []
+        for refline in self.linetable: # [self.inrange]: # for all lines in range
+            T = Table(fastspec['CONTINUUM_Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
+            for oneline in self.linetable: # need all lines for the model
+                linename = oneline['name']
+                for linecol in ['AMP', 'VSHIFT', 'SIGMA']:
+                    col = linename.upper()+'_'+linecol
+                    if linename == refline['name']:
+                        T.add_column(Column(name=col, data=fastspec[col], dtype=fastspec[col].dtype))
+                    else:
+                        T.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
+            # special case the parameter doublets
+            if refline['name'] == 'mgii_2796':
+                T['MGII_2803_AMP'] = fastspec['MGII_2803_AMP']
+            if refline['name'] == 'oii_3726':
+                T['OII_3729_AMP'] = fastspec['OII_3729_AMP']
+            if refline['name'] == 'sii_6731':
+                T['SII_6716_AMP'] = fastspec['SII_6716_AMP']
+            _emlinemodel_oneline1 = self.emlinemodel_bestfit(data['wave'], data['res'], T)
+            if np.sum(np.hstack(_emlinemodel_oneline1)) > 0:
+                _emlinemodel_oneline.append(_emlinemodel_oneline1)
 
         # QA choices
         inches_wide = 20
@@ -1773,7 +1770,7 @@ class EMLineFit(ContinuumTools):
         ymin, ymax = 1e6, -1e6
 
         legxpos, legypos, legfntsz = 0.98, 0.94, 20
-        bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
+        bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.25)
 
         #ymin = np.zeros(len(data['cameras']))
         #ymax = np.zeros(len(data['cameras']))
@@ -1819,7 +1816,7 @@ class EMLineFit(ContinuumTools):
         #ymax = np.max(ymax)
 
         bigax1.plot(stackwave, _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
-        bigax1.plot(stackwave, np.hstack(continuum), color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+        bigax1.plot(stackwave, np.hstack(continuum), color='k', alpha=0.1)#col3[ii])#, alpha=0.3, lw=2)#, color='k')
 
         bigax1.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
                     ha='left', va='center', transform=bigax1.transAxes, fontsize=30)
@@ -1859,7 +1856,7 @@ class EMLineFit(ContinuumTools):
 
             bigax2.fill_between(emlinewave, emlineflux-emlinesigma,
                                 emlineflux+emlinesigma, color=col1[ii], alpha=0.7)
-            bigax2.plot(emlinewave, emlinemodel, color=col2[ii], lw=2)
+            bigax2.plot(emlinewave, emlinemodel, color=col2[ii], lw=3)
 
             # get the robust range
             filtflux = median_filter(emlineflux, 51, mode='nearest')
@@ -1961,16 +1958,16 @@ class EMLineFit(ContinuumTools):
                 emlinewave = data['wave'][ii]
                 emlineflux = data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
                 emlinemodel = _emlinemodel[ii]
-                emlinemodel_broad = _emlinemodel_broad[ii]
-                emlinemodel_narrow = _emlinemodel_narrow[ii]
 
                 emlinesigma, good = ivar2var(data['ivar'][ii], sigma=True)
                 emlinewave = emlinewave[good]
                 emlineflux = emlineflux[good]
                 emlinesigma = emlinesigma[good]
                 emlinemodel = emlinemodel[good]
-                emlinemodel_broad = emlinemodel_broad[good]
-                emlinemodel_narrow = emlinemodel_narrow[good]
+
+                emlinemodel_oneline = []
+                for _emlinemodel_oneline1 in _emlinemodel_oneline:
+                    emlinemodel_oneline.append(_emlinemodel_oneline1[ii][good])
 
                 indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
                 #if 'alpha' in linename:
@@ -1980,13 +1977,15 @@ class EMLineFit(ContinuumTools):
                     removelabels[iax] = False
                     xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
                                     emlineflux[indx]+emlinesigma[indx], color=col1[ii], alpha=0.5)
+                    # plot the individual lines first then the total model
+                    for emlinemodel_oneline1 in emlinemodel_oneline:
+                        if np.sum(emlinemodel_oneline1[indx]) > 0:
+                            P = emlinemodel_oneline1[indx] > 0
+                            xx.plot(emlinewave[indx][P], emlinemodel_oneline1[indx][P], lw=2, alpha=0.5, color=col1[ii])
                     xx.plot(emlinewave[indx], emlinemodel[indx], color=col2[ii], lw=3)
-                    if np.sum(emlinemodel_broad[indx]) > 0:
-                        xx.plot(emlinewave[indx], emlinemodel_broad[indx], lw=2, alpha=0.5, color='k')#col2[ii]
-                        xx.plot(emlinewave[indx], emlinemodel_narrow[indx], lw=2, alpha=0.5, color='k')#col2[ii])
                         
                     #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
-                    xx.axhline(y=0, color='gray', ls='--')
+                    #xx.axhline(y=0, color='gray', ls='--')
 
                     # get the robust range
                     sigflux = np.std(emlineflux[indx])
