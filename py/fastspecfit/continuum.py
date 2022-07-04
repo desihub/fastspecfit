@@ -1535,6 +1535,8 @@ class ContinuumFit(ContinuumTools):
         try:
             imin = fitz.find_minima(chi2grid)[0]
             xbest, xerr, chi2min, warn = fitz.minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
+            #if xerr > 140:
+            #    pdb.set_trace()
         except:
             errmsg = 'A problem was encountered minimizing chi2.'
             log.warning(errmsg)
@@ -1573,7 +1575,8 @@ class ContinuumFit(ContinuumTools):
             plt.axvline(x=xbest, color='k')
             if xivar > 0:
                 plt.axhline(y=chi2min, color='k')
-            plt.yscale('log')
+            #plt.yscale('log')
+            #plt.ylim(chi2min, 63.3)
             plt.savefig('desi-users/ioannis/tmp/qa-chi2min.png')
 
         return chi2min, xbest, xivar, bestcoeff
@@ -1784,73 +1787,83 @@ class ContinuumFit(ContinuumTools):
         # dispersion and then solve.
         if self.solve_vdisp:
             t0 = time.time()
-            #zsspflux_vdisp = []
-            #for vdisp in self.vdisp:
-            #    _zsspflux_vdisp, _ = self.SSP2data(self.sspflux[:, agekeep], self.sspwave,
-            #                                       specwave=data['wave'], specres=data['res'],
-            #                                       AV=AVbest, vdisp=vdisp, redshift=redshift,
-            #                                       cameras=data['cameras'], synthphot=False)
-            #    _zsspflux_vdisp = np.concatenate(_zsspflux_vdisp, axis=0)
-            #    zsspflux_vdisp.append(_zsspflux_vdisp)
-            #zsspflux_vdisp = np.stack(zsspflux_vdisp, axis=-1) # [npix,nage,nvdisp] at best A(V)
-
-            zsspflux_vdispnomdust, _ = self.SSP2data(
-                self.sspflux_vdispnomdust[:, agekeep, :], self.sspwave, # [npix,nage,nvdisp]
-                redshift=redshift, specwave=data['wave'], specres=data['res'],
-                cameras=data['cameras'], synthphot=False)
-            zsspflux_vdispnomdust = np.concatenate(zsspflux_vdispnomdust, axis=0)  # [npix,nmodel=nage*nvdisp]
-            npix, nmodel = zsspflux_vdispnomdust.shape
-            nage = nmodel // self.nvdisp # accounts for age-of-the-universe constraint (!=self.nage)
-            zsspflux_vdispnomdust = zsspflux_vdispnomdust.reshape(npix, nage, self.nvdisp) # [npix,nage,nvdisp]
-
-            # This refits for the coefficients, so it's slower than the "quick" chi2 minimization.
-            #vdispchi2min, vdispbest, vdispivar = self._fnnls_parallel(
-            #    zsspflux_vdispnomdust, specflux, specivar, xparam=self.vdisp, debug=False)
-
-            # Do a quick chi2 minimization over velocity dispersion using the
-            # coefficients from the reddening modeling (see equations 7-9 in
-            # Benitez+2000). Should really be using broadcasting...
-            vdispchi2 = np.zeros(self.nvdisp)
-            for iv in np.arange(self.nvdisp):
-                vdispchi2[iv] = np.sum(specivar * (specflux - zsspflux_vdispnomdust[:, :, iv].dot(AVcoeff))**2)
-
-            vmindx = np.argmin(vdispchi2)
-            if vmindx == 0 or vmindx == self.nvdisp-1: # on the edge; no minimum
-                log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
-                vdispbest, vdispivar = self.vdisp_nominal, 0.0
-            else:
-                # Do a more refined search with +/-XX km/s around the initial minimum.
-                vdispinit = self.vdisp[vmindx]
-                vdispmin, vdispmax, dvdisp = vdispinit - 20.0, vdispinit + 20.0, 1.0
-                if vdispmin < 50:
-                    vdispmin = 50.0
-                if vdispmax > 400:
-                    vdispmax = 400
-                vdispfine = np.arange(vdispmin, vdispmax, dvdisp)
-                nvdispfine = len(vdispfine)
-
-                atten = self.dust_attenuation(self.sspwave, AVbest)
-
-                sspflux_vdispfine = []
-                for vdisp in vdispfine:
-                    sspflux_vdispfine.append(self.convolve_vdisp(self.sspflux[:, agekeep], vdisp))
-                sspflux_vdispfine = np.stack(sspflux_vdispfine, axis=-1) # [npix,nage,nvdisp]
-                
-                zsspflux_vdispfine, _ = self.SSP2data(sspflux_vdispfine, self.sspwave,
-                    redshift=redshift, specwave=data['wave'], specres=data['res'],
-                    cameras=data['cameras'], AV=AVbest,synthphot=False)
-                zsspflux_vdispfine = np.concatenate(zsspflux_vdispfine, axis=0)  # [npix,nmodel=nage*nvdisp]
-                npix, nmodel = zsspflux_vdispfine.shape
-                nage = nmodel // nvdispfine # accounts for age-of-the-universe constraint (!=self.nage)
-                zsspflux_vdispfine = zsspflux_vdispfine.reshape(npix, nage, nvdispfine) # [npix,nage,nvdisp]
+            if True:
+                zsspflux_vdisp = []
+                for vdisp in self.vdisp:
+                    _zsspflux_vdisp, _ = self.SSP2data(self.sspflux[:, agekeep], self.sspwave,
+                                                       specwave=data['wave'], specres=data['res'],
+                                                       AV=AVbest, vdisp=vdisp, redshift=redshift,
+                                                       cameras=data['cameras'], synthphot=False)
+                    _zsspflux_vdisp = np.concatenate(_zsspflux_vdisp, axis=0)
+                    zsspflux_vdisp.append(_zsspflux_vdisp)
+                zsspflux_vdisp = np.stack(zsspflux_vdisp, axis=-1) # [npix,nage,nvdisp] at best A(V)
                 
                 vdispchi2min, vdispbest, vdispivar, _ = self._fnnls_parallel(
-                    zsspflux_vdispfine, specflux, specivar, xparam=vdispfine,
-                    interpolate_coeff=False, debug=True)
+                    zsspflux_vdisp, specflux, specivar, xparam=self.vdisp, debug=True)
+            else:
+                # The code below does a refinement of the velocity dispersion around
+                # the "best" vdisp based on a very quick-and-dirty chi2 estimation
+                # (based on the AVcoeff coefficients found above; no refitting of
+                # the coefficients). However, the refined value is no different than
+                # the one found using the coarse grid and the uncertainty in the
+                # velocity dispersion is ridiculously large, which I don't
+                # understand.
+                # /global/u2/i/ioannis/code/desihub/fastspecfit-projects/pv-vdisp/fastspecfit-pv-vdisp --targetids 39627665157658710
+                zsspflux_vdispnomdust, _ = self.SSP2data(
+                    self.sspflux_vdispnomdust[:, agekeep, :], self.sspwave, # [npix,nage,nvdisp]
+                    redshift=redshift, specwave=data['wave'], specres=data['res'],
+                    cameras=data['cameras'], synthphot=False)
+                zsspflux_vdispnomdust = np.concatenate(zsspflux_vdispnomdust, axis=0)  # [npix,nmodel=nage*nvdisp]
+                npix, nmodel = zsspflux_vdispnomdust.shape
+                nage = nmodel // self.nvdisp # accounts for age-of-the-universe constraint (!=self.nage)
+                zsspflux_vdispnomdust = zsspflux_vdispnomdust.reshape(npix, nage, self.nvdisp) # [npix,nage,nvdisp]
+    
+                # This refits for the coefficients, so it's slower than the "quick" chi2 minimization.
+                #vdispchi2min, vdispbest, vdispivar = self._fnnls_parallel(
+                #    zsspflux_vdispnomdust, specflux, specivar, xparam=self.vdisp, debug=False)
+    
+                # Do a quick chi2 minimization over velocity dispersion using the
+                # coefficients from the reddening modeling (see equations 7-9 in
+                # Benitez+2000). Should really be using broadcasting...
+                vdispchi2 = np.zeros(self.nvdisp)
+                for iv in np.arange(self.nvdisp):
+                    vdispchi2[iv] = np.sum(specivar * (specflux - zsspflux_vdispnomdust[:, :, iv].dot(AVcoeff))**2)
+    
+                vmindx = np.argmin(vdispchi2)
+                if vmindx == 0 or vmindx == self.nvdisp-1: # on the edge; no minimum
+                    log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
+                    vdispbest, vdispivar = self.vdisp_nominal, 0.0
+                else:
+                    # Do a more refined search with +/-XX km/s around the initial minimum.
+                    #vdispinit = self.vdisp[vmindx]
+                    vdispfine = np.linspace(self.vdisp[vmindx]-10, self.vdisp[vmindx]+10, 15)
+                    #vdispfine = np.linspace(self.vdisp[vmindx-1], self.vdisp[vmindx+1], 15)
+                    #vdispmin, vdispmax, dvdisp = vdispinit - 10.0, vdispinit + 10.0, 0.01
+                    #if vdispmin < 50:
+                    #    vdispmin = 50.0
+                    #if vdispmax > 400:
+                    #    vdispmax = 400
+                    #vdispfine = np.arange(vdispmin, vdispmax, dvdisp)
+                    nvdispfine = len(vdispfine)
+    
+                    #atten = self.dust_attenuation(self.sspwave, AVbest)
+                    sspflux_vdispfine = []
+                    for vdisp in vdispfine:
+                        sspflux_vdispfine.append(self.convolve_vdisp(self.sspflux[:, agekeep], vdisp))
+                    sspflux_vdispfine = np.stack(sspflux_vdispfine, axis=-1) # [npix,nage,nvdisp]
+                    
+                    zsspflux_vdispfine, _ = self.SSP2data(sspflux_vdispfine, self.sspwave,
+                        redshift=redshift, specwave=data['wave'], specres=data['res'],
+                        cameras=data['cameras'], AV=AVbest, synthphot=False)
+                    zsspflux_vdispfine = np.concatenate(zsspflux_vdispfine, axis=0)  # [npix,nmodel=nage*nvdisp]
+                    npix, nmodel = zsspflux_vdispfine.shape
+                    nage = nmodel // nvdispfine # accounts for age-of-the-universe constraint (!=self.nage)
+                    zsspflux_vdispfine = zsspflux_vdispfine.reshape(npix, nage, nvdispfine) # [npix,nage,nvdisp]
+                    
+                    vdispchi2min, vdispbest, vdispivar, _ = self._fnnls_parallel(
+                        zsspflux_vdispfine, specflux, specivar, xparam=vdispfine,
+                        interpolate_coeff=False, debug=True)
                 
-            #vdispchi2min, vdispbest, vdispivar = self._fnnls_parallel(zsspflux_vdispnomdust, specflux, specivar,
-            #                                                          xparam=self.vdisp, debug=True)
-            
             log.info('Fitting for the velocity dispersion took: {:.2f} sec'.format(time.time()-t0))
             if vdispivar > 0:
                 log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s with chi2={:.3f}'.format(
@@ -1860,8 +1873,6 @@ class ContinuumFit(ContinuumTools):
                 log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
         else:
             vdispbest, vdispivar = self.vdisp_nominal, 0.0
-
-        pdb.set_trace()
 
         # Get the final set of coefficients and chi2 at the best-fitting
         # reddening and velocity dispersion.
