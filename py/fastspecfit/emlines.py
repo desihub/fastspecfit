@@ -874,7 +874,7 @@ class EMLineFit(ContinuumTools):
         self.chi2_default = chi2_default
         self.nolegend = nolegend
 
-        self.pixkms = 10.0 # pixel size for internal wavelength array [km/s]
+        self.emwave_pixkms = 10.0 # pixel size for internal wavelength array [km/s]
         self.dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
         self.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), self.dlogwave)
         #self.log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
@@ -1205,7 +1205,7 @@ class EMLineFit(ContinuumTools):
         #self.EMLineModel.nii_6548_sigma.tied = False
         #self.EMLineModel.mgii_2800_vshift.bounds = [None, None]
         #self.EMLineModel.mgii_2800_sigma = 5000.0
-        #self.EMLineModel.siliii_1892_sigma.bounds = [1, 1e4]
+        #self.EMLineModel.hdelta_amp.bounds = [None, None]
         #self.EMLineModel.mgii_2800_amp.bounds = [None, None]
         #self.EMLineModel.mgii_2803_amp.bounds = [None, 5*5.202380598696401]
         #self.EMLineModel.mgii_2803_sigma.bounds = [None, None]
@@ -1225,7 +1225,7 @@ class EMLineFit(ContinuumTools):
         nfree = self.EMLineModel.count_free_parameters()
         #for pp in self.EMLineModel.param_names:
         #    print(getattr(self.EMLineModel, pp))
-    
+
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
@@ -1285,11 +1285,20 @@ class EMLineFit(ContinuumTools):
             linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / len(broadlinepix)
             log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f}'.format(linechi2_broad, linechi2_init))
 
-            # Make a decision!
-            if linechi2_broad < linechi2_init:
-                bestfit = broadfit
-            else:
+            # Make a decision! All check whether all the broad lines get
+            # dropped. If so, don't use the broad-line model even if the chi2 is
+            # formally lower because it generally means that the narrow lines
+            # have not been optimized properly (see, e.g., hdelta in
+            # sv1-bright-6541-39633076111803113).
+            alldropped = np.all([getattr(self.EMLineModel, '{}_amp'.format(linename)).value == 0.0
+                                 for linename in self.linetable['name'][IB]])
+            if alldropped:
+                log.info('All broad lines have been dropped, using narrow-line only model.')
+            
+            if alldropped or linechi2_broad > linechi2_init:
                 bestfit = initfit
+            else:
+                bestfit = broadfit
         else:
             log.info('Too few pixels centered on candidate broad emission lines.')
             bestfit = initfit
@@ -1679,9 +1688,6 @@ class EMLineFit(ContinuumTools):
                                      synthphot=False)
 
         residuals = [data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
-        #_smooth_continuum = self.smooth_residuals(
-        #    residuals, data['wave'], data['ivar'],
-        #    data['linemask'], data['linepix'], data['contpix'])
         if np.all(fastspec['CONTINUUM_COEFF'] == 0):
             _smooth_continuum = np.zeros_like(stackwave)
         else:
@@ -1970,6 +1976,9 @@ class EMLineFit(ContinuumTools):
                 emlinesigma = emlinesigma[good]
                 emlinemodel = emlinemodel[good]
 
+                #if ii == 0:
+                #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
+                    
                 emlinemodel_oneline = []
                 for _emlinemodel_oneline1 in _emlinemodel_oneline:
                     emlinemodel_oneline.append(_emlinemodel_oneline1[ii][good])

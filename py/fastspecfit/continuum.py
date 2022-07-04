@@ -448,6 +448,7 @@ class ContinuumTools(object):
         sigma = vdisp / self.pixkms # [pixels]
 
         smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
+
         return smoothflux
     
     def dust_attenuation(self, wave, AV):
@@ -1118,12 +1119,12 @@ class ContinuumTools(object):
         #log.info('Copying the data took: {:.2f} sec'.format(time.time()-t0))
 
         # optionally apply reddening
-        if AV:
+        if AV is not None:
             atten = self.dust_attenuation(sspwave, AV)
             sspflux *= atten[:, np.newaxis]
 
         # broaden for velocity dispersion
-        if vdisp:
+        if vdisp is not None:
             sspflux = self.convolve_vdisp(sspflux, vdisp)
 
         # Apply the redshift factor. The models are normalized to 10 pc, so
@@ -1799,7 +1800,7 @@ class ContinuumFit(ContinuumTools):
                 zsspflux_vdisp = np.stack(zsspflux_vdisp, axis=-1) # [npix,nage,nvdisp] at best A(V)
                 
                 vdispchi2min, vdispbest, vdispivar, _ = self._fnnls_parallel(
-                    zsspflux_vdisp, specflux, specivar, xparam=self.vdisp, debug=True)
+                    zsspflux_vdisp, specflux, specivar, xparam=self.vdisp, debug=False)
             else:
                 # The code below does a refinement of the velocity dispersion around
                 # the "best" vdisp based on a very quick-and-dirty chi2 estimation
@@ -1862,7 +1863,7 @@ class ContinuumFit(ContinuumTools):
                     
                     vdispchi2min, vdispbest, vdispivar, _ = self._fnnls_parallel(
                         zsspflux_vdispfine, specflux, specivar, xparam=vdispfine,
-                        interpolate_coeff=False, debug=True)
+                        interpolate_coeff=False, debug=False)
                 
             log.info('Fitting for the velocity dispersion took: {:.2f} sec'.format(time.time()-t0))
             if vdispivar > 0:
@@ -1876,10 +1877,10 @@ class ContinuumFit(ContinuumTools):
 
         # Get the final set of coefficients and chi2 at the best-fitting
         # reddening and velocity dispersion.
-        bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave,
+        bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
                                               specwave=data['wave'], specres=data['res'],
-                                              AV=AVbest, vdisp=vdispbest, redshift=redshift,
-                                              cameras=data['cameras'], south=data['photsys'] == 'S')
+                                              AV=AVbest, vdisp=vdispbest, cameras=data['cameras'],
+                                              south=data['photsys'] == 'S')
         bestsspflux = np.concatenate(bestsspflux, axis=0)
         coeff, chi2min = self._fnnls_parallel(bestsspflux, specflux, specivar)
 
@@ -1889,11 +1890,6 @@ class ContinuumFit(ContinuumTools):
         dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
         dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, specivar, redshift=redshift, rest=False)
         log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
-
-        # Do median-smooth the continuum-subtracted spectrum, to help with the
-        # emission-line fitting, particularly for AGN.
-        #log.warning('Skipping smoothing residuals!')
-        #_smooth_continuum = np.zeros_like(bestfit)
 
         png = None
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'
@@ -1905,15 +1901,6 @@ class ContinuumFit(ContinuumTools):
             _smooth_continuum, _ = self.smooth_continuum(specwave, specflux - bestfit, specivar,
                                                          redshift, linemask=linemask, png=png)
 
-        #_residuals = specflux - bestfit
-        #residuals = [_residuals[np.sum(npixpercam[:icam+1]):np.sum(npixpercam[:icam+2])] for icam in np.arange(len(data['cameras']))]
-        #_smooth_continuum, _ = self.smooth_continuum(data['wave'], residuals, data['ivar'], png=png,
-        #                                             redshift, linemask_dict=data['linemask_dict'])
-
-        #_smooth_continuum = self.smooth_residuals(
-        #    residuals, data['wave'], data['ivar'],
-        #    data['linemask'], data['linepix'], data['contpix'])
-        
         # Unpack the continuum into individual cameras.
         continuummodel = []
         smooth_continuum = []
