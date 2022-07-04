@@ -295,14 +295,16 @@ class DESISpectra(object):
             #alltiles.append(tiles)
 
             # build the list of tiles that went into each unique target / coadd
-            #meta['TILEID_LIST'] = [' '.join(np.unique(expmeta[tid == expmeta['TARGETID']]['TILEID']).astype(str)) for tid in meta['TARGETID']]
+            tileid_list = [] # variable length, so need to build the array first
             for tid in meta['TARGETID']:
                 I = tid == expmeta['TARGETID']
-                meta['TILEID_LIST'] = ' '.join(np.unique(expmeta['TILEID'][I]).astype(str))
+                tileid_list.append(' '.join(np.unique(expmeta['TILEID'][I]).astype(str)))
+                #meta['TILEID_LIST'][M] = ' '.join(np.unique(expmeta['TILEID'][I]).astype(str))
                 if self.coadd_type == 'healpix':
                     alltiles.append(expmeta['TILEID'][I][0]) # store just the zeroth tile for gather_targetphot, below
                 else:
                     alltiles.append(tileid)
+            meta['TILEID_LIST'] = tileid_list
 
             # Gather additional info about this pixel.
             if self.coadd_type == 'healpix':
