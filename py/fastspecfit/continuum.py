@@ -767,7 +767,7 @@ class ContinuumTools(object):
                                                                ax=ax[0])
 
         # refit with the new value
-        if refit:
+        if refit and linesigma_narrow_snr > 0:
             if (linesigma_narrow > init_linesigma_narrow) and (linesigma_narrow < 5*init_linesigma_narrow) and (linesigma_narrow_snr > linesigma_snr_min):
                 if ax[0] is not None:
                     ax[0].clear()
@@ -784,7 +784,7 @@ class ContinuumTools(object):
                                                                label='Balmer', #label=r'H$\alpha$+H$\beta$',
                                                                ax=ax[1])
         # refit with the new value
-        if refit:
+        if refit and linesigma_balmer_snr > 0:
             if (linesigma_balmer > init_linesigma_balmer) and (linesigma_balmer < 5*init_linesigma_balmer) and (linesigma_balmer_snr > linesigma_snr_min): 
                 if ax[1] is not None:
                     ax[1].clear()
@@ -805,7 +805,7 @@ class ContinuumTools(object):
                                                        label='UV/Broad', ax=ax[2])
         
         # refit with the new value
-        if refit:
+        if refit and linesigma_uv_snr > 0:
             if (linesigma_uv > init_linesigma_uv) and (linesigma_uv < 5*init_linesigma_uv) and (linesigma_uv_snr > linesigma_snr_min): 
                 if ax[2] is not None:
                     ax[2].clear()

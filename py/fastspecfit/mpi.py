@@ -496,6 +496,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
     if supermerge:
         _outfiles = os.path.join(mergedir, '{}-{}-*.fits'.format(outprefix, outsuffix))
         outfiles = glob(_outfiles)
+        #print(_outfiles, outfiles)
         if len(outfiles) > 0:
             log.info('Merging {} catalogs'.format(len(outfiles)))
             mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, outsuffix))
