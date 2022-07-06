@@ -65,7 +65,7 @@ def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None, get_chi2=False
 
     if get_chi2:
         chi2 = np.sum(ivar * (flux - modelflux.dot(coeff))**2)
-        chi2 /= np.sum(ivar > 0) # reduced chi2
+        #chi2 /= np.sum(ivar > 0) # reduced chi2
         return warn, coeff, chi2
     else:
         return warn, coeff
@@ -143,10 +143,16 @@ class ContinuumTools(object):
         keep = np.where((wave >= minwave) * (wave <= maxwave))[0]
         sspwave = wave[keep]
 
-        myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 13.0])*1e9
-        iage = np.array([np.argmin(np.abs(sspinfo['age']-myage)) for myage in myages])
-        sspflux = flux[:, iage][keep, :] # flux[keep, ::5]
-        sspinfo = sspinfo[iage]
+        if True:
+            myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 13.0])*1e9
+            iage = np.array([np.argmin(np.abs(sspinfo['age']-myage)) for myage in myages])
+            sspflux = flux[:, iage][keep, :] # flux[keep, ::5]
+            sspinfo = sspinfo[iage]
+        else:
+            log.info('Testing out more templates!!!')
+            sspflux = flux[keep, :]
+            #sspflux = flux[keep, ::3]
+            #sspinfo = sspinfo[::3]
 
         nage = len(sspinfo)
         npix = len(sspwave)
@@ -922,6 +928,8 @@ class ContinuumTools(object):
                     # S/N of adjacent truly strong lines.
                     if linesigma > 500.0:
                         linesigma_strong = 500.0
+                    elif linesigma < 100.0:
+                        linesigma_strong = 100.0
                     else:
                         linesigma_strong = linesigma
                     sigma_strong = linesigma_strong * zlinewave / C_LIGHT # [km/s --> Angstrom]
@@ -930,8 +938,17 @@ class ContinuumTools(object):
                         snr = (flux[J] - smooth[J]) / smoothsigma[J]
                         # require peak S/N>3 and at least 5 pixels with S/N>3
                         #print(_linename, zlinewave, np.percentile(snr, 98), np.sum(snr > snr_strong))
-                        if np.percentile(snr, 98) > snr_strong and np.sum(snr > snr_strong) > 5:
-                            linemask_strong[I] = True
+                        if len(snr) > 5:
+                            if np.percentile(snr, 98) > snr_strong and np.sum(snr > snr_strong) > 5:
+                                linemask_strong[I] = True
+                        else:
+                            # Very narrow, strong lines can have fewer than 5
+                            # pixels but if they're all S/N>3 then flag this
+                            # line here.
+                            if np.all(snr > snr_strong):
+                                linemask_strong[I] = True
+                    #if _linename == 'hbeta':
+                    #    pdb.set_trace()
 
             # now get the continuum, too
             if png:
@@ -986,13 +1003,13 @@ class ContinuumTools(object):
                         if len(_Jred) == 0:
                             _Jred = [len(wave)-1]
                         plotwave, plotflux = wave[_Jblu[0]:_Jred[-1]], flux[_Jblu[0]:_Jred[-1]]
-                        xx.plot(plotwave, plotflux, label=_linename)
+                        xx.plot(plotwave, plotflux, label=_linename, color='gray')
                         #xx.plot(np.hstack((wave[Jblu], wave[I], wave[Jred])), 
                         #        np.hstack((flux[Jblu], flux[I], flux[Jred])), label=_linename)
                         #xx.plot(wave[I], flux[I], label=_linename)
                         xx.scatter(wave[I], flux[I], s=10, color='orange', marker='s')
                         if np.sum(linemask_strong[I]) > 0:
-                            xx.scatter(wave[I][linemask_strong[I]], flux[I][linemask_strong[I]], s=10, color='green', marker='s')
+                            xx.scatter(wave[I][linemask_strong[I]], flux[I][linemask_strong[I]], s=15, color='k', marker='x')
                             
                         xx.scatter(wave[Jblu], flux[Jblu], color='blue', s=10)
                         xx.scatter(wave[Jred], flux[Jred], color='red', s=10)
@@ -1237,11 +1254,7 @@ class ContinuumFit(ContinuumTools):
         # the nominal values are in the grid.
         self.solve_vdisp = solve_vdisp
 
-        print('FINALIZE VDISP!')
-        #vdispmin, vdispmax, dvdisp, vdisp_nominal = (20.0, 300.0, 20.0, 75.0)
-        vdispmin, vdispmax, dvdisp, vdisp_nominal = (120.0, 400.0, 10.0, 120.0)
-        #vdispmin, vdispmax, dvdisp, vdisp_nominal = (100.0, 350.0, 20.0, 150.0)
-        #vdispmin, vdispmax, dvdisp, vdisp_nominal = (0.0, 0.0, 30.0, 150.0)
+        vdispmin, vdispmax, dvdisp, vdisp_nominal = (75.0, 400.0, 25.0, 120.0)
         nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp))
         if nvdisp == 0:
             nvdisp = 1
@@ -1489,7 +1502,7 @@ class ContinuumFit(ContinuumTools):
         return kcorr, absmag, ivarabsmag, bestmaggies
 
     def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False,
-                        interpolate_coeff=False):
+                        interpolate_coeff=False, xlabel=None):
         """Wrapper on fnnls to set up the multiprocessing. 
 
         Works with both spectroscopic and photometric input and with both 2D and
@@ -1567,18 +1580,29 @@ class ContinuumFit(ContinuumTools):
             #np.interp(xbest, xparam, np.arange(len(xparam)))            
 
         if debug:
-            import matplotlib.pyplot as plt
-            plt.clf()
-            plt.scatter(xparam, chi2grid)
-            plt.scatter(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2], color='red')
-            #plt.ylim(chi2min*0.95, np.max(chi2grid[imin-1:imin+2])*1.05)
-            #plt.plot(xx, np.polyval([aa, bb, cc], xx), ls='--')
-            plt.axvline(x=xbest, color='k')
             if xivar > 0:
-                plt.axhline(y=chi2min, color='k')
-            #plt.yscale('log')
-            #plt.ylim(chi2min, 63.3)
-            plt.savefig('desi-users/ioannis/tmp/qa-chi2min.png')
+                leg = r'${:.2f}\pm{:.2f}\ (\chi^2_{{min}}={:.2f})$'.format(xbest, 1/np.sqrt(xivar), chi2min)
+            else:
+                leg = r'${:.2f}$'.format(xbest)
+                
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots()
+            ax.scatter(xparam, chi2grid)
+            ax.scatter(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2], color='red')
+            #ax.set_ylim(chi2min*0.95, np.max(chi2grid[imin-1:imin+2])*1.05)
+            #ax.plot(xx, np.polyval([aa, bb, cc], xx), ls='--')
+            ax.axvline(x=xbest, color='k')
+            if xivar > 0:
+                ax.axhline(y=chi2min, color='k')
+            #ax.set_yscale('log')
+            #ax.set_ylim(chi2min, 63.3)
+            if xlabel:
+                ax.set_xlabel(xlabel)
+                #ax.text(0.03, 0.9, '{}={}'.format(xlabel, leg), ha='left',
+                #        va='center', transform=ax.transAxes)
+            ax.text(0.03, 0.9, leg, ha='left', va='center', transform=ax.transAxes)
+            ax.set_ylabel(r'$\chi^2$')
+            fig.savefig('desi-users/ioannis/tmp/qa-chi2min.png')
 
         return chi2min, xbest, xivar, bestcoeff
 
@@ -1774,15 +1798,18 @@ class ContinuumFit(ContinuumTools):
         t0 = time.time()
         AVchi2min, AVbest, AVivar, AVcoeff = self._fnnls_parallel(
             zsspflux_dustnomvdisp, specflux, specivar, xparam=self.AV,
-            debug=False, interpolate_coeff=self.solve_vdisp)
+            debug=True, interpolate_coeff=self.solve_vdisp,
+            xlabel=r'$A_V$ (mag)')
         log.info('Fitting for the reddening took: {:.2f} sec'.format(time.time()-t0))
         if AVivar > 0:
-            log.info('Best-fitting spectroscopic A(V)={:.4f}+/-{:.4f} with chi2={:.3f}'.format(
-                AVbest, 1/np.sqrt(AVivar), AVchi2min))
+            log.info('Best-fitting spectroscopic A(V)={:.4f}+/-{:.4f}'.format(
+                AVbest, 1/np.sqrt(AVivar)))
         else:
             AVbest = self.AV_nominal
             log.info('Finding spectroscopic A(V) failed; adopting A(V)={:.4f}'.format(
                 self.AV_nominal))
+
+        pdb.set_trace()
 
         # Optionally build out the model spectra on our grid of velocity
         # dispersion and then solve.
@@ -1800,7 +1827,8 @@ class ContinuumFit(ContinuumTools):
                 zsspflux_vdisp = np.stack(zsspflux_vdisp, axis=-1) # [npix,nage,nvdisp] at best A(V)
                 
                 vdispchi2min, vdispbest, vdispivar, _ = self._fnnls_parallel(
-                    zsspflux_vdisp, specflux, specivar, xparam=self.vdisp, debug=False)
+                    zsspflux_vdisp, specflux, specivar, xparam=self.vdisp,
+                    xlabel=r'$\sigma$ (km/s)', debug=False)
             else:
                 # The code below does a refinement of the velocity dispersion around
                 # the "best" vdisp based on a very quick-and-dirty chi2 estimation
@@ -1867,8 +1895,8 @@ class ContinuumFit(ContinuumTools):
                 
             log.info('Fitting for the velocity dispersion took: {:.2f} sec'.format(time.time()-t0))
             if vdispivar > 0:
-                log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s with chi2={:.3f}'.format(
-                    vdispbest, 1/np.sqrt(vdispivar), vdispchi2min))
+                log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s'.format(
+                    vdispbest, 1/np.sqrt(vdispivar)))
             else:
                 vdispbest = self.vdisp_nominal
                 log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
