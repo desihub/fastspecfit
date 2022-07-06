@@ -88,8 +88,8 @@ class ContinuumTools(object):
         Need to document all the attributes.
 
     """
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
-                 sspversion='v1.0', mapdir=None):
+    def __init__(self, sspfile=None, metallicity='Z0.0190', minwave=None,
+                 maxwave=6e4, sspversion='v1.0', mapdir=None):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
@@ -123,9 +123,12 @@ class ContinuumTools(object):
         self.dustslope = 0.7
 
         # SSPs
-        templates_dir = os.environ.get('FASTSPECFIT_TEMPLATES', FASTSPECFIT_TEMPLATES_NERSC)
-        self.sspfile = os.path.join(templates_dir, sspversion, 'SSP_{}_{}_{}_{}.fits'.format(
-            self.isochrone, self.library, self.imf, self.metallicity))
+        if sspfile:
+            self.sspfile = sspfile
+        else:
+            templates_dir = os.environ.get('FASTSPECFIT_TEMPLATES', FASTSPECFIT_TEMPLATES_NERSC)
+            self.sspfile = os.path.join(templates_dir, sspversion, 'SSP_{}_{}_{}_{}.fits'.format(
+                self.isochrone, self.library, self.imf, self.metallicity))
         if not os.path.isfile(self.sspfile):
             errmsg = 'SSP templates file not found {}'.format(self.sspfile)
             log.critical(errmsg)
@@ -2174,13 +2177,13 @@ class ContinuumFit(ContinuumTools):
         leg = {
             'targetid': targetid_str,
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
-            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_RCHI2']),
-            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            #'zfastfastphot': '$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
-            #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
+            'chi2': r'$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_RCHI2']),
+            'zredrock': r'$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
+            #'zfastfastphot': r'$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
+            #'z': r'$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
-            'absmag_r': '$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
-            'absmag_gr': '$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R']),
+            'absmag_r': r'$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
+            'absmag_gr': r'$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R']),
             }
         if fastphot['CONTINUUM_AV_IVAR'] == 0:
             leg.update({'AV': '$A(V)$={:.2f} mag'.format(fastphot['CONTINUUM_AV'])})

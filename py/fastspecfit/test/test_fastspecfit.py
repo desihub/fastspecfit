@@ -25,7 +25,9 @@ class TestFastspec(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         os.environ['DESI_ROOT'] = resource_filename('fastspecfit.test', 'data')
-        os.environ['FASTSPECFIT_TEMPLATES'] = resource_filename('fastspecfit.test', 'data')
+        #os.environ['FASTSPECFIT_TEMPLATES'] = resource_filename('fastspecfit.test', 'data')
+        cls.sspfile = os.path.join(resource_filename('fastspecfit.test', 'data'),
+                                   'SSP_Padova_CKC14z_Kroupa_Z0.0190.fits')
         cls.mapdir = resource_filename('fastspecfit.test', 'data')
         cls.redrockfile = resource_filename('fastspecfit.test', 'data/redrock-4-80613-thru20210324.fits')
         cls.cwd = os.getcwd()
