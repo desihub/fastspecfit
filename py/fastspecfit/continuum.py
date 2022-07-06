@@ -144,7 +144,7 @@ class ContinuumTools(object):
         sspwave = wave[keep]
 
         if True:
-            myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 13.0])*1e9
+            myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 12.0])*1e9
             iage = np.array([np.argmin(np.abs(sspinfo['age']-myage)) for myage in myages])
             sspflux = flux[:, iage][keep, :] # flux[keep, ::5]
             sspinfo = sspinfo[iage]
