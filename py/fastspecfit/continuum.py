@@ -947,8 +947,6 @@ class ContinuumTools(object):
                             # line here.
                             if np.all(snr > snr_strong):
                                 linemask_strong[I] = True
-                    #if _linename == 'hbeta':
-                    #    pdb.set_trace()
 
             # now get the continuum, too
             if png:
@@ -1258,7 +1256,7 @@ class ContinuumFit(ContinuumTools):
         nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp))
         if nvdisp == 0:
             nvdisp = 1
-        vdisp = np.linspace(vdispmin, vdispmax, nvdisp)#.astype('f4') # [km/s]
+        vdisp = np.linspace(vdispmin, vdispmax, nvdisp)
 
         if not vdisp_nominal in vdisp:
             vdisp = np.sort(np.hstack((vdisp, vdisp_nominal)))
@@ -1266,18 +1264,19 @@ class ContinuumFit(ContinuumTools):
         self.vdisp_nominal = vdisp_nominal
         self.nvdisp = len(vdisp)
 
-        # Log spacing
-        AVmin, AVmax, nAV, AV_nominal = (1e-2, 1.0, 8, 0.0)
-        AV = np.hstack((0, np.geomspace(AVmin, AVmax, nAV-1)))
-
-        ## Deprecated - linear spacing
-        ##AVmin, AVmax, dAV, AV_nominal = (0.0, 0.0, 0.1, 0.0)
-        #AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.1, 0.0)
-        ##AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.05, 0.0)
-        #nAV = int(np.ceil((AVmax - AVmin) / dAV))
-        #if nAV == 0:
-        #    nAV = 1
-        #AV = np.linspace(AVmin, AVmax, nAV)#.astype('f4')
+        if False:
+            # log spacing
+            AVmin, AVmax, nAV, AV_nominal = (1e-2, 1.0, 8, 0.0)
+            AV = np.hstack((0, np.geomspace(AVmin, AVmax, nAV-1)))
+        else:
+            # linear spacing
+            #AVmin, AVmax, dAV, AV_nominal = (0.0, 0.0, 0.1, 0.0)
+            AVmin, AVmax, dAV, AV_nominal = (0.0, 1.0, 0.1, 0.0)
+            #AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.05, 0.0)
+            nAV = int(np.ceil((AVmax - AVmin) / dAV))
+            if nAV == 0:
+                nAV = 1
+            AV = np.linspace(AVmin, AVmax, nAV)
         assert(AV[0] == 0.0) # minimum value has to be zero (assumed in fnnls_continuum)
 
         if not AV_nominal in AV:
@@ -1549,8 +1548,6 @@ class ContinuumFit(ContinuumTools):
         try:
             imin = fitz.find_minima(chi2grid)[0]
             xbest, xerr, chi2min, warn = fitz.minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
-            #if xerr > 140:
-            #    pdb.set_trace()
         except:
             errmsg = 'A problem was encountered minimizing chi2.'
             log.warning(errmsg)
@@ -1559,7 +1556,7 @@ class ContinuumFit(ContinuumTools):
         if warn == 0:
             xivar = 1.0 / xerr**2
         else:
-            chi2min = 1e6
+            chi2min = 0.0
             xivar = 0.0
             xbest = xparam[0]
 
@@ -1651,6 +1648,7 @@ class ContinuumFit(ContinuumTools):
             log.info('All photometry is masked or not available!')
             AVbest, AVivar = self.AV_nominal, 0.0
             nage = self.nage
+            chi2min = 0.0
             coeff = np.zeros(self.nage)
             continuummodel = np.zeros(len(self.sspwave))
         else:
@@ -1682,12 +1680,13 @@ class ContinuumFit(ContinuumTools):
                                                   south=data['photsys'] == 'S')
             coeff, chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
                                                   objflam, objflamivar) # bestphot['flam'] is [nband, nage]
+            log.warning('Need to compute the correct reduced chi2!')
             continuummodel = bestsspflux.dot(coeff)
 
         # Compute DN4000, K-corrections, and rest-frame quantities.
         if np.count_nonzero(coeff > 0) == 0:
             log.warning('Continuum coefficients are all zero!')
-            chi2min, dn4000, meanage = 1e6, -1.0, -1.0
+            chi2min, dn4000, meanage = 0.0, -1.0, -1.0
             kcorr = np.zeros(len(self.absmag_bands))
             absmag = np.zeros(len(self.absmag_bands))-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
@@ -1798,7 +1797,7 @@ class ContinuumFit(ContinuumTools):
         t0 = time.time()
         AVchi2min, AVbest, AVivar, AVcoeff = self._fnnls_parallel(
             zsspflux_dustnomvdisp, specflux, specivar, xparam=self.AV,
-            debug=True, interpolate_coeff=self.solve_vdisp,
+            debug=False, interpolate_coeff=self.solve_vdisp,
             xlabel=r'$A_V$ (mag)')
         log.info('Fitting for the reddening took: {:.2f} sec'.format(time.time()-t0))
         if AVivar > 0:
@@ -1808,8 +1807,6 @@ class ContinuumFit(ContinuumTools):
             AVbest = self.AV_nominal
             log.info('Finding spectroscopic A(V) failed; adopting A(V)={:.4f}'.format(
                 self.AV_nominal))
-
-        pdb.set_trace()
 
         # Optionally build out the model spectra on our grid of velocity
         # dispersion and then solve.
@@ -1911,6 +1908,7 @@ class ContinuumFit(ContinuumTools):
                                               south=data['photsys'] == 'S')
         bestsspflux = np.concatenate(bestsspflux, axis=0)
         coeff, chi2min = self._fnnls_parallel(bestsspflux, specflux, specivar)
+        chi2min /= np.sum(specivar > 0) # dof???
 
         # Get the mean age and DN(4000).
         bestfit = bestsspflux.dot(coeff)

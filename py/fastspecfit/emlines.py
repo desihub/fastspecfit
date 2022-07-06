@@ -1770,7 +1770,7 @@ class EMLineFit(ContinuumTools):
         if fastspec['CONTINUUM_AV_IVAR'] == 0:
             leg.update({'AV': '$A(V)$={:.3f} mag'.format(fastspec['CONTINUUM_AV'])})
         else:
-            leg.update({'AV': '$A(V)$={:.2f}+/-{:.2f} mag'.format(
+            leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
                 fastspec['CONTINUUM_AV'], 1/np.sqrt(fastspec['CONTINUUM_AV_IVAR']))})
 
         ymin, ymax = 1e6, -1e6
@@ -1794,7 +1794,8 @@ class EMLineFit(ContinuumTools):
             filtflux = median_filter(data['flux'][ii], 51, mode='nearest')
             #filtflux = median_filter(data['flux'][ii] - _emlinemodel[ii], 51, mode='nearest')
             #perc = np.percentile(filtflux[data['ivar'][ii] > 0], [5, 95])
-            sigflux = np.std(data['flux'][ii][data['ivar'][ii] > 0])
+            #sigflux = np.std(data['flux'][ii][data['ivar'][ii] > 0])
+            sigflux = np.diff(np.percentile(data['flux'][ii][data['ivar'][ii] > 0], [25, 75]))[0] / 1.349 # robust
             #sigflux = np.std(filtflux[data['ivar'][ii] > 0])
             #if -2 * perc[0] < ymin:
             #    ymin = -2 * perc[0]
@@ -1815,7 +1816,7 @@ class EMLineFit(ContinuumTools):
             if np.max(filtflux) > ymax:
                 ymax = np.max(filtflux) * 1.4
             #print(ymin, ymax)
-            #if ii == 2:
+            #if ii == 1:
             #    pdb.set_trace()
 
         #ymin = np.min(ymin)
@@ -1867,8 +1868,9 @@ class EMLineFit(ContinuumTools):
             # get the robust range
             filtflux = median_filter(emlineflux, 51, mode='nearest')
             #sigflux = np.std(filtflux)
-            sigflux = np.std(emlineflux)
-
+            #sigflux = np.std(emlineflux)
+            sigflux = np.diff(np.percentile(emlineflux, [25, 75]))[0] / 1.349 # robust
+            
             if -2 * sigflux < ymin:
                 ymin = -2 * sigflux
             #if np.min(filtflux) < ymin:
