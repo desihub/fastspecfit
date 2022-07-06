@@ -23,7 +23,7 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger()#DEBUG)
+log = get_logger(DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -1256,7 +1256,7 @@ class EMLineFit(ContinuumTools):
             IB = self.linetable['isbroad'] * self.linetable['isbalmer']
             for linename in self.linetable['name'][IB]:
                 if linename in init_amplitudes.keys():
-                    setattr(self.EMLineModel, '{}_amp'.format(linename), 0.0)
+                    setattr(self.EMLineModel, '{}_amp'.format(linename), init_amplitudes[linename])
                     getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = False
                 # If sigma is not in the dictionary then keep sigma and vshift equal to zero and fixed.
                 if linename in init_sigmas.keys():
@@ -1290,7 +1290,7 @@ class EMLineFit(ContinuumTools):
             # formally lower because it generally means that the narrow lines
             # have not been optimized properly (see, e.g., hdelta in
             # sv1-bright-6541-39633076111803113).
-            alldropped = np.all([getattr(self.EMLineModel, '{}_amp'.format(linename)).value == 0.0
+            alldropped = np.all([getattr(broadfit, '{}_amp'.format(linename)).value == 0.0
                                  for linename in self.linetable['name'][IB]])
             if alldropped:
                 log.info('All broad lines have been dropped, using narrow-line only model.')
