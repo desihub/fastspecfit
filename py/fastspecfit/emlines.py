@@ -1744,21 +1744,21 @@ class EMLineFit(ContinuumTools):
         bigax1 = fig.add_subplot(gs[0, :])
 
         leg = {
-            'zredrock': r'$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            'dv_balmer': r'$\Delta v_{{\\rm narrow}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift)),
-            'dv_forbid': r'$\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
-            'dv_broad': r'$\Delta v_{{\\rm UV}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift)),
-            'sigma_balmer': r'$\sigma_{{\\rm narrow}}$={:.1f} km/s'.format(fastspec['NARROW_SIGMA']),
-            'sigma_forbid': r'$\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
-            'sigma_broad': r'$\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastspec['UV_SIGMA']),
-            #'targetid': r'{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
-            #'targetid': r'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
-            'chi2': r'$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
-            'rchi2': r'$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['RCHI2']),
-            'deltarchi2': r'$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad}}$={:.3f}'.format(fastspec['DELTARCHI2_BROAD']),
-            #'zfastfastspec': r'$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
-            #'z': r'$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
-            'age': r'<Age>={:.3f} Gyr'.format(fastspec['CONTINUUM_AGE']),
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
+            'dv_balmer': '$\Delta v_{{\\rm narrow}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift)),
+            'dv_forbid': '$\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
+            'dv_broad': '$\Delta v_{{\\rm UV}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift)),
+            'sigma_balmer': '$\sigma_{{\\rm narrow}}$={:.1f} km/s'.format(fastspec['NARROW_SIGMA']),
+            'sigma_forbid': '$\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
+            'sigma_broad': '$\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastspec['UV_SIGMA']),
+            #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
+            #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
+            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
+            'rchi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['RCHI2']),
+            'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad}}$={:.3f}'.format(fastspec['DELTARCHI2_BROAD']),
+            #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
+            #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
+            'age': '<Age>={:.3f} Gyr'.format(fastspec['CONTINUUM_AGE']),
             }
 
         if fastspec['CONTINUUM_VDISP_IVAR'] == 0:

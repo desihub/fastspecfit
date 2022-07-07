@@ -147,7 +147,10 @@ class ContinuumTools(object):
         sspwave = wave[keep]
 
         if True:
-            myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 12.0])*1e9
+            # The old ages are 12.5, 13.3, 14.1, and 14.9 Gyr, so we have to
+            # choose 14 Gyr if we want a maximally old template (e.g., for our
+            # velocity dispersion measurements).
+            myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 14.0])*1e9
             iage = np.array([np.argmin(np.abs(sspinfo['age']-myage)) for myage in myages])
             sspflux = flux[:, iage][keep, :] # flux[keep, ::5]
             sspinfo = sspinfo[iage]
@@ -202,7 +205,7 @@ class ContinuumTools(object):
         self.linemask_sigma_broad = 2000.0  # [km/s]
 
         # photometry
-        self.bands = np.array(['g', 'r', 'z', 'W1', 'W2'])
+        self.bands = np.array(['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'])
         self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
         self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
 
@@ -210,9 +213,11 @@ class ContinuumTools(object):
         self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z')
 
         self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z',
-                                              'wise2010-W1', 'wise2010-W2')
+                                              'wise2010-W1', 'wise2010-W2',
+                                              'wise2010-W3', 'wise2010-W4')
         self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z',
-                                                 'wise2010-W1', 'wise2010-W2')
+                                                 'wise2010-W1', 'wise2010-W2',
+                                                 'wise2010-W3', 'wise2010-W4')
 
         self.bands_to_fit = np.ones(len(self.bands), bool)
         self.bands_to_fit[self.bands == 'W2'] = False # drop W2
@@ -229,7 +234,7 @@ class ContinuumTools(object):
         #                                  0.1, 0.1, 0.1,
         #                                  0.1, 0.1, 0.0])
         
-        self.min_uncertainty = np.array([0.01, 0.01, 0.01, 0.02, 0.02])
+        self.min_uncertainty = np.array([0.01, 0.01, 0.01, 0.02, 0.02, 0.02, 0.02])
 
         # used in one place...
         #self.rand = np.random.RandomState(seed=seed)
@@ -1222,7 +1227,8 @@ class ContinuumTools(object):
 
 class ContinuumFit(ContinuumTools):
     def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
-                 nolegend=False, solve_vdisp=False, mapdir=None):
+                 nolegend=False, solve_vdisp=False, constrain_age=False,
+                 mapdir=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -1250,6 +1256,7 @@ class ContinuumFit(ContinuumTools):
                                            maxwave=maxwave, mapdir=mapdir)
 
         self.nolegend = nolegend
+        self.constrain_age = constrain_age
 
         # Initialize the velocity dispersion and reddening parameters. Make sure
         # the nominal values are in the grid.
@@ -1630,12 +1637,15 @@ class ContinuumFit(ContinuumTools):
         result = self.init_phot_output()
 
         redshift = data['zredrock']
-        #result['CONTINUUM_Z'] = redshift
 
         # Prepare the reddened and unreddened SSP templates by redshifting and
         # normalizing. Note that we ignore templates which are older than the
         # age of the universe at the galaxy redshift.
-        agekeep = self.younger_than_universe(redshift)
+        if self.constrain_age:
+            agekeep = self.younger_than_universe(redshift)
+        else:
+            agekeep = np.arange(self.nage)
+            
         t0 = time.time()
         zsspflux_dustnomvdisp, zsspphot_dustnomvdisp = self.SSP2data(
             self.sspflux_dustnomvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
@@ -1771,7 +1781,11 @@ class ContinuumFit(ContinuumTools):
         # Prepare the reddened and unreddened SSP templates by redshifting and
         # normalizing. Note that we ignore templates which are older than the
         # age of the universe at the redshift of the object.
-        agekeep = self.younger_than_universe(redshift)
+        if self.constrain_age:
+            agekeep = self.younger_than_universe(redshift)
+        else:
+            agekeep = np.arange(self.nage)
+
         t0 = time.time()
         zsspflux_dustnomvdisp, _ = self.SSP2data(
             self.sspflux_dustnomvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
@@ -2177,13 +2191,13 @@ class ContinuumFit(ContinuumTools):
         leg = {
             'targetid': targetid_str,
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
-            'chi2': r'$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_RCHI2']),
-            'zredrock': r'$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
+            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_RCHI2']),
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
             #'zfastfastphot': r'$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
-            #'z': r'$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
+            #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
-            'absmag_r': r'$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
-            'absmag_gr': r'$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R']),
+            'absmag_r': '$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
+            'absmag_gr': '$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R']),
             }
         if fastphot['CONTINUUM_AV_IVAR'] == 0:
             leg.update({'AV': '$A(V)$={:.2f} mag'.format(fastphot['CONTINUUM_AV'])})
