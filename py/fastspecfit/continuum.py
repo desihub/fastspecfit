@@ -1258,7 +1258,7 @@ class ContinuumTools(object):
 
 class ContinuumFit(ContinuumTools):
     def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
-                 nolegend=False, solve_vdisp=False, constrain_age=False,
+                 nolegend=False, solve_vdisp=False, constrain_age=True,
                  mapdir=None):
         """Class to model a galaxy stellar continuum.
 
@@ -1438,6 +1438,8 @@ class ContinuumFit(ContinuumTools):
             out.add_column(Column(name='ABSMAG_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag)) # absolute magnitudes
             out.add_column(Column(name='ABSMAG_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.mag**2))
 
+        out.add_column(Column(name='MSTAR', length=nobj, dtype='f4', unit=u.solMass))
+
         return out
 
     def get_meanage(self, coeff):
@@ -1530,16 +1532,15 @@ class ContinuumFit(ContinuumTools):
                 absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
 
         # get the stellar mass
-        if False:
-            nage = len(coeff)
-            dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2        
-            mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm * self.fluxnorm * dfactor / (1+redshift)
+        nage = len(coeff)
+        dfactor = 4.0 * np.pi * self.cosmo.luminosity_distance(redshift).to(u.pc).value**2
+        mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm * dfactor * (1 + redshift) / self.fluxnorm
         
         # From Taylor+11, eq 8
         #https://researchportal.port.ac.uk/ws/files/328938/MNRAS_2011_Taylor_1587_620.pdf
         #mstar = 1.15 + 0.7*(absmag[1]-absmag[3]) - 0.4*absmag[3]
 
-        return kcorr, absmag, ivarabsmag, bestmaggies
+        return kcorr, absmag, ivarabsmag, bestmaggies, mstar
 
     def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False,
                         interpolate_coeff=False, xlabel=None):
@@ -1738,13 +1739,13 @@ class ContinuumFit(ContinuumTools):
         else:
             dn4000, _ = self.get_dn4000(self.sspwave, continuummodel, rest=True)
             meanage = self.get_meanage(coeff)
-            kcorr, absmag, ivarabsmag, synth_bestmaggies = self.kcorr_and_absmag(data, continuummodel, coeff)
+            kcorr, absmag, ivarabsmag, synth_bestmaggies, mstar = self.kcorr_and_absmag(data, continuummodel, coeff)
 
             # convert to nanomaggies
             synth_bestmaggies *= 1e9
 
-            log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag'.format(
-                dn4000, meanage, absmag[1]))
+            log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag, Mstar={:.4g}'.format(
+                dn4000, meanage, absmag[1], mstar))
 
         # Pack it up and return.
         result['CONTINUUM_COEFF'][0][:nage] = coeff
@@ -1766,6 +1767,8 @@ class ContinuumFit(ContinuumTools):
             result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband]
         for iband, band in enumerate(self.bands):
             result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband]
+
+        result['MSTAR'] = mstar
 
         return result, continuummodel
     
