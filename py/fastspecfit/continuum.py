@@ -14,7 +14,7 @@ import astropy.units as u
 
 from fastspecfit.util import C_LIGHT
 from desiutil.log import get_logger, DEBUG
-log = get_logger(DEBUG)
+log = get_logger()#DEBUG)
 
 def _fnnls_continuum(myargs):
     """Multiprocessing wrapper for fnnls_continuum."""
@@ -150,12 +150,12 @@ class ContinuumTools(object):
             # The old ages are 12.5, 13.3, 14.1, and 14.9 Gyr, so we have to
             # choose 14 Gyr if we want a maximally old template (e.g., for our
             # velocity dispersion measurements).
-            myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 14.0])*1e9
+            myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 13.3])*1e9
             iage = np.array([np.argmin(np.abs(sspinfo['age']-myage)) for myage in myages])
             sspflux = flux[:, iage][keep, :] # flux[keep, ::5]
             sspinfo = sspinfo[iage]
         else:
-            log.info('Testing out more templates!!!')
+            log.warning('Testing out more templates!!!')
             sspflux = flux[keep, :]
             #sspflux = flux[keep, ::3]
             #sspinfo = sspinfo[::3]
@@ -205,7 +205,7 @@ class ContinuumTools(object):
         self.linemask_sigma_broad = 2000.0  # [km/s]
 
         # photometry
-        self.bands = np.array(['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'])
+        self.bands = np.array(['g', 'r', 'z', 'W1', 'W2'])#, 'W3', 'W4'])
         self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
         self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
 
@@ -213,11 +213,11 @@ class ContinuumTools(object):
         self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z')
 
         self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z',
-                                              'wise2010-W1', 'wise2010-W2',
-                                              'wise2010-W3', 'wise2010-W4')
+                                              'wise2010-W1', 'wise2010-W2')#,
+                                              #'wise2010-W3', 'wise2010-W4')
         self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z',
-                                                 'wise2010-W1', 'wise2010-W2',
-                                                 'wise2010-W3', 'wise2010-W4')
+                                                 'wise2010-W1', 'wise2010-W2')#,
+                                                 #'wise2010-W3', 'wise2010-W4')
 
         self.bands_to_fit = np.ones(len(self.bands), bool)
         self.bands_to_fit[self.bands == 'W2'] = False # drop W2
@@ -258,52 +258,83 @@ class ContinuumTools(object):
         -----
         If `rest`=``False`` then `redshift` input is required.
 
+        Require full wavelength coverage over the definition of the index.
+
+        See eq. 11 in Bruzual 1983
+        (https://articles.adsabs.harvard.edu/pdf/1983ApJ...273..105B) but with
+        the "narrow" definition of Balogh et al. 1999.
+
         """
         from fastspecfit.util import ivar2var
 
         dn4000, dn4000_ivar = 0.0, 0.0
 
         if rest:
-            flam2fnu =  wave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+            restwave = wave
+            flam2fnu =  restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
         else:
-            wave = np.copy(wave)
-            wave /= (1 + redshift) # [Angstrom]
-            flam2fnu = (1 + redshift) * wave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+            restwave = wave / (1 + redshift) # [Angstrom]
+            flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
 
-        if flam_ivar is None:
-            goodmask = np.ones(len(flam), bool) # True is good
-        else:
-            goodmask = flam_ivar > 0
-
-        indxblu = np.where((wave >= 3850.) * (wave <= 3950.) * goodmask)[0]
-        indxred = np.where((wave >= 4000.) * (wave <= 4100.) * goodmask)[0]
-        if len(indxblu) < 5 or len(indxred) < 5:
+        # Require a 2-Angstrom pad around the break definition.
+        wpad = 2.0
+        if np.min(restwave) > (3850-wpad) or np.max(restwave) < (4100+wpad):
+            log.warning('Too little wavelength coverage to compute Dn(4000)')
             return dn4000, dn4000_ivar
-
-        blufactor, redfactor = 3950.0 - 3850.0, 4100.0 - 4000.0
-        deltawave = np.gradient(wave) # should be constant...
 
         fnu = flam * flam2fnu # [erg/s/cm2/Hz]
 
-        numer = blufactor * np.sum(deltawave[indxred] * fnu[indxred])
-        denom = redfactor * np.sum(deltawave[indxblu] * fnu[indxblu])
-        if denom == 0.0:
-            log.warning('DN(4000) is ill-defined!')
-            return dn4000, dn4000_ivar
-        dn4000 =  numer / denom
-
         if flam_ivar is not None:
             fnu_ivar = flam_ivar / flam2fnu**2
-            fnu_var, _ = ivar2var(fnu_ivar)
+        else:
+            fnu_ivar = np.ones_like(flam) # uniform weights
 
-            numer_var = blufactor**2 * np.sum(deltawave[indxred] * fnu_var[indxred])
-            denom_var = redfactor**2 * np.sum(deltawave[indxblu] * fnu_var[indxblu])
-            dn4000_var = (numer_var + numer**2 * denom_var) / denom**2
-            if dn4000_var <= 0:
-                log.warning('DN(4000) variance is ill-defined!')
-                dn4000_ivar = 0.0
-            else:
-                dn4000_ivar = 1.0 / dn4000_var
+        def _integrate(wave, flux, ivar, w1, w2):
+            from scipy import integrate, interpolate
+            # trim for speed
+            I = (wave > (w1-wpad)) * (wave < (w2+wpad))
+            J = np.logical_and(I, ivar > 0)
+            # Require no more than 20% of pixels are masked.
+            if np.sum(J) / np.sum(I) < 0.8:
+                log.warning('More than 20% of pixels in Dn(4000) definition are masked.')
+                return 0.0
+            wave = wave[J]
+            flux = flux[J]
+            ivar = ivar[J]
+            # should never have to extrapolate
+            f = interpolate.interp1d(wave, flux, assume_sorted=False, bounds_error=True)
+            f1 = f(w1)
+            f2 = f(w2)
+            i = interpolate.interp1d(wave, ivar, assume_sorted=False, bounds_error=True)
+            i1 = i(w1)
+            i2 = i(w2)
+            # insert the boundary wavelengths then integrate
+            I = np.where((wave > w1) * (wave < w2))[0]
+            wave = np.insert(wave[I], [0, len(I)], [w1, w2])
+            flux = np.insert(flux[I], [0, len(I)], [f1, f2])
+            ivar = np.insert(ivar[I], [0, len(I)], [i1, i2])
+            weight = integrate.simps(x=wave, y=ivar)
+            index = integrate.simps(x=wave, y=flux*ivar) / weight
+            index_var = 1 / weight
+            return index, index_var
+
+        blufactor = 3950.0 - 3850.0
+        redfactor = 4100.0 - 4000.0
+        try:
+            # yes, blue wavelength go with red integral bounds
+            numer, numer_var = _integrate(restwave, fnu, fnu_ivar, 4000, 4100)
+            denom, denom_var = _integrate(restwave, fnu, fnu_ivar, 3850, 3950)
+        except:
+            log.warning('Integration failed when computing DN(4000).')
+            return dn4000, dn4000_ivar
+
+        if denom == 0.0 or numer == 0.0:
+            log.warning('DN(4000) is ill-defined or could not be computed.')
+            return dn4000, dn4000_ivar
+        
+        dn4000 =  (blufactor / redfactor) * numer / denom
+        if flam_ivar is not None:
+            dn4000_ivar = (1.0 / (dn4000**2)) / (denom_var / (denom**2) + numer_var / (numer**2))
 
         return dn4000, dn4000_ivar
 
@@ -753,7 +784,7 @@ class ContinuumTools(object):
                             ax.legend(loc='upper left', fontsize=8, frameon=False)
                             _empty = False
                         
-            log.debug('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, linesigma_snr))
+            log.info('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, linesigma_snr))
 
             if ax and _empty:
                 ax.plot([0, 0], [0, 0], label='{}-No Data'.format(label))
@@ -1930,9 +1961,51 @@ class ContinuumFit(ContinuumTools):
         # Get the mean age and DN(4000).
         bestfit = bestsspflux.dot(coeff)
         meanage = self.get_meanage(coeff)
+
+        flam_ivar = np.hstack(data['ivar'])
+        dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, # specivar is line-masked!
+                                              redshift=redshift, rest=False)
         dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
-        dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, specivar, redshift=redshift, rest=False)
+        
+        if True:
+            print(dn4000, dn4000_model, dn4000_ivar)
+            from fastspecfit.util import ivar2var            
+            import matplotlib.pyplot as plt
+
+            restwave = specwave / (1 + redshift) # [Angstrom]
+            flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+            fnu = specflux * flam2fnu # [erg/s/cm2/Hz]
+            fnu_model = bestfit * flam2fnu
+            fnu_ivar = flam_ivar / flam2fnu**2            
+            fnu_sigma, fnu_mask = ivar2var(fnu_ivar, sigma=True)
+
+            from astropy.table import Table
+            out = Table()
+            out['WAVE'] = restwave
+            out['FLUX'] = specflux
+            out['IVAR'] = flam_ivar
+            out.write('desi-39633089965589981.fits', overwrite=True)
+            
+            I = (restwave > 3835) * (restwave < 4115)
+            J = (restwave > 3835) * (restwave < 4115) * fnu_mask
+
+            fig, ax = plt.subplots()
+            ax.fill_between(restwave[I], fnu[I]-fnu_sigma[I], fnu[I]+fnu_sigma[I],
+                            label='Data Dn(4000)={:.3f}+/-{:.3f}'.format(dn4000, 1/np.sqrt(dn4000_ivar)))
+            ax.plot(restwave[I], fnu_model[I], color='red', label='Model Dn(4000)={:.3f}'.format(dn4000_model))
+            ylim = ax.get_ylim()
+            ax.fill_between([3850, 3950], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
+                            color='lightgray', alpha=0.5)
+            ax.fill_between([4000, 4100], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
+                            color='lightgray', alpha=0.5)
+            ax.set_xlabel(r'Rest Wavelength ($\AA$)')
+            ax.set_ylabel(r'$F_{\nu}$ (erg/s/cm2/Hz)')
+            ax.legend()
+            fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
+            
         log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
+
+        pdb.set_trace()
 
         png = None
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'
@@ -2007,8 +2080,6 @@ class ContinuumFit(ContinuumTools):
         import matplotlib.ticker as ticker
         import seaborn as sns
 
-        from fastspecfit.util import ivar2var
-    
         sns.set(context='talk', style='ticks', font_scale=1.2)#, rc=rc)
 
         col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
