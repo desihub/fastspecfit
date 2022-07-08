@@ -50,7 +50,7 @@ into an environment called *fastspecfit* one would do::
   conda activate fastspecfit
   pip install fitsio healpy speclite
   
-  for package in desiutil desimodel desitarget desispec redrock fastspecfit; do
+  for package in desiutil desimodel desitarget desispec fastspecfit; do
     python -m pip install git+https://github.com/desihub/$package.git@main#egg=$package
   done
 
@@ -65,7 +65,7 @@ accessible location (e.g., */path/to/desi/code*), in which case one would do::
   mkdir -p $DESI_CODE
   
   pushd $DESI_CODE 
-  for package in desiutil desimodel desitarget desispec redrock fastspecfit; do
+  for package in desiutil desimodel desitarget desispec fastspecfit; do
     git clone https://github.com/desihub/$package.git
     export PATH=$DESI_CODE/$package/bin:$PATH
     export PYTHONPATH=$DESI_CODE/$package/py:$PYTHONPATH
