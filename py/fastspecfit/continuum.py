@@ -784,7 +784,7 @@ class ContinuumTools(object):
                             ax.legend(loc='upper left', fontsize=8, frameon=False)
                             _empty = False
                         
-            log.info('{} masking sigma={:.3f} and S/N={:.3f}'.format(label, linesigma, linesigma_snr))
+            log.info('{} masking sigma={:.3f} km/s and S/N={:.3f}'.format(label, linesigma, linesigma_snr))
 
             if ax and _empty:
                 ax.plot([0, 0], [0, 0], label='{}-No Data'.format(label))
@@ -1099,7 +1099,7 @@ class ContinuumTools(object):
         it with multiprocessing, below.
 
         """
-        from redrock.rebin import trapz_rebin
+        from fastspecfit.util import trapz_rebin
 
         if specwave is None:
             resampflux = sspflux 
@@ -1554,7 +1554,7 @@ class ContinuumFit(ContinuumTools):
           an array or grid of xparam
 
         """
-        from redrock import fitz
+        from fastspecfit.util import find_minima, minfit
         
         if xparam is not None:
             nn = len(xparam)
@@ -1587,8 +1587,8 @@ class ContinuumFit(ContinuumTools):
         chi2grid = np.array(chi2grid)
         
         try:
-            imin = fitz.find_minima(chi2grid)[0]
-            xbest, xerr, chi2min, warn = fitz.minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
+            imin = find_minima(chi2grid)[0]
+            xbest, xerr, chi2min, warn = minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
         except:
             errmsg = 'A problem was encountered minimizing chi2.'
             log.warning(errmsg)
@@ -1967,7 +1967,7 @@ class ContinuumFit(ContinuumTools):
                                               redshift=redshift, rest=False)
         dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
         
-        if True:
+        if False:
             print(dn4000, dn4000_model, dn4000_ivar)
             from fastspecfit.util import ivar2var            
             import matplotlib.pyplot as plt
@@ -2002,10 +2002,11 @@ class ContinuumFit(ContinuumTools):
             ax.set_ylabel(r'$F_{\nu}$ (erg/s/cm2/Hz)')
             ax.legend()
             fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
-            
-        log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
 
-        pdb.set_trace()
+        if dn4000_ivar > 0:
+            log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr'.format(dn4000, 1/np.sqrt(dn4000_ivar), meanage))
+        else:
+            log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
 
         png = None
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'

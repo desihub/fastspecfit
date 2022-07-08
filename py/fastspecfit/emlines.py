@@ -17,10 +17,8 @@ import astropy.units as u
 from astropy.modeling import Fittable1DModel
 from astropy.modeling.fitting import LevMarLSQFitter
 
-from redrock.rebin import trapz_rebin
 from desispec.interpolation import resample_flux
-
-from fastspecfit.util import C_LIGHT
+from fastspecfit.util import trapz_rebin, C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
 log = get_logger()#DEBUG)
