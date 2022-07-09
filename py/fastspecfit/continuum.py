@@ -1731,7 +1731,7 @@ class ContinuumFit(ContinuumTools):
         # Compute DN4000, K-corrections, and rest-frame quantities.
         if np.count_nonzero(coeff > 0) == 0:
             log.warning('Continuum coefficients are all zero!')
-            chi2min, dn4000, meanage = 0.0, -1.0, -1.0
+            chi2min, dn4000, meanage, mstar = 0.0, -1.0, -1.0, -1.0
             kcorr = np.zeros(len(self.absmag_bands))
             absmag = np.zeros(len(self.absmag_bands))-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
@@ -2086,8 +2086,8 @@ class ContinuumFit(ContinuumTools):
 
         sns.set(context='talk', style='ticks', font_scale=1.2)#, rc=rc)
 
-        col1 = [colors.to_hex(col) for col in ['skyblue', 'darkseagreen', 'tomato']]
-        col2 = [colors.to_hex(col) for col in ['navy', 'forestgreen', 'firebrick']]
+        col1 = [colors.to_hex(col) for col in ['dodgerblue', 'darkseagreen', 'orangered']]
+        col2 = [colors.to_hex(col) for col in ['darkblue', 'darkgreen', 'darkred']]
         ymin, ymax = 1e6, -1e6
 
         redshift = metadata['Z']
@@ -2263,6 +2263,11 @@ class ContinuumFit(ContinuumTools):
         else:
             targetid_str = '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
 
+        if fastphot['MSTAR'] > 0:
+            mstar = '{:.3f}'.format(np.log10(fastphot['MSTAR']))
+        else:
+            mstar = '-'
+
         leg = {
             'targetid': targetid_str,
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
@@ -2271,6 +2276,7 @@ class ContinuumFit(ContinuumTools):
             #'zfastfastphot': r'$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
+            'mstar': '$\log_{{10}}\,M_{{*}}={}$'.format(mstar),
             'absmag_r': '$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
             'absmag_gr': '$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R']),
             }
@@ -2286,6 +2292,7 @@ class ContinuumFit(ContinuumTools):
         if not self.nolegend:
             legxpos, legypos = 0.04, 0.94
             txt = '\n'.join((
+                r'{}'.format(leg['mstar']),
                 r'{}'.format(leg['absmag_r']),
                 r'{}'.format(leg['absmag_gr'])
                 ))
