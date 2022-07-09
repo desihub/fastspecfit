@@ -89,7 +89,7 @@ class ContinuumTools(object):
 
     """
     def __init__(self, sspfile=None, metallicity='Z0.0190', minwave=None,
-                 maxwave=6e4, sspversion='v1.0', mapdir=None):
+                 maxwave=30e4, sspversion='v1.0', mapdir=None):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
@@ -146,11 +146,13 @@ class ContinuumTools(object):
         keep = np.where((wave >= minwave) * (wave <= maxwave))[0]
         sspwave = wave[keep]
 
-        if False:
+        if True:
             # The old ages are 12.5, 13.3, 14.1, and 14.9 Gyr, so we have to
             # choose 14 Gyr if we want a maximally old template (e.g., for our
             # velocity dispersion measurements).
-            myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 13.3])*1e9
+            # 5Myr, 10Myr, 25Myr, 50Myr, 100Myr, 150Myr, 200Myr, 400Myr, 600Myr, 0.9Gyr, 1.1Gyr, 1.4Gyr, 2.5Gyr, 5Gyr, 10Gyr, 13.3Gyr
+            myages = np.array([0.005, 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.4, 0.6, 0.9, 1.1, 1.4, 2.5, 5, 10.0, 13.3])*1e9
+            #myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 13.3])*1e9
             iage = np.array([np.argmin(np.abs(sspinfo['age']-myage)) for myage in myages])
             sspflux = flux[:, iage][keep, :] # flux[keep, ::5]
             sspinfo = sspinfo[iage]
@@ -208,22 +210,21 @@ class ContinuumTools(object):
         self.linemask_sigma_broad = 2000.0  # [km/s]
 
         # photometry
-        self.bands = np.array(['g', 'r', 'z', 'W1', 'W2'])#, 'W3', 'W4'])
+        self.bands = np.array(['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'])
         self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
         self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
 
         self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
         self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z')
 
-        self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z',
-                                              'wise2010-W1', 'wise2010-W2')#,
-                                              #'wise2010-W3', 'wise2010-W4')
-        self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z',
-                                                 'wise2010-W1', 'wise2010-W2')#,
-                                                 #'wise2010-W3', 'wise2010-W4')
+        self.decamwise = filters.load_filters(
+            'decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
+        self.bassmzlswise = filters.load_filters(
+            'BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
 
         self.bands_to_fit = np.ones(len(self.bands), bool)
-        self.bands_to_fit[self.bands == 'W2'] = False # drop W2
+        for B in ['W2', 'W3', 'W4']:
+            self.bands_to_fit[self.bands == B] = False # drop W2-W4
 
         # rest-frame filters
         self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1']
@@ -1260,8 +1261,8 @@ class ContinuumTools(object):
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 
 class ContinuumFit(ContinuumTools):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
-                 nolegend=False, solve_vdisp=False, constrain_age=False,
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=30e4,#6e4, 
+                 nolegend=False, solve_vdisp=True, constrain_age=False,
                  mapdir=None):
         """Class to model a galaxy stellar continuum.
 
@@ -1296,7 +1297,7 @@ class ContinuumFit(ContinuumTools):
         # the nominal values are in the grid.
         self.solve_vdisp = solve_vdisp
 
-        vdispmin, vdispmax, dvdisp, vdisp_nominal = (75.0, 400.0, 25.0, 120.0)
+        vdispmin, vdispmax, dvdisp, vdisp_nominal = (75.0, 400.0, 25.0, 150.0)
         nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp))
         if nvdisp == 0:
             nvdisp = 1
@@ -1315,7 +1316,7 @@ class ContinuumFit(ContinuumTools):
         else:
             # linear spacing
             #AVmin, AVmax, dAV, AV_nominal = (0.0, 0.0, 0.1, 0.0)
-            AVmin, AVmax, dAV, AV_nominal = (0.0, 1.0, 0.1, 0.0)
+            AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.1, 0.0)
             #AVmin, AVmax, dAV, AV_nominal = (0.0, 1.5, 0.05, 0.0)
             nAV = int(np.ceil((AVmax - AVmin) / dAV))
             if nAV == 0:
@@ -1794,6 +1795,8 @@ class ContinuumFit(ContinuumTools):
         Notes
         -----
           - Consider using cross-correlation to update the redrock redshift.
+          - We solve for velocity dispersion if solve_vdisp=True or ((SNR_B>3 or
+            SNR_R>3) and REDSHIFT<1).
 
         """
         result = self.init_spec_output()
@@ -2141,7 +2144,7 @@ class ContinuumFit(ContinuumTools):
                                           synthphot=False)
         continuum_wave_phot = self.sspwave * (1 + redshift)
 
-        wavemin, wavemax = 0.2, 6.0
+        wavemin, wavemax = 0.1, 30.0 # 6.0
         indx = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
 
         phot = self.parse_photometry(self.bands,
@@ -2151,19 +2154,6 @@ class ContinuumFit(ContinuumTools):
         fiberphot = self.parse_photometry(self.fiber_bands,
                                           maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
                                           lambda_eff=filters.effective_wavelengths.value)
-        
-        #fibertotphot = self.parse_photometry(self.fiber_bands,
-        #                                     maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
-        #                                     lambda_eff=filters.effective_wavelengths.value)
-        #if specfit:
-        #    synthphot = self.parse_photometry(self.synth_bands,
-        #                                      maggies=np.array([specfit['FLUX_SYNTH_{}'.format(band.upper())] for band in self.synth_bands]),
-        #                                      lambda_eff=filters.effective_wavelengths.value)
-        #    synthmodelphot = self.parse_photometry(self.synth_bands,
-        #                                           maggies=np.array([specfit['FLUX_SYNTH_MODEL_{}'.format(band.upper())] for band in self.synth_bands]),
-        #                                           lambda_eff=filters.effective_wavelengths.value)
-        #else:
-        #    synthphot, synthmodelphot = None, None
         
         fig, ax = plt.subplots(figsize=(12, 8))
 
@@ -2202,7 +2192,7 @@ class ContinuumFit(ContinuumTools):
 
         ax.set_xscale('log')
         ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
-        ax.set_xticks([0.3, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0])
+        ax.set_xticks([0.3, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0, 9.0, 10.0])
 
         if not self.nolegend:
             ax.set_title(title, fontsize=20)
@@ -2287,7 +2277,7 @@ class ContinuumFit(ContinuumTools):
         if fastphot['CONTINUUM_AV_IVAR'] == 0:
             leg.update({'AV': '$A(V)$={:.2f} mag'.format(fastphot['CONTINUUM_AV'])})
         else:
-            leg.update({'AV': '$A(V)$={:.2f}+/-{:.2f} mag'.format(
+            leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
                 fastphot['CONTINUUM_AV'], 1/np.sqrt(fastphot['CONTINUUM_AV_IVAR']))})
 
         bbox = dict(boxstyle='round', facecolor='gray', alpha=0.25)
