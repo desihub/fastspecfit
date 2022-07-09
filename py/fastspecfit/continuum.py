@@ -146,7 +146,7 @@ class ContinuumTools(object):
         keep = np.where((wave >= minwave) * (wave <= maxwave))[0]
         sspwave = wave[keep]
 
-        if True:
+        if False:
             # The old ages are 12.5, 13.3, 14.1, and 14.9 Gyr, so we have to
             # choose 14 Gyr if we want a maximally old template (e.g., for our
             # velocity dispersion measurements).
@@ -156,7 +156,10 @@ class ContinuumTools(object):
             sspinfo = sspinfo[iage]
         else:
             log.warning('Testing out more templates!!!')
-            sspflux = flux[keep, :]
+            iage = np.hstack((np.arange(len(sspinfo)-48)[::5][:-2]+48, np.arange(5)+180))
+            sspflux = flux[:, iage][keep, :] # flux[keep, ::5]
+            sspinfo = sspinfo[iage]
+            #sspflux = flux[keep, :]
             #sspflux = flux[keep, ::3]
             #sspinfo = sspinfo[::3]
 
@@ -1258,7 +1261,7 @@ class ContinuumTools(object):
 
 class ContinuumFit(ContinuumTools):
     def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=6e4, 
-                 nolegend=False, solve_vdisp=False, constrain_age=True,
+                 nolegend=False, solve_vdisp=False, constrain_age=False,
                  mapdir=None):
         """Class to model a galaxy stellar continuum.
 
@@ -1533,7 +1536,7 @@ class ContinuumFit(ContinuumTools):
 
         # get the stellar mass
         nage = len(coeff)
-        dfactor = 4.0 * np.pi * self.cosmo.luminosity_distance(redshift).to(u.pc).value**2
+        dfactor = self.cosmo.luminosity_distance(redshift).to(u.pc).value**2
         mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm * dfactor * (1 + redshift) / self.fluxnorm
         
         # From Taylor+11, eq 8
@@ -1725,7 +1728,8 @@ class ContinuumFit(ContinuumTools):
                                                   south=data['photsys'] == 'S')
             coeff, chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
                                                   objflam, objflamivar) # bestphot['flam'] is [nband, nage]
-            log.warning('Need to compute the correct reduced chi2!')
+            dof = np.sum(objflamivar > 0) - 1 # 1 free parameter??
+            chi2min /= dof
             continuummodel = bestsspflux.dot(coeff)
 
         # Compute DN4000, K-corrections, and rest-frame quantities.
@@ -1971,7 +1975,7 @@ class ContinuumFit(ContinuumTools):
         dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
         
         if False:
-            print(dn4000, dn4000_model, dn4000_ivar)
+            print(dn4000, dn4000_model, 1/np.sqrt(dn4000_ivar))
             from fastspecfit.util import ivar2var            
             import matplotlib.pyplot as plt
 
