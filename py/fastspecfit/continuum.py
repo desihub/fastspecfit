@@ -478,7 +478,7 @@ class ContinuumTools(object):
             
         return phot
 
-    def convolve_vdisp(self, sspflux, vdisp, restwave=None):
+    def convolve_vdisp(self, sspflux, vdisp):
         """Convolve by the velocity dispersion.
 
         Parameters
@@ -499,18 +499,7 @@ class ContinuumTools(object):
             return sspflux
         sigma = vdisp / self.pixkms # [pixels]
 
-        if restwave is not None:
-            smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
-            # possible code to trim before convolving for speed considerations
-            #I = np.where(restwave < 1e4)[0] # ; don't convolve below 1 micron
-            #if len(I) > 0:
-            #    smoothflux = sspflux.copy()
-            #    if sspflux.ndim == 1:
-            #        smoothflux[I] = gaussian_filter1d(sspflux[I], sigma=sigma, axis=0)
-            #    else:
-            #        smoothflux[I, :] = gaussian_filter1d(sspflux[I, :], sigma=sigma, axis=0)
-        else:
-            smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
+        smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
 
         return smoothflux
     
@@ -1197,7 +1186,7 @@ class ContinuumTools(object):
 
         # broaden for velocity dispersion
         if vdisp is not None:
-            sspflux = self.convolve_vdisp(sspflux, vdisp, restwave=sspwave)
+            sspflux = self.convolve_vdisp(sspflux, vdisp)
 
         # Apply the redshift factor. The models are normalized to 10 pc, so
         # apply the luminosity distance factor here. Also normalize to a nominal
@@ -1241,10 +1230,6 @@ class ContinuumTools(object):
                 datasspflux.append(self.smooth_and_resample(zsspflux[:, imodel], zsspwave))
             datasspflux = np.vstack(datasspflux).T
 
-            ## This is wrong...
-            #if vdisp:
-            #     datasspflux = self.convolve_vdisp(datasspflux, vdisp)
-                 
             # optionally compute the best-fitting model
             if coeff is not None:
                 datasspflux = datasspflux.dot(coeff)
@@ -1263,9 +1248,6 @@ class ContinuumTools(object):
                         zsspflux[:, imodel], zsspwave, specwave=specwave[icamera],
                         specres=specres[icamera]))
                 _datasspflux = np.vstack(_datasspflux).T
-                ## This is wrong...
-                #if vdisp:
-                #    _datasspflux = self.convolve_vdisp(_datasspflux, vdisp)
                 if coeff is not None:
                     _datasspflux = _datasspflux.dot(coeff)
                 datasspflux.append(_datasspflux)
@@ -1350,8 +1332,7 @@ class ContinuumFit(ContinuumTools):
         sspflux_dustnomvdisp = []
         for AV in self.AV:
             atten = self.dust_attenuation(self.sspwave, AV)
-            _sspflux_dustnomvdisp = self.convolve_vdisp(self.sspflux * atten[:, np.newaxis],
-                                                        self.vdisp_nominal, restwave=self.sspwave)
+            _sspflux_dustnomvdisp = self.convolve_vdisp(self.sspflux * atten[:, np.newaxis], self.vdisp_nominal)
             sspflux_dustnomvdisp.append(_sspflux_dustnomvdisp)
 
         #import matplotlib.pyplot as plt
@@ -1369,7 +1350,7 @@ class ContinuumFit(ContinuumTools):
         if cache_vdisp: 
             sspflux_vdispnomdust = []
             for vdisp in self.vdisp:
-                sspflux_vdispnomdust.append(self.convolve_vdisp(self.sspflux, vdisp, restwave=self.sspwave))
+                sspflux_vdispnomdust.append(self.convolve_vdisp(self.sspflux, vdisp))
 
             #import matplotlib.pyplot as plt
             #plt.plot(self.sspwave, self.sspflux[:, 5])
@@ -1941,7 +1922,7 @@ class ContinuumFit(ContinuumTools):
                     #atten = self.dust_attenuation(self.sspwave, AVbest)
                     sspflux_vdispfine = []
                     for vdisp in vdispfine:
-                        sspflux_vdispfine.append(self.convolve_vdisp(self.sspflux[:, agekeep], vdisp, restwave=self.sspwave))
+                        sspflux_vdispfine.append(self.convolve_vdisp(self.sspflux[:, agekeep], vdisp))
                     sspflux_vdispfine = np.stack(sspflux_vdispfine, axis=-1) # [npix,nage,nvdisp]
                     
                     zsspflux_vdispfine, _ = self.SSP2data(sspflux_vdispfine, self.sspwave,
