@@ -153,9 +153,10 @@ def fastspec(args=None, comm=None):
     else:
         targetids = args.targetids
 
-    # Initialize the continuum- and emission-line fitting classes.
+    # Initialize the continuum- and emission-line fitting classes. Note: trim
+    # the wavelengths of the SSPs to optimize compute time.
     t0 = time.time()
-    CFit = ContinuumFit(mapdir=args.mapdir, solve_vdisp=args.solve_vdisp)
+    CFit = ContinuumFit(mapdir=args.mapdir, solve_vdisp=args.solve_vdisp, minwave=500.0, maxwave=1e4)
     EMFit = EMLineFit(mapdir=args.mapdir)
     Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
@@ -226,7 +227,7 @@ def fastphot(args=None, comm=None):
 
     # Initialize the continuum-fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit(mapdir=args.mapdir)
+    CFit = ContinuumFit(mapdir=args.mapdir, cache_vdisp=False, solve_vdisp=False, minwave=None, maxwave=30e4)
     Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 

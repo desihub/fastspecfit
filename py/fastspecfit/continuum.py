@@ -412,7 +412,7 @@ class ContinuumTools(object):
 
         # Add a minimum uncertainty in quadrature.
         if min_uncertainty is not None:
-            log.info('Propagating minimum uncertainties (mag): [{}]'.format(' '.join(min_uncertainty.astype(str))))
+            log.info('Propagating minimum photometric uncertainties (mag): [{}]'.format(' '.join(min_uncertainty.astype(str))))
             good = np.where((maggies > 0) * (ivarmaggies > 0))[0]
             if len(good) > 0:
                 factor = 2.5 / np.log(10.)
@@ -478,7 +478,7 @@ class ContinuumTools(object):
             
         return phot
 
-    def convolve_vdisp(self, sspflux, vdisp):
+    def convolve_vdisp(self, sspflux, vdisp, restwave=None):
         """Convolve by the velocity dispersion.
 
         Parameters
@@ -499,7 +499,18 @@ class ContinuumTools(object):
             return sspflux
         sigma = vdisp / self.pixkms # [pixels]
 
-        smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
+        if restwave is not None:
+            smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
+            # possible code to trim before convolving for speed considerations
+            #I = np.where(restwave < 1e4)[0] # ; don't convolve below 1 micron
+            #if len(I) > 0:
+            #    smoothflux = sspflux.copy()
+            #    if sspflux.ndim == 1:
+            #        smoothflux[I] = gaussian_filter1d(sspflux[I], sigma=sigma, axis=0)
+            #    else:
+            #        smoothflux[I, :] = gaussian_filter1d(sspflux[I, :], sigma=sigma, axis=0)
+        else:
+            smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
 
         return smoothflux
     
@@ -1186,7 +1197,7 @@ class ContinuumTools(object):
 
         # broaden for velocity dispersion
         if vdisp is not None:
-            sspflux = self.convolve_vdisp(sspflux, vdisp)
+            sspflux = self.convolve_vdisp(sspflux, vdisp, restwave=sspwave)
 
         # Apply the redshift factor. The models are normalized to 10 pc, so
         # apply the luminosity distance factor here. Also normalize to a nominal
@@ -1264,9 +1275,9 @@ class ContinuumTools(object):
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 
 class ContinuumFit(ContinuumTools):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=30e4,#6e4, 
-                 nolegend=False, solve_vdisp=True, constrain_age=False,
-                 mapdir=None):
+    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=30e4,
+                 nolegend=False, cache_vdisp=True, solve_vdisp=False,
+                 constrain_age=True, mapdir=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -1290,7 +1301,7 @@ class ContinuumFit(ContinuumTools):
             distribution of the form x**2*np.exp(-2*x/scale).
 
         """
-        super(ContinuumFit, self).__init__(metallicity=metallicity, minwave=minwave, 
+        super(ContinuumFit, self).__init__(metallicity=metallicity, minwave=minwave,
                                            maxwave=maxwave, mapdir=mapdir)
 
         self.nolegend = nolegend
@@ -1339,7 +1350,8 @@ class ContinuumFit(ContinuumTools):
         sspflux_dustnomvdisp = []
         for AV in self.AV:
             atten = self.dust_attenuation(self.sspwave, AV)
-            _sspflux_dustnomvdisp = self.convolve_vdisp(self.sspflux * atten[:, np.newaxis], self.vdisp_nominal)
+            _sspflux_dustnomvdisp = self.convolve_vdisp(self.sspflux * atten[:, np.newaxis],
+                                                        self.vdisp_nominal, restwave=self.sspwave)
             sspflux_dustnomvdisp.append(_sspflux_dustnomvdisp)
 
         #import matplotlib.pyplot as plt
@@ -1354,10 +1366,10 @@ class ContinuumFit(ContinuumTools):
         # Finally, optionally precompute a grid of spectra with nominal
         # reddening on a grid of velocity dispersion. Again, this isn't quite
         # right redward of ~1 micron where the pixel size changes.
-        if self.solve_vdisp:
+        if cache_vdisp: 
             sspflux_vdispnomdust = []
             for vdisp in self.vdisp:
-                sspflux_vdispnomdust.append(self.convolve_vdisp(self.sspflux, vdisp))
+                sspflux_vdispnomdust.append(self.convolve_vdisp(self.sspflux, vdisp, restwave=self.sspwave))
 
             #import matplotlib.pyplot as plt
             #plt.plot(self.sspwave, self.sspflux[:, 5])
@@ -1841,18 +1853,6 @@ class ContinuumFit(ContinuumTools):
         zsspflux_dustnomvdisp = zsspflux_dustnomvdisp.reshape(npix, nage, self.nAV)       # [npix,nage,nAV]
         log.info('Preparing the models took {:.2f} sec'.format(time.time()-t0))
 
-        ## Fit the spectra with *no* dust reddening so we can identify potential
-        ## calibration issues (again, at the nominal velocity dispersion).
-        #t0 = time.time()
-        #inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0 here
-        #coeff, chi2min = self._fnnls_parallel(zsspflux_dustnomvdisp[:, :, inodust],
-        #                                      specflux, specivar)
-        #log.info('No-dust model fit has chi2={:.3f} and took {:.2f} sec'.format(
-        #    chi2min, time.time()-t0))
-        #
-        #result['CONTINUUM_NODUST_COEFF'][0][0:nage] = coeff
-        #result['CONTINUUM_NODUST_CHI2'] = chi2min
-
         # Fit the spectra for reddening using the models convolved to the
         # nominal velocity dispersion.
         t0 = time.time()
@@ -1871,7 +1871,12 @@ class ContinuumFit(ContinuumTools):
 
         # Optionally build out the model spectra on our grid of velocity
         # dispersion and then solve.
-        if self.solve_vdisp:
+        compute_vdisp = ((result['CONTINUUM_SNR_B'] > 3) or (result['CONTINUUM_SNR_R'] > 3)) and (redshift < 1.0)
+        if compute_vdisp:
+            log.info('Solving for velocity dispersion: S/N_B={:.2f}, S/N_R={:.2f}, redshift={:.3f}'.format(
+                result['CONTINUUM_SNR_B'][0], result['CONTINUUM_SNR_R'][0], redshift))
+            
+        if self.solve_vdisp or compute_vdisp:
             t0 = time.time()
             if True:
                 zsspflux_vdisp = []
@@ -1936,7 +1941,7 @@ class ContinuumFit(ContinuumTools):
                     #atten = self.dust_attenuation(self.sspwave, AVbest)
                     sspflux_vdispfine = []
                     for vdisp in vdispfine:
-                        sspflux_vdispfine.append(self.convolve_vdisp(self.sspflux[:, agekeep], vdisp))
+                        sspflux_vdispfine.append(self.convolve_vdisp(self.sspflux[:, agekeep], vdisp, restwave=self.sspwave))
                     sspflux_vdispfine = np.stack(sspflux_vdispfine, axis=-1) # [npix,nage,nvdisp]
                     
                     zsspflux_vdispfine, _ = self.SSP2data(sspflux_vdispfine, self.sspwave,
@@ -1963,10 +1968,10 @@ class ContinuumFit(ContinuumTools):
 
         # Get the final set of coefficients and chi2 at the best-fitting
         # reddening and velocity dispersion.
-        bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
-                                              specwave=data['wave'], specres=data['res'],
-                                              AV=AVbest, vdisp=vdispbest, cameras=data['cameras'],
-                                              south=data['photsys'] == 'S')
+        bestsspflux, _ = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
+                                       specwave=data['wave'], specres=data['res'],
+                                       AV=AVbest, vdisp=vdispbest, cameras=data['cameras'],
+                                       south=data['photsys'] == 'S', synthphot=False)
         bestsspflux = np.concatenate(bestsspflux, axis=0)
         coeff, chi2min = self._fnnls_parallel(bestsspflux, specflux, specivar)
         chi2min /= np.sum(specivar > 0) # dof???
@@ -2094,7 +2099,7 @@ class ContinuumFit(ContinuumTools):
         import matplotlib.ticker as ticker
         import seaborn as sns
 
-        sns.set(context='talk', style='ticks', font_scale=1.2)#, rc=rc)
+        sns.set(context='talk', style='ticks', font_scale=1.1)#, rc=rc)
 
         col1 = colors.to_hex('darkblue') # 'darkgreen', 'darkred', 'dodgerblue', 'darkseagreen', 'orangered']]
         
@@ -2201,8 +2206,17 @@ class ContinuumFit(ContinuumTools):
         ax.set_ylim(ymin, ymax)
 
         ax.set_xscale('log')
-        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.0g'))
-        ax.set_xticks([0.2, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
+
+        @ticker.FuncFormatter
+        def major_formatter(x, pos):
+            if x > 1:
+                return f'{x:.0f}'
+            else:
+                return f'{x:.1f}'
+        
+        ax.xaxis.set_major_formatter(major_formatter)
+        #ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.0f'))
+        ax.set_xticks([0.1, 0.2, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
 
         if not self.nolegend:
             ax.set_title(title, fontsize=20)
