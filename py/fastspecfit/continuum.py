@@ -413,11 +413,11 @@ class ContinuumTools(object):
         # Add a minimum uncertainty in quadrature.
         if min_uncertainty is not None:
             log.info('Propagating minimum photometric uncertainties (mag): [{}]'.format(' '.join(min_uncertainty.astype(str))))
-            good = np.where((maggies > 0) * (ivarmaggies > 0))[0]
+            good = np.where((maggies != 0) * (ivarmaggies > 0))[0]
             if len(good) > 0:
                 factor = 2.5 / np.log(10.)
                 magerr = factor / (np.sqrt(ivarmaggies[good]) * maggies[good])
-                magerr2 = magerr**2 + min_uncertainty**2
+                magerr2 = magerr**2 + min_uncertainty[good]**2
                 ivarmaggies[good] = factor**2 / (maggies[good]**2 * magerr2)
 
         factor = nanofactor * 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
@@ -1852,7 +1852,7 @@ class ContinuumFit(ContinuumTools):
 
         # Optionally build out the model spectra on our grid of velocity
         # dispersion and then solve.
-        compute_vdisp = ((result['CONTINUUM_SNR_B'] > 3) or (result['CONTINUUM_SNR_R'] > 3)) and (redshift < 1.0)
+        compute_vdisp = ((result['CONTINUUM_SNR_B'] > 3) and (result['CONTINUUM_SNR_R'] > 3)) and (redshift < 1.0)
         if compute_vdisp:
             log.info('Solving for velocity dispersion: S/N_B={:.2f}, S/N_R={:.2f}, redshift={:.3f}'.format(
                 result['CONTINUUM_SNR_B'][0], result['CONTINUUM_SNR_R'][0], redshift))
@@ -2001,6 +2001,7 @@ class ContinuumFit(ContinuumTools):
             ax.set_ylabel(r'$F_{\nu}$ (erg/s/cm2/Hz)')
             ax.legend()
             fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
+            pdb.set_trace()
 
         if dn4000_ivar > 0:
             log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr'.format(dn4000, 1/np.sqrt(dn4000_ivar), meanage))

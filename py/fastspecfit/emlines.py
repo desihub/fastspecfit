@@ -21,7 +21,7 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import trapz_rebin, C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger()#DEBUG)
+log = get_logger(DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -1017,9 +1017,9 @@ class EMLineFit(ContinuumTools):
         computing integrated fluxes...
 
         """
-        from fastspecfit.util import ivar2var
         from scipy.stats import sigmaclip
-
+        from fastspecfit.util import ivar2var
+            
         def _clean_linefit(bestfit, init_amplitudes, init_sigmas):
             """Clean up line-fitting results."""
             
@@ -1102,13 +1102,12 @@ class EMLineFit(ContinuumTools):
         npixpercamera = [len(gw) for gw in data['wave']] # all pixels
         npixpercam = np.hstack([0, npixpercamera])
 
-        emlinevar, emlinegood = ivar2var(emlineivar)
-        weights = np.sqrt(emlineivar)
+        emlinevar, emlinegood = ivar2var(emlineivar, clip=1e-3)
         emlinebad = np.logical_not(emlinegood)
         if np.sum(emlinebad) > 0:
-            #weights[emlinebad] = 10*np.max(weights[emlinegood]) # 1e16 # ???
-            weights[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], weights[emlinegood])
+            emlineivar[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineivar[emlinegood])
             emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
+        weights = np.sqrt(emlineivar)
 
         wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
 
@@ -1270,6 +1269,7 @@ class EMLineFit(ContinuumTools):
             fitter = FastLevMarLSQFitter(self.EMLineModel)
             broadfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                               maxiter=maxiter, acc=accuracy)
+
             broadfit = _clean_linefit(broadfit, init_amplitudes, init_sigmas)
             broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar)
             log.info('Second (broad) line-fitting with {} free parameters took {:.2f} sec (niter={}) with chi2={:.3f}'.format(

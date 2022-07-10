@@ -14,10 +14,13 @@ try: # this fails when building the documentation
 except:
     C_LIGHT = 299792.458
 
-def ivar2var(ivar, sigma=False):
-    """Safely convert an inverse variance to a variance."""
+def ivar2var(ivar, clip=1e-3, sigma=False):
+    """Safely convert an inverse variance to a variance. Note that we clip at 1e-3
+    by default, not zero.
+    
+    """
     var = np.zeros_like(ivar)
-    goodmask = ivar > 0 # True is good
+    goodmask = ivar > clip # True is good
     if np.count_nonzero(goodmask) == 0:
         log.warning('All values are masked!')
         raise ValueError
