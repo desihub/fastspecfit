@@ -526,7 +526,7 @@ class DESISpectra(object):
                     CFit.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
                     lambda_eff=allfilters.effective_wavelengths.value,
                     min_uncertainty=CFit.min_uncertainty)
-
+                
                 # fiber fluxes
                 #mw_transmission_fiberflux = 10**(-0.4 * ebv[igal] * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
                 if data['photsys'] != '':                

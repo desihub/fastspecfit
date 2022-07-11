@@ -228,22 +228,28 @@ class ContinuumTools(object):
 
         # rest-frame filters
         self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1']
-        self.absmag_filters = filters.load_filters('bessell-U', 'bessell-B', 'bessell-V',
-                                                   'sdss2010-u', 'sdss2010-g', 'sdss2010-r',
-                                                   'sdss2010-i', 'sdss2010-z', 'wise2010-W1')
-        self.absmag_bandshift = np.array([0.0, 0.0, 0.0,
-                                          0.0, 0.0, 0.0,
-                                          0.0, 0.0, 0.0])
-        #self.absmag_bandshift = np.array([0.0, 0.0, 0.0,
-        #                                  0.1, 0.1, 0.1,
-        #                                  0.1, 0.1, 0.0])
+
+        self.absmag_bands_00 = ['U', 'B', 'V', 'W1'] # band_shift=0.0
+        self.absmag_bands_01 = ['sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z'] # band_shift=0.1
+
+        self.absmag_filters_00 = filters.FilterSequence((
+            filters.load_filter('bessell-U'), filters.load_filter('bessell-B'),
+            filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1')))
+        
+        self.absmag_filters_01 = filters.FilterSequence((
+            filters.load_filter('sdss2010-u').create_shifted(band_shift=0.1),
+            filters.load_filter('sdss2010-g').create_shifted(band_shift=0.1),
+            filters.load_filter('sdss2010-r').create_shifted(band_shift=0.1),
+            filters.load_filter('sdss2010-i').create_shifted(band_shift=0.1),
+            filters.load_filter('sdss2010-z').create_shifted(band_shift=0.1)))
+
+        #self.absmag_filters = filters.load_filters('bessell-U', 'bessell-B', 'bessell-V',
+        #                                           'sdss2010-u', 'sdss2010-g', 'sdss2010-r',
+        #                                           'sdss2010-i', 'sdss2010-z', 'wise2010-W1')        
         
         #self.min_uncertainty = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]) # mag
         #self.min_uncertainty = np.array([0.01, 0.01, 0.01, 0.02, 0.02, 0.05, 0.05]) # mag
-        self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.04, 0.04, 0.05, 0.05]) # mag
-
-        # used in one place...
-        #self.rand = np.random.RandomState(seed=seed)
+        self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
 
     @staticmethod
     def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
@@ -1466,71 +1472,88 @@ class ContinuumFit(ContinuumTools):
         return np.where(self.sspinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
 
     def kcorr_and_absmag(self, data, continuum, coeff, snrmin=2.0):
-        """Computer K-corrections and absolute magnitudes.
-
-        # To get the absolute r-band magnitude we would do:
-        #   M_r = m_X_obs + 2.5*log10(r_synth_rest/X_synth_obs)
-        # where X is the redshifted bandpass
+        """Computer K-corrections, absolute magnitudes, and a simple stellar mass.
 
         """
         redshift = data['zredrock']
-        band_shift = self.absmag_bandshift
-        bands_to_fit = self.bands_to_fit
         
         if data['photsys'] == 'S':
             filters_in = self.decamwise
         else:
             filters_in = self.bassmzlswise
-        filters_out = self.absmag_filters
-        nout = len(filters_out)
-
-        # shift the bandpasses blueward by a factor of 1+band_shift
         lambda_in = filters_in.effective_wavelengths.value
-        lambda_out = filters_out.effective_wavelengths.value / (1 + band_shift)
 
         # redshifted wavelength array and distance modulus
         zsspwave = self.sspwave * (1 + redshift)
         dmod = self.cosmo.distmod(redshift).value
 
         maggies = data['phot']['nanomaggies'].data * 1e-9
-        ivarmaggies = (data['phot']['nanomaggies_ivar'].data / 1e-9**2) * bands_to_fit
+        ivarmaggies = (data['phot']['nanomaggies_ivar'].data / 1e-9**2) * self.bands_to_fit # mask W2-W4
 
         # input bandpasses, observed frame; maggies and bestmaggies should be
         # very close.
         bestmaggies = filters_in.get_ab_maggies(continuum / self.fluxnorm, zsspwave)
         bestmaggies = np.array(bestmaggies.as_array().tolist()[0])
 
-        # output bandpasses, rest frame -- need to shift the filter curves
-        # blueward by a factor of 1+band_shift!
-        synth_outmaggies_rest = filters_out.get_ab_maggies(continuum * (1 + redshift) / self.fluxnorm, self.sspwave) 
-        synth_outmaggies_rest = np.array(synth_outmaggies_rest.as_array().tolist()[0])
+        # need to handle filters with band_shift!=0 separately from those with band_shift==0
+        def _kcorr_and_absmag(filters_out, band_shift):
+            nout = len(filters_out)
+            lambda_out = filters_out.effective_wavelengths.value
+            
+            synth_outmaggies_rest = filters_out.get_ab_maggies(continuum * (1 + redshift) / (1 + band_shift) /
+                                                               self.fluxnorm, self.sspwave * (1 + band_shift))
+            synth_outmaggies_rest = np.array(synth_outmaggies_rest.as_array().tolist()[0])
+    
+            # output bandpasses, observed frame
+            synth_outmaggies_obs = filters_out.get_ab_maggies(continuum / self.fluxnorm, zsspwave)
+            synth_outmaggies_obs = np.array(synth_outmaggies_obs.as_array().tolist()[0])
+    
+            absmag = np.zeros(nout, dtype='f4')
+            ivarabsmag = np.zeros(nout, dtype='f4')
+            kcorr = np.zeros(nout, dtype='f4')
+            for jj in np.arange(nout):
+                lambdadist = np.abs(lambda_in / (1 + redshift) - lambda_out[jj])
+                # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
+                #oband = np.argmin(lambdadist)
+                #oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e10)
+                oband = np.argmin(lambdadist + (maggies*np.sqrt(ivarmaggies) < snrmin)*1e10)
+                kcorr[jj] = + 2.5 * np.log10(synth_outmaggies_rest[jj] / bestmaggies[oband])
+    
+                # m_R = M_Q + DM(z) + K_QR(z) or
+                # M_Q = m_R - DM(z) - K_QR(z)
+                if maggies[oband] * np.sqrt(ivarmaggies[oband]) > snrmin:
+                #if (maggies[oband] > 0) and (ivarmaggies[oband]) > 0:
+                    absmag[jj] = -2.5 * np.log10(maggies[oband]) - dmod - kcorr[jj]
+                    ivarabsmag[jj] = maggies[oband]**2 * ivarmaggies[oband] * (0.4 * np.log(10.))**2
+                else:
+                    # if we use synthesized photometry then ivarabsmag is zero
+                    # (which should never happen?)
+                    absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
 
-        # output bandpasses, observed frame
-        synth_outmaggies_obs = filters_out.get_ab_maggies(continuum / self.fluxnorm, zsspwave)
-        synth_outmaggies_obs = np.array(synth_outmaggies_obs.as_array().tolist()[0])
+            return kcorr, absmag, ivarabsmag
 
+        kcorr_00, absmag_00, ivarabsmag_00 = _kcorr_and_absmag(self.absmag_filters_00, band_shift=0.0)
+        kcorr_01, absmag_01, ivarabsmag_01 = _kcorr_and_absmag(self.absmag_filters_01, band_shift=0.1)
+
+        nout = len(self.absmag_bands)
+        kcorr = np.zeros(nout, dtype='f4')
         absmag = np.zeros(nout, dtype='f4')
         ivarabsmag = np.zeros(nout, dtype='f4')
-        kcorr = np.zeros(nout, dtype='f4')
-        for jj in np.arange(nout):
-            lambdadist = np.abs(lambda_in / (1 + redshift) - lambda_out[jj])
-            # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
-            #oband = np.argmin(lambdadist)
-            #oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e10)
-            oband = np.argmin(lambdadist + (maggies*np.sqrt(ivarmaggies) < snrmin)*1e10)
-            kcorr[jj] = + 2.5 * np.log10(synth_outmaggies_rest[jj] / bestmaggies[oband])
 
-            # m_R = M_Q + DM(z) + K_QR(z) or
-            # M_Q = m_R - DM(z) - K_QR(z)
-            if maggies[oband] * np.sqrt(ivarmaggies[oband]) > snrmin:
-            #if (maggies[oband] > 0) and (ivarmaggies[oband]) > 0:
-                absmag[jj] = -2.5 * np.log10(maggies[oband]) - dmod - kcorr[jj]
-                ivarabsmag[jj] = maggies[oband]**2 * ivarmaggies[oband] * (0.4 * np.log(10.))**2
-            else:
-                # if we use synthesized photometry then ivarabsmag is zero
-                # (which should never happen?)
-                absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
+        I00 = np.isin(self.absmag_bands, self.absmag_bands_00)
+        I01 = np.isin(self.absmag_bands, self.absmag_bands_01)
 
+        kcorr[I00] = kcorr_00
+        absmag[I00] = absmag_00
+        ivarabsmag[I00] = ivarabsmag_00
+
+        kcorr[I01] = kcorr_01
+        absmag[I01] = absmag_01
+        ivarabsmag[I01] = ivarabsmag_01
+
+        #print(kcorr_01, absmag_01)
+        #pdb.set_trace()
+        
         # get the stellar mass
         nage = len(coeff)
         dfactor = self.cosmo.luminosity_distance(redshift).to(u.pc).value**2
