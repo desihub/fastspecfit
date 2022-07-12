@@ -237,11 +237,11 @@ class ContinuumTools(object):
             filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1')))
         
         self.absmag_filters_01 = filters.FilterSequence((
-            filters.load_filter('sdss2010-u').create_shifted(band_shift=0.1),
-            filters.load_filter('sdss2010-g').create_shifted(band_shift=0.1),
-            filters.load_filter('sdss2010-r').create_shifted(band_shift=0.1),
-            filters.load_filter('sdss2010-i').create_shifted(band_shift=0.1),
-            filters.load_filter('sdss2010-z').create_shifted(band_shift=0.1)))
+            filters.load_filter('sdss2010atm-u').create_shifted(band_shift=0.1),
+            filters.load_filter('sdss2010atm-g').create_shifted(band_shift=0.1),
+            filters.load_filter('sdss2010atm-r').create_shifted(band_shift=0.1),
+            filters.load_filter('sdss2010atm-i').create_shifted(band_shift=0.1),
+            filters.load_filter('sdss2010atm-z').create_shifted(band_shift=0.1)))
 
         #self.absmag_filters = filters.load_filters('bessell-U', 'bessell-B', 'bessell-V',
         #                                           'sdss2010-u', 'sdss2010-g', 'sdss2010-r',
@@ -418,7 +418,8 @@ class ContinuumTools(object):
 
         # Add a minimum uncertainty in quadrature.
         if min_uncertainty is not None:
-            log.info('Propagating minimum photometric uncertainties (mag): [{}]'.format(' '.join(min_uncertainty.astype(str))))
+            log.debug('Propagating minimum photometric uncertainties (mag): [{}]'.format(
+                ' '.join(min_uncertainty.astype(str))))
             good = np.where((maggies != 0) * (ivarmaggies > 0))[0]
             if len(good) > 0:
                 factor = 2.5 / np.log(10.)
@@ -1499,7 +1500,10 @@ class ContinuumFit(ContinuumTools):
         def _kcorr_and_absmag(filters_out, band_shift):
             nout = len(filters_out)
             lambda_out = filters_out.effective_wavelengths.value
-            
+
+            # multiply by (1+z) to convert the best-fitting model to the "rest
+            # frame" and then divide by 1+band_shift to shift it and the
+            # wavelength vector to the band-shifted redshift.
             synth_outmaggies_rest = filters_out.get_ab_maggies(continuum * (1 + redshift) / (1 + band_shift) /
                                                                self.fluxnorm, self.sspwave * (1 + band_shift))
             synth_outmaggies_rest = np.array(synth_outmaggies_rest.as_array().tolist()[0])
@@ -1529,6 +1533,8 @@ class ContinuumFit(ContinuumTools):
                     # if we use synthesized photometry then ivarabsmag is zero
                     # (which should never happen?)
                     absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
+                    
+                log.debug(absmag[jj], -2.5*np.log10(synth_outmaggies_rest[jj]) - dmod)
 
             return kcorr, absmag, ivarabsmag
 
