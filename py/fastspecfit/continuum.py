@@ -234,14 +234,21 @@ class ContinuumTools(object):
 
         self.absmag_filters_00 = filters.FilterSequence((
             filters.load_filter('bessell-U'), filters.load_filter('bessell-B'),
-            filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1')))
+            filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1')
+            ))
         
         self.absmag_filters_01 = filters.FilterSequence((
-            filters.load_filter('sdss2010atm-u').create_shifted(band_shift=0.1),
-            filters.load_filter('sdss2010atm-g').create_shifted(band_shift=0.1),
-            filters.load_filter('sdss2010atm-r').create_shifted(band_shift=0.1),
-            filters.load_filter('sdss2010atm-i').create_shifted(band_shift=0.1),
-            filters.load_filter('sdss2010atm-z').create_shifted(band_shift=0.1)))
+            filters.load_filter('sdss2010atm-u'),
+            filters.load_filter('sdss2010atm-g'),
+            filters.load_filter('sdss2010atm-r'),
+            filters.load_filter('sdss2010atm-i'),
+            filters.load_filter('sdss2010atm-z'),
+            #filters.load_filter('sdss2010atm-u').create_shifted(band_shift=0.1),
+            #filters.load_filter('sdss2010atm-g').create_shifted(band_shift=0.1),
+            #filters.load_filter('sdss2010atm-r').create_shifted(band_shift=0.1),
+            #filters.load_filter('sdss2010atm-i').create_shifted(band_shift=0.1),
+            #filters.load_filter('sdss2010atm-z').create_shifted(band_shift=0.1))
+            ))
 
         #self.absmag_filters = filters.load_filters('bessell-U', 'bessell-B', 'bessell-V',
         #                                           'sdss2010-u', 'sdss2010-g', 'sdss2010-r',
@@ -1499,14 +1506,17 @@ class ContinuumFit(ContinuumTools):
         # need to handle filters with band_shift!=0 separately from those with band_shift==0
         def _kcorr_and_absmag(filters_out, band_shift):
             nout = len(filters_out)
-            lambda_out = filters_out.effective_wavelengths.value
 
-            # multiply by (1+z) to convert the best-fitting model to the "rest
+            # note the factor of 1+band_shift
+            lambda_out = filters_out.effective_wavelengths.value / (1 + band_shift)
+
+            # Multiply by (1+z) to convert the best-fitting model to the "rest
             # frame" and then divide by 1+band_shift to shift it and the
-            # wavelength vector to the band-shifted redshift.
+            # wavelength vector to the band-shifted redshift. Also need one more
+            # factor of 1+band_shift in order maintain the AB mag normalization.
             synth_outmaggies_rest = filters_out.get_ab_maggies(continuum * (1 + redshift) / (1 + band_shift) /
                                                                self.fluxnorm, self.sspwave * (1 + band_shift))
-            synth_outmaggies_rest = np.array(synth_outmaggies_rest.as_array().tolist()[0])
+            synth_outmaggies_rest = np.array(synth_outmaggies_rest.as_array().tolist()[0]) / (1 + band_shift)
     
             # output bandpasses, observed frame
             synth_outmaggies_obs = filters_out.get_ab_maggies(continuum / self.fluxnorm, zsspwave)
@@ -1522,7 +1532,7 @@ class ContinuumFit(ContinuumTools):
                 #oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e10)
                 oband = np.argmin(lambdadist + (maggies*np.sqrt(ivarmaggies) < snrmin)*1e10)
                 kcorr[jj] = + 2.5 * np.log10(synth_outmaggies_rest[jj] / bestmaggies[oband])
-    
+
                 # m_R = M_Q + DM(z) + K_QR(z) or
                 # M_Q = m_R - DM(z) - K_QR(z)
                 if maggies[oband] * np.sqrt(ivarmaggies[oband]) > snrmin:
@@ -1538,8 +1548,8 @@ class ContinuumFit(ContinuumTools):
 
             return kcorr, absmag, ivarabsmag
 
-        kcorr_00, absmag_00, ivarabsmag_00 = _kcorr_and_absmag(self.absmag_filters_00, band_shift=0.0)
         kcorr_01, absmag_01, ivarabsmag_01 = _kcorr_and_absmag(self.absmag_filters_01, band_shift=0.1)
+        kcorr_00, absmag_00, ivarabsmag_00 = _kcorr_and_absmag(self.absmag_filters_00, band_shift=0.0)
 
         nout = len(self.absmag_bands)
         kcorr = np.zeros(nout, dtype='f4')
