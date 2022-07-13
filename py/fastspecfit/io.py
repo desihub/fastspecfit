@@ -304,7 +304,8 @@ class DESISpectra(object):
                     alltiles.append(expmeta['TILEID'][I][0]) # store just the zeroth tile for gather_targetphot, below
                 else:
                     alltiles.append(tileid)
-            meta['TILEID_LIST'] = tileid_list
+            if self.coadd_type == 'healpix':                    
+                meta['TILEID_LIST'] = tileid_list
 
             # Gather additional info about this pixel.
             if self.coadd_type == 'healpix':
@@ -721,7 +722,7 @@ class DESISpectra(object):
 
         # All of this business is so we can get the columns in the order we want
         # (i.e., the order that matches the data model).
-        for metacol in ['TARGETID', 'RA', 'DEC', 'TILEID_LIST', 'TILEID', 'FIBER', 'NIGHT']:
+        for metacol in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'FIBER', 'NIGHT', 'TILEID_LIST', 'RA', 'DEC']:
             if metacol in metacols:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():
@@ -757,7 +758,9 @@ class DESISpectra(object):
                 meta[fluxcol].unit = colunit[fluxcol]
 
         out = Table()
-        out['TARGETID'] = self.meta['TARGETID']
+        for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'FIBER', 'NIGHT']:
+            if col in metacols:
+                out[col] = self.meta[col]
         if fastphot:
             out = hstack((out, CFit.init_phot_output(nobj)))
         else:
