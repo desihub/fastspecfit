@@ -517,14 +517,19 @@ class ContinuumTools(object):
 
         return smoothflux
     
-    def dust_attenuation(self, wave, AV):
+    def dust_attenuation(self, wave, AV, test=False):
         """Compute the dust attenuation curve A(lambda)/A(V) from Charlot & Fall 2000.
 
         ToDo: add a UV bump and IGM attenuation!
           https://gitlab.lam.fr/cigale/cigale/-/blob/master/pcigale/sed_modules/dustatt_powerlaw.py#L42
 
         """
-        return 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
+        from desiutil.dust import dust_transmission
+        atten = 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
+        atten = dust_transmission(wave, AV / self.RV, Rv=self.RV)
+        if test:
+            pdb.set_trace()
+        return atten
 
     def smooth_continuum(self, wave, flux, ivar, redshift, medbin=150, 
                          smooth_window=50, smooth_step=10, maskkms_uv=3000.0, 
@@ -1137,7 +1142,7 @@ class ContinuumTools(object):
     
     def SSP2data(self, _sspflux, _sspwave, redshift=0.0, AV=None, vdisp=None,
                  cameras=['b', 'r', 'z'], specwave=None, specres=None, coeff=None,
-                 south=True, synthphot=True):
+                 south=True, synthphot=True, test=False):
         """Workhorse routine to turn input SSPs into spectra that can be compared to
         real data.
 
@@ -1195,7 +1200,7 @@ class ContinuumTools(object):
 
         # optionally apply reddening
         if AV is not None:
-            atten = self.dust_attenuation(sspwave, AV)
+            atten = self.dust_attenuation(sspwave, AV, test=test)
             sspflux *= atten[:, np.newaxis]
 
         # broaden for velocity dispersion
@@ -1273,7 +1278,7 @@ class ContinuumTools(object):
 class ContinuumFit(ContinuumTools):
     def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=30e4,
                  nolegend=False, cache_vdisp=True, solve_vdisp=False,
-                 constrain_age=True, mapdir=None):
+                 cache_SSPgrid=True, constrain_age=True, mapdir=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -1343,38 +1348,39 @@ class ContinuumFit(ContinuumTools):
         # Next, precompute a grid of spectra convolved to the nominal velocity
         # dispersion with reddening applied. This isn't quite right redward of
         # ~1 micron where the pixel size changes, but fix that later.
-        sspflux_dustnomvdisp = []
-        for AV in self.AV:
-            atten = self.dust_attenuation(self.sspwave, AV)
-            _sspflux_dustnomvdisp = self.convolve_vdisp(self.sspflux * atten[:, np.newaxis], self.vdisp_nominal)
-            sspflux_dustnomvdisp.append(_sspflux_dustnomvdisp)
-
-        #import matplotlib.pyplot as plt
-        #plt.plot(self.sspwave, self.sspflux[:, 5])
-        #plt.plot(self.sspwave, sspflux_dustnomvdisp[3][:, 5])
-        #plt.xlim(3500, 4700)
-        #plt.savefig('desi-users/ioannis/tmp/test-vdisp.png')
-
-        # nominal velocity broadening on a grid of A(V) [npix,nage,nAV]
-        self.sspflux_dustnomvdisp = np.stack(sspflux_dustnomvdisp, axis=-1) # [npix,nage,nAV]
-
-        # Finally, optionally precompute a grid of spectra with nominal
-        # reddening on a grid of velocity dispersion. Again, this isn't quite
-        # right redward of ~1 micron where the pixel size changes.
-        if cache_vdisp: 
-            sspflux_vdispnomdust = []
-            for vdisp in self.vdisp:
-                sspflux_vdispnomdust.append(self.convolve_vdisp(self.sspflux, vdisp))
-
+        if cache_SSPgrid:
+            sspflux_dustnomvdisp = []
+            for AV in self.AV:
+                atten = self.dust_attenuation(self.sspwave, AV)
+                _sspflux_dustnomvdisp = self.convolve_vdisp(self.sspflux * atten[:, np.newaxis], self.vdisp_nominal)
+                sspflux_dustnomvdisp.append(_sspflux_dustnomvdisp)
+    
             #import matplotlib.pyplot as plt
             #plt.plot(self.sspwave, self.sspflux[:, 5])
-            #plt.plot(self.sspwave, sspflux_vdispnomdust[3][:, 5])
-            #plt.plot(self.sspwave, sspflux_vdispnomdust[7][:, 5])
+            #plt.plot(self.sspwave, sspflux_dustnomvdisp[3][:, 5])
             #plt.xlim(3500, 4700)
             #plt.savefig('desi-users/ioannis/tmp/test-vdisp.png')
     
-            # nominal dust on a grid of velocity broadening [npix,nage,nvdisp]
-            self.sspflux_vdispnomdust = np.stack(sspflux_vdispnomdust, axis=-1) # [npix,nage,nvdisp]
+            # nominal velocity broadening on a grid of A(V) [npix,nage,nAV]
+            self.sspflux_dustnomvdisp = np.stack(sspflux_dustnomvdisp, axis=-1) # [npix,nage,nAV]
+    
+            # Finally, optionally precompute a grid of spectra with nominal
+            # reddening on a grid of velocity dispersion. Again, this isn't quite
+            # right redward of ~1 micron where the pixel size changes.
+            if cache_vdisp: 
+                sspflux_vdispnomdust = []
+                for vdisp in self.vdisp:
+                    sspflux_vdispnomdust.append(self.convolve_vdisp(self.sspflux, vdisp))
+    
+                #import matplotlib.pyplot as plt
+                #plt.plot(self.sspwave, self.sspflux[:, 5])
+                #plt.plot(self.sspwave, sspflux_vdispnomdust[3][:, 5])
+                #plt.plot(self.sspwave, sspflux_vdispnomdust[7][:, 5])
+                #plt.xlim(3500, 4700)
+                #plt.savefig('desi-users/ioannis/tmp/test-vdisp.png')
+        
+                # nominal dust on a grid of velocity broadening [npix,nage,nvdisp]
+                self.sspflux_vdispnomdust = np.stack(sspflux_vdispnomdust, axis=-1) # [npix,nage,nvdisp]
 
     def init_spec_output(self, nobj=1):
         """Initialize the output data table for this class.
@@ -2167,9 +2173,10 @@ class ContinuumFit(ContinuumTools):
             pass
 
         # rebuild the best-fitting photometric model fit
+        print('HACK!!! TESTING')
         continuum_phot, synthmodelphot = self.SSP2data(
             self.sspflux, self.sspwave, redshift=redshift,
-            synthphot=True, AV=fastphot['CONTINUUM_AV'],
+            synthphot=True, AV=fastphot['CONTINUUM_AV'], test=True,
             coeff=fastphot['CONTINUUM_COEFF'] * self.massnorm)
         
         continuum_wave_phot = self.sspwave * (1 + redshift)
@@ -2301,6 +2308,11 @@ class ContinuumFit(ContinuumTools):
         #leg = ax.legend(loc='lower left', fontsize=16)
         #for hndl in leg.legendHandles:
         #    hndl.set_markersize(8)
+
+        import fitsio
+        bb = fitsio.read('junk.fits')
+        ww = (bb['LAMBDA']/1e4 > 0.1) * (bb['LAMBDA']/1e4 < 30)
+        ax.plot(bb['LAMBDA'][ww]/1e4, bb['ABMAG'][ww], color='gray', alpha=0.9, zorder=2)
 
         if coadd_type == 'healpix':
             targetid_str = str(metadata['TARGETID'])

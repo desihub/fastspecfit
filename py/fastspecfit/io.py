@@ -29,7 +29,14 @@ TARGETINGBITS = {
     }
 
 # fibermap and exp_fibermap columns to read
-FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE']
+FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE',
+          'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID',
+          'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+          'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+          'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
+          'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2'
+          ]
+#FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE']
 EXPFMCOLS = {
     'perexp': ['TARGETID', 'TILEID', 'FIBER', 'EXPID'],
     'pernight': ['TARGETID', 'TILEID', 'FIBER'],
@@ -41,8 +48,10 @@ EXPFMCOLS = {
 REDSHIFTCOLS = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
 
 # targeting and Tractor columns to read from disk
-TARGETCOLS = ['TARGETID', 'RA', 'DEC', 
-              'PHOTSYS',
+#TARGETCOLS = ['TARGETID', 'RA', 'DEC', 'FLUX_W3', 'FLUX_W4', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
+TARGETCOLS = ['TARGETID', 'RA', 'DEC',
+              'RELEASE',
+              #'PHOTSYS',
               'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
               'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
               'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
@@ -238,6 +247,7 @@ class DESISpectra(object):
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
                 fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
                                    (meta['OBJTYPE'] == 'TGT') *
+                                   (meta['TARGETID'] > 0) *
                                    (zb['ZWARN'] <= zwarnmax))[0]
             else:
                 # We already know we like the input targetids, so no selection
@@ -334,6 +344,12 @@ class DESISpectra(object):
             return
 
         t0 = time.time()
+        #info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID'] for meta in self.meta]))
+        #tractor = gather_tractorphot(info, columns=TARGETCOLS)
+        #tractor['PHOTSYS'] = [releasedict[release] if release >= 9000 else '' for release in tractor['RELEASE']]
+        #    
+        #pdb.set_trace()
+
         info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
         info['TILEID'] = alltiles
 

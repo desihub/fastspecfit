@@ -227,7 +227,7 @@ def fastphot(args=None, comm=None):
 
     # Initialize the continuum-fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit(mapdir=args.mapdir, cache_vdisp=False, solve_vdisp=False, minwave=None, maxwave=30e4)
+    CFit = ContinuumFit(mapdir=args.mapdir, cache_vdisp=False, solve_vdisp=False, minwave=None, maxwave=30e4, cache_SSPgrid=False)
     Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
