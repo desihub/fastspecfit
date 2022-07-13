@@ -524,11 +524,39 @@ class ContinuumTools(object):
           https://gitlab.lam.fr/cigale/cigale/-/blob/master/pcigale/sed_modules/dustatt_powerlaw.py#L42
 
         """
-        from desiutil.dust import dust_transmission
-        atten = 10**(-0.4 * AV * (wave / 5500.0)**(-self.dustslope))
-        atten = dust_transmission(wave, AV / self.RV, Rv=self.RV)
+        from desiutil.dust import ext_fitzpatrick
+
+        atten = ext_fitzpatrick(wave, R_V=self.RV)
+        atten = 10**(-0.4 * AV * atten)
+
         if test:
-            pdb.set_trace()
+            # Charlot & Fall attenuation curve
+            atten2 = (wave / 5500.0)**(-self.dustslope)
+    
+            # Add a UV bump, assuming a Lorentzian-like Drude profile; see
+            # https://gitlab.lam.fr/cigale/cigale/-/blob/master/pcigale/sed_modules/dustatt_powerlaw.py
+            # https://www.aanda.org/articles/aa/pdf/2019/02/aa34156-18.pdf
+            
+            #central_wave - Central wavelength of the bump.
+            #gamma - Width (FWHM) of the bump.
+            #amp - Amplitude of the bump.
+    
+            amp, gamma, central_wave = 1.0, 350.0, 2175.0 # amplitude=3.0 in the Milky Way
+            uvbump = amp * wave**2 * gamma**2 / ((wave**2 - central_wave**2)**2 + wave**2 * gamma**2)
+            atten2 += uvbump
+
+            atten2 = 10**(-0.4 * AV * atten2)
+    
+            # 100% attenuation blueward of the Lyman-limit
+            atten2[wave < 912.0] = 0.0
+    
+            import matplotlib.pyplot as plt
+            plt.clf()
+            plt.plot(wave, atten2)
+            plt.plot(wave, atten)
+            plt.xlim(500, 8000)
+            plt.savefig('desi-users/ioannis/tmp/junk.png')        
+        
         return atten
 
     def smooth_continuum(self, wave, flux, ivar, redshift, medbin=150, 
@@ -2173,10 +2201,9 @@ class ContinuumFit(ContinuumTools):
             pass
 
         # rebuild the best-fitting photometric model fit
-        print('HACK!!! TESTING')
         continuum_phot, synthmodelphot = self.SSP2data(
             self.sspflux, self.sspwave, redshift=redshift,
-            synthphot=True, AV=fastphot['CONTINUUM_AV'], test=True,
+            synthphot=True, AV=fastphot['CONTINUUM_AV'], #test=True,
             coeff=fastphot['CONTINUUM_COEFF'] * self.massnorm)
         
         continuum_wave_phot = self.sspwave * (1 + redshift)
@@ -2309,10 +2336,10 @@ class ContinuumFit(ContinuumTools):
         #for hndl in leg.legendHandles:
         #    hndl.set_markersize(8)
 
-        import fitsio
-        bb = fitsio.read('junk.fits')
-        ww = (bb['LAMBDA']/1e4 > 0.1) * (bb['LAMBDA']/1e4 < 30)
-        ax.plot(bb['LAMBDA'][ww]/1e4, bb['ABMAG'][ww], color='gray', alpha=0.9, zorder=2)
+        #import fitsio
+        #bb = fitsio.read('junk.fits')
+        #ww = (bb['LAMBDA']/1e4 > 0.1) * (bb['LAMBDA']/1e4 < 30)
+        #ax.plot(bb['LAMBDA'][ww]/1e4, bb['ABMAG'][ww], color='gray', alpha=0.9, zorder=2)
 
         if coadd_type == 'healpix':
             targetid_str = str(metadata['TARGETID'])
