@@ -1763,7 +1763,7 @@ class ContinuumFit(ContinuumTools):
         assert(np.all(objflamivar >= 0))
 
         if np.all(objflamivar == 0): # can happen for secondary targets
-            log.info('All photometry is masked or not available!')
+            log.warning('All photometry is masked or not available!')
             AVbest, AVivar = self.AV_nominal, 0.0
             nage = self.nage
             chi2min = 0.0
@@ -1805,9 +1805,9 @@ class ContinuumFit(ContinuumTools):
         # Compute DN4000, K-corrections, and rest-frame quantities.
         if np.count_nonzero(coeff > 0) == 0:
             log.warning('Continuum coefficients are all zero!')
-            chi2min, dn4000, meanage, mstar = 0.0, -1.0, -1.0, -1.0
+            chi2min, dn4000, meanage, mstar = 0.0, 0.0, 0.0, 0.0 # -1.0, -1.0, -1.0
             kcorr = np.zeros(len(self.absmag_bands))
-            absmag = np.zeros(len(self.absmag_bands))-99.0
+            absmag = np.zeros(len(self.absmag_bands))#-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
             synth_bestmaggies = np.zeros(len(self.bands))
         else:

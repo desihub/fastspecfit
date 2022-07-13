@@ -31,10 +31,10 @@ TARGETINGBITS = {
 # fibermap and exp_fibermap columns to read
 FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE',
           'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID',
-          'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-          'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-          'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
-          'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2'
+          #'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
+          #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+          #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
+          #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2'
           ]
 #FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE']
 EXPFMCOLS = {
@@ -50,7 +50,7 @@ REDSHIFTCOLS = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
 # targeting and Tractor columns to read from disk
 #TARGETCOLS = ['TARGETID', 'RA', 'DEC', 'FLUX_W3', 'FLUX_W4', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
 TARGETCOLS = ['TARGETID', 'RA', 'DEC',
-              'RELEASE',
+              'RELEASE', 'LS_ID',
               #'PHOTSYS',
               'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
               'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
@@ -144,7 +144,7 @@ class DESISpectra(object):
 
         """
         from desiutil.depend import getdep
-        from desispec.io.photo import gather_targetphot, gather_tractorphot
+        from desispec.io.photo import gather_tractorphot
 
         if zmin <= 0.0:
             errmsg = 'zmin must be >= 0.'
@@ -343,31 +343,32 @@ class DESISpectra(object):
             log.warning('No targets read!')
             return
 
+        # Use the metadata in the fibermap to retrieve the LS-DR9 source
+        # photometry.
+
         t0 = time.time()
         #info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID'] for meta in self.meta]))
-        #tractor = gather_tractorphot(info, columns=TARGETCOLS)
-        #tractor['PHOTSYS'] = [releasedict[release] if release >= 9000 else '' for release in tractor['RELEASE']]
-        #    
-        #pdb.set_trace()
+        targets = gather_tractorphot(vstack(self.meta), columns=TARGETCOLS)
 
-        info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
-        info['TILEID'] = alltiles
-
-        #alltiles = np.unique(np.hstack(alltiles))
-        targets = gather_targetphot(info, columns=TARGETCOLS, fiberassign_dir=self.fiberassign_dir)
-
-        # If all the photometry is zero, look for it in the Tractor catalogs
-        # themselves. This step can also be made "not optional" in order to
-        # gather additional Tractor quantities, if needed or wanted.
-        I = np.where((targets['FLUX_IVAR_G'] == 0) * (targets['FLUX_IVAR_R'] == 0) *
-                     (targets['FLUX_IVAR_Z'] == 0) * (targets['FLUX_IVAR_W1'] == 0) *
-                     (targets['FLUX_IVAR_W2'] == 0))[0]
-        if len(I) > 0:
-            tractor = gather_tractorphot(info[I])
-            targets['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in tractor['RELEASE']]
-            for col in targets.colnames:
-                if col in tractor.colnames:
-                    targets[col][I] = tractor[col]
+        ## Older code
+        #info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
+        #info['TILEID'] = alltiles
+        #
+        ##alltiles = np.unique(np.hstack(alltiles))
+        #targets = gather_targetphot(info, columns=TARGETCOLS, fiberassign_dir=self.fiberassign_dir)
+        #
+        ## If all the photometry is zero, look for it in the Tractor catalogs
+        ## themselves. This step can also be made "not optional" in order to
+        ## gather additional Tractor quantities, if needed or wanted.
+        #I = np.where((targets['FLUX_IVAR_G'] == 0) * (targets['FLUX_IVAR_R'] == 0) *
+        #             (targets['FLUX_IVAR_Z'] == 0) * (targets['FLUX_IVAR_W1'] == 0) *
+        #             (targets['FLUX_IVAR_W2'] == 0))[0]
+        #if len(I) > 0:
+        #    tractor = gather_tractorphot(info[I])
+        #    targets['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in tractor['RELEASE']]
+        #    for col in targets.colnames:
+        #        if col in tractor.colnames:
+        #            targets[col][I] = tractor[col]
 
         metas = []
         for meta in self.meta:
@@ -388,7 +389,8 @@ class DESISpectra(object):
             for band in ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']:
                 meta['MW_TRANSMISSION_{}'.format(band)] = np.ones(shape=(1,), dtype='f4')
             metas.append(meta)
-        log.info('Gathered targeting info for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
+            
+        log.info('Gathered photometric metadata for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
 
         self.meta = metas # update
 
@@ -711,14 +713,16 @@ class DESISpectra(object):
 
         # The information stored in the metadata table depends on which spectra
         # were fitted (exposures, nightly coadds, deep coadds).
-        fluxcols = ['PHOTSYS',
-                    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
-                    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4', 
+        fluxcols = ['PHOTSYS', 'LS_ID',
+                    #'RELEASE',
                     'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
                     'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
                     'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
                     'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-                    'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
+                    'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4',
+                    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+                    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4']
+            
         colunit = {'RA': u.deg, 'DEC': u.deg,
                    'FIBERFLUX_G': u.nanomaggy, 'FIBERFLUX_R': u.nanomaggy, 'FIBERFLUX_Z': u.nanomaggy,
                    'FIBERTOTFLUX_G': u.nanomaggy, 'FIBERTOTFLUX_R': u.nanomaggy, 'FIBERTOTFLUX_Z': u.nanomaggy,
@@ -730,7 +734,7 @@ class DESISpectra(object):
                    'FLUX_IVAR_W4': 1/u.nanomaggy**2,
                    }
 
-        skipcols = ['COADD_FIBERSTATUS', 'OBJTYPE', 'TARGET_RA', 'TARGET_DEC'] + fluxcols
+        skipcols = ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE'] + fluxcols
         redrockcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE']
         
         meta = Table()
@@ -738,7 +742,8 @@ class DESISpectra(object):
 
         # All of this business is so we can get the columns in the order we want
         # (i.e., the order that matches the data model).
-        for metacol in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'FIBER', 'NIGHT', 'TILEID_LIST', 'RA', 'DEC']:
+        for metacol in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'FIBER',
+                        'NIGHT', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS']:
             if metacol in metacols:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():

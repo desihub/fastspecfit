@@ -91,7 +91,8 @@ def desiqa_one(CFit, EMFit, data, fastfit, metadata, coadd_type,
     #t0 = time.time()
     if fastphot:
         CFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
-                         outprefix=outprefix, outdir=outdir)
+                         outprefix=outprefix, outdir=outdir, cache_vdisp=False,
+                         cache_SSPgrid=False)
     else:
         EMFit.qa_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
                           outprefix=outprefix, outdir=outdir)
@@ -227,7 +228,7 @@ def fastphot(args=None, comm=None):
 
     # Initialize the continuum-fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit(mapdir=args.mapdir, cache_vdisp=False, solve_vdisp=False, minwave=None, maxwave=30e4, cache_SSPgrid=False)
+    CFit = ContinuumFit(mapdir=args.mapdir, minwave=None, maxwave=30e4, solve_vdisp=False, cache_vdisp=False)
     Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
