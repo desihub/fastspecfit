@@ -1644,9 +1644,15 @@ class EMLineFit(ContinuumTools):
         modelwave = minwave + dwave * np.arange(npix)
 
         modelspectra = Table()
-        modelspectra.meta['WAVE0'] = minwave
-        modelspectra.meta['DWAVE'] = dwave
-        modelspectra.meta['NPIX'] = npix
+        modelspectra.meta['BUNIT'] = ('10**-17 erg/(s cm2 Angstrom)', 'flux unit')
+        modelspectra.meta['NPIX'] = (npix, 'length of wavelength array')
+        modelspectra.meta['CUNIT1'] = ('Angstrom', 'wavelength unit')
+        modelspectra.meta['CTYPE1'] = ('WAVE', 'type of axis')
+        modelspectra.meta['CRVAL1'] = (minwave, 'wavelength of pixel CRPIX (Angstrom)')
+        modelspectra.meta['CRPIX1'] = (0, '0-indexed pixel number corresponding to CRVAL')
+        modelspectra.meta['CDELT1'] = (dwave, 'pixel size (Angstrom)')
+        modelspectra.meta['DC-FLAG'] = (0, '0 = linear wavelength vector')
+        modelspectra.meta['AIRORVAC'] = ('vac', 'wavelengths in vacuum (vac)')
         
         modelspectra.add_column(Column(name='CONTINUUM', dtype='f4', data=np.interp(modelwave, emlinewave, continuummodelflux).reshape(1, npix)))
         modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4', data=np.interp(modelwave, emlinewave, smoothcontinuummodelflux).reshape(1, npix)))

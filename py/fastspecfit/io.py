@@ -495,10 +495,10 @@ class DESISpectra(object):
                 assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
 
                 # Coadd across cameras.
-                t1 = time.time()                
+                #t1 = time.time()                
                 coadd_spec = coadd_cameras(spec)
                 coadd_bands = coadd_spec.bands[0]
-                log.info('Coadded the cameras in {:.2f} sec'.format(time.time()-t1))
+                #log.info('Coadded the cameras in {:.2f} sec'.format(time.time()-t1))
                 
             for igal in np.arange(len(meta)):
                 # Unpack the data and correct for Galactic extinction. Also flag pixels that
@@ -828,64 +828,101 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     """Write out.
 
     """
+    import gzip, shutil
+    from astropy.io import fits
+    from desispec.io.util import fitsheader
+    from desiutil.depend import add_dependencies
+
     t0 = time.time()
     outdir = os.path.dirname(os.path.abspath(outfile))
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
 
     log.info('Writing results for {} objects to {}'.format(len(out), outfile))
+    
+    if outfile.endswith('.gz'):
+        tmpfile = outfile[:-3]+'.tmp'
+    else:
+        tmpfile = outfile+'.tmp'
 
-    hdr = []
-    if specprod:
-        hdr.append({'name': 'SPECPROD', 'value': specprod, 'comment': 'spectroscopic production name'})
-    if coadd_type:
-        hdr.append({'name': 'COADDTYP', 'value': coadd_type, 'comment': 'spectral coadd fitted'})
-
-    fitsio.write(outfile, out.as_array(), header=hdr, clobber=True)
-    fitsio.write(outfile, meta.as_array(), header=hdr)
-
-    # update the extension name
     if fastphot:
         extname = 'FASTPHOT'
     else:
         extname = 'FASTSPEC'
 
-    with fitsio.FITS(outfile, 'rw') as fits:
-        fits[1].write_key('EXTNAME', extname)
-        fits[2].write_key('EXTNAME', 'METADATA')
+    out.meta['EXTNAME'] = extname
+    meta.meta['EXTNAME'] = 'METADATA'
+
+    primhdr = []
+    if specprod:
+        primhdr.append(('SPECPROD', (specprod, 'spectroscopic production name')))
+    if coadd_type:
+        primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd fitted')))
+
+    primhdr = fitsheader(primhdr)
+    add_dependencies(primhdr)
+    add_dependencies(primhdr, module_names=['fastspecfit'])
+    
+    hdus = fits.HDUList()
+    hdus.append(fits.PrimaryHDU(None, primhdr))
+    hdus.append(fits.convenience.table_to_hdu(out))
+    hdus.append(fits.convenience.table_to_hdu(meta))
+
+    #fitsio.write(tmpfile, out.as_array(), header=hdr, compress='gzip', clobber=True)
+    #fitsio.write(tmpfile, meta.as_array(), header=hdr)
+
+    ## update the extension name
+    #with fitsio.FITS(tmpfile, 'rw') as fits:
+    #    fits[1].write_key('EXTNAME', extname)
+    #    fits[2].write_key('EXTNAME', 'METADATA')
 
     if modelspectra is not None:
-        #modelfile = os.path.join(outdir, 'model-{}'.format(os.path.basename(outfile)))
-        #hdr.append({'name': 'BUNIT', 'value': '10**-17 erg/(s cm2 Angstrom)', 'comment': 'flux unit'})
-        hdr.append({'name': 'NPIX', 'value': modelspectra.meta['NPIX'], 'comment': 'length of wavelength array'})
-        hdr.append({'name': 'CUNIT1', 'value': 'Angstrom', 'comment': 'wavelength unit'})
-        hdr.append({'name': 'CTYPE1', 'value': 'WAVE'})
-        hdr.append({'name': 'CRVAL1', 'value': modelspectra.meta['WAVE0'], 'comment': 'wavelength of pixel CRPIX (Angstrom)'})
-        hdr.append({'name': 'CRPIX1', 'value': 1, 'comment': '1-indexed pixel number corresponding to CRVAL'})
-        hdr.append({'name': 'CDELT1', 'value': modelspectra.meta['DWAVE'], 'comment': 'pixel size (Angstrom)'})
-        hdr.append({'name': 'DC-FLAG', 'value': 0, 'comment': '0 = linear wavelength vector'})
-        hdr.append({'name': 'AIRORVAC', 'value': 'vac', 'comment': 'wavelengths in vacuum (vac)'})
-
-        fitsio.write(outfile, modelspectra.as_array(), header=hdr)
+        modelspectra.meta['EXTNAME'] = 'MODELS'
+        hdus.append(fits.convenience.table_to_hdu(modelspectra))
+        
+        ##modelfile = os.path.join(outdir, 'model-{}'.format(os.path.basename(outfile)))
+        ##hdr.append({'name': 'BUNIT', 'value': '10**-17 erg/(s cm2 Angstrom)', 'comment': 'flux unit'})
+        #hdr.append({'name': 'NPIX', 'value': modelspectra.meta['NPIX'], 'comment': 'length of wavelength array'})
+        #hdr.append({'name': 'CUNIT1', 'value': 'Angstrom', 'comment': 'wavelength unit'})
+        #hdr.append({'name': 'CTYPE1', 'value': 'WAVE'})
+        #hdr.append({'name': 'CRVAL1', 'value': modelspectra.meta['WAVE0'], 'comment': 'wavelength of pixel CRPIX (Angstrom)'})
+        #hdr.append({'name': 'CRPIX1', 'value': 1, 'comment': '1-indexed pixel number corresponding to CRVAL'})
+        #hdr.append({'name': 'CDELT1', 'value': modelspectra.meta['DWAVE'], 'comment': 'pixel size (Angstrom)'})
+        #hdr.append({'name': 'DC-FLAG', 'value': 0, 'comment': '0 = linear wavelength vector'})
+        #hdr.append({'name': 'AIRORVAC', 'value': 'vac', 'comment': 'wavelengths in vacuum (vac)'})
+        #fitsio.write(tmpfile, modelspectra.as_array(), header=hdr)
         
         #log.info('Writing {}'.format(modelfile))
         #fitsio.write(modelfile, modelspectra.as_array(), header=hdr, clobber=True)
 
         # fitsio strips certain reserved keywords like EXTNAME and BUNIT from
         # the header; restore them here
+        # https://github.com/JuliaAstro/FITSIO.jl/blob/1bd337ce570f4827b1852eb419a3c478bedceb84/src/header.jl#L129-L133
+        # https://github.com/astropy/specutils/blob/main/specutils/io/default_loaders/wcs_fits.py
         
         #with fitsio.FITS(modelfile, 'rw') as fits:
         #with fitsio.FITS(outfile, 'rw') as fits:
         #    fits[1].write_key('EXTNAME', 'MODELS', 'extension name')
         #    fits[1].write_key('BUNIT', '10**-17 erg/(s cm2 Angstrom)', 'flux unit')
 
-        with fitsio.FITS(outfile, 'rw') as fits:
-            fits[3].write_key('EXTNAME', 'MODELS', 'extension name')
-            fits[3].write_key('BUNIT', '10**-17 erg/(s cm2 Angstrom)', 'flux unit')
-        
-    log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
+        #with fitsio.FITS(tmpfile, 'rw') as fits:
+        #    fits[3].write_key('EXTNAME', 'MODELS', 'extension name')
+        #    fits[3].write_key('BUNIT', '10**-17 erg/(s cm2 Angstrom)', 'flux unit')
 
-    pdb.set_trace()
+    hdus.writeto(tmpfile, overwrite=True, checksum=True)
+
+    # compress if needed (via another tempfile), otherwise just rename
+    if outfile.endswith('.gz'):
+        tmpfilegz = outfile[:-3]+'.tmp.gz'
+        with open(tmpfile, 'rb') as f_in:
+            with gzip.open(tmpfilegz, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        os.rename(tmpfilegz, outfile)
+        os.remove(tmpfile)
+    else:
+        os.rename(tmpfile, outfile)
+
+    log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
 
 def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None, nights=None):
     """Optionally trim to a particular healpix or tile and/or night."""
