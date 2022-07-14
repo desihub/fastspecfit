@@ -1414,11 +1414,11 @@ class ContinuumFit(ContinuumTools):
         """Initialize the output data table for this class.
 
         """
-        from astropy.table import Table, Column
+        from astropy.table import QTable, Column
         
         nssp_coeff = len(self.sspinfo)
         
-        out = Table()
+        out = QTable()
         out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
@@ -1455,11 +1455,11 @@ class ContinuumFit(ContinuumTools):
         """Initialize the photometric output data table.
 
         """
-        from astropy.table import Table, Column
+        from astropy.table import QTable, Column
         
         nssp_coeff = len(self.sspinfo)
         
-        out = Table()
+        out = QTable()
         #out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
@@ -1487,6 +1487,11 @@ class ContinuumFit(ContinuumTools):
             out.add_column(Column(name='ABSMAG_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.mag**2))
 
         out.add_column(Column(name='MSTAR', length=nobj, dtype='f4', unit=u.solMass))
+
+        for cflux in ['LUV_1500', 'LUV_2800']:
+            out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=u.erg/(u.second*u.Hz)))
+        for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
+            out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
 
         return out
 
@@ -1517,6 +1522,9 @@ class ContinuumFit(ContinuumTools):
         """Computer K-corrections, absolute magnitudes, and a simple stellar mass.
 
         """
+        from scipy.stats import sigmaclip
+        from scipy.ndimage import median_filter
+        
         redshift = data['zredrock']
         
         if data['photsys'] == 'S':
@@ -1606,14 +1614,53 @@ class ContinuumFit(ContinuumTools):
         
         # get the stellar mass
         nage = len(coeff)
-        dfactor = self.cosmo.luminosity_distance(redshift).to(u.pc).value**2
-        mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm * dfactor * (1 + redshift) / self.fluxnorm
+        dlumMpc = self.cosmo.luminosity_distance(redshift) # [Mpc]
+        mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm * dlumMpc.to(u.pc).value**2 * (1 + redshift) / self.fluxnorm
         
         # From Taylor+11, eq 8
         #https://researchportal.port.ac.uk/ws/files/328938/MNRAS_2011_Taylor_1587_620.pdf
         #mstar = 1.15 + 0.7*(absmag[1]-absmag[3]) - 0.4*absmag[3]
 
-        return kcorr, absmag, ivarabsmag, bestmaggies, mstar
+        # compute the model continuum flux at 1500 and 2800 A (to facilitate UV
+        # luminosity-based SFRs) and at the positions of strong nebular emission
+        # lines [OII], Hbeta, [OIII], and Halpha
+        lums, cfluxes = {}, {}
+        cwaves = [1500.0, 2800.0]
+        labels = ['LUV_1500', 'LUV_2800']
+        for cwave, label in zip(cwaves, labels):
+            J = (self.sspwave > cwave-500) * (self.sspwave < cwave+500)
+            I = (self.sspwave[J] > cwave-20) * (self.sspwave[J] < cwave+20)
+            smooth = median_filter(continuum[J], 200)
+            clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
+            cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
+            # Convert the UV fluxes to rest-frame luminosity in erg/s/Hz. This
+            # luminosity can be converted into a SFR using, e.g., Kennicutt+98,
+            # SFR=1.4e-28 * L_UV
+            cflux *= (1 + redshift) * 4.0 * np.pi * dlumMpc.to(u.cm).value**2 * cwave / (C_LIGHT * 1e13 * self.fluxnorm) # [luminosity in erg/s/Hz]
+            lums[label] = cflux * u.erg/(u.second*u.Hz)
+
+        cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
+        labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
+        for cwave, label in zip(cwaves, labels):
+            J = (self.sspwave > cwave-500) * (self.sspwave < cwave+500)
+            I = (self.sspwave[J] > cwave-20) * (self.sspwave[J] < cwave+20)
+            smooth = median_filter(continuum[J], 200)
+            clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
+            cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
+            cfluxes[label] = cflux * u.erg/(u.second*u.cm**2*u.Angstrom)
+            
+            #import matplotlib.pyplot as plt
+            #print(cwave, cflux)
+            #plt.clf()
+            #plt.plot(self.sspwave[J], continuum[J])
+            #plt.plot(self.sspwave[J], smooth, color='k')
+            #plt.axhline(y=cflux, color='red')
+            #plt.axvline(x=cwave, color='red')
+            #plt.xlim(cwave - 50, cwave + 50)
+            #plt.savefig('desi-users/ioannis/tmp/junk.png')
+            #pdb.set_trace()
+
+        return kcorr, absmag, ivarabsmag, bestmaggies, mstar, lums, cfluxes
 
     def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False,
                         interpolate_coeff=False, xlabel=None):
@@ -1810,10 +1857,11 @@ class ContinuumFit(ContinuumTools):
             absmag = np.zeros(len(self.absmag_bands))#-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
             synth_bestmaggies = np.zeros(len(self.bands))
+            lums, cfluxes = {}, {}
         else:
             dn4000, _ = self.get_dn4000(self.sspwave, continuummodel, rest=True)
             meanage = self.get_meanage(coeff)
-            kcorr, absmag, ivarabsmag, synth_bestmaggies, mstar = self.kcorr_and_absmag(data, continuummodel, coeff)
+            kcorr, absmag, ivarabsmag, synth_bestmaggies, mstar, lums, cfluxes = self.kcorr_and_absmag(data, continuummodel, coeff)
 
             # convert to nanomaggies
             synth_bestmaggies *= 1e9
@@ -1824,26 +1872,32 @@ class ContinuumFit(ContinuumTools):
         # Pack it up and return.
         result['CONTINUUM_COEFF'][0][:nage] = coeff
         result['CONTINUUM_RCHI2'][0] = chi2min
-        result['CONTINUUM_AGE'][0] = meanage
-        result['CONTINUUM_AV'][0] = AVbest
-        result['CONTINUUM_AV_IVAR'][0] = AVivar
+        result['CONTINUUM_AGE'][0] = meanage * u.Gyr
+        result['CONTINUUM_AV'][0] = AVbest * u.mag
+        result['CONTINUUM_AV_IVAR'][0] = AVivar / (u.mag**2)
         result['DN4000_MODEL'][0] = dn4000
-        if False:
-            for iband, band in enumerate(self.fiber_bands):
-                result['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
-                #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
-            for iband, band in enumerate(self.bands):
-                result['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
-                result['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
+        #if False:
+        #    for iband, band in enumerate(self.fiber_bands):
+        #        result['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
+        #        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+        #    for iband, band in enumerate(self.bands):
+        #        result['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
+        #        result['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
         for iband, band in enumerate(self.absmag_bands):
-            result['KCORR_{}'.format(band.upper())] = kcorr[iband]
-            result['ABSMAG_{}'.format(band.upper())] = absmag[iband]
-            result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband]
+            result['KCORR_{}'.format(band.upper())] = kcorr[iband] * u.mag
+            result['ABSMAG_{}'.format(band.upper())] = absmag[iband] * u.mag
+            result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband] / (u.mag**2)
         for iband, band in enumerate(self.bands):
-            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband]
+            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband] * u.nanomaggy
 
-        result['MSTAR'] = mstar
-
+        result['MSTAR'] = mstar * u.solMass
+        if bool(lums):
+            for lum in lums.keys():
+                result[lum] = lums[lum]
+        if bool(cfluxes):
+            for cflux in cfluxes.keys():
+                result[cflux] = cfluxes[cflux]
+                
         return result, continuummodel
     
     def continuum_specfit(self, data):
@@ -2051,12 +2105,12 @@ class ContinuumFit(ContinuumTools):
             fnu_ivar = flam_ivar / flam2fnu**2            
             fnu_sigma, fnu_mask = ivar2var(fnu_ivar, sigma=True)
 
-            from astropy.table import Table
-            out = Table()
-            out['WAVE'] = restwave
-            out['FLUX'] = specflux
-            out['IVAR'] = flam_ivar
-            out.write('desi-39633089965589981.fits', overwrite=True)
+            #from astropy.table import Table
+            #out = Table()
+            #out['WAVE'] = restwave
+            #out['FLUX'] = specflux
+            #out['IVAR'] = flam_ivar
+            #out.write('desi-39633089965589981.fits', overwrite=True)
             
             I = (restwave > 3835) * (restwave < 4115)
             J = (restwave > 3835) * (restwave < 4115) * fnu_mask

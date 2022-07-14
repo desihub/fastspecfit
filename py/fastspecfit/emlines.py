@@ -882,9 +882,9 @@ class EMLineFit(ContinuumTools):
 
         """
         import astropy.units as u
-        from astropy.table import Table, Column
+        from astropy.table import QTable, Column
         
-        out = Table()
+        out = QTable()
         #out.add_column(Column(name='DN4000_NOLINES', length=nobj, dtype='f4'))
             
         # observed-frame photometry synthesized from the spectra

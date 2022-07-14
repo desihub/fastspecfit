@@ -855,6 +855,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
 
     primhdr = []
     if specprod:
+        primhdr.append(('EXTNAME', 'PRIMARY'))
         primhdr.append(('SPECPROD', (specprod, 'spectroscopic production name')))
     if coadd_type:
         primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd fitted')))

@@ -141,7 +141,7 @@ def fastspec(args=None, comm=None):
         Intracommunicator used with MPI parallelism.
 
     """
-    from astropy.table import Table
+    from astropy.table import QTable
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
     from fastspecfit.io import DESISpectra, write_fastspecfit
@@ -190,9 +190,9 @@ def fastspec(args=None, comm=None):
     else:
         _out = [fastspec_one(*_fitargs) for _fitargs in fitargs]
     _out = list(zip(*_out))
-    out = Table(np.hstack(_out[0]))
-    meta = Table(np.hstack(_out[1]))
-    modelspectra = Table(np.hstack(_out[2]))
+    out = QTable(np.hstack(_out[0]))
+    meta = QTable(np.hstack(_out[1]))
+    modelspectra = QTable(np.hstack(_out[2]))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
@@ -216,7 +216,7 @@ def fastphot(args=None, comm=None):
         Intracommunicator used with MPI parallelism.
 
     """
-    from astropy.table import Table
+    from astropy.table import QTable
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.io import DESISpectra, write_fastspecfit
 
@@ -258,8 +258,8 @@ def fastphot(args=None, comm=None):
     else:
         _out = [fastphot_one(*_fitargs) for _fitargs in fitargs]
     _out = list(zip(*_out))
-    out = Table(np.hstack(_out[0]))
-    meta = Table(np.hstack(_out[1]))
+    out = QTable(np.hstack(_out[0]))
+    meta = QTable(np.hstack(_out[1]))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
