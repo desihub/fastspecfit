@@ -898,9 +898,9 @@ class EMLineFit(ContinuumTools):
         # Add chi2 metrics
         out.add_column(Column(name='RCHI2', length=nobj, dtype='f4')) # full-spectrum reduced chi2
         #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
-        out.add_column(Column(name='RCHI2_BROAD', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
+        out.add_column(Column(name='LINERCHI2_BROAD', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
         #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
-        out.add_column(Column(name='DELTARCHI2_BROAD', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
+        out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
 
         out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
         #out.add_column(Column(name='NARROW_Z_ERR', length=nobj, dtype='f8'))
@@ -1337,8 +1337,8 @@ class EMLineFit(ContinuumTools):
 
         result['RCHI2'] = rchi2
         #result['DOF'] = dof
-        result['RCHI2_BROAD'] = linechi2_broad
-        result['DELTARCHI2_BROAD'] = linechi2_init - linechi2_broad
+        result['LINERCHI2_BROAD'] = linechi2_broad
+        result['DELTA_LINERCHI2'] = linechi2_init - linechi2_broad
 
         # Now fill the output table.
         for pp in finalfit.param_names:
@@ -1653,11 +1653,11 @@ class EMLineFit(ContinuumTools):
 
         modelspectra = Table()
         modelspectra.meta['BUNIT'] = ('10**-17 erg/(s cm2 Angstrom)', 'flux unit')
-        modelspectra.meta['NPIX'] = (npix, 'length of wavelength array')
+        #modelspectra.meta['NPIX'] = (npix, 'length of wavelength array')
         modelspectra.meta['CUNIT1'] = ('Angstrom', 'wavelength unit')
         modelspectra.meta['CTYPE1'] = ('WAVE', 'type of axis')
-        modelspectra.meta['CRVAL1'] = (minwave, 'wavelength of pixel CRPIX (Angstrom)')
-        modelspectra.meta['CRPIX1'] = (0, '0-indexed pixel number corresponding to CRVAL')
+        modelspectra.meta['CRVAL1'] = (minwave, 'wavelength of pixel CRPIX1 (Angstrom)')
+        modelspectra.meta['CRPIX1'] = (0, '0-indexed pixel number corresponding to CRVAL1')
         modelspectra.meta['CDELT1'] = (dwave, 'pixel size (Angstrom)')
         modelspectra.meta['DC-FLAG'] = (0, '0 = linear wavelength vector')
         modelspectra.meta['AIRORVAC'] = ('vac', 'wavelengths in vacuum (vac)')

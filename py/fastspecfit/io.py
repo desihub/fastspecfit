@@ -878,8 +878,17 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     #    fits[2].write_key('EXTNAME', 'METADATA')
 
     if modelspectra is not None:
-        modelspectra.meta['EXTNAME'] = 'MODELS'
-        hdus.append(fits.convenience.table_to_hdu(modelspectra))
+        hdu = fits.ImageHDU(name='MODELS')
+        hdu.data = np.vstack((modelspectra['CONTINUUM'].data,
+                              modelspectra['SMOOTHCONTINUUM'].data,
+                              modelspectra['EMLINEMODEL'].data))
+        for key in modelspectra.meta.keys():
+            hdu.header[key] = modelspectra.meta[key]
+            
+        hdus.append(hdu)
+        
+        #modelspectra.meta['EXTNAME'] = 'MODELS'
+        #hdus.append(fits.convenience.table_to_hdu(modelspectra))
         
         ##modelfile = os.path.join(outdir, 'model-{}'.format(os.path.basename(outfile)))
         ##hdr.append({'name': 'BUNIT', 'value': '10**-17 erg/(s cm2 Angstrom)', 'comment': 'flux unit'})
