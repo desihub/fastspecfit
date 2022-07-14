@@ -978,13 +978,14 @@ class EMLineFit(ContinuumTools):
         else:
             return chi2
 
-    def emlinemodel_bestfit(self, specwave, specres, fastspecfit_table):
+    def emlinemodel_bestfit(self, specwave, specres, fastspecfit_table, redshift=None):
         """Wrapper function to get the best-fitting emission-line model
         from an fastspecfit table (to be used to build QA).
 
         """
         npixpercamera = [len(gw) for gw in specwave]
-        redshift = fastspecfit_table['CONTINUUM_Z']
+        if redshift is None:
+            redshift = fastspecfit_table['CONTINUUM_Z']
         
         EMLine = EMLineModel(
             redshift=redshift, emlineR=specres,
@@ -1017,6 +1018,7 @@ class EMLineFit(ContinuumTools):
         computing integrated fluxes...
 
         """
+        from astropy.table import Table, Column
         from scipy.stats import sigmaclip
         from fastspecfit.util import ivar2var
             
@@ -1536,12 +1538,13 @@ class EMLineFit(ContinuumTools):
                 result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit
                 result['{}_EW_LIMIT'.format(linename)] = ewlimit
 
-            for col in ('VSHIFT', 'SIGMA', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
-                log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
-            for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
-                log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
-            log.debug(' ')
-
+            if 'debug' in log.name:
+                for col in ('VSHIFT', 'SIGMA', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
+                    log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
+                for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
+                    log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
+                log.debug(' ')
+    
             ## simple QA
             #if 'alpha' in linename and False:
             #    sigma_cont = 150.0
@@ -1577,9 +1580,10 @@ class EMLineFit(ContinuumTools):
             result['OII_7330_FLUX'] = 0.0
             result['OII_7330_EW'] = 0.0
 
-        for col in ('MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'):
-            log.debug('{}: {:.4f}'.format(col, result[col][0]))
-        log.debug(' ')
+        if 'debug' in log.name:
+            for col in ('MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'):
+                log.debug('{}: {:.4f}'.format(col, result[col][0]))
+            log.debug(' ')
 
         # get the average emission-line redshifts and velocity widths
         if len(narrow_redshifts) > 0:
@@ -1606,11 +1610,49 @@ class EMLineFit(ContinuumTools):
         else:
             result['UV_Z'] = redshift
 
-        for line in ('NARROW', 'BROAD', 'UV'):
-            log.debug('{}_Z: {:.12f}'.format(line, result['{}_Z'.format(line)][0]))
-            log.debug('{}_SIGMA: {:.3f}'.format(line, result['{}_SIGMA'.format(line)][0]))
+        # fragile
+        if 'debug' in log.name:
+            for line in ('NARROW', 'BROAD', 'UV'):
+                log.debug('{}_Z: {:.12f}'.format(line, result['{}_Z'.format(line)][0]))
+                log.debug('{}_SIGMA: {:.3f}'.format(line, result['{}_SIGMA'.format(line)][0]))
 
-        return result
+        # As a consistency check, make sure that the emission-line spectrum
+        # rebuilt from the final table is not (very) different from the one
+        # based on the best-fitting model parameters.
+        emmodel = np.hstack(self.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
+        assert(np.all(np.isclose(emmodel, emlinemodel, rtol=1e-4)))
+        
+        #import matplotlib.pyplot as plt
+        #plt.clf()
+        #plt.plot(emlinewave, np.hstack(emmodel)-emlinemodel)
+        ##plt.plot(emlinewave, emlinemodel)
+        #plt.savefig('desi-users/ioannis/tmp/junk.png')
+
+        # I believe that all the elements of the coadd_wave vector are contained
+        # within one or more of the per-camera wavelength vectors, and so we
+        # should be able to simply map our model spectra with no
+        # interpolation. However, because of round-off, etc., it's probably
+        # easiest to use np.interp.
+
+        # package together the final output models for writing; assume constant
+        # dispersion in wavelength!
+        minwave, maxwave, dwave = np.min(data['coadd_wave']), np.max(data['coadd_wave']), np.diff(data['coadd_wave'][:2])[0]
+        minwave = float(int(minwave * 1000) / 1000)
+        maxwave = float(int(maxwave * 1000) / 1000)
+        dwave = float(int(dwave * 1000) / 1000)
+        npix = int((maxwave-minwave)/dwave)+1
+        modelwave = minwave + dwave * np.arange(npix)
+
+        modelspectra = Table()
+        modelspectra.meta['WAVE0'] = minwave
+        modelspectra.meta['DWAVE'] = dwave
+        modelspectra.meta['NPIX'] = npix
+        
+        modelspectra.add_column(Column(name='CONTINUUM', dtype='f4', data=np.interp(modelwave, emlinewave, continuummodelflux).reshape(1, npix)))
+        modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4', data=np.interp(modelwave, emlinewave, smoothcontinuummodelflux).reshape(1, npix)))
+        modelspectra.add_column(Column(name='EMLINEMODEL', dtype='f4', data=np.interp(modelwave, emlinewave, emmodel).reshape(1, npix)))
+        
+        return result, modelspectra
     
     def qa_fastspec(self, data, fastspec, metadata, coadd_type='healpix',
                     wavelims=(3600, 9800), outprefix=None, outdir=None):
@@ -1814,8 +1856,6 @@ class EMLineFit(ContinuumTools):
             if np.max(filtflux) > ymax:
                 ymax = np.max(filtflux) * 1.4
             #print(ymin, ymax)
-            #if ii == 1:
-            #    pdb.set_trace()
 
         #ymin = np.min(ymin)
         #ymax = np.max(ymax)
@@ -1961,9 +2001,6 @@ class EMLineFit(ContinuumTools):
             wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
             #print(linename, wmin, wmax)
 
-            #if '1549' in linename:
-            #    pdb.set_trace()
-
             # iterate over cameras
             for ii in np.arange(len(data['cameras'])): # iterate over cameras
                 emlinewave = data['wave'][ii]
@@ -1984,9 +2021,6 @@ class EMLineFit(ContinuumTools):
                     emlinemodel_oneline.append(_emlinemodel_oneline1[ii][good])
 
                 indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
-                #if 'alpha' in linename:
-                #    pdb.set_trace()
-                #log.info(ii, linename, len(indx))
                 if len(indx) > 1:
                     removelabels[iax] = False
                     xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
@@ -2032,11 +2066,7 @@ class EMLineFit(ContinuumTools):
             else:
                 xx.set_ylim(ymin[iax], ymax[iax])
                 xlim = xx.get_xlim()
-                #log.info(linenames[iax], xlim, np.diff(xlim))
                 xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
-                #xx.xaxis.set_major_locator(ticker.MultipleLocator(20)) # wavelength spacing of ticks [Angstrom]
-                #if iax == 2:
-                #    pdb.set_trace()
 
         # common axis labels
         tp, bt, lf, rt = 0.95, 0.08, 0.10, 0.94

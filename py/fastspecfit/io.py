@@ -823,7 +823,7 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None):
         log.warning('File {} not found.'.format(fastfitfile))
         return None, None, None
 
-def write_fastspecfit(out, meta, outfile=None, specprod=None,
+def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
                       coadd_type=None, fastphot=False):
     """Write out.
 
@@ -853,8 +853,39 @@ def write_fastspecfit(out, meta, outfile=None, specprod=None,
     with fitsio.FITS(outfile, 'rw') as fits:
         fits[1].write_key('EXTNAME', extname)
         fits[2].write_key('EXTNAME', 'METADATA')
+
+    if modelspectra is not None:
+        #modelfile = os.path.join(outdir, 'model-{}'.format(os.path.basename(outfile)))
+        #hdr.append({'name': 'BUNIT', 'value': '10**-17 erg/(s cm2 Angstrom)', 'comment': 'flux unit'})
+        hdr.append({'name': 'NPIX', 'value': modelspectra.meta['NPIX'], 'comment': 'length of wavelength array'})
+        hdr.append({'name': 'CUNIT1', 'value': 'Angstrom', 'comment': 'wavelength unit'})
+        hdr.append({'name': 'CTYPE1', 'value': 'WAVE'})
+        hdr.append({'name': 'CRVAL1', 'value': modelspectra.meta['WAVE0'], 'comment': 'wavelength of pixel CRPIX (Angstrom)'})
+        hdr.append({'name': 'CRPIX1', 'value': 1, 'comment': '1-indexed pixel number corresponding to CRVAL'})
+        hdr.append({'name': 'CDELT1', 'value': modelspectra.meta['DWAVE'], 'comment': 'pixel size (Angstrom)'})
+        hdr.append({'name': 'DC-FLAG', 'value': 0, 'comment': '0 = linear wavelength vector'})
+        hdr.append({'name': 'AIRORVAC', 'value': 'vac', 'comment': 'wavelengths in vacuum (vac)'})
+
+        fitsio.write(outfile, modelspectra.as_array(), header=hdr)
+        
+        #log.info('Writing {}'.format(modelfile))
+        #fitsio.write(modelfile, modelspectra.as_array(), header=hdr, clobber=True)
+
+        # fitsio strips certain reserved keywords like EXTNAME and BUNIT from
+        # the header; restore them here
+        
+        #with fitsio.FITS(modelfile, 'rw') as fits:
+        #with fitsio.FITS(outfile, 'rw') as fits:
+        #    fits[1].write_key('EXTNAME', 'MODELS', 'extension name')
+        #    fits[1].write_key('BUNIT', '10**-17 erg/(s cm2 Angstrom)', 'flux unit')
+
+        with fitsio.FITS(outfile, 'rw') as fits:
+            fits[3].write_key('EXTNAME', 'MODELS', 'extension name')
+            fits[3].write_key('BUNIT', '10**-17 erg/(s cm2 Angstrom)', 'flux unit')
         
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
+
+    pdb.set_trace()
 
 def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None, nights=None):
     """Optionally trim to a particular healpix or tile and/or night."""

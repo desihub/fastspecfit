@@ -54,13 +54,13 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False):
 
     # Fit the emission-line spectrum.
     t0 = time.time()
-    emfit = EMFit.fit(data, continuummodel, smooth_continuum, verbose=verbose)
+    emfit, emmodel = EMFit.fit(data, continuummodel, smooth_continuum, verbose=verbose)
     for col in emfit.colnames:
         out[col] = emfit[col]
-    log.info('Line-fitting object {} (targetid={}) took {:.2f} sec'.format(
+    log.info('Line-fitting object {} [targetid={}] took {:.2f} sec'.format(
         iobj, meta['TARGETID'], time.time()-t0))
 
-    return out, meta
+    return out, meta, emmodel
 
 def fastphot_one(iobj, data, out, meta, CFit):
     """Multiprocessing wrapper to run :func:`fastphot` on a single object."""
@@ -192,11 +192,13 @@ def fastspec(args=None, comm=None):
     _out = list(zip(*_out))
     out = Table(np.hstack(_out[0]))
     meta = Table(np.hstack(_out[1]))
+    modelspectra = Table(np.hstack(_out[2]))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
-    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
-                      coadd_type=Spec.coadd_type, fastphot=False)
+    write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
+                      specprod=Spec.specprod, coadd_type=Spec.coadd_type,
+                      fastphot=False)
 
 def fastphot(args=None, comm=None):
     """Main fastphot script.
@@ -228,7 +230,8 @@ def fastphot(args=None, comm=None):
 
     # Initialize the continuum-fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit(mapdir=args.mapdir, minwave=None, maxwave=30e4, solve_vdisp=False, cache_vdisp=False)
+    CFit = ContinuumFit(mapdir=args.mapdir, minwave=None, maxwave=30e4,
+                        solve_vdisp=False, cache_vdisp=False)
     Spec = DESISpectra()
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
