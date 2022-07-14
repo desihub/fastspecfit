@@ -1435,15 +1435,15 @@ class ContinuumFit(ContinuumTools):
         # maximum correction to the median-smoothed continuum
         for cam in ['B', 'R', 'Z']:
             out.add_column(Column(name='CONTINUUM_SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
-        out['CONTINUUM_AV'] = self.AV_nominal
-        out['CONTINUUM_VDISP'] = self.vdisp_nominal
+        out['CONTINUUM_AV'] = self.AV_nominal * u.mag
+        out['CONTINUUM_VDISP'] = self.vdisp_nominal * u.kilometer/u.second
 
-        if False:
-            # continuum fit with *no* dust reddening (to be used as a diagnostic
-            # tool to identify potential calibration issues).
-            out.add_column(Column(name='CONTINUUM_NODUST_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
-            out.add_column(Column(name='CONTINUUM_NODUST_CHI2', length=nobj, dtype='f4')) # reduced chi2
-            #out.add_column(Column(name='CONTINUUM_NODUST_AGE', length=nobj, dtype='f4', unit=u.Gyr))
+        #if False:
+        #    # continuum fit with *no* dust reddening (to be used as a diagnostic
+        #    # tool to identify potential calibration issues).
+        #    out.add_column(Column(name='CONTINUUM_NODUST_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
+        #    out.add_column(Column(name='CONTINUUM_NODUST_CHI2', length=nobj, dtype='f4')) # reduced chi2
+        #    #out.add_column(Column(name='CONTINUUM_NODUST_AGE', length=nobj, dtype='f4', unit=u.Gyr))
 
         out.add_column(Column(name='DN4000', length=nobj, dtype='f4'))
         out.add_column(Column(name='DN4000_IVAR', length=nobj, dtype='f4'))
@@ -2128,7 +2128,6 @@ class ContinuumFit(ContinuumTools):
             ax.set_ylabel(r'$F_{\nu}$ (erg/s/cm2/Hz)')
             ax.legend()
             fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
-            pdb.set_trace()
 
         if dn4000_ivar > 0:
             log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr'.format(dn4000, 1/np.sqrt(dn4000_ivar), meanage))
@@ -2176,11 +2175,11 @@ class ContinuumFit(ContinuumTools):
         # Pack it in and return.
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
         result['CONTINUUM_RCHI2'][0] = chi2min
-        result['CONTINUUM_AV'][0] = AVbest
-        result['CONTINUUM_AV_IVAR'][0] = AVivar
-        result['CONTINUUM_VDISP'][0] = vdispbest
-        result['CONTINUUM_VDISP_IVAR'][0] = vdispivar
-        result['CONTINUUM_AGE'] = meanage
+        result['CONTINUUM_AV'][0] = AVbest * u.mag
+        result['CONTINUUM_AV_IVAR'][0] = AVivar / (u.mag**2)
+        result['CONTINUUM_VDISP'][0] = vdispbest * u.kilometer/u.second
+        result['CONTINUUM_VDISP_IVAR'][0] = vdispivar * (u.second/u.kilometer)**2
+        result['CONTINUUM_AGE'] = meanage * u.Gyr
         result['DN4000'][0] = dn4000
         result['DN4000_IVAR'][0] = dn4000_ivar
         result['DN4000_MODEL'][0] = dn4000_model

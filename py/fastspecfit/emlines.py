@@ -1350,15 +1350,20 @@ class EMLineFit(ContinuumTools):
             # special case the tied doublets
             if pp == 'oii_doublet_ratio':
                 result['OII_DOUBLET_RATIO'] = val
-                result['OII_3726_AMP'] = val * finalfit.oii_3729_amp
+                result['OII_3726_AMP'] = val * finalfit.oii_3729_amp * u.erg/(u.second*u.cm**2*u.Angstrom)
             elif pp == 'sii_doublet_ratio':
                 result['SII_DOUBLET_RATIO'] = val
-                result['SII_6731_AMP'] = val * finalfit.sii_6716_amp
+                result['SII_6731_AMP'] = val * finalfit.sii_6716_amp * u.erg/(u.second*u.cm**2*u.Angstrom)
             elif pp == 'mgii_doublet_ratio':
                 result['MGII_DOUBLET_RATIO'] = val
-                result['MGII_2796_AMP'] = val * finalfit.mgii_2803_amp
+                result['MGII_2796_AMP'] = val * finalfit.mgii_2803_amp * u.erg/(u.second*u.cm**2*u.Angstrom)
             else:
-                result[pinfo.name.upper()] = val
+                if 'amp' in pinfo.name:
+                    result[pinfo.name.upper()] = val * u.erg/(u.second*u.cm**2*u.Angstrom)
+                elif 'vshift' in pinfo.name or 'sigma' in pinfo.name:
+                    result[pinfo.name.upper()] = val * u.kilometer / u.second
+                else:
+                    result[pinfo.name.upper()] = val
 
         # Synthesize photometry from the best-fitting model (continuum+emission lines).
         if synthphot:
@@ -1378,17 +1383,17 @@ class EMLineFit(ContinuumTools):
                                                     lambda_eff=filters.effective_wavelengths.value)
 
             for iband, band in enumerate(self.synth_bands):
-                result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband]
+                result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband] * u.nanomaggy
                 #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
             for iband, band in enumerate(self.synth_bands):
-                result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband]
+                result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] * u.nanomaggy
 
         specflux_nolines = specflux - emlinemodel
 
-        # measure DN(4000) without the emission lines
-        if False:
-            dn4000_nolines, _ = self.get_dn4000(emlinewave, specflux_nolines, redshift=redshift)
-            result['DN4000_NOLINES'] = dn4000_nolines
+        ## measure DN(4000) without the emission lines
+        #if False:
+        #    dn4000_nolines, _ = self.get_dn4000(emlinewave, specflux_nolines, redshift=redshift)
+        #    result['DN4000_NOLINES'] = dn4000_nolines
 
         # get continuum fluxes, EWs, and upper limits
         narrow_sigmas, broad_sigmas, uv_sigmas = [], [], []
@@ -1396,10 +1401,10 @@ class EMLineFit(ContinuumTools):
         for oneline in self.EMLineModel.linetable[self.EMLineModel.inrange]:
 
             linename = oneline['name'].upper()
-            linez = redshift + result['{}_VSHIFT'.format(linename)][0] / C_LIGHT
+            linez = redshift + result['{}_VSHIFT'.format(linename)][0].value / C_LIGHT
             linezwave = oneline['restwave'] * (1 + linez)
 
-            linesigma = result['{}_SIGMA'.format(linename)][0] # [km/s]
+            linesigma = result['{}_SIGMA'.format(linename)][0].value # [km/s]
 
             # if the line was dropped, use a default sigma value
             if linesigma == 0:
@@ -1452,8 +1457,8 @@ class EMLineFit(ContinuumTools):
                 boxflux = np.sum(emlineflux[lineindx])                
                 boxflux_ivar = 1 / np.sum(1 / emlineivar[lineindx])
 
-                result['{}_BOXFLUX'.format(linename)] = boxflux
-                result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar
+                result['{}_BOXFLUX'.format(linename)] = boxflux * u.erg/(u.second*u.cm**2)
+                result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar * u.second**2*u.cm**4/u.erg**2
                 
                 # Get the uncertainty in the line-amplitude based on the scatter
                 # in the pixel values from the emission-line subtracted
@@ -1462,20 +1467,20 @@ class EMLineFit(ContinuumTools):
                 #clipflux, _, _ = sigmaclip(specflux_nolines[lineindx], low=3, high=3)
                 #amp_sigma = np.std(clipflux)
                 if amp_sigma > 0:
-                    result['{}_AMP_IVAR'.format(linename)] = 1 / amp_sigma**2
+                    result['{}_AMP_IVAR'.format(linename)] = 1 / amp_sigma**2 * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
                 if result['{}_AMP'.format(linename)] > 0:
 
                     # get the emission-line flux
-                    linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang
+                    linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang * u.Angstrom
                     result['{}_FLUX'.format(linename)] = result['{}_AMP'.format(linename)][0] * linenorm
         
                     #result['{}_FLUX_IVAR'.format(linename)] = result['{}_AMP_IVAR'.format(linename)] / linenorm**2
                     #weight = np.exp(-0.5 * np.log10(emlinewave/linezwave)**2 / log10sigma**2)
                     #weight = (weight / np.max(weight)) > 1e-3
                     #result['{}_FLUX_IVAR'.format(linename)] = 1 / np.sum(1 / emlineivar[weight])
-                    result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar
+                    result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar * u.second**2*u.cm**4/u.erg**2
 
                     dof = npix - 3 # ??? [redshift, sigma, and amplitude]
                     chi2 = np.sum(emlineivar[lineindx]*(emlineflux[lineindx]-emlinemodel[lineindx])**2) / dof
@@ -1521,21 +1526,21 @@ class EMLineFit(ContinuumTools):
                 if csig > 0:
                     civar = (np.sqrt(len(indx)) / csig)**2
 
-                result['{}_CONT'.format(linename)] = cmed
-                result['{}_CONT_IVAR'.format(linename)] = civar
+                result['{}_CONT'.format(linename)] = cmed * u.erg/(u.second*u.cm**2*u.Angstrom)
+                result['{}_CONT_IVAR'.format(linename)] = civar * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
             if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
                 factor = (1 + redshift) / result['{}_CONT'.format(linename)] # --> rest frame
-                ew = result['{}_FLUX'.format(linename)] * factor   # rest frame [A]
+                ew = result['{}_FLUX'.format(linename)] * factor # rest frame [A]
                 ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
 
                 # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
-                fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar)
+                fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) * u.erg/(u.second*u.cm**2)
                 ewlimit = fluxlimit * factor
 
                 result['{}_EW'.format(linename)] = ew
                 result['{}_EW_IVAR'.format(linename)] = ewivar
-                result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit
+                result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit 
                 result['{}_EW_LIMIT'.format(linename)] = ewlimit
 
             if 'debug' in log.name:
@@ -1620,8 +1625,11 @@ class EMLineFit(ContinuumTools):
         # rebuilt from the final table is not (very) different from the one
         # based on the best-fitting model parameters.
         emmodel = np.hstack(self.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
-        assert(np.all(np.isclose(emmodel, emlinemodel, rtol=1e-4)))
-        
+        #try:
+        #    assert(np.all(np.isclose(emmodel, emlinemodel, rtol=1e-4)))
+        #except:
+        #    pdb.set_trace()
+            
         #import matplotlib.pyplot as plt
         #plt.clf()
         #plt.plot(emlinewave, np.hstack(emmodel)-emlinemodel)
