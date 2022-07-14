@@ -1593,7 +1593,7 @@ class EMLineFit(ContinuumTools):
         # get the average emission-line redshifts and velocity widths
         if len(narrow_redshifts) > 0:
             result['NARROW_Z'] = np.mean(narrow_redshifts)
-            result['NARROW_SIGMA'] = np.mean(narrow_sigmas)
+            result['NARROW_SIGMA'] = np.mean(narrow_sigmas) * u.kilometer / u.second
             #result['NARROW_Z_ERR'] = np.std(narrow_redshifts)
             #result['NARROW_SIGMA_ERR'] = np.std(narrow_sigmas)
         else:
@@ -1601,7 +1601,7 @@ class EMLineFit(ContinuumTools):
             
         if len(broad_redshifts) > 0:
             result['BROAD_Z'] = np.mean(broad_redshifts)
-            result['BROAD_SIGMA'] = np.mean(broad_sigmas)
+            result['BROAD_SIGMA'] = np.mean(broad_sigmas) * u.kilometer / u.second
             #result['BROAD_Z_ERR'] = np.std(broad_redshifts)
             #result['BROAD_SIGMA_ERR'] = np.std(broad_sigmas)
         else:
@@ -1609,7 +1609,7 @@ class EMLineFit(ContinuumTools):
             
         if len(uv_redshifts) > 0:
             result['UV_Z'] = np.mean(uv_redshifts)
-            result['UV_SIGMA'] = np.mean(uv_sigmas)
+            result['UV_SIGMA'] = np.mean(uv_sigmas) * u.kilometer / u.second
             #result['UV_Z_ERR'] = np.std(uv_redshifts)
             #result['UV_SIGMA_ERR'] = np.std(uv_sigmas)
         else:

@@ -280,7 +280,7 @@ def plan(args, comm=None, merge=False, makeqa=False, fastphot=False,
     else:
         redrockfiles = _findfiles(specprod_dir, prefix='redrock')
         nfile = len(redrockfiles)
-        outfiles = np.array([redrockfile.replace(specprod_dir, outdir).replace('redrock-', '{}-'.format(outprefix)) for redrockfile in redrockfiles])
+        outfiles = np.array([redrockfile.replace(specprod_dir, outdir).replace('redrock-', '{}-'.format(outprefix)).replace('.fits', '.gz') for redrockfile in redrockfiles])
         todo = np.ones(len(redrockfiles), bool)
         for ii, outfile in enumerate(outfiles):
             if os.path.isfile(outfile) and not args.overwrite:
@@ -476,6 +476,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
             if 'METADATA' not in ext:
                 log.warning('Missing extension METADATA in file {}'.format(outfile))
                 continue
+            pdb.set_trace()
             out.append(Table(info[extname].read()))
             meta.append(Table(info['METADATA'].read()))
         out = vstack(out)
@@ -494,7 +495,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
 
     # merge previously merged catalogs into one big catalog (and then return)
     if supermerge:
-        _outfiles = os.path.join(mergedir, '{}-{}-*.fits'.format(outprefix, outsuffix))
+        _outfiles = os.path.join(mergedir, '{}-{}-*.fits.gz'.format(outprefix, outsuffix))
         outfiles = glob(_outfiles)
         #print(_outfiles, outfiles)
         if len(outfiles) > 0:
