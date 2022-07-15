@@ -275,8 +275,6 @@ def fastphot(args=None, comm=None):
     # assign units
     _assign_units_to_columns(out, meta, Spec, CFit, fastphot=True)
 
-    pdb.set_trace()
-
     # Write out.
     write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=True)

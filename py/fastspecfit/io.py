@@ -871,9 +871,10 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
 
     if modelspectra is not None:
         hdu = fits.ImageHDU(name='MODELS')
-        hdu.data = np.vstack((modelspectra['CONTINUUM'].data,
-                              modelspectra['SMOOTHCONTINUUM'].data,
-                              modelspectra['EMLINEMODEL'].data))
+        # [nobj, 3, nwave]
+        hdu.data = np.swapaxes(np.array([modelspectra['CONTINUUM'].data,
+                                         modelspectra['SMOOTHCONTINUUM'].data,
+                                         modelspectra['EMLINEMODEL'].data]), 0, 1)
         for key in modelspectra.meta.keys():
             hdu.header[key] = (modelspectra.meta[key][0], modelspectra.meta[key][1]) # all the spectra are identical, right??
                 

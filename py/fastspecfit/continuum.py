@@ -1486,11 +1486,11 @@ class ContinuumFit(ContinuumTools):
             out.add_column(Column(name='ABSMAG_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag)) # absolute magnitudes
             out.add_column(Column(name='ABSMAG_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.mag**2))
 
-        out.add_column(Column(name='MSTAR', length=nobj, dtype='f4', unit=u.solMass))
+        out.add_column(Column(name='LOGMSTAR', length=nobj, dtype='f4', unit=u.solMass))
 
-        for cflux in ['LNU_1500', 'LNU_2800']:
-            out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=u.erg/u.second/u.Hz))
-        out.add_column(Column(name='L_5100', length=nobj, dtype='f4', unit=u.solLum))
+        for cflux in ['LOGLNU_1500', 'LOGLNU_2800']:
+            out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz))
+        out.add_column(Column(name='LOGL_5100', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
         for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
             out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
 
@@ -1627,23 +1627,24 @@ class ContinuumFit(ContinuumTools):
         # lines [OII], Hbeta, [OIII], and Halpha
         lums, cfluxes = {}, {}
         cwaves = [1500.0, 2800.0, 5100.0]
-        labels = ['LNU_1500', 'LNU_2800', 'L_5100']
-        for cwave, label in zip(cwaves, labels):
+        labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_5100']
+        norms = [1e28, 1e28, 1e10]
+        for cwave, norm, label in zip(cwaves, norms, labels):
             J = (self.sspwave > cwave-500) * (self.sspwave < cwave+500)
             I = (self.sspwave[J] > cwave-20) * (self.sspwave[J] < cwave+20)
             smooth = median_filter(continuum[J], 200)
             clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
             cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
             cflux *= (1 + redshift) * 4.0 * np.pi * dlumMpc.to(u.cm).value**2 / self.fluxnorm # [monochromatic luminosity in erg/s/A]
-            if label == 'L_5100':
-                cflux *= cwave / 3.846e33 # [luminosity in L_sun]
-                lums[label] = cflux # * u.solLum
+            if label == 'LOGL_5100':
+                cflux *= cwave / 3.846e33 / norm # [luminosity in 10**10 L_sun]
             else:
                 # Convert the UV fluxes to rest-frame luminosity in erg/s/Hz. This
                 # luminosity can be converted into a SFR using, e.g., Kennicutt+98,
                 # SFR=1.4e-28 * L_UV
-                cflux *= cwave**2 / (C_LIGHT * 1e13) # [monochromatic luminosity in erg/s/Hz]
-                lums[label] = cflux # * u.erg/(u.second*u.Hz)
+                cflux *= cwave**2 / (C_LIGHT * 1e13) / norm # [monochromatic luminosity in 10**(-28) erg/s/Hz]
+            if cflux > 0:
+                lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
         cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
         labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
@@ -1900,7 +1901,7 @@ class ContinuumFit(ContinuumTools):
         for iband, band in enumerate(self.bands):
             result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband] # * u.nanomaggy
 
-        result['MSTAR'] = mstar # * u.solMass
+        result['LOGMSTAR'] = np.log10(mstar) # * u.solMass
         if bool(lums):
             for lum in lums.keys():
                 result[lum] = lums[lum]
@@ -2410,8 +2411,8 @@ class ContinuumFit(ContinuumTools):
         else:
             targetid_str = '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
 
-        if fastphot['MSTAR'] > 0:
-            mstar = '{:.3f}'.format(np.log10(fastphot['MSTAR']))
+        if fastphot['LOGMSTAR'] > 0:
+            mstar = '{:.3f}'.format(fastphot['LOGMSTAR'])
         else:
             mstar = '-'
 

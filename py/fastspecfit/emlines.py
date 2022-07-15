@@ -1943,7 +1943,7 @@ class EMLineFit(ContinuumTools):
 
         if not self.nolegend:
             txt = '\n'.join((
-                r'{} {}'.format(leg['rchi2'], leg['deltar_linechi2']),
+                r'{} {}'.format(leg['rchi2'], leg['deltarchi2']),
                 r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),
                 r'{} {}'.format(leg['dv_forbid'], leg['sigma_forbid']),
                 r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),
