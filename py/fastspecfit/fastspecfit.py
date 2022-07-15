@@ -202,15 +202,8 @@ def fastspec(args=None, comm=None):
        
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
-    # Assign units.
-
-
-
-    
-    #COLUNITS = {'CONTINUUM_AGE': u.Gyr, 'CONTINUUM_AV': u.mag, 'CONTINUUM_AV_IVAR': 1/u.mag**2,
-    #            'FLUX_SYNTH_MODEL_': u.nanomaggy, 'KCORR_': u.mag, 'ABSMAG_': u.mag, 'ABSMAG_IVAR_': 1/u.mag**2,
-    #            'LNU_1500', 'LNU_2800', 
-    pdb.set_trace()
+    # assign units
+    _assign_units_to_columns(out, meta, Spec, CFit, EMFit=EMFit, fastphot=False)
 
     # Write out.
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
@@ -280,21 +273,27 @@ def fastphot(args=None, comm=None):
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # assign units
-    _assign_units_to_columns(out, meta, CFit, fastphot=True)
+    _assign_units_to_columns(out, meta, Spec, CFit, fastphot=True)
 
     # Write out.
     write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=True)
 
-def _assign_units_to_columns(fastfit, metadata, CFit, EMFit=None, fastphot=False):
+def _assign_units_to_columns(fastfit, metadata, Spec, CFit, EMFit=None, fastphot=False):
+    """Assign astropy units to output tables."""
     fastcols = fastfit.colnames
-    if fastphot:
-        T = CFit.init_phot_output(nobj=1)
-    else:
-        T = CFit.init_spec_output(nobj=1)
-        
+    metacols = metadata.colnames
+
+    T, M = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=fastphot)
     for col in T.colnames:
         if col in fastcols:
             fastfit[col].unit = T[col].unit
-                
-    pdb.set_trace()
+    for col in M.colnames:
+        if col in metacols:
+            metadata[col].unit = M[col].unit
+
+    if EMFit is not None:
+        E = EMFit.init_output(EMFit.linetable, nobj=1)
+        for col in E.colnames:
+            if col in fastcols:
+                fastfit[col].unit = E[col].unit
