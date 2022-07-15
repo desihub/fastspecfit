@@ -11,6 +11,7 @@ import pdb # for debugging
 
 import os, time
 import numpy as np
+import astropy.units as u
 
 from desiutil.log import get_logger
 log = get_logger()
@@ -189,8 +190,6 @@ def fastspec(args=None, comm=None):
     else:
         _out = [fastspec_one(*_fitargs) for _fitargs in fitargs]
     _out = list(zip(*_out))
-    #out = vstack(_out[0])
-    #meta = vstack(_out[1])
     out = Table(np.hstack(_out[0]))
     meta = Table(np.hstack(_out[1]))
     try:
@@ -202,6 +201,16 @@ def fastspec(args=None, comm=None):
         raise ValueError(errmsg)
        
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
+
+    # Assign units.
+
+
+
+    
+    #COLUNITS = {'CONTINUUM_AGE': u.Gyr, 'CONTINUUM_AV': u.mag, 'CONTINUUM_AV_IVAR': 1/u.mag**2,
+    #            'FLUX_SYNTH_MODEL_': u.nanomaggy, 'KCORR_': u.mag, 'ABSMAG_': u.mag, 'ABSMAG_IVAR_': 1/u.mag**2,
+    #            'LNU_1500', 'LNU_2800', 
+    pdb.set_trace()
 
     # Write out.
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
@@ -270,6 +279,22 @@ def fastphot(args=None, comm=None):
     meta = Table(np.hstack(_out[1]))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
+    # assign units
+    _assign_units_to_columns(out, meta, CFit, fastphot=True)
+
     # Write out.
     write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=True)
+
+def _assign_units_to_columns(fastfit, metadata, CFit, EMFit=None, fastphot=False):
+    fastcols = fastfit.colnames
+    if fastphot:
+        T = CFit.init_phot_output(nobj=1)
+    else:
+        T = CFit.init_spec_output(nobj=1)
+        
+    for col in T.colnames:
+        if col in fastcols:
+            fastfit[col].unit = T[col].unit
+                
+    pdb.set_trace()

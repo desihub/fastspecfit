@@ -18,6 +18,11 @@ from desitarget.io import releasedict
 from desiutil.log import get_logger
 log = get_logger()
 
+# Default environment variables.
+DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
+DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
+FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
+
 # list of all possible targeting bit columns
 TARGETINGBITS = {
     'fuji': ['CMX_TARGET', 'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET',
@@ -57,11 +62,6 @@ TARGETCOLS = ['TARGETID', 'RA', 'DEC',
               'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
               'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
               'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']#,
-
-# Default environment variables.
-DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
-DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
-FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
 
 class DESISpectra(object):
     def __init__(self, redux_dir=None, fiberassign_dir=None):
@@ -869,14 +869,6 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     hdus.append(fits.convenience.table_to_hdu(out))
     hdus.append(fits.convenience.table_to_hdu(meta))
 
-    #fitsio.write(tmpfile, out.as_array(), header=hdr, compress='gzip', clobber=True)
-    #fitsio.write(tmpfile, meta.as_array(), header=hdr)
-
-    ## update the extension name
-    #with fitsio.FITS(tmpfile, 'rw') as fits:
-    #    fits[1].write_key('EXTNAME', extname)
-    #    fits[2].write_key('EXTNAME', 'METADATA')
-
     if modelspectra is not None:
         hdu = fits.ImageHDU(name='MODELS')
         hdu.data = np.vstack((modelspectra['CONTINUUM'].data,
@@ -887,38 +879,6 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
                 
         hdus.append(hdu)
         
-        #modelspectra.meta['EXTNAME'] = 'MODELS'
-        #hdus.append(fits.convenience.table_to_hdu(modelspectra))
-        
-        ##modelfile = os.path.join(outdir, 'model-{}'.format(os.path.basename(outfile)))
-        ##hdr.append({'name': 'BUNIT', 'value': '10**-17 erg/(s cm2 Angstrom)', 'comment': 'flux unit'})
-        #hdr.append({'name': 'NPIX', 'value': modelspectra.meta['NPIX'], 'comment': 'length of wavelength array'})
-        #hdr.append({'name': 'CUNIT1', 'value': 'Angstrom', 'comment': 'wavelength unit'})
-        #hdr.append({'name': 'CTYPE1', 'value': 'WAVE'})
-        #hdr.append({'name': 'CRVAL1', 'value': modelspectra.meta['WAVE0'], 'comment': 'wavelength of pixel CRPIX (Angstrom)'})
-        #hdr.append({'name': 'CRPIX1', 'value': 1, 'comment': '1-indexed pixel number corresponding to CRVAL'})
-        #hdr.append({'name': 'CDELT1', 'value': modelspectra.meta['DWAVE'], 'comment': 'pixel size (Angstrom)'})
-        #hdr.append({'name': 'DC-FLAG', 'value': 0, 'comment': '0 = linear wavelength vector'})
-        #hdr.append({'name': 'AIRORVAC', 'value': 'vac', 'comment': 'wavelengths in vacuum (vac)'})
-        #fitsio.write(tmpfile, modelspectra.as_array(), header=hdr)
-        
-        #log.info('Writing {}'.format(modelfile))
-        #fitsio.write(modelfile, modelspectra.as_array(), header=hdr, clobber=True)
-
-        # fitsio strips certain reserved keywords like EXTNAME and BUNIT from
-        # the header; restore them here
-        # https://github.com/JuliaAstro/FITSIO.jl/blob/1bd337ce570f4827b1852eb419a3c478bedceb84/src/header.jl#L129-L133
-        # https://github.com/astropy/specutils/blob/main/specutils/io/default_loaders/wcs_fits.py
-        
-        #with fitsio.FITS(modelfile, 'rw') as fits:
-        #with fitsio.FITS(outfile, 'rw') as fits:
-        #    fits[1].write_key('EXTNAME', 'MODELS', 'extension name')
-        #    fits[1].write_key('BUNIT', '10**-17 erg/(s cm2 Angstrom)', 'flux unit')
-
-        #with fitsio.FITS(tmpfile, 'rw') as fits:
-        #    fits[3].write_key('EXTNAME', 'MODELS', 'extension name')
-        #    fits[3].write_key('BUNIT', '10**-17 erg/(s cm2 Angstrom)', 'flux unit')
-
     hdus.writeto(tmpfile, overwrite=True, checksum=True)
 
     # compress if needed (via another tempfile), otherwise just rename

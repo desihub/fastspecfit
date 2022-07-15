@@ -1473,13 +1473,13 @@ class ContinuumFit(ContinuumTools):
         for band in self.bands:
             out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy))
 
-        if False:
-            for band in self.fiber_bands:
-                out.add_column(Column(name='FIBERTOTFLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame fiber photometry
-                #out.add_column(Column(name='FIBERTOTFLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
-            for band in self.bands:
-                out.add_column(Column(name='FLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame photometry
-                out.add_column(Column(name='FLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
+        #if False:
+        #    for band in self.fiber_bands:
+        #        out.add_column(Column(name='FIBERTOTFLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame fiber photometry
+        #        #out.add_column(Column(name='FIBERTOTFLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
+        #    for band in self.bands:
+        #        out.add_column(Column(name='FLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.nanomaggy)) # observed-frame photometry
+        #        out.add_column(Column(name='FLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.nanomaggy**2))
                 
         for band in self.absmag_bands:
             out.add_column(Column(name='KCORR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag))
@@ -1489,8 +1489,8 @@ class ContinuumFit(ContinuumTools):
         out.add_column(Column(name='MSTAR', length=nobj, dtype='f4', unit=u.solMass))
 
         for cflux in ['LNU_1500', 'LNU_2800']:
-            out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=u.erg/(u.second*u.Hz)))
-        out.add_column(Column(name='L_5100', length=nobj, dtype='f4', unit=u.erg/u.second))
+            out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=u.erg/u.second/u.Hz))
+        out.add_column(Column(name='L_5100', length=nobj, dtype='f4', unit=u.solLum))
         for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
             out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
 
@@ -1636,8 +1636,8 @@ class ContinuumFit(ContinuumTools):
             cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
             cflux *= (1 + redshift) * 4.0 * np.pi * dlumMpc.to(u.cm).value**2 / self.fluxnorm # [monochromatic luminosity in erg/s/A]
             if label == 'L_5100':
-                cflux *= cwave # [luminosity in erg/s]
-                lums[label] = cflux # * u.erg / u.second
+                cflux *= cwave / 3.846e33 # [luminosity in L_sun]
+                lums[label] = cflux # * u.solLum
             else:
                 # Convert the UV fluxes to rest-frame luminosity in erg/s/Hz. This
                 # luminosity can be converted into a SFR using, e.g., Kennicutt+98,
@@ -1746,9 +1746,9 @@ class ContinuumFit(ContinuumTools):
 
         if debug:
             if xivar > 0:
-                leg = r'${:.2f}\pm{:.2f}\ (\chi^2_{{min}}={:.2f})$'.format(xbest, 1/np.sqrt(xivar), chi2min)
+                leg = r'${:.3f}\pm{:.3f}\ (\chi^2_{{min}}={:.2f})$'.format(xbest, 1/np.sqrt(xivar), chi2min)
             else:
-                leg = r'${:.2f}$'.format(xbest)
+                leg = r'${:.3f}$'.format(xbest)
                 
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots()
@@ -1838,6 +1838,10 @@ class ContinuumFit(ContinuumTools):
                 debug=False)
             log.info('Fitting the photometry took: {:.2f} sec'.format(time.time()-t0))
             if AVivar > 0:
+                # protect against tiny ivar from becomming infinite in the output table
+                if AVivar < 1e-3:
+                    log.warning('AV inverse variance is tiny; capping at 1e-3')
+                    AVivar = 1e-3
                 log.info('Best-fitting photometric A(V)={:.4f}+/-{:.4f} with chi2={:.3f}'.format(
                     AVbest, 1/np.sqrt(AVivar), AVchi2min))
             else:
@@ -2281,13 +2285,14 @@ class ContinuumFit(ContinuumTools):
         
         fig, ax = plt.subplots(figsize=(12, 8))
 
-        if np.any(continuum_phot <= 0):
+        if np.all(continuum_phot[indx] <= 0):
             log.warning('Best-fitting photometric continuum is all zeros or negative!')
             continuum_phot_abmag = continuum_phot*0 + np.median(fiberphot['abmag'])
         else:
-            factor = 10**(0.4 * 48.6) * continuum_wave_phot**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
-            continuum_phot_abmag = -2.5*np.log10(continuum_phot * factor)
-            ax.plot(continuum_wave_phot[indx] / 1e4, continuum_phot_abmag[indx], color='tan', zorder=1)
+            indx = indx[continuum_phot[indx] > 0] # trim zeros
+            factor = 10**(0.4 * 48.6) * continuum_wave_phot[indx]**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
+            continuum_phot_abmag = -2.5*np.log10(continuum_phot[indx] * factor)
+            ax.plot(continuum_wave_phot[indx] / 1e4, continuum_phot_abmag, color='tan', zorder=1)
 
         ax.scatter(synthmodelphot['lambda_eff']/1e4, synthmodelphot['abmag'], 
                    marker='s', s=200, color='k', facecolor='none',
@@ -2298,8 +2303,8 @@ class ContinuumFit(ContinuumTools):
         dm = 0.75
         good = phot['abmag_ivar'] > 0
         if np.sum(good) > 0:
-            ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(continuum_phot_abmag[indx]))) + dm
-            ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(continuum_phot_abmag[indx]))) - dm
+            ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(continuum_phot_abmag))) + dm
+            ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(continuum_phot_abmag))) - dm
         else:
             good = phot['abmag'] > 0
             if np.sum(good) > 0:
@@ -2343,7 +2348,7 @@ class ContinuumFit(ContinuumTools):
         abmag_limit = np.squeeze(phot['abmag_limit'])
         abmag_fainterr = np.squeeze(phot['abmag_fainterr'])
         abmag_brighterr = np.squeeze(phot['abmag_brighterr'])
-        yerr = np.squeeze([abmag_fainterr, abmag_brighterr])
+        yerr = np.squeeze([abmag_brighterr, abmag_fainterr])
 
         lolims = abmag_limit > 0
         #lolims[[2, 4]] = True
@@ -2372,19 +2377,19 @@ class ContinuumFit(ContinuumTools):
                             markeredgecolor=col1, markerfacecolor='none', elinewidth=3,
                             ecolor=col1, capsize=5)
 
-        if False:
-            good = np.where(fiberphot['abmag'] > 0)[0]
-            if len(good) > 0:
-                ax.scatter(fiberphot['lambda_eff'][good]/1e4, fiberphot['abmag'][good],
-                            marker='o', s=150, facecolor='blue', edgecolor='k',
-                            label=r'$grz$ (fiberflux)', alpha=0.9, zorder=5)
-
-        if False:
-            good = np.where(fibertotphot['abmag'] > 0)[0]
-            if len(good) > 0:
-                ax.scatter(fibertotphot['lambda_eff'][good]/1e4, fibertotphot['abmag'][good],
-                            marker='^', s=150, facecolor='orange', edgecolor='k',
-                            label=r'$grz$ (total fiberflux)', alpha=0.9, zorder=6)
+        #if False:
+        #    good = np.where(fiberphot['abmag'] > 0)[0]
+        #    if len(good) > 0:
+        #        ax.scatter(fiberphot['lambda_eff'][good]/1e4, fiberphot['abmag'][good],
+        #                    marker='o', s=150, facecolor='blue', edgecolor='k',
+        #                    label=r'$grz$ (fiberflux)', alpha=0.9, zorder=5)
+        #
+        #if False:
+        #    good = np.where(fibertotphot['abmag'] > 0)[0]
+        #    if len(good) > 0:
+        #        ax.scatter(fibertotphot['lambda_eff'][good]/1e4, fibertotphot['abmag'][good],
+        #                    marker='^', s=150, facecolor='orange', edgecolor='k',
+        #                    label=r'$grz$ (total fiberflux)', alpha=0.9, zorder=6)
                 
         #if synthphot:
         #    ax.scatter(synthphot['lambda_eff']/1e4, synthphot['abmag'], 
