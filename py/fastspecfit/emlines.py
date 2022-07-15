@@ -882,9 +882,9 @@ class EMLineFit(ContinuumTools):
 
         """
         import astropy.units as u
-        from astropy.table import QTable, Column
+        from astropy.table import Table, Column
         
-        out = QTable()
+        out = Table()
         #out.add_column(Column(name='DN4000_NOLINES', length=nobj, dtype='f4'))
             
         # observed-frame photometry synthesized from the spectra
@@ -1350,20 +1350,21 @@ class EMLineFit(ContinuumTools):
             # special case the tied doublets
             if pp == 'oii_doublet_ratio':
                 result['OII_DOUBLET_RATIO'] = val
-                result['OII_3726_AMP'] = val * finalfit.oii_3729_amp * u.erg/(u.second*u.cm**2*u.Angstrom)
+                result['OII_3726_AMP'] = val * finalfit.oii_3729_amp # * u.erg/(u.second*u.cm**2*u.Angstrom)
             elif pp == 'sii_doublet_ratio':
                 result['SII_DOUBLET_RATIO'] = val
-                result['SII_6731_AMP'] = val * finalfit.sii_6716_amp * u.erg/(u.second*u.cm**2*u.Angstrom)
+                result['SII_6731_AMP'] = val * finalfit.sii_6716_amp # * u.erg/(u.second*u.cm**2*u.Angstrom)
             elif pp == 'mgii_doublet_ratio':
                 result['MGII_DOUBLET_RATIO'] = val
-                result['MGII_2796_AMP'] = val * finalfit.mgii_2803_amp * u.erg/(u.second*u.cm**2*u.Angstrom)
+                result['MGII_2796_AMP'] = val * finalfit.mgii_2803_amp # * u.erg/(u.second*u.cm**2*u.Angstrom)
             else:
-                if 'amp' in pinfo.name:
-                    result[pinfo.name.upper()] = val * u.erg/(u.second*u.cm**2*u.Angstrom)
-                elif 'vshift' in pinfo.name or 'sigma' in pinfo.name:
-                    result[pinfo.name.upper()] = val * u.kilometer / u.second
-                else:
-                    result[pinfo.name.upper()] = val
+                result[pinfo.name.upper()] = val
+                #if 'amp' in pinfo.name:
+                #    result[pinfo.name.upper()] = val * u.erg/(u.second*u.cm**2*u.Angstrom)
+                #elif 'vshift' in pinfo.name or 'sigma' in pinfo.name:
+                #    result[pinfo.name.upper()] = val * u.kilometer / u.second
+                #else:
+                #    result[pinfo.name.upper()] = val
 
         # Synthesize photometry from the best-fitting model (continuum+emission lines).
         if synthphot:
@@ -1383,10 +1384,10 @@ class EMLineFit(ContinuumTools):
                                                     lambda_eff=filters.effective_wavelengths.value)
 
             for iband, band in enumerate(self.synth_bands):
-                result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband] * u.nanomaggy
+                result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband] # * u.nanomaggy
                 #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
             for iband, band in enumerate(self.synth_bands):
-                result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] * u.nanomaggy
+                result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] # * u.nanomaggy
 
         specflux_nolines = specflux - emlinemodel
 
@@ -1401,10 +1402,12 @@ class EMLineFit(ContinuumTools):
         for oneline in self.EMLineModel.linetable[self.EMLineModel.inrange]:
 
             linename = oneline['name'].upper()
-            linez = redshift + result['{}_VSHIFT'.format(linename)][0].value / C_LIGHT
+            #linez = redshift + result['{}_VSHIFT'.format(linename)][0].value / C_LIGHT
+            linez = redshift + result['{}_VSHIFT'.format(linename)][0] / C_LIGHT
             linezwave = oneline['restwave'] * (1 + linez)
 
-            linesigma = result['{}_SIGMA'.format(linename)][0].value # [km/s]
+            linesigma = result['{}_SIGMA'.format(linename)][0] # [km/s]
+            #linesigma = result['{}_SIGMA'.format(linename)][0].value # [km/s]
 
             # if the line was dropped, use a default sigma value
             if linesigma == 0:
@@ -1457,8 +1460,8 @@ class EMLineFit(ContinuumTools):
                 boxflux = np.sum(emlineflux[lineindx])                
                 boxflux_ivar = 1 / np.sum(1 / emlineivar[lineindx])
 
-                result['{}_BOXFLUX'.format(linename)] = boxflux * u.erg/(u.second*u.cm**2)
-                result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar * u.second**2*u.cm**4/u.erg**2
+                result['{}_BOXFLUX'.format(linename)] = boxflux # * u.erg/(u.second*u.cm**2)
+                result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
                 
                 # Get the uncertainty in the line-amplitude based on the scatter
                 # in the pixel values from the emission-line subtracted
@@ -1467,20 +1470,20 @@ class EMLineFit(ContinuumTools):
                 #clipflux, _, _ = sigmaclip(specflux_nolines[lineindx], low=3, high=3)
                 #amp_sigma = np.std(clipflux)
                 if amp_sigma > 0:
-                    result['{}_AMP_IVAR'.format(linename)] = 1 / amp_sigma**2 * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                    result['{}_AMP_IVAR'.format(linename)] = 1 / amp_sigma**2 # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
                 if result['{}_AMP'.format(linename)] > 0:
 
                     # get the emission-line flux
-                    linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang * u.Angstrom
+                    linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang # * u.Angstrom
                     result['{}_FLUX'.format(linename)] = result['{}_AMP'.format(linename)][0] * linenorm
         
                     #result['{}_FLUX_IVAR'.format(linename)] = result['{}_AMP_IVAR'.format(linename)] / linenorm**2
                     #weight = np.exp(-0.5 * np.log10(emlinewave/linezwave)**2 / log10sigma**2)
                     #weight = (weight / np.max(weight)) > 1e-3
                     #result['{}_FLUX_IVAR'.format(linename)] = 1 / np.sum(1 / emlineivar[weight])
-                    result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar * u.second**2*u.cm**4/u.erg**2
+                    result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
 
                     dof = npix - 3 # ??? [redshift, sigma, and amplitude]
                     chi2 = np.sum(emlineivar[lineindx]*(emlineflux[lineindx]-emlinemodel[lineindx])**2) / dof
@@ -1526,8 +1529,8 @@ class EMLineFit(ContinuumTools):
                 if csig > 0:
                     civar = (np.sqrt(len(indx)) / csig)**2
 
-                result['{}_CONT'.format(linename)] = cmed * u.erg/(u.second*u.cm**2*u.Angstrom)
-                result['{}_CONT_IVAR'.format(linename)] = civar * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                result['{}_CONT'.format(linename)] = cmed # * u.erg/(u.second*u.cm**2*u.Angstrom)
+                result['{}_CONT_IVAR'.format(linename)] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
             if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
                 factor = (1 + redshift) / result['{}_CONT'.format(linename)] # --> rest frame
@@ -1535,7 +1538,7 @@ class EMLineFit(ContinuumTools):
                 ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
 
                 # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
-                fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) * u.erg/(u.second*u.cm**2)
+                fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) # * u.erg/(u.second*u.cm**2)
                 ewlimit = fluxlimit * factor
 
                 result['{}_EW'.format(linename)] = ew
@@ -1593,7 +1596,7 @@ class EMLineFit(ContinuumTools):
         # get the average emission-line redshifts and velocity widths
         if len(narrow_redshifts) > 0:
             result['NARROW_Z'] = np.mean(narrow_redshifts)
-            result['NARROW_SIGMA'] = np.mean(narrow_sigmas) * u.kilometer / u.second
+            result['NARROW_SIGMA'] = np.mean(narrow_sigmas) # * u.kilometer / u.second
             #result['NARROW_Z_ERR'] = np.std(narrow_redshifts)
             #result['NARROW_SIGMA_ERR'] = np.std(narrow_sigmas)
         else:
@@ -1601,7 +1604,7 @@ class EMLineFit(ContinuumTools):
             
         if len(broad_redshifts) > 0:
             result['BROAD_Z'] = np.mean(broad_redshifts)
-            result['BROAD_SIGMA'] = np.mean(broad_sigmas) * u.kilometer / u.second
+            result['BROAD_SIGMA'] = np.mean(broad_sigmas) # * u.kilometer / u.second
             #result['BROAD_Z_ERR'] = np.std(broad_redshifts)
             #result['BROAD_SIGMA_ERR'] = np.std(broad_sigmas)
         else:
@@ -1609,7 +1612,7 @@ class EMLineFit(ContinuumTools):
             
         if len(uv_redshifts) > 0:
             result['UV_Z'] = np.mean(uv_redshifts)
-            result['UV_SIGMA'] = np.mean(uv_sigmas) * u.kilometer / u.second
+            result['UV_SIGMA'] = np.mean(uv_sigmas) # * u.kilometer / u.second
             #result['UV_Z_ERR'] = np.std(uv_redshifts)
             #result['UV_SIGMA_ERR'] = np.std(uv_sigmas)
         else:
@@ -1652,8 +1655,9 @@ class EMLineFit(ContinuumTools):
         modelwave = minwave + dwave * np.arange(npix)
 
         modelspectra = Table()
+        # all these header cards need to be 2-element tuples (value, comment),
+        # otherwise io.write_fastspecfit will crash
         modelspectra.meta['BUNIT'] = ('10**-17 erg/(s cm2 Angstrom)', 'flux unit')
-        #modelspectra.meta['NPIX'] = (npix, 'length of wavelength array')
         modelspectra.meta['CUNIT1'] = ('Angstrom', 'wavelength unit')
         modelspectra.meta['CTYPE1'] = ('WAVE', 'type of axis')
         modelspectra.meta['CRVAL1'] = (minwave, 'wavelength of pixel CRPIX1 (Angstrom)')
@@ -1809,7 +1813,7 @@ class EMLineFit(ContinuumTools):
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
             'rchi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['RCHI2']),
-            'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad}}$={:.3f}'.format(fastspec['DELTARCHI2_BROAD']),
+            'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad,narrow}}$={:.3f}'.format(fastspec['DELTA_LINERCHI2']),
             #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastspec['CONTINUUM_AGE']),
@@ -1939,7 +1943,7 @@ class EMLineFit(ContinuumTools):
 
         if not self.nolegend:
             txt = '\n'.join((
-                r'{} {}'.format(leg['rchi2'], leg['deltarchi2']),
+                r'{} {}'.format(leg['rchi2'], leg['deltar_linechi2']),
                 r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),
                 r'{} {}'.format(leg['dv_forbid'], leg['sigma_forbid']),
                 r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),

@@ -1414,11 +1414,11 @@ class ContinuumFit(ContinuumTools):
         """Initialize the output data table for this class.
 
         """
-        from astropy.table import QTable, Column
+        from astropy.table import Table, Column
         
         nssp_coeff = len(self.sspinfo)
         
-        out = QTable()
+        out = Table()
         out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
@@ -1435,8 +1435,8 @@ class ContinuumFit(ContinuumTools):
         # maximum correction to the median-smoothed continuum
         for cam in ['B', 'R', 'Z']:
             out.add_column(Column(name='CONTINUUM_SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
-        out['CONTINUUM_AV'] = self.AV_nominal * u.mag
-        out['CONTINUUM_VDISP'] = self.vdisp_nominal * u.kilometer/u.second
+        out['CONTINUUM_AV'] = self.AV_nominal #* u.mag
+        out['CONTINUUM_VDISP'] = self.vdisp_nominal # * u.kilometer/u.second
 
         #if False:
         #    # continuum fit with *no* dust reddening (to be used as a diagnostic
@@ -1455,11 +1455,11 @@ class ContinuumFit(ContinuumTools):
         """Initialize the photometric output data table.
 
         """
-        from astropy.table import QTable, Column
+        from astropy.table import Table, Column
         
         nssp_coeff = len(self.sspinfo)
         
-        out = QTable()
+        out = Table()
         #out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
@@ -1637,13 +1637,13 @@ class ContinuumFit(ContinuumTools):
             cflux *= (1 + redshift) * 4.0 * np.pi * dlumMpc.to(u.cm).value**2 / self.fluxnorm # [monochromatic luminosity in erg/s/A]
             if label == 'L_5100':
                 cflux *= cwave # [luminosity in erg/s]
-                lums[label] = cflux * u.erg / u.second
+                lums[label] = cflux # * u.erg / u.second
             else:
                 # Convert the UV fluxes to rest-frame luminosity in erg/s/Hz. This
                 # luminosity can be converted into a SFR using, e.g., Kennicutt+98,
                 # SFR=1.4e-28 * L_UV
                 cflux *= cwave**2 / (C_LIGHT * 1e13) # [monochromatic luminosity in erg/s/Hz]
-                lums[label] = cflux * u.erg/(u.second*u.Hz)
+                lums[label] = cflux # * u.erg/(u.second*u.Hz)
 
         cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
         labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
@@ -1653,7 +1653,7 @@ class ContinuumFit(ContinuumTools):
             smooth = median_filter(continuum[J], 200)
             clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
             cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
-            cfluxes[label] = cflux * u.erg/(u.second*u.cm**2*u.Angstrom)
+            cfluxes[label] = cflux # * u.erg/(u.second*u.cm**2*u.Angstrom)
             
             #import matplotlib.pyplot as plt
             #print(cwave, cflux)
@@ -1878,9 +1878,9 @@ class ContinuumFit(ContinuumTools):
         # Pack it up and return.
         result['CONTINUUM_COEFF'][0][:nage] = coeff
         result['CONTINUUM_RCHI2'][0] = chi2min
-        result['CONTINUUM_AGE'][0] = meanage * u.Gyr
-        result['CONTINUUM_AV'][0] = AVbest * u.mag
-        result['CONTINUUM_AV_IVAR'][0] = AVivar / (u.mag**2)
+        result['CONTINUUM_AGE'][0] = meanage # * u.Gyr
+        result['CONTINUUM_AV'][0] = AVbest # * u.mag
+        result['CONTINUUM_AV_IVAR'][0] = AVivar # / (u.mag**2)
         result['DN4000_MODEL'][0] = dn4000
         #if False:
         #    for iband, band in enumerate(self.fiber_bands):
@@ -1890,13 +1890,13 @@ class ContinuumFit(ContinuumTools):
         #        result['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
         #        result['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
         for iband, band in enumerate(self.absmag_bands):
-            result['KCORR_{}'.format(band.upper())] = kcorr[iband] * u.mag
-            result['ABSMAG_{}'.format(band.upper())] = absmag[iband] * u.mag
-            result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband] / (u.mag**2)
+            result['KCORR_{}'.format(band.upper())] = kcorr[iband] # * u.mag
+            result['ABSMAG_{}'.format(band.upper())] = absmag[iband] # * u.mag
+            result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband] # / (u.mag**2)
         for iband, band in enumerate(self.bands):
-            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband] * u.nanomaggy
+            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband] # * u.nanomaggy
 
-        result['MSTAR'] = mstar * u.solMass
+        result['MSTAR'] = mstar # * u.solMass
         if bool(lums):
             for lum in lums.keys():
                 result[lum] = lums[lum]
@@ -2181,11 +2181,11 @@ class ContinuumFit(ContinuumTools):
         # Pack it in and return.
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
         result['CONTINUUM_RCHI2'][0] = chi2min
-        result['CONTINUUM_AV'][0] = AVbest * u.mag
-        result['CONTINUUM_AV_IVAR'][0] = AVivar / (u.mag**2)
-        result['CONTINUUM_VDISP'][0] = vdispbest * u.kilometer/u.second
-        result['CONTINUUM_VDISP_IVAR'][0] = vdispivar * (u.second/u.kilometer)**2
-        result['CONTINUUM_AGE'] = meanage * u.Gyr
+        result['CONTINUUM_AV'][0] = AVbest # * u.mag
+        result['CONTINUUM_AV_IVAR'][0] = AVivar # / (u.mag**2)
+        result['CONTINUUM_VDISP'][0] = vdispbest # * u.kilometer/u.second
+        result['CONTINUUM_VDISP_IVAR'][0] = vdispivar # * (u.second/u.kilometer)**2
+        result['CONTINUUM_AGE'] = meanage # * u.Gyr
         result['DN4000'][0] = dn4000
         result['DN4000_IVAR'][0] = dn4000_ivar
         result['DN4000_MODEL'][0] = dn4000_model

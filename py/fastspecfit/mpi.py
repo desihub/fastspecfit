@@ -476,7 +476,6 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
             if 'METADATA' not in ext:
                 log.warning('Missing extension METADATA in file {}'.format(outfile))
                 continue
-            pdb.set_trace()
             out.append(Table(info[extname].read()))
             meta.append(Table(info['METADATA'].read()))
         out = vstack(out)
@@ -500,7 +499,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
         #print(_outfiles, outfiles)
         if len(outfiles) > 0:
             log.info('Merging {} catalogs'.format(len(outfiles)))
-            mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, outsuffix))
+            mergefile = os.path.join(mergedir, '{}-{}.fits.gz'.format(outprefix, outsuffix))
             _domerge(outfiles, extname=extname, mergefile=mergefile)
         else:
             log.info('No catalogs found: {}'.format(_outfiles))

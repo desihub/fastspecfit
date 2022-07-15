@@ -807,7 +807,7 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None):
 
         # Add specprod to the metadata table so that we can stack across
         # productions (e.g., Fuji+Guadalupe).
-        hdr = fitsio.read_header(fastfitfile, ext='METADATA')
+        hdr = fitsio.read_header(fastfitfile, ext='PRIMARY')
         if 'SPECPROD' in hdr:
             specprod = hdr['SPECPROD']
             meta['SPECPROD'] = specprod
@@ -883,8 +883,8 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
                               modelspectra['SMOOTHCONTINUUM'].data,
                               modelspectra['EMLINEMODEL'].data))
         for key in modelspectra.meta.keys():
-            hdu.header[key] = modelspectra.meta[key]
-            
+            hdu.header[key] = (modelspectra.meta[key][0], modelspectra.meta[key][1]) # all the spectra are identical, right??
+                
         hdus.append(hdu)
         
         #modelspectra.meta['EXTNAME'] = 'MODELS'

@@ -91,8 +91,7 @@ def desiqa_one(CFit, EMFit, data, fastfit, metadata, coadd_type,
     #t0 = time.time()
     if fastphot:
         CFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
-                         outprefix=outprefix, outdir=outdir, cache_vdisp=False,
-                         cache_SSPgrid=False)
+                         outprefix=outprefix, outdir=outdir)
     else:
         EMFit.qa_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
                           outprefix=outprefix, outdir=outdir)
@@ -141,7 +140,7 @@ def fastspec(args=None, comm=None):
         Intracommunicator used with MPI parallelism.
 
     """
-    from astropy.table import QTable
+    from astropy.table import Table, vstack
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
     from fastspecfit.io import DESISpectra, write_fastspecfit
@@ -190,9 +189,18 @@ def fastspec(args=None, comm=None):
     else:
         _out = [fastspec_one(*_fitargs) for _fitargs in fitargs]
     _out = list(zip(*_out))
-    out = QTable(np.hstack(_out[0]))
-    meta = QTable(np.hstack(_out[1]))
-    modelspectra = QTable(np.hstack(_out[2]))
+    #out = vstack(_out[0])
+    #meta = vstack(_out[1])
+    out = Table(np.hstack(_out[0]))
+    meta = Table(np.hstack(_out[1]))
+    try:
+        # need to vstack to preserve the wavelength metadata 
+        modelspectra = vstack(_out[2], metadata_conflicts='error')
+    except:
+        errmsg = 'Metadata conflict when stacking model spectra.'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
+       
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
@@ -216,7 +224,7 @@ def fastphot(args=None, comm=None):
         Intracommunicator used with MPI parallelism.
 
     """
-    from astropy.table import QTable
+    from astropy.table import Table
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.io import DESISpectra, write_fastspecfit
 
@@ -258,8 +266,8 @@ def fastphot(args=None, comm=None):
     else:
         _out = [fastphot_one(*_fitargs) for _fitargs in fitargs]
     _out = list(zip(*_out))
-    out = QTable(np.hstack(_out[0]))
-    meta = QTable(np.hstack(_out[1]))
+    out = Table(np.hstack(_out[0]))
+    meta = Table(np.hstack(_out[1]))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Write out.
