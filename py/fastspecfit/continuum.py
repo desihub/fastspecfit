@@ -612,7 +612,7 @@ class ContinuumTools(object):
             Smooth one-sigma uncertainty spectrum.
 
         """
-        from scipy.ndimage import median_filter
+        from scipy.ndimage.filters import median_filter
         from numpy.lib.stride_tricks import sliding_window_view
         from astropy.stats import sigma_clip
 
@@ -1526,7 +1526,7 @@ class ContinuumFit(ContinuumTools):
 
         """
         from scipy.stats import sigmaclip
-        from scipy.ndimage import median_filter
+        from scipy.ndimage.filters import median_filter
         
         redshift = data['zredrock']
         
