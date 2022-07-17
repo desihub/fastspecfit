@@ -1843,8 +1843,8 @@ class ContinuumFit(ContinuumTools):
                 if AVivar < 1e-3:
                     log.warning('AV inverse variance is tiny; capping at 1e-3')
                     AVivar = 1e-3
-                log.info('Best-fitting photometric A(V)={:.4f}+/-{:.4f} with chi2={:.3f}'.format(
-                    AVbest, 1/np.sqrt(AVivar), AVchi2min))
+                log.info('Best-fitting photometric A(V)={:.4f}+/-{:.4f}'.format(
+                    AVbest, 1/np.sqrt(AVivar)))
             else:
                 AVbest = self.AV_nominal
                 log.info('Finding photometric A(V) failed; adopting A(V)={:.4f}'.format(self.AV_nominal))
@@ -1981,15 +1981,17 @@ class ContinuumFit(ContinuumTools):
             xlabel=r'$A_V$ (mag)')
         log.info('Fitting for the reddening took: {:.2f} sec'.format(time.time()-t0))
         if AVivar > 0:
+            # protect against tiny ivar from becomming infinite in the output table
+            if AVivar < 1e-3:
+                log.warning('AV inverse variance is tiny; capping at 1e-3')
+                AVivar = 1e-3
             log.info('Best-fitting spectroscopic A(V)={:.4f}+/-{:.4f}'.format(
                 AVbest, 1/np.sqrt(AVivar)))
         else:
             AVbest = self.AV_nominal
-            log.info('Finding spectroscopic A(V) failed; adopting A(V)={:.4f}'.format(
-                self.AV_nominal))
+            log.info('Finding spectroscopic A(V) failed; adopting A(V)={:.4f}'.format(self.AV_nominal))
 
-        # Optionally build out the model spectra on our grid of velocity
-        # dispersion and then solve.
+        # If the S/N is good enough, solve for the velocity dispersion.
         compute_vdisp = ((result['CONTINUUM_SNR_B'] > 3) and (result['CONTINUUM_SNR_R'] > 3)) and (redshift < 1.0)
         if compute_vdisp:
             log.info('Solving for velocity dispersion: S/N_B={:.2f}, S/N_R={:.2f}, redshift={:.3f}'.format(
@@ -2017,7 +2019,7 @@ class ContinuumFit(ContinuumTools):
                 # (based on the AVcoeff coefficients found above; no refitting of
                 # the coefficients). However, the refined value is no different than
                 # the one found using the coarse grid and the uncertainty in the
-                # velocity dispersion is ridiculously large, which I don't
+                # velocity dispersion is ridiculously large, which I don't fully 
                 # understand.
                 # /global/u2/i/ioannis/code/desihub/fastspecfit-projects/pv-vdisp/fastspecfit-pv-vdisp --targetids 39627665157658710
                 zsspflux_vdispnomdust, _ = self.SSP2data(
@@ -2077,6 +2079,10 @@ class ContinuumFit(ContinuumTools):
                 
             log.info('Fitting for the velocity dispersion took: {:.2f} sec'.format(time.time()-t0))
             if vdispivar > 0:
+                # protect against tiny ivar from becomming infinite in the output table
+                if vdispivar < 1e-5:
+                    log.warning('vdisp inverse variance is tiny; capping at 1e-5')
+                    vdispivar = 1e-5
                 log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s'.format(
                     vdispbest, 1/np.sqrt(vdispivar)))
             else:
@@ -2095,7 +2101,7 @@ class ContinuumFit(ContinuumTools):
         coeff, chi2min = self._fnnls_parallel(bestsspflux, specflux, specivar)
         chi2min /= np.sum(specivar > 0) # dof???
 
-        # Get the mean age and DN(4000).
+        # Get the light-weighted age and DN(4000).
         bestfit = bestsspflux.dot(coeff)
         meanage = self.get_meanage(coeff)
 
