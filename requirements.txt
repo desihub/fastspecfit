@@ -4,7 +4,7 @@ numba
 fitsio
 healpy
 astropy
-speclite
+# speclite
 seaborn
 matplotlib
 git+https://github.com/desihub/desiutil.git@master#egg=desiutil

@@ -860,13 +860,13 @@ class EMLineFit(ContinuumTools):
     """
     def __init__(self, nball=10, chi2_default=0.0, minwave=3000.0,
                  maxwave=10000.0, pixkms=10.0, nolegend=False, 
-                 mapdir=None):
+                 ssptemplates=None, mapdir=None):
         """Write me.
         
         """
         from astropy.modeling import fitting
 
-        super(EMLineFit, self).__init__(mapdir=mapdir)
+        super(EMLineFit, self).__init__(mapdir=mapdir, ssptemplates=ssptemplates)
         
         self.nball = nball
         self.chi2_default = chi2_default

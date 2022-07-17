@@ -160,7 +160,7 @@ def fastspec(args=None, comm=None):
     # the wavelengths of the SSPs to optimize compute time.
     t0 = time.time()
     CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, solve_vdisp=args.solve_vdisp, minwave=500.0, maxwave=1e4)
-    EMFit = EMLineFit(mapdir=args.mapdir)
+    EMFit = EMLineFit(mapdir=args.mapdir, ssptemplates=args.ssptemplates)
     Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
