@@ -114,6 +114,7 @@ def parse(options=None):
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
+    parser.add_argument('--dr9dir', type=str, default=None, help='Optional directory name for the DR9 photometry.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
     if options is None:
@@ -159,7 +160,7 @@ def fastspec(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit(mapdir=args.mapdir, solve_vdisp=args.solve_vdisp, minwave=500.0, maxwave=1e4)
     EMFit = EMLineFit(mapdir=args.mapdir)
-    Spec = DESISpectra()
+    Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
@@ -242,7 +243,8 @@ def fastphot(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit(mapdir=args.mapdir, minwave=None, maxwave=30e4,
                         solve_vdisp=False, cache_vdisp=False)
-    Spec = DESISpectra()
+
+    Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.

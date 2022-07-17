@@ -98,7 +98,7 @@ class ContinuumTools(object):
         from speclite import filters
         from desiutil.dust import SFDMap
         from fastspecfit.emlines import read_emlines
-        from fastspecfit.io import FASTSPECFIT_TEMPLATES_NERSC, DUST_DIR_NERSC
+        from fastspecfit.io import FASTSPECFIT_TEMPLATES_NERSC, DUST_DIR_NERSC, DR9_DIR_NERSC
 
         self.cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
         # pre-compute the luminosity distance on a grid

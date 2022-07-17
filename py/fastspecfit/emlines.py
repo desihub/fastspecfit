@@ -1657,6 +1657,9 @@ class EMLineFit(ContinuumTools):
         modelspectra = Table()
         # all these header cards need to be 2-element tuples (value, comment),
         # otherwise io.write_fastspecfit will crash
+        modelspectra.meta['NAXIS1'] = (npix, 'number of pixels')
+        modelspectra.meta['NAXIS2'] = (npix, 'number of models')
+        modelspectra.meta['NAXIS3'] = (npix, 'number of objects')
         modelspectra.meta['BUNIT'] = ('10**-17 erg/(s cm2 Angstrom)', 'flux unit')
         modelspectra.meta['CUNIT1'] = ('Angstrom', 'wavelength unit')
         modelspectra.meta['CTYPE1'] = ('WAVE', 'type of axis')

@@ -29,6 +29,7 @@ class TestFastspec(unittest.TestCase):
         cls.sspfile = os.path.join(resource_filename('fastspecfit.test', 'data'),
                                    'SSP_Padova_CKC14z_Kroupa_Z0.0190.fits')
         cls.mapdir = resource_filename('fastspecfit.test', 'data')
+        cls.dr9dir = resource_filename('fastspecfit.test', 'data')
         cls.redrockfile = resource_filename('fastspecfit.test', 'data/redrock-4-80613-thru20210324.fits')
         cls.cwd = os.getcwd()
         cls.outdir = tempfile.mkdtemp()
@@ -61,7 +62,7 @@ class TestFastspec(unittest.TestCase):
         import fitsio
         from fastspecfit.fastspecfit import fastphot, parse
 
-        cmd = 'fastphot {} -o {} --mapdir {}'.format(self.redrockfile, self.fastphot_outfile, self.mapdir)
+        cmd = 'fastphot {} -o {} --mapdir {} --dr9dir {}'.format(self.redrockfile, self.fastphot_outfile, self.mapdir, self.dr9dir)
         args = parse(options=cmd.split()[1:])
         fastphot(args=args)
 
@@ -77,7 +78,7 @@ class TestFastspec(unittest.TestCase):
         import fitsio
         from fastspecfit.fastspecfit import fastspec, parse
     
-        cmd = 'fastspec {} -o {} --mapdir {}'.format(self.redrockfile, self.fastspec_outfile, self.mapdir)
+        cmd = 'fastspec {} -o {} --mapdir {} --dr9dir {}'.format(self.redrockfile, self.fastspec_outfile, self.mapdir, self.dr9dir)
         args = parse(options=cmd.split()[1:])
         fastspec(args=args)
     
@@ -86,7 +87,7 @@ class TestFastspec(unittest.TestCase):
         fits = fitsio.FITS(self.fastspec_outfile)
         for hdu in fits:
             if hdu.has_data(): # skip zeroth extension
-                self.assertTrue(hdu.get_extname() in ['METADATA', 'FASTSPEC'])
+                self.assertTrue(hdu.get_extname() in ['METADATA', 'FASTSPEC', 'MODELS'])
 
 if __name__ == '__main__':
     unittest.main()

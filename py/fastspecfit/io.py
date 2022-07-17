@@ -21,6 +21,7 @@ log = get_logger()
 # Default environment variables.
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
+DR9_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
 FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
 
 # list of all possible targeting bit columns
@@ -64,7 +65,7 @@ TARGETCOLS = ['TARGETID', 'RA', 'DEC',
               'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']#,
 
 class DESISpectra(object):
-    def __init__(self, redux_dir=None, fiberassign_dir=None):
+    def __init__(self, redux_dir=None, fiberassign_dir=None, dr9dir=None):
         """Class to read in DESI spectra and associated metadata.
 
         Parameters
@@ -82,9 +83,18 @@ class DESISpectra(object):
 
         if redux_dir is None:
             self.redux_dir = os.path.join(desi_root, 'spectro', 'redux')
+        else:
+            self.redux_dir = redux_dir
             
         if fiberassign_dir is None:
             self.fiberassign_dir = os.path.join(desi_root, 'target', 'fiberassign', 'tiles', 'trunk')
+        else:
+            self.fiberassign_dir = fiberassign_dir
+
+        if dr9dir is None:
+            self.dr9dir = DR9_DIR_NERSC
+        else:
+            self.dr9dir = dr9dir
 
     def select(self, redrockfiles, zmin=0.001, zmax=None, zwarnmax=None,
                targetids=None, firsttarget=0, ntargets=None,
@@ -348,7 +358,7 @@ class DESISpectra(object):
 
         t0 = time.time()
         #info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID'] for meta in self.meta]))
-        targets = gather_tractorphot(vstack(self.meta), columns=TARGETCOLS)
+        targets = gather_tractorphot(vstack(self.meta), columns=TARGETCOLS, dr9dir=self.dr9dir)
 
         ## Older code
         #info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
