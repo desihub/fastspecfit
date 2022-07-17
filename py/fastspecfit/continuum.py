@@ -88,7 +88,7 @@ class ContinuumTools(object):
         Need to document all the attributes.
 
     """
-    def __init__(self, sspfile=None, metallicity='Z0.0190', minwave=None,
+    def __init__(self, ssptemplates=None, metallicity='Z0.0190', minwave=None,
                  maxwave=30e4, sspversion='v1.0', mapdir=None):
 
         import fitsio
@@ -123,21 +123,21 @@ class ContinuumTools(object):
         self.dustslope = 0.7
 
         # SSPs
-        if sspfile:
-            self.sspfile = sspfile
+        if ssptemplates is not None:
+            self.ssptemplates = ssptemplates
         else:
             templates_dir = os.environ.get('FASTSPECFIT_TEMPLATES', FASTSPECFIT_TEMPLATES_NERSC)
-            self.sspfile = os.path.join(templates_dir, sspversion, 'SSP_{}_{}_{}_{}.fits'.format(
+            self.ssptemplates = os.path.join(templates_dir, sspversion, 'SSP_{}_{}_{}_{}.fits'.format(
                 self.isochrone, self.library, self.imf, self.metallicity))
-        if not os.path.isfile(self.sspfile):
-            errmsg = 'SSP templates file not found {}'.format(self.sspfile)
+        if not os.path.isfile(self.ssptemplates):
+            errmsg = 'SSP templates file not found {}'.format(self.ssptemplates)
             log.critical(errmsg)
             raise IOError(errmsg)
 
-        log.info('Reading {}'.format(self.sspfile))
-        wave, wavehdr = fitsio.read(self.sspfile, ext='WAVE', header=True)
-        flux = fitsio.read(self.sspfile, ext='FLUX')
-        sspinfo = Table(fitsio.read(self.sspfile, ext='METADATA'))
+        log.info('Reading {}'.format(self.ssptemplates))
+        wave, wavehdr = fitsio.read(self.ssptemplates, ext='WAVE', header=True)
+        flux = fitsio.read(self.ssptemplates, ext='FLUX')
+        sspinfo = Table(fitsio.read(self.ssptemplates, ext='METADATA'))
         
         # Trim the wavelengths and select the number/ages of the templates.
         # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
@@ -147,6 +147,8 @@ class ContinuumTools(object):
         sspwave = wave[keep]
 
         if True:
+            # Note: need to update the templates used in the unit tests!
+            
             # The old ages are 12.5, 13.3, 14.1, and 14.9 Gyr, so we have to
             # choose 14 Gyr if we want a maximally old template (e.g., for our
             # velocity dispersion measurements).
@@ -1304,8 +1306,8 @@ class ContinuumTools(object):
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 
 class ContinuumFit(ContinuumTools):
-    def __init__(self, metallicity='Z0.0190', minwave=None, maxwave=30e4,
-                 nolegend=False, cache_vdisp=True, solve_vdisp=False,
+    def __init__(self, ssptemplates=None, metallicity='Z0.0190', minwave=None,
+                 maxwave=30e4, nolegend=False, cache_vdisp=True, solve_vdisp=False,
                  cache_SSPgrid=True, constrain_age=True, mapdir=None):
         """Class to model a galaxy stellar continuum.
 
@@ -1330,8 +1332,8 @@ class ContinuumFit(ContinuumTools):
             distribution of the form x**2*np.exp(-2*x/scale).
 
         """
-        super(ContinuumFit, self).__init__(metallicity=metallicity, minwave=minwave,
-                                           maxwave=maxwave, mapdir=mapdir)
+        super(ContinuumFit, self).__init__(ssptemplates=ssptemplates, metallicity=metallicity,
+                                           minwave=minwave, maxwave=maxwave, mapdir=mapdir)
 
         self.nolegend = nolegend
         self.constrain_age = constrain_age
@@ -2434,7 +2436,7 @@ class ContinuumFit(ContinuumTools):
             #'zfastfastphot': r'$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
-            'mstar': '$\log_{{10}}\,(M_{{*}}/M_{{\odot}})={}$'.format(mstar),
+            'mstar': r'$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={}$'.format(mstar),
             'absmag_r': '$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
             'absmag_gr': '$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R']),
             }
