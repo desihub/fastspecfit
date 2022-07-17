@@ -1772,7 +1772,7 @@ class ContinuumFit(ContinuumTools):
 
         return chi2min, xbest, xivar, bestcoeff
 
-    def continuum_fastphot(self, data):
+    def continuum_fastphot(self, data, minbands=3):
         """Fit the broad photometry.
 
         Parameters
@@ -1780,6 +1780,8 @@ class ContinuumFit(ContinuumTools):
         data : :class:`dict`
             Dictionary of input spectroscopy (plus ancillary data) populated by
             `unpack_one_spectrum`.
+        minbands : :class:`int`, defaults to 3
+            Minimum number of photometric bands required to attempt a fit.
 
         Returns
         -------
@@ -1816,11 +1818,12 @@ class ContinuumFit(ContinuumTools):
         objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
         assert(np.all(objflamivar >= 0))
 
-        if np.all(objflamivar == 0): # can happen for secondary targets
-            log.warning('All photometry is masked or not available!')
+        # some secondary targets have no good photometry
+        if np.all(objflamivar == 0) or (np.sum(objflamivar > 0) < minbands):
+            log.warning('All photometry is masked or number of good photometric bands {}<{}'.format(
+                np.sum(objflamivar > 0), minbands))
             AVbest, AVivar = self.AV_nominal, 0.0
             nage = self.nage
-            chi2min = 0.0
             coeff = np.zeros(self.nage)
             continuummodel = np.zeros(len(self.sspwave))
         else:
@@ -1862,7 +1865,7 @@ class ContinuumFit(ContinuumTools):
 
         # Compute DN4000, K-corrections, and rest-frame quantities.
         if np.count_nonzero(coeff > 0) == 0:
-            log.warning('Continuum coefficients are all zero!')
+            log.warning('Continuum coefficients are all zero or data not fit.')
             chi2min, dn4000, meanage, mstar = 0.0, 0.0, 0.0, 0.0 # -1.0, -1.0, -1.0
             kcorr = np.zeros(len(self.absmag_bands))
             absmag = np.zeros(len(self.absmag_bands))#-99.0
@@ -1874,7 +1877,7 @@ class ContinuumFit(ContinuumTools):
             meanage = self.get_meanage(coeff)
             kcorr, absmag, ivarabsmag, synth_bestmaggies, mstar, lums, cfluxes = self.kcorr_and_absmag(data, continuummodel, coeff)
 
-            # convert to nanomaggies
+            # convert the synthesized photometry to nanomaggies
             synth_bestmaggies *= 1e9
 
             log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag, Mstar={:.4g}'.format(
@@ -1901,7 +1904,8 @@ class ContinuumFit(ContinuumTools):
         for iband, band in enumerate(self.bands):
             result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband] # * u.nanomaggy
 
-        result['LOGMSTAR'] = np.log10(mstar) # * u.solMass
+        if mstar > 0:
+            result['LOGMSTAR'] = np.log10(mstar) # * u.solMass
         if bool(lums):
             for lum in lums.keys():
                 result[lum] = lums[lum]
