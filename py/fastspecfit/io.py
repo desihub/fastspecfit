@@ -273,6 +273,7 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=READFMCOLS)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
+                # also update mpi.get_ntargets_one
                 fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
                                    (meta['OBJTYPE'] == 'TGT') *
                                    (meta['TARGETID'] > 0) *

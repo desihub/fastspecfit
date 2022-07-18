@@ -1524,10 +1524,12 @@ class EMLineFit(ContinuumTools):
                     #cmed, csig = np.mean(clipflux), np.std(clipflux)
                     cmed = np.median(clipflux)
                     csig = np.diff(np.percentile(clipflux, [25, 75])) / 1.349 # robust sigma
+                    if csig > 0:
+                        civar = (np.sqrt(len(indx)) / csig)**2
+                    else:
+                        civar = 0.0
                 else:
-                    cmed, csig = 0.0, 0.0
-                if csig > 0:
-                    civar = (np.sqrt(len(indx)) / csig)**2
+                    cmed, civar = 0.0, 0.0
 
                 result['{}_CONT'.format(linename)] = cmed # * u.erg/(u.second*u.cm**2*u.Angstrom)
                 result['{}_CONT_IVAR'.format(linename)] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2

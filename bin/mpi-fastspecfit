@@ -5,14 +5,14 @@ MPI wrapper for fastphot and fastspec.
 mpi-fastspecfit --mp 32 --coadd-type cumulative --tile 80608 --night 20201220 --plan --nompi
 mpi-fastspecfit --fastphot --mp 32 --tile 80608
 
-mpi-fastspecfit --specprod everest
-mpi-fastspecfit --specprod everest --fastphot
+mpi-fastspecfit --specprod fuji
+mpi-fastspecfit --specprod fuji --fastphot
 
-mpi-fastspecfit --merge --specprod everest
-mpi-fastspecfit --merge --specprod everest --fastphot
+mpi-fastspecfit --merge --specprod fuji
+mpi-fastspecfit --merge --specprod fuji --fastphot
 
-mpi-fastspecfit --mp 32 --makeqa --specprod everest --dry-run
-mpi-fastspecfit --mp 32 --makeqa --specprod everest --fastphot --dry-run
+mpi-fastspecfit --mp 32 --makeqa --specprod fuji --dry-run
+mpi-fastspecfit --mp 32 --makeqa --specprod fuji --fastphot --dry-run
 
 """
 import pdb # for debugging
@@ -24,7 +24,7 @@ from desiutil.log import get_logger
 log = get_logger()
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
-                    makeqa=False, base_datadir='.', base_htmldir='.'):
+                    makeqa=False, outdir_data='.', outdir_html='.'):
 
     import sys, subprocess
     from fastspecfit.mpi import backup_logs, plan
@@ -39,7 +39,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         #log.info('Starting at {}'.format(time.asctime()))
         _, zbestfiles, outfiles, groups, ntargets = plan(
             args, comm=comm, fastphot=fastphot, specprod_dir=specprod_dir,
-            base_datadir=base_datadir, base_htmldir=base_htmldir)
+            outdir_data=outdir_data, outdir_html=outdir_html)
         log.info('Planning took {:.2f} sec'.format(time.time() - t0))
     else:
         zbestfiles, outfiles, groups, ntargets = [], [], [], []
@@ -78,18 +78,16 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                 cmd += ' --ntargets {}'.format(args.ntargets)
         else:
             if fastphot:
-                cmd = 'fastphot {} -o {} --mp {} --specprod {}'.format(zbestfiles[ii], outfiles[ii],
-                                                                                       args.mp, args.specprod)
+                cmd = 'fastphot {} -o {} --mp {}'.format(zbestfiles[ii], outfiles[ii], args.mp)
             else:
-                cmd = 'fastspec {} -o {} --mp {} --specprod {}'.format(zbestfiles[ii], outfiles[ii],
-                                                                                       args.mp, args.specprod)
+                cmd = 'fastspec {} -o {} --mp {}'.format(zbestfiles[ii], outfiles[ii], args.mp)
                 if args.solve_vdisp:
                     cmd += ' --solve-vdisp'
                     
             if args.ntargets:
                 cmd += ' --ntargets {}'.format(args.ntargets)
 
-        logfile = outfiles[ii].replace('.fits', '.log')
+        logfile = outfiles[ii].replace('.gz', '').replace('.fits', '.log')
         assert(logfile != outfiles[ii])
 
         log.info('Rank {}, ntargets={}: {}'.format(rank, ntargets[ii], cmd))
@@ -150,7 +148,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
-    parser.add_argument('--specprod', type=str, default='everest', #choices=['everest', 'denali', 'daily'],
+    parser.add_argument('--specprod', type=str, default='fuji', #choices=['everest', 'denali', 'daily'],
                         help='Spectroscopic production to process.')
     
     parser.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpixels to process.')
@@ -176,9 +174,9 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
-    parser.add_argument('--base-htmldir', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
+    parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
                         type=str, help='Base output HTML directory.')
-    parser.add_argument('--base-datadir', default='/global/cfs/cdirs/desi/spectro/fastspecfit',
+    parser.add_argument('--outdir-data', default='/global/cfs/cdirs/desi/spectro/fastspecfit',
                         type=str, help='Base output data directory.')
     
     specprod_dir = None
@@ -200,8 +198,10 @@ def main():
             
     if args.merge or args.mergeall:
         from fastspecfit.mpi import merge_fastspecfit
-        merge_fastspecfit(args, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                          base_datadir=args.base_datadir, supermerge=args.mergeall)
+        merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
+                          survey=args.survey, program=args.program, healpix=args.healpix,
+                          tile=args.tile, night=args.night, outdir_data=args.outdir_data,
+                          overwrite=args.overwrite, fastphot=args.fastphot, supermerge=args.mergeall)
         return
         
     if args.plan:
@@ -212,13 +212,13 @@ def main():
         if rank == 0:
             plan(args, comm=comm, fastphot=args.fastphot,
                  specprod_dir=specprod_dir,
-                 base_datadir=args.base_datadir,
-                 base_htmldir=args.base_htmldir)
+                 outdir_data=args.outdir_data,
+                 outdir_html=args.outdir_html)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot,
                         specprod_dir=specprod_dir, makeqa=args.makeqa,
-                        base_datadir=args.base_datadir,
-                        base_htmldir=args.base_htmldir)
+                        outdir_data=args.outdir_data,
+                        outdir_html=args.outdir_html)
 
 if __name__ == '__main__':
     main()
