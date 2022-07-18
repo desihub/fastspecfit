@@ -53,6 +53,10 @@ EXPFMCOLS = {
 # redshift columns to read
 REDSHIFTCOLS = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
 
+# quasarnet afterburner columns to read
+QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
+          'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
+
 # targeting and Tractor columns to read from disk
 #TARGETCOLS = ['TARGETID', 'RA', 'DEC', 'FLUX_W3', 'FLUX_W4', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
 TARGETCOLS = ['TARGETID', 'RA', 'DEC',
@@ -98,7 +102,8 @@ class DESISpectra(object):
 
     def select(self, redrockfiles, zmin=0.001, zmax=None, zwarnmax=None,
                targetids=None, firsttarget=0, ntargets=None,
-               redrockfile_prefix='redrock-', specfile_prefix='coadd-'):
+               use_quasarnet=True, redrockfile_prefix='redrock-',
+               specfile_prefix='coadd-', qnfile_prefix='qso_qn-'):
         """Select targets for fitting and gather the necessary spectroscopic metadata.
 
         Parameters
@@ -126,11 +131,16 @@ class DESISpectra(object):
             Number of objects to analyze in each file. Useful for debugging and
             testing. If `None`, select all targets which satisfy the selection
             criteria.
+        use_quasarnet : `bool`
+            Use QuasarNet to improve QSO redshifts, if the afterburner file is
+            present. Defaults to `True`.
         redrockfile_prefix : str
             Prefix of the `redrockfiles`. Defaults to `redrock-`.
         specfile_prefix : str
             Prefix of the spectroscopic coadds corresponding to the input
             Redrock file(s). Defaults to `coadd-`.
+        qnfile_prefix : str
+            Prefix of the QuasarNet afterburner file. Defaults to `coadd-`.
 
         Attributes
         ----------
@@ -191,13 +201,21 @@ class DESISpectra(object):
         self.redrockfiles, self.specfiles, self.meta = [], [], []
         
         for ired, redrockfile in enumerate(np.atleast_1d(redrockfiles)):
-            specfile = redrockfile.replace(redrockfile_prefix, specfile_prefix)
             if not os.path.isfile(redrockfile):
                 log.warning('File {} not found!'.format(redrockfile))
                 continue
+            
+            specfile = redrockfile.replace(redrockfile_prefix, specfile_prefix)
             if not os.path.isfile(specfile):
                 log.warning('File {} not found!'.format(specfile))
                 continue
+            
+            # Can we use the quasarnet afterburner file to improve QSO redshifts?
+            qnfile = redrockfile.replace(redrockfile_prefix, qnfile_prefix)
+            if os.path.isfile(qnfile) and use_quasarnet:
+                use_qn = True
+            else:
+                use_qn = False
 
             # Gather some coadd information from the header. Note: this code is
             # only compatible with Fuji & Guadalupe headers and later.
@@ -289,12 +307,39 @@ class DESISpectra(object):
             # If firsttarget is a large index then the set can become empty.
             if targetids is None:
                 zb = Table(zb[fitindx])
+                # SJ
+                #if os.path.isfile(qnfile):
+                #    qn = Table(qn[fitindx])
                 meta = Table(meta[fitindx])
             else:
                 zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=REDSHIFTCOLS))
+                # SJ
+                #if os.path.isfile(qnfile):
+                #    qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=READFMCOLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
+            # update the redrock redshift with quasarnet
+            # SJ : (this is where one could update the redshift in "zb")
+            # If relevant, replace the RR redshifts with QN redshifts for QSOs. From Edmond:
+            # QN afterburner is run with a threshold 0.5. With VI, we choose 0.95 as final threshold.
+            # &= since IS_QSO_QN_NEW_RR contains only QSO for QN which are not QSO for RR.
+            if use_qn:
+                qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
+                assert(np.all(qn['TARGETID'] == meta['TARGETID']))
+                log.info('Updating QSO redshifts using a QN threshold of 0.95.')
+                qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']]), axis=0) > 0.95
+                qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
+                # (Could add an if statement to check of there are any cases with 'IS_QSO_QN_NEW_RR' set to True ?)
+                #zb.add_column(zb['Z'], name='Z_RR', index=2)
+                zb['Z_RR'] = zb['Z'] # add it at the end
+                if np.any(qn['IS_QSO_QN_NEW_RR']):
+                    zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
+                del qn
+            # add an empty Z_RR column?
+            #else:
+            #    zb['Z_RR'] = zb['Z'] # add it at the end
+                
             # astropy 5.0 "feature" -- join no longer preserves order, ugh.
             zb.remove_column('TARGETID')
             meta = hstack((zb, meta))
@@ -745,7 +790,7 @@ class DESISpectra(object):
                    }
 
         skipcols = ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE'] + fluxcols
-        redrockcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE']
+        redrockcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR']
         
         meta = Table()
         metacols = self.meta.colnames
@@ -779,7 +824,8 @@ class DESISpectra(object):
                 meta[bitcol] = np.zeros(shape=(1,), dtype=np.int64)
 
         for redrockcol in redrockcols:
-            meta[redrockcol] = self.meta[redrockcol]
+            if redrockcol in metacols: # the Z_RR from quasarnet may not be present
+                meta[redrockcol] = self.meta[redrockcol]
             if redrockcol in colunit.keys():
                 meta[redrockcol].unit = colunit[redrockcol]
 
