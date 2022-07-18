@@ -646,7 +646,13 @@ class ContinuumTools(object):
                         if len(I) > 0:
                             linemask[I] = True
 
-            # ToDo: mask Ly-a (1215 A) here.
+            # Special: mask Ly-a (1215 A)
+            zlinewave = 1215.0 * (1 + redshift)
+            if (zlinewave > np.min(wave)) * (zlinewave < np.max(wave)):
+                sigma = maskkms_uv * zlinewave / C_LIGHT # [km/s --> Angstrom]
+                I = (wave >= (zlinewave - nsig*sigma)) * (wave <= (zlinewave + nsig*sigma))
+                if len(I) > 0:
+                    linemask[I] = True
 
         if len(linemask) != npix:
             errmsg = 'Linemask must have the same number of pixels as the input spectrum.'
@@ -904,7 +910,7 @@ class ContinuumTools(object):
         #zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.942]) * (1 + redshift)
         linesigma_uv, linesigma_uv_snr = get_linesigma(zlinewaves, init_linesigma_uv, 
                                                        label='UV/Broad', ax=ax[2])
-        
+
         # refit with the new value
         if refit and linesigma_uv_snr > 0:
             if (linesigma_uv > init_linesigma_uv) and (linesigma_uv < 5*init_linesigma_uv) and (linesigma_uv_snr > linesigma_snr_min): 
@@ -1042,6 +1048,10 @@ class ContinuumTools(object):
                             # line here.
                             if np.all(snr > snr_strong):
                                 linemask_strong[I] = True
+                        # Always identify Lya as "strong"
+                        if _linename == 'Lya':
+                            linemask_strong[I] = True
+
 
             # now get the continuum, too
             if png:

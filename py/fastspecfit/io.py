@@ -307,31 +307,23 @@ class DESISpectra(object):
             # If firsttarget is a large index then the set can become empty.
             if targetids is None:
                 zb = Table(zb[fitindx])
-                # SJ
-                #if os.path.isfile(qnfile):
-                #    qn = Table(qn[fitindx])
                 meta = Table(meta[fitindx])
             else:
                 zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=REDSHIFTCOLS))
-                # SJ
-                #if os.path.isfile(qnfile):
-                #    qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=READFMCOLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
-            # update the redrock redshift with quasarnet
-            # SJ : (this is where one could update the redshift in "zb")
-            # If relevant, replace the RR redshifts with QN redshifts for QSOs. From Edmond:
-            # QN afterburner is run with a threshold 0.5. With VI, we choose 0.95 as final threshold.
-            # &= since IS_QSO_QN_NEW_RR contains only QSO for QN which are not QSO for RR.
+            # Update the redrock redshift when quasarnet disagrees. From Edmond:
+            # the QN afterburner is run with a threshold 0.5. With VI, we choose
+            # 0.95 as final threshold. Note, the IS_QSO_QN_NEW_RR column
+            # contains only QSO for QN which are not QSO for RR.
             if use_qn:
                 qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
                 assert(np.all(qn['TARGETID'] == meta['TARGETID']))
                 log.info('Updating QSO redshifts using a QN threshold of 0.95.')
                 qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']]), axis=0) > 0.95
                 qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
-                # (Could add an if statement to check of there are any cases with 'IS_QSO_QN_NEW_RR' set to True ?)
-                #zb.add_column(zb['Z'], name='Z_RR', index=2)
+                #zb.add_column(zb['Z'], name='Z_RR', index=2) # add it after 'Z'
                 zb['Z_RR'] = zb['Z'] # add it at the end
                 if np.any(qn['IS_QSO_QN_NEW_RR']):
                     zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]

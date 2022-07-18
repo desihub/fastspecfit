@@ -21,7 +21,7 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import trapz_rebin, C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger()#DEBUG)
+log = get_logger(DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -183,9 +183,9 @@ def _tie_lines(model):
             
         # other broad lines
         if (model.linetable['isbalmer'][iline] == False) and model.linetable['isbroad'][iline]:
-            #if linename == 'siliii_1892':
-            #    getattr(model, '{}_sigma'.format(linename)).tied = _tie_ciii_1908_sigma
-            #    getattr(model, '{}_vshift'.format(linename)).tied = _tie_ciii_1908_vshift
+            if linename == 'siliii_1892':
+                getattr(model, '{}_sigma'.format(linename)).tied = _tie_ciii_1908_sigma
+                getattr(model, '{}_vshift'.format(linename)).tied = _tie_ciii_1908_vshift
             if linename == 'mgii_2796':
                 getattr(model, '{}_sigma'.format(linename)).tied = _tie_mgii_2803_sigma
                 getattr(model, '{}_vshift'.format(linename)).tied = _tie_mgii_2803_vshift
