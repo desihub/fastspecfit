@@ -271,11 +271,11 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         log.info('Found {} {} files to be merged.'.format(len(outfiles), outprefix))
     elif makeqa:
         redrockfiles = None
-        outfiles = _findfiles(outdir, prefix=outprefix)
+        outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night)
         log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
         ntargs = [(outfile, True) for outfile in outfiles]
     else:
-        redrockfiles = _findfiles(specprod_dir, prefix='redrock')
+        redrockfiles = _findfiles(specprod_dir, prefix='redrock', survey=survey, program=program, healpix=healpix, tile=tile, night=night)
         nfile = len(redrockfiles)
         outfiles = []
         for redrockfile in redrockfiles:

@@ -38,8 +38,10 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
     if rank == 0:
         #log.info('Starting at {}'.format(time.asctime()))
         _, zbestfiles, outfiles, groups, ntargets = plan(
-            args, comm=comm, fastphot=fastphot, specprod_dir=specprod_dir,
-            outdir_data=outdir_data, outdir_html=outdir_html)
+            comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
+            coadd_type=args.coadd_type, survey=args.survey, program=args.program,
+            healpix=args.healpix, tile=args.tile, night=args.night,
+            fastphot=fastphot, outdir_data=outdir_data, outdir_html=outdir_html)
         log.info('Planning took {:.2f} sec'.format(time.time() - t0))
     else:
         zbestfiles, outfiles, groups, ntargets = [], [], [], []
@@ -210,14 +212,14 @@ def main():
         else:
             rank = comm.rank
         if rank == 0:
-            plan(args, comm=comm, fastphot=args.fastphot,
-                 specprod_dir=specprod_dir,
-                 outdir_data=args.outdir_data,
+            plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
+                 coadd_type=args.coadd_type, survey=args.survey, program=args.program,
+                 healpix=args.healpix, tile=args.tile, night=args.night,
+                 fastphot=args.fastphot, outdir_data=args.outdir_data,
                  outdir_html=args.outdir_html)
     else:
-        run_fastspecfit(args, comm=comm, fastphot=args.fastphot,
-                        specprod_dir=specprod_dir, makeqa=args.makeqa,
-                        outdir_data=args.outdir_data,
+        run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
+                        makeqa=args.makeqa, outdir_data=args.outdir_data,
                         outdir_html=args.outdir_html)
 
 if __name__ == '__main__':
