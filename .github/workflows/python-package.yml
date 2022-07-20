@@ -21,7 +21,6 @@ jobs:
                 fitsio-version: ['==1.1.7']
         env:
             DESIUTIL_VERSION: 3.2.5
-            SPECLITE_VERSION: sdss2010atm-filters
             FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
             DESI_ROOT: ${FASTSPECFIT}/desi
             DUST_DIR: ${FASTSPECFIT}/dust
@@ -46,7 +45,6 @@ jobs:
                 python -m pip install -r requirements.txt
                 python -m pip cache remove fitsio
                 python -m pip install --no-deps --force-reinstall --ignore-installed 'fitsio${{ matrix.fitsio-version }}'
-                python -m pip install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
 
             - name: Verify Installation
               run: pip list
@@ -65,7 +63,6 @@ jobs:
                 fitsio-version: ['==1.1.7']
         env:
             DESIUTIL_VERSION: 3.2.5
-            SPECLITE_VERSION: sdss2010atm-filters
 
         steps:
             - name: Checkout code
@@ -84,7 +81,6 @@ jobs:
                 python -m pip install -r requirements.txt
                 python -m pip cache remove fitsio
                 python -m pip install --no-deps --force-reinstall --ignore-installed 'fitsio${{ matrix.fitsio-version }}'
-                python -m pip install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
             - name: Run the test with coverage
               run: pytest --cov
             - name: Coveralls

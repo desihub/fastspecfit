@@ -1,14 +1,15 @@
 numpy
 scipy
-numba
+astropy
 fitsio
 healpy
-astropy
-# speclite
+numba
 seaborn
 matplotlib
-git+https://github.com/desihub/desiutil.git@master#egg=desiutil
-git+https://github.com/desihub/desimodel.git@master#egg=desimodel
-git+https://github.com/desihub/desitarget.git@master#egg=desitarget
+git+https://github.com/desihub/speclite.git@v0.16#egg=speclite
+git+https://github.com/desihub/desimodel.git@0.17.0#egg=desimodel
+git+https://github.com/desihub/desitarget.git@2.5.0#egg=desitarget
 git+https://github.com/desihub/desispec.git@master#egg=desispec
-git+https://github.com/desihub/redrock.git@master#egg=redrock
+git+https://github.com/desihub/fastspecfit.git@fujidev-continued#egg=fastspecfit
+# Install desiutil in .github/workflows/python-package.yml.
+# git+https://github.com/desihub/desiutil.git@master#egg=desiutil
