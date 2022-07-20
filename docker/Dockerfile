@@ -54,7 +54,7 @@ RUN ln -s "$(which python3)" /usr/bin/python
 # Install desiutil, fastspecfit, and then the other desihub dependencies.
 RUN python -m pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
     
-RUN git clone https://github.com/desihub/fastspecfit.git \
+RUN git clone --branch dockerhell https://github.com/desihub/fastspecfit.git \
     && cd fastspecfit \
     && python -m pip install -r requirements.txt \
     && python setup.py install \
