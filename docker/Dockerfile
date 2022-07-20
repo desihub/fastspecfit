@@ -132,54 +132,32 @@ RUN for x in \
     ipykernel \
     h5py \
     pytest \
-    emcee \
     configobj \
     sqlalchemy \
     ; do pip3 install $x; done \
     && rm -Rf /root/.cache/pip \
-    && echo 2
+    && echo 3
 
 WORKDIR /src
 
 # python = python3
 RUN ln -s $(which python3) /usr/bin/python
 
-RUN git clone https://github.com/dkirkby/speclite.git
-RUN cd speclite \
-    && python setup.py install
-
-RUN for package in \
-    desiutil \
-    desimodel \
-    desitarget \
-    desispec \
-    desisim \
-    specter \
-    specsim; do \
-      git clone https://github.com/desihub/$package \
-      && cd $package \
-      && python setup.py install; \
-    done && echo 5
-
-RUN git clone https://github.com/desihub/redrock
-RUN cd redrock \
-    && git clone https://github.com/desihub/redrock-templates py/redrock/templates \
-    && python setup.py install \
-    && echo 3
+WORKDIR /src
 
 ENV DESIMODEL /src/desimodel
+ENV DESIUTIL_VERSION 3.2.5
+ENV FASTSPECFIT_VERSION main
 
-RUN mkdir $DESIMODEL \
-    && cd $DESIMODEL \
-    && svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data \
-    && echo 3
-
-WORKDIR /src
-RUN git clone https://github.com/desihub/fastspecfit.git fastspecfit \
-    && cd fastspecfit && git describe --always
-
-# update 
-RUN cd /src/fastspecfit && git pull && git describe --always && echo 4
+# Install desiutil, fastspecfit, and then the other desihub dependencies.
+RUN python -m pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
+    
+RUN git clone https://github.com/desihub/fastspecfit.git@{FASTSPECFIT_VERSION} \
+    && cd $package \
+    && git describe --always \
+    && python -m pip install -r requirements.txt \
+    && python setup.py install \
+    && echo 1
 
 ENV PYTHONPATH /src/fastspecfit/py
 ENV PATH /src/fastspecfit/bin:/opt/conda/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
