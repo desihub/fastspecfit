@@ -279,8 +279,8 @@ def main(args=None, comm=None):
                     petal, tile, thrunights[indx[0]]))
                 zbestfiles.append(zbestfile)
 
-            Spec.find_specfiles(zbestfiles=zbestfiles, specprod=specprod,
-                                coadd_type='cumulative', targetids=targetids)
+            Spec.select(zbestfiles=zbestfiles, specprod=specprod,
+                        coadd_type='cumulative', targetids=targetids)
             #dataphot = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)
             dataspec = Spec.read_and_unpack(CFit, fastphot=False, synthphot=False,
                                             remember_coadd=True)

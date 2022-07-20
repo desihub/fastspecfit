@@ -25,16 +25,15 @@ class TestFastspec(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         os.environ['DESI_ROOT'] = resource_filename('fastspecfit.test', 'data')
-        os.environ['FASTSPECFIT_TEMPLATES'] = resource_filename('fastspecfit.test', 'data')
+        cls.ssptemplates = os.path.join(resource_filename('fastspecfit.test', 'data'),
+                                        'SSP_Padova_CKC14z_Kroupa_Z0.0190.fits')
         cls.mapdir = resource_filename('fastspecfit.test', 'data')
+        cls.dr9dir = resource_filename('fastspecfit.test', 'data')
         cls.redrockfile = resource_filename('fastspecfit.test', 'data/redrock-4-80613-thru20210324.fits')
         cls.cwd = os.getcwd()
         cls.outdir = tempfile.mkdtemp()
         cls.fastspec_outfile = os.path.join(cls.outdir, 'fastspec.fits')
         cls.fastphot_outfile = os.path.join(cls.outdir, 'fastphot.fits')
-
-        #self.ra = np.array([84.56347552,  88.25858593,
-        #                    85.18114653,  84.04246538, 83.22215524])
 
     def setUp(self):
         pass
@@ -46,7 +45,7 @@ class TestFastspec(unittest.TestCase):
     def test_ContinuumFit(self):
         """Test the ContinuumTools class."""
         from fastspecfit.continuum import ContinuumFit
-        CFit = ContinuumFit(mapdir=self.mapdir)
+        CFit = ContinuumFit(mapdir=self.mapdir, ssptemplates=self.ssptemplates)
 
         # expected attributes
         self.assertTrue(CFit.metallicity in ['Z0.0190'])
@@ -59,7 +58,8 @@ class TestFastspec(unittest.TestCase):
         import fitsio
         from fastspecfit.fastspecfit import fastphot, parse
 
-        cmd = 'fastphot {} -o {} --mapdir {}'.format(self.redrockfile, self.fastphot_outfile, self.mapdir)
+        cmd = 'fastphot {} -o {} --mapdir {} --dr9dir {} --ssptemplates {}'.format(
+            self.redrockfile, self.fastphot_outfile, self.mapdir, self.dr9dir, self.ssptemplates)
         args = parse(options=cmd.split()[1:])
         fastphot(args=args)
 
@@ -75,7 +75,8 @@ class TestFastspec(unittest.TestCase):
         import fitsio
         from fastspecfit.fastspecfit import fastspec, parse
     
-        cmd = 'fastspec {} -o {} --mapdir {}'.format(self.redrockfile, self.fastspec_outfile, self.mapdir)
+        cmd = 'fastspec {} -o {} --mapdir {} --dr9dir {} --ssptemplates {}'.format(
+            self.redrockfile, self.fastspec_outfile, self.mapdir, self.dr9dir, self.ssptemplates)
         args = parse(options=cmd.split()[1:])
         fastspec(args=args)
     
@@ -84,7 +85,7 @@ class TestFastspec(unittest.TestCase):
         fits = fitsio.FITS(self.fastspec_outfile)
         for hdu in fits:
             if hdu.has_data(): # skip zeroth extension
-                self.assertTrue(hdu.get_extname() in ['METADATA', 'FASTSPEC'])
+                self.assertTrue(hdu.get_extname() in ['METADATA', 'FASTSPEC', 'MODELS'])
 
 if __name__ == '__main__':
     unittest.main()

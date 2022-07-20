@@ -3,10 +3,11 @@
 """
 import os, pdb
 import numpy as np
+from pathlib import Path
 import fitsio
 from astropy.table import Table
 from redrock.external.desi import write_zbest
-from desispec.io import write_spectra, read_spectra#, read_tile_spectra
+from desispec.io import write_spectra, read_spectra, photo#, read_tile_spectra
 
 specprod = 'fuji'
 night = 20210324
@@ -14,6 +15,7 @@ tile = 80613
 petal = 4
 targetid = 39633345008634465
 
+dr9dir = os.path.join(os.environ.get('DESI_ROOT'), 'external', 'legacysurvey', 'dr9')
 datadir = os.path.join(os.environ.get('DESI_ROOT'), 'spectro', 'redux', specprod, 'tiles', 'cumulative', str(tile), str(night))
 
 coaddfile = 'coadd-{}-{}-thru{}.fits'.format(petal, tile, night)
@@ -24,11 +26,6 @@ redrockfile = coaddfile.replace('coadd-', 'redrock-')
 
 coaddfile = os.path.join(datadir, coaddfile)
 redrockfile = os.path.join(datadir, redrockfile)
-
-spechdr = fitsio.read_header(coaddfile)
-spec = read_spectra(coaddfile).select(targets=targetid)
-print('Writing {}'.format(os.path.join('data', os.path.basename(coaddfile))))
-write_spectra(os.path.join('data', os.path.basename(coaddfile)), spec)
 
 redhdr = fitsio.read_header(redrockfile)
 zbest = Table.read(redrockfile, 'REDSHIFTS')
@@ -49,11 +46,22 @@ write_zbest(os.path.join('data', os.path.basename(redrockfile)),
             zbest, fibermap, expfibermap, tsnr2, template_version, 
             archetype_version, spec_header=spechdr)
 
+spechdr = fitsio.read_header(coaddfile)
+spec = read_spectra(coaddfile).select(targets=targetid)
+print('Writing {}'.format(os.path.join('data', os.path.basename(coaddfile))))
+write_spectra(os.path.join('data', os.path.basename(coaddfile)), spec)
 
+# gather Tractor photometry
+tractor = photo.gather_tractorphot(fibermap, dr9dir=dr9dir)
+tractor.remove_columns(('TARGETID', 'LS_ID'))
 
+region = 'north'
+brick = tractor['BRICKNAME'][0] # need the header, too
+tractorfile = os.path.join(dr9dir, region, 'tractor', brick[:3], 'tractor-{}.fits'.format(brick))
+tractorhdr = fitsio.read_header(tractorfile)
+outtractorfile = os.path.join('data', region, 'tractor', brick[:3], os.path.basename(tractorfile))
 
-
-
-
-
+print('Writing {}'.format(outtractorfile))
+os.makedirs(os.path.dirname(outtractorfile), exist_ok=True)
+fitsio.write(outtractorfile, tractor.as_array(), header=tractorhdr, clobber=True)
 

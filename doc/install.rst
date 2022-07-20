@@ -50,7 +50,7 @@ into an environment called *fastspecfit* one would do::
   conda activate fastspecfit
   pip install fitsio healpy speclite
   
-  for package in desiutil desimodel desitarget desispec redrock fastspecfit; do
+  for package in desiutil desimodel desitarget desispec fastspecfit; do
     python -m pip install git+https://github.com/desihub/$package.git@main#egg=$package
   done
 
@@ -65,19 +65,12 @@ accessible location (e.g., */path/to/desi/code*), in which case one would do::
   mkdir -p $DESI_CODE
   
   pushd $DESI_CODE 
-  for package in desiutil desimodel desitarget desispec redrock fastspecfit; do
+  for package in desiutil desimodel desitarget desispec fastspecfit; do
     git clone https://github.com/desihub/$package.git
     export PATH=$DESI_CODE/$package/bin:$PATH
     export PYTHONPATH=$DESI_CODE/$package/py:$PYTHONPATH
   done
   popd
-
-In addition, we need some larger data files associated with the ``desimodel``
-code base which are stored in an SVN repository::
-
-  export DESIMODEL=$DESI_PRODUCT_ROOT/desimodel
-  cd $DESIMODEL
-  svn export https://desi.lbl.gov/svn/code/desimodel/trunk/data
 
 Finally, ``FastSpecFit`` has three more data dependencies, each specified with
 their own environment variable:
@@ -97,10 +90,12 @@ With the preceding caveat in mind, one can set up the remaining dependencies
 with::
   
   export DESI_ROOT=/path/to/desi/data
-  export DUST_DIR=/path/to/dust/maps
+  export DUST_DIR=/path/to/dustmaps
   export FASTSPECFIT_TEMPLATES=/path/to/fastspecfit/templates
+
+  mkdir -p $DUST_DIR/maps
   
-  **Finish writing these instructions.**
+**Finish writing these instructions.**
 
 .. _docker installation:
 

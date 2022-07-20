@@ -5,7 +5,7 @@ fastspecfit-html --fastspecfile ./fastspect.fits
 
 fastspecfit-html --fastphotfile /global/cfs/cdirs/desi/spectro/fastspecfit/everest/catalogs/fastphot-everest-sv3-dark.fits \
   --fastspecfile /global/cfs/cdirs/desi/spectro/fastspecfit/everest/catalogs/fastspec-everest-sv3-dark.fits \
-  -o /global/cfs/cdirs/desi/users/ioannis/fastspecfit/everest --hpxpixel 10016
+  -o /global/cfs/cdirs/desi/users/ioannis/fastspecfit/everest --healpix 10016
 
 fastspecfit-html --fastphotfile /global/cfs/cdirs/desi/spectro/fastspecfit/everest/tiles/merged/fastphot-everest-cumulative.fits \
   --fastspecfile /global/cfs/cdirs/desi/spectro/fastspecfit/everest/tiles/merged/fastspec-everest-cumulative.fits \
@@ -30,7 +30,7 @@ def parse(options=None):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--hpxpixel', default=None, type=str, nargs='*', help="""Generate QA for all objects
+    parser.add_argument('--healpix', default=None, type=str, nargs='*', help="""Generate QA for all objects
         with this healpixels (only defined for coadd-type 'healpix').""")
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
@@ -101,9 +101,9 @@ def main(args=None, comm=None):
             fastphot['NIGHT'] = metaphot['NIGHT']
 
         if coadd_type == 'healpix':
-            joinkeys += ['HPXPIXEL']
-            fastspec['HPXPIXEL'] = metaspec['HPXPIXEL']
-            fastphot['HPXPIXEL'] = metaphot['HPXPIXEL']
+            joinkeys += ['HEALPIX']
+            fastspec['HEALPIX'] = metaspec['HEALPIX']
+            fastphot['HEALPIX'] = metaphot['HEALPIX']
             
         fastfit = join(fastspec, fastphot, keys=joinkeys, join_type='outer',
                        table_names=['SPEC', 'PHOT'])
@@ -138,7 +138,7 @@ def main(args=None, comm=None):
         metadata = metadata[keep]
 
     fastfit, metadata = select(fastfit, metadata, coadd_type,
-                               hpxpixels=args.hpxpixel,
+                               healpixs=args.healpix,
                                tiles=args.tile, nights=args.night)
 
     # read the tile info file for this production
@@ -151,7 +151,7 @@ def main(args=None, comm=None):
     # add tileid --> healpix mapping
     if coadd_type == 'healpix':
         hpxinfo = Table.read(os.path.join(specproddir, 'healpix', 'tilepix.fits'))
-        metadata['TILEID'] = hpxinfo[np.isin(hpxinfo['HEALPIX'], metadata['HPXPIXEL'])]['TILEID']
+        metadata['TILEID'] = hpxinfo[np.isin(hpxinfo['HEALPIX'], metadata['HEALPIX'])]['TILEID']
         #info['HEALPIX'] = hpxinfo[np.isin(info['TILEID'], hpxinfo['TILEID'])]
         
     itile = np.isin(info['TILEID'], metadata['TILEID'])
