@@ -240,22 +240,13 @@ class ContinuumTools(object):
             ))
         
         self.absmag_filters_01 = filters.FilterSequence((
-            filters.load_filter('sdss2010atm-u'),
-            filters.load_filter('sdss2010atm-g'),
-            filters.load_filter('sdss2010atm-r'),
-            filters.load_filter('sdss2010atm-i'),
-            filters.load_filter('sdss2010atm-z'),
-            #filters.load_filter('sdss2010atm-u').create_shifted(band_shift=0.1),
-            #filters.load_filter('sdss2010atm-g').create_shifted(band_shift=0.1),
-            #filters.load_filter('sdss2010atm-r').create_shifted(band_shift=0.1),
-            #filters.load_filter('sdss2010atm-i').create_shifted(band_shift=0.1),
-            #filters.load_filter('sdss2010atm-z').create_shifted(band_shift=0.1))
+            filters.load_filter('sdss2010-u'),
+            filters.load_filter('sdss2010-g'),
+            filters.load_filter('sdss2010-r'),
+            filters.load_filter('sdss2010-i'),
+            filters.load_filter('sdss2010-z'),
             ))
 
-        #self.absmag_filters = filters.load_filters('bessell-U', 'bessell-B', 'bessell-V',
-        #                                           'sdss2010-u', 'sdss2010-g', 'sdss2010-r',
-        #                                           'sdss2010-i', 'sdss2010-z', 'wise2010-W1')        
-        
         #self.min_uncertainty = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]) # mag
         #self.min_uncertainty = np.array([0.01, 0.01, 0.01, 0.02, 0.02, 0.05, 0.05]) # mag
         self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
