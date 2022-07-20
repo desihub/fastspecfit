@@ -52,11 +52,13 @@ export MPICH_GNI_FORK_MODE=FULLCOPY
 if [ $stage = "test" ]; then
     time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --help
 elif [ $stage = "fastspec" ]; then
-    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 --outdir-data $outdir_data
+    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 244 245 246 --outdir-data $outdir_data
+    #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 --outdir-data $outdir_data
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --survey $survey --program $program --outdir-data $outdir_data
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --survey $survey --program $program --outdir-data $outdir_data
 elif [ $stage = "fastphot" ]; then
-    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 --outdir-data $outdir_data --fastphot
+    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 244 245 246 --outdir-data $outdir_data --fastphot --overwrite
+    #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 --outdir-data $outdir_data --fastphot
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --survey $survey --program $program --outdir-data $outdir_data --fastphot 
 elif [ $stage = "qafastspec" ]; then
     time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --makeqa --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 --outdir-data $outdir_data --outdir-html $outdir_html

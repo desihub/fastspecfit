@@ -41,7 +41,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
             coadd_type=args.coadd_type, survey=args.survey, program=args.program,
             healpix=args.healpix, tile=args.tile, night=args.night,
-            fastphot=fastphot, outdir_data=outdir_data, outdir_html=outdir_html)
+            fastphot=fastphot, outdir_data=outdir_data, outdir_html=outdir_html,
+            overwrite=args.overwrite)
         log.info('Planning took {:.2f} sec'.format(time.time() - t0))
     else:
         zbestfiles, outfiles, groups, ntargets = [], [], [], []

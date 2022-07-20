@@ -1627,8 +1627,7 @@ class ContinuumFit(ContinuumTools):
         
         # get the stellar mass
         nage = len(coeff)
-        dlumMpc = self.cosmo.luminosity_distance(redshift) # [Mpc]
-        mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm * dlumMpc.to(u.pc).value**2 * (1 + redshift) / self.fluxnorm
+        mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm
         
         # From Taylor+11, eq 8
         #https://researchportal.port.ac.uk/ws/files/328938/MNRAS_2011_Taylor_1587_620.pdf
@@ -1637,6 +1636,8 @@ class ContinuumFit(ContinuumTools):
         # compute the model continuum flux at 1500 and 2800 A (to facilitate UV
         # luminosity-based SFRs) and at the positions of strong nebular emission
         # lines [OII], Hbeta, [OIII], and Halpha
+        dfactor = (1 + redshift) * 4.0 * np.pi * self.cosmo.luminosity_distance(redshift).to(u.cm).value**2 / self.fluxnorm
+
         lums, cfluxes = {}, {}
         cwaves = [1500.0, 2800.0, 5100.0]
         labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_5100']
@@ -1647,7 +1648,7 @@ class ContinuumFit(ContinuumTools):
             smooth = median_filter(continuum[J], 200)
             clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
             cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
-            cflux *= (1 + redshift) * 4.0 * np.pi * dlumMpc.to(u.cm).value**2 / self.fluxnorm # [monochromatic luminosity in erg/s/A]
+            cflux *= dfactor # [monochromatic luminosity in erg/s/A]
             if label == 'LOGL_5100':
                 cflux *= cwave / 3.846e33 / norm # [luminosity in 10**10 L_sun]
             else:
@@ -2446,7 +2447,7 @@ class ContinuumFit(ContinuumTools):
             #'zfastfastphot': r'$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
-            'mstar': r'$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={}$'.format(mstar),
+            'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={}$'.format(mstar),
             'absmag_r': '$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
             'absmag_gr': '$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R']),
             }
