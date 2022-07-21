@@ -1,15 +1,16 @@
 Build a Docker container for fastspecfit.
 =========================================
 
+Build a cross-platform docker container as documented [here](https://www.docker.com/blog/faster-multi-platform-builds-dockerfile-cross-compilation-guide):
 ```
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
-export DOCKER_DEFAULT_PLATFORM=linux/arm64/v8
 
-docker build --platform linux/arm64/v8 . -t desihub/fastspecfit:latest
-docker push desihub/fastspecfit:latest
+docker buildx create --use
+docker buildx build --platform linux/arm64/v8,linux/amd64 . -t desihub/fastspecfit:latest
 
 docker tag desihub/fastspecfit:latest desihub/fastspecfit:v1.0
+docker push desihub/fastspecfit:latest
 docker push desihub/fastspecfit:v1.0
 ```
 
