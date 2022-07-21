@@ -8,6 +8,7 @@ RUN apt-get -y clean && apt -y update && apt install -y apt-utils && apt -y upgr
 RUN DEBIAN_FRONTEND=noninteractive \
     apt install -y --no-install-recommends \
     build-essential \
+    gfortran \
     wget \
     git \
     pkg-config \
@@ -23,20 +24,23 @@ RUN DEBIAN_FRONTEND=noninteractive \
 # python = python3
 RUN ln -s "$(which python3)" /usr/bin/python
 
-RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/4.0.2/mpich-4.0.2.tar.gz \
-    && tar xvzf mpich-4.0.2.tar.gz \
-    && cd mpich-4.0.2 \
+ARG mpich=4.0.2
+ARG mpich_prefix=mpich-$mpich
+
+ENV FFLAGS="-fallow-argument-mismatch" \
+    FCFLAGS="-fallow-argument-mismatch"
+
+RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/$mpich/$mpich_prefix.tar.gz \
+    && tar xvzf $mpich_prefix.tar.gz \
+    && cd $mpich_prefix \
     && ./configure \
-    && make -j4 \
+    && make -j 4 \
     && make install \
     && make clean \
-    && cd .. && rm -Rf mpich-4.0.2
+    && cd .. \
+    && rm -rf $mpich_prefix
 
-RUN git clone https://github.com/mpi4py/mpi4py.git \
-         && (cd mpi4py \
-         && python setup.py build \
-         && python setup.py install) \
-         && rm -Rf mpi4py
+RUN /sbin/ldconfig
 
 RUN for x in \
     wheel \
@@ -48,6 +52,7 @@ RUN for x in \
     healpy \
     fitsio \
     numba \
+    mpi4py \
     seaborn \
     matplotlib \
     ipython \
@@ -55,7 +60,7 @@ RUN for x in \
     h5py \
     ; do pip3 install $x; done \
     && rm -Rf /root/.cache/pip \
-    && echo 3
+    && echo 1
 
 # ENV DESIMODEL /src/desimodel
 ENV DESIUTIL_VERSION 3.2.5
