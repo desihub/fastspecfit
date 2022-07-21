@@ -7,11 +7,8 @@ export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
 
 docker buildx create --use
+docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:v1.0 .
 docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:latest .
-docker pull desihub/fastspecfit:latest
-
-docker tag desihub/fastspecfit:latest desihub/fastspecfit:v1.0
-docker push desihub/fastspecfit:v1.0
 ```
 
 To enter the container (with a shell prompt) on a laptop do:

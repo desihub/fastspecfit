@@ -10,16 +10,33 @@ RUN DEBIAN_FRONTEND=noninteractive \
     build-essential \
     wget \
     git \
+    pkg-config \
     libbz2-dev \ 
+    libgsl-dev \ 
     libssl-dev \
-    mpich \
+    # mpich \
     python3-dev \
     python3-pip \
-    python3-mpi4py \
+    # python3-mpi4py \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # python = python3
 RUN ln -s "$(which python3)" /usr/bin/python
+
+RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/4.0.2/mpich-4.0.2.tar.gz \
+    && tar xvzf mpich-4.0.2.tar.gz \
+    && cd mpich-4.0.2 \
+    && ./configure \
+    && make -j4 \
+    && make install \
+    && make clean \
+    && cd .. && rm -Rf mpich-4.0.2
+
+RUN git clone https://github.com/mpi4py/mpi4py.git \
+         && (cd mpi4py \
+         && python setup.py build \
+         && python setup.py install) \
+         && rm -Rf mpi4py
 
 RUN for x in \
     wheel \
