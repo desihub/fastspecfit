@@ -5,8 +5,8 @@ Build a Docker container for fastspecfit.
 ./build.sh 
 docker push desihub/fastspecfit:latest
 
-docker tag desihub/fastspecfit:latest desihub/fastspecfit:v0.3
-docker push desihub/fastspecfit:v0.3
+docker tag desihub/fastspecfit:latest desihub/fastspecfit:v1.0
+docker push desihub/fastspecfit:v1.0
 ```
 
 To enter the container (with a shell prompt) on a laptop do:
@@ -16,8 +16,8 @@ docker run -it desihub/fastspecfit:latest
 ```
 or
 ```
-docker pull desihub/fastspecfit:v0.2
-docker run -it desihub/fastspecfit:v0.2
+docker pull desihub/fastspecfit:v1.0
+docker run -it desihub/fastspecfit:v1.0
 ```
 
 Or at NERSC:
