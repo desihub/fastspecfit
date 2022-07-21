@@ -2,7 +2,11 @@ Build a Docker container for fastspecfit.
 =========================================
 
 ```
-./build.sh 
+export DOCKER_BUILDKIT=0
+export COMPOSE_DOCKER_CLI_BUILD=0
+export DOCKER_DEFAULT_PLATFORM=linux/arm64/v8
+
+docker build --platform linux/arm64/v8 . -t desihub/fastspecfit:latest
 docker push desihub/fastspecfit:latest
 
 docker tag desihub/fastspecfit:latest desihub/fastspecfit:v1.0

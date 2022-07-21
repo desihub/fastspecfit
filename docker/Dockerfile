@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM arm64v8/ubuntu:22.04
 
 RUN mkdir -p /src
 WORKDIR /src
