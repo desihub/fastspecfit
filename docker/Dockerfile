@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM debian
+FROM ubuntu:22.04
 
 RUN mkdir -p /src
 WORKDIR /src
