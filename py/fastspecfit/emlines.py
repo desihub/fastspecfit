@@ -1683,7 +1683,7 @@ class EMLineFit(ContinuumTools):
 
         """
         from astropy.table import Table, Column
-        from scipy.ndimage.filters import median_filter
+        from scipy.ndimage import median_filter
         import matplotlib.pyplot as plt
         from matplotlib import colors
         import matplotlib.ticker as ticker
