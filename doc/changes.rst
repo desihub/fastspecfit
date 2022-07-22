@@ -5,6 +5,7 @@ FastSpecFit Change Log
 1.0 (not released yet)
 ----------------------
 
+* Update Docker container and tag all dependencies [`PR #76`_].
 * Numerous backwards-incompatible improvements and changes to the code engine
   and data model in preparation for processing Fuji (EDR)+Guadalupe [`PR #69`_].
 * Initial set-up of GitHub Actions and unit tests [`PR #61`_].
@@ -15,6 +16,7 @@ FastSpecFit Change Log
 .. _`PR #60`: https://github.com/desihub/fastspecfit/pull/60
 .. _`PR #61`: https://github.com/desihub/fastspecfit/pull/61
 .. _`PR #69`: https://github.com/desihub/fastspecfit/pull/69
+.. _`PR #76`: https://github.com/desihub/fastspecfit/pull/76
 
 0.3 (2022-01-19)
 ----------------
