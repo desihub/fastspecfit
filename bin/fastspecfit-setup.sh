@@ -1,32 +1,34 @@
 #!/bin/bash
-# Simple script to run fastspecfit in interactive / development mode.
+# Simple script to run fastspecfit in interactive / development mode. Run with
+# % fastspecfit-setup.sh shifter
+# % source fastspecfit-setup.sh env
 
 if [ $1 = "shifter" ]; then
     # Load the desigal Docker container using shifter
     #SHIFTER=docker:desihub/fastspecfit:latest
-    SHIFTER=docker:desihub/fastspecfit:v0.2
+    SHIFTER=docker:desihub/fastspecfit:v1.0
     
     echo 'Updating and loading the shifter image '$SHIFTER
     echo 'Load the environment with: '
-    echo '  source fastspecfit-setup.sh env'
+    echo '  source ./fastspecfit-setup.sh env'
     
     shifterimg pull $SHIFTER
-    shifter --image $SHIFTER bash
+    shifter --module=mpich-cle6 --image $SHIFTER bash
 elif [ $1 = "env" ]; then
-    package=fastspecfit
+    #for package in fastspecfit; do
+    #    echo Loading local check-out of $package
+    #    export PATH=/global/homes/i/ioannis/code/desihub/$package/bin:$PATH
+    #    export PYTHONPATH=/global/homes/i/ioannis/code/desihub/$package/py:$PYTHONPATH
+    #done
 
-    if [ "$NERSC_HOST" == "cori" ]; then
-        #export PATH=/opt/conda/bin:$PATH # NERSC hack!
-        
-        export DESI_ROOT=/global/cfs/cdirs/desi
-        export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z
-        export DUST_DIR=/global/cfs/cdirs/cosmo/data/dust/v0_1
-    
-        export OMP_NUM_THREADS=1
-        export MKL_NUM_THREADS=1
-        export KMP_AFFINITY=disabled
-        export MPICH_GNI_FORK_MODE=FULLCOPY
-    fi
+    export DESI_ROOT='/global/cfs/cdirs/desi'
+    export DUST_DIR='/global/cfs/cdirs/cosmo/data/dust/v0_1'
+    export FASTSPECFIT_TEMPLATES='/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
+
+    export OMP_NUM_THREADS=1
+    export MKL_NUM_THREADS=1
+    export KMP_AFFINITY=disabled
+    export MPICH_GNI_FORK_MODE=FULLCOPY
 
     # Config directory nonsense
     export TMPCACHE=$(mktemp -d)

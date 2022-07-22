@@ -1,163 +1,81 @@
-FROM registry.services.nersc.gov/nersc/intel_cxx_fort_mpi_mkl_devel as builder
-
-RUN apt-get -y clean && apt -y update && apt install -y apt-utils && echo 4
-
-RUN DEBIAN_FRONTEND=noninteractive \
-    apt install -y --no-install-recommends \
-    make \
-    git \
-    file \
-    patch \
-    # pkg-config \
-    wget \
-    subversion \
-    emacs \
-    less \
-    # gcc \
-    zlib1g-dev \
-    # gfortran \
-    libbz2-dev \
-    libgsl-dev \
-    libcfitsio-dev \
-    libcfitsio-bin \
-    # python3 \
-    # python3-dev \
-    # python3-pip \
-    # python3-pil \
-    # python3-tk \
-    # # Remove APT files
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-RUN echo 'PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh
-
-RUN wget -nv https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
-    bash miniconda.sh -b -p /opt/conda && \
-    conda config --add channels intel && \
-    conda config --set always_yes yes && \
-    conda update conda && \
-    conda install python=3.9 pip numpy scipy && \
-    conda clean -a -y
-
-ENV CC icc
-ENV CXX icpc
-ENV LDSHARED icc -shared
-ENV CFLAGS -O3 -g -fPIC -std=gnu99 -pthread -x=haswell -ax=knl
-ENV ARCH_FLAGS ""
-
-ENV PYTHON python3
-ENV PYTHON_CONFIG python3-config
-ENV PYTHON_SCRIPT "/usr/bin/env python3"
+FROM ubuntu:22.04
 
 RUN mkdir -p /src
 WORKDIR /src
 
-ENV BLAS -L${MKLROOT}/lib/intel64 -lmkl_rt -fopenmp -lpthread -limf -lsvml -ldl
-ENV CPPFLAGS -I${MKLROOT}/include
+RUN apt-get -y clean && apt -y update && apt install -y apt-utils && apt -y upgrade && echo 1
 
-RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/3.4.3/mpich-3.4.3.tar.gz \
-    && tar xvzf mpich-3.4.3.tar.gz \
-    && cd mpich-3.4.3 \
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt install -y --no-install-recommends \
+    build-essential \
+    gfortran \
+    wget \
+    git \
+    pkg-config \
+    libbz2-dev \ 
+    libgsl-dev \ 
+    libssl-dev \
+    # mpich \
+    python3-dev \
+    python3-pip \
+    # python3-mpi4py \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# python = python3
+RUN ln -s "$(which python3)" /usr/bin/python
+
+ARG mpich=4.0.2
+ARG mpich_prefix=mpich-$mpich
+
+ENV FFLAGS="-fallow-argument-mismatch" \
+    FCFLAGS="-fallow-argument-mismatch"
+
+RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/$mpich/$mpich_prefix.tar.gz \
+    && tar xvzf $mpich_prefix.tar.gz \
+    && cd $mpich_prefix \
     && ./configure \
-    && make -j4 \
+    && make -j 4 \
     && make install \
     && make clean \
-    && cd .. && rm -Rf mpich-3.4.3
-# defaults to installing in /usr/local
-
-# mpi4py / mpicc can't handle -ax=knl
-ENV CFLAGS -O3 -g -fPIC -std=gnu99 -pthread
-RUN git clone https://github.com/mpi4py/mpi4py.git \
-         && (cd mpi4py \
-         && python setup.py build \
-         && python setup.py install) \
-         && rm -Rf mpi4py
-
-# Pip installs -- built from source
-RUN pip --no-cache-dir install fitsio && echo 1
+    && cd .. \
+    && rm -rf $mpich_prefix
 
 RUN /sbin/ldconfig
 
-######## Stage 2 ########
-FROM registry.services.nersc.gov/nersc/intel_cxx_fort_mpi_mkl_runtime
-
-ENV PYTHON python3
-ENV PYTHON_CONFIG python3-config
-ENV PYTHON_SCRIPT "/usr/bin/env python3"
-RUN echo 'PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh
-
-RUN rm /root/.profile
-
-RUN apt -y update && apt install -y apt-utils \
- && DEBIAN_FRONTEND=noninteractive \
-    apt install -y --no-install-recommends \
-    make \
-    git \
-    file \
-    pkg-config \
-    wget \
-    # gcc \
-    zlib1g-dev \
-    # gfortran \
-    subversion \
-    emacs \
-    less \
-    patch \
-    libbz2-dev \
-    libgsl-dev \
-    libcfitsio-dev \
-    libcfitsio-bin \
-    imagemagick \
-    # # Remove APT files
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-COPY --from=builder /usr/local /usr/local
-COPY --from=builder /opt/conda /opt/conda
-
-RUN conda update --no-deps certifi
 RUN for x in \
-    setuptools \
     wheel \
-    numpy \
+    setuptools \
+    pytest \
+    numpy==1.22.4 \
     scipy \
-    matplotlib \
     astropy \
-    numba \
-    pyyaml \
-    requests \
-    scikit-learn \
     healpy \
+    fitsio \
+    numba \
+    mpi4py \
     seaborn \
-    photutils \
+    matplotlib \
     ipython \
     ipykernel \
     h5py \
-    pytest \
-    configobj \
-    sqlalchemy \
     ; do pip3 install $x; done \
     && rm -Rf /root/.cache/pip \
-    && echo 3
+    && echo 1
 
-WORKDIR /src
-
-# python = python3
-RUN ln -s $(which python3) /usr/bin/python
-
-WORKDIR /src
-
-ENV DESIMODEL /src/desimodel
+# ENV DESIMODEL /src/desimodel
 ENV DESIUTIL_VERSION 3.2.5
+ENV DESIMODEL_VERSION 0.17.0
+ENV DESITARGET_VERSION 2.5.0
+ENV DESISPEC_VERSION 0.53.2
+ENV SPECLITE_VERSION v0.16
 ENV FASTSPECFIT_VERSION main
 
-# Install desiutil, fastspecfit, and then the other desihub dependencies.
-RUN python -m pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
-    
-RUN git clone https://github.com/desihub/fastspecfit.git@{FASTSPECFIT_VERSION} \
-    && cd $package \
-    && git describe --always \
-    && python -m pip install -r requirements.txt \
-    && python setup.py install \
-    && echo 1
+RUN pip3 install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
+RUN pip3 install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel
+RUN pip3 install git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
+RUN pip3 install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
+RUN pip3 install git+https://github.com/desihub/desispec.git@{DESISPEC_VERSION}#egg=desispec
+RUN pip3 install git+https://github.com/desihub/fastspecfit.git
 
 ENV PYTHONPATH /src/fastspecfit/py
 ENV PATH /src/fastspecfit/bin:/opt/conda/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -185,10 +103,5 @@ RUN echo "export PS1='[container] \\u@\\h:\\w$ '" >> $HOME/.bashrc \
   # Make ipython config files readable!?!!
   && chmod -R a+rwX $HOME/.ipython \
   && echo 2
-
-# Curses upon you, astropy
-RUN wget -O /opt/conda/lib/python3.9/site-packages/astropy/utils/iers/data/Leap_Second.dat \
-    https://raw.githubusercontent.com/astropy/astropy/master/astropy/utils/iers/data/Leap_Second.dat \
-    && rm $HOME/.wget-hsts
 
 LABEL Maintainer="John Moustakas jmoustakas@siena.edu"

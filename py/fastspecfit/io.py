@@ -13,8 +13,6 @@ import numpy as np
 import fitsio
 from astropy.table import Table, vstack, hstack
 
-from desitarget.io import releasedict
-
 from desiutil.log import get_logger
 log = get_logger()
 
@@ -164,6 +162,7 @@ class DESISpectra(object):
 
         """
         from desiutil.depend import getdep
+        from desitarget.io import releasedict        
         from desispec.io.photo import gather_tractorphot
 
         if zmin <= 0.0:
@@ -393,30 +392,20 @@ class DESISpectra(object):
 
         # Use the metadata in the fibermap to retrieve the LS-DR9 source
         # photometry.
-
         t0 = time.time()
-        #info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID'] for meta in self.meta]))
         targets = gather_tractorphot(vstack(self.meta), columns=TARGETCOLS, dr9dir=self.dr9dir)
 
-        ## Older code
-        #info = Table(np.hstack([meta['TARGETID', 'TARGET_RA', 'TARGET_DEC'] for meta in self.meta]))
-        #info['TILEID'] = alltiles
-        #
-        ##alltiles = np.unique(np.hstack(alltiles))
-        #targets = gather_targetphot(info, columns=TARGETCOLS, fiberassign_dir=self.fiberassign_dir)
-        #
-        ## If all the photometry is zero, look for it in the Tractor catalogs
-        ## themselves. This step can also be made "not optional" in order to
-        ## gather additional Tractor quantities, if needed or wanted.
-        #I = np.where((targets['FLUX_IVAR_G'] == 0) * (targets['FLUX_IVAR_R'] == 0) *
-        #             (targets['FLUX_IVAR_Z'] == 0) * (targets['FLUX_IVAR_W1'] == 0) *
-        #             (targets['FLUX_IVAR_W2'] == 0))[0]
-        #if len(I) > 0:
-        #    tractor = gather_tractorphot(info[I])
-        #    targets['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in tractor['RELEASE']]
-        #    for col in targets.colnames:
-        #        if col in tractor.colnames:
-        #            targets[col][I] = tractor[col]
+        # bug! https://github.com/desihub/fastspecfit/issues/75
+        #from desitarget.io import releasedict
+        #for imeta, meta in enumerate(self.meta):
+        #    ibug = np.where((meta['RELEASE'] > 0) * (meta['BRICKID'] > 0) * (meta['BRICK_OBJID'] > 0) * (meta['PHOTSYS'] == ''))[0]
+        #    if len(ibug) > 0:
+        #        meta['PHOTSYS', 'RELEASE', 'BRICKID', 'BRICK_OBJID', 'TARGETID', 'TILEID', 'NIGHT', 'FIBER'][ibug]
+        #        from desitarget.targets import decode_targetid
+        #        objid, brickid, release, mock, sky, gaia = decode_targetid(meta['TARGETID'][ibug])
+        #        meta['PHOTSYS'][ibug] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE'][ibug]]
+        #        self.meta[imeta] = meta                    
+        #targets = gather_tractorphot(vstack(self.meta), columns=TARGETCOLS, dr9dir=self.dr9dir)
 
         metas = []
         for meta in self.meta:
@@ -426,6 +415,11 @@ class DESISpectra(object):
             # table, unless the target catalog is zero.
             for col in targets.colnames:
                 meta[col] = targets[col][srt]
+            # try to repair PHOTSYS
+            # https://github.com/desihub/fastspecfit/issues/75
+            I = (meta['PHOTSYS'] == '') * (meta['RELEASE'] > 0)
+            if np.sum(I) > 0:
+                meta['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE'][I]]
             # special case for some secondary and ToOs
             I = (meta['RA'] == 0) * (meta['DEC'] == 0) * (meta['TARGET_RA'] != 0) * (meta['TARGET_DEC'] != 0)
             if np.sum(I) > 0:
@@ -439,7 +433,6 @@ class DESISpectra(object):
             metas.append(meta)
             
         log.info('Gathered photometric metadata for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
-
         self.meta = metas # update
 
     def read_and_unpack(self, CFit, fastphot=False, synthphot=True,
