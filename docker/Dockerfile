@@ -66,6 +66,7 @@ RUN for x in \
 ENV DESIUTIL_VERSION 3.2.5
 ENV DESIMODEL_VERSION 0.17.0
 ENV DESITARGET_VERSION 2.5.0
+ENV DESISPEC_VERSION 0.53.2
 ENV SPECLITE_VERSION v0.16
 ENV FASTSPECFIT_VERSION main
 
@@ -73,7 +74,7 @@ RUN pip3 install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}
 RUN pip3 install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel
 RUN pip3 install git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
 RUN pip3 install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
-RUN pip3 install git+https://github.com/desihub/desispec.git
+RUN pip3 install git+https://github.com/desihub/desispec.git@{DESISPEC_VERSION}#egg=desispec
 RUN pip3 install git+https://github.com/desihub/fastspecfit.git
 
 ENV PYTHONPATH /src/fastspecfit/py

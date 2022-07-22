@@ -21,13 +21,13 @@ program=$4
 coadd_type=cumulative
 
 #for package in desispec desitarget desiutil desimodel speclite specsim; do
-for package in fastspecfit desispec; do
+for package in fastspecfit; do
     echo Loading local check-out of $package
     export PATH=/global/homes/i/ioannis/code/desihub/$package/bin:$PATH
     export PYTHONPATH=/global/homes/i/ioannis/code/desihub/$package/py:$PYTHONPATH
 done
-echo 'Loading local check-out of speclite'
-export PYTHONPATH=/global/homes/i/ioannis/code/desihub/speclite:$PYTHONPATH
+#echo 'Loading local check-out of speclite'
+#export PYTHONPATH=/global/homes/i/ioannis/code/desihub/speclite:$PYTHONPATH
 
 outdir_data=/global/cfs/cdirs/desi/users/ioannis/fastspecfit/vitiles
 outdir_html=/global/cfs/cdirs/desi/users/ioannis/fastspecfit/vitiles
@@ -52,13 +52,13 @@ export MPICH_GNI_FORK_MODE=FULLCOPY
 if [ $stage = "test" ]; then
     time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --help
 elif [ $stage = "fastspec" ]; then
-    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 244 245 246 --outdir-data $outdir_data
-    #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 --outdir-data $outdir_data
+    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 142 --outdir-data $outdir_data
+    #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80648 80666 136 141 142 244 245 246 80605 80606 80613 --outdir-data $outdir_data
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --survey $survey --program $program --outdir-data $outdir_data
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --survey $survey --program $program --outdir-data $outdir_data
 elif [ $stage = "fastphot" ]; then
-    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 244 245 246 --outdir-data $outdir_data --fastphot --overwrite
-    #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 --outdir-data $outdir_data --fastphot
+    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80648 80666 136 141 142 --outdir-data $outdir_data --fastphot
+    #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 244 245 246 80605 80606 80613 --outdir-data $outdir_data --fastphot
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --survey $survey --program $program --outdir-data $outdir_data --fastphot 
 elif [ $stage = "qafastspec" ]; then
     time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --makeqa --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 --outdir-data $outdir_data --outdir-html $outdir_html
