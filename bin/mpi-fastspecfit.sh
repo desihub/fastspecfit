@@ -6,9 +6,17 @@
 
 # Example: build the coadds using 16 MPI tasks with 8 cores per node (and therefore 16*8/32=4 nodes)
 
-#salloc -N 8 -C haswell -A desi -L cfs -t 04:00:00 --qos interactive --image=docker:desihub/fastspecfit:latest
-#srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastphot 32 sv2 dark > fastphot-everest-sv2-dark.log.1 2>&1 &
+# Perlmutter
+#salloc -N 8 -C cpu -A desi -L cfs -t 04:00:00 --qos interactive --image=docker:desihub/fastspecfit:v1.0
+#srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec 32 sv2 dark > fastspec-everest-sv2-dark.log.1 2>&1 &
+#srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastphot 32 sv2 dark > fastphot-everest-sv2-dark.log.1 2>&1 &
+#srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh qafastspec 32 > qafastspec-everest.log.1 2>&1 &
+#srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh qafastphot 32 > qafastphot-everest.log.1 2>&1 &
+
+# Cori
+#salloc -N 8 -C haswell -A desi -L cfs -t 04:00:00 --qos interactive --image=docker:desihub/fastspecfit:v1.0
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec 32 sv2 dark > fastspec-everest-sv2-dark.log.1 2>&1 &
+#srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastphot 32 sv2 dark > fastphot-everest-sv2-dark.log.1 2>&1 &
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh qafastspec 32 > qafastspec-everest.log.1 2>&1 &
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh qafastphot 32 > qafastphot-everest.log.1 2>&1 &
 
@@ -29,8 +37,8 @@ done
 #echo 'Loading local check-out of speclite'
 #export PYTHONPATH=/global/homes/i/ioannis/code/desihub/speclite:$PYTHONPATH
 
-outdir_data=/global/cfs/cdirs/desi/users/ioannis/fastspecfit/vitiles
-outdir_html=/global/cfs/cdirs/desi/users/ioannis/fastspecfit/vitiles
+outdir_data=/global/cfs/cdirs/desi/users/ioannis/fastspecfit/vitiles-perlmutter
+outdir_html=/global/cfs/cdirs/desi/users/ioannis/fastspecfit/vitiles-perlmutter
 #outdir_data=/global/cfs/cdirs/desi/spectro/fastspecfit
 #outdir_html=/global/cfs/cdirs/desi/users/ioannis/fastspecfit
 
@@ -52,12 +60,12 @@ export MPICH_GNI_FORK_MODE=FULLCOPY
 if [ $stage = "test" ]; then
     time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --help
 elif [ $stage = "fastspec" ]; then
-    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 142 --outdir-data $outdir_data
+    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 --outdir-data $outdir_data
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80648 80666 136 141 142 244 245 246 80605 80606 80613 --outdir-data $outdir_data
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --survey $survey --program $program --outdir-data $outdir_data
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --survey $survey --program $program --outdir-data $outdir_data
 elif [ $stage = "fastphot" ]; then
-    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80648 80666 136 141 142 --outdir-data $outdir_data --fastphot
+    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 80613 --outdir-data $outdir_data --fastphot
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 244 245 246 80605 80606 80613 --outdir-data $outdir_data --fastphot
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --survey $survey --program $program --outdir-data $outdir_data --fastphot 
 elif [ $stage = "qafastspec" ]; then

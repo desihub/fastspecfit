@@ -719,13 +719,13 @@ class ContinuumTools(object):
             ax[1].plot(wave, flux - smooth)
             ax[1].axhline(y=0, color='k')
 
-            #for xx in ax:
+            for xx in ax:
                 #xx.set_xlim(3800, 4300)
                 #xx.set_xlim(5200, 6050)
-                #xx.set_xlim(4500, 5500)
+                xx.set_xlim(7000, 9000)
                 #xx.set_xlim(6300, 6900)
-            #for xx in ax:
-            #    xx.set_ylim(-5, 100)
+            for xx in ax:
+                xx.set_ylim(-1, 8)
             zlinewaves = self.linetable['restwave'] * (1 + redshift)
             linenames = self.linetable['name']
             inrange = np.where((zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave)))[0]
@@ -921,7 +921,7 @@ class ContinuumTools(object):
         return (linesigma_narrow, linesigma_balmer, linesigma_uv,
                 linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr)
 
-    def build_linemask(self, wave, flux, ivar, redshift=0.0, nsig=5.0):
+    def build_linemask(self, wave, flux, ivar, redshift=0.0, nsig=7.0):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -1110,7 +1110,7 @@ class ContinuumTools(object):
                         xx.set_ylim(np.min(plotflux), np.max(flux[I]))
                         xx.legend(frameon=False, fontsize=10, loc='upper left')
         
-            linemask_dict = {'linemask_all': linemask, 'linemask': linemask_strong,
+            linemask_dict = {'linemask_all': linemask, 'linemask': linemask_strong, # note we make linemask_strong the default
                              'linename': linename, 'linepix': linepix, 'contpix': contpix,
                              'linesigma_narrow': linesigma_narrow, 'linesigma_narrow_snr': linesigma_narrow_snr, 
                              'linesigma_balmer': linesigma_balmer, 'linesigma_balmer_snr': linesigma_balmer_snr, 
