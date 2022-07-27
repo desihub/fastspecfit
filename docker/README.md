@@ -7,7 +7,7 @@ export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
 
 docker buildx create --use
-docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:v1.0 .
+docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:v1.0.0 .
 docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:latest .
 ```
 
@@ -18,8 +18,8 @@ docker run -it desihub/fastspecfit:latest
 ```
 or
 ```
-docker pull desihub/fastspecfit:v1.0
-docker run -it desihub/fastspecfit:v1.0
+docker pull desihub/fastspecfit:v1.0.0
+docker run -it desihub/fastspecfit:v1.0.0
 ```
 
 Or at NERSC:
