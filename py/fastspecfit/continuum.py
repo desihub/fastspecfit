@@ -352,7 +352,8 @@ class ContinuumTools(object):
 
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
-                         nanomaggies=True, nsigma=1.0, min_uncertainty=None):
+                         nanomaggies=True, nsigma=1.0, min_uncertainty=None,
+                         debug=False):
         """Parse input (nano)maggies to various outputs and pack into a table.
 
         Parameters
@@ -416,7 +417,47 @@ class ContinuumTools(object):
         else:
             nanofactor = 1.0
 
-        # Add a minimum uncertainty in quadrature.
+        #print('Hack!!')
+        #if debug:
+        #    maggies[3:5, 4:7] = 0.0
+
+        dims = maggies.shape
+        flatmaggies = maggies.flatten()
+        flativarmaggies = ivarmaggies.flatten()
+
+        abmag = np.zeros_like(flatmaggies)
+        abmag_limit = np.zeros_like(flatmaggies)
+        abmag_brighterr = np.zeros_like(flatmaggies)
+        abmag_fainterr = np.zeros_like(flatmaggies)
+        abmag_ivar = np.zeros_like(flatmaggies)
+        
+        # deal with measurements
+        good = np.where(flatmaggies > 0)[0]
+        if len(good) > 0:
+            abmag[good] = -2.5 * np.log10(nanofactor * flatmaggies[good])
+
+        # deal with upper limits
+        snr = flatmaggies * np.sqrt(flativarmaggies)
+        upper = np.where((flativarmaggies > 0) * (snr <= nsigma))[0]
+        if len(upper) > 0:
+            abmag_limit[upper] = - 2.5 * np.log10(nanofactor * nsigma / np.sqrt(flativarmaggies[upper]))
+
+        # significant detections
+        good = np.where(snr > nsigma)[0]
+        if len(good) > 0:
+            errmaggies = 1 / np.sqrt(flativarmaggies[good])
+            abmag_brighterr[good] = errmaggies / (0.4 * np.log(10) * (flatmaggies[good]+errmaggies))#.astype('f4') # bright end (flux upper limit)
+            abmag_fainterr[good] = errmaggies / (0.4 * np.log(10) * (flatmaggies[good]-errmaggies))#.astype('f4') # faint end (flux lower limit)
+            abmag_ivar[good] = (flativarmaggies[good] * (flatmaggies[good] * 0.4 * np.log(10))**2)#.astype('f4')
+
+        phot['abmag'] = abmag.reshape(dims)
+        phot['abmag_limit'] = abmag_limit.reshape(dims)
+        phot['abmag_brighterr'] = abmag_brighterr.reshape(dims)
+        phot['abmag_fainterr'] = abmag_fainterr.reshape(dims)
+        phot['abmag_ivar'] = abmag_ivar.reshape(dims)
+            
+        # Add a minimum uncertainty in quadrature **but only for flam**, which
+        # is used in the fitting.
         if min_uncertainty is not None:
             log.debug('Propagating minimum photometric uncertainties (mag): [{}]'.format(
                 ' '.join(min_uncertainty.astype(str))))
@@ -433,56 +474,6 @@ class ContinuumTools(object):
         phot['flam'] = (maggies * factor)
         phot['flam_ivar'] = (ivarmaggies / factor**2)
 
-        # deal with measurements
-        good = np.where(maggies > 0)[0]        
-        if len(good) > 0:
-            if maggies.ndim > 1:
-                igood, jgood = np.unravel_index(good, maggies.shape)
-                goodmaggies = maggies[igood, jgood]                
-            else:
-                igood, jgood = good, [0]
-                goodmaggies = maggies[igood]
-            phot['abmag'][igood, jgood] = (-2.5 * np.log10(nanofactor * goodmaggies))#.astype('f4')
-        
-        # deal with the uncertainties
-        snr = maggies * np.sqrt(ivarmaggies)
-        good = np.where(snr > nsigma)[0]
-        upper = np.where((ivarmaggies > 0) * (snr <= nsigma))[0]
-        if maggies.ndim > 1:
-            if len(upper) > 0:
-                iupper, jupper = np.unravel_index(upper, maggies.shape)
-                abmag_limit = 22.5 - 2.5 * np.log10(nsigma / np.sqrt(ivarmaggies[iupper, jupper]))
-                
-            igood, jgood = np.unravel_index(good, maggies.shape)
-            maggies = maggies[igood, jgood]
-            ivarmaggies = ivarmaggies[igood, jgood]
-            errmaggies = 1 / np.sqrt(ivarmaggies)
-            #fracerr = 1 / snr[igood, jgood]
-        else:
-            if len(upper) > 0:
-                iupper, jupper = upper, [0]
-                abmag_limit = 22.5 - 2.5 * np.log10(nsigma / np.sqrt(ivarmaggies[iupper]))
-                
-            igood, jgood = good, [0]
-            maggies = maggies[igood]
-            ivarmaggies = ivarmaggies[igood]
-            errmaggies = 1 / np.sqrt(ivarmaggies)
-            #fracerr = 1 / snr[igood]
-
-        # significant detections
-        if len(good) > 0:
-            phot['abmag_brighterr'][igood, jgood] = errmaggies / (0.4 * np.log(10) * (maggies+errmaggies))#.astype('f4') # bright end (flux upper limit)
-            phot['abmag_fainterr'][igood, jgood] = errmaggies / (0.4 * np.log(10) * (maggies-errmaggies))#.astype('f4') # faint end (flux lower limit)
-            #phot['abmag_loerr'][igood, jgood] = +2.5 * np.log10(1 + fracerr) # bright end (flux upper limit)
-            #phot['abmag_uperr'][igood, jgood] = +2.5 * np.log10(1 - fracerr) # faint end (flux lower limit)
-            #test = 2.5 * np.log(np.exp(1)) * fracerr # symmetric in magnitude (approx)
-
-            # approximate the uncertainty as being symmetric in magnitude
-            phot['abmag_ivar'][igood, jgood] = (ivarmaggies * (maggies * 0.4 * np.log(10))**2)#.astype('f4')
-            
-        if len(upper) > 0:
-            phot['abmag_limit'][iupper, jupper] = abmag_limit#.astype('f4')
-            
         return phot
 
     def convolve_vdisp(self, sspflux, vdisp):
@@ -1173,7 +1164,7 @@ class ContinuumTools(object):
     
     def SSP2data(self, _sspflux, _sspwave, redshift=0.0, AV=None, vdisp=None,
                  cameras=['b', 'r', 'z'], specwave=None, specres=None, coeff=None,
-                 south=True, synthphot=True, test=False):
+                 south=True, synthphot=True, debug=False):
         """Workhorse routine to turn input SSPs into spectra that can be compared to
         real data.
 
@@ -1231,7 +1222,7 @@ class ContinuumTools(object):
 
         # optionally apply reddening
         if AV is not None:
-            atten = self.dust_attenuation(sspwave, AV, test=test)
+            atten = self.dust_attenuation(sspwave, AV)
             sspflux *= atten[:, np.newaxis]
 
         # broaden for velocity dispersion
@@ -1269,9 +1260,9 @@ class ContinuumTools(object):
                 maggies = filters.get_ab_maggies(zsspflux, zsspwave, axis=0) # speclite.filters wants an [nmodel,npix] array
                 maggies = np.vstack(maggies.as_array().tolist()).T
                 maggies /= self.fluxnorm * self.massnorm
-                sspphot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False)
+                sspphot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, debug=debug)
                 #log.info('Synthesizing photometry took: {:.2f} sec'.format(time.time()-t0))
-            
+
         # Are we returning per-camera spectra or a single model? Handle that here.
         #t0 = time.time()
         if specwave is None and specres is None:
@@ -1858,14 +1849,26 @@ class ContinuumFit(ContinuumTools):
 
             # Get the final set of coefficients and chi2 at the best-fitting
             # reddening and nominal velocity dispersion.
-            bestsspflux, bestphot = self.SSP2data(self.sspflux_dustnomvdisp[:, agekeep, inodust], # equivalent to calling with self.sspflux[:, agekeep]
+            bestsspflux, bestphot = self.SSP2data(self.sspflux_dustnomvdisp[:, agekeep, inodust],
                                                   self.sspwave, AV=AVbest, redshift=redshift,
-                                                  south=data['photsys'] == 'S')
-            coeff, chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
-                                                  objflam, objflamivar) # bestphot['flam'] is [nband, nage]
+                                                  south=data['photsys'] == 'S', debug=False)
+
+            coeff, _chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
+                                                   objflam, objflamivar) # bestphot['flam'] is [nband, nage]
+
+            continuummodel = bestsspflux.dot(coeff)
+            
+            # For some reason I don't understand, the chi2 returned by
+            # _fnnls_parallel, above, can be unreasonably small (like 10**-25 or
+            # smaller), so we synthesize the photometry one last time with the
+            # final coefficients to get the correct chi2 estimate.
+            _, synthmodelphot = self.SSP2data(self.sspflux_dustnomvdisp[:, agekeep, inodust],
+                                              self.sspwave, redshift=redshift, synthphot=True,
+                                              AV=AVbest, coeff=coeff * self.massnorm)
+            
+            chi2min = np.sum(objflamivar * (objflam - self.fluxnorm * synthmodelphot['flam'])**2)
             dof = np.sum(objflamivar > 0) - 1 # 1 free parameter??
             chi2min /= dof
-            continuummodel = bestsspflux.dot(coeff)
 
         # Compute DN4000, K-corrections, and rest-frame quantities.
         if np.count_nonzero(coeff > 0) == 0:
@@ -2279,11 +2282,12 @@ class ContinuumFit(ContinuumTools):
             pass
 
         # rebuild the best-fitting photometric model fit
+        inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0        
         continuum_phot, synthmodelphot = self.SSP2data(
-            self.sspflux, self.sspwave, redshift=redshift,
+            self.sspflux_dustnomvdisp[:, :, inodust], self.sspwave, redshift=redshift,
             synthphot=True, AV=fastphot['CONTINUUM_AV'], #test=True,
             coeff=fastphot['CONTINUUM_COEFF'] * self.massnorm)
-        
+
         continuum_wave_phot = self.sspwave * (1 + redshift)
 
         wavemin, wavemax = 0.1, 30.0 # 6.0
@@ -2315,21 +2319,35 @@ class ContinuumFit(ContinuumTools):
                    alpha=0.8, zorder=2)
         
         # we have to set the limits *before* we call errorbar, below!
-        dm = 0.75
+        dm = 1.0
         good = phot['abmag_ivar'] > 0
-        if np.sum(good) > 0:
+        goodlim = phot['abmag_limit'] > 0
+        if np.sum(good) > 0 and np.sum(goodlim) > 0:
+            ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(phot['abmag_limit'][goodlim]), np.nanmax(continuum_phot_abmag))) + dm
+            ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(phot['abmag_limit'][goodlim]), np.nanmin(continuum_phot_abmag))) - dm
+        elif np.sum(good) > 0 and np.sum(goodlim) == 0:
             ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(continuum_phot_abmag))) + dm
             ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(continuum_phot_abmag))) - dm
+        elif np.sum(good) == 0 and np.sum(goodlim) > 0:
+            ymin = np.max((np.nanmax(phot['abmag_limit'][goodlim]), np.nanmax(continuum_phot_abmag))) + dm
+            ymax = np.min((np.nanmin(phot['abmag_limit'][goodlim]), np.nanmin(continuum_phot_abmag))) - dm
         else:
             good = phot['abmag'] > 0
-            if np.sum(good) > 0:
+            goodlim = phot['abmag_limit'] > 0
+            if np.sum(good) > 0 and np.sum(goodlim) > 0:
+                ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(phot['abmag_limit'][goodlim]))) + dm
+                ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(phot['abmag_limit'][goodlim]))) - dm
+            elif np.sum(good) > 0 and np.sum(goodlim) == 0:                
                 ymin = np.nanmax(phot['abmag'][good]) + dm
                 ymax = np.nanmin(phot['abmag'][good]) - dm
+            elif np.sum(good) == 0 and np.sum(goodlim) > 0:
+                ymin = np.nanmax(phot['abmag_limit'][goodlim]) + dm
+                ymax = np.nanmin(phot['abmag_limit'][goodlim]) - dm
             else:
                 ymin, ymax = [30, 20]
             
-        if ymin > 31:
-            ymin = 31
+        if ymin > 30:
+            ymin = 30
         if np.isnan(ymin) or np.isnan(ymax):
             raise('Problem here!')
 
@@ -2365,25 +2383,29 @@ class ContinuumFit(ContinuumTools):
         abmag_brighterr = np.squeeze(phot['abmag_brighterr'])
         yerr = np.squeeze([abmag_brighterr, abmag_fainterr])
 
-        lolims = abmag_limit > 0
-        #lolims[[2, 4]] = True
-        if np.count_nonzero(lolims) > 0:
-            abmag[lolims] = abmag_limit[lolims]
-
-        dofit = np.where((abmag > 0) * self.bands_to_fit)[0]
+        dofit = np.where(self.bands_to_fit)[0]
         if len(dofit) > 0:
-            ax.errorbar(phot['lambda_eff'][dofit]/1e4, abmag[dofit], lolims=lolims[dofit],
-                        yerr=yerr[:, dofit], fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col1,
-                        markerfacecolor=col1, elinewidth=3, ecolor=col1, capsize=4,
-                        label=r'$grz\,W_{1}W_{2}W_{3}W_{4}$', zorder=2)
+            good = np.where(abmag[dofit] > 0)[0]
+            upper = np.where((abmag[dofit] == 0) * (abmag_limit[dofit] > 0))[0]
+            if len(good) > 0:
+                ax.errorbar(phot['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
+                            yerr=yerr[:, dofit[good]],
+                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col1,
+                            markerfacecolor=col1, elinewidth=3, ecolor=col1, capsize=4,
+                            label=r'$grz\,W_{1}W_{2}W_{3}W_{4}$', zorder=2)
+            if len(upper) > 0:
+                ax.errorbar(phot['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
+                            lolims=True, yerr=0.3,
+                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col1,
+                            markerfacecolor=col1, elinewidth=3, ecolor=col1, capsize=4)
 
-        ignorefit = np.where((abmag > 0) * (self.bands_to_fit == False))[0]
+        ignorefit = np.where(self.bands_to_fit == False)[0]
         if len(ignorefit) > 0:
-            good = np.where(abmag_limit[ignorefit] == 0)[0]
-            upper = np.where(abmag_limit[ignorefit] > 0)[0]
+            good = np.where(abmag[ignorefit] > 0)[0]
+            upper = np.where((abmag[ignorefit] == 0) * (abmag_limit[ignorefit] > 0))[0]
             if len(good) > 0:
                 ax.errorbar(phot['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
-                            lolims=lolims[ignorefit][good], yerr=yerr[:, ignorefit[good]],
+                            yerr=yerr[:, ignorefit[good]],
                             fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col1,
                             markerfacecolor='none', elinewidth=3, ecolor=col1, capsize=4)
             if len(upper) > 0:
@@ -2391,25 +2413,6 @@ class ContinuumFit(ContinuumTools):
                             lolims=True, yerr=0.3, fmt='o', markersize=12, markeredgewidth=3,
                             markeredgecolor=col1, markerfacecolor='none', elinewidth=3,
                             ecolor=col1, capsize=5)
-
-        #if False:
-        #    good = np.where(fiberphot['abmag'] > 0)[0]
-        #    if len(good) > 0:
-        #        ax.scatter(fiberphot['lambda_eff'][good]/1e4, fiberphot['abmag'][good],
-        #                    marker='o', s=150, facecolor='blue', edgecolor='k',
-        #                    label=r'$grz$ (fiberflux)', alpha=0.9, zorder=5)
-        #
-        #if False:
-        #    good = np.where(fibertotphot['abmag'] > 0)[0]
-        #    if len(good) > 0:
-        #        ax.scatter(fibertotphot['lambda_eff'][good]/1e4, fibertotphot['abmag'][good],
-        #                    marker='^', s=150, facecolor='orange', edgecolor='k',
-        #                    label=r'$grz$ (total fiberflux)', alpha=0.9, zorder=6)
-                
-        #if synthphot:
-        #    ax.scatter(synthphot['lambda_eff']/1e4, synthphot['abmag'], 
-        #               marker='o', s=130, color='blue', edgecolor='k',
-        #               label=r'$grz$ (spectral model, synthesized)', alpha=1.0, zorder=4)
 
         #leg = ax.legend(loc='lower left', fontsize=16)
         #for hndl in leg.legendHandles:
@@ -2425,11 +2428,6 @@ class ContinuumFit(ContinuumTools):
         else:
             targetid_str = '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
 
-        if fastphot['LOGMSTAR'] > 0:
-            mstar = '{:.3f}'.format(fastphot['LOGMSTAR'])
-        else:
-            mstar = '-'
-
         leg = {
             'targetid': targetid_str,
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
@@ -2438,10 +2436,15 @@ class ContinuumFit(ContinuumTools):
             #'zfastfastphot': r'$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
             'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
-            'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={}$'.format(mstar),
-            'absmag_r': '$M_{{^{{0.0}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
-            'absmag_gr': '$^{{0.0}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R']),
+            'absmag_r': '$M_{{^{{0.1}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
+            'absmag_gr': '$^{{0.1}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R'])
             }
+            
+        if fastphot['LOGMSTAR'] > 0:
+            leg.update({'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={:.3f}$'.format(fastphot['LOGMSTAR'])})
+        else:
+            leg.update({'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})$=...'})
+
         if fastphot['CONTINUUM_AV_IVAR'] == 0:
             leg.update({'AV': '$A(V)$={:.2f} mag'.format(fastphot['CONTINUUM_AV'])})
         else:
@@ -2451,7 +2454,7 @@ class ContinuumFit(ContinuumTools):
         bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.25)
         legfntsz = 16
 
-        if not self.nolegend:
+        if not self.nolegend and fastphot['CONTINUUM_RCHI2'] > 0:
             legxpos, legypos = 0.04, 0.94
             txt = '\n'.join((
                 r'{}'.format(leg['mstar']),
@@ -2462,6 +2465,7 @@ class ContinuumFit(ContinuumTools):
                     transform=ax.transAxes, fontsize=legfntsz,
                     bbox=bbox)
             
+        if not self.nolegend:
             legxpos, legypos = 0.98, 0.06
             txt = '\n'.join((
                 r'{}'.format(leg['zredrock']),
