@@ -352,7 +352,7 @@ class ContinuumTools(object):
 
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
-                         nanomaggies=True, nsigma=1.0, min_uncertainty=None,
+                         nanomaggies=True, nsigma=2.0, min_uncertainty=None,
                          debug=False):
         """Parse input (nano)maggies to various outputs and pack into a table.
 
@@ -2385,8 +2385,8 @@ class ContinuumFit(ContinuumTools):
 
         dofit = np.where(self.bands_to_fit)[0]
         if len(dofit) > 0:
-            good = np.where(abmag[dofit] > 0)[0]
-            upper = np.where((abmag[dofit] == 0) * (abmag_limit[dofit] > 0))[0]
+            good = np.where((abmag[dofit] > 0) * (abmag_limit[dofit] == 0))[0]
+            upper = np.where(abmag_limit[dofit] > 0)[0]
             if len(good) > 0:
                 ax.errorbar(phot['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
                             yerr=yerr[:, dofit[good]],
@@ -2395,14 +2395,14 @@ class ContinuumFit(ContinuumTools):
                             label=r'$grz\,W_{1}W_{2}W_{3}W_{4}$', zorder=2)
             if len(upper) > 0:
                 ax.errorbar(phot['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
-                            lolims=True, yerr=0.3,
+                            lolims=True, yerr=0.75,
                             fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col1,
                             markerfacecolor=col1, elinewidth=3, ecolor=col1, capsize=4)
 
         ignorefit = np.where(self.bands_to_fit == False)[0]
         if len(ignorefit) > 0:
-            good = np.where(abmag[ignorefit] > 0)[0]
-            upper = np.where((abmag[ignorefit] == 0) * (abmag_limit[ignorefit] > 0))[0]
+            good = np.where((abmag[ignorefit] > 0) * (abmag_limit[ignorefit] == 0))[0]
+            upper = np.where(abmag_limit[ignorefit] > 0)[0]
             if len(good) > 0:
                 ax.errorbar(phot['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
                             yerr=yerr[:, ignorefit[good]],
@@ -2410,7 +2410,7 @@ class ContinuumFit(ContinuumTools):
                             markerfacecolor='none', elinewidth=3, ecolor=col1, capsize=4)
             if len(upper) > 0:
                 ax.errorbar(phot['lambda_eff'][ignorefit][upper]/1e4, abmag_limit[ignorefit][upper],
-                            lolims=True, yerr=0.3, fmt='o', markersize=12, markeredgewidth=3,
+                            lolims=True, yerr=0.75, fmt='o', markersize=12, markeredgewidth=3,
                             markeredgecolor=col1, markerfacecolor='none', elinewidth=3,
                             ecolor=col1, capsize=5)
 
