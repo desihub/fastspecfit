@@ -225,7 +225,14 @@ class DESISpectra(object):
                 raise ValueError(errmsg)
 
             specprod = getdep(hdr, 'SPECPROD')
+            if hasattr(self, 'specprod'):
+                if self.specprod != specprod:
+                    errmsg = 'specprod must be the same for all input redrock files! {}!={}'.format(specprod, self.specprod)
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
+            
             self.specprod = specprod
+            
             if specprod == 'fuji': # EDR
                 TARGETINGCOLS = TARGETINGBITS[specprod]
             else:
@@ -261,6 +268,17 @@ class DESISpectra(object):
                     log.info('specprod={}, coadd_type={}, tileid={}, petal={}, night={}'.format(
                         self.specprod, self.coadd_type, tileid, petal, night))
 
+                # cache the tiles file so we can grab the survey and program name appropriate for this tile
+                if not hasattr(self, 'tileinfo'):
+                    infofile = os.path.join(self.redux_dir, self.specprod, 'tiles-{}.csv'.format(self.specprod))
+                    if os.path.isfile(infofile):
+                        self.tileinfo = Table.read(infofile)
+                        
+                if hasattr(self, 'tileinfo'):
+                    tileinfo = self.tileinfo[self.tileinfo['TILEID'] == tileid]
+                    survey = tileinfo['SURVEY'][0]
+                    program = tileinfo['PROGRAM'][0]
+                    
             # add targeting columns
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
             READFMCOLS = FMCOLS + [col for col in TARGETINGCOLS if col in allfmcols]
@@ -370,6 +388,9 @@ class DESISpectra(object):
                 meta['PROGRAM'] = program
                 meta['HEALPIX'] = healpix
             else:
+                if hasattr(self, 'tileinfo'):
+                    meta['SURVEY'] = survey
+                    meta['PROGRAM'] = program
                 meta['NIGHT'] = night
                 meta['TILEID'] = tileid
                 if expid:
