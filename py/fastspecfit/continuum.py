@@ -248,8 +248,8 @@ class ContinuumTools(object):
             ))
 
         #self.min_uncertainty = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]) # mag
-        #self.min_uncertainty = np.array([0.01, 0.01, 0.01, 0.02, 0.02, 0.05, 0.05]) # mag
-        self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
+        self.min_uncertainty = np.array([0.01, 0.01, 0.01, 0.02, 0.02, 0.05, 0.05]) # mag
+        #self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
 
     @staticmethod
     def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
@@ -1867,6 +1867,7 @@ class ContinuumFit(ContinuumTools):
                                               AV=AVbest, coeff=coeff * self.massnorm)
             
             chi2min = np.sum(objflamivar * (objflam - self.fluxnorm * synthmodelphot['flam'])**2)
+
             dof = np.sum(objflamivar > 0) - 1 # 1 free parameter??
             chi2min /= dof
 

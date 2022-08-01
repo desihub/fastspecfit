@@ -8,12 +8,21 @@ if [ $1 = "shifter" ]; then
     #SHIFTER=docker:desihub/fastspecfit:latest
     SHIFTER=docker:desihub/fastspecfit:v1.0.0
     
+    if [ $NERSC_HOST = "perlmutter" ]; then
+        MPILIB=mpich
+    elif [ $NERSC_HOST = "cori" ]; then
+        MPILIB=mpich-cle6
+    else
+        MPILIB=
+    fi
+    
     echo 'Updating and loading the shifter image '$SHIFTER
     echo 'Load the environment with: '
     echo '  source ./fastspecfit-setup.sh env'
     
     shifterimg pull $SHIFTER
-    shifter --module=mpich-cle6 --image $SHIFTER bash
+    shifter --module=$MPILIB --image $SHIFTER bash
+
 elif [ $1 = "env" ]; then
     #for package in fastspecfit; do
     #    echo Loading local check-out of $package

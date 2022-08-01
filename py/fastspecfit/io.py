@@ -448,7 +448,9 @@ class DESISpectra(object):
                 meta['DEC'][I] = meta['TARGET_DEC'][I]
             assert(np.all((meta['RA'] != 0) * (meta['DEC'] != 0)))
             nobj = len(meta)
-            # placeholder (to be added in DESISpectra.read_and_unpack)
+
+            # placeholders (to be added in DESISpectra.read_and_unpack)
+            meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
             for band in ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']:
                 meta['MW_TRANSMISSION_{}'.format(band)] = np.ones(shape=(1,), dtype='f4')
             metas.append(meta)
@@ -548,6 +550,7 @@ class DESISpectra(object):
             meta = Table(meta)
 
             ebv = CFit.SFDMap.ebv(meta['RA'], meta['DEC'])
+            self.meta[ispec]['EBV'] = np.float32(ebv)
 
             if not fastphot:
                 spec = read_spectra(specfile).select(targets=meta['TARGETID'])
@@ -782,10 +785,11 @@ class DESISpectra(object):
                     'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
                     'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
                     'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4',
+                    'EBV',
                     'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
                     'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4']
             
-        colunit = {'RA': u.deg, 'DEC': u.deg,
+        colunit = {'RA': u.deg, 'DEC': u.deg, 'EBV': u.mag,
                    'FIBERFLUX_G': 'nanomaggies', 'FIBERFLUX_R': 'nanomaggies', 'FIBERFLUX_Z': 'nanomaggies',
                    'FIBERTOTFLUX_G': 'nanomaggies', 'FIBERTOTFLUX_R': 'nanomaggies', 'FIBERTOTFLUX_Z': 'nanomaggies',
                    'FLUX_G': 'nanomaggies', 'FLUX_R': 'nanomaggies', 'FLUX_Z': 'nanomaggies',
