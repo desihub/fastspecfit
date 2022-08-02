@@ -98,6 +98,89 @@ class DESISpectra(object):
         else:
             self.dr9dir = dr9dir
 
+    @staticmethod
+    def resolve(targets):
+        """Resolve which targets are primary in imaging overlap regions.
+    
+        Parameters
+        ----------
+        targets : :class:`~numpy.ndarray`
+            Rec array of targets. Must have columns "RA" and "DEC" and
+            either "RELEASE" or "PHOTSYS" or "TARGETID".
+    
+        Returns
+        -------
+        :class:`~numpy.ndarray`
+            The original target list trimmed to only objects from the "northern"
+            photometry in the northern imaging area and objects from "southern"
+            photometry in the southern imaging area.
+        
+        """
+        import healpy as hp
+        
+        def _isonnorthphotsys(photsys):
+            """ If the object is from the northen photometric system """
+            # ADM explicitly checking for NoneType. In the past we have had bugs
+            # ADM where we forgot to populate variables before passing them.
+            if photsys is None:
+                msg = "NoneType submitted to _isonnorthphotsys function"
+                log.critical(msg)
+                raise ValueError(msg)
+        
+            psftype = np.asarray(photsys)
+            # ADM in Python3 these string literals become byte-like
+            # ADM so to retain Python2 compatibility we need to check
+            # ADM against both bytes and unicode.
+            northern = ((photsys == 'N') | (photsys == b'N'))
+        
+            return northern
+                
+        # ADM retrieve the photometric system from the RELEASE.
+        from desitarget.io import release_to_photsys, desitarget_resolve_dec
+        if 'PHOTSYS' in targets.dtype.names:
+            photsys = targets["PHOTSYS"]
+        else:
+            if 'RELEASE' in targets.dtype.names:
+                photsys = release_to_photsys(targets["RELEASE"])
+            else:
+                _, _, release, _, _, _ = decode_targetid(targets["TARGETID"])
+                photsys = release_to_photsys(release)
+    
+        # ADM a flag of which targets are from the 'N' photometry.
+        photn = _isonnorthphotsys(photsys)
+    
+        # ADM grab the declination used to resolve targets.
+        split = desitarget_resolve_dec()
+    
+        # ADM determine which targets are north of the Galactic plane. As
+        # ADM a speed-up, bin in ~1 sq.deg. HEALPixels and determine
+        # ADM which of those pixels are north of the Galactic plane.
+        # ADM We should never be as close as ~1o to the plane.
+        from desitarget.geomask import is_in_gal_box, pixarea2nside
+        nside = pixarea2nside(1)
+        theta, phi = np.radians(90-targets["DEC"]), np.radians(targets["RA"])
+        pixnum = hp.ang2pix(nside, theta, phi, nest=True)
+        # ADM find the pixels north of the Galactic plane...
+        allpix = np.arange(hp.nside2npix(nside))
+        theta, phi = hp.pix2ang(nside, allpix, nest=True)
+        ra, dec = np.degrees(phi), 90-np.degrees(theta)
+        pixn = is_in_gal_box([ra, dec], [0., 360., 0., 90.], radec=True)
+        # ADM which targets are in pixels north of the Galactic plane.
+        galn = pixn[pixnum]
+    
+        # ADM which targets are in the northern imaging area.
+        arean = (targets["DEC"] >= split) & galn
+    
+        # ADM retain 'N' targets in 'N' area and 'S' in 'S' area.
+        #keep = (photn & arean) | (~photn & ~arean)
+        #return targets[keep]
+
+        inorth = photn & arean
+        newphotsys = np.array(['S'] * len(targets))
+        newphotsys[inorth] = 'N'
+
+        return newphotsys
+
     def select(self, redrockfiles, zmin=0.001, zmax=None, zwarnmax=None,
                targetids=None, firsttarget=0, ntargets=None,
                use_quasarnet=True, redrockfile_prefix='redrock-',
@@ -436,16 +519,6 @@ class DESISpectra(object):
             # table, unless the target catalog is zero.
             for col in targets.colnames:
                 meta[col] = targets[col][srt]
-            # try to repair PHOTSYS
-            # https://github.com/desihub/fastspecfit/issues/75
-            I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S') * (meta['RELEASE'] >= 9000)
-            if np.sum(I) > 0:
-                meta['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE'][I]]
-            I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S')
-            if np.sum(I) > 0:
-                errmsg = 'Unsupported value of PHOTSYS.'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
                 
             # special case for some secondary and ToOs
             I = (meta['RA'] == 0) * (meta['DEC'] == 0) * (meta['TARGET_RA'] != 0) * (meta['TARGET_DEC'] != 0)
@@ -453,8 +526,21 @@ class DESISpectra(object):
                 meta['RA'][I] = meta['TARGET_RA'][I]
                 meta['DEC'][I] = meta['TARGET_DEC'][I]
             assert(np.all((meta['RA'] != 0) * (meta['DEC'] != 0)))
-            nobj = len(meta)
-
+                
+            # try to repair PHOTSYS
+            # https://github.com/desihub/fastspecfit/issues/75
+            I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S') * (meta['RELEASE'] >= 9000)
+            if np.sum(I) > 0:
+                meta['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE'][I]]
+            I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S')
+            if np.sum(I) > 0:
+                meta['PHOTSYS'][I] = self.resolve(meta[I])
+            I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S')
+            if np.sum(I) > 0:
+                errmsg = 'Unsupported value of PHOTSYS.'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+                
             # placeholders (to be added in DESISpectra.read_and_unpack)
             meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
             for band in ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']:
