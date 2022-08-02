@@ -438,9 +438,15 @@ class DESISpectra(object):
                 meta[col] = targets[col][srt]
             # try to repair PHOTSYS
             # https://github.com/desihub/fastspecfit/issues/75
-            I = (meta['PHOTSYS'] == '') * (meta['RELEASE'] > 0)
+            I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S') * (meta['RELEASE'] >= 9000)
             if np.sum(I) > 0:
                 meta['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE'][I]]
+            I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S')
+            if np.sum(I) > 0:
+                errmsg = 'Unsupported value of PHOTSYS.'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+                
             # special case for some secondary and ToOs
             I = (meta['RA'] == 0) * (meta['DEC'] == 0) * (meta['TARGET_RA'] != 0) * (meta['TARGET_DEC'] != 0)
             if np.sum(I) > 0:
