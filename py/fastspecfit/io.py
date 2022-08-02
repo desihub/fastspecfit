@@ -997,7 +997,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
 
-    log.info('Writing results for {} objects to {}'.format(len(out), outfile))
+    log.info('Writing results for {:,d} objects to {}'.format(len(out), outfile))
     
     if outfile.endswith('.gz'):
         tmpfile = outfile[:-3]+'.tmp'
@@ -1063,18 +1063,18 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None, nights=No
             for healpixel in healpixels:
                 pixelkeep = np.logical_or(pixelkeep, metadata['HEALPIX'].astype(str) == healpixel)
             keep = np.logical_and(keep, pixelkeep)
-            log.info('Keeping {} objects from healpixels(s) {}'.format(len(fastfit), ','.join(healpixels)))
+            log.info('Keeping {:,d} objects from healpixels(s) {}'.format(len(fastfit), ','.join(healpixels)))
     else:
         if tiles:
             tilekeep = np.zeros(len(fastfit), bool)
             for tile in tiles:
                 tilekeep = np.logical_or(tilekeep, metadata['TILEID'].astype(str) == tile)
             keep = np.logical_and(keep, tilekeep)
-            log.info('Keeping {} objects from tile(s) {}'.format(len(fastfit), ','.join(tiles)))
+            log.info('Keeping {:,d} objects from tile(s) {}'.format(len(fastfit), ','.join(tiles)))
         if nights and 'NIGHT' in metadata:
             nightkeep = np.zeros(len(fastfit), bool)
             for night in nights:
                 nightkeep = np.logical_or(nightkeep, metadata['NIGHT'].astype(str) == night)
             keep = np.logical_and(keep, nightkeep)
-            log.info('Keeping {} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
+            log.info('Keeping {:,d} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
     return fastfit[keep], metadata[keep]

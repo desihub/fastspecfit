@@ -203,8 +203,8 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
     def _findfiles(filedir, prefix='redrock', survey=None, program=None, healpix=None, tile=None, night=None):
         if coadd_type == 'healpix':
             thesefiles = []
-            for onesurvey in survey:
-                for oneprogram in program:
+            for onesurvey in np.atleast_1d(survey):
+                for oneprogram in np.atleast_1d(program):
                     log.info('Building file list for survey={} and program={}'.format(onesurvey, oneprogram))
                     if healpix is not None:
                         for onepix in healpixels:
@@ -343,13 +343,13 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
     if merge:
         if len(outfiles) == 0:
             if rank == 0:
-                log.info('No {} files in {} found!'.format(outprefix, outdir))
+                log.debug('No {} files in {} found!'.format(outprefix, outdir))
             return '', list(), list(), list(), None
         return outdir, redrockfiles, outfiles, None, None
     elif makeqa:
         if len(outfiles) == 0:
             if rank == 0:
-                log.info('No {} files in {} found!'.format(outprefix, outdir))
+                log.debug('No {} files in {} found!'.format(outprefix, outdir))
             return '', list(), list(), list(), None
         #  hack--build the output directories and pass them in the 'redrockfiles'
         #  position! for coadd_type==cumulative, strip out the 'lastnight' argument
@@ -424,7 +424,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
         out = out[srt]
         meta = meta[srt]
         
-        log.info('Merging {} objects from {} {} files took {:.2f} min.'.format(
+        log.info('Merging {:,d} objects from {} {} files took {:.2f} min.'.format(
             len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
         
         write_fastspecfit(out, meta, outfile=mergefile, specprod=specprod,
@@ -432,12 +432,12 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
 
     # merge previously merged catalogs into one big catalog (and then return)
     if supermerge:
-        _outfiles = os.path.join(mergedir, '{}-{}-*.fits.gz'.format(outprefix, outsuffix))
+        _outfiles = os.path.join(mergedir, '{}-{}-*.fits*'.format(outprefix, outsuffix))
         outfiles = glob(_outfiles)
         #print(_outfiles, outfiles)
         if len(outfiles) > 0:
-            log.info('Merging {} catalogs'.format(len(outfiles)))
-            mergefile = os.path.join(mergedir, '{}-{}.fits.gz'.format(outprefix, outsuffix))
+            log.info('Merging {:,d} catalogs'.format(len(outfiles)))
+            mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, outsuffix))
             _domerge(outfiles, extname=extname, mergefile=mergefile)
         else:
             log.info('No catalogs found: {}'.format(_outfiles))
@@ -455,13 +455,13 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                 if os.path.isfile(mergefile) and not overwrite:
                     log.info('Merged output file {} exists!'.format(mergefile))
                     continue
-                survey = np.atleast_1d(survey)
-                program = np.atleast_1d(program)
+                #survey = np.atleast_1d(survey)
+                #program = np.atleast_1d(program)
                 _, _, outfiles, _, _ = plan(specprod=specprod, survey=survey, program=program, healpix=healpix,
                                             merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
                                             outdir_data=outdir_data, overwrite=overwrite)
                 if len(outfiles) > 0:
-                    _domerge(outfiles, extname=extname, survey=survey, program=program, mergefile=mergefile)
+                    _domerge(outfiles, extname=extname, survey=survey[0], program=program[0], mergefile=mergefile)
     else:
         mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, specprod, coadd_type))
         if os.path.isfile(mergefile) and not overwrite:

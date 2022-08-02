@@ -68,8 +68,10 @@ elif [ $stage = "fastspec" ]; then
 elif [ $stage = "fastphot" ]; then
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 136 141 142 244 245 246 80605 80606 80613 --outdir-data $outdir_data --fastphot --overwrite
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --coadd-type $coadd_type --tile 244 245 246 80605 80606 80613 --outdir-data $outdir_data --fastphot
-    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --outdir-data $outdir_data --fastphot 
+    #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --program $program --outdir-data $outdir_data --fastphot 
+    time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --program $program --outdir-data $outdir_data --fastphot 
     #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --survey $survey --outdir-data $outdir_data --fastphot 
+    #time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --mp $mp --specprod $specprod --outdir-data $outdir_data --fastphot 
 elif [ $stage = "qafastspec" ]; then
     time python /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit --makeqa --mp $mp --coadd-type $coadd_type --tile 80605 80606 80613 --outdir-data $outdir_data --outdir-html $outdir_html
 elif [ $stage = "qafastphot" ]; then
