@@ -587,7 +587,7 @@ class DESISpectra(object):
                 
                 #meta['MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z', 'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2']
                 #mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
-                if data['photsys'] != '':
+                if data['photsys'] in ['N', 'S']:
                     mw_transmission_flux = np.array([mwdust_transmission(ebv[igal], band, data['photsys'], match_legacy_surveys=False) for band in CFit.bands])
                     for band, mwdust in zip(CFit.bands, mw_transmission_flux):
                         #print(band, mwdust)

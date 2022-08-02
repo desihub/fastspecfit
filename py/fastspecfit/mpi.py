@@ -205,7 +205,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
             thesefiles = []
             for onesurvey in survey:
                 for oneprogram in program:
-                    log.info('Building file list for survey {} and program {}'.format(survey, program))
+                    log.info('Building file list for survey={} and program={}'.format(onesurvey, oneprogram))
                     if healpix is not None:
                         for onepix in healpixels:
                             _thesefiles = glob(os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
