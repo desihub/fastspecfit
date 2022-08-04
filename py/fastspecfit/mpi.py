@@ -12,6 +12,7 @@ import numpy as np
 from glob import glob
 import multiprocessing
 import fitsio
+from astropy.table import Table
 
 from desiutil.log import get_logger
 log = get_logger()
@@ -375,10 +376,27 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
 
     return outdir, redrockfiles, outfiles, groups, ntargets
 
+def _read_to_merge_one(args):
+    return read_to_merge_one(*args)
+
+def read_to_merge_one(filename, extname):
+    #log.info('Reading {}'.format(filename))
+    info = fitsio.FITS(filename)
+    ext = [_info.get_extname() for _info in info]
+    if extname not in ext:
+        log.warning('Missing extension {} in file {}'.format(extname, outfile))
+        return [], []
+    if 'METADATA' not in ext:
+        log.warning('Missing extension METADATA in file {}'.format(outfile))
+        return [], []
+    out = Table(info[extname].read())
+    meta = Table(info['METADATA'].read())
+    return out, meta
+
 def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                       healpix=None, tile=None, night=None, outsuffix=None,
                       fastphot=False, specprod_dir=None, outdir_data='.',
-                      mergedir=None, supermerge=False, overwrite=False):
+                      mergedir=None, supermerge=False, overwrite=False, mp=1):
     """Merge all the individual catalogs into a single large catalog. Runs only on
     rank 0.
 
@@ -407,22 +425,34 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
     if outsuffix is None:
         outsuffix = specprod
 
-    def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None, mergefile=None):
+    def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None, mergefile=None, mp=1):
         t0 = time.time()
         out, meta = [], []
-        for outfile in outfiles:
-            info = fitsio.FITS(outfile)
-            ext = [_info.get_extname() for _info in info]
-            if extname not in ext:
-                log.warning('Missing extension {} in file {}'.format(extname, outfile))
-                continue
-            if 'METADATA' not in ext:
-                log.warning('Missing extension METADATA in file {}'.format(outfile))
-                continue
-            out.append(Table(info[extname].read()))
-            meta.append(Table(info['METADATA'].read()))
-        out = vstack(out)
-        meta = vstack(meta)
+
+        mpargs = [[outfile, extname] for outfile in outfiles]
+        if mp > 1:
+            with multiprocessing.Pool(mp) as P:
+                _out = P.map(_read_to_merge_one, mpargs)
+        else:
+            _out = [read_to_merge_one(*mparg) for mparg in mpargs]
+        _out = list(zip(*_out))
+        out = vstack(_out[0])
+        meta = vstack(_out[1])
+        del _out
+            
+        #for outfile in outfiles:
+        #    info = fitsio.FITS(outfile)
+        #    ext = [_info.get_extname() for _info in info]
+        #    if extname not in ext:
+        #        log.warning('Missing extension {} in file {}'.format(extname, outfile))
+        #        continue
+        #    if 'METADATA' not in ext:
+        #        log.warning('Missing extension METADATA in file {}'.format(outfile))
+        #        continue
+        #    out.append(Table(info[extname].read()))
+        #    meta.append(Table(info['METADATA'].read()))
+        #out = vstack(out)
+        #meta = vstack(meta)
 
         # sort?
         srt = np.argsort(meta['TARGETID'])
@@ -443,7 +473,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
         if len(outfiles) > 0:
             log.info('Merging {:,d} catalogs'.format(len(outfiles)))
             mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, outsuffix))
-            _domerge(outfiles, extname=extname, mergefile=mergefile)
+            _domerge(outfiles, extname=extname, mergefile=mergefile, mp=mp)
         else:
             log.info('No catalogs found: {}'.format(_outfiles))
         return
@@ -466,7 +496,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                                             merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
                                             outdir_data=outdir_data, overwrite=overwrite)
                 if len(outfiles) > 0:
-                    _domerge(outfiles, extname=extname, survey=survey[0], program=program[0], mergefile=mergefile)
+                    _domerge(outfiles, extname=extname, survey=survey[0], program=program[0], mergefile=mergefile, mp=mp)
     else:
         mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, specprod, coadd_type))
         if os.path.isfile(mergefile) and not overwrite:
@@ -476,4 +506,4 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                                     merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
                                     outdir_data=outdir_data, overwrite=overwrite)
         if len(outfiles) > 0:
-            _domerge(outfiles, extname=extname, mergefile=mergefile)
+            _domerge(outfiles, extname=extname, mergefile=mergefile, mp=mp)

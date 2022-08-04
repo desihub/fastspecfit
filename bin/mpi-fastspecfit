@@ -204,7 +204,8 @@ def main():
         merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
                           survey=args.survey, program=args.program, healpix=args.healpix,
                           tile=args.tile, night=args.night, outdir_data=args.outdir_data,
-                          overwrite=args.overwrite, fastphot=args.fastphot, supermerge=args.mergeall)
+                          overwrite=args.overwrite, fastphot=args.fastphot, supermerge=args.mergeall,
+                          mp=args.mp)
         return
         
     if args.plan:
