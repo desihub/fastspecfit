@@ -8,6 +8,9 @@ General utilities.
 import numpy as np
 import numba
 
+from desiutil.log import get_logger
+log = get_logger()
+
 try: # this fails when building the documentation
     from scipy import constants
     C_LIGHT = constants.c / 1000.0 # [km/s]
@@ -22,8 +25,12 @@ def ivar2var(ivar, clip=1e-3, sigma=False):
     var = np.zeros_like(ivar)
     goodmask = ivar > clip # True is good
     if np.count_nonzero(goodmask) == 0:
-        log.warning('All values are masked!')
-        raise ValueError
+        # Try clipping at zero.
+        goodmask = ivar > 0 # True is good
+        if np.count_nonzero(goodmask) == 0:
+            errmsg = 'All values are masked!'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
     var[goodmask] = 1 / ivar[goodmask]
     if sigma:
         var = np.sqrt(var) # return a sigma

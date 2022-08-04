@@ -251,7 +251,7 @@ class DESISpectra(object):
         if zmin <= 0.0:
             errmsg = 'zmin must be >= 0.'
             log.critical(errmsg)
-            raise ValueError(zmin)
+            raise ValueError(errmsg)
         
         if zmax is None:
             zmax = 99.0
@@ -262,7 +262,7 @@ class DESISpectra(object):
         if zmin >= zmax:
             errmsg = 'zmin must be <= zmax.'
             log.critical(errmsg)
-            raise ValueError(zmin)
+            raise ValueError(errmsg)
         
         if redrockfiles is None:
             errmsg = 'At least one redrockfiles file is required.'
@@ -396,7 +396,6 @@ class DESISpectra(object):
             if _ntargets > len(fitindx):
                 log.warning('Number of requested ntargets exceeds the number of targets on {}; reading all of them.'.format(
                     redrockfile))
-                #raise ValueError
 
             __ntargets = len(fitindx)
             fitindx = fitindx[firsttarget:firsttarget+_ntargets]
