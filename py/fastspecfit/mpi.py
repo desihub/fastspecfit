@@ -200,7 +200,12 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
     htmldir = os.path.join(outdir_data, specprod, 'html', subdir)
     #htmldir = os.path.join(outdir_html, specprod, subdir)
 
-    def _findfiles(filedir, prefix='redrock', survey=None, program=None, healpix=None, tile=None, night=None):
+    def _findfiles(filedir, prefix='redrock', survey=None, program=None, healpix=None, tile=None, night=None, gzip=False):
+        if gzip:
+            fitssuffix = 'fits.gz'
+        else:
+            fitssuffix = 'fits'
+            
         if coadd_type == 'healpix':
             thesefiles = []
             for onesurvey in np.atleast_1d(survey):
@@ -209,12 +214,12 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
                     if healpix is not None:
                         for onepix in healpixels:
                             _thesefiles = glob(os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
-                                                            '{}-{}-{}-*.fits'.format(prefix, onesurvey, oneprogram)))
+                                                            '{}-{}-{}-*.{}'.format(prefix, onesurvey, oneprogram, fitssuffix)))
                             thesefiles.append(_thesefiles)
                     else:
                         allpix = glob(os.path.join(filedir, onesurvey, oneprogram, '*'))
                         for onepix in allpix:
-                            _thesefiles = glob(os.path.join(onepix, '*', '{}-{}-{}-*.fits'.format(prefix, onesurvey, oneprogram)))
+                            _thesefiles = glob(os.path.join(onepix, '*', '{}-{}-{}-*.{}'.format(prefix, onesurvey, oneprogram, fitssuffix)))
                             thesefiles.append(_thesefiles)
             if len(thesefiles) > 0:
                 thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
@@ -231,7 +236,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
                     if len(nightdirs) > 0:
                         # for a given tile, take just the most recent night
                         thisnightdir = nightdirs[-1]
-                        thesefiles.append(glob(os.path.join(thisnightdir, '{}-[0-9]-{}-thru????????.fits*'.format(prefix, onetile))))
+                        thesefiles.append(glob(os.path.join(thisnightdir, '{}-[0-9]-{}-thru????????.{}'.format(prefix, onetile, fitssuffix))))
                 thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
         elif coadd_type == 'pernight':
             if tile is not None and night is not None:
@@ -239,39 +244,39 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
                 for onetile in tile:
                     for onenight in night:
                         thesefiles.append(glob(os.path.join(
-                            filedir, 'pernight', str(onetile), str(onenight), '{}-[0-9]-{}-{}.fits'.format(prefix, onetile, onenight))))
+                            filedir, 'pernight', str(onetile), str(onenight), '{}-[0-9]-{}-{}.{}'.format(prefix, onetile, onenight, fitssuffix))))
                 if len(thesefiles) > 0:
                     thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
             elif tile is not None and night is None:
                 thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                    filedir, 'pernight', str(onetile), '????????', '{}-[0-9]-{}-????????.fits'.format(
-                    prefix, onetile))) for onetile in tile]))))
+                    filedir, 'pernight', str(onetile), '????????', '{}-[0-9]-{}-????????.{}'.format(
+                    prefix, onetile, fitssuffix))) for onetile in tile]))))
             elif tile is None and night is not None:
                 thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                    filedir, 'pernight', '?????', str(onenight), '{}-[0-9]-?????-{}.fits'.format(
-                    prefix, onenight))) for onenight in night]))))
+                    filedir, 'pernight', '?????', str(onenight), '{}-[0-9]-?????-{}.{}'.format(
+                    prefix, onenight, fitssuffix))) for onenight in night]))))
             else:
                 thesefiles = np.array(sorted(set(glob(os.path.join(
-                    filedir, '?????', '????????', '{}-[0-9]-?????-????????.fits'.format(prefix))))))
+                    filedir, '?????', '????????', '{}-[0-9]-?????-????????.{}'.format(prefix, fitssuffix))))))
         elif coadd_type == 'perexp':
             if tile is not None:
                 thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                    filedir, 'perexp', str(onetile), '????????', '{}-[0-9]-{}-exp????????.fits'.format(
-                    prefix, onetile))) for onetile in tile]))))
+                    filedir, 'perexp', str(onetile), '????????', '{}-[0-9]-{}-exp????????.{}'.format(
+                    prefix, onetile, fitssuffix))) for onetile in tile]))))
             else:
                 thesefiles = np.array(sorted(set(glob(os.path.join(
-                    filedir, 'perexp', '?????', '????????', '{}-[0-9]-?????-exp????????.fits'.format(prefix))))))
+                    filedir, 'perexp', '?????', '????????', '{}-[0-9]-?????-exp????????.{}'.format(prefix, fitssuffix))))))
         else:
             pass
         return thesefiles
 
     if merge:
         redrockfiles = None
-        outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night)
+        outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
         log.info('Found {} {} files to be merged.'.format(len(outfiles), outprefix))
     elif makeqa:
         redrockfiles = None
-        outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night)
+        outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
         log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
         ntargs = [(outfile, True) for outfile in outfiles]
     else:
