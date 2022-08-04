@@ -693,8 +693,13 @@ class ContinuumTools(object):
         smooth_flux = np.array(smooth_flux)
         smooth_mask = np.array(smooth_mask)
 
-        smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
-        smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
+        # corner case for very wacky spectra
+        if len(smooth_flux) == 0:
+            smooth_flux = flux
+            smooth_sigma = flux * 0 + np.std(flux)
+        else:
+            smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
+            smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
 
         smooth = median_filter(smooth_flux, medbin, mode='nearest')
         smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
@@ -1961,9 +1966,11 @@ class ContinuumFit(ContinuumTools):
         specflux = np.hstack(data['flux'])
         specivar = np.hstack(data['ivar']) * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
         if np.all(specivar == 0) or np.any(specivar < 0):
-            errmsg = 'All pixels are masked or some inverse variances are negative!'
-            log.critical(errmsg)
-            raise ValueError(errmsg)
+            specivar = np.hstack(data['ivar']) # not great...
+            if np.all(specivar == 0) or np.any(specivar < 0):
+                errmsg = 'All pixels are masked or some inverse variances are negative!'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
         
         # Prepare the reddened and unreddened SSP templates by redshifting and
         # normalizing. Note that we ignore templates which are older than the
