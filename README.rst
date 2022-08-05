@@ -16,9 +16,6 @@ FastSpecFit
     :target: https://fastspecfit.readthedocs.io/en/latest/
     :alt: Documentation Status
 
-Introduction
-============
-
 This repository contains code and documentation for performing fast spectral
 synthesis and emission-line fitting of `DESI`_ spectra and broadband
 photometry. For extensive details please see the `latest documentation`_.
