@@ -1,0 +1,10 @@
+include LICENSE.rst
+include README.rst
+include requirements.txt
+
+graft bin
+graft doc
+
+prune build
+prune doc/_build
+prune sandbox
