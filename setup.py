@@ -80,7 +80,7 @@ setup_keywords = dict()
 
 # THESE SETTINGS NEED TO BE CHANGED FOR EVERY PRODUCT.
 
-setup_keywords['name'] = 'fastspecfit'
+setup_keywords['name'] = 'FastSpecFit'
 setup_keywords['description'] = 'Fast fitting of DESI spectroscopy and photometry.'
 setup_keywords['author'] = 'John Moustakas & the DESI Collaboration'
 setup_keywords['author_email'] = 'jmoustakas@siena.edu'
