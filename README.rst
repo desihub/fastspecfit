@@ -1,4 +1,4 @@
-===========
+ate===========
 FastSpecFit
 ===========
 
@@ -24,4 +24,4 @@ synthesis and emission-line fitting of `DESI`_ spectra. For extensive details
 please see the `latest documentation`_.
 
 .. _DESI: https://desi.lbl.gov
-.. .. _`latest documentation`: http://fastspecfit.readthedocs.org/en/latest/
+.. _latest documentation: http://fastspecfit.readthedocs.org/en/latest/
