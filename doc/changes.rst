@@ -2,8 +2,14 @@
 FastSpecFit Change Log
 ======================
 
-1.0 (not released yet)
+1.1 (not released yet)
 ----------------------
+
+* 
+
+
+1.0.0 (2022-08-01)
+------------------
 
 * Update Docker container and tag all dependencies [`PR #76`_].
 * Numerous backwards-incompatible improvements and changes to the code engine
