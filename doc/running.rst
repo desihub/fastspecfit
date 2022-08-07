@@ -5,8 +5,9 @@ Running FastSpecFit
 
 .. note::
   Before running any of the examples below, we assume that you have successfully
-  installed and set up ``FastSpecFit``. If not, please see the :ref:`install`
-  instructions. 
+  :ref:`installed and set up<install>` ``FastSpecFit``.
+
+.. _nersc installation:
 
 Overview
 --------
@@ -15,8 +16,8 @@ Running ``FastSpecFit`` is accomplished through a handful of high-level Python
 scripts. The two primary, independent scripts which can be run on one (or a
 small number) of `Redrock`_ redshift catalogs are:
 
-  * :ref:`fastspec`, to model DESI spectrophotometry; and
-  * :ref:`fastphot`, to model DESI broadband photometry.
+  * :ref:`fastspec description`, to model DESI spectrophotometry; and
+  * :ref:`fastphot description`, to model DESI broadband photometry.
 
 Note that both scripts require (and assume) DESI-derived redshifts and the DESI
 data model as inputs.
@@ -28,10 +29,28 @@ detail below:
   * ``mpi-fastspecfit``, to execute a variety of tasks (in parallel) on larger
     numbers of input files or catalogs.
 
-.. _`fastspec`:
+.. _`fastspec description`:
 
 fastspec
 --------
+
+To model the spectrum of a single object, we just need to provide ``fastspec``
+an input Redrock catalog and an (arbitrary) output filename::
+
+  $> fastspec $DESI_ROOT/spectro/redux/guadalupe/healpix/main/bright/300/30022/redrock-main-bright-30022.fits \
+    --ntargets 1 --outfile fastspec-example.fits
+
+See the :ref:`fastspec data model<fastspec>` for a full description of the
+contents of the file which is written out. We can visualize the results by
+generating a figure::
+
+  $> fastspecfit-qa fastspec-example.fits
+
+
+
+
+
+
 
 The arguments to ``fastspec`` can be inspected by invoking the script with the
 `--help` option::
@@ -65,7 +84,7 @@ For example, do::
 
 Write me.
 
-.. _`fastphot`:
+.. _`fastphot description`:
 
 fastphot
 --------
