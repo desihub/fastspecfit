@@ -31,6 +31,14 @@ Data Model
    fastspec.rst
    fastphot.rst
 
+Value-Added Catalogs
+--------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   fujilupe.rst
+
 Indices and tables
 ------------------
 

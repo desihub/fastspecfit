@@ -1,3 +1,5 @@
+.. _fastspec datamodel:
+
 ===================
 fastspec Data Model
 ===================
@@ -68,6 +70,8 @@ DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
 
 Required Data Table Columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. rst-class:: columns
 
 ========================= =========== ============================= ============================================
 Name                      Type        Units                         Description

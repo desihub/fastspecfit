@@ -1,3 +1,5 @@
+.. _fastphot datamodel:
+
 ===================
 fastphot Data Model
 ===================
