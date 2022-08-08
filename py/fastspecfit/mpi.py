@@ -24,7 +24,9 @@ def get_ntargets_one(specfile, makeqa=False):
     if makeqa:
         ntargets = fitsio.FITS(specfile)[1].get_nrows() # fragile?
     else:
-        zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z'])#, 'ZWARN'])
+        from fastspecfit.io import ZWarningMask
+        
+        zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z', 'ZWARN'])
         fm = fitsio.read(specfile, 'FIBERMAP', columns=['TARGETID', 'OBJTYPE'])#, 'COADD_FIBERSTATUS', 'PHOTSYS'])
         J = ((zb['Z'] > 0.001) *
              #(zb['ZWARN'] <= 4) *
@@ -34,6 +36,9 @@ def get_ntargets_one(specfile, makeqa=False):
              (fm['OBJTYPE'] == 'TGT') *
              (fm['TARGETID'] > 0)
              )
+        nodata = zb['ZWARN'] & ZWarningMask.NODATA != 0
+        if np.sum(nodata) > 0:
+            J = J[np.logical_not(nodata)]
         ntargets = np.sum(J)
     return ntargets
 
@@ -94,8 +99,9 @@ def group_redrockfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
         if makeqa:
             ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
         else:
+            from fastspecfit.io import ZWarningMask
             #ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
-            zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z'])#, 'ZWARN'])
+            zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z', 'ZWARN'])
             fm = fitsio.read(specfile, 'FIBERMAP', columns=['TARGETID', 'OBJTYPE'])#, 'COADD_FIBERSTATUS', 'PHOTSYS'])
             J = ((zb['Z'] > 0.001) *
                  #(zb['ZWARN'] <= 4) *
@@ -105,6 +111,9 @@ def group_redrockfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
                  (fm['OBJTYPE'] == 'TGT') *
                  (fm['TARGETID'] > 0)
                  )
+            nodata = zb['ZWARN'] & ZWarningMask.NODATA != 0
+            if np.sum(nodata) > 0:
+                J = J[np.logical_not(nodata)]
             nt = np.sum(J)
             ntargets[i] = nt
         log.debug(i, j, specfiles[j], ntargets[i])

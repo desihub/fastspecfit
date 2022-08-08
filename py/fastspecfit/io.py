@@ -66,6 +66,22 @@ TARGETCOLS = ['TARGETID', 'RA', 'DEC',
               'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
               'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']#,
 
+# Taken from Redrock/0.15.4
+class _ZWarningMask(object):
+    SKY               = 2**0  #- sky fiber
+    LITTLE_COVERAGE   = 2**1  #- too little wavelength coverage
+    SMALL_DELTA_CHI2  = 2**2  #- chi-squared of best fit is too close to that of second best
+    NEGATIVE_MODEL    = 2**3  #- synthetic spectrum is negative
+    MANY_OUTLIERS     = 2**4  #- fraction of points more than 5 sigma away from best model is too large (>0.05)
+    Z_FITLIMIT        = 2**5  #- chi-squared minimum at edge of the redshift fitting range
+    NEGATIVE_EMISSION = 2**6  #- a QSO line exhibits negative emission, triggered only in QSO spectra, if  C_IV, C_III, Mg_II, H_beta, or H_alpha has LINEAREA + 3 * LINEAREA_ERR < 0
+    UNPLUGGED         = 2**7  #- the fiber was unplugged/broken, so no spectrum obtained
+    BAD_TARGET        = 2**8  #- catastrophically bad targeting data
+    NODATA            = 2**9  #- No data for this fiber, e.g. because spectrograph was broken during this exposure (ivar=0 for all pixels)
+    BAD_MINFIT        = 2**10 #- Bad parabola fit to the chi2 minimum
+    POORDATA          = 2**11 #- Poor input data quality but try fitting anyway
+ZWarningMask = _ZWarningMask()
+
 class DESISpectra(object):
     def __init__(self, redux_dir=None, fiberassign_dir=None, dr9dir=None):
         """Class to read in DESI spectra and associated metadata.
@@ -378,6 +394,10 @@ class DESISpectra(object):
                                    (meta['OBJTYPE'] == 'TGT') *
                                    (meta['TARGETID'] > 0) *
                                    (zb['ZWARN'] <= zwarnmax))[0]
+                # trim on the NODATA bit
+                nodata = zb['ZWARN'][fitindx] & ZWarningMask.NODATA != 0
+                if np.sum(nodata) > 0:
+                    fitindx = fitindx[np.logical_not(nodata)]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.

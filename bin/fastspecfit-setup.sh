@@ -3,14 +3,14 @@
 # % fastspecfit-setup.sh shifter
 # % source fastspecfit-setup.sh env
 
-if [ $1 = "shifter" ]; then
+if [[ $1 == "shifter" ]]; then
     # Load the desigal Docker container using shifter
     #SHIFTER=docker:desihub/fastspecfit:latest
     SHIFTER=docker:desihub/fastspecfit:v1.0.0
     
-    if [ $NERSC_HOST = "perlmutter" ]; then
+    if [[ $NERSC_HOST == "perlmutter" ]]; then
         MPILIB=mpich
-    elif [ $NERSC_HOST = "cori" ]; then
+    elif [[ $NERSC_HOST == "cori" ]]; then
         MPILIB=mpich-cle6
     else
         MPILIB=
@@ -23,7 +23,7 @@ if [ $1 = "shifter" ]; then
     shifterimg pull $SHIFTER
     shifter --module=$MPILIB --image $SHIFTER bash
 
-elif [ $1 = "env" ]; then
+elif [[ $1 == "env" ]]; then
     #for package in fastspecfit; do
     #    echo Loading local check-out of $package
     #    export PATH=/global/homes/i/ioannis/code/desihub/$package/bin:$PATH

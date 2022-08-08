@@ -1472,6 +1472,9 @@ class EMLineFit(ContinuumTools):
                 if amp_sigma > 0:
                     result['{}_AMP_IVAR'.format(linename)] = 1 / amp_sigma**2 # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
+                if np.isinf(result['{}_AMP_IVAR'.format(linename)]):
+                    pdb.set_trace()
+
                 # require amp > 0 (line not dropped) to compute the flux and chi2
                 if result['{}_AMP'.format(linename)] > 0:
 
@@ -1795,7 +1798,7 @@ class EMLineFit(ContinuumTools):
         nlinepanels = 5
 
         nline = len(set(self.linetable['plotgroup']))
-        nlinerows = np.int(np.ceil(nline / nlinepanels))
+        nlinerows = int(np.ceil(nline / nlinepanels))
         nrows = 2 + nlinerows
 
         height_ratios = np.hstack([1, 1, [0.5]*nlinerows])
@@ -1956,9 +1959,9 @@ class EMLineFit(ContinuumTools):
             bigax2.text(legxpos, legypos, txt, ha='right', va='top',
                         transform=bigax2.transAxes, fontsize=legfntsz,
                         bbox=bbox)
-        bigax2.text(0.03, 0.9, 'Residual Spectrum + Emission-Line Model',
-                    ha='left', va='center', transform=bigax2.transAxes,
-                    fontsize=30)
+            bigax2.text(0.03, 0.9, 'Residual Spectrum + Emission-Line Model',
+                        ha='left', va='center', transform=bigax2.transAxes,
+                        fontsize=30)
                 
         bigax2.set_xlim(wavelims)
         bigax2.set_ylim(ymin, ymax)
