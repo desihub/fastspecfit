@@ -54,6 +54,7 @@ REDSHIFTCOLS = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
 # quasarnet afterburner columns to read
 QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
           'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
+QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 
 # targeting and Tractor columns to read from disk
 #TARGETCOLS = ['TARGETID', 'RA', 'DEC', 'FLUX_W3', 'FLUX_W4', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
@@ -436,11 +437,12 @@ class DESISpectra(object):
                 qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
                 assert(np.all(qn['TARGETID'] == meta['TARGETID']))
                 log.info('Updating QSO redshifts using a QN threshold of 0.95.')
-                qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']]), axis=0) > 0.95
+                qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > 0.95
                 qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
                 #zb.add_column(zb['Z'], name='Z_RR', index=2) # add it after 'Z'
                 zb['Z_RR'] = zb['Z'] # add it at the end
-                if np.any(qn['IS_QSO_QN_NEW_RR']):
+                pdb.set_trace()
+                if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
                     zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
                 del qn
             # add an empty Z_RR column?

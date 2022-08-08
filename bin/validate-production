@@ -13,8 +13,8 @@ import fitsio
 import multiprocessing
 from astropy.table import Table
 
-from fastspecfit.io import DESI_ROOT_NERSC, _ZWarningMask
-ZWarningMask = _ZWarningMask()
+from fastspecfit.io import DESI_ROOT_NERSC, ZWarningMask
+desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
 
 from desiutil.log import get_logger, DEBUG
 log = get_logger()
@@ -43,13 +43,80 @@ def check_one_catalog(zcatfile, specprod):
             assert(np.all(fast[fcol] == zcat[zcol]))
         except:
             log.warning('Assert failed on column {} in catalog {}'.format(fcol, fastfile))
-            pdb.set_trace()
 
     zdiff = fast['Z'] != zcat['Z']
     if np.sum(zdiff) > 0:
         log.info('Found {:,d}/{:,d} ({:.4f}%) updated QSO redshifts in catalog {}'.format(
             np.sum(zdiff), len(fast), np.sum(zdiff)/len(fast), fastfile))
-            
+
+    outfile = os.path.basename(fastfile)
+    outfile.replace('fastspec-', '{fastspec,fastphot}-')
+
+    return outfile, len(fast), np.sum(zdiff)
+
+def check_catalogs(specprod_dir, fastspecdir, specprod, mp=1):
+    
+    # Read all the zpix catalogs in parallel.
+    zcatfiles = sorted(glob(os.path.join(specprod_dir, 'zcatalog', 'zpix-*-*.fits')))
+    mpargs = []
+    for zcatfile in zcatfiles:
+        mpargs.append([zcatfile, specprod])
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            out = P.map(_check_one_catalog, mpargs)
+    else:
+        out = [check_one_catalog(*mparg) for mparg in mpargs]
+    out = list(zip(*out))
+    fastfiles, nrows, nznews = out[0], out[1], out[2]
+
+    # add the super-merged catalog
+    fastfile = os.path.join(fastspecdir, 'catalogs', 'fastspec-{}.fits'.format(specprod))
+    fast = fitsio.read(fastfile, ext='METADATA', columns=['Z', 'Z_RR'])
+    zdiff = fast['Z'] != fast['Z_RR']
+    fastfile.replace('fastspec-', '{fastspec,fastphot}-')
+    fastfiles.append(fastfile)
+    nrows.append(len(fast))
+    nznews.append(np.sum(zdiff))
+
+    headers = ['Catalog', 'Number of Targets', 'Number with Corrected Redshifts']
+    widths = np.array([len(header) for header in headers])
+    lines = []
+    for fastfile, nrow, nznew in zip(fastfiles, nrows, nznews):
+        oneline = []
+        for ii, dd in enumerate([fastfile, nrow, nznew]):
+            if type(dd) == int or type(dd) == np.int64:
+                dd = '{:,d}'.format(dd)
+            if len(dd) > widths[ii]:
+                widths[ii] = len(dd)
+            oneline.append(dd)
+        lines.append(oneline)
+    for ii, width in enumerate(widths):
+        if ii == len(widths)-1:
+            print(''.join(np.repeat('=', width)))
+        else:
+            print(''.join(np.repeat('=', width))+' ', end='')
+    for ii, (width, dd) in enumerate(zip(widths, headers)):
+        if ii == len(widths)-1:
+            print(str.ljust(dd, width))
+        else:
+            print(str.ljust(dd, width)+' ', end='')
+    for ii, width in enumerate(widths):
+        if ii == len(widths)-1:
+            print(''.join(np.repeat('=', width)))
+        else:
+            print(''.join(np.repeat('=', width))+' ', end='')            
+    for line in lines:
+        for ii, (width, dd) in enumerate(zip(widths, line)):
+            if ii == len(widths)-1:
+                print(str.ljust(dd, width))
+            else:
+                print(str.ljust(dd, width)+' ', end='')
+    for ii, width in enumerate(widths):
+        if ii == len(widths)-1:
+            print(''.join(np.repeat('=', width)))
+        else:
+            print(''.join(np.repeat('=', width))+' ', end='')            
+
 def fileinfo(filelist, sortbyrows=False):
 
     headers = ['File Name', 'File Size', 'Number of Targets']
@@ -144,8 +211,7 @@ def main():
     
     args = p.parse_args()
 
-    outdir = '/global/cfs/cdirs/desi/spectro/fastspecfit/'+args.specprod
-    desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
+    fastspecdir = '/global/cfs/cdirs/desi/spectro/fastspecfit/'+args.specprod
     specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod)
 
     if args.specprod == 'guadalupe':
@@ -156,56 +222,23 @@ def main():
     # Do statistics.
     if args.statistics:
         # by survey
-        fastspecfiles = np.hstack((sorted(glob(os.path.join(outdir, 'catalogs', 'fastspec-{}-*.fits'.format(args.specprod)))),
-                                   os.path.join(outdir, 'catalogs', 'fastspec-{}.fits'.format(args.specprod))))
-        fastphotfiles = np.hstack((sorted(glob(os.path.join(outdir, 'catalogs', 'fastphot-{}-*.fits'.format(args.specprod)))),
-                                   os.path.join(outdir, 'catalogs', 'fastphot-{}.fits'.format(args.specprod))))
-        #fastspecfiles = np.array(sorted(glob(os.path.join(outdir, 'catalogs', 'fastspec-{}-*.fits'.format(args.specprod)))))
-        #fastphotfiles = np.array(sorted(glob(os.path.join(outdir, 'catalogs', 'fastphot-{}-*.fits'.format(args.specprod)))))
+        fastspecfiles = np.hstack((sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-*.fits'.format(args.specprod)))),
+                                   os.path.join(fastspecdir, 'catalogs', 'fastspec-{}.fits'.format(args.specprod))))
+        fastphotfiles = np.hstack((sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastphot-{}-*.fits'.format(args.specprod)))),
+                                   os.path.join(fastspecdir, 'catalogs', 'fastphot-{}.fits'.format(args.specprod))))
+        #fastspecfiles = np.array(sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-*.fits'.format(args.specprod)))))
+        #fastphotfiles = np.array(sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastphot-{}-*.fits'.format(args.specprod)))))
         specwidths, speclines, specheaders = fileinfo(fastspecfiles, sortbyrows=sortbyrows)
         photwidths, photlines, photheaders = fileinfo(fastphotfiles, sortbyrows=sortbyrows)
         build_table(specwidths, speclines, photwidths, photlines, specheaders, photheaders)
 
     # Validate files.
     if args.validate:
-
-        # Read all the zpix catalogs in parallel.
-        zcatfiles = glob(os.path.join(specprod_dir, 'zcatalog', 'zpix-*-*.fits'))
-        mpargs = []
-        for zcatfile in zcatfiles:
-            mpargs.append([zcatfile, args.specprod])
-        if args.mp > 1:
-            with multiprocessing.Pool(args.mp) as P:
-                P.map(_check_one_catalog, mpargs)
-        else:
-            [check_one_catalog(*mparg) for mparg in mpargs]
+        # verify that we have all the targets we expect and also summarize the
+        # number of targets with corrected redshifts
+        check_catalogs(specprod_dir, fastspecdir, args.specprod, mp=args.mp)
 
         pdb.set_trace()
         
-        for survey in surveys:
-        #for survey in ['sv1']:
-            print('Working on survey {}'.format(survey))
-            obsfile = os.path.join(args.outdir, 'observed-targets', 'targetphot-{}-{}.fits'.format(survey, args.specprod))
-            potfile = os.path.join(args.outdir, 'potential-targets', 'targetphot-potential-{}-{}.fits'.format(survey, args.specprod))
-            obs = Table(fitsio.read(obsfile))
-            print('Read {:,d} objects from {}'.format(len(obs), obsfile))
-            pot = Table(fitsio.read(potfile))
-            print('Read {:,d} objects from {}'.format(len(pot), potfile))
-
-            #obs = obs[obs['TILEID'] == 80870]
-
-            tileids = sorted(set(obs['TILEID']))
-            print('Processing {} unique tiles'.format(len(tileids)))
-            
-            # Multiprocess over tiles
-            mpargs = [[tileid, obs[obs['TILEID'] == tileid], pot[pot['TILEID'] == tileid]] for tileid in tileids]
-                
-            if args.mp > 1:
-                with multiprocessing.Pool(args.mp) as P:
-                    P.map(_targets_one_tile, mpargs)
-            else:
-                [targets_one_tile(*mparg) for mparg in mpargs]
-        print()
-            
 if __name__ == '__main__':
     main()
