@@ -73,7 +73,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'fastspecfit'
-copyright = u'2014-2022, John Moustakas & the DESI Collaboration'
+copyright = u'2019-2022, John Moustakas & the DESI Collaboration'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

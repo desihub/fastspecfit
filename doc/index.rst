@@ -2,6 +2,9 @@
 Welcome to the Documentation for FastSpecFit
 ============================================
 
+.. image:: _static/fastspecfit-logo.png
+   :scale: 30%
+
 Overview
 --------
 
@@ -19,8 +22,25 @@ Contents
 
    install.rst
    running.rst
+   algorithms.rst
    api.rst
    changes.rst
+
+Algorithms
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   algorithms.rst
+
+Value-Added Catalogs
+--------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   fujilupe.rst
 
 Data Model
 ----------
@@ -30,14 +50,6 @@ Data Model
 
    fastspec.rst
    fastphot.rst
-
-Value-Added Catalogs
---------------------
-
-.. toctree::
-   :maxdepth: 1
-
-   fujilupe.rst
 
 Indices and tables
 ------------------
