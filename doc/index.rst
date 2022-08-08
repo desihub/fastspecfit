@@ -26,14 +26,6 @@ Contents
    api.rst
    changes.rst
 
-Algorithms
-----------
-
-.. toctree::
-   :maxdepth: 1
-
-   algorithms.rst
-
 Value-Added Catalogs
 --------------------
 

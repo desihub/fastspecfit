@@ -139,17 +139,44 @@ catalog`_. The following bit of Python code illustrates which targets we fit:
 .. code-block:: python
 
   import fitsio
-  from fastspecfit.io import _ZwarningMask
+  import numpy as np
+  from fastspecfit.io import ZWarningMask
 
-  ZwarningMask = _ZwarningMask()
-  redshifts = fitsio.read(redrockfile, 'REDSHIFTS')
-  fibermap = fitsio.read(redrockfile, 'FIBERMAP')
+  zb = fitsio.read(redrockfile, 'REDSHIFTS')
+  fm = fitsio.read(redrockfile, 'FIBERMAP')
 
-  I = ((redshifts['Z'] > 0.001) * (fibermap['OBJTYPE'] == 'TGT') *
-    (fibermap['TARGETID'] > 0) * (redshifts['ZWARN'] & ZWarningMask.NODATA != 0))
+  I = np.where((zb['Z'] > 0.001) * (fm['OBJTYPE'] == 'TGT') *
+               (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
 
 where the ``ZWarningMask.NODATA`` bit indicates a spectrum which contains no
 data (all inverse variance pixel values in the extracted spectrum are zero).
+
+Updated QSO Redshifts
+~~~~~~~~~~~~~~~~~~~~~
+
+For a small but important fraction of quasar (QSO) targets, the redshift
+determined by Redrock is incorrect. To mitigate this issue, the DESI team has
+developed an approach to rectify the redshift nominally measured by Redrock
+using the machine-learning algorithm, ``QuasarNet``. In the Fuji and Guadalupe
+``FastSpecFit`` VACs we adopt the same algorithm. 
+
+Specifically, let ``redrockfile`` and ``qnfile`` be the full pathname to a given
+`redrock catalog`_ and `QuasarNet catalog`_. We 
+
+.. code-block:: python
+
+  import fitsio
+  import numpy as np
+
+  zb = fitsio.read(redrockfile, 'REDSHIFTS')
+  qn = fitsio.read(qnfile, 'QN_RR')
+
+  linecols = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
+
+  qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in linecols]), axis=0) > 0.95
+  qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
+  if np.any(qn['IS_QSO_QN_NEW_RR']):
+      zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
 
 Known Issues
 ------------
@@ -165,3 +192,6 @@ VACs after their final release. To date, no issues have been identified!
 .. _`NERSC`: https://nersc.gov
 .. _`here`: https://data.desi.lbl.gov/doc/organization/
 .. _`redrock catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/redrock-SURVEY-PROGRAM-PIXNUM.html
+.. _`quasarnet catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_qn-SURVEY-PROGRAM-PIXNUM.html
+
+
