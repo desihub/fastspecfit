@@ -389,15 +389,10 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=READFMCOLS)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                # also update mpi.get_ntargets_one
+                # need to also update mpi.get_ntargets_one
                 fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
-                                   (meta['OBJTYPE'] == 'TGT') *
-                                   (meta['TARGETID'] > 0) *
-                                   (zb['ZWARN'] <= zwarnmax))[0]
-                # trim on the NODATA bit
-                nodata = zb['ZWARN'][fitindx] & ZWarningMask.NODATA != 0
-                if np.sum(nodata) > 0:
-                    fitindx = fitindx[np.logical_not(nodata)]
+                                   (meta['OBJTYPE'] == 'TGT') * (zb['ZWARN'] <= zwarnmax) *
+                                   (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
