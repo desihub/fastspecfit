@@ -441,7 +441,6 @@ class DESISpectra(object):
                 qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
                 #zb.add_column(zb['Z'], name='Z_RR', index=2) # add it after 'Z'
                 zb['Z_RR'] = zb['Z'] # add it at the end
-                pdb.set_trace()
                 if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
                     zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
                 del qn

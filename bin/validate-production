@@ -50,7 +50,7 @@ def check_one_catalog(zcatfile, specprod):
             np.sum(zdiff), len(fast), np.sum(zdiff)/len(fast), fastfile))
 
     outfile = os.path.basename(fastfile)
-    outfile.replace('fastspec-', '{fastspec,fastphot}-')
+    outfile = outfile.replace('fastspec-', '{fastspec,fastphot}-')
 
     return outfile, len(fast), np.sum(zdiff)
 
@@ -67,13 +67,15 @@ def check_catalogs(specprod_dir, fastspecdir, specprod, mp=1):
     else:
         out = [check_one_catalog(*mparg) for mparg in mpargs]
     out = list(zip(*out))
-    fastfiles, nrows, nznews = out[0], out[1], out[2]
+    fastfiles, nrows, nznews = list(out[0]), list(out[1]), list(out[2])
 
     # add the super-merged catalog
     fastfile = os.path.join(fastspecdir, 'catalogs', 'fastspec-{}.fits'.format(specprod))
     fast = fitsio.read(fastfile, ext='METADATA', columns=['Z', 'Z_RR'])
     zdiff = fast['Z'] != fast['Z_RR']
-    fastfile.replace('fastspec-', '{fastspec,fastphot}-')
+    fastfile = os.path.basename(fastfile)
+    fastfile = fastfile.replace('fastspec-', '{fastspec,fastphot}-')
+
     fastfiles.append(fastfile)
     nrows.append(len(fast))
     nznews.append(np.sum(zdiff))
@@ -201,6 +203,67 @@ def build_table(specwidths, speclines, photwidths, photlines, specheaders, photh
         else:
             print(''.join(np.repeat('=', width))+' ', end='')            
 
+def _check_infinity_one(args):
+    """Multiprocessing wrapper."""
+    return check_infinity_one(*args) 
+
+def check_infinity_one(fastfile, fastspecdir, specprod_dir):
+
+    log.info('Reading {}'.format(fastfile))
+    fast = Table(fitsio.read(fastfile, ext='FASTSPEC'))#, rows=np.arange(5000)))
+    meta = Table(fitsio.read(fastfile, ext='METADATA'))#, rows=np.arange(5000)))
+
+    log.info('Working on FASTSPEC HDU')
+
+    fixfiles, targetids = [], []
+    for col in fast.colnames:
+        if fast[col].dtype.type == np.str_:
+            continue
+        bad = np.where(np.logical_or(np.isinf(fast[col]), np.isnan(fast[col])))[0]
+        if len(bad) > 0:
+            log.info('Found {} infinities in column {}'.format(len(bad), col))
+            #print(fast['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID'][bad])
+            #targetids.append(fast['TARGETID'][bad].tolist())
+            for ibad in bad:
+                fixfile = 'fastspec '+os.path.join(specprod_dir, 'healpix', fast['SURVEY'][ibad], fast['PROGRAM'][ibad],
+                                                   str(fast['HEALPIX'][ibad]//100), str(fast['HEALPIX'][ibad]),
+                                                   'redrock-{}-{}-{}.fits'.format(fast['SURVEY'][ibad], fast['PROGRAM'][ibad],
+                                                                                  fast['HEALPIX'][ibad]))+' --targetids '+str(fast['TARGETID'][ibad])+' -o fastspec.fits'
+                fixfiles.append(fixfile)
+            
+    if len(fixfiles) > 0:
+        fixfiles = np.unique(fixfiles)
+        print(fixfiles)
+        pdb.set_trace()
+        
+    print()
+
+    log.info('Working on METADATA HDU')
+    for col in meta.colnames:
+        if meta[col].dtype.type == np.str_:
+            continue
+        bad = np.logical_or(np.isinf(meta[col]), np.isnan(meta[col]))
+        if np.sum(bad) > 0:
+            log.info('Found {} infinities in column {}'.format(np.sum(bad), col))
+            print(meta['SURVEY', 'PROGRAM', 'TARGETID'][bad])
+            print()
+            
+    pdb.set_trace()  
+
+def check_infinity(fastspecdir, specprod_dir, specprod, mp=1):
+
+    fastfiles = glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-special-*.fits'.format(specprod)))
+    
+    mpargs = []
+    for fastfile in fastfiles:
+        mpargs.append([fastfile, fastspecdir, specprod_dir])
+        
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            P.map(_check_infinity_one, mpargs)
+    else:
+        [check_infinity_one(*mparg) for mparg in mpargs]
+
 def main():
 
     p = argparse.ArgumentParser()
@@ -208,7 +271,6 @@ def main():
     p.add_argument('--mp', type=int, default=1, help='number of multiprocessing cores')
     p.add_argument('--statistics', action='store_true', help='Do file statistics.')
     p.add_argument('--validate', action='store_true', help='Validate the files.')
-    
     args = p.parse_args()
 
     fastspecdir = '/global/cfs/cdirs/desi/spectro/fastspecfit/'+args.specprod
@@ -234,11 +296,14 @@ def main():
 
     # Validate files.
     if args.validate:
+        # check for infinity and other crap
+        check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp)
+
+        pdb.set_trace()
+        
         # verify that we have all the targets we expect and also summarize the
         # number of targets with corrected redshifts
         check_catalogs(specprod_dir, fastspecdir, args.specprod, mp=args.mp)
 
-        pdb.set_trace()
-        
 if __name__ == '__main__':
     main()
