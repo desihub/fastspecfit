@@ -1427,7 +1427,7 @@ class EMLineFit(ContinuumTools):
             # masked? If so, set everything to zero and move onto the next line.
             lineindx = np.where((emlinewave >= (linezwave - 2.*linesigma_ang)) *
                                 (emlinewave <= (linezwave + 2.*linesigma_ang)))[0]
-            if np.all(oemlineivar[lineindx] == 0):
+            if np.sum(oemlineivar[lineindx] == 0) / len(lineindx) > 0.3:
                 result['{}_AMP'.format(linename)] = 0.0
                 result['{}_VSHIFT'.format(linename)] = 0.0
                 result['{}_SIGMA'.format(linename)] = 0.0

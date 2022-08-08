@@ -915,8 +915,8 @@ class DESISpectra(object):
 
         # All of this business is so we can get the columns in the order we want
         # (i.e., the order that matches the data model).
-        for metacol in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'FIBER',
-                        'NIGHT', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS']:
+        for metacol in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
+                        'EXPID', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS']:
             if metacol in metacols:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():
@@ -953,7 +953,7 @@ class DESISpectra(object):
                 meta[fluxcol].unit = colunit[fluxcol]
 
         out = Table()
-        for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'FIBER', 'NIGHT']:
+        for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID']:
             if col in metacols:
                 out[col] = self.meta[col]
         if fastphot:
