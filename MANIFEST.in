@@ -3,6 +3,7 @@ include README.rst
 include requirements.txt
 
 graft bin
+graft etc
 graft doc
 
 prune build

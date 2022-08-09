@@ -1,16 +1,9 @@
 {
-    "language": "python",
-    "display_name": "docker: fastspecfit",
-    "env": {
-        "REALHOME": "${HOME}",
-        "DESI_ROOT": "/global/cfs/cdirs/desi",
-        "DUST_DIR": "/global/cfs/cdirs/cosmo/data/dust/v0_1",
-        "FASTSPECFIT_TEMPLATES": "/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z"
-    },
-    "argv": [
-        "shifter",
-        "--image=docker:desihub/fastspecfit:latest",
-        "/src/fastspecfit/bin/jupyter-kernel.sh",
-        "{connection_file}"
-    ]
+ "language": "python",
+ "argv": [
+  "/global/cfs/cdirs/desi/spectro/fastspecfit/software/activate_fastspecfit_jupyter.sh",
+  "FastSpecFit",
+  "{connection_file}"
+ ],
+ "display_name": "FastSpecFit"
 }
