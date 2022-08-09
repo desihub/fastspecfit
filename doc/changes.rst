@@ -2,8 +2,12 @@
 FastSpecFit Change Log
 ======================
 
-1.1.0 (not released yet)
+1.0.1 (not released yet)
 ------------------------
+
+* Initial Fuji and Guadalupe VAC documentation [`PR #77`_].
+
+.. _`PR #77`: https://github.com/desihub/fastspecfit/pull/77
 
 
 1.0.0 (2022-08-01)
