@@ -3,23 +3,20 @@
 FastSpecFit Algorithms
 ======================
 
-Under construction.
+**Under construction.**
 
-* SSPs.
+* Document the SSPs.
 * Initial line-sigma estimation.
 * Finding significant lines; masking.  
 * Fast NNLS.
 * Reddening.
-* Velocity dispersion.
+* Velocity dispersion (with criteria).
 * Smooth continuum correction.  
-* Line-fitting (broad, narrow)
+* Line-fitting (broad, narrow).
 * Continuum, EWs, upper limits, etc.
 * K-corrections.
-  
-If the inverse variance on a given absolutely magnitude is zero it means that
-the absolute magnitude was derived from *synthesized* photometry based on the
-best-fitting model (i.e., use with care).
-
-Similarly, if CONTINUUM_AV_IVAR is zero it means that fitted for the (intrinsic)
-dust extinction failed.
-
+* If the inverse variance on a given absolutely magnitude is zero it means that
+  the absolute magnitude was derived from *synthesized* photometry based on the
+  best-fitting model (i.e., use with care).
+* If CONTINUUM_AV_IVAR is zero it means that fitted for the (intrinsic) dust
+  extinction failed.

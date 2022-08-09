@@ -18,8 +18,8 @@ Running ``FastSpecFit`` is accomplished through a handful of high-level Python
 scripts. The two primary, independent scripts which can be run on one (or a
 small number) of `Redrock`_ redshift catalogs are:
 
-  * :ref:`fastspec example`, to model DESI spectrophotometry; and
-  * :ref:`fastphot example`, to model DESI broadband photometry.
+  * ``fastspec``, to model DESI spectrophotometry; and
+  * ``fastphot``, to model DESI broadband photometry.
 
 Note that both scripts require (and assume) DESI spectra and redshits as
 inputs. In addition, there are two key support routines, which we describe in
@@ -354,17 +354,18 @@ need to be fit (not recommended without MPI parallelism!), one would do::
 .. note::  
 
   One must always specify the spectroscopic production when calling
-  ``mpi-fastspecfit``, in this case ``--specprod fuji``. Also, to fit the
-  broadband photometry instead of the DESI spectroscopy, simply call any of the
-  examples in this section with the ``--fastphot`` option::
+  ``mpi-fastspecfit``, in this case ``--specprod fuji``. 
 
-    $> mpi-fastspecfit --specprod fuji --survey sv3 --outdir-data . --plan --fastphot
-    INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=bright
-    INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=dark
-    INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=other
-    INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=backup
-    INFO:mpi.py:309:plan: Found 1023/1023 redrockfiles (left) to do.
-    INFO:mpi.py:326:plan: Skipping 70 files with no targets.
+To fit the broadband photometry instead of the DESI spectroscopy, simply call
+any of the examples in this section with the ``--fastphot`` option::
+
+  $> mpi-fastspecfit --specprod fuji --survey sv3 --outdir-data . --plan --fastphot
+  INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=bright
+  INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=dark
+  INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=other
+  INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=backup
+  INFO:mpi.py:309:plan: Found 1023/1023 redrockfiles (left) to do.
+  INFO:mpi.py:326:plan: Skipping 70 files with no targets.
 
 Finally, ``mpi-fastspecfit`` also knows about the tile-based *cumulative*,
 *per-night*, and *per-exposure* coadds via the ``--coadd-type`` optional

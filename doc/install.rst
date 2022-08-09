@@ -92,7 +92,7 @@ their own environment variable:
   will be updated.
 
 With the preceding caveat in mind, one can set up the remaining dependencies
-with::
+with the following commands::
   
   export DESI_ROOT=/path/to/desi/data
   export DUST_DIR=/path/to/dustmaps
