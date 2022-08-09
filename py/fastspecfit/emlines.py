@@ -1422,7 +1422,7 @@ class EMLineFit(ContinuumTools):
             # masked? If so, set everything to zero and move onto the next line.
             lineindx = np.where((emlinewave >= (linezwave - 2.*linesigma_ang)) *
                                 (emlinewave <= (linezwave + 2.*linesigma_ang)))[0]
-            if np.sum(oemlineivar[lineindx] == 0) / len(lineindx) > 0.3:
+            if len(lineindx) > 0 and np.sum(oemlineivar[lineindx] == 0) / len(lineindx) > 0.3:
                 result['{}_AMP'.format(linename)] = 0.0
                 result['{}_VSHIFT'.format(linename)] = 0.0
                 result['{}_SIGMA'.format(linename)] = 0.0
@@ -1516,11 +1516,11 @@ class EMLineFit(ContinuumTools):
                 # next, get the continuum, the inverse variance in the line-amplitude, and the EW
                 indxlo = np.where((emlinewave > (linezwave - 10*linesigma * linezwave / C_LIGHT)) *
                                   (emlinewave < (linezwave - 3.*linesigma * linezwave / C_LIGHT)) *
-                                  (emlineivar > 0))[0]
+                                  (oemlineivar > 0))[0]
                                   #(emlinemodel == 0))[0]
                 indxhi = np.where((emlinewave < (linezwave + 10*linesigma * linezwave / C_LIGHT)) *
                                   (emlinewave > (linezwave + 3.*linesigma * linezwave / C_LIGHT)) *
-                                  (emlineivar > 0))[0]
+                                  (oemlineivar > 0))[0]
                                   #(emlinemodel == 0))[0]
                 indx = np.hstack((indxlo, indxhi))
     
@@ -1545,12 +1545,14 @@ class EMLineFit(ContinuumTools):
                     #    plt.plot(emlinewave, emlineivar)
                     #    plt.savefig('desi-users/ioannis/tmp/junk.png')
                     #    pdb.set_trace()
-    
+
                     result['{}_CONT'.format(linename)] = cmed # * u.erg/(u.second*u.cm**2*u.Angstrom)
                     result['{}_CONT_IVAR'.format(linename)] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
     
                 if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
                     factor = (1 + redshift) / result['{}_CONT'.format(linename)] # --> rest frame
+                    #if np.abs(factor**2) > 1e5:
+                    #    pdb.set_trace()
                     ew = result['{}_FLUX'.format(linename)] * factor # rest frame [A]
                     ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
     
