@@ -1,5 +1,3 @@
-.. _fujilupe vac:
-
 Fuji and Guadalupe VACs
 =======================
 
