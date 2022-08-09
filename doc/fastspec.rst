@@ -6,10 +6,10 @@ fastspec Data Model
 
 :Summary: Spectroscopic fitting results.
 :Naming Convention:
-    ``fastspec-SURVEY-PROGRAM-HEALPIX.fits``, where
+    ``fastspec-SURVEY-PROGRAM-HEALPIX.fits.gz``, where
     ``SURVEY`` is the survey name (e.g., *main* or *sv3*), ``PROGRAM`` is the
     program name (e.g., *bright* or *dark*), and ``HEALPIX`` is the healpixel number.
-:Regex: ``fastspec-(cmx|main|special|sv1|sv2|sv3)-(backup|bright|dark|other)-[0-9]+\.fits``
+:Regex: ``fastspec-(cmx|main|special|sv1|sv2|sv3)-(backup|bright|dark|other)-[0-9]+\.fits.gz``
 :File Type: FITS
 
 Contents
@@ -18,10 +18,10 @@ Contents
 ====== ============ ======== ======================
 Number EXTNAME      Type     Contents
 ====== ============ ======== ======================
-HDU00_ PRIMARY      IMAGE    Keywords only
-HDU01_ FASTSPEC     BINTABLE Table with spectral fitting results
-HDU02_ METADATA     BINTABLE Table with sample metadata
-HDU03_ MODELS       IMAGE    Model spectra
+HDU00_ PRIMARY      IMAGE    Keywords only.
+HDU01_ FASTSPEC     BINTABLE Table with spectral fitting results.
+HDU02_ METADATA     BINTABLE Table with sample metadata.
+HDU03_ MODELS       IMAGE    Model spectra.
 ====== ============ ======== ======================
 
 FITS Header Units
@@ -796,26 +796,26 @@ Name                   Type        Units      Description
                   Z_RR float64                Redrock redshift.
                PHOTSYS  bytes1                Photometric system (*N* or *S*).
                LS_ID     int64                Unique Legacy Surveys identification number.
-           FIBERFLUX_G float32           nmgy Fiber g-band flux from targeting catalog.
-           FIBERFLUX_R float32           nmgy Fiber r-band flux from targeting catalog.
-           FIBERFLUX_Z float32           nmgy Fiber z-band flux from targeting catalog.
-        FIBERTOTFLUX_G float32           nmgy Fibertot g-band flux from targeting catalog.
-        FIBERTOTFLUX_R float32           nmgy Fibertot r-band flux from targeting catalog.
-        FIBERTOTFLUX_Z float32           nmgy Fibertot z-band flux from targeting catalog.
-                FLUX_G float32           nmgy Total g-band flux from targeting catalog.
-                FLUX_R float32           nmgy Total r-band flux from targeting catalog.
-                FLUX_Z float32           nmgy Total z-band flux from targeting catalog.
-               FLUX_W1 float32           nmgy Total W1-band flux from targeting catalog.
-               FLUX_W2 float32           nmgy Total W2-band flux from targeting catalog.
-               FLUX_W3 float32           nmgy Total W3-band flux from targeting catalog.
-               FLUX_W4 float32           nmgy Total W4-band flux from targeting catalog.
-           FLUX_IVAR_G float32     1 / nmgy^2 Inverse variance of FLUX_G from targeting catalog.
-           FLUX_IVAR_R float32     1 / nmgy^2 Inverse variance of FLUX_R from targeting catalog.
-           FLUX_IVAR_Z float32     1 / nmgy^2 Inverse variance of FLUX_Z from targeting catalog.
-          FLUX_IVAR_W1 float32     1 / nmgy^2 Inverse variance of FLUX_W1 from targeting catalog.
-          FLUX_IVAR_W2 float32     1 / nmgy^2 Inverse variance of FLUX_W2 from targeting catalog.
-          FLUX_IVAR_W3 float32     1 / nmgy^2 Inverse variance of FLUX_W3 from targeting catalog.
-          FLUX_IVAR_W4 float32     1 / nmgy^2 Inverse variance of FLUX_W4 from targeting catalog.
+           FIBERFLUX_G float32           nmgy Fiber g-band flux corrected for Galactic extinction.
+           FIBERFLUX_R float32           nmgy Fiber r-band flux corrected for Galactic extinction.
+           FIBERFLUX_Z float32           nmgy Fiber z-band flux corrected for Galactic extinction.
+        FIBERTOTFLUX_G float32           nmgy Fibertot g-band flux corrected for Galactic extinction.
+        FIBERTOTFLUX_R float32           nmgy Fibertot r-band flux corrected for Galactic extinction.
+        FIBERTOTFLUX_Z float32           nmgy Fibertot z-band flux corrected for Galactic extinction.
+                FLUX_G float32           nmgy Total g-band flux corrected for Galactic extinction.
+                FLUX_R float32           nmgy Total r-band flux corrected for Galactic extinction.
+                FLUX_Z float32           nmgy Total z-band flux corrected for Galactic extinction.
+               FLUX_W1 float32           nmgy Total W1-band flux corrected for Galactic extinction.
+               FLUX_W2 float32           nmgy Total W2-band flux corrected for Galactic extinction.
+               FLUX_W3 float32           nmgy Total W3-band flux corrected for Galactic extinction.
+               FLUX_W4 float32           nmgy Total W4-band flux corrected for Galactic extinction.
+           FLUX_IVAR_G float32      1 / nmgy2 Inverse variance of FLUX_G corrected for Galactic extinction.
+           FLUX_IVAR_R float32      1 / nmgy2 Inverse variance of FLUX_R corrected for Galactic extinction.
+           FLUX_IVAR_Z float32      1 / nmgy2 Inverse variance of FLUX_Z corrected for Galactic extinction.
+          FLUX_IVAR_W1 float32      1 / nmgy2 Inverse variance of FLUX_W1 corrected for Galactic extinction.
+          FLUX_IVAR_W2 float32      1 / nmgy2 Inverse variance of FLUX_W2 corrected for Galactic extinction.
+          FLUX_IVAR_W3 float32      1 / nmgy2 Inverse variance of FLUX_W3 corrected for Galactic extinction.
+          FLUX_IVAR_W4 float32      1 / nmgy2 Inverse variance of FLUX_W4 corrected for Galactic extinction.
                    EBV float32            mag Milky Way foreground dust reddening.
      MW_TRANSMISSION_G float32                Milky Way foreground dust transmission factor [0-1] in the g-band.
      MW_TRANSMISSION_R float32                Milky Way foreground dust transmission factor [0-1] in the r-band.
@@ -831,7 +831,7 @@ HDU03
 
 EXTNAME = MODELS
 
-Best-fitting model spectra.
+Best-fitting model spectra (corrected for Galactic extinction).
 
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
