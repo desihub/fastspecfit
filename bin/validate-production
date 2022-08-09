@@ -207,23 +207,23 @@ def _check_infinity_one(args):
     """Multiprocessing wrapper."""
     return check_infinity_one(*args) 
 
-def check_infinity_one(fastfile, fastspecdir, specprod_dir):
+def check_infinity_one(fastfile, fastspecdir, specprod, specprod_dir):
 
     log.info('Reading {}'.format(fastfile))
     fast = Table(fitsio.read(fastfile, ext='FASTSPEC'))#, rows=np.arange(5000)))
-    meta = Table(fitsio.read(fastfile, ext='METADATA'))#, rows=np.arange(5000)))
+    #meta = Table(fitsio.read(fastfile, ext='METADATA'))#, rows=np.arange(5000)))
 
-    log.info('Working on FASTSPEC HDU')
+    #log.info('Working on FASTSPEC HDU')
 
-    fixfiles, targetids = [], []
+    fixfiles, healpixels = [], []
     for col in fast.colnames:
         if fast[col].dtype.type == np.str_:
             continue
         bad = np.where(np.logical_or(np.isinf(fast[col]), np.isnan(fast[col])))[0]
         if len(bad) > 0:
-            log.info('Found {} infinities in column {}'.format(len(bad), col))
+            #log.info('Found {} infinities in column {}'.format(len(bad), col))
+            healpixels.append(fast['HEALPIX'][bad].tolist())
             #print(fast['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID'][bad])
-            #targetids.append(fast['TARGETID'][bad].tolist())
             for ibad in bad:
                 fixfile = 'fastspec '+os.path.join(specprod_dir, 'healpix', fast['SURVEY'][ibad], fast['PROGRAM'][ibad],
                                                    str(fast['HEALPIX'][ibad]//100), str(fast['HEALPIX'][ibad]),
@@ -231,32 +231,35 @@ def check_infinity_one(fastfile, fastspecdir, specprod_dir):
                                                                                   fast['HEALPIX'][ibad]))+' --targetids '+str(fast['TARGETID'][ibad])+' -o fastspec.fits'
                 fixfiles.append(fixfile)
             
+    if len(healpixels) > 0:
+        healpixels = np.unique(np.hstack(healpixels))
+        cmd = 'mpi-fastspecfit --overwrite --mp 128 --specprod {} --survey {} --program {} --healpix {}'.format(
+            specprod, fast['SURVEY'][0], fast['PROGRAM'][0], ','.join([str(hpx) for hpx in healpixels]))
+        log.info(cmd)
+    else:
+        log.info('No infinities found in specprod={} survey={} program={}!'.format(specprod, fast['SURVEY'][0], fast['PROGRAM'][0]))
+
     if len(fixfiles) > 0:
         fixfiles = np.unique(fixfiles)
-        print(fixfiles)
-        pdb.set_trace()
-        
-    print()
+        #print(fixfiles)
 
-    log.info('Working on METADATA HDU')
-    for col in meta.colnames:
-        if meta[col].dtype.type == np.str_:
-            continue
-        bad = np.logical_or(np.isinf(meta[col]), np.isnan(meta[col]))
-        if np.sum(bad) > 0:
-            log.info('Found {} infinities in column {}'.format(np.sum(bad), col))
-            print(meta['SURVEY', 'PROGRAM', 'TARGETID'][bad])
-            print()
+    #log.info('Working on METADATA HDU')
+    #for col in meta.colnames:
+    #    if meta[col].dtype.type == np.str_:
+    #        continue
+    #    bad = np.logical_or(np.isinf(meta[col]), np.isnan(meta[col]))
+    #    if np.sum(bad) > 0:
+    #        log.info('Found {} infinities in column {}'.format(np.sum(bad), col))
+    #        print(meta['SURVEY', 'PROGRAM', 'TARGETID'][bad])
+    #        print()
             
-    pdb.set_trace()  
-
 def check_infinity(fastspecdir, specprod_dir, specprod, mp=1):
 
-    fastfiles = glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-special-*.fits'.format(specprod)))
+    fastfiles = glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-*-*.fits'.format(specprod)))
     
     mpargs = []
     for fastfile in fastfiles:
-        mpargs.append([fastfile, fastspecdir, specprod_dir])
+        mpargs.append([fastfile, fastspecdir, specprod, specprod_dir])
         
     if mp > 1:
         with multiprocessing.Pool(mp) as P:

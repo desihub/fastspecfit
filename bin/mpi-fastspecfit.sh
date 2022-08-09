@@ -88,5 +88,5 @@ if [[ ! -z $program ]] && [[ $program != "-" ]]; then
     args=$args" --program $program"
 fi
 
-echo python $mpiscript $args
-time python $mpiscript $args
+echo python $mpiscript $args --healpix 9178,9189,9191,9319,9328,9330,10242,10407,10411,10414,11858,11860,11862,14884,14889,16022,26146,26147,27999,45003,45004,45005,45006,45007 --overwrite
+time python $mpiscript $args --healpix 9178,9189,9191,9319,9328,9330,10242,10407,10411,10414,11858,11860,11862,14884,14889,16022,26146,26147,27999,45003,45004,45005,45006,45007 --overwrite

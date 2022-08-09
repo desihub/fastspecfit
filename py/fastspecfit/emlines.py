@@ -4,8 +4,6 @@ fastspecfit.emlines
 
 Methods and tools for fitting emission lines.
 
-python -m cProfile -o fastspec.prof /global/homes/i/ioannis/repos/desihub/fastspecfit/bin/fastspec /global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/80613/20210324/redrock-4-80613-thru20210324.fits -o fastspec.fits --targetids 39633345008634465 --specprod everest
-
 """
 import pdb # for debugging
 
@@ -21,13 +19,10 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import trapz_rebin, C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger(DEBUG)
+log = get_logger()#DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
-
-    ToDo: add lines to mask during continuum-fitting but which we do not want to
-    emission-line fit.
 
     """
     from astropy.table import Table
