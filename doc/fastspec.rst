@@ -6,13 +6,11 @@ fastspec Data Model
 
 :Summary: Spectroscopic fitting results.
 :Naming Convention:
-    ``fastspec-{petal}-{tileid}-{all,deep,night,exposures}.fits``, where
-    ``{petal}`` is the petal or spetrograph number (0-9), ``{tileid}`` is the
-    tileid, and the ``{all}``, ``{deep}``, ``{night}``, or ``{exposures}``
-    suffix indicates which type of spectral coadds (and corresponding redshifts)
-    were fitted (used).
-:Regex: ``fastspec-[0-9]+*+\.fits``
-:File Type: FITS, <1 MB
+    ``fastspec-SURVEY-PROGRAM-HEALPIX.fits``, where
+    ``SURVEY`` is the survey name (e.g., *main* or *sv3*), ``PROGRAM`` is the
+    program name (e.g., *bright* or *dark*), and ``HEALPIX`` is the healpixel number.
+:Regex: ``fastspec-(cmx|main|special|sv1|sv2|sv3)-(backup|bright|dark|other)-[0-9]+\.fits``
+:File Type: FITS
 
 Contents
 ========
@@ -20,9 +18,10 @@ Contents
 ====== ============ ======== ======================
 Number EXTNAME      Type     Contents
 ====== ============ ======== ======================
-HDU00_ PRIMARY      IMAGE    Empty
-HDU01_ FASTSPEC     BINTABLE Fitting results table.
-HDU02_ METADATA     BINTABLE Object metadata table.
+HDU00_ PRIMARY      IMAGE    Keywords only
+HDU01_ FASTSPEC     BINTABLE Table with spectral fitting results
+HDU02_ METADATA     BINTABLE Table with sample metadata
+HDU03_ MODELS       IMAGE    Model spectra
 ====== ============ ======== ======================
 
 FITS Header Units
@@ -36,14 +35,19 @@ EXTNAME = PRIMARY
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Checksum not yet implemented.
+.. collapse:: Required Header Keywords Table
+    :open:
 
-======== ================ ==== ==============================================
-KEY      Example Value    Type Comment
-======== ================ ==== ==============================================
-CHECKSUM EAnFF7l9EAlEE5l9 str  HDU checksum updated 2018-03-29T22:45:34
-DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
-======== ================ ==== ==============================================
+    .. rst-class:: keywords
+
+    ======== ================ ==== ==============================================
+    KEY      Example Value    Type Comment
+    ======== ================ ==== ==============================================
+    SPECPROD fuji             str  Spectroscopic production name
+    COADDTYP healpix          str  Type of spectral coadd (healpix,cumulative,pernight,perexp)
+    CHECKSUM ZHWHZHVFZHVFZHVF str  HDU checksum updated 2022-08-02T19:06:22
+    DATASUM  0                str  data unit checksum updated 2022-08-02T19:06:22
+    ======== ================ ==== ==============================================
 
 Empty HDU.
 
@@ -52,21 +56,24 @@ HDU01
 
 EXTNAME = FASTSPEC
 
-Fitting results.
+Spectroscopic fitting results.
 
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-======== ================ ==== ==============================================
-KEY      Example Value    Type Comment
-======== ================ ==== ==============================================
-NAXIS1   325              int  length of dimension 1
-NAXIS2   1225             int  length of dimension 2
-SPECPROD blanc            str  spectroscopic production name
-COADDTYP deep             str  spectral coadd fitted
-CHECKSUM EAnFF7l9EAlEE5l9 str  HDU checksum updated 2018-03-29T22:45:34
-DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
-======== ================ ==== ==============================================
+.. collapse:: Required Header Keywords Table
+    :open:
+
+    .. rst-class:: keywords
+
+    ======== ================ ==== ==============================================
+    KEY      Example Value    Type Comment
+    ======== ================ ==== ==============================================
+    NAXIS1   3115             int  length of dimension 1
+    NAXIS2   338              int  length of dimension 2
+    CHECKSUM WLDnaKDlWKDlaKDl str  HDU checksum updated 2022-08-03T14:25:08
+    DATASUM  756558178        str  data unit checksum updated 2022-08-03T14:25:08
+    ======== ================ ==== ==============================================
 
 Required Data Table Columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -77,9 +84,16 @@ Required Data Table Columns
 Name                      Type        Units                         Description
 ========================= =========== ============================= ============================================
                  TARGETID       int64                               Unique target ID.
+              SURVEY [1]_      bytes3                               Survey name.
+             PROGRAM [1]_      bytes6                               Program name.
+             HEALPIX [1]_       int32                               Healpixel number.
+              TILEID [2]_       int32                               Tile ID number.
+               FIBER [2]_       int32                               Fiber number.
+               NIGHT [2]_       int32                               Night of observation.
+               EXPID [3]_       int32                               Exposure ID number.
               CONTINUUM_Z     float64                               Stellar continuum redshift.
-          CONTINUUM_COEFF float64[11]                               Continuum coefficients.
-           CONTINUUM_CHI2     float32                               Reduced chi^2 of the continuum fit.
+          CONTINUUM_COEFF float64[16]                               Continuum coefficients.
+          CONTINUUM_RCHI2     float32                               Reduced chi-squared of the stellar continuum fit.
             CONTINUUM_AGE     float32                           Gyr Light-weighted age.
              CONTINUUM_AV     float32                           mag Intrinsic attenuation.
         CONTINUUM_AV_IVAR     float32                      1 / mag2 Inverse variance of CONTINUUM_AV.
@@ -88,9 +102,9 @@ Name                      Type        Units                         Description
           CONTINUUM_SNR_B     float32                               Median signal-to-noise ratio per pixel in *b* camera.
           CONTINUUM_SNR_R     float32                               Median signal-to-noise ratio per pixel in *r* camera.
           CONTINUUM_SNR_Z     float32                               Median signal-to-noise ratio per pixel in *z* camera.
-   CONTINUUM_SMOOTHCORR_B     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *b* camera.
-   CONTINUUM_SMOOTHCORR_R     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *r* camera.
-   CONTINUUM_SMOOTHCORR_Z     float32                               Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *z* camera.
+   CONTINUUM_SMOOTHCORR_B     float32                       percent Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *b* camera.
+   CONTINUUM_SMOOTHCORR_R     float32                       percent Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *r* camera.
+   CONTINUUM_SMOOTHCORR_Z     float32                       percent Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *z* camera.
                    DN4000     float32                               Narrow 4000-A break index (from Balogh et al. 1999) measured from the data.
               DN4000_IVAR     float32                               Inverse variance of DN4000.
              DN4000_MODEL     float32                               Narrow 4000-A break index (from Balogh et al. 1999) measured from the best-fitting continuum model.
@@ -100,9 +114,12 @@ Name                      Type        Units                         Description
        FLUX_SYNTH_MODEL_G     float32                          nmgy g-band flux synthesized from the best-fitting continuum model.
        FLUX_SYNTH_MODEL_R     float32                          nmgy r-band flux synthesized from the best-fitting continuum model.
        FLUX_SYNTH_MODEL_Z     float32                          nmgy z-band flux synthesized from the best-fitting continuum model.
-                 NARROW_Z     float32                        km / s Mean redshift of well-measured narrow rest-frame optical emission lines (defaults to the redrock redshift).
-                  BROAD_Z     float32                        km / s Mean redshift of well-measured broad rest-frame optical emission lines (defaults to the redrock redshift).
-                     UV_Z     float32                        km / s Mean redshift of well-measured rest-frame UV emission lines (defaults to the redrock redshift).
+                    RCHI2     float32                               Reduced chi-squared of the full-spectrum fit (continuum plus emission lines).
+          LINERCHI2_BROAD     float32                               Reduced chi-squared of an emission-line model which includes broad lines.
+          DELTA_LINERCHI2     float32                               Difference in the reduced chi-squared values between an emission-line model with narrow lines only and a model with both broad and narrow lines.
+                 NARROW_Z     float32                        km / s Mean redshift of well-measured narrow rest-frame optical emission lines (defaults to CONTINIUUM_Z).
+                  BROAD_Z     float32                        km / s Mean redshift of well-measured broad rest-frame optical emission lines (defaults to CONTINIUUM_Z).
+                     UV_Z     float32                        km / s Mean redshift of well-measured rest-frame UV emission lines (defaults to CONTINIUUM_Z).
              NARROW_SIGMA     float32                        km / s Mean line-width of well-measured narrow rest-frame optical emission lines.
               BROAD_SIGMA     float32                        km / s Mean line-width of well-measured broad rest-frame optical emission lines.
                  UV_SIGMA     float32                        km / s Mean line-width of well-measured rest-frame UV emission lines.
@@ -114,7 +131,7 @@ Name                      Type        Units                         Description
              OI_1304_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
         OI_1304_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
           OI_1304_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-           OI_1304_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+           OI_1304_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
             OI_1304_SIGMA     float32                        km / s Gaussian emission-line width.
              OI_1304_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
         OI_1304_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -129,7 +146,7 @@ Name                      Type        Units                         Description
           SILIV_1396_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
      SILIV_1396_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
        SILIV_1396_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-        SILIV_1396_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+        SILIV_1396_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
          SILIV_1396_SIGMA     float32                        km / s Gaussian emission-line width.
           SILIV_1396_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
      SILIV_1396_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -144,7 +161,7 @@ Name                      Type        Units                         Description
             CIV_1549_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        CIV_1549_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          CIV_1549_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          CIV_1549_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          CIV_1549_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            CIV_1549_SIGMA     float32                        km / s Gaussian emission-line width.
             CIV_1549_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        CIV_1549_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -159,7 +176,7 @@ Name                      Type        Units                         Description
          SILIII_1892_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
     SILIII_1892_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
       SILIII_1892_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-       SILIII_1892_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+       SILIII_1892_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
         SILIII_1892_SIGMA     float32                        km / s Gaussian emission-line width.
          SILIII_1892_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
     SILIII_1892_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -174,7 +191,7 @@ Name                      Type        Units                         Description
            CIII_1908_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
       CIII_1908_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
         CIII_1908_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-         CIII_1908_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+         CIII_1908_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
           CIII_1908_SIGMA     float32                        km / s Gaussian emission-line width.
            CIII_1908_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
       CIII_1908_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -189,7 +206,7 @@ Name                      Type        Units                         Description
            MGII_2796_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
       MGII_2796_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
         MGII_2796_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-         MGII_2796_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+         MGII_2796_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
           MGII_2796_SIGMA     float32                        km / s Gaussian emission-line width.
            MGII_2796_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
       MGII_2796_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -204,7 +221,7 @@ Name                      Type        Units                         Description
            MGII_2803_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
       MGII_2803_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
         MGII_2803_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-         MGII_2803_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+         MGII_2803_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
           MGII_2803_SIGMA     float32                        km / s Gaussian emission-line width.
            MGII_2803_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
       MGII_2803_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -219,7 +236,7 @@ Name                      Type        Units                         Description
             NEV_3346_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        NEV_3346_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          NEV_3346_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          NEV_3346_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          NEV_3346_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            NEV_3346_SIGMA     float32                        km / s Gaussian emission-line width.
             NEV_3346_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        NEV_3346_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -234,7 +251,7 @@ Name                      Type        Units                         Description
             NEV_3426_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        NEV_3426_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          NEV_3426_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          NEV_3426_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          NEV_3426_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            NEV_3426_SIGMA     float32                        km / s Gaussian emission-line width.
             NEV_3426_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        NEV_3426_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -249,7 +266,7 @@ Name                      Type        Units                         Description
             OII_3726_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        OII_3726_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          OII_3726_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          OII_3726_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          OII_3726_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            OII_3726_SIGMA     float32                        km / s Gaussian emission-line width.
             OII_3726_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        OII_3726_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -264,7 +281,7 @@ Name                      Type        Units                         Description
             OII_3729_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        OII_3729_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          OII_3729_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          OII_3729_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          OII_3729_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            OII_3729_SIGMA     float32                        km / s Gaussian emission-line width.
             OII_3729_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        OII_3729_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -279,7 +296,7 @@ Name                      Type        Units                         Description
           NEIII_3869_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
      NEIII_3869_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
        NEIII_3869_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-        NEIII_3869_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+        NEIII_3869_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
          NEIII_3869_SIGMA     float32                        km / s Gaussian emission-line width.
           NEIII_3869_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
      NEIII_3869_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -289,27 +306,12 @@ Name                      Type        Units                         Description
       NEIII_3869_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
           NEIII_3869_CHI2     float32                               Reduced chi^2 of the line-fit.
           NEIII_3869_NPIX       int32                               Number of pixels attributed to the emission line.
-             HEI_3889_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
-        HEI_3889_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
-            HEI_3889_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
-       HEI_3889_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
-         HEI_3889_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          HEI_3889_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
-           HEI_3889_SIGMA     float32                        km / s Gaussian emission-line width.
-            HEI_3889_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
-       HEI_3889_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
-              HEI_3889_EW     float32                      Angstrom Rest-frame emission-line equivalent width.
-         HEI_3889_EW_IVAR     float32                 1 / Angstrom2 Inverse variance of equivalent width.
-      HEI_3889_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
-        HEI_3889_EW_LIMIT     float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
-            HEI_3889_CHI2     float32                               Reduced chi^2 of the line-fit.
-            HEI_3889_NPIX       int32                               Number of pixels attributed to the emission line.
                    H6_AMP     float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
               H6_AMP_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
                   H6_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
              H6_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
                H6_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-                H6_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+                H6_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
                  H6_SIGMA     float32                        km / s Gaussian emission-line width.
                   H6_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
              H6_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -324,7 +326,7 @@ Name                      Type        Units                         Description
             H6_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        H6_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          H6_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          H6_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          H6_BROAD_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            H6_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
             H6_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        H6_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -339,7 +341,7 @@ Name                      Type        Units                         Description
             HEPSILON_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        HEPSILON_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          HEPSILON_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          HEPSILON_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          HEPSILON_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            HEPSILON_SIGMA     float32                        km / s Gaussian emission-line width.
             HEPSILON_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        HEPSILON_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -354,7 +356,7 @@ Name                      Type        Units                         Description
       HEPSILON_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
  HEPSILON_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
    HEPSILON_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-    HEPSILON_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+    HEPSILON_BROAD_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
      HEPSILON_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
       HEPSILON_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
  HEPSILON_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -369,7 +371,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
               HDELTA_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
          HDELTA_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
            HDELTA_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-            HDELTA_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+            HDELTA_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
              HDELTA_SIGMA     float32                        km / s Gaussian emission-line width.
               HDELTA_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
          HDELTA_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -384,7 +386,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
         HDELTA_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
    HDELTA_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
      HDELTA_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-      HDELTA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+      HDELTA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
        HDELTA_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
         HDELTA_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
    HDELTA_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -399,7 +401,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
               HGAMMA_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
          HGAMMA_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
            HGAMMA_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-            HGAMMA_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+            HGAMMA_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
              HGAMMA_SIGMA     float32                        km / s Gaussian emission-line width.
               HGAMMA_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
          HGAMMA_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -414,7 +416,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
         HGAMMA_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
    HGAMMA_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
      HGAMMA_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-      HGAMMA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+      HGAMMA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
        HGAMMA_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
         HGAMMA_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
    HGAMMA_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -429,7 +431,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
            OIII_4363_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
       OIII_4363_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
         OIII_4363_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-         OIII_4363_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+         OIII_4363_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
           OIII_4363_SIGMA     float32                        km / s Gaussian emission-line width.
            OIII_4363_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
       OIII_4363_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -444,7 +446,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
             HEI_4471_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        HEI_4471_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          HEI_4471_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          HEI_4471_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          HEI_4471_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            HEI_4471_SIGMA     float32                        km / s Gaussian emission-line width.
             HEI_4471_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        HEI_4471_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -459,7 +461,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
            HEII_4686_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
       HEII_4686_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
         HEII_4686_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-         HEII_4686_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+         HEII_4686_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
           HEII_4686_SIGMA     float32                        km / s Gaussian emission-line width.
            HEII_4686_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
       HEII_4686_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -474,7 +476,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
                HBETA_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
           HBETA_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
             HBETA_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-             HBETA_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+             HBETA_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
               HBETA_SIGMA     float32                        km / s Gaussian emission-line width.
                HBETA_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
           HBETA_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -489,7 +491,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
          HBETA_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
     HBETA_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
       HBETA_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-       HBETA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+       HBETA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
         HBETA_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
          HBETA_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
     HBETA_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -504,7 +506,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
            OIII_4959_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
       OIII_4959_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
         OIII_4959_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-         OIII_4959_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+         OIII_4959_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
           OIII_4959_SIGMA     float32                        km / s Gaussian emission-line width.
            OIII_4959_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
       OIII_4959_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -519,7 +521,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
            OIII_5007_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
       OIII_5007_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
         OIII_5007_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-         OIII_5007_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+         OIII_5007_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
           OIII_5007_SIGMA     float32                        km / s Gaussian emission-line width.
            OIII_5007_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
       OIII_5007_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -534,7 +536,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
             NII_5755_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        NII_5755_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          NII_5755_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          NII_5755_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          NII_5755_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            NII_5755_SIGMA     float32                        km / s Gaussian emission-line width.
             NII_5755_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        NII_5755_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -549,7 +551,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
             HEI_5876_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        HEI_5876_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          HEI_5876_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          HEI_5876_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          HEI_5876_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            HEI_5876_SIGMA     float32                        km / s Gaussian emission-line width.
             HEI_5876_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        HEI_5876_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -564,7 +566,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
              OI_6300_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
         OI_6300_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
           OI_6300_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-           OI_6300_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+           OI_6300_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
             OI_6300_SIGMA     float32                        km / s Gaussian emission-line width.
              OI_6300_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
         OI_6300_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -579,7 +581,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
             NII_6548_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        NII_6548_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          NII_6548_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          NII_6548_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          NII_6548_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            NII_6548_SIGMA     float32                        km / s Gaussian emission-line width.
             NII_6548_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        NII_6548_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -594,7 +596,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
               HALPHA_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
          HALPHA_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
            HALPHA_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-            HALPHA_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+            HALPHA_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
              HALPHA_SIGMA     float32                        km / s Gaussian emission-line width.
               HALPHA_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
          HALPHA_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -609,7 +611,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
         HALPHA_BROAD_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
    HALPHA_BROAD_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
      HALPHA_BROAD_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-      HALPHA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+      HALPHA_BROAD_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
        HALPHA_BROAD_SIGMA     float32                        km / s Gaussian emission-line width.
         HALPHA_BROAD_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
    HALPHA_BROAD_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -624,7 +626,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
             NII_6584_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        NII_6584_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          NII_6584_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          NII_6584_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          NII_6584_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            NII_6584_SIGMA     float32                        km / s Gaussian emission-line width.
             NII_6584_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        NII_6584_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -639,7 +641,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
             SII_6716_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        SII_6716_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          SII_6716_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          SII_6716_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          SII_6716_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            SII_6716_SIGMA     float32                        km / s Gaussian emission-line width.
             SII_6716_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        SII_6716_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -654,7 +656,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
             SII_6731_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        SII_6731_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          SII_6731_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          SII_6731_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          SII_6731_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            SII_6731_SIGMA     float32                        km / s Gaussian emission-line width.
             SII_6731_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        SII_6731_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -669,7 +671,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
             OII_7320_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        OII_7320_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          OII_7320_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          OII_7320_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          OII_7320_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            OII_7320_SIGMA     float32                        km / s Gaussian emission-line width.
             OII_7320_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        OII_7320_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -684,7 +686,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
             OII_7330_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
        OII_7330_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
          OII_7330_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-          OII_7330_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+          OII_7330_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
            OII_7330_SIGMA     float32                        km / s Gaussian emission-line width.
             OII_7330_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
        OII_7330_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -699,7 +701,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
            SIII_9069_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
       SIII_9069_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
         SIII_9069_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-         SIII_9069_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+         SIII_9069_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
           SIII_9069_SIGMA     float32                        km / s Gaussian emission-line width.
            SIII_9069_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
       SIII_9069_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -714,7 +716,7 @@ HEPSILON_BROAD_FLUX_LIMIT     float32                 erg / (cm2 s) One-sigma up
            SIII_9532_FLUX     float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
       SIII_9532_FLUX_IVAR     float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
         SIII_9532_BOXFLUX     float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
-         SIII_9532_VSHIFT     float32                        km / s Velocity shift relative to the redrock redshift.
+         SIII_9532_VSHIFT     float32                        km / s Velocity shift relative to CONTINUUM_Z.
           SIII_9532_SIGMA     float32                        km / s Gaussian emission-line width.
            SIII_9532_CONT     float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
       SIII_9532_CONT_IVAR     float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
@@ -736,62 +738,64 @@ Metadata associated with each objected fitted.
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-======== ================ ==== ==============================================
-KEY      Example Value    Type Comment
-======== ================ ==== ==============================================
-NAXIS1   155              int  length of dimension 1
-NAXIS2   3000             int  length of dimension 2
-SPECPROD fuji             str  spectroscopic production name
-COADDTYP healpix          str  type of spectral coadd (*healpix*, *cumulative*, *pernight*, *perexp*)
-CHECKSUM EAnFF7l9EAlEE5l9 str  HDU checksum updated 2018-03-29T22:45:34
-DATASUM  0                str  data unit checksum updated 2018-03-29T22:45:34
-======== ================ ==== ==============================================
+.. collapse:: Required Header Keywords Table
+    :open:
+
+    .. rst-class:: keywords
+
+    ======== ================ ==== ==============================================
+    KEY      Example Value    Type Comment
+    ======== ================ ==== ==============================================
+    NAXIS1   339              int  length of dimension 1
+    NAXIS2   338              int  length of dimension 2
+    CHECKSUM hFY6jCV3hCV3hCV3 str  HDU checksum updated 2022-08-03T14:25:08
+    DATASUM  1759692941       str  data unit checksum updated 2022-08-03T14:25:08
+    ======== ================ ==== ==============================================
 
 Required Data Table Columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. rst-class:: columns
 
 ====================== =========== ========== ==========================================
 Name                   Type        Units      Description
 ====================== =========== ========== ==========================================
               TARGETID   int64                Unique target ID.
+           SURVEY [1]_  bytes3                Survey name.
+          PROGRAM [1]_  bytes6                Program name.
+          HEALPIX [1]_   int32                Healpixel number.
+           TILEID [2]_   int32                Tile ID number.
+            FIBER [2]_   int32                Fiber number.
+            NIGHT [2]_   int32                Night of observation.
+            EXPID [3]_   int32                Exposure ID number.
+           TILEID_LIST    str5                List of tile IDs that went into healpix coadd.
                     RA float64            deg Right ascension from target catalog.
                    DEC float64            deg Declination from target catalog.
-                SURVEY  bytes3                Survey name (e.g., 'sv1'); only present when fitting healpix coadds.
-               PROGRAM  bytes6                Program name (e.g., *bright*, *dark*); only present when fitting healpix coadds.
-               HEALPIX   int32                Healpixel number (nside=64); only present when fitting healpix coadds.
-           TILEID_LIST    str5                List of tile IDs that went into healpix coadd.
-                TILEID   int32                Tile ID number; only present when fitting tile-level (not healpix) coadds.
-                 FIBER   int32                Fiber ID number; only present with TILEID.
-                 NIGHT   int32                Night (or *thrunight* for cumulative coadds); only present with TILEID.
-                 EXPID   int32                Exposure ID number; only present with TILEID and when fitting per-exposure spectra.
+     COADD_FIBERSTATUS   int64                Fiber status bit.
+       CMX_TARGET [4]_   int64                Commissioning (CMX) targeting bit.
            DESI_TARGET   int64                DESI targeting bit.
             BGS_TARGET   int64                BGS targeting bit.
             MWS_TARGET   int64                MWS targeting bit.
            SCND_TARGET   int64                Secondary target targeting bit.
-       SV1_DESI_TARGET   int64                SV1 DESI targeting bit; only present in fuji / Early Data Release.
-        SV1_BGS_TARGET   int64                SV1 BGS targeting bit; only present in fuji / Early Data Release.
-        SV1_MWS_TARGET   int64                SV1 MWS targeting bit; only present in fuji / Early Data Release.
-       SV2_DESI_TARGET   int64                SV2 DESI targeting bit; only present in fuji / Early Data Release.
-        SV2_BGS_TARGET   int64                SV2 BGS targeting bit; only present in fuji / Early Data Release.
-        SV2_MWS_TARGET   int64                SV2 MWS targeting bit; only present in fuji / Early Data Release.
-       SV3_DESI_TARGET   int64                SV3 DESI targeting bit; only present in fuji / Early Data Release.
-        SV3_BGS_TARGET   int64                SV3 BGS targeting bit; only present in fuji / Early Data Release.
-        SV3_MWS_TARGET   int64                SV3 MWS targeting bit; only present in fuji / Early Data Release.
-       SV1_SCND_TARGET   int64                SV1 secondary targeting bit; only present in fuji / Early Data Release.
-       SV2_SCND_TARGET   int64                SV2 secondary targeting bit; only present in fuji / Early Data Release.
-       SV3_SCND_TARGET   int64                SV3 secondary targeting bit; only present in fuji / Early Data Release.
-                     Z float64                Redrock redshift.
+  SV1_DESI_TARGET [4]_   int64                SV1 DESI targeting bit.
+   SV1_BGS_TARGET [4]_   int64                SV1 BGS targeting bit.
+   SV1_MWS_TARGET [4]_   int64                SV1 MWS targeting bit.
+  SV2_DESI_TARGET [4]_   int64                SV2 DESI targeting bit.
+   SV2_BGS_TARGET [4]_   int64                SV2 BGS targeting bit.
+   SV2_MWS_TARGET [4]_   int64                SV2 MWS targeting bit.
+  SV3_DESI_TARGET [4]_   int64                SV3 DESI targeting bit.
+   SV3_BGS_TARGET [4]_   int64                SV3 BGS targeting bit.
+   SV3_MWS_TARGET [4]_   int64                SV3 MWS targeting bit.
+  SV1_SCND_TARGET [4]_   int64                SV1 secondary targeting bit.
+  SV2_SCND_TARGET [4]_   int64                SV2 secondary targeting bit.
+  SV3_SCND_TARGET [4]_   int64                SV3 secondary targeting bit.
+                     Z float64                Redshift based on either Redrock or QuasarNet.
                  ZWARN    int8                Redrock zwarning bit.
              DELTACHI2 float64                Redrock delta-chi-squared.
               SPECTYPE    str6                Redrock spectral classification.
+                  Z_RR float64                Redrock redshift.
                PHOTSYS  bytes1                Photometric system (*N* or *S*).
-     MW_TRANSMISSION_G float32                Milky Way foreground dust transmission factor [0-1] in the g-band.
-     MW_TRANSMISSION_R float32                Milky Way foreground dust transmission factor [0-1] in the r-band.
-     MW_TRANSMISSION_Z float32                Milky Way foreground dust transmission factor [0-1] in the z-band.
-    MW_TRANSMISSION_W1 float32                Milky Way foreground dust transmission factor [0-1] in the W1-band.
-    MW_TRANSMISSION_W2 float32                Milky Way foreground dust transmission factor [0-1] in the W2-band.
-    MW_TRANSMISSION_W3 float32                Milky Way foreground dust transmission factor [0-1] in the W3-band.
-    MW_TRANSMISSION_W4 float32                Milky Way foreground dust transmission factor [0-1] in the W4-band.
+               LS_ID     int64                Unique Legacy Surveys identification number.
            FIBERFLUX_G float32           nmgy Fiber g-band flux from targeting catalog.
            FIBERFLUX_R float32           nmgy Fiber r-band flux from targeting catalog.
            FIBERFLUX_Z float32           nmgy Fiber z-band flux from targeting catalog.
@@ -812,11 +816,55 @@ Name                   Type        Units      Description
           FLUX_IVAR_W2 float32     1 / nmgy^2 Inverse variance of FLUX_W2 from targeting catalog.
           FLUX_IVAR_W3 float32     1 / nmgy^2 Inverse variance of FLUX_W3 from targeting catalog.
           FLUX_IVAR_W4 float32     1 / nmgy^2 Inverse variance of FLUX_W4 from targeting catalog.
+                   EBV float32            mag Milky Way foreground dust reddening.
+     MW_TRANSMISSION_G float32                Milky Way foreground dust transmission factor [0-1] in the g-band.
+     MW_TRANSMISSION_R float32                Milky Way foreground dust transmission factor [0-1] in the r-band.
+     MW_TRANSMISSION_Z float32                Milky Way foreground dust transmission factor [0-1] in the z-band.
+    MW_TRANSMISSION_W1 float32                Milky Way foreground dust transmission factor [0-1] in the W1-band.
+    MW_TRANSMISSION_W2 float32                Milky Way foreground dust transmission factor [0-1] in the W2-band.
+    MW_TRANSMISSION_W3 float32                Milky Way foreground dust transmission factor [0-1] in the W3-band.
+    MW_TRANSMISSION_W4 float32                Milky Way foreground dust transmission factor [0-1] in the W4-band.
 ====================== =========== ========== ==========================================
 
-Notes and Examples
-==================
+HDU03
+-----
 
+EXTNAME = MODELS
 
-Upcoming changes
-================
+Best-fitting model spectra.
+
+Required Header Keywords
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. collapse:: Required Header Keywords Table
+    :open:
+
+    .. rst-class:: keywords
+
+    ======== ============================ ===== ==============================================
+    KEY      Example Value Type Comment
+    ======== ============================ ===== ==============================================
+    NAXIS1   7781                         int   number of pixels
+    NAXIS2   3                            int   number of models
+    NAXIS3   338                          int   number of objects
+    BUNIT    10**-17 erg/(s cm2 Angstrom) str   flux unit
+    CUNIT1   Angstrom                     str   wavelength unit
+    CTYPE1   WAVE                         str   type of axis
+    CRVAL1   3600.0                       float wavelength of pixel CRPIX1 (Angstrom)
+    CRPIX1   0                            int   0-indexed pixel number corresponding to CRVAL1
+    CDELT1   0.8                          float pixel size (Angstrom)
+    DC-FLAG  0                            int   0 = linear wavelength vector
+    AIRORVAC vac                          str   wavelengths in vacuum (vac)
+    CHECKSUM Q9eTT8bTQ8bTQ8bT             str   HDU checksum updated 2022-08-03T14:25:08
+    DATASUM  3074907107                   str   data unit checksum updated 2022-08-03T14:25:08
+    ======== ============================ ===== ==============================================
+
+Data: FITS image [int32, 7781x3,338]
+
+.. [1] Column only present when fitting healpix coadds.
+       
+.. [2] Column only present when fitting cumulative, per-night, or per-expopsure tile-based coadds.
+       
+.. [3] Column only present when fitting per-exposure tile-based coadds.
+
+.. [4] Column only present in the ``fuji`` (Commissioning and Survey Validation) spectroscopic production. 

@@ -70,6 +70,8 @@ documented `here`_.
    model<fastspec datamodel>` and :ref:`fastphot data model<fastphot datamodel>`
    pages for a full description of the contents of these files.
 
+.. _`merged catalogs`:
+
 Merged Catalogs
 ~~~~~~~~~~~~~~~
 
@@ -157,26 +159,65 @@ Updated QSO Redshifts
 For a small but important fraction of quasar (QSO) targets, the redshift
 determined by Redrock is incorrect. To mitigate this issue, the DESI team has
 developed an approach to rectify the redshift nominally measured by Redrock
-using the machine-learning algorithm, ``QuasarNet``. In the Fuji and Guadalupe
+using the machine-learning algorithm ``QuasarNet``. In the Fuji and Guadalupe
 ``FastSpecFit`` VACs we adopt the same algorithm. 
 
 Specifically, let ``redrockfile`` and ``qnfile`` be the full pathname to a given
-`redrock catalog`_ and `QuasarNet catalog`_. We 
+`redrock catalog`_ and `QuasarNet catalog`_, respectively. We update the Redrock
+redshift ``Z`` (and store the original Redrock redshift in ``Z_RR``; see the
+:ref:`fastspec data model<fastspec datamodel>` and :ref:`fastphot data
+model<fastphot datamodel>`) using the following bit of code:
 
 .. code-block:: python
 
   import fitsio
   import numpy as np
+  from astropy.table import Table
 
-  zb = fitsio.read(redrockfile, 'REDSHIFTS')
-  qn = fitsio.read(qnfile, 'QN_RR')
+  zb = Table(fitsio.read(redrockfile, 'REDSHIFTS'))
+  qn = Table(fitsio.read(qnfile, 'QN_RR'))
 
-  linecols = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
+  QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 
   qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in linecols]), axis=0) > 0.95
   qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
-  if np.any(qn['IS_QSO_QN_NEW_RR']):
+  if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
       zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
+
+For reference, the table below summarizes the number of objects with updated
+redshifts in each of the Fuji and Guadalupe :ref:`merged catalogs`:
+
+.. rst-class:: columns
+
+========================================== ================= ===============================
+Catalog                                    Number of Targets Number with Corrected Redshifts
+========================================== ================= ===============================
+{fastspec,fastphot}-fuji-cmx-other.fits    2,771             63
+{fastspec,fastphot}-fuji-special-dark.fits 35,647            389
+{fastspec,fastphot}-fuji-sv1-backup.fits   3,683             119
+{fastspec,fastphot}-fuji-sv1-bright.fits   126,677           402
+{fastspec,fastphot}-fuji-sv1-dark.fits     235,881           4,656
+{fastspec,fastphot}-fuji-sv1-other.fits    34,150            372
+{fastspec,fastphot}-fuji-sv2-backup.fits   107               0
+{fastspec,fastphot}-fuji-sv2-bright.fits   46,510            151
+{fastspec,fastphot}-fuji-sv2-dark.fits     52,771            1,185
+{fastspec,fastphot}-fuji-sv3-backup.fits   1,564             32
+{fastspec,fastphot}-fuji-sv3-bright.fits   265,324           649
+{fastspec,fastphot}-fuji-sv3-dark.fits     592,394           5,973
+{fastspec,fastphot}-fuji.fits              1,397,479         13,991
+========================================== ================= ===============================
+
+.. rst-class:: columns
+
+================================================= ================= ===============================
+Catalog                                           Number of Targets Number with Corrected Redshifts
+================================================= ================= ===============================
+{fastspec,fastphot}-guadalupe-main-bright.fits    1,092,038         2,080
+{fastspec,fastphot}-guadalupe-main-dark.fits      1,131,601         26,741
+{fastspec,fastphot}-guadalupe-special-bright.fits 9,598             13
+{fastspec,fastphot}-guadalupe-special-dark.fits   3,847             121
+{fastspec,fastphot}-guadalupe.fits                2,237,084         28,955
+================================================= ================= ===============================
 
 Known Issues
 ------------
