@@ -29,7 +29,7 @@ software, which are not guaranteed to be stable. To load a specific set of
 versions you can do::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh 22.5
-  module load fastspecfit/v1.0.0
+  module load fastspecfit/v1.0.1
   export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z
 
 Alternatively, some users may want to access ``FastSpecFit`` through `NERSC`_'s
@@ -109,16 +109,16 @@ Finally, for production runs and for expert users, ``FastSpecFit`` is also
 available as a Docker container which is served publicly in the
 `DockerHub/desihub`_ repository.
 
-For example, on a laptop one would retrieve (or update) and enter the *v1.0.0*
+For example, on a laptop one would retrieve (or update) and enter the *v1.0.1*
 version of the container with::
   
-  docker pull desihub/fastspecfit:v1.0.0
-  docker run -it desihub/fastspecfit:v1.0.0
+  docker pull desihub/fastspecfit:v1.0.1
+  docker run -it desihub/fastspecfit:v1.0.1
 
 Alternatively, at `NERSC`_ one would need to use `shifter`_::
 
-  shifterimg pull docker:desihub/fastspecfit:v1.0.0
-  shifter --image docker:desihub/fastspecfit:v1.0.0 bash
+  shifterimg pull docker:desihub/fastspecfit:v1.0.1
+  shifter --image docker:desihub/fastspecfit:v1.0.1 bash
 
 However, neither of the preceding commands define the required environment
 variables, although we provide a simple setup script which does. For simple

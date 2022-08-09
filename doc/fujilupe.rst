@@ -38,8 +38,8 @@ Guadalupe (DR1 Supplement) https://data.desi.lbl.gov/public/dr1/vac/fastspecfit/
    DESI Collaborators may access the catalogs directly at `NERSC`_ at the
    following directories::
   
-     /global/cfs/cdirs/desi/public/edr/vac/lsdr9-photometry/fuji/v1.0
-     /global/cfs/cdirs/desi/public/dr1/vac/lsdr9-photometry/guadalupe/v1.0
+     /global/cfs/cdirs/desi/public/edr/vac/fastspecfit/fuji/v1.0
+     /global/cfs/cdirs/desi/public/dr1/vac/fastspecfit/guadalupe/v1.0
 
 .. highlight:: default
 
