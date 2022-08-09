@@ -1551,8 +1551,6 @@ class EMLineFit(ContinuumTools):
     
                 if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
                     factor = (1 + redshift) / result['{}_CONT'.format(linename)] # --> rest frame
-                    #if np.abs(factor**2) > 1e5:
-                    #    pdb.set_trace()
                     ew = result['{}_FLUX'.format(linename)] * factor # rest frame [A]
                     ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
     
