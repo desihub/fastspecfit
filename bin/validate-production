@@ -249,7 +249,7 @@ def check_infinity_one(fastfile, fastspecdir, specprod, specprod_dir, fastphot=F
 
     if len(fixfiles) > 0:
         fixfiles = np.unique(fixfiles)
-        print(fixfiles)
+        #print(fixfiles)
 
     #log.info('Working on METADATA HDU')
     #for col in meta.colnames:
@@ -266,7 +266,7 @@ def check_infinity(fastspecdir, specprod_dir, specprod, mp=1, fastphot=False):
     if fastphot:
         fastfiles = glob(os.path.join(fastspecdir, 'catalogs', 'fastphot-{}-*-*.fits'.format(specprod)))
     else:
-        fastfiles = glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-main-dark.fits'.format(specprod)))
+        fastfiles = glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-*-*.fits'.format(specprod)))
         
     mpargs = []
     for fastfile in fastfiles:
@@ -312,7 +312,6 @@ def main():
     if args.validate:
         # check for infinity and other crap
         check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp)
-        pdb.set_trace()
         check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp, fastphot=True)
         
         # verify that we have all the targets we expect and also summarize the
