@@ -16,16 +16,21 @@ standard dependencies. Here, we describe three different ways of setting up
 1. NERSC Installation
 ---------------------
 
-At `NERSC`_ ``FastSpecFit`` is part of the standard DESI software stack and can
-be loaded trivially. In a login or interactive node simply run the following
-commands and you are read to go::
+At `NERSC`_, ``FastSpecFit`` can be loaded trivially on top of the standard DESI
+software stack. In a login or interactive node simply run the following commands
+and you are ready to go::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
-  
-  export DESI_ROOT=/global/cfs/cdirs/desi
   export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z
-  export DUST_DIR=/global/cfs/cdirs/cosmo/data/dust/v0_1
+
+Note that these commands will load the development (latest) versions of all the
+software, which are not guaranteed to be stable. To load a specific set of
+versions you can do::
+
+  source /global/cfs/cdirs/desi/software/desi_environment.sh 22.5
+  module load fastspecfit/v1.0.1
+  export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z
 
 Alternatively, some users may want to access ``FastSpecFit`` through `NERSC`_'s
 `JupyterHub`_ notebook server. To set up the kernel first do::
@@ -78,7 +83,7 @@ their own environment variable:
   * ``DESI_ROOT``, which specifies the top-level location of the DESI data;
   * ``DUST_DIR``, which specifies the location of the `Schlegel, Finkbeiner, &
     Davis dust maps`_; and
-  * ``FASTSPECFIT_TEMPLATES``, which specifies the location of the simple
+  * ``FASTSPECFIT_TEMPLATES``, which indicates the location of the simple
     stellar population (SSP) templates used to model the stellar continuum.
 
 .. note::
@@ -87,16 +92,14 @@ their own environment variable:
   will be updated.
 
 With the preceding caveat in mind, one can set up the remaining dependencies
-with::
+with the following commands::
   
   export DESI_ROOT=/path/to/desi/data
   export DUST_DIR=/path/to/dustmaps
   export FASTSPECFIT_TEMPLATES=/path/to/fastspecfit/templates
 
-  mkdir -p $DUST_DIR/maps
+  wget -rk -np -nH --cut-dirs 5 -A fits -P $DUST_DIR "https://portal.nersc.gov/project/cosmo/data/dust/v0_1/maps"
   
-**Finish writing these instructions.**
-
 .. _docker installation:
 
 3. Using Docker
@@ -106,16 +109,16 @@ Finally, for production runs and for expert users, ``FastSpecFit`` is also
 available as a Docker container which is served publicly in the
 `DockerHub/desihub`_ repository.
 
-For example, on a laptop one would retrieve (or update) and enter the *v1.0.0*
+For example, on a laptop one would retrieve (or update) and enter the *v1.0.1*
 version of the container with::
   
-  docker pull desihub/fastspecfit:v1.0.0
-  docker run -it desihub/fastspecfit:v1.0.0
+  docker pull desihub/fastspecfit:v1.0.1
+  docker run -it desihub/fastspecfit:v1.0.1
 
 Alternatively, at `NERSC`_ one would need to use `shifter`_::
 
-  shifterimg pull docker:desihub/fastspecfit:v1.0.0
-  shifter --image docker:desihub/fastspecfit:v1.0.0 bash
+  shifterimg pull docker:desihub/fastspecfit:v1.0.1
+  shifter --image docker:desihub/fastspecfit:v1.0.1 bash
 
 However, neither of the preceding commands define the required environment
 variables, although we provide a simple setup script which does. For simple
@@ -127,8 +130,6 @@ interactive work at `NERSC`_ (e.g., in a login node) do::
 
   /path/to/fastspecfit/setup/script/fastspecfit-setup.sh shifter
   source /path/to/fastspecfit/setup/script/fastspecfit-setup.sh env
-
-  **Need to update this shell script so the version can be specified.**
 
 .. note::
   To run ``FastSpecFit`` on a large sample of objects (or for a full production

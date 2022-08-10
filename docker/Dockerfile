@@ -68,7 +68,7 @@ ENV DESIMODEL_VERSION 0.17.0
 ENV DESITARGET_VERSION 2.5.0
 ENV DESISPEC_VERSION 0.53.2
 ENV SPECLITE_VERSION v0.16
-ENV FASTSPECFIT_VERSION v1.0.0
+ENV FASTSPECFIT_VERSION v1.0.1
 
 RUN pip3 install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
 RUN pip3 install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel
