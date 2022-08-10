@@ -17,7 +17,7 @@ try: # this fails when building the documentation
 except:
     C_LIGHT = 299792.458
 
-def ivar2var(ivar, clip=1e-3, sigma=False):
+def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
     """Safely convert an inverse variance to a variance. Note that we clip at 1e-3
     by default, not zero.
     
@@ -28,6 +28,8 @@ def ivar2var(ivar, clip=1e-3, sigma=False):
         # Try clipping at zero.
         goodmask = ivar > 0 # True is good
         if np.count_nonzero(goodmask) == 0:
+            if allmasked_ok:
+                return var, goodmask
             errmsg = 'All values are masked!'
             log.critical(errmsg)
             raise ValueError(errmsg)

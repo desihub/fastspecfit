@@ -25,20 +25,9 @@ def get_ntargets_one(specfile, makeqa=False):
         ntargets = fitsio.FITS(specfile)[1].get_nrows() # fragile?
     else:
         from fastspecfit.io import ZWarningMask
-        
         zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z', 'ZWARN'])
-        fm = fitsio.read(specfile, 'FIBERMAP', columns=['TARGETID', 'OBJTYPE'])#, 'COADD_FIBERSTATUS', 'PHOTSYS'])
-        J = ((zb['Z'] > 0.001) *
-             #(zb['ZWARN'] <= 4) *
-             #(zb['SPECTYPE'] == 'GALAXY') *
-             #(fm['PHOTSYS'] != 'G') *
-             #(fm['COADD_FIBERSTATUS'] == 0) *
-             (fm['OBJTYPE'] == 'TGT') *
-             (fm['TARGETID'] > 0)
-             )
-        nodata = zb['ZWARN'] & ZWarningMask.NODATA != 0
-        if np.sum(nodata) > 0:
-            J = J[np.logical_not(nodata)]
+        fm = fitsio.read(specfile, 'FIBERMAP', columns=['TARGETID', 'OBJTYPE'])
+        J = ((zb['Z'] > 0.001) * (fm['OBJTYPE'] == 'TGT') * (zb['ZWARN'] & ZWarningMask.NODATA == 0))
         ntargets = np.sum(J)
     return ntargets
 
@@ -102,18 +91,8 @@ def group_redrockfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
             from fastspecfit.io import ZWarningMask
             #ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
             zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z', 'ZWARN'])
-            fm = fitsio.read(specfile, 'FIBERMAP', columns=['TARGETID', 'OBJTYPE'])#, 'COADD_FIBERSTATUS', 'PHOTSYS'])
-            J = ((zb['Z'] > 0.001) *
-                 #(zb['ZWARN'] <= 4) *
-                 #(zb['SPECTYPE'] == 'GALAXY') *
-                 #(fm['PHOTSYS'] != 'G') *
-                 #(fm['COADD_FIBERSTATUS'] == 0) *
-                 (fm['OBJTYPE'] == 'TGT') *
-                 (fm['TARGETID'] > 0)
-                 )
-            nodata = zb['ZWARN'] & ZWarningMask.NODATA != 0
-            if np.sum(nodata) > 0:
-                J = J[np.logical_not(nodata)]
+            fm = fitsio.read(specfile, 'FIBERMAP', columns=['TARGETID', 'OBJTYPE'])
+            J = ((zb['Z'] > 0.001) * (fm['OBJTYPE'] == 'TGT') * (zb['ZWARN'] & ZWarningMask.NODATA == 0))
             nt = np.sum(J)
             ntargets[i] = nt
         log.debug(i, j, specfiles[j], ntargets[i])

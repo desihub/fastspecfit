@@ -5,9 +5,11 @@ FastSpecFit Change Log
 1.0.1 (not released yet)
 ------------------------
 
+* Additional cleanup needed to finish Fujilupe processing [`PR #78`_].
 * Initial Fuji and Guadalupe VAC documentation [`PR #77`_].
 
 .. _`PR #77`: https://github.com/desihub/fastspecfit/pull/77
+.. _`PR #78`: https://github.com/desihub/fastspecfit/pull/78
 
 
 1.0.0 (2022-08-01)

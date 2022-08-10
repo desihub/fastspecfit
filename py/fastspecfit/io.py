@@ -54,6 +54,7 @@ REDSHIFTCOLS = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
 # quasarnet afterburner columns to read
 QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
           'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
+QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 
 # targeting and Tractor columns to read from disk
 #TARGETCOLS = ['TARGETID', 'RA', 'DEC', 'FLUX_W3', 'FLUX_W4', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
@@ -389,15 +390,10 @@ class DESISpectra(object):
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=READFMCOLS)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-                # also update mpi.get_ntargets_one
+                # need to also update mpi.get_ntargets_one
                 fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
-                                   (meta['OBJTYPE'] == 'TGT') *
-                                   (meta['TARGETID'] > 0) *
-                                   (zb['ZWARN'] <= zwarnmax))[0]
-                # trim on the NODATA bit
-                nodata = zb['ZWARN'][fitindx] & ZWarningMask.NODATA != 0
-                if np.sum(nodata) > 0:
-                    fitindx = fitindx[np.logical_not(nodata)]
+                                   (meta['OBJTYPE'] == 'TGT') * (zb['ZWARN'] <= zwarnmax) *
+                                   (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -441,11 +437,11 @@ class DESISpectra(object):
                 qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
                 assert(np.all(qn['TARGETID'] == meta['TARGETID']))
                 log.info('Updating QSO redshifts using a QN threshold of 0.95.')
-                qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']]), axis=0) > 0.95
+                qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > 0.95
                 qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
                 #zb.add_column(zb['Z'], name='Z_RR', index=2) # add it after 'Z'
                 zb['Z_RR'] = zb['Z'] # add it at the end
-                if np.any(qn['IS_QSO_QN_NEW_RR']):
+                if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
                     zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
                 del qn
             # add an empty Z_RR column?
@@ -919,8 +915,8 @@ class DESISpectra(object):
 
         # All of this business is so we can get the columns in the order we want
         # (i.e., the order that matches the data model).
-        for metacol in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'FIBER',
-                        'NIGHT', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS']:
+        for metacol in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
+                        'EXPID', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS']:
             if metacol in metacols:
                 meta[metacol] = self.meta[metacol]
                 if metacol in colunit.keys():
@@ -957,7 +953,7 @@ class DESISpectra(object):
                 meta[fluxcol].unit = colunit[fluxcol]
 
         out = Table()
-        for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'FIBER', 'NIGHT']:
+        for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID']:
             if col in metacols:
                 out[col] = self.meta[col]
         if fastphot:

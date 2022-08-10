@@ -218,7 +218,7 @@ def main():
                  coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                  healpix=args.healpix, tile=args.tile, night=args.night,
                  fastphot=args.fastphot, outdir_data=args.outdir_data,
-                 outdir_html=args.outdir_html)
+                 outdir_html=args.outdir_html, overwrite=args.overwrite)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
                         makeqa=args.makeqa, outdir_data=args.outdir_data,
