@@ -45,14 +45,14 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
+    'sphinx_toolbox.collapse',
     napoleon_extension
 ]
 
 # Configuration for intersphinx, copied from astropy.
 intersphinx_mapping = {
-    'python': ('http://docs.python.org/', None),
-    # 'python3': ('http://docs.python.org/3/', path.abspath(path.join(path.dirname(__file__), 'local/python3links.inv'))),
-    'numpy': ('http://docs.scipy.org/doc/numpy/', None),
+    'python': ('http://docs.python.org/3/', None),
+    'numpy': ('https://numpy.org/doc/stable/', None),
     'scipy': ('http://docs.scipy.org/doc/scipy/reference/', None),
     'matplotlib': ('http://matplotlib.org/', None),
     'astropy': ('http://docs.astropy.org/en/stable/', None),
@@ -73,7 +73,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'fastspecfit'
-copyright = u'2014-2022, John Moustakas & the DESI Collaboration'
+copyright = u'2019-2022, John Moustakas & the DESI Collaboration'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -182,7 +182,11 @@ except ImportError:
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-#html_static_path = ['_static']
+html_static_path = ['_static']
+
+# These paths are either relative to html_static_path
+# or fully qualified paths (eg. https://...)
+html_css_files = ['fastspecfit.css']
 
 # Add any extra paths that contain custom files (such as robots.txt or
 # .htaccess) here, relative to this directory. These files are copied
@@ -251,7 +255,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-  ('index', 'fastspecfit.tex', u'fastspecfit Documentation',
+  ('index', 'fastspecfit.tex', u'FastSpecFit Documentation',
    u'DESI', 'manual'),
 ]
 
@@ -295,7 +299,7 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  ('index', 'fastspecfit', u'fastspecfit Documentation',
+  ('index', 'fastspecfit', u'FastSpecFit Documentation',
    u'DESI', 'fastspecfit', 'One line description of project.',
    'Miscellaneous'),
 ]
