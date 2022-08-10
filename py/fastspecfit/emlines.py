@@ -19,7 +19,7 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import trapz_rebin, C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger()#DEBUG)
+log = get_logger(DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -1422,7 +1422,8 @@ class EMLineFit(ContinuumTools):
             # masked? If so, set everything to zero and move onto the next line.
             lineindx = np.where((emlinewave >= (linezwave - 2.*linesigma_ang)) *
                                 (emlinewave <= (linezwave + 2.*linesigma_ang)))[0]
-            if len(lineindx) > 0 and np.sum(oemlineivar[lineindx] == 0) / len(lineindx) > 0.3:
+            
+            if len(lineindx) > 0 and np.sum(oemlineivar[lineindx] == 0) / len(lineindx) > 0.3: # use original ivar
                 result['{}_AMP'.format(linename)] = 0.0
                 result['{}_VSHIFT'.format(linename)] = 0.0
                 result['{}_SIGMA'.format(linename)] = 0.0
@@ -1448,7 +1449,7 @@ class EMLineFit(ContinuumTools):
                     else:
                         lineindx += pad
                         # the padded pixels can have ivar==0
-                        good = emlineivar[lineindx] > 0
+                        good = oemlineivar[lineindx] > 0 # use the original ivar
                         lineindx = lineindx[good]
     
                 npix = len(lineindx)
