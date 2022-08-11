@@ -19,7 +19,7 @@ import numpy as np
 from scipy import constants
 C_LIGHT = constants.c / 1000.0 # [km/s]
 
-ssppath = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
+ssppath = '/global/cfs/cdirs/desi/external/templates/SSP-CKC14z'
 version = 'v1.1'
 
 def _CKC2fits(metallicity='Z0.0190'):

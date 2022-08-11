@@ -39,7 +39,7 @@ outdir_html=/global/cfs/cdirs/desi/users/ioannis/fastspecfit
 
 export DESI_ROOT='/global/cfs/cdirs/desi'
 export DUST_DIR='/global/cfs/cdirs/cosmo/data/dust/v0_1'
-export FASTSPECFIT_TEMPLATES='/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
+export FASTSPECFIT_TEMPLATES='/global/cfs/cdirs/desi/external/templates/SSP-CKC14z'
 
 export TMPCACHE=$(mktemp -d)
 export MPLCONFIGDIR=$TMPCACHE/matplotlib
