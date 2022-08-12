@@ -22,7 +22,6 @@ and you are ready to go::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
-  export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z
 
 Note that these commands will load the development (latest) versions of all the
 software, which are not guaranteed to be stable. To load a specific set of
@@ -30,7 +29,6 @@ versions you can do::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh 22.5
   module load fastspecfit/v1.0.1
-  export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z
 
 Alternatively, some users may want to access ``FastSpecFit`` through `NERSC`_'s
 `JupyterHub`_ notebook server. To set up the kernel first do::
@@ -39,7 +37,7 @@ Alternatively, some users may want to access ``FastSpecFit`` through `NERSC`_'s
   wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit/kernel.json \
     https://raw.githubusercontent.com/desihub/fastspecfit/main/etc/jupyter-kernel.json
 
-Then, in `JupyterHub`_, simply select the *fastspecfit* kernel and you are all
+Then, in `JupyterHub`_, simply select the *FastSpecFit* kernel and you are all
 set!
 
 .. _laptop installation:
@@ -49,10 +47,10 @@ set!
 
 To install ``FastSpecFit`` and all its dependencies on a laptop we recommend a
 dedicated `conda`_ environment. For example, to install everything transparently
-into an environment called *fastspecfit* one would do::
+into an environment called, e.g., *fastconda* one would do::
 
   conda create -y --name fastspecfit python numpy scipy numba astropy matplotlib seaborn
-  conda activate fastspecfit
+  conda activate fastconda
   pip install fitsio healpy speclite
   
   for package in desiutil desimodel desitarget desispec fastspecfit; do
@@ -62,8 +60,8 @@ into an environment called *fastspecfit* one would do::
 Alternatively, some users may want the DESI software to be installed in a more
 accessible location (e.g., */path/to/desi/code*), in which case one would do::
   
-  conda create -y --name fastspecfit python numpy scipy numba astropy matplotlib seaborn
-  conda activate fastspecfit
+  conda create -y --name fastconda python numpy scipy numba astropy matplotlib seaborn
+  conda activate fastconda
   pip install fitsio healpy speclite
 
   export DESI_CODE=/path/to/desi/code
@@ -87,18 +85,23 @@ their own environment variable:
     stellar population (SSP) templates used to model the stellar continuum.
 
 .. note::
-  Currently, the DESI data and spectral templates are only available to DESI
-  collaborators; however, once the data are publicly released these instructions
-  will be updated.
+   
+  Currently, the DESI data are only available to DESI collaborators; however,
+  the `Early Data Release (EDR)`_ is expected to be publicly available in early
+  2023 and other data releases will be announced in the `DESI Data Release`_
+  page, after which point the instructions here will be updated.
 
 With the preceding caveat in mind, one can set up the remaining dependencies
 with the following commands::
-  
+
   export DESI_ROOT=/path/to/desi/data
   export DUST_DIR=/path/to/dustmaps
-  export FASTSPECFIT_TEMPLATES=/path/to/fastspecfit/templates
+  export FASTSPECFIT_TEMPLATES=/path/to/templates/SSP-CKC14z
 
-  wget -rk -np -nH --cut-dirs 5 -A fits -P $DUST_DIR "https://portal.nersc.gov/project/cosmo/data/dust/v0_1/maps"
+  wget -r -np -nH --cut-dirs 5 -A fits -P $DUST_DIR \
+    "https://portal.nersc.gov/project/cosmo/data/dust/v0_1/maps"
+  wget -r -e robots=off -np -nH --cut-dirs 4 -A fits -P $FASTSPECFIT_TEMPLATES \
+    "https://data.desi.lbl.gov/public/external/templates/SSP-CKC14z/v1.0"
   
 .. _docker installation:
 
@@ -148,3 +151,8 @@ interactive work at `NERSC`_ (e.g., in a login node) do::
 
 .. _`shifter`: https://docs.nersc.gov/development/shifter/
 
+.. _`Early Data Release (EDR)`: https://data.desi.lbl.gov/doc/releases/edr/
+
+.. _`Data Release 1 (DR1)`: https://data.desi.lbl.gov/doc/releases/dr1
+
+.. _`DESI Data Release`: https://data.desi.lbl.gov
