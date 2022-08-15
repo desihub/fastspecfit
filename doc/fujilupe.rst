@@ -229,9 +229,10 @@ To report projects or to request new features please `open a ticket`_.
 Acknowledgements
 ----------------
 
-For questions (or problems) regarding these catalogs or its construction, please
-`open a ticket`_ and/or contact `John Moustakas`_. We are grateful for important
-contributions to the VACs presented herein from the following individuals:
+For questions (or problems) regarding these catalogs or their construction,
+please `open a ticket`_ and/or contact `John Moustakas`_. We are grateful for
+important contributions to the VACs presented herein from the following
+individuals:
 
 * Stephen Bailey (Lawrence Berkeley National Lab)
 * Rebecca Canning (University of Portsmouth)
@@ -244,6 +245,23 @@ contributions to the VACs presented herein from the following individuals:
 * David Setton (University of Pittsburgh)
 * Benjamin Weaver (NSF's NOIRLab)
 
+JM gratefully acknowledges funding support for this work from the
+U.S. Department of Energy, Office of Science, Office of High Energy Physics
+under Award Number DE-SC0020086.
+
+DESI research is supported by the Director, Office of Science, Office of High
+Energy Physics of the U.S. Department of Energy under Contract
+No. DE–AC02–05CH11231, and by the National Energy Research Scientific Computing
+Center, a DOE Office of Science User Facility under the same contract;
+additional support for DESI is provided by the U.S. National Science Foundation,
+Division of Astronomical Sciences under Contract No. AST-0950945 to the NSF’s
+National Optical-Infrared Astronomy Research Laboratory; the Science and
+Technologies Facilities Council of the United Kingdom; the Gordon and Betty
+Moore Foundation; the Heising-Simons Foundation; the French Alternative Energies
+and Atomic Energy Commission (CEA); the National Council of Science and
+Technology of Mexico (CONACYT); the Ministry of Science and Innovation of Spain
+(MICINN), and by the `DESI Member Institutions`_.
+
 .. _`DESI Early Data Release (DESI/EDR)`: https://data.desi.lbl.gov/public/edr
 .. _`DESI Data Release 1 (DESI/DR1)`: https://data.desi.lbl.gov/public/dr1
 .. _`DESI/EDR`: https://data.desi.lbl.gov/public/edr
@@ -254,3 +272,4 @@ contributions to the VACs presented herein from the following individuals:
 .. _`quasarnet catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_qn-SURVEY-PROGRAM-PIXNUM.html
 .. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
 .. _`John Moustakas`: mailto:jmoustakas@siena.edu
+.. _`DESI Member Institutions`: https://www.desi.lbl.gov/collaborating-institutions

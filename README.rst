@@ -20,8 +20,9 @@ This repository contains code and documentation for performing fast spectral
 synthesis and emission-line fitting of `DESI`_ spectra and broadband
 photometry. For extensive details please see the `latest documentation`_.
 
-`FastSpecFit`_ is free software licensed under a 3-clause BSD-style license. For
-details see the ``LICENSE.rst`` file.
+JM gratefully acknowledges funding support for this work from the
+U.S. Department of Energy, Office of Science, Office of High Energy Physics
+under Award Number DE-SC0020086.
 
 | John Moustakas  
 | Siena College
