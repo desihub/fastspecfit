@@ -223,8 +223,26 @@ Known Issues
 ------------
 
 This section documents any issues or problems which were identified with these
-VACs after their final release. To date, no issues have been identified!
+VACs after their final release. To date, no major issues have been identified!
+To report projects or to request new features please `open a ticket`_.
 
+Acknowledgements
+----------------
+
+For questions (or problems) regarding these catalogs or its construction, please
+`open a ticket`_ and/or contact `John Moustakas`_. We are grateful for important
+contributions to the VACs presented herein from the following individuals:
+
+* Stephen Bailey (Lawrence Berkeley National Lab)
+* Rebecca Canning (University of Portsmouth)
+* Victoria Fawcett (Durham University)  
+* Stephanie Juneau (NSF's NOIRLab)
+* Dustin Lang (Perimeter Institute of Theoretical Physics)
+* Adam Myers (University of Wyoming)
+* Ragadeepika Pucha (University of Arizona)
+* Khaled Said (Australian National University)  
+* David Setton (University of Pittsburgh)
+* Benjamin Weaver (NSF's NOIRLab)
 
 .. _`DESI Early Data Release (DESI/EDR)`: https://data.desi.lbl.gov/public/edr
 .. _`DESI Data Release 1 (DESI/DR1)`: https://data.desi.lbl.gov/public/dr1
@@ -234,5 +252,5 @@ VACs after their final release. To date, no issues have been identified!
 .. _`here`: https://data.desi.lbl.gov/doc/organization/
 .. _`redrock catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/redrock-SURVEY-PROGRAM-PIXNUM.html
 .. _`quasarnet catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_qn-SURVEY-PROGRAM-PIXNUM.html
-
-
+.. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
+.. _`John Moustakas`: mailto:jmoustakas@siena.edu

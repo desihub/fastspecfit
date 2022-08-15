@@ -1,7 +1,7 @@
 .. _algorithms:
 
-FastSpecFit Algorithms
-======================
+Algorithms
+==========
 
 **Under construction.**
 

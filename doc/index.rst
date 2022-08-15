@@ -25,6 +25,7 @@ Contents
    algorithms.rst
    api.rst
    changes.rst
+  
 
 Value-Added Catalogs
 --------------------
@@ -43,9 +44,8 @@ Data Model
    fastspec.rst
    fastphot.rst
 
-Indices and tables
-------------------
+Indices & Tables
+----------------
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+  :ref:`genindex`
+  :ref:`modindex`
