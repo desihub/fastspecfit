@@ -1,9 +1,14 @@
-======================
-FastSpecFit Change Log
-======================
+==========
+Change Log
+==========
 
-1.0.1 (not released yet)
+1.0.2 (not released yet)
 ------------------------
+
+
+
+1.0.1 (2022-08-11)
+------------------
 
 * Additional cleanup needed to finish Fujilupe processing [`PR #78`_].
 * Initial Fuji and Guadalupe VAC documentation [`PR #77`_].
