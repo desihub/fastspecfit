@@ -47,5 +47,6 @@ Data Model
 Indices & Tables
 ----------------
 
-  :ref:`genindex`
-  :ref:`modindex`
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
