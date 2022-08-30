@@ -230,9 +230,12 @@ Acknowledgements
 ----------------
 
 For questions (or problems) regarding these catalogs or their construction,
-please `open a ticket`_ and/or contact `John Moustakas`_. We are grateful for
-important contributions to the VACs presented herein from the following
-individuals:
+please `open a ticket`_ and/or contact `John Moustakas`_. 
+
+JM gratefully acknowledges funding support for this work from the
+U.S. Department of Energy, Office of Science, Office of High Energy Physics
+under Award Number DE-SC0020086. We also gratefully acknowledge important
+contributions to the VACs presented herein from the following individuals:
 
 * Stephen Bailey (Lawrence Berkeley National Lab)
 * Rebecca Canning (University of Portsmouth)
@@ -244,10 +247,6 @@ individuals:
 * Khaled Said (Australian National University)  
 * David Setton (University of Pittsburgh)
 * Benjamin Weaver (NSF's NOIRLab)
-
-JM gratefully acknowledges funding support for this work from the
-U.S. Department of Energy, Office of Science, Office of High Energy Physics
-under Award Number DE-SC0020086.
 
 DESI research is supported by the Director, Office of Science, Office of High
 Energy Physics of the U.S. Department of Energy under Contract
