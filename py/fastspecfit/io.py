@@ -266,9 +266,8 @@ class DESISpectra(object):
         from desispec.io.photo import gather_tractorphot
 
         if zmin <= 0.0:
-            errmsg = 'zmin must be >= 0.'
-            log.critical(errmsg)
-            raise ValueError(errmsg)
+            errmsg = 'zmin should generally be >= 0; proceed with caution!'
+            log.warning(errmsg)
         
         if zmax is None:
             zmax = 99.0
