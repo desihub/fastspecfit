@@ -64,7 +64,7 @@ heii_broad_4686   4686.8655    0.1   True   True   HeII-$\lambda$4686           
        nii_6584   6585.277     0.1   False  False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
        sii_6716   6718.294     1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
        sii_6731   6732.673     1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
-       oii_7320   7322.0018    0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
-       oii_7330   7332.7506    0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
-      siii_9069   9071.1034    0.1   False  False  [SIII]-$\lambda$9069                         siii_9069
-      siii_9532   9533.2274    0.1   False  False  [SIII]-$\lambda$9532                         siii_9532
+       oii_7320   7322.01      0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
+       oii_7330   7331.69      0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
+      siii_9069   9071.39      0.1   False  False  [SIII]-$\lambda$9069                         siii_9069
+      siii_9532   9533.71      0.1   False  False  [SIII]-$\lambda$9532                         siii_9532
