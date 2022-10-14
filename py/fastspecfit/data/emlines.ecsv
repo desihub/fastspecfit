@@ -33,8 +33,8 @@ name restwave amp isbalmer isbroad nicename plotgroup
       mgii_2803   2803.5324    1.0   False  True   MgII-$\lambda\lambda$2796,2803               mgii_2796_2803
        nev_3346   3346.7828    0.1   False  False  [NeV]-$\lambda$3346                          nev_3346
        nev_3426   3426.8637    0.1   False  False  [NeV]-$\lambda$3426                          nev_3426
-       oii_3726   3727.092     1.0   False  False  [OII]-$\lambda\lambda$3726,29                oii_3726_29
-       oii_3729   3729.874     1.0   False  False  [OII]-$\lambda\lambda$3726,29                oii_3726_29
+       oii_3726   3727.0919    1.0   False  False  [OII]-$\lambda\lambda$3726,29                oii_3726_29
+       oii_3729   3729.8750    1.0   False  False  [OII]-$\lambda\lambda$3726,29                oii_3726_29
      neiii_3869   3869.8611    1.0   False  False  [NeIII]-$\lambda$3869+H6                     neiii_3869_h6
              h6   3890.1576    0.1   True   False  [NeIII]-$\lambda$3869+H6                     neiii_3869_h6
        h6_broad   3890.1576    0.1   True   True   [NeIII]-$\lambda$3869+H6                     neiii_3869_h6
@@ -51,20 +51,20 @@ name restwave amp isbalmer isbroad nicename plotgroup
 heii_broad_4686   4686.8655    0.1   True   True   HeII-$\lambda$4686                           heii_4686
           hbeta   4862.683     1.0   True   False  H$\beta$-$\lambda$4861                       hbeta
     hbeta_broad   4862.683     1.0   True   True   H$\beta$-$\lambda$4861                       hbeta
-      oiii_4959   4960.295     1.0   False  False  [OIII]-$\lambda\lambda$4959,5007             oiii_doublet
-      oiii_5007   5008.239     1.0   False  False  [OIII]-$\lambda\lambda$4959,5007             oiii_doublet
+      oiii_4959   4960.2937    1.0   False  False  [OIII]-$\lambda\lambda$4959,5007             oiii_doublet
+      oiii_5007   5008.2383    1.0   False  False  [OIII]-$\lambda\lambda$4959,5007             oiii_doublet
        nii_5755   5756.1887    0.1   False  False  [NII]-$\lambda$5755                          nii_5755
        hei_5876   5877.2690    0.1   True   False  HeI-$\lambda$5876                            hei_5876
  hei_broad_5876   5877.2690    0.1   True   True   HeI-$\lambda$5876                            hei_5876
         oi_6300   6302.0435    0.1   False  False  [OI]-$\lambda$6300+[SIII]-$\lambda$6312      oi_6300_siii_6312
       siii_6312   6313.8062    0.1   False  False  [OI]-$\lambda$6300+[SIII]-$\lambda$6312      oi_6300_siii_6312
-       nii_6548   6549.852     0.1   False  False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
+       nii_6548   6549.8578    0.1   False  False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
          halpha   6564.613     1.0   True   False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
    halpha_broad   6564.613     1.0   True   True   H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
-       nii_6584   6585.277     0.1   False  False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
-       sii_6716   6718.294     1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
-       sii_6731   6732.673     1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
-       oii_7320   7322.01      0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
-       oii_7330   7331.69      0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
-      siii_9069   9071.39      0.1   False  False  [SIII]-$\lambda$9069                         siii_9069
-      siii_9532   9533.71      0.1   False  False  [SIII]-$\lambda$9532                         siii_9532
+       nii_6584   6585.2696    0.1   False  False  H$\alpha$+[NII]-$\lambda\lambda$6548,84      halpha_nii_6548_48
+       sii_6716   6718.2913    1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
+       sii_6731   6732.6705    1.0   False  False  [SII]-$\lambda\lambda$6716,31                sii_6716_31
+       oii_7320   7321.731     0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
+       oii_7330   7332.199     0.1   False  False  [OII]-$\lambda\lambda$7320,30                oii_7320_30
+      siii_9069   9071.103     0.1   False  False  [SIII]-$\lambda$9069                         siii_9069
+      siii_9532   9533.227     0.1   False  False  [SIII]-$\lambda$9532                         siii_9532
