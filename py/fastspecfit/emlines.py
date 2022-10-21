@@ -764,7 +764,6 @@ class EMLineModel(Fittable1DModel):
 
         # tie lines together
         _tie_lines(self)
-        pdb.set_trace()
 
     def _emline_spectrum(self, *lineargs):
         """Simple wrapper to build an emission-line spectrum.
@@ -1229,7 +1228,6 @@ class EMLineFit(ContinuumTools):
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
-        pdb.set_trace()
         initfit = _clean_linefit(initfit, init_amplitudes, init_sigmas)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
         log.info('Initial line-fitting with {} free parameters took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
@@ -1753,10 +1751,14 @@ class EMLineFit(ContinuumTools):
                     outprefix, metadata['TILEID'], metadata['NIGHT'],
                     metadata['EXPID'], metadata['TARGETID']))
         elif coadd_type == 'custom':
-            title = 'Tile: {}, TargetID/Fiber: {}/{}'.format(
-                    metadata['TILEID'], metadata['TARGETID'], metadata['FIBER'])
-            pngfile = os.path.join(outdir, '{}-{}-{}.png'.format(
-                    outprefix, metadata['TILEID'], metadata['TARGETID']))
+            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+                    metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
+            #title = 'Tile: {}, TargetID/Fiber: {}/{}'.format(
+            #        metadata['TILEID'], metadata['TARGETID'], metadata['FIBER'])
+            #pngfile = os.path.join(outdir, '{}-{}-{}.png'.format(
+            #        outprefix, metadata['TILEID'], metadata['TARGETID']))
         else:
             pass
 

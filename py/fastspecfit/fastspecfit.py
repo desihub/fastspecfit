@@ -117,6 +117,9 @@ def parse(options=None):
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not allow for broad Balmer and Helium line-fitting.')
     parser.add_argument('--ssptemplates', type=str, default=None, help='Optional name of the SSP templates.')
+    parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
+    parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
+    parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--dr9dir', type=str, default=None, help='Optional directory name for the DR9 photometry.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
@@ -171,7 +174,10 @@ def fastspec(args=None, comm=None):
     t0 = time.time()
 
     Spec.select(args.redrockfiles, firsttarget=args.firsttarget,
-                targetids=targetids, ntargets=args.ntargets)
+                targetids=targetids, ntargets=args.ntargets,
+                redrockfile_prefix=args.redrockfile_prefix,
+                specfile_prefix=args.specfile_prefix,
+                qnfile_prefix=args.qnfile_prefix)
     if len(Spec.specfiles) == 0:
         return
 
@@ -254,7 +260,10 @@ def fastphot(args=None, comm=None):
     # Read the data.
     t0 = time.time()
     Spec.select(args.redrockfiles, firsttarget=args.firsttarget,
-                targetids=targetids, ntargets=args.ntargets)
+                targetids=targetids, ntargets=args.ntargets,
+                redrockfile_prefix=args.redrockfile_prefix,
+                specfile_prefix=args.specfile_prefix,
+                qnfile_prefix=args.qnfile_prefix)
     if len(Spec.specfiles) == 0:
         return
     data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)

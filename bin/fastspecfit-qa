@@ -29,6 +29,7 @@ def parse(options=None):
     parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
         night (only defined for coadd-type 'pernight' and 'perexp').""")
     parser.add_argument('--redux_dir', default=None, type=str, help='Top-level path to the reduced spectra.')
+    parser.add_argument('--redrockfiles', nargs='*', help='Optional full path to redrock file(s).')    
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
@@ -93,6 +94,10 @@ def main(args=None, comm=None):
     
     fastfit, metadata = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
                                tiles=args.tile, nights=args.night)
+    if coadd_type == 'custom' and args.redrockfiles is None:
+        errmsg = 'redrockfiles input is required if coadd_type==custom'
+        log.critical(errmsg)
+        raise IOError(errmsg)
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
@@ -105,7 +110,9 @@ def main(args=None, comm=None):
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
 
-    def _wrap_qa(redrockfile, indx):
+    def _wrap_qa(redrockfile, indx=None):
+        if indx is None:
+            indx = np.arange(len(fastfit))
         targetids = fastfit['TARGETID'][indx]
         Spec.select(redrockfiles=redrockfile, targetids=targetids)
         data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True, remember_coadd=True)
@@ -138,6 +145,9 @@ def main(args=None, comm=None):
                         redrockfile = os.path.join(args.redux_dir, specprod, 'healpix', str(survey), str(program), str(pixel // 100), 
                                                    str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
                         _wrap_qa(redrockfile, indx)
+    elif coadd_type == 'custom':
+        for redrockfile in args.redrockfiles:
+            _wrap_qa(redrockfile)
     else:
         allspecprods = metadata['SPECPROD'].data
         alltiles = metadata['TILEID'].astype(str).data

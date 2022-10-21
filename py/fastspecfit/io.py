@@ -45,7 +45,8 @@ EXPFMCOLS = {
     'perexp': ['TARGETID', 'TILEID', 'FIBER', 'EXPID'],
     'pernight': ['TARGETID', 'TILEID', 'FIBER'],
     'cumulative': ['TARGETID', 'TILEID', 'FIBER'],
-    'healpix': ['TARGETID', 'TILEID'] # tileid will be an array
+    'healpix': ['TARGETID', 'TILEID'], # tileid will be an array
+    'custom': ['TARGETID', 'TILEID'], # tileid will be an array
     }
 
 # redshift columns to read
@@ -238,7 +239,7 @@ class DESISpectra(object):
             Prefix of the spectroscopic coadds corresponding to the input
             Redrock file(s). Defaults to `coadd-`.
         qnfile_prefix : str
-            Prefix of the QuasarNet afterburner file. Defaults to `coadd-`.
+            Prefix of the QuasarNet afterburner file. Defaults to `qso_qn-`.
 
         Attributes
         ----------
@@ -302,6 +303,11 @@ class DESISpectra(object):
             if not os.path.isfile(redrockfile):
                 log.warning('File {} not found!'.format(redrockfile))
                 continue
+
+            if not redrockfile_prefix in redrockfile:
+                errmsg = 'Redrockfile {} missing standard prefix {}; please specify redrockfile_prefix argument.'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
             
             specfile = redrockfile.replace(redrockfile_prefix, specfile_prefix)
             if not os.path.isfile(specfile):
@@ -318,10 +324,6 @@ class DESISpectra(object):
             # Gather some coadd information from the header. Note: this code is
             # only compatible with Fuji & Guadalupe headers and later.
             hdr = fitsio.read_header(specfile, ext=0)
-            if not 'SPGRP' in hdr:
-                errmsg = 'SPGRP header card missing from spectral file {}'.format(specfile)
-                log.critical(errmsg)
-                raise ValueError(errmsg)
 
             specprod = getdep(hdr, 'SPECPROD')
             if hasattr(self, 'specprod'):
@@ -337,7 +339,13 @@ class DESISpectra(object):
             else:
                 TARGETINGCOLS = TARGETINGBITS['default']
 
-            self.coadd_type = hdr['SPGRP']
+            if 'SPGRP' in hdr:
+                self.coadd_type = hdr['SPGRP']
+            else:
+                errmsg = 'SPGRP header card missing from spectral file {}'.format(specfile)
+                log.warning(errmsg)
+                self.coadd_type = 'custom'
+
             #log.info('specprod={}, coadd_type={}'.format(self.specprod, self.coadd_type))
 
             if self.coadd_type == 'healpix':
@@ -353,7 +361,13 @@ class DESISpectra(object):
                 # the class!
                 #self.hpxnside = hdr['HPXNSIDE']
                 #self.hpxnest = hdr['HPXNEST']
-                
+            elif self.coadd_type == 'custom':
+                survey = 'custom'
+                program = 'custom'
+                healpix = np.int32(0)
+                thrunight = None
+                log.info('specprod={}, coadd_type={}, survey={}, program={}, healpix={}'.format(
+                    self.specprod, self.coadd_type, survey, program, healpix))
             else:
                 tileid = np.int32(hdr['TILEID'])
                 petal = np.int16(hdr['PETAL'])
@@ -474,13 +488,21 @@ class DESISpectra(object):
                 #meta['TILEID_LIST'][M] = ' '.join(np.unique(expmeta['TILEID'][I]).astype(str))
                 if self.coadd_type == 'healpix':
                     alltiles.append(expmeta['TILEID'][I][0]) # store just the zeroth tile for gather_targetphot, below
+                elif self.coadd_type == 'custom':
+                    alltiles.append(expmeta['TILEID'][I][0]) # store just the zeroth tile for gather_targetphot, below
                 else:
                     alltiles.append(tileid)
             if self.coadd_type == 'healpix':                    
                 meta['TILEID_LIST'] = tileid_list
+            elif self.coadd_type == 'custom':
+                meta['TILEID_LIST'] = tileid_list
 
             # Gather additional info about this pixel.
             if self.coadd_type == 'healpix':
+                meta['SURVEY'] = survey
+                meta['PROGRAM'] = program
+                meta['HEALPIX'] = healpix
+            elif self.coadd_type == 'custom':
                 meta['SURVEY'] = survey
                 meta['PROGRAM'] = program
                 meta['HEALPIX'] = healpix
