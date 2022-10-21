@@ -32,7 +32,7 @@ def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False):
+def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False, broadlinefit=True):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
     
     #log.info('Continuum-fitting object {}'.format(iobj))
@@ -55,7 +55,8 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False):
 
     # Fit the emission-line spectrum.
     t0 = time.time()
-    emfit, emmodel = EMFit.fit(data, continuummodel, smooth_continuum, verbose=verbose)
+    emfit, emmodel = EMFit.fit(data, continuummodel, smooth_continuum,
+                               verbose=verbose, broadlinefit=broadlinefit)
     for col in emfit.colnames:
         out[col] = emfit[col]
     log.info('Line-fitting object {} [targetid={}] took {:.2f} sec'.format(
@@ -113,6 +114,8 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
+    parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
+                        help='Do not allow for broad Balmer and Helium line-fitting.')
     parser.add_argument('--ssptemplates', type=str, default=None, help='Optional name of the SSP templates.')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--dr9dir', type=str, default=None, help='Optional directory name for the DR9 photometry.')
@@ -183,7 +186,7 @@ def fastspec(args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.verbose)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.verbose, args.broadlinefit)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing

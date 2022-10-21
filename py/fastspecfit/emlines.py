@@ -19,7 +19,7 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import trapz_rebin, C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger()#DEBUG)
+log = get_logger(DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -764,6 +764,7 @@ class EMLineModel(Fittable1DModel):
 
         # tie lines together
         _tie_lines(self)
+        pdb.set_trace()
 
     def _emline_spectrum(self, *lineargs):
         """Simple wrapper to build an emission-line spectrum.
@@ -1005,7 +1006,7 @@ class EMLineFit(ContinuumTools):
         return emlinemodel
     
     def fit(self, data, continuummodel, smooth_continuum, synthphot=True,
-            maxiter=5000, accuracy=1e-2, verbose=False):
+            maxiter=5000, accuracy=1e-2, verbose=False, broadlinefit=True):
         """Perform the fit minimization / chi2 minimization.
         
         EMLineModel object
@@ -1200,6 +1201,8 @@ class EMLineFit(ContinuumTools):
         #self.EMLineModel.halpha_sigma.tied = False
         #self.EMLineModel.nii_6584_sigma.tied = False
         #self.EMLineModel.nii_6548_sigma.tied = False
+        #self.EMLineModel.siii_9069_vshift.tied = None
+        #self.EMLineModel.siii_9532_vshift.tied = None
         #self.EMLineModel.mgii_2800_vshift.bounds = [None, None]
         #self.EMLineModel.mgii_2800_sigma = 5000.0
         #self.EMLineModel.hdelta_amp.bounds = [None, None]
@@ -1226,6 +1229,7 @@ class EMLineFit(ContinuumTools):
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
+        pdb.set_trace()
         initfit = _clean_linefit(initfit, init_amplitudes, init_sigmas)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
         log.info('Initial line-fitting with {} free parameters took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
@@ -1243,7 +1247,7 @@ class EMLineFit(ContinuumTools):
                     #print(data['wave'][icam][linepix])
 
         # Require minimum XX pixels.
-        if len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10: 
+        if broadlinefit == True or (len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10): 
             broadlinepix = np.hstack(broadlinepix)
 
             t0 = time.time()
@@ -1298,7 +1302,10 @@ class EMLineFit(ContinuumTools):
             else:
                 bestfit = broadfit
         else:
-            log.info('Too few pixels centered on candidate broad emission lines.')
+            if broadlinefit:
+                log.info('Too few pixels centered on candidate broad emission lines.')
+            else:
+                log.info('Skipping broad-line fitting.')
             bestfit = initfit
             linechi2_init = 0.0
             linechi2_broad = 0.0
