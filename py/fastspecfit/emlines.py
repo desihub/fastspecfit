@@ -1558,7 +1558,7 @@ class EMLineFit(ContinuumTools):
                     result['{}_CONT_IVAR'.format(linename)] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
     
                 if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
-                    factor = (1 + redshift) / result['{}_CONT'.format(linename)] # --> rest frame
+                    factor = 1 / ((1 + redshift) * result['{}_CONT'.format(linename)]) # --> rest frame
                     ew = result['{}_FLUX'.format(linename)] * factor # rest frame [A]
                     ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
     
