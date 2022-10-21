@@ -36,8 +36,8 @@ def read_emlines():
 # doublet ratios are always tied
 def _tie_nii_amp(model):
     """
-    [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.022e-21
-    [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.949e-21
+    [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.02198e-21
+    [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.94901e-21
     """
     return model.nii_6584_amp / 2.9421 # 2.936
 
@@ -50,22 +50,24 @@ def _tie_oiii_amp(model):
 
 #def _tie_oii_blue_amp(model):
 #    """
-#    [O2] (2-->1): airwave: 3728.8145 vacwave: 3729.8750 emissivity: 1.948e-21
-#    [O2] (3-->1): airwave: 3726.0322 vacwave: 3727.0919 emissivity: 1.444e-21
+#    [O2] (2-->1): airwave: 3728.8145 vacwave: 3729.8750 emissivity: 1.95864e-21
+#    [O2] (3-->1): airwave: 3726.0322 vacwave: 3727.0919 emissivity: 1.43734e-21
 #    """
-#    return model.oii_3729_amp / 1.3490
+#    return model.oii_3729_amp / 1.3627
     
 def _tie_oii_red_amp(model):
     """
-    [O2] (4-->2): airwave: 7319.9849 vacwave: 7322.0018 emissivity: 3.229e-22
-    [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.692e-22
+    [O2] (5-->2): airwave: 7318.9185 vacwave: 7320.9350 emissivity: 8.18137e-24
+    [O2] (4-->2): airwave: 7319.9849 vacwave: 7322.0018 emissivity: 2.40519e-23
+    [O2] (5-->3): airwave: 7329.6613 vacwave: 7331.6807 emissivity: 1.35614e-23
+    [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.27488e-23
     """
-    return model.oii_7320_amp / 1.9085
+    return model.oii_7320_amp / 1.2251
     
 #def _tie_siii_amp(model):
 #    """
-#    [S3] (4-->2): airwave: 9068.6140 vacwave: 9071.1034 emissivity: 8.10672e-21
-#    [S3] (4-->3): airwave: 9530.6129 vacwave: 9533.2274 emissivity: 2.00141e-20
+#    [S3] (4-->2): airwave: 9068.6140 vacwave: 9071.1034 emissivity: 7.63518e-21
+#    [S3] (4-->3): airwave: 9530.6129 vacwave: 9533.2274 emissivity: 1.88499e-20
 #    """
 #    return model.siii_9532_amp / 2.4688
     
@@ -1003,7 +1005,7 @@ class EMLineFit(ContinuumTools):
         return emlinemodel
     
     def fit(self, data, continuummodel, smooth_continuum, synthphot=True,
-            maxiter=5000, accuracy=1e-2, verbose=False):
+            maxiter=5000, accuracy=1e-2, verbose=False, broadlinefit=True):
         """Perform the fit minimization / chi2 minimization.
         
         EMLineModel object
@@ -1198,6 +1200,8 @@ class EMLineFit(ContinuumTools):
         #self.EMLineModel.halpha_sigma.tied = False
         #self.EMLineModel.nii_6584_sigma.tied = False
         #self.EMLineModel.nii_6548_sigma.tied = False
+        #self.EMLineModel.siii_9069_vshift.tied = None
+        #self.EMLineModel.siii_9532_vshift.tied = None
         #self.EMLineModel.mgii_2800_vshift.bounds = [None, None]
         #self.EMLineModel.mgii_2800_sigma = 5000.0
         #self.EMLineModel.hdelta_amp.bounds = [None, None]
@@ -1241,7 +1245,7 @@ class EMLineFit(ContinuumTools):
                     #print(data['wave'][icam][linepix])
 
         # Require minimum XX pixels.
-        if len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10: 
+        if broadlinefit == True or (len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10): 
             broadlinepix = np.hstack(broadlinepix)
 
             t0 = time.time()
@@ -1296,7 +1300,10 @@ class EMLineFit(ContinuumTools):
             else:
                 bestfit = broadfit
         else:
-            log.info('Too few pixels centered on candidate broad emission lines.')
+            if broadlinefit:
+                log.info('Too few pixels centered on candidate broad emission lines.')
+            else:
+                log.info('Skipping broad-line fitting.')
             bestfit = initfit
             linechi2_init = 0.0
             linechi2_broad = 0.0
@@ -1551,7 +1558,7 @@ class EMLineFit(ContinuumTools):
                     result['{}_CONT_IVAR'.format(linename)] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
     
                 if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
-                    factor = (1 + redshift) / result['{}_CONT'.format(linename)] # --> rest frame
+                    factor = 1 / ((1 + redshift) * result['{}_CONT'.format(linename)]) # --> rest frame
                     ew = result['{}_FLUX'.format(linename)] * factor # rest frame [A]
                     ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
     
@@ -1744,10 +1751,14 @@ class EMLineFit(ContinuumTools):
                     outprefix, metadata['TILEID'], metadata['NIGHT'],
                     metadata['EXPID'], metadata['TARGETID']))
         elif coadd_type == 'custom':
-            title = 'Tile: {}, TargetID/Fiber: {}/{}'.format(
-                    metadata['TILEID'], metadata['TARGETID'], metadata['FIBER'])
-            pngfile = os.path.join(outdir, '{}-{}-{}.png'.format(
-                    outprefix, metadata['TILEID'], metadata['TARGETID']))
+            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+                    metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
+            #title = 'Tile: {}, TargetID/Fiber: {}/{}'.format(
+            #        metadata['TILEID'], metadata['TARGETID'], metadata['FIBER'])
+            #pngfile = os.path.join(outdir, '{}-{}-{}.png'.format(
+            #        outprefix, metadata['TILEID'], metadata['TARGETID']))
         else:
             pass
 

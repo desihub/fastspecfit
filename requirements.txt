@@ -9,4 +9,4 @@ sphinx-toolbox
 git+https://github.com/desihub/speclite.git@v0.16#egg=speclite
 git+https://github.com/desihub/desimodel.git@0.17.0#egg=desimodel
 git+https://github.com/desihub/desitarget.git@2.5.0#egg=desitarget
-git+https://github.com/desihub/desispec.git@0.53.2#egg=desispec
+git+https://github.com/desihub/desispec.git@0.54.0#egg=desispec

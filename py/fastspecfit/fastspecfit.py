@@ -32,7 +32,7 @@ def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False):
+def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False, broadlinefit=True):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
     
     #log.info('Continuum-fitting object {}'.format(iobj))
@@ -55,7 +55,8 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False):
 
     # Fit the emission-line spectrum.
     t0 = time.time()
-    emfit, emmodel = EMFit.fit(data, continuummodel, smooth_continuum, verbose=verbose)
+    emfit, emmodel = EMFit.fit(data, continuummodel, smooth_continuum,
+                               verbose=verbose, broadlinefit=broadlinefit)
     for col in emfit.colnames:
         out[col] = emfit[col]
     log.info('Line-fitting object {} [targetid={}] took {:.2f} sec'.format(
@@ -113,7 +114,12 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
+    parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
+                        help='Do not allow for broad Balmer and Helium line-fitting.')
     parser.add_argument('--ssptemplates', type=str, default=None, help='Optional name of the SSP templates.')
+    parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
+    parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
+    parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--dr9dir', type=str, default=None, help='Optional directory name for the DR9 photometry.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
@@ -168,7 +174,10 @@ def fastspec(args=None, comm=None):
     t0 = time.time()
 
     Spec.select(args.redrockfiles, firsttarget=args.firsttarget,
-                targetids=targetids, ntargets=args.ntargets)
+                targetids=targetids, ntargets=args.ntargets,
+                redrockfile_prefix=args.redrockfile_prefix,
+                specfile_prefix=args.specfile_prefix,
+                qnfile_prefix=args.qnfile_prefix)
     if len(Spec.specfiles) == 0:
         return
 
@@ -183,7 +192,7 @@ def fastspec(args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.verbose)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.verbose, args.broadlinefit)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -251,7 +260,10 @@ def fastphot(args=None, comm=None):
     # Read the data.
     t0 = time.time()
     Spec.select(args.redrockfiles, firsttarget=args.firsttarget,
-                targetids=targetids, ntargets=args.ntargets)
+                targetids=targetids, ntargets=args.ntargets,
+                redrockfile_prefix=args.redrockfile_prefix,
+                specfile_prefix=args.specfile_prefix,
+                qnfile_prefix=args.qnfile_prefix)
     if len(Spec.specfiles) == 0:
         return
     data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)

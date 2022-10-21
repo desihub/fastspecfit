@@ -2,8 +2,16 @@
 FastSpecFit Change Log
 ======================
 
-1.0.1 (not released yet)
+1.1.0 (not released yet)
 ------------------------
+
+* Support custom coadds, update laboratory line-wavelengths, and fix major EW
+  bug [`PR #87`_].
+
+.. _`PR #87`: https://github.com/desihub/fastspecfit/pull/87
+
+1.0.1 (2022-08-11)
+------------------
 
 * Additional cleanup needed to finish Fujilupe processing [`PR #78`_].
 * Initial Fuji and Guadalupe VAC documentation [`PR #77`_].
