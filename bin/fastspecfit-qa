@@ -30,6 +30,9 @@ def parse(options=None):
         night (only defined for coadd-type 'pernight' and 'perexp').""")
     parser.add_argument('--redux_dir', default=None, type=str, help='Top-level path to the reduced spectra.')
     parser.add_argument('--redrockfiles', nargs='*', help='Optional full path to redrock file(s).')    
+    parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
+    parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
+    parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
@@ -114,7 +117,10 @@ def main(args=None, comm=None):
         if indx is None:
             indx = np.arange(len(fastfit))
         targetids = fastfit['TARGETID'][indx]
-        Spec.select(redrockfiles=redrockfile, targetids=targetids)
+        Spec.select(redrockfiles=redrockfile, targetids=targetids,
+                    redrockfile_prefix=args.redrockfile_prefix,
+                    specfile_prefix=args.specfile_prefix,
+                    qnfile_prefix=args.qnfile_prefix)
         data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True, remember_coadd=True)
         qaargs = [(CFit, EMFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
                    coadd_type, fastphot, args.outdir, args.outprefix) for igal in np.arange(len(indx))]                
