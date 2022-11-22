@@ -984,7 +984,7 @@ class DESISpectra(object):
 
         return out, meta
 
-def read_fastspecfit(fastfitfile, rows=None, columns=None):
+def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
     """Read the fitting results.
 
     """
@@ -998,6 +998,12 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None):
             
         fastfit = Table(fitsio.read(fastfitfile, ext=ext, rows=rows, columns=columns))
         meta = Table(fitsio.read(fastfitfile, ext='METADATA', rows=rows, columns=columns))
+        if read_models and ext == 'FASTSPEC':
+            models = fitsio.read(fastfitfile, ext='MODELS')
+            if rows is not None:
+                models = models[rows, :, :]
+        else:
+            models = None
         log.info('Read {} object(s) from {}'.format(len(fastfit), fastfitfile))
 
         # Add specprod to the metadata table so that we can stack across
@@ -1012,11 +1018,17 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None):
         else:
             coadd_type = None
 
-        return fastfit, meta, coadd_type, fastphot
+        if read_models:
+            return fastfit, meta, coadd_type, fastphot, models
+        else:
+            return fastfit, meta, coadd_type, fastphot
     
     else:
         log.warning('File {} not found.'.format(fastfitfile))
-        return None, None, None
+        if read_models:
+            return [None]*5
+        else:
+            return [None]*4
 
 def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
                       coadd_type=None, fastphot=False):
