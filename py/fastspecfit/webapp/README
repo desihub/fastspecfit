@@ -7,6 +7,7 @@
   for package in desiutil desitarget; do git clone https://github.com/desihub/$package && cd $package && python setup.py install && cd ..; done
   popd
 
+module load python
 conda activate fastspecfit-webapp
 
 export PYTHONPATH=/global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py:$PYTHONPATH
