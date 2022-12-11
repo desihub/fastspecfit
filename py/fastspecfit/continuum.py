@@ -154,6 +154,7 @@ class ContinuumTools(object):
             # velocity dispersion measurements).
             # 5Myr, 10Myr, 25Myr, 50Myr, 100Myr, 150Myr, 200Myr, 400Myr, 600Myr, 0.9Gyr, 1.1Gyr, 1.4Gyr, 2.5Gyr, 5Gyr, 10Gyr, 13.3Gyr
             myages = np.array([0.005, 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.4, 0.6, 0.9, 1.1, 1.4, 2.5, 5, 10.0, 13.3])*1e9
+            #myages = np.array([0.005, 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.4, 0.6, 0.9, 1.1, 1.4, 2.5, 5, 10.0, 13.3, 14.1])*1e9
             #myages = np.array([0.005, 0.025, 0.1, 0.2, 0.6, 0.9, 1.4, 2.5, 5, 10.0, 13.3])*1e9
             iage = np.array([np.argmin(np.abs(sspinfo['age']-myage)) for myage in myages])
             sspflux = flux[:, iage][keep, :] # flux[keep, ::5]
@@ -247,9 +248,7 @@ class ContinuumTools(object):
             filters.load_filter('sdss2010-z'),
             ))
 
-        #self.min_uncertainty = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]) # mag
-        self.min_uncertainty = np.array([0.01, 0.01, 0.01, 0.02, 0.02, 0.05, 0.05]) # mag
-        #self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
+        self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
 
     @staticmethod
     def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
@@ -511,9 +510,11 @@ class ContinuumTools(object):
         from desiutil.dust import ext_fitzpatrick
 
         atten = ext_fitzpatrick(wave, R_V=self.RV)
+        #atten = (wave / 5500.0)**(-self.dustslope)
+
         atten = 10**(-0.4 * AV * atten)
 
-        if test:
+        if test and AV > 0:
             # Charlot & Fall attenuation curve
             atten2 = (wave / 5500.0)**(-self.dustslope)
     
@@ -536,10 +537,12 @@ class ContinuumTools(object):
     
             import matplotlib.pyplot as plt
             plt.clf()
-            plt.plot(wave, atten2)
-            plt.plot(wave, atten)
-            plt.xlim(500, 8000)
-            plt.savefig('desi-users/ioannis/tmp/junk.png')        
+            W = (wave > 3000)*(wave < 8000)
+            plt.plot(wave[W], atten2[W], label='Charlot & Fall')
+            plt.plot(wave[W], atten[W], label='Fitzpatrick')
+            plt.legend()
+            plt.savefig('desi-users/ioannis/tmp/junk.png')
+            pdb.set_trace()
         
         return atten
 
@@ -1682,6 +1685,7 @@ class ContinuumFit(ContinuumTools):
           an array or grid of xparam
 
         """
+        from scipy.optimize import nnls
         from fastspecfit.util import find_minima, minfit
         
         if xparam is not None:
@@ -1694,8 +1698,13 @@ class ContinuumFit(ContinuumTools):
         # coefficients at some best-fitting value...
         if xparam is None:
             ZZ = modelflux * ww[:, np.newaxis]
-            warn, coeff, chi2 = fnnls_continuum(ZZ, xx, flux=flux, ivar=ivar,
-                                                modelflux=modelflux, get_chi2=True)
+            if True:
+                coeff, rnorm = nnls(A=ZZ, b=xx)
+                chi2 = np.sum(ivar * (flux - modelflux.dot(coeff))**2)
+                warn = 0
+            else:
+                warn, coeff, chi2 = fnnls_continuum(ZZ, xx, flux=flux, ivar=ivar,
+                                                    modelflux=modelflux, get_chi2=True)
             if np.any(warn):
                 print('WARNING: fnnls did not converge after 10 iterations.')
 
@@ -1704,9 +1713,17 @@ class ContinuumFit(ContinuumTools):
         # ...otherwise multiprocess over the xparam (e.g., AV or vdisp)
         # dimension.
         ZZ = modelflux * ww[:, np.newaxis, np.newaxis] # reshape into [npix/nband,nage,nAV/nvdisp]
-
-        fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], True) for ii in np.arange(nn)]
-        rr = [fnnls_continuum(*_fitargs) for _fitargs in fitargs]
+        if True:
+            rr = []
+            for ii in np.arange(nn):
+                coeff, rnorm = nnls(A=ZZ[:, :, ii], b=xx)
+                chi2 = np.sum(ivar * (flux - modelflux[:, :, ii].dot(coeff))**2)
+                warn = 0
+                rr.append([warn, coeff, chi2])
+        else:
+            fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], True) for ii in np.arange(nn)]
+            rr = [fnnls_continuum(*_fitargs) for _fitargs in fitargs]
+                
         
         warn, coeff, chi2grid = list(zip(*rr)) # unpack
         if np.any(warn):
