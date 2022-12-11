@@ -33,6 +33,9 @@ def parse(options=None):
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
+    parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
+    parser.add_argument('--dr9dir', type=str, default=None, help='Optional directory name for the DR9 photometry.')
+
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
@@ -104,9 +107,9 @@ def main(args=None, comm=None):
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit(nolegend=args.nolegend)
-    EMFit = EMLineFit(nolegend=args.nolegend)
-    Spec = DESISpectra(redux_dir=args.redux_dir)
+    CFit = ContinuumFit(nolegend=args.nolegend, mapdir=args.mapdir)
+    EMFit = EMLineFit(nolegend=args.nolegend, mapdir=args.mapdir)
+    Spec = DESISpectra(redux_dir=args.redux_dir, dr9dir=args.dr9dir)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
     if args.outdir:
