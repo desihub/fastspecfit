@@ -13,7 +13,10 @@ import multiprocessing
 
 import astropy.units as u
 from astropy.modeling import Fittable1DModel
-from astropy.modeling.fitting import LevMarLSQFitter
+#from astropy.modeling.fitting import LevMarLSQFitter
+
+import operator
+from functools import reduce, wraps
 
 from desispec.interpolation import resample_flux
 from fastspecfit.util import trapz_rebin, C_LIGHT
@@ -228,26 +231,184 @@ def _tie_lines(model):
 #            
 #    return model
 
-class FastLevMarLSQFitter(LevMarLSQFitter):
+# TODO: These utility functions are really particular to handling
+# bounds/tied/fixed constraints for scipy.optimize optimizers that do not
+# support them inherently; this needs to be reworked to be clear about this
+# distinction (and the fact that these are not necessarily applicable to any
+# arbitrary fitter--as evidenced for example by the fact that JointFitter has
+# its own versions of these)
+# TODO: Most of this code should be entirely rewritten; it should not be as
+# inefficient as it is.
+def fitter_to_model_params(model, fps, use_min_max_bounds=True):
+    """
+    Constructs the full list of model parameters from the fitted and
+    constrained parameters.
+
+    Parameters
+    ----------
+    model :
+        The model being fit
+    fps :
+        The fit parameter values to be assigned
+    use_min_max_bounds: bool
+        If the set parameter bounds for model will be enforced on each
+        parameter with bounds.
+        Default: True
+    """
+
+    _, fit_param_indices, _ = model_to_fit_params(model)
+
+    has_tied = any(model.tied.values())
+    has_fixed = any(model.fixed.values())
+    has_bound = any(b != (None, None) for b in model.bounds.values())
+    parameters = model.parameters
+
+    if not (has_tied or has_fixed or has_bound):
+        # We can just assign directly
+        model.parameters = fps
+        return
+
+    fit_param_indices = set(fit_param_indices)
+    offset = 0
+    param_metrics = model._param_metrics
+    for idx, name in enumerate(model.param_names):
+        if idx not in fit_param_indices:
+            continue
+
+        slice_ = param_metrics[name]['slice']
+        shape = param_metrics[name]['shape']
+        # This is determining which range of fps (the fitted parameters) maps
+        # to parameters of the model
+        size = reduce(operator.mul, shape, 1)
+
+        values = fps[offset:offset + size]
+
+        # Check bounds constraints
+        if model.bounds[name] != (None, None) and use_min_max_bounds:
+            _min, _max = model.bounds[name]
+            if _min is not None:
+                values = np.fmax(values, _min)
+            if _max is not None:
+                values = np.fmin(values, _max)
+
+        parameters[slice_] = values
+        offset += size
+
+    # Update model parameters before calling ``tied`` constraints.
+    model._array_to_parameters()
+
+    # This has to be done in a separate loop due to how tied parameters are
+    # currently evaluated (the fitted parameters need to actually be *set* on
+    # the model first, for use in evaluating the "tied" expression--it might be
+    # better to change this at some point
+    if has_tied:
+        for idx, name in enumerate(model.param_names):
+            if model.tied[name]:
+                value = model.tied[name](model)
+                slice_ = param_metrics[name]['slice']
+
+                # To handle multiple tied constraints, model parameters
+                # need to be updated after each iteration.
+                parameters[slice_] = value
+                model._array_to_parameters()
+
+def model_to_fit_params(model):
+    """
+    Convert a model instance's parameter array to an array that can be used
+    with a fitter that doesn't natively support fixed or tied parameters.
+    In particular, it removes fixed/tied parameters from the parameter
+    array.
+    These may be a subset of the model parameters, if some of them are held
+    constant or tied.
+    """
+
+    fitparam_indices = list(range(len(model.param_names)))
+    model_params = model.parameters
+    model_bounds = list(model.bounds.values())
+    if any(model.fixed.values()) or any(model.tied.values()):
+        params = list(model_params)
+        param_metrics = model._param_metrics
+        for idx, name in list(enumerate(model.param_names))[::-1]:
+            if model.fixed[name] or model.tied[name]:
+                slice_ = param_metrics[name]['slice']
+                del params[slice_]
+                del model_bounds[slice_]
+                del fitparam_indices[idx]
+        model_params = np.array(params)
+
+    for idx, bound in enumerate(model_bounds):
+        if bound[0] is None:
+            lower = -np.inf
+        else:
+            lower = bound[0]
+
+        if bound[1] is None:
+            upper = np.inf
+        else:
+            upper = bound[1]
+
+        model_bounds[idx] = (lower, upper)
+    model_bounds = tuple(zip(*model_bounds))
+    return model_params, fitparam_indices, model_bounds
+
+class FastLevMarLSQFitter(object):
     """
     Adopted in part from
       https://github.com/astropy/astropy/blob/v4.2.x/astropy/modeling/fitting.py#L1580-L1671
-    
-    Copyright (c) 2011-2021, Astropy Developers
 
     See https://github.com/astropy/astropy/issues/12089 for details.  
 
+
+    Levenberg-Marquardt algorithm and least squares statistic.
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+    fit_info : dict
+        The `scipy.optimize.leastsq` result for the most recent fit (see
+        notes).
+
+    Notes
+    -----
+    The ``fit_info`` dictionary contains the values returned by
+    `scipy.optimize.leastsq` for the most recent fit, including the values from
+    the ``infodict`` dictionary it returns. See the `scipy.optimize.leastsq`
+    documentation for details on the meaning of these values. Note that the
+    ``x`` return value is *not* included (as it is instead the parameter values
+    of the returned model).
+    Additionally, one additional element of ``fit_info`` is computed whenever a
+    model is fit, with the key 'param_cov'. The corresponding value is the
+    covariance matrix of the parameters as a 2D numpy array.  The order of the
+    matrix elements matches the order of the parameters in the fitted model
+    (i.e., the same order as ``model.param_names``).
+
     """
-    def __init__(self, model):
+
+    def __init__(self, model, use_min_max_bounds=True):
 
         import operator        
         from functools import reduce
+
+        self._use_min_max_bounds = use_min_max_bounds
+
+        self.fit_info = {'nfev': None,
+                         'fvec': None,
+                         'fjac': None,
+                         'ipvt': None,
+                         'qtf': None,
+                         'message': None,
+                         'ierr': None,
+                         'param_jac': None,
+                         'param_cov': None}
 
         self.has_tied = any(model.tied.values())
         self.has_fixed = any(model.fixed.values())
         self.has_bound = any(b != (None, None) for b in model.bounds.values())
 
-        _, fit_param_indices = self.model_to_fit_params(model)
+        #_, fit_param_indices = self.model_to_fit_params(model)
+        _, fit_param_indices, _ = model_to_fit_params(model)
 
         self._fit_param_names = [model.param_names[iparam] for iparam in np.unique(fit_param_indices)]
 
@@ -278,20 +439,16 @@ class FastLevMarLSQFitter(LevMarLSQFitter):
             for name in self._tied_param_names:
                 self._tied_slice.append(model._param_metrics[name]['slice'])
                 self._tied_func.append(model.tied[name])
-        
-        super().__init__()
 
-    def objective_function(self, fps, *args):
 
-        model = args[0]
-        weights = args[1]
-        self.fitter_to_model_params(model, fps)
-
-        meas = args[-1]
-        if weights is None:
-            return np.ravel(model(*args[2: -1]) - meas)
+    def _compute_param_cov(self, model, y, init_values, cov_x, fitparams, farg):
+        # now try to compute the true covariance matrix
+        if (len(y) > len(init_values)) and cov_x is not None:
+            sum_sqrs = np.sum(self.objective_function(fitparams, *farg)**2)
+            dof = len(y) - len(init_values)
+            self.fit_info['param_cov'] = cov_x * sum_sqrs / dof
         else:
-            return np.ravel(weights * (model(*args[2: -1]) - meas))
+            self.fit_info['param_cov'] = None
 
     def fitter_to_model_params(self, model, fps):
         """Constructs the full list of model parameters from the fitted and constrained
@@ -357,6 +514,116 @@ class FastLevMarLSQFitter(LevMarLSQFitter):
                     del fitparam_indices[idx]
             return (np.array(params), fitparam_indices)
         return (model.parameters, fitparam_indices)
+
+    def __call__(self, model, x, y, z=None, weights=None,
+                 maxiter=100, acc=1e-7, epsilon=np.sqrt(np.finfo(float).eps)):
+        """
+        Fit data to this model.
+
+        Parameters
+        ----------
+        model : `~astropy.modeling.FittableModel`
+            model to fit to x, y, z
+        x : array
+           input coordinates
+        y : array
+           input coordinates
+        z : array, optional
+           input coordinates
+        weights : array, optional
+            Weights for fitting.
+            For data with Gaussian uncertainties, the weights should be
+            1/sigma.
+        maxiter : int
+            maximum number of iterations
+        acc : float
+            Relative error desired in the approximate solution
+        epsilon : float
+            A suitable step length for the forward-difference
+            approximation of the Jacobian (if model.fjac=None). If
+            epsfcn is less than the machine precision, it is
+            assumed that the relative errors in the functions are
+            of the order of the machine precision.
+        equivalencies : list or None, optional, keyword-only
+            List of *additional* equivalencies that are should be applied in
+            case x, y and/or z have units. Default is None.
+
+        Returns
+        -------
+        model_copy : `~astropy.modeling.FittableModel`
+            a copy of the input model with parameters set by the fitter
+
+        """
+        model_copy = model.copy()
+        model_copy.sync_constraints = False
+        farg = (model_copy, weights, ) + (x, y)
+
+        init_values, fitparams, cov_x = self._run_fitter(model_copy, farg, maxiter, acc, epsilon)
+
+        self._compute_param_cov(model_copy, y, init_values, cov_x, fitparams, farg)
+
+        model.sync_constraints = True
+
+        return model_copy
+
+    def objective_function(self, fps, *args):
+        """
+        Function to minimize.
+
+        Parameters
+        ----------
+        fps : list
+            parameters returned by the fitter
+        args : list
+            [model, [weights], [input coordinates]]
+
+        """
+
+        model = args[0]
+        weights = args[1]
+        fitter_to_model_params(model, fps, self._use_min_max_bounds)
+        meas = args[-1]
+
+        if weights is None:
+            value = np.ravel(model(*args[2: -1]) - meas)
+        else:
+            value = np.ravel(weights * (model(*args[2: -1]) - meas))
+
+        if not np.all(np.isfinite(value)):
+            raise NonFiniteValueError("Objective function has encountered a non-finite value, "
+                                      "this will cause the fit to fail!\n"
+                                      "Please remove non-finite values from your input data before fitting to avoid this error.")
+
+        return value
+    
+    def _run_fitter(self, model, farg, maxiter, acc, epsilon):
+
+        from scipy import optimize
+
+        init_values, _, _ = model_to_fit_params(model)
+        #init_values, _, _ = self.model_to_fit_params(model)
+
+        fitparams, cov_x, dinfo, mess, ierr = optimize.leastsq(
+            self.objective_function, init_values, args=farg, 
+            col_deriv=model.col_fit_deriv, maxfev=maxiter, epsfcn=epsilon,
+            xtol=acc, full_output=True)
+
+        #fit_info = optimize.least_squares(
+        #    self.objective_function, init_values, args=farg, 
+        #    max_nfev=maxiter, diff_step=np.sqrt(epsilon), xtol=acc,
+        #    method='lm')#, bounds=bounds)
+
+        self.fitter_to_model_params(model, fitparams)
+        self.fit_info.update(dinfo)
+        self.fit_info['cov_x'] = cov_x
+        self.fit_info['message'] = mess
+        self.fit_info['ierr'] = ierr
+        if ierr not in [1, 2, 3, 4]:
+            warnings.warn("The fit may be unsuccessful; check "
+                          "fit_info['message'] for more information.",
+                          AstropyUserWarning)
+
+        return init_values, fitparams, cov_x
 
 class EMLineModel(Fittable1DModel):
     """Class to model the emission-line spectra.
