@@ -232,138 +232,6 @@ def _tie_lines(model):
 #    return model
 
 def emline_spectrum(emlinewave, *lineargs):
-                    #mgii_doublet_ratio,
-                    #oii_doublet_ratio,
-                    #sii_doublet_ratio,
-                    #mgii_2803_amp,
-                    #oii_3729_amp,
-                    #sii_6716_amp,
-                    #oi_1304_amp,
-                    #siliv_1396_amp,
-                    #civ_1549_amp,
-                    #siliii_1892_amp,
-                    #ciii_1908_amp,
-                    #nev_3346_amp,
-                    #nev_3426_amp,
-                    #neiii_3869_amp,
-                    #h6_amp,
-                    #h6_broad_amp,
-                    #hepsilon_amp,
-                    #hepsilon_broad_amp,
-                    #hdelta_amp,
-                    #hdelta_broad_amp,
-                    #hgamma_amp,
-                    #hgamma_broad_amp,
-                    #oiii_4363_amp,
-                    #hei_4471_amp,
-                    #hei_broad_4471_amp,
-                    #heii_4686_amp,
-                    #heii_broad_4686_amp,
-                    #hbeta_amp,
-                    #hbeta_broad_amp,
-                    #oiii_4959_amp,
-                    #oiii_5007_amp,
-                    #nii_5755_amp,
-                    #hei_5876_amp,
-                    #hei_broad_5876_amp,
-                    #oi_6300_amp,
-                    #siii_6312_amp,
-                    #nii_6548_amp,
-                    #halpha_amp,
-                    #halpha_broad_amp,
-                    #nii_6584_amp,
-                    #oii_7320_amp,
-                    #oii_7330_amp,
-                    #siii_9069_amp,
-                    #siii_9532_amp,
-                    #mgii_2796_vshift,
-                    #oii_3726_vshift,
-                    #sii_6731_vshift,
-                    #mgii_2803_vshift,
-                    #oii_3729_vshift,
-                    #sii_6716_vshift,
-                    #oi_1304_vshift,
-                    #siliv_1396_vshift,
-                    #civ_1549_vshift,
-                    #siliii_1892_vshift,
-                    #ciii_1908_vshift,
-                    #nev_3346_vshift,
-                    #nev_3426_vshift,
-                    #neiii_3869_vshift,
-                    #h6_vshift,
-                    #h6_broad_vshift,
-                    #hepsilon_vshift,
-                    #hepsilon_broad_vshift,
-                    #hdelta_vshift,
-                    #hdelta_broad_vshift,
-                    #hgamma_vshift,
-                    #hgamma_broad_vshift,
-                    #oiii_4363_vshift,
-                    #hei_4471_vshift,
-                    #hei_broad_4471_vshift,
-                    #heii_4686_vshift,
-                    #heii_broad_4686_vshift,
-                    #hbeta_vshift,
-                    #hbeta_broad_vshift,
-                    #oiii_4959_vshift,
-                    #oiii_5007_vshift,
-                    #nii_5755_vshift,
-                    #hei_5876_vshift,
-                    #hei_broad_5876_vshift,
-                    #oi_6300_vshift,
-                    #siii_6312_vshift,
-                    #nii_6548_vshift,
-                    #halpha_vshift,
-                    #halpha_broad_vshift,
-                    #nii_6584_vshift,
-                    #oii_7320_vshift,
-                    #oii_7330_vshift,
-                    #siii_9069_vshift,
-                    #siii_9532_vshift,
-                    #mgii_2796_sigma,
-                    #oii_3726_sigma,
-                    #sii_6731_sigma,
-                    #mgii_2803_sigma,
-                    #oii_3729_sigma,
-                    #sii_6716_sigma,
-                    #oi_1304_sigma,
-                    #siliv_1396_sigma,
-                    #civ_1549_sigma,
-                    #siliii_1892_sigma,
-                    #ciii_1908_sigma,
-                    #nev_3346_sigma,
-                    #nev_3426_sigma,
-                    #neiii_3869_sigma,
-                    #h6_sigma,
-                    #h6_broad_sigma,
-                    #hepsilon_sigma,
-                    #hepsilon_broad_sigma,
-                    #hdelta_sigma,
-                    #hdelta_broad_sigma,
-                    #hgamma_sigma,
-                    #hgamma_broad_sigma,
-                    #oiii_4363_sigma,
-                    #hei_4471_sigma,
-                    #hei_broad_4471_sigma,
-                    #heii_4686_sigma,
-                    #heii_broad_4686_sigma,
-                    #hbeta_sigma,
-                    #hbeta_broad_sigma,
-                    #oiii_4959_sigma,
-                    #oiii_5007_sigma,
-                    #nii_5755_sigma,
-                    #hei_5876_sigma,
-                    #hei_broad_5876_sigma,
-                    #oi_6300_sigma,
-                    #siii_6312_sigma,
-                    #nii_6548_sigma,
-                    #halpha_sigma,
-                    #halpha_broad_sigma,
-                    #nii_6584_sigma,
-                    #oii_7320_sigma,
-                    #oii_7330_sigma,
-                    #siii_9069_sigma,
-                    #siii_9532_sigma):
     """The model we want to optimize is a pure emission-line spectrum in erg/s/cm2/A
     in the observed frame.
 
@@ -1529,6 +1397,38 @@ class EMLineFit(ContinuumTools):
 
         return init_amplitudes, init_sigmas
 
+    def _lines_to_fit(self):
+        """Determine the free, tied, and fixed lines and also determine all the model
+        bounds.
+
+        """
+        Ifree, Itied, bounds = [], [], []
+        #Ifree, Itied, Ifixed, bounds = [], [], [], []
+
+        for pp in self.EMLineModel.param_names:
+            Ifree.append(self.EMLineModel.tied[pp] is False and self.EMLineModel.fixed[pp] is False)
+            Itied.append(self.EMLineModel.tied[pp] is not False)
+            #Ifixed.append(self.EMLineModel.fixed[pp] is not False)
+            if self.EMLineModel.bounds[pp][0] is None:
+                #lower = -np.inf # should never be infinity!
+                lower = -1e12
+            else:
+                lower = self.EMLineModel.bounds[pp][0]
+            if self.EMLineModel.bounds[pp][1] is None:
+                #upper = +np.inf
+                upper = +1e12
+            else:
+                upper = self.EMLineModel.bounds[pp][1]
+            bounds.append((lower, upper))
+        
+        Ifree = np.where(Ifree)[0]
+        Itied = np.where(Itied)[0]
+        #Ifixed = np.where(Ifixed)[0]
+        #bounds = tuple(zip(*bounds))
+        bounds = np.array(bounds)
+
+        return Ifree, Itied, bounds
+        #return Ifree, Itied, Ifixed, bounds
     
     def fit(self, data, continuummodel, smooth_continuum, synthphot=True,
             maxiter=5000, accuracy=1e-2, verbose=False, broadlinefit=True):
@@ -1606,40 +1506,81 @@ class EMLineFit(ContinuumTools):
         #for pp in self.EMLineModel.param_names:
         #    print(getattr(self.EMLineModel, pp))
 
-        ## --------------------------------------------------
-        #Ifree, Itied, Ifixed, model_bounds = [], [], [], []
-        #for pp in self.EMLineModel.param_names:
-        #    Ifree.append(self.EMLineModel.tied[pp] is False and self.EMLineModel.fixed[pp] is False)
-        #    Itied.append(self.EMLineModel.tied[pp] is not False)
-        #    Ifixed.append(self.EMLineModel.fixed[pp] is not False)
-        #    if self.EMLineModel.bounds[pp][0] is None:
-        #        lower = -np.inf
-        #    else:
-        #        lower = self.EMLineModel.bounds[pp][0]
-        #    if self.EMLineModel.bounds[pp][1] is None:
-        #        upper = +np.inf
-        #    else:
-        #        upper = self.EMLineModel.bounds[pp][1]
-        #    model_bounds.append((lower, upper))
-        #model_bounds = tuple(zip(*model_bounds))
-        #
-        #Ifree = np.where(Ifree)[0]
-        #Itied = np.where(Itied)[0]
-        #Ifixed = np.where(Ifixed)[0]
-        #
-        #
-        #
-        #fit_info = optimize.least_squares(
-        #    self.objective_function, init_values, args=farg, 
-        #    max_nfev=maxiter, xtol=accuracy, method='lm')#, bounds=bounds)
-        #
-        #pdb.set_trace()
-        #
-        #emline_spectrum(emlinewave, [self.EMLineModel.parameters, self.EMLineModel])
-        ##emline_spectrum(emlinewave, *self.EMLineModel.parameters.tolist())
-        #
-        #pdb.set_trace()
-        ## --------------------------------------------------
+        # --------------------------------------------------
+        if True:
+            from scipy import optimize
+    
+            def objective_function(free_parameters, *args):
+                """The parameters array should only contain free (not tied or fixed) parameters.
+    
+                """
+                EMLine = args[0]
+                wave = args[1]
+                flux = args[2]
+                weights = args[3]
+                Ifree = args[4]
+                Itied = args[5]
+                bounds = args[6]
+    
+                # Handle tied parameters and bounds. We need to set the model
+                # attributes before we evaluate the tied parameters.
+                param_names = np.array(EMLine.param_names)
+                for value, pp, bnd in zip(free_parameters, param_names[Ifree], bounds[Ifree]):
+                    if value < bnd[0]:
+                        value = bnd[0]
+                    if value > bnd[1]:
+                        value = bnd[1]
+                    setattr(EMLine, pp, value)
+    
+                if len(Itied) > 0:
+                    for I, pp in zip(Itied, param_names[Itied]):
+                    #for I, pp, bnd in zip(Itied, param_names[Itied], bounds[Itied]):
+                        value = EMLine.tied[pp](EMLine)
+                        # The tied parameter should *always* be determined by
+                        # the parameter it's tied to, even if it's outside the
+                        # bounds.
+                        #if value < bnd[0]:
+                        #    value = bnd[0]
+                        #if value > bnd[0]:
+                        #    value = bnd[1]
+                        setattr(EMLine, pp, value)
+    
+                parameters = EMLine.parameters
+                #print(parameters[30]/parameters[29])
+                lineargs = [parameters, EMLine]
+    
+                if weights is None:
+                    modelflux = emline_spectrum(wave, lineargs) - flux
+                else:
+                    modelflux = weights * (emline_spectrum(wave, lineargs) - flux)
+    
+                return modelflux
+    
+            Ifree, Itied, bounds = self._lines_to_fit()
+    
+            parameters0 = self.EMLineModel.parameters[Ifree]
+            farg = (self.EMLineModel, emlinewave, emlineflux, weights, Ifree, Itied, bounds)
+    
+            t0 = time.time()        
+            fit_info = optimize.least_squares(
+                objective_function, parameters0, args=farg,
+                max_nfev=maxiter, xtol=accuracy, method='lm')
+            log.info('Refactored line-fitting took {:.2f} sec (niter={})'.format(
+                time.time()-t0, fit_info.nfev))
+
+            self.EMLineModel.parameters[Ifree] = fit_info.x
+            modelflux = emline_spectrum(emlinewave, [self.EMLineModel.parameters, self.EMLineModel])
+    
+            import matplotlib.pyplot as plt
+            plt.clf()
+            plt.plot(emlinewave, emlineflux)
+            plt.plot(emlinewave, modelflux)
+            plt.xlim(6600, 6950)
+            plt.savefig('junk.png')
+            
+            pdb.set_trace()
+
+        # --------------------------------------------------
 
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
@@ -1648,6 +1589,7 @@ class EMLineFit(ContinuumTools):
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
         log.info('Initial line-fitting with {} free parameters took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
             nfree, time.time()-t0, fitter.fit_info['nfev'], initchi2))
+        pdb.set_trace()
 
         # Now try adding bround Balmer and helium lines and see if we improve
         # the chi2. First, do we have enough pixels around Halpha and Hbeta to
