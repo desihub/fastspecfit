@@ -231,125 +231,199 @@ def _tie_lines(model):
 #            
 #    return model
 
-# TODO: These utility functions are really particular to handling
-# bounds/tied/fixed constraints for scipy.optimize optimizers that do not
-# support them inherently; this needs to be reworked to be clear about this
-# distinction (and the fact that these are not necessarily applicable to any
-# arbitrary fitter--as evidenced for example by the fact that JointFitter has
-# its own versions of these)
-# TODO: Most of this code should be entirely rewritten; it should not be as
-# inefficient as it is.
-def fitter_to_model_params(model, fps, use_min_max_bounds=True):
-    """
-    Constructs the full list of model parameters from the fitted and
-    constrained parameters.
+def emline_spectrum(emlinewave, *lineargs):
+                    #mgii_doublet_ratio,
+                    #oii_doublet_ratio,
+                    #sii_doublet_ratio,
+                    #mgii_2803_amp,
+                    #oii_3729_amp,
+                    #sii_6716_amp,
+                    #oi_1304_amp,
+                    #siliv_1396_amp,
+                    #civ_1549_amp,
+                    #siliii_1892_amp,
+                    #ciii_1908_amp,
+                    #nev_3346_amp,
+                    #nev_3426_amp,
+                    #neiii_3869_amp,
+                    #h6_amp,
+                    #h6_broad_amp,
+                    #hepsilon_amp,
+                    #hepsilon_broad_amp,
+                    #hdelta_amp,
+                    #hdelta_broad_amp,
+                    #hgamma_amp,
+                    #hgamma_broad_amp,
+                    #oiii_4363_amp,
+                    #hei_4471_amp,
+                    #hei_broad_4471_amp,
+                    #heii_4686_amp,
+                    #heii_broad_4686_amp,
+                    #hbeta_amp,
+                    #hbeta_broad_amp,
+                    #oiii_4959_amp,
+                    #oiii_5007_amp,
+                    #nii_5755_amp,
+                    #hei_5876_amp,
+                    #hei_broad_5876_amp,
+                    #oi_6300_amp,
+                    #siii_6312_amp,
+                    #nii_6548_amp,
+                    #halpha_amp,
+                    #halpha_broad_amp,
+                    #nii_6584_amp,
+                    #oii_7320_amp,
+                    #oii_7330_amp,
+                    #siii_9069_amp,
+                    #siii_9532_amp,
+                    #mgii_2796_vshift,
+                    #oii_3726_vshift,
+                    #sii_6731_vshift,
+                    #mgii_2803_vshift,
+                    #oii_3729_vshift,
+                    #sii_6716_vshift,
+                    #oi_1304_vshift,
+                    #siliv_1396_vshift,
+                    #civ_1549_vshift,
+                    #siliii_1892_vshift,
+                    #ciii_1908_vshift,
+                    #nev_3346_vshift,
+                    #nev_3426_vshift,
+                    #neiii_3869_vshift,
+                    #h6_vshift,
+                    #h6_broad_vshift,
+                    #hepsilon_vshift,
+                    #hepsilon_broad_vshift,
+                    #hdelta_vshift,
+                    #hdelta_broad_vshift,
+                    #hgamma_vshift,
+                    #hgamma_broad_vshift,
+                    #oiii_4363_vshift,
+                    #hei_4471_vshift,
+                    #hei_broad_4471_vshift,
+                    #heii_4686_vshift,
+                    #heii_broad_4686_vshift,
+                    #hbeta_vshift,
+                    #hbeta_broad_vshift,
+                    #oiii_4959_vshift,
+                    #oiii_5007_vshift,
+                    #nii_5755_vshift,
+                    #hei_5876_vshift,
+                    #hei_broad_5876_vshift,
+                    #oi_6300_vshift,
+                    #siii_6312_vshift,
+                    #nii_6548_vshift,
+                    #halpha_vshift,
+                    #halpha_broad_vshift,
+                    #nii_6584_vshift,
+                    #oii_7320_vshift,
+                    #oii_7330_vshift,
+                    #siii_9069_vshift,
+                    #siii_9532_vshift,
+                    #mgii_2796_sigma,
+                    #oii_3726_sigma,
+                    #sii_6731_sigma,
+                    #mgii_2803_sigma,
+                    #oii_3729_sigma,
+                    #sii_6716_sigma,
+                    #oi_1304_sigma,
+                    #siliv_1396_sigma,
+                    #civ_1549_sigma,
+                    #siliii_1892_sigma,
+                    #ciii_1908_sigma,
+                    #nev_3346_sigma,
+                    #nev_3426_sigma,
+                    #neiii_3869_sigma,
+                    #h6_sigma,
+                    #h6_broad_sigma,
+                    #hepsilon_sigma,
+                    #hepsilon_broad_sigma,
+                    #hdelta_sigma,
+                    #hdelta_broad_sigma,
+                    #hgamma_sigma,
+                    #hgamma_broad_sigma,
+                    #oiii_4363_sigma,
+                    #hei_4471_sigma,
+                    #hei_broad_4471_sigma,
+                    #heii_4686_sigma,
+                    #heii_broad_4686_sigma,
+                    #hbeta_sigma,
+                    #hbeta_broad_sigma,
+                    #oiii_4959_sigma,
+                    #oiii_5007_sigma,
+                    #nii_5755_sigma,
+                    #hei_5876_sigma,
+                    #hei_broad_5876_sigma,
+                    #oi_6300_sigma,
+                    #siii_6312_sigma,
+                    #nii_6548_sigma,
+                    #halpha_sigma,
+                    #halpha_broad_sigma,
+                    #nii_6584_sigma,
+                    #oii_7320_sigma,
+                    #oii_7330_sigma,
+                    #siii_9069_sigma,
+                    #siii_9532_sigma):
+    """The model we want to optimize is a pure emission-line spectrum in erg/s/cm2/A
+    in the observed frame.
 
-    Parameters
-    ----------
-    model :
-        The model being fit
-    fps :
-        The fit parameter values to be assigned
-    use_min_max_bounds: bool
-        If the set parameter bounds for model will be enforced on each
-        parameter with bounds.
-        Default: True
-    """
+    """ 
+    EMLine = lineargs[0][1]
+    lineargs = lineargs[0][0]
 
-    _, fit_param_indices, _ = model_to_fit_params(model)
+    # build the emission-line model [erg/s/cm2/A, observed frame]
+    log10model = np.zeros_like(EMLine.log10wave)
 
-    has_tied = any(model.tied.values())
-    has_fixed = any(model.fixed.values())
-    has_bound = any(b != (None, None) for b in model.bounds.values())
-    parameters = model.parameters
+    # carefull parse the parameters (order matters!)
+    linesplit = np.array_split(lineargs, 3) # 3 parameters per line
+    linevshifts = np.hstack(linesplit[1])
+    linesigmas = np.hstack(linesplit[2])
 
-    if not (has_tied or has_fixed or has_bound):
-        # We can just assign directly
-        model.parameters = fps
-        return
+    # stupidly hard-coded
+    _lineamps = np.hstack(linesplit[0])
+    doublet_ratios = _lineamps[:EMLine.ndoublet]
+    doublet_amps = _lineamps[EMLine.ndoublet:2*EMLine.ndoublet] * doublet_ratios
+    lineamps = np.hstack((doublet_amps, _lineamps[EMLine.ndoublet:]))
+    #print(doublet_ratios)
 
-    fit_param_indices = set(fit_param_indices)
-    offset = 0
-    param_metrics = model._param_metrics
-    for idx, name in enumerate(model.param_names):
-        if idx not in fit_param_indices:
-            continue
+    # cut to lines in range and non-zero
+    I = EMLine.inrange * (lineamps > 0)
+    if np.count_nonzero(I) > 0:
+        linevshifts = linevshifts[I]
+        linesigmas = linesigmas[I]
+        lineamps = lineamps[I]
 
-        slice_ = param_metrics[name]['slice']
-        shape = param_metrics[name]['shape']
-        # This is determining which range of fps (the fitted parameters) maps
-        # to parameters of the model
-        size = reduce(operator.mul, shape, 1)
+        # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
+        log10sigmas = linesigmas / C_LIGHT / np.log(10) 
+        linezwaves = np.log10(EMLine.restlinewaves[I] * (1.0 + EMLine.redshift + linevshifts / C_LIGHT)) 
 
-        values = fps[offset:offset + size]
+        for lineamp, linezwave, log10sigma in zip(lineamps, linezwaves, log10sigmas):
+            ww = np.abs(EMLine.log10wave - linezwave) < (10 * log10sigma)
+            if np.sum(ww) > 0:
+                #log.info(linename, 10**linezwave, 10**_emlinewave[ww].min(), 10**_emlinewave[ww].max())
+                log10model[ww] += lineamp * np.exp(-0.5 * (EMLine.log10wave[ww]-linezwave)**2 / log10sigma**2)
 
-        # Check bounds constraints
-        if model.bounds[name] != (None, None) and use_min_max_bounds:
-            _min, _max = model.bounds[name]
-            if _min is not None:
-                values = np.fmax(values, _min)
-            if _max is not None:
-                values = np.fmin(values, _max)
+    # optionally split into cameras, resample, and convolve with the instrumental
+    # resolution
+    emlinemodel = []
+    for ii in np.arange(len(EMLine.npixpercamera)-1): # iterate over cameras
+        ipix = np.sum(EMLine.npixpercamera[:ii+1]) # all pixels!
+        jpix = np.sum(EMLine.npixpercamera[:ii+2])
+        try:
+            _emlinemodel = trapz_rebin(10**EMLine.log10wave, log10model, emlinewave[ipix:jpix])
+        except:
+            _emlinemodel = resample_flux(emlinewave[ipix:jpix], 10**EMLine.log10wave, log10model)
 
-        parameters[slice_] = values
-        offset += size
+        if EMLine.emlineR is not None:
+            _emlinemomdel = EMLine.emlineR[ii].dot(_emlinemodel)
+        
+        #plt.plot(10**_emlinewave, _emlinemodel)
+        #plt.plot(10**_emlinewave, self.emlineR[ii].dot(_emlinemodel))
+        #plt.xlim(3870, 3920) ; plt.show()
+        emlinemodel.append(_emlinemodel)
+        
+    return np.hstack(emlinemodel)
 
-    # Update model parameters before calling ``tied`` constraints.
-    model._array_to_parameters()
-
-    # This has to be done in a separate loop due to how tied parameters are
-    # currently evaluated (the fitted parameters need to actually be *set* on
-    # the model first, for use in evaluating the "tied" expression--it might be
-    # better to change this at some point
-    if has_tied:
-        for idx, name in enumerate(model.param_names):
-            if model.tied[name]:
-                value = model.tied[name](model)
-                slice_ = param_metrics[name]['slice']
-
-                # To handle multiple tied constraints, model parameters
-                # need to be updated after each iteration.
-                parameters[slice_] = value
-                model._array_to_parameters()
-
-def model_to_fit_params(model):
-    """
-    Convert a model instance's parameter array to an array that can be used
-    with a fitter that doesn't natively support fixed or tied parameters.
-    In particular, it removes fixed/tied parameters from the parameter
-    array.
-    These may be a subset of the model parameters, if some of them are held
-    constant or tied.
-    """
-
-    fitparam_indices = list(range(len(model.param_names)))
-    model_params = model.parameters
-    model_bounds = list(model.bounds.values())
-    if any(model.fixed.values()) or any(model.tied.values()):
-        params = list(model_params)
-        param_metrics = model._param_metrics
-        for idx, name in list(enumerate(model.param_names))[::-1]:
-            if model.fixed[name] or model.tied[name]:
-                slice_ = param_metrics[name]['slice']
-                del params[slice_]
-                del model_bounds[slice_]
-                del fitparam_indices[idx]
-        model_params = np.array(params)
-
-    for idx, bound in enumerate(model_bounds):
-        if bound[0] is None:
-            lower = -np.inf
-        else:
-            lower = bound[0]
-
-        if bound[1] is None:
-            upper = np.inf
-        else:
-            upper = bound[1]
-
-        model_bounds[idx] = (lower, upper)
-    model_bounds = tuple(zip(*model_bounds))
-    return model_params, fitparam_indices, model_bounds
 
 class FastLevMarLSQFitter(object):
     """
@@ -407,8 +481,7 @@ class FastLevMarLSQFitter(object):
         self.has_fixed = any(model.fixed.values())
         self.has_bound = any(b != (None, None) for b in model.bounds.values())
 
-        #_, fit_param_indices = self.model_to_fit_params(model)
-        _, fit_param_indices, _ = model_to_fit_params(model)
+        _, fit_param_indices, _ = self.model_to_fit_params(model)
 
         self._fit_param_names = [model.param_names[iparam] for iparam in np.unique(fit_param_indices)]
 
@@ -450,11 +523,16 @@ class FastLevMarLSQFitter(object):
         else:
             self.fit_info['param_cov'] = None
 
-    def fitter_to_model_params(self, model, fps):
+    def fitter_to_model_params(self, model, fps, use_min_max_bounds=True):
         """Constructs the full list of model parameters from the fitted and constrained
         parameters.
 
         """
+        _, fit_param_indices, _ = self.model_to_fit_params(model)
+
+        has_tied = any(model.tied.values())
+        has_fixed = any(model.fixed.values())
+        has_bound = any(b != (None, None) for b in model.bounds.values())
         parameters = model.parameters
 
         if not (self.has_tied or self.has_fixed or self.has_bound):
@@ -462,38 +540,50 @@ class FastLevMarLSQFitter(object):
             model.parameters = fps
             return
 
-        for name, istart, iend, islice, (ibounds, imin, imax) in zip(
-                        self._fit_param_names, self._fit_istart, self._fit_iend,
-                        self._fit_slice, self._fit_ibounds):
-            values = fps[istart:iend]
-
+        fit_param_indices = set(fit_param_indices)
+        offset = 0
+        param_metrics = model._param_metrics
+        for idx, name in enumerate(model.param_names):
+            if idx not in fit_param_indices:
+                continue
+    
+            slice_ = param_metrics[name]['slice']
+            shape = param_metrics[name]['shape']
+            # This is determining which range of fps (the fitted parameters) maps
+            # to parameters of the model
+            size = reduce(operator.mul, shape, 1)
+    
+            values = fps[offset:offset + size]
+    
             # Check bounds constraints
-            if ibounds:
-                if imin is not None:
-                    values = np.fmax(values, imin)
-                if imax is not None:
-                    values = np.fmin(values, imax)
-                    
-            #parameters[islice] = values
-            setattr(model, name, values)
-
+            if model.bounds[name] != (None, None) and use_min_max_bounds:
+                _min, _max = model.bounds[name]
+                if _min is not None:
+                    values = np.fmax(values, _min)
+                if _max is not None:
+                    values = np.fmin(values, _max)
+    
+            parameters[slice_] = values
+            offset += size
+    
         # Update model parameters before calling ``tied`` constraints.
-
+        model._array_to_parameters()
+    
         # This has to be done in a separate loop due to how tied parameters are
         # currently evaluated (the fitted parameters need to actually be *set* on
         # the model first, for use in evaluating the "tied" expression--it might be
         # better to change this at some point
-        if self.has_tied:
-            for name, islice, func in zip(
-                    self._tied_param_names, self._tied_slice,
-                    self._tied_func):
-                #value = model.tied[name](model)
+        if has_tied:
+            for idx, name in enumerate(model.param_names):
+                if model.tied[name]:
+                    value = model.tied[name](model)
+                    slice_ = param_metrics[name]['slice']
+    
+                    # To handle multiple tied constraints, model parameters
+                    # need to be updated after each iteration.
+                    parameters[slice_] = value
+                    model._array_to_parameters()
 
-                # To handle multiple tied constraints, model parameters
-                # need to be updated after each iteration.
-                value = func(model)
-                #parameters[islice] = value
-                setattr(model, name, value)
                 
     def model_to_fit_params(self, model):
         """Convert a model instance's parameter array to an array that can be used with
@@ -504,16 +594,32 @@ class FastLevMarLSQFitter(object):
 
         """
         fitparam_indices = list(range(len(model.param_names)))
+        model_params = model.parameters
+        model_bounds = list(model.bounds.values())
+
         if self.has_fixed or self.has_tied:
-            params = list(model.parameters)
+            params = list(model_params)
             param_metrics = model._param_metrics
             for idx, name in list(enumerate(model.param_names))[::-1]:
                 if model.fixed[name] or model.tied[name]:
                     slice_ = param_metrics[name]['slice']
                     del params[slice_]
+                    del model_bounds[slice_]
                     del fitparam_indices[idx]
-            return (np.array(params), fitparam_indices)
-        return (model.parameters, fitparam_indices)
+            model_params = np.array(params)
+
+        for idx, bound in enumerate(model_bounds):
+            if bound[0] is None:
+                lower = -np.inf
+            else:
+                lower = bound[0]
+            if bound[1] is None:
+                upper = np.inf
+            else:
+                upper = bound[1]
+            model_bounds[idx] = (lower, upper)
+        model_bounds = tuple(zip(*model_bounds))
+        return model_params, fitparam_indices, model_bounds
 
     def __call__(self, model, x, y, z=None, weights=None,
                  maxiter=100, acc=1e-7, epsilon=np.sqrt(np.finfo(float).eps)):
@@ -581,7 +687,7 @@ class FastLevMarLSQFitter(object):
 
         model = args[0]
         weights = args[1]
-        fitter_to_model_params(model, fps, self._use_min_max_bounds)
+        self.fitter_to_model_params(model, fps, self._use_min_max_bounds)
         meas = args[-1]
 
         if weights is None:
@@ -600,8 +706,8 @@ class FastLevMarLSQFitter(object):
 
         from scipy import optimize
 
-        init_values, _, _ = model_to_fit_params(model)
-        #init_values, _, _ = self.model_to_fit_params(model)
+        #init_values, _, _ = model_to_fit_params(model)
+        init_values, _, _ = self.model_to_fit_params(model)
 
         fitparams, cov_x, dinfo, mess, ierr = optimize.leastsq(
             self.objective_function, init_values, args=farg, 
@@ -1270,126 +1376,85 @@ class EMLineFit(ContinuumTools):
             emlinemodel.append(_emlinemodel[ipix:jpix])
 
         return emlinemodel
-    
-    def fit(self, data, continuummodel, smooth_continuum, synthphot=True,
-            maxiter=5000, accuracy=1e-2, verbose=False, broadlinefit=True):
-        """Perform the fit minimization / chi2 minimization.
-        
-        EMLineModel object
-        FC - ContinuumFit object
 
-        ToDo: need to take into account the instrumental velocity width when
-        computing integrated fluxes...
+    def _clean_linefit(self, bestfit, init_amplitudes, init_sigmas):
+        """Clean up line-fitting results."""
+        
+        # If the amplitude is still at its default (or its upper or lower
+        # bound!), it means the line wasn't fit or the fit failed (right??), so
+        # set it to zero. Important: need to loop over *all* lines (not just
+        # those in range).
+        initkeys = init_amplitudes.keys()
+
+        for linename in self.linetable['name'].data:
+            if not hasattr(bestfit, '{}_amp'.format(linename)): # skip the physical doubleta
+                continue
+            amp = getattr(bestfit, '{}_amp'.format(linename))
+            if amp.fixed: # line is either out of range or a suppressed line--skip it here
+                continue
+            sigma = getattr(bestfit, '{}_sigma'.format(linename))
+            vshift = getattr(bestfit, '{}_vshift'.format(linename))
+
+            # drop the line if:
+            #  sigma = 0, amp = default or amp = max bound (not optimized!) or amp =< 0
+            if ((amp.value == amp.default) or
+                (amp.bounds[1] is not None and amp.value >= amp.bounds[1]) or
+                #(amp.value <= amp.bounds[0]) or
+                (amp.value <= 0) or
+                (linename in initkeys and init_amplitudes[linename] == amp.value) or 
+                (sigma.value == sigma.default)
+                #(sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1])
+                ):
+                log.debug('Dropping {} (amp={:.3f}, sigma={:.3f}, vshift={:.3f})'.format(
+                    linename, amp.value, sigma.value, vshift.value))
+
+                setattr(bestfit, '{}_amp'.format(linename), 0.0)
+                setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma.default)
+                setattr(bestfit, '{}_vshift'.format(linename), 0.0) #vshift.default)
+
+        # Now loop back through and drop Broad balmer lines that:
+        #   (1) are narrower than their narrow-line counterparts;
+        #   (2) have a narrow line whose amplitude is smaller than that of the broad line
+        #      --> Deprecated! main-dark-32303-39628176678192981 is an example
+        #          of an object where there's a broad H-alpha line but no other
+        #          forbidden lines!
+        
+        IB = self.linetable['isbalmer'] * self.linetable['isbroad']
+        for linename in self.linetable['name'][IB]:
+            amp_broad = getattr(bestfit, '{}_amp'.format(linename))
+            if amp_broad.fixed: # line is either out of range or a suppressed line--skip it here
+                continue
+            amp = getattr(bestfit, '{}_amp'.format(linename.replace('_broad', ''))) # fragile
+            sigma = getattr(bestfit, '{}_sigma'.format(linename.replace('_broad', ''))) # fragile
+            sigma_broad = getattr(bestfit, '{}_sigma'.format(linename))
+            
+            if sigma_broad <= sigma:
+                log.debug('Dropping {} (sigma_broad={:.2f}, sigma_narrow={:.2f})'.format(
+                    linename, sigma_broad.value, sigma.value))
+                #vshift = getattr(bestfit, '{}_vshift'.format(linename))
+                setattr(bestfit, '{}_amp'.format(linename), 0.0)
+                setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
+                setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
+
+            # Deprecated! -- See note above.
+            #if (amp <= 0) or (amp_broad <= 0) and ((amp+amp_broad) < amp_broad):
+            #    #vshift = getattr(bestfit, '{}_vshift'.format(linename))
+            #    setattr(bestfit, '{}_amp'.format(linename), 0.0)
+            #    setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
+            #    setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
+
+        return bestfit
+
+    def _init_guesses(self, data, emlinewave, emlineflux):
+        """For all lines in range, do a fast update of the initial line-amplitudes
+        which especially helps with cases like 39633354915582193 (tile 80613,
+        petal 05), which has strong narrow lines.
 
         """
-        from astropy.table import Table, Column
-        from scipy.stats import sigmaclip
-        from fastspecfit.util import ivar2var
-            
-        def _clean_linefit(bestfit, init_amplitudes, init_sigmas):
-            """Clean up line-fitting results."""
-            
-            # If the amplitude is still at its default (or its upper or lower
-            # bound!), it means the line wasn't fit or the fit failed (right??), so
-            # set it to zero. Important: need to loop over *all* lines (not just
-            # those in range).
-            initkeys = init_amplitudes.keys()
+        init_amplitudes, init_sigmas = {}, {}
 
-            for linename in self.linetable['name'].data:
-                if not hasattr(bestfit, '{}_amp'.format(linename)): # skip the physical doubleta
-                    continue
-                amp = getattr(bestfit, '{}_amp'.format(linename))
-                if amp.fixed: # line is either out of range or a suppressed line--skip it here
-                    continue
-                sigma = getattr(bestfit, '{}_sigma'.format(linename))
-                vshift = getattr(bestfit, '{}_vshift'.format(linename))
-    
-                # drop the line if:
-                #  sigma = 0, amp = default or amp = max bound (not optimized!) or amp =< 0
-                if ((amp.value == amp.default) or
-                    (amp.bounds[1] is not None and amp.value >= amp.bounds[1]) or
-                    #(amp.value <= amp.bounds[0]) or
-                    (amp.value <= 0) or
-                    (linename in initkeys and init_amplitudes[linename] == amp.value) or 
-                    (sigma.value == sigma.default)
-                    #(sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1])
-                    ):
-                    log.debug('Dropping {} (amp={:.3f}, sigma={:.3f}, vshift={:.3f})'.format(
-                        linename, amp.value, sigma.value, vshift.value))
-
-                    setattr(bestfit, '{}_amp'.format(linename), 0.0)
-                    setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma.default)
-                    setattr(bestfit, '{}_vshift'.format(linename), 0.0) #vshift.default)
-
-            # Now loop back through and drop Broad balmer lines that:
-            #   (1) are narrower than their narrow-line counterparts;
-            #   (2) have a narrow line whose amplitude is smaller than that of the broad line
-            #      --> Deprecated! main-dark-32303-39628176678192981 is an example
-            #          of an object where there's a broad H-alpha line but no other
-            #          forbidden lines!
-            
-            IB = self.linetable['isbalmer'] * self.linetable['isbroad']
-            for linename in self.linetable['name'][IB]:
-                amp_broad = getattr(bestfit, '{}_amp'.format(linename))
-                if amp_broad.fixed: # line is either out of range or a suppressed line--skip it here
-                    continue
-                amp = getattr(bestfit, '{}_amp'.format(linename.replace('_broad', ''))) # fragile
-                sigma = getattr(bestfit, '{}_sigma'.format(linename.replace('_broad', ''))) # fragile
-                sigma_broad = getattr(bestfit, '{}_sigma'.format(linename))
-                
-                if sigma_broad <= sigma:
-                    log.debug('Dropping {} (sigma_broad={:.2f}, sigma_narrow={:.2f})'.format(
-                        linename, sigma_broad.value, sigma.value))
-                    #vshift = getattr(bestfit, '{}_vshift'.format(linename))
-                    setattr(bestfit, '{}_amp'.format(linename), 0.0)
-                    setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
-                    setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
-    
-                # Deprecated! -- See note above.
-                #if (amp <= 0) or (amp_broad <= 0) and ((amp+amp_broad) < amp_broad):
-                #    #vshift = getattr(bestfit, '{}_vshift'.format(linename))
-                #    setattr(bestfit, '{}_amp'.format(linename), 0.0)
-                #    setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
-                #    setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
-
-            return bestfit
-
-        # Combine all three cameras; we will unpack them to build the
-        # best-fitting model (per-camera) below.
-        redshift = data['zredrock']
-        emlinewave = np.hstack(data['wave'])
-        oemlineivar = np.hstack(data['ivar'])
-        specflux = np.hstack(data['flux'])
-
-        continuummodelflux = np.hstack(continuummodel)
-        smoothcontinuummodelflux = np.hstack(smooth_continuum)
-        emlineflux = specflux - continuummodelflux - smoothcontinuummodelflux
-
-        npixpercamera = [len(gw) for gw in data['wave']] # all pixels
-        npixpercam = np.hstack([0, npixpercamera])
-
-        emlineivar = np.copy(oemlineivar)
-        emlinevar, emlinegood = ivar2var(emlineivar, clip=1e-3)
-        emlinebad = np.logical_not(emlinegood)
-        if np.sum(emlinebad) > 0:
-            emlineivar[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineivar[emlinegood])
-            emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
-        weights = np.sqrt(emlineivar)
-
-        wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
-
-        self.EMLineModel = EMLineModel(redshift=redshift,
-                                       wavelims=wavelims,
-                                       emlineR=data['res'],
-                                       npixpercamera=npixpercamera,
-                                       log10wave=self.log10wave)
-
-        # For all lines in range, do a fast update of the initial
-        # line-amplitudes which especially helps with cases like
-        # 39633354915582193 (tile 80613, petal 05), which has strong narrow
-        # lines.
-        init_amplitudes = {}
         coadd_emlineflux = np.interp(data['coadd_wave'], emlinewave, emlineflux)
+
         for linename, linepix in zip(data['coadd_linename'], data['coadd_linepix']):
             # skip the physical doublets
             if not hasattr(self.EMLineModel, '{}_amp'.format(linename)):
@@ -1432,7 +1497,6 @@ class EMLineFit(ContinuumTools):
         # (not just those in range). E.g., if H-alpha is out of range we need to
         # set its initial value correctly since other lines are tied to it
         # (e.g., main-bright-32406-39628257196245904).
-        init_sigmas = {}
         for iline in self.linetable:
             linename = iline['name']
             # If sigma is zero here, it was set in _tie_lines because the line
@@ -1463,7 +1527,57 @@ class EMLineFit(ContinuumTools):
                 #    getattr(self.EMLineModel, '{}_sigma'.format(linename)).default = data['linesigma_balmer']
                 #    init_sigmas[linename] = data['linesigma_balmer']
 
-        #print('HACK!!!!!!!!!!!')
+        return init_amplitudes, init_sigmas
+
+    
+    def fit(self, data, continuummodel, smooth_continuum, synthphot=True,
+            maxiter=5000, accuracy=1e-2, verbose=False, broadlinefit=True):
+        """Perform the fit minimization / chi2 minimization.
+        
+        EMLineModel object
+        FC - ContinuumFit object
+
+        ToDo: need to take into account the instrumental velocity width when
+        computing integrated fluxes...
+
+        """
+        from astropy.table import Table, Column
+        from scipy.stats import sigmaclip
+        from fastspecfit.util import ivar2var
+            
+        # Combine all three cameras; we will unpack them to build the
+        # best-fitting model (per-camera) below.
+        redshift = data['zredrock']
+        emlinewave = np.hstack(data['wave'])
+        oemlineivar = np.hstack(data['ivar'])
+        specflux = np.hstack(data['flux'])
+
+        continuummodelflux = np.hstack(continuummodel)
+        smoothcontinuummodelflux = np.hstack(smooth_continuum)
+        emlineflux = specflux - continuummodelflux - smoothcontinuummodelflux
+
+        npixpercamera = [len(gw) for gw in data['wave']] # all pixels
+        npixpercam = np.hstack([0, npixpercamera])
+
+        emlineivar = np.copy(oemlineivar)
+        emlinevar, emlinegood = ivar2var(emlineivar, clip=1e-3)
+        emlinebad = np.logical_not(emlinegood)
+        if np.sum(emlinebad) > 0:
+            emlineivar[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineivar[emlinegood])
+            emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
+        weights = np.sqrt(emlineivar)
+
+        wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
+
+        # Initialize the emission-line model with good first guesses.
+        self.EMLineModel = EMLineModel(redshift=redshift,
+                                       wavelims=wavelims,
+                                       emlineR=data['res'],
+                                       npixpercamera=npixpercamera,
+                                       log10wave=self.log10wave)
+
+        init_amplitudes, init_sigmas = self._init_guesses(data, emlinewave, emlineflux)
+
         #self.EMLineModel.halpha_sigma.tied = False
         #self.EMLineModel.nii_6584_sigma.tied = False
         #self.EMLineModel.nii_6548_sigma.tied = False
@@ -1492,10 +1606,45 @@ class EMLineFit(ContinuumTools):
         #for pp in self.EMLineModel.param_names:
         #    print(getattr(self.EMLineModel, pp))
 
+        ## --------------------------------------------------
+        #Ifree, Itied, Ifixed, model_bounds = [], [], [], []
+        #for pp in self.EMLineModel.param_names:
+        #    Ifree.append(self.EMLineModel.tied[pp] is False and self.EMLineModel.fixed[pp] is False)
+        #    Itied.append(self.EMLineModel.tied[pp] is not False)
+        #    Ifixed.append(self.EMLineModel.fixed[pp] is not False)
+        #    if self.EMLineModel.bounds[pp][0] is None:
+        #        lower = -np.inf
+        #    else:
+        #        lower = self.EMLineModel.bounds[pp][0]
+        #    if self.EMLineModel.bounds[pp][1] is None:
+        #        upper = +np.inf
+        #    else:
+        #        upper = self.EMLineModel.bounds[pp][1]
+        #    model_bounds.append((lower, upper))
+        #model_bounds = tuple(zip(*model_bounds))
+        #
+        #Ifree = np.where(Ifree)[0]
+        #Itied = np.where(Itied)[0]
+        #Ifixed = np.where(Ifixed)[0]
+        #
+        #
+        #
+        #fit_info = optimize.least_squares(
+        #    self.objective_function, init_values, args=farg, 
+        #    max_nfev=maxiter, xtol=accuracy, method='lm')#, bounds=bounds)
+        #
+        #pdb.set_trace()
+        #
+        #emline_spectrum(emlinewave, [self.EMLineModel.parameters, self.EMLineModel])
+        ##emline_spectrum(emlinewave, *self.EMLineModel.parameters.tolist())
+        #
+        #pdb.set_trace()
+        ## --------------------------------------------------
+
         fitter = FastLevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
-        initfit = _clean_linefit(initfit, init_amplitudes, init_sigmas)
+        initfit = self._clean_linefit(initfit, init_amplitudes, init_sigmas)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
         log.info('Initial line-fitting with {} free parameters took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
             nfree, time.time()-t0, fitter.fit_info['nfev'], initchi2))
@@ -1539,7 +1688,7 @@ class EMLineFit(ContinuumTools):
             broadfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                               maxiter=maxiter, acc=accuracy)
 
-            broadfit = _clean_linefit(broadfit, init_amplitudes, init_sigmas)
+            broadfit = self._clean_linefit(broadfit, init_amplitudes, init_sigmas)
             broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar)
             log.info('Second (broad) line-fitting with {} free parameters took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
                 nfree, time.time()-t0, fitter.fit_info['nfev'], broadchi2))
@@ -1589,7 +1738,7 @@ class EMLineFit(ContinuumTools):
             fitter = FastLevMarLSQFitter(bestfit)
             finalfit = fitter(bestfit, emlinewave, emlineflux, weights=weights,
                               maxiter=maxiter, acc=accuracy)
-            finalfit = _clean_linefit(finalfit, init_amplitudes)
+            finalfit = self._clean_linefit(finalfit, init_amplitudes)
             chi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar)
             log.info('Final line-fitting took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
                 time.time()-t0, fitter.fit_info['nfev'], chi2))
