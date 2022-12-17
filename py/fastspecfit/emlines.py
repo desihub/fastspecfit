@@ -15,9 +15,6 @@ import astropy.units as u
 from astropy.modeling import Fittable1DModel
 #from astropy.modeling.fitting import LevMarLSQFitter
 
-import operator
-from functools import reduce, wraps
-
 from desispec.interpolation import resample_flux
 from fastspecfit.util import trapz_rebin, C_LIGHT
 from fastspecfit.continuum import ContinuumTools
@@ -1110,7 +1107,7 @@ class EMLineFit(ContinuumTools):
         self.chi2_default = chi2_default
         self.nolegend = nolegend
 
-        self.emwave_pixkms = 10.0 # pixel size for internal wavelength array [km/s]
+        self.emwave_pixkms = 5.0 # pixel size for internal wavelength array [km/s]
         self.dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
         self.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), self.dlogwave)
         #self.log10wave = np.arange(np.log10(emlinewave.min()), np.log10(emlinewave.max()), dlogwave)
