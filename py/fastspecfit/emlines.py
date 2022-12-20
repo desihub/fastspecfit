@@ -126,11 +126,6 @@ def _tie_ciii_1908_vshift(model):
 #def _tie_nv_1243_vshift(model):
 #    return model.nv_1243_vshift
 
-def _count_free_parameters(model):
-    nfree = np.count_nonzero([model.tied[tiedkey] is False and model.fixed[fixedkey] is not False
-                              for tiedkey, fixedkey in zip(model.tied.keys(), model.fixed.keys())])
-    return nfree
-
 def _tie_lines(model):
     """Tie emission lines together using sensible constrains based on galaxy & QSO
     physics.
@@ -227,6 +222,281 @@ def _tie_lines(model):
 #    model.nii_6548_amp = model.nii_6548_amp.tied(model)
 #            
 #    return model
+
+def build_linemodels(linetable, redshift, wavelims, verbose=False):
+    """Build a simple multi-parameter emission-line model.
+
+    """
+    from astropy.table import Table
+
+    linenames = linetable['name'].data
+
+    # build the parameter list
+    param_names, _linenames = [], []
+    for linename in linenames:
+        for param in ['amp', 'vshift', 'sigma']:
+            _linenames.append(linename)
+            param_name = linename+'_'+param
+            # use doublet-ratio parameters for close or physical doublets
+            if param_name == 'mgii_2796_amp':
+                param_name = 'mgii_doublet_ratio' # MgII 2796/2803
+            if param_name == 'oii_3726_amp':
+                param_name = 'oii_doublet_ratio'  # [0.66, 1.4]) # [OII] 3726/3729
+            if param_name == 'sii_6731_amp':
+                param_name = 'sii_doublet_ratio'  # [0.67, 1.2]) # [SII] 6731/6716
+            param_names.append(param_name)
+    param_names = np.hstack(param_names)
+    nparam = len(param_names)
+
+    # Initialize the output data model.
+    linemodel = Table()
+    linemodel['param_names'] = param_names
+    linemodel['index'] = np.arange(nparam).astype(np.int32)
+    linemodel['linename'] = _linenames
+
+    linemodel['tiedfactor1'] = np.zeros(nparam, 'f8')
+    linemodel['tiedfactor2'] = np.zeros(nparam, 'f8')
+    linemodel['tiedtoline1'] = np.zeros(nparam, np.int16)-1
+    linemodel['tiedtoline2'] = np.zeros(nparam, np.int16)-1
+    linemodel['fixed1'] = np.zeros(nparam, bool)
+    linemodel['fixed2'] = np.zeros(nparam, bool)
+
+    #linemodel['zline'] = linetable['restwave'].data * (1 + redshift)
+    linemodel['value'] = np.zeros(nparam, 'f8')
+
+    # Build the relationship of "tied" parameters. In the 'tied' array, the
+    # non-zero value is the multiplicative factor by which the parameter
+    # represented in the 'tiedtoline' index should be multiplied.
+
+    # Physical doublets and lines in the same ionization species should have
+    # their velocity shifts and line-widths always tied. In addition, set fixed
+    # doublet-ratios here. Note that these constraints must be set on *all*
+    # lines, not just those in range.
+
+    # Model 1: untied lines: [NeIII] 3869, [OIII] 4363, [NII] 5755, [OI] 6300,
+    # [SIII] 6312, HeII 4686
+    for iline, linename in enumerate(linenames):
+        if linename == 'mgii_2796':
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'mgii_2803_'+param)[0]
+        if linename == 'nev_3346':
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'nev_3426_'+param)[0]
+        if linename == 'oii_3726':
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'oii_3729_'+param)[0]
+        if linename == 'oiii_4959':
+            """
+            [O3] (4-->2): airwave: 4958.9097 vacwave: 4960.2937 emissivity: 1.172e-21
+            [O3] (4-->3): airwave: 5006.8417 vacwave: 5008.2383 emissivity: 3.497e-21
+            """
+            linemodel['tiedfactor1'][param_names == linename+'_amp'] = 1.0 / 2.9839 # 2.8875
+            linemodel['tiedtoline1'][param_names == linename+'_amp'] = np.where(param_names == 'oiii_5007_amp')[0]
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'oiii_5007_'+param)[0]
+        if linename == 'nii_6548':
+            """
+            [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.02198e-21
+            [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.94901e-21
+            """
+            linemodel['tiedfactor1'][param_names == linename+'_amp'] = 1.0 / 2.9421 # 2.936
+            linemodel['tiedtoline1'][param_names == linename+'_amp'] = np.where(param_names == 'nii_6584_amp')[0]
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'nii_6584_'+param)[0]
+        if linename == 'sii_6731':
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'sii_6716_'+param)[0]
+        if linename == 'oii_7320':
+            """
+            [O2] (5-->2): airwave: 7318.9185 vacwave: 7320.9350 emissivity: 8.18137e-24
+            [O2] (4-->2): airwave: 7319.9849 vacwave: 7322.0018 emissivity: 2.40519e-23
+            [O2] (5-->3): airwave: 7329.6613 vacwave: 7331.6807 emissivity: 1.35614e-23
+            [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.27488e-23
+            """
+            linemodel['tiedfactor1'][param_names == linename+'_amp'] = 1.0 / 1.2251
+            linemodel['tiedtoline1'][param_names == linename+'_amp'] = np.where(param_names == 'oii_7330_amp')[0]
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'oii_7330_'+param)[0]
+        if linename == 'siii_9069':
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'siii_9532_'+param)[0]
+        # Tentative! Tie SiIII] 1892 to CIII] 1908 because they're so close in wavelength.
+        if linename == 'siliii_1892':
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'ciii_1908_'+param)[0]
+
+        # Tie all narrow Balmer+He lines to narrow Halpha.
+        if linetable['isbalmer'][iline] and linetable['isbroad'][iline] == False and linename != 'halpha':
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_'+param)[0]
+
+        # Tie all broad Balmer+He lines to broad Halpha.
+        if linetable['isbalmer'][iline] and linetable['isbroad'][iline] and linename != 'halpha_broad':
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor1'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline1'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_broad_'+param)[0]
+    
+    # Model 2 - tie all forbidden lines and narrow Balmer & He lines to [OIII] 5007.
+    linemodel['tiedfactor2'] = linemodel['tiedfactor1']
+    linemodel['tiedtoline2'] = linemodel['tiedtoline1']
+
+    for iline, linename in enumerate(linenames):
+        if linetable['isbroad'][iline] == False and linename != 'oiii_5007':
+            for param in ['sigma', 'vshift']:
+                linemodel['tiedfactor2'][param_names == linename+'_'+param] = 1.0
+                linemodel['tiedtoline2'][param_names == linename+'_'+param] = np.where(param_names == 'oiii_5007_'+param)[0]
+
+    assert(np.all(linemodel['tiedtoline1'][linemodel['tiedfactor1'] != 0] != -1))
+    assert(np.all(linemodel['tiedtoline2'][linemodel['tiedfactor2'] != 0] != -1))
+
+    ## Now, for lines not in the wavelength range, set all their parameters
+    ## to zero and fixed **except those in the neverfix list**, which are
+    ## used as .tied functions below. This step should appear last.
+    #if not model.inrange[iline]:
+    #    if hasattr(model, '{}_amp'.format(linename)): # doublet ratios have no amplitude
+    #       setattr(model, '{}_amp'.format(linename), 0.0)
+    #       getattr(model, '{}_amp'.format(linename)).fixed = True
+    #    if '{}_sigma'.format(linename) not in neverfix:
+    #        setattr(model, '{}_sigma'.format(linename), 0.0)
+    #        getattr(model, '{}_sigma'.format(linename)).fixed = True
+    #    if '{}_vshift'.format(linename) not in neverfix:
+    #        setattr(model, '{}_vshift'.format(linename), 0.0)
+    #        getattr(model, '{}_vshift'.format(linename)).fixed = True
+
+
+    pdb.set_trace()
+
+    # If used, never fix the following parameters even if they are outside the
+    # wavelength range of the data.
+    neverfix = ['halpha_sigma', 'halpha_vshift']
+    neverfix = neverfix + ['halpha_broad_sigma', 'halpha_broad_vshift']
+    neverfix = neverfix + ['oiii_5007_sigma', 'oiii_5007_vshift']
+
+    # all lines outside the wavelength range are fixed
+    inrange = (zline > (wavelims[0]+0)) * (zline < (wavelims[1]-0))
+    outofrange = np.logical_not(inrange)
+
+    fixed = np.zeros(nparam, bool)
+    for line in linenames[outofrange]:
+        for param in ['amp', 'vshift', 'sigma']:
+            param_name = line+'_'+param
+            if param_name not in neverfix:
+                fixed[param_names == param_name] = True
+
+    if verbose:
+        for linename in linenames:
+            for param in ['amp', 'sigma', 'vshift']:
+                I = np.where(param_names == linename+'_'+param)[0]
+                if len(I) == 1:
+                    I = I[0]
+                    if linemodel['tiedtoline'][I] == -1:
+                        if fixed[I]:
+                            print('{:25s} is FIXED'.format(linename+'_'+param))
+                    else:
+                        if fixed[I]:
+                            print('{:25s} tied to {:25s} with factor {:.4f} and FIXED'.format(
+                                linename+'_'+param, param_names[linemodel['tiedtoline'][I]], linemodel['tiedfactor'][I]))
+                        else:
+                            print('{:25s} tied to {:25s} with factor {:.4f}'.format(
+                                linename+'_'+param, param_names[linemodel['tiedtoline'][I]], linemodel['tiedfactor'][I]))
+
+    return tied, tiedtoline, fixed                            
+
+def initial_guesses_and_bounds(data, emlinewave, emlineflux):
+    """For all lines in range, do a fast update of the initial line-amplitudes
+    which especially helps with cases like 39633354915582193 (tile 80613,
+    petal 05), which has strong narrow lines.
+
+    """
+    init_amplitudes, init_sigmas = {}, {}
+
+    coadd_emlineflux = np.interp(data['coadd_wave'], emlinewave, emlineflux)
+
+    for linename, linepix in zip(data['coadd_linename'], data['coadd_linepix']):
+        # skip the physical doublets
+        if not hasattr(self.EMLineModel, '{}_amp'.format(linename)):
+            continue
+        npix = len(linepix)
+        if npix > 5:
+            mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
+            if mnpx < 0:
+                mnpx = 0
+            if mxpx > linepix[-1]:
+                mxpx = linepix[-1]
+            amp = np.max(coadd_emlineflux[mnpx:mxpx])
+        else:
+            amp = np.percentile(coadd_emlineflux[linepix], 97.5)
+
+        # update the bounds on the line-amplitude
+        #bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 3*np.max(coadd_emlineflux[linepix])]
+        mx = 5*np.max(coadd_emlineflux[linepix])
+        if mx < 0: # ???
+            mx = 5*np.max(np.abs(coadd_emlineflux[linepix]))
+        
+        # force broad Balmer lines to be positive
+        iline = self.linetable[self.linetable['name'] == linename]
+        if iline['isbroad']:
+            if iline['isbalmer']:
+                bounds = [0.0, mx]
+            else:
+                # MgII and other UV lines are dropped relatively frequently
+                # due to the lower bound on the amplitude.
+                bounds = [None, mx]
+        else:
+            bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), mx]
+
+        setattr(self.EMLineModel, '{}_amp'.format(linename), amp)
+        getattr(self.EMLineModel, '{}_amp'.format(linename)).bounds = bounds
+
+        init_amplitudes[linename] = amp
+
+    # Now update the linewidth but here we need to loop over *all* lines
+    # (not just those in range). E.g., if H-alpha is out of range we need to
+    # set its initial value correctly since other lines are tied to it
+    # (e.g., main-bright-32406-39628257196245904).
+    for iline in self.linetable:
+        linename = iline['name']
+        # If sigma is zero here, it was set in _tie_lines because the line
+        # is out of range and not a "neverfix" line.
+        if getattr(self.EMLineModel, '{}_sigma'.format(linename)) == 0:
+            continue
+        init_sigmas['{}_fixed'.format(linename)] = getattr(self.EMLineModel, '{}_sigma'.format(linename)).fixed
+        init_sigmas['{}_vshift'.format(linename)] = getattr(self.EMLineModel, '{}_vshift'.format(linename)).value
+        if iline['isbroad']:
+            if iline['isbalmer']:
+                if data['linesigma_balmer_snr'] > 0: # broad Balmer lines
+                    setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
+                    #getattr(self.EMLineModel, '{}_sigma'.format(linename)).default = data['linesigma_balmer']
+                    init_sigmas[linename] = data['linesigma_balmer']
+            else:
+                if data['linesigma_uv_snr'] > 0: # broad UV/QSO lines
+                    setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_uv'])
+                    #getattr(self.EMLineModel, '{}_sigma'.format(linename)).default = data['linesigma_uv']
+                    init_sigmas[linename] = data['linesigma_uv']
+        else:
+            # prefer narrow over Balmer
+            if data['linesigma_narrow_snr'] > 0:
+                setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_narrow'])
+                #getattr(self.EMLineModel, '{}_sigma'.format(linename)).default = data['linesigma_narrow']
+                init_sigmas[linename] = data['linesigma_narrow']
+            #elif data['linesigma_narrow_snr'] == 0 and data['linesigma_narrow_balmer'] > 0:
+            #    setattr(self.EMLineModel, '{}_sigma'.format(linename), data['linesigma_balmer'])
+            #    getattr(self.EMLineModel, '{}_sigma'.format(linename)).default = data['linesigma_balmer']
+            #    init_sigmas[linename] = data['linesigma_balmer']
+
+    return init_amplitudes, init_sigmas
+
+
 
 def emline_spectrum(emlinewave, *lineargs):
     """The model we want to optimize is a pure emission-line spectrum in erg/s/cm2/A
@@ -1093,7 +1363,7 @@ class EMLineFit(ContinuumTools):
     * https://docs.astropy.org/en/stable/modeling/compound-models.html#parameters
 
     """
-    def __init__(self, nball=10, chi2_default=0.0, minwave=3000.0,
+    def __init__(self, chi2_default=0.0, minwave=3000.0,
                  maxwave=10000.0, pixkms=10.0, nolegend=False, 
                  ssptemplates=None, mapdir=None):
         """Write me.
@@ -1103,7 +1373,6 @@ class EMLineFit(ContinuumTools):
 
         super(EMLineFit, self).__init__(mapdir=mapdir, ssptemplates=ssptemplates)
         
-        self.nball = nball
         self.chi2_default = chi2_default
         self.nolegend = nolegend
 
@@ -1466,6 +1735,17 @@ class EMLineFit(ContinuumTools):
 
         wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
 
+        ###################################################
+        if True:
+            linemodel = build_linemodels(self.linetable, redshift, wavelims, verbose=True)
+
+            pdb.set_trace()
+
+            initial_guesses_and_bounds(data, emlinewave, emlineflux)
+
+
+        ###################################################
+
         # Initialize the emission-line model with good first guesses.
         self.EMLineModel = EMLineModel(redshift=redshift,
                                        wavelims=wavelims,
@@ -1474,6 +1754,7 @@ class EMLineFit(ContinuumTools):
                                        log10wave=self.log10wave)
 
         init_amplitudes, init_sigmas = self._init_guesses(data, emlinewave, emlineflux)
+        pdb.set_trace()
 
         #self.EMLineModel.halpha_sigma.tied = False
         #self.EMLineModel.nii_6584_sigma.tied = False
