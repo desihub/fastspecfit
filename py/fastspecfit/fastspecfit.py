@@ -201,7 +201,7 @@ def fastspec(args=None, comm=None):
     if len(Spec.specfiles) == 0:
         return
 
-    data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True, remember_coadd=True)
+    data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True)
 
     #pdb.set_trace()
     #np.savetxt('linemask3.txt', np.array([np.hstack(data[0]['wave']), np.hstack(data[0]['flux']), np.hstack(data[0]['ivar'])]).T)

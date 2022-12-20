@@ -771,6 +771,8 @@ class EMLineFit(ContinuumTools):
 
         wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
 
+        pdb.set_trace()
+
         ###################################################
         if True:
             linemodel = build_linemodels(self.linetable, redshift, wavelims, verbose=True)
@@ -910,7 +912,7 @@ class EMLineFit(ContinuumTools):
         # do this test?
         broadlinepix = []
         for icam in np.arange(len(data['cameras'])):
-            pixoffset = int(np.sum(npixpercamera[:icam]))
+            pixoffset = int(np.sum(data['npixpercamera'][:icam]))
             for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
                 if linename == 'halpha_broad' or linename == 'hbeta_broad' or linename == 'hgamma_broad':
                     broadlinepix.append(linepix + pixoffset)
@@ -1456,9 +1458,7 @@ class EMLineFit(ContinuumTools):
                                                          np.hstack(data['ivar']), redshift=redshift,
                                                          linemask=np.hstack(data['linemask']))
         smooth_continuum = []
-        for icam in np.arange(len(data['cameras'])): # iterate over cameras
-            ipix = np.sum(npixpercam[:icam+1])
-            jpix = np.sum(npixpercam[:icam+2])
+        for ipix, jpix in zip(data['ipix'], data['jpix']):
             smooth_continuum.append(_smooth_continuum[ipix:jpix])
 
         _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
