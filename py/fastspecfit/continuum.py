@@ -11,6 +11,7 @@ import os, time
 import numpy as np
 
 import astropy.units as u
+from astropy.table import Table, Column
 
 from fastspecfit.util import C_LIGHT
 from desiutil.log import get_logger, DEBUG
@@ -128,6 +129,12 @@ class ContinuumTools(object):
 
     Parameters
     ----------
+    ssptemplates : :class:`str`, optional
+        Full path to the SSP templates used for continuum-fitting.
+    sspversion : :class:`str`, optional, defaults to `v1.0`
+        Version of the SSP templates.
+    mapdir : :class:`str`, optional
+        Full path to the Milky Way dust maps.
     metallicity : :class:`str`, optional, defaults to `Z0.0190`.
         Stellar metallicity of the SSPs. Currently fixed at solar
         metallicity, Z=0.0190.
@@ -141,12 +148,11 @@ class ContinuumTools(object):
         Need to document all the attributes.
 
     """
-    def __init__(self, ssptemplates=None, metallicity='Z0.0190', minwave=None,
-                 maxwave=30e4, sspversion='v1.0', mapdir=None):
+    def __init__(self, ssptemplates=None, sspversion='v1.0', metallicity='Z0.0190', 
+                 minwave=None, maxwave=30e4, mapdir=None):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
-        from astropy.table import Table, Column
 
         from speclite import filters
         from desiutil.dust import SFDMap
@@ -224,7 +230,7 @@ class ContinuumTools(object):
         nage = len(sspinfo)
         npix = len(sspwave)
 
-        self.pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
+        self.continuum_pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
 
         # add AGN templates here?
         if False:
@@ -425,8 +431,6 @@ class ContinuumTools(object):
         -----
 
         """
-        from astropy.table import Table, Column
-        
         shp = maggies.shape
         if maggies.ndim == 1:
             nband, ngal = shp[0], 1
@@ -547,7 +551,7 @@ class ContinuumTools(object):
 
         if vdisp <= 0.0:
             return sspflux
-        sigma = vdisp / self.pixkms # [pixels]
+        sigma = vdisp / self.continuum_pixkms # [pixels]
 
         smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
 
@@ -1192,10 +1196,6 @@ class ContinuumTools(object):
             Desired output wavelength array, usually that of the object being fitted.
         specres : :class:`desispec.resolution.Resolution`, optional, defaults to None 
             Resolution matrix.
-        vdisp : :class:`float`, optional, defaults to None
-            Velocity dispersion broadening factor [km/s].
-        pixkms : :class:`float`, optional, defaults to None
-            Pixel size of input spectra [km/s].
 
         Returns
         -------
@@ -1469,8 +1469,6 @@ class ContinuumFit(ContinuumTools):
         """Initialize the output data table for this class.
 
         """
-        from astropy.table import Table, Column
-        
         nssp_coeff = len(self.sspinfo)
         
         out = Table()
@@ -1510,8 +1508,6 @@ class ContinuumFit(ContinuumTools):
         """Initialize the photometric output data table.
 
         """
-        from astropy.table import Table, Column
-        
         nssp_coeff = len(self.sspinfo)
         
         out = Table()

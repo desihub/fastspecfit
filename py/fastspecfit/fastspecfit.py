@@ -32,6 +32,25 @@ def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
+def _assign_units_to_columns(fastfit, metadata, Spec, CFit, EMFit=None, fastphot=False):
+    """Assign astropy units to output tables."""
+    fastcols = fastfit.colnames
+    metacols = metadata.colnames
+
+    T, M = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=fastphot)
+    for col in T.colnames:
+        if col in fastcols:
+            fastfit[col].unit = T[col].unit
+    for col in M.colnames:
+        if col in metacols:
+            metadata[col].unit = M[col].unit
+
+    if EMFit is not None:
+        E = EMFit.init_output(EMFit.linetable, nobj=1)
+        for col in E.colnames:
+            if col in fastcols:
+                fastfit[col].unit = E[col].unit
+
 def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False, broadlinefit=True):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
     
@@ -165,7 +184,8 @@ def fastspec(args=None, comm=None):
     # Initialize the continuum- and emission-line fitting classes. Note: trim
     # the wavelengths of the SSPs to optimize compute time.
     t0 = time.time()
-    CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, solve_vdisp=args.solve_vdisp, minwave=500.0, maxwave=1e4)
+    CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, solve_vdisp=args.solve_vdisp, 
+                        minwave=500.0, maxwave=1e4)
     EMFit = EMLineFit(mapdir=args.mapdir, ssptemplates=args.ssptemplates)
     Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
@@ -213,10 +233,9 @@ def fastspec(args=None, comm=None):
        
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
-    # assign units
+    # Assign units and write out.
     _assign_units_to_columns(out, meta, Spec, CFit, EMFit=EMFit, fastphot=False)
 
-    # Write out.
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
                       fastphot=False)
@@ -287,28 +306,9 @@ def fastphot(args=None, comm=None):
     meta = Table(np.hstack(_out[1]))
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
-    # assign units
+    # Assign units and write out.
     _assign_units_to_columns(out, meta, Spec, CFit, fastphot=True)
 
-    # Write out.
     write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=True)
 
-def _assign_units_to_columns(fastfit, metadata, Spec, CFit, EMFit=None, fastphot=False):
-    """Assign astropy units to output tables."""
-    fastcols = fastfit.colnames
-    metacols = metadata.colnames
-
-    T, M = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=fastphot)
-    for col in T.colnames:
-        if col in fastcols:
-            fastfit[col].unit = T[col].unit
-    for col in M.colnames:
-        if col in metacols:
-            metadata[col].unit = M[col].unit
-
-    if EMFit is not None:
-        E = EMFit.init_output(EMFit.linetable, nobj=1)
-        for col in E.colnames:
-            if col in fastcols:
-                fastfit[col].unit = E[col].unit
