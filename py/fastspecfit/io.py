@@ -781,13 +781,11 @@ class DESISpectra(object):
                     # an "hstacked" spectrum.
                     data['npixpercamera'] = npixpercamera
 
+                    ncam = len(data['cameras'])
                     npixpercam = np.hstack([0, npixpercamera])
-                    ipix, jpix = [], []
-                    for icam in np.arange(len(data['cameras'])):
-                        ipix.append(np.sum(npixpercam[:icam+1]))
-                        jpix.append(np.sum(npixpercam[:icam+2]))
-                    data['ipix'] = ipix
-                    data['jpix'] = jpix
+                    data['camerapix'] = np.zeros((ncam, 2), np.int16)
+                    for icam in np.arange(ncam):
+                        data['camerapix'][icam, :] = [np.sum(npixpercam[:icam+1]), np.sum(npixpercam[:icam+2])]
                                             
                     # coadded spectrum
                     coadd_wave = coadd_spec.wave[coadd_bands]

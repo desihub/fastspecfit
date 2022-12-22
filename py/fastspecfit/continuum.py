@@ -2282,9 +2282,9 @@ class ContinuumFit(ContinuumTools):
 
         # Unpack the continuum into individual cameras.
         continuummodel, smooth_continuum = [], []
-        for ipix, jpix in zip(data['ipix'], data['jpix']):
-            continuummodel.append(bestfit[ipix:jpix])
-            smooth_continuum.append(_smooth_continuum[ipix:jpix])
+        for camerapix in data['camerapix']:
+            continuummodel.append(bestfit[camerapix[0]:camerapix[1]])
+            smooth_continuum.append(_smooth_continuum[camerapix[0]:camerapix[1]])
 
         ## Like above, but with per-camera smoothing.
         #smooth_continuum = self.smooth_residuals(
