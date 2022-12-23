@@ -15,14 +15,11 @@ import numba
 import astropy.units as u
 from astropy.table import Table, Column
 
-#from astropy.modeling import Fittable1DModel
-#from astropy.modeling.fitting import LevMarLSQFitter
-
 from desispec.interpolation import resample_flux
 from fastspecfit.util import trapz_rebin, C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 from desiutil.log import get_logger, DEBUG
-log = get_logger()#DEBUG)
+log = get_logger(DEBUG)
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -36,9 +33,9 @@ def read_emlines():
     return linetable    
 
 #@numba.jit(nopython=True)
-def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas, 
-                       linewaves, lineinrange, emlinewave, resolution_matrix, 
-                       camerapix):
+def _build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas, 
+                        linewaves, lineinrange, emlinewave, resolution_matrix, 
+                        camerapix):
     """Given parameters, build the model emission-line spectrum.
 
     ToDo: can this be optimized using numba?
@@ -59,7 +56,7 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
         linezwaves = np.log10(linewaves * (1.0 + redshift + linevshifts / C_LIGHT))
 
         for lineamp, linezwave, log10sigma in zip(lineamps, linezwaves, log10sigmas):
-            J = np.abs(log10wave - linezwave) < (10 * log10sigma) # cut to pixels within +/-10-sigma
+            J = np.abs(log10wave - linezwave) < (8 * log10sigma) # cut to pixels within +/-N-sigma
             if np.count_nonzero(J) > 0:
                 #print(lineamp, 10**linezwave, 10**log10wave[J].min(), 10**log10wave[J].max())
                 log10model[J] = log10model[J] + lineamp * np.exp(-0.5 * (log10wave[J]-linezwave)**2 / log10sigma**2)
@@ -73,14 +70,14 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
 
     return np.hstack(emlinemodel)
 
-def objective_function(free_parameters, emlinewave, emlineflux, weights, redshift, 
-                       log10wave, resolution_matrix, camerapix, parameters, Ifree, 
-                       Itied, tiedtoparam, tiedfactor, bounds, doubletindx, doubletpair, 
-                       linewaves, lineinrange):
+def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshift, 
+                        log10wave, resolution_matrix, camerapix, parameters, Ifree, 
+                        Itied, tiedtoparam, tiedfactor, doubletindx, doubletpair, 
+                        linewaves, lineinrange):
     """The parameters array should only contain free (not tied or fixed) parameters."""
 
-    # Parameters have to be allowed to exceed their bounds, otherwise they get
-    # stuck at the boundary.
+    # Parameters have to be allowed to exceed their bounds in the optimization
+    # function, otherwise they get stuck at the boundary.
 
     # Handle tied parameters and bounds. Only check bounds on the free
     # parameters.
@@ -90,8 +87,9 @@ def objective_function(free_parameters, emlinewave, emlineflux, weights, redshif
     #    if value > bnd[1]:
     #        free_parameters[I] = bnd[1]
 
+    parameters[Ifree] = free_parameters
+
     if len(Itied) > 0:
-        parameters[Ifree] = free_parameters
         for I, indx, factor in zip(Itied, tiedtoparam, tiedfactor):
             parameters[I] = parameters[indx] * factor
 
@@ -100,13 +98,9 @@ def objective_function(free_parameters, emlinewave, emlineflux, weights, redshif
     lineamps[doubletindx] = lineamps[doubletindx] * lineamps[doubletpair]
 
     # Build the emission-line model.
-    emlinemodel = build_emline_model(log10wave, redshift, lineamps, 
-                                     linevshifts, linesigmas, linewaves, 
-                                     lineinrange, emlinewave, resolution_matrix,
-                                     camerapix)
-    #import matplotlib.pyplot as plt
-    #plt.plot(emlinewave, emlinemodel)
-    #plt.savefig('junk.png')
+    emlinemodel = _build_emline_model(log10wave, redshift, lineamps, linevshifts, 
+                                      linesigmas, linewaves, lineinrange, emlinewave, 
+                                      resolution_matrix, camerapix)
 
     if weights is None:
         residuals = emlinemodel - emlineflux
@@ -261,23 +255,63 @@ class EMLineFit(ContinuumTools):
                                 print('{:25s} tied to {:25s} with factor {:.4f}'.format(
                                     linename+'_'+param, param_names[linemodel['tiedtoparam'][I]], linemodel['tiedfactor'][I]))
 
-        def _fixed_params(linemodel, outofrange):
-            linemodel['fixed'] = False # reset
+        def _fix_parameters(linemodel, verbose=False):
+            """Set the "fixed" attribute for all the parameters in a given linemodel."""
+            # First loop through all tied parameters and set fixed to the
+            # parameter it's tied to.
+            I = np.where(linemodel['tiedtoparam'] != -1)[0] # should always have len(I)>0
+            alltied = linemodel[I]['tiedtoparam']
+            utied = np.unique(alltied)
+            for tied in utied:
+                J = tied == alltied
+                if verbose:
+                    print('Tying {} to {}'.format(' '.join(linemodel[I][J]['param_name']), linemodel[tied]['param_name']))
+                linemodel[I][J]['fixed'] = linemodel[tied]['fixed']
+            if verbose:
+                print('Number of fixed parameters = {}'.format(np.sum(linemodel['fixed'])))
+                print('Number of free parameters = {}'.format(np.sum(np.logical_and(linemodel['fixed'] == False, linemodel['tiedtoparam'] == -1))))
+                #print('Number of fixed or tied parameters = {}'.format(np.sum(np.logical_or(linemodel['fixed'], linemodel['tiedtoparam'] != -1))))
+
+            # Next, fix out-of-range lines but not those that are in the 'utied'
+            # array---those out-of-range lines need to be in the optimization
+            # list because the in-range lines depend on them.
+            outofrange = fit_linetable['inrange'] == False
             if np.sum(outofrange) > 0: # should always be true
                 for linename in fit_linetable['name'][outofrange]:
                     for param in ['amp', 'vshift', 'sigma']:
                         param_name = linename+'_'+param
-                        I = (linemodel['param_name'] == param_name) * (linemodel['tiedtoparam'] == -1)
-                        if np.sum(I) > 0:
-                            linemodel['fixed'][I] = True
-                # special case the doublet ratios
-                if 'mgii_2796' in fit_linetable['name'][outofrange] and 'mgii_2803' in fit_linetable['name'][outofrange]:
-                    linemodel['fixed'][linemodel['param_name'] == 'mgii_doublet_ratio'] = True
-                if 'oii_3726' in fit_linetable['name'][outofrange] and 'oii_3729' in fit_linetable['name'][outofrange]:
-                    linemodel['fixed'][linemodel['param_name'] == 'oii_doublet_ratio'] = True
-                if 'sii_6716' in fit_linetable['name'][outofrange] and 'sii_6731' in fit_linetable['name'][outofrange]:
-                    linemodel['fixed'][linemodel['param_name'] == 'sii_doublet_ratio'] = True
+                        I = np.where(linemodel['param_name'] == param_name)[0]
+                        if I in utied:
+                            if verbose:
+                                print('Not fixing out-of-range parameter {}'.format(param_name))
+                        else:
+                            linemodel['fixed'][I] |= True
+                if verbose:
+                    print('Number of fixed parameters = {}'.format(np.sum(linemodel['fixed'])))
+                    print('Number of free parameters = {}'.format(np.sum(np.logical_and(linemodel['fixed'] == False, linemodel['tiedtoparam'] == -1))))
+                    #print('Number of fixed or tied parameters = {}'.format(np.sum(np.logical_or(linemodel['fixed'], linemodel['tiedtoparam'] != -1))))
 
+                # Finally loop through each 'utied' line and if all the lines
+                # tied to it are fixed, then fix that line, too.
+                for tied in utied:
+                    if np.all(linemodel[linemodel['tiedtoparam'] == tied]['fixed']):
+                        if verbose:
+                            print('Fixing {} because all tied lines are fixed: {}'.format(
+                                linemodel['param_name'][tied], ' '.join(linemodel[linemodel['tiedtoparam'] == tied]['param_name'])))
+                        linemodel[tied]['fixed'] = True
+
+                # Also handle the doublets.
+                I = np.where(linemodel['doubletpair'] != -1)[0]
+                if len(I) > 0:
+                    for doublet in linemodel[I]['doubletpair']:
+                        J = doublet == linemodel['doubletpair']
+                        if linemodel[doublet]['fixed']:
+                            linemodel['fixed'][J] = True
+
+                if verbose:
+                    print('Number of fixed parameters = {}'.format(np.sum(linemodel['fixed'])))
+                    print('Number of free parameters = {}'.format(np.sum(np.logical_and(linemodel['fixed'] == False, linemodel['tiedtoparam'] == -1))))
+                    #print('Number of fixed or tied parameters = {}'.format(np.sum(np.logical_or(linemodel['fixed'], linemodel['tiedtoparam'] != -1))))
 
         initvshift = 1.0
         vmaxshift_narrow = 300.0
@@ -338,7 +372,6 @@ class EMLineFit(ContinuumTools):
         self.fit_linetable = fit_linetable
         
         linenames = fit_linetable['name'].data
-        outofrange = fit_linetable['inrange'] == False
     
         # build the parameter list
         param_names, _linenames = [], []
@@ -375,6 +408,7 @@ class EMLineFit(ContinuumTools):
         final_linemodel['doubletpair'] = np.zeros(nparam, np.int16)-1
         final_linemodel['fixed'] = np.zeros(nparam, bool)
         final_linemodel['bounds'] = np.zeros((nparam, 2), 'f8')
+        final_linemodel['initial'] = np.zeros(nparam, 'f8')
         final_linemodel['value'] = np.zeros(nparam, 'f8')
 
         final_linemodel['doubletpair'][doubletindx] = doubletpair
@@ -388,8 +422,7 @@ class EMLineFit(ContinuumTools):
         # doublet-ratios here. Note that these constraints must be set on *all*
         # lines, not just those in range.
     
-        # Untied lines -- [NeIII] 3869, [OIII] 4363, [NII] 5755, [OI] 6300,
-        # [SIII] 6312, HeII 4686
+        # Untied lines -- [NeIII] 3869, [OIII] 4363, [NII] 5755, [OI] 6300, [SIII] 6312, HeII 4686
         for iline, linename in enumerate(linenames):
             # initial values and bounds - broad He+Balmer lines
             if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline]:
@@ -398,7 +431,7 @@ class EMLineFit(ContinuumTools):
                                                    [minsigma_balmer_broad, maxsigma_balmer_broad],
                                                    [-vmaxshift_broad, +vmaxshift_broad]],
                                                   [initamp, initsigma_broad, initvshift]):
-                    final_linemodel['value'][param_names == linename+'_'+param] = default
+                    final_linemodel['initial'][param_names == linename+'_'+param] = default
                     final_linemodel['bounds'][param_names == linename+'_'+param] = bounds
 
             # initial values and bounds - narrow He+Balmer lines
@@ -407,7 +440,7 @@ class EMLineFit(ContinuumTools):
                                                   [[minamp, maxamp], [minsigma_narrow, maxsigma_narrow],
                                                    [-vmaxshift_narrow, +vmaxshift_narrow]],
                                                   [initamp, initsigma_narrow, initvshift]):
-                    final_linemodel['value'][param_names == linename+'_'+param] = default
+                    final_linemodel['initial'][param_names == linename+'_'+param] = default
                     final_linemodel['bounds'][param_names == linename+'_'+param] = bounds
 
             # initial values and bounds - broad UV/QSO lines (non-Balmer)
@@ -416,7 +449,7 @@ class EMLineFit(ContinuumTools):
                                                   [[minamp, maxamp], [minsigma_broad, maxsigma_broad],
                                                    [-vmaxshift_broad, +vmaxshift_broad]],
                                                   [initamp, initsigma_broad, initvshift]):
-                    final_linemodel['value'][param_names == linename+'_'+param] = default
+                    final_linemodel['initial'][param_names == linename+'_'+param] = default
                     final_linemodel['bounds'][param_names == linename+'_'+param] = bounds
 
             # initial values and bounds - forbidden lines
@@ -425,7 +458,7 @@ class EMLineFit(ContinuumTools):
                                                   [[minamp, maxamp], [minsigma_narrow, maxsigma_narrow],
                                                    [-vmaxshift_narrow, +vmaxshift_narrow]],
                                                   [initamp, initsigma_narrow, initvshift]):
-                    final_linemodel['value'][param_names == linename+'_'+param] = default
+                    final_linemodel['initial'][param_names == linename+'_'+param] = default
                     final_linemodel['bounds'][param_names == linename+'_'+param] = bounds
 
             # tie parameters
@@ -491,23 +524,24 @@ class EMLineFit(ContinuumTools):
         for param, bounds, default in zip(['mgii_doublet_ratio', 'oii_doublet_ratio', 'sii_doublet_ratio'],
                                           [bounds_mgii_doublet, bounds_oii_doublet, bounds_sii_doublet],
                                           [init_mgii_doublet, init_oii_doublet, init_sii_doublet]):
-            final_linemodel['value'][final_linemodel['param_name'] == param] = default
+            final_linemodel['initial'][final_linemodel['param_name'] == param] = default
             final_linemodel['bounds'][final_linemodel['param_name'] == param] = bounds
                     
+        # Assign fixed=True to parameters which are outside the wavelength range
+        # except those that are tied to other lines.
+        _fix_parameters(final_linemodel, verbose=False)
+
         assert(np.all(final_linemodel['tiedtoparam'][final_linemodel['tiedfactor'] != 0] != -1))
         assert(len(final_linemodel[np.sum(final_linemodel['bounds'] == [0.0, 0.0], axis=1) > 0]) == 0)
     
-        # Assign fixed=True to parameters which are outside the wavelength range
-        # except those that are tied to other lines.
-        _fixed_params(final_linemodel, outofrange)
-
         #_print_linemodel(final_linemodel)
-
         #final_linemodel[np.logical_and(final_linemodel['fixed'] == False, final_linemodel['tiedtoparam'] == -1)]
 
         # Model 2 - like final_linemodel, but broad lines have been fixed at
         # zero.
         final_linemodel_nobroad = final_linemodel.copy()
+        final_linemodel_nobroad['fixed'] = False # reset
+
         for iline, linename in enumerate(linenames):
             if linename == 'halpha_broad':
                 for param in ['amp', 'sigma', 'vshift']:
@@ -520,11 +554,14 @@ class EMLineFit(ContinuumTools):
 
         #final_linemodel_nobroad[np.logical_and(final_linemodel_nobroad['fixed'] == False, final_linemodel_nobroad['tiedtoparam'] == -1)]
 
+        _fix_parameters(final_linemodel_nobroad, verbose=False)
+
         assert(np.all(final_linemodel_nobroad['tiedtoparam'][final_linemodel_nobroad['tiedfactor'] != 0] != -1))
 
         # Model 3 - like final_linemodel, but with all the narrow and forbidden
         # lines tied together and all the broad lines tied together.
         initial_linemodel = final_linemodel.copy()
+        initial_linemodel['fixed'] = False # reset
 
         for iline, linename in enumerate(linenames):
             # Tie all forbidden lines and narrow Balmer & He lines to [OIII] 5007.
@@ -536,20 +573,24 @@ class EMLineFit(ContinuumTools):
             ## Tie all narrow Balmer+He lines to narrow Halpha.
             #if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] == False and linename != 'halpha':
             #    for param in ['sigma', 'vshift']:
-            #        final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
-            #        final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_'+param)[0]
+            #        initial_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+            #        initial_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_'+param)[0]
     
             # Tie all broad Balmer+He lines to broad Halpha.
             if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] and linename != 'halpha_broad':
                 for param in ['sigma', 'vshift']:
-                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
-                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_broad_'+param)[0]
+                    initial_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    initial_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_broad_'+param)[0]
+
+        _fix_parameters(initial_linemodel, verbose=False)
 
         assert(np.all(initial_linemodel['tiedtoparam'][initial_linemodel['tiedfactor'] != 0] != -1))
 
         # Model 4 - like initial_linemodel, but broad lines have been fixed at
         # zero.
         initial_linemodel_nobroad = initial_linemodel.copy()
+        initial_linemodel_nobroad['fixed'] = False # reset        
+
         for iline, linename in enumerate(linenames):
             if linename == 'halpha_broad':
                 for param in ['amp', 'sigma', 'vshift']:
@@ -559,6 +600,8 @@ class EMLineFit(ContinuumTools):
                 for param in ['amp', 'sigma', 'vshift']:
                     initial_linemodel_nobroad['tiedfactor'][param_names == linename+'_'+param] = 1.0
                     initial_linemodel_nobroad['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_broad_'+param)[0]
+
+        _fix_parameters(initial_linemodel_nobroad, verbose=False)
 
         assert(np.all(initial_linemodel_nobroad['tiedtoparam'][initial_linemodel_nobroad['tiedfactor'] != 0] != -1))
 
@@ -698,14 +741,15 @@ class EMLineFit(ContinuumTools):
         for iparam, param in enumerate(linemodel['param_name']):
             if param in initial_guesses.keys():
                 if linemodel['fixed'][iparam]:
-                    linemodel['value'][iparam] = 0.0 # always set fixed parameter to zero
+                    linemodel['initial'][iparam] = 0.0 # always set fixed parameter to zero
                 else:
-                    linemodel['value'][iparam] = initial_guesses[param]
+                    linemodel['initial'][iparam] = initial_guesses[param]
                     if param in param_bounds.keys():
                         linemodel['bounds'][iparam] = param_bounds[param]
             else:
                 if linemodel['fixed'][iparam]:
-                    linemodel['value'][iparam] = 0.0
+                    linemodel['initial'][iparam] = 0.0
+
         # Now loop back through and ensure that tied relationships are enforced.
         Itied = np.where(linemodel['tiedtoparam'] != -1)[0]
         if len(Itied) > 0:
@@ -713,57 +757,130 @@ class EMLineFit(ContinuumTools):
                 tieindx = linemodel['tiedtoparam'][Itied[iparam]]
                 tiefactor = linemodel['tiedfactor'][Itied[iparam]]
                 #log.info('{} tied to {} with factor {:.4f}'.format(param, linemodel[tieindx]['param_name'], tiefactor))
-                linemodel['value'][Itied[iparam]] = linemodel[tieindx]['value'] * tiefactor
+                linemodel['initial'][Itied[iparam]] = linemodel[tieindx]['initial'] * tiefactor
+
+        linemodel['value'] = linemodel['initial'] # copy
+
+    def bestfit(self, linemodel, redshift, emlinewave, resolution_matrix, camerapix):
+        """Construct the best-fitting emission-line spectrum from a linemodel."""
+
+        parameters, (Ifree, Itied, tiedtoparam, tiedfactor, bounds, doubletindx, doubletpair, \
+                     linewaves, lineinrange) = self._linemodel_to_parameters(linemodel)
+
+        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line    
+
+        emlinemodel = _build_emline_model(self.log10wave, redshift, lineamps, 
+                                          linevshifts, linesigmas, linewaves, 
+                                          lineinrange, emlinewave, resolution_matrix,
+                                          camerapix)
+
+        return emlinemodel
 
     @staticmethod
     def objective_function(args):
         return objective_function(*args)
 
-    def _call_objective_function(self, linemodel, emlinewave, emlineflux, weights, 
-                                 redshift, resolution_matrix, camerapix):
+    def _optimize(self, linemodel, emlinewave, emlineflux, weights, 
+                  redshift, resolution_matrix, camerapix):
         """Wrapper to call the least-squares minimization given a linemodel.
 
         """
         from scipy.optimize import least_squares
         
-        parameters, parameter_extras = self._linemodel_to_parameters(linemodel)
-
-        Ifree = parameter_extras[0]
-        parameters0 = parameters[Ifree]
+        parameters, (Ifree, Itied, tiedtoparam, tiedfactor, bounds, doubletindx, doubletpair, \
+                     linewaves, lineinrange) = self._linemodel_to_parameters(linemodel)
+        log.debug('Optimizing {} free parameters'.format(len(Ifree)))
 
         farg = (emlinewave, emlineflux, weights, redshift, self.log10wave, 
-                resolution_matrix, camerapix, parameters, ) + parameter_extras
+                resolution_matrix, camerapix, parameters, ) + \
+                (Ifree, Itied, tiedtoparam, tiedfactor, doubletindx, 
+                 doubletpair, linewaves, lineinrange)
 
-        fit_info = least_squares(objective_function, parameters0, 
+        fit_info = least_squares(_objective_function, parameters[Ifree],
                                  args=farg, max_nfev=self.maxiter, 
                                  xtol=self.accuracy, method='lm')
 
-        # test
-        doubletindx, doubletpair, linewaves, lineinrange = parameter_extras[5:9]
         parameters[Ifree] = fit_info.x
-        parameters[doubletindx] *= parameters[doubletpair]
-        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line    
-        emlinemodel = build_emline_model(self.log10wave, redshift, lineamps, 
-                                         linevshifts, linesigmas, linewaves, 
-                                         lineinrange, emlinewave, resolution_matrix,
-                                         camerapix)
+
+        # Conditions for dropping a parameter (all parameters, not just those
+        # being fitted):
+        # --negative amplitude or sigma
+        # --parameter at its default value (fit failed, right??)
+        # --parameter outside its bounds
+        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
+
+        drop1 = np.hstack((lineamps < 0, np.zeros(len(linevshifts), bool), linesigmas < 0))
+
+        drop2 = np.zeros(len(parameters), bool)
+        drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree] # want 'value' here not 'initial'
+
+        drop3 = np.zeros(len(parameters), bool)
+        drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
+                                     parameters[Ifree] > linemodel['bounds'][Ifree, 1])
+
+        log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
+        log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
+        log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
+        Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
+
+        if len(Idrop) > 0:
+            log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
+            parameters[Idrop] = 0.0
+
+        # apply tied constraints
+        if len(Itied) > 0:
+            for I, indx, factor in zip(Itied, tiedtoparam, tiedfactor):
+                parameters[I] = parameters[indx] * factor
+
+        # Now loop back through and drop Broad balmer lines that:
+        #   (1) are narrower than their narrow-line counterparts;
+        #   (2) have a narrow line whose amplitude is smaller than that of the broad line
+        #      --> Deprecated! main-dark-32303-39628176678192981 is an example
+        #          of an object where there's a broad H-alpha line but no other
+        #          forbidden lines!
+        
+        #IB = self.linetable['isbalmer'] * self.linetable['isbroad']
+        #for linename in self.linetable['name'][IB]:
+        #    amp_broad = getattr(bestfit, '{}_amp'.format(linename))
+        #    if amp_broad.fixed: # line is either out of range or a suppressed line--skip it here
+        #        continue
+        #    amp = getattr(bestfit, '{}_amp'.format(linename.replace('_broad', ''))) # fragile
+        #    sigma = getattr(bestfit, '{}_sigma'.format(linename.replace('_broad', ''))) # fragile
+        #    sigma_broad = getattr(bestfit, '{}_sigma'.format(linename))
+        #    
+        #    if sigma_broad <= sigma:
+        #        log.debug('Dropping {} (sigma_broad={:.2f}, sigma_narrow={:.2f})'.format(
+        #            linename, sigma_broad.value, sigma.value))
+        #        #vshift = getattr(bestfit, '{}_vshift'.format(linename))
+        #        setattr(bestfit, '{}_amp'.format(linename), 0.0)
+        #        setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
+        #        setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
+
+        linemodel['value'] = parameters
+
+        # test
+        bestfit = self.bestfit(linemodel, redshift, emlinewave, resolution_matrix, camerapix)
         import matplotlib.pyplot as plt
         plt.clf()
         plt.plot(emlinewave, emlineflux)
-        plt.plot(emlinewave, emlinemodel)
-        plt.xlim(6600, 6950)
+        plt.plot(emlinewave, bestfit)
+        plt.xlim(5800, 6200)
+        #plt.xlim(6600, 6950)
         #plt.xlim(5050, 5120)
+        #plt.xlim(8850, 9050)
         plt.savefig('junk.png')
-
-        return fit_info
         
-    def chi2(self, bestfit, emlinewave, emlineflux, emlineivar, continuum_model=None, return_dof=False):
+        #pdb.set_trace()
+
+        return linemodel, fit_info['nfev']
+
+    def chi2(self, linemodel, emlinewave, emlineflux, emlineivar, emlinemodel, continuum_model=None, return_dof=False):
         """Compute the reduced chi^2."""
-        #nfree = len(bestfit.parameters)
-        nfree = bestfit.count_free_parameters()
+
+        nfree = np.sum((linemodel['fixed'] == False) * (linemodel['tiedtoparam'] == -1))
         dof = np.sum(emlineivar > 0) - nfree
+
         if dof > 0:
-            emlinemodel = bestfit(emlinewave)
             if continuum_model is None:
                 model = emlinemodel
             else:
@@ -806,74 +923,6 @@ class EMLineFit(ContinuumTools):
 
         return emlinemodel
 
-    def _clean_linefit(self, bestfit, init_amplitudes, init_sigmas):
-        """Clean up line-fitting results."""
-        
-        # If the amplitude is still at its default (or its upper or lower
-        # bound!), it means the line wasn't fit or the fit failed (right??), so
-        # set it to zero. Important: need to loop over *all* lines (not just
-        # those in range).
-        initkeys = init_amplitudes.keys()
-
-        for linename in self.linetable['name'].data:
-            if not hasattr(bestfit, '{}_amp'.format(linename)): # skip the physical doubleta
-                continue
-            amp = getattr(bestfit, '{}_amp'.format(linename))
-            if amp.fixed: # line is either out of range or a suppressed line--skip it here
-                continue
-            sigma = getattr(bestfit, '{}_sigma'.format(linename))
-            vshift = getattr(bestfit, '{}_vshift'.format(linename))
-
-            # drop the line if:
-            #  sigma = 0, amp = default or amp = max bound (not optimized!) or amp =< 0
-            if ((amp.value == amp.default) or
-                (amp.bounds[1] is not None and amp.value >= amp.bounds[1]) or
-                #(amp.value <= amp.bounds[0]) or
-                (amp.value <= 0) or
-                (linename in initkeys and init_amplitudes[linename] == amp.value) or 
-                (sigma.value == sigma.default)
-                #(sigma.value <= sigma.bounds[0]) or (sigma.value >= sigma.bounds[1])
-                ):
-                log.debug('Dropping {} (amp={:.3f}, sigma={:.3f}, vshift={:.3f})'.format(
-                    linename, amp.value, sigma.value, vshift.value))
-
-                setattr(bestfit, '{}_amp'.format(linename), 0.0)
-                setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma.default)
-                setattr(bestfit, '{}_vshift'.format(linename), 0.0) #vshift.default)
-
-        # Now loop back through and drop Broad balmer lines that:
-        #   (1) are narrower than their narrow-line counterparts;
-        #   (2) have a narrow line whose amplitude is smaller than that of the broad line
-        #      --> Deprecated! main-dark-32303-39628176678192981 is an example
-        #          of an object where there's a broad H-alpha line but no other
-        #          forbidden lines!
-        
-        IB = self.linetable['isbalmer'] * self.linetable['isbroad']
-        for linename in self.linetable['name'][IB]:
-            amp_broad = getattr(bestfit, '{}_amp'.format(linename))
-            if amp_broad.fixed: # line is either out of range or a suppressed line--skip it here
-                continue
-            amp = getattr(bestfit, '{}_amp'.format(linename.replace('_broad', ''))) # fragile
-            sigma = getattr(bestfit, '{}_sigma'.format(linename.replace('_broad', ''))) # fragile
-            sigma_broad = getattr(bestfit, '{}_sigma'.format(linename))
-            
-            if sigma_broad <= sigma:
-                log.debug('Dropping {} (sigma_broad={:.2f}, sigma_narrow={:.2f})'.format(
-                    linename, sigma_broad.value, sigma.value))
-                #vshift = getattr(bestfit, '{}_vshift'.format(linename))
-                setattr(bestfit, '{}_amp'.format(linename), 0.0)
-                setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
-                setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
-
-            # Deprecated! -- See note above.
-            #if (amp <= 0) or (amp_broad <= 0) and ((amp+amp_broad) < amp_broad):
-            #    #vshift = getattr(bestfit, '{}_vshift'.format(linename))
-            #    setattr(bestfit, '{}_amp'.format(linename), 0.0)
-            #    setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
-            #    setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
-
-        return bestfit
-
     def fit(self, data, continuummodel, smooth_continuum, synthphot=True,
             verbose=False, broadlinefit=True):
         """Perform the fit minimization / chi2 minimization.
@@ -902,6 +951,8 @@ class EMLineFit(ContinuumTools):
         emlinewave = np.hstack(data['wave'])
         oemlineivar = np.hstack(data['ivar'])
         specflux = np.hstack(data['flux'])
+        resolution_matrix = data['res']
+        camerapix = data['camerapix']
 
         continuummodelflux = np.hstack(continuummodel)
         smoothcontinuummodelflux = np.hstack(smooth_continuum)
@@ -917,7 +968,6 @@ class EMLineFit(ContinuumTools):
             emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
 
         weights = np.sqrt(emlineivar)
-
         wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
 
         # Build all the emission-line models for this object.
@@ -934,23 +984,13 @@ class EMLineFit(ContinuumTools):
 
         # Initial fit - initial_linemodel_nobroad
         t0 = time.time()
-        fit_info = self._call_objective_function(initial_linemodel_nobroad, emlinewave, emlineflux, 
-                                                 weights, redshift, data['res'], data['camerapix'])
-        log.info('Refactored line-fitting took {:.2f} sec (niter={})'.format(
-            time.time()-t0, fit_info.nfev))
-
-        pdb.set_trace()
-
-        # --------------------------------------------------
-
-        fitter = FastLevMarLSQFitter(self.EMLineModel)
-        initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
-                         maxiter=maxiter, acc=accuracy)
-        initfit = self._clean_linefit(initfit, init_amplitudes, init_sigmas)
-        initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar)
-        log.info('Initial line-fitting with {} free parameters took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
-            nfree, time.time()-t0, fitter.fit_info['nfev'], initchi2))
-        pdb.set_trace()
+        initfit, nfev = self._optimize(initial_linemodel_nobroad, emlinewave, emlineflux, 
+                                       weights, redshift, resolution_matrix, camerapix)
+        initmodel = self.bestfit(initfit, redshift, emlinewave, resolution_matrix, camerapix)
+        initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar, initmodel)
+        nfree = np.sum((initfit['fixed'] == False) * (initfit['tiedtoparam'] == -1))
+        log.info('Initial line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
+            nfree, time.time()-t0, nfev, initchi2))
 
         # Now try adding bround Balmer and helium lines and see if we improve
         # the chi2. First, do we have enough pixels around Halpha and Hbeta to
@@ -968,56 +1008,41 @@ class EMLineFit(ContinuumTools):
             broadlinepix = np.hstack(broadlinepix)
 
             t0 = time.time()
-            # Restore the broad lines. Need to loop over all lines, not just
-            # those in range. Do not update the narrow lines in case we hit a
-            # local minium in initfit.
-            IB = self.linetable['isbroad'] * self.linetable['isbalmer']
-            for linename in self.linetable['name'][IB]:
-                if linename in init_amplitudes.keys():
-                    setattr(self.EMLineModel, '{}_amp'.format(linename), init_amplitudes[linename])
-                    getattr(self.EMLineModel, '{}_amp'.format(linename)).fixed = False
-                # If sigma is not in the dictionary then keep sigma and vshift equal to zero and fixed.
-                if linename in init_sigmas.keys():
-                    setattr(self.EMLineModel, '{}_sigma'.format(linename), init_sigmas[linename])
-                    setattr(self.EMLineModel, '{}_vshift'.format(linename), init_sigmas['{}_vshift'.format(linename)])
-                    getattr(self.EMLineModel, '{}_sigma'.format(linename)).fixed = init_sigmas['{}_fixed'.format(linename)]
-                    getattr(self.EMLineModel, '{}_vshift'.format(linename)).fixed = init_sigmas['{}_fixed'.format(linename)]
-
-            #for pp in self.EMLineModel.param_names:
-            #    print(getattr(self.EMLineModel, pp))
-            nfree = self.EMLineModel.count_free_parameters()
-            
-            fitter = FastLevMarLSQFitter(self.EMLineModel)
-            broadfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
-                              maxiter=maxiter, acc=accuracy)
-
-            broadfit = self._clean_linefit(broadfit, init_amplitudes, init_sigmas)
-            broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar)
-            log.info('Second (broad) line-fitting with {} free parameters took {:.2f} sec (niter={}) with chi2={:.3f}'.format(
-                nfree, time.time()-t0, fitter.fit_info['nfev'], broadchi2))
+            broadfit, nfev = self._optimize(initial_linemodel, emlinewave, emlineflux, 
+                                            weights, redshift, resolution_matrix, camerapix)
+            broadmodel = self.bestfit(broadfit, redshift, emlinewave, resolution_matrix, camerapix)
+            broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel)
+            nfree = np.sum((broadfit['fixed'] == False) * (broadfit['tiedtoparam'] == -1))
+            log.info('Second (broad) line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}'.format(
+                nfree, time.time()-t0, nfev, broadchi2))
 
             # Compare chi2 just in and around the broad lines. Need to account
             # for the different number of degrees of freedom!
-            initmodel = initfit(emlinewave)
-            broadmodel = broadfit(emlinewave)
             linechi2_init = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - initmodel[broadlinepix])**2) / len(broadlinepix)
             linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / len(broadlinepix)
-            log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f}'.format(linechi2_broad, linechi2_init))
+            log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} (delta-chi2={:.5f})'.format(
+                linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
 
             # Make a decision! All check whether all the broad lines get
             # dropped. If so, don't use the broad-line model even if the chi2 is
             # formally lower because it generally means that the narrow lines
             # have not been optimized properly (see, e.g., hdelta in
             # sv1-bright-6541-39633076111803113).
-            alldropped = np.all([getattr(broadfit, '{}_amp'.format(linename)).value == 0.0
-                                 for linename in self.linetable['name'][IB]])
-            if alldropped:
-                log.info('All broad lines have been dropped, using narrow-line only model.')
-            
-            if alldropped or linechi2_broad > linechi2_init:
-                bestfit = initfit
+            if False:
+                alldropped = np.all([getattr(broadfit, '{}_amp'.format(linename)).value == 0.0
+                                     for linename in self.linetable['name'][IB]])
+                if alldropped:
+                    log.info('All broad lines have been dropped, using narrow-line only model.')
+                
+                if alldropped or linechi2_broad > linechi2_init:
+                    bestfit = initfit
+                else:
+                    bestfit = broadfit
             else:
-                bestfit = broadfit
+                if linechi2_broad > linechi2_init:
+                    bestfit = initfit
+                else:
+                    bestfit = broadfit
         else:
             if broadlinefit:
                 log.info('Too few pixels centered on candidate broad emission lines.')
@@ -1027,7 +1052,26 @@ class EMLineFit(ContinuumTools):
             linechi2_init = 0.0
             linechi2_broad = 0.0
 
-        # Finally, one more fitting loop with all the line-constraints relaxed.
+        # Finally, one more fitting loop with all the line-constraints relaxed
+        # but starting from the previous best-fitting values.
+        final_linemodel_nobroad['value'] = bestfit['value']
+        Itied = np.where(linemodel['tiedtoparam'] != -1)[0]
+        if len(Itied) > 0:
+            for I, indx, factor in zip(Itied, linemodel['tiedtoparam'][Itied], linemodel['tiedfactor'][Itied]):
+                final_linemodel_nobroad[I]['value'] = final_linemodel_nobroad[indx]['value'] * factor
+
+        t0 = time.time()
+        finalfit, nfev = self._optimize(final_linemodel_nobroad, emlinewave, emlineflux, 
+                                        weights, redshift, resolution_matrix, camerapix)
+        finalmodel = self.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
+        finalchi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel)
+        nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
+        log.info('Final line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
+            nfree, time.time()-t0, nfev, finalchi2))
+
+        pdb.set_trace()
+
+
         if False:
             for linename in data['coadd_linename']:
                 # skip the physical doublets
