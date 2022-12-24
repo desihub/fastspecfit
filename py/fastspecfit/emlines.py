@@ -99,9 +99,10 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
         for I, indx, factor in zip(Itied, tiedtoparam, tiedfactor):
             parameters[I] = parameters[indx] * factor
 
-    # Take care of the doublets.
-    lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line    
-    lineamps[doubletindx] = lineamps[doubletindx] * lineamps[doubletpair]
+    lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
+
+    # doublets
+    lineamps[doubletindx] *= lineamps[doubletpair]
 
     # Build the emission-line model.
     emlinemodel = _build_emline_model(log10wave, redshift, lineamps, linevshifts, 
@@ -388,8 +389,8 @@ class EMLineFit(ContinuumTools):
         init_sii_doublet = 0.74 # [SII] 6731/6716
 
         bounds_mgii_doublet = [0.01, 10.0] 
-        bounds_oii_doublet = [0.5, 1.5] # [0.66, 1.4]
-        bounds_sii_doublet = [0.5, 1.5] # [0.67, 1.2]
+        bounds_oii_doublet = [0.1, 2.0] # [0.5, 1.5] # [0.66, 1.4]
+        bounds_sii_doublet = [0.1, 2.0] # [0.5, 1.5] # [0.67, 1.2]
     
         # Create a new line-fitting table which contains the redshift-dependent
         # quantities for this object.
@@ -718,9 +719,8 @@ class EMLineFit(ContinuumTools):
 
         # Handle the doublets. Note we are implicitly assuming that the
         # amplitude parameters are always in the first third of parameters.
-        doublet = np.where(linemodel['doubletpair'] != -1)[0]
-        lineamps[doublet] *= linemodel['value'][linemodel['doubletpair'][doublet]]
-
+        #doublet = np.where(linemodel['doubletpair'] != -1)[0]
+        #lineamps[doublet] *= linemodel['value'][linemodel['doubletpair'][doublet]]
         parameters = np.hstack((lineamps, linevshifts, linesigmas))
 
         linewaves = self.fit_linetable['restwave'].data
@@ -743,7 +743,7 @@ class EMLineFit(ContinuumTools):
         return parameters, parameter_extras
 
     @staticmethod
-    def _populate_linemodel(linemodel, initial_guesses, param_bounds):
+    def _populate_linemodel(linemodel, initial_guesses, param_bounds, from_linemodel=None):
         """Population an input linemodel with initial guesses and parameter bounds,
         taking into account fixed parameters.
 
@@ -777,7 +777,7 @@ class EMLineFit(ContinuumTools):
         return _objective_function(*args)
 
     def _optimize(self, linemodel, emlinewave, emlineflux, weights, 
-                  redshift, resolution_matrix, camerapix):
+                  redshift, resolution_matrix, camerapix, debug=False):
         """Wrapper to call the least-squares minimization given a linemodel.
 
         """
@@ -818,6 +818,9 @@ class EMLineFit(ContinuumTools):
         log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
         log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
         Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
+
+        if debug:
+            pdb.set_trace()
 
         if len(Idrop) > 0:
             log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
@@ -992,7 +995,7 @@ class EMLineFit(ContinuumTools):
         # Initial fit - initial_linemodel_nobroad
         t0 = time.time()
         initfit = self._optimize(initial_linemodel_nobroad, emlinewave, emlineflux, 
-                                 weights, redshift, resolution_matrix, camerapix)
+                                 weights, redshift, resolution_matrix, camerapix, debug=False)
         initmodel = self.bestfit(initfit, redshift, emlinewave, resolution_matrix, camerapix)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar, initmodel)
         nfree = np.sum((initfit['fixed'] == False) * (initfit['tiedtoparam'] == -1))
@@ -1016,7 +1019,7 @@ class EMLineFit(ContinuumTools):
 
             t0 = time.time()
             broadfit = self._optimize(initial_linemodel, emlinewave, emlineflux, weights, 
-                                      redshift, resolution_matrix, camerapix)
+                                      redshift, resolution_matrix, camerapix, debug=False)
             broadmodel = self.bestfit(broadfit, redshift, emlinewave, resolution_matrix, camerapix)
             broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel)
             nfree = np.sum((broadfit['fixed'] == False) * (broadfit['tiedtoparam'] == -1))
@@ -1048,24 +1051,56 @@ class EMLineFit(ContinuumTools):
         if linechi2_broad > linechi2_init:
             linemodel = final_linemodel_nobroad
         else:
-            linemodel = final_linemode
+            linemodel = final_linemodel
 
-        linemodel['value'] = bestfit['value']
-        Itied = np.where((linemodel['tiedtoparam'] != -1) * (linemodel['fixed'] == False))[0]
-        if len(Itied) > 0:
-            for I, indx, factor in zip(Itied, linemodel['tiedtoparam'][Itied], linemodel['tiedfactor'][Itied]):
-                linemodel[I]['value'] = linemodel[indx]['value'] * factor
+        # Populate the new linemodel being careful to handle the fact that the
+        # "tied" relationships are very different between the initial and final
+        # linemodels.
+        linemodel['bounds'] = bestfit['bounds']
+
+        #B = np.where(['ne' in param for param in self.param_names])[0]
+
+        Ifree = np.where(linemodel['fixed'] == False)[0]
+        for I in Ifree:
+            if bestfit['initial'][I] != 0:
+                linemodel['initial'][I] = bestfit['initial'][I]
+            if bestfit['value'][I] != 0:
+                linemodel['value'][I] = bestfit['value'][I]
+            else:
+                if bestfit['tiedtoparam'][I] != -1:
+                    linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
+                else:
+                    print(linemodel['param_name'][I])
+                    errmsg = 'Initial value should never be zero!'
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
+
+        #Jtied = np.where(bestfit['tiedtoparam'] != -1)[0]
+        #if len(Itied) > 0 and len(Jtied) > 0:
+        #    for I, Iindx, J, Jindx in zip(Itied, linemodel['tiedtoparam'][Itied], Jtied, bestfit['tiedtoparam'][Jtied]):
+        #        pdb.set_trace()
+        #        linemodel[I]['value'] = linemodel[indx]['value'] * factor
+
+        ## Need to be careful about 'value' vs 'initial' because 'value' can be
+        ## zero in bestfit because it was out of the wavelength range and not
+        ## tied to anything else in the initial round of fitting.
+        #docopy = (bestfit['initial'] == 0.0) * (linemodel['initial'] != 0.0)
+        #if np.sum(docopy) > 0:
+        #    linemodel['initial'][docopy] = bestfit['value'][docopy]
+        #
+        #Itied = np.where((linemodel['tiedtoparam'] != -1) * (linemodel['fixed'] == False))[0]
+        #if len(Itied) > 0:
+        #    for I, indx, factor in zip(Itied, linemodel['tiedtoparam'][Itied], linemodel['tiedfactor'][Itied]):
+        #        linemodel[I]['value'] = linemodel[indx]['value'] * factor
 
         t0 = time.time()
         finalfit = self._optimize(linemodel, emlinewave, emlineflux, weights, 
-                                  redshift, resolution_matrix, camerapix)
+                                  redshift, resolution_matrix, camerapix, debug=False)
         finalmodel = self.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
         finalchi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel)
         nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
         log.info('Final line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
             nfree, time.time()-t0, finalfit.meta['nfev'], finalchi2))
-
-        #I = np.where(['oii_' in param for param in self.param_names])[0]
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output()
