@@ -821,7 +821,7 @@ class EMLineFit(ContinuumTools):
         Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
 
         if debug:
-            pdb.set_trace()
+            pass
 
         if len(Idrop) > 0:
             log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
@@ -1074,7 +1074,7 @@ class EMLineFit(ContinuumTools):
                     log.critical(errmsg)
                     raise ValueError(errmsg)
 
-        B = np.where(['ne' in param for param in self.param_names])[0]
+        #B = np.where(['ne' in param for param in self.param_names])[0]
 
         t0 = time.time()
         finalfit = self._optimize(linemodel, emlinewave, emlineflux, weights, 
