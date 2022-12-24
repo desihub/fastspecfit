@@ -932,7 +932,7 @@ class DESISpectra(object):
         if fastphot:
             out = hstack((out, CFit.init_phot_output(nobj)))
         else:
-            out = hstack((out, CFit.init_spec_output(nobj), EMFit.init_output(CFit.linetable, nobj)))
+            out = hstack((out, CFit.init_spec_output(nobj), EMFit.init_output(nobj=nobj)))
 
         return out, meta
 
