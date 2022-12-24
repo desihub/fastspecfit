@@ -46,7 +46,7 @@ def _assign_units_to_columns(fastfit, metadata, Spec, CFit, EMFit=None, fastphot
             metadata[col].unit = M[col].unit
 
     if EMFit is not None:
-        E = EMFit.init_output(EMFit.linetable, nobj=1)
+        E = EMFit.init_output(nobj=1)
         for col in E.colnames:
             if col in fastcols:
                 fastfit[col].unit = E[col].unit
