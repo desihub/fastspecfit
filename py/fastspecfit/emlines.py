@@ -331,11 +331,12 @@ class EMLineFit(ContinuumTools):
                 # Finally loop through each 'utied' line and if all the lines
                 # tied to it are fixed, then fix that line, too.
                 for tied in utied:
-                    if np.all(linemodel[linemodel['tiedtoparam'] == tied]['fixed']):
-                        if verbose:
-                            print('Fixing {} because all tied lines are fixed: {}'.format(
-                                linemodel['param_name'][tied], ' '.join(linemodel[linemodel['tiedtoparam'] == tied]['param_name'])))
-                        linemodel[tied]['fixed'] = True
+                    if linemodel['param_name'][tied] and np.all(linemodel[linemodel['tiedtoparam'] == tied]['fixed']):
+                        if outofrange[linemodel['linename'][tied] == fit_linetable['name']]:
+                            if verbose:
+                                print('Fixing {} because line is out of range and all tied lines are fixed: {}'.format(
+                                    linemodel['param_name'][tied], ' '.join(linemodel[linemodel['tiedtoparam'] == tied]['param_name'])))
+                            linemodel[tied]['fixed'] = True
 
                 # Also handle the doublets.
                 I = np.where(linemodel['doubletpair'] != -1)[0]
@@ -489,10 +490,10 @@ class EMLineFit(ContinuumTools):
                 for param in ['sigma', 'vshift']:
                     final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
                     final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'mgii_2803_'+param)[0]
-            if linename == 'nev_3346' or linename == 'neiii_3869': # should [NeIII] 3869 be tied to [NeV]???
+            if linename == 'nev_3346' or linename == 'nev_3426': # should [NeIII] 3869 be tied to [NeV]???
                 for param in ['sigma', 'vshift']:
                     final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
-                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'nev_3426_'+param)[0]
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'neiii_3869_'+param)[0]
             if linename == 'oii_3726':
                 for param in ['sigma', 'vshift']:
                     final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
@@ -1058,8 +1059,6 @@ class EMLineFit(ContinuumTools):
         # linemodels.
         linemodel['bounds'] = bestfit['bounds']
 
-        #B = np.where(['ne' in param for param in self.param_names])[0]
-
         Ifree = np.where(linemodel['fixed'] == False)[0]
         for I in Ifree:
             if bestfit['initial'][I] != 0:
@@ -1075,23 +1074,7 @@ class EMLineFit(ContinuumTools):
                     log.critical(errmsg)
                     raise ValueError(errmsg)
 
-        #Jtied = np.where(bestfit['tiedtoparam'] != -1)[0]
-        #if len(Itied) > 0 and len(Jtied) > 0:
-        #    for I, Iindx, J, Jindx in zip(Itied, linemodel['tiedtoparam'][Itied], Jtied, bestfit['tiedtoparam'][Jtied]):
-        #        pdb.set_trace()
-        #        linemodel[I]['value'] = linemodel[indx]['value'] * factor
-
-        ## Need to be careful about 'value' vs 'initial' because 'value' can be
-        ## zero in bestfit because it was out of the wavelength range and not
-        ## tied to anything else in the initial round of fitting.
-        #docopy = (bestfit['initial'] == 0.0) * (linemodel['initial'] != 0.0)
-        #if np.sum(docopy) > 0:
-        #    linemodel['initial'][docopy] = bestfit['value'][docopy]
-        #
-        #Itied = np.where((linemodel['tiedtoparam'] != -1) * (linemodel['fixed'] == False))[0]
-        #if len(Itied) > 0:
-        #    for I, indx, factor in zip(Itied, linemodel['tiedtoparam'][Itied], linemodel['tiedfactor'][Itied]):
-        #        linemodel[I]['value'] = linemodel[indx]['value'] * factor
+        B = np.where(['ne' in param for param in self.param_names])[0]
 
         t0 = time.time()
         finalfit = self._optimize(linemodel, emlinewave, emlineflux, weights, 
