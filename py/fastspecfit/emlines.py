@@ -1033,7 +1033,7 @@ class EMLineFit(ContinuumTools):
             # for the different number of degrees of freedom!
             linechi2_init = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - initmodel[broadlinepix])**2) / len(broadlinepix)
             linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / len(broadlinepix)
-            self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} (delta-chi2={:.5f})'.format(
+            self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [delta-chi2={:.5f}]'.format(
                 linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
 
             if linechi2_broad > linechi2_init:
@@ -1075,6 +1075,19 @@ class EMLineFit(ContinuumTools):
                 else:
                     linemodel['value'][I] = linemodel['initial'][I]
 
+        # Are the broad and narrow lines swapped? If so, swap them here.
+        if not linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['fixed'] and \
+          (linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['value'] > 0) and \
+          (linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['value'] < linemodel[linemodel['param_name'] == 'halpha_sigma']['value']):
+            for linename in self.fit_linetable[self.fit_linetable['isbalmer'] * self.fit_linetable['isbroad']]['name']:
+                if not linemodel[linemodel['param_name'] == '{}_sigma'.format(linename)]['fixed']:
+                    sigma_broad = linemodel[linemodel['param_name'] == '{}_sigma'.format(linename)]['value']
+                    sigma_narrow = linemodel[linemodel['param_name'] == '{}_sigma'.format(linename).replace('_broad', '')]['value']
+                    #print(linename, sigma_broad[0], sigma_narrow[0])
+                    linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename)] = sigma_narrow
+                    linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename).replace('_broad', '')] = sigma_broad
+
+
         # Tied parameters can have initial values of zero if they are fixed
         # (e.g., broad emission lines) but nothing else.
         I = (linemodel['value'][Ifree] == 0) * (linemodel['tiedtoparam'][Ifree] == -1)
@@ -1083,7 +1096,9 @@ class EMLineFit(ContinuumTools):
             self.log.critical(errmsg)
             raise ValueError(errmsg)
 
+        #linemodel[linemodel['linename'] == 'halpha']
         #B = np.where(['ne' in param for param in self.param_names])[0]
+        #B = np.where(['broad' in param for param in self.param_names])[0]
 
         t0 = time.time()
         finalfit = self._optimize(linemodel, emlinewave, emlineflux, weights, 
@@ -1094,6 +1109,8 @@ class EMLineFit(ContinuumTools):
         nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
         self.log.info('Final line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
             nfree, time.time()-t0, finalfit.meta['nfev'], finalchi2))
+
+        pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output()
