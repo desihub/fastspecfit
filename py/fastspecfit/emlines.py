@@ -1061,18 +1061,26 @@ class EMLineFit(ContinuumTools):
 
         Ifree = np.where(linemodel['fixed'] == False)[0]
         for I in Ifree:
+            # copy initial values
             if bestfit['initial'][I] != 0:
                 linemodel['initial'][I] = bestfit['initial'][I]
+            # copy best-fit values
             if bestfit['value'][I] != 0:
                 linemodel['value'][I] = bestfit['value'][I]
             else:
                 if bestfit['tiedtoparam'][I] != -1:
                     linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
                 else:
-                    print(linemodel['param_name'][I])
-                    errmsg = 'Initial value should never be zero!'
-                    log.critical(errmsg)
-                    raise ValueError(errmsg)
+                    linemodel['value'][I] = linemodel['initial'][I]
+
+        # Tied parameters can have initial values of zero if they are fixed
+        # (e.g., broad emission lines).
+        I = (linemodel['value'][Ifree] == 0) * (linemodel['tiedtoparam'][Ifree] == -1)
+        if np.any(I):
+            errmsg = 'Initial values should never be zero!'
+            log.critical(errmsg)
+            pdb.set_trace()
+            #raise ValueError(errmsg)
 
         #B = np.where(['ne' in param for param in self.param_names])[0]
 
