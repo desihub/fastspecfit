@@ -9,15 +9,13 @@ import pdb # for debugging
 
 import os, time
 import numpy as np
-import multiprocessing
 import numba
 
-import astropy.units as u
 from astropy.table import Table, Column
 
-from desispec.interpolation import resample_flux
 from fastspecfit.util import trapz_rebin, C_LIGHT
 from fastspecfit.continuum import ContinuumTools
+
 from desiutil.log import get_logger, DEBUG
 log = get_logger(DEBUG)
 

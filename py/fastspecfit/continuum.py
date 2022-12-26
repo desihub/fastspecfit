@@ -1739,45 +1739,31 @@ class ContinuumFit(ContinuumTools):
         
         if xparam is not None:
             nn = len(xparam)
-        ww = np.sqrt(ivar)
-        xx = flux * ww
+
+        inverr = np.sqrt(ivar)
+        bvector = flux * inverr
 
         # If xparam is None (equivalent to modelflux having just two
         # dimensions, [npix,nage]), assume we are just finding the
         # coefficients at some best-fitting value...
         if xparam is None:
-            ZZ = modelflux * ww[:, np.newaxis]
-            if True:
-                coeff, rnorm = nnls(A=ZZ, b=xx)
-                chi2 = np.sum(ivar * (flux - modelflux.dot(coeff))**2)
-                warn = 0
-            else:
-                warn, coeff, chi2 = fnnls_continuum(ZZ, xx, flux=flux, ivar=ivar,
-                                                    modelflux=modelflux, get_chi2=True)
-            if np.any(warn):
-                print('WARNING: fnnls did not converge after 10 iterations.')
-
+            Amatrix = modelflux * inverr[:, np.newaxis]
+            try:
+                coeff, rnorm = nnls(A=Amatrix, b=bvector)
+            except RuntimeError:
+                coeff, _ = nnls(A=Amatrix, b=bvector, maxiter=Amatrix.shape[1] * 100)                
+            chi2 = np.sum(ivar * (flux - modelflux.dot(coeff))**2)
             return coeff, chi2
 
-        # ...otherwise multiprocess over the xparam (e.g., AV or vdisp)
-        # dimension.
-        ZZ = modelflux * ww[:, np.newaxis, np.newaxis] # reshape into [npix/nband,nage,nAV/nvdisp]
-        if True:
-            rr = []
-            for ii in np.arange(nn):
-                coeff, rnorm = nnls(A=ZZ[:, :, ii], b=xx)
-                chi2 = np.sum(ivar * (flux - modelflux[:, :, ii].dot(coeff))**2)
-                warn = 0
-                rr.append([warn, coeff, chi2])
-        else:
-            fitargs = [(ZZ[:, :, ii], xx, flux, ivar, modelflux[:, :, ii], True) for ii in np.arange(nn)]
-            rr = [fnnls_continuum(*_fitargs) for _fitargs in fitargs]
-                
-        
-        warn, coeff, chi2grid = list(zip(*rr)) # unpack
-        if np.any(warn):
-            vals = ','.join(['{:.1f}'.format(xp) for xp in xparam[np.where(warn)[0]]])
-            log.warning('fnnls did not converge after 10 iterations for parameter value(s) {}.'.format(vals))
+        # ...otherwise iterate over the xparam (e.g., AV or vdisp) dimension.
+        Amatrix = modelflux * inverr[:, np.newaxis, np.newaxis] # reshape into [npix/nband,nage,nAV/nvdisp]
+        coeff, chi2grid = [], []
+        for ii in np.arange(nn):
+            _coeff, _ = nnls(A=Amatrix[:, :, ii], b=bvector)
+            chi2 = np.sum(ivar * (flux - modelflux[:, :, ii].dot(_coeff))**2)
+            coeff.append(_coeff)
+            chi2grid.append(chi2)
+        coeff = np.array(coeff)
         chi2grid = np.array(chi2grid)
         
         try:
@@ -1798,7 +1784,6 @@ class ContinuumFit(ContinuumTools):
         # optionally interpolate the coefficients
         if interpolate_coeff:
             from scipy.interpolate import interp1d
-            coeff = np.array(coeff)
             if xbest == xparam[0]:
                 bestcoeff = coeff[0, :]
             else:
@@ -1854,10 +1839,6 @@ class ContinuumFit(ContinuumTools):
         :class:`astropy.table.Table`
             Table with all the continuum-fitting results with columns documented
             in `init_phot_output`.
-
-        .. note::
-
-            See https://github.com/mikeiovine/fast-nnls for the fNNLS algorithm(s).
 
         """
         # Initialize the output table; see init_fastspecfit for the data model.
