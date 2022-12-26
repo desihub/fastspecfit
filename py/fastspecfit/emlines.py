@@ -480,6 +480,7 @@ class EMLineFit(ContinuumTools):
                 for param in ['sigma', 'vshift']:
                     final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
                     final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_broad_'+param)[0]
+            #print('Releasing the narrow Balmer lines!')
             # narrow He + Balmer
             if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] == False and linename != 'halpha':
                 for param in ['sigma', 'vshift']:
@@ -795,7 +796,8 @@ class EMLineFit(ContinuumTools):
 
         fit_info = least_squares(_objective_function, parameters[Ifree],
                                  args=farg, max_nfev=self.maxiter, 
-                                 xtol=self.accuracy, method='lm')
+                                 xtol=self.accuracy, #method='lm')
+                                 method='trf', bounds=tuple(zip(*bounds)))
 
         parameters[Ifree] = fit_info.x
 
@@ -806,26 +808,27 @@ class EMLineFit(ContinuumTools):
         # --parameter outside its bounds
         lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
 
-        drop1 = np.hstack((lineamps < 0, np.zeros(len(linevshifts), bool), linesigmas < 0))
+        if False:
+            drop1 = np.hstack((lineamps < 0, np.zeros(len(linevshifts), bool), linesigmas < 0))
+            
+            drop2 = np.zeros(len(parameters), bool)
+            drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree] # want 'value' here not 'initial'
+            
+            drop3 = np.zeros(len(parameters), bool)
+            drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
+                                         parameters[Ifree] > linemodel['bounds'][Ifree, 1])
+            
+            log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
+            log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
+            log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
+            Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
 
-        drop2 = np.zeros(len(parameters), bool)
-        drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree] # want 'value' here not 'initial'
-
-        drop3 = np.zeros(len(parameters), bool)
-        drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
-                                     parameters[Ifree] > linemodel['bounds'][Ifree, 1])
-
-        log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
-        log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
-        log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
-        Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
-
-        if debug:
-            pass
-
-        if len(Idrop) > 0:
-            log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
-            parameters[Idrop] = 0.0
+            if debug:
+                pass
+    
+            if len(Idrop) > 0:
+                log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
+                parameters[Idrop] = 0.0
 
         # apply tied constraints
         if len(Itied) > 0:
@@ -1074,13 +1077,12 @@ class EMLineFit(ContinuumTools):
                     linemodel['value'][I] = linemodel['initial'][I]
 
         # Tied parameters can have initial values of zero if they are fixed
-        # (e.g., broad emission lines).
+        # (e.g., broad emission lines) but nothing else.
         I = (linemodel['value'][Ifree] == 0) * (linemodel['tiedtoparam'][Ifree] == -1)
         if np.any(I):
             errmsg = 'Initial values should never be zero!'
             log.critical(errmsg)
-            pdb.set_trace()
-            #raise ValueError(errmsg)
+            raise ValueError(errmsg)
 
         #B = np.where(['ne' in param for param in self.param_names])[0]
 
