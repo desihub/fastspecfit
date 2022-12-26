@@ -777,6 +777,120 @@ class DESISpectra(object):
         log.info('Gathered photometric metadata for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
         self.meta = metas # update
 
+    def read_and_unpack(self, CFit, fastphot=False, synthphot=True, mp=1):
+        """Read and unpack selected spectra or broadband photometry.
+        
+        Parameters
+        ----------
+        CFit : :class:`fastspecfit.continuum.ContinuumFit` class
+            Continuum-fitting class which contains filter curves and some additional
+            photometric convenience functions.
+        fastphot : bool
+            Read and unpack the broadband photometry; otherwise, handle the DESI
+            three-camera spectroscopy. Optional; defaults to `False`.
+        synthphot : bool
+            Synthesize photometry from the coadded optical spectrum. Optional;
+            defaults to `True`.
+        remember_coadd : bool
+            Add the coadded spectrum to the returned dictionary. Optional;
+            defaults to `False` (in order to reduce memory usage).
+
+        Returns
+        -------
+        List of dictionaries (:class:`dict`, one per object) the following keys:
+            targetid : numpy.int64
+                DESI target ID.
+            zredrock : numpy.float64
+                Redrock redshift.
+            cameras : :class:`list`
+                List of camera names present for this spectrum.
+            wave : :class:`list`
+                Three-element list of `numpy.ndarray` wavelength vectors, one for
+                each camera.    
+            flux : :class:`list`
+                Three-element list of `numpy.ndarray` flux spectra, one for each
+                camera and corrected for Milky Way extinction.
+            ivar : :class:`list`
+                Three-element list of `numpy.ndarray` inverse variance spectra, one
+                for each camera.    
+            res : :class:`list`
+                Three-element list of :class:`desispec.resolution.Resolution`
+                objects, one for each camera.
+            snr : `numpy.ndarray`
+                Median per-pixel signal-to-noise ratio in the grz cameras.
+            linemask : :class:`list`
+                Three-element list of `numpy.ndarray` boolean emission-line masks,
+                one for each camera. This mask is used during continuum-fitting.
+            linename : :class:`list`
+                Three-element list of emission line names which might be present
+                in each of the three DESI cameras.
+            linepix : :class:`list`
+                Three-element list of pixel indices, one per camera, which were
+                identified in :class:`CFit.build_linemask` to belong to emission
+                lines.
+            contpix : :class:`list`
+                Three-element list of pixel indices, one per camera, which were
+                identified in :class:`CFit.build_linemask` to not be
+                "contaminated" by emission lines.
+            coadd_wave : `numpy.ndarray`
+                Coadded wavelength vector with all three cameras combined.
+            coadd_flux : `numpy.ndarray`
+                Flux corresponding to `coadd_wave`.
+            coadd_ivar : `numpy.ndarray`
+                Inverse variance corresponding to `coadd_flux`.
+            photsys : str
+                Photometric system.
+            phot : `astropy.table.Table`
+                Total photometry in `grzW1W2`, corrected for Milky Way extinction.
+            fiberphot : `astropy.table.Table`
+                Fiber photometry in `grzW1W2`, corrected for Milky Way extinction.
+            fibertotphot : `astropy.table.Table`
+                Fibertot photometry in `grzW1W2`, corrected for Milky Way extinction.
+            synthphot : :class:`astropy.table.Table`
+                Photometry in `grz` synthesized from the Galactic
+                extinction-corrected coadded spectra (with a mild extrapolation
+                of the data blueward and redward to accommodate the g-band and
+                z-band filter curves, respectively.
+
+        """
+        from desispec.coaddition import coadd_cameras
+        from desispec.io import read_spectra
+
+        alldata = []
+        for ispec, (specfile, meta) in enumerate(zip(self.specfiles, self.meta)):
+            log.info('Reading {} spectra from {}'.format(len(meta), specfile))
+            ebv = CFit.SFDMap.ebv(meta['RA'], meta['DEC'])
+            #if args.fastphot:
+            #    spec, coadd_spec = None, None
+            #else:
+    
+            spec = read_spectra(specfile).select(targets=meta['TARGETID'])
+            assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
+    
+            # Coadd across cameras.
+            #t1 = time.time()                
+            coadd_spec = coadd_cameras(spec)
+            unpackargs = [(spec, coadd_spec, igal, meta[igal], ebv[igal], CFit, 
+                           False, True) for igal in np.arange(len(meta))]
+    
+            if mp > 1:
+                import multiprocessing
+                with multiprocessing.Pool(mp) as P:
+                    out = P.map(_unpack_one_spectrum, unpackargs)
+            else:
+                out = [unpack_one_spectrum(*_unpackargs) for _unpackargs in unpackargs]
+    
+            out = list(zip(*out))
+            self.meta[ispec] = Table(np.hstack(out[1]))
+    
+            alldata.append(out[0])
+    
+        alldata = np.concatenate(alldata)
+        self.meta = vstack(self.meta)
+        self.ntargets = len(self.meta)
+
+        return alldata
+
     def init_output(self, CFit=None, EMFit=None, fastphot=False):
         """Initialize the fastspecfit output data table.
 
