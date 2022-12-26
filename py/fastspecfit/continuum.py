@@ -70,60 +70,6 @@ def nnls(A, b, maxiter=None, eps=1e-7, v=False):
     res = np.linalg.norm(A.dot(x) - b)
     return x, res
 
-def _fnnls_continuum(myargs):
-    """Multiprocessing wrapper for fnnls_continuum."""
-    return fnnls_continuum(*myargs)
-
-def fnnls_continuum(ZZ, xx, flux=None, ivar=None, modelflux=None, get_chi2=False):
-    """Fit a stellar continuum using fNNLS. 
-
-    Parameters
-    ----------
-    ZZ : :class:`~numpy.ndarray`
-        Array.
-    xx : :class:`~numpy.ndarray`
-        Array.
-    flux : :class:`~numpy.ndarray`, optional, defaults to ``None``
-        Input flux spectrum. 
-    ivar : :class:`~numpy.ndarray`, optional, defaults to ``None``
-        Input inverse variance spectrum corresponding to ``flux``.
-    modelflux : :class:`~numpy.ndarray`, optional, defaults to ``None``
-        Input model flux spectrum. 
-
-    Returns
-    -------
-    :class:`bool`
-        Boolean flag indicating whether the non-negative fit did not converge.
-    :class:`~numpy.ndarray`
-        Coefficients of the best-fitting spectrum.
-    :class:`float`
-        Reduced chi-squared of the fit. Only returned if ``get_chi2=True``.
-
-    Notes
-    -----
-    - This function is a simple wrapper on fastspecfit.fnnls.fnnls(); see the
-      ContinuumFit.fnnls_continuum method for documentation.
-    - The arguments ``flux``, ``ivar`` and ``modelflux`` are only used when
-      ``get_chi2=True``.
-
-    """
-    from fastspecfit.fnnls import fnnls
- 
-    AtA = ZZ.T.dot(ZZ)
-    Aty = ZZ.T.dot(xx)
-    coeff = fnnls(AtA, Aty)
-    warn = False
-        
-    #if warn:
-    #    print('WARNING: fnnls did not converge after 5 iterations.')
-
-    if get_chi2:
-        chi2 = np.sum(ivar * (flux - modelflux.dot(coeff))**2)
-        #chi2 /= np.sum(ivar > 0) # reduced chi2
-        return warn, coeff, chi2
-    else:
-        return warn, coeff
-    
 class ContinuumTools(object):
     """Tools for dealing with stellar continua.
 
@@ -1379,7 +1325,7 @@ class ContinuumFit(ContinuumTools):
         -----
         Need to document all the attributes.
         
-        Plans for improvement (largely in self.fnnls_continuum).
+        Plans for improvement:
           - Update the continuum redshift using cross-correlation.
           - Don't draw reddening from a flat distribution (try gamma or a custom
             distribution of the form x**2*np.exp(-2*x/scale).
@@ -1420,7 +1366,7 @@ class ContinuumFit(ContinuumTools):
             if nAV == 0:
                 nAV = 1
             AV = np.linspace(AVmin, AVmax, nAV)
-        assert(AV[0] == 0.0) # minimum value has to be zero (assumed in fnnls_continuum)
+        assert(AV[0] == 0.0) # minimum value has to be zero
 
         if not AV_nominal in AV:
             AV = np.sort(np.hstack((AV, AV_nominal)))        
@@ -1721,9 +1667,9 @@ class ContinuumFit(ContinuumTools):
 
         return kcorr, absmag, ivarabsmag, bestmaggies, mstar, lums, cfluxes
 
-    def _fnnls_parallel(self, modelflux, flux, ivar, xparam=None, debug=False,
-                        interpolate_coeff=False, xlabel=None):
-        """Wrapper on fnnls to set up the multiprocessing. 
+    def _call_nnls(self, modelflux, flux, ivar, xparam=None, debug=False,
+                   interpolate_coeff=False, xlabel=None):
+        """Wrapper on nnls.
 
         Works with both spectroscopic and photometric input and with both 2D and
         3D model spectra.
@@ -1884,7 +1830,7 @@ class ContinuumFit(ContinuumTools):
             zsspflam_dustnomvdisp = zsspflam_dustnomvdisp.reshape(len(self.bands), nage, self.nAV) # [nband,nage,nAV]
 
             t0 = time.time()
-            AVchi2min, AVbest, AVivar, _ = self._fnnls_parallel(
+            AVchi2min, AVbest, AVivar, _ = self._call_nnls(
                 zsspflam_dustnomvdisp, objflam, objflamivar, xparam=self.AV,
                 debug=False)
             log.info('Fitting the photometry took: {:.2f} sec'.format(time.time()-t0))
@@ -1905,13 +1851,13 @@ class ContinuumFit(ContinuumTools):
                                                   self.sspwave, AV=AVbest, redshift=redshift,
                                                   south=data['photsys'] == 'S', debug=False)
 
-            coeff, _chi2min = self._fnnls_parallel(bestphot['flam'].data*self.massnorm*self.fluxnorm,
-                                                   objflam, objflamivar) # bestphot['flam'] is [nband, nage]
+            coeff, _chi2min = self._call_nnls(bestphot['flam'].data*self.massnorm*self.fluxnorm,
+                                              objflam, objflamivar) # bestphot['flam'] is [nband, nage]
 
             continuummodel = bestsspflux.dot(coeff)
             
             # For some reason I don't understand, the chi2 returned by
-            # _fnnls_parallel, above, can be unreasonably small (like 10**-25 or
+            # _call_nnls, above, can be unreasonably small (like 10**-25 or
             # smaller), so we synthesize the photometry one last time with the
             # final coefficients to get the correct chi2 estimate.
             _, synthmodelphot = self.SSP2data(self.sspflux_dustnomvdisp[:, agekeep, inodust],
@@ -2075,7 +2021,7 @@ class ContinuumFit(ContinuumTools):
         # Fit the spectra for reddening using the models convolved to the
         # nominal velocity dispersion.
         t0 = time.time()
-        AVchi2min, AVbest, AVivar, AVcoeff = self._fnnls_parallel(
+        AVchi2min, AVbest, AVivar, AVcoeff = self._call_nnls(
             zsspflux_dustnomvdisp, specflux, specivar, xparam=self.AV,
             debug=False, interpolate_coeff=self.solve_vdisp,
             xlabel=r'$A_V$ (mag)')
@@ -2110,7 +2056,7 @@ class ContinuumFit(ContinuumTools):
                     zsspflux_vdisp.append(_zsspflux_vdisp)
                 zsspflux_vdisp = np.stack(zsspflux_vdisp, axis=-1) # [npix,nage,nvdisp] at best A(V)
                 
-                vdispchi2min, vdispbest, vdispivar, _ = self._fnnls_parallel(
+                vdispchi2min, vdispbest, vdispivar, _ = self._call_nnls(
                     zsspflux_vdisp, specflux, specivar, xparam=self.vdisp,
                     xlabel=r'$\sigma$ (km/s)', debug=False)
             else:
@@ -2132,7 +2078,7 @@ class ContinuumFit(ContinuumTools):
                 zsspflux_vdispnomdust = zsspflux_vdispnomdust.reshape(npix, nage, self.nvdisp) # [npix,nage,nvdisp]
     
                 # This refits for the coefficients, so it's slower than the "quick" chi2 minimization.
-                #vdispchi2min, vdispbest, vdispivar = self._fnnls_parallel(
+                #vdispchi2min, vdispbest, vdispivar = self._call_nnls(
                 #    zsspflux_vdispnomdust, specflux, specivar, xparam=self.vdisp, debug=False)
     
                 # Do a quick chi2 minimization over velocity dispersion using the
@@ -2173,7 +2119,7 @@ class ContinuumFit(ContinuumTools):
                     nage = nmodel // nvdispfine # accounts for age-of-the-universe constraint (!=self.nage)
                     zsspflux_vdispfine = zsspflux_vdispfine.reshape(npix, nage, nvdispfine) # [npix,nage,nvdisp]
                     
-                    vdispchi2min, vdispbest, vdispivar, _ = self._fnnls_parallel(
+                    vdispchi2min, vdispbest, vdispivar, _ = self._call_nnls(
                         zsspflux_vdispfine, specflux, specivar, xparam=vdispfine,
                         interpolate_coeff=False, debug=False)
                 
@@ -2198,7 +2144,7 @@ class ContinuumFit(ContinuumTools):
                                        AV=AVbest, vdisp=vdispbest, cameras=data['cameras'],
                                        south=data['photsys'] == 'S', synthphot=False)
         bestsspflux = np.concatenate(bestsspflux, axis=0)
-        coeff, chi2min = self._fnnls_parallel(bestsspflux, specflux, specivar)
+        coeff, chi2min = self._call_nnls(bestsspflux, specflux, specivar)
         chi2min /= np.sum(specivar > 0) # dof???
 
         # Get the light-weighted age and DN(4000).
