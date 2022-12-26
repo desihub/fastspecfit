@@ -51,7 +51,7 @@ def _assign_units_to_columns(fastfit, metadata, Spec, CFit, EMFit=None, fastphot
             if col in fastcols:
                 fastfit[col].unit = E[col].unit
 
-def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False, broadlinefit=True):
+def fastspec_one(iobj, data, out, meta, CFit, EMFit, broadlinefit=True):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
     
     #log.info('Continuum-fitting object {}'.format(iobj))
@@ -75,7 +75,7 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, verbose=False, broadlinefit
     # Fit the emission-line spectrum.
     t0 = time.time()
     emfit, emmodel = EMFit.fit(data, continuummodel, smooth_continuum,
-                               verbose=verbose, broadlinefit=broadlinefit)
+                               broadlinefit=broadlinefit)
     for col in emfit.colnames:
         out[col] = emfit[col]
     log.info('Line-fitting object {} [targetid={}] took {:.2f} sec'.format(
@@ -184,9 +184,11 @@ def fastspec(args=None, comm=None):
     # Initialize the continuum- and emission-line fitting classes. Note: trim
     # the wavelengths of the SSPs to optimize compute time.
     t0 = time.time()
-    CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, solve_vdisp=args.solve_vdisp, 
+    CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, 
+                        verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
                         minwave=500.0, maxwave=1e4)
-    EMFit = EMLineFit(mapdir=args.mapdir, ssptemplates=args.ssptemplates)
+    EMFit = EMLineFit(mapdir=args.mapdir, ssptemplates=args.ssptemplates,
+                      verbose=args.verbose)
     Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
@@ -212,7 +214,7 @@ def fastspec(args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.verbose, args.broadlinefit)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.broadlinefit)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -270,8 +272,9 @@ def fastphot(args=None, comm=None):
 
     # Initialize the continuum-fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, minwave=None,
-                        maxwave=30e4, solve_vdisp=False, cache_vdisp=False)
+    CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, 
+                        minwave=None, maxwave=30e4, solve_vdisp=False, 
+                        cache_vdisp=False, verbose=args.verbose)
 
     Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))

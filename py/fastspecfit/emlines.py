@@ -16,8 +16,7 @@ from astropy.table import Table, Column
 from fastspecfit.util import trapz_rebin, C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 
-from desiutil.log import get_logger, DEBUG
-log = get_logger(DEBUG)
+#from desiutil.log import get_logger, DEBUG
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -120,7 +119,7 @@ class EMLineFit(ContinuumTools):
     """
     def __init__(self, chi2_default=0.0, minwave=3000.0, maxwave=10000.0, 
                  maxiter=5000, accuracy=1e-2, nolegend=False, 
-                 ssptemplates=None, mapdir=None):
+                 ssptemplates=None, mapdir=None, verbose=False):
         """Class to model an emission-line spectrum.
 
         Parameters
@@ -148,7 +147,8 @@ class EMLineFit(ContinuumTools):
         Need to document all the attributes.
         
         """
-        super(EMLineFit, self).__init__(mapdir=mapdir, ssptemplates=ssptemplates)
+        super(EMLineFit, self).__init__(mapdir=mapdir, ssptemplates=ssptemplates,
+                                        verbose=verbose)
         
         self.chi2_default = chi2_default
         self.maxiter = maxiter
@@ -767,7 +767,7 @@ class EMLineFit(ContinuumTools):
             for iparam, param in enumerate(linemodel['param_name'][Itied]):
                 tieindx = linemodel['tiedtoparam'][Itied[iparam]]
                 tiefactor = linemodel['tiedfactor'][Itied[iparam]]
-                #log.info('{} tied to {} with factor {:.4f}'.format(param, linemodel[tieindx]['param_name'], tiefactor))
+                #self.log.info('{} tied to {} with factor {:.4f}'.format(param, linemodel[tieindx]['param_name'], tiefactor))
                 linemodel['initial'][Itied[iparam]] = linemodel[tieindx]['initial'] * tiefactor
 
         linemodel['value'] = linemodel['initial'] # copy
@@ -785,7 +785,7 @@ class EMLineFit(ContinuumTools):
 
         parameters, (Ifree, Itied, tiedtoparam, tiedfactor, bounds, doubletindx, doubletpair, \
                      linewaves) = self._linemodel_to_parameters(linemodel)
-        log.debug('Optimizing {} free parameters'.format(len(Ifree)))
+        self.log.debug('Optimizing {} free parameters'.format(len(Ifree)))
 
         farg = (emlinewave, emlineflux, weights, redshift, self.log10wave, 
                 resolution_matrix, camerapix, parameters, ) + \
@@ -816,16 +816,16 @@ class EMLineFit(ContinuumTools):
             drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
                                          parameters[Ifree] > linemodel['bounds'][Ifree, 1])
             
-            log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
-            log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
-            log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
+            self.log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
+            self.log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
+            self.log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
             Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
 
             if debug:
                 pass
     
             if len(Idrop) > 0:
-                log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
+                self.log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
                 parameters[Idrop] = 0.0
 
         # apply tied constraints
@@ -850,7 +850,7 @@ class EMLineFit(ContinuumTools):
         #    sigma_broad = getattr(bestfit, '{}_sigma'.format(linename))
         #    
         #    if sigma_broad <= sigma:
-        #        log.debug('Dropping {} (sigma_broad={:.2f}, sigma_narrow={:.2f})'.format(
+        #        self.log.debug('Dropping {} (sigma_broad={:.2f}, sigma_narrow={:.2f})'.format(
         #            linename, sigma_broad.value, sigma.value))
         #        #vshift = getattr(bestfit, '{}_vshift'.format(linename))
         #        setattr(bestfit, '{}_amp'.format(linename), 0.0)
@@ -956,7 +956,7 @@ class EMLineFit(ContinuumTools):
         """
         from scipy.stats import sigmaclip
         from fastspecfit.util import ivar2var
-            
+
         # Combine all three cameras; we will unpack them to build the
         # best-fitting model (per-camera) below.
         redshift = data['zredrock']
@@ -997,11 +997,12 @@ class EMLineFit(ContinuumTools):
         # Initial fit - initial_linemodel_nobroad
         t0 = time.time()
         initfit = self._optimize(initial_linemodel_nobroad, emlinewave, emlineflux, 
-                                 weights, redshift, resolution_matrix, camerapix, debug=False)
+                                 weights, redshift, resolution_matrix, camerapix, 
+                                 debug=False)
         initmodel = self.bestfit(initfit, redshift, emlinewave, resolution_matrix, camerapix)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar, initmodel)
         nfree = np.sum((initfit['fixed'] == False) * (initfit['tiedtoparam'] == -1))
-        log.info('Initial line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
+        self.log.info('Initial line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
             nfree, time.time()-t0, initfit.meta['nfev'], initchi2))
 
         # Now try adding bround Balmer and helium lines and see if we improve
@@ -1025,14 +1026,14 @@ class EMLineFit(ContinuumTools):
             broadmodel = self.bestfit(broadfit, redshift, emlinewave, resolution_matrix, camerapix)
             broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel)
             nfree = np.sum((broadfit['fixed'] == False) * (broadfit['tiedtoparam'] == -1))
-            log.info('Second (broad) line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}'.format(
+            self.log.info('Second (broad) line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}'.format(
                 nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
 
             # Compare chi2 just in and around the broad lines. Need to account
             # for the different number of degrees of freedom!
             linechi2_init = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - initmodel[broadlinepix])**2) / len(broadlinepix)
             linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / len(broadlinepix)
-            log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} (delta-chi2={:.5f})'.format(
+            self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} (delta-chi2={:.5f})'.format(
                 linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
 
             if linechi2_broad > linechi2_init:
@@ -1041,9 +1042,9 @@ class EMLineFit(ContinuumTools):
                 bestfit = broadfit
         else:
             if broadlinefit:
-                log.info('Too few pixels centered on candidate broad emission lines.')
+                self.log.info('Too few pixels centered on candidate broad emission lines.')
             else:
-                log.info('Skipping broad-line fitting.')
+                self.log.info('Skipping broad-line fitting.')
             bestfit = initfit
             linechi2_init = 0.0
             linechi2_broad = 0.0
@@ -1079,18 +1080,19 @@ class EMLineFit(ContinuumTools):
         I = (linemodel['value'][Ifree] == 0) * (linemodel['tiedtoparam'][Ifree] == -1)
         if np.any(I):
             errmsg = 'Initial values should never be zero!'
-            log.critical(errmsg)
+            self.log.critical(errmsg)
             raise ValueError(errmsg)
 
         #B = np.where(['ne' in param for param in self.param_names])[0]
 
         t0 = time.time()
         finalfit = self._optimize(linemodel, emlinewave, emlineflux, weights, 
-                                  redshift, resolution_matrix, camerapix, debug=False)
+                                  redshift, resolution_matrix, camerapix, 
+                                  debug=False)
         finalmodel = self.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
         finalchi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel)
         nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
-        log.info('Final line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
+        self.log.info('Final line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
             nfree, time.time()-t0, finalfit.meta['nfev'], finalchi2))
 
         # Initialize the output table; see init_fastspecfit for the data model.
@@ -1211,7 +1213,7 @@ class EMLineFit(ContinuumTools):
     
                     if np.any(emlineivar[lineindx] == 0):
                         errmsg = 'Ivar should never be zero within an emission line!'
-                        log.critical(errmsg)
+                        self.log.critical(errmsg)
                         raise ValueError(errmsg)
                         
                     # boxcar integration of the flux
@@ -1316,12 +1318,12 @@ class EMLineFit(ContinuumTools):
                     result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit 
                     result['{}_EW_LIMIT'.format(linename)] = ewlimit
 
-            if 'debug' in log.name:
+            if 'debug' in self.log.name:
                 for col in ('VSHIFT', 'SIGMA', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
-                    log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
+                    self.log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
                 for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
-                    log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
-                log.debug(' ')
+                    self.log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
+                self.log.debug(' ')
     
             ## simple QA
             #if 'alpha' in linename and False:
@@ -1358,10 +1360,10 @@ class EMLineFit(ContinuumTools):
             result['OII_7330_FLUX'] = 0.0
             result['OII_7330_EW'] = 0.0
 
-        if 'debug' in log.name:
+        if 'debug' in self.log.name:
             for col in ('MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'):
-                log.debug('{}: {:.4f}'.format(col, result[col][0]))
-            log.debug(' ')
+                self.log.debug('{}: {:.4f}'.format(col, result[col][0]))
+            self.log.debug(' ')
 
         # get the average emission-line redshifts and velocity widths
         if len(narrow_redshifts) > 0:
@@ -1389,10 +1391,10 @@ class EMLineFit(ContinuumTools):
             result['UV_Z'] = redshift
 
         # fragile
-        if 'debug' in log.name:
+        if 'debug' in self.log.name:
             for line in ('NARROW', 'BROAD', 'UV'):
-                log.debug('{}_Z: {:.12f}'.format(line, result['{}_Z'.format(line)][0]))
-                log.debug('{}_SIGMA: {:.3f}'.format(line, result['{}_SIGMA'.format(line)][0]))
+                self.log.debug('{}_Z: {:.12f}'.format(line, result['{}_Z'.format(line)][0]))
+                self.log.debug('{}_SIGMA: {:.3f}'.format(line, result['{}_SIGMA'.format(line)][0]))
 
         # As a consistency check, make sure that the emission-line spectrum
         # rebuilt from the final table is not (very) different from the one
@@ -1879,7 +1881,7 @@ class EMLineFit(ContinuumTools):
             
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
 
-        log.info('Writing {}'.format(pngfile))
+        self.log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
         plt.close()
 
