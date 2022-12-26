@@ -1225,7 +1225,7 @@ class EMLineFit(ContinuumTools):
         #for pp in self.EMLineModel.param_names:
         #    print(getattr(self.EMLineModel, pp))
 
-        fitter = FastLevMarLSQFitter(self.EMLineModel)
+        fitter = LevMarLSQFitter(self.EMLineModel)
         initfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                          maxiter=maxiter, acc=accuracy)
         initfit = _clean_linefit(initfit, init_amplitudes, init_sigmas)
@@ -1268,7 +1268,7 @@ class EMLineFit(ContinuumTools):
             #    print(getattr(self.EMLineModel, pp))
             nfree = self.EMLineModel.count_free_parameters()
             
-            fitter = FastLevMarLSQFitter(self.EMLineModel)
+            fitter = LevMarLSQFitter(self.EMLineModel)
             broadfit = fitter(self.EMLineModel, emlinewave, emlineflux, weights=weights,
                               maxiter=maxiter, acc=accuracy)
 
@@ -1319,7 +1319,7 @@ class EMLineFit(ContinuumTools):
                 getattr(bestfit, '{}_vshift'.format(linename)).tied = None
                     
             t0 = time.time()        
-            fitter = FastLevMarLSQFitter(bestfit)
+            fitter = LevMarLSQFitter(bestfit)
             finalfit = fitter(bestfit, emlinewave, emlineflux, weights=weights,
                               maxiter=maxiter, acc=accuracy)
             finalfit = _clean_linefit(finalfit, init_amplitudes)
