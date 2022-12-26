@@ -169,9 +169,11 @@ def fastspec(args=None, comm=None):
 
     """
     from astropy.table import Table, vstack
+    from desispec.coaddition import coadd_cameras
+    from desispec.io import read_spectra
     from fastspecfit.continuum import ContinuumFit
     from fastspecfit.emlines import EMLineFit
-    from fastspecfit.io import DESISpectra, write_fastspecfit
+    from fastspecfit.io import DESISpectra, _unpack_one_spectrum, write_fastspecfit
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
@@ -203,9 +205,42 @@ def fastspec(args=None, comm=None):
     if len(Spec.specfiles) == 0:
         return
 
-    data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True)
+    t0 = time.time()
+    data = []
+    for ispec, (specfile, meta) in enumerate(zip(Spec.specfiles, Spec.meta)):
+        log.info('Reading {} spectra from {}'.format(len(meta), specfile))
+        ebv = CFit.SFDMap.ebv(meta['RA'], meta['DEC'])
+        #if args.fastphot:
+        #    spec, coadd_spec = None, None
+        #else:
 
-    #pdb.set_trace()
+        spec = read_spectra(specfile).select(targets=meta['TARGETID'])
+        assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
+
+        # Coadd across cameras.
+        #t1 = time.time()                
+        coadd_spec = coadd_cameras(spec)
+        unpackargs = [(spec, coadd_spec, igal, meta[igal], ebv[igal], CFit, 
+                       False, True) for igal in np.arange(len(meta))]
+
+        if args.mp > 1:
+            import multiprocessing
+            with multiprocessing.Pool(args.mp) as P:
+                out = P.map(_unpack_one_spectrum, unpackargs)
+        else:
+            out = [unpack_one_spectrum(*_unpackargs) for _unpackargs in unpackargs]
+
+        out = list(zip(*out))
+        Spec.meta[ispec] = Table(np.hstack(out[1]))
+
+        data.append(out[0])
+
+    data = np.concatenate(data)
+    Spec.meta = vstack(Spec.meta)
+    Spec.ntargets = len(Spec.meta)
+
+    log.info('Read data for {} objects in {:.2f} sec'.format(Spec.ntargets, time.time()-t0))
+
     #np.savetxt('linemask3.txt', np.array([np.hstack(data[0]['wave']), np.hstack(data[0]['flux']), np.hstack(data[0]['ivar'])]).T)
 
     out, meta = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=False)
@@ -288,7 +323,7 @@ def fastphot(args=None, comm=None):
                 qnfile_prefix=args.qnfile_prefix)
     if len(Spec.specfiles) == 0:
         return
-    data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False)
+    data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False, mp=args.mp)
     
     out, meta = Spec.init_output(CFit=CFit, fastphot=True)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
