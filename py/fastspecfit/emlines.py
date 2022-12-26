@@ -1527,10 +1527,9 @@ class EMLineFit(ContinuumTools):
         if np.all(fastspec['CONTINUUM_COEFF'] == 0):
             _smooth_continuum = np.zeros_like(stackwave)
         else:
-            print('HACK ON LINEMASK!!!')
             _smooth_continuum, _ = self.smooth_continuum(np.hstack(data['wave']), np.hstack(residuals),
                                                          np.hstack(data['ivar']), redshift=redshift,
-                                                         linemask=None)#np.hstack(data['linemask']))
+                                                         linemask=np.hstack(data['linemask']))
         smooth_continuum = []
         for campix in data['camerapix']:
             smooth_continuum.append(_smooth_continuum[campix[0]:campix[1]])

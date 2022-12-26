@@ -793,8 +793,63 @@ class DESISpectra(object):
                     coadd_ivar = coadd_spec.ivar[coadd_bands][igal, :]
                     coadd_res = Resolution(coadd_spec.resolution_data[coadd_bands][igal, :])
 
+                    coadd_linemask_dict = CFit.build_linemask(coadd_wave, coadd_flux, coadd_ivar, redshift=data['zredrock'])
+                    data['coadd_linename'] = coadd_linemask_dict['linename']
+                    data['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
+                    data['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
+
+                    data['linesigma_narrow'] = coadd_linemask_dict['linesigma_narrow']
+                    data['linesigma_balmer'] = coadd_linemask_dict['linesigma_balmer']
+                    data['linesigma_uv'] = coadd_linemask_dict['linesigma_uv']
+
+                    data['linesigma_narrow_snr'] = coadd_linemask_dict['linesigma_narrow_snr']
+                    data['linesigma_balmer_snr'] = coadd_linemask_dict['linesigma_balmer_snr']
+                    data['linesigma_uv_snr'] = coadd_linemask_dict['linesigma_uv_snr']
+
+                    # Map the pixels belonging to individual emission lines and
+                    # their local continuum back onto the original per-camera
+                    # spectra. These lists of arrays are used in
+                    # continuum.ContinnuumTools.smooth_continuum.
+                    for icam in np.arange(len(data['cameras'])):
+                        data['linemask'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask']*1) > 0)
+                        data['linemask_all'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask_all']*1) > 0)
+                        _linename, _linenpix, _contpix = [], [], []
+                        for ipix in np.arange(len(coadd_linemask_dict['linepix'])):
+                            I = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linepix'][ipix]*1) > 0
+                            J = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['contpix'][ipix]*1) > 0
+                            #if '4686' in coadd_linemask_dict['linename'][ipix]:
+                            #    pdb.set_trace()
+                            if np.sum(I) > 3 and np.sum(J) > 3:
+                                _linename.append(coadd_linemask_dict['linename'][ipix])
+                                _linenpix.append(np.where(I)[0])
+                                _contpix.append(np.where(J)[0])
+                        data['linename'].append(_linename)
+                        data['linepix'].append(_linenpix)
+                        data['contpix'].append(_contpix)
+                        #for ipix in np.arange(len(coadd_linemask_dict['contpix'])):
+                        #    if icam == 1:
+                        #        pdb.set_trace()
+                        #    J = np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['contpix'][ipix]*1) > 0
+                        #    if np.sum(J) > 0:
+                        #        _contpix.append(np.where(J)[0])
+                        #data['contpix'].append(_contpix)
+
+                    #import matplotlib.pyplot as plt
+                    #plt.clf()
+                    #for ii in np.arange(3):
+                    #    plt.plot(data['wave'][ii], data['flux'][ii])
+                    #plt.plot(coadd_wave, coadd_flux-2, alpha=0.6, color='k')
+                    #plt.xlim(5500, 6000)
+                    #plt.savefig('test.png')
+                    #pdb.set_trace()
+
                     data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux,
-                                 'coadd_ivar': coadd_ivar, 'coadd_res': coadd_res})
+                                 'coadd_ivar': coadd_ivar, 'coadd_res': coadd_res,
+                                 'coadd_linemask': coadd_linemask_dict['linemask'],
+                                 'coadd_linemask_all': coadd_linemask_dict['linemask_all']})
+
+                    #data.update({'coadd_wave': coadd_wave, 'coadd_flux': coadd_flux,
+                    #             'coadd_ivar': coadd_ivar, 'coadd_res': coadd_res})
 
                     # Optionally synthesize photometry from the coadded spectrum.
                     if synthphot:
