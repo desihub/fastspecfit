@@ -1025,10 +1025,21 @@ class EMLineFit(ContinuumTools):
             self.log.info('Second (broad) line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}'.format(
                 nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
 
-            # Compare chi2 just in and around the broad lines. Need to account
-            # for the different number of degrees of freedom!
-            linechi2_init = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - initmodel[broadlinepix])**2) / len(broadlinepix)
-            linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / len(broadlinepix)
+            # Compare chi2 just in and around the broad lines.
+            I = ((self.fit_linetable[self.fit_linetable['inrange']]['zwave'] > np.min(emlinewave[broadlinepix])) *
+                 (self.fit_linetable[self.fit_linetable['inrange']]['zwave'] < np.max(emlinewave[broadlinepix])))
+            Iline = initfit[np.isin(broadfit['linename'], self.fit_linetable[self.fit_linetable['inrange']][I]['name'])]
+            Bline = broadfit[np.isin(broadfit['linename'], self.fit_linetable[self.fit_linetable['inrange']][I]['name'])]
+            dof_init = np.count_nonzero(emlineivar[broadlinepix] > 0) - np.count_nonzero((Iline['fixed'] == False) * (Iline['tiedtoparam'] == -1))
+            dof_broad = np.count_nonzero(emlineivar[broadlinepix] > 0) - np.count_nonzero((Bline['fixed'] == False) * (Bline['tiedtoparam'] == -1))
+            if dof_init == 0 or dof_broad == 0:
+                errmsg = 'Number of degrees of freedom should never be zero: dof_init={}, dof_free={}'.format(
+                    dof_init, dof_broad)
+                self.log.critical(errmsg)
+                raise ValueError(errmsg)
+
+            linechi2_init = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - initmodel[broadlinepix])**2) / dof_init
+            linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / dof_broad
             self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [delta-chi2={:.5f}]'.format(
                 linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
 
@@ -1082,7 +1093,6 @@ class EMLineFit(ContinuumTools):
                     #print(linename, sigma_broad[0], sigma_narrow[0])
                     linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename)] = sigma_narrow
                     linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename).replace('_broad', '')] = sigma_broad
-
 
         # Tied parameters can have initial values of zero if they are fixed
         # (e.g., broad emission lines) but nothing else.
