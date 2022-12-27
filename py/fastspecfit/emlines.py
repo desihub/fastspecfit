@@ -807,7 +807,10 @@ class EMLineFit(ContinuumTools):
 
         fit_info = least_squares(_objective_function, parameters[Ifree],
                                  args=farg, max_nfev=self.maxiter, 
-                                 xtol=self.accuracy, #method='lm')
+                                 xtol=self.accuracy, 
+                                 #method='lm')
+                                 #verbose=2,
+                                 tr_solver='lsmr', tr_options={'regularize': True},
                                  method='trf', bounds=tuple(zip(*bounds)))
         parameters[Ifree] = fit_info.x
 
@@ -1443,24 +1446,24 @@ class EMLineFit(ContinuumTools):
 
         # get the average emission-line redshifts and velocity widths
         if len(narrow_redshifts) > 0:
-            result['NARROW_Z'] = np.mean(narrow_redshifts)
-            result['NARROW_SIGMA'] = np.mean(narrow_sigmas) # * u.kilometer / u.second
+            result['NARROW_Z'] = np.median(narrow_redshifts)
+            result['NARROW_SIGMA'] = np.median(narrow_sigmas) # * u.kilometer / u.second
             #result['NARROW_Z_ERR'] = np.std(narrow_redshifts)
             #result['NARROW_SIGMA_ERR'] = np.std(narrow_sigmas)
         else:
             result['NARROW_Z'] = redshift
             
         if len(broad_redshifts) > 0:
-            result['BROAD_Z'] = np.mean(broad_redshifts)
-            result['BROAD_SIGMA'] = np.mean(broad_sigmas) # * u.kilometer / u.second
+            result['BROAD_Z'] = np.median(broad_redshifts)
+            result['BROAD_SIGMA'] = np.median(broad_sigmas) # * u.kilometer / u.second
             #result['BROAD_Z_ERR'] = np.std(broad_redshifts)
             #result['BROAD_SIGMA_ERR'] = np.std(broad_sigmas)
         else:
             result['BROAD_Z'] = redshift
             
         if len(uv_redshifts) > 0:
-            result['UV_Z'] = np.mean(uv_redshifts)
-            result['UV_SIGMA'] = np.mean(uv_sigmas) # * u.kilometer / u.second
+            result['UV_Z'] = np.median(uv_redshifts)
+            result['UV_SIGMA'] = np.median(uv_sigmas) # * u.kilometer / u.second
             #result['UV_Z_ERR'] = np.std(uv_redshifts)
             #result['UV_SIGMA_ERR'] = np.std(uv_sigmas)
         else:
