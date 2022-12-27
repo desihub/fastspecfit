@@ -91,7 +91,7 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
     #    if value > bnd[1]:
     #        free_parameters[I] = bnd[1]
 
-    print(free_parameters)
+    #print(free_parameters)
     parameters[Ifree] = free_parameters
 
     if len(Itied) > 0:
@@ -817,22 +817,24 @@ class EMLineFit(ContinuumTools):
         # --parameter at its default value (fit failed, right??)
         # --parameter outside its bounds [should never be needed if method='trf']
         lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
+        notfixed = np.logical_not(linemodel['fixed'])
 
-        drop1 = np.hstack((lineamps < 0, np.zeros(len(linevshifts), bool), linesigmas <= 0))
+        drop1 = np.hstack((lineamps < 0, np.zeros(len(linevshifts), bool), linesigmas <= 0)) * notfixed
         
         drop2 = np.zeros(len(parameters), bool)
         drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree] # want 'value' here not 'initial'
+        drop2 *= notfixed
         
         drop3 = np.zeros(len(parameters), bool)
         drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
                                      parameters[Ifree] > linemodel['bounds'][Ifree, 1])
+        drop3 *= notfixed
         
         self.log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
         self.log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
         self.log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
         Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
 
-        pdb.set_trace()
         if debug:
             pass
 
@@ -974,11 +976,11 @@ class EMLineFit(ContinuumTools):
             emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
 
         weights = np.sqrt(emlineivar)
-        wavelims = (np.min(emlinewave)+5, np.max(emlinewave)-5)
 
         # Build all the emission-line models for this object.
         final_linemodel, final_linemodel_nobroad, initial_linemodel, initial_linemodel_nobroad = \
-            self.build_linemodels(redshift, wavelims=wavelims, verbose=False)
+            self.build_linemodels(redshift, wavelims=(np.min(emlinewave)+5, np.max(emlinewave)-5),
+                                  verbose=False)
 
         # Get initial guesses on the parameters and populate the two "initial"
         # linemodels; the "final" linemodels will be initialized with the
@@ -1011,7 +1013,7 @@ class EMLineFit(ContinuumTools):
                     #print(data['wave'][icam][linepix])
 
         # Require minimum XX pixels.
-        if broadlinefit or (len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10): 
+        if broadlinefit and (len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10):
             broadlinepix = np.hstack(broadlinepix)
 
             t0 = time.time()

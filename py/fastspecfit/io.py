@@ -88,8 +88,7 @@ def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, 
-                        synthphot):
+def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synthphot):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
@@ -157,31 +156,36 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot,
     data['fibertotphot'] = CFit.parse_photometry(CFit.fiber_bands,
         maggies=fibertotmaggies, nanomaggies=True,
         lambda_eff=filters.effective_wavelengths.value)
-    
+
     if not fastphot:
         data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                      'linemask': [], 'linemask_all': [],
                      'linename': [], 'linepix': [], 'contpix': [],
-                     'snr': np.zeros(3, 'f4'),
+                     'snr': np.zeros(3, 'f4')})
                      #'std': np.zeros(3, 'f4'), # emission-line free standard deviation, per-camera
-                     'cameras': spec.bands})
     
-        npixpercamera = []
-        for icam, camera in enumerate(data['cameras']):
-            #mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))
-            mw_transmission_spec = dust_transmission(spec.wave[camera], ebv, Rv=CFit.RV)
-            data['wave'].append(spec.wave[camera])
-            data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
-            data['ivar'].append(spec.ivar[camera][igal, :] * mw_transmission_spec**2)
-            data['res'].append(Resolution(spec.resolution_data[camera][igal, :, :]))
-            data['snr'][icam] = np.median(spec.flux[camera][igal, :] * np.sqrt(spec.ivar[camera][igal, :]))
-    
-            npixpercamera.append(len(spec.wave[camera])) # number of pixels in this camera
-    
+        cameras, npixpercamera = [], []
+        for icam, camera in enumerate(spec.bands):
+            # Check whether the camera is fully masked.
+            if np.sum(spec.ivar[camera][igal, :]) == 0:
+                log.warning('Dropping fully masked camera {}'.format(camera))
+            else:
+                #mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))
+                mw_transmission_spec = dust_transmission(spec.wave[camera], ebv, Rv=CFit.RV)
+                data['wave'].append(spec.wave[camera])
+                data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
+                data['ivar'].append(spec.ivar[camera][igal, :] * mw_transmission_spec**2)
+                data['res'].append(Resolution(spec.resolution_data[camera][igal, :, :]))
+                data['snr'][icam] = np.median(spec.flux[camera][igal, :] * np.sqrt(spec.ivar[camera][igal, :]))
+        
+                cameras.append(camera)
+                npixpercamera.append(len(spec.wave[camera])) # number of pixels in this camera
+
         # Pre-compute some convenience variables for "un-hstacking"
         # an "hstacked" spectrum.
+        data['cameras'] = cameras
         data['npixpercamera'] = npixpercamera
-    
+        
         ncam = len(data['cameras'])
         npixpercam = np.hstack([0, npixpercamera])
         data['camerapix'] = np.zeros((ncam, 2), np.int16)
@@ -871,7 +875,7 @@ class DESISpectra(object):
             #t1 = time.time()                
             coadd_spec = coadd_cameras(spec)
             unpackargs = [(spec, coadd_spec, igal, meta[igal], ebv[igal], CFit, 
-                           False, True) for igal in np.arange(len(meta))]
+                           fastphot, synthphot) for igal in np.arange(len(meta))]
     
             if mp > 1:
                 import multiprocessing
