@@ -177,9 +177,9 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
-    parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
+    parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit-dev',
                         type=str, help='Base output HTML directory.')
-    parser.add_argument('--outdir-data', default='/global/cfs/cdirs/desi/spectro/fastspecfit',
+    parser.add_argument('--outdir-data', default='/global/cfs/cdirs/desi/spectro/fastspecfit-dev',
                         type=str, help='Base output data directory.')
     
     specprod_dir = None

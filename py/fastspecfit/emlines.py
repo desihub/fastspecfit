@@ -773,7 +773,9 @@ class EMLineFit(ContinuumTools):
             else:
                 if linemodel['fixed'][iparam]:
                     linemodel['initial'][iparam] = 0.0
-
+                else:
+                    linemodel['initial'][iparam] = 1.0
+                    
         # Now loop back through and ensure that tied relationships are enforced.
         Itied = np.where((linemodel['tiedtoparam'] != -1) * (linemodel['fixed'] == False))[0]
         if len(Itied) > 0:
@@ -1016,7 +1018,7 @@ class EMLineFit(ContinuumTools):
                     #print(data['wave'][icam][linepix])
 
         # Require minimum XX pixels.
-        if broadlinefit and (len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10):
+        if broadlinefit and len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10:
             broadlinepix = np.hstack(broadlinepix)
 
             t0 = time.time()
