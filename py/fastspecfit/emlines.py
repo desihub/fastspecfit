@@ -1117,6 +1117,8 @@ class EMLineFit(ContinuumTools):
         self._populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
                                emlineivar, oemlineivar, specflux_nolines, redshift)
 
+        pdb.set_trace()
+
         # Build the model spectra.
         emmodel = np.hstack(self.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
 
@@ -1177,12 +1179,10 @@ class EMLineFit(ContinuumTools):
             modelflux = modelcontinuum[0, :] + modelsmoothcontinuum[0, :] + modelemspectrum[0, :]
             self._synthphot_spectrum(data, result, modelwave, modelflux)
 
-        pdb.set_trace()
-
         return result, modelspectra
 
-    def _populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux, emlineivar,
-                          oemlineivar, specflux_nolines, redshift):
+    def _populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
+                          emlineivar, oemlineivar, specflux_nolines, redshift):
         """Populate the output table with the emission-line measurements.
 
         """
@@ -1377,7 +1377,8 @@ class EMLineFit(ContinuumTools):
                     self.log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
                 for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
                     self.log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)][0]))
-                self.log.debug(' ')
+                print()
+                #self.log.debug(' ')
     
             ## simple QA
             #if 'alpha' in linename and False:
@@ -1402,28 +1403,32 @@ class EMLineFit(ContinuumTools):
         #    result[param.upper()] = factor * result[param.upper()]
         #    parameters[I] = parameters[indx] * factor
 
-        ## Clean up the doublets (v1.0.1); This should not be necessary as of PR92.
-        #if result['OIII_5007_AMP'] == 0 and result['OIII_5007_NPIX'] > 0:
-        #    result['OIII_4959_AMP'] = 0.0
-        #    result['OIII_4959_FLUX'] = 0.0
-        #    result['OIII_4959_EW'] = 0.0
-        #if result['NII_6584_AMP'] == 0 and result['NII_6584_NPIX'] > 0:
-        #    result['NII_6548_AMP'] = 0.0
-        #    result['NII_6548_FLUX'] = 0.0
-        #    result['NII_6548_EW'] = 0.0
-        ##if result['OII_3729_AMP'] == 0 and result['OII_3729_NPIX'] > 0:
-        ##    result['OII_3726_AMP'] = 0.0
-        ##    result['OII_3726_FLUX'] = 0.0
-        ##    result['OII_3726_EW'] = 0.0
-        #if result['OII_7320_AMP'] == 0 and result['OII_7320_NPIX'] > 0:
-        #    result['OII_7330_AMP'] = 0.0
-        #    result['OII_7330_FLUX'] = 0.0
-        #    result['OII_7330_EW'] = 0.0
+        # Clean up the doublets whose amplitudes were tied in the fitting since
+        # they may have been zeroed out in the clean-up, above.
+        if result['OIII_5007_AMP'] == 0.0 and result['OIII_5007_NPIX'] > 0:
+            result['OIII_4959_AMP'] = 0.0
+            result['OIII_4959_FLUX'] = 0.0
+            result['OIII_4959_EW'] = 0.0
+        if result['NII_6584_AMP'] == 0.0 and result['NII_6584_NPIX'] > 0:
+            result['NII_6548_AMP'] = 0.0
+            result['NII_6548_FLUX'] = 0.0
+            result['NII_6548_EW'] = 0.0
+        if result['OII_7320_AMP'] == 0.0 and result['OII_7320_NPIX'] > 0:
+            result['OII_7330_AMP'] = 0.0
+            result['OII_7330_FLUX'] = 0.0
+            result['OII_7330_EW'] = 0.0
+        if result['MGII_2796_AMP'] == 0.0 and result['MGII_2803_AMP'] == 0.0:
+            result['MGII_DOUBLET_RATIO'] = 0.0
+        if result['OII_3726_AMP'] == 0.0 and result['OII_3729_AMP'] == 0.0:
+            result['OII_DOUBLET_RATIO'] = 0.0
+        if result['SII_6716_AMP'] == 0.0 and result['SII_6731_AMP'] == 0.0:
+            result['SII_DOUBLET_RATIO'] = 0.0
 
         if 'debug' in self.log.name:
             for col in ('MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'):
                 self.log.debug('{}: {:.4f}'.format(col, result[col][0]))
-            self.log.debug(' ')
+            #self.log.debug(' ')
+            print()
 
         # get the average emission-line redshifts and velocity widths
         if len(narrow_redshifts) > 0:
