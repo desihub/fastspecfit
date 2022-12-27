@@ -40,6 +40,7 @@ def _build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
     log10model = np.zeros_like(log10wave) # [erg/s/cm2/A, observed frame]
 
     # Cut to lines with non-zero amplitudes.
+    #I = linesigmas > 0
     I = lineamps > 0
     if np.count_nonzero(I) > 0:
         linevshifts = linevshifts[I]
@@ -665,6 +666,9 @@ class EMLineFit(ContinuumTools):
                 amp = np.max(coadd_emlineflux[mnpx:mxpx])
             else:
                 amp = np.percentile(coadd_emlineflux[linepix], 97.5)
+                
+            if amp < 0:
+                amp = np.abs(amp)
     
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 3*np.max(coadd_emlineflux[linepix])]
@@ -681,9 +685,17 @@ class EMLineFit(ContinuumTools):
                     # MgII and other UV lines are dropped relatively frequently
                     # due to the lower bound on the amplitude.
                     #bounds = [None, mx]
-                    bounds = [-1e2, mx]
+                    #bounds = [-1e2, mx]
+                    #bounds = [0.0, mx]
+                    bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
             else:
-                bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), mx]
+                #bounds = [0.0, mx]
+                bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+
+            if (bounds[0] > bounds[1]) or (amp < bounds[0]) or (amp > bounds[1]):
+                errmsg = 'Initial amplitude is outside its bound for line {}!'.format(linename)
+                self.log.critical(errmsg)
+                raise ValueError(errmsg)
 
             initial_guesses[linename+'_amp'] = amp
             param_bounds[linename+'_amp'] = bounds
@@ -796,7 +808,6 @@ class EMLineFit(ContinuumTools):
                                  args=farg, max_nfev=self.maxiter, 
                                  xtol=self.accuracy, #method='lm')
                                  method='trf', bounds=tuple(zip(*bounds)))
-
         parameters[Ifree] = fit_info.x
 
         # Conditions for dropping a parameter (all parameters, not just those
@@ -840,23 +851,6 @@ class EMLineFit(ContinuumTools):
         #          of an object where there's a broad H-alpha line but no other
         #          forbidden lines!
         
-        #IB = self.linetable['isbalmer'] * self.linetable['isbroad']
-        #for linename in self.linetable['name'][IB]:
-        #    amp_broad = getattr(bestfit, '{}_amp'.format(linename))
-        #    if amp_broad.fixed: # line is either out of range or a suppressed line--skip it here
-        #        continue
-        #    amp = getattr(bestfit, '{}_amp'.format(linename.replace('_broad', ''))) # fragile
-        #    sigma = getattr(bestfit, '{}_sigma'.format(linename.replace('_broad', ''))) # fragile
-        #    sigma_broad = getattr(bestfit, '{}_sigma'.format(linename))
-        #    
-        #    if sigma_broad <= sigma:
-        #        self.log.debug('Dropping {} (sigma_broad={:.2f}, sigma_narrow={:.2f})'.format(
-        #            linename, sigma_broad.value, sigma.value))
-        #        #vshift = getattr(bestfit, '{}_vshift'.format(linename))
-        #        setattr(bestfit, '{}_amp'.format(linename), 0.0)
-        #        setattr(bestfit, '{}_sigma'.format(linename), 0.0) # sigma_broad.default)
-        #        setattr(bestfit, '{}_vshift'.format(linename), 0.0) # vshift.default)
-
         out_linemodel = linemodel.copy()
         out_linemodel['value'] = parameters
         out_linemodel.meta['nfev'] = fit_info['nfev']
@@ -954,7 +948,6 @@ class EMLineFit(ContinuumTools):
         modelflux
      
         """
-        from scipy.stats import sigmaclip
         from fastspecfit.util import ivar2var
 
         # Combine all three cameras; we will unpack them to build the
@@ -1110,7 +1103,8 @@ class EMLineFit(ContinuumTools):
         self.log.info('Final line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
             nfree, time.time()-t0, finalfit.meta['nfev'], finalchi2))
 
-        pdb.set_trace()
+        # Residual spectrum with no emission lines.
+        specflux_nolines = specflux - finalmodel
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output()
@@ -1120,51 +1114,94 @@ class EMLineFit(ContinuumTools):
         result['DELTA_LINERCHI2'] = linechi2_init - linechi2_broad
 
         # Now fill the output table.
+        self._populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
+                               emlineivar, oemlineivar, specflux_nolines, redshift)
+
+        # Build the model spectra.
+        emmodel = np.hstack(self.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
+
+        # As a consistency check, make sure that the emission-line spectrum
+        # rebuilt from the final table is not (very) different from the one
+        # based on the best-fitting model parameters.
+        #try:
+        #    assert(np.all(np.isclose(emmodel, emlinemodel, rtol=1e-4)))
+        #except:
+        #    pdb.set_trace()
+            
+        #import matplotlib.pyplot as plt
+        #plt.clf()
+        #plt.plot(emlinewave, np.hstack(emmodel)-emlinemodel)
+        ##plt.plot(emlinewave, emlinemodel)
+        #plt.savefig('desi-users/ioannis/tmp/junk.png')
+
+        # I believe that all the elements of the coadd_wave vector are contained
+        # within one or more of the per-camera wavelength vectors, and so we
+        # should be able to simply map our model spectra with no
+        # interpolation. However, because of round-off, etc., it's probably
+        # easiest to use np.interp.
+
+        # package together the final output models for writing; assume constant
+        # dispersion in wavelength!
+        minwave, maxwave, dwave = np.min(data['coadd_wave']), np.max(data['coadd_wave']), np.diff(data['coadd_wave'][:2])[0]
+        minwave = float(int(minwave * 1000) / 1000)
+        maxwave = float(int(maxwave * 1000) / 1000)
+        dwave = float(int(dwave * 1000) / 1000)
+        npix = int((maxwave-minwave)/dwave)+1
+        modelwave = minwave + dwave * np.arange(npix)
+
+        modelspectra = Table()
+        # all these header cards need to be 2-element tuples (value, comment),
+        # otherwise io.write_fastspecfit will crash
+        modelspectra.meta['NAXIS1'] = (npix, 'number of pixels')
+        modelspectra.meta['NAXIS2'] = (npix, 'number of models')
+        modelspectra.meta['NAXIS3'] = (npix, 'number of objects')
+        modelspectra.meta['BUNIT'] = ('10**-17 erg/(s cm2 Angstrom)', 'flux unit')
+        modelspectra.meta['CUNIT1'] = ('Angstrom', 'wavelength unit')
+        modelspectra.meta['CTYPE1'] = ('WAVE', 'type of axis')
+        modelspectra.meta['CRVAL1'] = (minwave, 'wavelength of pixel CRPIX1 (Angstrom)')
+        modelspectra.meta['CRPIX1'] = (0, '0-indexed pixel number corresponding to CRVAL1')
+        modelspectra.meta['CDELT1'] = (dwave, 'pixel size (Angstrom)')
+        modelspectra.meta['DC-FLAG'] = (0, '0 = linear wavelength vector')
+        modelspectra.meta['AIRORVAC'] = ('vac', 'wavelengths in vacuum (vac)')
+
+        modelcontinuum = np.interp(modelwave, emlinewave, continuummodelflux).reshape(1, npix)
+        modelsmoothcontinuum = np.interp(modelwave, emlinewave, smoothcontinuummodelflux).reshape(1, npix)
+        modelemspectrum = np.interp(modelwave, emlinewave, emmodel).reshape(1, npix)
+        
+        modelspectra.add_column(Column(name='CONTINUUM', dtype='f4', data=modelcontinuum))
+        modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4', data=modelsmoothcontinuum))
+        modelspectra.add_column(Column(name='EMLINEMODEL', dtype='f4', data=modelemspectrum))
+
+        # Finally, optionally synthesize photometry.
+        if synthphot:
+            modelflux = modelcontinuum[0, :] + modelsmoothcontinuum[0, :] + modelemspectrum[0, :]
+            self._synthphot_spectrum(data, result, modelwave, modelflux)
+
+        pdb.set_trace()
+
+        return result, modelspectra
+
+    def _populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux, emlineivar,
+                          oemlineivar, specflux_nolines, redshift):
+        """Populate the output table with the emission-line measurements.
+
+        """
+        from scipy.stats import sigmaclip
+
         for param in finalfit:
-            # If the parameter was not optimized, set its value to zero.
             val = param['value']
             # special case the tied doublets
             if param['param_name'] == 'oii_doublet_ratio':
                 result['OII_DOUBLET_RATIO'] = val
-                result['OII_3726_AMP'] = val * finalfit[finalfit['param_name'] == 'oii_3729_amp']['value'] # * u.erg/(u.second*u.cm**2*u.Angstrom)
+                result['OII_3726_AMP'] = val * finalfit[param['doubletpair']]['value']
             elif param['param_name'] == 'sii_doublet_ratio':
                 result['SII_DOUBLET_RATIO'] = val
-                result['SII_6731_AMP'] = val * finalfit[finalfit['param_name'] == 'sii_6716_amp']['value'] # * u.erg/(u.second*u.cm**2*u.Angstrom)
+                result['SII_6731_AMP'] = val * finalfit[param['doubletpair']]['value']
             elif param['param_name'] == 'mgii_doublet_ratio':
                 result['MGII_DOUBLET_RATIO'] = val
-                result['MGII_2796_AMP'] = val * finalfit[finalfit['param_name'] == 'mgii_2803_amp']['value'] # * u.erg/(u.second*u.cm**2*u.Angstrom)
+                result['MGII_2796_AMP'] = val * finalfit[param['doubletpair']]['value']
             else:
                 result[param['param_name'].upper()] = val
-
-        # Synthesize photometry from the best-fitting model (continuum+emission lines).
-        if synthphot:
-            if data['photsys'] == 'S':
-                filters = self.decam
-            else:
-                filters = self.bassmzls
-
-            # The wavelengths overlap between the cameras a bit...
-            srt = np.argsort(emlinewave)
-            padflux, padwave = filters.pad_spectrum((continuummodelflux+smoothcontinuummodelflux+finalmodel)[srt],
-                                                    emlinewave[srt], method='edge')
-            synthmaggies = filters.get_ab_maggies(padflux / self.fluxnorm, padwave)
-            synthmaggies = synthmaggies.as_array().view('f8')
-            model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
-                                                    nanomaggies=False,
-                                                    lambda_eff=filters.effective_wavelengths.value)
-
-            for iband, band in enumerate(self.synth_bands):
-                result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband] # * 'nanomaggies'
-                #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
-            for iband, band in enumerate(self.synth_bands):
-                result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] # * 'nanomaggies'
-
-        specflux_nolines = specflux - finalmodel
-
-        ## measure DN(4000) without the emission lines
-        #if False:
-        #    dn4000_nolines, _ = self.get_dn4000(emlinewave, specflux_nolines, redshift=redshift)
-        #    result['DN4000_NOLINES'] = dn4000_nolines
 
         # get continuum fluxes, EWs, and upper limits
         narrow_sigmas, broad_sigmas, uv_sigmas = [], [], []
@@ -1356,26 +1393,32 @@ class EMLineFit(ContinuumTools):
             #    plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
             #    plt.savefig('junk.png')
 
-        # clean up the doublets; 
-        if result['OIII_5007_AMP'] == 0 and result['OIII_5007_NPIX'] > 0:
-            result['OIII_4959_AMP'] = 0.0
-            result['OIII_4959_FLUX'] = 0.0
-            result['OIII_4959_EW'] = 0.0
+        ## Reset all the doublets and tied parameters, since they can be zerod
+        ## out, above, if there are insufficient pixels in the spectrum.
+        #Itied = np.where((finalfit['tiedtoparam'] != -1) * (finalfit['fixed'] == False))[0]
+        #for param, tiedparam, factor in zip(finalfit['param_name'][Itied], finalfit[finalfit['tiedtoparam'][Itied]]['param_name'], finalfit['tiedfactor'][Itied]):
+        #    val = result[param.upper()][0]
+        #    pdb.set_trace()
+        #    result[param.upper()] = factor * result[param.upper()]
+        #    parameters[I] = parameters[indx] * factor
 
-        if result['NII_6584_AMP'] == 0 and result['NII_6584_NPIX'] > 0:
-            result['NII_6548_AMP'] = 0.0
-            result['NII_6548_FLUX'] = 0.0
-            result['NII_6548_EW'] = 0.0
-
-        #if result['OII_3729_AMP'] == 0 and result['OII_3729_NPIX'] > 0:
-        #    result['OII_3726_AMP'] = 0.0
-        #    result['OII_3726_FLUX'] = 0.0
-        #    result['OII_3726_EW'] = 0.0
-
-        if result['OII_7320_AMP'] == 0 and result['OII_7320_NPIX'] > 0:
-            result['OII_7330_AMP'] = 0.0
-            result['OII_7330_FLUX'] = 0.0
-            result['OII_7330_EW'] = 0.0
+        ## Clean up the doublets (v1.0.1); This should not be necessary as of PR92.
+        #if result['OIII_5007_AMP'] == 0 and result['OIII_5007_NPIX'] > 0:
+        #    result['OIII_4959_AMP'] = 0.0
+        #    result['OIII_4959_FLUX'] = 0.0
+        #    result['OIII_4959_EW'] = 0.0
+        #if result['NII_6584_AMP'] == 0 and result['NII_6584_NPIX'] > 0:
+        #    result['NII_6548_AMP'] = 0.0
+        #    result['NII_6548_FLUX'] = 0.0
+        #    result['NII_6548_EW'] = 0.0
+        ##if result['OII_3729_AMP'] == 0 and result['OII_3729_NPIX'] > 0:
+        ##    result['OII_3726_AMP'] = 0.0
+        ##    result['OII_3726_FLUX'] = 0.0
+        ##    result['OII_3726_EW'] = 0.0
+        #if result['OII_7320_AMP'] == 0 and result['OII_7320_NPIX'] > 0:
+        #    result['OII_7330_AMP'] = 0.0
+        #    result['OII_7330_FLUX'] = 0.0
+        #    result['OII_7330_EW'] = 0.0
 
         if 'debug' in self.log.name:
             for col in ('MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'):
@@ -1413,56 +1456,33 @@ class EMLineFit(ContinuumTools):
                 self.log.debug('{}_Z: {:.12f}'.format(line, result['{}_Z'.format(line)][0]))
                 self.log.debug('{}_SIGMA: {:.3f}'.format(line, result['{}_SIGMA'.format(line)][0]))
 
-        # As a consistency check, make sure that the emission-line spectrum
-        # rebuilt from the final table is not (very) different from the one
-        # based on the best-fitting model parameters.
-        emmodel = np.hstack(self.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
-        #try:
-        #    assert(np.all(np.isclose(emmodel, emlinemodel, rtol=1e-4)))
-        #except:
-        #    pdb.set_trace()
-            
-        #import matplotlib.pyplot as plt
-        #plt.clf()
-        #plt.plot(emlinewave, np.hstack(emmodel)-emlinemodel)
-        ##plt.plot(emlinewave, emlinemodel)
-        #plt.savefig('desi-users/ioannis/tmp/junk.png')
+    def _synthphot_spectrum(self, data, result, modelwave, modelflux):
+        """Synthesize photometry from the best-fitting model (continuum+emission lines).
 
-        # I believe that all the elements of the coadd_wave vector are contained
-        # within one or more of the per-camera wavelength vectors, and so we
-        # should be able to simply map our model spectra with no
-        # interpolation. However, because of round-off, etc., it's probably
-        # easiest to use np.interp.
+        """
+        if data['photsys'] == 'S':
+            filters = self.decam
+        else:
+            filters = self.bassmzls
 
-        # package together the final output models for writing; assume constant
-        # dispersion in wavelength!
-        minwave, maxwave, dwave = np.min(data['coadd_wave']), np.max(data['coadd_wave']), np.diff(data['coadd_wave'][:2])[0]
-        minwave = float(int(minwave * 1000) / 1000)
-        maxwave = float(int(maxwave * 1000) / 1000)
-        dwave = float(int(dwave * 1000) / 1000)
-        npix = int((maxwave-minwave)/dwave)+1
-        modelwave = minwave + dwave * np.arange(npix)
+        # Pad (simply) in wavelength...
+        padflux, padwave = filters.pad_spectrum(modelflux, modelwave, method='edge')
+        synthmaggies = filters.get_ab_maggies(padflux / self.fluxnorm, padwave)
+        synthmaggies = synthmaggies.as_array().view('f8')
+        model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
+                                                nanomaggies=False,
+                                                lambda_eff=filters.effective_wavelengths.value)
 
-        modelspectra = Table()
-        # all these header cards need to be 2-element tuples (value, comment),
-        # otherwise io.write_fastspecfit will crash
-        modelspectra.meta['NAXIS1'] = (npix, 'number of pixels')
-        modelspectra.meta['NAXIS2'] = (npix, 'number of models')
-        modelspectra.meta['NAXIS3'] = (npix, 'number of objects')
-        modelspectra.meta['BUNIT'] = ('10**-17 erg/(s cm2 Angstrom)', 'flux unit')
-        modelspectra.meta['CUNIT1'] = ('Angstrom', 'wavelength unit')
-        modelspectra.meta['CTYPE1'] = ('WAVE', 'type of axis')
-        modelspectra.meta['CRVAL1'] = (minwave, 'wavelength of pixel CRPIX1 (Angstrom)')
-        modelspectra.meta['CRPIX1'] = (0, '0-indexed pixel number corresponding to CRVAL1')
-        modelspectra.meta['CDELT1'] = (dwave, 'pixel size (Angstrom)')
-        modelspectra.meta['DC-FLAG'] = (0, '0 = linear wavelength vector')
-        modelspectra.meta['AIRORVAC'] = ('vac', 'wavelengths in vacuum (vac)')
-        
-        modelspectra.add_column(Column(name='CONTINUUM', dtype='f4', data=np.interp(modelwave, emlinewave, continuummodelflux).reshape(1, npix)))
-        modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4', data=np.interp(modelwave, emlinewave, smoothcontinuummodelflux).reshape(1, npix)))
-        modelspectra.add_column(Column(name='EMLINEMODEL', dtype='f4', data=np.interp(modelwave, emlinewave, emmodel).reshape(1, npix)))
-        
-        return result, modelspectra
+        for iband, band in enumerate(self.synth_bands):
+            result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband] # * 'nanomaggies'
+            #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
+        for iband, band in enumerate(self.synth_bands):
+            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] # * 'nanomaggies'
+
+        ## measure DN(4000) without the emission lines
+        #if False:
+        #    dn4000_nolines, _ = self.get_dn4000(emlinewave, specflux_nolines, redshift=redshift)
+        #    result['DN4000_NOLINES'] = dn4000_nolines
     
     def qa_fastspec(self, data, fastspec, metadata, coadd_type='healpix',
                     wavelims=(3600, 9800), outprefix=None, outdir=None):

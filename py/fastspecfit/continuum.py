@@ -260,8 +260,7 @@ class ContinuumTools(object):
 
         self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
 
-    @staticmethod
-    def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
+    def get_dn4000(self, wave, flam, flam_ivar=None, redshift=None, rest=True):
         """Compute DN(4000) and, optionally, the inverse variance.
 
         Parameters
