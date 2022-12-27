@@ -91,6 +91,7 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
     #    if value > bnd[1]:
     #        free_parameters[I] = bnd[1]
 
+    print(free_parameters)
     parameters[Ifree] = free_parameters
 
     if len(Itied) > 0:
@@ -814,30 +815,30 @@ class EMLineFit(ContinuumTools):
         # being fitted):
         # --negative amplitude or sigma
         # --parameter at its default value (fit failed, right??)
-        # --parameter outside its bounds
+        # --parameter outside its bounds [should never be needed if method='trf']
         lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
 
-        if False:
-            drop1 = np.hstack((lineamps < 0, np.zeros(len(linevshifts), bool), linesigmas < 0))
-            
-            drop2 = np.zeros(len(parameters), bool)
-            drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree] # want 'value' here not 'initial'
-            
-            drop3 = np.zeros(len(parameters), bool)
-            drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
-                                         parameters[Ifree] > linemodel['bounds'][Ifree, 1])
-            
-            self.log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
-            self.log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
-            self.log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
-            Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
+        drop1 = np.hstack((lineamps < 0, np.zeros(len(linevshifts), bool), linesigmas <= 0))
+        
+        drop2 = np.zeros(len(parameters), bool)
+        drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree] # want 'value' here not 'initial'
+        
+        drop3 = np.zeros(len(parameters), bool)
+        drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
+                                     parameters[Ifree] > linemodel['bounds'][Ifree, 1])
+        
+        self.log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
+        self.log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
+        self.log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
+        Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
 
-            if debug:
-                pass
-    
-            if len(Idrop) > 0:
-                self.log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
-                parameters[Idrop] = 0.0
+        pdb.set_trace()
+        if debug:
+            pass
+
+        if len(Idrop) > 0:
+            self.log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
+            parameters[Idrop] = 0.0
 
         # apply tied constraints
         if len(Itied) > 0:
@@ -1116,8 +1117,6 @@ class EMLineFit(ContinuumTools):
         # Now fill the output table.
         self._populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
                                emlineivar, oemlineivar, specflux_nolines, redshift)
-
-        pdb.set_trace()
 
         # Build the model spectra.
         emmodel = np.hstack(self.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
