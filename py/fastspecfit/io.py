@@ -93,7 +93,6 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
     flag pixels which may be affected by emission lines.
 
     """
-    from desispec.resolution import Resolution
     from desiutil.dust import mwdust_transmission, dust_transmission
 
     data = {'targetid': meta['TARGETID'], 'zredrock': meta['Z'],
@@ -158,6 +157,8 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
         lambda_eff=filters.effective_wavelengths.value)
 
     if not fastphot:
+        from desispec.resolution import Resolution
+        
         data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
                      'linemask': [], 'linemask_all': [],
                      'linename': [], 'linepix': [], 'contpix': [],
@@ -867,13 +868,16 @@ class DESISpectra(object):
             #if args.fastphot:
             #    spec, coadd_spec = None, None
             #else:
-    
-            spec = read_spectra(specfile).select(targets=meta['TARGETID'])
-            assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
-    
-            # Coadd across cameras.
-            #t1 = time.time()                
-            coadd_spec = coadd_cameras(spec)
+
+            if fastphot:
+                spec, coadd_spec = None, None
+            else:
+                spec = read_spectra(specfile).select(targets=meta['TARGETID'])
+                assert(np.all(spec.fibermap['TARGETID'] == meta['TARGETID']))
+
+                # Coadd across cameras.
+                coadd_spec = coadd_cameras(spec)
+
             unpackargs = [(spec, coadd_spec, igal, meta[igal], ebv[igal], CFit, 
                            fastphot, synthphot) for igal in np.arange(len(meta))]
     

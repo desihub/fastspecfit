@@ -322,8 +322,6 @@ class EMLineFit(ContinuumTools):
                             if verbose:
                                 print('Not fixing out-of-range parameter {}'.format(param_name))
                         else:
-                            #if linename == 'halpha_broad':
-                            #    pdb.set_trace()                
                             linemodel['fixed'][I] |= True
                 if verbose:
                     print('Number of fixed parameters = {}'.format(np.sum(linemodel['fixed'])))
@@ -856,7 +854,6 @@ class EMLineFit(ContinuumTools):
         Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
 
         if debug:
-            #pdb.set_trace()
             pass
 
         if len(Idrop) > 0:
@@ -1177,10 +1174,7 @@ class EMLineFit(ContinuumTools):
         # As a consistency check, make sure that the emission-line spectrum
         # rebuilt from the final table is not (very) different from the one
         # based on the best-fitting model parameters.
-        #try:
-        #    assert(np.all(np.isclose(emmodel, emlinemodel, rtol=1e-4)))
-        #except:
-        #    pdb.set_trace()
+        #assert(np.all(np.isclose(emmodel, emlinemodel, rtol=1e-4)))
             
         #import matplotlib.pyplot as plt
         #plt.clf()
@@ -1400,13 +1394,6 @@ class EMLineFit(ContinuumTools):
                     else:
                         cmed, civar = 0.0, 0.0
     
-                    #if np.abs(civar) > 1e10:
-                    #    import matplotlib.pyplot as plt
-                    #    plt.clf()
-                    #    plt.plot(emlinewave, emlineivar)
-                    #    plt.savefig('desi-users/ioannis/tmp/junk.png')
-                    #    pdb.set_trace()
-
                     result['{}_CONT'.format(linename)] = cmed # * u.erg/(u.second*u.cm**2*u.Angstrom)
                     result['{}_CONT_IVAR'.format(linename)] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
     
