@@ -354,11 +354,11 @@ class EMLineFit(ContinuumTools):
                     #print('Number of fixed or tied parameters = {}'.format(np.sum(np.logical_or(linemodel['fixed'], linemodel['tiedtoparam'] != -1))))
 
         initvshift = 1.0
-        vmaxshift_narrow = 300.0
+        vmaxshift_narrow = 500.0
         vmaxshift_broad = 2500.0 # 3000.0
     
         minsigma_narrow = 1.0
-        maxsigma_narrow = 500.0
+        maxsigma_narrow = 750.0 # 500.0
 
         minsigma_broad = 1.0
         maxsigma_broad = 1e4
@@ -754,8 +754,7 @@ class EMLineFit(ContinuumTools):
 
         return parameters, parameter_extras
 
-    @staticmethod
-    def _populate_linemodel(linemodel, initial_guesses, param_bounds, from_linemodel=None):
+    def _populate_linemodel(self, linemodel, initial_guesses, param_bounds):
         """Population an input linemodel with initial guesses and parameter bounds,
         taking into account fixed parameters.
 
@@ -774,6 +773,23 @@ class EMLineFit(ContinuumTools):
                     linemodel['initial'][iparam] = 0.0
                 else:
                     linemodel['initial'][iparam] = 1.0
+
+            # Check bounds for free parameters but do not crash.
+            if linemodel['fixed'][iparam] == False and linemodel['tiedtoparam'][iparam] == -1:
+                toosml = linemodel['initial'][iparam] < linemodel['bounds'][iparam, 0]
+                toobig = linemodel['initial'][iparam] > linemodel['bounds'][iparam, 1]
+                if toosml:
+                    errmsg = 'Initial parameter {} is outside its bound, {:.2f} < {:.2f}.'.format(
+                        param, linemodel['initial'][iparam], linemodel['bounds'][iparam, 0])
+                    self.log.warning(errmsg)
+                    #raise ValueError(errmsg)
+                    linemodel['initial'][iparam] = linemodel['bounds'][iparam, 0]
+                if toobig:
+                    errmsg = 'Initial parameter {} is outside its bound, {:.2f} > {:.2f}.'.format(
+                        param, linemodel['initial'][iparam], linemodel['bounds'][iparam, 1])
+                    self.log.warning(errmsg)
+                    #raise ValueError(errmsg)
+                    linemodel['initial'][iparam] = linemodel['bounds'][iparam, 1]
                     
         # Now loop back through and ensure that tied relationships are enforced.
         Itied = np.where((linemodel['tiedtoparam'] != -1) * (linemodel['fixed'] == False))[0]
