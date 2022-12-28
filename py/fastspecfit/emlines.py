@@ -1280,8 +1280,8 @@ class EMLineFit(ContinuumTools):
 
             # Are the pixels based on the original inverse spectrum fully
             # masked? If so, set everything to zero and move onto the next line.
-            lineindx = np.where((emlinewave >= (linezwave - 2.*linesigma_ang)) *
-                                (emlinewave <= (linezwave + 2.*linesigma_ang)))[0]
+            lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang)) *
+                                (emlinewave <= (linezwave + 3.0*linesigma_ang)))[0]
             
             if len(lineindx) > 0 and np.sum(oemlineivar[lineindx] == 0) / len(lineindx) > 0.3: # use original ivar
                 result['{}_AMP'.format(linename)] = 0.0
@@ -1289,8 +1289,8 @@ class EMLineFit(ContinuumTools):
                 result['{}_SIGMA'.format(linename)] = 0.0
             else:
                 # number of pixels, chi2, and boxcar integration
-                lineindx = np.where((emlinewave >= (linezwave - 2.*linesigma_ang)) *
-                                    (emlinewave <= (linezwave + 2.*linesigma_ang)) *
+                lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang)) *
+                                    (emlinewave <= (linezwave + 3.0*linesigma_ang)) *
                                     (emlineivar > 0))[0]
     
                 # can happen if sigma is very small (depending on the wavelength)
@@ -1322,7 +1322,7 @@ class EMLineFit(ContinuumTools):
                         self.log.critical(errmsg)
                         raise ValueError(errmsg)
                         
-                    # boxcar integration of the flux
+                    # boxcar integration of the flux; should we weight by the line-profile???
                     boxflux = np.sum(emlineflux[lineindx])                
                     boxflux_ivar = 1 / np.sum(1 / emlineivar[lineindx])
     
@@ -1432,41 +1432,33 @@ class EMLineFit(ContinuumTools):
                 print()
                 #self.log.debug(' ')
     
-            # simple QA
-            if linename == 'OII_3726':
-                import matplotlib.pyplot as plt
-                _indx = np.arange(indx[-1]-indx[0])+indx[0]
-                # continuum bandpasses and statistics
-                plt.clf()
-                plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='gray')
-                plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
-                plt.axhline(y=cmed, color='k')
-                plt.axhline(y=cmed+1/np.sqrt(civar), color='k', ls='--')
-                plt.axhline(y=cmed-1/np.sqrt(civar), color='k', ls='--')
-                plt.savefig('desi-users/ioannis/tmp/junk.png')
-
-                # emission-line integration
-                plt.clf()
-                plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
-                plt.plot(emlinewave[_indx], finalmodel[_indx], color='red')
-                plt.axvline(x=emlinewave[lineindx[0]], color='blue')
-                plt.axvline(x=emlinewave[lineindx[-1]], color='blue')
-                plt.axhline(y=0, color='k', ls='--')
-                plt.axhline(y=amp_sigma, color='k', ls='--')
-                plt.axhline(y=2*amp_sigma, color='k', ls='--')
-                plt.axhline(y=3*amp_sigma, color='k', ls='--')
-                plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
-                plt.savefig('desi-users/ioannis/tmp/junk2.png')
-                pdb.set_trace()
-
-        ## Reset all the doublets and tied parameters, since they can be zerod
-        ## out, above, if there are insufficient pixels in the spectrum.
-        #Itied = np.where((finalfit['tiedtoparam'] != -1) * (finalfit['fixed'] == False))[0]
-        #for param, tiedparam, factor in zip(finalfit['param_name'][Itied], finalfit[finalfit['tiedtoparam'][Itied]]['param_name'], finalfit['tiedfactor'][Itied]):
-        #    val = result[param.upper()][0]
-        #    pdb.set_trace()
-        #    result[param.upper()] = factor * result[param.upper()]
-        #    parameters[I] = parameters[indx] * factor
+            ## simple QA
+            #if linename == 'OIII_5007':
+            #    import matplotlib.pyplot as plt
+            #    _indx = np.arange(indx[-1]-indx[0])+indx[0]
+            #    # continuum bandpasses and statistics
+            #    plt.clf()
+            #    plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='gray')
+            #    plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
+            #    plt.axhline(y=cmed, color='k')
+            #    plt.axhline(y=cmed+1/np.sqrt(civar), color='k', ls='--')
+            #    plt.axhline(y=cmed-1/np.sqrt(civar), color='k', ls='--')
+            #    plt.savefig('desi-users/ioannis/tmp/junk.png')
+            #
+            #    # emission-line integration
+            #    plt.clf()
+            #    plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
+            #    plt.plot(emlinewave[_indx], finalmodel[_indx], color='red')
+            #    #plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='orange', alpha=0.5)
+            #    plt.axvline(x=emlinewave[lineindx[0]], color='blue')
+            #    plt.axvline(x=emlinewave[lineindx[-1]], color='blue')
+            #    plt.axhline(y=0, color='k', ls='--')
+            #    plt.axhline(y=amp_sigma, color='k', ls='--')
+            #    plt.axhline(y=2*amp_sigma, color='k', ls='--')
+            #    plt.axhline(y=3*amp_sigma, color='k', ls='--')
+            #    plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
+            #    plt.savefig('desi-users/ioannis/tmp/junk2.png')
+            #    pdb.set_trace()
 
         # Clean up the doublets whose amplitudes were tied in the fitting since
         # they may have been zeroed out in the clean-up, above.
