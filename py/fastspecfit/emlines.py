@@ -922,6 +922,9 @@ class EMLineFit(ContinuumTools):
 
         lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
 
+        # doublets
+        lineamps[doubletindx] *= lineamps[doubletpair]
+
         emlinemodel = _build_emline_model(self.log10wave, redshift, lineamps, 
                                           linevshifts, linesigmas, linewaves, 
                                           emlinewave, resolution_matrix,
@@ -1146,6 +1149,16 @@ class EMLineFit(ContinuumTools):
 
         # Residual spectrum with no emission lines.
         specflux_nolines = specflux - finalmodel
+
+        #import matplotlib.pyplot as plt
+        #W = (emlinewave>6560)*(emlinewave<6660)
+        #plt.clf()
+        #plt.plot(emlinewave[W], emlineflux[W], color='gray')
+        #plt.plot(emlinewave[W], finalmodel[W], color='orange', alpha=0.7)
+        ##plt.plot(emlinewave[W], specflux[W], color='gray')
+        ##plt.plot(emlinewave[W], specflux_nolines[W], color='orange', alpha=0.7)
+        #plt.savefig('desi-users/ioannis/tmp/junk2.png')
+        #pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result = self.init_output()
@@ -1419,19 +1432,32 @@ class EMLineFit(ContinuumTools):
                 print()
                 #self.log.debug(' ')
     
-            ## simple QA
-            #if 'alpha' in linename and False:
-            #    sigma_cont = 150.0
-            #    import matplotlib.pyplot as plt
-            #    _indx = np.where((emlinewave > (linezwave - 15*sigma_cont * linezwave / C_LIGHT)) *
-            #                    (emlinewave < (linezwave + 15*sigma_cont * linezwave / C_LIGHT)))[0]
-            #    plt.plot(emlinewave[_indx], emlineflux[_indx])
-            #    plt.plot(emlinewave[_indx], specflux_nolines[_indx])
-            #    plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
-            #    plt.axhline(y=cmed, color='k')
-            #    plt.axhline(y=cmed+csig/np.sqrt(len(indx)), color='k', ls='--')
-            #    plt.axhline(y=cmed-csig/np.sqrt(len(indx)), color='k', ls='--')
-            #    plt.savefig('junk.png')
+            # simple QA
+            if linename == 'OII_3726':
+                import matplotlib.pyplot as plt
+                _indx = np.arange(indx[-1]-indx[0])+indx[0]
+                # continuum bandpasses and statistics
+                plt.clf()
+                plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='gray')
+                plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
+                plt.axhline(y=cmed, color='k')
+                plt.axhline(y=cmed+1/np.sqrt(civar), color='k', ls='--')
+                plt.axhline(y=cmed-1/np.sqrt(civar), color='k', ls='--')
+                plt.savefig('desi-users/ioannis/tmp/junk.png')
+
+                # emission-line integration
+                plt.clf()
+                plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
+                plt.plot(emlinewave[_indx], finalmodel[_indx], color='red')
+                plt.axvline(x=emlinewave[lineindx[0]], color='blue')
+                plt.axvline(x=emlinewave[lineindx[-1]], color='blue')
+                plt.axhline(y=0, color='k', ls='--')
+                plt.axhline(y=amp_sigma, color='k', ls='--')
+                plt.axhline(y=2*amp_sigma, color='k', ls='--')
+                plt.axhline(y=3*amp_sigma, color='k', ls='--')
+                plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
+                plt.savefig('desi-users/ioannis/tmp/junk2.png')
+                pdb.set_trace()
 
         ## Reset all the doublets and tied parameters, since they can be zerod
         ## out, above, if there are insufficient pixels in the spectrum.
