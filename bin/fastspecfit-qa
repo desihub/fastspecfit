@@ -41,6 +41,7 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--nolegend', action='store_true', help='Exclude legends from QA.')
+    parser.add_argument('--webqa', action='store_true', help='Build QA for the web-app.')
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
     parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
     
@@ -80,8 +81,23 @@ def main(args=None, comm=None):
     if not os.path.isfile(args.fastfitfile[0]):
         log.warning('File {} not found.'.format(args.fastfitfile[0]))
         return
-    fastfit, metadata, coadd_type, fastphot = read_fastspecfit(args.fastfitfile[0])
 
+    fastfit, metadata, coadd_type, isfastphot = read_fastspecfit(args.fastfitfile[0])
+    if args.webqa:
+        # This is not great coding, but when building the webqa, assume that a
+        # companion fastphot- file exists and, if not, quit.
+        fastphotfile = args.fastfitfile[0].replace('fastspec-', 'fastphot-').replace('.gz', '')
+        if not os.path.isfile(fastphotfile):
+            errmsg = '--webqa fastphot file {} not found.'.format(fastphotfile)
+            log.critical(errmsg)
+            raise IOError(errmsg)
+        
+        fastphot, _, _, _ = read_fastspecfit(fastphotfile)
+        if not np.all(fastfit['TARGETID'] == fastphot['TARGETID']):
+            errmsg = 'Mismatch in fastspec and fastphot TARGETIDs'
+            log.critical(errmsg)
+            raise Valuerror(errmsg)
+        
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
@@ -91,15 +107,27 @@ def main(args=None, comm=None):
             return
         fastfit = fastfit[keep]
         metadata = metadata[keep]
-
+        if args.webqa:
+            fastphot = fastphot[keep]
+        
     if args.ntargets is not None:
         keep = np.arange(args.ntargets) + args.firsttarget
         log.info('Keeping {} targets.'.format(args.ntargets))
         fastfit = fastfit[keep]
         metadata = metadata[keep]
-    
-    fastfit, metadata = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
-                               tiles=args.tile, nights=args.night)
+        if args.webqa:
+            fastphot = fastphot[keep]
+
+    if args.webqa:
+        keep = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
+                      tiles=args.tile, nights=args.night, return_index=True)
+        fastfit = fastfit[keep]
+        metadata = metadata[keep]
+        fastphot = fastphot[keep]
+    else:
+        fastfit, metadata = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
+                                   tiles=args.tile, nights=args.night)
+        
     if coadd_type == 'custom' and args.redrockfiles is None:
         errmsg = 'redrockfiles input is required if coadd_type==custom'
         log.critical(errmsg)
@@ -124,9 +152,12 @@ def main(args=None, comm=None):
                     redrockfile_prefix=args.redrockfile_prefix,
                     specfile_prefix=args.specfile_prefix,
                     qnfile_prefix=args.qnfile_prefix)
-        data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True)
+        data = Spec.read_and_unpack(CFit, fastphot=isfastphot, synthphot=True)
+
+        pdb.set_trace()
+        
         qaargs = [(CFit, EMFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
-                   coadd_type, fastphot, args.outdir, args.outprefix) for igal in np.arange(len(indx))]                
+                   coadd_type, isfastphot, args.outdir, args.outprefix) for igal in np.arange(len(indx))]                
 
         if args.mp > 1:
             import multiprocessing

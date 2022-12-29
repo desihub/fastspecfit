@@ -137,7 +137,7 @@ def backup_logs(logfile):
 def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None, 
          outdir_data='.', outdir_html='.', mp=1, merge=False, makeqa=False,
-         fastphot=False, overwrite=False):
+         webqa=False, fastphot=False, overwrite=False):
 
     import fitsio
     from astropy.table import Table, vstack
@@ -263,6 +263,11 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         redrockfiles = None
         outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
         log.info('Found {} {} files to be merged.'.format(len(outfiles), outprefix))
+    elif webqa:
+        redrockfiles = None
+        outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
+        log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
+        ntargs = [(outfile, True) for outfile in outfiles]
     elif makeqa:
         redrockfiles = None
         outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
@@ -340,7 +345,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
                 log.debug('No {} files in {} found!'.format(outprefix, outdir))
             return '', list(), list(), list(), None
         return outdir, redrockfiles, outfiles, None, None
-    elif makeqa:
+    elif makeqa or webqa:
         if len(outfiles) == 0:
             if rank == 0:
                 log.debug('No {} files in {} found!'.format(outprefix, outdir))
