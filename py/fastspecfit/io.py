@@ -1128,7 +1128,8 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
 
     log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
 
-def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None, nights=None):
+def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
+           nights=None, return_index=False):
     """Optionally trim to a particular healpix or tile and/or night."""
     keep = np.ones(len(fastfit), bool)
     if coadd_type == 'healpix':
@@ -1151,4 +1152,8 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None, nights=No
                 nightkeep = np.logical_or(nightkeep, metadata['NIGHT'].astype(str) == night)
             keep = np.logical_and(keep, nightkeep)
             log.info('Keeping {:,d} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
-    return fastfit[keep], metadata[keep]
+            
+    if return_index:
+        return np.where(keep)[0]
+    else:
+        return fastfit[keep], metadata[keep]
