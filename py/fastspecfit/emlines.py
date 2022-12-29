@@ -709,7 +709,10 @@ class EMLineFit(ContinuumTools):
             linename = iline['name']
             if iline['isbroad']:
                 if iline['isbalmer']: # broad Balmer lines
-                    initial_guesses[linename+'_sigma'] = data['linesigma_balmer']
+                    if data['linesigma_balmer'] > data['linesigma_narrow']:
+                        initial_guesses[linename+'_sigma'] = data['linesigma_balmer']
+                    else:
+                        initial_guesses[linename+'_sigma'] = data['linesigma_narrow']
                 else: # broad UV/QSO lines
                     initial_guesses[linename+'_sigma'] = data['linesigma_uv']
             else:
@@ -1086,7 +1089,7 @@ class EMLineFit(ContinuumTools):
 
         # Finally, one more fitting loop with all the line-constraints relaxed
         # but starting from the previous best-fitting values.
-        if linechi2_broad > linechi2_init:
+        if linechi2_init < (linechi2_broad + 1):
             linemodel = final_linemodel_nobroad
         else:
             linemodel = final_linemodel
