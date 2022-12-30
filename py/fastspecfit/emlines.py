@@ -1598,9 +1598,6 @@ class EMLineFit(ContinuumTools):
             pass
 
         redshift = fastspec['CONTINUUM_Z']
-        npixpercamera = [len(gw) for gw in data['wave']] # all pixels
-        npixpercam = np.hstack([0, npixpercamera])
-        
         stackwave = np.hstack(data['wave'])
 
         # rebuild the best-fitting spectroscopic and photometric models
