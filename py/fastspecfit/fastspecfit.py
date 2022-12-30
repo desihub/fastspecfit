@@ -358,24 +358,26 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
         allfilters = CFit.bassmzlswise
 
     if coadd_type == 'healpix':
-        title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
-            metadata['SURVEY'], metadata['PROGRAM'].capitalize(),
+        title = 'Survey/Program/Healpix: {}/{}/{}, TARGETID: {}'.format(
+            metadata['SURVEY'], metadata['PROGRAM'],
             metadata['HEALPIX'], metadata['TARGETID'])
         pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                 outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
     elif coadd_type == 'cumulative':
-        title = '{}/{}: {} on Tile/Fiber={}/{}'.format(
-            metadata['SURVEY'].upper(), metadata['PROGRAM'], metadata['TARGETID'], metadata['TILEID'], metadata['FIBER'])
+        title = 'Survey/Program/Tile/Fiber: {}/{}/{}/{}, TARGETID: {}'.format(
+            metadata['SURVEY'].upper(), metadata['PROGRAM'], metadata['TILEID'], metadata['FIBER'], metadata['TARGETID'])
+        #title = '{}/{}: {} on Tile/Fiber: {}/{}'.format(
+        #    metadata['SURVEY'].upper(), metadata['PROGRAM'], metadata['TARGETID'], metadata['TILEID'], metadata['FIBER'])
         pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                 outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
     elif coadd_type == 'pernight':
-        title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
+        title = 'Tile/Night: {}/{}, TARGETID/Fiber: {}/{}'.format(
                 metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
                 metadata['FIBER'])
         pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                 outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
     elif coadd_type == 'perexp':
-        title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
+        title = 'Tile/Night/Expid: {}/{}/{}, TARGETID/Fiber: {}/{}'.format(
                 metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
                 metadata['TARGETID'], metadata['FIBER'])
         pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
@@ -383,7 +385,7 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
                 metadata['EXPID'], metadata['TARGETID']))
 
     redshift = fastfit['CONTINUUM_Z']
-    
+
     # rebuild the best-fitting broadband photometric model
     inodust = np.ndarray.item(np.where(CFit.AV == 0)[0]) # should always be index 0
     continuum_phot, synthmodelphot = CFit.SSP2data(
@@ -468,35 +470,6 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
             log.critical(errmsg)
             raise ValueError(errmsg)
 
-    #leg = {
-    #    'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-    #    'dv_balmer': '$\\Delta v_{{\\rm narrow}}$={:.2f} km/s'.format(C_LIGHT*(fastfit['NARROW_Z']-redshift)),
-    #    'dv_forbid': '$\\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastfit['BROAD_Z']-redshift)),
-    #    'dv_broad': '$\\Delta v_{{\\rm UV}}$={:.2f} km/s'.format(C_LIGHT*(fastfit['UV_Z']-redshift)),
-    #    'sigma_balmer': '$\\sigma_{{\\rm narrow}}$={:.1f} km/s'.format(fastfit['NARROW_SIGMA']),
-    #    'sigma_forbid': '$\\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastfit['BROAD_SIGMA']),
-    #    'sigma_broad': '$\\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastfit['UV_SIGMA']),
-    #    'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastfit['CONTINUUM_RCHI2_SPEC']),
-    #    'rchi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastfit['RCHI2']),
-    #    'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad,narrow}}$={:.3f}'.format(fastfit['DELTA_LINERCHI2']),
-    #    'age': '<Age>={:.3f} Gyr'.format(fastfit['CONTINUUM_AGE_SPEC']),
-    #    }
-    #
-    #if fastfit['CONTINUUM_VDISP_IVAR'] == 0:
-    #    leg.update({'vdisp': '$\\sigma_{{\\rm star}}$={:.1f} km/s'.format(fastfit['CONTINUUM_VDISP'])})
-    #else:
-    #    leg.update({'vdisp': '$\\sigma_{{\\rm star}}$={:.1f}+/-{:.1f} km/s'.format(
-    #        fastfit['CONTINUUM_VDISP'], 1/np.sqrt(fastfit['CONTINUUM_VDISP_IVAR']))})
-    #    
-    #if fastfit['CONTINUUM_AV_IVAR_SPEC'] == 0:
-    #    leg.update({'AV': '$A(V)$={:.3f} mag'.format(fastfit['CONTINUUM_AV_SPEC'])})
-    #else:
-    #    leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
-    #        fastfit['CONTINUUM_AV_SPEC'], 1/np.sqrt(fastfit['CONTINUUM_AV_IVAR_SPEC']))})
-    #
-    #legxpos, legypos, legfntsz = 0.98, 0.94, 20
-    #bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.25)
-
     # QA choices - everything in inches
     npanelrows = 7
     height_onepanel = 1.6
@@ -525,7 +498,9 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
         assert((ncutcols + nspeccols) == npanelcols)
         assert((nsedcols + nlinecols) == npanelcols)
     except:
-        pdb.set_trace()
+        errmsg = 'QA setup has gone awry.'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
 
     #print(fullwidth, fullheight)
     #print(ncutcols, nspeccols, npanelcols)
@@ -547,6 +522,16 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
         cutax.imshow(im, interpolation='nearest')
         sz = im.size
 
+    if metadata['DEC'] > 0:
+        sgn = '+'
+    else:
+        sgn = ''
+        
+    bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.7)
+    cutax.text(0.04, 0.95, '$(\\alpha,\\delta)$=({:.7f}, {}{:.6f})'.format(metadata['RA'], sgn, metadata['DEC']),
+               ha='left', va='top', color='k', fontsize=11, bbox=bbox,
+               transform=cutax.transAxes)
+
     pixscale = 0.262
     cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=1.5/2/pixscale, facecolor='none', # DESI fiber=1.5 arcsec diameter
                             edgecolor='red', ls='-', alpha=0.5))#, label='3" diameter'))
@@ -559,7 +544,7 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
     cutax.get_yaxis().set_visible(False)
     cutax.axis('off')
     cutax.autoscale(False)
-    cutax.legend(handles=handles, loc='lower left', fontsize=10)
+    cutax.legend(handles=handles, loc='lower left', fontsize=10, facecolor='lightgray')
 
     # full spectrum + best-fitting continuum model
     ymin_spec, ymax_spec = 1e6, -1e6
@@ -748,13 +733,14 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
 
         fastfit = Table(fastfit)
         fastfit['LYA_SIGMA'] = [plotsig_default_broad]
+        fastfit = fastfit[0] # stupid astropy Table/Row hack
 
     linetable = linetable[np.logical_and.reduce((
         linetable['name'] != 'hei_4471',
-        linetable['name'] != 'hei_5876',
+        #linetable['name'] != 'hei_5876',
         linetable['name'] != 'heii_4686',
         linetable['name'] != 'hei_broad_4471',
-        linetable['name'] != 'hei_broad_5876',
+        #linetable['name'] != 'hei_broad_5876',
         linetable['name'] != 'heii_broad_4686',
         ))]
 
@@ -767,11 +753,10 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
     linetable['plotgroup'][linetable['name'] == 'oiii_4363'] = 'oiii_4363'
     linetable['nicename'][linetable['name'] == 'oiii_4363'] = '[OIII]-$\lambda4363$'
 
-    linetable['plotgroup'][linetable['name'] == 'oiii_4959'] = 'oiii_4959'
-    linetable['nicename'][linetable['name'] == 'oiii_4959'] = '[OIII]-$\lambda4959$'
-
-    linetable['plotgroup'][linetable['name'] == 'oiii_5007'] = 'oiii_5007'
-    linetable['nicename'][linetable['name'] == 'oiii_5007'] = '[OIII]-$\lambda5007$'
+    #linetable['plotgroup'][linetable['name'] == 'oiii_4959'] = 'oiii_4959'
+    #linetable['nicename'][linetable['name'] == 'oiii_4959'] = '[OIII]-$\lambda4959$'
+    #linetable['plotgroup'][linetable['name'] == 'oiii_5007'] = 'oiii_5007'
+    #linetable['nicename'][linetable['name'] == 'oiii_5007'] = '[OIII]-$\lambda5007$'
 
     #linetable['linetype'] = 
 
@@ -814,7 +799,10 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
         'lya_1215', 'oi_1304', 'siliv_1396', 'civ_1549', 'siliii_1892_ciii_1908', 'mgii_2796_2803',
         # Balmer + nebular - 12
         'nev_3346', 'nev_3426', 'oii_3726_29', 'neiii_3869_h6', 'hepsilon', 'hdelta',
-        'hgamma', 'hbeta', 'oiii_4959', 'oiii_5007', 'halpha_nii_6548_48', 'sii_6716_31',
+        'hgamma', 'hbeta',
+        #'oiii_4959', 'oiii_5007',
+        'oiii_doublet', 'hei_5876',
+        'halpha_nii_6548_48', 'sii_6716_31',
         # auroral - 6
         'oiii_4363', 'nii_5755', 'oi_6300_siii_6312', 'oii_7320_30', 'siii_9069', 'siii_9532'
         ]
@@ -836,6 +824,8 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
         if meanwave > spec_wavelims[0] and meanwave < spec_wavelims[1]:
             if 'SiIII' in linename:
                 thislinename = '\n'+linename.replace('+', '+\n  ')
+            elif '4363' in linename:
+                thislinename = linename+'\n'
             else:
                 thislinename = linename
             specax.text(meanwave, ymax_spec, thislinename, ha='center', va='top',
@@ -913,7 +903,7 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
             if 'SiIII' in linename or '6312' in linename:
                 thislinename = '\n'+linename.replace('+', '+\n  ')
             elif '2803' in linename:
-                thislinename = '\n'+linename.replace(',2803', ',\n 2803')
+                thislinename = '\n'+linename.replace(',2803', ',\n           2803')
             else:
                 thislinename = linename
             xx.text(0.04, 0.89, thislinename, ha='left', va='center',
@@ -933,7 +923,209 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
         xx.axis('off')
 
     #plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
-    plt.subplots_adjust(bottom=0.1, top=0.94, left=0.08, right=0.91)
+    plt.subplots_adjust(bottom=0.22, top=0.94, left=0.08, right=0.91)
+
+    # add some key results about the object at the bottom of the figure
+    leg = {
+        'radec': '$(\\alpha,\\delta)=({:.7f},{:.6f})$'.format(metadata['RA'], metadata['DEC']),
+        'z': '$z={:.7f}$'.format(redshift),
+        'zredrock': '$z_{{\\rm Redrock}}={:.7f}$'.format(metadata['Z_RR']),
+        #'zredrock': '$z_{{\\rm redrock}}={:.7f}$'.format(redshift),
+        'dn4000_spec': '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}$'.format(fastfit['DN4000']),
+        'dn4000_modelspec': '$D_{{n}}(4000)_{{\\rm spec,model}}={:.3f}$'.format(fastfit['DN4000_MODEL_SPEC']),
+        'dn4000_modelphot': '$D_{{n}}(4000)_{{\\rm phot,model}}={:.3f}$'.format(fastfit['DN4000_MODEL_PHOT']),
+        'chi2': '$\\chi^{{2}}_{{\\nu}}={:.3f}$'.format(fastfit['CONTINUUM_RCHI2_SPEC']),
+        'rchi2': '$\\chi^{{2}}_{{\\nu}}={:.3f}$'.format(fastfit['RCHI2']),
+        'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad,narrow}}={:.3f}$'.format(fastfit['DELTA_LINERCHI2']),
+        'age_spec': '<Age>$_{{\\rm spec}}={:.3f}$ Gyr'.format(fastfit['CONTINUUM_AGE_SPEC']),
+        'age_phot': '<Age>$_{{\\rm phot}}={:.3f}$ Gyr'.format(fastfit['CONTINUUM_AGE_PHOT']),
+        'absmag_r': '$M_{{^{{0.1}}r}}={:.2f}$'.format(fastfit['ABSMAG_SDSS_R']),
+        'absmag_gr': '$^{{0.1}}(g-r)={:.3f}$'.format(fastfit['ABSMAG_SDSS_G']-fastfit['ABSMAG_SDSS_R']),
+        'absmag_rz': '$^{{0.1}}(r-z)={:.3f}$'.format(fastfit['ABSMAG_SDSS_R']-fastfit['ABSMAG_SDSS_Z']),       
+        }
+
+    if fastfit['NARROW_Z'] == redshift:
+        leg.update({'dv_narrow': '$\\Delta v_{{\\rm narrow}}=$...'})
+    else:
+        leg.update({'dv_narrow': '$\\Delta v_{{\\rm narrow}}={:.2f}$ km/s'.format(C_LIGHT*(fastfit['NARROW_Z']-redshift))})
+    if fastfit['BROAD_Z'] == redshift:
+        leg.update({'dv_broad': '$\\Delta v_{{\\rm broad}}=$...'})
+    else:
+        leg.update({'dv_broad': '$\\Delta v_{{\\rm broad}}={:.2f}$ km/s'.format(C_LIGHT*(fastfit['BROAD_Z']-redshift))})        
+    if fastfit['UV_Z'] == redshift:
+        leg.update({'dv_uv': '$\\Delta v_{{\\rm UV}}=$...'})
+    else:
+        leg.update({'dv_uv': '$\\Delta v_{{\\rm UV}}={:.2f}$ km/s'.format(C_LIGHT*(fastfit['UV_Z']-redshift))})
+
+    if fastfit['NARROW_SIGMA'] == 0.0:
+        leg.update({'sigma_narrow': '$\\sigma_{{\\rm narrow}}=$...'})
+    else:
+        leg.update({'sigma_narrow': '$\\sigma_{{\\rm narrow}}={:.1f}$ km/s'.format(fastfit['NARROW_SIGMA'])})
+    if fastfit['BROAD_SIGMA'] == 0.0:
+        leg.update({'sigma_broad': '$\\sigma_{{\\rm broad}}=$...'})
+    else:
+        leg.update({'sigma_broad': '$\\sigma_{{\\rm broad}}={:.1f}$ km/s'.format(fastfit['BROAD_SIGMA'])})
+    if fastfit['UV_SIGMA'] == 0.0:
+        leg.update({'sigma_uv': '$\\sigma_{{\\rm UV}}=$...'})
+    else:
+        leg.update({'sigma_uv': '$\\sigma_{{\\rm UV}}={:.1f}$ km/s'.format(fastfit['UV_SIGMA'])})
+        
+    if fastfit['CONTINUUM_VDISP_IVAR'] == 0:
+        leg.update({'vdisp': '$\\sigma_{{\\rm star}}={:.1f}$ km/s'.format(fastfit['CONTINUUM_VDISP'])})
+    else:
+        leg.update({'vdisp': '$\\sigma_{{\\rm star}}={:.1f}\\pm{:.1f}$ km/s'.format(
+            fastfit['CONTINUUM_VDISP'], 1/np.sqrt(fastfit['CONTINUUM_VDISP_IVAR']))})
+
+    if fastfit['LOGMSTAR'] > 0:
+        leg.update({'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={:.3f}$'.format(fastfit['LOGMSTAR'])})
+    else:
+        leg.update({'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})=$...'})
+
+    if fastfit['CONTINUUM_AV_IVAR_SPEC'] == 0:
+        leg.update({'AV': '$A(V)={:.3f}$ mag'.format(fastfit['CONTINUUM_AV_SPEC'])})
+    else:
+        leg.update({'AV': '$A(V)={:.3f}\\pm{:.3f}$ mag'.format(
+            fastfit['CONTINUUM_AV_SPEC'], 1/np.sqrt(fastfit['CONTINUUM_AV_IVAR_SPEC']))})
+
+    # emission lines
+    if fastfit['CIV_1549_EW'] == 0:
+        leg.update({'ewciv': 'EW(CIV)$=$...'})
+    else:
+        leg.update({'ewciv': 'EW(CIV)$={:.3f}\ \\AA$'.format(fastfit['CIV_1549_EW'])})
+        
+    if fastfit['MGII_2796_EW'] == 0 and fastfit['MGII_2796_EW'] == 0:
+        leg.update({'ewmgii': 'EW(MgII)$=$...'})
+    else:
+        leg.update({'ewmgii': 'EW(MgII)$={:.3f}\ \\AA$'.format(fastfit['MGII_2796_EW']+fastfit['MGII_2796_EW'])})
+        
+    if fastfit['HALPHA_EW'] == 0:
+        leg.update({'ewha_narrow': 'EW(H$\\alpha)_{{\\rm narrow}}=$...'})
+    else:
+        leg.update({'ewha_narrow': 'EW(H$\\alpha)_{{\\rm narrow}}={:.2f}\ \\AA$'.format(fastfit['HALPHA_EW'])})
+        
+    if fastfit['HBETA_EW'] == 0:
+        leg.update({'ewhb_narrow': 'EW(H$\\beta)_{{\\rm narrow}}=$...'})
+    else:
+        leg.update({'ewhb_narrow': 'EW(H$\\beta)_{{\\rm narrow}}={:.2f}\ \\AA$'.format(fastfit['HBETA_EW'])})
+        
+    if fastfit['HGAMMA_EW'] == 0:
+        leg.update({'ewhg_narrow': 'EW(H$\\gamma)_{{\\rm narrow}}=$...'})
+    else:
+        leg.update({'ewhg_narrow': 'EW(H$\\gamma)_{{\\rm narrow}}={:.2f}\ \\AA$'.format(fastfit['HGAMMA_EW'])})
+        
+    if fastfit['HALPHA_BROAD_EW'] == 0:
+        leg.update({'ewha_broad': 'EW(H$\\alpha)_{{\\rm broad}}=$...'})
+    else:
+        leg.update({'ewha_broad': 'EW(H$\\alpha)_{{\\rm broad}}={:.2f}\ \\AA$'.format(fastfit['HALPHA_BROAD_EW'])})
+        
+    if fastfit['HBETA_BROAD_EW'] == 0:
+        leg.update({'ewhb_broad': 'EW(H$\\beta)_{{\\rm broad}}=$...'})
+    else:
+        leg.update({'ewhb_broad': 'EW(H$\\beta)_{{\\rm broad}}={:.2f}\ \\AA$'.format(fastfit['HBETA_BROAD_EW'])})
+        
+    if fastfit['HGAMMA_BROAD_EW'] == 0:
+        leg.update({'ewhg_broad': 'EW(H$\\gamma)_{{\\rm broad}}=$...'})
+    else:
+        leg.update({'ewhg_broad': 'EW(H$\\gamma)_{{\\rm broad}}={:.2f}\ \\AA$'.format(fastfit['HGAMMA_BROAD_EW'])})
+        
+    if fastfit['OII_3726_EW'] == 0 and fastfit['OII_3729_EW'] == 0:
+        leg.update({'ewoii': 'EW([OII])$=$...'})
+    else:
+        leg.update({'ewoii': 'EW([OII])$={:.2f}\ \\AA$'.format(fastfit['OII_3726_EW']+fastfit['OII_3729_EW'])})
+        
+    if fastfit['OIII_5007_EW'] == 0:
+        leg.update({'ewoiii': 'EW([OIII])$=$...'})
+    else:
+        leg.update({'ewoiii': 'EW([OIII])$={:.2f}\ \\AA$'.format(fastfit['OIII_5007_EW'])})
+        
+    if fastfit['NII_6584_EW'] == 0:
+        leg.update({'ewnii': 'EW([NII])$=$...'})
+    else:
+        leg.update({'ewnii': 'EW([NII])$={:.2f}\ \\AA$'.format(fastfit['NII_6584_EW'])})
+        
+    if fastfit['SII_6716_EW'] == 0 and fastfit['SII_6731_EW'] == 0:
+        leg.update({'ewsii': 'EW([SII])$=$...'})
+    else:
+        leg.update({'ewsii': 'EW([SII])$={:.2f}\ \\AA$'.format(fastfit['SII_6716_EW']+fastfit['SII_6731_EW'])})
+        
+    if fastfit['OII_DOUBLET_RATIO'] == 0:
+        #leg.update({'oii_doublet': '[OII] doublet ratio$=$...'})
+        leg.update({'oii_doublet': '[OII] $\lambda3726/\lambda3729=$...'})
+    else:
+        #leg.update({'oii_doublet': '[OII] doublet ratio$={:.3f}$'.format(fastfit['OII_DOUBLET_RATIO'])})
+        leg.update({'oii_doublet': '[OII] $\lambda3726/\lambda3729={:.3f}$'.format(fastfit['OII_DOUBLET_RATIO'])})
+
+    if fastfit['SII_DOUBLET_RATIO'] == 0:
+        #leg.update({'sii_doublet': '[SII] doublet ratio$=$...'})
+        leg.update({'sii_doublet': '[SII] $\lambda6731/\lambda6716=$...'})
+    else:
+        #leg.update({'sii_doublet': '[SII] doublet ratio$={:.3f}$'.format(fastfit['SII_DOUBLET_RATIO'])})
+        leg.update({'sii_doublet': '[SII] $\lambda6731/\lambda6716={:.3f}$'.format(fastfit['SII_DOUBLET_RATIO'])})
+
+    # parse the targeting bits
+    #from desitarget.targets import main_cmx_or_sv
+    #(desi_target, bgs_target, mws_target), mask, survey = main_cmx_or_sv(metadata)
+    
+    legfntsz, toppos, startpos, deltapos = 12, 0.125, 0.07, 0.13
+    txt = '\n'.join((
+        r'{}'.format(leg['mstar']),
+        r'{}'.format(leg['absmag_r']),
+        r'{}'.format(leg['absmag_gr']),
+        r'{}'.format(leg['absmag_rz']),
+        #r'{}'.format(leg['AV']),
+        ))
+    fig.text(startpos, toppos, txt, ha='left', va='top', fontsize=legfntsz)
+
+    txt = '\n'.join((
+        r'{}'.format(leg['z']),
+        r'{}'.format(leg['zredrock']),
+        r'{}'.format(leg['dv_narrow']),
+        r'{}'.format(leg['dv_broad']),
+        r'{}'.format(leg['dv_uv']),
+        ))
+    fig.text(startpos+deltapos*1, toppos, txt, ha='left', va='top', fontsize=legfntsz)
+
+    txt = '\n'.join((
+        r'{}'.format(leg['age_spec']),
+        r'{}'.format(leg['age_phot']),
+        #r'{}'.format(leg['dn4000_spec']),
+        r'{}'.format(leg['dn4000_modelspec']),
+        r'{}'.format(leg['dn4000_modelphot']),
+        ))
+    fig.text(startpos+deltapos*2, toppos, txt, ha='left', va='top', fontsize=legfntsz)
+
+    txt = '\n'.join((
+        r'{}'.format(leg['vdisp']),
+        r'{}'.format(leg['sigma_narrow']),
+        r'{}'.format(leg['sigma_broad']),
+        r'{}'.format(leg['sigma_uv']),
+        '',
+        r'{}'.format(leg['oii_doublet']),
+        r'{}'.format(leg['sii_doublet']),
+        ))
+    fig.text(startpos+deltapos*3.2, toppos+0.05, txt, ha='left', va='top', fontsize=legfntsz)
+
+    txt = '\n'.join((
+        r'{}'.format(leg['ewciv']),
+        r'{}'.format(leg['ewmgii']),
+        '',
+        r'{}'.format(leg['ewoii']),
+        r'{}'.format(leg['ewoiii']),
+        r'{}'.format(leg['ewnii']),
+        r'{}'.format(leg['ewsii']),
+        ))
+    fig.text(startpos+deltapos*3.2+1.2*deltapos, toppos+0.06, txt, ha='left', va='top', fontsize=legfntsz)
+
+    txt = '\n'.join((
+        r'{}'.format(leg['ewhg_narrow']),
+        r'{}'.format(leg['ewhb_narrow']),
+        r'{}'.format(leg['ewha_narrow']),
+        '',
+        r'{}'.format(leg['ewhg_broad']),
+        r'{}'.format(leg['ewhb_broad']),
+        r'{}'.format(leg['ewha_broad']),
+        ))
+    fig.text(startpos+deltapos*3.2+1.2*deltapos+1.1*deltapos, toppos+0.07, txt, ha='left', va='top', fontsize=legfntsz)
 
     # common axis labels
     ppos = specax.get_position()
@@ -943,7 +1135,8 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
              ha='center', va='center', 
              transform=fig.transFigure, rotation=270)#, fontsize=)
 
-    # draw a box around the three groups of lines
+    # draw a box around the three groups of lines -- note that this code has to
+    # come after the subplots_adjust!
     ax = np.array(ax).reshape(nlinerows, nlinecols)
 
     # UV/QSO
@@ -964,7 +1157,7 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
     fig.patches.extend([Rectangle((x0, y0), width, height, # (lower-left corner), width, height
                                   fill=False, color='orange', lw=1, zorder=1000,
                                   transform=fig.transFigure, figure=fig)])
-    plt.text(x1+0.01, (y1-y0)/2+y0, 'Balmer+Nebular', ha='center', va='center',
+    plt.text(x1+0.01, (y1-y0)/2+y0, 'Balmer+He+Narrow-Line', ha='center', va='center',
              transform=fig.transFigure, rotation=270, fontsize=10)
 
     llpos = ax[3, 0].get_position()

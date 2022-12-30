@@ -226,7 +226,8 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
                         # for a given tile, take just the most recent night
                         thisnightdir = nightdirs[-1]
                         thesefiles.append(glob(os.path.join(thisnightdir, '{}-[0-9]-{}-thru????????.{}'.format(prefix, onetile, fitssuffix))))
-                thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
+                if len(thesefiles) > 0:
+                    thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
         elif coadd_type == 'pernight':
             if tile is not None and night is not None:
                 thesefiles = []

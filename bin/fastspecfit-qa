@@ -96,7 +96,7 @@ def main(args=None, comm=None):
             errmsg = '--webqa fastphot file {} not found.'.format(fastphotfile)
             log.critical(errmsg)
             raise IOError(errmsg)
-        
+
         webphot, _, _, _ = read_fastspecfit(fastphotfile)
         if not np.all(fastfit['TARGETID'] == webphot['TARGETID']):
             errmsg = 'Mismatch in fastspec and fastphot TARGETIDs'

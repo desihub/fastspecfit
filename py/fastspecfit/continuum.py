@@ -1587,8 +1587,9 @@ class ContinuumFit(ContinuumTools):
                     # if we use synthesized photometry then ivarabsmag is zero
                     # (which should never happen?)
                     absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
-                    
-                self.log.debug(absmag[jj], -2.5*np.log10(synth_outmaggies_rest[jj]) - dmod)
+
+                check = absmag[jj], -2.5*np.log10(synth_outmaggies_rest[jj]) - dmod
+                self.log.debug(check)
 
             return kcorr, absmag, ivarabsmag
 
@@ -2255,23 +2256,23 @@ class ContinuumFit(ContinuumTools):
             outprefix = 'fastphot'
 
         if coadd_type == 'healpix':
-            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+            title = 'Survey/Program/HealPix: {}/{}/{}, TARGETID: {}'.format(
                     metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
-            title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
+            title = 'Tile/ThruNight: {}/{}, TARGETID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
-            title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
+            title = 'Tile/Night: {}/{}, TARGETID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
                     metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
         elif coadd_type == 'perexp':
-            title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
+            title = 'Tile/Night/Expid: {}/{}/{}, TARGETID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
                     metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(

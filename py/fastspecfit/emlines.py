@@ -1563,34 +1563,34 @@ class EMLineFit(ContinuumTools):
             outprefix = 'fastspec'
 
         if coadd_type == 'healpix':
-            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+            title = 'Survey/Program/HealPix: {}/{}/{}, TARGETID: {}'.format(
                     metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
-            title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
+            title = 'Tile/ThruNight: {}/{}, TARGETID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
-            title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
+            title = 'Tile/Night: {}/{}, TARGETID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
                     metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
         elif coadd_type == 'perexp':
-            title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
+            title = 'Tile/Night/Expid: {}/{}/{}, TARGETID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
                     metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'],
                     metadata['EXPID'], metadata['TARGETID']))
         elif coadd_type == 'custom':
-            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+            title = 'Survey/Program/HealPix: {}/{}/{}, TARGETID: {}'.format(
                     metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
-            #title = 'Tile: {}, TargetID/Fiber: {}/{}'.format(
+            #title = 'Tile: {}, TARGETID/Fiber: {}/{}'.format(
             #        metadata['TILEID'], metadata['TARGETID'], metadata['FIBER'])
             #pngfile = os.path.join(outdir, '{}-{}-{}.png'.format(
             #        outprefix, metadata['TILEID'], metadata['TARGETID']))
@@ -1665,12 +1665,12 @@ class EMLineFit(ContinuumTools):
 
         leg = {
             'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            'dv_balmer': '$\\Delta v_{{\\rm narrow}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift)),
-            'dv_forbid': '$\\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
-            'dv_broad': '$\\Delta v_{{\\rm UV}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift)),
-            'sigma_balmer': '$\\sigma_{{\\rm narrow}}$={:.1f} km/s'.format(fastspec['NARROW_SIGMA']),
-            'sigma_forbid': '$\\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
-            'sigma_broad': '$\\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastspec['UV_SIGMA']),
+            'dv_narrow': '$\\Delta v_{{\\rm narrow}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift)),
+            'dv_broad': '$\\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
+            'dv_uv': '$\\Delta v_{{\\rm UV}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift)),
+            'sigma_narrow': '$\\sigma_{{\\rm narrow}}$={:.1f} km/s'.format(fastspec['NARROW_SIGMA']),
+            'sigma_broad': '$\\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
+            'sigma_uv': '$\\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastspec['UV_SIGMA']),
             #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
             'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
@@ -1810,9 +1810,9 @@ class EMLineFit(ContinuumTools):
         if not self.nolegend:
             txt = '\n'.join((
                 r'{} {}'.format(leg['rchi2'], leg['deltarchi2']),
-                r'{} {}'.format(leg['dv_balmer'], leg['sigma_balmer']),
-                r'{} {}'.format(leg['dv_forbid'], leg['sigma_forbid']),
+                r'{} {}'.format(leg['dv_narrow'], leg['sigma_narrow']),
                 r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),
+                r'{} {}'.format(leg['dv_uv'], leg['sigma_uv']),
                 ))
             bigax2.text(legxpos, legypos, txt, ha='right', va='top',
                         transform=bigax2.transAxes, fontsize=legfntsz,
