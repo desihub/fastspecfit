@@ -1,6 +1,6 @@
 # one time--
-  conda create -n fastspecfit-webapp python numpy scipy matplotlib astropy Django
-  conda activate fastspecfit-webapp
+  mamba create -n fastspecfit-webapp python numpy scipy matplotlib astropy Django
+  mamba activate fastspecfit-webapp
   pip install fitsio django-filter
   tdir=$(mktemp -d)
   pushd $tdir
@@ -8,7 +8,7 @@
   popd
 
 module load python
-conda activate fastspecfit-webapp
+mamba activate fastspecfit-webapp
 
 export PYTHONPATH=/global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py:$PYTHONPATH
 export DJANGO_SETTINGS_MODULE=fastspecfit.webapp.settings

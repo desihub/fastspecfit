@@ -12,9 +12,10 @@ from astropy.table import Table, hstack
 #from astrometry.util.starutil_numpy import radectoxyz
 
 # change me!
-specprod = 'everest'
+specprod = 'fuji'
 
-DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/catalogs'.format(specprod)
+DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit-dev/{}/catalogs'.format(specprod)
+#DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/catalogs'.format(specprod)
 #DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
 
 fastspecfile = os.path.join(DATADIR, 'fastspec-{}.fits'.format(specprod))
@@ -43,10 +44,11 @@ def main():
         'TARGETID',
         'RA',
         'DEC',
-        'TILEID_LIST',
+        #'TILEID_LIST',
+        'TILEID',
         'SURVEY',
-        'FAPRGRM',
-        'HPXPIXEL',
+        'PROGRAM',
+        #'HEALPIX',
         'DESI_TARGET',
         'BGS_TARGET',
         'MWS_TARGET',
@@ -93,7 +95,7 @@ def main():
     fastspec_cols = [
         'CONTINUUM_Z',
         #'CONTINUUM_COEFF',
-        'CONTINUUM_CHI2',
+        'CONTINUUM_RCHI2',
         'CONTINUUM_AGE',
         'CONTINUUM_AV',
         'CONTINUUM_AV_IVAR',
@@ -114,12 +116,12 @@ def main():
         'FLUX_SYNTH_MODEL_G',
         'FLUX_SYNTH_MODEL_R',
         'FLUX_SYNTH_MODEL_Z',
-        'BALMER_Z',
-        'FORBIDDEN_Z',
+        'NARROW_Z',
         'BROAD_Z',
-        'BALMER_SIGMA',
-        'FORBIDDEN_SIGMA',
+        'UV_Z',
+        'NARROW_SIGMA',
         'BROAD_SIGMA',
+        'UV_SIGMA',
         'MGII_DOUBLET_RATIO',
         'OII_DOUBLET_RATIO',
         'SII_DOUBLET_RATIO',
@@ -303,36 +305,36 @@ def main():
         'NEIII_3869_EW_LIMIT',
         'NEIII_3869_CHI2',
         'NEIII_3869_NPIX',
-        'HEI_3889_AMP',
-        'HEI_3889_AMP_IVAR',
-        'HEI_3889_FLUX',
-        'HEI_3889_FLUX_IVAR',
-        'HEI_3889_BOXFLUX',
-        'HEI_3889_VSHIFT',
-        'HEI_3889_SIGMA',
-        'HEI_3889_CONT',
-        'HEI_3889_CONT_IVAR',
-        'HEI_3889_EW',
-        'HEI_3889_EW_IVAR',
-        'HEI_3889_FLUX_LIMIT',
-        'HEI_3889_EW_LIMIT',
-        'HEI_3889_CHI2',
-        'HEI_3889_NPIX',
-        'HEI_BROAD_3889_AMP',
-        'HEI_BROAD_3889_AMP_IVAR',
-        'HEI_BROAD_3889_FLUX',
-        'HEI_BROAD_3889_FLUX_IVAR',
-        'HEI_BROAD_3889_BOXFLUX',
-        'HEI_BROAD_3889_VSHIFT',
-        'HEI_BROAD_3889_SIGMA',
-        'HEI_BROAD_3889_CONT',
-        'HEI_BROAD_3889_CONT_IVAR',
-        'HEI_BROAD_3889_EW',
-        'HEI_BROAD_3889_EW_IVAR',
-        'HEI_BROAD_3889_FLUX_LIMIT',
-        'HEI_BROAD_3889_EW_LIMIT',
-        'HEI_BROAD_3889_CHI2',
-        'HEI_BROAD_3889_NPIX',
+        #'HEI_3889_AMP',
+        #'HEI_3889_AMP_IVAR',
+        #'HEI_3889_FLUX',
+        #'HEI_3889_FLUX_IVAR',
+        #'HEI_3889_BOXFLUX',
+        #'HEI_3889_VSHIFT',
+        #'HEI_3889_SIGMA',
+        #'HEI_3889_CONT',
+        #'HEI_3889_CONT_IVAR',
+        #'HEI_3889_EW',
+        #'HEI_3889_EW_IVAR',
+        #'HEI_3889_FLUX_LIMIT',
+        #'HEI_3889_EW_LIMIT',
+        #'HEI_3889_CHI2',
+        #'HEI_3889_NPIX',
+        #'HEI_BROAD_3889_AMP',
+        #'HEI_BROAD_3889_AMP_IVAR',
+        #'HEI_BROAD_3889_FLUX',
+        #'HEI_BROAD_3889_FLUX_IVAR',
+        #'HEI_BROAD_3889_BOXFLUX',
+        #'HEI_BROAD_3889_VSHIFT',
+        #'HEI_BROAD_3889_SIGMA',
+        #'HEI_BROAD_3889_CONT',
+        #'HEI_BROAD_3889_CONT_IVAR',
+        #'HEI_BROAD_3889_EW',
+        #'HEI_BROAD_3889_EW_IVAR',
+        #'HEI_BROAD_3889_FLUX_LIMIT',
+        #'HEI_BROAD_3889_EW_LIMIT',
+        #'HEI_BROAD_3889_CHI2',
+        #'HEI_BROAD_3889_NPIX',
         'H6_AMP',
         'H6_AMP_IVAR',
         'H6_FLUX',
@@ -648,6 +650,21 @@ def main():
         'OI_6300_EW_LIMIT',
         'OI_6300_CHI2',
         'OI_6300_NPIX',
+        'SIII_6312_AMP',
+        'SIII_6312_AMP_IVAR',
+        'SIII_6312_FLUX',
+        'SIII_6312_FLUX_IVAR',
+        'SIII_6312_BOXFLUX',
+        'SIII_6312_VSHIFT',
+        'SIII_6312_SIGMA',
+        'SIII_6312_CONT',
+        'SIII_6312_CONT_IVAR',
+        'SIII_6312_EW',
+        'SIII_6312_EW_IVAR',
+        'SIII_6312_FLUX_LIMIT',
+        'SIII_6312_EW_LIMIT',
+        'SIII_6312_CHI2',
+        'SIII_6312_NPIX',
         'NII_6548_AMP',
         'NII_6548_AMP_IVAR',
         'NII_6548_FLUX',
@@ -803,7 +820,7 @@ def main():
     fastphot_cols = [
         'TARGETID', # need this to make sure the tables match
          #'CONTINUUM_COEFF',
-         'CONTINUUM_CHI2',
+         'CONTINUUM_RCHI2',
          'CONTINUUM_AGE',
          'CONTINUUM_AV',
          'CONTINUUM_AV_IVAR',
@@ -842,14 +859,19 @@ def main():
          'ABSMAG_IVAR_W1']
        
     meta = Table(fitsio.read(fastspecfile, ext='METADATA', columns=meta_columns))
+
+    print('Hacking the HEALPIX columns!')
+    meta['HEALPIX'] = 10000
+    meta['TILEID_LIST'] = meta['TILEID'].astype(str)
+    
     fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC', columns=fastspec_cols))
     fastphot = Table(fitsio.read(fastphotfile, ext='FASTPHOT', columns=fastphot_cols))
     assert(np.all(meta['TARGETID'] == fastphot['TARGETID']))
 
-    # This will be different for healpix vs tile coadds. E.g., sv3-bright-HPXPIXEL-TARGETID
-    meta['TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, hpxpixel, targetid) for
-                           survey, program, hpxpixel, targetid in zip(
-                               meta['SURVEY'], meta['FAPRGRM'], meta['HPXPIXEL'], meta['TARGETID'])]
+    # This will be different for healpix vs tile coadds. E.g., sv3-bright-HEALPIX-TARGETID
+    meta['TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, healpix, targetid) for
+                           survey, program, healpix, targetid in zip(
+                               meta['SURVEY'], meta['PROGRAM'], meta['HEALPIX'], meta['TARGETID'])]
     meta['SPECPROD'] = specprod
     #print(meta)
     #print(meta.colnames, fast.colnames)
@@ -866,9 +888,9 @@ def main():
     #tiles = np.zeros(len(meta), dtype='U50') # 5 characters per tile, max of 10 tiles??
     #tilepix = Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/healpix/tilepix.fits'.format(specprod))
     #
-    #for pixel in set(meta['HPXPIXEL']):
+    #for pixel in set(meta['HEALPIX']):
     #    # should take into account PETAL_LOC
-    #    I = meta['HPXPIXEL'] == pixel
+    #    I = meta['HEALPIX'] == pixel
     #    J = tilepix['HEALPIX'] == pixel
     #    assert(np.sum(J) > 0)
     #
