@@ -1,8 +1,8 @@
 .. _api:
 
-===============
-FastSpecFit API
-===============
+===
+API
+===
 
 .. automodule:: fastspecfit
    :members:

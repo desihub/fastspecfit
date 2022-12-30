@@ -223,8 +223,43 @@ Known Issues
 ------------
 
 This section documents any issues or problems which were identified with these
-VACs after their final release. To date, no issues have been identified!
+VACs after their final release. To date, no major issues have been identified!
+To report projects or to request new features please `open a ticket`_.
 
+Acknowledgements
+----------------
+
+For questions (or problems) regarding these catalogs or their construction,
+please `open a ticket`_ and/or contact `John Moustakas`_. 
+
+JM gratefully acknowledges funding support for this work from the
+U.S. Department of Energy, Office of Science, Office of High Energy Physics
+under Award Number DE-SC0020086. We also gratefully acknowledge important
+contributions to the VACs presented herein from the following individuals:
+
+* Stephen Bailey (Lawrence Berkeley National Lab)
+* Rebecca Canning (University of Portsmouth)
+* Victoria Fawcett (Durham University)  
+* Stephanie Juneau (NSF's NOIRLab)
+* Dustin Lang (Perimeter Institute of Theoretical Physics)
+* Adam Myers (University of Wyoming)
+* Ragadeepika Pucha (University of Arizona)
+* Khaled Said (Australian National University)  
+* David Setton (University of Pittsburgh)
+* Benjamin Weaver (NSF's NOIRLab)
+
+DESI research is supported by the Director, Office of Science, Office of High
+Energy Physics of the U.S. Department of Energy under Contract
+No. DE–AC02–05CH11231, and by the National Energy Research Scientific Computing
+Center, a DOE Office of Science User Facility under the same contract;
+additional support for DESI is provided by the U.S. National Science Foundation,
+Division of Astronomical Sciences under Contract No. AST-0950945 to the NSF’s
+National Optical-Infrared Astronomy Research Laboratory; the Science and
+Technologies Facilities Council of the United Kingdom; the Gordon and Betty
+Moore Foundation; the Heising-Simons Foundation; the French Alternative Energies
+and Atomic Energy Commission (CEA); the National Council of Science and
+Technology of Mexico (CONACYT); the Ministry of Science and Innovation of Spain
+(MICINN), and by the `DESI Member Institutions`_.
 
 .. _`DESI Early Data Release (DESI/EDR)`: https://data.desi.lbl.gov/public/edr
 .. _`DESI Data Release 1 (DESI/DR1)`: https://data.desi.lbl.gov/public/dr1
@@ -234,5 +269,6 @@ VACs after their final release. To date, no issues have been identified!
 .. _`here`: https://data.desi.lbl.gov/doc/organization/
 .. _`redrock catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/redrock-SURVEY-PROGRAM-PIXNUM.html
 .. _`quasarnet catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_qn-SURVEY-PROGRAM-PIXNUM.html
-
-
+.. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
+.. _`John Moustakas`: mailto:jmoustakas@siena.edu
+.. _`DESI Member Institutions`: https://www.desi.lbl.gov/collaborating-institutions
