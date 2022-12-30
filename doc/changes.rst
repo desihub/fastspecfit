@@ -7,10 +7,12 @@ Change Log
 
 * Support custom coadds, update laboratory line-wavelengths, and fix major EW
   bug [`PR #87`_].
-* Refactor fitting engine to not use fnnls or astropy.modeling #92 [`PR #92`_]. 
+* Refactor fitting engine to not use fnnls or astropy.modeling [`PR #92`_]. 
+* Additional Fujilupe documentation [`PR #93`_]. 
 
 .. _`PR #87`: https://github.com/desihub/fastspecfit/pull/87
 .. _`PR #92`: https://github.com/desihub/fastspecfit/pull/92
+.. _`PR #93`: https://github.com/desihub/fastspecfit/pull/93
 
 1.0.1 (2022-08-11)
 ------------------
