@@ -5,5 +5,6 @@ Example call:
   fastspec /global/cfs/cdirs/desi/spectro/redux/daily/tiles/80608/20201215/zbest-9-80608-20201215.fits -o fastspec.fits --ntargets 2 --mp 1
 
 """
-from fastspecfit.fastspecfit import fastspec
-fastspec(comm=None)
+if __name__ == '__main__':
+    from fastspecfit.fastspecfit import fastspec
+    fastspec(comm=None)

@@ -14,6 +14,8 @@ mpi-fastspecfit --merge --specprod fuji --fastphot
 mpi-fastspecfit --mp 32 --makeqa --specprod fuji --dry-run
 mpi-fastspecfit --mp 32 --makeqa --specprod fuji --fastphot --dry-run
 
+mpi-fastspecfit --mp 32 --webqa
+
 """
 import pdb # for debugging
 
@@ -24,7 +26,7 @@ from desiutil.log import get_logger
 log = get_logger()
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
-                    makeqa=False, outdir_data='.', outdir_html='.'):
+                    makeqa=False, webqa=False, outdir_data='.', outdir_html='.'):
 
     import sys, subprocess
     from fastspecfit.mpi import backup_logs, plan
@@ -41,6 +43,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
             coadd_type=args.coadd_type, survey=args.survey, program=args.program,
             healpix=args.healpix, tile=args.tile, night=args.night,
+            makeqa=args.makeqa, webqa=args.webqa, 
             fastphot=fastphot, outdir_data=outdir_data, outdir_html=outdir_html,
             overwrite=args.overwrite)
         log.info('Planning took {:.2f} sec'.format(time.time() - t0))
@@ -55,7 +58,6 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
     #if comm:
     #    comm.barrier()
-
     sys.stdout.flush()
     
     # all done
@@ -70,13 +72,15 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         log.debug('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
 
-        if args.makeqa:
-            # hack--the desired output directories are in the 'zbestfiles' variable!
-            # note: by default don't render the legend
-            if fastphot:
-                cmd = 'fastspecfit-qa --fastphotfile {} --nolegend -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
-            else:
-                cmd = 'fastspecfit-qa --fastspecfile {} --nolegend -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
+        # With --webqa and --makeqa the desired output directories are in the
+        # 'zbestfiles' variable.
+        if args.webqa or args.makeqa:
+            cmd = 'fastspecfit-qa {} -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
+            if args.webqa:
+                cmd += ' --webqa'
+            ## Note: by default don't render the legend.
+            #if args.makeqa:
+            #    cmd += ' --nolegend'            
             if args.ntargets:
                 cmd += ' --ntargets {}'.format(args.ntargets)
         else:
@@ -90,7 +94,12 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             if args.ntargets:
                 cmd += ' --ntargets {}'.format(args.ntargets)
 
-        logfile = outfiles[ii].replace('.gz', '').replace('.fits', '.log')
+        if args.webqa or args.makeqa:
+            logfile = zbestfiles[ii].replace('.gz', '').replace('.fits', '.log')
+            if args.webqa:
+                logfile = logfile.replace('fastspec-', 'fastfit-')
+        else:
+            logfile = outfiles[ii].replace('.gz', '').replace('.fits', '.log')
         assert(logfile != outfiles[ii])
 
         log.info('Rank {}, ntargets={}: {}'.format(rank, ntargets[ii], cmd))
@@ -170,6 +179,7 @@ def main():
     parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
     parser.add_argument('--mergeall', action='store_true', help='Merge all the individual merged catalogs into a single merged catalog.')
     parser.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
+    parser.add_argument('--webqa', action='store_true', help='Build QA for the web-app.')
     
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
@@ -177,9 +187,9 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
-    parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
+    parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit-dev',
                         type=str, help='Base output HTML directory.')
-    parser.add_argument('--outdir-data', default='/global/cfs/cdirs/desi/spectro/fastspecfit',
+    parser.add_argument('--outdir-data', default='/global/cfs/cdirs/desi/spectro/fastspecfit-dev',
                         type=str, help='Base output data directory.')
     
     specprod_dir = None
@@ -207,7 +217,7 @@ def main():
                           overwrite=args.overwrite, fastphot=args.fastphot, supermerge=args.mergeall,
                           mp=args.mp)
         return
-        
+
     if args.plan:
         if comm is None:
             rank = 0
@@ -217,11 +227,12 @@ def main():
             plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
                  coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                  healpix=args.healpix, tile=args.tile, night=args.night,
+                 makeqa=args.makeqa, webqa=args.webqa, 
                  fastphot=args.fastphot, outdir_data=args.outdir_data,
                  outdir_html=args.outdir_html, overwrite=args.overwrite)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=args.outdir_data,
+                        makeqa=args.makeqa, webqa=args.webqa, outdir_data=args.outdir_data,
                         outdir_html=args.outdir_html)
 
 if __name__ == '__main__':
