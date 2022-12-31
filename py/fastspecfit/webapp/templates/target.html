@@ -19,6 +19,8 @@
 
 <style type="text/css">
 td, th {text-align: center}
+#topmargin-fiddle1 { margin-top: -25px; }
+#topmargin-fiddle2 { margin-top: 0px; }
 </style>
 
 {% if result_index > -1 %}
@@ -31,17 +33,35 @@ td, th {text-align: center}
 
 <br />
 <h2>
-  <a href="https://www.legacysurvey.org/viewer-desi/?ra={{ target.ra }}&dec={{ target.dec}}&zoom=15&layer=ls-dr9&targets-dr9-{{ target.survey }}-{{ target.faprgrm }}" target="_blank">{{ target.target_name }}</a>
+  <a href="https://www.legacysurvey.org/viewer-desi/?ra={{ target.ra }}&dec={{ target.dec}}&zoom=15&layer=ls-dr9&targets-dr9-{{ target.survey }}-{{ target.program }}" target="_blank">{{ target.target_name }}</a>
 </h2>
 <br />
 
+<!--
 <a href="https://www.legacysurvey.org/viewer/jpeg-cutout?ra={{ target.ra }}&dec={{ target.dec}}&zoom=15&layer=ls-dr9"><img class="img-responsive" width="10%" src="https://www.legacysurvey.org/viewer/jpeg-cutout?ra={{ target.ra }}&dec={{ target.dec}}&zoom=15&layer=ls-dr9"></a>
+-->
+
+<table class="table table-bordered">
+  <tr>
+    <td><a href="{{ target.png_base_url }}/fastfit-80613-cumulative-{{ target.str_targetid }}.png">
+    <div class="top-crop">
+      <img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastfit-80613-cumulative-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
+    </div>
+    <!--
+    <td><a href="{{ target.png_base_url }}/fastfit-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
+    <div class="top-crop">
+      <img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
+    </div>
+    -->
+    </a></td>
+  </tr> 
+</table>
+<br />
 
 {% comment %}
 <h4><a href="{{ target.data_base_url }}">Fitting Catalogs</a></h4>
 {% endcomment %}
 
-<br /><br />
 <h3>Target Properties</h3>
 <br />
 
@@ -67,10 +87,10 @@ td, th {text-align: center}
   </thead>
   <tr>
     <td>{{ target.survey|upper }}</td>
-    <td>{{ target.faprgrm|upper }}</td>
+    <td>{{ target.program|upper }}</td>
     <td>{{ target.tileid_list }}</td>
     <td>{{ target.targetid }}</td>
-    <td>{{ target.hpxpixel }}</td>
+    <td>{{ target.healpix }}</td>
     <td>{{ target.ra|floatformat:7 }}</td>
     <td>{{ target.dec|floatformat:6 }}</td>
     {% if target.survey == 'sv1' %}
@@ -136,12 +156,15 @@ td, th {text-align: center}
 </div> <!-- end accordian div -->
 
 <h3>Redshift and Photometry</h3><br />
+<p id="topmargin-fiddle1">Note: if z and z<sub>Redrock</sub> differ then the primary
+  redshift z comes from QuasarNet.</p>
 
-<h6>RedRock</h6>
+<h6>Redrock</h6>
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
       <th>z</th>
+      <th>z<sub>Redrock</sub></th>
       <th>ZWarn</th>
       <th>&#916;&#967;<sup>2</sup></th> <!-- Delta-chi^2 -->
       <th>SpecType</th>
@@ -149,23 +172,28 @@ td, th {text-align: center}
   </thead>
   <tr>
     <td>{{ target.z|floatformat:8 }}</td>
+    <td>{{ target.zredrock|floatformat:8 }}</td>
     <td>{{ target.zwarn }}</td>
     <td>{{ target.deltachi2|floatformat:3 }}</td>
     <td>{{ target.spectype }}</td>
   </tr>
 </table>
 
-<h6>Legacy Imaging Surveys (Photsys {{ target.photsys }})</h6>
+<h6>Legacy Imaging Surveys (Photometric System: {{ target.photsys }})</h6>
+<p id="topmargin-fiddle2">Note: all photometry has been corrected for Galactic extinction.</p>
+
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
       <!--<th>AB mag<br />(extinction<br />corrected)</th>-->
-      <th>AB mag<br />(ext. corr)</th>
+      <th>AB mag</th>
       <th>g</th>
       <th>r</th>
       <th>z</th>
       <th>W1</th>
       <th>W2</th>
+      <th>W3</th>
+      <th>W4</th>
     </tr>
   </thead>
   <tr>
@@ -175,6 +203,8 @@ td, th {text-align: center}
     <td>{{ target.abmag_z }}{{ target.abmag_err_z|safe }}</td>
     <td>{{ target.abmag_w1 }}{{ target.abmag_err_w1|safe }}</td>
     <td>{{ target.abmag_w2 }}{{ target.abmag_err_w2|safe }}</td>
+    <td>{{ target.abmag_w3 }}{{ target.abmag_err_w3|safe }}</td>
+    <td>{{ target.abmag_w4 }}{{ target.abmag_err_w4|safe }}</td>
   </tr>
   <tr>
     <td>Fiber</td>
@@ -183,12 +213,16 @@ td, th {text-align: center}
     <td>{{ target.fiberabmag_z|safe }}</td>
     <td>&nbsp</td>
     <td>&nbsp</td>
+    <td>&nbsp</td>
+    <td>&nbsp</td>
   </tr>
   <tr>
     <td>FiberTot</td>
     <td>{{ target.fibertotabmag_g|safe }}</td>
     <td>{{ target.fibertotabmag_r|safe }}</td>
     <td>{{ target.fibertotabmag_z|safe }}</td>
+    <td>&nbsp</td>
+    <td>&nbsp</td>
     <td>&nbsp</td>
     <td>&nbsp</td>
   </tr>
@@ -210,7 +244,7 @@ td, th {text-align: center}
       <th>z camera</th>
       <th>z</th>
       <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-      <th>Age<br />(Gyr)</th>
+      <th><Age><br />(Gyr)</th>
       <th>A<sub>V</sub><br />(mag)</th>
       <th>&sigma;<br />(km/s)</th>
       <th>D<sub>n</sub>(4000)<br />(data)</th>
@@ -222,7 +256,7 @@ td, th {text-align: center}
     <td>{{ target.continuum_snr_r|floatformat:3 }}</td>
     <td>{{ target.continuum_snr_z|floatformat:3 }}</td>
     <td>{{ target.continuum_z|floatformat:8 }}</td>
-    <td>{{ target.continuum_chi2|floatformat:3 }}</td>
+    <td>{{ target.continuum_rchi2|floatformat:3 }}</td>
     <td>{{ target.continuum_age|floatformat:3 }}</td>
     <td>{{ target.continuum_av|floatformat:2 }}</td>
     <td>{{ target.continuum_vdisp|floatformat:1 }}</td>
@@ -232,11 +266,12 @@ td, th {text-align: center}
 </table>
 <br />
 
-<h6>Synthesized Photometry (Photsys {{ target.photsys }})</h6>
+<h6>Synthesized Photometry (Photometric System: {{ target.photsys }})</h6>
+<p id="topmargin-fiddle2">Note: all photometry has been corrected for Galactic extinction.</p>
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
-      <th>AB mag<br />(ext. corr)</th>
+      <th>AB mag</th>
       <th>g</th>
       <th>r</th>
       <th>z</th>
@@ -257,16 +292,18 @@ td, th {text-align: center}
 </table>
 <br />
 
+{% comment %}
 <table class="table table-bordered">
   <tr>
-    <td><a href="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png">
+    <td><a href="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
     <div class="top-crop">
-      <img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png">
+      <img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
     </div>
     </a></td>
   </tr> 
 </table>
 <br />
+{% endcomment %}
 
 <h3>Emission-line Modeling</h3><br />
 
@@ -292,12 +329,12 @@ td, th {text-align: center}
     </tr>
   </thead>
   <tr>
+    <td>{{ target.uv_z|floatformat:8 }}</td>
+    <td>{{ target.uv_sigma|floatformat:2 }}</td>
     <td>{{ target.broad_z|floatformat:8 }}</td>
     <td>{{ target.broad_sigma|floatformat:2 }}</td>
-    <td>{{ target.balmer_z|floatformat:8 }}</td>
-    <td>{{ target.balmer_sigma|floatformat:2 }}</td>
-    <td>{{ target.forbidden_z|floatformat:8 }}</td>
-    <td>{{ target.forbidden_sigma|floatformat:2 }}</td>
+    <td>{{ target.narrow_z|floatformat:8 }}</td>
+    <td>{{ target.narrow_sigma|floatformat:2 }}</td>
     <td>{{ target.mgii_doublet_ratio|floatformat:3 }}</td>
     <td>{{ target.oii_doublet_ratio|floatformat:3 }}</td>
     <td>{{ target.sii_doublet_ratio|floatformat:3 }}</td>
@@ -509,6 +546,7 @@ td, th {text-align: center}
               <td>{{ target.neiii_3869_chi2|floatformat:3 }}</td>
               <td>{{ target.neiii_3869_npix }}</td>
             </tr>
+            <!--
             <tr>
               <td>He I &lambda;3889 (narrow)</td>
               <td>{{ target.hei_3889_snr|floatformat:2 }}</td>
@@ -521,6 +559,7 @@ td, th {text-align: center}
               <td>{{ target.hei_3889_chi2|floatformat:3 }}</td>
               <td>{{ target.hei_3889_npix }}</td>
             </tr>
+            -->
             <tr>
               <td>H6 (narrow)</td>
               <td>{{ target.h6_snr|floatformat:2 }}</td>
@@ -678,6 +717,18 @@ td, th {text-align: center}
               <td>{{ target.oi_6300_npix }}</td>
             </tr>
             <tr>
+              <td>[S III] &lambda;6312</td>
+              <td>{{ target.siii_6312_snr|floatformat:2 }}</td>
+              <td>{{ target.siii_6312_vshift|floatformat:2 }}</td>
+              <td>{{ target.siii_6312_sigma|floatformat:2 }}</td>
+              <td>{{ target.siii_6312_amp|floatformat:3 }} {{ target.siii_6312_amp_err|safe }}</td>
+              <td>{{ target.siii_6312_flux|floatformat:3 }}{{ target.siii_6312_flux_err|safe }}</td>
+              <td>{{ target.siii_6312_cont|floatformat:3 }}{{ target.siii_6312_cont_err|safe }}</td>
+              <td>{{ target.siii_6312_ew|floatformat:2 }}  {{ target.siii_6312_ew_err|safe }}</td>
+              <td>{{ target.siii_6312_chi2|floatformat:3 }}</td>
+              <td>{{ target.siii_6312_npix }}</td>
+            </tr>
+            <tr>
               <td>[N II] &lambda;6548</td>
               <td>{{ target.nii_6548_snr|floatformat:2 }}</td>
               <td>{{ target.nii_6548_vshift|floatformat:2 }}</td>
@@ -813,6 +864,7 @@ td, th {text-align: center}
                 <th>Npix</th>
               </tr>
             </thead>
+            <!--
             <tr>
               <td>He I &lambda;3889 (broad)</td>
               <td>{{ target.hei_broad_3889_snr|floatformat:2 }}</td>
@@ -825,6 +877,7 @@ td, th {text-align: center}
               <td>{{ target.hei_broad_3889_chi2|floatformat:3 }}</td>
               <td>{{ target.hei_broad_3889_npix }}</td>
             </tr>
+            -->
             <tr>
               <td>H6 (broad)</td>
               <td>{{ target.h6_broad_snr|floatformat:2 }}</td>
@@ -942,8 +995,8 @@ td, th {text-align: center}
 {% comment %}
 <table class="table table-bordered">
   <tr>
-    <td><a href="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png">
-        <img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png">
+    <td><a href="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
+        <img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
     </a></td>
   </tr> 
 </table>
@@ -957,13 +1010,13 @@ td, th {text-align: center}
   <thead class="alert alert-info">
     <tr>
       <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-      <th>Age<br />(Gyr)</th>
+      <th><Age><br />(Gyr)</th>
       <th>A<sub>V</sub><br />(mag)</th>
       <th>D<sub>n</sub>(4000)<br />(model)</th>
     </tr>
   </thead>
   <tr>
-    <td>{{ target.phot_continuum_chi2|floatformat:3 }}</td>
+    <td>{{ target.phot_continuum_rchi2|floatformat:3 }}</td>
     <td>{{ target.phot_continuum_age|floatformat:3 }}</td>
     <td>{{ target.phot_continuum_av|floatformat:2 }}</td>
     <td>{{ target.phot_dn4000_model|floatformat:3 }}</td>
@@ -971,16 +1024,19 @@ td, th {text-align: center}
 </table>
 <br />
 
-<h6>Legacy Imaging Surveys (Photsys {{ target.photsys }})</h6>
+<h6>Legacy Imaging Surveys (Photometric System: {{ target.photsys }})</h6>
+<p id="topmargin-fiddle2">Note: all photometry has been corrected for Galactic extinction.</p>
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
-      <th>AB mag<br />(ext. corr)</th>
+      <th>AB mag</th>
       <th>g</th>
       <th>r</th>
       <th>z</th>
       <th>W1</th>
       <th>W2</th>
+      <th>W3</th>
+      <th>W4</th>
     </tr>
   </thead>
   <tr>
@@ -990,6 +1046,8 @@ td, th {text-align: center}
     <td>{{ target.abmag_z }}{{ target.abmag_err_z|safe }}</td>
     <td>{{ target.abmag_w1 }}{{ target.abmag_err_w1|safe }}</td>
     <td>{{ target.abmag_w2 }}{{ target.abmag_err_w2|safe }}</td>
+    <td>{{ target.abmag_w3 }}{{ target.abmag_err_w3|safe }}</td>
+    <td>{{ target.abmag_w4 }}{{ target.abmag_err_w4|safe }}</td>
   </tr>
   <tr>
     <td>Model</td>
@@ -998,11 +1056,13 @@ td, th {text-align: center}
     <td>{{ target.phot_abmag_synth_model_z }}</td>
     <td>{{ target.phot_abmag_synth_model_w1 }}</td>
     <td>{{ target.phot_abmag_synth_model_w2 }}</td>
+    <td>{{ target.phot_abmag_synth_model_w3 }}</td>
+    <td>{{ target.phot_abmag_synth_model_w4 }}</td>
   </tr>
 </table>
 <br />
 
-<h6>K-corrections & Absolute Magnitudes (band-shifted to z=0.0)</h6>
+<h6>K-corrections & Absolute Magnitudes</h6>
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
@@ -1013,15 +1073,15 @@ td, th {text-align: center}
     </tr>
     <tr>
       <th>AB mag</th>
-      <th>u</th>
-      <th>g</th>
-      <th>r</th>
-      <th>i</th>
-      <th>z</th>
-      <th>U</th>
-      <th>B</th>
-      <th>V</th>
-      <th>W1</th>
+      <th><sup>0.1</sup>u</th>
+      <th><sup>0.1</sup>g</th>
+      <th><sup>0.1</sup>r</th>
+      <th><sup>0.1</sup>i</th>
+      <th><sup>0.1</sup>z</th>
+      <th><sup>0.0</sup>U</th>
+      <th><sup>0.0</sup>B</th>
+      <th><sup>0.0</sup>V</th>
+      <th><sup>0.0</sup>W1</th>
     </tr>
   </thead>
   <tr>
@@ -1051,11 +1111,13 @@ td, th {text-align: center}
 </table>
 <br />
 
+{% comment %}
 <table class="table table-bordered">
   <tr>
-    <td><a href="{{ target.png_base_url }}/fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"><img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png" alt="Missing file fastphot-{{ target.survey }}-{{ target.faprgrm }}-{{ target.str_hpxpixel }}-{{ target.str_targetid }}.png"></a></td>
+    <td><a href="{{ target.png_base_url }}/fastphot-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png"><img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastphot-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png" alt="Missing file fastphot-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png"></a></td>
   </tr> 
 </table>
+{% endcomment %}
 
 {% if result_index > -1 %}
   <form style="display:inline;" action="{% url 'target-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 

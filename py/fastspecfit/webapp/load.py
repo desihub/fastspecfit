@@ -66,6 +66,7 @@ def main():
         'SV2_SCND_TARGET',
         'SV3_SCND_TARGET',
         'Z',
+        'Z_RR',
         'ZWARN',
         'DELTACHI2',
         'SPECTYPE',
@@ -75,6 +76,8 @@ def main():
         'MW_TRANSMISSION_Z',
         'MW_TRANSMISSION_W1',
         'MW_TRANSMISSION_W2',
+        'MW_TRANSMISSION_W3',
+        'MW_TRANSMISSION_W4',
         'FIBERFLUX_G',
         'FIBERFLUX_R',
         'FIBERFLUX_Z',
@@ -86,11 +89,16 @@ def main():
         'FLUX_Z',
         'FLUX_W1',
         'FLUX_W2',
+        'FLUX_W3',
+        'FLUX_W4',
         'FLUX_IVAR_G',
         'FLUX_IVAR_R',
         'FLUX_IVAR_Z',
         'FLUX_IVAR_W1',
-        'FLUX_IVAR_W2']
+        'FLUX_IVAR_W2',
+        'FLUX_IVAR_W3',
+        'FLUX_IVAR_W4',
+        ]
         
     fastspec_cols = [
         'CONTINUUM_Z',
@@ -830,6 +838,8 @@ def main():
          'FLUX_SYNTH_MODEL_Z',
          'FLUX_SYNTH_MODEL_W1',
          'FLUX_SYNTH_MODEL_W2',
+         'FLUX_SYNTH_MODEL_W3',
+         'FLUX_SYNTH_MODEL_W4',
          'KCORR_U',
          'ABSMAG_U',
          'ABSMAG_IVAR_U',
@@ -942,6 +952,9 @@ def main():
     meta['BGS_BITNAMES'] = bgs_bitnames
     meta['MWS_BITNAMES'] = mws_bitnames
     meta['SCND_BITNAMES'] = scnd_bitnames
+
+    # rename a couple columns
+    meta.rename_column('Z_RR', 'ZREDROCK')
             
     # join metadata and fastspec fitting results
     data = hstack((meta, fastspec))
@@ -1003,7 +1016,7 @@ def main():
     for prefix, suffix, bands in zip(
             ['', 'FIBER', 'FIBERTOT', '', '', 'PHOT_'],
             ['', '', '', '_SYNTH', '_SYNTH_MODEL', '_SYNTH_MODEL'],
-            [['G', 'R', 'Z', 'W1', 'W2'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z', 'W1', 'W2']
+            [['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']
              ]):
         data = convert_phot(data, prefix, suffix, bands)
 
@@ -1027,7 +1040,6 @@ def main():
                 
     print(data.colnames)
     print('Read {} rows from {}'.format(len(data), fastspecfile))
-
     xyz = radectoxyz(data['RA'], data['DEC'])
 
     objs = []
