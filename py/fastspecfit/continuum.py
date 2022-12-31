@@ -1422,6 +1422,7 @@ class ContinuumFit(ContinuumTools):
         nssp_coeff = len(self.sspinfo)
         
         out = Table()
+        out.add_column(Column(name='APCORR', length=nobj, dtype='f4')) # aperture correction
         out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
@@ -2126,8 +2127,8 @@ class ContinuumFit(ContinuumTools):
         bestfit = bestsspflux.dot(coeff)
         meanage = self.get_meanage(coeff)
 
-        flam_ivar = np.hstack(data['ivar'])
-        dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, # specivar is line-masked!
+        flam_ivar = np.hstack(data['ivar']) # specivar is line-masked!
+        dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, 
                                               redshift=redshift, rest=False)
         dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
         
@@ -2284,6 +2285,7 @@ class ContinuumFit(ContinuumTools):
         # smooth continuum correction), which will guarantee that the aperture
         # correction is always positive.
         apcorr = data['phot']['nanomaggies'][1] / data['synthphot']['nanomaggies'][1]
+        data['apcorr'] = apcorr
 
         # Prepare the reddened and unreddened SSP templates by redshifting and
         # normalizing. Note that we ignore templates which are older than the
@@ -2442,24 +2444,28 @@ class ContinuumFit(ContinuumTools):
             self.log.info('Insufficient S/N to compute vdisp; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
             vdispbest, vdispivar = self.vdisp_nominal, 0.0
 
-        pdb.set_trace()
-
         # Get the final set of coefficients and chi2 at the best-fitting
         # reddening and velocity dispersion.
-        bestsspflux, _ = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
-                                       specwave=data['wave'], specres=data['res'],
-                                       AV=AVbest, vdisp=vdispbest, cameras=data['cameras'],
-                                       south=data['photsys'] == 'S', synthphot=False)
+        # dev - synthesize photometry
+        bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
+                                              specwave=data['wave'], specres=data['res'],
+                                              AV=AVbest, vdisp=vdispbest, cameras=data['cameras'],
+                                              south=data['photsys'] == 'S', synthphot=True)
         bestsspflux = np.concatenate(bestsspflux, axis=0)
-        coeff, chi2min = self._call_nnls(bestsspflux, specflux, specivar)
-        chi2min /= np.sum(specivar > 0) # dof???
+        bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
+
+        # dev - prepend the photometry
+        coeff, chi2min = self._call_nnls(np.vstack((bestflam, bestsspflux)),
+                                         np.hstack((objflam, specflux*apcorr)),
+                                         np.hstack((objflamivar, specivar/apcorr**2)))
+        chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
 
         # Get the light-weighted age and DN(4000).
         bestfit = bestsspflux.dot(coeff)
         meanage = self.get_meanage(coeff)
 
-        flam_ivar = np.hstack(data['ivar'])
-        dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, # specivar is line-masked!
+        flam_ivar = np.hstack(data['ivar']) # specivar is line-masked!
+        dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, 
                                               redshift=redshift, rest=False)
         dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
         
@@ -2511,7 +2517,7 @@ class ContinuumFit(ContinuumTools):
         if np.all(coeff == 0):
             _smooth_continuum = np.zeros_like(bestfit)
         else:
-            _smooth_continuum, _ = self.smooth_continuum(specwave, specflux - bestfit, specivar,
+            _smooth_continuum, _ = self.smooth_continuum(specwave, apcorr*specflux - bestfit, specivar/apcorr**2,
                                                          redshift, linemask=linemask, png=png)
 
         # Unpack the continuum into individual cameras.
@@ -2522,24 +2528,25 @@ class ContinuumFit(ContinuumTools):
 
         ## Like above, but with per-camera smoothing.
         #smooth_continuum = self.smooth_residuals(
-        #    continuummodel, data['wave'], data['flux'],
+        #    continuummodel, data['wave'], apcorr*data['flux'],
         #    data['ivar'], data['linemask'], percamera=False)
 
         if False:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots(2, 1)
             for icam in np.arange(len(data['cameras'])): # iterate over cameras
-                resid = data['flux'][icam]-continuummodel[icam]
+                resid = apcorr*data['flux'][icam]-continuummodel[icam]
                 ax[0].plot(data['wave'][icam], resid)
                 ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
             for icam in np.arange(len(data['cameras'])): # iterate over cameras
-                resid = data['flux'][icam]-continuummodel[icam]
+                resid = apcorr*data['flux'][icam]-continuummodel[icam]
                 pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
                 ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
                 ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
             plt.savefig('junk.png')
 
         # Pack it in and return.
+        result['APCORR'] = apcorr
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
         result['CONTINUUM_RCHI2'][0] = chi2min
         result['CONTINUUM_AV'][0] = AVbest # * u.mag

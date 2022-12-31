@@ -981,8 +981,8 @@ class EMLineFit(ContinuumTools):
         # best-fitting model (per-camera) below.
         redshift = data['zredrock']
         emlinewave = np.hstack(data['wave'])
-        oemlineivar = np.hstack(data['ivar'])
-        specflux = np.hstack(data['flux'])
+        oemlineivar = np.hstack(data['ivar'])/data['apcorr']**2
+        specflux = np.hstack(data['flux'])*data['apcorr']
         resolution_matrix = data['res']
         camerapix = data['camerapix']
 
@@ -1593,7 +1593,9 @@ class EMLineFit(ContinuumTools):
         else:
             pass
 
+        apcorr = fastspec['APCORR']
         redshift = fastspec['CONTINUUM_Z']
+
         stackwave = np.hstack(data['wave'])
 
         # rebuild the best-fitting spectroscopic and photometric models
@@ -1604,14 +1606,23 @@ class EMLineFit(ContinuumTools):
                                      vdisp=fastspec['CONTINUUM_VDISP'],
                                      coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)
-
-        residuals = [data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
+        print('This bit is new!')
+        continuum_phot, synthmodelphot = self.SSP2data(
+            self.sspflux, self.sspwave, redshift=redshift,
+            synthphot=True, AV=fastspec['CONTINUUM_AV'], #test=True,
+            vdisp=fastspec['CONTINUUM_VDISP'],
+            coeff=fastspec['CONTINUUM_COEFF'] * self.massnorm)
+        continuum_wave_phot = self.sspwave * (1 + redshift)
+        
+        residuals = [apcorr*data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
+        
         if np.all(fastspec['CONTINUUM_COEFF'] == 0):
             _smooth_continuum = np.zeros_like(stackwave)
         else:
             _smooth_continuum, _ = self.smooth_continuum(np.hstack(data['wave']), np.hstack(residuals),
                                                          np.hstack(data['ivar']), redshift=redshift,
                                                          linemask=np.hstack(data['linemask']))
+        
         smooth_continuum = []
         for campix in data['camerapix']:
             smooth_continuum.append(_smooth_continuum[campix[0]:campix[1]])
@@ -1697,23 +1708,23 @@ class EMLineFit(ContinuumTools):
         #ymin = np.zeros(len(data['cameras']))
         #ymax = np.zeros(len(data['cameras']))
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
-            sigma, good = ivar2var(data['ivar'][ii], sigma=True, allmasked_ok=True)
+            sigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
 
-            bigax1.fill_between(data['wave'][ii], data['flux'][ii]-sigma,
-                                data['flux'][ii]+sigma, color=col1[ii])
+            bigax1.fill_between(data['wave'][ii], apcorr*data['flux'][ii]-sigma,
+                                apcorr*data['flux'][ii]+sigma, color=col1[ii])
             #bigax1.plot(data['wave'][ii], continuum_nodust[ii], alpha=0.5, color='k')
             #bigax1.plot(data['wave'][ii], smooth_continuum[ii], color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
             #bigax1.plot(data['wave'][ii], continuum[ii], color=col2[ii])
             bigax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii], color=col2[ii])
             
             # get the robust range
-            filtflux = median_filter(data['flux'][ii], 51, mode='nearest')
+            filtflux = median_filter(apcorr*data['flux'][ii], 51, mode='nearest')
             #filtflux = median_filter(data['flux'][ii] - _emlinemodel[ii], 51, mode='nearest')
             #perc = np.percentile(filtflux[data['ivar'][ii] > 0], [5, 95])
-            #sigflux = np.std(data['flux'][ii][data['ivar'][ii] > 0])
+            #sigflux = np.std(apcorr*data['flux'][ii][data['ivar'][ii] > 0])
             I = data['ivar'][ii] > 0
             if np.sum(I) > 0:
-                sigflux = np.diff(np.percentile(data['flux'][ii][I], [25, 75]))[0] / 1.349 # robust
+                sigflux = np.diff(np.percentile(apcorr*data['flux'][ii][I], [25, 75]))[0] / 1.349 # robust
             else:
                 sigflux = 0.0
             #sigflux = np.std(filtflux[data['ivar'][ii] > 0])
@@ -1743,6 +1754,8 @@ class EMLineFit(ContinuumTools):
         bigax1.plot(stackwave, _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
         bigax1.plot(stackwave, np.hstack(continuum), color='k', alpha=0.1)#col3[ii])#, alpha=0.3, lw=2)#, color='k')
 
+        #bigax1.plot(continuum_wave_phot, continuum_phot / self.massnorm, color='orange', lw=4)
+
         bigax1.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
                     ha='left', va='center', transform=bigax1.transAxes, fontsize=30)
         if not self.nolegend:
@@ -1770,10 +1783,10 @@ class EMLineFit(ContinuumTools):
         ymin, ymax = 1e6, -1e6
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
             emlinewave = data['wave'][ii]
-            emlineflux = data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
+            emlineflux = apcorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
             emlinemodel = _emlinemodel[ii]
 
-            emlinesigma, good = ivar2var(data['ivar'][ii], sigma=True, allmasked_ok=True)
+            emlinesigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
             emlinewave = emlinewave[good]
             emlineflux = emlineflux[good]
             emlinesigma = emlinesigma[good]
@@ -1884,10 +1897,10 @@ class EMLineFit(ContinuumTools):
             # iterate over cameras
             for ii in np.arange(len(data['cameras'])): # iterate over cameras
                 emlinewave = data['wave'][ii]
-                emlineflux = data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
+                emlineflux = apcorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
                 emlinemodel = _emlinemodel[ii]
 
-                emlinesigma, good = ivar2var(data['ivar'][ii], sigma=True, allmasked_ok=True)
+                emlinesigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
                 emlinewave = emlinewave[good]
                 emlineflux = emlineflux[good]
                 emlinesigma = emlinesigma[good]

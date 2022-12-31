@@ -458,7 +458,7 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
             _emlinemodel_oneline.append(_emlinemodel_oneline1)
 
     # Grab the viewer cutout.
-    width = int(60 / 0.262)   # =1 arcmin
+    width = int(40 / 0.262)   # =1 arcmin
     height = int(width / 1.3) # 3:2 aspect ratio
     
     cutoutpng = os.path.join('/tmp', 'tmp.'+os.path.basename(pngfile))
