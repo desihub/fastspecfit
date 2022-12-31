@@ -95,7 +95,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                 cmd += ' --ntargets {}'.format(args.ntargets)
 
         if args.webqa or args.makeqa:
-            logfile = zbestfiles[ii].replace('.gz', '').replace('.fits', '.log')
+            logfile = os.path.join(zbestfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
             if args.webqa:
                 logfile = logfile.replace('fastspec-', 'fastfit-')
         else:
