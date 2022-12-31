@@ -57,7 +57,8 @@ def fastspec_one(iobj, data, out, meta, CFit, EMFit, broadlinefit=True):
     #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
 
-    cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data)
+    #cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data)
+    cfit, continuummodel, smooth_continuum = CFit.continuum_joint_specfit(data)
     for col in cfit.colnames:
         out[col] = cfit[col]
 
@@ -189,7 +190,9 @@ def fastspec(args=None, comm=None):
     t0 = time.time()
     CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, 
                         verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
-                        minwave=500.0, maxwave=1e4)
+                        minwave=500.0,# maxwave=1e4)
+                        # dev - increase maxwave
+                        maxwave=30e4)
     EMFit = EMLineFit(mapdir=args.mapdir, ssptemplates=args.ssptemplates,
                       verbose=args.verbose)
     Spec = DESISpectra(dr9dir=args.dr9dir)
