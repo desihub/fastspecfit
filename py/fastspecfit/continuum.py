@@ -2256,23 +2256,23 @@ class ContinuumFit(ContinuumTools):
             outprefix = 'fastphot'
 
         if coadd_type == 'healpix':
-            title = 'Survey/Program/HealPix: {}/{}/{}, TARGETID: {}'.format(
+            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
                     metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
-            title = 'Tile/ThruNight: {}/{}, TARGETID/Fiber: {}/{}'.format(
+            title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
-            title = 'Tile/Night: {}/{}, TARGETID/Fiber: {}/{}'.format(
+            title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
                     metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
         elif coadd_type == 'perexp':
-            title = 'Tile/Night/Expid: {}/{}/{}, TARGETID/Fiber: {}/{}'.format(
+            title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
                     metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
