@@ -118,8 +118,8 @@ def desiqa_one(CFit, EMFit, data, fastfit, metadata, coadd_type,
         CFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
                          outprefix=outprefix, outdir=outdir)
     else:
-        EMFit.qa_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
-                          outprefix=outprefix, outdir=outdir)
+        EMFit.qa_joint_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
+                                outprefix=outprefix, outdir=outdir)
     #log.info('Building took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
@@ -410,7 +410,7 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
                                       maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())] for band in CFit.fiber_bands]),
                                       lambda_eff=filters.effective_wavelengths.value)
 
-    # rebuild the best-fitting spectroscopic and photometric models
+    # rebuild the best-fitting spectroscopic model
     stackwave = np.hstack(data['wave'])
 
     continuum, _ = EMFit.SSP2data(EMFit.sspflux, EMFit.sspwave, redshift=redshift, 
@@ -604,7 +604,7 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
         apfactor = synthmodelphot[synthmodelphot['band'] == 'r']['nanomaggies'][0]/fastfit['FLUX_SYNTH_R']
     else:
         apfactor = 1.0
-    factor = apfactor * 1e-17 * 10**(0.4 * 48.6) * allfullwave**2 / (C_LIGHT * 1e13) # [erg/s/cm2/A --> maggies]
+    factor = apfactor * 10**(0.4 * 48.6) * allfullwave**2 / (C_LIGHT * 1e13) / CFit.fluxnorm # [erg/s/cm2/A --> maggies]
     good = allfullspec > 0
     sedax.plot(allfullwave[good]/1e4, -2.5*np.log10(allfullspec[good]*factor[good]), color='gray', alpha=0.5)
 
@@ -1134,7 +1134,7 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
     ppos = specax.get_position()
     x0, y0, x1, y1 = ppos.x0, ppos.y0, ppos.x1, ppos.y1
     plt.text(x1+0.05, (y1-y0)/2+y0, 
-             r'$F_{\lambda}$ ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
+             r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
              ha='center', va='center', 
              transform=fig.transFigure, rotation=270)#, fontsize=)
 

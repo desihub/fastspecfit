@@ -1768,7 +1768,6 @@ class EMLineFit(ContinuumTools):
             bigax1.text(legxpos, legypos, txt, ha='right', va='top',
                         transform=bigax1.transAxes, fontsize=legfntsz,
                         bbox=bbox)
-            bigax1.set_title(title, fontsize=22)
         
         bigax1.set_xlim(wavelims)
         bigax1.set_ylim(ymin, ymax)
@@ -1974,6 +1973,598 @@ class EMLineFit(ContinuumTools):
                  ha='center', va='center', fontsize=30)
             
         plt.subplots_adjust(wspace=0.27, top=tp, bottom=bt, left=lf, right=rt, hspace=0.22)
+
+        self.log.info('Writing {}'.format(pngfile))
+        fig.savefig(pngfile)
+        plt.close()
+
+    def qa_joint_fastspec(self, data, fastspec, metadata, coadd_type='healpix',
+                          spec_wavelims=(3550, 9900), outprefix=None, outdir=None):
+        """QA plot the emission-line spectrum and best-fitting model.
+
+        """
+        from scipy.ndimage import median_filter
+        import matplotlib.pyplot as plt
+        from matplotlib import colors
+        import matplotlib.ticker as ticker
+        import seaborn as sns
+
+        from fastspecfit.util import ivar2var
+
+        sns.set(context='talk', style='ticks', font_scale=1.1)#, rc=rc)
+
+        col1 = [colors.to_hex(col) for col in ['dodgerblue', 'darkseagreen', 'orangered']]
+        col2 = [colors.to_hex(col) for col in ['darkblue', 'darkgreen', 'darkred']]
+        col3 = [colors.to_hex(col) for col in ['blue', 'green', 'red']]
+
+        photcol1 = colors.to_hex('darkblue') # 'darkgreen', 'darkred', 'dodgerblue', 'darkseagreen', 'orangered']]
+        
+        if outdir is None:
+            outdir = '.'
+        if outprefix is None:
+            outprefix = 'fastspec'
+
+        if metadata['PHOTSYS'] == 'S':
+            filters = self.decam
+            allfilters = self.decamwise
+        else:
+            filters = self.bassmzls
+            allfilters = self.bassmzlswise
+    
+        if coadd_type == 'healpix':
+            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+                    metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
+        elif coadd_type == 'cumulative':
+            title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'], metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
+        elif coadd_type == 'pernight':
+            title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
+                    metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
+        elif coadd_type == 'perexp':
+            title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
+                    metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
+                    metadata['TARGETID'], metadata['FIBER'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['TILEID'], metadata['NIGHT'],
+                    metadata['EXPID'], metadata['TARGETID']))
+        elif coadd_type == 'custom':
+            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+                    metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
+        else:
+            pass
+
+        apcorr = fastspec['APCORR']
+        redshift = fastspec['CONTINUUM_Z']
+
+        # rebuild the best-fitting broadband photometric model
+        continuum_phot, synthmodelphot = self.SSP2data(
+            self.sspflux, self.sspwave, redshift=redshift,
+            synthphot=True, AV=fastspec['CONTINUUM_AV'],
+            coeff=fastspec['CONTINUUM_COEFF'] * self.massnorm)
+
+        continuum_wave_phot = self.sspwave * (1 + redshift)
+    
+        wavemin, wavemax = 0.1, 35.0 # 6.0
+        indx_phot = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
+    
+        phot = self.parse_photometry(self.bands,
+                                     maggies=np.array([metadata['FLUX_{}'.format(band.upper())] for band in self.bands]),
+                                     ivarmaggies=np.array([metadata['FLUX_IVAR_{}'.format(band.upper())] for band in self.bands]),
+                                     lambda_eff=allfilters.effective_wavelengths.value,
+                                     min_uncertainty=self.min_uncertainty)
+        fiberphot = self.parse_photometry(self.fiber_bands,
+                                          maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
+                                          lambda_eff=filters.effective_wavelengths.value)
+
+        # rebuild the best-fitting spectroscopic model
+        stackwave = np.hstack(data['wave'])
+
+        continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
+                                     specwave=data['wave'], specres=data['res'],
+                                     cameras=data['cameras'],
+                                     AV=fastspec['CONTINUUM_AV'],
+                                     vdisp=fastspec['CONTINUUM_VDISP'],
+                                     coeff=fastspec['CONTINUUM_COEFF'],
+                                     synthphot=False)
+        
+        residuals = [apcorr*data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
+        
+        if np.all(fastspec['CONTINUUM_COEFF'] == 0):
+            _smooth_continuum = np.zeros_like(stackwave)
+        else:
+            _smooth_continuum, _ = self.smooth_continuum(np.hstack(data['wave']), np.hstack(residuals),
+                                                         np.hstack(data['ivar']), redshift=redshift,
+                                                         linemask=np.hstack(data['linemask']))
+        
+        smooth_continuum = []
+        for campix in data['camerapix']:
+            smooth_continuum.append(_smooth_continuum[campix[0]:campix[1]])
+
+        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], Table(fastspec))
+
+        # individual-line spectra
+        _emlinemodel_oneline = []
+        for refline in self.linetable: # [self.inrange]: # for all lines in range
+            T = Table(fastspec['CONTINUUM_Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
+            for oneline in self.linetable: # need all lines for the model
+                linename = oneline['name']
+                for linecol in ['AMP', 'VSHIFT', 'SIGMA']:
+                    col = linename.upper()+'_'+linecol
+                    if linename == refline['name']:
+                        T.add_column(Column(name=col, data=fastspec[col], dtype=fastspec[col].dtype))
+                    else:
+                        T.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
+            # special case the parameter doublets
+            if refline['name'] == 'mgii_2796':
+                T['MGII_2803_AMP'] = fastspec['MGII_2803_AMP']
+            if refline['name'] == 'oii_3726':
+                T['OII_3729_AMP'] = fastspec['OII_3729_AMP']
+            if refline['name'] == 'sii_6731':
+                T['SII_6716_AMP'] = fastspec['SII_6716_AMP']
+            _emlinemodel_oneline1 = self.emlinemodel_bestfit(data['wave'], data['res'], T)
+            if np.sum(np.hstack(_emlinemodel_oneline1)) > 0:
+                _emlinemodel_oneline.append(_emlinemodel_oneline1)
+
+        # QA choices
+
+        # 8 columns: 3 for the SED, 5 for the spectra, and 8 for the lines
+        # 8 rows: 4 for the SED, 2 each for the spectra, 1 gap, and 3 for the lines
+        ngaprows = 1
+        nlinerows = 3
+        nlinecols = 8
+        nrows = 4 + ngaprows + nlinerows
+        ncols = 8
+        nlinecols = 6
+
+        fullheight = 18 # inches
+        fullwidth = 24
+
+        height_ratios = np.hstack(([1.0]*4, 0.25, [1.0]*nlinerows)) # small gap
+    
+        fig = plt.figure(figsize=(fullwidth, fullheight))
+        gs = fig.add_gridspec(nrows, ncols, height_ratios=height_ratios)#, width_ratios=width_ratios)
+
+        sedax = fig.add_subplot(gs[1:4, 5:]) # rows x cols
+        specax1 = fig.add_subplot(gs[:2, :5])
+        specax2 = fig.add_subplot(gs[2:4, :5])
+        
+        # full spectrum + best-fitting continuum model
+        leg = {
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
+            'dv_narrow': '$\\Delta v_{{\\rm narrow}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift)),
+            'dv_broad': '$\\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
+            'dv_uv': '$\\Delta v_{{\\rm UV}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift)),
+            'sigma_narrow': '$\\sigma_{{\\rm narrow}}$={:.1f} km/s'.format(fastspec['NARROW_SIGMA']),
+            'sigma_broad': '$\\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
+            'sigma_uv': '$\\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastspec['UV_SIGMA']),
+            #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
+            #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
+            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
+            'rchi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['RCHI2']),
+            'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad,narrow}}$={:.3f}'.format(fastspec['DELTA_LINERCHI2']),
+            #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
+            #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
+            'age': '<Age>={:.3f} Gyr'.format(fastspec['CONTINUUM_AGE']),
+            }
+
+        if fastspec['CONTINUUM_VDISP_IVAR'] == 0:
+            leg.update({'vdisp': '$\\sigma_{{\\rm star}}$={:.1f} km/s'.format(fastspec['CONTINUUM_VDISP'])})
+        else:
+            leg.update({'vdisp': '$\\sigma_{{\\rm star}}$={:.1f}+/-{:.1f} km/s'.format(
+                fastspec['CONTINUUM_VDISP'], 1/np.sqrt(fastspec['CONTINUUM_VDISP_IVAR']))})
+            
+        if fastspec['CONTINUUM_AV_IVAR'] == 0:
+            leg.update({'AV': '$A(V)$={:.3f} mag'.format(fastspec['CONTINUUM_AV'])})
+        else:
+            leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
+                fastspec['CONTINUUM_AV'], 1/np.sqrt(fastspec['CONTINUUM_AV_IVAR']))})
+
+        ymin, ymax = 1e6, -1e6
+
+        legxpos, legypos, legfntsz = 0.98, 0.94, 20
+        bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.25)
+
+        for ii in np.arange(len(data['cameras'])): # iterate over cameras
+            sigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
+
+            specax1.plot(data['wave'][ii], apcorr*data['flux'][ii], color=col1[ii])
+            #specax1.fill_between(data['wave'][ii], apcorr*data['flux'][ii]-sigma,
+            #                    apcorr*data['flux'][ii]+sigma, color=col1[ii])
+            specax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii], color=col2[ii])
+            
+            # get the robust range
+            filtflux = median_filter(apcorr*data['flux'][ii], 51, mode='nearest')
+            #filtflux = median_filter(data['flux'][ii] - _emlinemodel[ii], 51, mode='nearest')
+            #perc = np.percentile(filtflux[data['ivar'][ii] > 0], [5, 95])
+            #sigflux = np.std(apcorr*data['flux'][ii][data['ivar'][ii] > 0])
+            I = data['ivar'][ii] > 0
+            if np.sum(I) > 0:
+                sigflux = np.diff(np.percentile(apcorr*data['flux'][ii][I], [25, 75]))[0] / 1.349 # robust
+            else:
+                sigflux = 0.0
+            #sigflux = np.std(filtflux[data['ivar'][ii] > 0])
+            #if -2 * perc[0] < ymin:
+            #    ymin = -2 * perc[0]
+            #ymin[ii] = np.min(data['flux'][ii])
+            #ymax[ii] = np.max(data['flux'][ii])
+            #if ymin < _ymin:
+            #    ymin = _ymin
+            #if ymax > _ymax:
+            #    ymax = _ymax
+            if -1.5 * sigflux < ymin:
+                ymin = -1.5 * sigflux
+            #if perc[1] > ymax:
+            #    ymax = perc[1]
+            #if np.min(filtflux) < ymin:
+            #    ymin = np.min(filtflux) * 0.5
+            if sigflux * 8 > ymax:
+                ymax = sigflux * 8 # 5
+            if np.max(filtflux) > ymax:
+                ymax = np.max(filtflux) * 1.4
+            #print(ymin, ymax)
+
+        specax1.plot(stackwave, _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+        specax1.plot(stackwave, np.hstack(continuum), color='k', alpha=0.1)#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+
+        specax1.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
+                     ha='left', va='center', transform=specax1.transAxes, fontsize=18)
+        if not self.nolegend:
+            txt = '\n'.join((
+                r'{}'.format(leg['zredrock']),
+                r'{} {}'.format(leg['chi2'], leg['age']),
+                r'{}'.format(leg['AV']),
+                r'{}'.format(leg['vdisp']),
+                ))
+            specax1.text(legxpos, legypos, txt, ha='right', va='top',
+                        transform=specax1.transAxes, fontsize=legfntsz,
+                        bbox=bbox)
+            #specax1.set_title(title, fontsize=22)
+        
+        specax1.set_xlim(spec_wavelims)
+        specax1.set_ylim(ymin, ymax)
+        specax1.set_xticklabels([])
+        #specax1.set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
+        #specax1.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
+
+        # full emission-line spectrum + best-fitting lines
+        ymin, ymax = 1e6, -1e6
+        allfullspec, allfullwave = [], []        
+        for ii in np.arange(len(data['cameras'])): # iterate over cameras
+            emlinewave = data['wave'][ii]
+            emlineflux = apcorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
+            emlinemodel = _emlinemodel[ii]
+        
+            emlinesigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
+            emlinewave = emlinewave[good]
+            emlineflux = emlineflux[good]
+            emlinesigma = emlinesigma[good]
+            emlinemodel = emlinemodel[good]
+        
+            specax2.plot(emlinewave, emlineflux, color=col1[ii], alpha=0.7)
+            #specax2.fill_between(emlinewave, emlineflux-emlinesigma,
+            #                     emlineflux+emlinesigma, color=col1[ii], alpha=0.7)
+            specax2.plot(emlinewave, emlinemodel, color=col2[ii], lw=3)
+
+            allfullspec.append(continuum[ii] + _emlinemodel[ii])
+            allfullwave.append(data['wave'][ii])
+            
+            # get the robust range
+            filtflux = median_filter(emlineflux, 51, mode='nearest')
+            #sigflux = np.std(filtflux)
+            #sigflux = np.std(emlineflux)
+            if np.sum(good) > 0:
+                sigflux = np.diff(np.percentile(emlineflux, [25, 75]))[0] / 1.349 # robust
+                if -2 * sigflux < ymin:
+                    ymin = -2 * sigflux
+                #if np.min(filtflux) < ymin:
+                #    ymin = np.min(filtflux)
+                #if np.min(emlinemodel) < ymin:
+                #    ymin = 0.8 * np.min(emlinemodel)
+                if 5 * sigflux > ymax:
+                    ymax = 5 * sigflux
+                if np.max(filtflux) > ymax:
+                    ymax = np.max(filtflux)
+                if np.max(emlinemodel) > ymax:
+                    ymax = np.max(emlinemodel) * 1.2
+                #print(ymin, ymax)
+        
+        allfullwave = np.hstack(allfullwave)
+        allfullspec = np.hstack(allfullspec)
+    
+        if not self.nolegend:
+            txt = '\n'.join((
+                r'{} {}'.format(leg['rchi2'], leg['deltarchi2']),
+                r'{} {}'.format(leg['dv_narrow'], leg['sigma_narrow']),
+                r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),
+                r'{} {}'.format(leg['dv_uv'], leg['sigma_uv']),
+                ))
+            specax2.text(legxpos, legypos, txt, ha='right', va='top',
+                        transform=specax2.transAxes, fontsize=legfntsz,
+                        bbox=bbox)
+            specax2.text(0.03, 0.9, 'Residual Spectrum + Emission-Line Model',
+                         ha='left', va='center', transform=specax2.transAxes,
+                         fontsize=18)
+                
+        specax2.set_xlim(spec_wavelims)
+        specax2.set_ylim(ymin, ymax)
+        specax2.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
+
+        # photometric SED   
+        if np.all(continuum_phot[indx_phot] <= 0):
+            self.log.warning('Best-fitting photometric continuum is all zeros or negative!')
+            continuum_phot_abmag = continuum_phot*0 + np.median(fiberphot['abmag'])
+        else:
+            indx_phot = indx_phot[continuum_phot[indx_phot] > 0] # trim zeros
+            factor = 10**(0.4 * 48.6) * continuum_wave_phot[indx_phot]**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
+            continuum_phot_abmag = -2.5*np.log10(continuum_phot[indx_phot] * factor)
+            sedax.plot(continuum_wave_phot[indx_phot] / 1e4, continuum_phot_abmag, color='tan', zorder=1)
+    
+        sedax.scatter(synthmodelphot['lambda_eff']/1e4, synthmodelphot['abmag'], 
+                   marker='s', s=200, color='k', facecolor='none',
+                   #label=r'$grz$ (spectrum, synthesized)',
+                   alpha=0.8, zorder=2)
+
+        factor = 10**(0.4 * 48.6) * allfullwave**2 / (C_LIGHT * 1e13) / self.fluxnorm # [erg/s/cm2/A --> maggies]
+        good = allfullspec > 0
+        sedax.plot(allfullwave[good]/1e4, -2.5*np.log10(allfullspec[good]*factor[good]), color='gray', alpha=0.5)
+        
+        # we have to set the limits *before* we call errorbar, below!
+        dm = 1.0
+        good = phot['abmag_ivar'] > 0
+        goodlim = phot['abmag_limit'] > 0
+        if np.sum(good) > 0 and np.sum(goodlim) > 0:
+            ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(phot['abmag_limit'][goodlim]), np.nanmax(continuum_phot_abmag))) + dm
+            ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(phot['abmag_limit'][goodlim]), np.nanmin(continuum_phot_abmag))) - dm
+        elif np.sum(good) > 0 and np.sum(goodlim) == 0:
+            ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(continuum_phot_abmag))) + dm
+            ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(continuum_phot_abmag))) - dm
+        elif np.sum(good) == 0 and np.sum(goodlim) > 0:
+            ymin = np.max((np.nanmax(phot['abmag_limit'][goodlim]), np.nanmax(continuum_phot_abmag))) + dm
+            ymax = np.min((np.nanmin(phot['abmag_limit'][goodlim]), np.nanmin(continuum_phot_abmag))) - dm
+        else:
+            good = phot['abmag'] > 0
+            goodlim = phot['abmag_limit'] > 0
+            if np.sum(good) > 0 and np.sum(goodlim) > 0:
+                ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(phot['abmag_limit'][goodlim]))) + dm
+                ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(phot['abmag_limit'][goodlim]))) - dm
+            elif np.sum(good) > 0 and np.sum(goodlim) == 0:                
+                ymin = np.nanmax(phot['abmag'][good]) + dm
+                ymax = np.nanmin(phot['abmag'][good]) - dm
+            elif np.sum(good) == 0 and np.sum(goodlim) > 0:
+                ymin = np.nanmax(phot['abmag_limit'][goodlim]) + dm
+                ymax = np.nanmin(phot['abmag_limit'][goodlim]) - dm
+            else:
+                ymin, ymax = [30, 20]
+            
+        if ymin > 30:
+            ymin = 30
+        if np.isnan(ymin) or np.isnan(ymax):
+            raise('Problem here!')
+    
+        sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
+        sedax.set_xlim(wavemin, wavemax)
+        sedax.set_xscale('log')
+
+        #sedax.set_ylabel('AB mag') 
+        #sedax.set_ylabel(r'Apparent Brightness (AB mag)') 
+        sedax.set_ylim(ymin, ymax)
+        sedax.set_yticklabels([])
+    
+        sedax_twin = sedax.twinx()
+        sedax_twin.set_ylabel('AB mag') 
+        sedax_twin.set_ylim(ymin, ymax)
+    
+        @ticker.FuncFormatter
+        def major_formatter(x, pos):
+            if x > 1:
+                return f'{x:.0f}'
+            else:
+                return f'{x:.1f}'
+        
+        sedax.xaxis.set_major_formatter(major_formatter)
+        sedax.set_xticks([0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
+    
+        # integrated flux / photometry
+        abmag = np.squeeze(phot['abmag'])
+        abmag_limit = np.squeeze(phot['abmag_limit'])
+        abmag_fainterr = np.squeeze(phot['abmag_fainterr'])
+        abmag_brighterr = np.squeeze(phot['abmag_brighterr'])
+        yerr = np.squeeze([abmag_brighterr, abmag_fainterr])
+    
+        dofit = np.where(self.bands_to_fit)[0]
+        if len(dofit) > 0:
+            good = np.where((abmag[dofit] > 0) * (abmag_limit[dofit] == 0))[0]
+            upper = np.where(abmag_limit[dofit] > 0)[0]
+            if len(good) > 0:
+                sedax.errorbar(phot['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
+                            yerr=yerr[:, dofit[good]],
+                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=photcol1,
+                            markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4,
+                            label=r'$grz\,W_{1}W_{2}W_{3}W_{4}$', zorder=2)
+            if len(upper) > 0:
+                sedax.errorbar(phot['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
+                            lolims=True, yerr=0.75,
+                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=photcol1,
+                            markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4)
+    
+        ignorefit = np.where(self.bands_to_fit == False)[0]
+        if len(ignorefit) > 0:
+            good = np.where((abmag[ignorefit] > 0) * (abmag_limit[ignorefit] == 0))[0]
+            upper = np.where(abmag_limit[ignorefit] > 0)[0]
+            if len(good) > 0:
+                sedax.errorbar(phot['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
+                            yerr=yerr[:, ignorefit[good]],
+                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=photcol1,
+                            markerfacecolor='none', elinewidth=3, ecolor=photcol1, capsize=4)
+            if len(upper) > 0:
+                sedax.errorbar(phot['lambda_eff'][ignorefit][upper]/1e4, abmag_limit[ignorefit][upper],
+                            lolims=True, yerr=0.75, fmt='o', markersize=12, markeredgewidth=3,
+                            markeredgecolor=photcol1, markerfacecolor='none', elinewidth=3,
+                            ecolor=photcol1, capsize=5)
+    
+        sedax.plot([spec_wavelims[0]/1e4, spec_wavelims[1]/1e4], [ymin-1, ymin-1],
+                   lw=2, ls='-', color='gray', marker='s')#, alpha=0.5)
+        sedax.text(((spec_wavelims[1]-spec_wavelims[0])/2+spec_wavelims[0]*0.8)/1e4, ymin-1.4,
+                   'DESI x {:.2f}'.format(apcorr), ha='center', va='center', fontsize=10,
+                   color='gray')
+
+        # zoom in on individual emission lines - use linetable!
+        linetable = self.linetable
+        inrange = (linetable['restwave'] * (1+redshift) > spec_wavelims[0]) * (linetable['restwave'] * (1+redshift) < spec_wavelims[1])
+        linetable = linetable[inrange]
+
+        nline = len(set(linetable['plotgroup']))
+
+        plotsig_default = 200.0 # [km/s]
+        plotsig_default_balmer = 500.0 # [km/s]
+        plotsig_default_broad = 2000.0 # [km/s]
+        
+        meanwaves, deltawaves, sigmas, linenames = [], [], [], []
+        for plotgroup in set(linetable['plotgroup']):
+            I = np.where(plotgroup == linetable['plotgroup'])[0]
+            linenames.append(linetable['nicename'][I[0]].replace('-', ' '))
+            meanwaves.append(np.mean(linetable['restwave'][I]))
+            deltawaves.append((np.max(linetable['restwave'][I]) - np.min(linetable['restwave'][I])) / 2)
+        
+            sigmas1 = np.array([fastspec['{}_SIGMA'.format(line.upper())] for line in linetable[I]['name']])
+            sigmas1 = sigmas1[sigmas1 > 0]
+            if len(sigmas1) > 0:
+                plotsig = 1.5*np.mean(sigmas1)
+            else:
+                if np.any(linetable['isbroad'][I]):
+                    if np.any(linetable['isbalmer'][I]):
+                        plotsig = fastspec['BROAD_SIGMA']
+                        if plotsig < 50:
+                            plotsig = fastspec['NARROW_SIGMA']
+                            if plotsig < 50:
+                                plotsig = plotsig_default
+                                #plotsig = plotsig_default_broad
+                    else:
+                        plotsig = fastspec['UV_SIGMA']                    
+                        if plotsig < 50:
+                            plotsig = plotsig_default_broad
+                else:
+                    plotsig = fastspec['NARROW_SIGMA']
+                    if plotsig < 50:
+                        plotsig = plotsig_default
+            sigmas.append(plotsig)
+        
+        srt = np.argsort(meanwaves)
+        meanwaves = np.hstack(meanwaves)[srt]
+        deltawaves = np.hstack(deltawaves)[srt]
+        sigmas = np.hstack(sigmas)[srt]
+        linenames = np.hstack(linenames)[srt]
+        
+        removelabels = np.ones(nline, bool)
+        ymin, ymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
+        
+        ax, irow, icol = [], 5, 0 # skip the gap row
+        for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
+            icol = iax % nlinecols
+            if iax > 0 and iax % nlinecols == 0:
+                irow += 1
+            #print(iax, irow, icol)
+        
+            xx = fig.add_subplot(gs[irow, icol])
+            ax.append(xx)
+        
+            wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
+            wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
+            #print(linename, wmin, wmax)
+        
+            # iterate over cameras
+            for ii in np.arange(len(data['cameras'])): # iterate over cameras
+                emlinewave = data['wave'][ii]
+                emlineflux = apcorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
+                emlinemodel = _emlinemodel[ii]
+        
+                emlinesigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
+                emlinewave = emlinewave[good]
+                emlineflux = emlineflux[good]
+                emlinesigma = emlinesigma[good]
+                emlinemodel = emlinemodel[good]
+        
+                #if ii == 0:
+                #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
+                    
+                emlinemodel_oneline = []
+                for _emlinemodel_oneline1 in _emlinemodel_oneline:
+                    emlinemodel_oneline.append(_emlinemodel_oneline1[ii][good])
+        
+                indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
+                if len(indx) > 1:
+                    removelabels[iax] = False
+                    xx.plot(emlinewave[indx], emlineflux[indx], color=col1[ii], alpha=0.5)
+                    #xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
+                    #                emlineflux[indx]+emlinesigma[indx], color=col1[ii], alpha=0.5)
+                    # plot the individual lines first then the total model
+                    for emlinemodel_oneline1 in emlinemodel_oneline:
+                        if np.sum(emlinemodel_oneline1[indx]) > 0:
+                            #P = emlinemodel_oneline1[indx] > 0
+                            xx.plot(emlinewave[indx], emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[ii])
+                    xx.plot(emlinewave[indx], emlinemodel[indx], color=col2[ii], lw=3)
+                        
+                    #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
+                    #xx.axhline(y=0, color='gray', ls='--')
+        
+                    # get the robust range
+                    sigflux = np.std(emlineflux[indx])
+                    filtflux = median_filter(emlineflux[indx], 3, mode='nearest')
+        
+                    _ymin, _ymax = -1.5 * sigflux, 4 * sigflux
+                    if np.max(emlinemodel[indx]) > _ymax:
+                        _ymax = np.max(emlinemodel[indx]) * 1.2
+                    if np.max(filtflux) > _ymax:
+                        _ymax = np.max(filtflux)
+                    if np.min(emlinemodel[indx]) < _ymin:
+                        _ymin = 0.8 * np.min(emlinemodel[indx])
+                        
+                    if _ymax > ymax[iax]:
+                        ymax[iax] = _ymax
+                    if _ymin < ymin[iax]:
+                        ymin[iax] = _ymin
+        
+                    xx.set_xlim(wmin, wmax)
+                    
+                xx.text(0.03, 0.89, linename, ha='left', va='center',
+                        transform=xx.transAxes, fontsize=12)
+                
+        for iax, xx in enumerate(ax):
+            if removelabels[iax]:
+                xx.set_ylim(0, 1)
+                xx.set_xticklabels([])
+                xx.set_yticklabels([])
+            else:
+                xx.set_ylim(ymin[iax], ymax[iax])
+                xlim = xx.get_xlim()
+                xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
+        
+        # common axis labels
+        tp, bt, lf, rt = 0.95, 0.08, 0.07, 0.94
+        
+        fig.text(lf-0.04, (tp-bt)/2+bt,
+                 r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
+                 ha='center', va='center', rotation='vertical', fontsize=24)
+        #fig.text(lf-0.07, (tp-bt)/4+bt,
+        #         r'Flux Density ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
+        #         ha='center', va='center', rotation='vertical', fontsize=30)
+        fig.text((rt-lf)/2+lf, bt-0.05, r'Observed-frame Wavelength ($\AA$)',
+                 ha='center', va='center', fontsize=24)
+
+        plt.subplots_adjust(wspace=0.3, top=tp, bottom=bt, left=lf, right=rt, hspace=0.3)
+        #plt.subplots_adjust(bottom=0.22, top=0.94, left=0.08, right=0.91)
+        #plt.subplots_adjust(bottom=0.1, top=0.95, left=0.08, right=0.9)
+
+        fig.suptitle(title, fontsize=22)
 
         self.log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
