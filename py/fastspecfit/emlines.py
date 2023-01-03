@@ -2048,7 +2048,7 @@ class EMLineFit(ContinuumTools):
         # rebuild the best-fitting broadband photometric model
         continuum_phot, synthmodelphot = self.SSP2data(
             self.sspflux, self.sspwave, redshift=redshift,
-            synthphot=True, AV=fastspec['CONTINUUM_AV'],
+            synthphot=True, #AV=fastspec['CONTINUUM_AV'],
             coeff=fastspec['CONTINUUM_COEFF'] * self.massnorm)
 
         continuum_wave_phot = self.sspwave * (1 + redshift)
@@ -2071,7 +2071,7 @@ class EMLineFit(ContinuumTools):
         continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
                                      specwave=data['wave'], specres=data['res'],
                                      cameras=data['cameras'],
-                                     AV=fastspec['CONTINUUM_AV'],
+                                     #AV=fastspec['CONTINUUM_AV'],
                                      vdisp=fastspec['CONTINUUM_VDISP'],
                                      coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)

@@ -731,6 +731,7 @@ class DESISpectra(object):
         # photometry.
         t0 = time.time()
         targets = gather_tractorphot(vstack(self.meta), columns=TARGETCOLS, dr9dir=self.dr9dir)
+        #targets = gather_tractorphot(vstack(self.meta), columns=np.hstack((TARGETCOLS, 'FRACFLUX_W1', 'FRACFLUX_W2', 'FRACFLUX_W3', 'FRACFLUX_W4')), dr9dir=self.dr9dir)
 
         # bug! https://github.com/desihub/fastspecfit/issues/75
         #from desitarget.io import releasedict

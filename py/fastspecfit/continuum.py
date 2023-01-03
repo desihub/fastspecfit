@@ -15,12 +15,14 @@ from astropy.table import Table, Column
 
 from fastspecfit.util import C_LIGHT
 
+#import numba
+#@numba.jit(nopython=True)
 def nnls(A, b, maxiter=None, eps=1e-7, v=False):
     # https://en.wikipedia.org/wiki/Non-negative_least_squares#Algorithms
     # not sure what eps should be set to
     m, n = A.shape
     if b.shape[0] != m:
-        raise ValueError(f"Shape mismatch: {A.shape} {b.shape}. Expected: (m, n) (m) ")
+        raise ValueError()#f"Shape mismatch: {A.shape} {b.shape}. Expected: (m, n) (m) ")
     if maxiter is None:
         # this is what scipy does when maxiter is not specified
         maxiter = 3 * n
@@ -38,18 +40,18 @@ def nnls(A, b, maxiter=None, eps=1e-7, v=False):
     c = 0 # iteration count
     # while R != {} and max(w[R]) > eps
     while np.any(R) and w[j] > eps:
-        if v: print(f"{c=}", f"{P=}\n {R=}\n {w=}\n {j=}")
+        #if v: print(f"{c=}", f"{P=}\n {R=}\n {w=}\n {j=}")
         # add j to P, remove j from R
         P[j], R[j] = True, False
         s[P] = np.linalg.inv(ATA[P][:, P]).dot(ATb[P])
         s[R] = 0
         d = 0 # inner loop iteration count, for debugging
-        if v: print(f"{c=}", f"{P=}\n {R=}\n {s=}")
+        #if v: print(f"{c=}", f"{P=}\n {R=}\n {s=}")
         # while P != {} and min(s[P]) < eps
         # make sure P is not empty before checking min s[P]
         while np.any(P) and np.min(s[P]) < eps:
             i = P & (s < eps)
-            if v: print(f" {d=}", f"  {P=}\n  {i=}\n  {s=}\n  {x=}")
+            #if v: print(f" {d=}", f"  {P=}\n  {i=}\n  {s=}\n  {x=}")
             a = np.min(x[i] / (x[i] - s[i]))
             x = x + a * (s - x)
             j = P & (x < eps)
@@ -61,7 +63,7 @@ def nnls(A, b, maxiter=None, eps=1e-7, v=False):
         # w = A.T.dot(b - A.dot(x))
         w = ATb - ATA.dot(x)
         j = np.argmax(R * w)
-        if v: print(f"{c=}", f"{P=}\n {R=}\n {w=}\n {j=}")
+        #if v: print(f"{c=}", f"{P=}\n {R=}\n {w=}\n {j=}")
         c += 1
         if c >= maxiter:
             break
@@ -1429,7 +1431,7 @@ class ContinuumTools(object):
 
 class ContinuumFit(ContinuumTools):
     def __init__(self, ssptemplates=None, minwave=None, maxwave=30e4, nolegend=False,
-                 solve_vdisp=True, constrain_age=False, mapdir=None, verbose=False):
+                 solve_vdisp=True, constrain_age=True, mapdir=None, verbose=False):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -1456,7 +1458,6 @@ class ContinuumFit(ContinuumTools):
         super(ContinuumFit, self).__init__(ssptemplates=ssptemplates, minwave=minwave,
                                            maxwave=maxwave, mapdir=mapdir, verbose=verbose)
 
-        print('Setting constrain_age=False')
         self.nolegend = nolegend
         self.constrain_age = constrain_age
         self.solve_vdisp = solve_vdisp
@@ -1650,12 +1651,31 @@ class ContinuumFit(ContinuumTools):
 
         return out
 
-    def get_meanage(self, coeff):
+    def get_mean_property(self, physical_property, coeff, agekeep,
+                          normalization=None, log10=False):
+        """Compute the mean physical properties, given a set of coefficients.
+
+        """
+        values = self.sspinfo[physical_property][agekeep] # account for age of the universe trimming
+
+        if np.count_nonzero(coeff > 0) == 0:
+            self.log.warning('Coefficients are all zero!')
+            meanvalue = 0.0
+            #raise ValueError
+        else:
+            meanvalue = np.sum(coeff * values) / np.sum(coeff)
+            if normalization:
+                meanvalue /= normalization
+            if log10 and meanvalue > 0:
+                meanvalue = np.log10(meanvalue)
+        
+        return meanvalue
+
+    def get_meanage(self, coeff, agekeep):
         """Compute the light-weighted age, given a set of coefficients.
 
         """
-        nage = len(coeff)
-        age = self.sspinfo['age'][0:nage] # account for age of the universe trimming
+        age = self.sspinfo['age'][agekeep] # account for age of the universe trimming
 
         if np.count_nonzero(coeff > 0) == 0:
             self.log.warning('Coefficients are all zero!')
@@ -2275,9 +2295,10 @@ class ContinuumFit(ContinuumTools):
         coeff, chi2min = self._call_nnls(bestsspflux, specflux, specivar)
         chi2min /= np.sum(specivar > 0) # dof???
 
+
         # Get the light-weighted age and DN(4000).
         bestfit = bestsspflux.dot(coeff)
-        meanage = self.get_meanage(coeff)
+        meanage = self.get_meanage(coeff, agekeep)
 
         flam_ivar = np.hstack(data['ivar']) # specivar is line-masked!
         dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, 
@@ -2528,9 +2549,17 @@ class ContinuumFit(ContinuumTools):
                                          np.hstack((objflamivar, specivar/apcorr**2)))
         chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
 
-        # Get the light-weighted age and DN(4000).
+        # Get the light-weighted physical properties and DN(4000).
         bestfit = bestsspflux.dot(coeff)
-        meanage = self.get_meanage(coeff)
+
+        av = self.get_mean_property('av', coeff, agekeep)                        # [mag]
+        age = self.get_mean_property('age', coeff, agekeep, normalization=1e9)   # [Gyr]
+        zzsun = self.get_mean_property('zzsun', coeff, agekeep, log10=False)     # [log Zsun]
+
+        mstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True)      # [Msun]
+        sfr50 = self.get_mean_property('sfr50', coeff, agekeep, normalization=1/self.massnorm, log10=False)     # [Msun/yr]
+        sfr300 = self.get_mean_property('sfr300', coeff, agekeep, normalization=1/self.massnorm, log10=False)   # [Msun/yr]
+        sfr1000 = self.get_mean_property('sfr1000', coeff, agekeep, normalization=1/self.massnorm, log10=False) # [Msun/yr]
 
         flam_ivar = np.hstack(data['ivar']) # specivar is line-masked!
         dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, 
@@ -2574,9 +2603,9 @@ class ContinuumFit(ContinuumTools):
             fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
 
         if dn4000_ivar > 0:
-            self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr'.format(dn4000, 1/np.sqrt(dn4000_ivar), meanage))
+            self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr'.format(dn4000, 1/np.sqrt(dn4000_ivar), age))
         else:
-            self.log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
+            self.log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, age))
 
         pdb.set_trace()
 
@@ -2619,11 +2648,11 @@ class ContinuumFit(ContinuumTools):
         result['APCORR'] = apcorr
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
         result['CONTINUUM_RCHI2'][0] = chi2min
-        result['CONTINUUM_AV'][0] = AVbest # * u.mag
-        result['CONTINUUM_AV_IVAR'][0] = AVivar # / (u.mag**2)
+        #result['CONTINUUM_AV'][0] = AVbest # * u.mag
+        #result['CONTINUUM_AV_IVAR'][0] = AVivar # / (u.mag**2)
         result['CONTINUUM_VDISP'][0] = vdispbest # * u.kilometer/u.second
         result['CONTINUUM_VDISP_IVAR'][0] = vdispivar # * (u.second/u.kilometer)**2
-        result['CONTINUUM_AGE'] = meanage # * u.Gyr
+        result['CONTINUUM_AGE'] = age # * u.Gyr
         result['DN4000'][0] = dn4000
         result['DN4000_IVAR'][0] = dn4000_ivar
         result['DN4000_MODEL'][0] = dn4000_model
