@@ -5,7 +5,6 @@ fastspecfit.fastspecfit
 
 See sandbox/running-fastspecfit for examples.
 
-
 """
 import pdb # for debugging
 
@@ -192,7 +191,7 @@ def fastspec(args=None, comm=None):
                         verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
                         minwave=500.0,# maxwave=1e4)
                         # dev - increase maxwave
-                        maxwave=30e4)
+                        maxwave=1000e4)#30e4)
     EMFit = EMLineFit(mapdir=args.mapdir, ssptemplates=args.ssptemplates,
                       verbose=args.verbose)
     Spec = DESISpectra(dr9dir=args.dr9dir)

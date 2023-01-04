@@ -95,7 +95,7 @@ class ContinuumTools(object):
 
     """
     def __init__(self, ssptemplates=None, sspversion='v1.0', minwave=None,
-                 maxwave=30e4, mapdir=None, verbose=False):
+                 maxwave=1000e4, mapdir=None, verbose=False):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
@@ -194,9 +194,9 @@ class ContinuumTools(object):
             'BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
 
         self.bands_to_fit = np.ones(len(self.bands), bool)
-        self.log.info('Fitting all WISE bands!')
         #for B in ['W2', 'W3', 'W4']:
-        #    self.bands_to_fit[self.bands == B] = False # drop W2-W4
+        for B in ['W4']:
+            self.bands_to_fit[self.bands == B] = False # drop W2-W4
 
         # rest-frame filters
         self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1']
@@ -1580,11 +1580,17 @@ class ContinuumFit(ContinuumTools):
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
         #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
-        out.add_column(Column(name='CONTINUUM_AGE', length=nobj, dtype='f4', unit=u.Gyr))
-        out.add_column(Column(name='CONTINUUM_AV', length=nobj, dtype='f4', unit=u.mag))
-        out.add_column(Column(name='CONTINUUM_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
-        out.add_column(Column(name='CONTINUUM_VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-        out.add_column(Column(name='CONTINUUM_VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
+        out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+        out.add_column(Column(name='VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
+        out.add_column(Column(name='AV', length=nobj, dtype='f4', unit=u.mag))
+        out.add_column(Column(name='AGE', length=nobj, dtype='f4', unit=u.Gyr))
+        out.add_column(Column(name='ZZSUN', length=nobj, dtype='f4'))
+        out.add_column(Column(name='LOGMSTAR', length=nobj, dtype='f4', unit=u.solMass))
+        out.add_column(Column(name='SFR', length=nobj, dtype='f4', unit=u.solMass/u.year))
+        #out.add_column(Column(name='SFR50', length=nobj, dtype='f4', unit=u.solMass/u.year))
+        #out.add_column(Column(name='SFR300', length=nobj, dtype='f4', unit=u.solMass/u.year))
+        #out.add_column(Column(name='SFR1000', length=nobj, dtype='f4', unit=u.solMass/u.year))
+        
         for cam in ['B', 'R', 'Z']:
             out.add_column(Column(name='CONTINUUM_SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
         #out.add_column(Column(name='CONTINUUM_SNR', length=nobj, shape=(3,), dtype='f4')) # median S/N in each camera
@@ -2552,14 +2558,16 @@ class ContinuumFit(ContinuumTools):
         # Get the light-weighted physical properties and DN(4000).
         bestfit = bestsspflux.dot(coeff)
 
-        av = self.get_mean_property('av', coeff, agekeep)                        # [mag]
+        AV = self.get_mean_property('av', coeff, agekeep)                        # [mag]
         age = self.get_mean_property('age', coeff, agekeep, normalization=1e9)   # [Gyr]
         zzsun = self.get_mean_property('zzsun', coeff, agekeep, log10=False)     # [log Zsun]
+        fagn = self.get_mean_property('fagn', coeff, agekeep)
+        print('#### fagn = ', fagn)
 
-        mstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True)      # [Msun]
-        sfr50 = self.get_mean_property('sfr50', coeff, agekeep, normalization=1/self.massnorm, log10=False)     # [Msun/yr]
-        sfr300 = self.get_mean_property('sfr300', coeff, agekeep, normalization=1/self.massnorm, log10=False)   # [Msun/yr]
-        sfr1000 = self.get_mean_property('sfr1000', coeff, agekeep, normalization=1/self.massnorm, log10=False) # [Msun/yr]
+        logmstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True) # [Msun]
+        sfr = self.get_mean_property('sfr', coeff, agekeep, normalization=1/self.massnorm, log10=False)       # [Msun/yr]
+        #sfr300 = self.get_mean_property('sfr300', coeff, agekeep, normalization=1/self.massnorm, log10=False)   # [Msun/yr]
+        #sfr1000 = self.get_mean_property('sfr1000', coeff, agekeep, normalization=1/self.massnorm, log10=False) # [Msun/yr]
 
         flam_ivar = np.hstack(data['ivar']) # specivar is line-masked!
         dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, 
@@ -2603,11 +2611,11 @@ class ContinuumFit(ContinuumTools):
             fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
 
         if dn4000_ivar > 0:
-            self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr'.format(dn4000, 1/np.sqrt(dn4000_ivar), age))
+            self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr, Mstar={:.4g}'.format(
+                dn4000, 1/np.sqrt(dn4000_ivar), age, logmstar))
         else:
-            self.log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, age))
-
-        pdb.set_trace()
+            self.log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr, Mstar={:.4g}'.format(
+                dn4000, age, logmstar))
 
         png = None
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'
@@ -2624,11 +2632,6 @@ class ContinuumFit(ContinuumTools):
         for camerapix in data['camerapix']:
             continuummodel.append(bestfit[camerapix[0]:camerapix[1]])
             smooth_continuum.append(_smooth_continuum[camerapix[0]:camerapix[1]])
-
-        ## Like above, but with per-camera smoothing.
-        #smooth_continuum = self.smooth_residuals(
-        #    continuummodel, data['wave'], apcorr*data['flux'],
-        #    data['ivar'], data['linemask'], percamera=False)
 
         if False:
             import matplotlib.pyplot as plt
@@ -2648,11 +2651,16 @@ class ContinuumFit(ContinuumTools):
         result['APCORR'] = apcorr
         result['CONTINUUM_COEFF'][0][0:nage] = coeff
         result['CONTINUUM_RCHI2'][0] = chi2min
-        #result['CONTINUUM_AV'][0] = AVbest # * u.mag
-        #result['CONTINUUM_AV_IVAR'][0] = AVivar # / (u.mag**2)
-        result['CONTINUUM_VDISP'][0] = vdispbest # * u.kilometer/u.second
-        result['CONTINUUM_VDISP_IVAR'][0] = vdispivar # * (u.second/u.kilometer)**2
-        result['CONTINUUM_AGE'] = age # * u.Gyr
+        result['VDISP'][0] = vdispbest # * u.kilometer/u.second
+        result['VDISP_IVAR'][0] = vdispivar # * (u.second/u.kilometer)**2
+        result['AV'][0] = AV # * u.mag
+        result['AGE'] = age # * u.Gyr
+        result['ZZSUN'] = zzsun
+        result['LOGMSTAR'] = logmstar
+        result['SFR'] = sfr
+        #result['SFR50'] = sfr50
+        #result['SFR300'] = sfr300
+        #result['SFR1000'] = sfr1000
         result['DN4000'][0] = dn4000
         result['DN4000_IVAR'][0] = dn4000_ivar
         result['DN4000_MODEL'][0] = dn4000_model

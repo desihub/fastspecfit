@@ -2053,7 +2053,7 @@ class EMLineFit(ContinuumTools):
 
         continuum_wave_phot = self.sspwave * (1 + redshift)
     
-        wavemin, wavemax = 0.1, 35.0 # 6.0
+        wavemin, wavemax = 0.1, 1000 # 35.0 # 6.0
         indx_phot = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
     
         phot = self.parse_photometry(self.bands,
@@ -2071,8 +2071,7 @@ class EMLineFit(ContinuumTools):
         continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
                                      specwave=data['wave'], specres=data['res'],
                                      cameras=data['cameras'],
-                                     #AV=fastspec['CONTINUUM_AV'],
-                                     vdisp=fastspec['CONTINUUM_VDISP'],
+                                     vdisp=fastspec['VDISP'],
                                      coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)
         
@@ -2153,24 +2152,22 @@ class EMLineFit(ContinuumTools):
             'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad,narrow}}$={:.3f}'.format(fastspec['DELTA_LINERCHI2']),
             #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
-            'age': '<Age>={:.3f} Gyr'.format(fastspec['CONTINUUM_AGE']),
+            'age': '<Age>$={:.3f}$ Gyr'.format(fastspec['AGE']),
+            'AV': '$A(V)={:.3f}$ mag'.format(fastspec['AV']),
+            'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
+            'sfr50': '$\psi={:.3f}$ Msun/yr'.format(fastspec['SFR']),
+            'zzsun': '$Z/Z_{{\\odot}}={:.3f}$ mag'.format(fastspec['ZZSUN']),
             }
 
-        if fastspec['CONTINUUM_VDISP_IVAR'] == 0:
-            leg.update({'vdisp': '$\\sigma_{{\\rm star}}$={:.1f} km/s'.format(fastspec['CONTINUUM_VDISP'])})
+        if fastspec['VDISP_IVAR'] == 0:
+            leg.update({'vdisp': '$\\sigma_{{\\rm star}}={:.1f}$ km/s'.format(fastspec['VDISP'])})
         else:
-            leg.update({'vdisp': '$\\sigma_{{\\rm star}}$={:.1f}+/-{:.1f} km/s'.format(
-                fastspec['CONTINUUM_VDISP'], 1/np.sqrt(fastspec['CONTINUUM_VDISP_IVAR']))})
+            leg.update({'vdisp': '$\\sigma_{{\\rm star}}={:.1f}\\pm{:.1f}$ km/s'.format(
+                fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))})
             
-        if fastspec['CONTINUUM_AV_IVAR'] == 0:
-            leg.update({'AV': '$A(V)$={:.3f} mag'.format(fastspec['CONTINUUM_AV'])})
-        else:
-            leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
-                fastspec['CONTINUUM_AV'], 1/np.sqrt(fastspec['CONTINUUM_AV_IVAR']))})
-
         ymin, ymax = 1e6, -1e6
 
-        legxpos, legypos, legfntsz = 0.98, 0.94, 20
+        legxpos, legypos, legypos2, legfntsz = 0.98, 0.94, 0.05, 14 # 20
         bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.25)
 
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
@@ -2220,9 +2217,8 @@ class EMLineFit(ContinuumTools):
         if not self.nolegend:
             txt = '\n'.join((
                 r'{}'.format(leg['zredrock']),
-                r'{} {}'.format(leg['chi2'], leg['age']),
-                r'{}'.format(leg['AV']),
                 r'{}'.format(leg['vdisp']),
+                r'{}'.format(leg['chi2']),
                 ))
             specax1.text(legxpos, legypos, txt, ha='right', va='top',
                         transform=specax1.transAxes, fontsize=legfntsz,
@@ -2416,6 +2412,18 @@ class EMLineFit(ContinuumTools):
         sedax.text(((spec_wavelims[1]-spec_wavelims[0])/2+spec_wavelims[0]*0.8)/1e4, ymin-1.4,
                    'DESI x {:.2f}'.format(apcorr), ha='center', va='center', fontsize=10,
                    color='gray')
+
+        if not self.nolegend:
+            txt = '\n'.join((
+                r'{}'.format(leg['AV']),
+                r'{}'.format(leg['mstar']),
+                r'{}'.format(leg['age']),
+                r'{}'.format(leg['zzsun']),
+                r'{}'.format(leg['sfr50']),
+                ))
+            sedax.text(legxpos, legypos2, txt, ha='right', va='bottom',
+                        transform=sedax.transAxes, fontsize=legfntsz,
+                        bbox=bbox)
 
         # zoom in on individual emission lines - use linetable!
         linetable = self.linetable
