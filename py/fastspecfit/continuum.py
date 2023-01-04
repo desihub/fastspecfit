@@ -95,7 +95,7 @@ class ContinuumTools(object):
 
     """
     def __init__(self, ssptemplates=None, sspversion='v1.0', minwave=None,
-                 maxwave=1000e4, mapdir=None, verbose=False):
+                 maxwave=40e4, mapdir=None, verbose=False):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
@@ -195,8 +195,8 @@ class ContinuumTools(object):
 
         self.bands_to_fit = np.ones(len(self.bands), bool)
         #for B in ['W2', 'W3', 'W4']:
-        for B in ['W4']:
-            self.bands_to_fit[self.bands == B] = False # drop W2-W4
+        #for B in ['W4']:
+        #    self.bands_to_fit[self.bands == B] = False # drop W2-W4
 
         # rest-frame filters
         self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1']
@@ -220,7 +220,7 @@ class ContinuumTools(object):
         self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
 
     def _oldinit(self, ssptemplates=None, sspversion='v1.0', metallicity='Z0.0190', 
-                 minwave=None, maxwave=30e4, mapdir=None, verbose=False):
+                 minwave=None, maxwave=40e4, mapdir=None, verbose=False):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
@@ -1430,8 +1430,8 @@ class ContinuumTools(object):
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 
 class ContinuumFit(ContinuumTools):
-    def __init__(self, ssptemplates=None, minwave=None, maxwave=30e4, nolegend=False,
-                 solve_vdisp=True, constrain_age=True, mapdir=None, verbose=False):
+    def __init__(self, ssptemplates=None, minwave=None, maxwave=40e4, nolegend=False,
+                 solve_vdisp=True, constrain_age=False, mapdir=None, verbose=False):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -1462,7 +1462,7 @@ class ContinuumFit(ContinuumTools):
         self.constrain_age = constrain_age
         self.solve_vdisp = solve_vdisp
 
-    def _oldinit(self, ssptemplates=None, minwave=None, maxwave=30e4, nolegend=False,
+    def _oldinit(self, ssptemplates=None, minwave=None, maxwave=40e4, nolegend=False,
                  cache_vdisp=True, solve_vdisp=False, cache_SSPgrid=True,
                  constrain_age=True, mapdir=None, verbose=False):
         """Class to model a galaxy stellar continuum.
@@ -1587,6 +1587,7 @@ class ContinuumFit(ContinuumTools):
         out.add_column(Column(name='ZZSUN', length=nobj, dtype='f4'))
         out.add_column(Column(name='LOGMSTAR', length=nobj, dtype='f4', unit=u.solMass))
         out.add_column(Column(name='SFR', length=nobj, dtype='f4', unit=u.solMass/u.year))
+        out.add_column(Column(name='FAGN', length=nobj, dtype='f4'))
         #out.add_column(Column(name='SFR50', length=nobj, dtype='f4', unit=u.solMass/u.year))
         #out.add_column(Column(name='SFR300', length=nobj, dtype='f4', unit=u.solMass/u.year))
         #out.add_column(Column(name='SFR1000', length=nobj, dtype='f4', unit=u.solMass/u.year))
@@ -1669,7 +1670,10 @@ class ContinuumFit(ContinuumTools):
             meanvalue = 0.0
             #raise ValueError
         else:
-            meanvalue = np.sum(coeff * values) / np.sum(coeff)
+            meanvalue = values.dot(coeff)
+            # the coefficients include the stellar mass normalization
+            if physical_property != 'mstar' and physical_property != 'sfr':
+                meanvalue /= np.sum(coeff) 
             if normalization:
                 meanvalue /= normalization
             if log10 and meanvalue > 0:
@@ -2504,7 +2508,7 @@ class ContinuumFit(ContinuumTools):
                 np.vstack((zsspflam_vdisp, zsspflux_vdisp)),
                 np.hstack((objflam, specflux*apcorr)),
                 np.hstack((objflamivar, specivar/apcorr**2)),
-                xparam=self.vdisp, xlabel=r'$\sigma$ (km/s)', debug=True)
+                xparam=self.vdisp, xlabel=r'$\sigma$ (km/s)', debug=False)#True)
             self.log.info('Fitting for the velocity dispersion took: {:.2f} sec'.format(time.time()-t0))
     
             if vdispivar > 0:
@@ -2562,12 +2566,8 @@ class ContinuumFit(ContinuumTools):
         age = self.get_mean_property('age', coeff, agekeep, normalization=1e9)   # [Gyr]
         zzsun = self.get_mean_property('zzsun', coeff, agekeep, log10=False)     # [log Zsun]
         fagn = self.get_mean_property('fagn', coeff, agekeep)
-        print('#### fagn = ', fagn)
-
         logmstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True) # [Msun]
         sfr = self.get_mean_property('sfr', coeff, agekeep, normalization=1/self.massnorm, log10=False)       # [Msun/yr]
-        #sfr300 = self.get_mean_property('sfr300', coeff, agekeep, normalization=1/self.massnorm, log10=False)   # [Msun/yr]
-        #sfr1000 = self.get_mean_property('sfr1000', coeff, agekeep, normalization=1/self.massnorm, log10=False) # [Msun/yr]
 
         flam_ivar = np.hstack(data['ivar']) # specivar is line-masked!
         dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, 
@@ -2658,12 +2658,10 @@ class ContinuumFit(ContinuumTools):
         result['ZZSUN'] = zzsun
         result['LOGMSTAR'] = logmstar
         result['SFR'] = sfr
-        #result['SFR50'] = sfr50
-        #result['SFR300'] = sfr300
-        #result['SFR1000'] = sfr1000
-        result['DN4000'][0] = dn4000
-        result['DN4000_IVAR'][0] = dn4000_ivar
-        result['DN4000_MODEL'][0] = dn4000_model
+        result['FAGN'] = fagn
+        result['DN4000'] = dn4000
+        result['DN4000_IVAR'] = dn4000_ivar
+        result['DN4000_MODEL'] = dn4000_model
 
         for icam, cam in enumerate(data['cameras']):
             nonzero = continuummodel[icam] != 0

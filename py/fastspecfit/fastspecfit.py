@@ -191,7 +191,7 @@ def fastspec(args=None, comm=None):
                         verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
                         minwave=500.0,# maxwave=1e4)
                         # dev - increase maxwave
-                        maxwave=1000e4)#30e4)
+                        maxwave=40e4)
     EMFit = EMLineFit(mapdir=args.mapdir, ssptemplates=args.ssptemplates,
                       verbose=args.verbose)
     Spec = DESISpectra(dr9dir=args.dr9dir)
@@ -277,7 +277,7 @@ def fastphot(args=None, comm=None):
     # Initialize the continuum-fitting classes.
     t0 = time.time()
     CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, 
-                        minwave=None, maxwave=30e4, solve_vdisp=False, 
+                        minwave=None, maxwave=40e4, solve_vdisp=False, 
                         cache_vdisp=False, verbose=args.verbose)
 
     Spec = DESISpectra(dr9dir=args.dr9dir)

@@ -2053,7 +2053,7 @@ class EMLineFit(ContinuumTools):
 
         continuum_wave_phot = self.sspwave * (1 + redshift)
     
-        wavemin, wavemax = 0.1, 1000 # 35.0 # 6.0
+        wavemin, wavemax = 0.1, 35 # 6.0
         indx_phot = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
     
         phot = self.parse_photometry(self.bands,
@@ -2147,7 +2147,7 @@ class EMLineFit(ContinuumTools):
             'sigma_uv': '$\\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastspec['UV_SIGMA']),
             #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
-            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
+            'cchi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
             'rchi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['RCHI2']),
             'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad,narrow}}$={:.3f}'.format(fastspec['DELTA_LINERCHI2']),
             #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
@@ -2155,8 +2155,9 @@ class EMLineFit(ContinuumTools):
             'age': '<Age>$={:.3f}$ Gyr'.format(fastspec['AGE']),
             'AV': '$A(V)={:.3f}$ mag'.format(fastspec['AV']),
             'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
-            'sfr50': '$\psi={:.3f}$ Msun/yr'.format(fastspec['SFR']),
-            'zzsun': '$Z/Z_{{\\odot}}={:.3f}$ mag'.format(fastspec['ZZSUN']),
+            'sfr': '${{\\rm SFR}}={:.2f}$ Msun/yr'.format(fastspec['SFR']),
+            'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
+            'zzsun': '$Z/Z_{{\\odot}}={:.3f}$'.format(fastspec['ZZSUN']),
             }
 
         if fastspec['VDISP_IVAR'] == 0:
@@ -2179,7 +2180,7 @@ class EMLineFit(ContinuumTools):
             specax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii], color=col2[ii])
             
             # get the robust range
-            filtflux = median_filter(apcorr*data['flux'][ii], 51, mode='nearest')
+            filtflux = median_filter(apcorr*data['flux'][ii], 31, mode='nearest')
             #filtflux = median_filter(data['flux'][ii] - _emlinemodel[ii], 51, mode='nearest')
             #perc = np.percentile(filtflux[data['ivar'][ii] > 0], [5, 95])
             #sigflux = np.std(apcorr*data['flux'][ii][data['ivar'][ii] > 0])
@@ -2204,9 +2205,9 @@ class EMLineFit(ContinuumTools):
             #if np.min(filtflux) < ymin:
             #    ymin = np.min(filtflux) * 0.5
             if sigflux * 8 > ymax:
-                ymax = sigflux * 8 # 5
+                ymax = sigflux * 10 # 5
             if np.max(filtflux) > ymax:
-                ymax = np.max(filtflux) * 1.4
+                ymax = np.max(filtflux) * 1.5
             #print(ymin, ymax)
 
         specax1.plot(stackwave, _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
@@ -2218,7 +2219,6 @@ class EMLineFit(ContinuumTools):
             txt = '\n'.join((
                 r'{}'.format(leg['zredrock']),
                 r'{}'.format(leg['vdisp']),
-                r'{}'.format(leg['chi2']),
                 ))
             specax1.text(legxpos, legypos, txt, ha='right', va='top',
                         transform=specax1.transAxes, fontsize=legfntsz,
@@ -2415,11 +2415,13 @@ class EMLineFit(ContinuumTools):
 
         if not self.nolegend:
             txt = '\n'.join((
-                r'{}'.format(leg['AV']),
-                r'{}'.format(leg['mstar']),
-                r'{}'.format(leg['age']),
+                r'{}'.format(leg['cchi2']),
+                r'{}'.format(leg['fagn']),
                 r'{}'.format(leg['zzsun']),
-                r'{}'.format(leg['sfr50']),
+                r'{}'.format(leg['AV']),
+                r'{}'.format(leg['age']),
+                r'{}'.format(leg['sfr']),
+                r'{}'.format(leg['mstar']),
                 ))
             sedax.text(legxpos, legypos2, txt, ha='right', va='bottom',
                         transform=sedax.transAxes, fontsize=legfntsz,
