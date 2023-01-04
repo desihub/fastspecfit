@@ -7,8 +7,6 @@ MIST isochrones
 C3K_a stellar library
 DL07 dust emission SEDs
 
-conda activate fastspecfit
-
 We choose uniform priors along the following physical dimensions:
 --15 log-age [10 Myr to 14 Gyr, logarithmically spaced]
 --5 log-metallicity [-2 to 0.5 or roughly Z=0.002-0.063]
@@ -24,6 +22,11 @@ And the following fixed parameters:
 
 Note that Figure 3 in Leja et al. 2017 nicely shows the effect of various
 free parameters on the resulting SED.
+
+conda activate fastspecfit
+time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates
+rsync -auvP /Users/ioannis/work/desi/science/gqp/templates/fastspecfit/fastspecfit-templates-v1.0.fits dtn01:"desi/science/gqp/templates/fastspecfit/"
+
 
 '''
 import os, time, pdb
