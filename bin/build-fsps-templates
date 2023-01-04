@@ -1,0 +1,339 @@
+#!/usr/bin/env python
+
+'''Build a set of FSPS templates for use with FastSpecFit.
+
+Chabrier IMF
+MIST isochrones
+C3K_a stellar library
+DL07 dust emission SEDs
+
+conda activate fastspecfit
+
+We choose uniform priors along the following physical dimensions:
+--15 log-age [10 Myr to 14 Gyr, logarithmically spaced]
+--5 log-metallicity [-2 to 0.5 or roughly Z=0.002-0.063]
+--8 tau_dust [0.0 to 2.5, logarithmically spaced]
+--3 q_PAH [0.1 to 6.0] -- prior matches Leja+17
+
+And the following fixed parameters:
+--SSP (sfh=0)
+--Reradiated dust emission
+--Chabrier (2003) IMF
+--No nebular line or continuum emission
+--Power-law dust law with fixed -0.7 slope
+
+Note that Figure 3 in Leja et al. 2017 nicely shows the effect of various
+free parameters on the resulting SED.
+
+'''
+import os, time, pdb
+import numpy as np
+import fitsio, fsps
+from scipy.ndimage import gaussian_filter1d
+
+from astropy.io import fits
+from astropy.table import Table
+from desispec.interpolation import resample_flux
+
+from fastspecfit.util import C_LIGHT
+
+def _convert_sfh(agebins, mformed, epsilon=1e-4, maxage=None):
+    """
+
+    """
+    # create time vector
+    agebins_yrs = 10**agebins.T
+    dt = agebins_yrs[1, :] - agebins_yrs[0, :]
+    bin_edges = np.unique(agebins_yrs)
+    if maxage is None:
+        maxage = agebins_yrs.max()  # can replace maxage with something else, e.g. tuniv
+    t = np.concatenate((bin_edges * (1.-epsilon), bin_edges * (1+epsilon)))
+    t.sort()
+    t = t[1:-1] # remove older than oldest bin, younger than youngest bin
+    fsps_time = maxage - t
+
+    # calculate SFR at each t
+    sfr = mformed / dt
+    sfrout = np.zeros_like(t)
+    sfrout[::2] = sfr
+    sfrout[1::2] = sfr  # * (1+epsilon)
+
+    return (fsps_time / 1e9)[::-1], sfrout[::-1], maxage / 1e9
+
+def main():
+
+    version = 'v1.0'
+
+    ## SSP ages - deprecated
+    #nages = 15
+    #minlogage = 7.0    # =10 Myr
+    #maxlogage = 10.146 # =14 Gyr
+    #logages = np.linspace(minlogage, maxlogage, nages)
+    #logages = np.linspace(minlogage, maxlogage, nages)
+
+    # Choose lookback time bins. 
+    nages = 7
+    tuniv = 13.7 # [Gyr]
+    tbinmax = (tuniv * 0.85) * 1e9
+    lim1, lim2 = 7.4772, 8.0
+    agelims = np.hstack(((0, lim1), np.linspace(lim2, np.log10(tbinmax), nages-2), np.log10(tuniv*1e9)))
+    agelims = 10**agelims / 1e9
+    agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
+
+    logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [yr] in each bin
+
+    #nmets = 4
+    ##nmets = 2
+    #minlogmet = -1.0
+    #maxlogmet = 0.4
+    #logmets = np.linspace(minlogmet, maxlogmet, nmets)
+    logmets = np.array([-1.0, -0.3, 0.0, 0.4])
+    nmets = len(logmets)
+    zsolar = 0.019
+
+    ndusts = 10
+    #ndusts = 2
+    mindust = 0.0
+    minlogdust = -1.7
+    maxlogdust = 0.477
+    dusts = np.hstack((mindust, np.logspace(minlogdust, maxlogdust, ndusts-1)))
+
+    #ndusts = 1
+    #dusts = np.array([0.0])
+    #nmets = 1
+    #logmets = [0.0]
+    
+    nfagns = 3
+    minfagn = 0.0
+    minlogfagn = np.log10(0.1)
+    maxlogfagn = np.log10(2.0)
+    fagns = np.hstack((minfagn, np.logspace(minlogfagn, maxlogfagn, nfagns-1)))
+    
+    #nqpahs = 3
+    ##nqpahs = 2
+    #minqlogpah = np.log10(0.1)
+    #maxqlogpah = np.log10(7.0)
+    #qpahs = np.logspace(minqlogpah, maxqlogpah, nqpahs)
+
+    nsed = nages * nmets * ndusts * nfagns
+    #nsed = nages * nmets * ndusts * nfagns * nqpahs
+
+    #dims = (nages, nmets, ndusts)
+    dims = (nages, nmets, ndusts, nfagns)
+
+    print('Instantiating the StellarPopulation object...', end='')
+    t0 = time.time()
+    sp = fsps.StellarPopulation(compute_vega_mags=False, 
+                                add_dust_emission=True,
+                                add_neb_emission=False,
+                                nebemlineinspec=False,
+                                imf_type=1, # =Chabrier IMF
+                                dust_type=0,
+                                dust_index=-0.7,
+                                #sfh=0 # SSP parameters
+                                #zcontinuous=1,
+                                sfh=3,  # tabular SFH parameters
+                                zcontinuous=3,
+                                )
+    print('...took {:.3f} sec'.format((time.time()-t0)))
+
+    models_dtype = np.dtype(
+        [('logmet', np.float32),
+         ('dust', np.float32),
+         ('fagn', np.float32),
+         #('qpah', np.float32),
+         ('logage', np.float32)])
+
+    # Let's be pedantic about the procedure so we don't mess up the indexing...
+    #dims = (nages, nmets, ndusts, nfagns, nqpahs)
+    models = np.zeros(dims, dtype=models_dtype)
+    
+    for iage, logage in enumerate(logages):
+        for imet, logmet in enumerate(logmets):
+            for idust, dust in enumerate(dusts):
+                models[iage, imet, idust]['logmet'] = logmet
+                models[iage, imet, idust]['dust'] = dust
+                models[iage, imet, idust]['logage'] = logage
+                                
+    for iage, logage in enumerate(logages):
+        for imet, logmet in enumerate(logmets):
+            for idust, dust in enumerate(dusts):
+                for ifagn, fagn in enumerate(fagns):
+                    models[iage, imet, idust, ifagn]['logmet'] = logmet
+                    models[iage, imet, idust, ifagn]['dust'] = dust
+                    models[iage, imet, idust, ifagn]['logage'] = logage
+                    models[iage, imet, idust, ifagn]['fagn'] = fagn
+                                
+    #for iage, logage in enumerate(logages):
+    #    for imet, logmet in enumerate(logmets):
+    #        for idust, dust in enumerate(dusts):
+    #            for ifagn, fagn in enumerate(fagns):
+    #                for iqpah, qpah in enumerate(qpahs):
+    #                    models[iage, imet, idust, ifagn, iqpah]['logmet'] = logmet
+    #                    models[iage, imet, idust, ifagn, iqpah]['dust'] = dust
+    #                    models[iage, imet, idust, ifagn, iqpah]['logage'] = logage
+    #                    models[iage, imet, idust, ifagn, iqpah]['fagn'] = fagn
+    #                    models[iage, imet, idust, ifagn, iqpah]['qpah'] = qpah
+                                
+    models = models.flatten()
+    intsfh = np.ones(nsed, dtype=np.float32)
+    mstar = np.zeros(nsed, dtype=np.float32)
+    mets = np.zeros(nsed, dtype=np.float32)
+    sfr0 = np.zeros(nsed, dtype=np.float32)
+    #sfr50 = np.zeros(nsed, dtype=np.float32)
+    #sfr300 = np.zeros(nsed, dtype=np.float32)
+    #sfr1000 = np.zeros(nsed, dtype=np.float32)
+
+    print('Creating {} model spectra...'.format(nsed), end='')
+    t0 = time.time()
+    for imodel, model in enumerate(models):
+        sp.params['dust1'] = model['dust']
+        sp.params['dust2'] = model['dust']
+        sp.params['logzsol'] = model['logmet']
+        sp.params['fagn'] = model['fagn']
+        #sp.params['duste_qpah'] = model['qpah']
+
+        # SSP spectrum - deprecated
+        #wave, flux = sp.get_spectrum(tage=10.**(logage - 9.0), peraa=True)
+
+        # lookback time of constant SFR
+        agebin_indx = np.where(model['logage'] == np.float32(logages))[0]
+        agebin = agebins[agebin_indx, :][0] # Gyr
+        fspstime = agebin - agebin[0]       # Gyr
+        tage = agebin[1] # time of observation [Gyr] 
+        #print(tage, model['logage'])
+
+        dt = np.diff(agebin) * 1e9          # [yr]
+        sfh = np.zeros_like(fspstime) + 1.0 / dt / 2 # [Msun/yr]
+
+        # force the SFR to go to zero at the edge
+        fspstime = np.hstack((fspstime, fspstime[-1]+1e-4))
+        sfh = np.hstack((sfh, 0.0))
+        Z = np.zeros_like(sfh) + zsolar*10**model['logmet']
+
+        sp.set_tabular_sfh(fspstime, sfh, Z)
+
+        wave, flux = sp.get_spectrum(tage=tage, peraa=True) # tage in Gyr
+        #print(tage, sp.sfr)
+
+        logage = model['logage']
+    
+        lodot = 3.828  # 10^{33} erg/s
+        tenpc2 = (10.0 * 3.085678)**2 * 1e3  # 10^{33} cm^2
+    
+        flux = flux * lodot / (4.0 * np.pi * tenpc2)
+
+        # Resample to constant log-lambda / velocity. In the IR (starting at ~1
+        # micron), take every fourth sampling, to save space.
+        if imodel == 0:
+            pixkms = 25.0                            # pixel size [km/s]
+            irfactor = 4
+            wavesplit = 1e4
+            dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
+            newwave = 10**np.arange(np.log10(np.min(wave)), np.log10(np.max(wave)), dlogwave)
+    
+            isplit = np.argmin(np.abs(newwave-wavesplit)) + 1
+            newwave = np.hstack((newwave[:isplit], newwave[isplit:][::irfactor]))
+            npix = len(newwave)
+    
+            fluxes = np.zeros((npix, nsed), dtype=np.float32)
+
+        newflux = resample_flux(newwave, wave, flux)
+    
+        fluxes[:, imodel] = newflux
+        mstar[imodel] = sp.stellar_mass
+        mets[imodel] = 10.**logmet
+        sfr0[imodel] = sp.sfr
+
+        #if (10.**logage <= 0.05e9):
+        #    sfr50[imodel] = 1.0
+        #if (10.**logage <= 0.3e9):
+        #    sfr300[imodel] = 1.0
+        #if (10.**logage <= 1.0e9):
+        #    sfr1000[imodel] = 1.0
+
+        #import matplotlib.pyplot as plt
+        #plt.clf()
+        #I = np.where((wave > 3500) * (wave < 5600))[0]
+        #J = np.where((newwave > 3500) * (newwave < 3600))[0]
+        #plt.plot(wave[I], flux[I])
+        #plt.plot(newwave[J], fluxes[J, imodel])
+        #plt.show()
+        #pdb.set_trace()
+
+    print('...took {:.3f} min'.format((time.time()-t0)/60))
+
+    # build a velocity dispersion grid
+    vdispmin = 100.0
+    vdispmax = 350.0
+    dvdisp = 25.0
+    nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp)) + 1
+    vdisp = np.linspace(vdispmin, vdispmax, nvdisp)
+
+    # only smooth out to wavesplit
+    I = np.where(newwave < wavesplit)[0]
+    fluxvdisp = []
+    for _vdisp in vdisp:
+        sigma = _vdisp / pixkms # [pixels]
+        _smoothflux = gaussian_filter1d(fluxes[I, :], sigma=sigma, axis=0)
+        smoothflux = fluxes.copy()
+        smoothflux[I, :] = _smoothflux
+        fluxvdisp.append(smoothflux)
+
+    fluxvdisp = np.stack(fluxvdisp, axis=-1) # [npix,nsed,nvdisp]
+
+    #import matplotlib.pyplot as plt
+    #plt.clf()
+    #J = np.where((newwave > 3500) * (newwave < 4300))[0]
+    #plt.plot(newwave[J], fluxes[J, 300])
+    #plt.plot(newwave[J], fluxvdisp[J, 300, nvdisp-1])
+    #plt.show()
+    #pdb.set_trace()
+
+    # Pack everything into a metadata table and write out.
+    meta = Table()
+    meta['age'] = 10**models['logage']
+    meta['zzsun'] = models['logmet']
+    meta['av'] = models['dust'] * 1.086
+    meta['fagn'] = models['fagn']
+    #meta['qpah'] = models['qpah']
+    meta['mstar'] = mstar
+    meta['sfr'] = sfr0
+    #meta['sfr50'] = sfr50
+    #meta['sfr300'] = sfr300
+    #meta['sfr1000'] = sfr1000
+    
+    outdir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit')
+    outfile = os.path.join(outdir, 'fastspecfit-templates-{}.fits'.format(version))
+
+    hduflux1 = fits.PrimaryHDU(fluxes)
+    hduflux1.header['EXTNAME'] = 'FLUX'
+    hduflux1.header['VERSION'] = version
+    hduflux1.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+
+    hduflux2 = fits.ImageHDU(fluxvdisp)
+    hduflux2.header['EXTNAME'] = 'FLUXVDISP'
+    hduflux2.header['VERSION'] = version
+    hduflux2.header['VDISPMIN'] = (vdispmin, 'minimum velocity dispersion [km/s]')
+    hduflux2.header['VDISPMAX'] = (vdispmax, 'maximum velocity dispersion [km/s]')
+    hduflux2.header['VDISPRES'] = (dvdisp, 'velocity dispersion spacing [km/s]')
+    hduflux2.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+
+    hduwave = fits.ImageHDU(newwave)
+    hduwave.header['EXTNAME'] = 'WAVE'
+    hduwave.header['BUNIT'] = 'Angstrom'
+    hduwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+    hduwave.header['PIXSZBLU'] = (pixkms, 'pixel size blueward of PIXSZSPT [km/s]')
+    hduwave.header['PIXSZRED'] = (irfactor*pixkms, 'pixel size redward of PIXSZSPT [km/s]')
+    hduwave.header['PIXSZSPT'] = (newwave[isplit], 'wavelength where pixel size changes [Angstrom]')
+
+    hdutable = fits.convenience.table_to_hdu(meta)
+    hdutable.header['EXTNAME'] = 'METADATA'
+
+    hx = fits.HDUList([hduflux1, hduflux2, hduwave, hdutable])
+
+    print('Writing {} model spectra to {}'.format(nsed, outfile))
+    hx.writeto(outfile, overwrite=True)
+
+if __name__ == '__main__':
+    main()
