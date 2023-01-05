@@ -12,11 +12,7 @@ import numpy as np
 import numba
 
 from astropy.table import Table, Column
-
 from fastspecfit.util import trapz_rebin, C_LIGHT
-from fastspecfit.continuum import ContinuumTools
-
-#from desiutil.log import get_logger, DEBUG
 
 def read_emlines():
     """Read the set of emission lines of interest.
@@ -119,7 +115,7 @@ class EMLineFit(ContinuumTools):
     """Class to fit an emission-line spectrum.
 
     """
-    def __init__(self, chi2_default=0.0, minwave=3000.0, maxwave=10000.0, 
+    def __init__(self, chi2_default=0.0, minspecwave=3000.0, maxspecwave=10000.0, 
                  maxiter=5000, accuracy=1e-2, nolegend=False, 
                  ssptemplates=None, mapdir=None, verbose=False):
         """Class to model an emission-line spectrum.
@@ -128,11 +124,11 @@ class EMLineFit(ContinuumTools):
         ----------
         chi2_default : :class:`float`, optional, defaults to 0.0.
             Default chi2 value for a emission line not fitted.
-        minwave : :class:`float`, optional, defaults to 3000 A.
+        minspecwave : :class:`float`, optional, defaults to 3000 A.
             Minimum observed-frame wavelength, which is used internally for the
             forward modeling of the emission-line spectrum.
-        maxwave : :class:`float`, optional, defaults to 3000 A.
-            Like `minwave` but the maximum observed-frame wavelength.
+        maxspecwave : :class:`float`, optional, defaults to 3000 A.
+            Like `minspecwave` but the maximum observed-frame wavelength.
         maxiter : :class:`int`, optional, defaults to 5000.
             Maximum number of iterations.
         accuracy : :class:`float`, optional, defaults to 0.01.
@@ -159,7 +155,7 @@ class EMLineFit(ContinuumTools):
 
         self.emwave_pixkms = 5.0                                  # pixel size for internal wavelength array [km/s]
         self.dlogwave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
-        self.log10wave = np.arange(np.log10(minwave), np.log10(maxwave), self.dlogwave)
+        self.log10wave = np.arange(np.log10(minspecwave), np.log10(maxspecwave), self.dlogwave)
 
         # default line-sigma for computing upper limits
         self.limitsigma_narrow = 75.0
