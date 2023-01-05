@@ -28,10 +28,6 @@ def _fastspec_one(args):
     """Multiprocessing wrapper."""
     return fastspec_one(*args)
 
-def _fastphot_one(args):
-    """Multiprocessing wrapper."""
-    return fastphot_one(*args)
-
 def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
@@ -52,21 +48,17 @@ def _assign_units_to_columns(fastfit, metadata, Spec, FFit, fastphot=False):
 def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True, fastphot=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
     
-    #log.info('Continuum-fitting object {}'.format(iobj))
-    t0 = time.time()
+    log.info('Working on object {} [targetid={}, z={:.6f}].'.format(
+        iobj, meta['TARGETID'], meta['Z']))
+
     continuummodel, smooth_continuum = FFit.continuum_specfit(data, out, fastphot=fastphot)
-    log.info('Continuum-fitting object {} [targetid={}, z={:.6f}] took {:.2f} sec'.format(
-        iobj, meta['TARGETID'], meta['Z'], time.time()-t0))
 
     # Fit the emission-line spectrum.
     if fastphot:
         emmodel = None
     else:
-        t0 = time.time()
         emmodel = FFit.emline_specfit(data, out, continuummodel, smooth_continuum,
                                       broadlinefit=broadlinefit)
-        log.info('Line-fitting object {} [targetid={}, z={:.6f}] took {:.2f} sec'.format(
-            iobj, meta['TARGETID'], meta['Z'], time.time()-t0))
 
     return out, meta, emmodel
 
@@ -167,11 +159,12 @@ def fastspec(fastphot=False, args=None, comm=None):
         return
 
     data = Spec.read_and_unpack(FFit, fastphot=fastphot, synthphot=True, mp=args.mp)
-    log.info('Read data for {} objects in {:.2f} sec'.format(Spec.ntargets, time.time()-t0))
-
-    out, meta = Spec.init_output(data, FFit=FFit, fastphot=fastphot)
-    log.info('Reading and unpacking the {} spectra to be fitted took {:.2f} seconds.'.format(
+    log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
+
+    t0 = time.time()
+    out, meta = Spec.init_output(data, FFit=FFit, fastphot=fastphot)
+    log.info('Initializing the output tables took {:.2f} seconds.'.format(time.time()-t0))
 
     # Fit in parallel
     t0 = time.time()
@@ -197,7 +190,7 @@ def fastspec(fastphot=False, args=None, comm=None):
             log.critical(errmsg)
             raise ValueError(errmsg)
        
-    log.info('Fitting everything took {:.2f} seconds.'.format(time.time()-t0))
+    log.info('Fitting {} object(s) took {:.2f} seconds.'.format(Spec.ntargets, time.time()-t0))
 
     # Assign units and write out.
     _assign_units_to_columns(out, meta, Spec, FFit, fastphot=fastphot)
@@ -1414,14 +1407,10 @@ class FastFit(ContinuumTools):
         absmag[I01] = absmag_01
         ivarabsmag[I01] = ivarabsmag_01
 
-        #print(kcorr_01, absmag_01)
-        #pdb.set_trace()
-        
-        # get the stellar mass
         nage = len(coeff)
-        mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm
         
         # From Taylor+11, eq 8
+        #mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm
         #https://researchportal.port.ac.uk/ws/files/328938/MNRAS_2011_Taylor_1587_620.pdf
         #mstar = 1.15 + 0.7*(absmag[1]-absmag[3]) - 0.4*absmag[3]
 
@@ -1430,7 +1419,7 @@ class FastFit(ContinuumTools):
         # lines [OII], Hbeta, [OIII], and Halpha
         dfactor = (1 + redshift) * 4.0 * np.pi * self.cosmo.luminosity_distance(redshift).to(u.cm).value**2 / self.fluxnorm
 
-        lums, cfluxes = {}, {}
+        lums = {}
         cwaves = [1500.0, 2800.0, 5100.0]
         labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_5100']
         norms = [1e28, 1e28, 1e10]
@@ -1451,6 +1440,7 @@ class FastFit(ContinuumTools):
             if cflux > 0:
                 lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
+        #cfluxes = {}
         #cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
         #labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
         #for cwave, label in zip(cwaves, labels):
@@ -1472,7 +1462,7 @@ class FastFit(ContinuumTools):
         #    #plt.savefig('desi-users/ioannis/tmp/junk.png')
         #    #pdb.set_trace()
 
-        return kcorr, absmag, ivarabsmag, bestmaggies, mstar, lums, cfluxes
+        return kcorr, absmag, ivarabsmag, bestmaggies, lums
 
     def _call_nnls(self, modelflux, flux, ivar, xparam=None, debug=False,
                    interpolate_coeff=False, xlabel=None):
@@ -1638,6 +1628,8 @@ class FastFit(ContinuumTools):
             SNR_R>3) and REDSHIFT<1).
 
         """
+        tall = time.time()
+
         redshift = result['CONTINUUM_Z']
 
         objflam = data['phot']['flam'].data * self.fluxnorm
@@ -1655,7 +1647,7 @@ class FastFit(ContinuumTools):
         # Photometry-only fitting.
         if fastphot:
             vdispbest, vdispivar = self.vdisp_nominal, 0.0
-            self.log.info('Adopting nominal vdisp={:.2f} km/s'.format(self.vdisp_nominal))
+            self.log.info('Adopting nominal vdisp={:.2f} km/s.'.format(self.vdisp_nominal))
 
             # Get the coefficients and chi2 at the nominal velocity dispersion. 
             t0 = time.time()
@@ -1669,10 +1661,12 @@ class FastFit(ContinuumTools):
             self.log.info('Fitting {} models took {:.2f} seconds.'.format(
                 nage, time.time()-t0))
 
-            continuummodel = bestsspflux.dot(coeff)
             smooth_continuum = None
+            continuummodel = bestsspflux.dot(coeff)
 
-            dn4000_model = 0.0
+            dn4000_model, _ = self.get_dn4000(self.sspwave, continuummodel, rest=True)
+
+            self.log.info('Model Dn(4000)={:.3f}.'.format(dn4000_model))
 
         else:
             # Combine all three cameras; we will unpack them to build the
@@ -1827,21 +1821,23 @@ class FastFit(ContinuumTools):
                 result['CONTINUUM_SMOOTHCORR_B'], result['CONTINUUM_SMOOTHCORR_R'],
                 result['CONTINUUM_SMOOTHCORR_Z']))
 
-            if False:
-                import matplotlib.pyplot as plt
-                fig, ax = plt.subplots(2, 1)
-                for icam in np.arange(len(data['cameras'])): # iterate over cameras
-                    resid = apcorr*data['flux'][icam]-continuummodel[icam]
-                    ax[0].plot(data['wave'][icam], resid)
-                    ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
-                for icam in np.arange(len(data['cameras'])): # iterate over cameras
-                    resid = apcorr*data['flux'][icam]-continuummodel[icam]
-                    pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
-                    ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
-                    ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
-                plt.savefig('junk.png')
-    
-        # Get the light-weighted physical properties.
+            #if False:
+            #    import matplotlib.pyplot as plt
+            #    fig, ax = plt.subplots(2, 1)
+            #    for icam in np.arange(len(data['cameras'])): # iterate over cameras
+            #        resid = apcorr*data['flux'][icam]-continuummodel[icam]
+            #        ax[0].plot(data['wave'][icam], resid)
+            #        ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
+            #    for icam in np.arange(len(data['cameras'])): # iterate over cameras
+            #        resid = apcorr*data['flux'][icam]-continuummodel[icam]
+            #        pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
+            #        ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
+            #        ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
+            #    plt.savefig('junk.png')
+
+        # # Compute K-corrections, rest-frame quantities, and physical properties.
+        kcorr, absmag, ivarabsmag, synth_bestmaggies, lums = self.kcorr_and_absmag(data, continuummodel, coeff)
+
         AV = self.get_mean_property('av', coeff, agekeep)                        # [mag]
         age = self.get_mean_property('age', coeff, agekeep, normalization=1e9)   # [Gyr]
         zzsun = self.get_mean_property('zzsun', coeff, agekeep, log10=False)     # [log Zsun]
@@ -1849,8 +1845,8 @@ class FastFit(ContinuumTools):
         logmstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True) # [Msun]
         sfr = self.get_mean_property('sfr', coeff, agekeep, normalization=1/self.massnorm, log10=False)       # [Msun/yr]
 
-        self.log.info('Age={:.2f} Gyr, Mstar={:.4g} Msun, SFR={:.3f} Msun/yr, fagn={:.3f}'.format(
-            age, logmstar, sfr, fagn))
+        self.log.info('A(V)={:.3f}, Age={:.3f} Gyr, Mstar={:.4g} Msun, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
+            AV, age, logmstar, sfr, zzsun, fagn))
 
         # Pack it in and return.
         result['CONTINUUM_COEFF'][agekeep] = coeff
@@ -1869,6 +1865,8 @@ class FastFit(ContinuumTools):
             result['APCORR'] = apcorr
             result['DN4000'] = dn4000
             result['DN4000_IVAR'] = dn4000_ivar
+
+        log.info('Continuum-fitting took {:.2f} seconds.'.format(time.time()-tall))
 
         return continuummodel, smooth_continuum
 
@@ -2578,6 +2576,8 @@ class FastFit(ContinuumTools):
         """
         from fastspecfit.util import ivar2var
 
+        tall = time.time()
+
         # Combine all three cameras; we will unpack them to build the
         # best-fitting model (per-camera) below.
         redshift = data['zredrock']
@@ -2825,6 +2825,8 @@ class FastFit(ContinuumTools):
         if synthphot:
             modelflux = modelcontinuum[0, :] + modelsmoothcontinuum[0, :] + modelemspectrum[0, :]
             self._synthphot_spectrum(data, result, modelwave, modelflux)
+
+        log.info('Emission-line fitting took {:.2f} seconds.'.format(time.time()-tall))
 
         return modelspectra
 

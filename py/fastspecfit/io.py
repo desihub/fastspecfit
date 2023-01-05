@@ -491,7 +491,7 @@ class DESISpectra(object):
         # Should we not sort...?
         #redrockfiles = np.array(set(np.atleast_1d(redrockfiles)))
         redrockfiles = np.array(sorted(set(np.atleast_1d(redrockfiles))))
-        log.info('Reading and parsing {} unique redrockfile(s)'.format(len(redrockfiles)))
+        log.info('Reading and parsing {} unique redrockfile(s).'.format(len(redrockfiles)))
 
         alltiles = []
         self.redrockfiles, self.specfiles, self.meta = [], [], []
@@ -865,11 +865,13 @@ class DESISpectra(object):
 
         alldata = []
         for ispec, (specfile, meta) in enumerate(zip(self.specfiles, self.meta)):
-            log.info('Reading {} spectra from {}'.format(len(meta), specfile))
+            nobj = len(meta)
+            if nobj == 1:
+                log.info('Reading {} spectrum from {}'.format(nobj, specfile))
+            else:
+                log.info('Reading {} spectra from {}'.format(nobj, specfile))
+
             ebv = CFit.SFDMap.ebv(meta['RA'], meta['DEC'])
-            #if args.fastphot:
-            #    spec, coadd_spec = None, None
-            #else:
 
             if fastphot:
                 spec, coadd_spec = None, None
@@ -1086,7 +1088,11 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
 
-    log.info('Writing results for {:,d} objects to {}'.format(len(out), outfile))
+    nobj = len(out)
+    if nobj == 1:
+        log.info('Writing results for {} object to {}'.format(nobj, outfile))
+    else:
+        log.info('Writing results for {:,d} objects to {}'.format(nobj, outfile))
     
     if outfile.endswith('.gz'):
         tmpfile = outfile[:-3]+'.tmp'
