@@ -99,10 +99,10 @@ def desiqa_one(FFit, data, fastfit, metadata, coadd_type,
                     outprefix=outprefix, outdir=outdir)
     elif fastphot:
         FFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
-                            outprefix=outprefix, outdir=outdir)
+                         outprefix=outprefix, outdir=outdir)
     else:
         FFit.qa_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
-                            outprefix=outprefix, outdir=outdir)
+                         outprefix=outprefix, outdir=outdir)
     #log.info('Building took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
@@ -173,7 +173,7 @@ def fastspec(args=None, comm=None):
                    verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
                    minsspwave=500.0, maxsspwave=40e4)
     Spec = DESISpectra(dr9dir=args.dr9dir)
-    log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
+    log.info('Initializing the classes took {:.2f} sec'.format(time.time()-t0))
 
     # Read the data.
     t0 = time.time()
@@ -189,7 +189,7 @@ def fastspec(args=None, comm=None):
     log.info('Read data for {} objects in {:.2f} sec'.format(Spec.ntargets, time.time()-t0))
 
     out, meta = Spec.init_output(data, FFit=FFit, fastphot=False)
-    log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
+    log.info('Reading and unpacking the {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
 
     # Fit in parallel
@@ -213,7 +213,7 @@ def fastspec(args=None, comm=None):
         log.critical(errmsg)
         raise ValueError(errmsg)
        
-    log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
+    log.info('Fitting everything took {:.2f} seconds.'.format(time.time()-t0))
 
     # Assign units and write out.
     _assign_units_to_columns(out, meta, Spec, FFit, fastphot=False)
@@ -257,7 +257,7 @@ def fastphot(args=None, comm=None):
                         cache_vdisp=False, verbose=args.verbose)
 
     Spec = DESISpectra(dr9dir=args.dr9dir)
-    log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
+    log.info('Initializing the classes took {:.2f} seconds.'.format(time.time()-t0))
 
     # Read the data.
     t0 = time.time()
@@ -271,7 +271,7 @@ def fastphot(args=None, comm=None):
     data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False, mp=args.mp)
     
     out, meta = Spec.init_output(CFit=CFit, fastphot=True)
-    log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
+    log.info('Reading and unpacking the {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
 
     # Fit in parallel
@@ -287,7 +287,7 @@ def fastphot(args=None, comm=None):
     _out = list(zip(*_out))
     out = Table(np.hstack(_out[0]))
     meta = Table(np.hstack(_out[1]))
-    log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
+    log.info('Fitting everything took {:.2f} seconds.'.format(time.time()-t0))
 
     # Assign units and write out.
     _assign_units_to_columns(out, meta, Spec, CFit, fastphot=True)
@@ -1156,7 +1156,7 @@ def build_webqa(FFit, data, fastfit, metadata, coadd_type='healpix',
 
 class FastFit(ContinuumTools):
     def __init__(self, ssptemplates=None, minsspwave=None, maxsspwave=40e4, 
-                 minspecwave=3000.0, maxspecwave=10000.0, chi2_default=0.0, 
+                 minspecwave=3500.0, maxspecwave=9900.0, chi2_default=0.0, 
                  maxiter=5000, accuracy=1e-2, nolegend=False, solve_vdisp=True, 
                  constrain_age=False, mapdir=None, verbose=False):
         """Class to model a galaxy stellar continuum.
@@ -1734,47 +1734,30 @@ class FastFit(ContinuumTools):
                 self.sspflux_vdisp[:, agekeep[Mvdisp], :], self.sspwave, # [npix,nsed,nvdisp]
                 redshift=redshift, specwave=data['wave'], specres=data['res'],
                 cameras=data['cameras'], synthphot=False)#, south=data['photsys'] == 'S')
-            self.log.info('Preparing {}/{} models took {:.2f} seconds.'.format(
-                nMvdisp, nage, time.time()-t0))
 
             zsspflux_vdisp = np.concatenate(zsspflux_vdisp, axis=0)  # [npix,nMvdisp*nvdisp]
             npix, nmodel = zsspflux_vdisp.shape
             zsspflux_vdisp = zsspflux_vdisp.reshape(npix, nMvdisp, self.nvdisp) # [npix,nMvdisp,nvdisp]
 
-            t0 = time.time()
             vdispchi2min, vdispbest, vdispivar, _ = self._call_nnls(
                 zsspflux_vdisp[Ivdisp, :, :], specflux[Ivdisp], specivar[Ivdisp],
                 xparam=self.vdisp, xlabel=r'$\sigma$ (km/s)', debug=False)#True)
-            self.log.info('Fitting for the velocity dispersion took: {:.2f} seconds.'.format(time.time()-t0))
+            self.log.info('Fitting for the velocity dispersion with {}/{} models took {:.2f} seconds.'.format(
+                nMvdisp, nage, time.time()-t0))
 
             if vdispivar > 0:
                 # protect against tiny ivar from becomming infinite in the output table
                 if vdispivar < 1e-5:
                     self.log.warning('vdisp inverse variance is tiny; capping at 1e-5')
                     vdispivar = 1e-5
-                self.log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s'.format(
+                self.log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s.'.format(
                     vdispbest, 1/np.sqrt(vdispivar)))
             else:
                 vdispbest = self.vdisp_nominal
                 self.log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
         else:
-            # Fit at the nominal velocity dispersion.
-            t0 = time.time()
-            zsspflux_novdisp, zsspphot_novdisp = self.SSP2data(
-                self.sspflux_vdisp[:, agekeep, self.vdisp_nominal_indx], self.sspwave, # [npix,nsed,nvdisp]
-                redshift=redshift, specwave=data['wave'], specres=data['res'],
-                cameras=data['cameras'], synthphot=True, south=data['photsys'] == 'S')
-            self.log.info('Preparing {} models took {:.2f} seconds.'.format(nage, time.time()-t0))
-
-            zsspflux_vdisp = np.concatenate(zsspflux_vdisp, axis=0)  # [npix,nage*nvdisp]
-            npix, nmodel = zsspflux_vdisp.shape
-            zsspflux_vdisp = zsspflux_vdisp.reshape(npix, nage, self.nvdisp) # [npix,nage,nvdisp]
-
-            zsspflam_vdisp = zsspphot_vdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nvdisp]
-            zsspflam_vdisp = zsspflam_vdisp.reshape(len(self.bands), nage, self.nvdisp)  # [nband,nage,nvdisp]
-
             if compute_vdisp:
-                self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.2f} km/s'.format(
+                self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.2f} km/s.'.format(
                     self.vdisp_nominal))
             else:
                 self.log.info('Insufficient wavelength covereage to compute vdisp; adopting nominal vdisp={:.2f} km/s'.format(
@@ -1783,6 +1766,7 @@ class FastFit(ContinuumTools):
             vdispbest, vdispivar = self.vdisp_nominal, 0.0
 
         # Get the final set of coefficients and chi2 at the best-fitting velocity dispersion. 
+        t0 = time.time()
         bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
                                               specwave=data['wave'], specres=data['res'],
                                               vdisp=vdispbest, cameras=data['cameras'],
@@ -1794,6 +1778,8 @@ class FastFit(ContinuumTools):
                                          np.hstack((objflam, specflux*apcorr)),
                                          np.hstack((objflamivar, specivar/apcorr**2)))
         chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
+        self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
+            nage, time.time()-t0))
 
         # Get the light-weighted physical properties and DN(4000).
         bestfit = bestsspflux.dot(coeff)
@@ -1847,7 +1833,7 @@ class FastFit(ContinuumTools):
             fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
 
         if dn4000_ivar > 0:
-            self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr, Mstar={:.4g}'.format(
+            self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr, Mstar={:.4g} Msun'.format(
                 dn4000, 1/np.sqrt(dn4000_ivar), age, logmstar))
         else:
             self.log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr, Mstar={:.4g}'.format(
@@ -2663,7 +2649,7 @@ class FastFit(ContinuumTools):
         initmodel = self.bestfit(initfit, redshift, emlinewave, resolution_matrix, camerapix)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar, initmodel)
         nfree = np.sum((initfit['fixed'] == False) * (initfit['tiedtoparam'] == -1))
-        self.log.info('Initial line-fitting with {} free parameters took {:.2f} seconds (niter={}) with rchi2={:.4f}.'.format(
+        self.log.info('Initial line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
             nfree, time.time()-t0, initfit.meta['nfev'], initchi2))
 
         ## Now try adding bround Balmer and helium lines and see if we improve
@@ -2685,7 +2671,7 @@ class FastFit(ContinuumTools):
             broadmodel = self.bestfit(broadfit, redshift, emlinewave, resolution_matrix, camerapix)
             broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel)
             nfree = np.sum((broadfit['fixed'] == False) * (broadfit['tiedtoparam'] == -1))
-            self.log.info('Second (broad) line-fitting with {} free parameters took {:.2f} seconds (niter={}) with rchi2={:.4f}'.format(
+            self.log.info('Second (broad) line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
                 nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
 
             ## Compare chi2 just in and around the broad lines.
@@ -2785,7 +2771,7 @@ class FastFit(ContinuumTools):
         finalmodel = self.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
         finalchi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel)
         nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
-        self.log.info('Final line-fitting with {} free parameters took {:.2f} seconds (niter={}) with rchi2={:.4f}.'.format(
+        self.log.info('Final line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
             nfree, time.time()-t0, finalfit.meta['nfev'], finalchi2))
 
         # Residual spectrum with no emission lines.
@@ -3285,7 +3271,7 @@ class FastFit(ContinuumTools):
         for campix in data['camerapix']:
             smooth_continuum.append(_smooth_continuum[campix[0]:campix[1]])
 
-        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], Table(fastspec))
+        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
         # individual-line spectra
         _emlinemodel_oneline = []
@@ -3306,7 +3292,7 @@ class FastFit(ContinuumTools):
                 T['OII_3729_AMP'] = fastspec['OII_3729_AMP']
             if refline['name'] == 'sii_6731':
                 T['SII_6716_AMP'] = fastspec['SII_6716_AMP']
-            _emlinemodel_oneline1 = self.emlinemodel_bestfit(data['wave'], data['res'], T)
+            _emlinemodel_oneline1 = self.emlinemodel_bestfit(data['wave'], data['res'], T[0])
             if np.sum(np.hstack(_emlinemodel_oneline1)) > 0:
                 _emlinemodel_oneline.append(_emlinemodel_oneline1)
 
@@ -3350,9 +3336,9 @@ class FastFit(ContinuumTools):
             #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
             'age': '<Age>$={:.3f}$ Gyr'.format(fastspec['AGE']),
-            'AV': '$A(V)={:.3f}$ mag'.format(fastspec['AV']),
-            'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
-            'sfr': '${{\\rm SFR}}={:.2f}$ Msun/yr'.format(fastspec['SFR']),
+            'AV': '$A_{{V}}={:.3f}$ mag'.format(fastspec['AV']),
+            'mstar': '$\\log_{{10}}(M_{{*}}/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
+            'sfr': '${{\\rm SFR}}={:.2f}\ M_{{\odot}}/{{\\rm yr}}$'.format(fastspec['SFR']),
             'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
             'zzsun': '$Z/Z_{{\\odot}}={:.3f}$'.format(fastspec['ZZSUN']),
             }
@@ -3616,8 +3602,8 @@ class FastFit(ContinuumTools):
                 r'{}'.format(leg['fagn']),
                 r'{}'.format(leg['zzsun']),
                 r'{}'.format(leg['AV']),
-                r'{}'.format(leg['age']),
                 r'{}'.format(leg['sfr']),
+                r'{}'.format(leg['age']),
                 r'{}'.format(leg['mstar']),
                 ))
             sedax.text(legxpos, legypos2, txt, ha='right', va='bottom',

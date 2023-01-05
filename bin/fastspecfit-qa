@@ -62,9 +62,7 @@ def main(args=None, comm=None):
     """
     import fitsio
     from astropy.table import Table
-    from fastspecfit.continuum import ContinuumFit
-    from fastspecfit.emlines import EMLineFit
-    from fastspecfit.fastspecfit import _desiqa_one, desiqa_one
+    from fastspecfit.fastspecfit import FastFit, _desiqa_one, desiqa_one
     from fastspecfit.io import DESISpectra, read_fastspecfit, DESI_ROOT_NERSC, select
 
     if isinstance(args, (list, tuple, type(None))):
@@ -153,8 +151,7 @@ def main(args=None, comm=None):
 
     # Initialize the continuum- and emission-line fitting classes.
     t0 = time.time()
-    CFit = ContinuumFit(nolegend=args.nolegend, mapdir=args.mapdir)
-    EMFit = EMLineFit(nolegend=args.nolegend, mapdir=args.mapdir)
+    FFit = FastFit(nolegend=args.nolegend, mapdir=args.mapdir)
     Spec = DESISpectra(redux_dir=args.redux_dir, dr9dir=args.dr9dir)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
@@ -171,9 +168,9 @@ def main(args=None, comm=None):
                     redrockfile_prefix=args.redrockfile_prefix,
                     specfile_prefix=args.specfile_prefix,
                     qnfile_prefix=args.qnfile_prefix)
-        data = Spec.read_and_unpack(CFit, fastphot=fastphot, synthphot=True)
+        data = Spec.read_and_unpack(FFit, fastphot=fastphot, synthphot=True)
 
-        qaargs = [(CFit, EMFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
+        qaargs = [(FFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
                    coadd_type, fastphot, args.outdir, args.outprefix, args.webqa)
                    for igal in np.arange(len(indx))]                
         if args.mp > 1:

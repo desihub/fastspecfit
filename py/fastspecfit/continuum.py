@@ -1142,7 +1142,7 @@ class ContinuumTools(object):
         
         #t0 = time.time()
         ##sspflux = sspflux.copy().reshape(npix, nmodel)
-        #self.log.info('Copying the data took: {:.2f} seconds.'.format(time.time()-t0))
+        #self.log.info('Copying the data took {:.2f} seconds.'.format(time.time()-t0))
 
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
@@ -1179,7 +1179,7 @@ class ContinuumTools(object):
                 maggies = np.vstack(maggies.as_array().tolist()).T
                 maggies /= self.fluxnorm * self.massnorm
                 sspphot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, debug=debug)
-                #self.log.info('Synthesizing photometry took: {:.2f} seconds.'.format(time.time()-t0))
+                #self.log.info('Synthesizing photometry took {:.2f} seconds.'.format(time.time()-t0))
 
         # Are we returning per-camera spectra or a single model? Handle that here.
         #t0 = time.time()
@@ -1211,7 +1211,7 @@ class ContinuumTools(object):
                     _datasspflux = _datasspflux.dot(coeff)
                 datasspflux.append(_datasspflux)
                 
-        #self.log.info('Resampling took: {:.2f} seconds.'.format(time.time()-t0))
+        #self.log.info('Resampling took {:.2f} seconds.'.format(time.time()-t0))
 
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
 

@@ -309,7 +309,7 @@ class DESISpectra(object):
             self.fiberassign_dir = fiberassign_dir
 
         if dr9dir is None:
-            self.dr9dir = DR9_DIR_NERSC
+            self.dr9dir = os.environ.get('DR9_DIR', DR9_DIR_NERSC)
         else:
             self.dr9dir = dr9dir
 
@@ -1144,7 +1144,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     else:
         os.rename(tmpfile, outfile)
 
-    log.info('Writing out took {:.2f} sec'.format(time.time()-t0))
+    log.info('Writing out took {:.2f} seconds.'.format(time.time()-t0))
 
 def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
            nights=None, return_index=False):
