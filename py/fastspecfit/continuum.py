@@ -95,7 +95,7 @@ class ContinuumTools(object):
 
     """
     def __init__(self, ssptemplates=None, sspversion='v1.0', minsspwave=None,
-                 maxsspwave=40e4, mapdir=None, verbose=False):
+                 maxsspwave=40e4, mapdir=None, fastphot=False, verbose=False):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
@@ -141,7 +141,6 @@ class ContinuumTools(object):
         self.log.info('Reading {}'.format(self.ssptemplates))
         wave, wavehdr = fitsio.read(self.ssptemplates, ext='WAVE', header=True) # [npix]
         sspflux = fitsio.read(self.ssptemplates, ext='FLUX')  # [npix,nsed]
-        sspflux_vdisp, vdisphdr = fitsio.read(self.ssptemplates, ext='FLUXVDISP', header=True) # [npix,nsed,nvdisp]
         sspinfo = Table(fitsio.read(self.ssptemplates, ext='METADATA'))
 
         # Trim the wavelengths and select the number/ages of the templates.
@@ -152,10 +151,13 @@ class ContinuumTools(object):
 
         self.sspwave = wave[wavekeep]
         self.sspflux = sspflux[wavekeep, :]
-        self.sspflux_vdisp = sspflux_vdisp[wavekeep, :, :]
         self.sspinfo = sspinfo
         self.nsed = len(sspinfo)
         self.npix = len(wavekeep)
+
+        if not fastphot:
+            sspflux_vdisp, vdisphdr = fitsio.read(self.ssptemplates, ext='FLUXVDISP', header=True) # [npix,nsed,nvdisp]
+            self.sspflux_vdisp = sspflux_vdisp[wavekeep, :, :]
 
         self.continuum_pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
         self.pixkms_wavesplit = wavehdr['PIXSZSPT'] # wavelength where the pixel size changes [A]
@@ -1171,6 +1173,8 @@ class ContinuumTools(object):
             factor = (self.fluxnorm * self.massnorm * dfactor / (1.0 + redshift))[np.newaxis, np.newaxis]
             zsspflux = sspflux * factor
         else:
+            errmsg = 'Input redshift not defined or equal to zero!'
+            self.log.warning(errmsg)
             zsspwave = sspwave.copy() # ???
             zsspflux = self.fluxnorm * self.massnorm * sspflux
 

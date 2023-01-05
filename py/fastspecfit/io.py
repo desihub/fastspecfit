@@ -1005,11 +1005,7 @@ class DESISpectra(object):
         for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID']:
             if col in metacols:
                 out[col] = self.meta[col]
-        if fastphot:
-            raise ValueError('Write me')
-            #out = hstack((out, CFit.init_phot_output(nobj)))
-        else:
-            out = hstack((out, FFit.init_output(nobj)))
+        out = hstack((out, FFit.init_output(nobj, fastphot=fastphot)))
 
         # Optionally copy over some quantities of interest from the data
         # dictionary. (This step is not needed when assigning units to the
@@ -1017,8 +1013,9 @@ class DESISpectra(object):
         if data is not None:
             for iobj, _data in enumerate(data):
                 out['CONTINUUM_Z'][iobj] = _data['zredrock']
-                for icam, cam in enumerate(_data['cameras']):
-                    out['CONTINUUM_SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
+                if not fastphot:
+                    for icam, cam in enumerate(_data['cameras']):
+                        out['CONTINUUM_SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
                 for iband, band in enumerate(FFit.fiber_bands):
                     meta['FIBERTOTFLUX_{}'.format(band.upper())][iobj] = _data['fiberphot']['nanomaggies'][iband]
                     #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]

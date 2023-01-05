@@ -49,45 +49,26 @@ def _assign_units_to_columns(fastfit, metadata, Spec, FFit, fastphot=False):
         if col in metacols:
             metadata[col].unit = M[col].unit
 
-def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True):
+def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True, fastphot=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
     
     #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
-    continuummodel, smooth_continuum = FFit.continuum_specfit(data, out)
+    continuummodel, smooth_continuum = FFit.continuum_specfit(data, out, fastphot=fastphot)
     log.info('Continuum-fitting object {} [targetid={}, z={:.6f}] took {:.2f} sec'.format(
         iobj, meta['TARGETID'], meta['Z'], time.time()-t0))
 
     # Fit the emission-line spectrum.
-    t0 = time.time()
-    emmodel = FFit.emline_specfit(data, out, continuummodel, smooth_continuum,
-                                  broadlinefit=broadlinefit)
-    log.info('Line-fitting object {} [targetid={}, z={:.6f}] took {:.2f} sec'.format(
-        iobj, meta['TARGETID'], meta['Z'], time.time()-t0))
+    if fastphot:
+        emmodel = None
+    else:
+        t0 = time.time()
+        emmodel = FFit.emline_specfit(data, out, continuummodel, smooth_continuum,
+                                      broadlinefit=broadlinefit)
+        log.info('Line-fitting object {} [targetid={}, z={:.6f}] took {:.2f} sec'.format(
+            iobj, meta['TARGETID'], meta['Z'], time.time()-t0))
 
     return out, meta, emmodel
-
-def fastphot_one(iobj, data, out, meta, CFit):
-    """Multiprocessing wrapper to run :func:`fastphot` on a single object."""
-
-    #log.info('Continuum-fitting object {}'.format(iobj))
-    t0 = time.time()
-    cfit, _ = CFit.continuum_fastphot(data)
-    for col in cfit.colnames:
-        out[col] = cfit[col]
-
-    # Copy over the reddening-corrected fluxes -- messy!
-    for iband, band in enumerate(CFit.fiber_bands):
-        meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
-        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
-    for iband, band in enumerate(CFit.bands):
-        meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
-        meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
-        
-    log.info('Continuum-fitting object {} [targetid {}] took {:.2f} sec'.format(
-        iobj, meta['TARGETID'], time.time()-t0))
-    
-    return out, meta
 
 def desiqa_one(FFit, data, fastfit, metadata, coadd_type,
                fastphot=False, outdir=None, outprefix=None, webqa=False):
@@ -139,7 +120,7 @@ def parse(options=None):
 
     return args
 
-def fastspec(args=None, comm=None):
+def fastspec(fastphot=False, args=None, comm=None):
     """Main fastspec script.
 
     This script is the engine to model one or more DESI spectra. It initializes
@@ -185,16 +166,16 @@ def fastspec(args=None, comm=None):
     if len(Spec.specfiles) == 0:
         return
 
-    data = Spec.read_and_unpack(FFit, fastphot=False, synthphot=True, mp=args.mp)
+    data = Spec.read_and_unpack(FFit, fastphot=fastphot, synthphot=True, mp=args.mp)
     log.info('Read data for {} objects in {:.2f} sec'.format(Spec.ntargets, time.time()-t0))
 
-    out, meta = Spec.init_output(data, FFit=FFit, fastphot=False)
+    out, meta = Spec.init_output(data, FFit=FFit, fastphot=fastphot)
     log.info('Reading and unpacking the {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], FFit, args.broadlinefit)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], FFit, args.broadlinefit, fastphot)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -205,22 +186,25 @@ def fastspec(args=None, comm=None):
     _out = list(zip(*_out))
     out = Table(np.hstack(_out[0]))
     meta = Table(np.hstack(_out[1]))
-    try:
-        # need to vstack to preserve the wavelength metadata 
-        modelspectra = vstack(_out[2], metadata_conflicts='error')
-    except:
-        errmsg = 'Metadata conflict when stacking model spectra.'
-        log.critical(errmsg)
-        raise ValueError(errmsg)
+    if fastphot:
+        modelspectra = None
+    else:
+        try:
+            # need to vstack to preserve the wavelength metadata 
+            modelspectra = vstack(_out[2], metadata_conflicts='error')
+        except:
+            errmsg = 'Metadata conflict when stacking model spectra.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
        
     log.info('Fitting everything took {:.2f} seconds.'.format(time.time()-t0))
 
     # Assign units and write out.
-    _assign_units_to_columns(out, meta, Spec, FFit, fastphot=False)
+    _assign_units_to_columns(out, meta, Spec, FFit, fastphot=fastphot)
 
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
-                      fastphot=False)
+                      fastphot=fastphot)
 
 def fastphot(args=None, comm=None):
     """Main fastphot script.
@@ -238,62 +222,7 @@ def fastphot(args=None, comm=None):
         Intracommunicator used with MPI parallelism.
 
     """
-    from astropy.table import Table
-    from fastspecfit.continuum import ContinuumFit
-    from fastspecfit.io import DESISpectra, write_fastspecfit
-
-    if isinstance(args, (list, tuple, type(None))):
-        args = parse(args)
-
-    if args.targetids:
-        targetids = [int(x) for x in args.targetids.split(',')]
-    else:
-        targetids = args.targetids
-
-    # Initialize the continuum-fitting classes.
-    t0 = time.time()
-    CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, 
-                        minwave=None, maxwave=40e4, solve_vdisp=False, 
-                        cache_vdisp=False, verbose=args.verbose)
-
-    Spec = DESISpectra(dr9dir=args.dr9dir)
-    log.info('Initializing the classes took {:.2f} seconds.'.format(time.time()-t0))
-
-    # Read the data.
-    t0 = time.time()
-    Spec.select(args.redrockfiles, firsttarget=args.firsttarget,
-                targetids=targetids, ntargets=args.ntargets,
-                redrockfile_prefix=args.redrockfile_prefix,
-                specfile_prefix=args.specfile_prefix,
-                qnfile_prefix=args.qnfile_prefix)
-    if len(Spec.specfiles) == 0:
-        return
-    data = Spec.read_and_unpack(CFit, fastphot=True, synthphot=False, mp=args.mp)
-    
-    out, meta = Spec.init_output(CFit=CFit, fastphot=True)
-    log.info('Reading and unpacking the {} spectra to be fitted took {:.2f} seconds.'.format(
-        Spec.ntargets, time.time()-t0))
-
-    # Fit in parallel
-    t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit)
-               for iobj in np.arange(Spec.ntargets)]
-    if args.mp > 1:
-        import multiprocessing
-        with multiprocessing.Pool(args.mp) as P:
-            _out = P.map(_fastphot_one, fitargs)
-    else:
-        _out = [fastphot_one(*_fitargs) for _fitargs in fitargs]
-    _out = list(zip(*_out))
-    out = Table(np.hstack(_out[0]))
-    meta = Table(np.hstack(_out[1]))
-    log.info('Fitting everything took {:.2f} seconds.'.format(time.time()-t0))
-
-    # Assign units and write out.
-    _assign_units_to_columns(out, meta, Spec, CFit, fastphot=True)
-
-    write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
-                      coadd_type=Spec.coadd_type, fastphot=True)
+    fastspec(fastphot=True, args=args, comm=comm)
 
 def build_webqa(FFit, data, fastfit, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), outprefix=None, outdir=None):
@@ -1158,7 +1087,7 @@ class FastFit(ContinuumTools):
     def __init__(self, ssptemplates=None, minsspwave=None, maxsspwave=40e4, 
                  minspecwave=3500.0, maxspecwave=9900.0, chi2_default=0.0, 
                  maxiter=5000, accuracy=1e-2, nolegend=False, solve_vdisp=True, 
-                 constrain_age=False, mapdir=None, verbose=False):
+                 constrain_age=False, mapdir=None, fastphot=False, verbose=False):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -1197,7 +1126,8 @@ class FastFit(ContinuumTools):
 
         """
         super(FastFit, self).__init__(ssptemplates=ssptemplates, minsspwave=minsspwave,
-                                      maxsspwave=maxsspwave, mapdir=mapdir, verbose=verbose)
+                                      maxsspwave=maxsspwave, mapdir=mapdir, fastphot=fastphot,
+                                      verbose=verbose)
 
         self.nolegend = nolegend
 
@@ -1206,46 +1136,47 @@ class FastFit(ContinuumTools):
         self.solve_vdisp = solve_vdisp
 
         # emission line stuff
-        self.chi2_default = chi2_default
-        self.maxiter = maxiter
-        self.accuracy = accuracy
-        self.nolegend = nolegend
+        if not fastphot:
+            self.chi2_default = chi2_default
+            self.maxiter = maxiter
+            self.accuracy = accuracy
+            self.nolegend = nolegend
+    
+            self.emwave_pixkms = 5.0                                  # pixel size for internal wavelength array [km/s]
+            self.dlogwave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
+            self.log10wave = np.arange(np.log10(minspecwave), np.log10(maxspecwave), self.dlogwave)
+    
+            # default line-sigma for computing upper limits
+            self.limitsigma_narrow = 75.0
+            self.limitsigma_broad = 1200.0 
+            self.wavepad = 5.0 # Angstrom
+    
+            # Establish the names of the parameters and doublets here, at
+            # initialization, because we use them when instantiating the best-fit
+            # model not just when fitting.
+            doublet_names = ['mgii_doublet_ratio', 'oii_doublet_ratio', 'sii_doublet_ratio']
+            doublet_pairs = ['mgii_2803_amp', 'oii_3729_amp', 'sii_6716_amp']
+    
+            param_names = []
+            for param in ['amp', 'vshift', 'sigma']:
+                for linename in self.linetable['name'].data:
+                    param_name = linename+'_'+param
+                    # Use doublet-ratio parameters for close or physical
+                    # doublets. Note that any changes here need to be propagated to
+                    # the XX method, which needs to "know" about these doublets.
+                    if param_name == 'mgii_2796_amp':
+                        param_name = 'mgii_doublet_ratio' # MgII 2796/2803
+                    if param_name == 'oii_3726_amp':
+                        param_name = 'oii_doublet_ratio'  # [OII] 3726/3729
+                    if param_name == 'sii_6731_amp':
+                        param_name = 'sii_doublet_ratio'  # [SII] 6731/6716
+                    param_names.append(param_name)
+            self.param_names = np.hstack(param_names)
+    
+            self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
+            self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
 
-        self.emwave_pixkms = 5.0                                  # pixel size for internal wavelength array [km/s]
-        self.dlogwave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
-        self.log10wave = np.arange(np.log10(minspecwave), np.log10(maxspecwave), self.dlogwave)
-
-        # default line-sigma for computing upper limits
-        self.limitsigma_narrow = 75.0
-        self.limitsigma_broad = 1200.0 
-        self.wavepad = 5.0 # Angstrom
-
-        # Establish the names of the parameters and doublets here, at
-        # initialization, because we use them when instantiating the best-fit
-        # model not just when fitting.
-        doublet_names = ['mgii_doublet_ratio', 'oii_doublet_ratio', 'sii_doublet_ratio']
-        doublet_pairs = ['mgii_2803_amp', 'oii_3729_amp', 'sii_6716_amp']
-
-        param_names = []
-        for param in ['amp', 'vshift', 'sigma']:
-            for linename in self.linetable['name'].data:
-                param_name = linename+'_'+param
-                # Use doublet-ratio parameters for close or physical
-                # doublets. Note that any changes here need to be propagated to
-                # the XX method, which needs to "know" about these doublets.
-                if param_name == 'mgii_2796_amp':
-                    param_name = 'mgii_doublet_ratio' # MgII 2796/2803
-                if param_name == 'oii_3726_amp':
-                    param_name = 'oii_doublet_ratio'  # [OII] 3726/3729
-                if param_name == 'sii_6731_amp':
-                    param_name = 'sii_doublet_ratio'  # [SII] 6731/6716
-                param_names.append(param_name)
-        self.param_names = np.hstack(param_names)
-
-        self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
-        self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
-
-    def init_output(self, nobj=1):
+    def init_output(self, nobj=1, fastphot=False):
         """Initialize the output data table for this class.
 
         """
@@ -1258,15 +1189,11 @@ class FastFit(ContinuumTools):
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
         #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
 
-        for cam in ['B', 'R', 'Z']:
-            out.add_column(Column(name='CONTINUUM_SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
-        #out.add_column(Column(name='CONTINUUM_SNR', length=nobj, shape=(3,), dtype='f4')) # median S/N in each camera
-
-        # maximum correction to the median-smoothed continuum
-        for cam in ['B', 'R', 'Z']:
-            out.add_column(Column(name='CONTINUUM_SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
-        out['CONTINUUM_AV'] = 0.0 #* u.mag
-        out['CONTINUUM_VDISP'] = self.vdisp_nominal # * u.kilometer/u.second
+        if not fastphot:
+            for cam in ['B', 'R', 'Z']:
+                out.add_column(Column(name='CONTINUUM_SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
+            for cam in ['B', 'R', 'Z']:
+                out.add_column(Column(name='CONTINUUM_SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
 
         out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
         out.add_column(Column(name='VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
@@ -1301,66 +1228,67 @@ class FastFit(ContinuumTools):
         #for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
         #    out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
 
-        # Add chi2 metrics
-        out.add_column(Column(name='RCHI2', length=nobj, dtype='f4')) # full-spectrum reduced chi2
-        #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
-        out.add_column(Column(name='LINERCHI2_BROAD', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
-        #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
-        out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
-
-        out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
-        #out.add_column(Column(name='NARROW_Z_ERR', length=nobj, dtype='f8'))
-        out.add_column(Column(name='BROAD_Z', length=nobj, dtype='f8'))
-        #out.add_column(Column(name='BROAD_Z_ERR', length=nobj, dtype='f8'))
-        out.add_column(Column(name='UV_Z', length=nobj, dtype='f8'))
-        #out.add_column(Column(name='UV_Z_ERR', length=nobj, dtype='f8'))
-
-        out.add_column(Column(name='NARROW_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='NARROW_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        out.add_column(Column(name='BROAD_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='BROAD_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        out.add_column(Column(name='UV_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-        #out.add_column(Column(name='UV_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-
-        # special columns for the fitted doublets
-        out.add_column(Column(name='MGII_DOUBLET_RATIO', length=nobj, dtype='f4'))
-        out.add_column(Column(name='OII_DOUBLET_RATIO', length=nobj, dtype='f4'))
-        out.add_column(Column(name='SII_DOUBLET_RATIO', length=nobj, dtype='f4'))
-
-        for line in self.linetable['name']:
-            line = line.upper()
-            out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
-            out.add_column(Column(name='{}_AMP_IVAR'.format(line), length=nobj, dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
-            out.add_column(Column(name='{}_FLUX'.format(line), length=nobj, dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2)))
-            out.add_column(Column(name='{}_FLUX_IVAR'.format(line), length=nobj, dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4/u.erg**2))
-            out.add_column(Column(name='{}_BOXFLUX'.format(line), length=nobj, dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2)))
-            out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4/u.erg**2))
-            
-            out.add_column(Column(name='{}_VSHIFT'.format(line), length=nobj, dtype='f4',
-                                  unit=u.kilometer/u.second))
-            out.add_column(Column(name='{}_SIGMA'.format(line), length=nobj, dtype='f4',
-                                  unit=u.kilometer / u.second))
-            
-            out.add_column(Column(name='{}_CONT'.format(line), length=nobj, dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
-            out.add_column(Column(name='{}_CONT_IVAR'.format(line), length=nobj, dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
-            out.add_column(Column(name='{}_EW'.format(line), length=nobj, dtype='f4',
-                                  unit=u.Angstrom))
-            out.add_column(Column(name='{}_EW_IVAR'.format(line), length=nobj, dtype='f4',
-                                  unit=1/u.Angstrom**2))
-            out.add_column(Column(name='{}_FLUX_LIMIT'.format(line), length=nobj, dtype='f4',
-                                  unit=u.erg/(u.second*u.cm**2)))
-            out.add_column(Column(name='{}_EW_LIMIT'.format(line), length=nobj, dtype='f4',
-                                  unit=u.Angstrom))
-            out.add_column(Column(name='{}_CHI2'.format(line), data=np.repeat(self.chi2_default, nobj), dtype='f4'))
-            out.add_column(Column(name='{}_NPIX'.format(line), length=nobj, dtype=np.int32))
+        if not fastphot:
+            # Add chi2 metrics
+            out.add_column(Column(name='RCHI2', length=nobj, dtype='f4')) # full-spectrum reduced chi2
+            #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
+            out.add_column(Column(name='LINERCHI2_BROAD', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
+            #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
+            out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
+    
+            out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
+            #out.add_column(Column(name='NARROW_Z_ERR', length=nobj, dtype='f8'))
+            out.add_column(Column(name='BROAD_Z', length=nobj, dtype='f8'))
+            #out.add_column(Column(name='BROAD_Z_ERR', length=nobj, dtype='f8'))
+            out.add_column(Column(name='UV_Z', length=nobj, dtype='f8'))
+            #out.add_column(Column(name='UV_Z_ERR', length=nobj, dtype='f8'))
+    
+            out.add_column(Column(name='NARROW_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+            #out.add_column(Column(name='NARROW_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+            out.add_column(Column(name='BROAD_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+            #out.add_column(Column(name='BROAD_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+            out.add_column(Column(name='UV_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+            #out.add_column(Column(name='UV_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+    
+            # special columns for the fitted doublets
+            out.add_column(Column(name='MGII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+            out.add_column(Column(name='OII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+            out.add_column(Column(name='SII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+    
+            for line in self.linetable['name']:
+                line = line.upper()
+                out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
+                                      unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+                out.add_column(Column(name='{}_AMP_IVAR'.format(line), length=nobj, dtype='f4',
+                                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
+                out.add_column(Column(name='{}_FLUX'.format(line), length=nobj, dtype='f4',
+                                      unit=10**(-17)*u.erg/(u.second*u.cm**2)))
+                out.add_column(Column(name='{}_FLUX_IVAR'.format(line), length=nobj, dtype='f4',
+                                      unit=10**34*u.second**2*u.cm**4/u.erg**2))
+                out.add_column(Column(name='{}_BOXFLUX'.format(line), length=nobj, dtype='f4',
+                                      unit=10**(-17)*u.erg/(u.second*u.cm**2)))
+                out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
+                                      unit=10**34*u.second**2*u.cm**4/u.erg**2))
+                
+                out.add_column(Column(name='{}_VSHIFT'.format(line), length=nobj, dtype='f4',
+                                      unit=u.kilometer/u.second))
+                out.add_column(Column(name='{}_SIGMA'.format(line), length=nobj, dtype='f4',
+                                      unit=u.kilometer / u.second))
+                
+                out.add_column(Column(name='{}_CONT'.format(line), length=nobj, dtype='f4',
+                                      unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+                out.add_column(Column(name='{}_CONT_IVAR'.format(line), length=nobj, dtype='f4',
+                                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
+                out.add_column(Column(name='{}_EW'.format(line), length=nobj, dtype='f4',
+                                      unit=u.Angstrom))
+                out.add_column(Column(name='{}_EW_IVAR'.format(line), length=nobj, dtype='f4',
+                                      unit=1/u.Angstrom**2))
+                out.add_column(Column(name='{}_FLUX_LIMIT'.format(line), length=nobj, dtype='f4',
+                                      unit=u.erg/(u.second*u.cm**2)))
+                out.add_column(Column(name='{}_EW_LIMIT'.format(line), length=nobj, dtype='f4',
+                                      unit=u.Angstrom))
+                out.add_column(Column(name='{}_CHI2'.format(line), data=np.repeat(self.chi2_default, nobj), dtype='f4'))
+                out.add_column(Column(name='{}_NPIX'.format(line), length=nobj, dtype=np.int32))
 
         return out
 
@@ -1649,7 +1577,46 @@ class FastFit(ContinuumTools):
 
         return chi2min, xbest, xivar, bestcoeff
 
-    def continuum_specfit(self, data, result):
+    def _qa_dn4000(self):
+        """Simple QA of the Dn(4000) estimate."""
+
+        from fastspecfit.util import ivar2var            
+        import matplotlib.pyplot as plt
+
+        print(dn4000, dn4000_model, 1/np.sqrt(dn4000_ivar))
+
+        restwave = specwave / (1 + redshift) # [Angstrom]
+        flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+        fnu = specflux * flam2fnu # [erg/s/cm2/Hz]
+        fnu_model = bestfit * flam2fnu
+        fnu_ivar = flam_ivar / flam2fnu**2            
+        fnu_sigma, fnu_mask = ivar2var(fnu_ivar, sigma=True)
+
+        #from astropy.table import Table
+        #out = Table()
+        #out['WAVE'] = restwave
+        #out['FLUX'] = specflux
+        #out['IVAR'] = flam_ivar
+        #out.write('desi-39633089965589981.fits', overwrite=True)
+        
+        I = (restwave > 3835) * (restwave < 4115)
+        J = (restwave > 3835) * (restwave < 4115) * fnu_mask
+
+        fig, ax = plt.subplots()
+        ax.fill_between(restwave[I], fnu[I]-fnu_sigma[I], fnu[I]+fnu_sigma[I],
+                        label='Data Dn(4000)={:.3f}+/-{:.3f}'.format(dn4000, 1/np.sqrt(dn4000_ivar)))
+        ax.plot(restwave[I], fnu_model[I], color='red', label='Model Dn(4000)={:.3f}'.format(dn4000_model))
+        ylim = ax.get_ylim()
+        ax.fill_between([3850, 3950], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
+                        color='lightgray', alpha=0.5)
+        ax.fill_between([4000, 4100], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
+                        color='lightgray', alpha=0.5)
+        ax.set_xlabel(r'Rest Wavelength ($\AA$)')
+        ax.set_ylabel(r'$F_{\nu}$ (erg/s/cm2/Hz)')
+        ax.legend()
+        fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
+
+    def continuum_specfit(self, data, result, fastphot=False):
         """Fit the non-negative stellar continuum of a single spectrum.
 
         Parameters
@@ -1671,119 +1638,210 @@ class FastFit(ContinuumTools):
             SNR_R>3) and REDSHIFT<1).
 
         """
-        #result = self.init_spec_output()
         redshift = result['CONTINUUM_Z']
-        #for icam, cam in enumerate(data['cameras']):
-        #    result['CONTINUUM_SNR_{}'.format(cam.upper())] = data['snr'][icam]
 
-        # Combine all three cameras; we will unpack them to build the
-        # best-fitting model (per-camera) below.
-        specwave = np.hstack(data['wave'])
-        specflux = np.hstack(data['flux'])
-        specivar = np.hstack(data['ivar']) * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
-        if np.all(specivar == 0) or np.any(specivar < 0):
-            specivar = np.hstack(data['ivar']) # not great...
-            if np.all(specivar == 0) or np.any(specivar < 0):
-                errmsg = 'All pixels are masked or some inverse variances are negative!'
-                self.log.critical(errmsg)
-                raise ValueError(errmsg)
-
-        # dev - Add the photometry.
         objflam = data['phot']['flam'].data * self.fluxnorm
         objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
         assert(np.all(objflamivar >= 0))
 
-        # dev - aperture correction based on the r-band synthesized and observed
-        # photometry. Note that the right thing to do is to do a quick-and-dirty
-        # fit of the spectrum and used the model-synthesized flux (ignoring any
-        # smooth continuum correction), which will guarantee that the aperture
-        # correction is always positive.
-        apcorr = data['phot']['nanomaggies'][1] / data['synthphot']['nanomaggies'][1]
-        data['apcorr'] = apcorr
-
-        # Prepare the reddened and unreddened SSP templates by redshifting and
-        # normalizing. Note that we ignore templates which are older than the
-        # age of the universe at the redshift of the object.
+        # Optionally ignore templates which are older than the age of the
+        # universe at the redshift of the object.
         if self.constrain_age:
             agekeep = self.younger_than_universe(redshift)
         else:
             agekeep = np.arange(self.nsed)
-
         nage = len(agekeep)
 
-        # Prepare the spectral and photometric models at the galaxy
-        # redshift. And if the wavelength coverage is sufficient, also solve for
-        # the velocity dispersion.
-
-        #compute_vdisp = ((result['CONTINUUM_SNR_B'] > 1) and (result['CONTINUUM_SNR_R'] > 1)) and (redshift < 1.0)
-        restwave = specwave / (1+redshift)
-        Ivdisp = np.where((specivar > 0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
-        compute_vdisp = (len(Ivdisp) > 0) * (np.ptp(restwave[Ivdisp]) > 500.0)
-
-        self.log.info('S/N_B={:.2f}, S/N_R={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
-            result['CONTINUUM_SNR_B'], result['CONTINUUM_SNR_R'], restwave[0], restwave[-1]))
-
-        if self.solve_vdisp or compute_vdisp:
-            
-            # Only use models which likely affect the velocity dispersion.
-            Mvdisp = np.where((self.sspinfo[agekeep]['fagn'] == 0) * (self.sspinfo[agekeep]['av'] == 0.0))[0]
-            nMvdisp = len(Mvdisp)
-
-            t0 = time.time()
-            zsspflux_vdisp, _ = self.SSP2data(
-                self.sspflux_vdisp[:, agekeep[Mvdisp], :], self.sspwave, # [npix,nsed,nvdisp]
-                redshift=redshift, specwave=data['wave'], specres=data['res'],
-                cameras=data['cameras'], synthphot=False)#, south=data['photsys'] == 'S')
-
-            zsspflux_vdisp = np.concatenate(zsspflux_vdisp, axis=0)  # [npix,nMvdisp*nvdisp]
-            npix, nmodel = zsspflux_vdisp.shape
-            zsspflux_vdisp = zsspflux_vdisp.reshape(npix, nMvdisp, self.nvdisp) # [npix,nMvdisp,nvdisp]
-
-            vdispchi2min, vdispbest, vdispivar, _ = self._call_nnls(
-                zsspflux_vdisp[Ivdisp, :, :], specflux[Ivdisp], specivar[Ivdisp],
-                xparam=self.vdisp, xlabel=r'$\sigma$ (km/s)', debug=False)#True)
-            self.log.info('Fitting for the velocity dispersion with {}/{} models took {:.2f} seconds.'.format(
-                nMvdisp, nage, time.time()-t0))
-
-            if vdispivar > 0:
-                # protect against tiny ivar from becomming infinite in the output table
-                if vdispivar < 1e-5:
-                    self.log.warning('vdisp inverse variance is tiny; capping at 1e-5')
-                    vdispivar = 1e-5
-                self.log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s.'.format(
-                    vdispbest, 1/np.sqrt(vdispivar)))
-            else:
-                vdispbest = self.vdisp_nominal
-                self.log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
-        else:
-            if compute_vdisp:
-                self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.2f} km/s.'.format(
-                    self.vdisp_nominal))
-            else:
-                self.log.info('Insufficient wavelength covereage to compute vdisp; adopting nominal vdisp={:.2f} km/s'.format(
-                    self.vdisp_nominal))
-                
+        # Photometry-only fitting.
+        if fastphot:
             vdispbest, vdispivar = self.vdisp_nominal, 0.0
+            self.log.info('Adopting nominal vdisp={:.2f} km/s'.format(self.vdisp_nominal))
 
-        # Get the final set of coefficients and chi2 at the best-fitting velocity dispersion. 
-        t0 = time.time()
-        bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
-                                              specwave=data['wave'], specres=data['res'],
-                                              vdisp=vdispbest, cameras=data['cameras'],
-                                              south=data['photsys'] == 'S', synthphot=True)
-        bestsspflux = np.concatenate(bestsspflux, axis=0)
-        bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
+            # Get the coefficients and chi2 at the nominal velocity dispersion. 
+            t0 = time.time()
+            bestsspflux, bestphot = self.SSP2data(self.sspflux_vdisp[:, agekeep, self.vdisp_nominal_indx], 
+                                                  self.sspwave, redshift=redshift,
+                                                  south=data['photsys'] == 'S', synthphot=True)
+            bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
+    
+            coeff, chi2min = self._call_nnls(bestflam, objflam, objflamivar)
+            chi2min /= np.sum(objflamivar > 0) # dof???
+            self.log.info('Fitting {} models took {:.2f} seconds.'.format(
+                nage, time.time()-t0))
 
-        coeff, chi2min = self._call_nnls(np.vstack((bestflam, bestsspflux)),
-                                         np.hstack((objflam, specflux*apcorr)),
-                                         np.hstack((objflamivar, specivar/apcorr**2)))
-        chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
-        self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
-            nage, time.time()-t0))
+            continuummodel = bestsspflux.dot(coeff)
+            smooth_continuum = None
 
-        # Get the light-weighted physical properties and DN(4000).
-        bestfit = bestsspflux.dot(coeff)
+            dn4000_model = 0.0
 
+        else:
+            # Combine all three cameras; we will unpack them to build the
+            # best-fitting model (per-camera) below.
+            specwave = np.hstack(data['wave'])
+            specflux = np.hstack(data['flux'])
+            specivar = np.hstack(data['ivar']) * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
+            if np.all(specivar == 0) or np.any(specivar < 0):
+                specivar = np.hstack(data['ivar']) # not great...
+                if np.all(specivar == 0) or np.any(specivar < 0):
+                    errmsg = 'All pixels are masked or some inverse variances are negative!'
+                    self.log.critical(errmsg)
+                    raise ValueError(errmsg)
+    
+            # Aperture correction based on the r-band synthesized and observed
+            # photometry. Note that the right thing to do is to do a quick-and-dirty
+            # fit of the spectrum and used the model-synthesized flux (ignoring any
+            # smooth continuum correction), which will guarantee that the aperture
+            # correction is always positive.
+            apcorr = data['phot']['nanomaggies'][1] / data['synthphot']['nanomaggies'][1]
+            data['apcorr'] = apcorr
+    
+            # Prepare the spectral and photometric models at the galaxy
+            # redshift. And if the wavelength coverage is sufficient, also solve for
+            # the velocity dispersion.
+    
+            #compute_vdisp = ((result['CONTINUUM_SNR_B'] > 1) and (result['CONTINUUM_SNR_R'] > 1)) and (redshift < 1.0)
+            restwave = specwave / (1+redshift)
+            Ivdisp = np.where((specivar > 0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
+            compute_vdisp = (len(Ivdisp) > 0) * (np.ptp(restwave[Ivdisp]) > 500.0)
+    
+            self.log.info('S/N_B={:.2f}, S/N_R={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
+                result['CONTINUUM_SNR_B'], result['CONTINUUM_SNR_R'], restwave[0], restwave[-1]))
+    
+            if self.solve_vdisp or compute_vdisp:
+                
+                # Only use models which likely affect the velocity dispersion.
+                Mvdisp = np.where((self.sspinfo[agekeep]['fagn'] == 0) * (self.sspinfo[agekeep]['av'] == 0.0))[0]
+                nMvdisp = len(Mvdisp)
+    
+                t0 = time.time()
+                zsspflux_vdisp, _ = self.SSP2data(
+                    self.sspflux_vdisp[:, agekeep[Mvdisp], :], self.sspwave, # [npix,nsed,nvdisp]
+                    redshift=redshift, specwave=data['wave'], specres=data['res'],
+                    cameras=data['cameras'], synthphot=False)#, south=data['photsys'] == 'S')
+    
+                zsspflux_vdisp = np.concatenate(zsspflux_vdisp, axis=0)  # [npix,nMvdisp*nvdisp]
+                npix, nmodel = zsspflux_vdisp.shape
+                zsspflux_vdisp = zsspflux_vdisp.reshape(npix, nMvdisp, self.nvdisp) # [npix,nMvdisp,nvdisp]
+    
+                vdispchi2min, vdispbest, vdispivar, _ = self._call_nnls(
+                    zsspflux_vdisp[Ivdisp, :, :], specflux[Ivdisp], specivar[Ivdisp],
+                    xparam=self.vdisp, xlabel=r'$\sigma$ (km/s)', debug=False)#True)
+                self.log.info('Fitting for the velocity dispersion with {}/{} models took {:.2f} seconds.'.format(
+                    nMvdisp, nage, time.time()-t0))
+    
+                if vdispivar > 0:
+                    # protect against tiny ivar from becomming infinite in the output table
+                    if vdispivar < 1e-5:
+                        self.log.warning('vdisp inverse variance is tiny; capping at 1e-5')
+                        vdispivar = 1e-5
+                    self.log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s.'.format(
+                        vdispbest, 1/np.sqrt(vdispivar)))
+                else:
+                    vdispbest = self.vdisp_nominal
+                    self.log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
+
+                # Get the final set of coefficients and chi2 at the best-fitting velocity dispersion. 
+                t0 = time.time()
+                bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
+                                                      specwave=data['wave'], specres=data['res'],
+                                                      vdisp=vdispbest, cameras=data['cameras'],
+                                                      south=data['photsys'] == 'S', synthphot=True)
+                bestsspflux = np.concatenate(bestsspflux, axis=0)
+                bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
+        
+                coeff, chi2min = self._call_nnls(np.vstack((bestflam, bestsspflux)),
+                                                 np.hstack((objflam, specflux*apcorr)),
+                                                 np.hstack((objflamivar, specivar/apcorr**2)))
+                chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
+                self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
+                    nage, time.time()-t0))
+            else:
+                if compute_vdisp:
+                    self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.2f} km/s.'.format(
+                        self.vdisp_nominal))
+                else:
+                    self.log.info('Insufficient wavelength covereage to compute vdisp; adopting nominal vdisp={:.2f} km/s'.format(
+                        self.vdisp_nominal))
+                    
+                vdispbest, vdispivar = self.vdisp_nominal, 0.0
+
+                # Get the final set of coefficients and chi2 at the nominal velocity dispersion. 
+                t0 = time.time()
+                bestsspflux, bestphot = self.SSP2data(self.sspflux_vdisp[:, agekeep, self.vdisp_nominal_indx], 
+                                                      self.sspwave, redshift=redshift,
+                                                      specwave=data['wave'], specres=data['res'],
+                                                      vdisp=None, cameras=data['cameras'],
+                                                      south=data['photsys'] == 'S', synthphot=True)
+                bestsspflux = np.concatenate(bestsspflux, axis=0)
+                bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
+        
+                coeff, chi2min = self._call_nnls(np.vstack((bestflam, bestsspflux)),
+                                                 np.hstack((objflam, specflux*apcorr)),
+                                                 np.hstack((objflamivar, specivar/apcorr**2)))
+                chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
+                self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
+                    nage, time.time()-t0))
+
+            bestfit = bestsspflux.dot(coeff)
+
+            # Get DN(4000).
+            flam_ivar = np.hstack(data['ivar']) # specivar is line-masked so we can't use it!
+            dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, 
+                                                  redshift=redshift, rest=False)
+
+            print('NEED TO GET D4000_MODEL FROM THE BEST-FITTING FULL SED!')
+
+            dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
+            #self._qa_dn4000()
+
+            if dn4000_ivar > 0:
+                self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Model Dn(4000)={:.3f}'.format(
+                    dn4000, 1/np.sqrt(dn4000_ivar), dn4000_model))
+            else:
+                self.log.info('Spectroscopic DN(4000)={:.3f}, Model Dn(4000)={:.3f}'.format(
+                    dn4000, dn4000_model))
+
+            png = None
+            #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'
+            linemask = np.hstack(data['linemask'])
+            if np.all(coeff == 0):
+                _smooth_continuum = np.zeros_like(bestfit)
+            else:
+                _smooth_continuum, _ = self.smooth_continuum(specwave, apcorr*specflux - bestfit, specivar/apcorr**2,
+                                                             redshift, linemask=linemask, png=png)
+    
+            # Unpack the continuum into individual cameras.
+            continuummodel, smooth_continuum = [], []
+            for camerapix in data['camerapix']:
+                continuummodel.append(bestfit[camerapix[0]:camerapix[1]])
+                smooth_continuum.append(_smooth_continuum[camerapix[0]:camerapix[1]])
+    
+            for icam, cam in enumerate(data['cameras']):
+                nonzero = continuummodel[icam] != 0
+                #nonzero = np.abs(continuummodel[icam]) > 1e-5
+                if np.sum(nonzero) > 0:
+                    corr = np.median(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
+                    result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
+    
+            self.log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
+                result['CONTINUUM_SMOOTHCORR_B'], result['CONTINUUM_SMOOTHCORR_R'],
+                result['CONTINUUM_SMOOTHCORR_Z']))
+
+            if False:
+                import matplotlib.pyplot as plt
+                fig, ax = plt.subplots(2, 1)
+                for icam in np.arange(len(data['cameras'])): # iterate over cameras
+                    resid = apcorr*data['flux'][icam]-continuummodel[icam]
+                    ax[0].plot(data['wave'][icam], resid)
+                    ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
+                for icam in np.arange(len(data['cameras'])): # iterate over cameras
+                    resid = apcorr*data['flux'][icam]-continuummodel[icam]
+                    pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
+                    ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
+                    ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
+                plt.savefig('junk.png')
+    
+        # Get the light-weighted physical properties.
         AV = self.get_mean_property('av', coeff, agekeep)                        # [mag]
         age = self.get_mean_property('age', coeff, agekeep, normalization=1e9)   # [Gyr]
         zzsun = self.get_mean_property('zzsun', coeff, agekeep, log10=False)     # [log Zsun]
@@ -1791,86 +1849,10 @@ class FastFit(ContinuumTools):
         logmstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True) # [Msun]
         sfr = self.get_mean_property('sfr', coeff, agekeep, normalization=1/self.massnorm, log10=False)       # [Msun/yr]
 
-        flam_ivar = np.hstack(data['ivar']) # specivar is line-masked!
-        dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, 
-                                              redshift=redshift, rest=False)
-        dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
-        
-        if False:
-            print(dn4000, dn4000_model, 1/np.sqrt(dn4000_ivar))
-            from fastspecfit.util import ivar2var            
-            import matplotlib.pyplot as plt
-
-            restwave = specwave / (1 + redshift) # [Angstrom]
-            flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
-            fnu = specflux * flam2fnu # [erg/s/cm2/Hz]
-            fnu_model = bestfit * flam2fnu
-            fnu_ivar = flam_ivar / flam2fnu**2            
-            fnu_sigma, fnu_mask = ivar2var(fnu_ivar, sigma=True)
-
-            #from astropy.table import Table
-            #out = Table()
-            #out['WAVE'] = restwave
-            #out['FLUX'] = specflux
-            #out['IVAR'] = flam_ivar
-            #out.write('desi-39633089965589981.fits', overwrite=True)
-            
-            I = (restwave > 3835) * (restwave < 4115)
-            J = (restwave > 3835) * (restwave < 4115) * fnu_mask
-
-            fig, ax = plt.subplots()
-            ax.fill_between(restwave[I], fnu[I]-fnu_sigma[I], fnu[I]+fnu_sigma[I],
-                            label='Data Dn(4000)={:.3f}+/-{:.3f}'.format(dn4000, 1/np.sqrt(dn4000_ivar)))
-            ax.plot(restwave[I], fnu_model[I], color='red', label='Model Dn(4000)={:.3f}'.format(dn4000_model))
-            ylim = ax.get_ylim()
-            ax.fill_between([3850, 3950], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
-                            color='lightgray', alpha=0.5)
-            ax.fill_between([4000, 4100], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
-                            color='lightgray', alpha=0.5)
-            ax.set_xlabel(r'Rest Wavelength ($\AA$)')
-            ax.set_ylabel(r'$F_{\nu}$ (erg/s/cm2/Hz)')
-            ax.legend()
-            fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
-
-        if dn4000_ivar > 0:
-            self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr, Mstar={:.4g} Msun'.format(
-                dn4000, 1/np.sqrt(dn4000_ivar), age, logmstar))
-        else:
-            self.log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr, Mstar={:.4g}'.format(
-                dn4000, age, logmstar))
-
-        png = None
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'
-        #linemask = np.hstack(data['linemask_all'])
-        linemask = np.hstack(data['linemask'])
-        if np.all(coeff == 0):
-            _smooth_continuum = np.zeros_like(bestfit)
-        else:
-            _smooth_continuum, _ = self.smooth_continuum(specwave, apcorr*specflux - bestfit, specivar/apcorr**2,
-                                                         redshift, linemask=linemask, png=png)
-
-        # Unpack the continuum into individual cameras.
-        continuummodel, smooth_continuum = [], []
-        for camerapix in data['camerapix']:
-            continuummodel.append(bestfit[camerapix[0]:camerapix[1]])
-            smooth_continuum.append(_smooth_continuum[camerapix[0]:camerapix[1]])
-
-        if False:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(2, 1)
-            for icam in np.arange(len(data['cameras'])): # iterate over cameras
-                resid = apcorr*data['flux'][icam]-continuummodel[icam]
-                ax[0].plot(data['wave'][icam], resid)
-                ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
-            for icam in np.arange(len(data['cameras'])): # iterate over cameras
-                resid = apcorr*data['flux'][icam]-continuummodel[icam]
-                pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
-                ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
-                ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
-            plt.savefig('junk.png')
+        self.log.info('Age={:.2f} Gyr, Mstar={:.4g} Msun, SFR={:.3f} Msun/yr, fagn={:.3f}'.format(
+            age, logmstar, sfr, fagn))
 
         # Pack it in and return.
-        result['APCORR'] = apcorr
         result['CONTINUUM_COEFF'][agekeep] = coeff
         result['CONTINUUM_RCHI2'] = chi2min
         result['VDISP'] = vdispbest # * u.kilometer/u.second
@@ -1881,21 +1863,13 @@ class FastFit(ContinuumTools):
         result['LOGMSTAR'] = logmstar
         result['SFR'] = sfr
         result['FAGN'] = fagn
-        result['DN4000'] = dn4000
-        result['DN4000_IVAR'] = dn4000_ivar
         result['DN4000_MODEL'] = dn4000_model
 
-        for icam, cam in enumerate(data['cameras']):
-            nonzero = continuummodel[icam] != 0
-            #nonzero = np.abs(continuummodel[icam]) > 1e-5
-            if np.sum(nonzero) > 0:
-                corr = np.median(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
-                result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
+        if not fastphot:
+            result['APCORR'] = apcorr
+            result['DN4000'] = dn4000
+            result['DN4000_IVAR'] = dn4000_ivar
 
-        self.log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
-            result['CONTINUUM_SMOOTHCORR_B'], result['CONTINUUM_SMOOTHCORR_R'],
-            result['CONTINUUM_SMOOTHCORR_Z']))
-        
         return continuummodel, smooth_continuum
 
     def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False):
@@ -2785,7 +2759,6 @@ class FastFit(ContinuumTools):
         ##plt.plot(emlinewave[W], specflux[W], color='gray')
         ##plt.plot(emlinewave[W], specflux_nolines[W], color='orange', alpha=0.7)
         #plt.savefig('desi-users/ioannis/tmp/junk2.png')
-        #pdb.set_trace()
 
         # Initialize the output table; see init_fastspecfit for the data model.
         result['RCHI2'] = finalchi2
