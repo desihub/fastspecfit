@@ -10,8 +10,11 @@ import pdb # for debugging
 
 import os, time
 import numpy as np
-import astropy.units as u
 
+import astropy.units as u
+from astropy.table import Table, Column, vstack
+
+from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import ContinuumTools
 
 from desiutil.log import get_logger
@@ -33,12 +36,12 @@ def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def _assign_units_to_columns(fastfit, metadata, Spec, CFit, EMFit=None, fastphot=False):
+def _assign_units_to_columns(fastfit, metadata, Spec, FFit, fastphot=False):
     """Assign astropy units to output tables."""
     fastcols = fastfit.colnames
     metacols = metadata.colnames
 
-    T, M = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=fastphot)
+    T, M = Spec.init_output(FFit=FFit, fastphot=fastphot)
     for col in T.colnames:
         if col in fastcols:
             fastfit[col].unit = T[col].unit
@@ -46,42 +49,21 @@ def _assign_units_to_columns(fastfit, metadata, Spec, CFit, EMFit=None, fastphot
         if col in metacols:
             metadata[col].unit = M[col].unit
 
-    if EMFit is not None:
-        E = EMFit.init_output(nobj=1)
-        for col in E.colnames:
-            if col in fastcols:
-                fastfit[col].unit = E[col].unit
-
-def fastspec_one(iobj, data, out, meta, CFit, EMFit, broadlinefit=True):
+def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
     
     #log.info('Continuum-fitting object {}'.format(iobj))
     t0 = time.time()
-
-    #cfit, continuummodel, smooth_continuum = CFit.continuum_specfit(data)
-    cfit, continuummodel, smooth_continuum = CFit.continuum_joint_specfit(data)
-    for col in cfit.colnames:
-        out[col] = cfit[col]
-
-    # Copy over the reddening-corrected fluxes -- messy!
-    for iband, band in enumerate(CFit.fiber_bands):
-        meta['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
-        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
-    for iband, band in enumerate(CFit.bands):
-        meta['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
-        meta['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
-        
-    log.info('Continuum-fitting object {} [targetid {}] took {:.2f} sec'.format(
-        iobj, meta['TARGETID'], time.time()-t0))
+    continuummodel, smooth_continuum = FFit.continuum_specfit(data, out)
+    log.info('Continuum-fitting object {} [targetid={}, z={:.6f}] took {:.2f} sec'.format(
+        iobj, meta['TARGETID'], meta['Z'], time.time()-t0))
 
     # Fit the emission-line spectrum.
     t0 = time.time()
-    emfit, emmodel = EMFit.fit(data, continuummodel, smooth_continuum,
-                               broadlinefit=broadlinefit)
-    for col in emfit.colnames:
-        out[col] = emfit[col]
-    log.info('Line-fitting object {} [targetid={}] took {:.2f} sec'.format(
-        iobj, meta['TARGETID'], time.time()-t0))
+    emmodel = FFit.emline_specfit(data, out, continuummodel, smooth_continuum,
+                                  broadlinefit=broadlinefit)
+    log.info('Line-fitting object {} [targetid={}, z={:.6f}] took {:.2f} sec'.format(
+        iobj, meta['TARGETID'], meta['Z'], time.time()-t0))
 
     return out, meta, emmodel
 
@@ -107,20 +89,20 @@ def fastphot_one(iobj, data, out, meta, CFit):
     
     return out, meta
 
-def desiqa_one(CFit, EMFit, data, fastfit, metadata, coadd_type,
+def desiqa_one(FFit, data, fastfit, metadata, coadd_type,
                fastphot=False, outdir=None, outprefix=None, webqa=False):
     """Multiprocessing wrapper to generate QA for a single object."""
 
     #t0 = time.time()
     if webqa:
-        build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type=coadd_type,
+        build_webqa(FFit, data, fastfit, metadata, coadd_type=coadd_type,
                     outprefix=outprefix, outdir=outdir)
     elif fastphot:
-        CFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
-                         outprefix=outprefix, outdir=outdir)
+        FFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
+                            outprefix=outprefix, outdir=outdir)
     else:
-        EMFit.qa_joint_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
-                                outprefix=outprefix, outdir=outdir)
+        FFit.qa_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
+                            outprefix=outprefix, outdir=outdir)
     #log.info('Building took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
@@ -161,9 +143,9 @@ def fastspec(args=None, comm=None):
     """Main fastspec script.
 
     This script is the engine to model one or more DESI spectra. It initializes
-    the :class:`ContinuumFit` and :class:`EMLineFit` classes, reads the data, fits
-    each spectrum (with the option of fitting in parallel), and writes out the
-    results as a multi-extension binary FITS table.
+    the :class:`FastFit` class, reads the data, fits each spectrum (with the
+    option of fitting in parallel), and writes out the results as a
+    multi-extension binary FITS table.
 
     Parameters
     ----------
@@ -174,8 +156,6 @@ def fastspec(args=None, comm=None):
 
     """
     from astropy.table import Table, vstack
-    from fastspecfit.continuum import ContinuumFit
-    from fastspecfit.emlines import EMLineFit
     from fastspecfit.io import DESISpectra, write_fastspecfit
 
     if isinstance(args, (list, tuple, type(None))):
@@ -186,16 +166,12 @@ def fastspec(args=None, comm=None):
     else:
         targetids = args.targetids
 
-    # Initialize the continuum- and emission-line fitting classes. Note: trim
-    # the wavelengths of the SSPs to optimize compute time.
+    # Initialize the fitting class. Note: trim the wavelengths of the SSPs to
+    # optimize compute time.
     t0 = time.time()
-    CFit = ContinuumFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, 
-                        verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
-                        minwave=500.0,# maxwave=1e4)
-                        # dev - increase maxwave
-                        maxwave=40e4)
-    EMFit = EMLineFit(mapdir=args.mapdir, ssptemplates=args.ssptemplates,
-                      verbose=args.verbose)
+    FFit = FastFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, 
+                   verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
+                   minsspwave=500.0, maxsspwave=40e4)
     Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
 
@@ -209,18 +185,16 @@ def fastspec(args=None, comm=None):
     if len(Spec.specfiles) == 0:
         return
 
-    data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=True, mp=args.mp)
+    data = Spec.read_and_unpack(FFit, fastphot=False, synthphot=True, mp=args.mp)
     log.info('Read data for {} objects in {:.2f} sec'.format(Spec.ntargets, time.time()-t0))
 
-    #np.savetxt('linemask3.txt', np.array([np.hstack(data[0]['wave']), np.hstack(data[0]['flux']), np.hstack(data[0]['ivar'])]).T)
-
-    out, meta = Spec.init_output(CFit=CFit, EMFit=EMFit, fastphot=False)
+    out, meta = Spec.init_output(data, FFit=FFit, fastphot=False)
     log.info('Reading and unpacking the {} spectra to be fitted took: {:.2f} sec'.format(
         Spec.ntargets, time.time()-t0))
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], CFit, EMFit, args.broadlinefit)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], FFit, args.broadlinefit)
                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -242,7 +216,7 @@ def fastspec(args=None, comm=None):
     log.info('Fitting everything took: {:.2f} sec'.format(time.time()-t0))
 
     # Assign units and write out.
-    _assign_units_to_columns(out, meta, Spec, CFit, EMFit=EMFit, fastphot=False)
+    _assign_units_to_columns(out, meta, Spec, FFit, fastphot=False)
 
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
@@ -321,7 +295,7 @@ def fastphot(args=None, comm=None):
     write_fastspecfit(out, meta, outfile=args.outfile, specprod=Spec.specprod,
                       coadd_type=Spec.coadd_type, fastphot=True)
 
-def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
+def build_webqa(FFit, data, fastfit, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), outprefix=None, outdir=None):
     """QA for the web page.
 
@@ -339,7 +313,7 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
     from astropy.table import Table, Column, vstack
     from PIL import Image, ImageDraw
     
-    from fastspecfit.util import ivar2var, C_LIGHT
+    from fastspecfit.util import ivar2var
 
     sns.set(context='talk', style='ticks', font_scale=1.1)#, rc=rc)
 
@@ -433,7 +407,7 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
     for campix in data['camerapix']:
         smooth_continuum.append(_smooth_continuum[campix[0]:campix[1]])
 
-    _emlinemodel = EMFit.emlinemodel_bestfit(data['wave'], data['res'], Table(fastfit))
+    _emlinemodel = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastfit)
 
     # individual-line spectra
     _emlinemodel_oneline = []
@@ -1181,20 +1155,36 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
     plt.close()
 
 class FastFit(ContinuumTools):
-    def __init__(self, ssptemplates=None, minwave=None, maxwave=40e4, nolegend=False,
-                 solve_vdisp=True, constrain_age=False, mapdir=None, verbose=False):
+    def __init__(self, ssptemplates=None, minsspwave=None, maxsspwave=40e4, 
+                 minspecwave=3000.0, maxspecwave=10000.0, chi2_default=0.0, 
+                 maxiter=5000, accuracy=1e-2, nolegend=False, solve_vdisp=True, 
+                 constrain_age=False, mapdir=None, verbose=False):
         """Class to model a galaxy stellar continuum.
 
         Parameters
         ----------
-        metallicity : :class:`str`, optional, defaults to `Z0.0190`.
-            Stellar metallicity of the SSPs. Currently fixed at solar
-            metallicity, Z=0.0190.
-        minwave : :class:`float`, optional, defaults to None
+        ssptemplates : :class:`str`, optional
+            Full path to the SSP templates used for continuum-fitting.
+        minsspwave : :class:`float`, optional, defaults to None
             Minimum SSP wavelength to read into memory. If ``None``, the minimum
             available wavelength is used (around 100 Angstrom).
-        maxwave : :class:`float`, optional, defaults to 6e4
+        maxsspwave : :class:`float`, optional, defaults to 6e4
             Maximum SSP wavelength to read into memory. 
+        minspecwave : :class:`float`, optional, defaults to 3000 A.
+            Minimum observed-frame wavelength, which is used internally for the
+            forward modeling of the emission-line spectrum.
+        maxspecwave : :class:`float`, optional, defaults to 3000 A.
+            Like `minspecwave` but the maximum observed-frame wavelength.
+        chi2_default : :class:`float`, optional, defaults to 0.0.
+            Default chi2 value for a emission line not fitted.
+        maxiter : :class:`int`, optional, defaults to 5000.
+            Maximum number of iterations.
+        accuracy : :class:`float`, optional, defaults to 0.01.
+            Fitting accuracy.
+        nolegend : :class:`bool`, optional, defaults to `False`.
+            Do not render the legend on the QA output.
+        mapdir : :class:`str`, optional
+            Full path to the Milky Way dust maps.
 
         Notes
         -----
@@ -1206,14 +1196,56 @@ class FastFit(ContinuumTools):
             distribution of the form x**2*np.exp(-2*x/scale).
 
         """
-        super(ContinuumFit, self).__init__(ssptemplates=ssptemplates, minwave=minwave,
-                                           maxwave=maxwave, mapdir=mapdir, verbose=verbose)
+        super(FastFit, self).__init__(ssptemplates=ssptemplates, minsspwave=minsspwave,
+                                      maxsspwave=maxsspwave, mapdir=mapdir, verbose=verbose)
 
         self.nolegend = nolegend
+
+        # continuum stuff
         self.constrain_age = constrain_age
         self.solve_vdisp = solve_vdisp
 
-    def init_spec_output(self, nobj=1):
+        # emission line stuff
+        self.chi2_default = chi2_default
+        self.maxiter = maxiter
+        self.accuracy = accuracy
+        self.nolegend = nolegend
+
+        self.emwave_pixkms = 5.0                                  # pixel size for internal wavelength array [km/s]
+        self.dlogwave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
+        self.log10wave = np.arange(np.log10(minspecwave), np.log10(maxspecwave), self.dlogwave)
+
+        # default line-sigma for computing upper limits
+        self.limitsigma_narrow = 75.0
+        self.limitsigma_broad = 1200.0 
+        self.wavepad = 5.0 # Angstrom
+
+        # Establish the names of the parameters and doublets here, at
+        # initialization, because we use them when instantiating the best-fit
+        # model not just when fitting.
+        doublet_names = ['mgii_doublet_ratio', 'oii_doublet_ratio', 'sii_doublet_ratio']
+        doublet_pairs = ['mgii_2803_amp', 'oii_3729_amp', 'sii_6716_amp']
+
+        param_names = []
+        for param in ['amp', 'vshift', 'sigma']:
+            for linename in self.linetable['name'].data:
+                param_name = linename+'_'+param
+                # Use doublet-ratio parameters for close or physical
+                # doublets. Note that any changes here need to be propagated to
+                # the XX method, which needs to "know" about these doublets.
+                if param_name == 'mgii_2796_amp':
+                    param_name = 'mgii_doublet_ratio' # MgII 2796/2803
+                if param_name == 'oii_3726_amp':
+                    param_name = 'oii_doublet_ratio'  # [OII] 3726/3729
+                if param_name == 'sii_6731_amp':
+                    param_name = 'sii_doublet_ratio'  # [SII] 6731/6716
+                param_names.append(param_name)
+        self.param_names = np.hstack(param_names)
+
+        self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
+        self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
+
+    def init_output(self, nobj=1):
         """Initialize the output data table for this class.
 
         """
@@ -1225,18 +1257,7 @@ class FastFit(ContinuumTools):
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
         #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
-        out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-        out.add_column(Column(name='VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
-        out.add_column(Column(name='AV', length=nobj, dtype='f4', unit=u.mag))
-        out.add_column(Column(name='AGE', length=nobj, dtype='f4', unit=u.Gyr))
-        out.add_column(Column(name='ZZSUN', length=nobj, dtype='f4'))
-        out.add_column(Column(name='LOGMSTAR', length=nobj, dtype='f4', unit=u.solMass))
-        out.add_column(Column(name='SFR', length=nobj, dtype='f4', unit=u.solMass/u.year))
-        out.add_column(Column(name='FAGN', length=nobj, dtype='f4'))
-        #out.add_column(Column(name='SFR50', length=nobj, dtype='f4', unit=u.solMass/u.year))
-        #out.add_column(Column(name='SFR300', length=nobj, dtype='f4', unit=u.solMass/u.year))
-        #out.add_column(Column(name='SFR1000', length=nobj, dtype='f4', unit=u.solMass/u.year))
-        
+
         for cam in ['B', 'R', 'Z']:
             out.add_column(Column(name='CONTINUUM_SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
         #out.add_column(Column(name='CONTINUUM_SNR', length=nobj, shape=(3,), dtype='f4')) # median S/N in each camera
@@ -1247,59 +1268,99 @@ class FastFit(ContinuumTools):
         out['CONTINUUM_AV'] = 0.0 #* u.mag
         out['CONTINUUM_VDISP'] = self.vdisp_nominal # * u.kilometer/u.second
 
-        #if False:
-        #    # continuum fit with *no* dust reddening (to be used as a diagnostic
-        #    # tool to identify potential calibration issues).
-        #    out.add_column(Column(name='CONTINUUM_NODUST_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
-        #    out.add_column(Column(name='CONTINUUM_NODUST_CHI2', length=nobj, dtype='f4')) # reduced chi2
-        #    #out.add_column(Column(name='CONTINUUM_NODUST_AGE', length=nobj, dtype='f4', unit=u.Gyr))
-
+        out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+        out.add_column(Column(name='VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
+        out.add_column(Column(name='AV', length=nobj, dtype='f4', unit=u.mag))
+        out.add_column(Column(name='AGE', length=nobj, dtype='f4', unit=u.Gyr))
+        out.add_column(Column(name='ZZSUN', length=nobj, dtype='f4'))
+        out.add_column(Column(name='LOGMSTAR', length=nobj, dtype='f4', unit=u.solMass))
+        out.add_column(Column(name='SFR', length=nobj, dtype='f4', unit=u.solMass/u.year))
+        out.add_column(Column(name='FAGN', length=nobj, dtype='f4'))
+        
         out.add_column(Column(name='DN4000', length=nobj, dtype='f4'))
         out.add_column(Column(name='DN4000_IVAR', length=nobj, dtype='f4'))
         out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
 
-        return out
-
-    def init_phot_output(self, nobj=1):
-        """Initialize the photometric output data table.
-
-        """
-        nssp_coeff = len(self.sspinfo)
-        
-        out = Table()
-        #out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
-        out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
-        out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
-        #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
-        out.add_column(Column(name='CONTINUUM_AGE', length=nobj, dtype='f4', unit=u.Gyr))
-        out.add_column(Column(name='CONTINUUM_AV', length=nobj, dtype='f4', unit=u.mag))
-        out.add_column(Column(name='CONTINUUM_AV_IVAR', length=nobj, dtype='f4', unit=1/u.mag**2))
-        out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
-        
+        # observed-frame photometry synthesized from the spectra
+        for band in self.synth_bands:
+            out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies')) 
+            #out.add_column(Column(name='FLUX_SYNTH_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies-2'))
         # observed-frame photometry synthesized from the best-fitting continuum model fit
-        for band in self.bands:
+        for band in self.synth_bands:
             out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
 
-        #if False:
-        #    for band in self.fiber_bands:
-        #        out.add_column(Column(name='FIBERTOTFLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies')) # observed-frame fiber photometry
-        #        #out.add_column(Column(name='FIBERTOTFLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/'nanomaggies'**2))
-        #    for band in self.bands:
-        #        out.add_column(Column(name='FLUX_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies')) # observed-frame photometry
-        #        out.add_column(Column(name='FLUX_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/'nanomaggies'**2))
-                
         for band in self.absmag_bands:
             out.add_column(Column(name='KCORR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag))
             out.add_column(Column(name='ABSMAG_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag)) # absolute magnitudes
             out.add_column(Column(name='ABSMAG_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.mag**2))
 
-        out.add_column(Column(name='LOGMSTAR', length=nobj, dtype='f4', unit=u.solMass))
-
         for cflux in ['LOGLNU_1500', 'LOGLNU_2800']:
             out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz))
         out.add_column(Column(name='LOGL_5100', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
-        for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
-            out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+
+        #for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
+        #    out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+
+        # Add chi2 metrics
+        out.add_column(Column(name='RCHI2', length=nobj, dtype='f4')) # full-spectrum reduced chi2
+        #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
+        out.add_column(Column(name='LINERCHI2_BROAD', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
+        #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
+        out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
+
+        out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
+        #out.add_column(Column(name='NARROW_Z_ERR', length=nobj, dtype='f8'))
+        out.add_column(Column(name='BROAD_Z', length=nobj, dtype='f8'))
+        #out.add_column(Column(name='BROAD_Z_ERR', length=nobj, dtype='f8'))
+        out.add_column(Column(name='UV_Z', length=nobj, dtype='f8'))
+        #out.add_column(Column(name='UV_Z_ERR', length=nobj, dtype='f8'))
+
+        out.add_column(Column(name='NARROW_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        #out.add_column(Column(name='NARROW_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='BROAD_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        #out.add_column(Column(name='BROAD_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='UV_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        #out.add_column(Column(name='UV_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+
+        # special columns for the fitted doublets
+        out.add_column(Column(name='MGII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+        out.add_column(Column(name='OII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+        out.add_column(Column(name='SII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+
+        for line in self.linetable['name']:
+            line = line.upper()
+            out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+            out.add_column(Column(name='{}_AMP_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
+            out.add_column(Column(name='{}_FLUX'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2)))
+            out.add_column(Column(name='{}_FLUX_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4/u.erg**2))
+            out.add_column(Column(name='{}_BOXFLUX'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2)))
+            out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4/u.erg**2))
+            
+            out.add_column(Column(name='{}_VSHIFT'.format(line), length=nobj, dtype='f4',
+                                  unit=u.kilometer/u.second))
+            out.add_column(Column(name='{}_SIGMA'.format(line), length=nobj, dtype='f4',
+                                  unit=u.kilometer / u.second))
+            
+            out.add_column(Column(name='{}_CONT'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+            out.add_column(Column(name='{}_CONT_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
+            out.add_column(Column(name='{}_EW'.format(line), length=nobj, dtype='f4',
+                                  unit=u.Angstrom))
+            out.add_column(Column(name='{}_EW_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=1/u.Angstrom**2))
+            out.add_column(Column(name='{}_FLUX_LIMIT'.format(line), length=nobj, dtype='f4',
+                                  unit=u.erg/(u.second*u.cm**2)))
+            out.add_column(Column(name='{}_EW_LIMIT'.format(line), length=nobj, dtype='f4',
+                                  unit=u.Angstrom))
+            out.add_column(Column(name='{}_CHI2'.format(line), data=np.repeat(self.chi2_default, nobj), dtype='f4'))
+            out.add_column(Column(name='{}_NPIX'.format(line), length=nobj, dtype=np.int32))
 
         return out
 
@@ -1462,26 +1523,26 @@ class FastFit(ContinuumTools):
             if cflux > 0:
                 lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
-        cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
-        labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
-        for cwave, label in zip(cwaves, labels):
-            J = (self.sspwave > cwave-500) * (self.sspwave < cwave+500)
-            I = (self.sspwave[J] > cwave-20) * (self.sspwave[J] < cwave+20)
-            smooth = median_filter(continuum[J], 200)
-            clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
-            cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
-            cfluxes[label] = cflux # * u.erg/(u.second*u.cm**2*u.Angstrom)
-            
-            #import matplotlib.pyplot as plt
-            #print(cwave, cflux)
-            #plt.clf()
-            #plt.plot(self.sspwave[J], continuum[J])
-            #plt.plot(self.sspwave[J], smooth, color='k')
-            #plt.axhline(y=cflux, color='red')
-            #plt.axvline(x=cwave, color='red')
-            #plt.xlim(cwave - 50, cwave + 50)
-            #plt.savefig('desi-users/ioannis/tmp/junk.png')
-            #pdb.set_trace()
+        #cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
+        #labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
+        #for cwave, label in zip(cwaves, labels):
+        #    J = (self.sspwave > cwave-500) * (self.sspwave < cwave+500)
+        #    I = (self.sspwave[J] > cwave-20) * (self.sspwave[J] < cwave+20)
+        #    smooth = median_filter(continuum[J], 200)
+        #    clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
+        #    cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
+        #    cfluxes[label] = cflux # * u.erg/(u.second*u.cm**2*u.Angstrom)
+        #    
+        #    #import matplotlib.pyplot as plt
+        #    #print(cwave, cflux)
+        #    #plt.clf()
+        #    #plt.plot(self.sspwave[J], continuum[J])
+        #    #plt.plot(self.sspwave[J], smooth, color='k')
+        #    #plt.axhline(y=cflux, color='red')
+        #    #plt.axvline(x=cwave, color='red')
+        #    #plt.xlim(cwave - 50, cwave + 50)
+        #    #plt.savefig('desi-users/ioannis/tmp/junk.png')
+        #    #pdb.set_trace()
 
         return kcorr, absmag, ivarabsmag, bestmaggies, mstar, lums, cfluxes
 
@@ -1588,159 +1649,7 @@ class FastFit(ContinuumTools):
 
         return chi2min, xbest, xivar, bestcoeff
 
-    def continuum_fastphot(self, data, minbands=3):
-        """Fit the broad photometry.
-
-        Parameters
-        ----------
-        data : :class:`dict`
-            Dictionary of input spectroscopy (plus ancillary data) populated by
-            `unpack_one_spectrum`.
-        minbands : :class:`int`, defaults to 3
-            Minimum number of photometric bands required to attempt a fit.
-
-        Returns
-        -------
-        :class:`astropy.table.Table`
-            Table with all the continuum-fitting results with columns documented
-            in `init_phot_output`.
-
-        """
-        # Initialize the output table; see init_fastspecfit for the data model.
-        result = self.init_phot_output()
-
-        redshift = data['zredrock']
-
-        # Prepare the reddened and unreddened SSP templates by redshifting and
-        # normalizing. Note that we ignore templates which are older than the
-        # age of the universe at the galaxy redshift.
-        if self.constrain_age:
-            agekeep = self.younger_than_universe(redshift)
-        else:
-            agekeep = np.arange(self.nage)
-            
-        t0 = time.time()
-        zsspflux_dustnomvdisp, zsspphot_dustnomvdisp = self.SSP2data(
-            self.sspflux_dustnomvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
-            redshift=redshift, specwave=None, specres=None,
-            south=data['photsys'] == 'S')
-        self.log.info('Preparing the models took {:.2f} seconds.'.format(time.time()-t0))
-        
-        objflam = data['phot']['flam'].data * self.fluxnorm
-        objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
-        assert(np.all(objflamivar >= 0))
-
-        # some secondary targets have no good photometry
-        if np.all(objflamivar == 0) or (np.sum(objflamivar > 0) < minbands):
-            self.log.warning('All photometry is masked or number of good photometric bands {}<{}'.format(
-                np.sum(objflamivar > 0), minbands))
-            AVbest, AVivar = self.AV_nominal, 0.0
-            nage = self.nage
-            coeff = np.zeros(self.nage)
-            continuummodel = np.zeros(len(self.sspwave))
-        else:
-            zsspflam_dustnomvdisp = zsspphot_dustnomvdisp['flam'].data * self.fluxnorm * self.massnorm # [nband,nage*nAV]
-
-            inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0
-
-            npix, nmodel = zsspflux_dustnomvdisp.shape
-            nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
-
-            zsspflam_dustnomvdisp = zsspflam_dustnomvdisp.reshape(len(self.bands), nage, self.nAV) # [nband,nage,nAV]
-
-            t0 = time.time()
-            AVchi2min, AVbest, AVivar, _ = self._call_nnls(
-                zsspflam_dustnomvdisp, objflam, objflamivar, xparam=self.AV,
-                debug=False)
-            self.log.info('Fitting the photometry took: {:.2f} seconds.'.format(time.time()-t0))
-            if AVivar > 0:
-                # protect against tiny ivar from becomming infinite in the output table
-                if AVivar < 1e-3:
-                    self.log.warning('AV inverse variance is tiny; capping at 1e-3')
-                    AVivar = 1e-3
-                self.log.info('Best-fitting photometric A(V)={:.4f}+/-{:.4f}'.format(
-                    AVbest, 1/np.sqrt(AVivar)))
-            else:
-                AVbest = self.AV_nominal
-                self.log.info('Finding photometric A(V) failed; adopting A(V)={:.4f}'.format(self.AV_nominal))
-
-            # Get the final set of coefficients and chi2 at the best-fitting
-            # reddening and nominal velocity dispersion.
-            bestsspflux, bestphot = self.SSP2data(self.sspflux_dustnomvdisp[:, agekeep, inodust],
-                                                  self.sspwave, AV=AVbest, redshift=redshift,
-                                                  south=data['photsys'] == 'S', debug=False)
-
-            coeff, _chi2min = self._call_nnls(bestphot['flam'].data*self.massnorm*self.fluxnorm,
-                                              objflam, objflamivar) # bestphot['flam'] is [nband, nage]
-
-            continuummodel = bestsspflux.dot(coeff)
-            
-            # For some reason I don't understand, the chi2 returned by
-            # _call_nnls, above, can be unreasonably small (like 10**-25 or
-            # smaller), so we synthesize the photometry one last time with the
-            # final coefficients to get the correct chi2 estimate.
-            _, synthmodelphot = self.SSP2data(self.sspflux_dustnomvdisp[:, agekeep, inodust],
-                                              self.sspwave, redshift=redshift, synthphot=True,
-                                              AV=AVbest, coeff=coeff * self.massnorm)
-            
-            chi2min = np.sum(objflamivar * (objflam - self.fluxnorm * synthmodelphot['flam'])**2)
-
-            dof = np.sum(objflamivar > 0) - 1 # 1 free parameter??
-            chi2min /= dof
-
-        # Compute DN4000, K-corrections, and rest-frame quantities.
-        if np.count_nonzero(coeff > 0) == 0:
-            self.log.warning('Continuum coefficients are all zero or data not fit.')
-            chi2min, dn4000, meanage, mstar = 0.0, 0.0, 0.0, 0.0 # -1.0, -1.0, -1.0
-            kcorr = np.zeros(len(self.absmag_bands))
-            absmag = np.zeros(len(self.absmag_bands))#-99.0
-            ivarabsmag = np.zeros(len(self.absmag_bands))
-            synth_bestmaggies = np.zeros(len(self.bands))
-            lums, cfluxes = {}, {}
-        else:
-            dn4000, _ = self.get_dn4000(self.sspwave, continuummodel, rest=True)
-            meanage = self.get_meanage(coeff)
-            kcorr, absmag, ivarabsmag, synth_bestmaggies, mstar, lums, cfluxes = self.kcorr_and_absmag(data, continuummodel, coeff)
-
-            # convert the synthesized photometry to nanomaggies
-            synth_bestmaggies *= 1e9
-
-            self.log.info('Photometric DN(4000)={:.3f}, Age={:.2f} Gyr, Mr={:.2f} mag, Mstar={:.4g}'.format(
-                dn4000, meanage, absmag[1], mstar))
-
-        # Pack it up and return.
-        result['CONTINUUM_COEFF'][0][:nage] = coeff
-        result['CONTINUUM_RCHI2'][0] = chi2min
-        result['CONTINUUM_AGE'][0] = meanage # * u.Gyr
-        result['CONTINUUM_AV'][0] = AVbest # * u.mag
-        result['CONTINUUM_AV_IVAR'][0] = AVivar # / (u.mag**2)
-        result['DN4000_MODEL'][0] = dn4000
-        #if False:
-        #    for iband, band in enumerate(self.fiber_bands):
-        #        result['FIBERTOTFLUX_{}'.format(band.upper())] = data['fiberphot']['nanomaggies'][iband]
-        #        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
-        #    for iband, band in enumerate(self.bands):
-        #        result['FLUX_{}'.format(band.upper())] = data['phot']['nanomaggies'][iband]
-        #        result['FLUX_IVAR_{}'.format(band.upper())] = data['phot']['nanomaggies_ivar'][iband]
-        for iband, band in enumerate(self.absmag_bands):
-            result['KCORR_{}'.format(band.upper())] = kcorr[iband] # * u.mag
-            result['ABSMAG_{}'.format(band.upper())] = absmag[iband] # * u.mag
-            result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband] # / (u.mag**2)
-        for iband, band in enumerate(self.bands):
-            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband] # * u.nanomaggy
-
-        if mstar > 0:
-            result['LOGMSTAR'] = np.log10(mstar) # * u.solMass
-        if bool(lums):
-            for lum in lums.keys():
-                result[lum] = lums[lum]
-        if bool(cfluxes):
-            for cflux in cfluxes.keys():
-                result[cflux] = cfluxes[cflux]
-                
-        return result, continuummodel
-    
-    def continuum_specfit(self, data):
+    def continuum_specfit(self, data, result):
         """Fit the non-negative stellar continuum of a single spectrum.
 
         Parameters
@@ -1753,7 +1662,7 @@ class FastFit(ContinuumTools):
         -------
         :class:`astropy.table.Table`
             Table with all the continuum-fitting results with columns documented
-            in :func:`self.init_spec_output`.
+            in :func:`self.init_output`.
 
         Notes
         -----
@@ -1762,319 +1671,10 @@ class FastFit(ContinuumTools):
             SNR_R>3) and REDSHIFT<1).
 
         """
-        result = self.init_spec_output()
-
-        redshift = data['zredrock']
-        result['CONTINUUM_Z'] = redshift
-        for icam, cam in enumerate(data['cameras']):
-            result['CONTINUUM_SNR_{}'.format(cam.upper())] = data['snr'][icam]
-
-        # Combine all three cameras; we will unpack them to build the
-        # best-fitting model (per-camera) below.
-        specwave = np.hstack(data['wave'])
-        specflux = np.hstack(data['flux'])
-        specivar = np.hstack(data['ivar']) * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
-        if np.all(specivar == 0) or np.any(specivar < 0):
-            specivar = np.hstack(data['ivar']) # not great...
-            if np.all(specivar == 0) or np.any(specivar < 0):
-                errmsg = 'All pixels are masked or some inverse variances are negative!'
-                self.log.critical(errmsg)
-                raise ValueError(errmsg)
-
-        # dev - Add the photometry.
-        objflam = data['phot']['flam'].data * self.fluxnorm
-        objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
-        assert(np.all(objflamivar >= 0))
-
-        # Prepare the reddened and unreddened SSP templates by redshifting and
-        # normalizing. Note that we ignore templates which are older than the
-        # age of the universe at the redshift of the object.
-        if self.constrain_age:
-            agekeep = self.younger_than_universe(redshift)
-        else:
-            agekeep = np.arange(self.nage)
-
-        t0 = time.time()
-        zsspflux_dustnomvdisp, _ = self.SSP2data(
-            self.sspflux_dustnomvdisp[:, agekeep, :], self.sspwave, # [npix,nage,nAV]
-            redshift=redshift, specwave=data['wave'], specres=data['res'],
-            cameras=data['cameras'], synthphot=False)
-
-        zsspflux_dustnomvdisp = np.concatenate(zsspflux_dustnomvdisp, axis=0)  # [npix,nage*nAV]
-        npix, nmodel = zsspflux_dustnomvdisp.shape
-        nage = nmodel // self.nAV # accounts for age-of-the-universe constraint (!=self.nage)
-        zsspflux_dustnomvdisp = zsspflux_dustnomvdisp.reshape(npix, nage, self.nAV)       # [npix,nage,nAV]
-        self.log.info('Preparing the models took {:.2f} seconds.'.format(time.time()-t0))
-
-        # Fit the spectra for reddening using the models convolved to the
-        # nominal velocity dispersion.
-        t0 = time.time()
-        AVchi2min, AVbest, AVivar, AVcoeff = self._call_nnls(
-            zsspflux_dustnomvdisp, specflux, specivar, xparam=self.AV,
-            debug=False, interpolate_coeff=self.solve_vdisp,
-            xlabel=r'$A_V$ (mag)')
-        self.log.info('Fitting for the reddening took: {:.2f} seconds.'.format(time.time()-t0))
-        if AVivar > 0:
-            # protect against tiny ivar from becomming infinite in the output table
-            if AVivar < 1e-3:
-                self.log.warning('AV inverse variance is tiny; capping at 1e-3')
-                AVivar = 1e-3
-            self.log.info('Best-fitting spectroscopic A(V)={:.4f}+/-{:.4f}'.format(
-                AVbest, 1/np.sqrt(AVivar)))
-        else:
-            AVbest = self.AV_nominal
-            self.log.info('Finding spectroscopic A(V) failed; adopting A(V)={:.4f}'.format(self.AV_nominal))
-
-        # If the S/N is good enough, solve for the velocity dispersion.
-        compute_vdisp = ((result['CONTINUUM_SNR_B'] > 3) and (result['CONTINUUM_SNR_R'] > 3)) and (redshift < 1.0)
-        if compute_vdisp:
-            self.log.info('Solving for velocity dispersion: S/N_B={:.2f}, S/N_R={:.2f}, redshift={:.3f}'.format(
-                result['CONTINUUM_SNR_B'][0], result['CONTINUUM_SNR_R'][0], redshift))
-            
-        if self.solve_vdisp or compute_vdisp:
-            t0 = time.time()
-            if True:
-                zsspflux_vdisp = []
-                for vdisp in self.vdisp:
-                    _zsspflux_vdisp, _ = self.SSP2data(self.sspflux[:, agekeep], self.sspwave,
-                                                       specwave=data['wave'], specres=data['res'],
-                                                       AV=AVbest, vdisp=vdisp, redshift=redshift,
-                                                       cameras=data['cameras'], synthphot=False)
-                    _zsspflux_vdisp = np.concatenate(_zsspflux_vdisp, axis=0)
-                    zsspflux_vdisp.append(_zsspflux_vdisp)
-                zsspflux_vdisp = np.stack(zsspflux_vdisp, axis=-1) # [npix,nage,nvdisp] at best A(V)
-                
-                vdispchi2min, vdispbest, vdispivar, _ = self._call_nnls(
-                    zsspflux_vdisp, specflux, specivar, xparam=self.vdisp,
-                    xlabel=r'$\sigma$ (km/s)', debug=False)
-            else:
-                # The code below does a refinement of the velocity dispersion around
-                # the "best" vdisp based on a very quick-and-dirty chi2 estimation
-                # (based on the AVcoeff coefficients found above; no refitting of
-                # the coefficients). However, the refined value is no different than
-                # the one found using the coarse grid and the uncertainty in the
-                # velocity dispersion is ridiculously large, which I don't fully 
-                # understand.
-                # /global/u2/i/ioannis/code/desihub/fastspecfit-projects/pv-vdisp/fastspecfit-pv-vdisp --targetids 39627665157658710
-                zsspflux_vdispnomdust, _ = self.SSP2data(
-                    self.sspflux_vdispnomdust[:, agekeep, :], self.sspwave, # [npix,nage,nvdisp]
-                    redshift=redshift, specwave=data['wave'], specres=data['res'],
-                    cameras=data['cameras'], synthphot=False)
-                zsspflux_vdispnomdust = np.concatenate(zsspflux_vdispnomdust, axis=0)  # [npix,nmodel=nage*nvdisp]
-                npix, nmodel = zsspflux_vdispnomdust.shape
-                nage = nmodel // self.nvdisp # accounts for age-of-the-universe constraint (!=self.nage)
-                zsspflux_vdispnomdust = zsspflux_vdispnomdust.reshape(npix, nage, self.nvdisp) # [npix,nage,nvdisp]
-    
-                # This refits for the coefficients, so it's slower than the "quick" chi2 minimization.
-                #vdispchi2min, vdispbest, vdispivar = self._call_nnls(
-                #    zsspflux_vdispnomdust, specflux, specivar, xparam=self.vdisp, debug=False)
-    
-                # Do a quick chi2 minimization over velocity dispersion using the
-                # coefficients from the reddening modeling (see equations 7-9 in
-                # Benitez+2000). Should really be using broadcasting...
-                vdispchi2 = np.zeros(self.nvdisp)
-                for iv in np.arange(self.nvdisp):
-                    vdispchi2[iv] = np.sum(specivar * (specflux - zsspflux_vdispnomdust[:, :, iv].dot(AVcoeff))**2)
-    
-                vmindx = np.argmin(vdispchi2)
-                if vmindx == 0 or vmindx == self.nvdisp-1: # on the edge; no minimum
-                    self.log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
-                    vdispbest, vdispivar = self.vdisp_nominal, 0.0
-                else:
-                    # Do a more refined search with +/-XX km/s around the initial minimum.
-                    #vdispinit = self.vdisp[vmindx]
-                    vdispfine = np.linspace(self.vdisp[vmindx]-10, self.vdisp[vmindx]+10, 15)
-                    #vdispfine = np.linspace(self.vdisp[vmindx-1], self.vdisp[vmindx+1], 15)
-                    #vdispmin, vdispmax, dvdisp = vdispinit - 10.0, vdispinit + 10.0, 0.01
-                    #if vdispmin < 50:
-                    #    vdispmin = 50.0
-                    #if vdispmax > 400:
-                    #    vdispmax = 400
-                    #vdispfine = np.arange(vdispmin, vdispmax, dvdisp)
-                    nvdispfine = len(vdispfine)
-    
-                    #atten = self.dust_attenuation(self.sspwave, AVbest)
-                    sspflux_vdispfine = []
-                    for vdisp in vdispfine:
-                        sspflux_vdispfine.append(self.convolve_vdisp(self.sspflux[:, agekeep], vdisp))
-                    sspflux_vdispfine = np.stack(sspflux_vdispfine, axis=-1) # [npix,nage,nvdisp]
-                    
-                    zsspflux_vdispfine, _ = self.SSP2data(sspflux_vdispfine, self.sspwave,
-                        redshift=redshift, specwave=data['wave'], specres=data['res'],
-                        cameras=data['cameras'], AV=AVbest, synthphot=False)
-                    zsspflux_vdispfine = np.concatenate(zsspflux_vdispfine, axis=0)  # [npix,nmodel=nage*nvdisp]
-                    npix, nmodel = zsspflux_vdispfine.shape
-                    nage = nmodel // nvdispfine # accounts for age-of-the-universe constraint (!=self.nage)
-                    zsspflux_vdispfine = zsspflux_vdispfine.reshape(npix, nage, nvdispfine) # [npix,nage,nvdisp]
-                    
-                    vdispchi2min, vdispbest, vdispivar, _ = self._call_nnls(
-                        zsspflux_vdispfine, specflux, specivar, xparam=vdispfine,
-                        interpolate_coeff=False, debug=False)
-                
-            self.log.info('Fitting for the velocity dispersion took: {:.2f} seconds.'.format(time.time()-t0))
-            if vdispivar > 0:
-                # protect against tiny ivar from becomming infinite in the output table
-                if vdispivar < 1e-5:
-                    self.log.warning('vdisp inverse variance is tiny; capping at 1e-5')
-                    vdispivar = 1e-5
-                self.log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s'.format(
-                    vdispbest, 1/np.sqrt(vdispivar)))
-            else:
-                vdispbest = self.vdisp_nominal
-                self.log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
-        else:
-            self.log.info('Insufficient S/N to compute vdisp; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
-            vdispbest, vdispivar = self.vdisp_nominal, 0.0
-
-        # Get the final set of coefficients and chi2 at the best-fitting
-        # reddening and velocity dispersion.
-        bestsspflux, _ = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
-                                       specwave=data['wave'], specres=data['res'],
-                                       AV=AVbest, vdisp=vdispbest, cameras=data['cameras'],
-                                       south=data['photsys'] == 'S', synthphot=False)
-        bestsspflux = np.concatenate(bestsspflux, axis=0)
-        coeff, chi2min = self._call_nnls(bestsspflux, specflux, specivar)
-        chi2min /= np.sum(specivar > 0) # dof???
-
-
-        # Get the light-weighted age and DN(4000).
-        bestfit = bestsspflux.dot(coeff)
-        meanage = self.get_meanage(coeff, agekeep)
-
-        flam_ivar = np.hstack(data['ivar']) # specivar is line-masked!
-        dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, 
-                                              redshift=redshift, rest=False)
-        dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
-        
-        if False:
-            print(dn4000, dn4000_model, 1/np.sqrt(dn4000_ivar))
-            from fastspecfit.util import ivar2var            
-            import matplotlib.pyplot as plt
-
-            restwave = specwave / (1 + redshift) # [Angstrom]
-            flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
-            fnu = specflux * flam2fnu # [erg/s/cm2/Hz]
-            fnu_model = bestfit * flam2fnu
-            fnu_ivar = flam_ivar / flam2fnu**2            
-            fnu_sigma, fnu_mask = ivar2var(fnu_ivar, sigma=True)
-
-            #from astropy.table import Table
-            #out = Table()
-            #out['WAVE'] = restwave
-            #out['FLUX'] = specflux
-            #out['IVAR'] = flam_ivar
-            #out.write('desi-39633089965589981.fits', overwrite=True)
-            
-            I = (restwave > 3835) * (restwave < 4115)
-            J = (restwave > 3835) * (restwave < 4115) * fnu_mask
-
-            fig, ax = plt.subplots()
-            ax.fill_between(restwave[I], fnu[I]-fnu_sigma[I], fnu[I]+fnu_sigma[I],
-                            label='Data Dn(4000)={:.3f}+/-{:.3f}'.format(dn4000, 1/np.sqrt(dn4000_ivar)))
-            ax.plot(restwave[I], fnu_model[I], color='red', label='Model Dn(4000)={:.3f}'.format(dn4000_model))
-            ylim = ax.get_ylim()
-            ax.fill_between([3850, 3950], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
-                            color='lightgray', alpha=0.5)
-            ax.fill_between([4000, 4100], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
-                            color='lightgray', alpha=0.5)
-            ax.set_xlabel(r'Rest Wavelength ($\AA$)')
-            ax.set_ylabel(r'$F_{\nu}$ (erg/s/cm2/Hz)')
-            ax.legend()
-            fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
-
-        if dn4000_ivar > 0:
-            self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Age={:.2f} Gyr'.format(dn4000, 1/np.sqrt(dn4000_ivar), meanage))
-        else:
-            self.log.info('Spectroscopic DN(4000)={:.3f}, Age={:.2f} Gyr'.format(dn4000, meanage))
-
-        png = None
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'
-        #linemask = np.hstack(data['linemask_all'])
-        linemask = np.hstack(data['linemask'])
-        if np.all(coeff == 0):
-            _smooth_continuum = np.zeros_like(bestfit)
-        else:
-            _smooth_continuum, _ = self.smooth_continuum(specwave, specflux - bestfit, specivar,
-                                                         redshift, linemask=linemask, png=png)
-
-        # Unpack the continuum into individual cameras.
-        continuummodel, smooth_continuum = [], []
-        for camerapix in data['camerapix']:
-            continuummodel.append(bestfit[camerapix[0]:camerapix[1]])
-            smooth_continuum.append(_smooth_continuum[camerapix[0]:camerapix[1]])
-
-        ## Like above, but with per-camera smoothing.
-        #smooth_continuum = self.smooth_residuals(
-        #    continuummodel, data['wave'], data['flux'],
-        #    data['ivar'], data['linemask'], percamera=False)
-
-        if False:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(2, 1)
-            for icam in np.arange(len(data['cameras'])): # iterate over cameras
-                resid = data['flux'][icam]-continuummodel[icam]
-                ax[0].plot(data['wave'][icam], resid)
-                ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
-            for icam in np.arange(len(data['cameras'])): # iterate over cameras
-                resid = data['flux'][icam]-continuummodel[icam]
-                pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
-                ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
-                ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
-            plt.savefig('junk.png')
-
-        # Pack it in and return.
-        result['CONTINUUM_COEFF'][0][0:nage] = coeff
-        result['CONTINUUM_RCHI2'][0] = chi2min
-        result['CONTINUUM_AV'][0] = AVbest # * u.mag
-        result['CONTINUUM_AV_IVAR'][0] = AVivar # / (u.mag**2)
-        result['CONTINUUM_VDISP'][0] = vdispbest # * u.kilometer/u.second
-        result['CONTINUUM_VDISP_IVAR'][0] = vdispivar # * (u.second/u.kilometer)**2
-        result['CONTINUUM_AGE'] = meanage # * u.Gyr
-        result['DN4000'][0] = dn4000
-        result['DN4000_IVAR'][0] = dn4000_ivar
-        result['DN4000_MODEL'][0] = dn4000_model
-
-        for icam, cam in enumerate(data['cameras']):
-            nonzero = continuummodel[icam] != 0
-            #nonzero = np.abs(continuummodel[icam]) > 1e-5
-            if np.sum(nonzero) > 0:
-                corr = np.median(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
-                result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
-
-        self.log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
-            result['CONTINUUM_SMOOTHCORR_B'][0], result['CONTINUUM_SMOOTHCORR_R'][0],
-            result['CONTINUUM_SMOOTHCORR_Z'][0]))
-        
-        return result, continuummodel, smooth_continuum
-    
-    def continuum_joint_specfit(self, data):
-        """Fit the non-negative stellar continuum of a single spectrum.
-
-        Parameters
-        ----------
-        data : :class:`dict`
-            Dictionary of input spectroscopy (plus ancillary data) populated by
-            :func:`fastspecfit.io.DESISpectra.read_and_unpack`.
-
-        Returns
-        -------
-        :class:`astropy.table.Table`
-            Table with all the continuum-fitting results with columns documented
-            in :func:`self.init_spec_output`.
-
-        Notes
-        -----
-          - Consider using cross-correlation to update the redrock redshift.
-          - We solve for velocity dispersion if solve_vdisp=True or ((SNR_B>3 or
-            SNR_R>3) and REDSHIFT<1).
-
-        """
-        result = self.init_spec_output()
-
-        redshift = data['zredrock']
-        result['CONTINUUM_Z'] = redshift
-        for icam, cam in enumerate(data['cameras']):
-            result['CONTINUUM_SNR_{}'.format(cam.upper())] = data['snr'][icam]
+        #result = self.init_spec_output()
+        redshift = result['CONTINUUM_Z']
+        #for icam, cam in enumerate(data['cameras']):
+        #    result['CONTINUUM_SNR_{}'.format(cam.upper())] = data['snr'][icam]
 
         # Combine all three cameras; we will unpack them to build the
         # best-fitting model (per-camera) below.
@@ -2121,7 +1721,7 @@ class FastFit(ContinuumTools):
         compute_vdisp = (len(Ivdisp) > 0) * (np.ptp(restwave[Ivdisp]) > 500.0)
 
         self.log.info('S/N_B={:.2f}, S/N_R={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
-            result['CONTINUUM_SNR_B'][0], result['CONTINUUM_SNR_R'][0], restwave[0], restwave[-1]))
+            result['CONTINUUM_SNR_B'], result['CONTINUUM_SNR_R'], restwave[0], restwave[-1]))
 
         if self.solve_vdisp or compute_vdisp:
             
@@ -2285,11 +1885,11 @@ class FastFit(ContinuumTools):
 
         # Pack it in and return.
         result['APCORR'] = apcorr
-        result['CONTINUUM_COEFF'][0][0:nage] = coeff
-        result['CONTINUUM_RCHI2'][0] = chi2min
-        result['VDISP'][0] = vdispbest # * u.kilometer/u.second
-        result['VDISP_IVAR'][0] = vdispivar # * (u.second/u.kilometer)**2
-        result['AV'][0] = AV # * u.mag
+        result['CONTINUUM_COEFF'][agekeep] = coeff
+        result['CONTINUUM_RCHI2'] = chi2min
+        result['VDISP'] = vdispbest # * u.kilometer/u.second
+        result['VDISP_IVAR'] = vdispivar # * (u.second/u.kilometer)**2
+        result['AV'] = AV # * u.mag
         result['AGE'] = age # * u.Gyr
         result['ZZSUN'] = zzsun
         result['LOGMSTAR'] = logmstar
@@ -2307,28 +1907,1299 @@ class FastFit(ContinuumTools):
                 result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
 
         self.log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
-            result['CONTINUUM_SMOOTHCORR_B'][0], result['CONTINUUM_SMOOTHCORR_R'][0],
-            result['CONTINUUM_SMOOTHCORR_Z'][0]))
+            result['CONTINUUM_SMOOTHCORR_B'], result['CONTINUUM_SMOOTHCORR_R'],
+            result['CONTINUUM_SMOOTHCORR_Z']))
         
-        return result, continuummodel, smooth_continuum
+        return continuummodel, smooth_continuum
+
+    def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False):
+        """Build all the multi-parameter emission-line models we will use.
     
-    def qa_fastphot(self, data, fastphot, metadata, coadd_type='healpix',
-                    outdir=None, outprefix=None):
-        """QA of the best-fitting continuum.
+        """
+        def _print_linemodel(linemodel):
+            for linename in linenames:
+                for param in ['amp', 'sigma', 'vshift']:
+                    I = np.where(param_names == linename+'_'+param)[0]
+                    if len(I) == 1:
+                        I = I[0]
+                        if linemodel['tiedtoparam'][I] == -1:
+                            if linemodel['fixed'][I]:
+                                print('{:25s} is FIXED'.format(linename+'_'+param))
+                        else:
+                            if linemodel['fixed'][I]:
+                                print('{:25s} tied to {:25s} with factor {:.4f} and FIXED'.format(
+                                    linename+'_'+param, param_names[linemodel['tiedtoparam'][I]], linemodel['tiedfactor'][I]))
+                            else:
+                                print('{:25s} tied to {:25s} with factor {:.4f}'.format(
+                                    linename+'_'+param, param_names[linemodel['tiedtoparam'][I]], linemodel['tiedfactor'][I]))
+
+        def _fix_parameters(linemodel, verbose=False):
+            """Set the "fixed" attribute for all the parameters in a given linemodel."""
+            # First loop through all tied parameters and set fixed to the
+            # parameter it's tied to.
+            I = np.where(linemodel['tiedtoparam'] != -1)[0] # should always have len(I)>0
+            alltied = linemodel[I]['tiedtoparam']
+            utied = np.unique(alltied)
+            for tied in utied:
+                J = tied == alltied
+                if verbose:
+                    print('Tying {} to {}'.format(' '.join(linemodel[I][J]['param_name']), linemodel[tied]['param_name']))
+                linemodel[I][J]['fixed'] = linemodel[tied]['fixed']
+            if verbose:
+                print('Number of fixed parameters = {}'.format(np.sum(linemodel['fixed'])))
+                print('Number of free parameters = {}'.format(np.sum(np.logical_and(linemodel['fixed'] == False, linemodel['tiedtoparam'] == -1))))
+                #print('Number of fixed or tied parameters = {}'.format(np.sum(np.logical_or(linemodel['fixed'], linemodel['tiedtoparam'] != -1))))
+
+            # Next, fix out-of-range lines but not those that are in the 'utied'
+            # array---those out-of-range lines need to be in the optimization
+            # list because the in-range lines depend on them.
+            outofrange = fit_linetable['inrange'] == False
+            if np.sum(outofrange) > 0: # should always be true
+                for linename in fit_linetable['name'][outofrange]:
+                    for param in ['amp', 'vshift', 'sigma']:
+                        param_name = linename+'_'+param
+                        I = np.where(linemodel['param_name'] == param_name)[0]
+                        if I in utied:
+                            if verbose:
+                                print('Not fixing out-of-range parameter {}'.format(param_name))
+                        else:
+                            linemodel['fixed'][I] |= True
+                if verbose:
+                    print('Number of fixed parameters = {}'.format(np.sum(linemodel['fixed'])))
+                    print('Number of free parameters = {}'.format(np.sum(np.logical_and(linemodel['fixed'] == False, linemodel['tiedtoparam'] == -1))))
+                    #print('Number of fixed or tied parameters = {}'.format(np.sum(np.logical_or(linemodel['fixed'], linemodel['tiedtoparam'] != -1))))
+
+                # Finally loop through each 'utied' line and if all the lines
+                # tied to it are fixed, then fix that line, too.
+                for tied in utied:
+                    if linemodel['param_name'][tied] and np.all(linemodel[linemodel['tiedtoparam'] == tied]['fixed']):
+                        if outofrange[linemodel['linename'][tied] == fit_linetable['name']]:
+                            if verbose:
+                                print('Fixing {} because line is out of range and all tied lines are fixed: {}'.format(
+                                    linemodel['param_name'][tied], ' '.join(linemodel[linemodel['tiedtoparam'] == tied]['param_name'])))
+                            linemodel[tied]['fixed'] = True
+
+                # Also handle the doublets.
+                I = np.where(linemodel['doubletpair'] != -1)[0]
+                if len(I) > 0:
+                    for doublet in linemodel[I]['doubletpair']:
+                        J = doublet == linemodel['doubletpair']
+                        if linemodel[doublet]['fixed']:
+                            linemodel['fixed'][J] = True
+
+                if verbose:
+                    print('Number of fixed parameters = {}'.format(np.sum(linemodel['fixed'])))
+                    print('Number of free parameters = {}'.format(np.sum(np.logical_and(linemodel['fixed'] == False, linemodel['tiedtoparam'] == -1))))
+                    #print('Number of fixed or tied parameters = {}'.format(np.sum(np.logical_or(linemodel['fixed'], linemodel['tiedtoparam'] != -1))))
+
+        initvshift = 1.0
+        vmaxshift_narrow = 500.0
+        vmaxshift_broad = 2500.0 # 3000.0
+    
+        minsigma_narrow = 1.0
+        maxsigma_narrow = 750.0 # 500.0
+
+        minsigma_broad = 1.0
+        maxsigma_broad = 1e4
+
+        minsigma_balmer_broad = minsigma_narrow
+        maxsigma_balmer_broad = maxsigma_broad
+    
+        # Be very careful about changing the default broad line-sigma. Smaller
+        # values like 1500 km/s (which is arguably more sensible) can lead to
+        # low-amplitude broad lines in a bunch of normal star-forming galaxy
+        # spectra. (They act to "suck up" local continuum variations.) Also
+        # recall that if it's well-measured, we use the initial line-sigma in
+        # estimate_linesigma, which is a better initial guess.
+        initsigma_narrow = 75.0 # 260.0 # 75.0
+        initsigma_broad = 3000.0  
+    
+        initamp = 0.0
+        #minamp = 0.0
+        minamp = -1e2
+        maxamp = +1e5
+        minamp_balmer_broad = minamp # 0.0
+        maxamp_balmer_broad = maxamp
+    
+        # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
+        # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
+        # self.doublet_names, below, and also note that any change in the order of
+        # these lines has to be handled in _emline_spectrum!
+        init_mgii_doublet = 0.5 # MgII 2796/2803
+        init_oii_doublet = 0.74 # [OII] 3726/3729
+        init_sii_doublet = 0.74 # [SII] 6731/6716
+
+        bounds_mgii_doublet = [0.01, 10.0] 
+        bounds_oii_doublet = [0.1, 2.0] # [0.5, 1.5] # [0.66, 1.4]
+        bounds_sii_doublet = [0.1, 2.0] # [0.5, 1.5] # [0.67, 1.2]
+    
+        # Create a new line-fitting table which contains the redshift-dependent
+        # quantities for this object.
+        fit_linetable = Table()
+        fit_linetable['name'] = self.linetable['name']
+        fit_linetable['isbalmer'] = self.linetable['isbalmer']
+        fit_linetable['isbroad'] = self.linetable['isbroad']
+        fit_linetable['restwave'] = self.linetable['restwave']
+        fit_linetable['zwave'] = self.linetable['restwave'].data * (1 + redshift)
+        fit_linetable['inrange'] = ((fit_linetable['zwave'] > (wavelims[0]+self.wavepad)) * 
+                                    (fit_linetable['zwave'] < (wavelims[1]-self.wavepad)))
+        self.fit_linetable = fit_linetable
+        
+        linenames = fit_linetable['name'].data
+        param_names = self.param_names
+        nparam = len(param_names)
+
+        # Model 1 -- here, parameters are minimally tied together for the final
+        # fit and only lines outside the wavelength range are fixed. Includes
+        # broad lines.
+        final_linemodel = Table()
+        final_linemodel['param_name'] = param_names
+        final_linemodel['index'] = np.arange(nparam).astype(np.int32)
+        final_linemodel['linename'] = np.tile(linenames, 3) # 3 parameters per line
+        final_linemodel['tiedfactor'] = np.zeros(nparam, 'f8')
+        final_linemodel['tiedtoparam'] = np.zeros(nparam, np.int16)-1
+        final_linemodel['doubletpair'] = np.zeros(nparam, np.int16)-1
+        final_linemodel['fixed'] = np.zeros(nparam, bool)
+        final_linemodel['bounds'] = np.zeros((nparam, 2), 'f8')
+        final_linemodel['initial'] = np.zeros(nparam, 'f8')
+        final_linemodel['value'] = np.zeros(nparam, 'f8')
+
+        final_linemodel['doubletpair'][self.doubletindx] = self.doubletpair
+
+        # Build the relationship of "tied" parameters. In the 'tied' array, the
+        # non-zero value is the multiplicative factor by which the parameter
+        # represented in the 'tiedtoparam' index should be multiplied.
+    
+        # Physical doublets and lines in the same ionization species should have
+        # their velocity shifts and line-widths always tied. In addition, set fixed
+        # doublet-ratios here. Note that these constraints must be set on *all*
+        # lines, not just those in range.
+    
+        for iline, linename in enumerate(linenames):
+            # initial values and bounds - broad He+Balmer lines
+            if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline]:
+                for param, bounds, default in zip(['amp', 'sigma', 'vshift'],
+                                                  [[minamp_balmer_broad, maxamp_balmer_broad], 
+                                                   [minsigma_balmer_broad, maxsigma_balmer_broad],
+                                                   [-vmaxshift_broad, +vmaxshift_broad]],
+                                                  [initamp, initsigma_broad, initvshift]):
+                    final_linemodel['initial'][param_names == linename+'_'+param] = default
+                    final_linemodel['bounds'][param_names == linename+'_'+param] = bounds
+
+            # initial values and bounds - narrow He+Balmer lines
+            if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] == False:
+                for param, bounds, default in zip(['amp', 'sigma', 'vshift'],
+                                                  [[minamp, maxamp], [minsigma_narrow, maxsigma_narrow],
+                                                   [-vmaxshift_narrow, +vmaxshift_narrow]],
+                                                  [initamp, initsigma_narrow, initvshift]):
+                    final_linemodel['initial'][param_names == linename+'_'+param] = default
+                    final_linemodel['bounds'][param_names == linename+'_'+param] = bounds
+
+            # initial values and bounds - broad UV/QSO lines (non-Balmer)
+            if fit_linetable['isbalmer'][iline] == False and fit_linetable['isbroad'][iline]:
+                for param, bounds, default in zip(['amp', 'sigma', 'vshift'],
+                                                  [[minamp, maxamp], [minsigma_broad, maxsigma_broad],
+                                                   [-vmaxshift_broad, +vmaxshift_broad]],
+                                                  [initamp, initsigma_broad, initvshift]):
+                    final_linemodel['initial'][param_names == linename+'_'+param] = default
+                    final_linemodel['bounds'][param_names == linename+'_'+param] = bounds
+
+            # initial values and bounds - forbidden lines
+            if fit_linetable['isbalmer'][iline] == False and fit_linetable['isbroad'][iline] == False:
+                for param, bounds, default in zip(['amp', 'sigma', 'vshift'],
+                                                  [[minamp, maxamp], [minsigma_narrow, maxsigma_narrow],
+                                                   [-vmaxshift_narrow, +vmaxshift_narrow]],
+                                                  [initamp, initsigma_narrow, initvshift]):
+                    final_linemodel['initial'][param_names == linename+'_'+param] = default
+                    final_linemodel['bounds'][param_names == linename+'_'+param] = bounds
+
+            # tie parameters
+
+            # broad He + Balmer
+            if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] and linename != 'halpha_broad':
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_broad_'+param)[0]
+            #print('Releasing the narrow Balmer lines!')
+            # narrow He + Balmer
+            if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] == False and linename != 'halpha':
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_'+param)[0]
+            # other lines
+            if linename == 'mgii_2796':
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'mgii_2803_'+param)[0]
+            if linename == 'nev_3346' or linename == 'nev_3426': # should [NeIII] 3869 be tied to [NeV]???
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'neiii_3869_'+param)[0]
+            if linename == 'oii_3726':
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oii_3729_'+param)[0]
+            # Tentative! Tie auroral lines to [OIII] 4363 but maybe we shouldn't tie [OI] 6300 here...
+            if linename == 'nii_5755' or linename == 'oi_6300' or linename == 'siii_6312':
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oiii_4363_'+param)[0]
+            if linename == 'oiii_4959':
+                """
+                [O3] (4-->2): airwave: 4958.9097 vacwave: 4960.2937 emissivity: 1.172e-21
+                [O3] (4-->3): airwave: 5006.8417 vacwave: 5008.2383 emissivity: 3.497e-21
+                """
+                final_linemodel['tiedfactor'][param_names == linename+'_amp'] = 1.0 / 2.9839 # 2.8875
+                final_linemodel['tiedtoparam'][param_names == linename+'_amp'] = np.where(param_names == 'oiii_5007_amp')[0]
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oiii_5007_'+param)[0]
+            if linename == 'nii_6548':
+                """
+                [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.02198e-21
+                [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.94901e-21
+                """
+                final_linemodel['tiedfactor'][param_names == linename+'_amp'] = 1.0 / 2.9421 # 2.936
+                final_linemodel['tiedtoparam'][param_names == linename+'_amp'] = np.where(param_names == 'nii_6584_amp')[0]
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'nii_6584_'+param)[0]
+            if linename == 'sii_6731':
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'sii_6716_'+param)[0]
+            if linename == 'oii_7320':
+                """
+                [O2] (5-->2): airwave: 7318.9185 vacwave: 7320.9350 emissivity: 8.18137e-24
+                [O2] (4-->2): airwave: 7319.9849 vacwave: 7322.0018 emissivity: 2.40519e-23
+                [O2] (5-->3): airwave: 7329.6613 vacwave: 7331.6807 emissivity: 1.35614e-23
+                [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.27488e-23
+                """
+                final_linemodel['tiedfactor'][param_names == linename+'_amp'] = 1.0 / 1.2251
+                final_linemodel['tiedtoparam'][param_names == linename+'_amp'] = np.where(param_names == 'oii_7330_amp')[0]
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oii_7330_'+param)[0]
+            if linename == 'siii_9069':
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'siii_9532_'+param)[0]
+            # Tentative! Tie SiIII] 1892 to CIII] 1908 because they're so close in wavelength.
+            if linename == 'siliii_1892':
+                for param in ['sigma', 'vshift']:
+                    final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'ciii_1908_'+param)[0]
+            
+        # Finally set the initial values and bounds on the doublet ratio parameters.
+        for param, bounds, default in zip(['mgii_doublet_ratio', 'oii_doublet_ratio', 'sii_doublet_ratio'],
+                                          [bounds_mgii_doublet, bounds_oii_doublet, bounds_sii_doublet],
+                                          [init_mgii_doublet, init_oii_doublet, init_sii_doublet]):
+            final_linemodel['initial'][final_linemodel['param_name'] == param] = default
+            final_linemodel['bounds'][final_linemodel['param_name'] == param] = bounds
+                    
+        # Assign fixed=True to parameters which are outside the wavelength range
+        # except those that are tied to other lines.
+        _fix_parameters(final_linemodel, verbose=False)
+
+        assert(np.all(final_linemodel['tiedtoparam'][final_linemodel['tiedfactor'] != 0] != -1))
+        assert(len(final_linemodel[np.sum(final_linemodel['bounds'] == [0.0, 0.0], axis=1) > 0]) == 0)
+    
+        #_print_linemodel(final_linemodel)
+        #final_linemodel[np.logical_and(final_linemodel['fixed'] == False, final_linemodel['tiedtoparam'] == -1)]
+
+        # Model 2 - like final_linemodel, but broad lines have been fixed at
+        # zero.
+        final_linemodel_nobroad = final_linemodel.copy()
+        final_linemodel_nobroad['fixed'] = False # reset
+
+        for iline, linename in enumerate(linenames):
+            if linename == 'halpha_broad':
+                for param in ['amp', 'sigma', 'vshift']:
+                    final_linemodel_nobroad['fixed'][param_names == linename+'_'+param] = True
+
+            if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] and linename != 'halpha_broad':
+                for param in ['amp', 'sigma', 'vshift']:
+                    final_linemodel_nobroad['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    final_linemodel_nobroad['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_broad_'+param)[0]
+
+        #final_linemodel_nobroad[np.logical_and(final_linemodel_nobroad['fixed'] == False, final_linemodel_nobroad['tiedtoparam'] == -1)]
+
+        _fix_parameters(final_linemodel_nobroad, verbose=False)
+
+        assert(np.all(final_linemodel_nobroad['tiedtoparam'][final_linemodel_nobroad['tiedfactor'] != 0] != -1))
+
+        # Model 3 - like final_linemodel, but with all the narrow and forbidden
+        # lines tied together and all the broad lines tied together.
+        initial_linemodel = final_linemodel.copy()
+        initial_linemodel['fixed'] = False # reset
+
+        for iline, linename in enumerate(linenames):
+            # Tie all forbidden lines and narrow Balmer & He lines to [OIII] 5007.
+            if fit_linetable['isbroad'][iline] == False and linename != 'oiii_5007':
+                for param in ['sigma', 'vshift']:
+                    initial_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    initial_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oiii_5007_'+param)[0]
+
+            ## Tie all narrow Balmer+He lines to narrow Halpha.
+            #if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] == False and linename != 'halpha':
+            #    for param in ['sigma', 'vshift']:
+            #        initial_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+            #        initial_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_'+param)[0]
+    
+            # Tie all broad Balmer+He lines to broad Halpha.
+            if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] and linename != 'halpha_broad':
+                for param in ['sigma', 'vshift']:
+                    initial_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    initial_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_broad_'+param)[0]
+
+        _fix_parameters(initial_linemodel, verbose=False)#True)
+
+        assert(np.all(initial_linemodel['tiedtoparam'][initial_linemodel['tiedfactor'] != 0] != -1))
+
+        # Model 4 - like initial_linemodel, but broad lines have been fixed at
+        # zero.
+        initial_linemodel_nobroad = initial_linemodel.copy()
+        initial_linemodel_nobroad['fixed'] = False # reset        
+
+        for iline, linename in enumerate(linenames):
+            if linename == 'halpha_broad':
+                for param in ['amp', 'sigma', 'vshift']:
+                    initial_linemodel_nobroad['fixed'][param_names == linename+'_'+param] = True
+
+            if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] and linename != 'halpha_broad':
+                for param in ['amp', 'sigma', 'vshift']:
+                    initial_linemodel_nobroad['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                    initial_linemodel_nobroad['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_broad_'+param)[0]
+
+        _fix_parameters(initial_linemodel_nobroad, verbose=False)
+
+        assert(np.all(initial_linemodel_nobroad['tiedtoparam'][initial_linemodel_nobroad['tiedfactor'] != 0] != -1))
+
+        if verbose:
+            _print_linemodel(initial_linemodel_nobroad)
+
+        return final_linemodel, final_linemodel_nobroad, initial_linemodel, initial_linemodel_nobroad
+
+    def _initial_guesses_and_bounds(self, data, emlinewave, emlineflux):
+        """For all lines in the wavelength range of the data, get a good initial guess
+        on the amplitudes and line-widths. This step is critical for cases like,
+        e.g., 39633354915582193 (tile 80613, petal 05), which has strong narrow
+        lines.
 
         """
+        initial_guesses, param_bounds = {}, {}
+        #init_amplitudes, init_sigmas = {}, {}
+    
+        coadd_emlineflux = np.interp(data['coadd_wave'], emlinewave, emlineflux)
+    
+        for linename, linepix in zip(data['coadd_linename'], data['coadd_linepix']):
+            ## skip the physical doublets
+            #if not hasattr(self.EMLineModel, '{}_amp'.format(linename)):
+            #    continue
+
+            npix = len(linepix)
+            if npix > 5:
+                mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
+                if mnpx < 0:
+                    mnpx = 0
+                if mxpx > linepix[-1]:
+                    mxpx = linepix[-1]
+                amp = np.max(coadd_emlineflux[mnpx:mxpx])
+            else:
+                amp = np.percentile(coadd_emlineflux[linepix], 97.5)
+                
+            if amp < 0:
+                amp = np.abs(amp)
+    
+            # update the bounds on the line-amplitude
+            #bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 3*np.max(coadd_emlineflux[linepix])]
+            mx = 5*np.max(coadd_emlineflux[linepix])
+            if mx < 0: # ???
+                mx = 5*np.max(np.abs(coadd_emlineflux[linepix]))
+            
+            # force broad Balmer lines to be positive
+            iline = self.linetable[self.linetable['name'] == linename]
+            if iline['isbroad']:
+                if iline['isbalmer']:
+                    bounds = [0.0, mx]
+                else:
+                    # MgII and other UV lines are dropped relatively frequently
+                    # due to the lower bound on the amplitude.
+                    #bounds = [None, mx]
+                    #bounds = [-1e2, mx]
+                    #bounds = [0.0, mx]
+                    bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+            else:
+                #bounds = [0.0, mx]
+                bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+
+            if (bounds[0] > bounds[1]) or (amp < bounds[0]) or (amp > bounds[1]):
+                errmsg = 'Initial amplitude is outside its bound for line {}!'.format(linename)
+                self.log.critical(errmsg)
+                raise ValueError(errmsg)
+
+            initial_guesses[linename+'_amp'] = amp
+            param_bounds[linename+'_amp'] = bounds
+    
+        # Now update the linewidth but here we need to loop over *all* lines
+        # (not just those in range). E.g., if H-alpha is out of range we need to
+        # set its initial value correctly since other lines are tied to it
+        # (e.g., main-bright-32406-39628257196245904).
+        for iline in self.linetable:
+            linename = iline['name']
+            if iline['isbroad']:
+                if iline['isbalmer']: # broad Balmer lines
+                    if data['linesigma_balmer'] > data['linesigma_narrow']:
+                        initial_guesses[linename+'_sigma'] = data['linesigma_balmer']
+                    else:
+                        initial_guesses[linename+'_sigma'] = data['linesigma_narrow']
+                else: # broad UV/QSO lines
+                    initial_guesses[linename+'_sigma'] = data['linesigma_uv']
+            else:
+                # prefer narrow over Balmer
+                initial_guesses[linename+'_sigma'] = data['linesigma_narrow']
+    
+        return initial_guesses, param_bounds
+
+    def _linemodel_to_parameters(self, linemodel):
+        """Convert a linemodel model to a list of emission-line parameters."""
+
+        linesplit = np.array_split(linemodel['index'], 3) # 3 parameters per line
+        #linesplit = (np.arange(3) + 1) * len(linemodel) // 3 # 3 parameters per line
+        lineamps = linemodel['value'][linesplit[0]].data
+        linevshifts = linemodel['value'][linesplit[1]].data
+        linesigmas = linemodel['value'][linesplit[2]].data
+
+        # Handle the doublets. Note we are implicitly assuming that the
+        # amplitude parameters are always in the first third of parameters.
+        #doublet = np.where(linemodel['doubletpair'] != -1)[0]
+        #lineamps[doublet] *= linemodel['value'][linemodel['doubletpair'][doublet]]
+        parameters = np.hstack((lineamps, linevshifts, linesigmas))
+
+        linewaves = self.fit_linetable['restwave'].data
+        #lineinrange = self.fit_linetable['inrange'].data
+
+        #Itied = np.where((linemodel['tiedtoparam'] != -1))[0]
+        Itied = np.where((linemodel['tiedtoparam'] != -1) * (linemodel['fixed'] == False))[0]
+        Ifree = np.where((linemodel['tiedtoparam'] == -1) * (linemodel['fixed'] == False))[0]
+
+        tiedtoparam = linemodel['tiedtoparam'][Itied].data
+        tiedfactor = linemodel['tiedfactor'][Itied].data
+        bounds = linemodel['bounds'][Ifree].data
+
+        doubletindx = np.where(linemodel['doubletpair'] != -1)[0]
+        doubletpair = linemodel['doubletpair'][doubletindx].data
+
+        parameter_extras = (Ifree, Itied, tiedtoparam, tiedfactor, bounds,
+                            doubletindx, doubletpair, linewaves)
+
+        return parameters, parameter_extras
+
+    def _populate_linemodel(self, linemodel, initial_guesses, param_bounds):
+        """Population an input linemodel with initial guesses and parameter bounds,
+        taking into account fixed parameters.
+
+        """
+        # Set initial values and bounds.
+        for iparam, param in enumerate(linemodel['param_name']):
+            if param in initial_guesses.keys():
+                if linemodel['fixed'][iparam]:
+                    linemodel['initial'][iparam] = 0.0 # always set fixed parameter to zero
+                else:
+                    linemodel['initial'][iparam] = initial_guesses[param]
+                    if param in param_bounds.keys():
+                        linemodel['bounds'][iparam] = param_bounds[param]
+            else:
+                if linemodel['fixed'][iparam]:
+                    linemodel['initial'][iparam] = 0.0
+                else:
+                    linemodel['initial'][iparam] = 1.0
+
+            # Check bounds for free parameters but do not crash.
+            if linemodel['fixed'][iparam] == False and linemodel['tiedtoparam'][iparam] == -1:
+                toosml = linemodel['initial'][iparam] < linemodel['bounds'][iparam, 0]
+                toobig = linemodel['initial'][iparam] > linemodel['bounds'][iparam, 1]
+                if toosml:
+                    errmsg = 'Initial parameter {} is outside its bound, {:.2f} < {:.2f}.'.format(
+                        param, linemodel['initial'][iparam], linemodel['bounds'][iparam, 0])
+                    self.log.warning(errmsg)
+                    #raise ValueError(errmsg)
+                    linemodel['initial'][iparam] = linemodel['bounds'][iparam, 0]
+                if toobig:
+                    errmsg = 'Initial parameter {} is outside its bound, {:.2f} > {:.2f}.'.format(
+                        param, linemodel['initial'][iparam], linemodel['bounds'][iparam, 1])
+                    self.log.warning(errmsg)
+                    #raise ValueError(errmsg)
+                    linemodel['initial'][iparam] = linemodel['bounds'][iparam, 1]
+                    
+        # Now loop back through and ensure that tied relationships are enforced.
+        Itied = np.where((linemodel['tiedtoparam'] != -1) * (linemodel['fixed'] == False))[0]
+        if len(Itied) > 0:
+            for iparam, param in enumerate(linemodel['param_name'][Itied]):
+                tieindx = linemodel['tiedtoparam'][Itied[iparam]]
+                tiefactor = linemodel['tiedfactor'][Itied[iparam]]
+                #self.log.info('{} tied to {} with factor {:.4f}'.format(param, linemodel[tieindx]['param_name'], tiefactor))
+                linemodel['initial'][Itied[iparam]] = linemodel[tieindx]['initial'] * tiefactor
+
+        linemodel['value'] = linemodel['initial'] # copy
+
+    def _optimize(self, linemodel, emlinewave, emlineflux, weights, 
+                  redshift, resolution_matrix, camerapix, debug=False):
+        """Wrapper to call the least-squares minimization given a linemodel.
+
+        """
+        from scipy.optimize import least_squares
+        from fastspecfit.emlines import _objective_function
+
+        parameters, (Ifree, Itied, tiedtoparam, tiedfactor, bounds, doubletindx, doubletpair, \
+                     linewaves) = self._linemodel_to_parameters(linemodel)
+        self.log.debug('Optimizing {} free parameters'.format(len(Ifree)))
+
+        farg = (emlinewave, emlineflux, weights, redshift, self.log10wave, 
+                resolution_matrix, camerapix, parameters, ) + \
+                (Ifree, Itied, tiedtoparam, tiedfactor, doubletindx, 
+                 doubletpair, linewaves)
+
+        fit_info = least_squares(_objective_function, parameters[Ifree],
+                                 args=farg, max_nfev=self.maxiter, 
+                                 xtol=self.accuracy, 
+                                 #method='lm')
+                                 #verbose=2,
+                                 tr_solver='lsmr', tr_options={'regularize': True},
+                                 method='trf', bounds=tuple(zip(*bounds)))
+        parameters[Ifree] = fit_info.x
+
+        # Conditions for dropping a parameter (all parameters, not just those
+        # being fitted):
+        # --negative amplitude or sigma
+        # --parameter at its default value (fit failed, right??)
+        # --parameter outside its bounds [should never be needed if method='trf']
+        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
+        notfixed = np.logical_not(linemodel['fixed'])
+
+        drop1 = np.hstack((lineamps < 0, np.zeros(len(linevshifts), bool), linesigmas <= 0)) * notfixed
+        
+        drop2 = np.zeros(len(parameters), bool)
+        drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree] # want 'value' here not 'initial'
+        drop2 *= notfixed
+        
+        drop3 = np.zeros(len(parameters), bool)
+        drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
+                                     parameters[Ifree] > linemodel['bounds'][Ifree, 1])
+        drop3 *= notfixed
+        
+        self.log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
+        self.log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
+        self.log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
+        Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
+
+        if debug:
+            pass
+
+        if len(Idrop) > 0:
+            self.log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
+            parameters[Idrop] = 0.0
+
+        # apply tied constraints
+        if len(Itied) > 0:
+            for I, indx, factor in zip(Itied, tiedtoparam, tiedfactor):
+                parameters[I] = parameters[indx] * factor
+
+        # Now loop back through and drop Broad balmer lines that:
+        #   (1) are narrower than their narrow-line counterparts;
+        #   (2) have a narrow line whose amplitude is smaller than that of the broad line
+        #      --> Deprecated! main-dark-32303-39628176678192981 is an example
+        #          of an object where there's a broad H-alpha line but no other
+        #          forbidden lines!
+        
+        out_linemodel = linemodel.copy()
+        out_linemodel['value'] = parameters
+        out_linemodel.meta['nfev'] = fit_info['nfev']
+
+        if False:
+            bestfit = self.bestfit(out_linemodel, redshift, emlinewave, resolution_matrix, camerapix)
+            import matplotlib.pyplot as plt
+            plt.clf()
+            plt.plot(emlinewave, emlineflux)
+            plt.plot(emlinewave, bestfit)
+            #plt.xlim(5800, 6200)
+            #plt.xlim(6600, 6950)
+            plt.xlim(5050, 5120)
+            #plt.xlim(8850, 9050)
+            plt.savefig('junk.png')
+        
+        return out_linemodel
+
+    def chi2(self, linemodel, emlinewave, emlineflux, emlineivar, emlinemodel,
+             continuum_model=None, return_dof=False):
+        """Compute the reduced chi^2."""
+
+        nfree = np.count_nonzero((linemodel['fixed'] == False) * (linemodel['tiedtoparam'] == -1))
+        dof = np.count_nonzero(emlineivar > 0) - nfree
+
+        if dof > 0:
+            if continuum_model is None:
+                model = emlinemodel
+            else:
+                model = emlinemodel + continuum_model
+            chi2 = np.sum(emlineivar * (emlineflux - model)**2) / dof
+        else:
+            chi2 = self.chi2_default
+            
+        if return_dof:
+            return chi2, dof
+        else:
+            return chi2
+
+    def bestfit(self, linemodel, redshift, emlinewave, resolution_matrix, camerapix):
+        """Construct the best-fitting emission-line spectrum from a linemodel."""
+
+        from fastspecfit.emlines import build_emline_model
+
+        parameters, (Ifree, Itied, tiedtoparam, tiedfactor, bounds, doubletindx, \
+                     doubletpair, linewaves) = self._linemodel_to_parameters(linemodel)
+
+        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
+
+        # doublets
+        lineamps[doubletindx] *= lineamps[doubletpair]
+
+        emlinemodel = build_emline_model(self.log10wave, redshift, lineamps, 
+                                         linevshifts, linesigmas, linewaves, 
+                                         emlinewave, resolution_matrix,
+                                         camerapix)
+
+        return emlinemodel
+
+    def emlinemodel_bestfit(self, specwave, specres, fastspecfit_table, redshift=None):
+        """Wrapper function to get the best-fitting emission-line model
+        from an fastspecfit table (used for QA and elsewhere).
+
+        """
+        from fastspecfit.emlines import build_emline_model
+
+        if redshift is None:
+            redshift = fastspecfit_table['CONTINUUM_Z']
+        
+        linewaves = self.linetable['restwave'].data
+
+        parameters = [fastspecfit_table[param.upper()] for param in self.param_names]
+
+        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line    
+
+        # Handle the doublets. Note we are implicitly assuming that the
+        # amplitude parameters are always in the first third of parameters.
+        lineamps[self.doubletindx] *= lineamps[self.doubletpair]
+
+        emlinemodel = build_emline_model(self.log10wave, redshift, lineamps, 
+                                         linevshifts, linesigmas, linewaves, 
+                                         specwave, specres, None)
+
+        return emlinemodel
+
+    def emline_specfit(self, data, result, continuummodel, smooth_continuum, 
+                       synthphot=True, broadlinefit=True, verbose=False):
+        """Perform the fit minimization / chi2 minimization.
+
+        Parameters
+        ----------
+        data
+        continuummodel
+        smooth_continuum
+        synthphot
+        verbose
+        broadlinefit
+
+        Returns
+        -------
+        results
+        modelflux
+     
+        """
+        from fastspecfit.util import ivar2var
+
+        # Combine all three cameras; we will unpack them to build the
+        # best-fitting model (per-camera) below.
+        redshift = data['zredrock']
+        emlinewave = np.hstack(data['wave'])
+        oemlineivar = np.hstack(data['ivar'])/data['apcorr']**2
+        specflux = np.hstack(data['flux'])*data['apcorr']
+        resolution_matrix = data['res']
+        camerapix = data['camerapix']
+
+        continuummodelflux = np.hstack(continuummodel)
+        smoothcontinuummodelflux = np.hstack(smooth_continuum)
+        emlineflux = specflux - continuummodelflux - smoothcontinuummodelflux
+
+        emlineivar = np.copy(oemlineivar)
+        emlinevar, emlinegood = ivar2var(emlineivar, clip=1e-3)
+        emlinebad = np.logical_not(emlinegood)
+
+        # This is a (dangerous???) hack.
+        if np.sum(emlinebad) > 0:
+            emlineivar[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineivar[emlinegood])
+            emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
+
+        weights = np.sqrt(emlineivar)
+
+        # Build all the emission-line models for this object.
+        final_linemodel, final_linemodel_nobroad, initial_linemodel, initial_linemodel_nobroad = \
+            self.build_linemodels(redshift, wavelims=(np.min(emlinewave)+5, np.max(emlinewave)-5),
+                                  verbose=False)
+
+        # Get initial guesses on the parameters and populate the two "initial"
+        # linemodels; the "final" linemodels will be initialized with the
+        # best-fitting parameters from the initial round of fitting.
+        initial_guesses, param_bounds = self._initial_guesses_and_bounds(data, emlinewave, emlineflux)
+
+        for linemodel in [initial_linemodel, initial_linemodel_nobroad]:
+            self._populate_linemodel(linemodel, initial_guesses, param_bounds)
+
+        # Initial fit - initial_linemodel_nobroad
+        t0 = time.time()
+        initfit = self._optimize(initial_linemodel_nobroad, emlinewave, emlineflux, 
+                                 weights, redshift, resolution_matrix, camerapix, 
+                                 debug=False)
+        initmodel = self.bestfit(initfit, redshift, emlinewave, resolution_matrix, camerapix)
+        initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar, initmodel)
+        nfree = np.sum((initfit['fixed'] == False) * (initfit['tiedtoparam'] == -1))
+        self.log.info('Initial line-fitting with {} free parameters took {:.2f} seconds (niter={}) with rchi2={:.4f}.'.format(
+            nfree, time.time()-t0, initfit.meta['nfev'], initchi2))
+
+        ## Now try adding bround Balmer and helium lines and see if we improve
+        ## the chi2. First, do we have enough pixels around Halpha and Hbeta to
+        ## do this test?
+        #broadlinepix = []
+        #for icam in np.arange(len(data['cameras'])):
+        #    pixoffset = int(np.sum(data['npixpercamera'][:icam]))
+        #    for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
+        #        if linename == 'halpha_broad' or linename == 'hbeta_broad' or linename == 'hgamma_broad':
+        #            broadlinepix.append(linepix + pixoffset)
+        #            #print(data['wave'][icam][linepix])
+
+        # Require minimum XX pixels.
+        if broadlinefit:# and len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10:
+            t0 = time.time()
+            broadfit = self._optimize(initial_linemodel, emlinewave, emlineflux, weights, 
+                                      redshift, resolution_matrix, camerapix, debug=True)
+            broadmodel = self.bestfit(broadfit, redshift, emlinewave, resolution_matrix, camerapix)
+            broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel)
+            nfree = np.sum((broadfit['fixed'] == False) * (broadfit['tiedtoparam'] == -1))
+            self.log.info('Second (broad) line-fitting with {} free parameters took {:.2f} seconds (niter={}) with rchi2={:.4f}'.format(
+                nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
+
+            ## Compare chi2 just in and around the broad lines.
+            #broadlinepix = np.hstack(broadlinepix)
+            #I = ((self.fit_linetable[self.fit_linetable['inrange']]['zwave'] > np.min(emlinewave[broadlinepix])) *
+            #     (self.fit_linetable[self.fit_linetable['inrange']]['zwave'] < np.max(emlinewave[broadlinepix])))
+            #Iline = initfit[np.isin(broadfit['linename'], self.fit_linetable[self.fit_linetable['inrange']][I]['name'])]
+            #Bline = broadfit[np.isin(broadfit['linename'], self.fit_linetable[self.fit_linetable['inrange']][I]['name'])]
+            #dof_init = np.count_nonzero(emlineivar[broadlinepix] > 0) - np.count_nonzero((Iline['fixed'] == False) * (Iline['tiedtoparam'] == -1))
+            #dof_broad = np.count_nonzero(emlineivar[broadlinepix] > 0) - np.count_nonzero((Bline['fixed'] == False) * (Bline['tiedtoparam'] == -1))
+            #if dof_init == 0 or dof_broad == 0:
+            #    errmsg = 'Number of degrees of freedom should never be zero: dof_init={}, dof_free={}'.format(
+            #        dof_init, dof_broad)
+            #    self.log.critical(errmsg)
+            #    raise ValueError(errmsg)
+            #
+            #linechi2_init = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - initmodel[broadlinepix])**2) / dof_init
+            #linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / dof_broad
+            #self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [delta-chi2={:.5f}]'.format(
+            #    linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
+
+            linechi2_broad, linechi2_init = broadchi2, initchi2
+
+            self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [delta-chi2={:.5f}]'.format(
+                linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
+
+            if linechi2_broad > linechi2_init:
+                bestfit = initfit
+            else:
+                bestfit = broadfit
+        else:
+            self.log.info('Skipping broad-line fitting.')
+
+            bestfit = initfit
+            linechi2_broad, linechi2_init = 1e6, initchi2
+            
+            #if broadlinefit:
+            #    self.log.info('Too few pixels centered on candidate broad emission lines.')
+            #else:
+            #    self.log.info('Skipping broad-line fitting.')
+            #linechi2_init, linechi2_broad = 0.0, 0.0
+
+        # Finally, one more fitting loop with all the line-constraints relaxed
+        # but starting from the previous best-fitting values.
+        if linechi2_init < (linechi2_broad + 1):
+            linemodel = final_linemodel_nobroad
+        else:
+            linemodel = final_linemodel
+
+        # Populate the new linemodel being careful to handle the fact that the
+        # "tied" relationships are very different between the initial and final
+        # linemodels.
+        linemodel['bounds'] = bestfit['bounds']
+
+        Ifree = np.where(linemodel['fixed'] == False)[0]
+        for I in Ifree:
+            # copy initial values
+            if bestfit['initial'][I] != 0:
+                linemodel['initial'][I] = bestfit['initial'][I]
+            # copy best-fit values
+            if bestfit['value'][I] != 0:
+                linemodel['value'][I] = bestfit['value'][I]
+            else:
+                if bestfit['tiedtoparam'][I] != -1:
+                    linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
+                else:
+                    linemodel['value'][I] = linemodel['initial'][I]
+
+        # Are the broad and narrow lines swapped? If so, swap them here.
+        if not linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['fixed'] and \
+          (linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['value'] > 0) and \
+          (linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['value'] < linemodel[linemodel['param_name'] == 'halpha_sigma']['value']):
+            for linename in self.fit_linetable[self.fit_linetable['isbalmer'] * self.fit_linetable['isbroad']]['name']:
+                if not linemodel[linemodel['param_name'] == '{}_sigma'.format(linename)]['fixed']:
+                    sigma_broad = linemodel[linemodel['param_name'] == '{}_sigma'.format(linename)]['value']
+                    sigma_narrow = linemodel[linemodel['param_name'] == '{}_sigma'.format(linename).replace('_broad', '')]['value']
+                    #print(linename, sigma_broad[0], sigma_narrow[0])
+                    linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename)] = sigma_narrow
+                    linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename).replace('_broad', '')] = sigma_broad
+
+        # Tied parameters can have initial values of zero if they are fixed
+        # (e.g., broad emission lines) but nothing else.
+        I = (linemodel['value'][Ifree] == 0) * (linemodel['tiedtoparam'][Ifree] == -1)
+        if np.any(I):
+            errmsg = 'Initial values should never be zero [targetid={}]!'.format(data['targetid'])
+            self.log.critical(errmsg)
+            raise ValueError(errmsg)
+
+        #linemodel[linemodel['linename'] == 'halpha']
+        #B = np.where(['ne' in param for param in self.param_names])[0]
+        #B = np.where(['broad' in param for param in self.param_names])[0]
+
+        t0 = time.time()
+        finalfit = self._optimize(linemodel, emlinewave, emlineflux, weights, 
+                                  redshift, resolution_matrix, camerapix, 
+                                  debug=False)
+        finalmodel = self.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
+        finalchi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel)
+        nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
+        self.log.info('Final line-fitting with {} free parameters took {:.2f} seconds (niter={}) with rchi2={:.4f}.'.format(
+            nfree, time.time()-t0, finalfit.meta['nfev'], finalchi2))
+
+        # Residual spectrum with no emission lines.
+        specflux_nolines = specflux - finalmodel
+
+        #import matplotlib.pyplot as plt
+        #W = (emlinewave>6560)*(emlinewave<6660)
+        #plt.clf()
+        #plt.plot(emlinewave[W], emlineflux[W], color='gray')
+        #plt.plot(emlinewave[W], finalmodel[W], color='orange', alpha=0.7)
+        ##plt.plot(emlinewave[W], specflux[W], color='gray')
+        ##plt.plot(emlinewave[W], specflux_nolines[W], color='orange', alpha=0.7)
+        #plt.savefig('desi-users/ioannis/tmp/junk2.png')
+        #pdb.set_trace()
+
+        # Initialize the output table; see init_fastspecfit for the data model.
+        result['RCHI2'] = finalchi2
+        result['LINERCHI2_BROAD'] = linechi2_broad
+        result['DELTA_LINERCHI2'] = linechi2_init - linechi2_broad
+
+        # Now fill the output table.
+        self._populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
+                               emlineivar, oemlineivar, specflux_nolines, redshift)
+
+        # Build the model spectra.
+        emmodel = np.hstack(self.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
+
+        # As a consistency check, make sure that the emission-line spectrum
+        # rebuilt from the final table is not (very) different from the one
+        # based on the best-fitting model parameters.
+        #assert(np.all(np.isclose(emmodel, emlinemodel, rtol=1e-4)))
+            
+        #import matplotlib.pyplot as plt
+        #plt.clf()
+        #plt.plot(emlinewave, np.hstack(emmodel)-emlinemodel)
+        ##plt.plot(emlinewave, emlinemodel)
+        #plt.savefig('desi-users/ioannis/tmp/junk.png')
+
+        # I believe that all the elements of the coadd_wave vector are contained
+        # within one or more of the per-camera wavelength vectors, and so we
+        # should be able to simply map our model spectra with no
+        # interpolation. However, because of round-off, etc., it's probably
+        # easiest to use np.interp.
+
+        # package together the final output models for writing; assume constant
+        # dispersion in wavelength!
+        minwave, maxwave, dwave = np.min(data['coadd_wave']), np.max(data['coadd_wave']), np.diff(data['coadd_wave'][:2])[0]
+        minwave = float(int(minwave * 1000) / 1000)
+        maxwave = float(int(maxwave * 1000) / 1000)
+        dwave = float(int(dwave * 1000) / 1000)
+        npix = int((maxwave-minwave)/dwave)+1
+        modelwave = minwave + dwave * np.arange(npix)
+
+        modelspectra = Table()
+        # all these header cards need to be 2-element tuples (value, comment),
+        # otherwise io.write_fastspecfit will crash
+        modelspectra.meta['NAXIS1'] = (npix, 'number of pixels')
+        modelspectra.meta['NAXIS2'] = (npix, 'number of models')
+        modelspectra.meta['NAXIS3'] = (npix, 'number of objects')
+        modelspectra.meta['BUNIT'] = ('10**-17 erg/(s cm2 Angstrom)', 'flux unit')
+        modelspectra.meta['CUNIT1'] = ('Angstrom', 'wavelength unit')
+        modelspectra.meta['CTYPE1'] = ('WAVE', 'type of axis')
+        modelspectra.meta['CRVAL1'] = (minwave, 'wavelength of pixel CRPIX1 (Angstrom)')
+        modelspectra.meta['CRPIX1'] = (0, '0-indexed pixel number corresponding to CRVAL1')
+        modelspectra.meta['CDELT1'] = (dwave, 'pixel size (Angstrom)')
+        modelspectra.meta['DC-FLAG'] = (0, '0 = linear wavelength vector')
+        modelspectra.meta['AIRORVAC'] = ('vac', 'wavelengths in vacuum (vac)')
+
+        modelcontinuum = np.interp(modelwave, emlinewave, continuummodelflux).reshape(1, npix)
+        modelsmoothcontinuum = np.interp(modelwave, emlinewave, smoothcontinuummodelflux).reshape(1, npix)
+        modelemspectrum = np.interp(modelwave, emlinewave, emmodel).reshape(1, npix)
+        
+        modelspectra.add_column(Column(name='CONTINUUM', dtype='f4', data=modelcontinuum))
+        modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4', data=modelsmoothcontinuum))
+        modelspectra.add_column(Column(name='EMLINEMODEL', dtype='f4', data=modelemspectrum))
+
+        # Finally, optionally synthesize photometry.
+        if synthphot:
+            modelflux = modelcontinuum[0, :] + modelsmoothcontinuum[0, :] + modelemspectrum[0, :]
+            self._synthphot_spectrum(data, result, modelwave, modelflux)
+
+        return modelspectra
+
+    def _populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
+                          emlineivar, oemlineivar, specflux_nolines, redshift):
+        """Populate the output table with the emission-line measurements.
+
+        """
+        from scipy.stats import sigmaclip
+
+        for param in finalfit:
+            val = param['value']
+            # special case the tied doublets
+            if param['param_name'] == 'oii_doublet_ratio':
+                result['OII_DOUBLET_RATIO'] = val
+                result['OII_3726_AMP'] = val * finalfit[param['doubletpair']]['value']
+            elif param['param_name'] == 'sii_doublet_ratio':
+                result['SII_DOUBLET_RATIO'] = val
+                result['SII_6731_AMP'] = val * finalfit[param['doubletpair']]['value']
+            elif param['param_name'] == 'mgii_doublet_ratio':
+                result['MGII_DOUBLET_RATIO'] = val
+                result['MGII_2796_AMP'] = val * finalfit[param['doubletpair']]['value']
+            else:
+                result[param['param_name'].upper()] = val
+
+        # get continuum fluxes, EWs, and upper limits
+        narrow_sigmas, broad_sigmas, uv_sigmas = [], [], []
+        narrow_redshifts, broad_redshifts, uv_redshifts = [], [], []
+        for oneline in self.fit_linetable[self.fit_linetable['inrange']]:
+
+            linename = oneline['name'].upper()
+            linez = redshift + result['{}_VSHIFT'.format(linename)] / C_LIGHT
+            linezwave = oneline['restwave'] * (1 + linez)
+            linesigma = result['{}_SIGMA'.format(linename)] # [km/s]
+
+            # if the line was dropped, use a default sigma value
+            if linesigma == 0:
+                if oneline['isbroad']:
+                    if oneline['isbalmer']:
+                        linesigma = self.limitsigma_narrow
+                    else:
+                        linesigma = self.limitsigma_broad
+                else:
+                    linesigma = self.limitsigma_broad
+
+            linesigma_ang = linesigma * linezwave / C_LIGHT    # [observed-frame Angstrom]
+            #log10sigma = linesigma / C_LIGHT / np.log(10)     # line-width [log-10 Angstrom]            
+
+            # Are the pixels based on the original inverse spectrum fully
+            # masked? If so, set everything to zero and move onto the next line.
+            lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang)) *
+                                (emlinewave <= (linezwave + 3.0*linesigma_ang)))[0]
+            
+            if len(lineindx) > 0 and np.sum(oemlineivar[lineindx] == 0) / len(lineindx) > 0.3: # use original ivar
+                result['{}_AMP'.format(linename)] = 0.0
+                result['{}_VSHIFT'.format(linename)] = 0.0
+                result['{}_SIGMA'.format(linename)] = 0.0
+            else:
+                # number of pixels, chi2, and boxcar integration
+                lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang)) *
+                                    (emlinewave <= (linezwave + 3.0*linesigma_ang)) *
+                                    (emlineivar > 0))[0]
+    
+                # can happen if sigma is very small (depending on the wavelength)
+                #if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * len(lineindx) > 0 and len(lineindx) <= 3: 
+                if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * (len(lineindx) <= 3):
+                    dwave = emlinewave - linezwave
+                    lineindx = np.argmin(np.abs(dwave))
+                    if dwave[lineindx] > 0:
+                        pad = np.array([-2, -1, 0, +1])
+                    else:
+                        pad = np.array([-1, 0, +1, +2])
+    
+                    # check to make sure we don't hit the edges
+                    if (lineindx-pad[0]) < 0 or (lineindx+pad[-1]) >= len(emlineivar):
+                        lineindx = np.array([])
+                    else:
+                        lineindx += pad
+                        # the padded pixels can have ivar==0
+                        good = oemlineivar[lineindx] > 0 # use the original ivar
+                        lineindx = lineindx[good]
+    
+                npix = len(lineindx)
+                result['{}_NPIX'.format(linename)] = npix
+    
+                if npix > 3: # magic number: required at least XX unmasked pixels centered on the line
+    
+                    if np.any(emlineivar[lineindx] == 0):
+                        errmsg = 'Ivar should never be zero within an emission line!'
+                        self.log.critical(errmsg)
+                        raise ValueError(errmsg)
+                        
+                    # boxcar integration of the flux; should we weight by the line-profile???
+                    boxflux = np.sum(emlineflux[lineindx])                
+                    boxflux_ivar = 1 / np.sum(1 / emlineivar[lineindx])
+    
+                    result['{}_BOXFLUX'.format(linename)] = boxflux # * u.erg/(u.second*u.cm**2)
+                    result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
+                    
+                    # Get the uncertainty in the line-amplitude based on the scatter
+                    # in the pixel values from the emission-line subtracted
+                    # spectrum.
+                    amp_sigma = np.diff(np.percentile(specflux_nolines[lineindx], [25, 75]))[0] / 1.349 # robust sigma
+                    #clipflux, _, _ = sigmaclip(specflux_nolines[lineindx], low=3, high=3)
+                    #amp_sigma = np.std(clipflux)
+                    if amp_sigma > 0:
+                        result['{}_AMP_IVAR'.format(linename)] = 1 / amp_sigma**2 # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+    
+                    #if np.isinf(result['{}_AMP_IVAR'.format(linename)]):
+                    #    pdb.set_trace()
+    
+                    # require amp > 0 (line not dropped) to compute the flux and chi2
+                    if result['{}_AMP'.format(linename)] > 0:
+    
+                        # get the emission-line flux
+                        linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang # * u.Angstrom
+                        result['{}_FLUX'.format(linename)] = result['{}_AMP'.format(linename)] * linenorm
+            
+                        #result['{}_FLUX_IVAR'.format(linename)] = result['{}_AMP_IVAR'.format(linename)] / linenorm**2
+                        #weight = np.exp(-0.5 * np.log10(emlinewave/linezwave)**2 / log10sigma**2)
+                        #weight = (weight / np.max(weight)) > 1e-3
+                        #result['{}_FLUX_IVAR'.format(linename)] = 1 / np.sum(1 / emlineivar[weight])
+                        result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
+    
+                        dof = npix - 3 # ??? [redshift, sigma, and amplitude]
+                        chi2 = np.sum(emlineivar[lineindx]*(emlineflux[lineindx]-finalmodel[lineindx])**2) / dof
+    
+                        result['{}_CHI2'.format(linename)] = chi2
+    
+                        # keep track of sigma and z but only using XX-sigma lines
+                        linesnr = result['{}_AMP'.format(linename)] * np.sqrt(result['{}_AMP_IVAR'.format(linename)])
+                        #print(linename, result['{}_AMP'.format(linename)], amp_sigma, linesnr)
+                        if linesnr > 2:
+                            if oneline['isbroad']: # includes UV and broad Balmer lines
+                                if oneline['isbalmer']:
+                                    broad_sigmas.append(linesigma)
+                                    broad_redshifts.append(linez)
+                                else:
+                                    uv_sigmas.append(linesigma)
+                                    uv_redshifts.append(linez)
+                            else:
+                                narrow_sigmas.append(linesigma)
+                                narrow_redshifts.append(linez)
+    
+                # next, get the continuum, the inverse variance in the line-amplitude, and the EW
+                indxlo = np.where((emlinewave > (linezwave - 10*linesigma * linezwave / C_LIGHT)) *
+                                  (emlinewave < (linezwave - 3.*linesigma * linezwave / C_LIGHT)) *
+                                  (oemlineivar > 0))[0]
+                                  #(finalmodel == 0))[0]
+                indxhi = np.where((emlinewave < (linezwave + 10*linesigma * linezwave / C_LIGHT)) *
+                                  (emlinewave > (linezwave + 3.*linesigma * linezwave / C_LIGHT)) *
+                                  (oemlineivar > 0))[0]
+                                  #(finalmodel == 0))[0]
+                indx = np.hstack((indxlo, indxhi))
+    
+                if len(indx) >= 3: # require at least XX pixels to get the continuum level
+                    #_, cmed, csig = sigma_clipped_stats(specflux_nolines[indx], sigma=3.0)
+                    clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
+                    # corner case: if a portion of a camera is masked
+                    if len(clipflux) > 0:
+                        #cmed, csig = np.mean(clipflux), np.std(clipflux)
+                        cmed = np.median(clipflux)
+                        csig = np.diff(np.percentile(clipflux, [25, 75])) / 1.349 # robust sigma
+                        if csig > 0:
+                            civar = (np.sqrt(len(indx)) / csig)**2
+                        else:
+                            civar = 0.0
+                    else:
+                        cmed, civar = 0.0, 0.0
+    
+                    result['{}_CONT'.format(linename)] = cmed # * u.erg/(u.second*u.cm**2*u.Angstrom)
+                    result['{}_CONT_IVAR'.format(linename)] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+    
+                if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
+                    factor = 1 / ((1 + redshift) * result['{}_CONT'.format(linename)]) # --> rest frame
+                    ew = result['{}_FLUX'.format(linename)] * factor # rest frame [A]
+                    ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
+    
+                    # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
+                    fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) # * u.erg/(u.second*u.cm**2)
+                    ewlimit = fluxlimit * factor
+    
+                    result['{}_EW'.format(linename)] = ew
+                    result['{}_EW_IVAR'.format(linename)] = ewivar
+                    result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit 
+                    result['{}_EW_LIMIT'.format(linename)] = ewlimit
+
+            if 'debug' in self.log.name:
+                for col in ('VSHIFT', 'SIGMA', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
+                    self.log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)]))
+                for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
+                    self.log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)]))
+                print()
+                #self.log.debug(' ')
+    
+            ## simple QA
+            #if linename == 'OIII_5007':
+            #    import matplotlib.pyplot as plt
+            #    _indx = np.arange(indx[-1]-indx[0])+indx[0]
+            #    # continuum bandpasses and statistics
+            #    plt.clf()
+            #    plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='gray')
+            #    plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
+            #    plt.axhline(y=cmed, color='k')
+            #    plt.axhline(y=cmed+1/np.sqrt(civar), color='k', ls='--')
+            #    plt.axhline(y=cmed-1/np.sqrt(civar), color='k', ls='--')
+            #    plt.savefig('desi-users/ioannis/tmp/junk.png')
+            #
+            #    # emission-line integration
+            #    plt.clf()
+            #    plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
+            #    plt.plot(emlinewave[_indx], finalmodel[_indx], color='red')
+            #    #plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='orange', alpha=0.5)
+            #    plt.axvline(x=emlinewave[lineindx[0]], color='blue')
+            #    plt.axvline(x=emlinewave[lineindx[-1]], color='blue')
+            #    plt.axhline(y=0, color='k', ls='--')
+            #    plt.axhline(y=amp_sigma, color='k', ls='--')
+            #    plt.axhline(y=2*amp_sigma, color='k', ls='--')
+            #    plt.axhline(y=3*amp_sigma, color='k', ls='--')
+            #    plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
+            #    plt.savefig('desi-users/ioannis/tmp/junk2.png')
+            #    pdb.set_trace()
+
+        # Clean up the doublets whose amplitudes were tied in the fitting since
+        # they may have been zeroed out in the clean-up, above.
+        if result['OIII_5007_AMP'] == 0.0 and result['OIII_5007_NPIX'] > 0:
+            result['OIII_4959_AMP'] = 0.0
+            result['OIII_4959_FLUX'] = 0.0
+            result['OIII_4959_EW'] = 0.0
+        if result['NII_6584_AMP'] == 0.0 and result['NII_6584_NPIX'] > 0:
+            result['NII_6548_AMP'] = 0.0
+            result['NII_6548_FLUX'] = 0.0
+            result['NII_6548_EW'] = 0.0
+        if result['OII_7320_AMP'] == 0.0 and result['OII_7320_NPIX'] > 0:
+            result['OII_7330_AMP'] = 0.0
+            result['OII_7330_FLUX'] = 0.0
+            result['OII_7330_EW'] = 0.0
+        if result['MGII_2796_AMP'] == 0.0 and result['MGII_2803_AMP'] == 0.0:
+            result['MGII_DOUBLET_RATIO'] = 0.0
+        if result['OII_3726_AMP'] == 0.0 and result['OII_3729_AMP'] == 0.0:
+            result['OII_DOUBLET_RATIO'] = 0.0
+        if result['SII_6716_AMP'] == 0.0 and result['SII_6731_AMP'] == 0.0:
+            result['SII_DOUBLET_RATIO'] = 0.0
+
+        if 'debug' in self.log.name:
+            for col in ('MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'):
+                self.log.debug('{}: {:.4f}'.format(col, result[col]))
+            #self.log.debug(' ')
+            print()
+
+        # get the average emission-line redshifts and velocity widths
+        if len(narrow_redshifts) > 0:
+            result['NARROW_Z'] = np.median(narrow_redshifts)
+            result['NARROW_SIGMA'] = np.median(narrow_sigmas) # * u.kilometer / u.second
+            #result['NARROW_Z_ERR'] = np.std(narrow_redshifts)
+            #result['NARROW_SIGMA_ERR'] = np.std(narrow_sigmas)
+        else:
+            result['NARROW_Z'] = redshift
+            
+        if len(broad_redshifts) > 0:
+            result['BROAD_Z'] = np.median(broad_redshifts)
+            result['BROAD_SIGMA'] = np.median(broad_sigmas) # * u.kilometer / u.second
+            #result['BROAD_Z_ERR'] = np.std(broad_redshifts)
+            #result['BROAD_SIGMA_ERR'] = np.std(broad_sigmas)
+        else:
+            result['BROAD_Z'] = redshift
+            
+        if len(uv_redshifts) > 0:
+            result['UV_Z'] = np.median(uv_redshifts)
+            result['UV_SIGMA'] = np.median(uv_sigmas) # * u.kilometer / u.second
+            #result['UV_Z_ERR'] = np.std(uv_redshifts)
+            #result['UV_SIGMA_ERR'] = np.std(uv_sigmas)
+        else:
+            result['UV_Z'] = redshift
+
+        # fragile
+        if 'debug' in self.log.name:
+            for line in ('NARROW', 'BROAD', 'UV'):
+                self.log.debug('{}_Z: {:.12f}'.format(line, result['{}_Z'.format(line)]))
+                self.log.debug('{}_SIGMA: {:.3f}'.format(line, result['{}_SIGMA'.format(line)]))
+
+    def _synthphot_spectrum(self, data, result, modelwave, modelflux):
+        """Synthesize photometry from the best-fitting model (continuum+emission lines).
+
+        """
+        if data['photsys'] == 'S':
+            filters = self.decam
+        else:
+            filters = self.bassmzls
+
+        # Pad (simply) in wavelength...
+        padflux, padwave = filters.pad_spectrum(modelflux, modelwave, method='edge')
+        synthmaggies = filters.get_ab_maggies(padflux / self.fluxnorm, padwave)
+        synthmaggies = synthmaggies.as_array().view('f8')
+        model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
+                                                nanomaggies=False,
+                                                lambda_eff=filters.effective_wavelengths.value)
+
+        for iband, band in enumerate(self.synth_bands):
+            result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband] # * 'nanomaggies'
+            #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
+        for iband, band in enumerate(self.synth_bands):
+            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] # * 'nanomaggies'
+
+        ## measure DN(4000) without the emission lines
+        #if False:
+        #    dn4000_nolines, _ = self.get_dn4000(emlinewave, specflux_nolines, redshift=redshift)
+        #    result['DN4000_NOLINES'] = dn4000_nolines
+    
+    def qa_fastspec(self, data, fastspec, metadata, coadd_type='healpix',
+                    spec_wavelims=(3550, 9900), outprefix=None, outdir=None):
+        """QA plot the emission-line spectrum and best-fitting model.
+
+        """
+        from scipy.ndimage import median_filter
         import matplotlib.pyplot as plt
         from matplotlib import colors
         import matplotlib.ticker as ticker
         import seaborn as sns
 
+        from fastspecfit.util import ivar2var
+
         sns.set(context='talk', style='ticks', font_scale=1.1)#, rc=rc)
 
-        col1 = colors.to_hex('darkblue') # 'darkgreen', 'darkred', 'dodgerblue', 'darkseagreen', 'orangered']]
-        
-        ymin, ymax = 1e6, -1e6
+        col1 = [colors.to_hex(col) for col in ['dodgerblue', 'darkseagreen', 'orangered']]
+        col2 = [colors.to_hex(col) for col in ['darkblue', 'darkgreen', 'darkred']]
+        col3 = [colors.to_hex(col) for col in ['blue', 'green', 'red']]
 
-        redshift = metadata['Z']
+        photcol1 = colors.to_hex('darkblue') # 'darkgreen', 'darkred', 'dodgerblue', 'darkseagreen', 'orangered']]
+        
+        if outdir is None:
+            outdir = '.'
+        if outprefix is None:
+            outprefix = 'fastspec'
 
         if metadata['PHOTSYS'] == 'S':
             filters = self.decam
@@ -2336,12 +3207,7 @@ class FastFit(ContinuumTools):
         else:
             filters = self.bassmzls
             allfilters = self.bassmzlswise
-
-        if outdir is None:
-            outdir = '.'
-        if outprefix is None:
-            outprefix = 'fastphot'
-
+    
         if coadd_type == 'healpix':
             title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
                     metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
@@ -2365,21 +3231,28 @@ class FastFit(ContinuumTools):
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'],
                     metadata['EXPID'], metadata['TARGETID']))
+        elif coadd_type == 'custom':
+            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+                    metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                    outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         else:
             pass
 
-        # rebuild the best-fitting photometric model fit
-        inodust = np.ndarray.item(np.where(self.AV == 0)[0]) # should always be index 0        
+        apcorr = fastspec['APCORR']
+        redshift = fastspec['CONTINUUM_Z']
+
+        # rebuild the best-fitting broadband photometric model
         continuum_phot, synthmodelphot = self.SSP2data(
-            self.sspflux_dustnomvdisp[:, :, inodust], self.sspwave, redshift=redshift,
-            synthphot=True, AV=fastphot['CONTINUUM_AV'], #test=True,
-            coeff=fastphot['CONTINUUM_COEFF'] * self.massnorm)
+            self.sspflux, self.sspwave, redshift=redshift,
+            synthphot=True, #AV=fastspec['CONTINUUM_AV'],
+            coeff=fastspec['CONTINUUM_COEFF'] * self.massnorm)
 
         continuum_wave_phot = self.sspwave * (1 + redshift)
-
-        wavemin, wavemax = 0.1, 30.0 # 6.0
-        indx = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
-
+    
+        wavemin, wavemax = 0.1, 35 # 6.0
+        indx_phot = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
+    
         phot = self.parse_photometry(self.bands,
                                      maggies=np.array([metadata['FLUX_{}'.format(band.upper())] for band in self.bands]),
                                      ivarmaggies=np.array([metadata['FLUX_IVAR_{}'.format(band.upper())] for band in self.bands]),
@@ -2388,22 +3261,254 @@ class FastFit(ContinuumTools):
         fiberphot = self.parse_photometry(self.fiber_bands,
                                           maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())] for band in self.fiber_bands]),
                                           lambda_eff=filters.effective_wavelengths.value)
-        
-        fig, ax = plt.subplots(figsize=(12, 8))
 
-        if np.all(continuum_phot[indx] <= 0):
+        # rebuild the best-fitting spectroscopic model
+        stackwave = np.hstack(data['wave'])
+
+        continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
+                                     specwave=data['wave'], specres=data['res'],
+                                     cameras=data['cameras'],
+                                     vdisp=fastspec['VDISP'],
+                                     coeff=fastspec['CONTINUUM_COEFF'],
+                                     synthphot=False)
+        
+        residuals = [apcorr*data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
+        
+        if np.all(fastspec['CONTINUUM_COEFF'] == 0):
+            _smooth_continuum = np.zeros_like(stackwave)
+        else:
+            _smooth_continuum, _ = self.smooth_continuum(np.hstack(data['wave']), np.hstack(residuals),
+                                                         np.hstack(data['ivar']), redshift=redshift,
+                                                         linemask=np.hstack(data['linemask']))
+        
+        smooth_continuum = []
+        for campix in data['camerapix']:
+            smooth_continuum.append(_smooth_continuum[campix[0]:campix[1]])
+
+        _emlinemodel = self.emlinemodel_bestfit(data['wave'], data['res'], Table(fastspec))
+
+        # individual-line spectra
+        _emlinemodel_oneline = []
+        for refline in self.linetable: # [self.inrange]: # for all lines in range
+            T = Table(fastspec['CONTINUUM_Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
+            for oneline in self.linetable: # need all lines for the model
+                linename = oneline['name']
+                for linecol in ['AMP', 'VSHIFT', 'SIGMA']:
+                    col = linename.upper()+'_'+linecol
+                    if linename == refline['name']:
+                        T.add_column(Column(name=col, data=fastspec[col], dtype=fastspec[col].dtype))
+                    else:
+                        T.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
+            # special case the parameter doublets
+            if refline['name'] == 'mgii_2796':
+                T['MGII_2803_AMP'] = fastspec['MGII_2803_AMP']
+            if refline['name'] == 'oii_3726':
+                T['OII_3729_AMP'] = fastspec['OII_3729_AMP']
+            if refline['name'] == 'sii_6731':
+                T['SII_6716_AMP'] = fastspec['SII_6716_AMP']
+            _emlinemodel_oneline1 = self.emlinemodel_bestfit(data['wave'], data['res'], T)
+            if np.sum(np.hstack(_emlinemodel_oneline1)) > 0:
+                _emlinemodel_oneline.append(_emlinemodel_oneline1)
+
+        # QA choices
+
+        # 8 columns: 3 for the SED, 5 for the spectra, and 8 for the lines
+        # 8 rows: 4 for the SED, 2 each for the spectra, 1 gap, and 3 for the lines
+        ngaprows = 1
+        nlinerows = 3
+        nlinecols = 8
+        nrows = 4 + ngaprows + nlinerows
+        ncols = 8
+        nlinecols = 6
+
+        fullheight = 18 # inches
+        fullwidth = 24
+
+        height_ratios = np.hstack(([1.0]*4, 0.25, [1.0]*nlinerows)) # small gap
+    
+        fig = plt.figure(figsize=(fullwidth, fullheight))
+        gs = fig.add_gridspec(nrows, ncols, height_ratios=height_ratios)#, width_ratios=width_ratios)
+
+        sedax = fig.add_subplot(gs[1:4, 5:]) # rows x cols
+        specax1 = fig.add_subplot(gs[:2, :5])
+        specax2 = fig.add_subplot(gs[2:4, :5])
+        
+        # full spectrum + best-fitting continuum model
+        leg = {
+            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
+            'dv_narrow': '$\\Delta v_{{\\rm narrow}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift)),
+            'dv_broad': '$\\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
+            'dv_uv': '$\\Delta v_{{\\rm UV}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift)),
+            'sigma_narrow': '$\\sigma_{{\\rm narrow}}$={:.1f} km/s'.format(fastspec['NARROW_SIGMA']),
+            'sigma_broad': '$\\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
+            'sigma_uv': '$\\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastspec['UV_SIGMA']),
+            #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
+            #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
+            'cchi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
+            'rchi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastspec['RCHI2']),
+            'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad,narrow}}$={:.3f}'.format(fastspec['DELTA_LINERCHI2']),
+            #'zfastfastspec': '$z_{{\\rm fastspecfit}}$={:.6f}'.format(fastspec['CONTINUUM_Z']),
+            #'z': '$z$={:.6f}'.format(fastspec['CONTINUUM_Z']),
+            'age': '<Age>$={:.3f}$ Gyr'.format(fastspec['AGE']),
+            'AV': '$A(V)={:.3f}$ mag'.format(fastspec['AV']),
+            'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
+            'sfr': '${{\\rm SFR}}={:.2f}$ Msun/yr'.format(fastspec['SFR']),
+            'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
+            'zzsun': '$Z/Z_{{\\odot}}={:.3f}$'.format(fastspec['ZZSUN']),
+            }
+
+        if fastspec['VDISP_IVAR'] == 0:
+            leg.update({'vdisp': '$\\sigma_{{\\rm star}}={:.1f}$ km/s'.format(fastspec['VDISP'])})
+        else:
+            leg.update({'vdisp': '$\\sigma_{{\\rm star}}={:.1f}\\pm{:.1f}$ km/s'.format(
+                fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))})
+            
+        ymin, ymax = 1e6, -1e6
+
+        legxpos, legypos, legypos2, legfntsz = 0.98, 0.94, 0.05, 14 # 20
+        bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.25)
+
+        for ii in np.arange(len(data['cameras'])): # iterate over cameras
+            sigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
+
+            specax1.plot(data['wave'][ii], apcorr*data['flux'][ii], color=col1[ii])
+            #specax1.fill_between(data['wave'][ii], apcorr*data['flux'][ii]-sigma,
+            #                    apcorr*data['flux'][ii]+sigma, color=col1[ii])
+            specax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii], color=col2[ii])
+            
+            # get the robust range
+            filtflux = median_filter(apcorr*data['flux'][ii], 31, mode='nearest')
+            #filtflux = median_filter(data['flux'][ii] - _emlinemodel[ii], 51, mode='nearest')
+            #perc = np.percentile(filtflux[data['ivar'][ii] > 0], [5, 95])
+            #sigflux = np.std(apcorr*data['flux'][ii][data['ivar'][ii] > 0])
+            I = data['ivar'][ii] > 0
+            if np.sum(I) > 0:
+                sigflux = np.diff(np.percentile(apcorr*data['flux'][ii][I], [25, 75]))[0] / 1.349 # robust
+            else:
+                sigflux = 0.0
+            #sigflux = np.std(filtflux[data['ivar'][ii] > 0])
+            #if -2 * perc[0] < ymin:
+            #    ymin = -2 * perc[0]
+            #ymin[ii] = np.min(data['flux'][ii])
+            #ymax[ii] = np.max(data['flux'][ii])
+            #if ymin < _ymin:
+            #    ymin = _ymin
+            #if ymax > _ymax:
+            #    ymax = _ymax
+            if -1.5 * sigflux < ymin:
+                ymin = -1.5 * sigflux
+            #if perc[1] > ymax:
+            #    ymax = perc[1]
+            #if np.min(filtflux) < ymin:
+            #    ymin = np.min(filtflux) * 0.5
+            if sigflux * 8 > ymax:
+                ymax = sigflux * 10 # 5
+            if np.max(filtflux) > ymax:
+                ymax = np.max(filtflux) * 1.5
+            #print(ymin, ymax)
+
+        specax1.plot(stackwave, _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+        specax1.plot(stackwave, np.hstack(continuum), color='k', alpha=0.1)#col3[ii])#, alpha=0.3, lw=2)#, color='k')
+
+        specax1.text(0.03, 0.9, 'Observed Spectrum + Continuum Model',
+                     ha='left', va='center', transform=specax1.transAxes, fontsize=18)
+        if not self.nolegend:
+            txt = '\n'.join((
+                r'{}'.format(leg['zredrock']),
+                r'{}'.format(leg['vdisp']),
+                ))
+            specax1.text(legxpos, legypos, txt, ha='right', va='top',
+                        transform=specax1.transAxes, fontsize=legfntsz,
+                        bbox=bbox)
+            #specax1.set_title(title, fontsize=22)
+        
+        specax1.set_xlim(spec_wavelims)
+        specax1.set_ylim(ymin, ymax)
+        specax1.set_xticklabels([])
+        #specax1.set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
+        #specax1.set_ylabel(r'Flux ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)') 
+
+        # full emission-line spectrum + best-fitting lines
+        ymin, ymax = 1e6, -1e6
+        allfullspec, allfullwave = [], []        
+        for ii in np.arange(len(data['cameras'])): # iterate over cameras
+            emlinewave = data['wave'][ii]
+            emlineflux = apcorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
+            emlinemodel = _emlinemodel[ii]
+        
+            emlinesigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
+            emlinewave = emlinewave[good]
+            emlineflux = emlineflux[good]
+            emlinesigma = emlinesigma[good]
+            emlinemodel = emlinemodel[good]
+        
+            specax2.plot(emlinewave, emlineflux, color=col1[ii], alpha=0.7)
+            #specax2.fill_between(emlinewave, emlineflux-emlinesigma,
+            #                     emlineflux+emlinesigma, color=col1[ii], alpha=0.7)
+            specax2.plot(emlinewave, emlinemodel, color=col2[ii], lw=3)
+
+            allfullspec.append(continuum[ii] + _emlinemodel[ii])
+            allfullwave.append(data['wave'][ii])
+            
+            # get the robust range
+            filtflux = median_filter(emlineflux, 51, mode='nearest')
+            #sigflux = np.std(filtflux)
+            #sigflux = np.std(emlineflux)
+            if np.sum(good) > 0:
+                sigflux = np.diff(np.percentile(emlineflux, [25, 75]))[0] / 1.349 # robust
+                if -2 * sigflux < ymin:
+                    ymin = -2 * sigflux
+                #if np.min(filtflux) < ymin:
+                #    ymin = np.min(filtflux)
+                #if np.min(emlinemodel) < ymin:
+                #    ymin = 0.8 * np.min(emlinemodel)
+                if 5 * sigflux > ymax:
+                    ymax = 5 * sigflux
+                if np.max(filtflux) > ymax:
+                    ymax = np.max(filtflux)
+                if np.max(emlinemodel) > ymax:
+                    ymax = np.max(emlinemodel) * 1.2
+                #print(ymin, ymax)
+        
+        allfullwave = np.hstack(allfullwave)
+        allfullspec = np.hstack(allfullspec)
+    
+        if not self.nolegend:
+            txt = '\n'.join((
+                r'{} {}'.format(leg['rchi2'], leg['deltarchi2']),
+                r'{} {}'.format(leg['dv_narrow'], leg['sigma_narrow']),
+                r'{} {}'.format(leg['dv_broad'], leg['sigma_broad']),
+                r'{} {}'.format(leg['dv_uv'], leg['sigma_uv']),
+                ))
+            specax2.text(legxpos, legypos, txt, ha='right', va='top',
+                        transform=specax2.transAxes, fontsize=legfntsz,
+                        bbox=bbox)
+            specax2.text(0.03, 0.9, 'Residual Spectrum + Emission-Line Model',
+                         ha='left', va='center', transform=specax2.transAxes,
+                         fontsize=18)
+                
+        specax2.set_xlim(spec_wavelims)
+        specax2.set_ylim(ymin, ymax)
+        specax2.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
+
+        # photometric SED   
+        if np.all(continuum_phot[indx_phot] <= 0):
             self.log.warning('Best-fitting photometric continuum is all zeros or negative!')
             continuum_phot_abmag = continuum_phot*0 + np.median(fiberphot['abmag'])
         else:
-            indx = indx[continuum_phot[indx] > 0] # trim zeros
-            factor = 10**(0.4 * 48.6) * continuum_wave_phot[indx]**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
-            continuum_phot_abmag = -2.5*np.log10(continuum_phot[indx] * factor)
-            ax.plot(continuum_wave_phot[indx] / 1e4, continuum_phot_abmag, color='tan', zorder=1)
-
-        ax.scatter(synthmodelphot['lambda_eff']/1e4, synthmodelphot['abmag'], 
+            indx_phot = indx_phot[continuum_phot[indx_phot] > 0] # trim zeros
+            factor = 10**(0.4 * 48.6) * continuum_wave_phot[indx_phot]**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
+            continuum_phot_abmag = -2.5*np.log10(continuum_phot[indx_phot] * factor)
+            sedax.plot(continuum_wave_phot[indx_phot] / 1e4, continuum_phot_abmag, color='tan', zorder=1)
+    
+        sedax.scatter(synthmodelphot['lambda_eff']/1e4, synthmodelphot['abmag'], 
                    marker='s', s=200, color='k', facecolor='none',
                    #label=r'$grz$ (spectrum, synthesized)',
                    alpha=0.8, zorder=2)
+
+        factor = 10**(0.4 * 48.6) * allfullwave**2 / (C_LIGHT * 1e13) / self.fluxnorm # [erg/s/cm2/A --> maggies]
+        good = allfullspec > 0
+        sedax.plot(allfullwave[good]/1e4, -2.5*np.log10(allfullspec[good]*factor[good]), color='gray', alpha=0.5)
         
         # we have to set the limits *before* we call errorbar, below!
         dm = 1.0
@@ -2437,15 +3542,20 @@ class FastFit(ContinuumTools):
             ymin = 30
         if np.isnan(ymin) or np.isnan(ymax):
             raise('Problem here!')
+    
+        sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
+        sedax.set_xlim(wavemin, wavemax)
+        sedax.set_xscale('log')
 
-        ax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
-        #ax.set_ylabel(r'AB mag') 
-        ax.set_ylabel(r'Apparent Brightness (AB mag)') 
-        ax.set_xlim(wavemin, wavemax)
-        ax.set_ylim(ymin, ymax)
-
-        ax.set_xscale('log')
-
+        #sedax.set_ylabel('AB mag') 
+        #sedax.set_ylabel(r'Apparent Brightness (AB mag)') 
+        sedax.set_ylim(ymin, ymax)
+        sedax.set_yticklabels([])
+    
+        sedax_twin = sedax.twinx()
+        sedax_twin.set_ylabel('AB mag') 
+        sedax_twin.set_ylim(ymin, ymax)
+    
         @ticker.FuncFormatter
         def major_formatter(x, pos):
             if x > 1:
@@ -2453,109 +3563,217 @@ class FastFit(ContinuumTools):
             else:
                 return f'{x:.1f}'
         
-        ax.xaxis.set_major_formatter(major_formatter)
-        #ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.0f'))
-        ax.set_xticks([0.1, 0.2, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
-
-        if not self.nolegend:
-            ax.set_title(title, fontsize=20)
-
+        sedax.xaxis.set_major_formatter(major_formatter)
+        sedax.set_xticks([0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
+    
         # integrated flux / photometry
-        #ax.scatter(phot['lambda_eff']/1e4, phot['abmag'],
-        #           marker='s', s=130, facecolor='red', edgecolor='k',
-        #           label=r'$grzW1W2$ (imaging)', alpha=1.0, zorder=3)
         abmag = np.squeeze(phot['abmag'])
         abmag_limit = np.squeeze(phot['abmag_limit'])
         abmag_fainterr = np.squeeze(phot['abmag_fainterr'])
         abmag_brighterr = np.squeeze(phot['abmag_brighterr'])
         yerr = np.squeeze([abmag_brighterr, abmag_fainterr])
-
+    
         dofit = np.where(self.bands_to_fit)[0]
         if len(dofit) > 0:
             good = np.where((abmag[dofit] > 0) * (abmag_limit[dofit] == 0))[0]
             upper = np.where(abmag_limit[dofit] > 0)[0]
             if len(good) > 0:
-                ax.errorbar(phot['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
+                sedax.errorbar(phot['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
                             yerr=yerr[:, dofit[good]],
-                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col1,
-                            markerfacecolor=col1, elinewidth=3, ecolor=col1, capsize=4,
+                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=photcol1,
+                            markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4,
                             label=r'$grz\,W_{1}W_{2}W_{3}W_{4}$', zorder=2)
             if len(upper) > 0:
-                ax.errorbar(phot['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
+                sedax.errorbar(phot['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
                             lolims=True, yerr=0.75,
-                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col1,
-                            markerfacecolor=col1, elinewidth=3, ecolor=col1, capsize=4)
-
+                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=photcol1,
+                            markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4)
+    
         ignorefit = np.where(self.bands_to_fit == False)[0]
         if len(ignorefit) > 0:
             good = np.where((abmag[ignorefit] > 0) * (abmag_limit[ignorefit] == 0))[0]
             upper = np.where(abmag_limit[ignorefit] > 0)[0]
             if len(good) > 0:
-                ax.errorbar(phot['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
+                sedax.errorbar(phot['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
                             yerr=yerr[:, ignorefit[good]],
-                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col1,
-                            markerfacecolor='none', elinewidth=3, ecolor=col1, capsize=4)
+                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=photcol1,
+                            markerfacecolor='none', elinewidth=3, ecolor=photcol1, capsize=4)
             if len(upper) > 0:
-                ax.errorbar(phot['lambda_eff'][ignorefit][upper]/1e4, abmag_limit[ignorefit][upper],
+                sedax.errorbar(phot['lambda_eff'][ignorefit][upper]/1e4, abmag_limit[ignorefit][upper],
                             lolims=True, yerr=0.75, fmt='o', markersize=12, markeredgewidth=3,
-                            markeredgecolor=col1, markerfacecolor='none', elinewidth=3,
-                            ecolor=col1, capsize=5)
-
-        if coadd_type == 'healpix':
-            targetid_str = str(metadata['TARGETID'])
-        else:
-            targetid_str = '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
-
-        leg = {
-            'targetid': targetid_str,
-            #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
-            'chi2': '$\\chi^{{2}}_{{\\nu}}$={:.3f}'.format(fastphot['CONTINUUM_RCHI2']),
-            'zredrock': '$z_{{\\rm redrock}}$={:.6f}'.format(redshift),
-            #'zfastfastphot': r'$z_{{\\rm fastfastphot}}$={:.6f}'.format(fastphot['CONTINUUM_Z']),
-            #'z': '$z$={:.6f}'.format(fastphot['CONTINUUM_Z']),
-            'age': '<Age>={:.3f} Gyr'.format(fastphot['CONTINUUM_AGE']),
-            'absmag_r': '$M_{{^{{0.1}}r}}={:.2f}$'.format(fastphot['ABSMAG_SDSS_R']),
-            'absmag_gr': '$^{{0.1}}(g-r)={:.3f}$'.format(fastphot['ABSMAG_SDSS_G']-fastphot['ABSMAG_SDSS_R'])
-            }
-            
-        if fastphot['LOGMSTAR'] > 0:
-            leg.update({'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})={:.3f}$'.format(fastphot['LOGMSTAR'])})
-        else:
-            leg.update({'mstar': '$\\log_{{10}}\,(M_{{*}}/M_{{\odot}})$=...'})
-
-        if fastphot['CONTINUUM_AV_IVAR'] == 0:
-            leg.update({'AV': '$A(V)$={:.2f} mag'.format(fastphot['CONTINUUM_AV'])})
-        else:
-            leg.update({'AV': '$A(V)$={:.3f}+/-{:.3f} mag'.format(
-                fastphot['CONTINUUM_AV'], 1/np.sqrt(fastphot['CONTINUUM_AV_IVAR']))})
-
-        bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.25)
-        legfntsz = 16
-
-        if not self.nolegend and fastphot['CONTINUUM_RCHI2'] > 0:
-            legxpos, legypos = 0.04, 0.94
-            txt = '\n'.join((
-                r'{}'.format(leg['mstar']),
-                r'{}'.format(leg['absmag_r']),
-                r'{}'.format(leg['absmag_gr'])
-                ))
-            ax.text(legxpos, legypos, txt, ha='left', va='top',
-                    transform=ax.transAxes, fontsize=legfntsz,
-                    bbox=bbox)
-            
-        if not self.nolegend:
-            legxpos, legypos = 0.98, 0.06
-            txt = '\n'.join((
-                r'{}'.format(leg['zredrock']),
-                r'{} {}'.format(leg['chi2'], leg['age']),
-                r'{}'.format(leg['AV']),
-                ))
-            ax.text(legxpos, legypos, txt, ha='right', va='bottom',
-                    transform=ax.transAxes, fontsize=legfntsz,
-                    bbox=bbox)
+                            markeredgecolor=photcol1, markerfacecolor='none', elinewidth=3,
+                            ecolor=photcol1, capsize=5)
     
-        plt.subplots_adjust(bottom=0.14, right=0.95, top=0.93)
+        sedax.plot([spec_wavelims[0]/1e4, spec_wavelims[1]/1e4], [ymin-1, ymin-1],
+                   lw=2, ls='-', color='gray', marker='s')#, alpha=0.5)
+        sedax.text(((spec_wavelims[1]-spec_wavelims[0])/2+spec_wavelims[0]*0.8)/1e4, ymin-1.4,
+                   'DESI x {:.2f}'.format(apcorr), ha='center', va='center', fontsize=10,
+                   color='gray')
+
+        if not self.nolegend:
+            txt = '\n'.join((
+                r'{}'.format(leg['cchi2']),
+                r'{}'.format(leg['fagn']),
+                r'{}'.format(leg['zzsun']),
+                r'{}'.format(leg['AV']),
+                r'{}'.format(leg['age']),
+                r'{}'.format(leg['sfr']),
+                r'{}'.format(leg['mstar']),
+                ))
+            sedax.text(legxpos, legypos2, txt, ha='right', va='bottom',
+                        transform=sedax.transAxes, fontsize=legfntsz,
+                        bbox=bbox)
+
+        # zoom in on individual emission lines - use linetable!
+        linetable = self.linetable
+        inrange = (linetable['restwave'] * (1+redshift) > spec_wavelims[0]) * (linetable['restwave'] * (1+redshift) < spec_wavelims[1])
+        linetable = linetable[inrange]
+
+        nline = len(set(linetable['plotgroup']))
+
+        plotsig_default = 200.0 # [km/s]
+        plotsig_default_balmer = 500.0 # [km/s]
+        plotsig_default_broad = 2000.0 # [km/s]
+        
+        meanwaves, deltawaves, sigmas, linenames = [], [], [], []
+        for plotgroup in set(linetable['plotgroup']):
+            I = np.where(plotgroup == linetable['plotgroup'])[0]
+            linenames.append(linetable['nicename'][I[0]].replace('-', ' '))
+            meanwaves.append(np.mean(linetable['restwave'][I]))
+            deltawaves.append((np.max(linetable['restwave'][I]) - np.min(linetable['restwave'][I])) / 2)
+        
+            sigmas1 = np.array([fastspec['{}_SIGMA'.format(line.upper())] for line in linetable[I]['name']])
+            sigmas1 = sigmas1[sigmas1 > 0]
+            if len(sigmas1) > 0:
+                plotsig = 1.5*np.mean(sigmas1)
+            else:
+                if np.any(linetable['isbroad'][I]):
+                    if np.any(linetable['isbalmer'][I]):
+                        plotsig = fastspec['BROAD_SIGMA']
+                        if plotsig < 50:
+                            plotsig = fastspec['NARROW_SIGMA']
+                            if plotsig < 50:
+                                plotsig = plotsig_default
+                                #plotsig = plotsig_default_broad
+                    else:
+                        plotsig = fastspec['UV_SIGMA']                    
+                        if plotsig < 50:
+                            plotsig = plotsig_default_broad
+                else:
+                    plotsig = fastspec['NARROW_SIGMA']
+                    if plotsig < 50:
+                        plotsig = plotsig_default
+            sigmas.append(plotsig)
+        
+        srt = np.argsort(meanwaves)
+        meanwaves = np.hstack(meanwaves)[srt]
+        deltawaves = np.hstack(deltawaves)[srt]
+        sigmas = np.hstack(sigmas)[srt]
+        linenames = np.hstack(linenames)[srt]
+        
+        removelabels = np.ones(nline, bool)
+        ymin, ymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
+        
+        ax, irow, icol = [], 5, 0 # skip the gap row
+        for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
+            icol = iax % nlinecols
+            if iax > 0 and iax % nlinecols == 0:
+                irow += 1
+            #print(iax, irow, icol)
+        
+            xx = fig.add_subplot(gs[irow, icol])
+            ax.append(xx)
+        
+            wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
+            wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
+            #print(linename, wmin, wmax)
+        
+            # iterate over cameras
+            for ii in np.arange(len(data['cameras'])): # iterate over cameras
+                emlinewave = data['wave'][ii]
+                emlineflux = apcorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
+                emlinemodel = _emlinemodel[ii]
+        
+                emlinesigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
+                emlinewave = emlinewave[good]
+                emlineflux = emlineflux[good]
+                emlinesigma = emlinesigma[good]
+                emlinemodel = emlinemodel[good]
+        
+                #if ii == 0:
+                #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
+                    
+                emlinemodel_oneline = []
+                for _emlinemodel_oneline1 in _emlinemodel_oneline:
+                    emlinemodel_oneline.append(_emlinemodel_oneline1[ii][good])
+        
+                indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
+                if len(indx) > 1:
+                    removelabels[iax] = False
+                    xx.plot(emlinewave[indx], emlineflux[indx], color=col1[ii], alpha=0.5)
+                    #xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
+                    #                emlineflux[indx]+emlinesigma[indx], color=col1[ii], alpha=0.5)
+                    # plot the individual lines first then the total model
+                    for emlinemodel_oneline1 in emlinemodel_oneline:
+                        if np.sum(emlinemodel_oneline1[indx]) > 0:
+                            #P = emlinemodel_oneline1[indx] > 0
+                            xx.plot(emlinewave[indx], emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[ii])
+                    xx.plot(emlinewave[indx], emlinemodel[indx], color=col2[ii], lw=3)
+                        
+                    #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
+                    #xx.axhline(y=0, color='gray', ls='--')
+        
+                    # get the robust range
+                    sigflux = np.std(emlineflux[indx])
+                    filtflux = median_filter(emlineflux[indx], 3, mode='nearest')
+        
+                    _ymin, _ymax = -1.5 * sigflux, 4 * sigflux
+                    if np.max(emlinemodel[indx]) > _ymax:
+                        _ymax = np.max(emlinemodel[indx]) * 1.2
+                    if np.max(filtflux) > _ymax:
+                        _ymax = np.max(filtflux)
+                    if np.min(emlinemodel[indx]) < _ymin:
+                        _ymin = 0.8 * np.min(emlinemodel[indx])
+                        
+                    if _ymax > ymax[iax]:
+                        ymax[iax] = _ymax
+                    if _ymin < ymin[iax]:
+                        ymin[iax] = _ymin
+        
+                    xx.set_xlim(wmin, wmax)
+                    
+                xx.text(0.03, 0.89, linename, ha='left', va='center',
+                        transform=xx.transAxes, fontsize=12)
+                
+        for iax, xx in enumerate(ax):
+            if removelabels[iax]:
+                xx.set_ylim(0, 1)
+                xx.set_xticklabels([])
+                xx.set_yticklabels([])
+            else:
+                xx.set_ylim(ymin[iax], ymax[iax])
+                xlim = xx.get_xlim()
+                xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
+        
+        # common axis labels
+        tp, bt, lf, rt = 0.95, 0.08, 0.07, 0.94
+        
+        fig.text(lf-0.04, (tp-bt)/2+bt,
+                 r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
+                 ha='center', va='center', rotation='vertical', fontsize=24)
+        #fig.text(lf-0.07, (tp-bt)/4+bt,
+        #         r'Flux Density ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
+        #         ha='center', va='center', rotation='vertical', fontsize=30)
+        fig.text((rt-lf)/2+lf, bt-0.05, r'Observed-frame Wavelength ($\AA$)',
+                 ha='center', va='center', fontsize=24)
+
+        plt.subplots_adjust(wspace=0.3, top=tp, bottom=bt, left=lf, right=rt, hspace=0.3)
+        #plt.subplots_adjust(bottom=0.22, top=0.94, left=0.08, right=0.91)
+        #plt.subplots_adjust(bottom=0.1, top=0.95, left=0.08, right=0.9)
+
+        fig.suptitle(title, fontsize=22)
 
         self.log.info('Writing {}'.format(pngfile))
         fig.savefig(pngfile)
         plt.close()
+

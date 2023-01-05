@@ -84,18 +84,18 @@ class ContinuumTools(object):
     metallicity : :class:`str`, optional, defaults to `Z0.0190`.
         Stellar metallicity of the SSPs. Currently fixed at solar
         metallicity, Z=0.0190.
-    minwave : :class:`float`, optional, defaults to None
+    minsspwave : :class:`float`, optional, defaults to None
         Minimum SSP wavelength to read into memory. If ``None``, the minimum
         available wavelength is used (around 100 Angstrom).
-    maxwave : :class:`float`, optional, defaults to 6e4
+    maxsspwave : :class:`float`, optional, defaults to 6e4
         Maximum SSP wavelength to read into memory. 
 
     .. note::
         Need to document all the attributes.
 
     """
-    def __init__(self, ssptemplates=None, sspversion='v1.0', minwave=None,
-                 maxwave=40e4, mapdir=None, verbose=False):
+    def __init__(self, ssptemplates=None, sspversion='v1.0', minsspwave=None,
+                 maxsspwave=40e4, mapdir=None, verbose=False):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
@@ -146,9 +146,9 @@ class ContinuumTools(object):
 
         # Trim the wavelengths and select the number/ages of the templates.
         # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
-        if minwave is None:
-            minwave = np.min(wave)
-        wavekeep = np.where((wave >= minwave) * (wave <= maxwave))[0]
+        if minsspwave is None:
+            minsspwave = np.min(wave)
+        wavekeep = np.where((wave >= minsspwave) * (wave <= maxsspwave))[0]
 
         self.sspwave = wave[wavekeep]
         self.sspflux = sspflux[wavekeep, :]

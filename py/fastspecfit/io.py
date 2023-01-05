@@ -901,7 +901,7 @@ class DESISpectra(object):
 
         return alldata
 
-    def init_output(self, CFit=None, EMFit=None, fastphot=False):
+    def init_output(self, data=None, FFit=None, fastphot=False):
         """Initialize the fastspecfit output data table.
 
         Parameters
@@ -1006,9 +1006,25 @@ class DESISpectra(object):
             if col in metacols:
                 out[col] = self.meta[col]
         if fastphot:
-            out = hstack((out, CFit.init_phot_output(nobj)))
+            raise ValueError('Write me')
+            #out = hstack((out, CFit.init_phot_output(nobj)))
         else:
-            out = hstack((out, CFit.init_spec_output(nobj), EMFit.init_output(nobj=nobj)))
+            out = hstack((out, FFit.init_output(nobj)))
+
+        # Optionally copy over some quantities of interest from the data
+        # dictionary. (This step is not needed when assigning units to the
+        # output tables.)
+        if data is not None:
+            for iobj, _data in enumerate(data):
+                out['CONTINUUM_Z'][iobj] = _data['zredrock']
+                for icam, cam in enumerate(_data['cameras']):
+                    out['CONTINUUM_SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
+                for iband, band in enumerate(FFit.fiber_bands):
+                    meta['FIBERTOTFLUX_{}'.format(band.upper())][iobj] = _data['fiberphot']['nanomaggies'][iband]
+                    #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+                for iband, band in enumerate(FFit.bands):
+                    meta['FLUX_{}'.format(band.upper())][iobj] = _data['phot']['nanomaggies'][iband]
+                    meta['FLUX_IVAR_{}'.format(band.upper())][iobj] = _data['phot']['nanomaggies_ivar'][iband]
 
         return out, meta
 
