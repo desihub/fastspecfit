@@ -518,9 +518,10 @@ class ContinuumTools(object):
             Smooth one-sigma uncertainty spectrum.
 
         """
-        from scipy.ndimage import median_filter
         from numpy.lib.stride_tricks import sliding_window_view
-        from astropy.stats import sigma_clip
+        from scipy.ndimage import median_filter
+        from scipy.stats import sigmaclip
+        #from astropy.stats import sigma_clip
 
         npix = len(wave)
 
@@ -591,19 +592,29 @@ class ContinuumTools(object):
             swave = swave[noline]
             sivar = sivar[noline]
 
-            cflux = sigma_clip(sflux, sigma=2.0, cenfunc='median', stdfunc='std', masked=False, grow=1.5)
-            if np.sum(np.isfinite(cflux)) < 10:
+            cflux, _, _ = sigmaclip(sflux, low=2.0, high=2.0)
+            if len(cflux) < 10:
                 smooth_mask.append(True)
                 continue
 
-            I = np.isfinite(cflux) # should never be fully masked!
+            I = np.isin(sflux, cflux) # fragile?
             smooth_wave.append(np.mean(swave[I]))
             smooth_mask.append(False)
+            
+            sig = np.std(cflux) # simple median and sigma
+            mn = np.median(cflux)
 
-            # simple median and sigma
-            sig = np.std(cflux[I])
-            mn = np.median(cflux[I])
-
+            ## astropy is too slow!!
+            #cflux = sigma_clip(sflux, sigma=2.0, cenfunc='median', stdfunc='std', masked=False, grow=1.5)
+            #if np.sum(np.isfinite(cflux)) < 10:
+            #    smooth_mask.append(True)
+            #    continue
+            #I = np.isfinite(cflux) # should never be fully masked!
+            #smooth_wave.append(np.mean(swave[I]))
+            #smooth_mask.append(False)
+            #sig = np.std(cflux[I])
+            #mn = np.median(cflux[I])
+    
             ## inverse-variance weighted mean and sigma
             #norm = np.sum(sivar[I])
             #mn = np.sum(sivar[I] * cflux[I]) / norm # weighted mean

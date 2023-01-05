@@ -2667,7 +2667,7 @@ class FastFit(ContinuumTools):
         if broadlinefit:# and len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10:
             t0 = time.time()
             broadfit = self._optimize(initial_linemodel, emlinewave, emlineflux, weights, 
-                                      redshift, resolution_matrix, camerapix, debug=True)
+                                      redshift, resolution_matrix, camerapix, debug=False)
             broadmodel = self.bestfit(broadfit, redshift, emlinewave, resolution_matrix, camerapix)
             broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel)
             nfree = np.sum((broadfit['fixed'] == False) * (broadfit['tiedtoparam'] == -1))
