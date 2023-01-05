@@ -1022,7 +1022,7 @@ class EMLineFit(ContinuumTools):
         initmodel = self.bestfit(initfit, redshift, emlinewave, resolution_matrix, camerapix)
         initchi2 = self.chi2(initfit, emlinewave, emlineflux, emlineivar, initmodel)
         nfree = np.sum((initfit['fixed'] == False) * (initfit['tiedtoparam'] == -1))
-        self.log.info('Initial line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
+        self.log.info('Initial line-fitting with {} free parameters took {:.2f} seconds (niter={}) with rchi2={:.4f}.'.format(
             nfree, time.time()-t0, initfit.meta['nfev'], initchi2))
 
         ## Now try adding bround Balmer and helium lines and see if we improve
@@ -1044,7 +1044,7 @@ class EMLineFit(ContinuumTools):
             broadmodel = self.bestfit(broadfit, redshift, emlinewave, resolution_matrix, camerapix)
             broadchi2 = self.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel)
             nfree = np.sum((broadfit['fixed'] == False) * (broadfit['tiedtoparam'] == -1))
-            self.log.info('Second (broad) line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}'.format(
+            self.log.info('Second (broad) line-fitting with {} free parameters took {:.2f} seconds (niter={}) with rchi2={:.4f}'.format(
                 nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
 
             ## Compare chi2 just in and around the broad lines.
@@ -1144,7 +1144,7 @@ class EMLineFit(ContinuumTools):
         finalmodel = self.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
         finalchi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel)
         nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
-        self.log.info('Final line-fitting with {} free parameters took {:.2f} sec (niter={}) with rchi2={:.4f}.'.format(
+        self.log.info('Final line-fitting with {} free parameters took {:.2f} seconds (niter={}) with rchi2={:.4f}.'.format(
             nfree, time.time()-t0, finalfit.meta['nfev'], finalchi2))
 
         # Residual spectrum with no emission lines.
