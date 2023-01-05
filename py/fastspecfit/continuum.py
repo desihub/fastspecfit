@@ -467,52 +467,6 @@ class ContinuumTools(object):
 
         return smoothflux
     
-    def dust_attenuation(self, wave, AV, test=False):
-        """Compute the dust attenuation curve A(lambda)/A(V) from Charlot & Fall 2000.
-
-        ToDo: add a UV bump and IGM attenuation!
-          https://gitlab.lam.fr/cigale/cigale/-/blob/master/pcigale/sed_modules/dustatt_powerlaw.py#L42
-
-        """
-        from desiutil.dust import ext_fitzpatrick
-
-        atten = ext_fitzpatrick(wave, R_V=self.RV)
-        #atten = (wave / 5500.0)**(-self.dustslope)
-
-        atten = 10**(-0.4 * AV * atten)
-
-        if test and AV > 0:
-            # Charlot & Fall attenuation curve
-            atten2 = (wave / 5500.0)**(-self.dustslope)
-    
-            # Add a UV bump, assuming a Lorentzian-like Drude profile; see
-            # https://gitlab.lam.fr/cigale/cigale/-/blob/master/pcigale/sed_modules/dustatt_powerlaw.py
-            # https://www.aanda.org/articles/aa/pdf/2019/02/aa34156-18.pdf
-            
-            #central_wave - Central wavelength of the bump.
-            #gamma - Width (FWHM) of the bump.
-            #amp - Amplitude of the bump.
-    
-            amp, gamma, central_wave = 1.0, 350.0, 2175.0 # amplitude=3.0 in the Milky Way
-            uvbump = amp * wave**2 * gamma**2 / ((wave**2 - central_wave**2)**2 + wave**2 * gamma**2)
-            atten2 += uvbump
-
-            atten2 = 10**(-0.4 * AV * atten2)
-    
-            # 100% attenuation blueward of the Lyman-limit
-            atten2[wave < 912.0] = 0.0
-    
-            import matplotlib.pyplot as plt
-            plt.clf()
-            W = (wave > 3000)*(wave < 8000)
-            plt.plot(wave[W], atten2[W], label='Charlot & Fall')
-            plt.plot(wave[W], atten[W], label='Fitzpatrick')
-            plt.legend()
-            plt.savefig('desi-users/ioannis/tmp/junk.png')
-            pdb.set_trace()
-        
-        return atten
-
     def smooth_continuum(self, wave, flux, ivar, redshift, medbin=150, 
                          smooth_window=50, smooth_step=10, maskkms_uv=3000.0, 
                          maskkms_balmer=1000.0, maskkms_narrow=200.0, 
@@ -1406,21 +1360,6 @@ class ContinuumFit(ContinuumTools):
                 meanvalue = np.log10(meanvalue)
         
         return meanvalue
-
-    def get_meanage(self, coeff, agekeep):
-        """Compute the light-weighted age, given a set of coefficients.
-
-        """
-        age = self.sspinfo['age'][agekeep] # account for age of the universe trimming
-
-        if np.count_nonzero(coeff > 0) == 0:
-            self.log.warning('Coefficients are all zero!')
-            meanage = -1.0
-            #raise ValueError
-        else:
-            meanage = np.sum(coeff * age) / np.sum(coeff) / 1e9 # [Gyr]
-        
-        return meanage
 
     def younger_than_universe(self, redshift):
         """Return the indices of the SSPs younger than the age of the universe at the

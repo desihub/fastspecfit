@@ -1177,3 +1177,5 @@ def build_webqa(CFit, EMFit, data, fastfit, metadata, coadd_type='healpix',
     EMFit.log.info('Writing {}'.format(pngfile))
     fig.savefig(pngfile)
     plt.close()
+
+
