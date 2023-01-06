@@ -92,7 +92,7 @@ def parse(options=None):
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not allow for broad Balmer and Helium line-fitting.')
-    parser.add_argument('--ssptemplates', type=str, default=None, help='Optional name of the SSP templates.')
+    parser.add_argument('--templates', type=str, default=None, help='Optional name of the templates.')
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
@@ -136,12 +136,11 @@ def fastspec(fastphot=False, args=None, comm=None):
     else:
         targetids = args.targetids
 
-    # Initialize the fitting class. Note: trim the wavelengths of the SSPs to
-    # optimize compute time.
+    # Initialize the fitting class.
     t0 = time.time()
-    FFit = FastFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, 
+    FFit = FastFit(templates=args.templates, mapdir=args.mapdir, 
                    verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
-                   fastphot=fastphot, minsspwave=500.0, maxsspwave=40e4)
+                   fastphot=fastphot, mintemplatewave=500.0, maxtemplatewave=40e4)
     Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took {:.2f} sec'.format(time.time()-t0))
 
@@ -285,12 +284,12 @@ def build_webqa(FFit, data, fastfit, metadata, coadd_type='healpix',
 
     # rebuild the best-fitting broadband photometric model
     inodust = np.ndarray.item(np.where(CFit.AV == 0)[0]) # should always be index 0
-    continuum_phot, synthmodelphot = CFit.SSP2data(
-        CFit.sspflux_dustnomvdisp[:, :, inodust], CFit.sspwave, redshift=redshift,
+    continuum_phot, synthmodelphot = CFit.templates2data(
+        CFit.templateflux_dustnomvdisp[:, :, inodust], CFit.templatewave, redshift=redshift,
         synthphot=True, AV=fastfit['CONTINUUM_AV_PHOT'], #test=True,
         coeff=fastfit['CONTINUUM_COEFF_PHOT'] * CFit.massnorm)
 
-    continuum_wave_phot = CFit.sspwave * (1 + redshift)
+    continuum_wave_phot = CFit.templatewave * (1 + redshift)
 
     wavemin, wavemax = 0.1, 35.0 # 6.0
     indx_phot = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
@@ -307,13 +306,13 @@ def build_webqa(FFit, data, fastfit, metadata, coadd_type='healpix',
     # rebuild the best-fitting spectroscopic model
     stackwave = np.hstack(data['wave'])
 
-    continuum, _ = EMFit.SSP2data(EMFit.sspflux, EMFit.sspwave, redshift=redshift, 
-                                 specwave=data['wave'], specres=data['res'],
-                                 cameras=data['cameras'],
-                                 AV=fastfit['CONTINUUM_AV_SPEC'],
-                                 vdisp=fastfit['CONTINUUM_VDISP'],
-                                 coeff=fastfit['CONTINUUM_COEFF_SPEC'],
-                                 synthphot=False)
+    continuum, _ = EMFit.templates2data(EMFit.templateflux, EMFit.templatewave, redshift=redshift, 
+                                        specwave=data['wave'], specres=data['res'],
+                                        cameras=data['cameras'],
+                                        AV=fastfit['CONTINUUM_AV_SPEC'],
+                                        vdisp=fastfit['CONTINUUM_VDISP'],
+                                        coeff=fastfit['CONTINUUM_COEFF_SPEC'],
+                                        synthphot=False)
 
     residuals = [data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
     if np.all(fastfit['CONTINUUM_COEFF_SPEC'] == 0):
@@ -1074,7 +1073,7 @@ def build_webqa(FFit, data, fastfit, metadata, coadd_type='healpix',
     plt.close()
 
 class FastFit(ContinuumTools):
-    def __init__(self, ssptemplates=None, minsspwave=None, maxsspwave=40e4, 
+    def __init__(self, templates=None, mintemplatewave=None, maxtemplatewave=40e4, 
                  minspecwave=3500.0, maxspecwave=9900.0, chi2_default=0.0, 
                  maxiter=5000, accuracy=1e-2, nolegend=False, solve_vdisp=True, 
                  constrain_age=False, mapdir=None, fastphot=False, verbose=False):
@@ -1082,13 +1081,13 @@ class FastFit(ContinuumTools):
 
         Parameters
         ----------
-        ssptemplates : :class:`str`, optional
-            Full path to the SSP templates used for continuum-fitting.
-        minsspwave : :class:`float`, optional, defaults to None
-            Minimum SSP wavelength to read into memory. If ``None``, the minimum
+        templates : :class:`str`, optional
+            Full path to the templates used for continuum-fitting.
+        mintemplatewave : :class:`float`, optional, defaults to None
+            Minimum template wavelength to read into memory. If ``None``, the minimum
             available wavelength is used (around 100 Angstrom).
-        maxsspwave : :class:`float`, optional, defaults to 6e4
-            Maximum SSP wavelength to read into memory. 
+        maxtemplatewave : :class:`float`, optional, defaults to 6e4
+            Maximum template wavelength to read into memory. 
         minspecwave : :class:`float`, optional, defaults to 3000 A.
             Minimum observed-frame wavelength, which is used internally for the
             forward modeling of the emission-line spectrum.
@@ -1115,8 +1114,8 @@ class FastFit(ContinuumTools):
             distribution of the form x**2*np.exp(-2*x/scale).
 
         """
-        super(FastFit, self).__init__(ssptemplates=ssptemplates, minsspwave=minsspwave,
-                                      maxsspwave=maxsspwave, mapdir=mapdir, fastphot=fastphot,
+        super(FastFit, self).__init__(templates=templates, mintemplatewave=mintemplatewave,
+                                      maxtemplatewave=maxtemplatewave, mapdir=mapdir, fastphot=fastphot,
                                       verbose=verbose)
 
         self.nolegend = nolegend
@@ -1170,12 +1169,12 @@ class FastFit(ContinuumTools):
         """Initialize the output data table for this class.
 
         """
-        nssp_coeff = len(self.sspinfo)
+        ncoeff = len(self.templateinfo)
         
         out = Table()
         out.add_column(Column(name='APCORR', length=nobj, dtype='f4')) # aperture correction
         out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
-        out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(nssp_coeff,), dtype='f8'))
+        out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(ncoeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
         #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
 
@@ -1288,7 +1287,7 @@ class FastFit(ContinuumTools):
         """Compute the mean physical properties, given a set of coefficients.
 
         """
-        values = self.sspinfo[physical_property][agekeep] # account for age of the universe trimming
+        values = self.templateinfo[physical_property][agekeep] # account for age of the universe trimming
 
         if np.count_nonzero(coeff > 0) == 0:
             self.log.warning('Coefficients are all zero!')
@@ -1307,11 +1306,11 @@ class FastFit(ContinuumTools):
         return meanvalue
 
     def younger_than_universe(self, redshift):
-        """Return the indices of the SSPs younger than the age of the universe at the
-        given redshift.
+        """Return the indices of the templates younger than the age of the universe at
+        the given redshift.
 
         """
-        return np.where(self.sspinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
+        return np.where(self.templateinfo['age'] <= self.cosmo.age(redshift).to(u.year).value)[0]
 
     def kcorr_and_absmag(self, data, continuum, coeff, snrmin=2.0):
         """Computer K-corrections, absolute magnitudes, and a simple stellar mass.
@@ -1329,7 +1328,7 @@ class FastFit(ContinuumTools):
         lambda_in = filters_in.effective_wavelengths.value
 
         # redshifted wavelength array and distance modulus
-        zsspwave = self.sspwave * (1 + redshift)
+        ztemplatewave = self.templatewave * (1 + redshift)
         dmod = self.cosmo.distmod(redshift).value
 
         maggies = data['phot']['nanomaggies'].data * 1e-9
@@ -1337,7 +1336,7 @@ class FastFit(ContinuumTools):
 
         # input bandpasses, observed frame; maggies and bestmaggies should be
         # very close.
-        bestmaggies = filters_in.get_ab_maggies(continuum / self.fluxnorm, zsspwave)
+        bestmaggies = filters_in.get_ab_maggies(continuum / self.fluxnorm, ztemplatewave)
         bestmaggies = np.array(bestmaggies.as_array().tolist()[0])
 
         # need to handle filters with band_shift!=0 separately from those with band_shift==0
@@ -1352,11 +1351,11 @@ class FastFit(ContinuumTools):
             # wavelength vector to the band-shifted redshift. Also need one more
             # factor of 1+band_shift in order maintain the AB mag normalization.
             synth_outmaggies_rest = filters_out.get_ab_maggies(continuum * (1 + redshift) / (1 + band_shift) /
-                                                               self.fluxnorm, self.sspwave * (1 + band_shift))
+                                                               self.fluxnorm, self.templatewave * (1 + band_shift))
             synth_outmaggies_rest = np.array(synth_outmaggies_rest.as_array().tolist()[0]) / (1 + band_shift)
     
             # output bandpasses, observed frame
-            synth_outmaggies_obs = filters_out.get_ab_maggies(continuum / self.fluxnorm, zsspwave)
+            synth_outmaggies_obs = filters_out.get_ab_maggies(continuum / self.fluxnorm, ztemplatewave)
             synth_outmaggies_obs = np.array(synth_outmaggies_obs.as_array().tolist()[0])
     
             absmag = np.zeros(nout, dtype='f4')
@@ -1408,7 +1407,7 @@ class FastFit(ContinuumTools):
         nage = len(coeff)
         
         # From Taylor+11, eq 8
-        #mstar = self.sspinfo['mstar'][:nage].dot(coeff) * self.massnorm
+        #mstar = self.templateinfo['mstar'][:nage].dot(coeff) * self.massnorm
         #https://researchportal.port.ac.uk/ws/files/328938/MNRAS_2011_Taylor_1587_620.pdf
         #mstar = 1.15 + 0.7*(absmag[1]-absmag[3]) - 0.4*absmag[3]
 
@@ -1422,8 +1421,8 @@ class FastFit(ContinuumTools):
         labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_5100']
         norms = [1e28, 1e28, 1e10]
         for cwave, norm, label in zip(cwaves, norms, labels):
-            J = (self.sspwave > cwave-500) * (self.sspwave < cwave+500)
-            I = (self.sspwave[J] > cwave-20) * (self.sspwave[J] < cwave+20)
+            J = (self.templatewave > cwave-500) * (self.templatewave < cwave+500)
+            I = (self.templatewave[J] > cwave-20) * (self.templatewave[J] < cwave+20)
             smooth = median_filter(continuum[J], 200)
             clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
             cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
@@ -1442,8 +1441,8 @@ class FastFit(ContinuumTools):
         #cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
         #labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
         #for cwave, label in zip(cwaves, labels):
-        #    J = (self.sspwave > cwave-500) * (self.sspwave < cwave+500)
-        #    I = (self.sspwave[J] > cwave-20) * (self.sspwave[J] < cwave+20)
+        #    J = (self.templatewave > cwave-500) * (self.templatewave < cwave+500)
+        #    I = (self.templatewave[J] > cwave-20) * (self.templatewave[J] < cwave+20)
         #    smooth = median_filter(continuum[J], 200)
         #    clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
         #    cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
@@ -1452,8 +1451,8 @@ class FastFit(ContinuumTools):
         #    #import matplotlib.pyplot as plt
         #    #print(cwave, cflux)
         #    #plt.clf()
-        #    #plt.plot(self.sspwave[J], continuum[J])
-        #    #plt.plot(self.sspwave[J], smooth, color='k')
+        #    #plt.plot(self.templatewave[J], continuum[J])
+        #    #plt.plot(self.templatewave[J], smooth, color='k')
         #    #plt.axhline(y=cflux, color='red')
         #    #plt.axvline(x=cwave, color='red')
         #    #plt.xlim(cwave - 50, cwave + 50)
@@ -1642,7 +1641,7 @@ class FastFit(ContinuumTools):
             agekeep = np.arange(self.nsed)
         nage = len(agekeep)
 
-        zsspwave = self.sspwave * (1 + redshift)
+        ztemplatewave = self.templatewave * (1 + redshift)
 
         # Photometry-only fitting.
         if fastphot:
@@ -1651,9 +1650,9 @@ class FastFit(ContinuumTools):
 
             # Get the coefficients and chi2 at the nominal velocity dispersion. 
             t0 = time.time()
-            bestsspflux, bestphot = self.SSP2data(self.sspflux_vdisp[:, agekeep, self.vdisp_nominal_indx], 
-                                                  self.sspwave, redshift=redshift,
-                                                  south=data['photsys'] == 'S', synthphot=True)
+            besttemplateflux, bestphot = self.templates2data(self.templateflux_vdisp[:, agekeep, self.vdisp_nominal_indx], 
+                                                             self.templatewave, redshift=redshift,
+                                                             south=data['photsys'] == 'S', synthphot=True)
             bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
     
             coeff, chi2min = self._call_nnls(bestflam, objflam, objflamivar)
@@ -1664,9 +1663,9 @@ class FastFit(ContinuumTools):
             if np.all(coeff == 0):
                 self.log.warning('Continuum coefficients are all zero or the data were not fit.')
 
-            sedmodel = bestsspflux.dot(coeff)
+            sedmodel = besttemplateflux.dot(coeff)
 
-            dn4000_model, _ = self.get_dn4000(self.sspwave, sedmodel, rest=True)
+            dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel, rest=True)
             self.log.info('Model Dn(4000)={:.3f}.'.format(dn4000_model))
         else:
             # Combine all three cameras; we will unpack them to build the
@@ -1716,25 +1715,25 @@ class FastFit(ContinuumTools):
     
             if self.solve_vdisp or compute_vdisp:
                 t0 = time.time()
-                zsspflux_vdisp, _ = self.SSP2data(
+                ztemplateflux_vdisp, _ = self.templates2data(
                     self.vdispflux, self.vdispwave, # [npix,vdispnsed,nvdisp]
                     redshift=redshift, specwave=data['wave'], specres=data['res'],
                     cameras=data['cameras'], synthphot=False)
-                zsspflux_vdisp = np.concatenate(zsspflux_vdisp, axis=0)  # [npix,vdispnsed*nvdisp]
-                zsspflux_vdisp = zsspflux_vdisp.reshape(npix, self.vdispnsed, self.nvdisp) # [vdispnpix,vdispnsed,nvdisp]
+                ztemplateflux_vdisp = np.concatenate(ztemplateflux_vdisp, axis=0)  # [npix,vdispnsed*nvdisp]
+                ztemplateflux_vdisp = ztemplateflux_vdisp.reshape(npix, self.vdispnsed, self.nvdisp) # [vdispnpix,vdispnsed,nvdisp]
 
                 # normalize to the median
-                #zsspflux_vdisp /= np.median(zsspflux_vdisp, axis=0)[np.newaxis, :, :]
+                #ztemplateflux_vdisp /= np.median(ztemplateflux_vdisp, axis=0)[np.newaxis, :, :]
 
                 #import matplotlib.pyplot as plt
                 #plt.clf()
                 #plt.plot(specwave[Ivdisp], specflux[Ivdisp] / specsmooth[Ivdisp])
                 #for ii in np.arange(11):
-                #    plt.plot(specwave[Ivdisp], zsspflux_vdisp[Ivdisp, 20, ii])
+                #    plt.plot(specwave[Ivdisp], ztemplateflux_vdisp[Ivdisp, 20, ii])
                 #plt.savefig('junk.png')
     
                 vdispchi2min, vdispbest, vdispivar, _ = self._call_nnls(
-                    zsspflux_vdisp[Ivdisp, :, :], 
+                    ztemplateflux_vdisp[Ivdisp, :, :], 
                     specflux[Ivdisp], specivar[Ivdisp],
                     #specflux[Ivdisp]/specsmooth[Ivdisp], specivar[Ivdisp]*specsmooth[Ivdisp]**2,
                     xparam=self.vdisp, xlabel=r'$\sigma$ (km/s)', debug=False)
@@ -1754,34 +1753,34 @@ class FastFit(ContinuumTools):
 
                 #import matplotlib.pyplot as plt                
                 #plt.clf()
-                #I = np.where((zsspwave > 7000) * (zsspwave < 7700))[0]
+                #I = np.where((ztemplatewave > 7000) * (ztemplatewave < 7700))[0]
                 #for ii in agekeep:
-                #    plt.plot(self.sspwave[I]*(1+redshift), self.sspflux[I, ii])
+                #    plt.plot(self.templatewave[I]*(1+redshift), self.templateflux[I, ii])
                 #plt.xlim(7000, 7700) # specwave.min(), specwave.max())
                 #plt.savefig('junk.png')
                 #pdb.set_trace()
 
                 # Get the final set of coefficients and chi2 at the best-fitting velocity dispersion. 
                 t0 = time.time()
-                bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
-                                                      specwave=data['wave'], specres=data['res'],
-                                                      specmask=data['mask'], 
-                                                      vdisp=vdispbest, cameras=data['cameras'],
-                                                      south=data['photsys'] == 'S', synthphot=True)
-                bestsspflux = np.concatenate(bestsspflux, axis=0)
+                besttemplateflux, bestphot = self.templates2data(self.templateflux[:, agekeep], self.templatewave, redshift=redshift,
+                                                                 specwave=data['wave'], specres=data['res'],
+                                                                 specmask=data['mask'], 
+                                                                 vdisp=vdispbest, cameras=data['cameras'],
+                                                                 south=data['photsys'] == 'S', synthphot=True)
+                besttemplateflux = np.concatenate(besttemplateflux, axis=0)
                 bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
 
-                sedflux, _ = self.SSP2data(self.sspflux[:, agekeep],
-                                           self.sspwave, vdisp=vdispbest, redshift=redshift,
-                                           south=data['photsys'] == 'S', synthphot=False)
+                sedflux, _ = self.templates2data(self.templateflux[:, agekeep],
+                                                 self.templatewave, vdisp=vdispbest, redshift=redshift,
+                                                 south=data['photsys'] == 'S', synthphot=False)
 
                 # Do a quick spectrophotometric-only fit to get the mean
                 # aperture correction. Note that the data are noisy and can be
                 # missing wise wavelength ranges, so use the models.
-                quickcoeff, _ = self._call_nnls(bestsspflux, specflux, specivar)
+                quickcoeff, _ = self._call_nnls(besttemplateflux, specflux, specivar)
                 quickfit = sedflux.dot(quickcoeff)
 
-                quickmaggies = filters_in.get_ab_maggies(quickfit / self.fluxnorm, zsspwave)
+                quickmaggies = filters_in.get_ab_maggies(quickfit / self.fluxnorm, ztemplatewave)
                 quickmaggies = np.array(quickmaggies.as_array().tolist()[0])
                 quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, 
                                                   nanomaggies=False)
@@ -1790,7 +1789,7 @@ class FastFit(ContinuumTools):
                 self.log.info('Derived median aperture correction = {:.3f}'.format(apcorr))
                 data['apcorr'] = apcorr
 
-                coeff, chi2min = self._call_nnls(np.vstack((bestflam, bestsspflux)),
+                coeff, chi2min = self._call_nnls(np.vstack((bestflam, besttemplateflux)),
                                                  np.hstack((objflam, specflux*apcorr)),
                                                  np.hstack((objflamivar, specivar/apcorr**2)))
                 chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
@@ -1803,13 +1802,13 @@ class FastFit(ContinuumTools):
                     sedmodel = np.zeros(self.npix, 'f4')
                     bestfit = np.zeros_like(specflux)
                 else:
-                    sedflux, _ = self.SSP2data(self.sspflux[:, agekeep[coeff>0]],
-                                               self.sspwave, vdisp=vdispbest, redshift=redshift,
-                                               south=data['photsys'] == 'S', synthphot=False)
+                    sedflux, _ = self.templates2data(self.templateflux[:, agekeep[coeff>0]],
+                                                     self.templatewave, vdisp=vdispbest, redshift=redshift,
+                                                     south=data['photsys'] == 'S', synthphot=False)
                     sedmodel = sedflux.dot(coeff[coeff>0])
 
                     # Construct the final best-fitting (spectral) model.
-                    bestfit = bestsspflux.dot(coeff)
+                    bestfit = besttemplateflux.dot(coeff)
             else:
                 if compute_vdisp:
                     self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.2f} km/s.'.format(
@@ -1822,16 +1821,16 @@ class FastFit(ContinuumTools):
 
                 # Get the final set of coefficients and chi2 at the nominal velocity dispersion. 
                 t0 = time.time()
-                bestsspflux, bestphot = self.SSP2data(self.sspflux_vdisp[:, agekeep, self.vdisp_nominal_indx], 
-                                                      self.sspwave, redshift=redshift,
-                                                      specwave=data['wave'], specres=data['res'],
-                                                      specmask=data['mask'], 
-                                                      vdisp=None, cameras=data['cameras'],
-                                                      south=data['photsys'] == 'S', synthphot=True)
-                bestsspflux = np.concatenate(bestsspflux, axis=0)
+                besttemplateflux, bestphot = self.templates2data(self.templateflux_vdisp[:, agekeep, self.vdisp_nominal_indx], 
+                                                                 self.templatewave, redshift=redshift,
+                                                                 specwave=data['wave'], specres=data['res'],
+                                                                 specmask=data['mask'], 
+                                                                 vdisp=None, cameras=data['cameras'],
+                                                                 south=data['photsys'] == 'S', synthphot=True)
+                besttemplateflux = np.concatenate(besttemplateflux, axis=0)
                 bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
         
-                coeff, chi2min = self._call_nnls(np.vstack((bestflam, bestsspflux)),
+                coeff, chi2min = self._call_nnls(np.vstack((bestflam, besttemplateflux)),
                                                  np.hstack((objflam, specflux*apcorr)),
                                                  np.hstack((objflamivar, specivar/apcorr**2)))
                 chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
@@ -1844,18 +1843,18 @@ class FastFit(ContinuumTools):
                     sedmodel = np.zeros(self.npix, 'f4')
                     bestfit = np.zeros_like(specflux)
                 else:
-                    sedflux, _ = self.SSP2data(self.sspflux_vdisp[:, agekeep[coeff>0], self.vdisp_nominal_indx],
-                                               self.sspwave, vdisp=None, redshift=redshift,
-                                               south=data['photsys'] == 'S', synthphot=False)
+                    sedflux, _ = self.templates2data(self.templateflux_vdisp[:, agekeep[coeff>0], self.vdisp_nominal_indx],
+                                                     self.templatewave, vdisp=None, redshift=redshift,
+                                                     south=data['photsys'] == 'S', synthphot=False)
                     sedmodel = sedflux.dot(coeff[coeff>0])
 
                     # Construct the final best-fitting (spectral) model.
-                    bestfit = bestsspflux.dot(coeff)
+                    bestfit = besttemplateflux.dot(coeff)
 
             #import matplotlib.pyplot as plt                
             #plt.clf()
             #plt.scatter(specwave, bestfit, color='blue', marker='s')
-            #plt.plot(zsspwave, sedmodel, color='red')
+            #plt.plot(ztemplatewave, sedmodel, color='red')
             #plt.xlim(9050, 9300)
             #plt.savefig('junk.png')
             #pdb.set_trace()
@@ -1863,7 +1862,7 @@ class FastFit(ContinuumTools):
             # Get DN(4000). Specivar is line-masked so we can't use it!
             dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flamivar, 
                                                   redshift=redshift, rest=False)
-            dn4000_model, _ = self.get_dn4000(self.sspwave, sedmodel, rest=True)
+            dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel, rest=True)
             #self._qa_dn4000()
 
             if dn4000_ivar > 0:
@@ -3308,12 +3307,12 @@ class FastFit(ContinuumTools):
         redshift = fastspec['CONTINUUM_Z']
 
         # rebuild the best-fitting broadband photometric model
-        continuum_phot, synthmodelphot = self.SSP2data(
-            self.sspflux, self.sspwave, redshift=redshift,
+        continuum_phot, synthmodelphot = self.templates2data(
+            self.templateflux, self.templatewave, redshift=redshift,
             synthphot=True, #AV=fastspec['CONTINUUM_AV'],
             coeff=fastspec['CONTINUUM_COEFF'] * self.massnorm)
 
-        continuum_wave_phot = self.sspwave * (1 + redshift)
+        continuum_wave_phot = self.templatewave * (1 + redshift)
     
         wavemin, wavemax = 0.1, 35 # 6.0
         indx_phot = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
@@ -3330,12 +3329,12 @@ class FastFit(ContinuumTools):
         # rebuild the best-fitting spectroscopic model
         stackwave = np.hstack(data['wave'])
 
-        continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
-                                     specwave=data['wave'], specres=data['res'],
-                                     specmask=data['mask'], cameras=data['cameras'],
-                                     vdisp=fastspec['VDISP'],
-                                     coeff=fastspec['CONTINUUM_COEFF'],
-                                     synthphot=False)
+        continuum, _ = self.templates2data(self.templateflux, self.templatewave, redshift=redshift, 
+                                           specwave=data['wave'], specres=data['res'],
+                                           specmask=data['mask'], cameras=data['cameras'],
+                                           vdisp=fastspec['VDISP'],
+                                           coeff=fastspec['CONTINUUM_COEFF'],
+                                           synthphot=False)
         
         residuals = [apcorr*data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
         

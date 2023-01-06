@@ -75,27 +75,24 @@ class ContinuumTools(object):
 
     Parameters
     ----------
-    ssptemplates : :class:`str`, optional
-        Full path to the SSP templates used for continuum-fitting.
-    sspversion : :class:`str`, optional, defaults to `v1.0`
-        Version of the SSP templates.
+    templates : :class:`str`, optional
+        Full path to the templates used for continuum-fitting.
+    templateversion : :class:`str`, optional, defaults to `v1.0`
+        Version of the templates.
     mapdir : :class:`str`, optional
         Full path to the Milky Way dust maps.
-    metallicity : :class:`str`, optional, defaults to `Z0.0190`.
-        Stellar metallicity of the SSPs. Currently fixed at solar
-        metallicity, Z=0.0190.
-    minsspwave : :class:`float`, optional, defaults to None
-        Minimum SSP wavelength to read into memory. If ``None``, the minimum
+    mintemplatewave : :class:`float`, optional, defaults to None
+        Minimum template wavelength to read into memory. If ``None``, the minimum
         available wavelength is used (around 100 Angstrom).
-    maxsspwave : :class:`float`, optional, defaults to 6e4
-        Maximum SSP wavelength to read into memory. 
+    maxtemplatewave : :class:`float`, optional, defaults to 6e4
+        Maximum template wavelength to read into memory. 
 
     .. note::
         Need to document all the attributes.
 
     """
-    def __init__(self, ssptemplates=None, sspversion='v1.0', minsspwave=None,
-                 maxsspwave=40e4, mapdir=None, fastphot=False, verbose=False):
+    def __init__(self, templates=None, templateversion='v1.0', mintemplatewave=None,
+                 maxtemplatewave=40e4, mapdir=None, fastphot=False, verbose=False):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
@@ -127,40 +124,40 @@ class ContinuumTools(object):
         #self.SFDMap = SFDMap(scaling=0.86, mapdir=mapdir) # SF11 recalibration of the SFD maps
         self.RV = 3.1
 
-        # SSPs
-        if ssptemplates is not None:
-            self.ssptemplates = ssptemplates
+        # Read the templates.
+        if templates is not None:
+            self.templates = templates
         else:
             templates_dir = os.environ.get('FASTSPECFIT_TEMPLATES', FASTSPECFIT_TEMPLATES_NERSC)
-            self.ssptemplates = os.path.join(templates_dir, 'fastspecfit-templates-{}.fits'.format(sspversion))
-        if not os.path.isfile(self.ssptemplates):
-            errmsg = 'Templates file not found {}'.format(self.ssptemplates)
+            self.templates = os.path.join(templates_dir, 'fastspecfit-templates-{}.fits'.format(templateversion))
+        if not os.path.isfile(self.templates):
+            errmsg = 'Templates file not found {}'.format(self.templates)
             self.log.critical(errmsg)
             raise IOError(errmsg)
 
-        self.log.info('Reading {}'.format(self.ssptemplates))
-        wave, wavehdr = fitsio.read(self.ssptemplates, ext='WAVE', header=True) # [npix]
-        sspflux = fitsio.read(self.ssptemplates, ext='FLUX')  # [npix,nsed]
-        sspinfo = Table(fitsio.read(self.ssptemplates, ext='METADATA'))
+        self.log.info('Reading {}'.format(self.templates))
+        wave, wavehdr = fitsio.read(self.templates, ext='WAVE', header=True) # [npix]
+        templateflux = fitsio.read(self.templates, ext='FLUX')  # [npix,nsed]
+        templateinfo = Table(fitsio.read(self.templates, ext='METADATA'))
 
         # Trim the wavelengths and select the number/ages of the templates.
         # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
-        if minsspwave is None:
-            minsspwave = np.min(wave)
-        wavekeep = np.where((wave >= minsspwave) * (wave <= maxsspwave))[0]
+        if mintemplatewave is None:
+            mintemplatewave = np.min(wave)
+        wavekeep = np.where((wave >= mintemplatewave) * (wave <= maxtemplatewave))[0]
 
-        self.sspwave = wave[wavekeep]
-        self.sspflux = sspflux[wavekeep, :]
-        self.sspinfo = sspinfo
-        self.nsed = len(sspinfo)
+        self.templatewave = wave[wavekeep]
+        self.templateflux = templateflux[wavekeep, :]
+        self.templateinfo = templateinfo
+        self.nsed = len(templateinfo)
         self.npix = len(wavekeep)
 
         self.continuum_pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
         self.pixkms_wavesplit = wavehdr['PIXSZSPT'] # wavelength where the pixel size changes [A]
 
         if not fastphot:
-            vdispwave = fitsio.read(self.ssptemplates, ext='VDISPWAVE')
-            vdispflux, vdisphdr = fitsio.read(self.ssptemplates, ext='VDISPFLUX', header=True) # [nvdisppix,nvdispsed,nvdisp]
+            vdispwave = fitsio.read(self.templates, ext='VDISPWAVE')
+            vdispflux, vdisphdr = fitsio.read(self.templates, ext='VDISPFLUX', header=True) # [nvdisppix,nvdispsed,nvdisp]
             self.vdispflux = vdispflux
             self.vdispwave = vdispwave
             dims = vdispflux.shape
@@ -448,12 +445,12 @@ class ContinuumTools(object):
 
         return phot
 
-    def convolve_vdisp(self, sspflux, vdisp):
+    def convolve_vdisp(self, templateflux, vdisp):
         """Convolve by the velocity dispersion.
 
         Parameters
         ----------
-        sspflux
+        templateflux
         vdisp
 
         Returns
@@ -466,10 +463,10 @@ class ContinuumTools(object):
         from scipy.ndimage import gaussian_filter1d
 
         if vdisp <= 0.0:
-            return sspflux
+            return templateflux
         sigma = vdisp / self.continuum_pixkms # [pixels]
 
-        smoothflux = gaussian_filter1d(sspflux, sigma=sigma, axis=0)
+        smoothflux = gaussian_filter1d(templateflux, sigma=sigma, axis=0)
 
         return smoothflux
     
@@ -1066,16 +1063,16 @@ class ContinuumTools(object):
 
         return linemask_dict
 
-    def smooth_and_resample(self, sspflux, sspwave, specwave=None, specres=None):
+    def smooth_and_resample(self, templateflux, templatewave, specwave=None, specres=None):
         """Given a single template, apply the resolution matrix and resample in
         wavelength.
 
         Parameters
         ----------
-        sspflux : :class:`numpy.ndarray` [npix]
+        templateflux : :class:`numpy.ndarray` [npix]
             Input (model) spectrum.
-        sspwave : :class:`numpy.ndarray` [npix]
-            Wavelength array corresponding to `sspflux`.
+        templatewave : :class:`numpy.ndarray` [npix]
+            Wavelength array corresponding to `templateflux`.
         specwave : :class:`numpy.ndarray` [noutpix], optional, defaults to None
             Desired output wavelength array, usually that of the object being fitted.
         specres : :class:`desispec.resolution.Resolution`, optional, defaults to None 
@@ -1095,10 +1092,10 @@ class ContinuumTools(object):
         from fastspecfit.util import trapz_rebin
 
         if specwave is None:
-            resampflux = sspflux 
+            resampflux = templateflux 
         else:
-            trim = (sspwave > (specwave.min()-10.0)) * (sspwave < (specwave.max()+10.0))
-            resampflux = trapz_rebin(sspwave[trim], sspflux[trim], specwave)
+            trim = (templatewave > (specwave.min()-10.0)) * (templatewave < (specwave.max()+10.0))
+            resampflux = trapz_rebin(templatewave[trim], templateflux[trim], specwave)
 
         if specres is None:
             smoothflux = resampflux
@@ -1107,12 +1104,12 @@ class ContinuumTools(object):
 
         return smoothflux
     
-    def SSP2data(self, _sspflux, _sspwave, redshift=0.0, vdisp=None,
-                 cameras=['b', 'r', 'z'], specwave=None, specres=None, 
-                 specmask=None, coeff=None, south=True, synthphot=True, 
-                 debug=False):
-        """Work-horse routine to turn input SSPs into spectra that can be compared to
-        real data.
+    def templates2data(self, _templateflux, _templatewave, redshift=0.0, vdisp=None,
+                       cameras=['b', 'r', 'z'], specwave=None, specres=None, 
+                       specmask=None, coeff=None, south=True, synthphot=True, 
+                       debug=False):
+        """Work-horse routine to turn input templates into spectra that can be compared
+        to real data.
 
         Redshift, apply the resolution matrix, and resample in wavelength.
 
@@ -1137,8 +1134,8 @@ class ContinuumTools(object):
         - apply the resolution matrix
         - synthesize photometry
 
-        It also naturally handles SSPs which have been precomputed on a grid of
-        velocity dispersion (and therefore have an additional
+        It also naturally handles templates which have been precomputed on a
+        grid of velocity dispersion (and therefore have an additional
         dimension). However, if the input grid is 3D, it is reshaped to be 2D
         but then it isn't reshaped back because of the way the photometry table
         is organized (bug or feature?).
@@ -1148,48 +1145,48 @@ class ContinuumTools(object):
 
         # Are we dealing with a 2D grid [npix,nage] or a 3D grid
         # [npix,nage,nAV] or [npix,nage,nvdisp]?
-        sspflux = _sspflux.copy() # why?!?
-        sspwave = _sspwave.copy() # why?!?
-        ndim = sspflux.ndim
+        templateflux = _templateflux.copy() # why?!?
+        templatewave = _templatewave.copy() # why?!?
+        ndim = templateflux.ndim
         if ndim == 2:
-            npix, nage = sspflux.shape
+            npix, nage = templateflux.shape
             nmodel = nage
         elif ndim == 3:
-            npix, nage, nprop = sspflux.shape
+            npix, nage, nprop = templateflux.shape
             nmodel = nage*nprop
-            sspflux = sspflux.reshape(npix, nmodel)
+            templateflux = templateflux.reshape(npix, nmodel)
         else:
-            errmsg = 'Input SSPs have an unrecognized number of dimensions, {}'.format(ndim)
+            errmsg = 'Input templates have an unrecognized number of dimensions, {}'.format(ndim)
             self.log.critical(errmsg)
             raise ValueError(errmsg)
         
         #t0 = time.time()
-        ##sspflux = sspflux.copy().reshape(npix, nmodel)
+        ##templateflux = templateflux.copy().reshape(npix, nmodel)
         #self.log.info('Copying the data took {:.2f} seconds.'.format(time.time()-t0))
 
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
-            #sspflux = self.convolve_vdisp(sspflux, vdisp)
-            I = np.where(sspwave < self.pixkms_wavesplit)[0]
-            sspflux[I, :] = self.convolve_vdisp(sspflux[I, :], vdisp)
+            #templateflux = self.convolve_vdisp(templateflux, vdisp)
+            I = np.where(templatewave < self.pixkms_wavesplit)[0]
+            templateflux[I, :] = self.convolve_vdisp(templateflux[I, :], vdisp)
 
         # Apply the redshift factor. The models are normalized to 10 pc, so
         # apply the luminosity distance factor here. Also normalize to a nominal
         # stellar mass.
         if redshift:
-            zsspwave = sspwave * (1.0 + redshift)
+            ztemplatewave = templatewave * (1.0 + redshift)
             dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2
             #dfactor = (10.0 / np.interp(redshift, self.redshift_ref, self.dlum_ref))**2
             factor = (self.fluxnorm * self.massnorm * dfactor / (1.0 + redshift))[np.newaxis, np.newaxis]
-            zsspflux = sspflux * factor
+            ztemplateflux = templateflux * factor
         else:
             errmsg = 'Input redshift not defined or equal to zero!'
             self.log.warning(errmsg)
-            zsspwave = sspwave.copy() # ???
-            zsspflux = self.fluxnorm * self.massnorm * sspflux
+            ztemplatewave = templatewave.copy() # ???
+            ztemplateflux = self.fluxnorm * self.massnorm * templateflux
 
         # Optionally synthesize photometry.
-        sspphot = None
+        templatephot = None
         if synthphot:
             if south:
                 filters = self.decamwise
@@ -1200,37 +1197,37 @@ class ContinuumTools(object):
             if ((specwave is None and specres is None and coeff is None) or
                (specwave is not None and specres is not None)):
                 #t0 = time.time()
-                maggies = filters.get_ab_maggies(zsspflux, zsspwave, axis=0) # speclite.filters wants an [nmodel,npix] array
+                maggies = filters.get_ab_maggies(ztemplateflux, ztemplatewave, axis=0) # speclite.filters wants an [nmodel,npix] array
                 maggies = np.vstack(maggies.as_array().tolist()).T
                 maggies /= self.fluxnorm * self.massnorm
-                sspphot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, debug=debug)
+                templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, debug=debug)
                 #self.log.info('Synthesizing photometry took {:.2f} seconds.'.format(time.time()-t0))
 
         # Are we returning per-camera spectra or a single model? Handle that here.
         #t0 = time.time()
         if specwave is None and specres is None:
-            datasspflux = []
+            datatemplateflux = []
             for imodel in np.arange(nmodel):
-                datasspflux.append(self.smooth_and_resample(zsspflux[:, imodel], zsspwave))
-            datasspflux = np.vstack(datasspflux).T
+                datatemplateflux.append(self.smooth_and_resample(ztemplateflux[:, imodel], ztemplatewave))
+            datatemplateflux = np.vstack(datatemplateflux).T
 
             # optionally compute the best-fitting model
             if coeff is not None:
-                datasspflux = datasspflux.dot(coeff)
+                datatemplateflux = datatemplateflux.dot(coeff)
                 if synthphot:
-                    maggies = filters.get_ab_maggies(datasspflux, zsspwave, axis=0)
+                    maggies = filters.get_ab_maggies(datatemplateflux, ztemplatewave, axis=0)
                     maggies = np.array(maggies.as_array().tolist()[0])
                     maggies /= self.fluxnorm * self.massnorm
-                    sspphot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False)
+                    templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False)
         else:
             # loop over cameras
-            datasspflux = []
+            datatemplateflux = []
             for icamera in np.arange(len(cameras)): # iterate on cameras
-                _datasspflux = []
+                _datatemplateflux = []
                 for imodel in np.arange(nmodel):
                     #if icamera == 2:
-                    #    b1 = self.smooth_and_resample(zsspflux[:, imodel], zsspwave, specwave=specwave[icamera])#, specres=specres[icamera])
-                    #    b2 = self.smooth_and_resample(zsspflux[:, imodel], zsspwave, specwave=specwave[icamera], specres=specres[icamera])
+                    #    b1 = self.smooth_and_resample(ztemplateflux[:, imodel], ztemplatewave, specwave=specwave[icamera])#, specres=specres[icamera])
+                    #    b2 = self.smooth_and_resample(ztemplateflux[:, imodel], ztemplatewave, specwave=specwave[icamera], specres=specres[icamera])
                     #    import matplotlib.pyplot as plt
                     #
                     #    I = np.where((specwave[icamera] > 9000) * (specwave[icamera] < 9300))[0]
@@ -1239,19 +1236,19 @@ class ContinuumTools(object):
                     #    plt.plot(specwave[icamera], b1, color='red')
                     #    plt.savefig('junk.png')
                     #    pdb.set_trace()
-                    resampflux = self.smooth_and_resample(zsspflux[:, imodel], zsspwave, 
+                    resampflux = self.smooth_and_resample(ztemplateflux[:, imodel], ztemplatewave, 
                                                           specwave=specwave[icamera],
                                                           specres=specres[icamera])
                     # interpolate over pixels where the resolution matrix is masked
                     if specmask is not None and np.any(specmask[icamera] != 0):
                         I = binary_dilation(specmask[icamera] != 0, iterations=2)
-                        resampflux[I] = np.interp(specwave[icamera][I], zsspwave, zsspflux[:, imodel])
-                    _datasspflux.append(resampflux)
-                _datasspflux = np.vstack(_datasspflux).T
+                        resampflux[I] = np.interp(specwave[icamera][I], ztemplatewave, ztemplateflux[:, imodel])
+                    _datatemplateflux.append(resampflux)
+                _datatemplateflux = np.vstack(_datatemplateflux).T
                 if coeff is not None:
-                    _datasspflux = _datasspflux.dot(coeff)
-                datasspflux.append(_datasspflux)
+                    _datatemplateflux = _datatemplateflux.dot(coeff)
+                datatemplateflux.append(_datatemplateflux)
                 
         #self.log.info('Resampling took {:.2f} seconds.'.format(time.time()-t0))
 
-        return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
+        return datatemplateflux, templatephot # vector or 3-element list of [npix,nmodel] spectra
