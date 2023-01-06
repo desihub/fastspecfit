@@ -89,7 +89,7 @@ def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synthphot):
+def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, FFit, fastphot, synthphot):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
@@ -100,11 +100,11 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
             'photsys': meta['PHOTSYS']}
     
     if data['photsys'] == 'S':
-        filters = CFit.decam
-        allfilters = CFit.decamwise
+        filters = FFit.decam
+        allfilters = FFit.decamwise
     else:
-        filters = CFit.bassmzls
-        allfilters = CFit.bassmzlswise
+        filters = FFit.bassmzls
+        allfilters = FFit.bassmzlswise
     
     # Unpack the imaging photometry and correct for MW dust.
     
@@ -112,16 +112,16 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
     # dust extinction correction we apply to the spectra to be
     # self-consistent with how we correct the photometry for dust.
     if data['photsys'] != '':
-        mw_transmission_flux = np.array([mwdust_transmission(ebv, band, data['photsys'], match_legacy_surveys=False) for band in CFit.bands])
-        for band, mwdust in zip(CFit.bands, mw_transmission_flux):
+        mw_transmission_flux = np.array([mwdust_transmission(ebv, band, data['photsys'], match_legacy_surveys=False) for band in FFit.bands])
+        for band, mwdust in zip(FFit.bands, mw_transmission_flux):
             meta['MW_TRANSMISSION_{}'.format(band.upper())] = mwdust 
     else:
-        #mw_transmission_fiberflux = np.ones(len(CFit.bands))
-        mw_transmission_flux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=CFit.RV))
+        #mw_transmission_fiberflux = np.ones(len(FFit.bands))
+        mw_transmission_flux = 10**(-0.4 * ebv * FFit.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=FFit.RV))
 
-    maggies = np.zeros(len(CFit.bands))
-    ivarmaggies = np.zeros(len(CFit.bands))
-    for iband, band in enumerate(CFit.bands):
+    maggies = np.zeros(len(FFit.bands))
+    ivarmaggies = np.zeros(len(FFit.bands))
+    for iband, band in enumerate(FFit.bands):
         maggies[iband] = meta['FLUX_{}'.format(band.upper())] / mw_transmission_flux[iband]
         ivarmaggies[iband] = meta['FLUX_IVAR_{}'.format(band.upper())] * mw_transmission_flux[iband]**2
         
@@ -130,30 +130,30 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
         log.critical(errmsg)
         raise ValueError(errmsg)
     
-    data['phot'] = CFit.parse_photometry(
-        CFit.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
+    data['phot'] = FFit.parse_photometry(
+        FFit.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
         lambda_eff=allfilters.effective_wavelengths.value,
-        min_uncertainty=CFit.min_uncertainty)
+        min_uncertainty=FFit.min_uncertainty)
     
     # fiber fluxes
     if data['photsys'] != '':                
-        mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, band, data['photsys']) for band in CFit.fiber_bands])
+        mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, band, data['photsys']) for band in FFit.fiber_bands])
     else:
-        #mw_transmission_fiberflux = np.ones(len(CFit.fiber_bands))
-        mw_transmission_fiberflux = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=CFit.RV))
+        #mw_transmission_fiberflux = np.ones(len(FFit.fiber_bands))
+        mw_transmission_fiberflux = 10**(-0.4 * ebv * FFit.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=FFit.RV))
     
-    fibermaggies = np.zeros(len(CFit.fiber_bands))
-    fibertotmaggies = np.zeros(len(CFit.fiber_bands))
-    #ivarfibermaggies = np.zeros(len(CFit.fiber_bands))
-    for iband, band in enumerate(CFit.fiber_bands):
+    fibermaggies = np.zeros(len(FFit.fiber_bands))
+    fibertotmaggies = np.zeros(len(FFit.fiber_bands))
+    #ivarfibermaggies = np.zeros(len(FFit.fiber_bands))
+    for iband, band in enumerate(FFit.fiber_bands):
         fibermaggies[iband] = meta['FIBERFLUX_{}'.format(band.upper())] / mw_transmission_fiberflux[iband]
         fibertotmaggies[iband] = meta['FIBERTOTFLUX_{}'.format(band.upper())] / mw_transmission_fiberflux[iband]
         #ivarfibermaggies[iband] = meta['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] * mw_transmission_fiberflux[iband]**2
     
-    data['fiberphot'] = CFit.parse_photometry(CFit.fiber_bands,
+    data['fiberphot'] = FFit.parse_photometry(FFit.fiber_bands,
         maggies=fibermaggies, nanomaggies=True,
         lambda_eff=filters.effective_wavelengths.value)
-    data['fibertotphot'] = CFit.parse_photometry(CFit.fiber_bands,
+    data['fibertotphot'] = FFit.parse_photometry(FFit.fiber_bands,
         maggies=fibertotmaggies, nanomaggies=True,
         lambda_eff=filters.effective_wavelengths.value)
 
@@ -182,8 +182,8 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
                 if np.all(ivar == 0):
                     log.warning('Dropping fully masked camera {}'.format(camera))
                 else:
-                    #mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))
-                    mw_transmission_spec = dust_transmission(spec.wave[camera], ebv, Rv=CFit.RV)
+                    #mw_transmission_spec = 10**(-0.4 * ebv * FFit.RV * ext_odonnell(spec.wave[camera], Rv=FFit.RV))
+                    mw_transmission_spec = dust_transmission(spec.wave[camera], ebv, Rv=FFit.RV)
                     data['wave'].append(spec.wave[camera])
                     data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
                     data['ivar'].append(ivar * mw_transmission_spec**2)
@@ -215,7 +215,7 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
         coadd_ivar = coadd_spec.ivar[coadd_bands][igal, :]
         coadd_res = Resolution(coadd_spec.resolution_data[coadd_bands][igal, :])
     
-        coadd_linemask_dict = CFit.build_linemask(coadd_wave, coadd_flux, coadd_ivar, redshift=data['zredrock'])
+        coadd_linemask_dict = FFit.build_linemask(coadd_wave, coadd_flux, coadd_ivar, redshift=data['zredrock'])
         data['coadd_linename'] = coadd_linemask_dict['linename']
         data['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
         data['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -276,7 +276,7 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
         # Optionally synthesize photometry from the coadded spectrum.
         if synthphot:
             padflux, padwave = filters.pad_spectrum(coadd_flux, coadd_wave, method='edge')
-            synthmaggies = filters.get_ab_maggies(padflux / CFit.fluxnorm, padwave)
+            synthmaggies = filters.get_ab_maggies(padflux / FFit.fluxnorm, padwave)
             synthmaggies = synthmaggies.as_array().view('f8')
     
             # code to synthesize uncertainties from the variance spectrum
@@ -285,11 +285,11 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
             #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
             #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
     
-            #data['synthphot'] = CFit.parse_photometry(CFit.bands,
+            #data['synthphot'] = FFit.parse_photometry(FFit.bands,
             #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
             #    ivarmaggies=synthivarmaggies, nanomaggies=False)
     
-            data['synthphot'] = CFit.parse_photometry(CFit.synth_bands,
+            data['synthphot'] = FFit.parse_photometry(FFit.synth_bands,
                 maggies=synthmaggies, nanomaggies=False,
                 lambda_eff=filters.effective_wavelengths.value)
 
@@ -798,12 +798,12 @@ class DESISpectra(object):
         log.info('Gathered photometric metadata for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
         self.meta = metas # update
 
-    def read_and_unpack(self, CFit, fastphot=False, synthphot=True, mp=1):
+    def read_and_unpack(self, FFit, fastphot=False, synthphot=True, mp=1):
         """Read and unpack selected spectra or broadband photometry.
         
         Parameters
         ----------
-        CFit : :class:`fastspecfit.continuum.ContinuumFit` class
+        FFit : :class:`fastspecfit.continuum.ContinuumFit` class
             Continuum-fitting class which contains filter curves and some additional
             photometric convenience functions.
         fastphot : bool
@@ -847,11 +847,11 @@ class DESISpectra(object):
                 in each of the three DESI cameras.
             linepix : :class:`list`
                 Three-element list of pixel indices, one per camera, which were
-                identified in :class:`CFit.build_linemask` to belong to emission
+                identified in :class:`FFit.build_linemask` to belong to emission
                 lines.
             contpix : :class:`list`
                 Three-element list of pixel indices, one per camera, which were
-                identified in :class:`CFit.build_linemask` to not be
+                identified in :class:`FFit.build_linemask` to not be
                 "contaminated" by emission lines.
             coadd_wave : `numpy.ndarray`
                 Coadded wavelength vector with all three cameras combined.
@@ -885,7 +885,7 @@ class DESISpectra(object):
             else:
                 log.info('Reading {} spectra from {}'.format(nobj, specfile))
 
-            ebv = CFit.SFDMap.ebv(meta['RA'], meta['DEC'])
+            ebv = FFit.SFDMap.ebv(meta['RA'], meta['DEC'])
 
             if fastphot:
                 spec, coadd_spec = None, None
@@ -896,7 +896,7 @@ class DESISpectra(object):
                 # Coadd across cameras.
                 coadd_spec = coadd_cameras(spec)
 
-            unpackargs = [(spec, coadd_spec, igal, meta[igal], ebv[igal], CFit, 
+            unpackargs = [(spec, coadd_spec, igal, meta[igal], ebv[igal], FFit, 
                            fastphot, synthphot) for igal in np.arange(len(meta))]
     
             if mp > 1:
@@ -930,10 +930,8 @@ class DESISpectra(object):
             Redrock redshift table (row-aligned to `fibermap`).
         fibermap : :class:`astropy.table.Table`
             Fiber map (row-aligned to `redrock`).
-        CFit : :class:`fastspecfit.continuum.ContinuumFit`
+        FFit : :class:`fastspecfit.continuum.ContinuumFit`
             Continuum-fitting class.
-        EMFit : :class:`fastspecfit.emlines.EMLineFit`
-            Emission-line fitting class.
 
         Returns
         -------

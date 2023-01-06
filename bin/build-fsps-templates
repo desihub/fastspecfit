@@ -17,7 +17,6 @@ And the following fixed parameters:
 --SSP (sfh=0)
 --Reradiated dust emission
 --Chabrier (2003) IMF
---No nebular line or continuum emission
 --Power-law dust law with fixed -0.7 slope
 
 Note that Figure 3 in Leja et al. 2017 nicely shows the effect of various
@@ -84,17 +83,12 @@ def main():
 
     logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [yr] in each bin
 
-    #nmets = 4
-    ##nmets = 2
-    #minlogmet = -1.0
-    #maxlogmet = 0.4
-    #logmets = np.linspace(minlogmet, maxlogmet, nmets)
-    logmets = np.array([-1.0, -0.3, 0.0, 0.4])
+    #logmets = np.array([-1.0, -0.3, 0.0, 0.3])
+    logmets = np.array([-1.0, 0.0, 0.3])
     nmets = len(logmets)
     zsolar = 0.019
 
-    ndusts = 10
-    #ndusts = 2
+    ndusts = 8
     mindust = 0.0
     minlogdust = -1.7
     maxlogdust = 0.477
@@ -127,15 +121,14 @@ def main():
     t0 = time.time()
     sp = fsps.StellarPopulation(compute_vega_mags=False, 
                                 add_dust_emission=True,
-                                add_neb_emission=False,
-                                nebemlineinspec=False,
+                                add_neb_emission=True,
                                 imf_type=1, # =Chabrier IMF
                                 dust_type=0,
                                 dust_index=-0.7,
                                 #sfh=0 # SSP parameters
                                 #zcontinuous=1,
                                 sfh=3,  # tabular SFH parameters
-                                zcontinuous=3,
+                                zcontinuous=1,
                                 )
     print('...took {:.3f} sec'.format((time.time()-t0)))
 
@@ -211,12 +204,13 @@ def main():
         # force the SFR to go to zero at the edge
         fspstime = np.hstack((fspstime, fspstime[-1]+1e-4))
         sfh = np.hstack((sfh, 0.0))
-        Z = np.zeros_like(sfh) + zsolar*10**model['logmet']
 
-        sp.set_tabular_sfh(fspstime, sfh, Z)
+        sp.set_tabular_sfh(fspstime, sfh)
 
         wave, flux = sp.get_spectrum(tage=tage, peraa=True) # tage in Gyr
         #print(tage, sp.sfr)
+
+        pdb.set_trace()
 
         logage = model['logage']
     

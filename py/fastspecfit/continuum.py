@@ -163,7 +163,7 @@ class ContinuumTools(object):
         self.pixkms_wavesplit = wavehdr['PIXSZSPT'] # wavelength where the pixel size changes [A]
 
         # see bin/build-fsps-templates
-        vdisp_nominal = 150.0
+        vdisp_nominal = 125.0
         nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
         vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
 

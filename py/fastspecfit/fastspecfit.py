@@ -62,20 +62,17 @@ def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True, fastphot=False)
 
     return out, meta, emmodel
 
-def desiqa_one(FFit, data, fastfit, metadata, coadd_type,
-               fastphot=False, outdir=None, outprefix=None, webqa=False):
+def desiqa_one(FFit, data, fastfit, metadata, coadd_type, fastphot=False, 
+               outdir=None, outprefix=None, webqa=False):
     """Multiprocessing wrapper to generate QA for a single object."""
 
     #t0 = time.time()
     if webqa:
         build_webqa(FFit, data, fastfit, metadata, coadd_type=coadd_type,
                     outprefix=outprefix, outdir=outdir)
-    elif fastphot:
-        FFit.qa_fastphot(data, fastfit, metadata, coadd_type=coadd_type,
-                         outprefix=outprefix, outdir=outdir)
     else:
         FFit.qa_fastspec(data, fastfit, metadata, coadd_type=coadd_type,
-                         outprefix=outprefix, outdir=outdir)
+                         fastphot=fastphot, outprefix=outprefix, outdir=outdir)
     #log.info('Building took {:.2f} sec'.format(time.time()-t0))
 
 def parse(options=None):
@@ -1645,6 +1642,8 @@ class FastFit(ContinuumTools):
             agekeep = np.arange(self.nsed)
         nage = len(agekeep)
 
+        zsspwave = self.sspwave * (1 + redshift)
+
         # Photometry-only fitting.
         if fastphot:
             vdispbest, vdispivar = self.vdisp_nominal, 0.0
@@ -1662,7 +1661,8 @@ class FastFit(ContinuumTools):
             self.log.info('Fitting {} models took {:.2f} seconds.'.format(
                 nage, time.time()-t0))
 
-            self.log.warning('Continuum coefficients are all zero or the data were not fit.')
+            if np.all(coeff == 0):
+                self.log.warning('Continuum coefficients are all zero or the data were not fit.')
 
             sedmodel = bestsspflux.dot(coeff)
 
@@ -1683,13 +1683,20 @@ class FastFit(ContinuumTools):
                     self.log.critical(errmsg)
                     raise ValueError(errmsg)
 
-            # Aperture correction based on the r-band synthesized and observed
-            # photometry. Note that the right thing to do is to do a quick-and-dirty
-            # fit of the spectrum and used the model-synthesized flux (ignoring any
-            # smooth continuum correction), which will guarantee that the aperture
-            # correction is always positive.
-            apcorr = data['phot']['nanomaggies'][1] / data['synthphot']['nanomaggies'][1]
-            data['apcorr'] = apcorr
+            # We'll need the filters for the aperture correction, below.
+            if data['photsys'] == 'S':
+                filters_in = self.decam
+            else:
+                filters_in = self.bassmzls
+
+            ## Aperture correction based on the r-band synthesized and observed
+            ## photometry. Note that the right thing to do is to do a quick-and-dirty
+            ## fit of the spectrum and use the model-synthesized flux (ignoring any
+            ## smooth continuum correction), which will guarantee that the aperture
+            ## correction is always positive.
+            #apcorr = data['phot']['nanomaggies'][1] / data['synthphot']['nanomaggies'][1]
+            ##pdb.set_trace()
+            #data['apcorr'] = apcorr
     
             # Prepare the spectral and photometric models at the galaxy
             # redshift. And if the wavelength coverage is sufficient, also solve for
@@ -1738,7 +1745,7 @@ class FastFit(ContinuumTools):
 
                 #import matplotlib.pyplot as plt                
                 #plt.clf()
-                #I = np.where((self.sspwave*(1+redshift) > 7000) * (self.sspwave*(1+redshift) < 7700))[0]
+                #I = np.where((zsspwave > 7000) * (zsspwave < 7700))[0]
                 #for ii in agekeep:
                 #    plt.plot(self.sspwave[I]*(1+redshift), self.sspflux[I, ii])
                 #plt.xlim(7000, 7700) # specwave.min(), specwave.max())
@@ -1755,15 +1762,25 @@ class FastFit(ContinuumTools):
                 bestsspflux = np.concatenate(bestsspflux, axis=0)
                 bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
 
-                #import matplotlib.pyplot as plt                
-                #plt.clf()
-                #I = np.where((specwave > 7000) * (specwave < 7700))[0]
-                #for ii in agekeep:
-                #    plt.plot(specwave[I], bestsspflux[I, ii])
-                #plt.yscale('log')
-                #plt.savefig('junk.png')
-                #pdb.set_trace()
-        
+                sedflux, _ = self.SSP2data(self.sspflux[:, agekeep],
+                                           self.sspwave, vdisp=vdispbest, redshift=redshift,
+                                           south=data['photsys'] == 'S', synthphot=False)
+
+                # Do a quick spectrophotometric-only fit to get the mean
+                # aperture correction. Note that the data are noisy and can be
+                # missing wise wavelength ranges, so use the models.
+                quickcoeff, _ = self._call_nnls(bestsspflux, specflux, specivar)
+                quickfit = sedflux.dot(quickcoeff)
+
+                quickmaggies = filters_in.get_ab_maggies(quickfit / self.fluxnorm, zsspwave)
+                quickmaggies = np.array(quickmaggies.as_array().tolist()[0])
+                quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, 
+                                                  nanomaggies=False)
+
+                apcorr = np.median(np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band] for band in self.synth_bands]) / quickphot['nanomaggies'].data)
+                self.log.info('Derived median aperture correction = {:.3f}'.format(apcorr))
+                data['apcorr'] = apcorr
+
                 coeff, chi2min = self._call_nnls(np.vstack((bestflam, bestsspflux)),
                                                  np.hstack((objflam, specflux*apcorr)),
                                                  np.hstack((objflamivar, specivar/apcorr**2)))
@@ -1829,7 +1846,7 @@ class FastFit(ContinuumTools):
             #import matplotlib.pyplot as plt                
             #plt.clf()
             #plt.scatter(specwave, bestfit, color='blue', marker='s')
-            #plt.plot(self.sspwave*(1+redshift), sedmodel, color='red')
+            #plt.plot(zsspwave, sedmodel, color='red')
             #plt.xlim(9050, 9300)
             #plt.savefig('junk.png')
             #pdb.set_trace()
@@ -2365,9 +2382,13 @@ class FastFit(ContinuumTools):
                 bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
 
             if (bounds[0] > bounds[1]) or (amp < bounds[0]) or (amp > bounds[1]):
-                errmsg = 'Initial amplitude is outside its bound for line {}!'.format(linename)
-                self.log.critical(errmsg)
-                raise ValueError(errmsg)
+                log.warning('Initial amplitude is outside its bound for line {}.'.format(linename))
+                amp = np.diff(bounds)/2 + bounds[0]
+                # Should never happen.
+                if (bounds[0] > bounds[1]) or (amp < bounds[0]) or (amp > bounds[1]):
+                    errmsg = 'Initial amplitude is outside its bound for line {}.'.format(linename)
+                    self.log.critical(errmsg)
+                    raise ValueError(errmsg)
 
             initial_guesses[linename+'_amp'] = amp
             param_bounds[linename+'_amp'] = bounds
@@ -3210,7 +3231,8 @@ class FastFit(ContinuumTools):
         #    result['DN4000_NOLINES'] = dn4000_nolines
     
     def qa_fastspec(self, data, fastspec, metadata, coadd_type='healpix',
-                    spec_wavelims=(3550, 9900), outprefix=None, outdir=None):
+                    spec_wavelims=(3550, 9900), fastphot=False, 
+                    outprefix=None, outdir=None):
         """QA plot the emission-line spectrum and best-fitting model.
 
         """
