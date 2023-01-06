@@ -1629,8 +1629,6 @@ class FastFit(ContinuumTools):
             SNR_R>3) and REDSHIFT<1).
 
         """
-        from scipy.ndimage import binary_dilation
-
         tall = time.time()
 
         redshift = result['CONTINUUM_Z']
@@ -1684,16 +1682,6 @@ class FastFit(ContinuumTools):
                     errmsg = 'All pixels are masked or some inverse variances are negative!'
                     self.log.critical(errmsg)
                     raise ValueError(errmsg)
-
-            # Where the spectral resolution is zero leads to funny outlier
-            # pixels in the best-fitting spectrum (see
-            # https://github.com/desihub/desispec/issues/1389), so interpolate
-            # using the SED model.
-            if np.any(flamivar == 0):
-                wavesort = np.argsort(specwave)
-                dointerp = binary_dilation(flamivar[wavesort] == 0, iterations=2)
-            else:
-                dointerp = None
 
             # Aperture correction based on the r-band synthesized and observed
             # photometry. Note that the right thing to do is to do a quick-and-dirty
@@ -1761,6 +1749,7 @@ class FastFit(ContinuumTools):
                 t0 = time.time()
                 bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
                                                       specwave=data['wave'], specres=data['res'],
+                                                      specmask=data['mask'], 
                                                       vdisp=vdispbest, cameras=data['cameras'],
                                                       south=data['photsys'] == 'S', synthphot=True)
                 bestsspflux = np.concatenate(bestsspflux, axis=0)
@@ -1795,14 +1784,6 @@ class FastFit(ContinuumTools):
 
                     # Construct the final best-fitting (spectral) model.
                     bestfit = bestsspflux.dot(coeff)
-
-                    # Where the spectral resolution is zero leads to funny
-                    # outlier pixels in the best-fitting spectrum (see
-                    # https://github.com/desihub/desispec/issues/1389), so
-                    # interpolate using the SED model.
-                    if dointerp is not None:
-                        bestfit[wavesort][dointerp] = np.interp(specwave[wavesort][dointerp], self.sspwave*(1+redshift), sedmodel)
-
             else:
                 if compute_vdisp:
                     self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.2f} km/s.'.format(
@@ -1818,6 +1799,7 @@ class FastFit(ContinuumTools):
                 bestsspflux, bestphot = self.SSP2data(self.sspflux_vdisp[:, agekeep, self.vdisp_nominal_indx], 
                                                       self.sspwave, redshift=redshift,
                                                       specwave=data['wave'], specres=data['res'],
+                                                      specmask=data['mask'], 
                                                       vdisp=None, cameras=data['cameras'],
                                                       south=data['photsys'] == 'S', synthphot=True)
                 bestsspflux = np.concatenate(bestsspflux, axis=0)
@@ -1844,15 +1826,9 @@ class FastFit(ContinuumTools):
                     # Construct the final best-fitting (spectral) model.
                     bestfit = bestsspflux.dot(coeff)
 
-                    if dointerp is not None:
-                        bb = bestfit.copy()
-                        bestfit[wavesort][dointerp] = np.interp(specwave[wavesort][dointerp], self.sspwave*(1+redshift), sedmodel)
-
             #import matplotlib.pyplot as plt                
             #plt.clf()
             #plt.scatter(specwave, bestfit, color='blue', marker='s')
-            #plt.scatter(specwave[wavesort][dointerp], bb[wavesort][dointerp], marker='s', color='green')
-            #plt.scatter(specwave[wavesort][dointerp], bestfit[wavesort][dointerp], marker='s', color='orange')
             #plt.plot(self.sspwave*(1+redshift), sedmodel, color='red')
             #plt.xlim(9050, 9300)
             #plt.savefig('junk.png')
@@ -1928,9 +1904,9 @@ class FastFit(ContinuumTools):
             fagn = self.get_mean_property('fagn', coeff, agekeep)
             logmstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True) # [Msun]
             sfr = self.get_mean_property('sfr', coeff, agekeep, normalization=1/self.massnorm, log10=False)       # [Msun/yr]
-    
-        self.log.info('A(V)={:.3f}, Age={:.3f} Gyr, Mstar={:.4g} Msun, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
-            AV, age, logmstar, sfr, zzsun, fagn))
+
+        self.log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
+            logmstar, absmag[np.isin(self.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun, fagn))
 
         # Pack it in and return.
         result['CONTINUUM_COEFF'][agekeep] = coeff
@@ -3325,7 +3301,7 @@ class FastFit(ContinuumTools):
 
         continuum, _ = self.SSP2data(self.sspflux, self.sspwave, redshift=redshift, 
                                      specwave=data['wave'], specres=data['res'],
-                                     cameras=data['cameras'],
+                                     specmask=data['mask'], cameras=data['cameras'],
                                      vdisp=fastspec['VDISP'],
                                      coeff=fastspec['CONTINUUM_COEFF'],
                                      synthphot=False)

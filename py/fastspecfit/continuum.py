@@ -1102,7 +1102,8 @@ class ContinuumTools(object):
     
     def SSP2data(self, _sspflux, _sspwave, redshift=0.0, vdisp=None,
                  cameras=['b', 'r', 'z'], specwave=None, specres=None, 
-                 coeff=None, south=True, synthphot=True, debug=False):
+                 specmask=None, coeff=None, south=True, synthphot=True, 
+                 debug=False):
         """Work-horse routine to turn input SSPs into spectra that can be compared to
         real data.
 
@@ -1136,6 +1137,8 @@ class ContinuumTools(object):
         is organized (bug or feature?).
 
         """
+        from scipy.ndimage import binary_dilation
+
         # Are we dealing with a 2D grid [npix,nage] or a 3D grid
         # [npix,nage,nAV] or [npix,nage,nvdisp]?
         sspflux = _sspflux.copy() # why?!?
@@ -1229,9 +1232,14 @@ class ContinuumTools(object):
                     #    plt.plot(specwave[icamera], b1, color='red')
                     #    plt.savefig('junk.png')
                     #    pdb.set_trace()
-                    _datasspflux.append(self.smooth_and_resample(
-                        zsspflux[:, imodel], zsspwave, specwave=specwave[icamera],
-                        specres=specres[icamera]))
+                    resampflux = self.smooth_and_resample(zsspflux[:, imodel], zsspwave, 
+                                                          specwave=specwave[icamera],
+                                                          specres=specres[icamera])
+                    # interpolate over pixels where the resolution matrix is masked
+                    if specmask is not None and np.any(specmask[icamera] != 0):
+                        I = binary_dilation(specmask[icamera] != 0, iterations=2)
+                        resampflux[I] = np.interp(specwave[icamera][I], zsspwave, zsspflux[:, imodel])
+                    _datasspflux.append(resampflux)
                 _datasspflux = np.vstack(_datasspflux).T
                 if coeff is not None:
                     _datasspflux = _datasspflux.dot(coeff)

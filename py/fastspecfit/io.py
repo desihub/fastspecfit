@@ -160,7 +160,7 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
     if not fastphot:
         from desispec.resolution import Resolution
         
-        data.update({'wave': [], 'flux': [], 'ivar': [], 'res': [],
+        data.update({'wave': [], 'flux': [], 'ivar': [], 'mask': [], 'res': [],
                      'linemask': [], 'linemask_all': [],
                      'linename': [], 'linepix': [], 'contpix': [],
                      'snr': np.zeros(3, 'f4')})
@@ -172,20 +172,30 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
             if np.sum(spec.ivar[camera][igal, :]) == 0:
                 log.warning('Dropping fully masked camera {}'.format(camera))
             else:
-                #mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))
-                mw_transmission_spec = dust_transmission(spec.wave[camera], ebv, Rv=CFit.RV)
-                data['wave'].append(spec.wave[camera])
-                data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
-
                 ivar = spec.ivar[camera][igal, :]
-                ivar[spec.mask[camera][igal, :] != 0] = 0 # is ivar[mask==0]=0 always true?
-                data['ivar'].append(ivar * mw_transmission_spec**2)
+                mask = spec.mask[camera][igal, :]
 
-                data['snr'][icam] = np.median(spec.flux[camera][igal, :] * np.sqrt(ivar))
-                data['res'].append(Resolution(spec.resolution_data[camera][igal, :, :]))
-        
-                cameras.append(camera)
-                npixpercamera.append(len(spec.wave[camera])) # number of pixels in this camera
+                # In the pipeline, if mask!=0 that does not mean ivar==0, but we
+                # want to be more aggressive about masking here.
+                ivar[mask != 0] = 0
+
+                if np.all(ivar == 0):
+                    log.warning('Dropping fully masked camera {}'.format(camera))
+                else:
+                    #mw_transmission_spec = 10**(-0.4 * ebv * CFit.RV * ext_odonnell(spec.wave[camera], Rv=CFit.RV))
+                    mw_transmission_spec = dust_transmission(spec.wave[camera], ebv, Rv=CFit.RV)
+                    data['wave'].append(spec.wave[camera])
+                    data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
+                    data['ivar'].append(ivar * mw_transmission_spec**2)
+
+                    # Also track the mask---see https://github.com/desihub/desispec/issues/1389 
+                    data['mask'].append(mask)
+    
+                    data['snr'][icam] = np.median(spec.flux[camera][igal, :] * np.sqrt(ivar))
+                    data['res'].append(Resolution(spec.resolution_data[camera][igal, :, :]))
+            
+                    cameras.append(camera)
+                    npixpercamera.append(len(spec.wave[camera])) # number of pixels in this camera
 
         # Pre-compute some convenience variables for "un-hstacking"
         # an "hstacked" spectrum.
