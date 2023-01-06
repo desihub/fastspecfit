@@ -176,9 +176,13 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, CFit, fastphot, synth
                 mw_transmission_spec = dust_transmission(spec.wave[camera], ebv, Rv=CFit.RV)
                 data['wave'].append(spec.wave[camera])
                 data['flux'].append(spec.flux[camera][igal, :] / mw_transmission_spec)
-                data['ivar'].append(spec.ivar[camera][igal, :] * mw_transmission_spec**2)
+
+                ivar = spec.ivar[camera][igal, :]
+                ivar[spec.mask[camera][igal, :] != 0] = 0 # is ivar[mask==0]=0 always true?
+                data['ivar'].append(ivar * mw_transmission_spec**2)
+
+                data['snr'][icam] = np.median(spec.flux[camera][igal, :] * np.sqrt(ivar))
                 data['res'].append(Resolution(spec.resolution_data[camera][igal, :, :]))
-                data['snr'][icam] = np.median(spec.flux[camera][igal, :] * np.sqrt(spec.ivar[camera][igal, :]))
         
                 cameras.append(camera)
                 npixpercamera.append(len(spec.wave[camera])) # number of pixels in this camera

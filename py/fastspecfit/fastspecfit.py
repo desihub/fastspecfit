@@ -1206,7 +1206,8 @@ class FastFit(ContinuumTools):
             out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies')) 
             #out.add_column(Column(name='FLUX_SYNTH_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies-2'))
         # observed-frame photometry synthesized from the best-fitting continuum model fit
-        for band in self.synth_bands:
+        #for band in self.synth_bands:
+        for band in self.bands:
             out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
 
         for band in self.absmag_bands:
@@ -1628,6 +1629,8 @@ class FastFit(ContinuumTools):
             SNR_R>3) and REDSHIFT<1).
 
         """
+        from scipy.ndimage import binary_dilation
+
         tall = time.time()
 
         redshift = result['CONTINUUM_Z']
@@ -1661,26 +1664,37 @@ class FastFit(ContinuumTools):
             self.log.info('Fitting {} models took {:.2f} seconds.'.format(
                 nage, time.time()-t0))
 
-            smooth_continuum = None
-            continuummodel = bestsspflux.dot(coeff)
+            self.log.warning('Continuum coefficients are all zero or the data were not fit.')
 
-            dn4000_model, _ = self.get_dn4000(self.sspwave, continuummodel, rest=True)
+            sedmodel = bestsspflux.dot(coeff)
 
+            dn4000_model, _ = self.get_dn4000(self.sspwave, sedmodel, rest=True)
             self.log.info('Model Dn(4000)={:.3f}.'.format(dn4000_model))
-
         else:
             # Combine all three cameras; we will unpack them to build the
             # best-fitting model (per-camera) below.
             specwave = np.hstack(data['wave'])
             specflux = np.hstack(data['flux'])
-            specivar = np.hstack(data['ivar']) * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
+            flamivar = np.hstack(data['ivar']) 
+            specivar = flamivar * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
+
             if np.all(specivar == 0) or np.any(specivar < 0):
-                specivar = np.hstack(data['ivar']) # not great...
+                specivar = flamivar # not great...
                 if np.all(specivar == 0) or np.any(specivar < 0):
                     errmsg = 'All pixels are masked or some inverse variances are negative!'
                     self.log.critical(errmsg)
                     raise ValueError(errmsg)
-    
+
+            # Where the spectral resolution is zero leads to funny outlier
+            # pixels in the best-fitting spectrum (see
+            # https://github.com/desihub/desispec/issues/1389), so interpolate
+            # using the SED model.
+            if np.any(flamivar == 0):
+                wavesort = np.argsort(specwave)
+                dointerp = binary_dilation(flamivar[wavesort] == 0, iterations=2)
+            else:
+                dointerp = None
+
             # Aperture correction based on the r-band synthesized and observed
             # photometry. Note that the right thing to do is to do a quick-and-dirty
             # fit of the spectrum and used the model-synthesized flux (ignoring any
@@ -1734,6 +1748,15 @@ class FastFit(ContinuumTools):
                     vdispbest = self.vdisp_nominal
                     self.log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
 
+                #import matplotlib.pyplot as plt                
+                #plt.clf()
+                #I = np.where((self.sspwave*(1+redshift) > 7000) * (self.sspwave*(1+redshift) < 7700))[0]
+                #for ii in agekeep:
+                #    plt.plot(self.sspwave[I]*(1+redshift), self.sspflux[I, ii])
+                #plt.xlim(7000, 7700) # specwave.min(), specwave.max())
+                #plt.savefig('junk.png')
+                #pdb.set_trace()
+
                 # Get the final set of coefficients and chi2 at the best-fitting velocity dispersion. 
                 t0 = time.time()
                 bestsspflux, bestphot = self.SSP2data(self.sspflux[:, agekeep], self.sspwave, redshift=redshift,
@@ -1742,6 +1765,15 @@ class FastFit(ContinuumTools):
                                                       south=data['photsys'] == 'S', synthphot=True)
                 bestsspflux = np.concatenate(bestsspflux, axis=0)
                 bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
+
+                #import matplotlib.pyplot as plt                
+                #plt.clf()
+                #I = np.where((specwave > 7000) * (specwave < 7700))[0]
+                #for ii in agekeep:
+                #    plt.plot(specwave[I], bestsspflux[I, ii])
+                #plt.yscale('log')
+                #plt.savefig('junk.png')
+                #pdb.set_trace()
         
                 coeff, chi2min = self._call_nnls(np.vstack((bestflam, bestsspflux)),
                                                  np.hstack((objflam, specflux*apcorr)),
@@ -1749,6 +1781,28 @@ class FastFit(ContinuumTools):
                 chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
                 self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
                     nage, time.time()-t0))
+
+                # Compute the full-wavelength best-fitting model.
+                if np.all(coeff == 0):
+                    self.log.warning('Continuum coefficients are all zero or the data were not fit.')
+                    sedmodel = np.zeros(self.npix, 'f4')
+                    bestfit = np.zeros_like(specflux)
+                else:
+                    sedflux, _ = self.SSP2data(self.sspflux[:, agekeep[coeff>0]],
+                                               self.sspwave, vdisp=vdispbest, redshift=redshift,
+                                               south=data['photsys'] == 'S', synthphot=False)
+                    sedmodel = sedflux.dot(coeff[coeff>0])
+
+                    # Construct the final best-fitting (spectral) model.
+                    bestfit = bestsspflux.dot(coeff)
+
+                    # Where the spectral resolution is zero leads to funny
+                    # outlier pixels in the best-fitting spectrum (see
+                    # https://github.com/desihub/desispec/issues/1389), so
+                    # interpolate using the SED model.
+                    if dointerp is not None:
+                        bestfit[wavesort][dointerp] = np.interp(specwave[wavesort][dointerp], self.sspwave*(1+redshift), sedmodel)
+
             else:
                 if compute_vdisp:
                     self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.2f} km/s.'.format(
@@ -1776,16 +1830,38 @@ class FastFit(ContinuumTools):
                 self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
                     nage, time.time()-t0))
 
-            bestfit = bestsspflux.dot(coeff)
+                # Compute the full-wavelength best-fitting model.
+                if np.all(coeff == 0):
+                    self.log.warning('Continuum coefficients are all zero or the data were not fit.')
+                    sedmodel = np.zeros(self.npix, 'f4')
+                    bestfit = np.zeros_like(specflux)
+                else:
+                    sedflux, _ = self.SSP2data(self.sspflux_vdisp[:, agekeep[coeff>0], self.vdisp_nominal_indx],
+                                               self.sspwave, vdisp=None, redshift=redshift,
+                                               south=data['photsys'] == 'S', synthphot=False)
+                    sedmodel = sedflux.dot(coeff[coeff>0])
 
-            # Get DN(4000).
-            flam_ivar = np.hstack(data['ivar']) # specivar is line-masked so we can't use it!
-            dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flam_ivar, 
+                    # Construct the final best-fitting (spectral) model.
+                    bestfit = bestsspflux.dot(coeff)
+
+                    if dointerp is not None:
+                        bb = bestfit.copy()
+                        bestfit[wavesort][dointerp] = np.interp(specwave[wavesort][dointerp], self.sspwave*(1+redshift), sedmodel)
+
+            #import matplotlib.pyplot as plt                
+            #plt.clf()
+            #plt.scatter(specwave, bestfit, color='blue', marker='s')
+            #plt.scatter(specwave[wavesort][dointerp], bb[wavesort][dointerp], marker='s', color='green')
+            #plt.scatter(specwave[wavesort][dointerp], bestfit[wavesort][dointerp], marker='s', color='orange')
+            #plt.plot(self.sspwave*(1+redshift), sedmodel, color='red')
+            #plt.xlim(9050, 9300)
+            #plt.savefig('junk.png')
+            #pdb.set_trace()
+
+            # Get DN(4000). Specivar is line-masked so we can't use it!
+            dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flamivar, 
                                                   redshift=redshift, rest=False)
-
-            print('NEED TO GET D4000_MODEL FROM THE BEST-FITTING FULL SED!')
-
-            dn4000_model, _ = self.get_dn4000(specwave, bestfit, redshift=redshift, rest=False)
+            dn4000_model, _ = self.get_dn4000(self.sspwave, sedmodel, rest=True)
             #self._qa_dn4000()
 
             if dn4000_ivar > 0:
@@ -1796,9 +1872,9 @@ class FastFit(ContinuumTools):
                     dn4000, dn4000_model))
 
             png = None
-            #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth-continuum.png'
             linemask = np.hstack(data['linemask'])
             if np.all(coeff == 0):
+                self.log.warning('Continuum coefficients are all zero or the data were not fit.')
                 _smooth_continuum = np.zeros_like(bestfit)
             else:
                 _smooth_continuum, _ = self.smooth_continuum(specwave, apcorr*specflux - bestfit, specivar/apcorr**2,
@@ -1812,7 +1888,6 @@ class FastFit(ContinuumTools):
     
             for icam, cam in enumerate(data['cameras']):
                 nonzero = continuummodel[icam] != 0
-                #nonzero = np.abs(continuummodel[icam]) > 1e-5
                 if np.sum(nonzero) > 0:
                     corr = np.median(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
                     result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
@@ -1835,16 +1910,25 @@ class FastFit(ContinuumTools):
             #        ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
             #    plt.savefig('junk.png')
 
-        # # Compute K-corrections, rest-frame quantities, and physical properties.
-        kcorr, absmag, ivarabsmag, synth_bestmaggies, lums = self.kcorr_and_absmag(data, continuummodel, coeff)
+        # Compute K-corrections, rest-frame quantities, and physical properties.
+        if np.all(coeff == 0):
+            kcorr = np.zeros(len(self.absmag_bands))
+            absmag = np.zeros(len(self.absmag_bands))#-99.0
+            ivarabsmag = np.zeros(len(self.absmag_bands))
+            synth_bestmaggies = np.zeros(len(self.bands))
+            lums = {}
 
-        AV = self.get_mean_property('av', coeff, agekeep)                        # [mag]
-        age = self.get_mean_property('age', coeff, agekeep, normalization=1e9)   # [Gyr]
-        zzsun = self.get_mean_property('zzsun', coeff, agekeep, log10=False)     # [log Zsun]
-        fagn = self.get_mean_property('fagn', coeff, agekeep)
-        logmstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True) # [Msun]
-        sfr = self.get_mean_property('sfr', coeff, agekeep, normalization=1/self.massnorm, log10=False)       # [Msun/yr]
-
+            AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        else:
+            kcorr, absmag, ivarabsmag, synth_bestmaggies, lums = self.kcorr_and_absmag(data, sedmodel, coeff)
+    
+            AV = self.get_mean_property('av', coeff, agekeep)                        # [mag]
+            age = self.get_mean_property('age', coeff, agekeep, normalization=1e9)   # [Gyr]
+            zzsun = self.get_mean_property('zzsun', coeff, agekeep, log10=False)     # [log Zsun]
+            fagn = self.get_mean_property('fagn', coeff, agekeep)
+            logmstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True) # [Msun]
+            sfr = self.get_mean_property('sfr', coeff, agekeep, normalization=1/self.massnorm, log10=False)       # [Msun/yr]
+    
         self.log.info('A(V)={:.3f}, Age={:.3f} Gyr, Mstar={:.4g} Msun, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
             AV, age, logmstar, sfr, zzsun, fagn))
 
@@ -1861,6 +1945,16 @@ class FastFit(ContinuumTools):
         result['FAGN'] = fagn
         result['DN4000_MODEL'] = dn4000_model
 
+        for iband, band in enumerate(self.absmag_bands):
+            result['KCORR_{}'.format(band.upper())] = kcorr[iband] # * u.mag
+            result['ABSMAG_{}'.format(band.upper())] = absmag[iband] # * u.mag
+            result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband] # / (u.mag**2)
+        for iband, band in enumerate(self.bands):
+            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband] # * u.nanomaggy
+        if bool(lums):
+            for lum in lums.keys():
+                result[lum] = lums[lum]
+
         if not fastphot:
             result['APCORR'] = apcorr
             result['DN4000'] = dn4000
@@ -1868,7 +1962,10 @@ class FastFit(ContinuumTools):
 
         log.info('Continuum-fitting took {:.2f} seconds.'.format(time.time()-tall))
 
-        return continuummodel, smooth_continuum
+        if fastphot:
+            return sedmodel, None
+        else:
+            return continuummodel, smooth_continuum
 
     def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False):
         """Build all the multi-parameter emission-line models we will use.

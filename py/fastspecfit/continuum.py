@@ -1098,12 +1098,12 @@ class ContinuumTools(object):
         else:
             smoothflux = specres.dot(resampflux)
 
-        return smoothflux # [noutpix]
+        return smoothflux
     
     def SSP2data(self, _sspflux, _sspwave, redshift=0.0, vdisp=None,
-                 cameras=['b', 'r', 'z'], specwave=None, specres=None, coeff=None,
-                 south=True, synthphot=True, debug=False):
-        """Workhorse routine to turn input SSPs into spectra that can be compared to
+                 cameras=['b', 'r', 'z'], specwave=None, specres=None, 
+                 coeff=None, south=True, synthphot=True, debug=False):
+        """Work-horse routine to turn input SSPs into spectra that can be compared to
         real data.
 
         Redshift, apply the resolution matrix, and resample in wavelength.
@@ -1218,6 +1218,17 @@ class ContinuumTools(object):
             for icamera in np.arange(len(cameras)): # iterate on cameras
                 _datasspflux = []
                 for imodel in np.arange(nmodel):
+                    #if icamera == 2:
+                    #    b1 = self.smooth_and_resample(zsspflux[:, imodel], zsspwave, specwave=specwave[icamera])#, specres=specres[icamera])
+                    #    b2 = self.smooth_and_resample(zsspflux[:, imodel], zsspwave, specwave=specwave[icamera], specres=specres[icamera])
+                    #    import matplotlib.pyplot as plt
+                    #
+                    #    I = np.where((specwave[icamera] > 9000) * (specwave[icamera] < 9300))[0]
+                    #    plt.clf()
+                    #    plt.plot(specwave[icamera], b2, color='blue')
+                    #    plt.plot(specwave[icamera], b1, color='red')
+                    #    plt.savefig('junk.png')
+                    #    pdb.set_trace()
                     _datasspflux.append(self.smooth_and_resample(
                         zsspflux[:, imodel], zsspwave, specwave=specwave[icamera],
                         specres=specres[icamera]))
@@ -1229,4 +1240,3 @@ class ContinuumTools(object):
         #self.log.info('Resampling took {:.2f} seconds.'.format(time.time()-t0))
 
         return datasspflux, sspphot # vector or 3-element list of [npix,nmodel] spectra
-
