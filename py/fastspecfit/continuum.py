@@ -138,6 +138,7 @@ class ContinuumTools(object):
         self.log.info('Reading {}'.format(self.templates))
         wave, wavehdr = fitsio.read(self.templates, ext='WAVE', header=True) # [npix]
         templateflux = fitsio.read(self.templates, ext='FLUX')  # [npix,nsed]
+        templatelineflux = fitsio.read(self.templates, ext='LINEFLUX')  # [npix,nsed]
         templateinfo = Table(fitsio.read(self.templates, ext='METADATA'))
 
         # Trim the wavelengths and select the number/ages of the templates.
@@ -148,6 +149,7 @@ class ContinuumTools(object):
 
         self.templatewave = wave[wavekeep]
         self.templateflux = templateflux[wavekeep, :]
+        self.templateflux_nolines = templateflux[wavekeep, :] - templatelineflux[wavekeep, :]
         self.templateinfo = templateinfo
         self.nsed = len(templateinfo)
         self.npix = len(wavekeep)
@@ -178,6 +180,17 @@ class ContinuumTools(object):
             self.vdisp_nominal = vdisp_nominal
             self.vdisp_nominal_indx = np.where(vdisp == vdisp_nominal)[0]
             self.nvdisp = nvdisp
+
+            # Cache a copy of the full templates at the nominal velocity dispersion.
+            templateflux_nomvdisp = self.templateflux.copy()
+            templateflux_nolines_nomvdisp = self.templateflux_nolines.copy()
+
+            I = np.where(self.templatewave < self.pixkms_wavesplit)[0]
+            templateflux_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nomvdisp[I, :], self.vdisp_nominal)
+            templateflux_nolines_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nolines_nomvdisp[I, :], self.vdisp_nominal)
+
+            self.templateflux_nomvdisp = templateflux_nomvdisp
+            self.templateflux_nolines_nomvdisp = templateflux_nolines_nomvdisp
 
         # emission line stuff
         self.linetable = read_emlines()
@@ -1107,7 +1120,7 @@ class ContinuumTools(object):
     def templates2data(self, _templateflux, _templatewave, redshift=0.0, vdisp=None,
                        cameras=['b', 'r', 'z'], specwave=None, specres=None, 
                        specmask=None, coeff=None, south=True, synthphot=True, 
-                       debug=False):
+                       stack_cameras=False, debug=False):
         """Work-horse routine to turn input templates into spectra that can be compared
         to real data.
 
@@ -1149,11 +1162,11 @@ class ContinuumTools(object):
         templatewave = _templatewave.copy() # why?!?
         ndim = templateflux.ndim
         if ndim == 2:
-            npix, nage = templateflux.shape
-            nmodel = nage
+            npix, nsed = templateflux.shape
+            nmodel = nsed
         elif ndim == 3:
-            npix, nage, nprop = templateflux.shape
-            nmodel = nage*nprop
+            npix, nsed, nprop = templateflux.shape
+            nmodel = nsed*nprop
             templateflux = templateflux.reshape(npix, nmodel)
         else:
             errmsg = 'Input templates have an unrecognized number of dimensions, {}'.format(ndim)
@@ -1204,7 +1217,6 @@ class ContinuumTools(object):
                 #self.log.info('Synthesizing photometry took {:.2f} seconds.'.format(time.time()-t0))
 
         # Are we returning per-camera spectra or a single model? Handle that here.
-        #t0 = time.time()
         if specwave is None and specres is None:
             datatemplateflux = []
             for imodel in np.arange(nmodel):
@@ -1222,6 +1234,7 @@ class ContinuumTools(object):
         else:
             # loop over cameras
             datatemplateflux = []
+            nwavepix = len(np.hstack(specwave))
             for icamera in np.arange(len(cameras)): # iterate on cameras
                 _datatemplateflux = []
                 for imodel in np.arange(nmodel):
@@ -1248,7 +1261,11 @@ class ContinuumTools(object):
                 if coeff is not None:
                     _datatemplateflux = _datatemplateflux.dot(coeff)
                 datatemplateflux.append(_datatemplateflux)
-                
-        #self.log.info('Resampling took {:.2f} seconds.'.format(time.time()-t0))
 
+            # Optionally stack and reshape (used in fitting).
+            if stack_cameras:
+                datatemplateflux = np.concatenate(datatemplateflux, axis=0)  # [npix,nsed*nprop] or [npix,nsed]
+                if ndim == 3:
+                    datatemplateflux = datatemplateflux.reshape(nwavepix, nsed, nprop) # [npix,nsed,nprop]
+                
         return datatemplateflux, templatephot # vector or 3-element list of [npix,nmodel] spectra

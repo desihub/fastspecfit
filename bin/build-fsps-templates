@@ -337,7 +337,7 @@ def main():
     I = np.where((wave > 1200) * (wave < wavesplit))[0]
     vdispwave = wave[I]
 
-    J = np.where((meta['av'] == 0) * (meta['fagn'] == 0))[0]
+    J = np.where(meta['fagn'] == 0)[0]
     nvdispmodel = len(J)
 
     #normflux = np.zeros_like(fluxnolines[I, :][:, J])

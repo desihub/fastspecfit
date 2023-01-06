@@ -1172,7 +1172,7 @@ class FastFit(ContinuumTools):
         ncoeff = len(self.templateinfo)
         
         out = Table()
-        out.add_column(Column(name='APCORR', length=nobj, dtype='f4')) # aperture correction
+        out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # aperture correction
         out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(ncoeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
@@ -1691,15 +1691,6 @@ class FastFit(ContinuumTools):
             else:
                 filters_in = self.bassmzls
 
-            ## Aperture correction based on the r-band synthesized and observed
-            ## photometry. Note that the right thing to do is to do a quick-and-dirty
-            ## fit of the spectrum and use the model-synthesized flux (ignoring any
-            ## smooth continuum correction), which will guarantee that the aperture
-            ## correction is always positive.
-            #apcorr = data['phot']['nanomaggies'][1] / data['synthphot']['nanomaggies'][1]
-            ##pdb.set_trace()
-            #data['apcorr'] = apcorr
-    
             # Prepare the spectral and photometric models at the galaxy
             # redshift. And if the wavelength coverage is sufficient, also solve for
             # the velocity dispersion.
@@ -1718,9 +1709,10 @@ class FastFit(ContinuumTools):
                 ztemplateflux_vdisp, _ = self.templates2data(
                     self.vdispflux, self.vdispwave, # [npix,vdispnsed,nvdisp]
                     redshift=redshift, specwave=data['wave'], specres=data['res'],
-                    cameras=data['cameras'], synthphot=False)
-                ztemplateflux_vdisp = np.concatenate(ztemplateflux_vdisp, axis=0)  # [npix,vdispnsed*nvdisp]
-                ztemplateflux_vdisp = ztemplateflux_vdisp.reshape(npix, self.vdispnsed, self.nvdisp) # [vdispnpix,vdispnsed,nvdisp]
+                    cameras=data['cameras'], synthphot=False, stack_cameras=True)
+
+                #ztemplateflux_vdisp = np.concatenate(ztemplateflux_vdisp, axis=0)  # [npix,vdispnsed*nvdisp]
+                #ztemplateflux_vdisp = ztemplateflux_vdisp.reshape(npix, self.vdispnsed, self.nvdisp) # [vdispnpix,vdispnsed,nvdisp]
 
                 # normalize to the median
                 #ztemplateflux_vdisp /= np.median(ztemplateflux_vdisp, axis=0)[np.newaxis, :, :]
@@ -1738,7 +1730,7 @@ class FastFit(ContinuumTools):
                     #specflux[Ivdisp]/specsmooth[Ivdisp], specivar[Ivdisp]*specsmooth[Ivdisp]**2,
                     xparam=self.vdisp, xlabel=r'$\sigma$ (km/s)', debug=False)
                 self.log.info('Fitting for the velocity dispersion with {} models took {:.2f} seconds.'.format(
-                    self.vdispflux.shape[1], nage, time.time()-t0))
+                    self.vdispnsed, time.time()-t0))
 
                 if vdispivar > 0:
                     # protect against tiny ivar from becomming infinite in the output table
@@ -1760,110 +1752,92 @@ class FastFit(ContinuumTools):
                 #plt.savefig('junk.png')
                 #pdb.set_trace()
 
-                # Get the final set of coefficients and chi2 at the best-fitting velocity dispersion. 
-                t0 = time.time()
-                besttemplateflux, bestphot = self.templates2data(self.templateflux[:, agekeep], self.templatewave, redshift=redshift,
-                                                                 specwave=data['wave'], specres=data['res'],
-                                                                 specmask=data['mask'], 
-                                                                 vdisp=vdispbest, cameras=data['cameras'],
-                                                                 south=data['photsys'] == 'S', synthphot=True)
-                besttemplateflux = np.concatenate(besttemplateflux, axis=0)
-                bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
-
-                sedflux, _ = self.templates2data(self.templateflux[:, agekeep],
-                                                 self.templatewave, vdisp=vdispbest, redshift=redshift,
-                                                 south=data['photsys'] == 'S', synthphot=False)
-
-                # Do a quick spectrophotometric-only fit to get the mean
-                # aperture correction. Note that the data are noisy and can be
-                # missing wise wavelength ranges, so use the models.
-                quickcoeff, _ = self._call_nnls(besttemplateflux, specflux, specivar)
-                quickfit = sedflux.dot(quickcoeff)
-
-                quickmaggies = filters_in.get_ab_maggies(quickfit / self.fluxnorm, ztemplatewave)
-                quickmaggies = np.array(quickmaggies.as_array().tolist()[0])
-                quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, 
-                                                  nanomaggies=False)
-
-                apcorr = np.median(np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band] for band in self.synth_bands]) / quickphot['nanomaggies'].data)
-                self.log.info('Derived median aperture correction = {:.3f}'.format(apcorr))
-                data['apcorr'] = apcorr
-
-                coeff, chi2min = self._call_nnls(np.vstack((bestflam, besttemplateflux)),
-                                                 np.hstack((objflam, specflux*apcorr)),
-                                                 np.hstack((objflamivar, specivar/apcorr**2)))
-                chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
-                self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
-                    nage, time.time()-t0))
-
-                # Compute the full-wavelength best-fitting model.
-                if np.all(coeff == 0):
-                    self.log.warning('Continuum coefficients are all zero or the data were not fit.')
-                    sedmodel = np.zeros(self.npix, 'f4')
-                    bestfit = np.zeros_like(specflux)
-                else:
-                    sedflux, _ = self.templates2data(self.templateflux[:, agekeep[coeff>0]],
-                                                     self.templatewave, vdisp=vdispbest, redshift=redshift,
-                                                     south=data['photsys'] == 'S', synthphot=False)
-                    sedmodel = sedflux.dot(coeff[coeff>0])
-
-                    # Construct the final best-fitting (spectral) model.
-                    bestfit = besttemplateflux.dot(coeff)
             else:
-                if compute_vdisp:
-                    self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.2f} km/s.'.format(
-                        self.vdisp_nominal))
-                else:
-                    self.log.info('Insufficient wavelength covereage to compute vdisp; adopting nominal vdisp={:.2f} km/s'.format(
-                        self.vdisp_nominal))
-                    
                 vdispbest, vdispivar = self.vdisp_nominal, 0.0
-
-                # Get the final set of coefficients and chi2 at the nominal velocity dispersion. 
-                t0 = time.time()
-                besttemplateflux, bestphot = self.templates2data(self.templateflux_vdisp[:, agekeep, self.vdisp_nominal_indx], 
-                                                                 self.templatewave, redshift=redshift,
-                                                                 specwave=data['wave'], specres=data['res'],
-                                                                 specmask=data['mask'], 
-                                                                 vdisp=None, cameras=data['cameras'],
-                                                                 south=data['photsys'] == 'S', synthphot=True)
-                besttemplateflux = np.concatenate(besttemplateflux, axis=0)
-                bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
-        
-                coeff, chi2min = self._call_nnls(np.vstack((bestflam, besttemplateflux)),
-                                                 np.hstack((objflam, specflux*apcorr)),
-                                                 np.hstack((objflamivar, specivar/apcorr**2)))
-                chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
-                self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
-                    nage, time.time()-t0))
-
-                # Compute the full-wavelength best-fitting model.
-                if np.all(coeff == 0):
-                    self.log.warning('Continuum coefficients are all zero or the data were not fit.')
-                    sedmodel = np.zeros(self.npix, 'f4')
-                    bestfit = np.zeros_like(specflux)
+                if compute_vdisp:
+                    self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.2f} km/s.'.format(vdispbest))
                 else:
-                    sedflux, _ = self.templates2data(self.templateflux_vdisp[:, agekeep[coeff>0], self.vdisp_nominal_indx],
-                                                     self.templatewave, vdisp=None, redshift=redshift,
-                                                     south=data['photsys'] == 'S', synthphot=False)
-                    sedmodel = sedflux.dot(coeff[coeff>0])
+                    self.log.info('Insufficient wavelength covereage to compute vdisp; adopting nominal vdisp={:.2f} km/s'.format(vdispbest))
 
-                    # Construct the final best-fitting (spectral) model.
-                    bestfit = besttemplateflux.dot(coeff)
+            # Derive the aperture correction. 
+            t0 = time.time()
 
-            #import matplotlib.pyplot as plt                
-            #plt.clf()
-            #plt.scatter(specwave, bestfit, color='blue', marker='s')
-            #plt.plot(ztemplatewave, sedmodel, color='red')
-            #plt.xlim(9050, 9300)
-            #plt.savefig('junk.png')
-            #pdb.set_trace()
+            # First, do a quick fit of the DESI spectrum (including
+            # line-emission templates) so we can synthesize photometry from a
+            # noiseless model.
+            if vdispbest == self.vdisp_nominal:
+                # Use the cached templates.
+                use_vdisp = None
+                input_templateflux = self.templateflux_nomvdisp[:, agekeep]
+                input_templateflux_nolines = self.templateflux_nolines_nomvdisp[:, agekeep]
+            else:
+                use_vdisp = vdispbest
+                input_templateflux = self.templateflux[:, agekeep]
+                input_templateflux_nolines = self.templateflux_nolines[:, agekeep]
+
+            desitemplates, desitemplatephot = self.templates2data(
+                input_templateflux, self.templatewave, redshift=redshift, 
+                specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
+                vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
+                synthphot=True, south=data['photsys'] == 'S')
+            desitemplateflam = desitemplatephot['flam'].data * self.massnorm * self.fluxnorm
+
+            # Fit using the templates with line-emission.
+            quickcoeff, _ = self._call_nnls(desitemplates, specflux, specivar)
+
+            # Synthesize grz photometry from the full-wavelength SED.
+            sedtemplates, _ = self.templates2data(
+                input_templateflux, self.templatewave, 
+                vdisp=use_vdisp, redshift=redshift,
+                synthphot=False)
+            quicksedflux = sedtemplates.dot(quickcoeff)
+
+            quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / self.fluxnorm, ztemplatewave).as_array().tolist()[0])
+            quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, nanomaggies=False)
+
+            apercorrs = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
+                                   for band in self.synth_bands]) / quickphot['nanomaggies'].data
+            apercorr = np.median(apercorrs)
+            self.log.info('Median aperture correction = {:.3f} [{:.3f}-{:.3f}].'.format(
+                apercorr, np.min(apercorrs), np.max(apercorrs)))
+
+            if apercorr <= 0:
+                self.log.warning('Aperture correction not well-defined; adopting 1.0.')
+                apercorr = 1.0
+
+            data['apercorr'] = apercorr
+
+            # Performing the final fit using the line-free templates in the
+            # spectrum (since we mask those pixels) but the photometry
+            # synthesized from the templates with lines.
+            desitemplates_nolines, _ = self.templates2data(
+                input_templateflux_nolines, self.templatewave, redshift=redshift, 
+                specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
+                vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
+                synthphot=False)
+
+            coeff, chi2min = self._call_nnls(np.vstack((desitemplateflam, desitemplates_nolines)),
+                                             np.hstack((objflam, specflux * apercorr)),
+                                             np.hstack((objflamivar, specivar / apercorr**2)))
+            chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
+            self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
+                nage, time.time()-t0))
+  
+            # Compute the full-wavelength best-fitting model.
+            if np.all(coeff == 0):
+                self.log.warning('Continuum coefficients are all zero or the data were not fit.')
+                sedmodel = np.zeros(self.npix, 'f4')
+                desimodel = np.zeros_like(specflux)
+                desimodel_nolines = np.zeros_like(specflux)
+            else:
+                sedmodel = sedtemplates.dot(coeff)
+                desimodel = desitemplates.dot(coeff)
+                desimodel_nolines = desitemplates_nolines.dot(coeff)
 
             # Get DN(4000). Specivar is line-masked so we can't use it!
             dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flamivar, 
                                                   redshift=redshift, rest=False)
             dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel, rest=True)
-            #self._qa_dn4000()
 
             if dn4000_ivar > 0:
                 self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Model Dn(4000)={:.3f}'.format(
@@ -1876,15 +1850,17 @@ class FastFit(ContinuumTools):
             linemask = np.hstack(data['linemask'])
             if np.all(coeff == 0):
                 self.log.warning('Continuum coefficients are all zero or the data were not fit.')
-                _smooth_continuum = np.zeros_like(bestfit)
+                _smooth_continuum = np.zeros_like(specwave)
             else:
-                _smooth_continuum, _ = self.smooth_continuum(specwave, apcorr*specflux - bestfit, specivar/apcorr**2,
-                                                             redshift, linemask=linemask, png=png)
+                _smooth_continuum, _ = self.smooth_continuum(
+                    specwave, apercorr*specflux - desimodel_nolines, 
+                    specivar / apercorr**2, redshift, linemask=linemask, 
+                    png=png)
     
             # Unpack the continuum into individual cameras.
             continuummodel, smooth_continuum = [], []
             for camerapix in data['camerapix']:
-                continuummodel.append(bestfit[camerapix[0]:camerapix[1]])
+                continuummodel.append(desimodel_nolines[camerapix[0]:camerapix[1]])
                 smooth_continuum.append(_smooth_continuum[camerapix[0]:camerapix[1]])
     
             for icam, cam in enumerate(data['cameras']):
@@ -1896,20 +1872,6 @@ class FastFit(ContinuumTools):
             self.log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
                 result['CONTINUUM_SMOOTHCORR_B'], result['CONTINUUM_SMOOTHCORR_R'],
                 result['CONTINUUM_SMOOTHCORR_Z']))
-
-            #if False:
-            #    import matplotlib.pyplot as plt
-            #    fig, ax = plt.subplots(2, 1)
-            #    for icam in np.arange(len(data['cameras'])): # iterate over cameras
-            #        resid = apcorr*data['flux'][icam]-continuummodel[icam]
-            #        ax[0].plot(data['wave'][icam], resid)
-            #        ax[1].plot(data['wave'][icam], resid-smooth_continuum[icam])
-            #    for icam in np.arange(len(data['cameras'])): # iterate over cameras
-            #        resid = apcorr*data['flux'][icam]-continuummodel[icam]
-            #        pix_emlines = np.logical_not(data['linemask'][icam]) # affected by line = True
-            #        ax[0].scatter(data['wave'][icam][pix_emlines], resid[pix_emlines], s=30, color='red')
-            #        ax[0].plot(data['wave'][icam], smooth_continuum[icam], color='k', alpha=0.7, lw=2)
-            #    plt.savefig('junk.png')
 
         # Compute K-corrections, rest-frame quantities, and physical properties.
         if np.all(coeff == 0):
@@ -1957,7 +1919,7 @@ class FastFit(ContinuumTools):
                 result[lum] = lums[lum]
 
         if not fastphot:
-            result['APCORR'] = apcorr
+            result['APERCORR'] = apercorr
             result['DN4000'] = dn4000
             result['DN4000_IVAR'] = dn4000_ivar
 
@@ -2684,8 +2646,8 @@ class FastFit(ContinuumTools):
         # best-fitting model (per-camera) below.
         redshift = data['zredrock']
         emlinewave = np.hstack(data['wave'])
-        oemlineivar = np.hstack(data['ivar'])/data['apcorr']**2
-        specflux = np.hstack(data['flux'])*data['apcorr']
+        oemlineivar = np.hstack(data['ivar'])/data['apercorr']**2
+        specflux = np.hstack(data['flux'])*data['apercorr']
         resolution_matrix = data['res']
         camerapix = data['camerapix']
 
@@ -3303,7 +3265,7 @@ class FastFit(ContinuumTools):
         else:
             pass
 
-        apcorr = fastspec['APCORR']
+        apercorr = fastspec['APERCORR']
         redshift = fastspec['CONTINUUM_Z']
 
         # rebuild the best-fitting broadband photometric model
@@ -3329,14 +3291,14 @@ class FastFit(ContinuumTools):
         # rebuild the best-fitting spectroscopic model
         stackwave = np.hstack(data['wave'])
 
-        continuum, _ = self.templates2data(self.templateflux, self.templatewave, redshift=redshift, 
+        continuum, _ = self.templates2data(self.templateflux_nolines, self.templatewave, redshift=redshift, 
                                            specwave=data['wave'], specres=data['res'],
                                            specmask=data['mask'], cameras=data['cameras'],
                                            vdisp=fastspec['VDISP'],
                                            coeff=fastspec['CONTINUUM_COEFF'],
                                            synthphot=False)
         
-        residuals = [apcorr*data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
+        residuals = [apercorr*data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
         
         if np.all(fastspec['CONTINUUM_COEFF'] == 0):
             _smooth_continuum = np.zeros_like(stackwave)
@@ -3433,21 +3395,21 @@ class FastFit(ContinuumTools):
         bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.25)
 
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
-            sigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
+            sigma, good = ivar2var(data['ivar'][ii]/apercorr**2, sigma=True, allmasked_ok=True)
 
-            specax1.plot(data['wave'][ii], apcorr*data['flux'][ii], color=col1[ii])
-            #specax1.fill_between(data['wave'][ii], apcorr*data['flux'][ii]-sigma,
-            #                    apcorr*data['flux'][ii]+sigma, color=col1[ii])
+            specax1.plot(data['wave'][ii], apercorr*data['flux'][ii], color=col1[ii])
+            #specax1.fill_between(data['wave'][ii], apercorr*data['flux'][ii]-sigma,
+            #                    apercorr*data['flux'][ii]+sigma, color=col1[ii])
             specax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii], color=col2[ii])
             
             # get the robust range
-            filtflux = median_filter(apcorr*data['flux'][ii], 31, mode='nearest')
+            filtflux = median_filter(apercorr*data['flux'][ii], 31, mode='nearest')
             #filtflux = median_filter(data['flux'][ii] - _emlinemodel[ii], 51, mode='nearest')
             #perc = np.percentile(filtflux[data['ivar'][ii] > 0], [5, 95])
-            #sigflux = np.std(apcorr*data['flux'][ii][data['ivar'][ii] > 0])
+            #sigflux = np.std(apercorr*data['flux'][ii][data['ivar'][ii] > 0])
             I = data['ivar'][ii] > 0
             if np.sum(I) > 0:
-                sigflux = np.diff(np.percentile(apcorr*data['flux'][ii][I], [25, 75]))[0] / 1.349 # robust
+                sigflux = np.diff(np.percentile(apercorr*data['flux'][ii][I], [25, 75]))[0] / 1.349 # robust
             else:
                 sigflux = 0.0
             #sigflux = np.std(filtflux[data['ivar'][ii] > 0])
@@ -3497,10 +3459,10 @@ class FastFit(ContinuumTools):
         allfullspec, allfullwave = [], []        
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
             emlinewave = data['wave'][ii]
-            emlineflux = apcorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
+            emlineflux = apercorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
             emlinemodel = _emlinemodel[ii]
         
-            emlinesigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
+            emlinesigma, good = ivar2var(data['ivar'][ii]/apercorr**2, sigma=True, allmasked_ok=True)
             emlinewave = emlinewave[good]
             emlineflux = emlineflux[good]
             emlinesigma = emlinesigma[good]
@@ -3671,7 +3633,7 @@ class FastFit(ContinuumTools):
         sedax.plot([spec_wavelims[0]/1e4, spec_wavelims[1]/1e4], [ymin-1, ymin-1],
                    lw=2, ls='-', color='gray', marker='s')#, alpha=0.5)
         sedax.text(((spec_wavelims[1]-spec_wavelims[0])/2+spec_wavelims[0]*0.8)/1e4, ymin-1.4,
-                   'DESI x {:.2f}'.format(apcorr), ha='center', va='center', fontsize=10,
+                   'DESI x {:.2f}'.format(apercorr), ha='center', va='center', fontsize=10,
                    color='gray')
 
         if not self.nolegend:
@@ -3755,10 +3717,10 @@ class FastFit(ContinuumTools):
             # iterate over cameras
             for ii in np.arange(len(data['cameras'])): # iterate over cameras
                 emlinewave = data['wave'][ii]
-                emlineflux = apcorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
+                emlineflux = apercorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
                 emlinemodel = _emlinemodel[ii]
         
-                emlinesigma, good = ivar2var(data['ivar'][ii]/apcorr**2, sigma=True, allmasked_ok=True)
+                emlinesigma, good = ivar2var(data['ivar'][ii]/apercorr**2, sigma=True, allmasked_ok=True)
                 emlinewave = emlinewave[good]
                 emlineflux = emlineflux[good]
                 emlinesigma = emlinesigma[good]
