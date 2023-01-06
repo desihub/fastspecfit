@@ -199,18 +199,18 @@ class ContinuumTools(object):
 
         self.bands_to_fit = np.ones(len(self.bands), bool)
         #for B in ['W2', 'W3', 'W4']:
-        #for B in ['W4']:
         #    self.bands_to_fit[self.bands == B] = False # drop W2-W4
 
         # rest-frame filters
-        self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1']
+        self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1', 'W2']
 
-        self.absmag_bands_00 = ['U', 'B', 'V', 'W1'] # band_shift=0.0
+        self.absmag_bands_00 = ['U', 'B', 'V', 'W1', 'W2'] # band_shift=0.0
         self.absmag_bands_01 = ['sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z'] # band_shift=0.1
 
         self.absmag_filters_00 = filters.FilterSequence((
             filters.load_filter('bessell-U'), filters.load_filter('bessell-B'),
-            filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1')
+            filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1'),
+            filters.load_filter('bessell-V'), filters.load_filter('wise2010-W2'),
             ))
         
         self.absmag_filters_01 = filters.FilterSequence((
