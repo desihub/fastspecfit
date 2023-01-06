@@ -141,7 +141,7 @@ def fastspec(fastphot=False, args=None, comm=None):
     t0 = time.time()
     FFit = FastFit(ssptemplates=args.ssptemplates, mapdir=args.mapdir, 
                    verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
-                   minsspwave=500.0, maxsspwave=40e4)
+                   fastphot=fastphot, minsspwave=500.0, maxsspwave=40e4)
     Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took {:.2f} sec'.format(time.time()-t0))
 
@@ -1673,6 +1673,7 @@ class FastFit(ContinuumTools):
             # best-fitting model (per-camera) below.
             specwave = np.hstack(data['wave'])
             specflux = np.hstack(data['flux'])
+            specsmooth = np.hstack(data['smoothflux']) 
             flamivar = np.hstack(data['ivar']) 
             specivar = flamivar * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
 
@@ -1682,6 +1683,8 @@ class FastFit(ContinuumTools):
                     errmsg = 'All pixels are masked or some inverse variances are negative!'
                     self.log.critical(errmsg)
                     raise ValueError(errmsg)
+
+            npix = len(specwave)
 
             # We'll need the filters for the aperture correction, below.
             if data['photsys'] == 'S':
@@ -1705,33 +1708,39 @@ class FastFit(ContinuumTools):
             #compute_vdisp = ((result['CONTINUUM_SNR_B'] > 1) and (result['CONTINUUM_SNR_R'] > 1)) and (redshift < 1.0)
             restwave = specwave / (1+redshift)
             Ivdisp = np.where((specivar > 0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
+            #Ivdisp = np.where((specivar > 0) * (specsmooth != 0.0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
             compute_vdisp = (len(Ivdisp) > 0) * (np.ptp(restwave[Ivdisp]) > 500.0)
     
             self.log.info('S/N_B={:.2f}, S/N_R={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
                 result['CONTINUUM_SNR_B'], result['CONTINUUM_SNR_R'], restwave[0], restwave[-1]))
     
             if self.solve_vdisp or compute_vdisp:
-                
-                # Only use models which likely affect the velocity dispersion.
-                Mvdisp = np.where((self.sspinfo[agekeep]['fagn'] == 0) * (self.sspinfo[agekeep]['av'] == 0.0))[0]
-                nMvdisp = len(Mvdisp)
-    
                 t0 = time.time()
                 zsspflux_vdisp, _ = self.SSP2data(
-                    self.sspflux_vdisp[:, agekeep[Mvdisp], :], self.sspwave, # [npix,nsed,nvdisp]
+                    self.vdispflux, self.vdispwave, # [npix,vdispnsed,nvdisp]
                     redshift=redshift, specwave=data['wave'], specres=data['res'],
-                    cameras=data['cameras'], synthphot=False)#, south=data['photsys'] == 'S')
-    
-                zsspflux_vdisp = np.concatenate(zsspflux_vdisp, axis=0)  # [npix,nMvdisp*nvdisp]
-                npix, nmodel = zsspflux_vdisp.shape
-                zsspflux_vdisp = zsspflux_vdisp.reshape(npix, nMvdisp, self.nvdisp) # [npix,nMvdisp,nvdisp]
+                    cameras=data['cameras'], synthphot=False)
+                zsspflux_vdisp = np.concatenate(zsspflux_vdisp, axis=0)  # [npix,vdispnsed*nvdisp]
+                zsspflux_vdisp = zsspflux_vdisp.reshape(npix, self.vdispnsed, self.nvdisp) # [vdispnpix,vdispnsed,nvdisp]
+
+                # normalize to the median
+                #zsspflux_vdisp /= np.median(zsspflux_vdisp, axis=0)[np.newaxis, :, :]
+
+                #import matplotlib.pyplot as plt
+                #plt.clf()
+                #plt.plot(specwave[Ivdisp], specflux[Ivdisp] / specsmooth[Ivdisp])
+                #for ii in np.arange(11):
+                #    plt.plot(specwave[Ivdisp], zsspflux_vdisp[Ivdisp, 20, ii])
+                #plt.savefig('junk.png')
     
                 vdispchi2min, vdispbest, vdispivar, _ = self._call_nnls(
-                    zsspflux_vdisp[Ivdisp, :, :], specflux[Ivdisp], specivar[Ivdisp],
-                    xparam=self.vdisp, xlabel=r'$\sigma$ (km/s)', debug=False)#True)
-                self.log.info('Fitting for the velocity dispersion with {}/{} models took {:.2f} seconds.'.format(
-                    nMvdisp, nage, time.time()-t0))
-    
+                    zsspflux_vdisp[Ivdisp, :, :], 
+                    specflux[Ivdisp], specivar[Ivdisp],
+                    #specflux[Ivdisp]/specsmooth[Ivdisp], specivar[Ivdisp]*specsmooth[Ivdisp]**2,
+                    xparam=self.vdisp, xlabel=r'$\sigma$ (km/s)', debug=False)
+                self.log.info('Fitting for the velocity dispersion with {} models took {:.2f} seconds.'.format(
+                    self.vdispflux.shape[1], nage, time.time()-t0))
+
                 if vdispivar > 0:
                     # protect against tiny ivar from becomming infinite in the output table
                     if vdispivar < 1e-5:

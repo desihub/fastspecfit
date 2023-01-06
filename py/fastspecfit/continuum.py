@@ -118,7 +118,7 @@ class ContinuumTools(object):
         #self.dlum_ref = self.cosmo.luminosity_distance(self.redshift_ref).to(u.pc).value
 
         self.fluxnorm = 1e17 # normalization factor for the spectra
-        self.massnorm = 1e10 # stellar mass normalization factor for the SSPs [Msun]
+        self.massnorm = 1e10 # stellar mass normalization factor [Msun]
 
         # dust maps
         if mapdir is None:
@@ -134,7 +134,7 @@ class ContinuumTools(object):
             templates_dir = os.environ.get('FASTSPECFIT_TEMPLATES', FASTSPECFIT_TEMPLATES_NERSC)
             self.ssptemplates = os.path.join(templates_dir, 'fastspecfit-templates-{}.fits'.format(sspversion))
         if not os.path.isfile(self.ssptemplates):
-            errmsg = 'SSP templates file not found {}'.format(self.ssptemplates)
+            errmsg = 'Templates file not found {}'.format(self.ssptemplates)
             self.log.critical(errmsg)
             raise IOError(errmsg)
 
@@ -155,29 +155,34 @@ class ContinuumTools(object):
         self.nsed = len(sspinfo)
         self.npix = len(wavekeep)
 
-        if not fastphot:
-            sspflux_vdisp, vdisphdr = fitsio.read(self.ssptemplates, ext='FLUXVDISP', header=True) # [npix,nsed,nvdisp]
-            self.sspflux_vdisp = sspflux_vdisp[wavekeep, :, :]
-
         self.continuum_pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
         self.pixkms_wavesplit = wavehdr['PIXSZSPT'] # wavelength where the pixel size changes [A]
 
-        # see bin/build-fsps-templates
-        vdisp_nominal = 125.0
-        nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
-        vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
+        if not fastphot:
+            vdispwave = fitsio.read(self.ssptemplates, ext='VDISPWAVE')
+            vdispflux, vdisphdr = fitsio.read(self.ssptemplates, ext='VDISPFLUX', header=True) # [nvdisppix,nvdispsed,nvdisp]
+            self.vdispflux = vdispflux
+            self.vdispwave = vdispwave
+            dims = vdispflux.shape
+            self.vdispnpix = dims[0]
+            self.vdispnsed = dims[1]
 
-        if not vdisp_nominal in vdisp:
-            errmsg = 'Nominal velocity dispersion is not in velocity dispersion vector.'
-            self.log.critical(errmsg)
-            raise ValueError(errmsg)
+            # see bin/build-fsps-templates
+            vdisp_nominal = 125.0
+            nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
+            vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
+
+            if not vdisp_nominal in vdisp:
+                errmsg = 'Nominal velocity dispersion is not in velocity dispersion vector.'
+                self.log.critical(errmsg)
+                raise ValueError(errmsg)
         
-        self.vdisp = vdisp
-        self.vdisp_nominal = vdisp_nominal
-        self.vdisp_nominal_indx = np.where(vdisp == vdisp_nominal)[0]
-        self.nvdisp = nvdisp
+            self.vdisp = vdisp
+            self.vdisp_nominal = vdisp_nominal
+            self.vdisp_nominal_indx = np.where(vdisp == vdisp_nominal)[0]
+            self.nvdisp = nvdisp
 
-        # emission lines
+        # emission line stuff
         self.linetable = read_emlines()
 
         self.linemask_sigma_narrow = 200.0  # [km/s]
@@ -203,14 +208,13 @@ class ContinuumTools(object):
 
         # rest-frame filters
         self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1', 'W2']
-
         self.absmag_bands_00 = ['U', 'B', 'V', 'W1', 'W2'] # band_shift=0.0
         self.absmag_bands_01 = ['sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z'] # band_shift=0.1
 
         self.absmag_filters_00 = filters.FilterSequence((
             filters.load_filter('bessell-U'), filters.load_filter('bessell-B'),
             filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1'),
-            filters.load_filter('bessell-V'), filters.load_filter('wise2010-W2'),
+            filters.load_filter('wise2010-W2'),
             ))
         
         self.absmag_filters_01 = filters.FilterSequence((
@@ -1056,6 +1060,9 @@ class ContinuumTools(object):
         else:
             linemask_dict = {'linemask_all': [], 'linemask': [],
                              'linename': [], 'linepix': [], 'contpix': []}
+
+        # Also return the smooth continuum.
+        linemask_dict['smoothflux'] = smooth
 
         return linemask_dict
 
