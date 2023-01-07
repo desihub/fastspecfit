@@ -156,6 +156,7 @@ class ContinuumTools(object):
 
         self.continuum_pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
         self.pixkms_wavesplit = wavehdr['PIXSZSPT'] # wavelength where the pixel size changes [A]
+        self.vdisp_nominal = 125.0
 
         if not fastphot:
             vdispwave = fitsio.read(self.templates, ext='VDISPWAVE')
@@ -167,30 +168,30 @@ class ContinuumTools(object):
             self.vdispnsed = dims[1]
 
             # see bin/build-fsps-templates
-            vdisp_nominal = 125.0
             nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
             vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
 
-            if not vdisp_nominal in vdisp:
+            if not self.vdisp_nominal in vdisp:
                 errmsg = 'Nominal velocity dispersion is not in velocity dispersion vector.'
                 self.log.critical(errmsg)
                 raise ValueError(errmsg)
         
             self.vdisp = vdisp
-            self.vdisp_nominal = vdisp_nominal
-            self.vdisp_nominal_indx = np.where(vdisp == vdisp_nominal)[0]
+            self.vdisp_nominal_indx = np.where(vdisp == self.vdisp_nominal)[0]
             self.nvdisp = nvdisp
 
-            # Cache a copy of the full templates at the nominal velocity dispersion.
-            templateflux_nomvdisp = self.templateflux.copy()
-            templateflux_nolines_nomvdisp = self.templateflux_nolines.copy()
-
+            # Cache a copy of the line-free templates at the nominal velocity dispersion.
             I = np.where(self.templatewave < self.pixkms_wavesplit)[0]
-            templateflux_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nomvdisp[I, :], self.vdisp_nominal)
+            templateflux_nolines_nomvdisp = self.templateflux_nolines.copy()
             templateflux_nolines_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nolines_nomvdisp[I, :], self.vdisp_nominal)
-
-            self.templateflux_nomvdisp = templateflux_nomvdisp
             self.templateflux_nolines_nomvdisp = templateflux_nolines_nomvdisp
+
+        # Cache a copy of the full templates at the nominal velocity dispersion
+        # (needed for fastphot as well).
+        I = np.where(self.templatewave < self.pixkms_wavesplit)[0]
+        templateflux_nomvdisp = self.templateflux.copy()
+        templateflux_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nomvdisp[I, :], self.vdisp_nominal)
+        self.templateflux_nomvdisp = templateflux_nomvdisp
 
         # emission line stuff
         self.linetable = read_emlines()

@@ -1172,7 +1172,6 @@ class FastFit(ContinuumTools):
         ncoeff = len(self.templateinfo)
         
         out = Table()
-        out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # aperture correction
         out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
         out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(ncoeff,), dtype='f8'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
@@ -1193,8 +1192,9 @@ class FastFit(ContinuumTools):
         out.add_column(Column(name='SFR', length=nobj, dtype='f4', unit=u.solMass/u.year))
         out.add_column(Column(name='FAGN', length=nobj, dtype='f4'))
         
-        out.add_column(Column(name='DN4000', length=nobj, dtype='f4'))
-        out.add_column(Column(name='DN4000_IVAR', length=nobj, dtype='f4'))
+        if not fastphot:
+            out.add_column(Column(name='DN4000', length=nobj, dtype='f4'))
+            out.add_column(Column(name='DN4000_IVAR', length=nobj, dtype='f4'))
         out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
 
         # observed-frame photometry synthesized from the spectra
@@ -1215,10 +1215,11 @@ class FastFit(ContinuumTools):
             out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz))
         out.add_column(Column(name='LOGL_5100', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
 
-        #for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
-        #    out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+        for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
+            out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
 
         if not fastphot:
+            out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # aperture correction
             # Add chi2 metrics
             out.add_column(Column(name='RCHI2', length=nobj, dtype='f4')) # full-spectrum reduced chi2
             #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
@@ -1437,29 +1438,30 @@ class FastFit(ContinuumTools):
             if cflux > 0:
                 lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
-        #cfluxes = {}
-        #cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
-        #labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
-        #for cwave, label in zip(cwaves, labels):
-        #    J = (self.templatewave > cwave-500) * (self.templatewave < cwave+500)
-        #    I = (self.templatewave[J] > cwave-20) * (self.templatewave[J] < cwave+20)
-        #    smooth = median_filter(continuum[J], 200)
-        #    clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
-        #    cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
-        #    cfluxes[label] = cflux # * u.erg/(u.second*u.cm**2*u.Angstrom)
-        #    
-        #    #import matplotlib.pyplot as plt
-        #    #print(cwave, cflux)
-        #    #plt.clf()
-        #    #plt.plot(self.templatewave[J], continuum[J])
-        #    #plt.plot(self.templatewave[J], smooth, color='k')
-        #    #plt.axhline(y=cflux, color='red')
-        #    #plt.axvline(x=cwave, color='red')
-        #    #plt.xlim(cwave - 50, cwave + 50)
-        #    #plt.savefig('desi-users/ioannis/tmp/junk.png')
-        #    #pdb.set_trace()
+        cfluxes = {}
+        cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
+        labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
+        for cwave, label in zip(cwaves, labels):
+            J = (self.templatewave > cwave-500) * (self.templatewave < cwave+500)
+            I = (self.templatewave[J] > cwave-20) * (self.templatewave[J] < cwave+20)
+            smooth = median_filter(continuum[J], 200)
+            clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
+            cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
+            cfluxes[label] = cflux # * u.erg/(u.second*u.cm**2*u.Angstrom)
+            
+            #import matplotlib.pyplot as plt
+            #print(cwave, cflux)
+            #plt.clf()
+            #plt.plot(self.templatewave[J], continuum[J])
+            #plt.plot(self.templatewave[J], smooth, color='k')
+            #plt.axhline(y=cflux, color='red')
+            #plt.axvline(x=cwave, color='red')
+            #plt.xlim(cwave - 50, cwave + 50)
+            #plt.savefig('junk.png')
+            ##plt.savefig('desi-users/ioannis/tmp/junk.png')
+            #pdb.set_trace()
 
-        return kcorr, absmag, ivarabsmag, bestmaggies, lums
+        return kcorr, absmag, ivarabsmag, bestmaggies, lums, cfluxes
 
     def _call_nnls(self, modelflux, flux, ivar, xparam=None, debug=False,
                    interpolate_coeff=False, xlabel=None):
@@ -1650,12 +1652,13 @@ class FastFit(ContinuumTools):
 
             # Get the coefficients and chi2 at the nominal velocity dispersion. 
             t0 = time.time()
-            besttemplateflux, bestphot = self.templates2data(self.templateflux_vdisp[:, agekeep, self.vdisp_nominal_indx], 
-                                                             self.templatewave, redshift=redshift,
-                                                             south=data['photsys'] == 'S', synthphot=True)
-            bestflam = bestphot['flam'].data*self.massnorm*self.fluxnorm
-    
-            coeff, chi2min = self._call_nnls(bestflam, objflam, objflamivar)
+            sedtemplates, sedphot = self.templates2data(
+                self.templateflux_nomvdisp[:, agekeep], self.templatewave, 
+                redshift=redshift, vdisp=None, synthphot=True, 
+                south=data['photsys'] == 'S')
+            sedflam = sedphot['flam'].data * self.massnorm * self.fluxnorm
+
+            coeff, chi2min = self._call_nnls(sedflam, objflam, objflamivar)
             chi2min /= np.sum(objflamivar > 0) # dof???
             self.log.info('Fitting {} models took {:.2f} seconds.'.format(
                 nage, time.time()-t0))
@@ -1663,7 +1666,7 @@ class FastFit(ContinuumTools):
             if np.all(coeff == 0):
                 self.log.warning('Continuum coefficients are all zero or the data were not fit.')
 
-            sedmodel = besttemplateflux.dot(coeff)
+            sedmodel = sedtemplates.dot(coeff)
 
             dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel, rest=True)
             self.log.info('Model Dn(4000)={:.3f}.'.format(dn4000_model))
@@ -1805,7 +1808,7 @@ class FastFit(ContinuumTools):
                 self.log.warning('Aperture correction not well-defined; adopting 1.0.')
                 apercorr = 1.0
 
-            data['apercorr'] = apercorr
+            data['apercorr'] = apercorr # needed for the line-fitting
 
             # Performing the final fit using the line-free templates in the
             # spectrum (since we mask those pixels) but the photometry
@@ -1879,11 +1882,11 @@ class FastFit(ContinuumTools):
             absmag = np.zeros(len(self.absmag_bands))#-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
             synth_bestmaggies = np.zeros(len(self.bands))
-            lums = {}
+            lums, cfluxes = {}, {}
 
             AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         else:
-            kcorr, absmag, ivarabsmag, synth_bestmaggies, lums = self.kcorr_and_absmag(data, sedmodel, coeff)
+            kcorr, absmag, ivarabsmag, synth_bestmaggies, lums, cfluxes = self.kcorr_and_absmag(data, sedmodel, coeff)
     
             AV = self.get_mean_property('av', coeff, agekeep)                        # [mag]
             age = self.get_mean_property('age', coeff, agekeep, normalization=1e9)   # [Gyr]
@@ -1917,6 +1920,9 @@ class FastFit(ContinuumTools):
         if bool(lums):
             for lum in lums.keys():
                 result[lum] = lums[lum]
+        if bool(cfluxes):
+            for cflux in cfluxes.keys():
+                result[cflux] = cfluxes[cflux]
 
         if not fastphot:
             result['APERCORR'] = apercorr
@@ -1928,6 +1934,9 @@ class FastFit(ContinuumTools):
         if fastphot:
             return sedmodel, None
         else:
+            # divide out the aperture correction
+            continuummodel = [_continuummodel / apercorr for _continuummodel in continuummodel]
+            smooth_continuum = [_smooth_continuum / apercorr for _smooth_continuum in smooth_continuum]
             return continuummodel, smooth_continuum
 
     def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False):
@@ -2646,8 +2655,8 @@ class FastFit(ContinuumTools):
         # best-fitting model (per-camera) below.
         redshift = data['zredrock']
         emlinewave = np.hstack(data['wave'])
-        oemlineivar = np.hstack(data['ivar'])/data['apercorr']**2
-        specflux = np.hstack(data['flux'])*data['apercorr']
+        oemlineivar = np.hstack(data['ivar'])
+        specflux = np.hstack(data['flux'])
         resolution_matrix = data['res']
         camerapix = data['camerapix']
 
@@ -2689,6 +2698,8 @@ class FastFit(ContinuumTools):
         nfree = np.sum((initfit['fixed'] == False) * (initfit['tiedtoparam'] == -1))
         self.log.info('Initial line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
             nfree, time.time()-t0, initfit.meta['nfev'], initchi2))
+
+        pdb.set_trace()
 
         ## Now try adding bround Balmer and helium lines and see if we improve
         ## the chi2. First, do we have enough pixels around Halpha and Hbeta to
@@ -3297,8 +3308,9 @@ class FastFit(ContinuumTools):
                                            vdisp=fastspec['VDISP'],
                                            coeff=fastspec['CONTINUUM_COEFF'],
                                            synthphot=False)
-        
-        residuals = [apercorr*data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
+
+        continuum = [_continuum / apercorr for _continuum in continuum]
+        residuals = [data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
         
         if np.all(fastspec['CONTINUUM_COEFF'] == 0):
             _smooth_continuum = np.zeros_like(stackwave)
@@ -3395,21 +3407,21 @@ class FastFit(ContinuumTools):
         bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.25)
 
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
-            sigma, good = ivar2var(data['ivar'][ii]/apercorr**2, sigma=True, allmasked_ok=True)
+            sigma, good = ivar2var(data['ivar'][ii], sigma=True, allmasked_ok=True)
 
-            specax1.plot(data['wave'][ii], apercorr*data['flux'][ii], color=col1[ii])
+            specax1.plot(data['wave'][ii], data['flux'][ii], color=col1[ii])
             #specax1.fill_between(data['wave'][ii], apercorr*data['flux'][ii]-sigma,
             #                    apercorr*data['flux'][ii]+sigma, color=col1[ii])
             specax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii], color=col2[ii])
             
             # get the robust range
-            filtflux = median_filter(apercorr*data['flux'][ii], 31, mode='nearest')
+            filtflux = median_filter(data['flux'][ii], 31, mode='nearest')
             #filtflux = median_filter(data['flux'][ii] - _emlinemodel[ii], 51, mode='nearest')
             #perc = np.percentile(filtflux[data['ivar'][ii] > 0], [5, 95])
             #sigflux = np.std(apercorr*data['flux'][ii][data['ivar'][ii] > 0])
             I = data['ivar'][ii] > 0
             if np.sum(I) > 0:
-                sigflux = np.diff(np.percentile(apercorr*data['flux'][ii][I], [25, 75]))[0] / 1.349 # robust
+                sigflux = np.diff(np.percentile(data['flux'][ii][I], [25, 75]))[0] / 1.349 # robust
             else:
                 sigflux = 0.0
             #sigflux = np.std(filtflux[data['ivar'][ii] > 0])
@@ -3421,16 +3433,16 @@ class FastFit(ContinuumTools):
             #    ymin = _ymin
             #if ymax > _ymax:
             #    ymax = _ymax
-            if -1.5 * sigflux < ymin:
-                ymin = -1.5 * sigflux
+            if -1.4 * sigflux < ymin:
+                ymin = -1.4 * sigflux
             #if perc[1] > ymax:
             #    ymax = perc[1]
             #if np.min(filtflux) < ymin:
             #    ymin = np.min(filtflux) * 0.5
-            if sigflux * 8 > ymax:
-                ymax = sigflux * 10 # 5
+            if sigflux * 5 > ymax:
+                ymax = sigflux * 5
             if np.max(filtflux) > ymax:
-                ymax = np.max(filtflux) * 1.5
+                ymax = np.max(filtflux) * 1.4
             #print(ymin, ymax)
 
         specax1.plot(stackwave, _smooth_continuum, color='gray')#col3[ii])#, alpha=0.3, lw=2)#, color='k')
@@ -3459,21 +3471,22 @@ class FastFit(ContinuumTools):
         allfullspec, allfullwave = [], []        
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
             emlinewave = data['wave'][ii]
-            emlineflux = apercorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
+            emlineflux = data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
             emlinemodel = _emlinemodel[ii]
         
-            emlinesigma, good = ivar2var(data['ivar'][ii]/apercorr**2, sigma=True, allmasked_ok=True)
+            emlinesigma, good = ivar2var(data['ivar'][ii], sigma=True, allmasked_ok=True, clip=0)
+
             emlinewave = emlinewave[good]
             emlineflux = emlineflux[good]
             emlinesigma = emlinesigma[good]
             emlinemodel = emlinemodel[good]
-        
+
             specax2.plot(emlinewave, emlineflux, color=col1[ii], alpha=0.7)
             #specax2.fill_between(emlinewave, emlineflux-emlinesigma,
             #                     emlineflux+emlinesigma, color=col1[ii], alpha=0.7)
             specax2.plot(emlinewave, emlinemodel, color=col2[ii], lw=3)
 
-            allfullspec.append(continuum[ii] + _emlinemodel[ii])
+            allfullspec.append(apercorr * (continuum[ii] + _emlinemodel[ii]))
             allfullwave.append(data['wave'][ii])
             
             # get the robust range
@@ -3717,10 +3730,10 @@ class FastFit(ContinuumTools):
             # iterate over cameras
             for ii in np.arange(len(data['cameras'])): # iterate over cameras
                 emlinewave = data['wave'][ii]
-                emlineflux = apercorr*data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
+                emlineflux = data['flux'][ii] - continuum[ii] - smooth_continuum[ii]
                 emlinemodel = _emlinemodel[ii]
         
-                emlinesigma, good = ivar2var(data['ivar'][ii]/apercorr**2, sigma=True, allmasked_ok=True)
+                emlinesigma, good = ivar2var(data['ivar'][ii], sigma=True, allmasked_ok=True, clip=0)
                 emlinewave = emlinewave[good]
                 emlineflux = emlineflux[good]
                 emlinesigma = emlinesigma[good]
