@@ -670,9 +670,8 @@ class DESISpectra(object):
                 if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
                     zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
                 del qn
-            # add an empty Z_RR column?
-            #else:
-            #    zb['Z_RR'] = zb['Z'] # add it at the end
+            else:
+                zb['Z_RR'] = zb['Z'] # add it at the end
                 
             # astropy 5.0 "feature" -- join no longer preserves order, ugh.
             zb.remove_column('TARGETID')
