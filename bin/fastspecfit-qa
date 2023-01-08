@@ -41,7 +41,6 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--nolegend', action='store_true', help='Exclude legends from QA.')
-    parser.add_argument('--webqa', action='store_true', help='Build QA for the web-app.')
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
     parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
     
@@ -81,39 +80,7 @@ def main(args=None, comm=None):
         return
 
     fastfit, metadata, coadd_type, fastphot = read_fastspecfit(args.fastfitfile[0])
-    if args.webqa:
-        # This is not great coding, but when building the webqa, assume that a
-        # companion fastphot- file exists and, if not, quit.
-        if 'fastspec-' not in args.fastfitfile[0]:
-            errmsg = 'For --webqa, input fastfitfile must be have the prefix "fastspec-"'
-            log.critical(errmsg)
-            raise IOError(errmsg)
-        
-        fastphotfile = args.fastfitfile[0].replace('fastspec-', 'fastphot-').replace('.gz', '')
-        if not os.path.isfile(fastphotfile):
-            errmsg = '--webqa fastphot file {} not found.'.format(fastphotfile)
-            log.critical(errmsg)
-            raise IOError(errmsg)
 
-        webphot, _, _, _ = read_fastspecfit(fastphotfile)
-        if not np.all(fastfit['TARGETID'] == webphot['TARGETID']):
-            errmsg = 'Mismatch in fastspec and fastphot TARGETIDs'
-            log.critical(errmsg)
-            raise Valuerror(errmsg)
-
-        # merge the results
-        from astropy.table import hstack        
-        
-        joinkeys = ['SURVEY', 'PROGRAM', 'TARGETID']
-        if coadd_type == 'healpix':
-            joinkeys += ['HEALPIX']
-        else:
-            joinkeys += ['NIGHT', 'FIBER', 'TILEID']
-        assert(np.all(fastfit[joinkeys] == webphot[joinkeys]))
-
-        webphot.remove_columns(joinkeys)
-        fastfit = hstack((fastfit, webphot), table_names=['SPEC', 'PHOT'])
-        
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
@@ -123,26 +90,15 @@ def main(args=None, comm=None):
             return
         fastfit = fastfit[keep]
         metadata = metadata[keep]
-        if args.webqa:
-            webphot = webphot[keep]
         
     if args.ntargets is not None:
         keep = np.arange(args.ntargets) + args.firsttarget
         log.info('Keeping {} targets.'.format(args.ntargets))
         fastfit = fastfit[keep]
         metadata = metadata[keep]
-        if args.webqa:
-            webphot = webphot[keep]
 
-    if args.webqa:
-        keep = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
-                      tiles=args.tile, nights=args.night, return_index=True)
-        fastfit = fastfit[keep]
-        metadata = metadata[keep]
-        webphot = webphot[keep]
-    else:
-        fastfit, metadata = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
-                                   tiles=args.tile, nights=args.night)
+    fastfit, metadata = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
+                               tiles=args.tile, nights=args.night)
         
     if coadd_type == 'custom' and args.redrockfiles is None:
         errmsg = 'redrockfiles input is required if coadd_type==custom'
@@ -171,7 +127,7 @@ def main(args=None, comm=None):
         data = Spec.read_and_unpack(FFit, fastphot=fastphot, synthphot=True)
 
         qaargs = [(FFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
-                   coadd_type, fastphot, args.outdir, args.outprefix, args.webqa)
+                   coadd_type, fastphot, args.outdir, args.outprefix)
                    for igal in np.arange(len(indx))]                
         if args.mp > 1:
             import multiprocessing
