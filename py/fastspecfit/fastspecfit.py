@@ -302,6 +302,8 @@ class FastFit(ContinuumTools):
             self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
             self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
 
+            self.delta_linerchi2_cut = 0.0
+
     def init_output(self, nobj=1, fastphot=False):
         """Initialize the output data table for this class.
 
@@ -356,7 +358,10 @@ class FastFit(ContinuumTools):
             out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
 
         if not fastphot:
-            out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # aperture correction
+            out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # median aperture correction
+            out.add_column(Column(name='APERCORR_G', length=nobj, dtype='f4'))
+            out.add_column(Column(name='APERCORR_R', length=nobj, dtype='f4'))
+            out.add_column(Column(name='APERCORR_Z', length=nobj, dtype='f4'))
             # Add chi2 metrics
             out.add_column(Column(name='RCHI2', length=nobj, dtype='f4')) # full-spectrum reduced chi2
             #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
@@ -935,9 +940,12 @@ class FastFit(ContinuumTools):
             quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / self.fluxnorm, ztemplatewave).as_array().tolist()[0])
             quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, nanomaggies=False)
 
+            print('Aperture corrections need to be more robust!')
             apercorrs = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
                                    for band in self.synth_bands]) / quickphot['nanomaggies'].data
             apercorr = np.median(apercorrs)
+            apercorr_g, apercorr_r, apercorr_z = apercorrs
+
             self.log.info('Median aperture correction = {:.3f} [{:.3f}-{:.3f}].'.format(
                 apercorr, np.min(apercorrs), np.max(apercorrs)))
 
@@ -1063,6 +1071,9 @@ class FastFit(ContinuumTools):
 
         if not fastphot:
             result['APERCORR'] = apercorr
+            result['APERCORR_G'] = apercorr_g
+            result['APERCORR_R'] = apercorr_r
+            result['APERCORR_Z'] = apercorr_z
             result['DN4000'] = dn4000
             result['DN4000_IVAR'] = dn4000_ivar
 
@@ -1882,7 +1893,8 @@ class FastFit(ContinuumTools):
             self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [delta-chi2={:.5f}]'.format(
                 linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
 
-            if linechi2_broad > linechi2_init:
+            # If chi2_broad > chi2_narrow then choose narrow.
+            if (linechi2_broad - linechi2_init) > self.delta_linerchi2_cut:
                 bestfit = initfit
             else:
                 bestfit = broadfit
@@ -2169,7 +2181,7 @@ class FastFit(ContinuumTools):
                         # keep track of sigma and z but only using XX-sigma lines
                         linesnr = result['{}_AMP'.format(linename)] * np.sqrt(result['{}_AMP_IVAR'.format(linename)])
                         #print(linename, result['{}_AMP'.format(linename)], amp_sigma, linesnr)
-                        if linesnr > 2:
+                        if linesnr > 1.5:
                             if oneline['isbroad']: # includes UV and broad Balmer lines
                                 if oneline['isbalmer']:
                                     broad_sigmas.append(linesigma)
@@ -2288,7 +2300,7 @@ class FastFit(ContinuumTools):
             print()
 
         # get the average emission-line redshifts and velocity widths
-        if len(narrow_redshifts) > 0:
+        if len(narrow_redshifts) > 1:
             result['NARROW_Z'] = np.median(narrow_redshifts)
             result['NARROW_SIGMA'] = np.median(narrow_sigmas) # * u.kilometer / u.second
             #result['NARROW_Z_ERR'] = np.std(narrow_redshifts)
@@ -2296,7 +2308,7 @@ class FastFit(ContinuumTools):
         else:
             result['NARROW_Z'] = redshift
             
-        if len(broad_redshifts) > 0:
+        if len(broad_redshifts) > 1:
             result['BROAD_Z'] = np.median(broad_redshifts)
             result['BROAD_SIGMA'] = np.median(broad_sigmas) # * u.kilometer / u.second
             #result['BROAD_Z_ERR'] = np.std(broad_redshifts)
@@ -2304,7 +2316,7 @@ class FastFit(ContinuumTools):
         else:
             result['BROAD_Z'] = redshift
             
-        if len(uv_redshifts) > 0:
+        if len(uv_redshifts) > 1:
             result['UV_Z'] = np.median(uv_redshifts)
             result['UV_SIGMA'] = np.median(uv_sigmas) # * u.kilometer / u.second
             #result['UV_Z_ERR'] = np.std(uv_redshifts)
@@ -2378,7 +2390,8 @@ class FastFit(ContinuumTools):
         col2 = [colors.to_hex(col) for col in ['darkblue', 'darkgreen', 'darkred']]
         col3 = [colors.to_hex(col) for col in ['blue', 'green', 'red']]
 
-        photcol1 = colors.to_hex('darkblue') # 'darkgreen', 'darkred', 'dodgerblue', 'darkseagreen', 'orangered']]
+        photcol1 = colors.to_hex('darkorange')
+        #photcol1 = colors.to_hex('darkblue') # 'darkgreen', 'darkred', 'dodgerblue', 'darkseagreen', 'orangered']]
         
         if outdir is None:
             outdir = '.'
@@ -2391,37 +2404,68 @@ class FastFit(ContinuumTools):
         else:
             filters = self.bassmzls
             allfilters = self.bassmzlswise
+
+        survey = None
+        if 'SURVEY' not in metadata.colnames:
+            if np.any([metadata['DESI_TARGET'] > 0, metadata['BGS_TARGET'] > 0, metadata['MWS_TARGET'] > 0, metadata['SCND_TARGET'] > 0]):
+                survey = 'Main'
+            else:
+                for checksurvey in ['SV1', 'SV2', 'SV3']:
+                    #bit = []
+                    for targ in ['DESI', 'BGS', 'MWS', 'SCND']:
+                        if metadata['{}_{}_TARGET'.format(checksurvey, targ)] > 0:
+                            survey = checksurvey.lower()
+                            #bit += ['{}_{}_TARGET: {}'.format(checksurvey, targ, metadata['{}_{}_TARGET'.format(checksurvey, targ)])]
+                    if survey is not None:
+                        break
+                if survey is None:
+                    if metadata['CMX_TARGET'] == 0:
+                        errmsg = 'Unable to determine survey!'
+                        log.critical(errmsg)
+                        raise ValueError(errmsg)
+                    else:
+                        survey = 'CMX'
+        else:
+            survey = metadata['SURVEY']
     
         if coadd_type == 'healpix':
-            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
-                    metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
+            target = [
+                'Survey/Program/Healpix: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX']),
+                'TargetID: {}'.format(metadata['TARGETID']),
+                ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
-            title = 'Tile/ThruNight: {}/{}, TargetID/Fiber: {}/{}'.format(
-                    metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'], metadata['FIBER'])
+            target = [
+                #'Survey/Tile/Night/Fiber: {}/{}/{}/{}'.format(survey, metadata['TILEID'], metadata['NIGHT'], metadata['FIBER']),
+                'Survey/Tile: {}/{}'.format(survey, metadata['TILEID']),
+                'Night/Fiber {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
+                'TargetID: {}'.format(metadata['TARGETID']),
+            ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
-            title = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
+            target = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
                     metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
         elif coadd_type == 'perexp':
-            title = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
+            target = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
                     metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
                     metadata['TARGETID'], metadata['FIBER'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'],
                     metadata['EXPID'], metadata['TARGETID']))
         elif coadd_type == 'custom':
-            title = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
+            target = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
                     metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         else:
             pass
+
+        #target += bit
 
         apercorr = fastspec['APERCORR']
         redshift = fastspec['CONTINUUM_Z']
@@ -2433,25 +2477,14 @@ class FastFit(ContinuumTools):
 
             'z': '$z={:.7f}$'.format(redshift),
             'zredrock': '$z_{{\\rm Redrock}}={:.7f}$'.format(metadata['Z_RR']),
-            #'zredrock': '$z_{{\\rm redrock}}={:.7f}$'.format(redshift),
-            'vdisp': '$\\sigma_{{\\rm star}}={:.1f}$ km/s'.format(fastspec['VDISP']),
+            'dn4000_model': '$D_{{n}}(4000)_{{\\rm model}}={:.3f}$'.format(fastspec['DN4000_MODEL']),
 
-            'dn4000_spec': '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}$'.format(fastspec['DN4000']),
-            'dn4000_model': '$D_{{n}}(4000)_{{\\rm spec,model}}={:.3f}$'.format(fastspec['DN4000_MODEL']),
-
-            'dv_narrow': '$\\Delta v_{{\\rm narrow}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift)),
-            'dv_broad': '$\\Delta v_{{\\rm broad}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift)),
-            'dv_uv': '$\\Delta v_{{\\rm UV}}$={:.2f} km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift)),
-            'sigma_narrow': '$\\sigma_{{\\rm narrow}}$={:.1f} km/s'.format(fastspec['NARROW_SIGMA']),
-            'sigma_broad': '$\\sigma_{{\\rm broad}}$={:.1f} km/s'.format(fastspec['BROAD_SIGMA']),
-            'sigma_uv': '$\\sigma_{{\\rm UV}}$={:.1f} km/s'.format(fastspec['UV_SIGMA']),
             'cchi2': '$\\chi^{{2}}_{{\\nu,phot}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
             'rchi2': '$\\chi^{{2}}_{{\\nu,spec}}$={:.3f}'.format(fastspec['RCHI2']),
-            'deltarchi2': '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad,narrow}}$={:.3f}'.format(fastspec['DELTA_LINERCHI2']),
 
             'age': '<Age>$={:.3f}$ Gyr'.format(fastspec['AGE']),
             'AV': '$A_{{V}}={:.3f}$ mag'.format(fastspec['AV']),
-            'mstar': '$\\log_{{10}}(M_{{*}}/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
+            'mstar': '$\\log_{{10}}(M/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
             'sfr': '${{\\rm SFR}}={:.2f}\ M_{{\odot}}/{{\\rm yr}}$'.format(fastspec['SFR']),
             'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
             'zzsun': '$Z/Z_{{\\odot}}={:.3f}$'.format(fastspec['ZZSUN']),
@@ -2461,107 +2494,93 @@ class FastFit(ContinuumTools):
             'absmag_rz': '$^{{0.1}}(r-z)={:.3f}$'.format(fastspec['ABSMAG_SDSS_R']-fastspec['ABSMAG_SDSS_Z']),       
             }
 
+        if fastspec['VDISP_IVAR'] > 0:
+            leg['vdisp'] = '$\\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
+        else:
+            leg['vdisp'] = '$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+
+        if fastspec['DN4000_IVAR'] > 0:
+            leg['dn4000_spec'] = '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}$'.format(fastspec['DN4000'])
+            #leg.update({'dn4000_spec': '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}\pm{:.3f}$'.format(fastspec['DN4000'], 1/np.sqrt(fastspec['DN4000_IVAR']))})
+
         # kinematics
-        if fastspec['NARROW_Z'] == redshift:
-            leg.update({'dv_narrow': '$\\Delta v_{{\\rm narrow}}=$...'})
-        else:
-            leg.update({'dv_narrow': '$\\Delta v_{{\\rm narrow}}={:.2f}$ km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift))})
-        if fastspec['BROAD_Z'] == redshift:
-            leg.update({'dv_broad': '$\\Delta v_{{\\rm broad}}=$...'})
-        else:
-            leg.update({'dv_broad': '$\\Delta v_{{\\rm broad}}={:.2f}$ km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift))})        
-        if fastspec['UV_Z'] == redshift:
-            leg.update({'dv_uv': '$\\Delta v_{{\\rm UV}}=$...'})
-        else:
-            leg.update({'dv_uv': '$\\Delta v_{{\\rm UV}}={:.2f}$ km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift))})
-    
-        if fastspec['NARROW_SIGMA'] == 0.0:
-            leg.update({'sigma_narrow': '$\\sigma_{{\\rm narrow}}=$...'})
-        else:
-            leg.update({'sigma_narrow': '$\\sigma_{{\\rm narrow}}={:.1f}$ km/s'.format(fastspec['NARROW_SIGMA'])})
-        if fastspec['BROAD_SIGMA'] == 0.0:
-            leg.update({'sigma_broad': '$\\sigma_{{\\rm broad}}=$...'})
-        else:
-            leg.update({'sigma_broad': '$\\sigma_{{\\rm broad}}={:.1f}$ km/s'.format(fastspec['BROAD_SIGMA'])})
-        if fastspec['UV_SIGMA'] == 0.0:
-            leg.update({'sigma_uv': '$\\sigma_{{\\rm UV}}=$...'})
-        else:
-            leg.update({'sigma_uv': '$\\sigma_{{\\rm UV}}={:.1f}$ km/s'.format(fastspec['UV_SIGMA'])})
-            
+        if fastspec['NARROW_Z'] != redshift:
+            leg['dv_narrow'] = '$\\Delta v_{{\\rm narrow}}={:.0f}$ km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift))
+        if fastspec['NARROW_SIGMA'] != 0.0:
+            leg['sigma_narrow'] = '$\\sigma_{{\\rm narrow}}={:.0f}$ km/s'.format(fastspec['NARROW_SIGMA'])
+
+        snrcut = 1.5
+        leg_broad, leg_narrow, leg_uv = {}, {}, {}
+
+        if fastspec['UV_Z'] != redshift:
+            leg_uv['dv_uv'] = '$\\Delta v_{{\\rm UV}}={:.0f}$ km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift))
+        if fastspec['UV_SIGMA'] != 0.0:
+            leg_uv['sigma_uv'] = '$\\sigma_{{\\rm UV}}={:.0f}$ km/s'.format(fastspec['UV_SIGMA'])
+        if fastspec['BROAD_Z'] != redshift:
+            leg_broad['dv_broad'] = '$\\Delta v_{{\\rm broad}}={:.0f}$ km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift))
+        if fastspec['BROAD_SIGMA'] != 0.0:
+            leg_broad['sigma_broad'] = '$\\sigma_{{\\rm broad}}={:.0f}$ km/s'.format(fastspec['BROAD_SIGMA'])
+
         # emission lines
-        if fastspec['CIV_1549_EW'] == 0:
-            leg.update({'ewciv': 'EW(CIV)$=$...'})
-        else:
-            leg.update({'ewciv': 'EW(CIV)$={:.3f}\ \\AA$'.format(fastspec['CIV_1549_EW'])})
-            
-        if fastspec['MGII_2796_EW'] == 0 and fastspec['MGII_2796_EW'] == 0:
-            leg.update({'ewmgii': 'EW(MgII)$=$...'})
-        else:
-            leg.update({'ewmgii': 'EW(MgII)$={:.3f}\ \\AA$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2796_EW'])})
-            
-        if fastspec['HALPHA_EW'] == 0:
-            leg.update({'ewha_narrow': 'EW(H$\\alpha)_{{\\rm narrow}}=$...'})
-        else:
-            leg.update({'ewha_narrow': 'EW(H$\\alpha)_{{\\rm narrow}}={:.2f}\ \\AA$'.format(fastspec['HALPHA_EW'])})
-            
-        if fastspec['HBETA_EW'] == 0:
-            leg.update({'ewhb_narrow': 'EW(H$\\beta)_{{\\rm narrow}}=$...'})
-        else:
-            leg.update({'ewhb_narrow': 'EW(H$\\beta)_{{\\rm narrow}}={:.2f}\ \\AA$'.format(fastspec['HBETA_EW'])})
-            
-        if fastspec['HGAMMA_EW'] == 0:
-            leg.update({'ewhg_narrow': 'EW(H$\\gamma)_{{\\rm narrow}}=$...'})
-        else:
-            leg.update({'ewhg_narrow': 'EW(H$\\gamma)_{{\\rm narrow}}={:.2f}\ \\AA$'.format(fastspec['HGAMMA_EW'])})
-            
-        if fastspec['HALPHA_BROAD_EW'] == 0:
-            leg.update({'ewha_broad': 'EW(H$\\alpha)_{{\\rm broad}}=$...'})
-        else:
-            leg.update({'ewha_broad': 'EW(H$\\alpha)_{{\\rm broad}}={:.2f}\ \\AA$'.format(fastspec['HALPHA_BROAD_EW'])})
-            
-        if fastspec['HBETA_BROAD_EW'] == 0:
-            leg.update({'ewhb_broad': 'EW(H$\\beta)_{{\\rm broad}}=$...'})
-        else:
-            leg.update({'ewhb_broad': 'EW(H$\\beta)_{{\\rm broad}}={:.2f}\ \\AA$'.format(fastspec['HBETA_BROAD_EW'])})
-            
-        if fastspec['HGAMMA_BROAD_EW'] == 0:
-            leg.update({'ewhg_broad': 'EW(H$\\gamma)_{{\\rm broad}}=$...'})
-        else:
-            leg.update({'ewhg_broad': 'EW(H$\\gamma)_{{\\rm broad}}={:.2f}\ \\AA$'.format(fastspec['HGAMMA_BROAD_EW'])})
-            
-        if fastspec['OII_3726_EW'] == 0 and fastspec['OII_3729_EW'] == 0:
-            leg.update({'ewoii': 'EW([OII])$=$...'})
-        else:
-            leg.update({'ewoii': 'EW([OII])$={:.2f}\ \\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])})
-            
-        if fastspec['OIII_5007_EW'] == 0:
-            leg.update({'ewoiii': 'EW([OIII])$=$...'})
-        else:
-            leg.update({'ewoiii': 'EW([OIII])$={:.2f}\ \\AA$'.format(fastspec['OIII_5007_EW'])})
-            
-        if fastspec['NII_6584_EW'] == 0:
-            leg.update({'ewnii': 'EW([NII])$=$...'})
-        else:
-            leg.update({'ewnii': 'EW([NII])$={:.2f}\ \\AA$'.format(fastspec['NII_6584_EW'])})
-            
-        if fastspec['SII_6716_EW'] == 0 and fastspec['SII_6731_EW'] == 0:
-            leg.update({'ewsii': 'EW([SII])$=$...'})
-        else:
-            leg.update({'ewsii': 'EW([SII])$={:.2f}\ \\AA$'.format(fastspec['SII_6716_EW']+fastspec['SII_6731_EW'])})
-            
-        if fastspec['OII_DOUBLET_RATIO'] == 0:
-            #leg.update({'oii_doublet': '[OII] doublet ratio$=$...'})
-            leg.update({'oii_doublet': '[OII] $\lambda3726/\lambda3729=$...'})
-        else:
-            #leg.update({'oii_doublet': '[OII] doublet ratio$={:.3f}$'.format(fastspec['OII_DOUBLET_RATIO'])})
-            leg.update({'oii_doublet': '[OII] $\lambda3726/\lambda3729={:.3f}$'.format(fastspec['OII_DOUBLET_RATIO'])})
-    
-        if fastspec['SII_DOUBLET_RATIO'] == 0:
-            #leg.update({'sii_doublet': '[SII] doublet ratio$=$...'})
-            leg.update({'sii_doublet': '[SII] $\lambda6731/\lambda6716=$...'})
-        else:
-            #leg.update({'sii_doublet': '[SII] doublet ratio$={:.3f}$'.format(fastspec['SII_DOUBLET_RATIO'])})
-            leg.update({'sii_doublet': '[SII] $\lambda6731/\lambda6716={:.3f}$'.format(fastspec['SII_DOUBLET_RATIO'])})
+
+        # UV
+        if fastspec['CIV_1549_AMP']*np.sqrt(fastspec['CIV_1549_AMP_IVAR']) > snrcut:
+            leg_uv['ewciv'] = 'EW(CIV)$={:.1f}\ \\AA$'.format(fastspec['CIV_1549_EW'])
+        if fastspec['CIII_1908_AMP']*np.sqrt(fastspec['CIII_1908_AMP_IVAR']) > snrcut:
+            leg_uv['ewciii'] = 'EW(CIII])$={:.1f}\ \\AA$'.format(fastspec['CIII_1908_EW'])
+        if (fastspec['MGII_2796_AMP']*np.sqrt(fastspec['MGII_2796_AMP_IVAR']) > snrcut or
+            fastspec['MGII_2803_AMP']*np.sqrt(fastspec['MGII_2803_AMP_IVAR']) > snrcut):
+            leg_uv['ewmgii'] = 'EW(MgII)$={:.1f}\ \\AA$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])
+            leg_uv['mgii_doublet'] = 'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
+
+        # choose one Balmer line
+        leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
+        if fastspec['HALPHA_BROAD_EW'] != 0:
+            leg_broad['ewha_broad'] = 'EW(H$\\alpha)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HALPHA_BROAD_EW'])
+        if fastspec['HBETA_BROAD_EW'] != 0:
+            leg_broad['ewhb_broad'] = 'EW(H$\\beta)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HBETA_BROAD_EW'])
+        if fastspec['HGAMMA_BROAD_EW'] != 0:
+            leg_broad['ewhg_broad'] = 'EW(H$\\gamma)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HGAMMA_BROAD_EW'])
+
+        if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
+            fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
+            leg_narrow['ewoii'] = 'EW([OII] $\lambda\lambda3726,29)={:.1f}\,\\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
+            #leg_narrow['ewoii'] = 'EW([OII])$={:.1f}\ \\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
+
+        if fastspec['OIII_5007_EW'] != 0:
+            leg_narrow['ewoiii'] = 'EW([OIII] $\lambda5007={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
+
+        # choose one Balmer line
+        if fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut:
+            leg_narrow['ewbalmer_narrow'] = 'EW(H$\\alpha)={:.1f}\ \\AA$'.format(fastspec['HALPHA_EW'])
+        elif fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut:
+            leg_narrow['ewbalmer_narrow'] = 'EW(H$\\beta)={:.1f}\ \\AA$'.format(fastspec['HBETA_EW'])
+        elif fastspec['HGAMMA_AMP']*np.sqrt(fastspec['HGAMMA_AMP_IVAR']) > snrcut:
+            leg_narrow['ewbalmer_narrow'] = 'EW(H$\\gamma)={:.1f}\ \\AA$'.format(fastspec['HGAMMA_EW'])
+
+        if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
+            fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut):
+            leg_narrow['hahb'] = '${{\\rm H}}\\alpha/{{\\rm H}}\\beta={:.3f}$'.format(fastspec['HALPHA_FLUX']/fastspec['HBETA_FLUX'])
+        if 'hahb' not in leg_narrow.keys() and (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
+            fastspec['HGAMMA_AMP']*np.sqrt(fastspec['HGAMMA_AMP_IVAR']) > snrcut):
+            leg_narrow['hbhg'] = '${{\\rm H}}\\beta/{{\\rm H}}\\gamma={:.3f}$'.format(fastspec['HBETA_FLUX']/fastspec['HGAMMA_FLUX'])
+        if (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
+            fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut and 
+            fastspec['HBETA_FLUX'] > 0 and fastspec['OIII_5007_FLUX'] > 0):
+            leg_narrow['oiiihb'] = '$\\log({{\\rm [NII]/H}}\\beta)={:.3f}$'.format(np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
+        if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
+            fastspec['NII_6584_AMP']*np.sqrt(fastspec['NII_6584_AMP_IVAR']) > snrcut and 
+            fastspec['HALPHA_FLUX'] > 0 and fastspec['NII_6584_FLUX'] > 0):
+            leg_narrow['niiha'] = '$\\log({{\\rm [NII]/H}}\\alpha)={:.3f}$'.format(np.log10(fastspec['NII_6584_FLUX']/fastspec['HALPHA_FLUX']))
+
+        if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
+            fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
+            #if fastspec['OII_DOUBLET_RATIO'] != 0:
+            leg_narrow['oii_doublet'] = '[OII] $\lambda3726/\lambda3729={:.3f}$'.format(fastspec['OII_DOUBLET_RATIO'])
+
+        if fastspec['SII_6716_AMP']*np.sqrt(fastspec['SII_6716_AMP_IVAR']) > snrcut or fastspec['SII_6731_AMP']*np.sqrt(fastspec['SII_6731_AMP_IVAR']) > snrcut:
+            #if fastspec['SII_DOUBLET_RATIO'] != 0:
+            leg_narrow['sii_doublet'] = '[SII] $\lambda6731/\lambda6716={:.3f}$'.format(fastspec['SII_DOUBLET_RATIO'])
 
         # rebuild the best-fitting broadband photometric model
         sedmodel, sedphot = self.templates2data(
@@ -2691,10 +2710,10 @@ class FastFit(ContinuumTools):
 
         cutax = fig.add_subplot(gs[0:3, 5:8], projection=wcs) # rows x cols
         sedax = fig.add_subplot(gs[0:3, 0:5])
-        specax1 = fig.add_subplot(gs[4:8, 0:5])
+        specax = fig.add_subplot(gs[4:8, 0:5])
         
         legxpos, legypos, legypos2, legfntsz1, legfntsz = 0.98, 0.94, 0.05, 16, 18
-        bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.25)
+        bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.15)
         bbox2 = dict(boxstyle='round', facecolor='lightgray', alpha=0.7)
 
         # viewer cutout
@@ -2738,7 +2757,10 @@ class FastFit(ContinuumTools):
         # plot the full spectrum + best-fitting (total) model
         spec_ymin, spec_ymax = 1e6, -1e6
 
-        fullmodelspec = []
+        specax.plot(fullwave/1e4, fullcontinuum, color='gray', alpha=0.4)
+        specax.plot(fullwave/1e4, fullsmoothcontinuum, color='gray', alpha=0.4)
+
+        desimodelspec = []
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
             wave = data['wave'][ii]
             flux = data['flux'][ii]
@@ -2751,7 +2773,7 @@ class FastFit(ContinuumTools):
             sigma = sigma[camgood]
             modelflux = modelflux[camgood]
 
-            fullmodelspec.append(apercorr * (desicontinuum[ii] + desiemlines[ii]))
+            desimodelspec.append(apercorr * (desicontinuum[ii] + desiemlines[ii]))
             
             # get the robust range
             filtflux = median_filter(flux, 51, mode='nearest')
@@ -2767,29 +2789,18 @@ class FastFit(ContinuumTools):
                     spec_ymax = np.max(modelflux) * 1.2
                 #print(spec_ymin, spec_ymax)
         
-            #specax1.fill_between(wave, flux-sigma, flux+sigma, color=col1[ii], alpha=0.2)
-            specax1.plot(wave/1e4, flux, color=col1[ii], alpha=0.8)
-            specax1.plot(wave/1e4, modelflux, color=col2[ii], lw=3)
+            #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[ii], alpha=0.2)
+            specax.plot(wave/1e4, flux, color=col1[ii], alpha=0.8)
+            specax.plot(wave/1e4, modelflux, color=col2[ii], lw=3)
 
-        fullmodelspec = np.hstack(fullmodelspec)
+        fullmodelspec = np.hstack(desimodelspec)
 
-        #txt = r'{} {}'.format(leg['rchi2'], leg['deltarchi2'])
-        #specax1.text(0.05, 0.95, txt, ha='left', va='center',
-        #            transform=specax1.transAxes, fontsize=legfntsz,
-        #            bbox=bbox)
-    
-        txt = '\n'.join((
-            r'{} {}'.format(leg['rchi2'], leg['deltarchi2']),
-            ))
-        specax1.text(legxpos, legypos, txt, ha='right', va='top',
-                    transform=specax1.transAxes, fontsize=legfntsz)#, bbox=bbox)
-        
-        specax1.spines[['top']].set_visible(False)        
-        specax1.set_xlim(spec_wavelims[0]/1e4, spec_wavelims[1]/1e4)
-        specax1.set_ylim(spec_ymin, spec_ymax)
-        specax1.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
-        #specax1.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
-        specax1.set_ylabel(r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
+        specax.spines[['top']].set_visible(False)        
+        specax.set_xlim(spec_wavelims[0]/1e4, spec_wavelims[1]/1e4)
+        specax.set_ylim(spec_ymin, spec_ymax)
+        specax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
+        #specax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
+        specax.set_ylabel(r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
 
         # photometric SED   
         if len(sedmodel) == 0:
@@ -2798,17 +2809,21 @@ class FastFit(ContinuumTools):
         else:
             factor = 10**(0.4 * 48.6) * sedwave**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
             sedmodel_abmag = -2.5*np.log10(sedmodel * factor)
-            sedax.plot(sedwave / 1e4, sedmodel_abmag, color='tan', zorder=1)
+            sedax.plot(sedwave / 1e4, sedmodel_abmag, color='slategrey', alpha=0.9, zorder=1)
     
         sedax.scatter(sedphot['lambda_eff']/1e4, sedphot['abmag'], marker='s', 
-                      s=200, color='k', facecolor='none', alpha=0.8, zorder=2)
+                      s=400, color='k', facecolor='none', linewidth=2, alpha=1.0, zorder=2)
 
-        factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) / self.fluxnorm # [erg/s/cm2/A --> maggies]
-        good = fullmodelspec > 0
-        sedax.plot(fullwave[good]/1e4, -2.5*np.log10(fullmodelspec[good]*factor[good]), color='k', alpha=0.8)
+        #factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) / self.fluxnorm # [erg/s/cm2/A --> maggies]
+        #good = fullmodelspec > 0
+        #sedax.plot(fullwave[good]/1e4, -2.5*np.log10(fullmodelspec[good]*factor[good]), color='purple', alpha=0.8)
+        for ii in np.arange(len(data['cameras'])):
+            factor = 10**(0.4 * 48.6) * data['wave'][ii]**2 / (C_LIGHT * 1e13) / self.fluxnorm # [erg/s/cm2/A --> maggies]
+            good = desimodelspec[ii] > 0
+            sedax.plot(data['wave'][ii][good]/1e4, -2.5*np.log10(desimodelspec[ii][good]*factor[good]), color=col2[ii], alpha=0.8)
 
         # we have to set the limits *before* we call errorbar, below!
-        dm = 2
+        dm = 1.5
         good = phot['abmag_ivar'] > 0
         goodlim = phot['abmag_limit'] > 0
         if np.sum(good) > 0 and np.sum(goodlim) > 0:
@@ -2835,55 +2850,65 @@ class FastFit(ContinuumTools):
             else:
                 sed_ymin, sed_ymax = [30, 20]
             
-        if sed_ymin > 28:
-            sed_ymin = 28
+        if sed_ymin > 27:
+            sed_ymin = 27
         if np.isnan(sed_ymin) or np.isnan(sed_ymax):
             raise('Problem here!')
     
         #sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
         sedax.set_xlim(phot_wavelims[0], phot_wavelims[1])
         sedax.set_xscale('log')
-
         sedax.set_ylabel('AB mag') 
         #sedax.set_ylabel(r'Apparent Brightness (AB mag)') 
         sedax.set_ylim(sed_ymin, sed_ymax)
-        #sedax.set_yticklabels([])
-        #sedax_twin = sedax.twinx()
-        #sedax_twin.set_ylabel('AB mag') 
-        #sedax_twin.set_ylim(sed_ymin, sed_ymax)
-    
+
         @ticker.FuncFormatter
         def major_formatter(x, pos):
-            if x >= 1:
-                return f'{x:.0f}'
-            else:
+            if (x >= 0.01) and (x < 0.1):
+                return f'{x:.2f}'
+            elif (x >= 0.1) and (x < 1):
                 return f'{x:.1f}'
+            else:
+                return f'{x:.0f}'
         
         sedax.xaxis.set_major_formatter(major_formatter)
-        sedax.set_xticks([0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
-    
+        obsticks = np.array([0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
+        sedax.set_xticks(obsticks)
+
+        sedax_twin = sedax.twiny()
+        sedax_twin.set_xlim(phot_wavelims[0]/(1+redshift), phot_wavelims[1]/(1+redshift))
+        sedax_twin.set_xscale('log')
+        #sedax_twin.set_xlabel(r'Rest-frame Wavelength ($\mu$m)') 
+
+        sedax_twin.xaxis.set_major_formatter(major_formatter)
+        restticks = np.array([0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 15.0, 20.0])
+        restticks = restticks[(restticks >= phot_wavelims[0]/(1+redshift)) * (restticks <= phot_wavelims[1]/(1+redshift))]
+        sedax_twin.set_xticks(restticks)
+
         # integrated flux / photometry
         abmag = np.squeeze(phot['abmag'])
         abmag_limit = np.squeeze(phot['abmag_limit'])
         abmag_fainterr = np.squeeze(phot['abmag_fainterr'])
         abmag_brighterr = np.squeeze(phot['abmag_brighterr'])
         yerr = np.squeeze([abmag_brighterr, abmag_fainterr])
-    
+
+        markersize = 14
+
         dofit = np.where(self.bands_to_fit)[0]
         if len(dofit) > 0:
             good = np.where((abmag[dofit] > 0) * (abmag_limit[dofit] == 0))[0]
             upper = np.where(abmag_limit[dofit] > 0)[0]
             if len(good) > 0:
                 sedax.errorbar(phot['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
-                            yerr=yerr[:, dofit[good]],
-                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=photcol1,
-                            markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4,
-                            label=r'$grz\,W_{1}W_{2}W_{3}W_{4}$', zorder=2)
+                               yerr=yerr[:, dofit[good]],
+                               fmt='o', markersize=markersize, markeredgewidth=1, markeredgecolor='k',
+                               markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4,
+                               label=r'$grz\,W_{1}W_{2}W_{3}W_{4}$', zorder=2, alpha=1.0)
             if len(upper) > 0:
                 sedax.errorbar(phot['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
-                            lolims=True, yerr=0.75,
-                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=photcol1,
-                            markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4)
+                               lolims=True, yerr=0.75,
+                               fmt='o', markersize=markersize, markeredgewidth=3, markeredgecolor='k',
+                               markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4, alpha=0.7)
     
         ignorefit = np.where(self.bands_to_fit == False)[0]
         if len(ignorefit) > 0:
@@ -2891,23 +2916,24 @@ class FastFit(ContinuumTools):
             upper = np.where(abmag_limit[ignorefit] > 0)[0]
             if len(good) > 0:
                 sedax.errorbar(phot['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
-                            yerr=yerr[:, ignorefit[good]],
-                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=photcol1,
-                            markerfacecolor='none', elinewidth=3, ecolor=photcol1, capsize=4)
+                               yerr=yerr[:, ignorefit[good]],
+                               fmt='o', markersize=markersize, markeredgewidth=3, markeredgecolor='k',
+                               markerfacecolor='none', elinewidth=3, ecolor=photcol1, capsize=4, alpha=0.7)
             if len(upper) > 0:
                 sedax.errorbar(phot['lambda_eff'][ignorefit][upper]/1e4, abmag_limit[ignorefit][upper],
-                            lolims=True, yerr=0.75, fmt='o', markersize=12, markeredgewidth=3,
-                            markeredgecolor=photcol1, markerfacecolor='none', elinewidth=3,
-                            ecolor=photcol1, capsize=5)
+                               lolims=True, yerr=0.75, fmt='o', markersize=markersize, markeredgewidth=3,
+                               markeredgecolor='k', markerfacecolor='none', elinewidth=3,
+                               ecolor=photcol1, capsize=5, alpha=0.7)
 
         # Label the DESI wavelength range and the aperture correction.
-        sedax.plot([spec_wavelims[0]/1e4, spec_wavelims[1]/1e4], [sed_ymin-1, sed_ymin-1],
+        sedax.plot([np.min(fullwave)/1e4, np.max(fullwave)/1e4], [sed_ymin-1, sed_ymin-1],
                    lw=2, ls='-', color='gray', marker='s')#, alpha=0.5)
-        sedax.text(((spec_wavelims[1]-spec_wavelims[0])/2+spec_wavelims[0]*0.8)/1e4, sed_ymin-1.4,
+        sedax.text(((np.max(fullwave)-np.min(fullwave))/2+np.min(fullwave)*0.8)/1e4, sed_ymin-1.7,
                    'DESI x {:.2f}'.format(apercorr), ha='center', va='center', fontsize=16,
-                   color='gray')
+                   color='k')
 
-        sedax.text(0.02, 0.92, leg['cchi2'], ha='left', va='center',
+        txt = '\n'.join((leg['cchi2'], leg['rchi2']))
+        sedax.text(0.02, 0.94, txt, ha='left', va='top',
                     transform=sedax.transAxes, fontsize=legfntsz)#, bbox=bbox)
 
         txt = '\n'.join((
@@ -2920,17 +2946,17 @@ class FastFit(ContinuumTools):
             r'{}'.format(leg['mstar']),
             ))
         sedax.text(legxpos, legypos2, txt, ha='right', va='bottom',
-                    transform=sedax.transAxes, fontsize=legfntsz1)#, bbox=bbox)
+                    transform=sedax.transAxes, fontsize=legfntsz1, bbox=bbox)
 
         # draw lines connecting the SED and spectral plots
         sedax.add_artist(ConnectionPatch(xyA=(spec_wavelims[0]/1e4, sed_ymin), 
                                          xyB=(spec_wavelims[0]/1e4, spec_ymax), 
                                          coordsA='data', coordsB='data',
-                                         axesA=sedax, axesB=specax1, color='k'))
+                                         axesA=sedax, axesB=specax, color='k'))
         sedax.add_artist(ConnectionPatch(xyA=(spec_wavelims[1]/1e4, sed_ymin), 
                                          xyB=(spec_wavelims[1]/1e4, spec_ymax), 
                                          coordsA='data', coordsB='data',
-                                         axesA=sedax, axesB=specax1, color='k'))
+                                         axesA=sedax, axesB=specax, color='k'))
 
         # zoom in on individual emission lines - use linetable!
         linetable = self.linetable
@@ -2992,8 +3018,8 @@ class FastFit(ContinuumTools):
                     thislinename = linename+'\n'
                 else:
                     thislinename = linename
-                specax1.text(meanwave/1e4, spec_ymax, thislinename, ha='center', va='top',
-                             rotation=270, fontsize=10, alpha=0.5)
+                specax.text(meanwave/1e4, spec_ymax, thislinename, ha='center', va='top',
+                            rotation=270, fontsize=12, alpha=0.5)
     
         removelabels = np.ones(nline, bool)
         line_ymin, line_ymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
@@ -3090,13 +3116,9 @@ class FastFit(ContinuumTools):
                 xlim = xx.get_xlim()
                 xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
         
-        # common axis labels
-        tp, bt, lf, rt = 0.95, 0.08, 0.07, 0.92
-        
-        plt.subplots_adjust(wspace=0.4, top=tp, bottom=bt, left=lf, right=rt, hspace=0.32)
-        #plt.subplots_adjust(bottom=0.22, top=0.94, left=0.08, right=0.91)
-        #plt.subplots_adjust(bottom=0.1, top=0.95, left=0.08, right=0.9)
+        plt.subplots_adjust(wspace=0.4, top=0.9, bottom=0.1, left=0.07, right=0.92, hspace=0.32)
 
+        # common axis labels
         ulpos = ax[0].get_position()
         urpos = ax[2].get_position()
         lpos = ax[nline-1].get_position()
@@ -3111,68 +3133,95 @@ class FastFit(ContinuumTools):
                  r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
                  ha='center', va='center', rotation=270, fontsize=24)
 
-        fig.suptitle(title, fontsize=22)
+        ppos = sedax.get_position()
+        xpos = (ppos.x1 - ppos.x0) / 2 + ppos.x0
+        ypos = ppos.y1 + 0.03
+        fig.text(xpos, ypos, r'Rest-frame Wavelength ($\mu$m)',
+                 ha='center', va='bottom', fontsize=24)
+
+        fig.text(0.647, 0.925, '\n'.join(target), ha='left', va='bottom',
+                 fontsize=23, linespacing=1.4)
+
+        #fig.suptitle(title, fontsize=22)
 
         # add some key results about the object at the bottom of the figure
-    
-        # parse the targeting bits
-        #from desitarget.targets import main_cmx_or_sv
-        #(desi_target, bgs_target, mws_target), mask, survey = main_cmx_or_sv(metadata)
-        
-        legfntsz, toppos, startpos, deltapos = 18, 0.2, 0.07, 0.13
-        txt = '\n'.join((
-            r'{}'.format(leg['absmag_r']),
-            r'{}'.format(leg['absmag_gr']),
-            r'{}'.format(leg['absmag_rz']),
-            r'{}'.format(leg['dn4000_model']),
-            #r'{}'.format(leg['AV']),
-            ))
-        fig.text(startpos, toppos, txt, ha='left', va='top', fontsize=legfntsz)
-    
-        txt = '\n'.join((
+        legkeys = leg.keys()
+
+        legfntsz, toppos, startpos, deltapos = 18, 0.21, 0.05, 0.13
+
+        #leg['sigma_uv'] = 1.0
+        #leg['sigma_broad'] = 1.0
+        #leg['dv_uv'] = 1.0
+        #leg['dv_broad'] = 1.0
+
+        txt = [
             r'{}'.format(leg['z']),
             r'{}'.format(leg['zredrock']),
-            r'{}'.format(leg['dv_narrow']),
-            r'{}'.format(leg['dv_broad']),
-            r'{}'.format(leg['dv_uv']),
-            ))
-        fig.text(startpos+deltapos*1, toppos, txt, ha='left', va='top', fontsize=legfntsz)
-    
-        txt = '\n'.join((
             r'{}'.format(leg['vdisp']),
-            r'{}'.format(leg['sigma_narrow']),
-            r'{}'.format(leg['sigma_broad']),
-            r'{}'.format(leg['sigma_uv']),
             '',
-            r'{}'.format(leg['oii_doublet']),
-            r'{}'.format(leg['sii_doublet']),
-            ))
-        fig.text(startpos+deltapos*2, toppos, txt, ha='left', va='top', fontsize=legfntsz)
-    
-        txt = '\n'.join((
-            r'{}'.format(leg['ewciv']),
-            r'{}'.format(leg['ewmgii']),
+        ]
+
+        if 'dv_narrow' in legkeys:
+            txt += [
+                r'{}'.format(leg['sigma_narrow']),
+                r'{}'.format(leg['dv_narrow']),
+            ]
+        if 'dv_uv' in leg_uv.keys():
+            txt += [
+                r'{}'.format(leg_uv['sigma_uv']),
+                r'{}'.format(leg_uv['dv_uv']),
+            ]
+            _ = leg_uv.pop('sigma_uv')
+            _ = leg_uv.pop('dv_uv')
+        if 'dv_broad' in leg_broad.keys():
+            txt += [
+                r'{}'.format(leg_broad['sigma_broad']),
+                r'{}'.format(leg_broad['dv_broad']),
+            ]
+            _ = leg_broad.pop('sigma_broad')
+            _ = leg_broad.pop('dv_broad')
+        fig.text(startpos, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
+                 bbox=bbox, linespacing=1.4)
+
+        txt = [
+            r'{}'.format(leg['absmag_r']),
+            r'{}'.format(leg['absmag_gr']),
+            r'{}'.format(leg['absmag_rz']), 
             '',
-            r'{}'.format(leg['ewoii']),
-            r'{}'.format(leg['ewoiii']),
-            r'{}'.format(leg['ewnii']),
-            r'{}'.format(leg['ewsii']),
-            ))
-        fig.text(startpos+deltapos*3, toppos, txt, ha='left', va='top', fontsize=legfntsz)
-    
-        txt = '\n'.join((
-            r'{}'.format(leg['ewhg_narrow']),
-            r'{}'.format(leg['ewhb_narrow']),
-            r'{}'.format(leg['ewha_narrow']),
-            '',
-            r'{}'.format(leg['ewhg_broad']),
-            r'{}'.format(leg['ewhb_broad']),
-            r'{}'.format(leg['ewha_broad']),
-            ))
-        fig.text(startpos+deltapos*4, toppos, txt, ha='left', va='top', fontsize=legfntsz)
-    
+            r'{}'.format(leg['dn4000_model'])
+        ]
+        if 'dn4000_spec' in legkeys:
+            txt += [r'{}'.format(leg['dn4000_spec'])]
+        fig.text(startpos+deltapos, toppos, '\n'.join(txt), ha='left', va='top', 
+                 fontsize=legfntsz, bbox=bbox, linespacing=1.4)
+
+        factor = 2
+        if bool(leg_narrow):
+            txt = []
+            for key in leg_narrow.keys():
+                txt += [r'{}'.format(leg_narrow[key])]
+            fig.text(startpos+deltapos*factor, toppos, '\n'.join(txt), ha='left', va='top',
+                     fontsize=legfntsz, bbox=bbox, linespacing=1.4)
+            factor += 1.27
+
+        if bool(leg_broad):
+            txt = []
+            for key in leg_broad.keys():
+                txt += [r'{}'.format(leg_broad[key])]
+
+        if bool(leg_uv):
+            if bool(leg_broad):
+                txt += ['']
+            else:
+                txt = []
+            for key in leg_uv.keys():
+                txt += [r'{}'.format(leg_uv[key])]
+
+        if bool(leg_uv) or bool(leg_broad):
+            fig.text(startpos+deltapos*factor, toppos, '\n'.join(txt), ha='left', va='top',
+                     fontsize=legfntsz, bbox=bbox, linespacing=1.4)
 
         self.log.info('Writing {}'.format(pngfile))
-        fig.savefig(pngfile)
+        fig.savefig(pngfile)#, dpi=150)
         plt.close()
 
