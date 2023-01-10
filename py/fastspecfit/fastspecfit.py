@@ -1718,10 +1718,10 @@ class FastFit(ContinuumTools):
                 linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
 
             # If chi2_broad > chi2_narrow then choose narrow.
-            if (linechi2_broad - linechi2_init) > self.delta_linerchi2_cut:
-                bestfit = initfit
-            else:
+            if (linechi2_init - linechi2_broad) > self.delta_linerchi2_cut:
                 bestfit = broadfit
+            else:
+                bestfit = initfit
         else:
             self.log.info('Skipping broad-line fitting.')
 
@@ -1736,10 +1736,10 @@ class FastFit(ContinuumTools):
 
         # Finally, one more fitting loop with all the line-constraints relaxed
         # but starting from the previous best-fitting values.
-        if linechi2_init < (linechi2_broad + 1):
-            linemodel = final_linemodel_nobroad
-        else:
+        if (linechi2_init - linechi2_broad) > self.delta_linerchi2_cut:
             linemodel = final_linemodel
+        else:
+            linemodel = final_linemodel_nobroad
 
         # Populate the new linemodel being careful to handle the fact that the
         # "tied" relationships are very different between the initial and final
@@ -2170,7 +2170,7 @@ class FastFit(ContinuumTools):
             print()
 
         # get the average emission-line redshifts and velocity widths
-        if len(narrow_redshifts) > 1:
+        if len(narrow_redshifts) > 0:
             result['NARROW_Z'] = np.median(narrow_redshifts)
             result['NARROW_SIGMA'] = np.median(narrow_sigmas) # * u.kilometer / u.second
             #result['NARROW_Z_ERR'] = np.std(narrow_redshifts)
@@ -2178,15 +2178,15 @@ class FastFit(ContinuumTools):
         else:
             result['NARROW_Z'] = redshift
             
-        if len(broad_redshifts) > 1:
+        if len(broad_redshifts) > 0:
             result['BROAD_Z'] = np.median(broad_redshifts)
             result['BROAD_SIGMA'] = np.median(broad_sigmas) # * u.kilometer / u.second
             #result['BROAD_Z_ERR'] = np.std(broad_redshifts)
             #result['BROAD_SIGMA_ERR'] = np.std(broad_sigmas)
         else:
             result['BROAD_Z'] = redshift
-            
-        if len(uv_redshifts) > 1:
+
+        if len(uv_redshifts) > 0:
             result['UV_Z'] = np.median(uv_redshifts)
             result['UV_SIGMA'] = np.median(uv_sigmas) # * u.kilometer / u.second
             #result['UV_Z_ERR'] = np.std(uv_redshifts)
@@ -2407,21 +2407,23 @@ class FastFit(ContinuumTools):
             leg_uv['ewmgii'] = 'EW(MgII)$={:.1f}\ \\AA$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])
             leg_uv['mgii_doublet'] = 'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
 
-        # choose one Balmer line
+        #leg_broad['deltarchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
         leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
-        if fastspec['HALPHA_BROAD_EW'] != 0:
-            leg_broad['ewha_broad'] = 'EW(H$\\alpha)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HALPHA_BROAD_EW'])
-        if fastspec['HBETA_BROAD_EW'] != 0:
-            leg_broad['ewhb_broad'] = 'EW(H$\\beta)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HBETA_BROAD_EW'])
-        if fastspec['HGAMMA_BROAD_EW'] != 0:
-            leg_broad['ewhg_broad'] = 'EW(H$\\gamma)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HGAMMA_BROAD_EW'])
+
+        # choose one broad Balmer line
+        if fastspec['HALPHA_BROAD_AMP']*np.sqrt(fastspec['HALPHA_BROAD_AMP_IVAR']) > snrcut:
+            leg_broad['ewbalmer_broad'] = 'EW(H$\\alpha)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HALPHA_BROAD_EW'])
+        elif fastspec['HBETA_BROAD_AMP']*np.sqrt(fastspec['HBETA_BROAD_AMP_IVAR']) > snrcut:
+            leg_broad['ewbalmer_broad'] = 'EW(H$\\beta)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HBETA_BROAD_EW'])
+        elif fastspec['HGAMMA_BROAD_AMP']*np.sqrt(fastspec['HGAMMA_BROAD_AMP_IVAR']) > snrcut:
+            leg_broad['ewbalmer_broad'] = 'EW(H$\\gamma)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HGAMMA_BROAD_EW'])
 
         if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
             fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
             leg_narrow['ewoii'] = 'EW([OII] $\lambda\lambda3726,29)={:.1f}\,\\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
             #leg_narrow['ewoii'] = 'EW([OII])$={:.1f}\ \\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
 
-        if fastspec['OIII_5007_EW'] != 0:
+        if fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut:
             leg_narrow['ewoiii'] = 'EW([OIII] $\lambda5007={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
 
         # choose one Balmer line
@@ -2441,11 +2443,11 @@ class FastFit(ContinuumTools):
         if (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
             fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut and 
             fastspec['HBETA_FLUX'] > 0 and fastspec['OIII_5007_FLUX'] > 0):
-            leg_narrow['oiiihb'] = '$\\log({{\\rm [OIII]/H}}\\beta)={:.3f}$'.format(np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
+            leg_narrow['oiiihb'] = '$\\log_{{10}}({{\\rm [OIII]/H}}\\beta)={:.3f}$'.format(np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
         if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
             fastspec['NII_6584_AMP']*np.sqrt(fastspec['NII_6584_AMP_IVAR']) > snrcut and 
             fastspec['HALPHA_FLUX'] > 0 and fastspec['NII_6584_FLUX'] > 0):
-            leg_narrow['niiha'] = '$\\log({{\\rm [NII]/H}}\\alpha)={:.3f}$'.format(np.log10(fastspec['NII_6584_FLUX']/fastspec['HALPHA_FLUX']))
+            leg_narrow['niiha'] = '$\\log_{{10}}({{\\rm [NII]/H}}\\alpha)={:.3f}$'.format(np.log10(fastspec['NII_6584_FLUX']/fastspec['HALPHA_FLUX']))
 
         if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
             fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
