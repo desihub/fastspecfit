@@ -703,8 +703,8 @@ class FastFit(ContinuumTools):
                 #        va='center', transform=ax.transAxes)
             ax.text(0.03, 0.9, leg, ha='left', va='center', transform=ax.transAxes)
             ax.set_ylabel(r'$\chi^2$')
-            fig.savefig('qa-chi2min.png')
-            #fig.savefig('desi-users/ioannis/tmp/qa-chi2min.png')
+            #fig.savefig('qa-chi2min.png')
+            fig.savefig('desi-users/ioannis/tmp/qa-chi2min.png')
 
         return chi2min, xbest, xivar, bestcoeff
 
@@ -777,6 +777,13 @@ class FastFit(ContinuumTools):
         objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
         assert(np.all(objflamivar >= 0))
 
+        # Require at least one photometric optical band; do not just fit the IR
+        # because we will not be able to compute the aperture correction, below.
+        grz = np.logical_or.reduce((data['phot']['band'] == 'g', data['phot']['band'] == 'r', data['phot']['band'] == 'z'))
+        if np.all(objflamivar[grz] == 0.0):
+            self.log.warning('All optical (grz) bands are masked; masking all photometry.')
+            objflamivar *= 0.0
+
         # Optionally ignore templates which are older than the age of the
         # universe at the redshift of the object.
         if self.constrain_age:
@@ -790,25 +797,32 @@ class FastFit(ContinuumTools):
         # Photometry-only fitting.
         if fastphot:
             vdispbest, vdispivar = self.vdisp_nominal, 0.0
-            self.log.info('Adopting nominal vdisp={:.2f} km/s.'.format(self.vdisp_nominal))
+            self.log.info('Adopting nominal vdisp={:.0f} km/s.'.format(self.vdisp_nominal))
 
-            # Get the coefficients and chi2 at the nominal velocity dispersion. 
-            t0 = time.time()
-            sedtemplates, sedphot = self.templates2data(
-                self.templateflux_nomvdisp[:, agekeep], self.templatewave, 
-                redshift=redshift, vdisp=None, synthphot=True, 
-                south=data['photsys'] == 'S')
-            sedflam = sedphot['flam'].data * self.massnorm * self.fluxnorm
-
-            coeff, chi2min = self._call_nnls(sedflam, objflam, objflamivar)
-            chi2min /= np.sum(objflamivar > 0) # dof???
-            self.log.info('Fitting {} models took {:.2f} seconds.'.format(
-                nage, time.time()-t0))
-
-            if np.all(coeff == 0):
-                self.log.warning('Continuum coefficients are all zero or the data were not fit.')
-
-            sedmodel = sedtemplates.dot(coeff)
+            if np.all(objflamivar == 0):
+                self.log.info('All photometry is masked.')
+                coeff = np.zeros(self.nsed, 'f4')
+                chi2min = 0.0
+                sedmodel = np.zeros(len(self.templatewave))
+            else:
+               # Get the coefficients and chi2 at the nominal velocity dispersion. 
+               t0 = time.time()
+               sedtemplates, sedphot = self.templates2data(
+                   self.templateflux_nomvdisp[:, agekeep], self.templatewave, 
+                   redshift=redshift, vdisp=None, synthphot=True, 
+                   south=data['photsys'] == 'S')
+               sedflam = sedphot['flam'].data * self.massnorm * self.fluxnorm
+   
+               coeff, chi2min = self._call_nnls(sedflam, objflam, objflamivar)
+               chi2min /= np.sum(objflamivar > 0) # dof???
+               self.log.info('Fitting {} models took {:.2f} seconds.'.format(
+                   nage, time.time()-t0))
+   
+               if np.all(coeff == 0):
+                   self.log.warning('Continuum coefficients are all zero.')
+                   sedmodel = np.zeros(len(self.templatewave))
+               else:
+                   sedmodel = sedtemplates.dot(coeff)
 
             dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel, rest=True)
             self.log.info('Model Dn(4000)={:.3f}.'.format(dn4000_model))
@@ -878,29 +892,23 @@ class FastFit(ContinuumTools):
                     self.vdispnsed, time.time()-t0))
 
                 if vdispivar > 0:
-                    # protect against tiny ivar from becomming infinite in the output table
-                    if vdispivar < 1e-5:
-                        self.log.warning('vdisp inverse variance is tiny; capping at 1e-5')
-                        vdispivar = 1e-5
-                    self.log.info('Best-fitting vdisp={:.2f}+/-{:.2f} km/s.'.format(
-                        vdispbest, 1/np.sqrt(vdispivar)))
+                    # Require vdisp to be measured with S/N>1, which protects
+                    # against tiny ivar becomming infinite in the output table.
+                    vdispsnr = vdispbest * np.sqrt(vdispivar)
+                    if vdispsnr < 1:
+                        self.log.warning('vdisp signal-to-noise {:.3f} is less than one; adopting vdisp={:.0f} km/s.'.format(
+                            vdispsnr, self.vdisp_nominal))
+                        vdispbest, vdispivar = self.vdisp_nominal, 0.0
+                    else:
+                        self.log.info('Best-fitting vdisp={:.1f}+/-{:.1f} km/s.'.format(
+                            vdispbest, 1/np.sqrt(vdispivar)))
                 else:
                     vdispbest = self.vdisp_nominal
-                    self.log.info('Finding vdisp failed; adopting vdisp={:.2f} km/s'.format(self.vdisp_nominal))
-
-                #import matplotlib.pyplot as plt                
-                #plt.clf()
-                #I = np.where((ztemplatewave > 7000) * (ztemplatewave < 7700))[0]
-                #for ii in agekeep:
-                #    plt.plot(self.templatewave[I]*(1+redshift), self.templateflux[I, ii])
-                #plt.xlim(7000, 7700) # specwave.min(), specwave.max())
-                #plt.savefig('junk.png')
-                #pdb.set_trace()
-
+                    self.log.info('Finding vdisp failed; adopting vdisp={:.0f} km/s.'.format(self.vdisp_nominal))
             else:
                 vdispbest, vdispivar = self.vdisp_nominal, 0.0
                 if compute_vdisp:
-                    self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.2f} km/s.'.format(vdispbest))
+                    self.log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.0f} km/s.'.format(vdispbest))
                 else:
                     self.log.info('Insufficient wavelength covereage to compute vdisp; adopting nominal vdisp={:.2f} km/s'.format(vdispbest))
 
@@ -927,23 +935,34 @@ class FastFit(ContinuumTools):
                 synthphot=True, south=data['photsys'] == 'S')
             desitemplateflam = desitemplatephot['flam'].data * self.massnorm * self.fluxnorm
 
+            apercorrs, apercorr = np.zeros(len(self.synth_bands), 'f4'), 0.0
+
             # Fit using the templates with line-emission.
             quickcoeff, _ = self._call_nnls(desitemplates, specflux, specivar)
+            if np.all(quickcoeff == 0):
+                self.log.warning('Quick continuum coefficients are all zero.')
+            else:
+                # Synthesize grz photometry from the full-wavelength SED to make
+                # sure we get the z-band correct.
+                sedtemplates, _ = self.templates2data(
+                    input_templateflux, self.templatewave, 
+                    vdisp=use_vdisp, redshift=redshift,
+                    synthphot=False)
+                quicksedflux = sedtemplates.dot(quickcoeff)
+                
+                quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / self.fluxnorm, ztemplatewave).as_array().tolist()[0])
+                quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, nanomaggies=False)
 
-            # Synthesize grz photometry from the full-wavelength SED.
-            sedtemplates, _ = self.templates2data(
-                input_templateflux, self.templatewave, 
-                vdisp=use_vdisp, redshift=redshift,
-                synthphot=False)
-            quicksedflux = sedtemplates.dot(quickcoeff)
-
-            quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / self.fluxnorm, ztemplatewave).as_array().tolist()[0])
-            quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, nanomaggies=False)
-
-            print('Aperture corrections need to be more robust!')
-            apercorrs = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
-                                   for band in self.synth_bands]) / quickphot['nanomaggies'].data
-            apercorr = np.median(apercorrs)
+                numer = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
+                                   for band in self.synth_bands])
+                denom = quickphot['nanomaggies'].data
+                I = (numer > 0.0) * (denom > 0.0)
+                if np.any(I):
+                    apercorrs[I] = numer[I] / denom[I]
+                I = apercorrs > 0
+                if np.any(I):
+                    apercorr = np.median(apercorrs[I])
+                    
             apercorr_g, apercorr_r, apercorr_z = apercorrs
 
             self.log.info('Median aperture correction = {:.3f} [{:.3f}-{:.3f}].'.format(
@@ -973,7 +992,7 @@ class FastFit(ContinuumTools):
   
             # Compute the full-wavelength best-fitting model.
             if np.all(coeff == 0):
-                self.log.warning('Continuum coefficients are all zero or the data were not fit.')
+                self.log.warning('Continuum coefficients are all zero.')
                 sedmodel = np.zeros(self.npix, 'f4')
                 desimodel = np.zeros_like(specflux)
                 desimodel_nolines = np.zeros_like(specflux)
@@ -998,7 +1017,7 @@ class FastFit(ContinuumTools):
             #png = 'desi-users/ioannis/tmp/junk.png'
             linemask = np.hstack(data['linemask'])
             if np.all(coeff == 0):
-                self.log.warning('Continuum coefficients are all zero or the data were not fit.')
+                self.log.warning('Continuum coefficients are all zero.')
                 _smooth_continuum = np.zeros_like(specwave)
             else:
                 # Need to be careful we don't pass a large negative residual
@@ -1011,8 +1030,6 @@ class FastFit(ContinuumTools):
                     specwave, residuals, specivar / apercorr**2,
                     redshift, linemask=linemask, png=png)
 
-            pdb.set_trace()
-            
             # Unpack the continuum into individual cameras.
             continuummodel, smooth_continuum = [], []
             for camerapix in data['camerapix']:
@@ -2413,29 +2430,28 @@ class FastFit(ContinuumTools):
             filters = self.bassmzls
             allfilters = self.bassmzlswise
 
-        survey = None
-        if 'SURVEY' not in metadata.colnames:
-            if np.any([metadata['DESI_TARGET'] > 0, metadata['BGS_TARGET'] > 0, metadata['MWS_TARGET'] > 0, metadata['SCND_TARGET'] > 0]):
-                survey = 'Main'
-            else:
-                for checksurvey in ['SV1', 'SV2', 'SV3']:
-                    #bit = []
-                    for targ in ['DESI', 'BGS', 'MWS', 'SCND']:
-                        if metadata['{}_{}_TARGET'.format(checksurvey, targ)] > 0:
-                            survey = checksurvey.lower()
-                            #bit += ['{}_{}_TARGET: {}'.format(checksurvey, targ, metadata['{}_{}_TARGET'.format(checksurvey, targ)])]
-                    if survey is not None:
-                        break
-                if survey is None:
-                    if metadata['CMX_TARGET'] == 0:
-                        errmsg = 'Unable to determine survey!'
-                        log.critical(errmsg)
-                        raise ValueError(errmsg)
-                    else:
-                        survey = 'CMX'
-        else:
-            survey = metadata['SURVEY']
-    
+        #survey = None
+        #if 'SURVEY' not in metadata.colnames:
+        #    if np.any([metadata['DESI_TARGET'] > 0, metadata['BGS_TARGET'] > 0, metadata['MWS_TARGET'] > 0, metadata['SCND_TARGET'] > 0]):
+        #        survey = 'Main'
+        #    else:
+        #        for checksurvey in ['SV1', 'SV2', 'SV3']:
+        #            #bit = []
+        #            for targ in ['DESI', 'BGS', 'MWS', 'SCND']:
+        #                if metadata['{}_{}_TARGET'.format(checksurvey, targ)] > 0:
+        #                    survey = checksurvey.lower()
+        #                    #bit += ['{}_{}_TARGET: {}'.format(checksurvey, targ, metadata['{}_{}_TARGET'.format(checksurvey, targ)])]
+        #            if survey is not None:
+        #                break
+        #        if survey is None:
+        #            if metadata['CMX_TARGET'] == 0:
+        #                errmsg = 'Unable to determine survey!'
+        #                log.critical(errmsg)
+        #                raise ValueError(errmsg)
+        #            else:
+        #                survey = 'CMX'
+        #else:
+
         if coadd_type == 'healpix':
             target = [
                 'Survey/Program/Healpix: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX']),
@@ -2445,33 +2461,40 @@ class FastFit(ContinuumTools):
                     outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
             target = [
-                #'Survey/Tile/Night/Fiber: {}/{}/{}/{}'.format(survey, metadata['TILEID'], metadata['NIGHT'], metadata['FIBER']),
-                'Survey/Tile: {}/{}'.format(survey, metadata['TILEID']),
+                'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
                 'Night/Fiber {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
                 'TargetID: {}'.format(metadata['TARGETID']),
             ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
-            target = 'Tile/Night: {}/{}, TargetID/Fiber: {}/{}'.format(
-                    metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID'],
-                    metadata['FIBER'])
+            target = [
+                'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
+                'Night/Fiber {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
+                'TargetID: {}'.format(metadata['TARGETID']),
+            ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
         elif coadd_type == 'perexp':
-            target = 'Tile/Night/Expid: {}/{}/{}, TargetID/Fiber: {}/{}'.format(
-                    metadata['TILEID'], metadata['NIGHT'], metadata['EXPID'],
-                    metadata['TARGETID'], metadata['FIBER'])
+            target = [
+                'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
+                'Night/Fiber {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
+                'TargetID: {}'.format(metadata['TARGETID']),
+            ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'],
                     metadata['EXPID'], metadata['TARGETID']))
         elif coadd_type == 'custom':
-            target = 'Survey/Program/HealPix: {}/{}/{}, TargetID: {}'.format(
-                    metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID'])
+            target = [
+                'Survey/Program/Healpix: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX']),
+                'TargetID: {}'.format(metadata['TARGETID']),
+                ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                     outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         else:
-            pass
+            errmsg = 'Unrecognized coadd_type {}!'.format(coadd_type)
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
         #target += bit
 
@@ -2484,7 +2507,7 @@ class FastFit(ContinuumTools):
             #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
 
             'z': '$z={:.7f}$'.format(redshift),
-            'zredrock': '$z_{{\\rm Redrock}}={:.7f}$'.format(metadata['Z_RR']),
+            'zwarn': '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN']),
             'dn4000_model': '$D_{{n}}(4000)_{{\\rm model}}={:.3f}$'.format(fastspec['DN4000_MODEL']),
 
             'cchi2': '$\\chi^{{2}}_{{\\nu,phot}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
@@ -2501,6 +2524,9 @@ class FastFit(ContinuumTools):
             'absmag_gr': '$^{{0.1}}(g-r)={:.3f}$'.format(fastspec['ABSMAG_SDSS_G']-fastspec['ABSMAG_SDSS_R']),
             'absmag_rz': '$^{{0.1}}(r-z)={:.3f}$'.format(fastspec['ABSMAG_SDSS_R']-fastspec['ABSMAG_SDSS_Z']),       
             }
+
+        if redshift != metadata['Z_RR']:
+            leg['zredrock'] = '$z_{{\\rm Redrock}}={:.7f}$'.format(metadata['Z_RR'])
 
         if fastspec['VDISP_IVAR'] > 0:
             leg['vdisp'] = '$\\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
@@ -2575,7 +2601,7 @@ class FastFit(ContinuumTools):
         if (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
             fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut and 
             fastspec['HBETA_FLUX'] > 0 and fastspec['OIII_5007_FLUX'] > 0):
-            leg_narrow['oiiihb'] = '$\\log({{\\rm [NII]/H}}\\beta)={:.3f}$'.format(np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
+            leg_narrow['oiiihb'] = '$\\log({{\\rm [OIII]/H}}\\beta)={:.3f}$'.format(np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
         if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
             fastspec['NII_6584_AMP']*np.sqrt(fastspec['NII_6584_AMP_IVAR']) > snrcut and 
             fastspec['HALPHA_FLUX'] > 0 and fastspec['NII_6584_FLUX'] > 0):
@@ -2866,8 +2892,8 @@ class FastFit(ContinuumTools):
             else:
                 sed_ymin, sed_ymax = [30, 20]
             
-        if sed_ymin > 27:
-            sed_ymin = 27
+        if sed_ymin > 30:
+            sed_ymin = 30
         if np.isnan(sed_ymin) or np.isnan(sed_ymax):
             raise('Problem here!')
     
@@ -3172,7 +3198,12 @@ class FastFit(ContinuumTools):
 
         txt = [
             r'{}'.format(leg['z']),
-            r'{}'.format(leg['zredrock']),
+        ]
+        if 'zredrock' in legkeys:
+            txt += [r'{}'.format(leg['zredrock'])]
+
+        txt += [            
+            r'{}'.format(leg['zwarn']),
             r'{}'.format(leg['vdisp']),
             '',
         ]
