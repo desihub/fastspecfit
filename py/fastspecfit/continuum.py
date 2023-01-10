@@ -333,7 +333,7 @@ class ContinuumTools(object):
         dn4000 =  (blufactor / redfactor) * numer / denom
         if flam_ivar is not None:
             dn4000_ivar = (1.0 / (dn4000**2)) / (denom_var / (denom**2) + numer_var / (numer**2))
-
+    
         return dn4000, dn4000_ivar
 
     def parse_photometry(self, bands, maggies, lambda_eff, ivarmaggies=None,

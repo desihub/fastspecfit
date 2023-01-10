@@ -333,6 +333,7 @@ class FastFit(ContinuumTools):
         
         if not fastphot:
             out.add_column(Column(name='DN4000', length=nobj, dtype='f4'))
+            out.add_column(Column(name='DN4000_OBS', length=nobj, dtype='f4'))
             out.add_column(Column(name='DN4000_IVAR', length=nobj, dtype='f4'))
         out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
 
@@ -708,45 +709,6 @@ class FastFit(ContinuumTools):
 
         return chi2min, xbest, xivar, bestcoeff
 
-    def _qa_dn4000(self):
-        """Simple QA of the Dn(4000) estimate."""
-
-        from fastspecfit.util import ivar2var            
-        import matplotlib.pyplot as plt
-
-        print(dn4000, dn4000_model, 1/np.sqrt(dn4000_ivar))
-
-        restwave = specwave / (1 + redshift) # [Angstrom]
-        flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
-        fnu = specflux * flam2fnu # [erg/s/cm2/Hz]
-        fnu_model = bestfit * flam2fnu
-        fnu_ivar = flam_ivar / flam2fnu**2            
-        fnu_sigma, fnu_mask = ivar2var(fnu_ivar, sigma=True)
-
-        #from astropy.table import Table
-        #out = Table()
-        #out['WAVE'] = restwave
-        #out['FLUX'] = specflux
-        #out['IVAR'] = flam_ivar
-        #out.write('desi-39633089965589981.fits', overwrite=True)
-        
-        I = (restwave > 3835) * (restwave < 4115)
-        J = (restwave > 3835) * (restwave < 4115) * fnu_mask
-
-        fig, ax = plt.subplots()
-        ax.fill_between(restwave[I], fnu[I]-fnu_sigma[I], fnu[I]+fnu_sigma[I],
-                        label='Data Dn(4000)={:.3f}+/-{:.3f}'.format(dn4000, 1/np.sqrt(dn4000_ivar)))
-        ax.plot(restwave[I], fnu_model[I], color='red', label='Model Dn(4000)={:.3f}'.format(dn4000_model))
-        ylim = ax.get_ylim()
-        ax.fill_between([3850, 3950], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
-                        color='lightgray', alpha=0.5)
-        ax.fill_between([4000, 4100], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
-                        color='lightgray', alpha=0.5)
-        ax.set_xlabel(r'Rest Wavelength ($\AA$)')
-        ax.set_ylabel(r'$F_{\nu}$ (erg/s/cm2/Hz)')
-        ax.legend()
-        fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
-
     def continuum_specfit(self, data, result, fastphot=False):
         """Fit the non-negative stellar continuum of a single spectrum.
 
@@ -821,11 +783,18 @@ class FastFit(ContinuumTools):
                if np.all(coeff == 0):
                    self.log.warning('Continuum coefficients are all zero.')
                    sedmodel = np.zeros(len(self.templatewave))
+                   dn4000_model = 0.0
                else:
                    sedmodel = sedtemplates.dot(coeff)
 
-            dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel, rest=True)
-            self.log.info('Model Dn(4000)={:.3f}.'.format(dn4000_model))
+                   # Measure Dn(4000) from the line-free model.
+                   sedtemplates_nolines, _ = self.templates2data(
+                       self.templateflux_nolines_nomvdisp[:, agekeep], self.templatewave, 
+                       redshift=redshift, vdisp=None, synthphot=False)
+                   sedmodel_nolines = sedtemplates_nolines.dot(coeff)
+
+                   dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel_nolines, rest=True)
+                   self.log.info('Model Dn(4000)={:.3f}.'.format(dn4000_model))
         else:
             # Combine all three cameras; we will unpack them to build the
             # best-fitting model (per-camera) below.
@@ -996,16 +965,26 @@ class FastFit(ContinuumTools):
                 sedmodel = np.zeros(self.npix, 'f4')
                 desimodel = np.zeros_like(specflux)
                 desimodel_nolines = np.zeros_like(specflux)
+                dn4000_model = 0.0
             else:
                 sedmodel = sedtemplates.dot(coeff)
                 desimodel = desitemplates.dot(coeff)
                 desimodel_nolines = desitemplates_nolines.dot(coeff)
 
+                # Measure Dn(4000) from the line-free model.
+                sedtemplates_nolines, _ = self.templates2data(
+                    input_templateflux_nolines, self.templatewave, 
+                    vdisp=use_vdisp, redshift=redshift,
+                    synthphot=False)
+                sedmodel_nolines = sedtemplates_nolines.dot(coeff)
+               
+                dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel_nolines, rest=True)
+
             # Get DN(4000). Specivar is line-masked so we can't use it!
             dn4000, dn4000_ivar = self.get_dn4000(specwave, specflux, flam_ivar=flamivar, 
                                                   redshift=redshift, rest=False)
-            dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel, rest=True)
-
+            #dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel, rest=True)
+            
             if dn4000_ivar > 0:
                 self.log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Model Dn(4000)={:.3f}'.format(
                     dn4000, 1/np.sqrt(dn4000_ivar), dn4000_model))
@@ -1099,7 +1078,7 @@ class FastFit(ContinuumTools):
             result['APERCORR_G'] = apercorr_g
             result['APERCORR_R'] = apercorr_r
             result['APERCORR_Z'] = apercorr_z
-            result['DN4000'] = dn4000
+            result['DN4000_OBS'] = dn4000
             result['DN4000_IVAR'] = dn4000_ivar
 
         log.info('Continuum-fitting took {:.2f} seconds.'.format(time.time()-tall))
@@ -2068,10 +2047,56 @@ class FastFit(ContinuumTools):
         modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4', data=modelsmoothcontinuum))
         modelspectra.add_column(Column(name='EMLINEMODEL', dtype='f4', data=modelemspectrum))
 
-        # Finally, optionally synthesize photometry.
+        # Finally, optionally synthesize photometry and measure Dn(4000) from
+        # the line-free spectrum.
         if synthphot:
             modelflux = modelcontinuum[0, :] + modelsmoothcontinuum[0, :] + modelemspectrum[0, :]
             self._synthphot_spectrum(data, result, modelwave, modelflux)
+
+        # measure DN(4000) without the emission lines
+        if result['DN4000_IVAR'] > 0:
+            fluxnolines = data['coadd_flux'] - modelemspectrum[0, :]
+            dn4000_nolines, _ = self.get_dn4000(modelwave, fluxnolines, redshift=redshift)
+            self.log.info('Emission line-free Dn(4000)={:.3f}.'.format(dn4000_nolines))
+            result['DN4000'] = dn4000_nolines
+
+            # Simple QA of the Dn(4000) estimate.
+            if False:
+                import matplotlib.pyplot as plt
+
+                dn4000, dn4000_obs, dn4000_model, dn4000_ivar = result['DN4000'], result['DN4000_OBS'], result['DN4000_MODEL'], result['DN4000_IVAR']
+                print(dn4000, dn4000_obs, dn4000_model, 1/np.sqrt(dn4000_ivar))
+        
+                restwave = modelwave / (1 + redshift) # [Angstrom]
+                flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+                fnu_obs = data['coadd_flux'] * flam2fnu # [erg/s/cm2/Hz]
+                fnu = fluxnolines * flam2fnu # [erg/s/cm2/Hz]
+    
+                fnu_model = modelcontinuum[0, :] * flam2fnu
+                fnu_fullmodel = modelflux * flam2fnu
+                
+                fnu_ivar = data['coadd_ivar'] / flam2fnu**2            
+                fnu_sigma, fnu_mask = ivar2var(fnu_ivar, sigma=True)
+        
+                I = (restwave > 3835) * (restwave < 4115)
+                J = (restwave > 3835) * (restwave < 4115) * fnu_mask
+        
+                fig, ax = plt.subplots()
+                ax.fill_between(restwave[I], fnu_obs[I]-fnu_sigma[I], fnu_obs[I]+fnu_sigma[I],
+                                label='Observed Dn(4000)={:.3f}+/-{:.3f}'.format(dn4000_obs, 1/np.sqrt(dn4000_ivar)))
+                ax.plot(restwave[I], fnu[I], color='blue', label='Line-free Dn(4000)={:.3f}+/-{:.3f}'.format(
+                    dn4000, 1/np.sqrt(dn4000_ivar)))
+                ax.plot(restwave[I], fnu_fullmodel[I], color='k', label='Model Dn(4000)={:.3f}'.format(dn4000_model))
+                ax.plot(restwave[I], fnu_model[I], color='red', label='Model Dn(4000)={:.3f}'.format(dn4000_model))
+                ylim = ax.get_ylim()
+                ax.fill_between([3850, 3950], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
+                                color='lightgray', alpha=0.5)
+                ax.fill_between([4000, 4100], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
+                                color='lightgray', alpha=0.5)
+                ax.set_xlabel(r'Rest Wavelength ($\AA$)')
+                ax.set_ylabel(r'$F_{\nu}$ (erg/s/cm2/Hz)')
+                ax.legend()
+                fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
 
         log.info('Emission-line fitting took {:.2f} seconds.'.format(time.time()-tall))
 
@@ -2378,11 +2403,6 @@ class FastFit(ContinuumTools):
         for iband, band in enumerate(self.synth_bands):
             result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] # * 'nanomaggies'
 
-        ## measure DN(4000) without the emission lines
-        #if False:
-        #    dn4000_nolines, _ = self.get_dn4000(emlinewave, specflux_nolines, redshift=redshift)
-        #    result['DN4000_NOLINES'] = dn4000_nolines
-    
     def qa_fastspec(self, data, fastspec, metadata, coadd_type='healpix',
                     spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
                     fastphot=False, outprefix=None, outdir=None):
@@ -3169,7 +3189,7 @@ class FastFit(ContinuumTools):
         fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
                  ha='center', va='center', fontsize=24)
 
-        xpos = urpos.x1 + 0.04
+        xpos = urpos.x1 + 0.05
         ypos = (urpos.y1 - lpos.y0) / 2 + lpos.y0# + 0.03
         fig.text(xpos, ypos, 
                  r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
