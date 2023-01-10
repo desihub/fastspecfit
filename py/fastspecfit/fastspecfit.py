@@ -371,18 +371,18 @@ class FastFit(ContinuumTools):
             out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
     
             out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
-            #out.add_column(Column(name='NARROW_Z_ERR', length=nobj, dtype='f8'))
+            out.add_column(Column(name='NARROW_ZRMS', length=nobj, dtype='f8'))
             out.add_column(Column(name='BROAD_Z', length=nobj, dtype='f8'))
-            #out.add_column(Column(name='BROAD_Z_ERR', length=nobj, dtype='f8'))
+            out.add_column(Column(name='BROAD_ZRMS', length=nobj, dtype='f8'))
             out.add_column(Column(name='UV_Z', length=nobj, dtype='f8'))
-            #out.add_column(Column(name='UV_Z_ERR', length=nobj, dtype='f8'))
+            out.add_column(Column(name='UV_ZRMS', length=nobj, dtype='f8'))
     
             out.add_column(Column(name='NARROW_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-            #out.add_column(Column(name='NARROW_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+            out.add_column(Column(name='NARROW_SIGMARMS', length=nobj, dtype='f4', unit=u.kilometer / u.second))
             out.add_column(Column(name='BROAD_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-            #out.add_column(Column(name='BROAD_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+            out.add_column(Column(name='BROAD_SIGMARMS', length=nobj, dtype='f4', unit=u.kilometer / u.second))
             out.add_column(Column(name='UV_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
-            #out.add_column(Column(name='UV_SIGMA_ERR', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+            out.add_column(Column(name='UV_SIGMARMS', length=nobj, dtype='f4', unit=u.kilometer / u.second))
     
             # special columns for the fitted doublets
             out.add_column(Column(name='MGII_DOUBLET_RATIO', length=nobj, dtype='f4'))
@@ -1877,7 +1877,7 @@ class FastFit(ContinuumTools):
         if result['DN4000_IVAR'] > 0:
             fluxnolines = data['coadd_flux'] - modelemspectrum[0, :]
             dn4000_nolines, _ = self.get_dn4000(modelwave, fluxnolines, redshift=redshift)
-            self.log.info('Emission line-free Dn(4000)={:.3f}.'.format(dn4000_nolines))
+            self.log.info('Dn(4000)={:.3f} in the emission-line subtracted spectrum.'.format(dn4000_nolines))
             result['DN4000'] = dn4000_nolines
 
             # Simple QA of the Dn(4000) estimate.
@@ -2173,32 +2173,32 @@ class FastFit(ContinuumTools):
         if len(narrow_redshifts) > 0:
             result['NARROW_Z'] = np.median(narrow_redshifts)
             result['NARROW_SIGMA'] = np.median(narrow_sigmas) # * u.kilometer / u.second
-            #result['NARROW_Z_ERR'] = np.std(narrow_redshifts)
-            #result['NARROW_SIGMA_ERR'] = np.std(narrow_sigmas)
+            result['NARROW_ZRMS'] = np.std(narrow_redshifts)
+            result['NARROW_SIGMARMS'] = np.std(narrow_sigmas)
         else:
             result['NARROW_Z'] = redshift
             
         if len(broad_redshifts) > 0:
             result['BROAD_Z'] = np.median(broad_redshifts)
             result['BROAD_SIGMA'] = np.median(broad_sigmas) # * u.kilometer / u.second
-            #result['BROAD_Z_ERR'] = np.std(broad_redshifts)
-            #result['BROAD_SIGMA_ERR'] = np.std(broad_sigmas)
+            result['BROAD_ZRMS'] = np.std(broad_redshifts)
+            result['BROAD_SIGMARMS'] = np.std(broad_sigmas)
         else:
             result['BROAD_Z'] = redshift
 
         if len(uv_redshifts) > 0:
             result['UV_Z'] = np.median(uv_redshifts)
             result['UV_SIGMA'] = np.median(uv_sigmas) # * u.kilometer / u.second
-            #result['UV_Z_ERR'] = np.std(uv_redshifts)
-            #result['UV_SIGMA_ERR'] = np.std(uv_sigmas)
+            result['UV_ZRMS'] = np.std(uv_redshifts)
+            result['UV_SIGMARMS'] = np.std(uv_sigmas)
         else:
             result['UV_Z'] = redshift
 
         # fragile
         if 'debug' in self.log.name:
             for line in ('NARROW', 'BROAD', 'UV'):
-                self.log.debug('{}_Z: {:.12f}'.format(line, result['{}_Z'.format(line)]))
-                self.log.debug('{}_SIGMA: {:.3f}'.format(line, result['{}_SIGMA'.format(line)]))
+                self.log.debug('{}_Z: {:.9f}+/-{:.9f}'.format(line, result['{}_Z'.format(line)], result['{}_ZRMS'.format(line)]))
+                self.log.debug('{}_SIGMA: {:.3f}+/-{:.3f}'.format(line, result['{}_SIGMA'.format(line)], result['{}_SIGMARMS'.format(line)]))
 
     def _synthphot_spectrum(self, data, result, modelwave, modelflux):
         """Synthesize photometry from the best-fitting model (continuum+emission lines).
