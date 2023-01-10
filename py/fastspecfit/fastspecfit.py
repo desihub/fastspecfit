@@ -995,16 +995,24 @@ class FastFit(ContinuumTools):
                     dn4000, dn4000_model))
 
             png = None
+            #png = 'desi-users/ioannis/tmp/junk.png'
             linemask = np.hstack(data['linemask'])
             if np.all(coeff == 0):
                 self.log.warning('Continuum coefficients are all zero or the data were not fit.')
                 _smooth_continuum = np.zeros_like(specwave)
             else:
+                # Need to be careful we don't pass a large negative residual
+                # where there are gaps in the data.
+                residuals = apercorr*specflux - desimodel_nolines
+                I = (specflux == 0.0) * (specivar == 0.0)
+                if np.any(I):
+                    residuals[I] = 0.0
                 _smooth_continuum, _ = self.smooth_continuum(
-                    specwave, apercorr*specflux - desimodel_nolines, 
-                    specivar / apercorr**2, redshift, linemask=linemask, 
-                    png=png)
-    
+                    specwave, residuals, specivar / apercorr**2,
+                    redshift, linemask=linemask, png=png)
+
+            pdb.set_trace()
+            
             # Unpack the continuum into individual cameras.
             continuummodel, smooth_continuum = [], []
             for camerapix in data['camerapix']:
@@ -2618,7 +2626,15 @@ class FastFit(ContinuumTools):
         desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
         fullcontinuum = np.hstack(desicontinuum)
 
-        desiresiduals = [data['flux'][icam] - desicontinuum[icam] for icam in np.arange(len(data['cameras']))]
+         # Need to be careful we don't pass a large negative residual where
+         # there are gaps in the data.
+        desiresiduals = []
+        for icam in np.arange(len(data['cameras'])):
+            resid = data['flux'][icam] - desicontinuum[icam]
+            I = (data['flux'][icam] == 0.0) * (data['flux'][icam] == 0.0)
+            if np.any(I):
+                resid[I] = 0.0
+            desiresiduals.append(resid)
         
         if np.all(fastspec['CONTINUUM_COEFF'] == 0):
             fullsmoothcontinuum = np.zeros_like(fullwave)

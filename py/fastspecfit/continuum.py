@@ -614,12 +614,22 @@ class ContinuumTools(object):
                 smooth_mask.append(True)
                 continue
 
+            # Toss out regions with too little good data.
+            if np.sum(sivar > 0) < 10:
+                smooth_mask.append(True)
+                continue
+
             I = np.isin(sflux, cflux) # fragile?
-            smooth_wave.append(np.mean(swave[I]))
-            smooth_mask.append(False)
-            
             sig = np.std(cflux) # simple median and sigma
             mn = np.median(cflux)
+
+            # One more check for crummy spectral regions.
+            if mn == 0.0:
+                smooth_mask.append(True)
+                continue
+
+            smooth_wave.append(np.mean(swave[I]))
+            smooth_mask.append(False)
 
             ## astropy is too slow!!
             #cflux = sigma_clip(sflux, sigma=2.0, cenfunc='median', stdfunc='std', masked=False, grow=1.5)
@@ -640,10 +650,10 @@ class ContinuumTools(object):
             smooth_sigma.append(sig)
             smooth_flux.append(mn)
 
+        smooth_mask = np.array(smooth_mask)
         smooth_wave = np.array(smooth_wave)
         smooth_sigma = np.array(smooth_sigma)
         smooth_flux = np.array(smooth_flux)
-        smooth_mask = np.array(smooth_mask)
 
         # corner case for very wacky spectra
         if len(smooth_flux) == 0:
@@ -655,6 +665,10 @@ class ContinuumTools(object):
 
         smooth = median_filter(smooth_flux, medbin, mode='nearest')
         smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
+
+        Z = (flux == 0.0) * (ivar == 0.0)
+        if np.sum(Z) > 0:
+            smooth[Z] = 0.0
 
         # Optional QA.
         if png:
@@ -670,10 +684,10 @@ class ContinuumTools(object):
             for xx in ax:
                 #xx.set_xlim(3800, 4300)
                 #xx.set_xlim(5200, 6050)
-                xx.set_xlim(7000, 9000)
-                #xx.set_xlim(6300, 6900)
+                #xx.set_xlim(7000, 9000)
+                xx.set_xlim(6300, 6900)
             for xx in ax:
-                xx.set_ylim(-1, 8)
+                xx.set_ylim(-2.5, 2)
             zlinewaves = self.linetable['restwave'] * (1 + redshift)
             linenames = self.linetable['name']
             inrange = np.where((zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave)))[0]
