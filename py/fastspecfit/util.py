@@ -15,7 +15,7 @@ try: # this fails when building the documentation
     from scipy import constants
     C_LIGHT = constants.c / 1000.0 # [km/s]
 except:
-    C_LIGHT = 299792.458
+    C_LIGHT = 299792.458 # [km/s]
 
 def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
     """Safely convert an inverse variance to a variance. Note that we clip at 1e-3

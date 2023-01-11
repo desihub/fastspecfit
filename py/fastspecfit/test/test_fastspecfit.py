@@ -25,7 +25,7 @@ class TestFastspec(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         os.environ['DESI_ROOT'] = resource_filename('fastspecfit.test', 'data')
-        cls.ssptemplates = os.path.join(resource_filename('fastspecfit.test', 'data'),
+        cls.templates = os.path.join(resource_filename('fastspecfit.test', 'data'),
                                         'SSP_Padova_CKC14z_Kroupa_Z0.0190.fits')
         cls.mapdir = resource_filename('fastspecfit.test', 'data')
         cls.dr9dir = resource_filename('fastspecfit.test', 'data')
@@ -45,7 +45,7 @@ class TestFastspec(unittest.TestCase):
     def test_ContinuumFit(self):
         """Test the ContinuumTools class."""
         from fastspecfit.continuum import ContinuumFit
-        CFit = ContinuumFit(mapdir=self.mapdir, ssptemplates=self.ssptemplates)
+        CFit = ContinuumFit(mapdir=self.mapdir, templates=self.templates)
 
         # expected attributes
         self.assertTrue(CFit.metallicity in ['Z0.0190'])
@@ -58,8 +58,8 @@ class TestFastspec(unittest.TestCase):
         import fitsio
         from fastspecfit.fastspecfit import fastphot, parse
 
-        cmd = 'fastphot {} -o {} --mapdir {} --dr9dir {} --ssptemplates {}'.format(
-            self.redrockfile, self.fastphot_outfile, self.mapdir, self.dr9dir, self.ssptemplates)
+        cmd = 'fastphot {} -o {} --mapdir {} --dr9dir {} --templates {}'.format(
+            self.redrockfile, self.fastphot_outfile, self.mapdir, self.dr9dir, self.templates)
         args = parse(options=cmd.split()[1:])
         fastphot(args=args)
 
@@ -75,8 +75,8 @@ class TestFastspec(unittest.TestCase):
         import fitsio
         from fastspecfit.fastspecfit import fastspec, parse
     
-        cmd = 'fastspec {} -o {} --mapdir {} --dr9dir {} --ssptemplates {}'.format(
-            self.redrockfile, self.fastspec_outfile, self.mapdir, self.dr9dir, self.ssptemplates)
+        cmd = 'fastspec {} -o {} --mapdir {} --dr9dir {} --templates {}'.format(
+            self.redrockfile, self.fastspec_outfile, self.mapdir, self.dr9dir, self.templates)
         args = parse(options=cmd.split()[1:])
         fastspec(args=args)
     
