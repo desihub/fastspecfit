@@ -11,6 +11,8 @@ import django
 from astropy.table import Table, hstack
 #from astrometry.util.starutil_numpy import radectoxyz
 
+C_LIGHT = 299792.458 # [km/s]
+
 # change me!
 specprod = 'fuji'
 
@@ -44,6 +46,7 @@ def main():
         'TARGETID',
         'RA',
         'DEC',
+        'COADD_FIBERSTATUS',
         'TILEID_LIST',
         #'TILEID',
         'SURVEY',
@@ -126,13 +129,16 @@ def main():
         'FLUX_SYNTH_G',
         'FLUX_SYNTH_R',
         'FLUX_SYNTH_Z',
-        'FLUX_SYNTH_MODEL_G',
-        'FLUX_SYNTH_MODEL_R',
-        'FLUX_SYNTH_MODEL_Z',
-        'FLUX_SYNTH_MODEL_W1',
-        'FLUX_SYNTH_MODEL_W2',
-        'FLUX_SYNTH_MODEL_W3',
-        'FLUX_SYNTH_MODEL_W4',
+        'FLUX_SYNTH_SPECMODEL_G',
+        'FLUX_SYNTH_SPECMODEL_R',
+        'FLUX_SYNTH_SPECMODEL_Z',
+        'FLUX_SYNTH_PHOTMODEL_G',
+        'FLUX_SYNTH_PHOTMODEL_R',
+        'FLUX_SYNTH_PHOTMODEL_Z',
+        'FLUX_SYNTH_PHOTMODEL_W1',
+        'FLUX_SYNTH_PHOTMODEL_W2',
+        'FLUX_SYNTH_PHOTMODEL_W3',
+        'FLUX_SYNTH_PHOTMODEL_W4',
         'KCORR_U',
         'ABSMAG_U',
         'ABSMAG_IVAR_U',
@@ -179,12 +185,12 @@ def main():
         'NARROW_SIGMA',
         'BROAD_SIGMA',
         'UV_SIGMA',
-        #'NARROW_ZRMS',
-        #'BROAD_ZRMS',
-        #'UV_ZRMS',
-        #'NARROW_SIGMARMS',
-        #'BROAD_SIGMARMS',
-        #'UV_SIGMARMS',
+        'NARROW_ZRMS',
+        'BROAD_ZRMS',
+        'UV_ZRMS',
+        'NARROW_SIGMARMS',
+        'BROAD_SIGMARMS',
+        'UV_SIGMARMS',
         'MGII_DOUBLET_RATIO',
         'OII_DOUBLET_RATIO',
         'SII_DOUBLET_RATIO',
@@ -983,18 +989,16 @@ def main():
 
     # Parse the photometry into strings with limits. Most of this code is taken
     # from continuum.ContinuumTools.parse_photometry deal with measurements
-    nsigma = 1.0
-    def convert_phot(data, prefix, suffix, bands):
+    def convert_phot(data, prefix, suffix, bands, nsigma=2.0):
         for band in bands:
             maggies = data['{}FLUX{}_{}'.format(prefix, suffix, band)]
             if 'FIBER' in prefix or 'SYNTH' in suffix:
-                # e.g., FIBERABMAG_G, FIBERTOTMAG_G, ABMAG_SYNTH_G, and ABMAG_SYNTH_MODEL_G
+                # e.g., FIBERABMAG_G, FIBERTOTMAG_G, ABMAG_SYNTH_G, and ABMAG_SYNTH_PHOTMODEL_G, and ABMAG_SYNTH_SPECMODEL_G
                 data['{}ABMAG{}_{}'.format(prefix, suffix, band)] = np.array('', dtype='U6') 
                 good = np.where(maggies > 0)[0]
                 if len(good) > 0:
                     data['{}ABMAG{}_{}'.format(prefix, suffix, band)][good] = np.array(list(
                         map(lambda x: '{:.3f}'.format(x), -2.5 * np.log10(1e-9 * maggies[good]))))
-                    
                 neg = np.where(maggies <= 0)[0]
                 if len(neg) > 0:
                     data['{}ABMAG{}_{}'.format(prefix, suffix, band)][neg] = '...'
@@ -1030,9 +1034,10 @@ def main():
         return data
 
     for prefix, suffix, bands in zip(
-            ['', 'FIBER', 'FIBERTOT', '', ''],
-            ['', '', '', '_SYNTH', '_SYNTH_MODEL'],
+            ['', 'FIBER', 'FIBERTOT', '', '', ''],
+            ['', '', '', '_SYNTH', '_SYNTH_SPECMODEL', '_SYNTH_PHOTMODEL'],
             [['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4'],
+             ['G', 'R', 'Z'],
              ['G', 'R', 'Z'],
              ['G', 'R', 'Z'],
              ['G', 'R', 'Z'],
@@ -1040,21 +1045,22 @@ def main():
              ]):
         data = convert_phot(data, prefix, suffix, bands)
 
-    #for prefix, suffix, bands in zip(
-    #        ['', 'FIBER', 'FIBERTOT', '', '', 'PHOT_'],
-    #        ['', '', '', '_SYNTH', '_SYNTH_MODEL', '_SYNTH_MODEL'],
-    #        [['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']
-    #         ]):
-    #    data = convert_phot(data, prefix, suffix, bands)
+    #import pdb ; pdb.set_trace()
 
-    #import pdb ; pdb.set_trace()                
-
-    data['VDISP_ERR'] = np.repeat('          ', len(data))
+    # parse some uncertainties
+    data['VDISP_ERR'] = np.zeros(len(data), dtype='U10') #np.repeat('          ', len(data))
     I = data['VDISP_IVAR'] > 0
     if np.any(I):
         vdisp_err = 1 / np.sqrt(data['VDISP_IVAR'][I])
         data['VDISP_ERR'][I] = np.array(list(map(lambda x: '&#177;{:.0f}'.format(x).strip(), vdisp_err)))
+
+    for suffix in ['NARROW', 'BROAD', 'UV']:
+        data['{}_DV'.format(suffix)] = C_LIGHT*(data['{}_Z'.format(suffix)]-data['Z'])
+        data['{}_DV_ERR'.format(suffix)] = np.array(list(map(lambda x: '&#177;{:.0f}'.format(x).strip(), C_LIGHT*data['{}_ZRMS'.format(suffix)])))
         
+    for suffix in ['NARROW', 'BROAD', 'UV']:
+        data['{}_SIGMA_ERR'.format(suffix)] = np.array(list(map(lambda x: '&#177;{:.0f}'.format(x).strip(), data['{}_SIGMARMS'.format(suffix)])))
+
     # get uncertainties on the emission-line measurements
     lines = np.array([col[:-4] for col in data.colnames if col[-4:] == '_AMP'])
     for line in lines:

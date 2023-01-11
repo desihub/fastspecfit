@@ -33,7 +33,9 @@ DEBUG = True
 ALLOWED_HOSTS = ['127.0.0.1',
                  'testserver',
                  #'lb.cosmo-sga.development.svc.spin.nersc.org',
-                 'fastspecfit.legacysurvey.org']
+                 'fastspecfit.desi.lbl.gov',
+                 'fastspecfit.legacysurvey.org',
+                 ]
 
 # Application definition
 
