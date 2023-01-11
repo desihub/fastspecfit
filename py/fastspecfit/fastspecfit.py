@@ -2355,10 +2355,10 @@ class FastFit(ContinuumTools):
             'cchi2': '$\\chi^{{2}}_{{\\nu,phot}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
             'rchi2': '$\\chi^{{2}}_{{\\nu,spec}}$={:.3f}'.format(fastspec['RCHI2']),
 
-            'age': '<Age>$={:.3f}$ Gyr'.format(fastspec['AGE']),
+            'age': 'Age$={:.3f}$ Gyr'.format(fastspec['AGE']),
             'AV': '$A_{{V}}={:.3f}$ mag'.format(fastspec['AV']),
             'mstar': '$\\log_{{10}}(M/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
-            'sfr': '${{\\rm SFR}}={:.2f}\ M_{{\odot}}/{{\\rm yr}}$'.format(fastspec['SFR']),
+            'sfr': '${{\\rm SFR}}={:.1f}\ M_{{\odot}}/{{\\rm yr}}$'.format(fastspec['SFR']),
             'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
             'zzsun': '$Z/Z_{{\\odot}}={:.3f}$'.format(fastspec['ZZSUN']),
 
@@ -2381,21 +2381,48 @@ class FastFit(ContinuumTools):
 
         # kinematics
         if fastspec['NARROW_Z'] != redshift:
-            leg['dv_narrow'] = '$\\Delta v_{{\\rm narrow}}={:.0f}$ km/s'.format(C_LIGHT*(fastspec['NARROW_Z']-redshift))
+            if fastspec['NARROW_ZRMS'] > 0:
+                leg['dv_narrow'] = '$\\Delta v_{{\\rm narrow}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['NARROW_Z']-redshift), C_LIGHT*fastspec['NARROW_ZRMS'])
+            else:
+                leg['dv_narrow'] = '$\\Delta v_{{\\rm narrow}}={:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['NARROW_Z']-redshift))
         if fastspec['NARROW_SIGMA'] != 0.0:
-            leg['sigma_narrow'] = '$\\sigma_{{\\rm narrow}}={:.0f}$ km/s'.format(fastspec['NARROW_SIGMA'])
+            if fastspec['NARROW_SIGMARMS'] > 0:
+                leg['sigma_narrow'] = '$\\sigma_{{\\rm narrow}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    fastspec['NARROW_SIGMA'], fastspec['NARROW_SIGMARMS'])
+            else:
+                leg['sigma_narrow'] = '$\\sigma_{{\\rm narrow}}={:.0f}$ km/s'.format(fastspec['NARROW_SIGMA'])
 
         snrcut = 1.5
         leg_broad, leg_narrow, leg_uv = {}, {}, {}
 
         if fastspec['UV_Z'] != redshift:
-            leg_uv['dv_uv'] = '$\\Delta v_{{\\rm UV}}={:.0f}$ km/s'.format(C_LIGHT*(fastspec['UV_Z']-redshift))
+            if fastspec['UV_ZRMS'] > 0:
+                leg_uv['dv_uv'] = '$\\Delta v_{{\\rm UV}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['UV_Z']-redshift), C_LIGHT*fastspec['UV_ZRMS'])
+            else:
+                leg_uv['dv_uv'] = '$\\Delta v_{{\\rm UV}}={:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['UV_Z']-redshift))
         if fastspec['UV_SIGMA'] != 0.0:
-            leg_uv['sigma_uv'] = '$\\sigma_{{\\rm UV}}={:.0f}$ km/s'.format(fastspec['UV_SIGMA'])
+            if fastspec['UV_SIGMARMS'] > 0:
+                leg_uv['sigma_uv'] = '$\\sigma_{{\\rm UV}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    fastspec['UV_SIGMA'], fastspec['UV_SIGMARMS'])
+            else:
+                leg_uv['sigma_uv'] = '$\\sigma_{{\\rm UV}}={:.0f}$ km/s'.format(fastspec['UV_SIGMA'])
         if fastspec['BROAD_Z'] != redshift:
-            leg_broad['dv_broad'] = '$\\Delta v_{{\\rm broad}}={:.0f}$ km/s'.format(C_LIGHT*(fastspec['BROAD_Z']-redshift))
+            if fastspec['BROAD_ZRMS'] > 0:
+                leg_broad['dv_broad'] = '$\\Delta v_{{\\rm broad}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['BROAD_Z']-redshift), C_LIGHT*fastspec['BROAD_ZRMS'])
+            else:
+                leg_broad['dv_broad'] = '$\\Delta v_{{\\rm broad}}={:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['BROAD_Z']-redshift))
         if fastspec['BROAD_SIGMA'] != 0.0:
-            leg_broad['sigma_broad'] = '$\\sigma_{{\\rm broad}}={:.0f}$ km/s'.format(fastspec['BROAD_SIGMA'])
+            if fastspec['BROAD_SIGMARMS'] > 0:
+                leg_broad['sigma_broad'] = '$\\sigma_{{\\rm broad}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    fastspec['BROAD_SIGMA'], fastspec['BROAD_SIGMARMS'])
+            else:
+                leg_broad['sigma_broad'] = '$\\sigma_{{\\rm broad}}={:.0f}$ km/s'.format(fastspec['BROAD_SIGMA'])
 
         # emission lines
 
@@ -2422,11 +2449,12 @@ class FastFit(ContinuumTools):
 
         if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
             fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
-            leg_narrow['ewoii'] = 'EW([OII] $\lambda\lambda3726,29)={:.1f}\,\\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
-            #leg_narrow['ewoii'] = 'EW([OII])$={:.1f}\ \\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
+            #leg_narrow['ewoii'] = 'EW([OII] $\lambda\lambda3726,29)={:.1f}\,\\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
+            leg_narrow['ewoii'] = 'EW([OII])$={:.1f}\ \\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
 
         if fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut:
-            leg_narrow['ewoiii'] = 'EW([OIII] $\lambda5007={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
+            leg_narrow['ewoiii'] = 'EW([OIII])$={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
+            #leg_narrow['ewoiii'] = 'EW([OIII] $\lambda5007={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
 
         # choose one Balmer line
         if fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut:
@@ -2466,7 +2494,7 @@ class FastFit(ContinuumTools):
             redshift=redshift, synthphot=True, 
             coeff=fastspec['CONTINUUM_COEFF'] * self.massnorm)
         sedwave = self.templatewave * (1 + redshift)
-    
+
         phot = self.parse_photometry(self.bands,
                                      maggies=np.array([metadata['FLUX_{}'.format(band.upper())] for band in self.bands]),
                                      ivarmaggies=np.array([metadata['FLUX_IVAR_{}'.format(band.upper())] for band in self.bands]),
@@ -3002,7 +3030,7 @@ class FastFit(ContinuumTools):
                 xlim = xx.get_xlim()
                 xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
         
-        plt.subplots_adjust(wspace=0.4, top=0.9, bottom=0.1, left=0.07, right=0.92, hspace=0.32)
+        plt.subplots_adjust(wspace=0.4, top=0.9, bottom=0.1, left=0.07, right=0.92, hspace=0.33)
 
         # common axis labels
         ulpos = ax[0].get_position()
@@ -3033,12 +3061,11 @@ class FastFit(ContinuumTools):
         # add some key results about the object at the bottom of the figure
         legkeys = leg.keys()
 
-        legfntsz, toppos, startpos, deltapos = 18, 0.21, 0.05, 0.13
-
-        #leg['sigma_uv'] = 1.0
-        #leg['sigma_broad'] = 1.0
-        #leg['dv_uv'] = 1.0
-        #leg['dv_broad'] = 1.0
+        legfntsz = 17
+        #toppos, startpos, deltapos = 0.21, 0.04, 0.13
+        toppos, leftpos, rightpos, adjust = 0.21, 0.03, 0.62, 0.01
+        nbox = 2 + 1*bool(leg_narrow) + bool(leg_broad)
+        boxpos = np.arange(nbox) * (rightpos - leftpos)/nbox + leftpos
 
         txt = [
             r'{}'.format(leg['z']),
@@ -3047,7 +3074,7 @@ class FastFit(ContinuumTools):
             txt += [r'{}'.format(leg['zredrock'])]
 
         txt += [            
-            r'{}'.format(leg['zwarn']),
+            #r'{}'.format(leg['zwarn']),
             r'{}'.format(leg['vdisp']),
             '',
         ]
@@ -3071,8 +3098,12 @@ class FastFit(ContinuumTools):
             ]
             _ = leg_broad.pop('sigma_broad')
             _ = leg_broad.pop('dv_broad')
-        fig.text(startpos, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
+
+        ibox = 0
+        #fig.text(startpos, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
+        fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
                  bbox=bbox, linespacing=1.4)
+        ibox += 1
 
         txt = [
             r'{}'.format(leg['absmag_r']),
@@ -3083,17 +3114,22 @@ class FastFit(ContinuumTools):
         ]
         if 'dn4000_spec' in legkeys:
             txt += [r'{}'.format(leg['dn4000_spec'])]
-        fig.text(startpos+deltapos, toppos, '\n'.join(txt), ha='left', va='top', 
+            
+        #fig.text(startpos+deltapos, toppos, '\n'.join(txt), ha='left', va='top', 
+        fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top', 
                  fontsize=legfntsz, bbox=bbox, linespacing=1.4)
+        ibox += 1        
 
-        factor = 2
+        #factor = 2
         if bool(leg_narrow):
             txt = []
             for key in leg_narrow.keys():
                 txt += [r'{}'.format(leg_narrow[key])]
-            fig.text(startpos+deltapos*factor, toppos, '\n'.join(txt), ha='left', va='top',
+            #fig.text(startpos+deltapos*factor, toppos, '\n'.join(txt), ha='left', va='top',
+            fig.text(boxpos[ibox]-adjust*2, toppos, '\n'.join(txt), ha='left', va='top',
                      fontsize=legfntsz, bbox=bbox, linespacing=1.4)
-            factor += 1.27
+            ibox += 1        
+            #factor += 1.25
 
         if bool(leg_broad):
             txt = []
@@ -3109,7 +3145,8 @@ class FastFit(ContinuumTools):
                 txt += [r'{}'.format(leg_uv[key])]
 
         if bool(leg_uv) or bool(leg_broad):
-            fig.text(startpos+deltapos*factor, toppos, '\n'.join(txt), ha='left', va='top',
+            #fig.text(startpos+deltapos*factor, toppos, '\n'.join(txt), ha='left', va='top',
+            fig.text(boxpos[ibox]-adjust*1, toppos, '\n'.join(txt), ha='left', va='top',
                      fontsize=legfntsz, bbox=bbox, linespacing=1.4)
 
         self.log.info('Writing {}'.format(pngfile))
