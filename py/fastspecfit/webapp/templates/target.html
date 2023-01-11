@@ -25,16 +25,22 @@ td, th {text-align: center}
 
 {% if result_index > -1 %}
 <br />
-<form style="display:inline;" action="{% url 'target-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 
+<form style="display:inline;" action="{% url 'index' %}#query"><button>Home</button></form> 
 <form style="display:inline;" action="{% url 'target-next' result_index %}"><button{% if not has_next %} disabled{% endif %}>Next</button></form> 
-<form style="display:inline;" action="{% url 'index' %}#query"><button>New</button></form> 
+<form style="display:inline;" action="{% url 'target-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 
 <br />
 {% endif %}
 
 <br />
-<h2>
-  <a href="https://www.legacysurvey.org/viewer-desi/?ra={{ target.ra }}&dec={{ target.dec}}&zoom=15&layer=ls-dr9&targets-dr9-{{ target.survey }}-{{ target.program }}" target="_blank">{{ target.target_name }}</a>
-</h2>
+<h3>
+DESI {{ target.survey }}/{{ target.program }}/{{ target.str_targetid }}
+</h3>
+<h5>
+  <a href="https://www.legacysurvey.org/viewer-desi/?ra={{ target.ra }}&dec={{ target.dec }}&zoom=15&layer=ls-dr9&targets-dr9-{{ target.survey }}-{{ target.program }}" target="_blank">Sky Viewer</a>
+</h5>
+<h5>
+  <a href="{{ target.data_base_url }}">Healpix FITS Catalog</a>
+</h5>
 <br />
 
 <!--
@@ -43,16 +49,16 @@ td, th {text-align: center}
 
 <table class="table table-bordered">
   <tr>
+    <!--
     <td><a href="{{ target.png_base_url }}/fastfit-80613-cumulative-{{ target.str_targetid }}.png">
     <div class="top-crop">
       <img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastfit-80613-cumulative-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
     </div>
-    <!--
-    <td><a href="{{ target.png_base_url }}/fastfit-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
+    -->
+    <td><a href="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
     <div class="top-crop">
       <img class="img-responsive" width="100%" src="{{ target.png_base_url }}/fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png" alt="Missing file fastspec-{{ target.survey }}-{{ target.program }}-{{ target.str_healpix }}-{{ target.str_targetid }}.png">
     </div>
-    -->
     </a></td>
   </tr> 
 </table>
@@ -76,7 +82,7 @@ td, th {text-align: center}
       <th>Program</th>
       <th>TileIDs</th>
       <th>TargetID</th>
-      <th>Healpixel</th>
+      <th>Healpix</th>
       <th>RA<br />(degree)</th>
       <th>Dec<br />(degree)</th>
       <th>DESI</th>
@@ -156,18 +162,25 @@ td, th {text-align: center}
 </div> <!-- end accordian div -->
 
 <h3>Redshift and Photometry</h3><br />
-<p id="topmargin-fiddle1">Note: if z and z<sub>Redrock</sub> differ then the primary
-  redshift z comes from QuasarNet.</p>
 
-<h6>Redrock</h6>
+<h5>Spectroscopy</h5><br />
+<p id="topmargin-fiddle1">Note: if z and z<sub>Redrock</sub> differ then the primary redshift z comes from QuasarNet.</p> 
+
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
+      <th colspan="6"></th>
+      <th colspan="3">Median S/N (pixel<sup>-1</sup>)</th>
+    </tr>
       <th>z</th>
       <th>z<sub>Redrock</sub></th>
-      <th>ZWarn</th>
+      <th>z<sub>warn</sub></th>
       <th>&#916;&#967;<sup>2</sup></th> <!-- Delta-chi^2 -->
       <th>SpecType</th>
+      <th>Coadd<br />Fiberstatus</th>
+      <th>b camera</th>
+      <th>r camera</th>
+      <th>z camera</th>
     </tr>
   </thead>
   <tr>
@@ -176,17 +189,22 @@ td, th {text-align: center}
     <td>{{ target.zwarn }}</td>
     <td>{{ target.deltachi2|floatformat:3 }}</td>
     <td>{{ target.spectype }}</td>
+    <td>{{ target.coadd_fiberstatus }}</td>
+    <td>{{ target.continuum_snr_b|floatformat:1 }}</td>
+    <td>{{ target.continuum_snr_r|floatformat:1 }}</td>
+    <td>{{ target.continuum_snr_z|floatformat:1 }}</td>
   </tr>
 </table>
+<br />
 
-<h6>Legacy Imaging Surveys (Photometric System: {{ target.photsys }})</h6>
-<p id="topmargin-fiddle2">Note: all photometry has been corrected for Galactic extinction.</p>
+<h5>Photometry (Photometric System: {{ target.photsys }})</h5><br />
+<p id="topmargin-fiddle1">Note: all photometry is AB mag and has been corrected for foreground Galactic extinction. Upper limits are 2&sigma;.</p>  
 
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
       <!--<th>AB mag<br />(extinction<br />corrected)</th>-->
-      <th>AB mag</th>
+      <th>&nbsp</th>
       <th>g</th>
       <th>r</th>
       <th>z</th>
@@ -196,16 +214,10 @@ td, th {text-align: center}
       <th>W4</th>
     </tr>
   </thead>
-  <tr>
-    <td>Total</td>
-    <td>{{ target.abmag_g }}{{ target.abmag_err_g|safe }}</td> <!--https://stackoverflow.com/questions/12521567/prevent-from-being-converted-to-amp-in-jinja -->
-    <td>{{ target.abmag_r }}{{ target.abmag_err_r|safe }}</td>
-    <td>{{ target.abmag_z }}{{ target.abmag_err_z|safe }}</td>
-    <td>{{ target.abmag_w1 }}{{ target.abmag_err_w1|safe }}</td>
-    <td>{{ target.abmag_w2 }}{{ target.abmag_err_w2|safe }}</td>
-    <td>{{ target.abmag_w3 }}{{ target.abmag_err_w3|safe }}</td>
-    <td>{{ target.abmag_w4 }}{{ target.abmag_err_w4|safe }}</td>
-  </tr>
+  <thead>
+    <th>Imaging</th>
+    <th colspan="7">&nbsp</th>
+  </thead>
   <tr>
     <td>Fiber</td>
     <td>{{ target.fiberabmag_g|safe }}</td>
@@ -226,69 +238,177 @@ td, th {text-align: center}
     <td>&nbsp</td>
     <td>&nbsp</td>
   </tr>
+  <tr>
+    <td>Total</td>
+    <td>{{ target.abmag_g }}{{ target.abmag_err_g|safe }}</td> <!--https://stackoverflow.com/questions/12521567/prevent-from-being-converted-to-amp-in-jinja -->
+    <td>{{ target.abmag_r }}{{ target.abmag_err_r|safe }}</td>
+    <td>{{ target.abmag_z }}{{ target.abmag_err_z|safe }}</td>
+    <td>{{ target.abmag_w1 }}{{ target.abmag_err_w1|safe }}</td>
+    <td>{{ target.abmag_w2 }}{{ target.abmag_err_w2|safe }}</td>
+    <td>{{ target.abmag_w3 }}{{ target.abmag_err_w3|safe }}</td>
+    <td>{{ target.abmag_w4 }}{{ target.abmag_err_w4|safe }}</td>
+  </tr>
+  <thead>
+    <th>Synthesized</th>
+    <th colspan="7">&nbsp</th>
+  </thead>
+  <tr>
+    <td>Spectroscopic Data</td>
+    <td>{{ target.abmag_synth_g|safe }}</td>
+    <td>{{ target.abmag_synth_r|safe }}</td>
+    <td>{{ target.abmag_synth_z|safe }}</td>
+    <td>&nbsp</td>
+    <td>&nbsp</td>
+    <td>&nbsp</td>
+    <td>&nbsp</td>   
+  </tr>
+  <tr>
+    <td>Spectroscopic Model</td>
+    <td>{{ target.abmag_synth_specmodel_g|safe }}</td>
+    <td>{{ target.abmag_synth_specmodel_r|safe }}</td>
+    <td>{{ target.abmag_synth_specmodel_z|safe }}</td>
+    <td>&nbsp</td>
+    <td>&nbsp</td>
+    <td>&nbsp</td>
+    <td>&nbsp</td>
+  </tr>
+  <tr>
+    <td>Photometric Model</td>
+    <td>{{ target.abmag_synth_photmodel_g|safe }}</td>
+    <td>{{ target.abmag_synth_photmodel_r|safe }}</td>
+    <td>{{ target.abmag_synth_photmodel_z|safe }}</td>
+    <td>{{ target.abmag_synth_photmodel_w1|safe }}</td>
+    <td>{{ target.abmag_synth_photmodel_w2|safe }}</td>
+    <td>{{ target.abmag_synth_photmodel_w3|safe }}</td>
+    <td>{{ target.abmag_synth_photmodel_w4|safe }}</td>
+  </tr>
 </table>
 <br />
 
-<h3>Stellar Continuum Modeling</h3><br />
+<h3>Spectrophotometric Modeling & Properties</h3><br />
 
-<h6>Spectral Properties & Fitting</h6>
+<h5>Stellar Continuum</h5>
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
-      <th colspan="3">Median S/N (pixel<sup>-1</sup>)</th>
-      <th colspan="7">Continuum</th>
-    </tr>
-    <tr>
-      <th>b camera</th>
-      <th>r camera</th>
-      <th>z camera</th>
-      <th>z</th>
-      <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-      <th><Age><br />(Gyr)</th>
-      <th>A<sub>V</sub><br />(mag)</th>
-      <th>&sigma;<br />(km/s)</th>
+      <th>&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;</sub></th> <!-- chi^2 -->
+      <th>Aperture<br />Correction</th>
+      <th>&sigma;<sub>star</sub><br />(km/s)</th>
       <th>D<sub>n</sub>(4000)<br />(data)</th>
       <th>D<sub>n</sub>(4000)<br />(model)</th>
     </tr>
   </thead>
-  <tr>
-    <td>{{ target.continuum_snr_b|floatformat:3 }}</td>
-    <td>{{ target.continuum_snr_r|floatformat:3 }}</td>
-    <td>{{ target.continuum_snr_z|floatformat:3 }}</td>
-    <td>{{ target.continuum_z|floatformat:8 }}</td>
-    <td>{{ target.continuum_rchi2|floatformat:3 }}</td>
-    <td>{{ target.continuum_age|floatformat:3 }}</td>
-    <td>{{ target.continuum_av|floatformat:2 }}</td>
-    <td>{{ target.continuum_vdisp|floatformat:1 }}</td>
-    <td>{{ target.dn4000|floatformat:3 }}</td>
-    <td>{{ target.dn4000_model|floatformat:3 }}</td>
-  </tr>
+  <tdata>
+    <tr>
+      <td>{{ target.continuum_rchi2|floatformat:3 }}</td>
+      <td>{{ target.apercorr|floatformat:2 }}</td>
+      {% if target.vdisp_ivar > 0 %}
+        <td>{{ target.vdisp|floatformat:0 }}{{ target.vdisp_err|safe }}</td>
+      {% else %}
+        <td>{{ target.vdisp|floatformat:0 }}</td>
+      {% endif %}
+      <td>{{ target.dn4000|floatformat:3 }}</td>
+      <td>{{ target.dn4000_model|floatformat:3 }}</td>
+    </tr>
+  <tdata>
 </table>
 <br />
 
-<h6>Synthesized Photometry (Photometric System: {{ target.photsys }})</h6>
-<p id="topmargin-fiddle2">Note: all photometry has been corrected for Galactic extinction.</p>
+<h5>Physical Properties</h5>
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
-      <th>AB mag</th>
-      <th>g</th>
-      <th>r</th>
-      <th>z</th>
+      <th>f<sub>agn</sub></th>
+      <th>Z/Z<sub>sun</sub></th>
+      <th>A<sub>V</sub><br />(mag)</th>
+      <th>SFR<br />(M<sub>sun</sub>/yr)</th>
+      <th>Age<br />(Gyr)</th>
+      <th>log<sub>10</sub>(M/M<sub>sun</sub>)</th>
     </tr>
   </thead>
-  <tr>
-    <td>Data</td>
-    <td>{{ target.abmag_synth_g|safe }}</td>
-    <td>{{ target.abmag_synth_r|safe }}</td>
-    <td>{{ target.abmag_synth_z|safe }}</td>
-  </tr>
-  <tr>
-    <td>Model</td>
-    <td>{{ target.abmag_synth_model_g|safe }}</td>
-    <td>{{ target.abmag_synth_model_r|safe }}</td>
-    <td>{{ target.abmag_synth_model_z|safe }}</td>
-  </tr>
+  <tdata>
+    <tr>
+      <td>{{ target.fagn|floatformat:3 }}</td>
+      <td>{{ target.zzsun|floatformat:3 }}</td>
+      <td>{{ target.av|floatformat:3 }}</td>
+      <td>{{ target.sfr|floatformat:1 }}</td>
+      <td>{{ target.age|floatformat:3 }}</td>
+      <td>{{ target.logmstar|floatformat:3 }}</td>
+    </tr>
+  </tdata>
+</table>
+<br />
+
+<h5>Luminosities</h5>
+<table class="table table-bordered table-hover">
+  <thead class="alert alert-info">
+    <tr>
+      <th>log<sub>10</sub>(L<sub>&nu;, 1500 &#8491;</sub>)<br />(10<sup>-28</sup> erg s<sup>-1</sup>Hz<sup>-1</sup>)</th>
+      <th>log<sub>10</sub>(L<sub>&nu;, 2800 &#8491;</sub>)<br />(10<sup>-28</sup> erg s<sup>-1</sup>Hz<sup>-1</sup>)</th>
+      <th>log<sub>10</sub>(L<sub>5100 &#8491;</sub>)<br />(10<sup>10</sup> L<sub>sun</sub>)</th>
+    </tr>
+  </thead>
+  <tdata>
+    <tr>
+      <td>{{ target.loglnu_1500|floatformat:3 }}</td>
+      <td>{{ target.loglnu_2800|floatformat:3 }}</td>
+      <td>{{ target.logl_5100|floatformat:3 }}</td>
+    </tr>
+  </tdata>
+</table>
+<br />
+
+<h5>K-corrections & Absolute Magnitudes</h5>
+<table class="table table-bordered table-hover">
+  <thead class="alert alert-info">
+    <tr>
+      <th></th>
+      <th colspan="5">SDSS</th>
+      <th colspan="3">Johnson-Morgan</th>
+      <th colspan="2">WISE</th>
+    </tr>
+    <tr>
+      <th>AB mag</th>
+      <th><sup>0.1</sup>u</th>
+      <th><sup>0.1</sup>g</th>
+      <th><sup>0.1</sup>r</th>
+      <th><sup>0.1</sup>i</th>
+      <th><sup>0.1</sup>z</th>
+      <th><sup>0.0</sup>U</th>
+      <th><sup>0.0</sup>B</th>
+      <th><sup>0.0</sup>V</th>
+      <th><sup>0.0</sup>W1</th>
+      <th><sup>0.0</sup>W2</th>
+    </tr>
+  </thead>
+  <tdata>
+    <tr>
+      <td>M<sub>abs</sub></td>
+      <td>{{ target.absmag_sdss_u|floatformat:3 }}</td>
+      <td>{{ target.absmag_sdss_g|floatformat:3 }}</td>
+      <td>{{ target.absmag_sdss_r|floatformat:3 }}</td>
+      <td>{{ target.absmag_sdss_i|floatformat:3 }}</td>
+      <td>{{ target.absmag_sdss_z|floatformat:3 }}</td>
+      <td>{{ target.absmag_u|floatformat:3 }}</td>
+      <td>{{ target.absmag_b|floatformat:3 }}</td>
+      <td>{{ target.absmag_v|floatformat:3 }}</td>
+      <td>{{ target.absmag_w1|floatformat:3 }}</td>
+      <td>{{ target.absmag_w2|floatformat:3 }}</td>
+    </tr>
+    <tr>
+      <td>K<sub>corr</sub></td>
+      <td>{{ target.kcorr_sdss_u|floatformat:3 }}</td>
+      <td>{{ target.kcorr_sdss_g|floatformat:3 }}</td>
+      <td>{{ target.kcorr_sdss_r|floatformat:3 }}</td>
+      <td>{{ target.kcorr_sdss_i|floatformat:3 }}</td>
+      <td>{{ target.kcorr_sdss_z|floatformat:3 }}</td>
+      <td>{{ target.kcorr_u|floatformat:3 }}</td>
+      <td>{{ target.kcorr_b|floatformat:3 }}</td>
+      <td>{{ target.kcorr_v|floatformat:3 }}</td>
+      <td>{{ target.kcorr_w1|floatformat:3 }}</td>
+      <td>{{ target.kcorr_w2|floatformat:3 }}</td>
+    </tr>
+  </tdata>
 </table>
 <br />
 
@@ -307,42 +427,91 @@ td, th {text-align: center}
 
 <h3>Emission-line Modeling</h3><br />
 
-<h6>Average Line-Properties</h6>
+<h5>Spectral Fitting</h5>
+<table class="table table-bordered table-hover">
+  <thead class="alert alert-info">
+    <tr>
+      <th colspan="3">&nbsp</th>
+      <th colspan="3">Doublet Ratios</th>
+    </tr>
+    <tr>
+      <th>&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;</sub></th> <!-- chi^2 -->
+      <th>&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;,broad</sub></th>
+      <th>&#916;&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;,broad</sub></th>
+      <!--<br />(=&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;,narrow</sub>-&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;,broad</sub>)</th>-->
+      <th>Mg II<br />&lambda;2796/&lambda;2803</th>
+      <th>[OII]<br />&lambda;3726/&lambda;3729</th>
+      <th>[SII]<br />&lambda;6731/&lambda;6716</th>
+    </tr>
+  </thead>
+  <tdata>
+    <tr>
+      <td>{{ target.rchi2|floatformat:3 }}</td>
+      <td>{{ target.linerchi2_broad|floatformat:3 }}</td>
+      <td>{{ target.delta_linerchi2|floatformat:3 }}</td>
+      <td>{{ target.mgii_doublet_ratio|floatformat:3 }}</td>
+      <td>{{ target.oii_doublet_ratio|floatformat:3 }}</td>
+      <td>{{ target.sii_doublet_ratio|floatformat:3 }}</td>
+    </tr>
+  <tdata>
+</table>
+<br />
+
+<h5>Average Line-Properties</h5>
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
       <th colspan="2">UV / QSO</th>
       <th colspan="2">Broad H & He</th>
       <th colspan="2">Narrow H, He, & Forbidden</th>
-      <th colspan="3">Doublet Ratios</th>
     </tr>
     <tr>
-      <th>z</th>
+      <th>&#916;v<br />(km/s)</th>
       <th>&sigma;<br />(km/s)</th>
-      <th>z</th>
+      <th>&#916;v<br />(km/s)</th>
       <th>&sigma;<br />(km/s)</th>
-      <th>z</th>
+      <th>&#916;v<br />(km/s)</th>
       <th>&sigma;<br />(km/s)</th>
-      <th>Mg II<br />&lambda;2796/&lambda;2803</th>
-      <th>[OII]<br />&lambda;3726/&lambda;3729</th>
-      <th>[SII]<br />&lambda;6731/&lambda;6716</th>
     </tr>
   </thead>
   <tr>
-    <td>{{ target.uv_z|floatformat:8 }}</td>
-    <td>{{ target.uv_sigma|floatformat:2 }}</td>
-    <td>{{ target.broad_z|floatformat:8 }}</td>
-    <td>{{ target.broad_sigma|floatformat:2 }}</td>
-    <td>{{ target.narrow_z|floatformat:8 }}</td>
-    <td>{{ target.narrow_sigma|floatformat:2 }}</td>
-    <td>{{ target.mgii_doublet_ratio|floatformat:3 }}</td>
-    <td>{{ target.oii_doublet_ratio|floatformat:3 }}</td>
-    <td>{{ target.sii_doublet_ratio|floatformat:3 }}</td>
+    {% if target.uv_zrms > 0 %}
+      <td>{{ target.uv_dv|floatformat:0 }}{{ target.uv_dv_err|safe }}</td>
+    {% else %}
+      <td>{{ target.uv_dv|floatformat:0 }}</td>
+    {% endif %}
+    {% if target.uv_sigmarms > 0 %}
+      <td>{{ target.uv_sigma|floatformat:0 }}{{ target.uv_sigma_err|safe }}</td>
+    {% else %}
+      <td>{{ target.uv_sigma|floatformat:0 }}</td>
+    {% endif %}
+
+    {% if target.broad_zrms > 0 %}
+      <td>{{ target.broad_dv|floatformat:0 }}{{ target.broad_dv_err|safe }}</td>
+    {% else %}
+      <td>{{ target.broad_dv|floatformat:0 }}</td>
+    {% endif %}
+    {% if target.broad_sigmarms > 0 %}
+      <td>{{ target.broad_sigma|floatformat:0 }}{{ target.broad_sigma_err|safe }}</td>
+    {% else %}
+      <td>{{ target.broad_sigma|floatformat:0 }}</td>
+    {% endif %}
+
+    {% if target.narrow_zrms > 0 %}
+      <td>{{ target.narrow_dv|floatformat:0 }}{{ target.narrow_dv_err|safe }}</td>
+    {% else %}
+      <td>{{ target.narrow_dv|floatformat:0 }}</td>
+    {% endif %}
+    {% if target.narrow_sigmarms > 0 %}
+      <td>{{ target.narrow_sigma|floatformat:0 }}{{ target.narrow_sigma_err|safe }}</td>
+    {% else %}
+      <td>{{ target.narrow_sigma|floatformat:0 }}</td>
+    {% endif %}
   </tr>
 </table>
 <br />
 
-<h6>Detailed Line-Properties</h6>
+<h5>Detailed Line-Properties</h5>
 
 <div class="panel panel-primary accordion"> <!-- Panel (collapasable) -->
     <div class="panel-heading"> <!-- Panel head -->
@@ -364,8 +533,8 @@ td, th {text-align: center}
                 <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
                 <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
                 <th>EW<br />(&#8491;)</th>
-                <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-                <th>Npix</th>
+                <th>&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;</sub></th> <!-- chi^2 -->
+                <th>N<sub>pix</sub></th>
               </tr>
             </thead>
             <tr>
@@ -482,8 +651,8 @@ td, th {text-align: center}
                 <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
                 <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
                 <th>EW<br />(&#8491;)</th>
-                <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-                <th>Npix</th>
+                <th>&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;</sub></th> <!-- chi^2 -->
+                <th>N<sub>pix</sub></th>
               </tr>
             </thead>
             <tr>
@@ -860,8 +1029,8 @@ td, th {text-align: center}
                 <th>Flux<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>)</th>
                 <th>Continuum<br />(10<sup>-17</sup>erg s<sup>-1</sup> cm<sup>-2</sup>&#8491;<sup>-1</sup>)</th>
                 <th>EW<br />(&#8491;)</th>
-                <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-                <th>Npix</th>
+                <th>&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;</sub></th> <!-- chi^2 -->
+                <th>N<sub>pix</sub></th>
               </tr>
             </thead>
             <!--
@@ -1003,114 +1172,6 @@ td, th {text-align: center}
 <br />
 {% endcomment %}
 
-<h3>Broadband Photometry Modeling</h3><br />
-
-<h6>Stellar Continuum Fitting</h6>
-<table class="table table-bordered table-hover">
-  <thead class="alert alert-info">
-    <tr>
-      <th>&#967;<sup>2</sup></th> <!-- chi^2 -->
-      <th><Age><br />(Gyr)</th>
-      <th>A<sub>V</sub><br />(mag)</th>
-      <th>D<sub>n</sub>(4000)<br />(model)</th>
-    </tr>
-  </thead>
-  <tr>
-    <td>{{ target.phot_continuum_rchi2|floatformat:3 }}</td>
-    <td>{{ target.phot_continuum_age|floatformat:3 }}</td>
-    <td>{{ target.phot_continuum_av|floatformat:2 }}</td>
-    <td>{{ target.phot_dn4000_model|floatformat:3 }}</td>
-  </tr>
-</table>
-<br />
-
-<h6>Legacy Imaging Surveys (Photometric System: {{ target.photsys }})</h6>
-<p id="topmargin-fiddle2">Note: all photometry has been corrected for Galactic extinction.</p>
-<table class="table table-bordered table-hover">
-  <thead class="alert alert-info">
-    <tr>
-      <th>AB mag</th>
-      <th>g</th>
-      <th>r</th>
-      <th>z</th>
-      <th>W1</th>
-      <th>W2</th>
-      <th>W3</th>
-      <th>W4</th>
-    </tr>
-  </thead>
-  <tr>
-    <td>Data</td>
-    <td>{{ target.abmag_g }}{{ target.abmag_err_g|safe }}</td>
-    <td>{{ target.abmag_r }}{{ target.abmag_err_r|safe }}</td>
-    <td>{{ target.abmag_z }}{{ target.abmag_err_z|safe }}</td>
-    <td>{{ target.abmag_w1 }}{{ target.abmag_err_w1|safe }}</td>
-    <td>{{ target.abmag_w2 }}{{ target.abmag_err_w2|safe }}</td>
-    <td>{{ target.abmag_w3 }}{{ target.abmag_err_w3|safe }}</td>
-    <td>{{ target.abmag_w4 }}{{ target.abmag_err_w4|safe }}</td>
-  </tr>
-  <tr>
-    <td>Model</td>
-    <td>{{ target.phot_abmag_synth_model_g }}</td>
-    <td>{{ target.phot_abmag_synth_model_r }}</td>
-    <td>{{ target.phot_abmag_synth_model_z }}</td>
-    <td>{{ target.phot_abmag_synth_model_w1 }}</td>
-    <td>{{ target.phot_abmag_synth_model_w2 }}</td>
-    <td>{{ target.phot_abmag_synth_model_w3 }}</td>
-    <td>{{ target.phot_abmag_synth_model_w4 }}</td>
-  </tr>
-</table>
-<br />
-
-<h6>K-corrections & Absolute Magnitudes</h6>
-<table class="table table-bordered table-hover">
-  <thead class="alert alert-info">
-    <tr>
-      <th></th>
-      <th colspan="5">SDSS</th>
-      <th colspan="3">Johnson-Morgan</th>
-      <th>WISE</th>
-    </tr>
-    <tr>
-      <th>AB mag</th>
-      <th><sup>0.1</sup>u</th>
-      <th><sup>0.1</sup>g</th>
-      <th><sup>0.1</sup>r</th>
-      <th><sup>0.1</sup>i</th>
-      <th><sup>0.1</sup>z</th>
-      <th><sup>0.0</sup>U</th>
-      <th><sup>0.0</sup>B</th>
-      <th><sup>0.0</sup>V</th>
-      <th><sup>0.0</sup>W1</th>
-    </tr>
-  </thead>
-  <tr>
-    <td>M<sub>abs</sub></td>
-    <td>{{ target.phot_absmag_sdss_u|floatformat:3 }}</td>
-    <td>{{ target.phot_absmag_sdss_g|floatformat:3 }}</td>
-    <td>{{ target.phot_absmag_sdss_r|floatformat:3 }}</td>
-    <td>{{ target.phot_absmag_sdss_i|floatformat:3 }}</td>
-    <td>{{ target.phot_absmag_sdss_z|floatformat:3 }}</td>
-    <td>{{ target.phot_absmag_u|floatformat:3 }}</td>
-    <td>{{ target.phot_absmag_b|floatformat:3 }}</td>
-    <td>{{ target.phot_absmag_v|floatformat:3 }}</td>
-    <td>{{ target.phot_absmag_w1|floatformat:3 }}</td>
-  </tr>
-  <tr>
-    <td>K<sub>corr</sub></td>
-    <td>{{ target.phot_kcorr_sdss_u|floatformat:3 }}</td>
-    <td>{{ target.phot_kcorr_sdss_g|floatformat:3 }}</td>
-    <td>{{ target.phot_kcorr_sdss_r|floatformat:3 }}</td>
-    <td>{{ target.phot_kcorr_sdss_i|floatformat:3 }}</td>
-    <td>{{ target.phot_kcorr_sdss_z|floatformat:3 }}</td>
-    <td>{{ target.phot_kcorr_u|floatformat:3 }}</td>
-    <td>{{ target.phot_kcorr_b|floatformat:3 }}</td>
-    <td>{{ target.phot_kcorr_v|floatformat:3 }}</td>
-    <td>{{ target.phot_kcorr_w1|floatformat:3 }}</td>
-  </tr>
-</table>
-<br />
-
 {% comment %}
 <table class="table table-bordered">
   <tr>
@@ -1120,9 +1181,9 @@ td, th {text-align: center}
 {% endcomment %}
 
 {% if result_index > -1 %}
-  <form style="display:inline;" action="{% url 'target-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 
+  <form style="display:inline;" action="{% url 'index' %}#query"><button>Home</button></form> 
   <form style="display:inline;" action="{% url 'target-next' result_index %}"><button{% if not has_next %} disabled{% endif %}>Next</button></form> 
-  <form style="display:inline;" action="{% url 'index' %}#query"><button>New</button></form> 
+  <form style="display:inline;" action="{% url 'target-prev' result_index %}"><button{% if not has_prev %} disabled{% endif %}>Previous</button></form> 
   <br /><br /><br />
 {% endif %}
 
