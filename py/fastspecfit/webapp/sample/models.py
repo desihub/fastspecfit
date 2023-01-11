@@ -72,6 +72,7 @@ class Sample(Model):
     spectype = CharField(max_length=6, default='')
     photsys = CharField(max_length=1, default='')
 
+    ebv = FloatField(null=True)
     mw_transmission_g = FloatField(null=True)
     mw_transmission_r = FloatField(null=True)
     mw_transmission_z = FloatField(null=True)
@@ -99,6 +100,64 @@ class Sample(Model):
     flux_ivar_w2 = FloatField(null=True)
     flux_ivar_w3 = FloatField(null=True)
     flux_ivar_w4 = FloatField(null=True)
+
+    # continuum properties
+    #continuum_z = FloatField(null=True)
+    #continuum_coeff = FloatField(null=True)
+    continuum_rchi2 = FloatField(null=True)
+    continuum_snr_b = FloatField(null=True)
+    continuum_snr_r = FloatField(null=True)
+    continuum_snr_z = FloatField(null=True)
+    continuum_smoothcorr_b = FloatField(null=True)
+    continuum_smoothcorr_r = FloatField(null=True)
+    continuum_smoothcorr_z = FloatField(null=True)
+    
+    vdisp = FloatField(null=True)
+    vdisp_ivar = FloatField(null=True)
+    vdisp_err = CharField(max_length=15, default='')
+    
+    age = FloatField(null=True)
+    zzsun = FloatField(null=True)
+    logmstar = FloatField(null=True)
+    sfr = FloatField(null=True)
+    fagn = FloatField(null=True)
+    av = FloatField(null=True)
+    dn4000 = FloatField(null=True)
+    dn4000_obs = FloatField(null=True)
+    dn4000_ivar = FloatField(null=True)
+    dn4000_model = FloatField(null=True)
+    flux_synth_g = FloatField(null=True)
+    flux_synth_r = FloatField(null=True)
+    flux_synth_z = FloatField(null=True)
+    flux_synth_model_g = FloatField(null=True)
+    flux_synth_model_r = FloatField(null=True)
+    flux_synth_model_z = FloatField(null=True)
+    flux_synth_model_w1 = FloatField(null=True)
+    flux_synth_model_w2 = FloatField(null=True)
+    flux_synth_model_w3 = FloatField(null=True)
+    flux_synth_model_w4 = FloatField(null=True)
+
+    kcorr_u = FloatField(null=True)
+    kcorr_b = FloatField(null=True)
+    kcorr_v = FloatField(null=True)
+    kcorr_w1 = FloatField(null=True)
+    kcorr_w2 = FloatField(null=True)
+    absmag_u = FloatField(null=True)
+    absmag_b = FloatField(null=True)
+    absmag_v = FloatField(null=True)
+    absmag_w1 = FloatField(null=True)
+    absmag_w2 = FloatField(null=True)
+
+    kcorr_sdss_u = FloatField(null=True)
+    kcorr_sdss_g = FloatField(null=True)
+    kcorr_sdss_r = FloatField(null=True)
+    kcorr_sdss_i = FloatField(null=True)
+    kcorr_sdss_z = FloatField(null=True)
+    absmag_sdss_u = FloatField(null=True)
+    absmag_sdss_g = FloatField(null=True)
+    absmag_sdss_r = FloatField(null=True)
+    absmag_sdss_i = FloatField(null=True)
+    absmag_sdss_z = FloatField(null=True)
 
     abmag_g = CharField(max_length=7, default='')
     abmag_r = CharField(max_length=7, default='')
@@ -131,40 +190,41 @@ class Sample(Model):
     abmag_synth_model_g = CharField(max_length=6, default='')
     abmag_synth_model_r = CharField(max_length=6, default='')
     abmag_synth_model_z = CharField(max_length=6, default='')
-    
-    # continuum properties
-    continuum_z = FloatField(null=True)
-    #continuum_coeff = FloatField(null=True)
-    continuum_rchi2 = FloatField(null=True)
-    continuum_age = FloatField(null=True)
-    continuum_av = FloatField(null=True)
-    continuum_av_ivar = FloatField(null=True)
-    continuum_vdisp = FloatField(null=True)
-    continuum_vdisp_ivar = FloatField(null=True)
-    continuum_snr_b = FloatField(null=True)
-    continuum_snr_r = FloatField(null=True)
-    continuum_snr_z = FloatField(null=True)
-    continuum_smoothcorr_b = FloatField(null=True)
-    continuum_smoothcorr_r = FloatField(null=True)
-    continuum_smoothcorr_z = FloatField(null=True)
-    dn4000 = FloatField(null=True)
-    dn4000_ivar = FloatField(null=True)
-    dn4000_model = FloatField(null=True)
-    flux_synth_g = FloatField(null=True)
-    flux_synth_r = FloatField(null=True)
-    flux_synth_z = FloatField(null=True)
-    flux_synth_model_g = FloatField(null=True)
-    flux_synth_model_r = FloatField(null=True)
-    flux_synth_model_z = FloatField(null=True)
-    uv_z = FloatField(null=True)
+    abmag_synth_model_w1 = CharField(max_length=6, default='')
+    abmag_synth_model_w2 = CharField(max_length=6, default='')
+    abmag_synth_model_w3 = CharField(max_length=6, default='')
+    abmag_synth_model_w4 = CharField(max_length=6, default='')
+
+    loglnu_1500 = FloatField(null=True)
+    loglnu_2800 = FloatField(null=True)
+    logl_5100 = FloatField(null=True)
+    apercorr = FloatField(null=True)
+    apercorr_g = FloatField(null=True)
+    apercorr_r = FloatField(null=True)
+    apercorr_z = FloatField(null=True)
+
+    rchi2 = FloatField(null=True)
+    linerchi2_broad = FloatField(null=True)
+    delta_linerchi2 = FloatField(null=True)
+
     narrow_z = FloatField(null=True)
     broad_z = FloatField(null=True)
-    uv_sigma = FloatField(null=True)
+    uv_z = FloatField(null=True)
     narrow_sigma = FloatField(null=True)
     broad_sigma = FloatField(null=True)
+    uv_sigma = FloatField(null=True)
+
+    #narrow_zrms = FloatField(null=True)
+    #broad_zrms = FloatField(null=True)
+    #uv_zrms = FloatField(null=True)
+    #narrow_sigmarms = FloatField(null=True)
+    #broad_sigmarms = FloatField(null=True)
+    #uv_sigmarms = FloatField(null=True)
+
     mgii_doublet_ratio = FloatField(null=True)
     oii_doublet_ratio = FloatField(null=True)
     sii_doublet_ratio = FloatField(null=True)
+
     oi_1304_amp = FloatField(null=True)
     oi_1304_amp_ivar = FloatField(null=True)
     oi_1304_flux = FloatField(null=True)
@@ -1088,43 +1148,6 @@ class Sample(Model):
     siii_9532_cont_err = CharField(max_length=15, default='')
     siii_9532_ew_err = CharField(max_length=15, default='')
 
-    # fastphot properties
-
-    #continuum_coeff = FloatField(null=True)
-    phot_continuum_rchi2 = FloatField(null=True)
-    phot_continuum_age = FloatField(null=True)
-    phot_continuum_av = FloatField(null=True)
-    phot_continuum_av_ivar = FloatField(null=True)
-    phot_dn4000_model = FloatField(null=True)
-
-    phot_kcorr_u = FloatField(null=True)
-    phot_kcorr_b = FloatField(null=True)
-    phot_kcorr_v = FloatField(null=True)
-    phot_kcorr_w1 = FloatField(null=True)
-    phot_absmag_u = FloatField(null=True)
-    phot_absmag_b = FloatField(null=True)
-    phot_absmag_v = FloatField(null=True)
-    phot_absmag_w1 = FloatField(null=True)
-
-    phot_kcorr_sdss_u = FloatField(null=True)
-    phot_kcorr_sdss_g = FloatField(null=True)
-    phot_kcorr_sdss_r = FloatField(null=True)
-    phot_kcorr_sdss_i = FloatField(null=True)
-    phot_kcorr_sdss_z = FloatField(null=True)
-    phot_absmag_sdss_u = FloatField(null=True)
-    phot_absmag_sdss_g = FloatField(null=True)
-    phot_absmag_sdss_r = FloatField(null=True)
-    phot_absmag_sdss_i = FloatField(null=True)
-    phot_absmag_sdss_z = FloatField(null=True)
-
-    phot_abmag_synth_model_g = CharField(max_length=6, default='')
-    phot_abmag_synth_model_r = CharField(max_length=6, default='')
-    phot_abmag_synth_model_z = CharField(max_length=6, default='')
-    phot_abmag_synth_model_w1 = CharField(max_length=6, default='')
-    phot_abmag_synth_model_w2 = CharField(max_length=6, default='')
-    phot_abmag_synth_model_w3 = CharField(max_length=6, default='')
-    phot_abmag_synth_model_w4 = CharField(max_length=6, default='')
-    
     # radec2xyz, for cone search in the database
     ux = FloatField(default=-2.0)
     uy = FloatField(default=-2.0)
@@ -1138,31 +1161,22 @@ class Sample(Model):
 
     def base_html_dir(self):
         # Hack!
-        return '/global/cfs/cdirs/desi/spectro/fastspecfit/fuji-webapp-test/html/'
+        #return '/global/cfs/cdirs/desi/spectro/fastspecfit/fuji-webapp-test/html/'
         #return '/global/cfs/cdirs/desi/spectro/fastspecfit/fuji-webapp-test/{}/html/'.format(self.specprod)
-        #return '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/html/'.format(specprod)
+        return '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/html/'.format(specprod)
 
     def png_base_url(self):
         # different for cumulative coadds!
         # /data is mounted to /global/cfs/cdirs/desi/spectro/fastspecfit in the Spin server configuration
         # Hack!
-        baseurl = '/data/fuji-webapp-test/html/tiles/cumulative/{}/'.format(self.tileid_list)
-        #baseurl = '/data/test/{}/html/healpix/{}/{}/'.format(self.specprod, self.survey, self.program)
-        #baseurl += str(self.healpix//100) +'/'+ self.str_healpix()
+        #baseurl = '/data/fuji-webapp-test/html/tiles/cumulative/{}/'.format(self.tileid_list)
+        baseurl = '/data/{}/html/healpix/{}/{}/'.format(self.specprod, self.survey, self.program)
+        baseurl += str(self.healpix//100) +'/'+ self.str_healpix()
         return baseurl
 
     def data_base_url(self):
         # different for cumulative coadds!
-        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji-webapp-test/tiles/cumulative/{}/'.format(self.tileid_list) # no html subdir
-        #baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/{}/healpix/{}/{}/'.format(self.specprod, self.survey, self.program) # no html subdir
-        #baseurl += str(self.healpix//100) +'/'+ self.str_healpix()
+        #baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji-webapp-test/tiles/cumulative/{}/'.format(self.tileid_list) # no html subdir
+        baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/{}/healpix/{}/{}/'.format(self.specprod, self.survey, self.program) # no html subdir
+        baseurl += str(self.healpix//100) +'/'+ self.str_healpix()
         return baseurl
-
-    #def ellipsefile(self):
-    #    ellipsefile = '{}{}-largegalaxy-{}-ellipse-sbprofile.png'.format(self.png_base_url(), self.group_name, self.sga_id_string())
-    #    return ellipsefile
-    #
-    #def ellipse_exists(self):
-    #    ellipsefile = os.path.join(self.base_html_dir(), self.ra_slice(), self.group_name, '{}-largegalaxy-{}-ellipse-sbprofile.png'.format(
-    #        self.group_name, self.sga_id_string()))
-    #    return os.path.isfile(ellipsefile)
