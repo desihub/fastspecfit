@@ -11,10 +11,13 @@ import django
 from astropy.table import Table, hstack
 #from astrometry.util.starutil_numpy import radectoxyz
 
-# change me!
-specprod = 'everest'
+C_LIGHT = 299792.458 # [km/s]
 
-DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/catalogs'.format(specprod)
+# change me!
+specprod = 'fuji'
+
+DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
+#DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/catalogs'.format(specprod)
 #DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
 
 fastspecfile = os.path.join(DATADIR, 'fastspec-{}.fits'.format(specprod))
@@ -43,10 +46,12 @@ def main():
         'TARGETID',
         'RA',
         'DEC',
+        'COADD_FIBERSTATUS',
         'TILEID_LIST',
+        #'TILEID',
         'SURVEY',
-        'FAPRGRM',
-        'HPXPIXEL',
+        'PROGRAM',
+        'HEALPIX',
         'DESI_TARGET',
         'BGS_TARGET',
         'MWS_TARGET',
@@ -64,15 +69,19 @@ def main():
         'SV2_SCND_TARGET',
         'SV3_SCND_TARGET',
         'Z',
+        'Z_RR',
         'ZWARN',
         'DELTACHI2',
         'SPECTYPE',
         'PHOTSYS',
+        'EBV',
         'MW_TRANSMISSION_G',
         'MW_TRANSMISSION_R',
         'MW_TRANSMISSION_Z',
         'MW_TRANSMISSION_W1',
         'MW_TRANSMISSION_W2',
+        'MW_TRANSMISSION_W3',
+        'MW_TRANSMISSION_W4',
         'FIBERFLUX_G',
         'FIBERFLUX_R',
         'FIBERFLUX_Z',
@@ -84,42 +93,104 @@ def main():
         'FLUX_Z',
         'FLUX_W1',
         'FLUX_W2',
+        'FLUX_W3',
+        'FLUX_W4',
         'FLUX_IVAR_G',
         'FLUX_IVAR_R',
         'FLUX_IVAR_Z',
         'FLUX_IVAR_W1',
-        'FLUX_IVAR_W2']
+        'FLUX_IVAR_W2',
+        'FLUX_IVAR_W3',
+        'FLUX_IVAR_W4',
+        ]
         
     fastspec_cols = [
-        'CONTINUUM_Z',
+        #'CONTINUUM_Z',
         #'CONTINUUM_COEFF',
-        'CONTINUUM_CHI2',
-        'CONTINUUM_AGE',
-        'CONTINUUM_AV',
-        'CONTINUUM_AV_IVAR',
-        'CONTINUUM_VDISP',
-        'CONTINUUM_VDISP_IVAR',
+        'CONTINUUM_RCHI2',
         'CONTINUUM_SNR_B',
         'CONTINUUM_SNR_R',
         'CONTINUUM_SNR_Z',
         'CONTINUUM_SMOOTHCORR_B',
         'CONTINUUM_SMOOTHCORR_R',
         'CONTINUUM_SMOOTHCORR_Z',
+        'VDISP',
+        'VDISP_IVAR',
+        'AGE',
+        'ZZSUN',
+        'LOGMSTAR',
+        'SFR',
+        'FAGN',
+        'AV',
         'DN4000',
+        'DN4000_OBS',
         'DN4000_IVAR',
         'DN4000_MODEL',
         'FLUX_SYNTH_G',
         'FLUX_SYNTH_R',
         'FLUX_SYNTH_Z',
-        'FLUX_SYNTH_MODEL_G',
-        'FLUX_SYNTH_MODEL_R',
-        'FLUX_SYNTH_MODEL_Z',
-        'BALMER_Z',
-        'FORBIDDEN_Z',
+        'FLUX_SYNTH_SPECMODEL_G',
+        'FLUX_SYNTH_SPECMODEL_R',
+        'FLUX_SYNTH_SPECMODEL_Z',
+        'FLUX_SYNTH_PHOTMODEL_G',
+        'FLUX_SYNTH_PHOTMODEL_R',
+        'FLUX_SYNTH_PHOTMODEL_Z',
+        'FLUX_SYNTH_PHOTMODEL_W1',
+        'FLUX_SYNTH_PHOTMODEL_W2',
+        'FLUX_SYNTH_PHOTMODEL_W3',
+        'FLUX_SYNTH_PHOTMODEL_W4',
+        'KCORR_U',
+        'ABSMAG_U',
+        'ABSMAG_IVAR_U',
+        'KCORR_B',
+        'ABSMAG_B',
+        'ABSMAG_IVAR_B',
+        'KCORR_V',
+        'ABSMAG_V',
+        'ABSMAG_IVAR_V',
+        'KCORR_SDSS_U',
+        'ABSMAG_SDSS_U',
+        'ABSMAG_IVAR_SDSS_U',
+        'KCORR_SDSS_G',
+        'ABSMAG_SDSS_G',
+        'ABSMAG_IVAR_SDSS_G',
+        'KCORR_SDSS_R',
+        'ABSMAG_SDSS_R',
+        'ABSMAG_IVAR_SDSS_R',
+        'KCORR_SDSS_I',
+        'ABSMAG_SDSS_I',
+        'ABSMAG_IVAR_SDSS_I',
+        'KCORR_SDSS_Z',
+        'ABSMAG_SDSS_Z',
+        'ABSMAG_IVAR_SDSS_Z',
+        'KCORR_W1',
+        'ABSMAG_W1',
+        'ABSMAG_IVAR_W1',
+        'KCORR_W2',
+        'ABSMAG_W2',
+        'ABSMAG_IVAR_W2',
+        'LOGLNU_1500',
+        'LOGLNU_2800',
+        'LOGL_5100',
+        'APERCORR',
+        'APERCORR_G',
+        'APERCORR_R',
+        'APERCORR_Z',
+        'RCHI2',
+        'LINERCHI2_BROAD',
+        'DELTA_LINERCHI2',
+        'NARROW_Z',
         'BROAD_Z',
-        'BALMER_SIGMA',
-        'FORBIDDEN_SIGMA',
+        'UV_Z',
+        'NARROW_SIGMA',
         'BROAD_SIGMA',
+        'UV_SIGMA',
+        'NARROW_ZRMS',
+        'BROAD_ZRMS',
+        'UV_ZRMS',
+        'NARROW_SIGMARMS',
+        'BROAD_SIGMARMS',
+        'UV_SIGMARMS',
         'MGII_DOUBLET_RATIO',
         'OII_DOUBLET_RATIO',
         'SII_DOUBLET_RATIO',
@@ -303,36 +374,36 @@ def main():
         'NEIII_3869_EW_LIMIT',
         'NEIII_3869_CHI2',
         'NEIII_3869_NPIX',
-        'HEI_3889_AMP',
-        'HEI_3889_AMP_IVAR',
-        'HEI_3889_FLUX',
-        'HEI_3889_FLUX_IVAR',
-        'HEI_3889_BOXFLUX',
-        'HEI_3889_VSHIFT',
-        'HEI_3889_SIGMA',
-        'HEI_3889_CONT',
-        'HEI_3889_CONT_IVAR',
-        'HEI_3889_EW',
-        'HEI_3889_EW_IVAR',
-        'HEI_3889_FLUX_LIMIT',
-        'HEI_3889_EW_LIMIT',
-        'HEI_3889_CHI2',
-        'HEI_3889_NPIX',
-        'HEI_BROAD_3889_AMP',
-        'HEI_BROAD_3889_AMP_IVAR',
-        'HEI_BROAD_3889_FLUX',
-        'HEI_BROAD_3889_FLUX_IVAR',
-        'HEI_BROAD_3889_BOXFLUX',
-        'HEI_BROAD_3889_VSHIFT',
-        'HEI_BROAD_3889_SIGMA',
-        'HEI_BROAD_3889_CONT',
-        'HEI_BROAD_3889_CONT_IVAR',
-        'HEI_BROAD_3889_EW',
-        'HEI_BROAD_3889_EW_IVAR',
-        'HEI_BROAD_3889_FLUX_LIMIT',
-        'HEI_BROAD_3889_EW_LIMIT',
-        'HEI_BROAD_3889_CHI2',
-        'HEI_BROAD_3889_NPIX',
+        #'HEI_3889_AMP',
+        #'HEI_3889_AMP_IVAR',
+        #'HEI_3889_FLUX',
+        #'HEI_3889_FLUX_IVAR',
+        #'HEI_3889_BOXFLUX',
+        #'HEI_3889_VSHIFT',
+        #'HEI_3889_SIGMA',
+        #'HEI_3889_CONT',
+        #'HEI_3889_CONT_IVAR',
+        #'HEI_3889_EW',
+        #'HEI_3889_EW_IVAR',
+        #'HEI_3889_FLUX_LIMIT',
+        #'HEI_3889_EW_LIMIT',
+        #'HEI_3889_CHI2',
+        #'HEI_3889_NPIX',
+        #'HEI_BROAD_3889_AMP',
+        #'HEI_BROAD_3889_AMP_IVAR',
+        #'HEI_BROAD_3889_FLUX',
+        #'HEI_BROAD_3889_FLUX_IVAR',
+        #'HEI_BROAD_3889_BOXFLUX',
+        #'HEI_BROAD_3889_VSHIFT',
+        #'HEI_BROAD_3889_SIGMA',
+        #'HEI_BROAD_3889_CONT',
+        #'HEI_BROAD_3889_CONT_IVAR',
+        #'HEI_BROAD_3889_EW',
+        #'HEI_BROAD_3889_EW_IVAR',
+        #'HEI_BROAD_3889_FLUX_LIMIT',
+        #'HEI_BROAD_3889_EW_LIMIT',
+        #'HEI_BROAD_3889_CHI2',
+        #'HEI_BROAD_3889_NPIX',
         'H6_AMP',
         'H6_AMP_IVAR',
         'H6_FLUX',
@@ -648,6 +719,21 @@ def main():
         'OI_6300_EW_LIMIT',
         'OI_6300_CHI2',
         'OI_6300_NPIX',
+        'SIII_6312_AMP',
+        'SIII_6312_AMP_IVAR',
+        'SIII_6312_FLUX',
+        'SIII_6312_FLUX_IVAR',
+        'SIII_6312_BOXFLUX',
+        'SIII_6312_VSHIFT',
+        'SIII_6312_SIGMA',
+        'SIII_6312_CONT',
+        'SIII_6312_CONT_IVAR',
+        'SIII_6312_EW',
+        'SIII_6312_EW_IVAR',
+        'SIII_6312_FLUX_LIMIT',
+        'SIII_6312_EW_LIMIT',
+        'SIII_6312_CHI2',
+        'SIII_6312_NPIX',
         'NII_6548_AMP',
         'NII_6548_AMP_IVAR',
         'NII_6548_FLUX',
@@ -800,56 +886,22 @@ def main():
         'SIII_9532_NPIX'
         ]
 
-    fastphot_cols = [
-        'TARGETID', # need this to make sure the tables match
-         #'CONTINUUM_COEFF',
-         'CONTINUUM_CHI2',
-         'CONTINUUM_AGE',
-         'CONTINUUM_AV',
-         'CONTINUUM_AV_IVAR',
-         'DN4000_MODEL',
-         'FLUX_SYNTH_MODEL_G',
-         'FLUX_SYNTH_MODEL_R',
-         'FLUX_SYNTH_MODEL_Z',
-         'FLUX_SYNTH_MODEL_W1',
-         'FLUX_SYNTH_MODEL_W2',
-         'KCORR_U',
-         'ABSMAG_U',
-         'ABSMAG_IVAR_U',
-         'KCORR_B',
-         'ABSMAG_B',
-         'ABSMAG_IVAR_B',
-         'KCORR_V',
-         'ABSMAG_V',
-         'ABSMAG_IVAR_V',
-         'KCORR_SDSS_U',
-         'ABSMAG_SDSS_U',
-         'ABSMAG_IVAR_SDSS_U',
-         'KCORR_SDSS_G',
-         'ABSMAG_SDSS_G',
-         'ABSMAG_IVAR_SDSS_G',
-         'KCORR_SDSS_R',
-         'ABSMAG_SDSS_R',
-         'ABSMAG_IVAR_SDSS_R',
-         'KCORR_SDSS_I',
-         'ABSMAG_SDSS_I',
-         'ABSMAG_IVAR_SDSS_I',
-         'KCORR_SDSS_Z',
-         'ABSMAG_SDSS_Z',
-         'ABSMAG_IVAR_SDSS_Z',
-         'KCORR_W1',
-         'ABSMAG_W1',
-         'ABSMAG_IVAR_W1']
-       
     meta = Table(fitsio.read(fastspecfile, ext='METADATA', columns=meta_columns))
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC', columns=fastspec_cols))
-    fastphot = Table(fitsio.read(fastphotfile, ext='FASTPHOT', columns=fastphot_cols))
-    assert(np.all(meta['TARGETID'] == fastphot['TARGETID']))
 
-    # This will be different for healpix vs tile coadds. E.g., sv3-bright-HPXPIXEL-TARGETID
-    meta['TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, hpxpixel, targetid) for
-                           survey, program, hpxpixel, targetid in zip(
-                               meta['SURVEY'], meta['FAPRGRM'], meta['HPXPIXEL'], meta['TARGETID'])]
+    #print('Hacking the HEALPIX columns!')
+    #meta['HEALPIX'] = 10000
+    #meta['TILEID_LIST'] = meta['TILEID'].astype(str)
+    
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC', columns=fastspec_cols))
+    #print('Ignoring fastphot!!')
+    #if False:
+    #    fastphot = Table(fitsio.read(fastphotfile, ext='FASTPHOT', columns=fastphot_cols))
+    #    assert(np.all(meta['TARGETID'] == fastphot['TARGETID']))
+
+    # This will be different for healpix vs tile coadds. E.g., sv3-bright-HEALPIX-TARGETID
+    meta['TARGET_NAME'] = ['{}-{}-{}-{}'.format(survey, program, healpix, targetid) for
+                           survey, program, healpix, targetid in zip(
+                               meta['SURVEY'], meta['PROGRAM'], meta['HEALPIX'], meta['TARGETID'])]
     meta['SPECPROD'] = specprod
     #print(meta)
     #print(meta.colnames, fast.colnames)
@@ -866,9 +918,9 @@ def main():
     #tiles = np.zeros(len(meta), dtype='U50') # 5 characters per tile, max of 10 tiles??
     #tilepix = Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/healpix/tilepix.fits'.format(specprod))
     #
-    #for pixel in set(meta['HPXPIXEL']):
+    #for pixel in set(meta['HEALPIX']):
     #    # should take into account PETAL_LOC
-    #    I = meta['HPXPIXEL'] == pixel
+    #    I = meta['HEALPIX'] == pixel
     #    J = tilepix['HEALPIX'] == pixel
     #    assert(np.sum(J) > 0)
     #
@@ -920,30 +972,33 @@ def main():
     meta['BGS_BITNAMES'] = bgs_bitnames
     meta['MWS_BITNAMES'] = mws_bitnames
     meta['SCND_BITNAMES'] = scnd_bitnames
+
+    # rename a couple columns
+    meta.rename_column('Z_RR', 'ZREDROCK')
             
     # join metadata and fastspec fitting results
     data = hstack((meta, fastspec))
 
-    # join everything with fastphot fitting results but we need to add a prefix
-    for col in fastphot.colnames:
-        fastphot.rename_column(col, 'PHOT_{}'.format(col))
-    fastphot.remove_column('PHOT_TARGETID')
-    data = hstack((data, fastphot))
+    ## join everything with fastphot fitting results but we need to add a prefix
+    #print('Ignoring fastphot!!')
+    #if False:
+    #    for col in fastphot.colnames:
+    #        fastphot.rename_column(col, 'PHOT_{}'.format(col))
+    #    fastphot.remove_column('PHOT_TARGETID')
+    #    data = hstack((data, fastphot))
 
     # Parse the photometry into strings with limits. Most of this code is taken
     # from continuum.ContinuumTools.parse_photometry deal with measurements
-    nsigma = 1.0
-    def convert_phot(data, prefix, suffix, bands):
+    def convert_phot(data, prefix, suffix, bands, nsigma=2.0):
         for band in bands:
             maggies = data['{}FLUX{}_{}'.format(prefix, suffix, band)]
             if 'FIBER' in prefix or 'SYNTH' in suffix:
-                # e.g., FIBERABMAG_G, FIBERTOTMAG_G, ABMAG_SYNTH_G, and ABMAG_SYNTH_MODEL_G
+                # e.g., FIBERABMAG_G, FIBERTOTMAG_G, ABMAG_SYNTH_G, and ABMAG_SYNTH_PHOTMODEL_G, and ABMAG_SYNTH_SPECMODEL_G
                 data['{}ABMAG{}_{}'.format(prefix, suffix, band)] = np.array('', dtype='U6') 
                 good = np.where(maggies > 0)[0]
                 if len(good) > 0:
                     data['{}ABMAG{}_{}'.format(prefix, suffix, band)][good] = np.array(list(
                         map(lambda x: '{:.3f}'.format(x), -2.5 * np.log10(1e-9 * maggies[good]))))
-                    
                 neg = np.where(maggies <= 0)[0]
                 if len(neg) > 0:
                     data['{}ABMAG{}_{}'.format(prefix, suffix, band)][neg] = '...'
@@ -979,13 +1034,32 @@ def main():
         return data
 
     for prefix, suffix, bands in zip(
-            ['', 'FIBER', 'FIBERTOT', '', '', 'PHOT_'],
-            ['', '', '', '_SYNTH', '_SYNTH_MODEL', '_SYNTH_MODEL'],
-            [['G', 'R', 'Z', 'W1', 'W2'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z'], ['G', 'R', 'Z', 'W1', 'W2']
+            ['', 'FIBER', 'FIBERTOT', '', '', ''],
+            ['', '', '', '_SYNTH', '_SYNTH_SPECMODEL', '_SYNTH_PHOTMODEL'],
+            [['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4'],
+             ['G', 'R', 'Z'],
+             ['G', 'R', 'Z'],
+             ['G', 'R', 'Z'],
+             ['G', 'R', 'Z'],
+             ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']
              ]):
         data = convert_phot(data, prefix, suffix, bands)
 
-    #import pdb ; pdb.set_trace()                
+    #import pdb ; pdb.set_trace()
+
+    # parse some uncertainties
+    data['VDISP_ERR'] = np.zeros(len(data), dtype='U10') #np.repeat('          ', len(data))
+    I = data['VDISP_IVAR'] > 0
+    if np.any(I):
+        vdisp_err = 1 / np.sqrt(data['VDISP_IVAR'][I])
+        data['VDISP_ERR'][I] = np.array(list(map(lambda x: '&#177;{:.0f}'.format(x).strip(), vdisp_err)))
+
+    for suffix in ['NARROW', 'BROAD', 'UV']:
+        data['{}_DV'.format(suffix)] = C_LIGHT*(data['{}_Z'.format(suffix)]-data['Z'])
+        data['{}_DV_ERR'.format(suffix)] = np.array(list(map(lambda x: '&#177;{:.0f}'.format(x).strip(), C_LIGHT*data['{}_ZRMS'.format(suffix)])))
+        
+    for suffix in ['NARROW', 'BROAD', 'UV']:
+        data['{}_SIGMA_ERR'.format(suffix)] = np.array(list(map(lambda x: '&#177;{:.0f}'.format(x).strip(), data['{}_SIGMARMS'.format(suffix)])))
 
     # get uncertainties on the emission-line measurements
     lines = np.array([col[:-4] for col in data.colnames if col[-4:] == '_AMP'])
@@ -1005,7 +1079,6 @@ def main():
                 
     print(data.colnames)
     print('Read {} rows from {}'.format(len(data), fastspecfile))
-
     xyz = radectoxyz(data['RA'], data['DEC'])
 
     objs = []

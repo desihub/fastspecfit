@@ -10,43 +10,44 @@
 <div class="e-content entry-content" itemprop="articleBody text">
   <div>
     <br />
-    <h2><a href="https://fastspecfit.legacysurvey.org">DESI FastSpecFit</a></h2>
-    <h4>Everest Data Release</h4>
     <br />
-
     <div class="row">
       <!--<div class="col-md-8 col-left docutils container">-->
       <div class="col">
+        <a href="https://github.com/desihub/fastspecfit"><img style="width: 400px;" src="{% static "fastspecfit-logo.png" %}" alt="FastSpecFit Logo"/></a> 
         <br />
-        <p>Welcome to the data portal for the DESI FastSpecFit value-added
+        <br />
+        <h4>Fujilupe Data Release</h4>
+        <br />
+        <p>Welcome to the <a href="https://fastspecfit.legacysurvey.org">data portal</a> for the DESI FastSpecFit value-added
         catalogs! FastSpecFit is a stellar continuum and emission-line modeling
         code for DESI optimized for speed and simplicity, which can be
-        called independently to model the broadband photometry (FastPhot) or the
-          three-camera optical spectroscopy from DESI (FastSpec).</p>
+        called independently to model the broadband photometry (<i>fastphot</i>) or the
+          three-camera optical spectroscopy from DESI (<i>fastspec</i>).</p>
         
         <p>Please refer to
            the <a href="https://fastspecfit.readthedocs.io/en/latest/">FastSpecFit
            documentation</a> for full details regarding this data release,
            particularly
-           the <a href="https://fastspecfit.readthedocs.io/en/latest#acknowledgments">required
-           acknowledgments and conditions of use section</a>.</p> 
-  
-        <p><img style="width: 400px;" src="{% static "files/logo.png" %}" alt="TBD FastSpecFit Logo"/></p>
+           the <a href="https://fastspecfit.readthedocs.io/en/latest/fujilupe.html#acknowledgements">required
+           acknowledgments and conditions of use</a>.</p> 
       </div>
   
       <!--<div class="col-md-8 col-right docutils container">-->
       <div class="col">
+        <br />
+        <br />
         <div class="jumbotron">
           <h4>Full Catalogs</h4>
           <p>
-            <a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/everest/catalogs/fastspec-everest.fits" download="fastspec-everest.fits">fastspec-everest.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastspec.html">(data model)</a><br />
-            <a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/everest/catalogs/fastphot-everest.fits" download="fastphot-everest.fits">fastphot-everest.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastphot.html">(data model)</a>
+            <a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/catalogs/fastspec-fuji.fits" download="fastspec-fuji.fits">fastspec-fuji.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastspec.html">(data model)</a><br />
+            <a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/catalogs/fastphot-fuji.fits" download="fastphot-fuji.fits">fastphot-fuji.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastphot.html">(data model)</a>
           </p>
           
           <h4>On the web</h4>
-          <p><a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/everest">https://data.desi.lbl.gov/desi/spectro/fastspecfit/test/everest</a></p>
+          <p><a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji">https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji</a></p>
           
-          <h4>At NERSC (for collaborators)</h4><p>/global/cfs/cdirs/desi/spectro/fastspecfit/test/everest</p>
+          <h4>At NERSC (for collaborators)</h4><p>/global/cfs/cdirs/desi/spectro/fastspecfit/fuji</p>
         </div>
       </div>
     </div>
@@ -65,11 +66,11 @@
             <table>
               <tr>
                 <th class="search_th"><label for="surveymatch">Survey</label></th>
-                <td><input id="surveymatch" name="survey__match" type="text" value="" placeholder="main,sv1,sv2,sv3"/></td> 
+                <td><input id="surveymatch" name="survey__match" type="text" value="" placeholder="main,sv1,sv2,sv3,cmx,special"/></td> 
               </tr>
               <tr>
-                <th class="search_th"><label for="faprgrmmatch">Program</label></th>
-                <td><input id="faprgrmmatch" name="faprgrm__match" type="text" value="" placeholder="bright,dark"/></td> 
+                <th class="search_th"><label for="programmatch">Program</label></th>
+                <td><input id="programmatch" name="program__match" type="text" value="" placeholder="bright,dark,backup,other"/></td> 
               </tr>
               <tr>
                 <th class="search_th"><label for="tileidmatch">TileIDs</label></th>
@@ -77,8 +78,8 @@
               </tr>
               <tr>
                 <th class="search_th"><label for="pixlo">Healpixel</label></th>
-                <td><input id="pixlo" name="hpxpixel__gte" step="1" type="number" value="" placeholder="min" min="0"/></td> 
-                <td><input id="pixhi" name="hpxpixel__lte" step="1" type="number" value="" placeholder="max" min="0"/></td> 
+                <td><input id="pixlo" name="healpix__gte" step="1" type="number" value="" placeholder="min" min="0"/></td> 
+                <td><input id="pixhi" name="healpix__lte" step="1" type="number" value="" placeholder="max" min="0"/></td> 
               </tr>
               <tr>
                 <th class="search_th"><label for="idlo">TargetID</label></th>
@@ -148,10 +149,10 @@
           <tr>
             <th style="vertical-align: middle; text-align: center;">Number</th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'survey' %}#results">Survey</a></th>
-            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'faprgrm' %}#results">Program</a></th>
+            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'program' %}#results">Program</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'tileid_list' %}#results">TileIDs</a></th>
             <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
-            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'hpxpixel' %}#results">Healpixel</a></th>
+            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'healpix' %}#results">Healpixel</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br />(degrees)</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'z' %}#results">Redshift</a></th>
@@ -162,10 +163,10 @@
             <tr>
               <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.survey|upper }}</td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.faprgrm|upper }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.program|upper }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.tileid_list }}</td>
               <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.targetid }}</a></td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.hpxpixel }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.healpix }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.z|floatformat:8 }}</td>

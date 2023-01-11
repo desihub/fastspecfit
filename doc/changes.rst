@@ -9,10 +9,12 @@ Change Log
   bug [`PR #87`_].
 * Refactor fitting engine to not use fnnls or astropy.modeling [`PR #92`_]. 
 * Additional Fujilupe documentation [`PR #93`_]. 
+* Webapp updates to support latest data model [`PR #94`_].
 
 .. _`PR #87`: https://github.com/desihub/fastspecfit/pull/87
 .. _`PR #92`: https://github.com/desihub/fastspecfit/pull/92
 .. _`PR #93`: https://github.com/desihub/fastspecfit/pull/93
+.. _`PR #94`: https://github.com/desihub/fastspecfit/pull/94
 
 1.0.1 (2022-08-11)
 ------------------

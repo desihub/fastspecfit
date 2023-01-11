@@ -39,6 +39,8 @@ def explore(req):
         File stream if user clicked download, otherwise render for explore.html
 
     """
+    from fastspecfit.webapp import settings
+
     # If download button was pressed return the selected subset of the FITS table.
     if req.method == 'POST':
         from fastspecfit.webapp.load import DATADIR, fastspecfile
@@ -81,42 +83,57 @@ def explore(req):
         sort = req.GET.get('sort')
 
     queryset = None
-    
-    cone_ra  = req.GET.get('conera','')
-    cone_dec = req.GET.get('conedec','')
-    cone_rad = req.GET.get('coneradius','')
 
-    # save for form default
-    cone_rad_arcmin = cone_rad
-    if len(cone_ra) and len(cone_dec) and len(cone_rad):
-        try:
-            from django.db.models import F
-            cone_ra = float(cone_ra)
-            cone_dec = float(cone_dec)
-            cone_rad = float(cone_rad) / 60.
-            dd = np.deg2rad(cone_dec)
-            rr = np.deg2rad(cone_ra)
-            cosd = np.cos(dd)
-            x, y, z = cosd * np.cos(rr), cosd * np.sin(rr), np.sin(dd)
-            r2 = np.deg2rad(cone_rad)**2
-            queryset = Sample.objects.all().annotate(
-                r2=((F('ux')-x)*(F('ux')-x) +
-                    (F('uy')-y)*(F('uy')-y) +
-                    (F('uz')-z)*(F('uz')-z)))
-            queryset = queryset.filter(r2__lt=r2)
-            if sort is None:
-                sort='r2'
-            #queryset = sample_near_radec(cone_ra, cone_dec, cone_rad).order_by(sort)
-        except ValueError:
-            pass
+    if req.GET.get('catalog', ''):
+        dirnm = settings.USER_QUERY_DIR
+        catname = os.path.join(dirnm, req.GET.get('catalog')+'.fits')
+        T = Table.read(catname)
+        #queryset = []
+        #for survey, program, healpix, targetid in zip(T['SURVEY'], T['FAPRGRM'], T['HEALPIX'], T['TARGETID']):
+        #    target_name = '{}-{}-{}-{}'.format(survey.lower(), program.lower(), healpix, targetid)
+        #    try:
+        #        obj = Sample.objects.get(target_name=target_name)
+        #    except:
+        #        raise ValueError('Object {} does not exist in database!'.format(target_name))
+        #    queryset.append(obj)
+        queryset = Sample.objects.all().filter(target_name__in=['{}-{}-{}-{}'.format(survey.lower(), program.lower(), healpix, targetid)
+                                                                for survey, program, healpix, targetid in zip(T['SURVEY'], T['FAPRGRM'], T['HEALPIX'], T['TARGETID'])])
+    else:
+        cone_ra  = req.GET.get('conera','')
+        cone_dec = req.GET.get('conedec','')
+        cone_rad = req.GET.get('coneradius','')
+    
+        # save for form default
+        cone_rad_arcmin = cone_rad
+        if len(cone_ra) and len(cone_dec) and len(cone_rad):
+            try:
+                from django.db.models import F
+                cone_ra = float(cone_ra)
+                cone_dec = float(cone_dec)
+                cone_rad = float(cone_rad) / 60.
+                dd = np.deg2rad(cone_dec)
+                rr = np.deg2rad(cone_ra)
+                cosd = np.cos(dd)
+                x, y, z = cosd * np.cos(rr), cosd * np.sin(rr), np.sin(dd)
+                r2 = np.deg2rad(cone_rad)**2
+                queryset = Sample.objects.all().annotate(
+                    r2=((F('ux')-x)*(F('ux')-x) +
+                        (F('uy')-y)*(F('uy')-y) +
+                        (F('uz')-z)*(F('uz')-z)))
+                queryset = queryset.filter(r2__lt=r2)
+                if sort is None:
+                    sort='r2'
+                #queryset = sample_near_radec(cone_ra, cone_dec, cone_rad).order_by(sort)
+            except ValueError:
+                pass
 
     if queryset is None:
         queryset = Sample.objects.all()
 
-    if sort is None:
-        sort = 'targetid'
-
-    queryset = queryset.order_by(sort)
+    if req.GET.get('catalog', None) is None:
+        if sort is None:
+            sort = 'targetid'
+        queryset = queryset.order_by(sort)
 
     #apply filter to Sample model, then store in queryset.
     sample_filter = SampleFilter(req.GET, queryset)
@@ -135,9 +152,12 @@ def explore(req):
     for sam in page:
         print(sam)
 
-    return render(req, 'explore.html', {'page': page, 'paginator': paginator,
-                                        'cone_ra':cone_ra, 'cone_dec':cone_dec,
-                                        'cone_rad':cone_rad_arcmin})
+    if req.GET.get('catalog', ''):
+        return render(req, 'explore.html', {'page': page, 'paginator': paginator})
+    else:
+        return render(req, 'explore.html', {'page': page, 'paginator': paginator,
+                                            'cone_ra':cone_ra, 'cone_dec':cone_dec,
+                                            'cone_rad':cone_rad_arcmin})
 
 def target_test(req):
 
@@ -291,9 +311,10 @@ def upload_catalog(req):
     from astropy.table import Table
     #from astrometry.util.fits import fits_table
     from django.http import HttpResponseRedirect
+    from django.urls import reverse
     #from map.views import index
     from fastspecfit.webapp import settings
-
+    
     if req.method != 'POST':
         return HttpResponse('POST only')
     print('Files:', req.FILES)
@@ -343,15 +364,13 @@ def upload_catalog(req):
     #if not (('ra' in cols) and ('dec' in cols)):
     #    return HttpResponse(errtxt % '<p>Did not find column "RA" and "DEC" in table.</p>')
 
-    survey, faprgrm, targetid = T['SURVEY'], T['FAPRGRM'], T['TARGETID']
     catname = tmpfn.replace(dirnm, '').replace('.fits', '')
     if catname.startswith('/'):
         catname = catname[1:]
 
     #from map.views import my_reverse
-    #return HttpResponseRedirect(reverse(req, sample.explore) + '?catalog=%s' % (catname))
-    return HttpResponseRedirect(req + '?catalog=%s' % (catname))
-
+    return HttpResponseRedirect(reverse(explore) + '?catalog={}'.format(catname))
+    #return HttpResponseRedirect(req + '?catalog={}'.format(catname))
 
 def main():
     from django.test import Client
