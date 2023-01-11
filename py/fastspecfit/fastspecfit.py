@@ -341,10 +341,12 @@ class FastFit(ContinuumTools):
         for band in self.synth_bands:
             out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies')) 
             #out.add_column(Column(name='FLUX_SYNTH_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies-2'))
-        # observed-frame photometry synthesized from the best-fitting continuum model fit
-        #for band in self.synth_bands:
+        # observed-frame photometry synthesized the best-fitting spectroscopic model
+        for band in self.synth_bands:
+            out.add_column(Column(name='FLUX_SYNTH_SPECMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
+        # observed-frame photometry synthesized the best-fitting continuum model
         for band in self.bands:
-            out.add_column(Column(name='FLUX_SYNTH_MODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
+            out.add_column(Column(name='FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
 
         for band in self.absmag_bands:
             out.add_column(Column(name='KCORR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag))
@@ -885,7 +887,7 @@ class FastFit(ContinuumTools):
             result['ABSMAG_{}'.format(band.upper())] = absmag[iband] # * u.mag
             result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband] # / (u.mag**2)
         for iband, band in enumerate(self.bands):
-            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = synth_bestmaggies[iband] # * u.nanomaggy
+            result['FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper())] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
         if bool(lums):
             for lum in lums.keys():
                 result[lum] = lums[lum]
@@ -1867,10 +1869,10 @@ class FastFit(ContinuumTools):
         modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4', data=modelsmoothcontinuum))
         modelspectra.add_column(Column(name='EMLINEMODEL', dtype='f4', data=modelemspectrum))
 
-        # Finally, optionally synthesize photometry and measure Dn(4000) from
-        # the line-free spectrum.
+        # Finally, optionally synthesize photometry (excluding the
+        # smoothcontinuum!) and measure Dn(4000) from the line-free spectrum.
         if synthphot:
-            modelflux = modelcontinuum[0, :] + modelsmoothcontinuum[0, :] + modelemspectrum[0, :]
+            modelflux = modelcontinuum[0, :] + modelemspectrum[0, :]
             self._synthphot_spectrum(data, result, modelwave, modelflux)
 
         # measure DN(4000) without the emission lines
@@ -2221,7 +2223,7 @@ class FastFit(ContinuumTools):
             result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband] # * 'nanomaggies'
             #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
         for iband, band in enumerate(self.synth_bands):
-            result['FLUX_SYNTH_MODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] # * 'nanomaggies'
+            result['FLUX_SYNTH_SPECMODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] # * 'nanomaggies'
 
     def qa_fastspec(self, data, fastspec, metadata, coadd_type='healpix',
                     spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),

@@ -111,6 +111,7 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, FFit, fastphot, synth
     # Do not match the Legacy Surveys here because we want the MW
     # dust extinction correction we apply to the spectra to be
     # self-consistent with how we correct the photometry for dust.
+    meta['EBV'] = ebv
     if data['photsys'] != '':
         mw_transmission_flux = np.array([mwdust_transmission(ebv, band, data['photsys'], match_legacy_surveys=False) for band in FFit.bands])
         for band, mwdust in zip(FFit.bands, mw_transmission_flux):
