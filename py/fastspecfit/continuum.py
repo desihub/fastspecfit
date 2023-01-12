@@ -1086,8 +1086,9 @@ class ContinuumTools(object):
             linemask_dict = {'linemask_all': [], 'linemask': [],
                              'linename': [], 'linepix': [], 'contpix': []}
 
-        # Also return the smooth continuum.
-        linemask_dict['smoothflux'] = smooth
+        # Also return the smooth continuum and the smooth sigma.
+        #linemask_dict['smoothflux'] = smooth
+        linemask_dict['smoothsigma'] = smoothsigma
 
         return linemask_dict
 

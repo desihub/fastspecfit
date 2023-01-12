@@ -164,7 +164,7 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, FFit, fastphot, synth
         data.update({'wave': [], 'flux': [], 'ivar': [], 'mask': [], 'res': [],
                      'linemask': [], 'linemask_all': [],
                      'linename': [], 'linepix': [], 'contpix': [],
-                     'smoothflux': [],
+                     #'smoothflux': [], 
                      'snr': np.zeros(3, 'f4')})
                      #'std': np.zeros(3, 'f4'), # emission-line free standard deviation, per-camera
     
@@ -229,13 +229,15 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, FFit, fastphot, synth
         data['linesigma_narrow_snr'] = coadd_linemask_dict['linesigma_narrow_snr']
         data['linesigma_balmer_snr'] = coadd_linemask_dict['linesigma_balmer_snr']
         data['linesigma_uv_snr'] = coadd_linemask_dict['linesigma_uv_snr']
-    
+
+        data['smoothsigma'] = coadd_linemask_dict['smoothsigma']
+        
         # Map the pixels belonging to individual emission lines and
         # their local continuum back onto the original per-camera
         # spectra. These lists of arrays are used in
         # continuum.ContinnuumTools.smooth_continuum.
         for icam in np.arange(len(data['cameras'])):
-            data['smoothflux'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['smoothflux']))
+            #data['smoothflux'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['smoothflux']))
             data['linemask'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask']*1) > 0)
             data['linemask_all'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask_all']*1) > 0)
             _linename, _linenpix, _contpix = [], [], []
