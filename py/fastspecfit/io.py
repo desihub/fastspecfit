@@ -480,6 +480,7 @@ class DESISpectra(object):
         """
         from desiutil.depend import getdep
         from desitarget.io import releasedict        
+        from desitarget.targets import main_cmx_or_sv
         from desispec.io.photo import gather_tractorphot
 
         if zmin <= 0.0:
@@ -658,24 +659,25 @@ class DESISpectra(object):
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=READFMCOLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
-            # Update the redrock redshift when quasarnet disagrees. From Edmond:
-            # the QN afterburner is run with a threshold 0.5. With VI, we choose
-            # 0.95 as final threshold. Note, the IS_QSO_QN_NEW_RR column
-            # contains only QSO for QN which are not QSO for RR.
+            # Update the redrock redshift when quasarnet disagrees **but only
+            # for QSO targets**. From Edmond: the QN afterburner is run with a
+            # threshold 0.5. With VI, we choose 0.95 as final threshold. Note,
+            # the IS_QSO_QN_NEW_RR column contains only QSO for QN which are not
+            # QSO for RR.
+            zb['Z_RR'] = zb['Z'] # add it at the end
             if use_qn:
-                qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
-                assert(np.all(qn['TARGETID'] == meta['TARGETID']))
-                log.info('Updating QSO redshifts using a QN threshold of 0.95.')
-                qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > 0.95
-                qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
-                #zb.add_column(zb['Z'], name='Z_RR', index=2) # add it after 'Z'
-                zb['Z_RR'] = zb['Z'] # add it at the end
-                if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
-                    zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
-                del qn
-            else:
-                zb['Z_RR'] = zb['Z'] # add it at the end
-                
+                [desi_target, bgs_target, mws_target], [desi_mask, bgs_mask, mws_mask], surv = main_cmx_or_sv(meta)
+                IQSO = np.where(meta[desi_target] & desi_mask['QSO'] != 0)[0]
+                if len(IQSO) > 0:
+                    qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx[IQSO], columns=QNCOLS))
+                    assert(np.all(qn['TARGETID'] == meta['TARGETID'][IQSO]))
+                    log.info('Updating QSO redshifts using a QN threshold of 0.95.')
+                    qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > 0.95
+                    qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
+                    if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
+                        zb['Z'][IQSO[qn['IS_QSO_QN_NEW_RR']]] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
+                    del qn
+
             # astropy 5.0 "feature" -- join no longer preserves order, ugh.
             zb.remove_column('TARGETID')
             meta = hstack((zb, meta))
