@@ -1386,8 +1386,8 @@ class ContinuumTools(object):
                     # (which should never happen?)
                     absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
 
-                check = absmag[jj], -2.5*np.log10(synth_outmaggies_rest[jj]) - dmod
-                self.log.debug(check)
+                #check = absmag[jj], -2.5*np.log10(synth_outmaggies_rest[jj]) - dmod
+                #self.log.debug(check)
 
             return kcorr, absmag, ivarabsmag
 
