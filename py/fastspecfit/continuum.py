@@ -13,7 +13,7 @@ import numpy as np
 import astropy.units as u
 from astropy.table import Table, Column
 
-from fastspecfit.util import C_LIGHT
+from fastspecfit.util import C_LIGHT, TabulatedDESI
 
 #import numba
 #@numba.jit(nopython=True)
@@ -70,7 +70,7 @@ def nnls(A, b, maxiter=None, eps=1e-7, v=False):
     res = np.linalg.norm(A.dot(x) - b)
     return x, res
 
-class ContinuumTools(object):
+class ContinuumTools(TabulatedDESI):
     """Tools for dealing with stellar continua.
 
     Parameters
@@ -95,9 +95,9 @@ class ContinuumTools(object):
                  maxtemplatewave=40e4, mapdir=None, fastphot=False, nophoto=False,
                  verbose=False):
 
-        import fitsio
-        from astropy.cosmology import FlatLambdaCDM
+        super(ContinuumTools, self).__init__()
 
+        import fitsio
         from speclite import filters
         from desiutil.dust import SFDMap
         from desiutil.log import get_logger, DEBUG
@@ -110,7 +110,12 @@ class ContinuumTools(object):
         else:
             self.log = get_logger()
 
-        self.cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
+        #from astropy.cosmology import FlatLambdaCDM
+        #cosmo = FlatLambdaCDM(H0=100, Om0=0.3)
+        #ztest = 0.1
+        #print(self.universe_age(ztest), cosmo.age(ztest).value)
+        #print(self.distance_modulus(ztest), cosmo.distmod(ztest).value)
+
         # pre-compute the luminosity distance on a grid
         #self.redshift_ref = np.arange(0.0, 5.0, 0.05)
         #self.dlum_ref = self.cosmo.luminosity_distance(self.redshift_ref).to(u.pc).value
@@ -1208,7 +1213,8 @@ class ContinuumTools(object):
         # stellar mass.
         if redshift:
             ztemplatewave = templatewave * (1.0 + redshift)
-            dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2
+            dfactor = (10.0 / (1e6 * self.luminosity_distance(redshift)))**2
+            #dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2
             #dfactor = (10.0 / np.interp(redshift, self.redshift_ref, self.dlum_ref))**2
             factor = (self.fluxnorm * self.massnorm * dfactor / (1.0 + redshift))[np.newaxis, np.newaxis]
             ztemplateflux = templateflux * factor
@@ -1320,7 +1326,8 @@ class ContinuumTools(object):
         agepad in Gyr
 
         """
-        return np.where(self.templateinfo['age'] <= (agepad*1e9 + self.cosmo.age(redshift).to(u.year).value))[0]
+        return np.where(self.templateinfo['age'] <= 1e9 * (agepad + self.universe_age(redshift)))[0]
+        #return np.where(self.templateinfo['age'] <= (agepad*1e9 + self.cosmo.age(redshift).to(u.year).value))[0]
 
     def kcorr_and_absmag(self, data, continuum, coeff, snrmin=2.0):
         """Computer K-corrections, absolute magnitudes, and a simple stellar mass.
@@ -1339,7 +1346,8 @@ class ContinuumTools(object):
 
         # redshifted wavelength array and distance modulus
         ztemplatewave = self.templatewave * (1 + redshift)
-        dmod = self.cosmo.distmod(redshift).value
+        dmod = self.distance_modulus(redshift)
+        #dmod = self.cosmo.distmod(redshift).value
 
         maggies = data['phot']['nanomaggies'].data * 1e-9
         ivarmaggies = (data['phot']['nanomaggies_ivar'].data / 1e-9**2) * self.bands_to_fit # mask W2-W4
@@ -1424,8 +1432,9 @@ class ContinuumTools(object):
         # compute the model continuum flux at 1500 and 2800 A (to facilitate UV
         # luminosity-based SFRs) and at the positions of strong nebular emission
         # lines [OII], Hbeta, [OIII], and Halpha
-        dfactor = (1 + redshift) * 4.0 * np.pi * self.cosmo.luminosity_distance(redshift).to(u.cm).value**2 / self.fluxnorm
-
+        #dfactor = (1 + redshift) * 4.0 * np.pi * self.cosmo.luminosity_distance(redshift).to(u.cm).value**2 / self.fluxnorm
+        dfactor = (1 + redshift) * 4.0 * np.pi * (3.08567758e24 * self.luminosity_distance(redshift))**2 / self.fluxnorm
+                
         lums = {}
         cwaves = [1500.0, 2800.0, 5100.0]
         labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_5100']
