@@ -45,7 +45,8 @@ def _assign_units_to_columns(fastfit, metadata, Spec, FFit, fastphot=False):
         if col in metacols:
             metadata[col].unit = M[col].unit
 
-def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True, fastphot=False):
+def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True, fastphot=False,
+                 percamera_models=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
     
     log.info('Working on object {} [targetid={}, z={:.6f}].'.format(
@@ -58,7 +59,7 @@ def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True, fastphot=False)
         emmodel = None
     else:
         emmodel = FFit.emline_specfit(data, out, continuummodel, smooth_continuum,
-                                      broadlinefit=broadlinefit)
+                                      broadlinefit=broadlinefit, percamera_models=percamera_models)
 
     return out, meta, emmodel
 
@@ -88,6 +89,8 @@ def parse(options=None):
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not allow for broad Balmer and Helium line-fitting.')
+    parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
+    parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
     parser.add_argument('--templates', type=str, default=None, help='Optional name of the templates.')
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
@@ -136,7 +139,8 @@ def fastspec(fastphot=False, args=None, comm=None):
     t0 = time.time()
     FFit = FastFit(templates=args.templates, mapdir=args.mapdir, 
                    verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
-                   fastphot=fastphot, mintemplatewave=500.0, maxtemplatewave=40e4)
+                   nophoto=args.nophoto, fastphot=fastphot,
+                   mintemplatewave=500.0, maxtemplatewave=40e4)
     Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took {:.2f} sec'.format(time.time()-t0))
 
@@ -160,8 +164,8 @@ def fastspec(fastphot=False, args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], FFit, args.broadlinefit, fastphot)
-               for iobj in np.arange(Spec.ntargets)]
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], FFit, args.broadlinefit,
+                fastphot, args.percamera_models) for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
         with multiprocessing.Pool(args.mp) as P:
@@ -212,8 +216,9 @@ def fastphot(args=None, comm=None):
 class FastFit(ContinuumTools):
     def __init__(self, templates=None, mintemplatewave=None, maxtemplatewave=40e4, 
                  minspecwave=3500.0, maxspecwave=9900.0, chi2_default=0.0, 
-                 maxiter=5000, accuracy=1e-2, nolegend=False, solve_vdisp=True, 
-                 constrain_age=True, mapdir=None, fastphot=False, verbose=False):
+                 maxiter=5000, accuracy=1e-2, solve_vdisp=True,
+                 constrain_age=True, mapdir=None, nophoto=False, fastphot=False,
+                 verbose=False):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -236,8 +241,6 @@ class FastFit(ContinuumTools):
             Maximum number of iterations.
         accuracy : :class:`float`, optional, defaults to 0.01.
             Fitting accuracy.
-        nolegend : :class:`bool`, optional, defaults to `False`.
-            Do not render the legend on the QA output.
         mapdir : :class:`str`, optional
             Full path to the Milky Way dust maps.
 
@@ -253,9 +256,7 @@ class FastFit(ContinuumTools):
         """
         super(FastFit, self).__init__(templates=templates, mintemplatewave=mintemplatewave,
                                       maxtemplatewave=maxtemplatewave, mapdir=mapdir, fastphot=fastphot,
-                                      verbose=verbose)
-
-        self.nolegend = nolegend
+                                      nophoto=nophoto, verbose=verbose)
 
         # continuum stuff
         self.constrain_age = constrain_age
@@ -266,7 +267,6 @@ class FastFit(ContinuumTools):
             self.chi2_default = chi2_default
             self.maxiter = maxiter
             self.accuracy = accuracy
-            self.nolegend = nolegend
     
             self.emwave_pixkms = 5.0                                  # pixel size for internal wavelength array [km/s]
             self.dlogwave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
@@ -312,7 +312,7 @@ class FastFit(ContinuumTools):
         
         out = Table()
         out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
-        out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(ncoeff,), dtype='f8'))
+        out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(ncoeff,), dtype='f4'))
         out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
         #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
 
@@ -561,12 +561,13 @@ class FastFit(ContinuumTools):
         objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
         assert(np.all(objflamivar >= 0))
 
-        # Require at least one photometric optical band; do not just fit the IR
-        # because we will not be able to compute the aperture correction, below.
-        grz = np.logical_or.reduce((data['phot']['band'] == 'g', data['phot']['band'] == 'r', data['phot']['band'] == 'z'))
-        if np.all(objflamivar[grz] == 0.0):
-            self.log.warning('All optical (grz) bands are masked; masking all photometry.')
-            objflamivar *= 0.0
+        if not self.nophoto:
+            # Require at least one photometric optical band; do not just fit the IR
+            # because we will not be able to compute the aperture correction, below.
+            grz = np.logical_or.reduce((data['phot']['band'] == 'g', data['phot']['band'] == 'r', data['phot']['band'] == 'z'))
+            if np.all(objflamivar[grz] == 0.0):
+                self.log.warning('All optical (grz) bands are masked; masking all photometry.')
+                objflamivar *= 0.0
 
         # Optionally ignore templates which are older than the age of the
         # universe at the redshift of the object.
@@ -728,41 +729,44 @@ class FastFit(ContinuumTools):
 
             apercorrs, apercorr = np.zeros(len(self.synth_bands), 'f4'), 0.0
 
-            # Fit using the templates with line-emission.
-            quickcoeff, _ = self._call_nnls(desitemplates, specflux, specivar)
-            if np.all(quickcoeff == 0):
-                self.log.warning('Quick continuum coefficients are all zero.')
+            sedtemplates, _ = self.templates2data(input_templateflux, self.templatewave, 
+                                                  vdisp=use_vdisp, redshift=redshift,
+                                                  synthphot=False)
+            if self.nophoto:
+                self.log.info('Skipping aperture correction since --nophoto was set.')
+                apercorrs, apercorr = np.ones(len(self.synth_bands), 'f4'), 1.0
             else:
-                # Synthesize grz photometry from the full-wavelength SED to make
-                # sure we get the z-band correct.
-                sedtemplates, _ = self.templates2data(
-                    input_templateflux, self.templatewave, 
-                    vdisp=use_vdisp, redshift=redshift,
-                    synthphot=False)
-                quicksedflux = sedtemplates.dot(quickcoeff)
-                
-                quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / self.fluxnorm, ztemplatewave).as_array().tolist()[0])
-                quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, nanomaggies=False)
-
-                numer = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
-                                   for band in self.synth_bands])
-                denom = quickphot['nanomaggies'].data
-                I = (numer > 0.0) * (denom > 0.0)
-                if np.any(I):
-                    apercorrs[I] = numer[I] / denom[I]
-                I = apercorrs > 0
-                if np.any(I):
-                    apercorr = np.median(apercorrs[I])
+                # Fit using the templates with line-emission.
+                quickcoeff, _ = self._call_nnls(desitemplates, specflux, specivar)
+                if np.all(quickcoeff == 0):
+                    self.log.warning('Quick continuum coefficients are all zero.')
+                else:
+                    # Synthesize grz photometry from the full-wavelength SED to make
+                    # sure we get the z-band correct.
+                    quicksedflux = sedtemplates.dot(quickcoeff)
                     
+                    quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / self.fluxnorm, ztemplatewave).as_array().tolist()[0])
+                    quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, nanomaggies=False)
+    
+                    numer = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
+                                       for band in self.synth_bands])
+                    denom = quickphot['nanomaggies'].data
+                    I = (numer > 0.0) * (denom > 0.0)
+                    if np.any(I):
+                        apercorrs[I] = numer[I] / denom[I]
+                    I = apercorrs > 0
+                    if np.any(I):
+                        apercorr = np.median(apercorrs[I])
+                        
+                self.log.info('Median aperture correction = {:.3f} [{:.3f}-{:.3f}].'.format(
+                    apercorr, np.min(apercorrs), np.max(apercorrs)))
+                
+                if apercorr <= 0:
+                    self.log.warning('Aperture correction not well-defined; adopting 1.0.')
+                    apercorr = 1.0
+
             apercorr_g, apercorr_r, apercorr_z = apercorrs
-
-            self.log.info('Median aperture correction = {:.3f} [{:.3f}-{:.3f}].'.format(
-                apercorr, np.min(apercorrs), np.max(apercorrs)))
-
-            if apercorr <= 0:
-                self.log.warning('Aperture correction not well-defined; adopting 1.0.')
-                apercorr = 1.0
-
+    
             data['apercorr'] = apercorr # needed for the line-fitting
 
             # Performing the final fit using the line-free templates in the
@@ -1518,16 +1522,21 @@ class FastFit(ContinuumTools):
         notfixed = np.logical_not(linemodel['fixed'])
 
         drop1 = np.hstack((lineamps < 0, np.zeros(len(linevshifts), bool), linesigmas <= 0)) * notfixed
-        
+
+        # Require equality, not np.isclose, because the optimization can be very
+        # small (<1e-6) but still significant, especially for the doublet
+        # ratios.
         drop2 = np.zeros(len(parameters), bool)
-        drop2[Ifree] = np.isclose(parameters[Ifree], linemodel['value'][Ifree]) # want 'value' here not 'initial'
+        drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree]
+        #drop2[Ifree] = np.isclose(parameters[Ifree], linemodel['value'][Ifree], 1e-3) # want 'value' here not 'initial'
         drop2 *= notfixed
-        
+
+        # It's OK for parameters to be *at* their bounds.
         drop3 = np.zeros(len(parameters), bool)
-        drop3[Ifree] = np.logical_or(np.isclose(parameters[Ifree], linemodel['bounds'][Ifree, 0], 1e-3),
-                                     np.isclose(parameters[Ifree], linemodel['bounds'][Ifree, 1], 1e-3))
-        #drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
-        #                             parameters[Ifree] > linemodel['bounds'][Ifree, 1])
+        #drop3[Ifree] = np.logical_or(np.isclose(parameters[Ifree], linemodel['bounds'][Ifree, 0], 1e-3),
+        #                             np.isclose(parameters[Ifree], linemodel['bounds'][Ifree, 1], 1e-3))
+        drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
+                                     parameters[Ifree] > linemodel['bounds'][Ifree, 1])
         drop3 *= notfixed
         
         self.log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
@@ -1645,7 +1654,8 @@ class FastFit(ContinuumTools):
         return emlinemodel
 
     def emline_specfit(self, data, result, continuummodel, smooth_continuum, 
-                       synthphot=True, broadlinefit=True, verbose=False):
+                       synthphot=True, broadlinefit=True, percamera_models=False,
+                       verbose=False):
         """Perform the fit minimization / chi2 minimization.
 
         Parameters
@@ -1844,7 +1854,7 @@ class FastFit(ContinuumTools):
         nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
         self.log.info('Final line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
             nfree, time.time()-t0, finalfit.meta['nfev'], finalchi2))
-        
+
         # Residual spectrum with no emission lines.
         specflux_nolines = specflux - finalmodel
 
@@ -1970,6 +1980,11 @@ class FastFit(ContinuumTools):
                 fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
 
         log.info('Emission-line fitting took {:.2f} seconds.'.format(time.time()-tall))
+
+        if percamera_models:
+            errmsg = 'percamera-models option not yet implemented.'
+            log.critical(errmsg)
+            raise NotImplementedError(errmsg)
 
         return modelspectra
 

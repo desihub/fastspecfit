@@ -92,7 +92,8 @@ class ContinuumTools(object):
 
     """
     def __init__(self, templates=None, templateversion='v1.0', mintemplatewave=None,
-                 maxtemplatewave=40e4, mapdir=None, fastphot=False, verbose=False):
+                 maxtemplatewave=40e4, mapdir=None, fastphot=False, nophoto=False,
+                 verbose=False):
 
         import fitsio
         from astropy.cosmology import FlatLambdaCDM
@@ -116,6 +117,8 @@ class ContinuumTools(object):
 
         self.fluxnorm = 1e17 # normalization factor for the spectra
         self.massnorm = 1e10 # stellar mass normalization factor [Msun]
+
+        self.nophoto = nophoto
 
         # dust maps
         if mapdir is None:
@@ -180,18 +183,15 @@ class ContinuumTools(object):
             self.vdisp_nominal_indx = np.where(vdisp == self.vdisp_nominal)[0]
             self.nvdisp = nvdisp
 
-            # Cache a copy of the line-free templates at the nominal velocity dispersion.
-            I = np.where(self.templatewave < self.pixkms_wavesplit)[0]
-            templateflux_nolines_nomvdisp = self.templateflux_nolines.copy()
-            templateflux_nolines_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nolines_nomvdisp[I, :], self.vdisp_nominal)
-            self.templateflux_nolines_nomvdisp = templateflux_nolines_nomvdisp
-
-        # Cache a copy of the full templates at the nominal velocity dispersion
-        # (needed for fastphot as well).
+        # Cache a copy of the line-free templates at the nominal velocity
+        # dispersion (needed for fastphot as well).
         I = np.where(self.templatewave < self.pixkms_wavesplit)[0]
+        templateflux_nolines_nomvdisp = self.templateflux_nolines.copy()
         templateflux_nomvdisp = self.templateflux.copy()
+        templateflux_nolines_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nolines_nomvdisp[I, :], self.vdisp_nominal)
         templateflux_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nomvdisp[I, :], self.vdisp_nominal)
         self.templateflux_nomvdisp = templateflux_nomvdisp
+        self.templateflux_nolines_nomvdisp = templateflux_nolines_nomvdisp
 
         # emission line stuff
         self.linetable = read_emlines()
@@ -213,7 +213,11 @@ class ContinuumTools(object):
         self.bassmzlswise = filters.load_filters(
             'BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
 
-        self.bands_to_fit = np.ones(len(self.bands), bool)
+        # Do not fit the photometry.
+        if self.nophoto:
+            self.bands_to_fit = np.zeros(len(self.bands), bool)
+        else:
+            self.bands_to_fit = np.ones(len(self.bands), bool)            
         #for B in ['W2', 'W3', 'W4']:
         #    self.bands_to_fit[self.bands == B] = False # drop W2-W4
 
