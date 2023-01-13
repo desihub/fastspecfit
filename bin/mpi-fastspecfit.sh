@@ -28,7 +28,7 @@ codedir=/global/homes/i/ioannis/code/desihub
 #codedir=/usr/local/bin
 mpiscript=$codedir/fastspecfit/bin/mpi-fastspecfit
 
-for package in fastspecfit; do
+for package in fastspecfit desi; do
     echo Loading local check-out of $package
     export PATH=$codedir/$package/bin:$PATH
     export PYTHONPATH=$codedir/$package/py:$PYTHONPATH
@@ -39,7 +39,7 @@ outdir_html=/global/cfs/cdirs/desi/users/ioannis/fastspecfit
 
 export DESI_ROOT='/global/cfs/cdirs/desi'
 export DUST_DIR='/global/cfs/cdirs/cosmo/data/dust/v0_1'
-export FASTSPECFIT_TEMPLATES='/global/cfs/cdirs/desi/external/templates/SSP-CKC14z'
+export FASTSPECFIT_TEMPLATES='/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 export TMPCACHE=$(mktemp -d)
 export MPLCONFIGDIR=$TMPCACHE/matplotlib
@@ -65,7 +65,7 @@ program=$6
 #echo survey=$survey
 #echo program=$program
 
-args="--outdir-data $outdir_data --outdir-html $outdir_html"
+args="--outdir-data $outdir_data --outdir-html $outdir_html --healpix 17682,17683,17688,17689,17692,7018,7019,7022,7104,7105,7018,7019,7022,7104,7105,17689,17691,17692,17694,7022,7105,7107,7108,7022,7105,7107,7108"
 
 if [[ $stage == "fastphot" ]]; then
     args=$args" --fastphot"

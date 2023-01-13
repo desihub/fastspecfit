@@ -1712,7 +1712,8 @@ class FastFit(ContinuumTools):
         initial_guesses, param_bounds = self._initial_guesses_and_bounds(data, emlinewave, emlineflux)
 
         for linemodel in [initial_linemodel, initial_linemodel_nobroad]:
-            self._populate_linemodel(linemodel, initial_guesses, param_bounds)
+            self._populate_linemodel(linemodel, initial_guesses, param_bounds,
+                                     broadbalmer_snrmin=1.5)
 
         # Initial fit - initial_linemodel_nobroad
         t0 = time.time()
@@ -2783,7 +2784,7 @@ class FastFit(ContinuumTools):
         # photometric SED   
         if len(sedmodel) == 0:
             self.log.warning('Best-fitting photometric continuum is all zeros or negative!')
-            sedmodel_abmag = sedmodel*0 + np.median(phot['abmag'])
+            sedmodel_abmag = np.zeros_like(self.templatewave) + np.median(phot['abmag'])
         else:
             factor = 10**(0.4 * 48.6) * sedwave**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
             sedmodel_abmag = -2.5*np.log10(sedmodel * factor)
