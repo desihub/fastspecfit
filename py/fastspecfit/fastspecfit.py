@@ -2763,10 +2763,12 @@ class FastFit(ContinuumTools):
                 if 6 * sigflux > spec_ymax:
                     spec_ymax = 6 * sigflux
                 if np.max(filtflux) > spec_ymax:
-                    spec_ymax = np.max(filtflux)
+                    #print(ii, spec_ymax, np.max(filtflux), np.max(filtflux) * 1.2)
+                    spec_ymax = np.max(filtflux) * 1.4
                 if np.max(modelflux) > spec_ymax:
-                    spec_ymax = np.max(modelflux) * 1.2
-                #print(spec_ymin, spec_ymax)
+                    spec_ymax = np.max(modelflux) * 1.4
+                print(spec_ymin, spec_ymax)
+                #pdb.set_trace()
         
             #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[ii], alpha=0.2)
             specax.plot(wave/1e4, flux, color=col1[ii], alpha=0.8)
