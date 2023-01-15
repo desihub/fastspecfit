@@ -298,6 +298,7 @@ class FastFit(ContinuumTools):
                         param_name = 'sii_doublet_ratio'  # [SII] 6731/6716
                     param_names.append(param_name)
             self.param_names = np.hstack(param_names)
+            self.amp_param_bool = np.array(['_amp' in pp for pp in self.param_names])
     
             self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
             self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
@@ -1004,10 +1005,10 @@ class FastFit(ContinuumTools):
         minsigma_narrow = 1.0
         maxsigma_narrow = 750.0 # 500.0
 
-        minsigma_broad = 100.
+        minsigma_broad = 1.0 # 100.
         maxsigma_broad = 1e4
 
-        minsigma_balmer_broad = 200.0 # minsigma_narrow
+        minsigma_balmer_broad = 1.0 # 100.0 # minsigma_narrow
         maxsigma_balmer_broad = maxsigma_broad
     
         # Be very careful about changing the default broad line-sigma. Smaller
@@ -1201,13 +1202,14 @@ class FastFit(ContinuumTools):
                     final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
                     final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'ciii_1908_'+param)[0]
 
-            # Stephanie Juneau argues that the narrow line-widths should never
-            # be fully untied, so optionally keep them tied to [OIII] 5007
-            # here. vshift can be free, however, to allow for wavelength
-            # calibration uncertainties.
+            # Stephanie Juneau argues that the narrow *forbidden* line-widths
+            # should never be fully untied, so optionally keep them tied to
+            # [OIII] 5007 here; vshift can be free, however, to allow for
+            # wavelength calibration uncertainties.
             if strict_finalmodel:
-                # Tie all forbidden lines and narrow Balmer & He lines to [OIII] 5007.
-                if fit_linetable['isbroad'][iline] == False and linename != 'oiii_5007':
+                # Tie all forbidden lines to [OIII] 5007; the narrow Balmer and
+                # helium lines are separately tied together.
+                if fit_linetable['isbroad'][iline] == False and fit_linetable['isbalmer'][iline] == False and linename != 'oiii_5007':
                     for param in ['sigma']:
                         final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
                         final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oiii_5007_'+param)[0]
@@ -1740,6 +1742,13 @@ class FastFit(ContinuumTools):
 
         # Require minimum XX pixels.
         if broadlinefit:# and len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10:
+            # Copy over the doublet ratios but none of the other initial values
+            # so that we're not driven to the same local minimum.
+            doubletindx = initial_linemodel['doubletpair'] != -1
+            doubletpair = initial_linemodel['doubletpair'][doubletindx].data
+            initial_linemodel['value'][doubletindx] = initfit[doubletindx]['value']
+            initial_linemodel['value'][initial_linemodel['doubletpair'][doubletindx]] *= initial_linemodel['value'][doubletindx]
+            
             t0 = time.time()
             broadfit = self._optimize(initial_linemodel, emlinewave, emlineflux, weights, 
                                       redshift, resolution_matrix, camerapix, debug=False)
@@ -1748,6 +1757,8 @@ class FastFit(ContinuumTools):
             nfree = np.sum((broadfit['fixed'] == False) * (broadfit['tiedtoparam'] == -1))
             self.log.info('Second (broad) line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
                 nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
+
+            #W = (initial_linemodel['fixed'] == False)*(initial_linemodel['tiedtoparam']==-1)
 
             ## Compare chi2 just in and around the broad lines.
             #broadlinepix = np.hstack(broadlinepix)
@@ -1767,18 +1778,35 @@ class FastFit(ContinuumTools):
             
             linechi2_broad, linechi2_init = broadchi2, initchi2
 
-            self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [delta-chi2={:.5f}]'.format(
+            self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [chi2_narrow-chi2_broad={:.5f}]'.format(
                 linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
             
-            # If chi2_broad > chi2_narrow or if all broad Balmer lines were dropped then choose narrow.
-            if (linechi2_init - linechi2_broad) > self.delta_linerchi2_cut:
-                bestfit = broadfit
-            else:
+            # Choose narrow if:
+            # --chi2_broad > chi2_narrow;
+            # --all broad Balmer lines are dropped;
+            # --broad_sigma < narrow_sigma
+            dchi2fail = (linechi2_init - linechi2_broad) < self.delta_linerchi2_cut
+            alldrop = np.all(broadfit[broadfit['isbalmer'] * broadfit['isbroad'] * self.amp_param_bool]['value'].data == 0.0)
+            sigdrop = (broadfit[broadfit['param_name'] == 'halpha_broad_sigma']['value'] <= broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
+            if dchi2fail or alldrop or sigdrop:
+                if dchi2fail:
+                    log.info('Dropping broad-line model: {:.3f}<{:.3f}'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
+                if alldrop:
+                    log.info('Dropping broad-line model: all broad lines dropped.')
+                if sigdrop:
+                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < Halpha_narrow_sigma {:.2f} km/s'.format(
+                        broadfit[broadfit['param_name'] == 'halpha_broad_sigma']['value'][0],
+                        broadfit[broadfit['param_name'] == 'halpha_sigma']['value'][0]))
                 bestfit = initfit
+                use_linemodel_broad = False
+            else:
+                bestfit = broadfit
+                use_linemodel_broad = True
         else:
-            self.log.info('Skipping broad-line fitting.')
+            self.log.info('Skipping broad-line fitting (broadlinefit=False).')
             bestfit = initfit
             linechi2_broad, linechi2_init = 1e6, initchi2
+            use_linemodel_broad = False
             
             #if broadlinefit:
             #    self.log.info('Too few pixels centered on candidate broad emission lines.')
@@ -1788,7 +1816,7 @@ class FastFit(ContinuumTools):
 
         # Finally, one more fitting loop with all the line-constraints relaxed
         # but starting from the previous best-fitting values.
-        if (linechi2_init - linechi2_broad) > self.delta_linerchi2_cut:
+        if use_linemodel_broad:
             linemodel = final_linemodel
         else:
             linemodel = final_linemodel_nobroad
@@ -2764,10 +2792,10 @@ class FastFit(ContinuumTools):
                     spec_ymax = 6 * sigflux
                 if np.max(filtflux) > spec_ymax:
                     #print(ii, spec_ymax, np.max(filtflux), np.max(filtflux) * 1.2)
-                    spec_ymax = np.max(filtflux) * 1.4
+                    spec_ymax = np.max(filtflux) * 1.25
                 if np.max(modelflux) > spec_ymax:
-                    spec_ymax = np.max(modelflux) * 1.4
-                print(spec_ymin, spec_ymax)
+                    spec_ymax = np.max(modelflux) * 1.25
+                #print(spec_ymin, spec_ymax)
                 #pdb.set_trace()
         
             #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[ii], alpha=0.2)
