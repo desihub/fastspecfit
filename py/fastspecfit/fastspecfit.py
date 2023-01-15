@@ -330,7 +330,7 @@ class FastFit(ContinuumTools):
         out.add_column(Column(name='ZZSUN', length=nobj, dtype='f4'))
         out.add_column(Column(name='LOGMSTAR', length=nobj, dtype='f4', unit=u.solMass))
         out.add_column(Column(name='SFR', length=nobj, dtype='f4', unit=u.solMass/u.year))
-        out.add_column(Column(name='FAGN', length=nobj, dtype='f4'))
+        #out.add_column(Column(name='FAGN', length=nobj, dtype='f4'))
         
         if not fastphot:
             out.add_column(Column(name='DN4000', length=nobj, dtype='f4'))
@@ -860,19 +860,22 @@ class FastFit(ContinuumTools):
             synth_bestmaggies = np.zeros(len(self.bands))
             lums, cfluxes = {}, {}
 
-            AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+            AV, age, zzsun, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0
+            #AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         else:
             kcorr, absmag, ivarabsmag, synth_bestmaggies, lums, cfluxes = self.kcorr_and_absmag(data, sedmodel, coeff)
     
             AV = self.get_mean_property('av', coeff, agekeep)                        # [mag]
             age = self.get_mean_property('age', coeff, agekeep, normalization=1e9)   # [Gyr]
             zzsun = self.get_mean_property('zzsun', coeff, agekeep, log10=False)     # [log Zsun]
-            fagn = self.get_mean_property('fagn', coeff, agekeep)
+            #fagn = self.get_mean_property('fagn', coeff, agekeep)
             logmstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True) # [Msun]
             sfr = self.get_mean_property('sfr', coeff, agekeep, normalization=1/self.massnorm, log10=False)       # [Msun/yr]
 
-        self.log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
-            logmstar, absmag[np.isin(self.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun, fagn))
+        self.log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}'.format(
+            logmstar, absmag[np.isin(self.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun))
+        #self.log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
+        #    logmstar, absmag[np.isin(self.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun, fagn))
 
         # Pack it in and return.
         result['CONTINUUM_COEFF'][agekeep] = coeff
@@ -884,7 +887,7 @@ class FastFit(ContinuumTools):
         result['ZZSUN'] = zzsun
         result['LOGMSTAR'] = logmstar
         result['SFR'] = sfr
-        result['FAGN'] = fagn
+        #result['FAGN'] = fagn
         result['DN4000_MODEL'] = dn4000_model
 
         for iband, band in enumerate(self.absmag_bands):
@@ -2452,7 +2455,7 @@ class FastFit(ContinuumTools):
             'AV': '$A_{{V}}={:.3f}$ mag'.format(fastspec['AV']),
             'mstar': '$\\log_{{10}}(M/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
             'sfr': '${{\\rm SFR}}={:.1f}\ M_{{\odot}}/{{\\rm yr}}$'.format(fastspec['SFR']),
-            'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
+            #'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
             'zzsun': '$Z/Z_{{\\odot}}={:.3f}$'.format(fastspec['ZZSUN']),
 
             'absmag_r': '$M_{{0.1r}}={:.2f}$'.format(fastspec['ABSMAG_SDSS_R']),
@@ -2946,8 +2949,7 @@ class FastFit(ContinuumTools):
                     transform=sedax.transAxes, fontsize=legfntsz)#, bbox=bbox)
 
         txt = '\n'.join((
-            #r'{}'.format(leg['cchi2']),
-            r'{}'.format(leg['fagn']),
+            #r'{}'.format(leg['fagn']),
             r'{}'.format(leg['zzsun']),
             r'{}'.format(leg['AV']),
             r'{}'.format(leg['sfr']),
