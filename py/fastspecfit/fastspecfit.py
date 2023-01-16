@@ -304,6 +304,8 @@ class FastFit(ContinuumTools):
             self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
 
             self.delta_linerchi2_cut = 0.0
+            self.minsigma_balmer_broad = 250.0 # minimum broad-line sigma [km/s]
+            self.minsnr_balmer_broad = 3.0
 
     def init_output(self, nobj=1, fastphot=False):
         """Initialize the output data table for this class.
@@ -1085,7 +1087,7 @@ class FastFit(ContinuumTools):
         final_linemodel['bounds'] = np.zeros((nparam, 2), 'f8')
         final_linemodel['initial'] = np.zeros(nparam, 'f8')
         final_linemodel['value'] = np.zeros(nparam, 'f8')
-        final_linemodel['noise'] = np.zeros(nparam, 'f4')
+        final_linemodel['civar'] = np.zeros(nparam, 'f8') # continuum inverse variance
 
         final_linemodel['doubletpair'][self.doubletindx] = self.doubletpair
 
@@ -1350,10 +1352,13 @@ class FastFit(ContinuumTools):
                 amp = np.abs(amp)
 
             noise = np.median(coadd_sigma[linepix])
-            if noise <= 0:
-                errmsg = 'Noise estimate for line {} is zero or negative!'.format(linename)
-                self.log.critical(errmsg)
-                raise ValueError(errmsg)
+            if noise == 0:
+                civar = 0.0
+                errmsg = 'Noise estimate for line {} is zero!'.format(linename)
+                self.log.warning(errmsg)
+                #raise ValueError(errmsg)
+            else:
+                civar = 1.0 / noise**2
                 
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 3*np.max(coadd_emlineflux[linepix])]
@@ -1363,19 +1368,20 @@ class FastFit(ContinuumTools):
             
             # force broad Balmer lines to be positive
             iline = self.linetable[self.linetable['name'] == linename]
-            if iline['isbroad']:
-                if iline['isbalmer']:
-                    bounds = [0.0, mx]
-                else:
-                    # MgII and other UV lines are dropped relatively frequently
-                    # due to the lower bound on the amplitude.
-                    #bounds = [None, mx]
-                    #bounds = [-1e2, mx]
-                    #bounds = [0.0, mx]
-                    bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
-            else:
-                #bounds = [0.0, mx]
-                bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+            bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+            #if iline['isbroad']:
+            #    if iline['isbalmer']:
+            #        bounds = [0.0, mx]
+            #    else:
+            #        # MgII and other UV lines are dropped relatively frequently
+            #        # due to the lower bound on the amplitude.
+            #        #bounds = [None, mx]
+            #        #bounds = [-1e2, mx]
+            #        #bounds = [0.0, mx]
+            #        bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+            #else:
+            #    #bounds = [0.0, mx]
+            #    bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
 
             if (bounds[0] > bounds[1]) or (amp < bounds[0]) or (amp > bounds[1]):
                 log.warning('Initial amplitude is outside its bound for line {}.'.format(linename))
@@ -1388,7 +1394,7 @@ class FastFit(ContinuumTools):
 
             initial_guesses[linename+'_amp'] = amp
             param_bounds[linename+'_amp'] = bounds
-            initial_guesses[linename+'_noise'] = noise
+            initial_guesses[linename+'_civar'] = civar
 
             #if linename == 'hbeta_broad':
             #    pdb.set_trace()
@@ -1447,7 +1453,7 @@ class FastFit(ContinuumTools):
 
         return parameters, parameter_extras
 
-    def _populate_linemodel(self, linemodel, initial_guesses, param_bounds, broadbalmer_snrmin=1.5):
+    def _populate_linemodel(self, linemodel, initial_guesses, param_bounds, broadbalmer_snrmin=3.0):
         """Population an input linemodel with initial guesses and parameter bounds,
         taking into account fixed parameters.
 
@@ -1461,10 +1467,10 @@ class FastFit(ContinuumTools):
                     linemodel['initial'][iparam] = initial_guesses[param]
                     if param in param_bounds.keys():
                         linemodel['bounds'][iparam] = param_bounds[param]
-                        # set the lower boundary on broad lines to be 1.5 times the local noise
+                        # set the lower boundary on broad lines to be XX times the local noise
                         if linemodel['isbalmer'][iparam] and linemodel['isbroad'][iparam]:
-                            noisekey = linemodel['linename'][iparam]+'_noise'
-                            linemodel['noise'][iparam] = initial_guesses[noisekey]
+                            civarkey = linemodel['linename'][iparam]+'_civar'
+                            linemodel['civar'][iparam] = initial_guesses[civarkey]
 
                             #linemodel['bounds'][iparam][0] = broadbalmer_snrmin * initial_guesses[noisekey]
                             #if linemodel['initial'][iparam] < linemodel['bounds'][iparam][0]:
@@ -1731,7 +1737,7 @@ class FastFit(ContinuumTools):
 
         for linemodel in [initial_linemodel, initial_linemodel_nobroad]:
             self._populate_linemodel(linemodel, initial_guesses, param_bounds,
-                                     broadbalmer_snrmin=1.5)
+                                     broadbalmer_snrmin=self.minsnr_balmer_broad)
 
         # Initial fit - initial_linemodel_nobroad
         t0 = time.time()
@@ -1787,9 +1793,6 @@ class FastFit(ContinuumTools):
             self.log.info('Second (broad) line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
                 nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
 
-            W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
-            W2 = (broadfit['fixed'] == False) * (broadfit['tiedtoparam']==-1)
-
             ## Compare chi2 just in and around the broad lines.
             #broadlinepix = np.hstack(broadlinepix)
             #I = ((self.fit_linetable[self.fit_linetable['inrange']]['zwave'] > np.min(emlinewave[broadlinepix])) *
@@ -1811,26 +1814,41 @@ class FastFit(ContinuumTools):
             self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [chi2_narrow-chi2_broad={:.5f}]'.format(
                 linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
             
-            # Choose narrow if:
+            # Choose narrow-only model if:
             # --chi2_broad > chi2_narrow;
             # --all broad Balmer lines are dropped;
-            # --broad_sigma < narrow_sigma
+            # --broad_sigma < narrow_sigma;
+            # --broad_sigma < 250
+            Bbroad = broadfit['isbalmer'] * broadfit['isbroad'] * self.amp_param_bool
+            Habroad = broadfit['param_name'] == 'halpha_broad_sigma'
+            
             dchi2fail = (linechi2_init - linechi2_broad) < self.delta_linerchi2_cut
-            alldrop = np.all(broadfit[broadfit['isbalmer'] * broadfit['isbroad'] * self.amp_param_bool]['value'].data == 0.0)
-            sigdrop = (broadfit[broadfit['param_name'] == 'halpha_broad_sigma']['value'] <= broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
-            if dchi2fail or alldrop or sigdrop:
+            #alldrop = np.all(broadfit[Bbroad]['value'].data == 0.0)
+            ampdrop = np.all(broadfit[Bbroad]['value'].data * np.sqrt(broadfit[Bbroad]['civar'].data) < self.minsnr_balmer_broad)
+            sigdrop1 = (broadfit[Habroad]['value'] <= broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
+            sigdrop2 = broadfit[Habroad]['value'][0] < self.minsigma_balmer_broad
+
+            #W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
+            #W2 = (broadfit['fixed'] == False) * (broadfit['tiedtoparam']==-1)
+
+            if dchi2fail or ampdrop or sigdrop1 or sigdrop2:
                 if dchi2fail:
-                    log.info('Dropping broad-line model: {:.3f}<{:.3f}'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
-                if alldrop:
-                    log.info('Dropping broad-line model: all broad lines dropped.')
-                if sigdrop:
-                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < Halpha_narrow_sigma {:.2f} km/s'.format(
-                        broadfit[broadfit['param_name'] == 'halpha_broad_sigma']['value'][0],
+                    log.info('Dropping broad-line model: {:.3f}<{:.3f}.'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
+                if ampdrop:
+                    log.info('Dropping broad-line model: S/N in all broad lines < {:.1f}.'.format(self.minsnr_balmer_broad))
+                #if alldrop:
+                #    log.info('Dropping broad-line model: all broad lines dropped.')
+                if sigdrop1:
+                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < Halpha_narrow_sigma {:.2f} km/s.'.format(
+                        broadfit[Habroad]['value'][0],
                         broadfit[broadfit['param_name'] == 'halpha_sigma']['value'][0]))
+                if sigdrop2:
+                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < {:.0f} km/s.'.format(
+                        broadfit[Habroad]['value'][0], self.minsigma_balmer_broad))
                 bestfit = initfit
                 use_linemodel_broad = False
             else:
-                log.info('Adopting broad-line model: {:.3f}>{:.3f}'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
+                log.info('Adopting broad-line model: delta-rchi2={:.3f}>{:.3f}'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
                 bestfit = broadfit
                 use_linemodel_broad = True
         else:
@@ -3214,8 +3232,9 @@ class FastFit(ContinuumTools):
         txt += [            
             #r'{}'.format(leg['zwarn']),
             r'{}'.format(leg['vdisp']),
-            '',
         ]
+        if 'dv_narrow' in legkeys or 'dv_uv' in leg_uv.keys() or 'dv_broad' in leg_broad.keys():
+            txt += ['']
 
         if 'dv_narrow' in legkeys:
             txt += [
