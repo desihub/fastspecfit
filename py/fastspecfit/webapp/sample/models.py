@@ -104,14 +104,16 @@ class Sample(Model):
 
     # continuum properties
     #continuum_z = FloatField(null=True)
-    #continuum_coeff = FloatField(null=True)
-    continuum_rchi2 = FloatField(null=True)
-    continuum_snr_b = FloatField(null=True)
-    continuum_snr_r = FloatField(null=True)
-    continuum_snr_z = FloatField(null=True)
-    continuum_smoothcorr_b = FloatField(null=True)
-    continuum_smoothcorr_r = FloatField(null=True)
-    continuum_smoothcorr_z = FloatField(null=True)
+    #coeff = FloatField(null=True)
+    rchi2 = FloatField(null=True)
+    rchi2_cont = FloatField(null=True)
+    rchi2_phot = FloatField(null=True)
+    snr_b = FloatField(null=True)
+    snr_r = FloatField(null=True)
+    snr_z = FloatField(null=True)
+    smoothcorr_b = FloatField(null=True)
+    smoothcorr_r = FloatField(null=True)
+    smoothcorr_z = FloatField(null=True)
     
     vdisp = FloatField(null=True)
     vdisp_ivar = FloatField(null=True)
@@ -121,7 +123,7 @@ class Sample(Model):
     zzsun = FloatField(null=True)
     logmstar = FloatField(null=True)
     sfr = FloatField(null=True)
-    fagn = FloatField(null=True)
+    #fagn = FloatField(null=True)
     av = FloatField(null=True)
     dn4000 = FloatField(null=True)
     dn4000_obs = FloatField(null=True)
@@ -210,8 +212,7 @@ class Sample(Model):
     apercorr_r = FloatField(null=True)
     apercorr_z = FloatField(null=True)
 
-    rchi2 = FloatField(null=True)
-    linerchi2_broad = FloatField(null=True)
+    rchi2_line = FloatField(null=True)
     delta_linerchi2 = FloatField(null=True)
 
     narrow_z = FloatField(null=True)

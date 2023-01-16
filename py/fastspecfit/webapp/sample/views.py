@@ -336,7 +336,7 @@ def upload_catalog(req):
     print('Wrote', tmpfn)
 
     errtxt = ('<html><body>%s<p>Custom catalogs must be either a: <ul>'
-              + '<li><b>FITS binary table</b> with columns named "SURVEY", "FAPRGRM" (not case sensitive) and "TARGETID".'
+              + '<li><b>FITS binary table</b> with columns named "SURVEY", "PROGRAM" (not case sensitive) and "TARGETID".'
               + '<li><b>CSV text file</b> with columns "RA", "DEC", and optionally "NAME" (also not case sensitive)</ul>'
               +'See <a href="https://www.legacysurvey.org/svtips/">Tips & Tricks</a> for some hints on how to produce such a catalog.</p></body></html>')
 

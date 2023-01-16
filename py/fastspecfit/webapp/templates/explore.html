@@ -17,20 +17,26 @@
         <a href="https://github.com/desihub/fastspecfit"><img style="width: 400px;" src="{% static "fastspecfit-logo.png" %}" alt="FastSpecFit Logo"/></a> 
         <br />
         <br />
-        <h4>Fujilupe Data Release</h4>
+        <h4>Fujilupe Value-Added Catalog (v2.0)</h4>
         <br />
-        <p>Welcome to the <a href="https://fastspecfit.legacysurvey.org">data portal</a> for the DESI FastSpecFit value-added
-        catalogs! FastSpecFit is a stellar continuum and emission-line modeling
-        code for DESI optimized for speed and simplicity, which can be
-        called independently to model the broadband photometry (<i>fastphot</i>) or the
-          three-camera optical spectroscopy from DESI (<i>fastspec</i>).</p>
+        <p>Welcome to the <a href="https://fastspecfit.legacysurvey.org">data
+        portal</a> for the <a href="https://desi.lbl.gov">DESI</a> FastSpecFit
+        value-added catalogs! FastSpecFit is a stellar continuum and
+        emission-line modeling code for DESI which forward-models the
+        three-camera optical spectrophotometry jointly with the optical through
+        infrared broadband photometry in order to extract a wide range of
+        observed and intrinsic physical properties for galaxy and quasar
+        targets.</p>
         
         <p>Please refer to
            the <a href="https://fastspecfit.readthedocs.io/en/latest/">FastSpecFit
            documentation</a> for full details regarding this data release,
            particularly
            the <a href="https://fastspecfit.readthedocs.io/en/latest/fujilupe.html#acknowledgements">required
-           acknowledgments and conditions of use</a>.</p> 
+           acknowledgments and conditions of use</a>. Questions, problems, or
+           feature requests can be communicated
+           by <a href="https://github.com/desihub/fastspecfit/issues">filing a
+           ticket</a>. Have fun exploring the data!</p>
       </div>
   
       <!--<div class="col-md-8 col-right docutils container">-->
@@ -40,14 +46,14 @@
         <div class="jumbotron">
           <h4>Full Catalogs</h4>
           <p>
-            <a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/catalogs/fastspec-fuji.fits" download="fastspec-fuji.fits">fastspec-fuji.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastspec.html">(data model)</a><br />
-            <a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/catalogs/fastphot-fuji.fits" download="fastphot-fuji.fits">fastphot-fuji.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastphot.html">(data model)</a>
+            <a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v2.0/catalogs/fastspec-fuji.fits" download="fastspec-fuji.fits">fastspec-fuji.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastspec.html">(data model)</a><br />
+            <!--<a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v2.0/catalogs/fastphot-fuji.fits" download="fastphot-fuji.fits">fastphot-fuji.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastphot.html">(data model)</a>-->
           </p>
           
           <h4>On the web</h4>
-          <p><a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji">https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji</a></p>
+          <p><a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v2.0">https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v2.0</a></p>
           
-          <h4>At NERSC (for collaborators)</h4><p>/global/cfs/cdirs/desi/spectro/fastspecfit/fuji</p>
+          <h4>At NERSC (for collaborators)</h4><p>/global/cfs/cdirs/desi/spectro/fastspecfit/fuji/v2.0</p>
         </div>
       </div>
     </div>
@@ -66,11 +72,12 @@
             <table>
               <tr>
                 <th class="search_th"><label for="surveymatch">Survey</label></th>
-                <td><input id="surveymatch" name="survey__match" type="text" value="" placeholder="main,sv1,sv2,sv3,cmx,special"/></td> 
+                <td><input id="surveymatch" name="survey__match" type="text"
+                value="" placeholder="main,sv1,sv3,..."/></td> 
               </tr>
               <tr>
                 <th class="search_th"><label for="programmatch">Program</label></th>
-                <td><input id="programmatch" name="program__match" type="text" value="" placeholder="bright,dark,backup,other"/></td> 
+                <td><input id="programmatch" name="program__match" type="text" value="" placeholder="bright,dark,..."/></td> 
               </tr>
               <tr>
                 <th class="search_th"><label for="tileidmatch">TileIDs</label></th>
