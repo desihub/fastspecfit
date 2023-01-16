@@ -312,16 +312,18 @@ class FastFit(ContinuumTools):
         ncoeff = len(self.templateinfo)
         
         out = Table()
-        out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
-        out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(ncoeff,), dtype='f4'))
-        out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
-        #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
+        out.add_column(Column(name='Z', length=nobj, dtype='f8')) # redshift
+        out.add_column(Column(name='COEFF', length=nobj, shape=(ncoeff,), dtype='f4'))
+
+        out.add_column(Column(name='RCHI2', length=nobj, dtype='f4'))      # full-spectrum reduced chi2
+        out.add_column(Column(name='RCHI2_CONT', length=nobj, dtype='f4')) # rchi2 fitting just to the continuum (spec+phot)
+        out.add_column(Column(name='RCHI2_PHOT', length=nobj, dtype='f4')) # rchi2 fitting just to the photometry (=RCHI2_CONT if fastphot=True)
 
         if not fastphot:
             for cam in ['B', 'R', 'Z']:
-                out.add_column(Column(name='CONTINUUM_SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
+                out.add_column(Column(name='SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
             for cam in ['B', 'R', 'Z']:
-                out.add_column(Column(name='CONTINUUM_SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
+                out.add_column(Column(name='SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
 
         out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
         out.add_column(Column(name='VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
@@ -362,16 +364,17 @@ class FastFit(ContinuumTools):
             out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
 
         if not fastphot:
+            # Add chi2 metrics
+            #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
+            out.add_column(Column(name='RCHI2_LINE', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
+            #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
+            out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
+
+            # aperture corrections
             out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # median aperture correction
             out.add_column(Column(name='APERCORR_G', length=nobj, dtype='f4'))
             out.add_column(Column(name='APERCORR_R', length=nobj, dtype='f4'))
             out.add_column(Column(name='APERCORR_Z', length=nobj, dtype='f4'))
-            # Add chi2 metrics
-            out.add_column(Column(name='RCHI2', length=nobj, dtype='f4')) # full-spectrum reduced chi2
-            #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
-            out.add_column(Column(name='LINERCHI2_BROAD', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
-            #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
-            out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
     
             out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
             out.add_column(Column(name='NARROW_ZRMS', length=nobj, dtype='f8'))
@@ -556,7 +559,7 @@ class FastFit(ContinuumTools):
         """
         tall = time.time()
 
-        redshift = result['CONTINUUM_Z']
+        redshift = result['Z']
 
         objflam = data['phot']['flam'].data * self.fluxnorm
         objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
@@ -588,7 +591,7 @@ class FastFit(ContinuumTools):
             if np.all(objflamivar == 0):
                 self.log.info('All photometry is masked.')
                 coeff = np.zeros(self.nsed, 'f4')
-                chi2min = 0.0
+                rchi2_cont, rchi2_phot = 0.0, 0.0
                 sedmodel = np.zeros(len(self.templatewave))
             else:
                # Get the coefficients and chi2 at the nominal velocity dispersion. 
@@ -599,8 +602,9 @@ class FastFit(ContinuumTools):
                    south=data['photsys'] == 'S')
                sedflam = sedphot['flam'].data * self.massnorm * self.fluxnorm
    
-               coeff, chi2min = self._call_nnls(sedflam, objflam, objflamivar)
-               chi2min /= np.sum(objflamivar > 0) # dof???
+               coeff, rchi2_phot = self._call_nnls(sedflam, objflam, objflamivar)
+               rchi2_phot /= np.sum(objflamivar > 0) # dof???
+               rchi2_cont = rchi2_phot # equivalent
                self.log.info('Fitting {} models took {:.2f} seconds.'.format(
                    nage, time.time()-t0))
    
@@ -647,14 +651,14 @@ class FastFit(ContinuumTools):
             # redshift. And if the wavelength coverage is sufficient, also solve for
             # the velocity dispersion.
     
-            #compute_vdisp = ((result['CONTINUUM_SNR_B'] > 1) and (result['CONTINUUM_SNR_R'] > 1)) and (redshift < 1.0)
+            #compute_vdisp = ((result['SNR_B'] > 1) and (result['SNR_R'] > 1)) and (redshift < 1.0)
             restwave = specwave / (1+redshift)
             Ivdisp = np.where((specivar > 0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
             #Ivdisp = np.where((specivar > 0) * (specsmooth != 0.0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
             compute_vdisp = (len(Ivdisp) > 0) and (np.ptp(restwave[Ivdisp]) > 500.0)
     
             self.log.info('S/N_B={:.2f}, S/N_R={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
-                result['CONTINUUM_SNR_B'], result['CONTINUUM_SNR_R'], restwave[0], restwave[-1]))
+                result['SNR_B'], result['SNR_R'], restwave[0], restwave[-1]))
     
             if self.solve_vdisp or compute_vdisp:
                 t0 = time.time()
@@ -779,13 +783,20 @@ class FastFit(ContinuumTools):
                 vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
                 synthphot=False)
 
-            coeff, chi2min = self._call_nnls(np.vstack((desitemplateflam, desitemplates_nolines)),
-                                             np.hstack((objflam, specflux * apercorr)),
-                                             np.hstack((objflamivar, specivar / apercorr**2)))
-            chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
+            coeff, rchi2_cont = self._call_nnls(np.vstack((desitemplateflam, desitemplates_nolines)),
+                                                np.hstack((objflam, specflux * apercorr)),
+                                                np.hstack((objflamivar, specivar / apercorr**2)))
+
+            # full-continuum fitting rchi2
+            rchi2_cont /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
             self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
                 nage, time.time()-t0))
-  
+
+            # rchi2 fitting just to the photometry, for analysis purposes
+            rchi2_phot = np.sum(objflamivar * (objflam - desitemplateflam.dot(coeff))**2)
+            if np.any(objflamivar > 0):
+                rchi2_phot /= np.sum(objflamivar > 0)
+
             # Compute the full-wavelength best-fitting model.
             if np.all(coeff == 0):
                 self.log.warning('Continuum coefficients are all zero.')
@@ -846,11 +857,10 @@ class FastFit(ContinuumTools):
                 nonzero = continuummodel[icam] != 0
                 if np.sum(nonzero) > 0:
                     corr = np.median(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
-                    result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
+                    result['SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
     
             self.log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
-                result['CONTINUUM_SMOOTHCORR_B'], result['CONTINUUM_SMOOTHCORR_R'],
-                result['CONTINUUM_SMOOTHCORR_Z']))
+                result['SMOOTHCORR_B'], result['SMOOTHCORR_R'], result['SMOOTHCORR_Z']))
 
         # Compute K-corrections, rest-frame quantities, and physical properties.
         if np.all(coeff == 0):
@@ -878,8 +888,9 @@ class FastFit(ContinuumTools):
         #    logmstar, absmag[np.isin(self.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun, fagn))
 
         # Pack it in and return.
-        result['CONTINUUM_COEFF'][agekeep] = coeff
-        result['CONTINUUM_RCHI2'] = chi2min
+        result['COEFF'][agekeep] = coeff
+        result['RCHI2_CONT'] = rchi2_cont
+        result['RCHI2_PHOT'] = rchi2_phot
         result['VDISP'] = vdispbest # * u.kilometer/u.second
         result['VDISP_IVAR'] = vdispivar # * (u.second/u.kilometer)**2
         result['AV'] = AV # * u.mag
@@ -1074,7 +1085,7 @@ class FastFit(ContinuumTools):
         final_linemodel['bounds'] = np.zeros((nparam, 2), 'f8')
         final_linemodel['initial'] = np.zeros(nparam, 'f8')
         final_linemodel['value'] = np.zeros(nparam, 'f8')
-        #final_linemodel['noise'] = np.zeros(nparam, 'f4')
+        final_linemodel['noise'] = np.zeros(nparam, 'f4')
 
         final_linemodel['doubletpair'][self.doubletindx] = self.doubletpair
 
@@ -1453,11 +1464,13 @@ class FastFit(ContinuumTools):
                         # set the lower boundary on broad lines to be 1.5 times the local noise
                         if linemodel['isbalmer'][iparam] and linemodel['isbroad'][iparam]:
                             noisekey = linemodel['linename'][iparam]+'_noise'
-                            linemodel['bounds'][iparam][0] = broadbalmer_snrmin * initial_guesses[noisekey]
-                            if linemodel['initial'][iparam] < linemodel['bounds'][iparam][0]:
-                                linemodel['initial'][iparam] = linemodel['bounds'][iparam][0]
-                            if linemodel['initial'][iparam] > linemodel['bounds'][iparam][1]:
-                                linemodel['initial'][iparam] = linemodel['bounds'][iparam][1]
+                            linemodel['noise'][iparam] = initial_guesses[noisekey]
+
+                            #linemodel['bounds'][iparam][0] = broadbalmer_snrmin * initial_guesses[noisekey]
+                            #if linemodel['initial'][iparam] < linemodel['bounds'][iparam][0]:
+                            #    linemodel['initial'][iparam] = linemodel['bounds'][iparam][0]
+                            #if linemodel['initial'][iparam] > linemodel['bounds'][iparam][1]:
+                            #    linemodel['initial'][iparam] = linemodel['bounds'][iparam][1]
             else:
                 if linemodel['fixed'][iparam]:
                     linemodel['initial'][iparam] = 0.0
@@ -1640,7 +1653,7 @@ class FastFit(ContinuumTools):
         from fastspecfit.emlines import build_emline_model
 
         if redshift is None:
-            redshift = fastspecfit_table['CONTINUUM_Z']
+            redshift = fastspecfit_table['Z']
         
         linewaves = self.linetable['restwave'].data
 
@@ -1658,7 +1671,7 @@ class FastFit(ContinuumTools):
 
         return emlinemodel
 
-    def emline_specfit(self, data, result, continuummodel, smooth_continuum, 
+    def emline_specfit(self, data, result, continuummodel, smooth_continuum,
                        synthphot=True, broadlinefit=True, percamera_models=False,
                        verbose=False):
         """Perform the fit minimization / chi2 minimization.
@@ -1743,8 +1756,21 @@ class FastFit(ContinuumTools):
         #            broadlinepix.append(linepix + pixoffset)
         #            #print(data['wave'][icam][linepix])
 
-        # Require minimum XX pixels.
-        if broadlinefit:# and len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10:
+        ## Check the velocity width in the narrow lines.
+        #minsigma = 250.0 # [km/s]
+        #OIII = initfit['param_name'] == 'oiii_5007_sigma'
+        #if initfit['value'][OIII][0] != initfit['initial'][OIII][0]:
+        #    if initfit['value'][OIII][0] > minsigma:
+        #        candidate_broadline = True
+        #        log.info('Candidate broad-line: [OIII] sigma {:.2f} > {:.0f} km/s'.format(initfit['value'][OIII][0], minsigma))
+        #    else:
+        #        candidate_broadline = False
+        #else:
+        #    candidate_broadline = True
+            
+        # Require minimum XX pixels and a minimum 
+        if broadlinefit:# and candidate_broadline:
+        #if broadlinefit:# and len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10:
             # Copy over the doublet ratios but none of the other initial values
             # so that we're not driven to the same local minimum.
             doubletindx = initial_linemodel['doubletpair'] != -1
@@ -1761,7 +1787,8 @@ class FastFit(ContinuumTools):
             self.log.info('Second (broad) line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
                 nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
 
-            #W = (initial_linemodel['fixed'] == False)*(initial_linemodel['tiedtoparam']==-1)
+            W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
+            W2 = (broadfit['fixed'] == False) * (broadfit['tiedtoparam']==-1)
 
             ## Compare chi2 just in and around the broad lines.
             #broadlinepix = np.hstack(broadlinepix)
@@ -1803,6 +1830,7 @@ class FastFit(ContinuumTools):
                 bestfit = initfit
                 use_linemodel_broad = False
             else:
+                log.info('Adopting broad-line model: {:.3f}>{:.3f}'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
                 bestfit = broadfit
                 use_linemodel_broad = True
         else:
@@ -1899,17 +1927,20 @@ class FastFit(ContinuumTools):
         ##plt.plot(emlinewave[W], specflux_nolines[W], color='orange', alpha=0.7)
         #plt.savefig('desi-users/ioannis/tmp/junk2.png')
 
-        # Initialize the output table; see init_fastspecfit for the data model.
-        result['RCHI2'] = finalchi2
-        result['LINERCHI2_BROAD'] = linechi2_broad
-        result['DELTA_LINERCHI2'] = linechi2_init - linechi2_broad
-
         # Now fill the output table.
         self._populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
                                emlineivar, oemlineivar, specflux_nolines, redshift)
 
         # Build the model spectra.
         emmodel = np.hstack(self.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
+
+        result['RCHI2_LINE'] = finalchi2
+        result['DELTA_LINERCHI2'] = linechi2_init - linechi2_broad
+
+        # full-fit reduced chi2
+        rchi2 = np.sum(oemlineivar * (specflux - (continuummodelflux + smoothcontinuummodelflux + emmodel))**2)
+        rchi2 /= np.sum(oemlineivar > 0) # dof??
+        result['RCHI2'] = rchi2
 
         # As a consistency check, make sure that the emission-line spectrum
         # rebuilt from the final table is not (very) different from the one
@@ -2437,7 +2468,7 @@ class FastFit(ContinuumTools):
         #target += bit
 
         apercorr = fastspec['APERCORR']
-        redshift = fastspec['CONTINUUM_Z']
+        redshift = fastspec['Z']
 
         leg = {
             'radec': '$(\\alpha,\\delta)=({:.7f},{:.6f})$'.format(metadata['RA'], metadata['DEC']),
@@ -2448,8 +2479,9 @@ class FastFit(ContinuumTools):
             'zwarn': '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN']),
             'dn4000_model': '$D_{{n}}(4000)_{{\\rm model}}={:.3f}$'.format(fastspec['DN4000_MODEL']),
 
-            'cchi2': '$\\chi^{{2}}_{{\\nu,phot}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
-            'rchi2': '$\\chi^{{2}}_{{\\nu,spec}}$={:.3f}'.format(fastspec['RCHI2']),
+            'rchi2': '$\\chi^{{2}}_{{\\nu, \\rm specphot}}$={:.2f}'.format(fastspec['RCHI2']), 
+            'rchi2_cont': '$\\chi^{{2}}_{{\\nu, \\rm cont}}$={:.2f}'.format(fastspec['RCHI2_CONT']),
+            'rchi2_phot': '$\\chi^{{2}}_{{\\nu, \\rm phot}}$={:.2f}'.format(fastspec['RCHI2_PHOT']),
 
             'age': 'Age$={:.3f}$ Gyr'.format(fastspec['AGE']),
             'AV': '$A_{{V}}={:.3f}$ mag'.format(fastspec['AV']),
@@ -2532,8 +2564,10 @@ class FastFit(ContinuumTools):
             leg_uv['ewmgii'] = 'EW(MgII)$={:.1f}\ \\AA$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])
             leg_uv['mgii_doublet'] = 'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
 
+        leg_broad['linerchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm lines}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
         #leg_broad['deltarchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
-        leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
+        #if fastspec['DELTA_LINERCHI2'] != 0:
+        leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINERCHI2'])
 
         # choose one broad Balmer line
         if fastspec['HALPHA_BROAD_AMP']*np.sqrt(fastspec['HALPHA_BROAD_AMP_IVAR']) > snrcut:
@@ -2588,7 +2622,7 @@ class FastFit(ContinuumTools):
         sedmodel, sedphot = self.templates2data(
             self.templateflux, self.templatewave, 
             redshift=redshift, synthphot=True, 
-            coeff=fastspec['CONTINUUM_COEFF'] * self.massnorm)
+            coeff=fastspec['COEFF'] * self.massnorm)
         sedwave = self.templatewave * (1 + redshift)
 
         phot = self.parse_photometry(self.bands,
@@ -2614,7 +2648,7 @@ class FastFit(ContinuumTools):
                                                specwave=data['wave'], specres=data['res'],
                                                specmask=data['mask'], cameras=data['cameras'],
                                                vdisp=fastspec['VDISP'],
-                                               coeff=fastspec['CONTINUUM_COEFF'])
+                                               coeff=fastspec['COEFF'])
 
         # remove the aperture correction
         desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
@@ -2630,7 +2664,7 @@ class FastFit(ContinuumTools):
                 resid[I] = 0.0
             desiresiduals.append(resid)
         
-        if np.all(fastspec['CONTINUUM_COEFF'] == 0):
+        if np.all(fastspec['COEFF'] == 0):
             fullsmoothcontinuum = np.zeros_like(fullwave)
         else:
             fullsmoothcontinuum, _ = self.smooth_continuum(
@@ -2646,7 +2680,7 @@ class FastFit(ContinuumTools):
 
         desiemlines_oneline = []
         for refline in self.linetable: # [self.inrange]: # for all lines in range
-            T = Table(fastspec['CONTINUUM_Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
+            T = Table(fastspec['Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
             for oneline in self.linetable: # need all lines for the model
                 linename = oneline['name']
                 for linecol in ['AMP', 'VSHIFT', 'SIGMA']:
@@ -2815,9 +2849,18 @@ class FastFit(ContinuumTools):
         specax.set_ylabel(r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
 
         # photometric SED   
+        abmag_good = phot['abmag_ivar'] > 0
+        abmag_goodlim = phot['abmag_limit'] > 0
+        
         if len(sedmodel) == 0:
             self.log.warning('Best-fitting photometric continuum is all zeros or negative!')
-            sedmodel_abmag = np.zeros_like(self.templatewave) + np.median(phot['abmag'])
+            if np.sum(abmag_good) > 0:
+                medmag = np.median(phot['abmag'][abmag_good])
+            elif np.sum(abmag_goodlim) > 0:
+                medmag = np.median(phot['abmag_limit'][abmag_goodlim])
+            else:
+                medmag = 0.0
+            sedmodel_abmag = np.zeros_like(self.templatewave) + medmag
         else:
             factor = 10**(0.4 * 48.6) * sedwave**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
             sedmodel_abmag = -2.5*np.log10(sedmodel * factor)
@@ -2836,29 +2879,27 @@ class FastFit(ContinuumTools):
 
         # we have to set the limits *before* we call errorbar, below!
         dm = 1.5
-        good = phot['abmag_ivar'] > 0
-        goodlim = phot['abmag_limit'] > 0
-        if np.sum(good) > 0 and np.sum(goodlim) > 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(phot['abmag_limit'][goodlim]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(phot['abmag_limit'][goodlim]), np.nanmin(sedmodel_abmag))) - dm
-        elif np.sum(good) > 0 and np.sum(goodlim) == 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(sedmodel_abmag))) - dm
-        elif np.sum(good) == 0 and np.sum(goodlim) > 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag_limit'][goodlim]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag_limit'][goodlim]), np.nanmin(sedmodel_abmag))) - dm
+        if np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) > 0:
+            sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(phot['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(phot['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
+        elif np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) == 0:
+            sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(sedmodel_abmag))) - dm
+        elif np.sum(abmag_good) == 0 and np.sum(abmag_goodlim) > 0:
+            sed_ymin = np.max((np.nanmax(phot['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
         else:
-            good = phot['abmag'] > 0
-            goodlim = phot['abmag_limit'] > 0
-            if np.sum(good) > 0 and np.sum(goodlim) > 0:
-                sed_ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(phot['abmag_limit'][goodlim]))) + dm
-                sed_ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(phot['abmag_limit'][goodlim]))) - dm
-            elif np.sum(good) > 0 and np.sum(goodlim) == 0:                
-                sed_ymin = np.nanmax(phot['abmag'][good]) + dm
-                sed_ymax = np.nanmin(phot['abmag'][good]) - dm
-            elif np.sum(good) == 0 and np.sum(goodlim) > 0:
-                sed_ymin = np.nanmax(phot['abmag_limit'][goodlim]) + dm
-                sed_ymax = np.nanmin(phot['abmag_limit'][goodlim]) - dm
+            abmag_good = phot['abmag'] > 0
+            abmag_goodlim = phot['abmag_limit'] > 0
+            if np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) > 0:
+                sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(phot['abmag_limit'][abmag_goodlim]))) + dm
+                sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(phot['abmag_limit'][abmag_goodlim]))) - dm
+            elif np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) == 0:                
+                sed_ymin = np.nanmax(phot['abmag'][abmag_good]) + dm
+                sed_ymax = np.nanmin(phot['abmag'][abmag_good]) - dm
+            elif np.sum(abmag_good) == 0 and np.sum(abmag_goodlim) > 0:
+                sed_ymin = np.nanmax(phot['abmag_limit'][abmag_goodlim]) + dm
+                sed_ymax = np.nanmin(phot['abmag_limit'][abmag_goodlim]) - dm
             else:
                 sed_ymin, sed_ymax = [30, 20]
             
@@ -2866,7 +2907,7 @@ class FastFit(ContinuumTools):
             sed_ymin = 30
         if np.isnan(sed_ymin) or np.isnan(sed_ymax):
             raise('Problem here!')
-    
+
         #sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
         sedax.set_xlim(phot_wavelims[0], phot_wavelims[1])
         sedax.set_xscale('log')
@@ -2944,7 +2985,7 @@ class FastFit(ContinuumTools):
                    'DESI x {:.2f}'.format(apercorr), ha='center', va='center', fontsize=16,
                    color='k')
 
-        txt = '\n'.join((leg['cchi2'], leg['rchi2']))
+        txt = '\n'.join((leg['rchi2_cont'], leg['rchi2_phot'], leg['rchi2']))
         sedax.text(0.02, 0.94, txt, ha='left', va='top',
                     transform=sedax.transAxes, fontsize=legfntsz)#, bbox=bbox)
 

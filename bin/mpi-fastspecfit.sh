@@ -65,7 +65,11 @@ program=$6
 #echo survey=$survey
 #echo program=$program
 
-args="--outdir-data $outdir_data --outdir-html $outdir_html --healpix 17682,17683,17688,17689,17692,7018,7019,7022,7104,7105,7018,7019,7022,7104,7105,17689,17691,17692,17694,7022,7105,7107,7108,7022,7105,7107,7108"
+#args="--outdir-data $outdir_data --outdir-html $outdir_html --healpix 17684,17685,17686,17687,17692,7015,7020,7021,7022,7023,7026,7032,7015,7020,7021,7022,7023,7032 --makeqa"
+
+args="--outdir-data $outdir_data --outdir-html $outdir_html --makeqa --mp 128"
+echo python $mpiscript $args
+time python $mpiscript $args
 
 if [[ $stage == "fastphot" ]]; then
     args=$args" --fastphot"

@@ -1033,10 +1033,10 @@ class DESISpectra(object):
         # output tables.)
         if data is not None:
             for iobj, _data in enumerate(data):
-                out['CONTINUUM_Z'][iobj] = _data['zredrock']
+                out['Z'][iobj] = _data['zredrock']
                 if not fastphot:
                     for icam, cam in enumerate(_data['cameras']):
-                        out['CONTINUUM_SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
+                        out['SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
                 for iband, band in enumerate(FFit.fiber_bands):
                     meta['FIBERTOTFLUX_{}'.format(band.upper())][iobj] = _data['fiberphot']['nanomaggies'][iband]
                     #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
