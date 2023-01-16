@@ -1528,13 +1528,9 @@ class FastFit(ContinuumTools):
                 (Ifree, Itied, tiedtoparam, tiedfactor, doubletindx, 
                  doubletpair, linewaves)
 
-        fit_info = least_squares(_objective_function, parameters[Ifree],
-                                 args=farg, max_nfev=self.maxiter, 
-                                 xtol=self.accuracy, 
-                                 #method='lm')
-                                 #verbose=2,
-                                 tr_solver='lsmr', tr_options={'regularize': True},
-                                 method='trf', bounds=tuple(zip(*bounds)))
+        fit_info = least_squares(_objective_function, parameters[Ifree], args=farg, max_nfev=self.maxiter, 
+                                 xtol=self.accuracy, tr_solver='lsmr', tr_options={'regularize': True},
+                                 method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
         parameters[Ifree] = fit_info.x
 
         # Conditions for dropping a parameter (all parameters, not just those
@@ -1777,13 +1773,14 @@ class FastFit(ContinuumTools):
         # Require minimum XX pixels and a minimum 
         if broadlinefit:# and candidate_broadline:
         #if broadlinefit:# and len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10:
-            # Copy over the doublet ratios but none of the other initial values
-            # so that we're not driven to the same local minimum.
-            doubletindx = initial_linemodel['doubletpair'] != -1
-            doubletpair = initial_linemodel['doubletpair'][doubletindx].data
-            initial_linemodel['value'][doubletindx] = initfit[doubletindx]['value']
-            initial_linemodel['value'][initial_linemodel['doubletpair'][doubletindx]] *= initial_linemodel['value'][doubletindx]
-            
+        
+            ## Copy over the doublet ratios but none of the other initial values
+            ## so that we're not driven to the same local minimum.
+            #doubletindx = initial_linemodel['doubletpair'] != -1
+            #doubletpair = initial_linemodel['doubletpair'][doubletindx].data
+            #initial_linemodel['value'][doubletindx] = initfit[doubletindx]['value']
+            #initial_linemodel['value'][initial_linemodel['doubletpair'][doubletindx]] *= initial_linemodel['value'][doubletindx]
+
             t0 = time.time()
             broadfit = self._optimize(initial_linemodel, emlinewave, emlineflux, weights, 
                                       redshift, resolution_matrix, camerapix, debug=False)
@@ -1833,16 +1830,16 @@ class FastFit(ContinuumTools):
 
             if dchi2fail or ampdrop or sigdrop1 or sigdrop2:
                 if dchi2fail:
-                    log.info('Dropping broad-line model: {:.3f}<{:.3f}.'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
-                if ampdrop:
+                    log.info('Dropping broad-line model: delta-rchi2 {:.3f}<{:.3f}.'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
+                elif ampdrop:
                     log.info('Dropping broad-line model: S/N in all broad lines < {:.1f}.'.format(self.minsnr_balmer_broad))
                 #if alldrop:
                 #    log.info('Dropping broad-line model: all broad lines dropped.')
-                if sigdrop1:
+                elif sigdrop1:
                     log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < Halpha_narrow_sigma {:.2f} km/s.'.format(
                         broadfit[Habroad]['value'][0],
                         broadfit[broadfit['param_name'] == 'halpha_sigma']['value'][0]))
-                if sigdrop2:
+                elif sigdrop2:
                     log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < {:.0f} km/s.'.format(
                         broadfit[Habroad]['value'][0], self.minsigma_balmer_broad))
                 bestfit = initfit
@@ -2582,7 +2579,7 @@ class FastFit(ContinuumTools):
             leg_uv['ewmgii'] = 'EW(MgII)$={:.1f}\ \\AA$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])
             leg_uv['mgii_doublet'] = 'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
 
-        leg_broad['linerchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm lines}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
+        leg_broad['linerchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm line}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
         #leg_broad['deltarchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
         #if fastspec['DELTA_LINERCHI2'] != 0:
         leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINERCHI2'])
