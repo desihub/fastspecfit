@@ -140,7 +140,7 @@ def fastspec(fastphot=False, args=None, comm=None):
     FFit = FastFit(templates=args.templates, mapdir=args.mapdir, 
                    verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
                    nophoto=args.nophoto, fastphot=fastphot,
-                   mintemplatewave=500.0, maxtemplatewave=40e4)
+                   mintemplatewave=450.0, maxtemplatewave=40e4)
     Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took {:.2f} sec'.format(time.time()-t0))
 
@@ -2480,6 +2480,10 @@ class FastFit(ContinuumTools):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
+        print('Hack to skip existing files!')
+        if os.path.isfile(pngfile):
+            return
+
         #target += bit
 
         apercorr = fastspec['APERCORR']
@@ -2519,7 +2523,7 @@ class FastFit(ContinuumTools):
             leg['vdisp'] = '$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
 
         if fastspec['DN4000_IVAR'] > 0:
-            leg['dn4000_spec'] = '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}$'.format(fastspec['DN4000'])
+            leg['dn4000_spec'] = '$D_{{n}}(4000)_{{\\rm data}}={:.3f}$'.format(fastspec['DN4000'])
             #leg.update({'dn4000_spec': '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}\pm{:.3f}$'.format(fastspec['DN4000'], 1/np.sqrt(fastspec['DN4000_IVAR']))})
 
         # kinematics
@@ -2726,27 +2730,30 @@ class FastFit(ContinuumTools):
             cmd = cmd.format(outfile=cutoutpng, ra=metadata['RA'], dec=metadata['DEC'],
                              width=width, height=height)
             print(cmd)
-            err = subprocess.call(cmd.split())
-            if err != 0:
+            cuterr = subprocess.call(cmd.split())
+            if cuterr != 0:
                 errmsg = 'Something went wrong retrieving the png cutout'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
-
-        hdr = fits.Header()
-        hdr['NAXIS'] = 2
-        hdr['NAXIS1'] = width
-        hdr['NAXIS2'] = height
-        hdr['CTYPE1'] = 'RA---TAN'
-        hdr['CTYPE2'] = 'DEC--TAN'
-        hdr['CRVAL1'] = metadata['RA']
-        hdr['CRVAL2'] = metadata['DEC']
-        hdr['CRPIX1'] = width/2+0.5
-        hdr['CRPIX2'] = height/2+0.5
-        hdr['CD1_1'] = -pixscale/3600
-        hdr['CD1_2'] = 0.0
-        hdr['CD2_1'] = 0.0
-        hdr['CD2_2'] = +pixscale/3600
-        wcs = WCS(hdr)
+                log.warning(errmsg)
+                #log.critical(errmsg)
+                #raise ValueError(errmsg)
+            else:
+                hdr = fits.Header()
+                hdr['NAXIS'] = 2
+                hdr['NAXIS1'] = width
+                hdr['NAXIS2'] = height
+                hdr['CTYPE1'] = 'RA---TAN'
+                hdr['CTYPE2'] = 'DEC--TAN'
+                hdr['CRVAL1'] = metadata['RA']
+                hdr['CRVAL2'] = metadata['DEC']
+                hdr['CRPIX1'] = width/2+0.5
+                hdr['CRPIX2'] = height/2+0.5
+                hdr['CD1_1'] = -pixscale/3600
+                hdr['CD1_2'] = 0.0
+                hdr['CD2_1'] = 0.0
+                hdr['CD2_2'] = +pixscale/3600
+                wcs = WCS(hdr)
+        else:
+            cuterr = 0
 
         # QA choices
 
@@ -2767,7 +2774,10 @@ class FastFit(ContinuumTools):
         fig = plt.figure(figsize=(fullwidth, fullheight))
         gs = fig.add_gridspec(nrows, ncols, height_ratios=height_ratios, width_ratios=width_ratios)
 
-        cutax = fig.add_subplot(gs[0:3, 5:8], projection=wcs) # rows x cols
+        if cuterr == 0:
+            cutax = fig.add_subplot(gs[0:3, 5:8], projection=wcs) # rows x cols
+        else:
+            cutax = fig.add_subplot(gs[0:3, 5:8])
         sedax = fig.add_subplot(gs[0:3, 0:5])
         specax = fig.add_subplot(gs[4:8, 0:5])
         
@@ -2776,42 +2786,34 @@ class FastFit(ContinuumTools):
         bbox2 = dict(boxstyle='round', facecolor='lightgray', alpha=0.7)
 
         # viewer cutout
-        with Image.open(cutoutpng) as im:
-            sz = im.size
-            cutax.imshow(im, origin='lower')#, interpolation='nearest')
-
-        #cutax.coords[0].set_format_unit(u.degree)
-        #cutax.coords[1].set_format_unit(u.degree)
-        #cutax.coords[0].set_auto_axislabel(False)
-        #cutax.coords[1].set_auto_axislabel(False)
-        cutax.set_xlabel('RA [J2000]')
-        cutax.set_ylabel('Dec [J2000]')
-
-        cutax.coords[1].set_ticks_position('r')
-        cutax.coords[1].set_ticklabel_position('r')
-        cutax.coords[1].set_axislabel_position('r')
-
-        if metadata['DEC'] > 0:
-            sgn = '+'
-        else:
-            sgn = ''
-            
-        cutax.text(0.04, 0.95, '$(\\alpha,\\delta)$=({:.7f}, {}{:.6f})'.format(metadata['RA'], sgn, metadata['DEC']),
-                   ha='left', va='top', color='k', fontsize=18, bbox=bbox2,
-                   transform=cutax.transAxes)
+        if cuterr == 0:
+            with Image.open(cutoutpng) as im:
+                sz = im.size
+                cutax.imshow(im, origin='lower')#, interpolation='nearest')
+            cutax.set_xlabel('RA [J2000]')
+            cutax.set_ylabel('Dec [J2000]')
     
-        cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=1.5/2/pixscale, facecolor='none', # DESI fiber=1.5 arcsec diameter
-                                edgecolor='red', ls='-', alpha=0.8))#, label='3" diameter'))
-        cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=10/2/pixscale, facecolor='none',
-                                edgecolor='red', ls='--', alpha=0.8))#, label='15" diameter'))
-        handles = [Line2D([0], [0], color='red', lw=2, ls='-', label='1.5 arcsec'),
-                   Line2D([0], [0], color='red', lw=2, ls='--', label='10 arcsec')]
+            cutax.coords[1].set_ticks_position('r')
+            cutax.coords[1].set_ticklabel_position('r')
+            cutax.coords[1].set_axislabel_position('r')
+    
+            if metadata['DEC'] > 0:
+                sgn = '+'
+            else:
+                sgn = ''
+                
+            cutax.text(0.04, 0.95, '$(\\alpha,\\delta)$=({:.7f}, {}{:.6f})'.format(metadata['RA'], sgn, metadata['DEC']),
+                       ha='left', va='top', color='k', fontsize=18, bbox=bbox2,
+                       transform=cutax.transAxes)
         
-        #cutax.get_xaxis().set_visible(False)
-        #cutax.get_yaxis().set_visible(False)
-        #cutax.axis('off')
-        #cutax.autoscale(False)
-        cutax.legend(handles=handles, loc='lower left', fontsize=18, facecolor='lightgray')
+            cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=1.5/2/pixscale, facecolor='none', # DESI fiber=1.5 arcsec diameter
+                                    edgecolor='red', ls='-', alpha=0.8))#, label='3" diameter'))
+            cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=10/2/pixscale, facecolor='none',
+                                    edgecolor='red', ls='--', alpha=0.8))#, label='15" diameter'))
+            handles = [Line2D([0], [0], color='red', lw=2, ls='-', label='1.5 arcsec'),
+                       Line2D([0], [0], color='red', lw=2, ls='--', label='10 arcsec')]
+
+            cutax.legend(handles=handles, loc='lower left', fontsize=18, facecolor='lightgray')
     
         # plot the full spectrum + best-fitting (total) model
         spec_ymin, spec_ymax = 1e6, -1e6
@@ -3186,19 +3188,33 @@ class FastFit(ContinuumTools):
         plt.subplots_adjust(wspace=0.4, top=0.9, bottom=0.1, left=0.07, right=0.92, hspace=0.33)
 
         # common axis labels
-        ulpos = ax[0].get_position()
-        urpos = ax[2].get_position()
-        lpos = ax[nline-1].get_position()
-        xpos = (urpos.x1 - ulpos.x0) / 2 + ulpos.x0# + 0.03
-        ypos = lpos.y0 - 0.04
-        fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
-                 ha='center', va='center', fontsize=24)
-
-        xpos = urpos.x1 + 0.05
-        ypos = (urpos.y1 - lpos.y0) / 2 + lpos.y0# + 0.03
-        fig.text(xpos, ypos, 
-                 r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
-                 ha='center', va='center', rotation=270, fontsize=24)
+        if len(ax) > 0:
+            if len(ax) == 2:
+                xx = fig.add_subplot(gs[irow, icol+1])
+                xx.axis('off')
+                ax.append(xx)
+            elif len(ax) == 1:
+                xx = fig.add_subplot(gs[irow, icol+1])
+                xx.axis('off')
+                ax.append(xx)
+                xx = fig.add_subplot(gs[irow, icol+2])
+                xx.axis('off')
+                ax.append(xx)
+            
+            ulpos = ax[0].get_position()
+            lpos = ax[nline-1].get_position()
+            urpos = ax[2].get_position()
+            xpos = (urpos.x1 - ulpos.x0) / 2 + ulpos.x0# + 0.03
+                
+            ypos = lpos.y0 - 0.04
+            fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
+                     ha='center', va='center', fontsize=24)
+    
+            xpos = urpos.x1 + 0.05
+            ypos = (urpos.y1 - lpos.y0) / 2 + lpos.y0# + 0.03
+            fig.text(xpos, ypos, 
+                     r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
+                     ha='center', va='center', rotation=270, fontsize=24)
 
         ppos = sedax.get_position()
         xpos = (ppos.x1 - ppos.x0) / 2 + ppos.x0
