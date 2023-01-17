@@ -21,12 +21,8 @@ class SampleFilter(django_filters.FilterSet):
     faprgrm__match = django_filters.CharFilter(field_name='faprgrm', lookup_expr='icontains')
 
     tileid__match = django_filters.CharFilter(field_name='tileid_list', lookup_expr='icontains')
-
-    targetid__gte = django_filters.NumberFilter(field_name='targetid', lookup_expr='gte')
-    targetid__lte = django_filters.NumberFilter(field_name='targetid', lookup_expr='lte')
-
-    hpxpixel__gte = django_filters.NumberFilter(field_name='hpxpixel', lookup_expr='gte')
-    hpxpixel__lte = django_filters.NumberFilter(field_name='hpxpixel', lookup_expr='lte')
+    targetid__match = django_filters.CharFilter(field_name='targetid', lookup_expr='icontains')
+    healpix__match = django_filters.CharFilter(field_name='healpix', lookup_expr='icontains')
 
     z__gte = django_filters.NumberFilter(field_name='z', lookup_expr='gte')
     z__lte = django_filters.NumberFilter(field_name='z', lookup_expr='lte')

@@ -24,6 +24,7 @@ from django.shortcuts import render
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.http import HttpResponse
 from django.urls import reverse
+from django.db.models import Case, When
 
 from fastspecfit.webapp.sample.filters import SampleFilter
 from fastspecfit.webapp.sample.models import Sample
@@ -39,6 +40,7 @@ def explore(req):
         File stream if user clicked download, otherwise render for explore.html
 
     """
+    import fitsio
     from fastspecfit.webapp import settings
 
     # If download button was pressed return the selected subset of the FITS table.
@@ -87,17 +89,20 @@ def explore(req):
     if req.GET.get('catalog', ''):
         dirnm = settings.USER_QUERY_DIR
         catname = os.path.join(dirnm, req.GET.get('catalog')+'.fits')
-        T = Table.read(catname)
-        #queryset = []
-        #for survey, program, healpix, targetid in zip(T['SURVEY'], T['FAPRGRM'], T['HEALPIX'], T['TARGETID']):
-        #    target_name = '{}-{}-{}-{}'.format(survey.lower(), program.lower(), healpix, targetid)
-        #    try:
-        #        obj = Sample.objects.get(target_name=target_name)
-        #    except:
-        #        raise ValueError('Object {} does not exist in database!'.format(target_name))
-        #    queryset.append(obj)
-        queryset = Sample.objects.all().filter(target_name__in=['{}-{}-{}-{}'.format(survey.lower(), program.lower(), healpix, targetid)
-                                                                for survey, program, healpix, targetid in zip(T['SURVEY'], T['FAPRGRM'], T['HEALPIX'], T['TARGETID'])])
+        F = fitsio.FITS(catname)
+        cols = F[1].get_colnames()
+        reqcols = ['SURVEY', 'PROGRAM', 'TARGETID', 'HEALPIX']
+        if not np.all(np.isin(reqcols, cols)):
+            raise ValueError('One or more required columns are missing from uploaded catalog.')
+
+        T = Table(F[1].read(columns=reqcols))
+        target_name = ['{}-{}-{}-{}'.format(survey.lower(), program.lower(), healpix, targetid)
+                       for survey, program, healpix, targetid in zip(T['SURVEY'], T['PROGRAM'], T['HEALPIX'], T['TARGETID'])]
+        # query and preserve order
+        # https://stackoverflow.com/questions/4916851/django-get-a-queryset-from-array-of-ids-in-specific-order
+        inorder = Case(*[When(target_name__iexact=targname, then=pos) for pos, targname in enumerate(target_name)])
+        queryset = Sample.objects.filter(target_name__in=target_name).order_by(inorder)
+        #queryset = Sample.objects.all().filter(target_name__in=target_name)
     else:
         cone_ra  = req.GET.get('conera','')
         cone_dec = req.GET.get('conedec','')
@@ -335,10 +340,9 @@ def upload_catalog(req):
             destination.write(chunk)
     print('Wrote', tmpfn)
 
-    errtxt = ('<html><body>%s<p>Custom catalogs must be either a: <ul>'
-              + '<li><b>FITS binary table</b> with columns named "SURVEY", "PROGRAM" (not case sensitive) and "TARGETID".'
-              + '<li><b>CSV text file</b> with columns "RA", "DEC", and optionally "NAME" (also not case sensitive)</ul>'
-              +'See <a href="https://www.legacysurvey.org/svtips/">Tips & Tricks</a> for some hints on how to produce such a catalog.</p></body></html>')
+    errtxt = ('<html><body>%s<p>Custom catalogs must be a binary FITS binary table with mandatory columns "SURVEY", "PROGRAM", "HEALPIX" and "TARGETID".</p></body></html>')
+    
+             #+'See <a href="https://www.legacysurvey.org/svtips/">Tips & Tricks</a> for some hints on how to produce such a catalog.</p></body></html>')
 
     T = None
     emsg = ''

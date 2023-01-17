@@ -17,7 +17,7 @@
         <a href="https://github.com/desihub/fastspecfit"><img style="width: 400px;" src="{% static "fastspecfit-logo.png" %}" alt="FastSpecFit Logo"/></a> 
         <br />
         <br />
-        <h4>Fujilupe Value-Added Catalog (v2.0)</h4>
+        <h4>Fujilupe Value-Added Catalogs (v2.0)</h4>
         <br />
         <p>Welcome to the <a href="https://fastspecfit.legacysurvey.org">data
         portal</a> for the <a href="https://desi.lbl.gov">DESI</a> FastSpecFit
@@ -44,7 +44,7 @@
         <br />
         <br />
         <div class="jumbotron">
-          <h4>Full Catalogs</h4>
+          <h4>Merged Catalog</h4>
           <p>
             <a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v2.0/catalogs/fastspec-fuji.fits" download="fastspec-fuji.fits">fastspec-fuji.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastspec.html">(data model)</a><br />
             <!--<a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v2.0/catalogs/fastphot-fuji.fits" download="fastphot-fuji.fits">fastphot-fuji.fits [XXX GB]</a> <a href="https://fastspecfit.readthedocs.io/en/latest/fastphot.html">(data model)</a>-->
@@ -64,10 +64,22 @@
       <a id="query"></a>
     </div>
 
+    <div class="row">
+      <!--<div class="col-md-8 col-left docutils container">-->
+      <div class="col">
+        <p>Scroll down to browse the full sample or select a subset of objects
+        using one of the three filter options: simple filter, cone search, or
+        upload your own sample. Custom catalogs must be a binary FITS binary
+        table with mandatory
+        columns <i>SURVEY</i>, <i>PROGRAM</i> (case-insensitive), <i>HEALPIX</i> and
+        <i>TARGETID</i>.</p>
+      </div>
+    </div>
+
     <div style="text-align: center; vertical-align: middle;">
       <div class="row">    
         <div class="col" style="text-align: center;">
-          <h3>Select</h3>
+          <h3>Filter</h3><br style="line-height:0.5em;" />
           <form style="display: inline-block;" method="get" action="#results">
             <table>
               <tr>
@@ -84,14 +96,12 @@
                 <td><input id="tileidmatch" name="tileid__match" type="text" value="" placeholder="1"/></td> 
               </tr>
               <tr>
-                <th class="search_th"><label for="pixlo">Healpixel</label></th>
-                <td><input id="pixlo" name="healpix__gte" step="1" type="number" value="" placeholder="min" min="0"/></td> 
-                <td><input id="pixhi" name="healpix__lte" step="1" type="number" value="" placeholder="max" min="0"/></td> 
+                <th class="search_th"><label for="targetidmatch">TargetID</label></th>
+                <td><input id="targetidmatch" name="targetid__match" type="text" value="" placeholder="1"/></td> 
               </tr>
               <tr>
-                <th class="search_th"><label for="idlo">TargetID</label></th>
-                <td><input id="idlo" name="targetid__gte" step="1" type="number" value="" placeholder="min" min="0"/></td> 
-                <td><input id="idhi" name="targetid__lte" step="1" type="number" value="" placeholder="max" min="0"/></td> 
+                <th class="search_th"><label for="healpixmatch">Healpix</label></th>
+                <td><input id="healpixmatch" name="healpix__match" type="text" value="" placeholder="1"/></td> 
               </tr>
               <tr>
                 <th class="search_th"><label for="zlo">Redshift</label></th>
@@ -104,7 +114,7 @@
         </div>
         
         <div class="col" style="text-align: center;">        
-          <h3>Cone Search</h3>
+          <h3>Cone Search</h3><br style="line-height:0.5em;" />
           <form style="display: inline-block;" method="get" action="#results">
             <table>
               <tr>
@@ -120,12 +130,12 @@
                 <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
               </tr>
             </table>
-            <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Cone Search</button>
+            <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Search</button>
           </form>
         </div>
         
-        <div class="col" style="text-align: center;">        
-          <h3>Upload Sample</h3>
+        <div class="col" style="text-align: center;">                  
+          <h3>Upload Sample</h3><br style="line-height:0.5em;" />
             <form action="{% url 'upload-catalog' %}" method="POST" enctype="multipart/form-data">{% csrf_token %}
               <input type="file" name="catalog" />
               <button type="submit" value="Upload" id="usercat_submit" class="btn btn-primary" style="margin-top: 15px;">Upload</button>
