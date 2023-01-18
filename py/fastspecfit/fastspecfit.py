@@ -1825,8 +1825,8 @@ class FastFit(ContinuumTools):
             sigdrop1 = (broadfit[Habroad]['value'] <= broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
             sigdrop2 = broadfit[Habroad]['value'][0] < self.minsigma_balmer_broad
 
-            #W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
-            #W2 = (broadfit['fixed'] == False) * (broadfit['tiedtoparam']==-1)
+            W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
+            W2 = (broadfit['fixed'] == False) * (broadfit['tiedtoparam']==-1)
 
             if dchi2fail or ampdrop or sigdrop1 or sigdrop2:
                 if dchi2fail:
@@ -1877,14 +1877,19 @@ class FastFit(ContinuumTools):
             # copy initial values
             if bestfit['initial'][I] != 0:
                 linemodel['initial'][I] = bestfit['initial'][I]
-            # copy best-fit values
-            if bestfit['value'][I] != 0:
-                linemodel['value'][I] = bestfit['value'][I]
+            # copy best-fit values (including zero!)
+            if bestfit['tiedtoparam'][I] != -1:
+                linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
             else:
-                if bestfit['tiedtoparam'][I] != -1:
-                    linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
-                else:
-                    linemodel['value'][I] = linemodel['initial'][I]
+                linemodel['value'][I] = bestfit['value'][I] # value here not init!
+                
+            #if bestfit['value'][I] != 0:
+            #    linemodel['value'][I] = bestfit['value'][I]
+            #else:
+            #    if bestfit['tiedtoparam'][I] != -1:
+            #        linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
+            #    else:
+            #        linemodel['value'][I] = linemodel['initial'][I]
 
         # Are the broad and narrow lines swapped? If so, swap them here.
         if not linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['fixed'] and \
@@ -1898,16 +1903,23 @@ class FastFit(ContinuumTools):
                     linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename)] = sigma_narrow
                     linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename).replace('_broad', '')] = sigma_broad
 
-        # Tied parameters can have initial values of zero if they are fixed
-        # (e.g., broad emission lines) but nothing else.
-        I = (linemodel['value'][Ifree] == 0) * (linemodel['tiedtoparam'][Ifree] == -1)
-        if np.any(I):
-            errmsg = 'Initial values should never be zero [targetid={}]!'.format(data['targetid'])
-            self.log.critical(errmsg)
-            raise ValueError(errmsg)
+        # This error condition was very helpful for getting the code right, but
+        # is actually too stringent. For example, an object can have an initial
+        # amplitude of zero if it was dropped / not needed in the initial
+        # fitting round, which can happen for the broad Balmer lines.
 
-        # Tighten up the bounds to within +/-10% around the initial parameter values.
-        I = np.where((linemodel['fixed'] == False) * (linemodel['tiedtoparam'] == -1) * (linemodel['doubletpair'] == -1))[0]
+        ## Tied parameters can have initial values of zero if they are fixed
+        ## (e.g., broad emission lines) but nothing else.
+        #I = (linemodel['value'][Ifree] == 0) * (linemodel['tiedtoparam'][Ifree] == -1)
+        #if np.any(I):
+        #    errmsg = 'Initial values should never be zero [targetid={}]!'.format(data['targetid'])
+        #    self.log.critical(errmsg)
+        #    raise ValueError(errmsg)
+
+        # Tighten up the bounds to within +/-10% around the initial parameter
+        # values except for the amplitudes.
+        I = np.where((self.amp_param_bool == False) * (linemodel['fixed'] == False) *
+                     (linemodel['tiedtoparam'] == -1) * (linemodel['doubletpair'] == -1))[0]
         if len(I) > 0:
             neg = linemodel['value'][I] < 0
             pos = linemodel['value'][I] >= 0
