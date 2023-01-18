@@ -1559,7 +1559,7 @@ class FastFit(ContinuumTools):
                                      parameters[Ifree] > linemodel['bounds'][Ifree, 1])
         drop3 *= notfixed
         
-        self.log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
+        self.log.debug('Dropping {} negative-amplitude lines.'.format(np.sum(drop1))) # linewidth can't be negative
         self.log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
         self.log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
         Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
@@ -1813,26 +1813,28 @@ class FastFit(ContinuumTools):
             
             # Choose narrow-only model if:
             # --chi2_broad > chi2_narrow;
-            # --all broad Balmer lines are dropped;
             # --broad_sigma < narrow_sigma;
-            # --broad_sigma < 250
-            Bbroad = broadfit['isbalmer'] * broadfit['isbroad'] * self.amp_param_bool
+            # --broad_sigma < 250;
+            # --the two reddest broad Balmer lines are both dropped.
+            Bbroad = broadfit['isbalmer'] * broadfit['isbroad'] * (broadfit['fixed'] == False) * self.amp_param_bool
             Habroad = broadfit['param_name'] == 'halpha_broad_sigma'
             
             dchi2fail = (linechi2_init - linechi2_broad) < self.delta_linerchi2_cut
             #alldrop = np.all(broadfit[Bbroad]['value'].data == 0.0)
-            ampdrop = np.all(broadfit[Bbroad]['value'].data * np.sqrt(broadfit[Bbroad]['civar'].data) < self.minsnr_balmer_broad)
             sigdrop1 = (broadfit[Habroad]['value'] <= broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
             sigdrop2 = broadfit[Habroad]['value'][0] < self.minsigma_balmer_broad
 
-            W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
-            W2 = (broadfit['fixed'] == False) * (broadfit['tiedtoparam']==-1)
+            ampsnr = broadfit[Bbroad]['value'].data * np.sqrt(broadfit[Bbroad]['civar'].data)
+            ampdrop = np.all(ampsnr[-2:] < self.minsnr_balmer_broad)
+
+            #W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
+            #W2 = (broadfit['fixed'] == False) * (broadfit['tiedtoparam']==-1)
 
             if dchi2fail or ampdrop or sigdrop1 or sigdrop2:
                 if dchi2fail:
                     log.info('Dropping broad-line model: delta-rchi2 {:.3f}<{:.3f}.'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
                 elif ampdrop:
-                    log.info('Dropping broad-line model: S/N in all broad lines < {:.1f}.'.format(self.minsnr_balmer_broad))
+                    log.info('Dropping broad-line model: S/N in the two reddest broad lines < {:.1f}.'.format(self.minsnr_balmer_broad))
                 #if alldrop:
                 #    log.info('Dropping broad-line model: all broad lines dropped.')
                 elif sigdrop1:
