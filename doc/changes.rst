@@ -11,12 +11,14 @@ Change Log
 * Additional Fujilupe documentation [`PR #93`_]. 
 * Webapp updates to support latest data model [`PR #94`_].
 * Joint spectrophotometric fitting and much more [`PR #95`_].
+* Additional fujilupe v2.0 updates [`PR #96`_].
 
 .. _`PR #87`: https://github.com/desihub/fastspecfit/pull/87
 .. _`PR #92`: https://github.com/desihub/fastspecfit/pull/92
 .. _`PR #93`: https://github.com/desihub/fastspecfit/pull/93
 .. _`PR #94`: https://github.com/desihub/fastspecfit/pull/94
 .. _`PR #95`: https://github.com/desihub/fastspecfit/pull/95
+.. _`PR #96`: https://github.com/desihub/fastspecfit/pull/96
 
 1.0.1 (2022-08-11)
 ------------------
