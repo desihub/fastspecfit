@@ -603,34 +603,39 @@ class ContinuumTools(TabulatedDESI):
         ivar_win = sliding_window_view(ivar, window_shape=smooth_window)
         noline_win = sliding_window_view(np.logical_not(linemask), window_shape=smooth_window)
 
+        nminpix = 15
+
         smooth_wave, smooth_flux, smooth_sigma, smooth_mask = [], [], [], []
         for swave, sflux, sivar, noline in zip(wave_win[::smooth_step],
                                                flux_win[::smooth_step],
                                                ivar_win[::smooth_step],
                                                noline_win[::smooth_step]):
 
-            # if there are fewer than 10 good pixels after accounting for the
+            # if there are fewer than XX good pixels after accounting for the
             # line-mask, skip this window.
             sflux = sflux[noline]
-            if len(sflux) < 10:
+            if len(sflux) < nminpix:
                 smooth_mask.append(True)
                 continue
             swave = swave[noline]
             sivar = sivar[noline]
 
             cflux, _, _ = sigmaclip(sflux, low=2.0, high=2.0)
-            if len(cflux) < 10:
+            if len(cflux) < nminpix:
                 smooth_mask.append(True)
                 continue
 
             # Toss out regions with too little good data.
-            if np.sum(sivar > 0) < 10:
+            if np.sum(sivar > 0) < nminpix:
                 smooth_mask.append(True)
                 continue
 
             I = np.isin(sflux, cflux) # fragile?
             sig = np.std(cflux) # simple median and sigma
             mn = np.median(cflux)
+
+            #if png and mn < -1:# and np.mean(swave[I]) > 7600:
+            #    print(np.mean(swave[I]), mn)
 
             # One more check for crummy spectral regions.
             if mn == 0.0:
@@ -664,6 +669,11 @@ class ContinuumTools(TabulatedDESI):
         smooth_sigma = np.array(smooth_sigma)
         smooth_flux = np.array(smooth_flux)
 
+        # For debugging.
+        if png:
+            _smooth_wave = smooth_wave.copy()
+            _smooth_flux = smooth_flux.copy()
+
         # corner case for very wacky spectra
         if len(smooth_flux) == 0:
             smooth_flux = flux
@@ -686,6 +696,8 @@ class ContinuumTools(TabulatedDESI):
             ax[0].plot(wave, flux)
             ax[0].scatter(wave[linemask], flux[linemask], s=10, marker='s', color='k', zorder=2)
             ax[0].plot(wave, smooth, color='red')
+            ax[0].plot(_smooth_wave, _smooth_flux, color='orange')
+            #ax[0].scatter(_smooth_wave, _smooth_flux, color='orange', marker='s', ls='-', s=20)
 
             ax[1].plot(wave, flux - smooth)
             ax[1].axhline(y=0, color='k')
@@ -694,7 +706,7 @@ class ContinuumTools(TabulatedDESI):
                 #xx.set_xlim(3800, 4300)
                 #xx.set_xlim(5200, 6050)
                 #xx.set_xlim(7000, 9000)
-                xx.set_xlim(6300, 6900)
+                xx.set_xlim(7000, 7800)
             for xx in ax:
                 xx.set_ylim(-2.5, 2)
             zlinewaves = self.linetable['restwave'] * (1 + redshift)

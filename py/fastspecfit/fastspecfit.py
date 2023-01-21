@@ -1825,7 +1825,7 @@ class FastFit(ContinuumTools):
             sigdrop2 = broadfit[Habroad]['value'][0] < self.minsigma_balmer_broad
 
             ampsnr = broadfit[Bbroad]['value'].data * np.sqrt(broadfit[Bbroad]['civar'].data)
-            ampdrop = np.all(ampsnr[-2:] < self.minsnr_balmer_broad)
+            ampdrop = np.any(ampsnr[-2:] < self.minsnr_balmer_broad)
 
             #W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
             #W2 = (broadfit['fixed'] == False) * (broadfit['tiedtoparam']==-1)
@@ -1834,7 +1834,7 @@ class FastFit(ContinuumTools):
                 if dchi2fail:
                     log.info('Dropping broad-line model: delta-rchi2 {:.3f}<{:.3f}.'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
                 elif ampdrop:
-                    log.info('Dropping broad-line model: S/N in the two reddest broad lines < {:.1f}.'.format(self.minsnr_balmer_broad))
+                    log.info('Dropping broad-line model: S/N in either of the two reddest broad lines < {:.1f}.'.format(self.minsnr_balmer_broad))
                 #if alldrop:
                 #    log.info('Dropping broad-line model: all broad lines dropped.')
                 elif sigdrop1:
@@ -2494,9 +2494,9 @@ class FastFit(ContinuumTools):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
-        print('Hack to skip existing files!')
-        if os.path.isfile(pngfile):
-            return
+        #print('Hack to skip existing files!')
+        #if os.path.isfile(pngfile):
+        #    return
 
         #target += bit
 
@@ -2738,6 +2738,22 @@ class FastFit(ContinuumTools):
         width = int(30 / pixscale)   # =1 arcmin
         height = int(width / 1.3) # 3:2 aspect ratio
 
+        hdr = fits.Header()
+        hdr['NAXIS'] = 2
+        hdr['NAXIS1'] = width
+        hdr['NAXIS2'] = height
+        hdr['CTYPE1'] = 'RA---TAN'
+        hdr['CTYPE2'] = 'DEC--TAN'
+        hdr['CRVAL1'] = metadata['RA']
+        hdr['CRVAL2'] = metadata['DEC']
+        hdr['CRPIX1'] = width/2+0.5
+        hdr['CRPIX2'] = height/2+0.5
+        hdr['CD1_1'] = -pixscale/3600
+        hdr['CD1_2'] = 0.0
+        hdr['CD2_1'] = 0.0
+        hdr['CD2_2'] = +pixscale/3600
+        wcs = WCS(hdr)
+
         cutoutpng = os.path.join('/tmp', 'tmp.'+os.path.basename(pngfile))
         if not os.path.isfile(cutoutpng):
             cmd = 'wget -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer=ls-dr9'
@@ -2750,22 +2766,6 @@ class FastFit(ContinuumTools):
                 log.warning(errmsg)
                 #log.critical(errmsg)
                 #raise ValueError(errmsg)
-            else:
-                hdr = fits.Header()
-                hdr['NAXIS'] = 2
-                hdr['NAXIS1'] = width
-                hdr['NAXIS2'] = height
-                hdr['CTYPE1'] = 'RA---TAN'
-                hdr['CTYPE2'] = 'DEC--TAN'
-                hdr['CRVAL1'] = metadata['RA']
-                hdr['CRVAL2'] = metadata['DEC']
-                hdr['CRPIX1'] = width/2+0.5
-                hdr['CRPIX2'] = height/2+0.5
-                hdr['CD1_1'] = -pixscale/3600
-                hdr['CD1_2'] = 0.0
-                hdr['CD2_1'] = 0.0
-                hdr['CD2_2'] = +pixscale/3600
-                wcs = WCS(hdr)
         else:
             cuterr = 0
 
@@ -2788,10 +2788,7 @@ class FastFit(ContinuumTools):
         fig = plt.figure(figsize=(fullwidth, fullheight))
         gs = fig.add_gridspec(nrows, ncols, height_ratios=height_ratios, width_ratios=width_ratios)
 
-        if cuterr == 0:
-            cutax = fig.add_subplot(gs[0:3, 5:8], projection=wcs) # rows x cols
-        else:
-            cutax = fig.add_subplot(gs[0:3, 5:8])
+        cutax = fig.add_subplot(gs[0:3, 5:8], projection=wcs) # rows x cols
         sedax = fig.add_subplot(gs[0:3, 0:5])
         specax = fig.add_subplot(gs[4:8, 0:5])
         
