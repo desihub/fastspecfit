@@ -2276,18 +2276,19 @@ class FastFit(ContinuumTools):
                     result['{}_CONT_IVAR'.format(linename)] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
     
                 if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
-                    factor = 1 / ((1 + redshift) * result['{}_CONT'.format(linename)]) # --> rest frame
-                    ew = result['{}_FLUX'.format(linename)] * factor # rest frame [A]
-                    ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
+                    lineflux = result['{}_FLUX'.format(linename)]
+                    linefluxivar = result['{}_FLUX_IVAR'.format(linename)]
+                    ew = lineflux / cmed / (1 + redshift) # rest frame [A]
 
-                    pdb.set_trace()
+                    # add the uncertainties in flux and the continuum in quadrature
+                    ewivar = (1+redshift)**2 / (1 / (cmed**2 * linefluxivar) + lineflux**2 / (cmed**4 * civar))
     
                     # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
                     fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) # * u.erg/(u.second*u.cm**2)
-                    ewlimit = fluxlimit * factor
+                    ewlimit = fluxlimit * cmed / (1+redshift)
     
                     result['{}_EW'.format(linename)] = ew
-                    #result['{}_EW_IVAR'.format(linename)] = ewivar
+                    result['{}_EW_IVAR'.format(linename)] = ewivar
                     result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit 
                     result['{}_EW_LIMIT'.format(linename)] = ewlimit
 
