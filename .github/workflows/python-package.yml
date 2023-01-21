@@ -58,6 +58,8 @@ jobs:
                 python-version: [3.10]
                 fitsio-version: ['==1.1.7']
         env:
+            FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
+            DESI_ROOT: ${FASTSPECFIT}/desi
 
         steps:
             - name: Checkout code
