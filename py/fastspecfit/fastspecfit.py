@@ -2278,11 +2278,13 @@ class FastFit(ContinuumTools):
                 if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
                     lineflux = result['{}_FLUX'.format(linename)]
                     linefluxivar = result['{}_FLUX_IVAR'.format(linename)]
-                    ew = lineflux / cmed / (1 + redshift) # rest frame [A]
-
-                    # add the uncertainties in flux and the continuum in quadrature
-                    ewivar = (1+redshift)**2 / (1 / (cmed**2 * linefluxivar) + lineflux**2 / (cmed**4 * civar))
-    
+                    if lineflux > 0 and linefluxivar > 0:
+                        # add the uncertainties in flux and the continuum in quadrature
+                        ew = lineflux / cmed / (1 + redshift) # rest frame [A]
+                        ewivar = (1+redshift)**2 / (1 / (cmed**2 * linefluxivar) + lineflux**2 / (cmed**4 * civar))
+                    else:
+                        ew, ewivar = 0.0, 0.0
+                        
                     # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
                     fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) # * u.erg/(u.second*u.cm**2)
                     ewlimit = fluxlimit * cmed / (1+redshift)
@@ -2291,9 +2293,6 @@ class FastFit(ContinuumTools):
                     result['{}_EW_IVAR'.format(linename)] = ewivar
                     result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit 
                     result['{}_EW_LIMIT'.format(linename)] = ewlimit
-
-                    #if linename == 'HALPHA':
-                    #    pdb.set_trace()
 
             if 'debug' in self.log.name:
                 for col in ('VSHIFT', 'SIGMA', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
