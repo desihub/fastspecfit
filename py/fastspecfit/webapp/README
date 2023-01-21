@@ -9,10 +9,8 @@
 
 module load python
 mamba activate fastspecfit-webapp
-
 export PYTHONPATH=/global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py:$PYTHONPATH
 export DJANGO_SETTINGS_MODULE=fastspecfit.webapp.settings
-
 cd /global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py/fastspecfit/webapp
 
 # one time--
