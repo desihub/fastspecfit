@@ -659,8 +659,8 @@ class FastFit(ContinuumTools):
             #Ivdisp = np.where((specivar > 0) * (specsmooth != 0.0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
             compute_vdisp = (len(Ivdisp) > 0) and (np.ptp(restwave[Ivdisp]) > 500.0)
     
-            self.log.info('S/N_B={:.2f}, S/N_R={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
-                result['SNR_B'], result['SNR_R'], restwave[0], restwave[-1]))
+            self.log.info('S/N_b={:.2f}, S/N_r={:.2f}, , S/N_z={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
+                result['SNR_B'], result['SNR_R'], result['SNR_Z'], restwave[0], restwave[-1]))
     
             if self.solve_vdisp or compute_vdisp:
                 t0 = time.time()

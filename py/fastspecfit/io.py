@@ -1099,7 +1099,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     import gzip, shutil
     from astropy.io import fits
     from desispec.io.util import fitsheader
-    from desiutil.depend import add_dependencies
+    from desiutil.depend import add_dependencies, possible_dependencies
 
     t0 = time.time()
     outdir = os.path.dirname(os.path.abspath(outfile))
@@ -1130,12 +1130,12 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
         primhdr.append(('EXTNAME', 'PRIMARY'))
         primhdr.append(('SPECPROD', (specprod, 'spectroscopic production name')))
     if coadd_type:
-        primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd fitted')))
+        primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd type')))
 
     primhdr = fitsheader(primhdr)
-    add_dependencies(primhdr)
-    add_dependencies(primhdr, module_names=['fastspecfit'])
-    
+    add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
+                     envvar_names=['DESI_ROOT', 'FTEMPLATES_DIR', 'DUST_DIR', 'DR9_DIR'])
+
     hdus = fits.HDUList()
     hdus.append(fits.PrimaryHDU(None, primhdr))
     hdus.append(fits.convenience.table_to_hdu(out))

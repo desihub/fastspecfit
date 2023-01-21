@@ -91,9 +91,9 @@ class ContinuumTools(TabulatedDESI):
         Need to document all the attributes.
 
     """
-    def __init__(self, templates=None, templateversion='v1.0', mintemplatewave=None,
-                 maxtemplatewave=40e4, mapdir=None, fastphot=False, nophoto=False,
-                 verbose=False):
+    def __init__(self, templates=None, templateversion='1.0.0', imf='chabrier',
+                 mintemplatewave=None, maxtemplatewave=40e4, mapdir=None,
+                 fastphot=False, nophoto=False, verbose=False):
 
         super(ContinuumTools, self).__init__()
 
@@ -137,7 +137,8 @@ class ContinuumTools(TabulatedDESI):
             self.templates = templates
         else:
             templates_dir = os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC)
-            self.templates = os.path.join(templates_dir, 'fastspecfit-templates-{}.fits'.format(templateversion))
+            self.templates = os.path.join(templates_dir, 'ftemplates-{}-{}.fits'.format(
+                imf, templateversion))
         if not os.path.isfile(self.templates):
             errmsg = 'Templates file not found {}'.format(self.templates)
             self.log.critical(errmsg)
@@ -147,7 +148,9 @@ class ContinuumTools(TabulatedDESI):
         wave, wavehdr = fitsio.read(self.templates, ext='WAVE', header=True) # [npix]
         templateflux = fitsio.read(self.templates, ext='FLUX')  # [npix,nsed]
         templatelineflux = fitsio.read(self.templates, ext='LINEFLUX')  # [npix,nsed]
-        templateinfo = Table(fitsio.read(self.templates, ext='METADATA'))
+        templateinfo, templatehdr = fitsio.read(self.templates, ext='METADATA', header=True)
+        templateinfo = Table(templateinfo)
+        self.imf = templatehdr['IMF']
 
         # Trim the wavelengths and select the number/ages of the templates.
         # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
