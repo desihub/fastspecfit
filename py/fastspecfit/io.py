@@ -52,6 +52,9 @@ EXPFMCOLS = {
 # redshift columns to read
 REDSHIFTCOLS = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
 
+# tsnr columns to read
+TSNR2COLS = ['TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA']
+
 # quasarnet afterburner columns to read
 QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
           'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
@@ -656,6 +659,7 @@ class DESISpectra(object):
             else:
                 zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=REDSHIFTCOLS))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=READFMCOLS))
+            tsnr2 = Table(fitsio.read(redrockfile, 'TSNR2', rows=fitindx, columns=TSNR2COLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
             # Update the redrock redshift when quasarnet disagrees **but only
@@ -679,9 +683,9 @@ class DESISpectra(object):
 
             # astropy 5.0 "feature" -- join no longer preserves order, ugh.
             zb.remove_column('TARGETID')
-            meta = hstack((zb, meta))
+            meta = hstack((zb, meta, tsnr2))
             #meta = join(zb, meta, keys='TARGETID')
-            del zb
+            del zb, tsnr2
 
             # Get the unique set of tiles contributing to the coadded spectra
             # from EXP_FIBERMAP.
@@ -977,7 +981,8 @@ class DESISpectra(object):
                    }
 
         skipcols = ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE'] + fluxcols
-        redrockcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR']
+        redrockcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR', 'TSNR2_BGS',
+                       'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA']
         
         meta = Table()
         metacols = self.meta.colnames
