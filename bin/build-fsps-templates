@@ -23,7 +23,11 @@ Note that Figure 3 in Leja et al. 2017 nicely shows the effect of various
 free parameters on the resulting SED.
 
 conda activate fastspecfit
-time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates
+
+time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf salpeter
+time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf chabrier
+time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf kroupa
+
 rsync -auvP /Users/ioannis/work/desi/science/gqp/templates/fastspecfit/fastspecfit-templates-v1.0.fits dtn01:"desi/science/gqp/templates/fastspecfit/"
 
 '''
@@ -31,6 +35,7 @@ import os, time, pdb
 import numpy as np
 import fitsio, fsps
 from scipy.ndimage import gaussian_filter1d
+import argparse
 
 from astropy.io import fits
 from astropy.table import Table
@@ -108,8 +113,8 @@ def smooth_continuum(wave, flux, medbin=1000, smooth_window=200,
 
     return smooth
 
-def build_templates(models, logages, agebins, pixkms=25.0, wavesplit=1e4, 
-                    irfactor=4, include_nebular=True):
+def build_templates(models, logages, agebins, imf='chabrier', pixkms=25.0, 
+                    wavesplit=1e4, irfactor=4, include_nebular=True):
 
     nsed = len(models)
 
@@ -122,13 +127,16 @@ def build_templates(models, logages, agebins, pixkms=25.0, wavesplit=1e4,
     meta['mstar'] = np.zeros(nsed, 'f4')
     meta['sfr'] = np.zeros(nsed, 'f4')
 
+    # https://dfm.io/python-fsps/current/stellarpop_api/
+    imfdict = {'salpeter': 0, 'chabrier': 1, 'kroupa': 2}
+
     print('Instantiating the StellarPopulation object...', end='')
     t0 = time.time()
     sp = fsps.StellarPopulation(compute_vega_mags=False, 
                                 add_dust_emission=True,
                                 add_neb_emission=True,
                                 nebemlineinspec=include_nebular,
-                                imf_type=1, # =Chabrier IMF
+                                imf_type=imfdict[imf], # 0=Salpeter, 1=Chabrier, 2=Kroupa
                                 dust_type=0,
                                 dust_index=-0.7,
                                 #sfh=0 # SSP parameters
@@ -217,9 +225,9 @@ def build_templates(models, logages, agebins, pixkms=25.0, wavesplit=1e4,
 
     return meta, newwave, fluxes
 
-def main():
+def main(args):
 
-    version = 'v1.0'
+    version = 'v1.0.0'
 
     # pixel resampling choices
     pixkms = 25.0   # pixel size [km/s]
@@ -328,9 +336,11 @@ def main():
 
     # Build models with and without line-emission.
     meta, wave, flux = build_templates(models, logages, agebins, pixkms=pixkms, 
-                                         wavesplit=wavesplit, include_nebular=True)
+                                       wavesplit=wavesplit, include_nebular=True,
+                                       imf=args.imf)
     _, _, fluxnolines = build_templates(models, logages, agebins, pixkms=pixkms, 
-                                           wavesplit=wavesplit, include_nebular=False)
+                                        wavesplit=wavesplit, include_nebular=False,
+                                        imf=args.imf)
     lineflux = flux - fluxnolines
 
     #I = (wave > 3500) * (wave < 9000)
@@ -382,7 +392,7 @@ def main():
 
     # Write out.
     outdir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit')
-    outfile = os.path.join(outdir, 'fastspecfit-templates-{}.fits'.format(version))
+    outfile = os.path.join(outdir, 'ftemplates-{}-{}.fits'.format(args.imf, version))
 
     hduflux1 = fits.PrimaryHDU(flux)
     hduflux1.header['EXTNAME'] = 'FLUX'
@@ -420,6 +430,7 @@ def main():
 
     hdutable = fits.convenience.table_to_hdu(meta)
     hdutable.header['EXTNAME'] = 'METADATA'
+    hdutable.header['imf'] = args.imf
 
     hx = fits.HDUList([hduflux1, hduflux2, hduwave1, hduflux3, hduwave2, hdutable])
 
@@ -427,4 +438,9 @@ def main():
     hx.writeto(outfile, overwrite=True)
 
 if __name__ == '__main__':
-    main()
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'])
+    args = parser.parse_args()
+
+    main(args)
