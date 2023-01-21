@@ -103,7 +103,7 @@ class ContinuumTools(TabulatedDESI):
         from desiutil.log import get_logger, DEBUG
 
         from fastspecfit.emlines import read_emlines
-        from fastspecfit.io import FASTSPECFIT_TEMPLATES_NERSC, DUST_DIR_NERSC, DR9_DIR_NERSC
+        from fastspecfit.io import FTEMPLATES_DIR_NERSC, DUST_DIR_NERSC, DR9_DIR_NERSC
 
         if verbose:
             self.log = get_logger(DEBUG)
@@ -136,7 +136,7 @@ class ContinuumTools(TabulatedDESI):
         if templates is not None:
             self.templates = templates
         else:
-            templates_dir = os.environ.get('FASTSPECFIT_TEMPLATES', FASTSPECFIT_TEMPLATES_NERSC)
+            templates_dir = os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC)
             self.templates = os.path.join(templates_dir, 'fastspecfit-templates-{}.fits'.format(templateversion))
         if not os.path.isfile(self.templates):
             errmsg = 'Templates file not found {}'.format(self.templates)

@@ -20,8 +20,7 @@ log = get_logger()
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 DR9_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
-FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
-#FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
+FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
