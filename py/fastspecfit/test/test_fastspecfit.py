@@ -25,13 +25,16 @@ class TestFastspec(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         os.environ['DESI_ROOT'] = resource_filename('fastspecfit.test', 'data')
-        cls.templates = os.path.join(resource_filename('fastspecfit.test', 'data'),
-                                        'SSP_Padova_CKC14z_Kroupa_Z0.0190.fits')
         cls.mapdir = resource_filename('fastspecfit.test', 'data')
         cls.dr9dir = resource_filename('fastspecfit.test', 'data')
         cls.redrockfile = resource_filename('fastspecfit.test', 'data/redrock-4-80613-thru20210324.fits')
-        cls.cwd = os.getcwd()
+
         cls.outdir = tempfile.mkdtemp()
+        cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-1.0.0.fits')
+        cmd = 'wget -O {} https://portal.nersc.gov/project/cosmo/temp/ioannis/templates/ftemplates-chabrier-1.0.0.fits'.format(
+            cls.templates)
+        err = subprocess.call(cmd.split())
+        cls.cwd = os.getcwd()
         cls.fastspec_outfile = os.path.join(cls.outdir, 'fastspec.fits')
         cls.fastphot_outfile = os.path.join(cls.outdir, 'fastphot.fits')
 
@@ -42,16 +45,13 @@ class TestFastspec(unittest.TestCase):
     def tearDownClass(cls):
         pass
 
-    def test_ContinuumFit(self):
+    def test_ContinuumTools(self):
         """Test the ContinuumTools class."""
-        from fastspecfit.continuum import ContinuumFit
-        CFit = ContinuumFit(mapdir=self.mapdir, templates=self.templates)
+        from fastspecfit.continuum import ContinuumTools
+        CTools = ContinuumTools(mapdir=self.mapdir, templates=self.templates)
 
         # expected attributes
-        self.assertTrue(CFit.metallicity in ['Z0.0190'])
-        self.assertTrue(CFit.library in ['CKC14z'])
-        self.assertTrue(CFit.isochrone in ['Padova'])
-        self.assertTrue(CFit.imf in ['Kroupa'])
+        self.assertTrue(CTools.imf in ['salpeter', 'chabrier', 'kroupa'])
 
     def test_fastphot(self):
         """Test fastphot."""

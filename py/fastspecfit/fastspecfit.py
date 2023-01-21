@@ -2292,6 +2292,9 @@ class FastFit(ContinuumTools):
                     result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit 
                     result['{}_EW_LIMIT'.format(linename)] = ewlimit
 
+                    #if linename == 'HALPHA':
+                    #    pdb.set_trace()
+
             if 'debug' in self.log.name:
                 for col in ('VSHIFT', 'SIGMA', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
                     self.log.debug('{} {}: {:.4f}'.format(linename, col, result['{}_{}'.format(linename, col)]))
