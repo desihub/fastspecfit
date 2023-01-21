@@ -1958,7 +1958,8 @@ class FastFit(ContinuumTools):
 
         # Now fill the output table.
         self._populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
-                               emlineivar, oemlineivar, specflux_nolines, redshift)
+                               emlineivar, oemlineivar, specflux_nolines, redshift,
+                               resolution_matrix, camerapix)
 
         # Build the model spectra.
         emmodel = np.hstack(self.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
@@ -2081,11 +2082,13 @@ class FastFit(ContinuumTools):
         return modelspectra
 
     def _populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
-                          emlineivar, oemlineivar, specflux_nolines, redshift):
+                          emlineivar, oemlineivar, specflux_nolines, redshift,
+                          resolution_matrix, camerapix):
         """Populate the output table with the emission-line measurements.
 
         """
         from scipy.stats import sigmaclip
+        from fastspecfit.emlines import build_emline_model
 
         for param in finalfit:
             val = param['value']
@@ -2194,13 +2197,35 @@ class FastFit(ContinuumTools):
                         # get the emission-line flux
                         linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang # * u.Angstrom
                         result['{}_FLUX'.format(linename)] = result['{}_AMP'.format(linename)] * linenorm
-            
+
                         #result['{}_FLUX_IVAR'.format(linename)] = result['{}_AMP_IVAR'.format(linename)] / linenorm**2
                         #weight = np.exp(-0.5 * np.log10(emlinewave/linezwave)**2 / log10sigma**2)
                         #weight = (weight / np.max(weight)) > 1e-3
                         #result['{}_FLUX_IVAR'.format(linename)] = 1 / np.sum(1 / emlineivar[weight])
-                        result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
-    
+                        #result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
+                        
+                        # weight by the per-pixel inverse variance line-profile
+                        lineprofile = build_emline_model(self.log10wave, redshift, np.array([result['{}_AMP'.format(linename)]]),
+                                                         np.array([result['{}_VSHIFT'.format(linename)]]), np.array([result['{}_SIGMA'.format(linename)]]),
+                                                         np.array([oneline['restwave']]), emlinewave, resolution_matrix, camerapix)
+                        
+                        weight = np.sum(lineprofile[lineindx])
+                        if weight == 0.0:
+                            errmsg = 'Line-profile should never sum to zero!'
+                            self.log.critical(errmsg)
+                            raise ValueError(errmsg)
+                            
+                        flux_ivar = weight / np.sum(lineprofile[lineindx] / emlineivar[lineindx])
+                        result['{}_FLUX_IVAR'.format(linename)] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
+                        
+                        ##if linename == 'OII_3729':
+                        #_indx = np.arange((lineindx[-1]+20)-(lineindx[0]-20))+(lineindx[0]-20)
+                        #import matplotlib.pyplot as plt
+                        #plt.clf()
+                        #plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
+                        #plt.plot(emlinewave[_indx], lineprofile[_indx], color='red')
+                        #plt.savefig('desi-users/ioannis/tmp/junk-{}.png'.format(linename))
+
                         dof = npix - 3 # ??? [redshift, sigma, and amplitude]
                         chi2 = np.sum(emlineivar[lineindx]*(emlineflux[lineindx]-finalmodel[lineindx])**2) / dof
     
@@ -2254,13 +2279,15 @@ class FastFit(ContinuumTools):
                     factor = 1 / ((1 + redshift) * result['{}_CONT'.format(linename)]) # --> rest frame
                     ew = result['{}_FLUX'.format(linename)] * factor # rest frame [A]
                     ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
+
+                    pdb.set_trace()
     
                     # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
                     fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) # * u.erg/(u.second*u.cm**2)
                     ewlimit = fluxlimit * factor
     
                     result['{}_EW'.format(linename)] = ew
-                    result['{}_EW_IVAR'.format(linename)] = ewivar
+                    #result['{}_EW_IVAR'.format(linename)] = ewivar
                     result['{}_FLUX_LIMIT'.format(linename)] = fluxlimit 
                     result['{}_EW_LIMIT'.format(linename)] = ewlimit
 
