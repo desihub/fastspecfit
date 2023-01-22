@@ -17,8 +17,6 @@ C_LIGHT = 299792.458 # [km/s]
 specprod = 'fuji'
 
 DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
-#DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/catalogs'.format(specprod)
-#DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
 
 fastspecfile = os.path.join(DATADIR, 'fastspec-{}.fits'.format(specprod))
 fastphotfile = os.path.join(DATADIR, 'fastphot-{}.fits'.format(specprod))
@@ -44,14 +42,15 @@ def main():
 
     meta_columns = [
         'TARGETID',
-        'RA',
-        'DEC',
-        'COADD_FIBERSTATUS',
-        'TILEID_LIST',
-        #'TILEID',
         'SURVEY',
         'PROGRAM',
         'HEALPIX',
+        'TILEID_LIST',
+        #'TILEID',
+        'RA',
+        'DEC',
+        'COADD_FIBERSTATUS',
+        'CMX_TARGET',
         'DESI_TARGET',
         'BGS_TARGET',
         'MWS_TARGET',
@@ -69,10 +68,15 @@ def main():
         'SV2_SCND_TARGET',
         'SV3_SCND_TARGET',
         'Z',
-        'Z_RR',
         'ZWARN',
         'DELTACHI2',
         'SPECTYPE',
+        'Z_RR',
+        'TSNR2_BGS',
+        'TSNR2_LRG',
+        'TSNR2_ELG',
+        'TSNR2_QSO',
+        'TSNR2_LYA',
         'PHOTSYS',
         'EBV',
         'MW_TRANSMISSION_G',
