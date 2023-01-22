@@ -137,7 +137,7 @@ class ContinuumTools(TabulatedDESI):
             self.templates = templates
         else:
             templates_dir = os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC)
-            self.templates = os.path.join(templates_dir, 'ftemplates-{}-{}.fits'.format(
+            self.templates = os.path.join(templates_dir, templateversion, 'ftemplates-{}-{}.fits'.format(
                 imf, templateversion))
         if not os.path.isfile(self.templates):
             errmsg = 'Templates file not found {}'.format(self.templates)
