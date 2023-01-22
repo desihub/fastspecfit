@@ -26,7 +26,7 @@ def read_emlines():
 
 #@numba.jit(nopython=True)
 def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas, 
-                       linewaves, emlinewave, resolution_matrix, camerapix):
+                       linewaves, emlinewave, resolution_matrix, camerapix=None):
     """Given parameters, build the model emission-line spectrum.
 
     ToDo: can this be optimized using numba?

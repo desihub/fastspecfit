@@ -2434,7 +2434,8 @@ class FastFit(ContinuumTools):
         from PIL import Image, ImageDraw
 
         from fastspecfit.util import ivar2var
-
+        from fastspecfit.emlines import build_emline_model
+        
         Image.MAX_IMAGE_PIXELS = None
 
         sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
@@ -2744,25 +2745,18 @@ class FastFit(ContinuumTools):
         desiemlines = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
         desiemlines_oneline = []
-        for refline in self.linetable: # [self.inrange]: # for all lines in range
-            T = Table(fastspec['Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
-            for oneline in self.linetable: # need all lines for the model
-                linename = oneline['name']
-                for linecol in ['AMP', 'VSHIFT', 'SIGMA']:
-                    col = linename.upper()+'_'+linecol
-                    if linename == refline['name']:
-                        T.add_column(Column(name=col, data=fastspec[col], dtype=fastspec[col].dtype))
-                    else:
-                        T.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
-            # special case the parameter doublets
-            if refline['name'] == 'mgii_2796':
-                T['MGII_2803_AMP'] = fastspec['MGII_2803_AMP']
-            if refline['name'] == 'oii_3726':
-                T['OII_3729_AMP'] = fastspec['OII_3729_AMP']
-            if refline['name'] == 'sii_6731':
-                T['SII_6716_AMP'] = fastspec['SII_6716_AMP']
-            desiemlines_oneline1 = self.emlinemodel_bestfit(data['wave'], data['res'], T[0])
-            if np.sum(np.hstack(desiemlines_oneline1)) > 0:
+        inrange = ( (self.linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
+                    (self.linetable['restwave'] * (1+redshift) < np.max(fullwave)) )
+         
+        for oneline in self.linetable[inrange]: # for all lines in range
+            linename = oneline['name'].upper()
+            amp = fastspec['{}_AMP'.format(linename)]
+            if amp != 0:
+                desiemlines_oneline1 = build_emline_model(
+                    self.log10wave, redshift, np.array([amp]),
+                    np.array([fastspec['{}_VSHIFT'.format(linename)]]),
+                    np.array([fastspec['{}_SIGMA'.format(linename)]]),
+                    np.array([oneline['restwave']]), data['wave'], data['res'])
                 desiemlines_oneline.append(desiemlines_oneline1)
 
         # Grab the viewer cutout.
@@ -2897,7 +2891,7 @@ class FastFit(ContinuumTools):
         
             #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[ii], alpha=0.2)
             specax.plot(wave/1e4, flux, color=col1[ii], alpha=0.8)
-            specax.plot(wave/1e4, modelflux, color=col2[ii], lw=3)
+            specax.plot(wave/1e4, modelflux, color=col2[ii], lw=2, alpha=0.8)
 
         fullmodelspec = np.hstack(desimodelspec)
 
@@ -3152,36 +3146,36 @@ class FastFit(ContinuumTools):
             #print(linename, wmin, wmax)
         
             # iterate over cameras
-            for ii in np.arange(len(data['cameras'])): # iterate over cameras
-                emlinewave = data['wave'][ii]
-                emlineflux = data['flux'][ii] - desicontinuum[ii] - desismoothcontinuum[ii]
-                emlinemodel = desiemlines[ii]
+            for icam in np.arange(len(data['cameras'])): # iterate over cameras
+                emlinewave = data['wave'][icam]
+                emlineflux = data['flux'][icam] - desicontinuum[icam] - desismoothcontinuum[icam]
+                emlinemodel = desiemlines[icam]
         
-                emlinesigma, good = ivar2var(data['ivar'][ii], sigma=True, allmasked_ok=True, clip=0)
+                emlinesigma, good = ivar2var(data['ivar'][icam], sigma=True, allmasked_ok=True, clip=0)
                 emlinewave = emlinewave[good]
                 emlineflux = emlineflux[good]
                 emlinesigma = emlinesigma[good]
                 emlinemodel = emlinemodel[good]
         
-                #if ii == 0:
+                #if icam == 0:
                 #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
                     
                 emlinemodel_oneline = []
                 for desiemlines_oneline1 in desiemlines_oneline:
-                    emlinemodel_oneline.append(desiemlines_oneline1[ii][good])
-        
+                    emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
+                    
                 indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
                 if len(indx) > 1:
                     removelabels[iax] = False
-                    xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[ii], alpha=0.5)
+                    xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
                     #xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
-                    #                emlineflux[indx]+emlinesigma[indx], color=col1[ii], alpha=0.5)
+                    #                emlineflux[indx]+emlinesigma[indx], color=col1[icam], alpha=0.5)
                     # plot the individual lines first then the total model
                     for emlinemodel_oneline1 in emlinemodel_oneline:
                         if np.sum(emlinemodel_oneline1[indx]) > 0:
                             #P = emlinemodel_oneline1[indx] > 0
-                            xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[ii])
-                    xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[ii], lw=3)
+                            xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
+                    xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
 
                     #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
                     #xx.axhline(y=0, color='gray', ls='--')
