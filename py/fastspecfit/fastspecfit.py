@@ -2013,9 +2013,10 @@ class FastFit(ContinuumTools):
         modelspectra.meta['DC-FLAG'] = (0, '0 = linear wavelength vector')
         modelspectra.meta['AIRORVAC'] = ('vac', 'wavelengths in vacuum (vac)')
 
-        modelcontinuum = np.interp(modelwave, emlinewave, continuummodelflux).reshape(1, npix)
-        modelsmoothcontinuum = np.interp(modelwave, emlinewave, smoothcontinuummodelflux).reshape(1, npix)
-        modelemspectrum = np.interp(modelwave, emlinewave, emmodel).reshape(1, npix)
+        wavesrt = np.argsort(emlinewave)
+        modelcontinuum = np.interp(modelwave, emlinewave[wavesrt], continuummodelflux[wavesrt]).reshape(1, npix)
+        modelsmoothcontinuum = np.interp(modelwave, emlinewave[wavesrt], smoothcontinuummodelflux[wavesrt]).reshape(1, npix)
+        modelemspectrum = np.interp(modelwave, emlinewave[wavesrt], emmodel[wavesrt]).reshape(1, npix)
         
         modelspectra.add_column(Column(name='CONTINUUM', dtype='f4', data=modelcontinuum))
         modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4', data=modelsmoothcontinuum))
@@ -2855,8 +2856,8 @@ class FastFit(ContinuumTools):
         # plot the full spectrum + best-fitting (total) model
         spec_ymin, spec_ymax = 1e6, -1e6
 
-        specax.plot(fullwave/1e4, fullcontinuum, color='gray', alpha=0.4)
         specax.plot(fullwave/1e4, fullsmoothcontinuum, color='gray', alpha=0.4)
+        specax.plot(fullwave/1e4, fullcontinuum, color='k', alpha=0.6)
 
         desimodelspec = []
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
