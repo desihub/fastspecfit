@@ -823,7 +823,7 @@ class ContinuumTools(TabulatedDESI):
                             ax.legend(loc='upper left', fontsize=8, frameon=False)
                             _empty = False
                         
-            self.log.info('{} masking sigma={:.3f} km/s and S/N={:.3f}'.format(label, linesigma, linesigma_snr))
+            self.log.info('{} masking sigma={:.0f} km/s and S/N={:.0f}'.format(label, linesigma, linesigma_snr))
 
             if ax and _empty:
                 ax.plot([0, 0], [0, 0], label='{}-No Data'.format(label))

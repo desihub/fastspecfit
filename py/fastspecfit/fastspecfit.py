@@ -299,6 +299,7 @@ class FastFit(ContinuumTools):
                     param_names.append(param_name)
             self.param_names = np.hstack(param_names)
             self.amp_param_bool = np.array(['_amp' in pp for pp in self.param_names])
+            self.sigma_param_bool = np.array(['_sigma' in pp for pp in self.param_names])
     
             self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
             self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
@@ -1545,16 +1546,20 @@ class FastFit(ContinuumTools):
 
         # Require equality, not np.isclose, because the optimization can be very
         # small (<1e-6) but still significant, especially for the doublet
-        # ratios.
+        # ratios. If linesigma is dropped this way, make sure the corresponding
+        # line-amplitude is dropped, too (see MgII 2796 on
+        # sv1-bright-17680-39627622543528153).
         drop2 = np.zeros(len(parameters), bool)
         drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree]
-        #drop2[Ifree] = np.isclose(parameters[Ifree], linemodel['value'][Ifree], 1e-3) # want 'value' here not 'initial'
         drop2 *= notfixed
+
+        sigmadropped = np.where(self.sigma_param_bool * drop2)[0]
+        if len(sigmadropped) > 0:
+            for dropline in linemodel[sigmadropped]['linename']:
+                drop2[linemodel['param_name'] == '{}_amp'.format(dropline)] = True
 
         # It's OK for parameters to be *at* their bounds.
         drop3 = np.zeros(len(parameters), bool)
-        #drop3[Ifree] = np.logical_or(np.isclose(parameters[Ifree], linemodel['bounds'][Ifree, 0], 1e-3),
-        #                             np.isclose(parameters[Ifree], linemodel['bounds'][Ifree, 1], 1e-3))
         drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
                                      parameters[Ifree] > linemodel['bounds'][Ifree, 1])
         drop3 *= notfixed
@@ -1568,10 +1573,6 @@ class FastFit(ContinuumTools):
         #    pdb.set_trace()
 
         ## If we are fitting the broad Balmer lines, do some additional sanity checks.
-        #Ibroad = linemodel[Ifree]['isbalmer'] * linemodel[Ifree]['isbroad']
-        #Inarrow = linemodel[Ifree]['isbalmer'] * (linemodel[Ifree]['isbroad'] == False)
-        #if np.any(Ibroad):
-
         if len(Idrop) > 0:
             self.log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
             parameters[Idrop] = 0.0
@@ -1937,7 +1938,7 @@ class FastFit(ContinuumTools):
         t0 = time.time()
         finalfit = self._optimize(linemodel, emlinewave, emlineflux, weights, 
                                   redshift, resolution_matrix, camerapix, 
-                                  debug=False)
+                                  debug=True)
         finalmodel = self.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
         finalchi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel)
         nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
