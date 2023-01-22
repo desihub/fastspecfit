@@ -13,7 +13,7 @@ import numpy as np
 import astropy.units as u
 from astropy.table import Table, Column
 
-from fastspecfit.util import C_LIGHT, TabulatedDESI
+from fastspecfit.util import C_LIGHT, TabulatedDESI, Lyman_series
 
 #import numba
 #@numba.jit(nopython=True)
@@ -883,7 +883,7 @@ class ContinuumTools(TabulatedDESI):
             #linesigma_balmer = init_linesigma_narrow 
     
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
-        zlinewaves = np.array([1549.4795, 2799.942]) * (1 + redshift)
+        zlinewaves = np.array([1215.670, 1549.4795, 2799.942]) * (1 + redshift)
         #zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.942]) * (1 + redshift)
         linesigma_uv, linesigma_uv_snr = get_linesigma(zlinewaves, init_linesigma_uv, 
                                                        label='UV/Broad', ax=ax[2])
@@ -961,12 +961,12 @@ class ContinuumTools(TabulatedDESI):
         # Next, build the emission-line mask.
         linemask = np.zeros_like(wave, bool)      # True = affected by possible emission line.
         linemask_strong = np.zeros_like(linemask) # True = affected by strong emission lines.
-    
-        linenames = np.hstack(('Lya', self.linetable['name'])) # include Lyman-alpha
-        zlinewaves = np.hstack((1215.0, self.linetable['restwave'])) * (1 + redshift)
-        lineamps = np.hstack((1.0, self.linetable['amp']))
-        isbroads = np.hstack((True, self.linetable['isbroad'] * (self.linetable['isbalmer'] == False)))
-        isbalmers = np.hstack((False, self.linetable['isbalmer'] * (self.linetable['isbroad'] == False)))
+
+        linenames = self.linetable['name']
+        zlinewaves = self.linetable['restwave'] * (1 + redshift)
+        lineamps = self.linetable['amp']
+        isbroads = self.linetable['isbroad'] * (self.linetable['isbalmer'] == False)
+        isbalmers = self.linetable['isbalmer'] * (self.linetable['isbroad'] == False)
     
         png = None
         #png = 'linemask.png'
@@ -1026,7 +1026,7 @@ class ContinuumTools(TabulatedDESI):
                             if np.all(snr > snr_strong):
                                 linemask_strong[I] = True
                         # Always identify Lya as "strong"
-                        if _linename == 'Lya':
+                        if _linename == 'lyalpha':
                             linemask_strong[I] = True
 
 
@@ -1115,6 +1115,28 @@ class ContinuumTools(TabulatedDESI):
         linemask_dict['smoothsigma'] = smoothsigma
 
         return linemask_dict
+
+    @staticmethod
+    def transmission_Lyman(zObj, lObs):
+        """Calculate the transmitted flux fraction from the Lyman series
+        This returns the transmitted flux fraction:
+        1 -> everything is transmitted (medium is transparent)
+        0 -> nothing is transmitted (medium is opaque)
+        Args:
+            zObj (float): Redshift of object
+            lObs (array of float): wavelength grid
+        Returns:
+            array of float: transmitted flux fraction
+
+        """
+        lRF = lObs/(1.+zObj)
+        T = np.ones(lObs.size)
+        for l in list(Lyman_series.keys()):
+            w      = lRF<Lyman_series[l]['line']
+            zpix   = lObs[w]/Lyman_series[l]['line']-1.
+            tauEff = Lyman_series[l]['A']*(1.+zpix)**Lyman_series[l]['B']
+            T[w]  *= np.exp(-tauEff)
+        return T
 
     def smooth_and_resample(self, templateflux, templatewave, specwave=None, specres=None):
         """Given a single template, apply the resolution matrix and resample in
@@ -1231,8 +1253,9 @@ class ContinuumTools(TabulatedDESI):
             dfactor = (10.0 / (1e6 * self.luminosity_distance(redshift)))**2
             #dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2
             #dfactor = (10.0 / np.interp(redshift, self.redshift_ref, self.dlum_ref))**2
-            factor = (self.fluxnorm * self.massnorm * dfactor / (1.0 + redshift))[np.newaxis, np.newaxis]
-            ztemplateflux = templateflux * factor
+            T = self.transmission_Lyman(redshift, ztemplatewave)
+            T *= self.fluxnorm * self.massnorm * dfactor / (1.0 + redshift)
+            ztemplateflux = templateflux * T[:, np.newaxis]
         else:
             errmsg = 'Input redshift not defined or equal to zero!'
             self.log.warning(errmsg)
