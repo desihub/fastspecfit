@@ -174,7 +174,7 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
       <th>&#916;&#967;<sup>2</sup></th> <!-- Delta-chi^2 -->
       <th>SpecType</th>
       <th>Coadd<br />Fiberstatus</th>
-      <th>E(B-V)</th>
+      <th>Galactic <br />E(B-V)</th>
     </tr>
   </thead>
   <tdata>
@@ -228,8 +228,7 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
-      <!--<th>AB mag<br />(extinction<br />corrected)</th>-->
-      <th>&nbsp</th>
+      <th>Imaging</th>
       <th>g</th>
       <th>r</th>
       <th>z</th>
@@ -237,10 +236,6 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
       <th>W2</th>
       <th>W3</th>
       <th>W4</th>
-    </tr>
-    <tr>
-      <th>Imaging</th>
-      <th colspan="7">&nbsp</th>
     </tr>
   </thead>
   <tdata>
@@ -275,10 +270,17 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
       <td>{{ target.abmag_w4 }}{{ target.abmag_err_w4|safe }}</td>
     </tr>
   </tdata>
-  <thead>
+  <thead class="alert alert-info">
     <tr>
+      <!--<th>AB mag<br />(extinction<br />corrected)</th>-->
       <th>Synthesized</th>
-      <th colspan="7">&nbsp</th>
+      <th>g</th>
+      <th>r</th>
+      <th>z</th>
+      <th>W1</th>
+      <th>W2</th>
+      <th>W3</th>
+      <th>W4</th>
     </tr>
   </thead>
   <tdata>
