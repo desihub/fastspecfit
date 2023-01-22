@@ -2,33 +2,23 @@
 
 '''Build a set of FSPS templates for use with FastSpecFit.
 
-Chabrier IMF
-MIST isochrones
-C3K_a stellar library
-DL07 dust emission SEDs
-
-We choose uniform priors along the following physical dimensions:
---15 log-age [10 Myr to 14 Gyr, logarithmically spaced]
---5 log-metallicity [-2 to 0.5 or roughly Z=0.002-0.063]
---8 tau_dust [0.0 to 2.5, logarithmically spaced]
---3 q_PAH [0.1 to 6.0] -- prior matches Leja+17
-
-And the following fixed parameters:
---SSP (sfh=0)
---Reradiated dust emission
---Chabrier (2003) IMF
---Power-law dust law with fixed -0.7 slope
+* Chabrier, Salpeter, or Kroupa IMF
+* MIST isochrones
+* C3K_a stellar library
+* DL07 dust emission spectra
+* 7 variable-width age bins between 30 Myr and 13.7 Gyr with constant star
+  formation within each age bin
+* 3 stellar metallicity values between -1 and 0.3 (relative to solar)
+* 8 dust attenuation values between zero and roughly 3 mag
+* Power-law dust law with fixed -0.7 slope
 
 Note that Figure 3 in Leja et al. 2017 nicely shows the effect of various
 free parameters on the resulting SED.
 
 conda activate fastspecfit
-
 time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf salpeter
 time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf chabrier
 time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf kroupa
-
-rsync -auvP /Users/ioannis/work/desi/science/gqp/templates/fastspecfit/fastspecfit-templates-v1.0.fits dtn01:"desi/science/gqp/templates/fastspecfit/"
 
 '''
 import os, time, pdb
@@ -227,7 +217,7 @@ def build_templates(models, logages, agebins, imf='chabrier', pixkms=25.0,
 
 def main(args):
 
-    version = 'v1.0.0'
+    version = '1.0.0'
 
     # pixel resampling choices
     pixkms = 25.0   # pixel size [km/s]
