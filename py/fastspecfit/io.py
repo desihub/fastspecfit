@@ -669,8 +669,21 @@ class DESISpectra(object):
             # QSO for RR.
             zb['Z_RR'] = zb['Z'] # add it at the end
             if use_qn:
-                [desi_target, bgs_target, mws_target], [desi_mask, bgs_mask, mws_mask], surv = main_cmx_or_sv(meta)
-                IQSO = np.where(meta[desi_target] & desi_mask['QSO'] != 0)[0]
+                surv_target, surv_mask, surv = main_cmx_or_sv(meta)
+                if surv == 'cmx':
+                    desi_target = surv_target[0]
+                    desi_mask = surv_mask[0]
+                    # need to check multiple QSO masks
+                    IQSO = []
+                    for bitname in desi_mask.names():
+                        if 'QSO' in bitname:
+                            IQSO.append(np.where(meta[desi_target] & desi_mask[bitname] != 0)[0])
+                    if len(IQSO) > 0:
+                        IQSO = np.sort(np.unique(np.hstack(IQSO)))
+                else:
+                    desi_target, bgs_target, mws_target = surv_target
+                    desi_mask, bgs_mask, mws_mask = surv_mask
+                    IQSO = np.where(meta[desi_target] & desi_mask['QSO'] != 0)[0]
                 if len(IQSO) > 0:
                     qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx[IQSO], columns=QNCOLS))
                     assert(np.all(qn['TARGETID'] == meta['TARGETID'][IQSO]))
