@@ -69,6 +69,8 @@ class Sample(Model):
     scnd_bitnames = CharField(max_length=150, default='')
     cmx_bitnames = CharField(max_length=150, default='')
 
+    targetclass = CharField(max_length=50, default='')
+
     z = FloatField(null=True)
     zwarn = IntegerField(null=True)
     deltachi2 = FloatField(null=True)

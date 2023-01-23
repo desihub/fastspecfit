@@ -23,6 +23,7 @@ class SampleFilter(django_filters.FilterSet):
     tileid__match = django_filters.CharFilter(field_name='tileid_list', lookup_expr='icontains')
     targetid__match = django_filters.CharFilter(field_name='targetid', lookup_expr='icontains')
     healpix__match = django_filters.CharFilter(field_name='healpix', lookup_expr='icontains')
+    targetclass__match = django_filters.CharFilter(field_name='targetclass', lookup_expr='icontains')
 
     z__gte = django_filters.NumberFilter(field_name='z', lookup_expr='gte')
     z__lte = django_filters.NumberFilter(field_name='z', lookup_expr='lte')

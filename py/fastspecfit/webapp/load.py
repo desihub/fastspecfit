@@ -3,7 +3,7 @@
 """Load the input sample into a database table.
 
 """
-import os, warnings
+import os, pdb
 import numpy as np
 import fitsio
 import django
@@ -955,6 +955,19 @@ def main():
     mws_bitnames = np.zeros(len(meta), dtype='U150')
     scnd_bitnames = np.zeros(len(meta), dtype='U150')
     cmx_bitnames = np.zeros(len(meta), dtype='U150')
+    targetclass = np.zeros(len(meta), dtype='U50')
+
+    def get_targetclass(targetclass, name):
+        for cc in ['BGS', 'LRG', 'ELG', 'QSO', 'MWS', 'SCND', 'STD']:
+            if cc in name:
+                for iobj, tclass in enumerate(targetclass):
+                    if tclass == '':
+                        targetclass[iobj] = cc
+                    else:
+                        if not cc in tclass: # only once
+                            targetclass[iobj] = ' '.join([tclass, cc])
+        return targetclass
+    
     for survey, prefix in zip(['CMX', 'SV1', 'SV2', 'SV3', 'MAIN'], ['CMX_', 'SV1_', 'SV2_', 'SV3_', '']):
         I = meta['SURVEY'] == survey.lower()
         if np.sum(I) > 0:
@@ -971,35 +984,44 @@ def main():
 
             if survey == 'CMX':
                 for name in cmx_mask.names():
-                    J = meta['CMX_TARGET'.format(prefix)] & cmx_mask.mask(name) != 0
-                    if np.sum(J) > 0:
+                    J = np.where(meta['CMX_TARGET'.format(prefix)] & cmx_mask.mask(name) != 0)[0]
+                    if len(J) > 0:
                         cmx_bitnames[J] = [' '.join([bit, name]) for bit in cmx_bitnames[J]]
+                        #if 'QSO' in name:
+                        #    pdb.set_trace()
+                        #print(name, targetclass[J])
+                        targetclass[J] = get_targetclass(targetclass[J], name)
             else:
                 for name in desi_mask.names():
-                    J = meta['{}DESI_TARGET'.format(prefix)] & desi_mask.mask(name) != 0
-                    if np.sum(J) > 0:
+                    J = np.where(meta['{}DESI_TARGET'.format(prefix)] & desi_mask.mask(name) != 0)[0]
+                    if len(J) > 0:
                         desi_bitnames[J] = [' '.join([bit, name]) for bit in desi_bitnames[J]]
+                        targetclass[J] = get_targetclass(targetclass[J], name)
                         
                 for name in bgs_mask.names():
-                    J = meta['{}BGS_TARGET'.format(prefix)] & bgs_mask.mask(name) != 0
-                    if np.sum(J) > 0:
+                    J = np.where(meta['{}BGS_TARGET'.format(prefix)] & bgs_mask.mask(name) != 0)[0]
+                    if len(J) > 0:
                         bgs_bitnames[J] = [' '.join([bit, name]) for bit in bgs_bitnames[J]]
+                        targetclass[J] = get_targetclass(targetclass[J], name)
                         
                 for name in mws_mask.names():
-                    J = meta['{}MWS_TARGET'.format(prefix)] & mws_mask.mask(name) != 0
-                    if np.sum(J) > 0:
+                    J = np.where(meta['{}MWS_TARGET'.format(prefix)] & mws_mask.mask(name) != 0)[0]
+                    if len(J) > 0:
                         mws_bitnames[J] = [' '.join([bit, name]) for bit in mws_bitnames[J]]
+                        targetclass[J] = get_targetclass(targetclass[J], name)
                         
                 for name in scnd_mask.names():
-                    J = meta['{}SCND_TARGET'.format(prefix)] & scnd_mask.mask(name) != 0
-                    if np.sum(J) > 0:
+                    J = np.where(meta['{}SCND_TARGET'.format(prefix)] & scnd_mask.mask(name) != 0)[0]
+                    if len(J) > 0:
                         scnd_bitnames[J] = [' '.join([bit, name]) for bit in scnd_bitnames[J]]
-                    
+                        targetclass[J] = get_targetclass(targetclass[J], name)
+
     meta['DESI_BITNAMES'] = desi_bitnames
     meta['BGS_BITNAMES'] = bgs_bitnames
     meta['MWS_BITNAMES'] = mws_bitnames
     meta['SCND_BITNAMES'] = scnd_bitnames
     meta['CMX_BITNAMES'] = cmx_bitnames
+    meta['TARGETCLASS'] = targetclass
 
     # rename a couple columns
     meta.rename_column('Z_RR', 'ZREDROCK')
