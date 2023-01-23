@@ -179,8 +179,8 @@
           {% for sam in page %}
             <tr>
               <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.survey|upper }}</td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.program|upper }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.survey }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.program }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.tileid_list }}</td>
               <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.targetid }}</a></td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.healpix }}</td>

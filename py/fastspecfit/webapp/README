@@ -27,4 +27,5 @@ touch wsgi.py
 find . -path "*/migrations/*.py" -not -name "__init__.py" -delete
 find . -path "*/migrations/*.pyc"  -delete
 python manage.py makemigrations ; python manage.py migrate
-
+python load.py ; chmod 666 db/db.sqlite3 ; chgrp -R desi *
+touch wsgi.py
