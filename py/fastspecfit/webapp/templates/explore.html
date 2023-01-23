@@ -69,17 +69,14 @@
       <div class="col">
         <p>Scroll down to browse the full sample or select a subset of objects
         using one of the three filter options: simple filter, cone search, or
-        upload your own sample. Custom catalogs must be a binary FITS binary
-        table with mandatory
-        columns <i>SURVEY</i>, <i>PROGRAM</i> (case-insensitive), <i>HEALPIX</i> and
-        <i>TARGETID</i>.</p>
+        upload your own sample.</p>
       </div>
     </div>
 
     <div style="text-align: center; vertical-align: middle;">
       <div class="row">    
         <div class="col" style="text-align: center;">
-          <h3>Filter</h3><br style="line-height:0.5em;" />
+          <h3>Simple Filter</h3><br style="line-height:0.5em;" />
           <form style="display: inline-block;" method="get" action="#results">
             <table>
               <tr>
@@ -104,10 +101,17 @@
                 <td><input id="healpixmatch" name="healpix__match" type="text" value="" placeholder="1"/></td> 
               </tr>
               <tr>
+                <th class="search_th"><label for="targetclassmatch">Target Class</label></th>
+                <td><input id="targetclassmatch" name="targetclass__match"
+                type="text" placeholder="bgs,lrg,elg,qso,..." value="{{form.name.value|default_if_none:''}}"></td> 
+              </tr>
+              <!--
+              <tr>
                 <th class="search_th"><label for="zlo">Redshift</label></th>
                 <td><input id="zlo" name="z__gte" step="0.01" type="number" value="" placeholder="min" min="0"/></td> 
                 <td><input id="zhi" name="z__lte" step="0.01" type="number" value="" placeholder="max" min="0"/></td> 
               </tr>
+              -->
             </table>
             <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
           </form>
@@ -118,15 +122,15 @@
           <form style="display: inline-block;" method="get" action="#results">
             <table>
               <tr>
-                <td class="search_th"><label for="conera">Search RA</label></td>
+                <th class="search_th"><label for="conera">Search RA</label>&nbsp; &nbsp;</th>
                 <td><input id="conera" name="conera" step="0.0001" type="number" value="{{cone_ra}}" placeholder="degrees" min="0" max="360"/></td> 
               </tr>
               <tr>
-                <td class="search_th"><label for="conedec">Search Dec</label></td>
+                <th class="search_th"><label for="conedec">Search Dec</label>&nbsp; &nbsp;</th>
                 <td><input id="conedec" name="conedec" step="0.0001" type="number" value="{{cone_dec}}" placeholder="degrees" min="-90" max="90"/></td> 
               </tr>
               <tr>
-                <td class="search_th"><label for="coneradius">Search Radius</label>&nbsp; &nbsp;</td>
+                <th class="search_th"><label for="coneradius">Search Radius</label>&nbsp; &nbsp;</th>
                 <td><input id="coneradius" name="coneradius" step="0.01" type="number" value="{{cone_rad}}" placeholder="arcmin" min="0"/></td>
               </tr>
             </table>
@@ -135,12 +139,17 @@
         </div>
         
         <div class="col" style="text-align: center;">                  
-          <h3>Upload Sample</h3><br style="line-height:0.5em;" />
+          <h3>Upload Catalog</h3><br style="line-height:0.5em;" />
             <form action="{% url 'upload-catalog' %}" method="POST" enctype="multipart/form-data">{% csrf_token %}
               <input type="file" name="catalog" />
               <button type="submit" value="Upload" id="usercat_submit" class="btn btn-primary" style="margin-top: 15px;">Upload</button>
               <!--<input type="submit" value="Upload" id="usercat_submit" />-->
             </form>
+            <br />
+            <p style="text-align: left;">Uploaded catalog must be a binary FITS table with
+            mandatory, case-insensitive
+            columns <i>SURVEY</i>, <i>PROGRAM</i>, <i>HEALPIX</i>
+            and <i>TARGETID</i>.</p>  
         </div>
 
       </div>
@@ -170,6 +179,7 @@
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'tileid_list' %}#results">TileIDs</a></th>
             <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'healpix' %}#results">Healpixel</a></th>
+            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetclass' %}#results">Target Class</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br />(degrees)</a></th>
             <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'z' %}#results">Redshift</a></th>
@@ -179,11 +189,12 @@
           {% for sam in page %}
             <tr>
               <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.survey|upper }}</td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.program|upper }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.survey }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.program }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.tileid_list }}</td>
               <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.targetid }}</a></td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.healpix }}</td>
+              <td style="vertical-align: middle; text-align: center;">{{ sam.targetclass }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
               <td style="vertical-align: middle; text-align: center;">{{ sam.z|floatformat:8 }}</td>

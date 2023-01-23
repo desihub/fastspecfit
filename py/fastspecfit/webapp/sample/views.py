@@ -91,18 +91,21 @@ def explore(req):
         catname = os.path.join(dirnm, req.GET.get('catalog')+'.fits')
         F = fitsio.FITS(catname)
         cols = F[1].get_colnames()
+        upper = True
         reqcols = ['SURVEY', 'PROGRAM', 'TARGETID', 'HEALPIX']
         if not np.all(np.isin(reqcols, cols)):
-            raise ValueError('One or more required columns are missing from uploaded catalog.')
+            upper = False
+            reqcols = ['survey', 'program', 'targetid', 'healpix']
+            if not np.all(np.isin(reqcols, cols)):
+                raise ValueError('One or more required columns are missing from uploaded catalog.')
 
-        T = Table(F[1].read(columns=reqcols))
+        T = Table(F[1].read(columns=reqcols, upper=True))
         target_name = ['{}-{}-{}-{}'.format(survey.lower(), program.lower(), healpix, targetid)
                        for survey, program, healpix, targetid in zip(T['SURVEY'], T['PROGRAM'], T['HEALPIX'], T['TARGETID'])]
         # query and preserve order
         # https://stackoverflow.com/questions/4916851/django-get-a-queryset-from-array-of-ids-in-specific-order
         inorder = Case(*[When(target_name__iexact=targname, then=pos) for pos, targname in enumerate(target_name)])
         queryset = Sample.objects.filter(target_name__in=target_name).order_by(inorder)
-        #queryset = Sample.objects.all().filter(target_name__in=target_name)
     else:
         cone_ra  = req.GET.get('conera','')
         cone_dec = req.GET.get('conedec','')

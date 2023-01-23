@@ -13,7 +13,7 @@ import numpy as np
 import astropy.units as u
 from astropy.table import Table, Column
 
-from fastspecfit.util import C_LIGHT
+from fastspecfit.util import C_LIGHT, TabulatedDESI, Lyman_series
 
 #import numba
 #@numba.jit(nopython=True)
@@ -70,7 +70,7 @@ def nnls(A, b, maxiter=None, eps=1e-7, v=False):
     res = np.linalg.norm(A.dot(x) - b)
     return x, res
 
-class ContinuumTools(object):
+class ContinuumTools(TabulatedDESI):
     """Tools for dealing with stellar continua.
 
     Parameters
@@ -91,31 +91,39 @@ class ContinuumTools(object):
         Need to document all the attributes.
 
     """
-    def __init__(self, templates=None, templateversion='v1.0', mintemplatewave=None,
-                 maxtemplatewave=40e4, mapdir=None, fastphot=False, verbose=False):
+    def __init__(self, templates=None, templateversion='1.0.0', imf='chabrier',
+                 mintemplatewave=None, maxtemplatewave=40e4, mapdir=None,
+                 fastphot=False, nophoto=False, verbose=False):
+
+        super(ContinuumTools, self).__init__()
 
         import fitsio
-        from astropy.cosmology import FlatLambdaCDM
-
         from speclite import filters
         from desiutil.dust import SFDMap
         from desiutil.log import get_logger, DEBUG
 
         from fastspecfit.emlines import read_emlines
-        from fastspecfit.io import FASTSPECFIT_TEMPLATES_NERSC, DUST_DIR_NERSC, DR9_DIR_NERSC
+        from fastspecfit.io import FTEMPLATES_DIR_NERSC, DUST_DIR_NERSC, DR9_DIR_NERSC
 
         if verbose:
             self.log = get_logger(DEBUG)
         else:
             self.log = get_logger()
 
-        self.cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
+        #from astropy.cosmology import FlatLambdaCDM
+        #cosmo = FlatLambdaCDM(H0=100, Om0=0.3)
+        #ztest = 0.1
+        #print(self.universe_age(ztest), cosmo.age(ztest).value)
+        #print(self.distance_modulus(ztest), cosmo.distmod(ztest).value)
+
         # pre-compute the luminosity distance on a grid
         #self.redshift_ref = np.arange(0.0, 5.0, 0.05)
         #self.dlum_ref = self.cosmo.luminosity_distance(self.redshift_ref).to(u.pc).value
 
         self.fluxnorm = 1e17 # normalization factor for the spectra
         self.massnorm = 1e10 # stellar mass normalization factor [Msun]
+
+        self.nophoto = nophoto
 
         # dust maps
         if mapdir is None:
@@ -128,8 +136,9 @@ class ContinuumTools(object):
         if templates is not None:
             self.templates = templates
         else:
-            templates_dir = os.environ.get('FASTSPECFIT_TEMPLATES', FASTSPECFIT_TEMPLATES_NERSC)
-            self.templates = os.path.join(templates_dir, 'fastspecfit-templates-{}.fits'.format(templateversion))
+            templates_dir = os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC)
+            self.templates = os.path.join(templates_dir, templateversion, 'ftemplates-{}-{}.fits'.format(
+                imf, templateversion))
         if not os.path.isfile(self.templates):
             errmsg = 'Templates file not found {}'.format(self.templates)
             self.log.critical(errmsg)
@@ -139,7 +148,9 @@ class ContinuumTools(object):
         wave, wavehdr = fitsio.read(self.templates, ext='WAVE', header=True) # [npix]
         templateflux = fitsio.read(self.templates, ext='FLUX')  # [npix,nsed]
         templatelineflux = fitsio.read(self.templates, ext='LINEFLUX')  # [npix,nsed]
-        templateinfo = Table(fitsio.read(self.templates, ext='METADATA'))
+        templateinfo, templatehdr = fitsio.read(self.templates, ext='METADATA', header=True)
+        templateinfo = Table(templateinfo)
+        self.imf = templatehdr['IMF']
 
         # Trim the wavelengths and select the number/ages of the templates.
         # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
@@ -180,18 +191,15 @@ class ContinuumTools(object):
             self.vdisp_nominal_indx = np.where(vdisp == self.vdisp_nominal)[0]
             self.nvdisp = nvdisp
 
-            # Cache a copy of the line-free templates at the nominal velocity dispersion.
-            I = np.where(self.templatewave < self.pixkms_wavesplit)[0]
-            templateflux_nolines_nomvdisp = self.templateflux_nolines.copy()
-            templateflux_nolines_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nolines_nomvdisp[I, :], self.vdisp_nominal)
-            self.templateflux_nolines_nomvdisp = templateflux_nolines_nomvdisp
-
-        # Cache a copy of the full templates at the nominal velocity dispersion
-        # (needed for fastphot as well).
+        # Cache a copy of the line-free templates at the nominal velocity
+        # dispersion (needed for fastphot as well).
         I = np.where(self.templatewave < self.pixkms_wavesplit)[0]
+        templateflux_nolines_nomvdisp = self.templateflux_nolines.copy()
         templateflux_nomvdisp = self.templateflux.copy()
+        templateflux_nolines_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nolines_nomvdisp[I, :], self.vdisp_nominal)
         templateflux_nomvdisp[I, :] = self.convolve_vdisp(templateflux_nomvdisp[I, :], self.vdisp_nominal)
         self.templateflux_nomvdisp = templateflux_nomvdisp
+        self.templateflux_nolines_nomvdisp = templateflux_nolines_nomvdisp
 
         # emission line stuff
         self.linetable = read_emlines()
@@ -213,7 +221,11 @@ class ContinuumTools(object):
         self.bassmzlswise = filters.load_filters(
             'BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
 
-        self.bands_to_fit = np.ones(len(self.bands), bool)
+        # Do not fit the photometry.
+        if self.nophoto:
+            self.bands_to_fit = np.zeros(len(self.bands), bool)
+        else:
+            self.bands_to_fit = np.ones(len(self.bands), bool)            
         #for B in ['W2', 'W3', 'W4']:
         #    self.bands_to_fit[self.bands == B] = False # drop W2-W4
 
@@ -594,34 +606,39 @@ class ContinuumTools(object):
         ivar_win = sliding_window_view(ivar, window_shape=smooth_window)
         noline_win = sliding_window_view(np.logical_not(linemask), window_shape=smooth_window)
 
+        nminpix = 15
+
         smooth_wave, smooth_flux, smooth_sigma, smooth_mask = [], [], [], []
         for swave, sflux, sivar, noline in zip(wave_win[::smooth_step],
                                                flux_win[::smooth_step],
                                                ivar_win[::smooth_step],
                                                noline_win[::smooth_step]):
 
-            # if there are fewer than 10 good pixels after accounting for the
+            # if there are fewer than XX good pixels after accounting for the
             # line-mask, skip this window.
             sflux = sflux[noline]
-            if len(sflux) < 10:
+            if len(sflux) < nminpix:
                 smooth_mask.append(True)
                 continue
             swave = swave[noline]
             sivar = sivar[noline]
 
             cflux, _, _ = sigmaclip(sflux, low=2.0, high=2.0)
-            if len(cflux) < 10:
+            if len(cflux) < nminpix:
                 smooth_mask.append(True)
                 continue
 
             # Toss out regions with too little good data.
-            if np.sum(sivar > 0) < 10:
+            if np.sum(sivar > 0) < nminpix:
                 smooth_mask.append(True)
                 continue
 
             I = np.isin(sflux, cflux) # fragile?
             sig = np.std(cflux) # simple median and sigma
             mn = np.median(cflux)
+
+            #if png and mn < -1:# and np.mean(swave[I]) > 7600:
+            #    print(np.mean(swave[I]), mn)
 
             # One more check for crummy spectral regions.
             if mn == 0.0:
@@ -655,6 +672,11 @@ class ContinuumTools(object):
         smooth_sigma = np.array(smooth_sigma)
         smooth_flux = np.array(smooth_flux)
 
+        # For debugging.
+        if png:
+            _smooth_wave = smooth_wave.copy()
+            _smooth_flux = smooth_flux.copy()
+
         # corner case for very wacky spectra
         if len(smooth_flux) == 0:
             smooth_flux = flux
@@ -677,6 +699,8 @@ class ContinuumTools(object):
             ax[0].plot(wave, flux)
             ax[0].scatter(wave[linemask], flux[linemask], s=10, marker='s', color='k', zorder=2)
             ax[0].plot(wave, smooth, color='red')
+            ax[0].plot(_smooth_wave, _smooth_flux, color='orange')
+            #ax[0].scatter(_smooth_wave, _smooth_flux, color='orange', marker='s', ls='-', s=20)
 
             ax[1].plot(wave, flux - smooth)
             ax[1].axhline(y=0, color='k')
@@ -685,7 +709,7 @@ class ContinuumTools(object):
                 #xx.set_xlim(3800, 4300)
                 #xx.set_xlim(5200, 6050)
                 #xx.set_xlim(7000, 9000)
-                xx.set_xlim(6300, 6900)
+                xx.set_xlim(7000, 7800)
             for xx in ax:
                 xx.set_ylim(-2.5, 2)
             zlinewaves = self.linetable['restwave'] * (1 + redshift)
@@ -799,7 +823,7 @@ class ContinuumTools(object):
                             ax.legend(loc='upper left', fontsize=8, frameon=False)
                             _empty = False
                         
-            self.log.info('{} masking sigma={:.3f} km/s and S/N={:.3f}'.format(label, linesigma, linesigma_snr))
+            self.log.info('{} masking sigma={:.0f} km/s and S/N={:.0f}'.format(label, linesigma, linesigma_snr))
 
             if ax and _empty:
                 ax.plot([0, 0], [0, 0], label='{}-No Data'.format(label))
@@ -859,7 +883,7 @@ class ContinuumTools(object):
             #linesigma_balmer = init_linesigma_narrow 
     
         # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
-        zlinewaves = np.array([1549.4795, 2799.942]) * (1 + redshift)
+        zlinewaves = np.array([1215.670, 1549.4795, 2799.942]) * (1 + redshift)
         #zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.942]) * (1 + redshift)
         linesigma_uv, linesigma_uv_snr = get_linesigma(zlinewaves, init_linesigma_uv, 
                                                        label='UV/Broad', ax=ax[2])
@@ -937,12 +961,12 @@ class ContinuumTools(object):
         # Next, build the emission-line mask.
         linemask = np.zeros_like(wave, bool)      # True = affected by possible emission line.
         linemask_strong = np.zeros_like(linemask) # True = affected by strong emission lines.
-    
-        linenames = np.hstack(('Lya', self.linetable['name'])) # include Lyman-alpha
-        zlinewaves = np.hstack((1215.0, self.linetable['restwave'])) * (1 + redshift)
-        lineamps = np.hstack((1.0, self.linetable['amp']))
-        isbroads = np.hstack((True, self.linetable['isbroad'] * (self.linetable['isbalmer'] == False)))
-        isbalmers = np.hstack((False, self.linetable['isbalmer'] * (self.linetable['isbroad'] == False)))
+
+        linenames = self.linetable['name']
+        zlinewaves = self.linetable['restwave'] * (1 + redshift)
+        lineamps = self.linetable['amp']
+        isbroads = self.linetable['isbroad'] * (self.linetable['isbalmer'] == False)
+        isbalmers = self.linetable['isbalmer'] * (self.linetable['isbroad'] == False)
     
         png = None
         #png = 'linemask.png'
@@ -1002,7 +1026,7 @@ class ContinuumTools(object):
                             if np.all(snr > snr_strong):
                                 linemask_strong[I] = True
                         # Always identify Lya as "strong"
-                        if _linename == 'Lya':
+                        if _linename == 'lyalpha':
                             linemask_strong[I] = True
 
 
@@ -1086,10 +1110,33 @@ class ContinuumTools(object):
             linemask_dict = {'linemask_all': [], 'linemask': [],
                              'linename': [], 'linepix': [], 'contpix': []}
 
-        # Also return the smooth continuum.
-        linemask_dict['smoothflux'] = smooth
+        # Also return the smooth continuum and the smooth sigma.
+        #linemask_dict['smoothflux'] = smooth
+        linemask_dict['smoothsigma'] = smoothsigma
 
         return linemask_dict
+
+    @staticmethod
+    def transmission_Lyman(zObj, lObs):
+        """Calculate the transmitted flux fraction from the Lyman series
+        This returns the transmitted flux fraction:
+        1 -> everything is transmitted (medium is transparent)
+        0 -> nothing is transmitted (medium is opaque)
+        Args:
+            zObj (float): Redshift of object
+            lObs (array of float): wavelength grid
+        Returns:
+            array of float: transmitted flux fraction
+
+        """
+        lRF = lObs/(1.+zObj)
+        T = np.ones(lObs.size)
+        for l in list(Lyman_series.keys()):
+            w      = lRF<Lyman_series[l]['line']
+            zpix   = lObs[w]/Lyman_series[l]['line']-1.
+            tauEff = Lyman_series[l]['A']*(1.+zpix)**Lyman_series[l]['B']
+            T[w]  *= np.exp(-tauEff)
+        return T
 
     def smooth_and_resample(self, templateflux, templatewave, specwave=None, specres=None):
         """Given a single template, apply the resolution matrix and resample in
@@ -1203,10 +1250,12 @@ class ContinuumTools(object):
         # stellar mass.
         if redshift:
             ztemplatewave = templatewave * (1.0 + redshift)
-            dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2
+            dfactor = (10.0 / (1e6 * self.luminosity_distance(redshift)))**2
+            #dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2
             #dfactor = (10.0 / np.interp(redshift, self.redshift_ref, self.dlum_ref))**2
-            factor = (self.fluxnorm * self.massnorm * dfactor / (1.0 + redshift))[np.newaxis, np.newaxis]
-            ztemplateflux = templateflux * factor
+            T = self.transmission_Lyman(redshift, ztemplatewave)
+            T *= self.fluxnorm * self.massnorm * dfactor / (1.0 + redshift)
+            ztemplateflux = templateflux * T[:, np.newaxis]
         else:
             errmsg = 'Input redshift not defined or equal to zero!'
             self.log.warning(errmsg)
@@ -1315,7 +1364,8 @@ class ContinuumTools(object):
         agepad in Gyr
 
         """
-        return np.where(self.templateinfo['age'] <= (agepad*1e9 + self.cosmo.age(redshift).to(u.year).value))[0]
+        return np.where(self.templateinfo['age'] <= 1e9 * (agepad + self.universe_age(redshift)))[0]
+        #return np.where(self.templateinfo['age'] <= (agepad*1e9 + self.cosmo.age(redshift).to(u.year).value))[0]
 
     def kcorr_and_absmag(self, data, continuum, coeff, snrmin=2.0):
         """Computer K-corrections, absolute magnitudes, and a simple stellar mass.
@@ -1334,7 +1384,8 @@ class ContinuumTools(object):
 
         # redshifted wavelength array and distance modulus
         ztemplatewave = self.templatewave * (1 + redshift)
-        dmod = self.cosmo.distmod(redshift).value
+        dmod = self.distance_modulus(redshift)
+        #dmod = self.cosmo.distmod(redshift).value
 
         maggies = data['phot']['nanomaggies'].data * 1e-9
         ivarmaggies = (data['phot']['nanomaggies_ivar'].data / 1e-9**2) * self.bands_to_fit # mask W2-W4
@@ -1385,8 +1436,8 @@ class ContinuumTools(object):
                     # (which should never happen?)
                     absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
 
-                check = absmag[jj], -2.5*np.log10(synth_outmaggies_rest[jj]) - dmod
-                self.log.debug(check)
+                #check = absmag[jj], -2.5*np.log10(synth_outmaggies_rest[jj]) - dmod
+                #self.log.debug(check)
 
             return kcorr, absmag, ivarabsmag
 
@@ -1419,8 +1470,9 @@ class ContinuumTools(object):
         # compute the model continuum flux at 1500 and 2800 A (to facilitate UV
         # luminosity-based SFRs) and at the positions of strong nebular emission
         # lines [OII], Hbeta, [OIII], and Halpha
-        dfactor = (1 + redshift) * 4.0 * np.pi * self.cosmo.luminosity_distance(redshift).to(u.cm).value**2 / self.fluxnorm
-
+        #dfactor = (1 + redshift) * 4.0 * np.pi * self.cosmo.luminosity_distance(redshift).to(u.cm).value**2 / self.fluxnorm
+        dfactor = (1 + redshift) * 4.0 * np.pi * (3.08567758e24 * self.luminosity_distance(redshift))**2 / self.fluxnorm
+                
         lums = {}
         cwaves = [1500.0, 2800.0, 5100.0]
         labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_5100']

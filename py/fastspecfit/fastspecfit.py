@@ -45,7 +45,8 @@ def _assign_units_to_columns(fastfit, metadata, Spec, FFit, fastphot=False):
         if col in metacols:
             metadata[col].unit = M[col].unit
 
-def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True, fastphot=False):
+def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True, fastphot=False,
+                 percamera_models=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object."""
     
     log.info('Working on object {} [targetid={}, z={:.6f}].'.format(
@@ -58,7 +59,7 @@ def fastspec_one(iobj, data, out, meta, FFit, broadlinefit=True, fastphot=False)
         emmodel = None
     else:
         emmodel = FFit.emline_specfit(data, out, continuummodel, smooth_continuum,
-                                      broadlinefit=broadlinefit)
+                                      broadlinefit=broadlinefit, percamera_models=percamera_models)
 
     return out, meta, emmodel
 
@@ -88,6 +89,8 @@ def parse(options=None):
     parser.add_argument('--solve-vdisp', action='store_true', help='Solve for the velocity dispersion (only when using fastspec).')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not allow for broad Balmer and Helium line-fitting.')
+    parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
+    parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
     parser.add_argument('--templates', type=str, default=None, help='Optional name of the templates.')
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
@@ -136,7 +139,8 @@ def fastspec(fastphot=False, args=None, comm=None):
     t0 = time.time()
     FFit = FastFit(templates=args.templates, mapdir=args.mapdir, 
                    verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
-                   fastphot=fastphot, mintemplatewave=500.0, maxtemplatewave=40e4)
+                   nophoto=args.nophoto, fastphot=fastphot,
+                   mintemplatewave=450.0, maxtemplatewave=40e4)
     Spec = DESISpectra(dr9dir=args.dr9dir)
     log.info('Initializing the classes took {:.2f} sec'.format(time.time()-t0))
 
@@ -160,8 +164,8 @@ def fastspec(fastphot=False, args=None, comm=None):
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], FFit, args.broadlinefit, fastphot)
-               for iobj in np.arange(Spec.ntargets)]
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], FFit, args.broadlinefit,
+                fastphot, args.percamera_models) for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
         with multiprocessing.Pool(args.mp) as P:
@@ -212,8 +216,9 @@ def fastphot(args=None, comm=None):
 class FastFit(ContinuumTools):
     def __init__(self, templates=None, mintemplatewave=None, maxtemplatewave=40e4, 
                  minspecwave=3500.0, maxspecwave=9900.0, chi2_default=0.0, 
-                 maxiter=5000, accuracy=1e-2, nolegend=False, solve_vdisp=True, 
-                 constrain_age=True, mapdir=None, fastphot=False, verbose=False):
+                 maxiter=5000, accuracy=1e-2, solve_vdisp=True,
+                 constrain_age=True, mapdir=None, nophoto=False, fastphot=False,
+                 verbose=False):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -236,8 +241,6 @@ class FastFit(ContinuumTools):
             Maximum number of iterations.
         accuracy : :class:`float`, optional, defaults to 0.01.
             Fitting accuracy.
-        nolegend : :class:`bool`, optional, defaults to `False`.
-            Do not render the legend on the QA output.
         mapdir : :class:`str`, optional
             Full path to the Milky Way dust maps.
 
@@ -253,9 +256,7 @@ class FastFit(ContinuumTools):
         """
         super(FastFit, self).__init__(templates=templates, mintemplatewave=mintemplatewave,
                                       maxtemplatewave=maxtemplatewave, mapdir=mapdir, fastphot=fastphot,
-                                      verbose=verbose)
-
-        self.nolegend = nolegend
+                                      nophoto=nophoto, verbose=verbose)
 
         # continuum stuff
         self.constrain_age = constrain_age
@@ -266,7 +267,6 @@ class FastFit(ContinuumTools):
             self.chi2_default = chi2_default
             self.maxiter = maxiter
             self.accuracy = accuracy
-            self.nolegend = nolegend
     
             self.emwave_pixkms = 5.0                                  # pixel size for internal wavelength array [km/s]
             self.dlogwave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
@@ -298,11 +298,15 @@ class FastFit(ContinuumTools):
                         param_name = 'sii_doublet_ratio'  # [SII] 6731/6716
                     param_names.append(param_name)
             self.param_names = np.hstack(param_names)
+            self.amp_param_bool = np.array(['_amp' in pp for pp in self.param_names])
+            self.sigma_param_bool = np.array(['_sigma' in pp for pp in self.param_names])
     
             self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
             self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
 
             self.delta_linerchi2_cut = 0.0
+            self.minsigma_balmer_broad = 250.0 # minimum broad-line sigma [km/s]
+            self.minsnr_balmer_broad = 3.0
 
     def init_output(self, nobj=1, fastphot=False):
         """Initialize the output data table for this class.
@@ -311,16 +315,18 @@ class FastFit(ContinuumTools):
         ncoeff = len(self.templateinfo)
         
         out = Table()
-        out.add_column(Column(name='CONTINUUM_Z', length=nobj, dtype='f8')) # redshift
-        out.add_column(Column(name='CONTINUUM_COEFF', length=nobj, shape=(ncoeff,), dtype='f8'))
-        out.add_column(Column(name='CONTINUUM_RCHI2', length=nobj, dtype='f4')) # reduced chi2
-        #out.add_column(Column(name='CONTINUUM_DOF', length=nobj, dtype=np.int32))
+        out.add_column(Column(name='Z', length=nobj, dtype='f8')) # redshift
+        out.add_column(Column(name='COEFF', length=nobj, shape=(ncoeff,), dtype='f4'))
+
+        out.add_column(Column(name='RCHI2', length=nobj, dtype='f4'))      # full-spectrum reduced chi2
+        out.add_column(Column(name='RCHI2_CONT', length=nobj, dtype='f4')) # rchi2 fitting just to the continuum (spec+phot)
+        out.add_column(Column(name='RCHI2_PHOT', length=nobj, dtype='f4')) # rchi2 fitting just to the photometry (=RCHI2_CONT if fastphot=True)
 
         if not fastphot:
             for cam in ['B', 'R', 'Z']:
-                out.add_column(Column(name='CONTINUUM_SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
+                out.add_column(Column(name='SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
             for cam in ['B', 'R', 'Z']:
-                out.add_column(Column(name='CONTINUUM_SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
+                out.add_column(Column(name='SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
 
         out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
         out.add_column(Column(name='VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
@@ -329,7 +335,7 @@ class FastFit(ContinuumTools):
         out.add_column(Column(name='ZZSUN', length=nobj, dtype='f4'))
         out.add_column(Column(name='LOGMSTAR', length=nobj, dtype='f4', unit=u.solMass))
         out.add_column(Column(name='SFR', length=nobj, dtype='f4', unit=u.solMass/u.year))
-        out.add_column(Column(name='FAGN', length=nobj, dtype='f4'))
+        #out.add_column(Column(name='FAGN', length=nobj, dtype='f4'))
         
         if not fastphot:
             out.add_column(Column(name='DN4000', length=nobj, dtype='f4'))
@@ -361,16 +367,17 @@ class FastFit(ContinuumTools):
             out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
 
         if not fastphot:
+            # Add chi2 metrics
+            #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
+            out.add_column(Column(name='RCHI2_LINE', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
+            #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
+            out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
+
+            # aperture corrections
             out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # median aperture correction
             out.add_column(Column(name='APERCORR_G', length=nobj, dtype='f4'))
             out.add_column(Column(name='APERCORR_R', length=nobj, dtype='f4'))
             out.add_column(Column(name='APERCORR_Z', length=nobj, dtype='f4'))
-            # Add chi2 metrics
-            out.add_column(Column(name='RCHI2', length=nobj, dtype='f4')) # full-spectrum reduced chi2
-            #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
-            out.add_column(Column(name='LINERCHI2_BROAD', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
-            #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
-            out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
     
             out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
             out.add_column(Column(name='NARROW_ZRMS', length=nobj, dtype='f8'))
@@ -555,18 +562,19 @@ class FastFit(ContinuumTools):
         """
         tall = time.time()
 
-        redshift = result['CONTINUUM_Z']
+        redshift = result['Z']
 
         objflam = data['phot']['flam'].data * self.fluxnorm
         objflamivar = (data['phot']['flam_ivar'].data / self.fluxnorm**2) * self.bands_to_fit
         assert(np.all(objflamivar >= 0))
 
-        # Require at least one photometric optical band; do not just fit the IR
-        # because we will not be able to compute the aperture correction, below.
-        grz = np.logical_or.reduce((data['phot']['band'] == 'g', data['phot']['band'] == 'r', data['phot']['band'] == 'z'))
-        if np.all(objflamivar[grz] == 0.0):
-            self.log.warning('All optical (grz) bands are masked; masking all photometry.')
-            objflamivar *= 0.0
+        if not self.nophoto:
+            # Require at least one photometric optical band; do not just fit the IR
+            # because we will not be able to compute the aperture correction, below.
+            grz = np.logical_or.reduce((data['phot']['band'] == 'g', data['phot']['band'] == 'r', data['phot']['band'] == 'z'))
+            if np.all(objflamivar[grz] == 0.0):
+                self.log.warning('All optical (grz) bands are masked; masking all photometry.')
+                objflamivar *= 0.0
 
         # Optionally ignore templates which are older than the age of the
         # universe at the redshift of the object.
@@ -586,7 +594,7 @@ class FastFit(ContinuumTools):
             if np.all(objflamivar == 0):
                 self.log.info('All photometry is masked.')
                 coeff = np.zeros(self.nsed, 'f4')
-                chi2min = 0.0
+                rchi2_cont, rchi2_phot = 0.0, 0.0
                 sedmodel = np.zeros(len(self.templatewave))
             else:
                # Get the coefficients and chi2 at the nominal velocity dispersion. 
@@ -597,8 +605,9 @@ class FastFit(ContinuumTools):
                    south=data['photsys'] == 'S')
                sedflam = sedphot['flam'].data * self.massnorm * self.fluxnorm
    
-               coeff, chi2min = self._call_nnls(sedflam, objflam, objflamivar)
-               chi2min /= np.sum(objflamivar > 0) # dof???
+               coeff, rchi2_phot = self._call_nnls(sedflam, objflam, objflamivar)
+               rchi2_phot /= np.sum(objflamivar > 0) # dof???
+               rchi2_cont = rchi2_phot # equivalent
                self.log.info('Fitting {} models took {:.2f} seconds.'.format(
                    nage, time.time()-t0))
    
@@ -622,7 +631,7 @@ class FastFit(ContinuumTools):
             # best-fitting model (per-camera) below.
             specwave = np.hstack(data['wave'])
             specflux = np.hstack(data['flux'])
-            specsmooth = np.hstack(data['smoothflux']) 
+            #specsmooth = np.hstack(data['smoothflux']) 
             flamivar = np.hstack(data['ivar']) 
             specivar = flamivar * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
 
@@ -645,14 +654,14 @@ class FastFit(ContinuumTools):
             # redshift. And if the wavelength coverage is sufficient, also solve for
             # the velocity dispersion.
     
-            #compute_vdisp = ((result['CONTINUUM_SNR_B'] > 1) and (result['CONTINUUM_SNR_R'] > 1)) and (redshift < 1.0)
+            #compute_vdisp = ((result['SNR_B'] > 1) and (result['SNR_R'] > 1)) and (redshift < 1.0)
             restwave = specwave / (1+redshift)
             Ivdisp = np.where((specivar > 0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
             #Ivdisp = np.where((specivar > 0) * (specsmooth != 0.0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
             compute_vdisp = (len(Ivdisp) > 0) and (np.ptp(restwave[Ivdisp]) > 500.0)
     
-            self.log.info('S/N_B={:.2f}, S/N_R={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
-                result['CONTINUUM_SNR_B'], result['CONTINUUM_SNR_R'], restwave[0], restwave[-1]))
+            self.log.info('S/N_b={:.2f}, S/N_r={:.2f}, , S/N_z={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
+                result['SNR_B'], result['SNR_R'], result['SNR_Z'], restwave[0], restwave[-1]))
     
             if self.solve_vdisp or compute_vdisp:
                 t0 = time.time()
@@ -728,41 +737,44 @@ class FastFit(ContinuumTools):
 
             apercorrs, apercorr = np.zeros(len(self.synth_bands), 'f4'), 0.0
 
-            # Fit using the templates with line-emission.
-            quickcoeff, _ = self._call_nnls(desitemplates, specflux, specivar)
-            if np.all(quickcoeff == 0):
-                self.log.warning('Quick continuum coefficients are all zero.')
+            sedtemplates, _ = self.templates2data(input_templateflux, self.templatewave, 
+                                                  vdisp=use_vdisp, redshift=redshift,
+                                                  synthphot=False)
+            if self.nophoto:
+                self.log.info('Skipping aperture correction since --nophoto was set.')
+                apercorrs, apercorr = np.ones(len(self.synth_bands), 'f4'), 1.0
             else:
-                # Synthesize grz photometry from the full-wavelength SED to make
-                # sure we get the z-band correct.
-                sedtemplates, _ = self.templates2data(
-                    input_templateflux, self.templatewave, 
-                    vdisp=use_vdisp, redshift=redshift,
-                    synthphot=False)
-                quicksedflux = sedtemplates.dot(quickcoeff)
-                
-                quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / self.fluxnorm, ztemplatewave).as_array().tolist()[0])
-                quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, nanomaggies=False)
-
-                numer = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
-                                   for band in self.synth_bands])
-                denom = quickphot['nanomaggies'].data
-                I = (numer > 0.0) * (denom > 0.0)
-                if np.any(I):
-                    apercorrs[I] = numer[I] / denom[I]
-                I = apercorrs > 0
-                if np.any(I):
-                    apercorr = np.median(apercorrs[I])
+                # Fit using the templates with line-emission.
+                quickcoeff, _ = self._call_nnls(desitemplates, specflux, specivar)
+                if np.all(quickcoeff == 0):
+                    self.log.warning('Quick continuum coefficients are all zero.')
+                else:
+                    # Synthesize grz photometry from the full-wavelength SED to make
+                    # sure we get the z-band correct.
+                    quicksedflux = sedtemplates.dot(quickcoeff)
                     
+                    quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / self.fluxnorm, ztemplatewave).as_array().tolist()[0])
+                    quickphot = self.parse_photometry(self.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, nanomaggies=False)
+    
+                    numer = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
+                                       for band in self.synth_bands])
+                    denom = quickphot['nanomaggies'].data
+                    I = (numer > 0.0) * (denom > 0.0)
+                    if np.any(I):
+                        apercorrs[I] = numer[I] / denom[I]
+                    I = apercorrs > 0
+                    if np.any(I):
+                        apercorr = np.median(apercorrs[I])
+                        
+                self.log.info('Median aperture correction = {:.3f} [{:.3f}-{:.3f}].'.format(
+                    apercorr, np.min(apercorrs), np.max(apercorrs)))
+                
+                if apercorr <= 0:
+                    self.log.warning('Aperture correction not well-defined; adopting 1.0.')
+                    apercorr = 1.0
+
             apercorr_g, apercorr_r, apercorr_z = apercorrs
-
-            self.log.info('Median aperture correction = {:.3f} [{:.3f}-{:.3f}].'.format(
-                apercorr, np.min(apercorrs), np.max(apercorrs)))
-
-            if apercorr <= 0:
-                self.log.warning('Aperture correction not well-defined; adopting 1.0.')
-                apercorr = 1.0
-
+    
             data['apercorr'] = apercorr # needed for the line-fitting
 
             # Performing the final fit using the line-free templates in the
@@ -774,13 +786,20 @@ class FastFit(ContinuumTools):
                 vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
                 synthphot=False)
 
-            coeff, chi2min = self._call_nnls(np.vstack((desitemplateflam, desitemplates_nolines)),
-                                             np.hstack((objflam, specflux * apercorr)),
-                                             np.hstack((objflamivar, specivar / apercorr**2)))
-            chi2min /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
+            coeff, rchi2_cont = self._call_nnls(np.vstack((desitemplateflam, desitemplates_nolines)),
+                                                np.hstack((objflam, specflux * apercorr)),
+                                                np.hstack((objflamivar, specivar / apercorr**2)))
+
+            # full-continuum fitting rchi2
+            rchi2_cont /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
             self.log.info('Final fitting with {} models took {:.2f} seconds.'.format(
                 nage, time.time()-t0))
-  
+
+            # rchi2 fitting just to the photometry, for analysis purposes
+            rchi2_phot = np.sum(objflamivar * (objflam - desitemplateflam.dot(coeff))**2)
+            if np.any(objflamivar > 0):
+                rchi2_phot /= np.sum(objflamivar > 0)
+
             # Compute the full-wavelength best-fitting model.
             if np.all(coeff == 0):
                 self.log.warning('Continuum coefficients are all zero.')
@@ -841,11 +860,10 @@ class FastFit(ContinuumTools):
                 nonzero = continuummodel[icam] != 0
                 if np.sum(nonzero) > 0:
                     corr = np.median(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
-                    result['CONTINUUM_SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
+                    result['SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
     
             self.log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
-                result['CONTINUUM_SMOOTHCORR_B'], result['CONTINUUM_SMOOTHCORR_R'],
-                result['CONTINUUM_SMOOTHCORR_Z']))
+                result['SMOOTHCORR_B'], result['SMOOTHCORR_R'], result['SMOOTHCORR_Z']))
 
         # Compute K-corrections, rest-frame quantities, and physical properties.
         if np.all(coeff == 0):
@@ -855,23 +873,27 @@ class FastFit(ContinuumTools):
             synth_bestmaggies = np.zeros(len(self.bands))
             lums, cfluxes = {}, {}
 
-            AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+            AV, age, zzsun, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0
+            #AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         else:
             kcorr, absmag, ivarabsmag, synth_bestmaggies, lums, cfluxes = self.kcorr_and_absmag(data, sedmodel, coeff)
     
             AV = self.get_mean_property('av', coeff, agekeep)                        # [mag]
             age = self.get_mean_property('age', coeff, agekeep, normalization=1e9)   # [Gyr]
             zzsun = self.get_mean_property('zzsun', coeff, agekeep, log10=False)     # [log Zsun]
-            fagn = self.get_mean_property('fagn', coeff, agekeep)
+            #fagn = self.get_mean_property('fagn', coeff, agekeep)
             logmstar = self.get_mean_property('mstar', coeff, agekeep, normalization=1/self.massnorm, log10=True) # [Msun]
             sfr = self.get_mean_property('sfr', coeff, agekeep, normalization=1/self.massnorm, log10=False)       # [Msun/yr]
 
-        self.log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
-            logmstar, absmag[np.isin(self.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun, fagn))
+        self.log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}'.format(
+            logmstar, absmag[np.isin(self.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun))
+        #self.log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
+        #    logmstar, absmag[np.isin(self.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun, fagn))
 
         # Pack it in and return.
-        result['CONTINUUM_COEFF'][agekeep] = coeff
-        result['CONTINUUM_RCHI2'] = chi2min
+        result['COEFF'][agekeep] = coeff
+        result['RCHI2_CONT'] = rchi2_cont
+        result['RCHI2_PHOT'] = rchi2_phot
         result['VDISP'] = vdispbest # * u.kilometer/u.second
         result['VDISP_IVAR'] = vdispivar # * (u.second/u.kilometer)**2
         result['AV'] = AV # * u.mag
@@ -879,7 +901,7 @@ class FastFit(ContinuumTools):
         result['ZZSUN'] = zzsun
         result['LOGMSTAR'] = logmstar
         result['SFR'] = sfr
-        result['FAGN'] = fagn
+        #result['FAGN'] = fagn
         result['DN4000_MODEL'] = dn4000_model
 
         for iband, band in enumerate(self.absmag_bands):
@@ -913,7 +935,7 @@ class FastFit(ContinuumTools):
             smooth_continuum = [_smooth_continuum / apercorr for _smooth_continuum in smooth_continuum]
             return continuummodel, smooth_continuum
 
-    def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False):
+    def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False, strict_finalmodel=True):
         """Build all the multi-parameter emission-line models we will use.
     
         """
@@ -1000,10 +1022,10 @@ class FastFit(ContinuumTools):
         minsigma_narrow = 1.0
         maxsigma_narrow = 750.0 # 500.0
 
-        minsigma_broad = 1.0
+        minsigma_broad = 1.0 # 100.
         maxsigma_broad = 1e4
 
-        minsigma_balmer_broad = minsigma_narrow
+        minsigma_balmer_broad = 1.0 # 100.0 # minsigma_narrow
         maxsigma_balmer_broad = maxsigma_broad
     
         # Be very careful about changing the default broad line-sigma. Smaller
@@ -1057,6 +1079,8 @@ class FastFit(ContinuumTools):
         final_linemodel['param_name'] = param_names
         final_linemodel['index'] = np.arange(nparam).astype(np.int32)
         final_linemodel['linename'] = np.tile(linenames, 3) # 3 parameters per line
+        final_linemodel['isbalmer'] = np.zeros(nparam, bool)
+        final_linemodel['isbroad'] = np.zeros(nparam, bool)
         final_linemodel['tiedfactor'] = np.zeros(nparam, 'f8')
         final_linemodel['tiedtoparam'] = np.zeros(nparam, np.int16)-1
         final_linemodel['doubletpair'] = np.zeros(nparam, np.int16)-1
@@ -1064,6 +1088,7 @@ class FastFit(ContinuumTools):
         final_linemodel['bounds'] = np.zeros((nparam, 2), 'f8')
         final_linemodel['initial'] = np.zeros(nparam, 'f8')
         final_linemodel['value'] = np.zeros(nparam, 'f8')
+        final_linemodel['civar'] = np.zeros(nparam, 'f8') # continuum inverse variance
 
         final_linemodel['doubletpair'][self.doubletindx] = self.doubletpair
 
@@ -1077,6 +1102,9 @@ class FastFit(ContinuumTools):
         # lines, not just those in range.
     
         for iline, linename in enumerate(linenames):
+            final_linemodel['isbalmer'][final_linemodel['linename'] == linename] = fit_linetable[fit_linetable['name'] == linename]['isbalmer']
+            final_linemodel['isbroad'][final_linemodel['linename'] == linename] = fit_linetable[fit_linetable['name'] == linename]['isbroad']
+            
             # initial values and bounds - broad He+Balmer lines
             if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline]:
                 for param, bounds, default in zip(['amp', 'sigma', 'vshift'],
@@ -1190,7 +1218,19 @@ class FastFit(ContinuumTools):
                 for param in ['sigma', 'vshift']:
                     final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
                     final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'ciii_1908_'+param)[0]
-            
+
+            # Stephanie Juneau argues that the narrow *forbidden* line-widths
+            # should never be fully untied, so optionally keep them tied to
+            # [OIII] 5007 here; vshift can be free, however, to allow for
+            # wavelength calibration uncertainties.
+            if strict_finalmodel:
+                # Tie all forbidden lines to [OIII] 5007; the narrow Balmer and
+                # helium lines are separately tied together.
+                if fit_linetable['isbroad'][iline] == False and fit_linetable['isbalmer'][iline] == False and linename != 'oiii_5007':
+                    for param in ['sigma']:
+                        final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                        final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oiii_5007_'+param)[0]
+                    
         # Finally set the initial values and bounds on the doublet ratio parameters.
         for param, bounds, default in zip(['mgii_doublet_ratio', 'oii_doublet_ratio', 'sii_doublet_ratio'],
                                           [bounds_mgii_doublet, bounds_oii_doublet, bounds_sii_doublet],
@@ -1228,7 +1268,7 @@ class FastFit(ContinuumTools):
         _fix_parameters(final_linemodel_nobroad, verbose=False)
 
         assert(np.all(final_linemodel_nobroad['tiedtoparam'][final_linemodel_nobroad['tiedfactor'] != 0] != -1))
-
+        
         # Model 3 - like final_linemodel, but with all the narrow and forbidden
         # lines tied together and all the broad lines tied together.
         initial_linemodel = final_linemodel.copy()
@@ -1290,10 +1330,11 @@ class FastFit(ContinuumTools):
         """
         initial_guesses, param_bounds = {}, {}
         #init_amplitudes, init_sigmas = {}, {}
-    
+
+        coadd_sigma = data['smoothsigma'] # robust estimate of the variance in the spectrum
         coadd_emlineflux = np.interp(data['coadd_wave'], emlinewave, emlineflux)
     
-        for linename, linepix in zip(data['coadd_linename'], data['coadd_linepix']):
+        for linename, linepix, contpix in zip(data['coadd_linename'], data['coadd_linepix'], data['coadd_contpix']):
             ## skip the physical doublets
             #if not hasattr(self.EMLineModel, '{}_amp'.format(linename)):
             #    continue
@@ -1308,10 +1349,18 @@ class FastFit(ContinuumTools):
                 amp = np.max(coadd_emlineflux[mnpx:mxpx])
             else:
                 amp = np.percentile(coadd_emlineflux[linepix], 97.5)
-                
             if amp < 0:
                 amp = np.abs(amp)
-    
+
+            noise = np.median(coadd_sigma[linepix])
+            if noise == 0:
+                civar = 0.0
+                errmsg = 'Noise estimate for line {} is zero!'.format(linename)
+                self.log.warning(errmsg)
+                #raise ValueError(errmsg)
+            else:
+                civar = 1.0 / noise**2
+                
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 3*np.max(coadd_emlineflux[linepix])]
             mx = 5*np.max(coadd_emlineflux[linepix])
@@ -1320,19 +1369,20 @@ class FastFit(ContinuumTools):
             
             # force broad Balmer lines to be positive
             iline = self.linetable[self.linetable['name'] == linename]
-            if iline['isbroad']:
-                if iline['isbalmer']:
-                    bounds = [0.0, mx]
-                else:
-                    # MgII and other UV lines are dropped relatively frequently
-                    # due to the lower bound on the amplitude.
-                    #bounds = [None, mx]
-                    #bounds = [-1e2, mx]
-                    #bounds = [0.0, mx]
-                    bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
-            else:
-                #bounds = [0.0, mx]
-                bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+            bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+            #if iline['isbroad']:
+            #    if iline['isbalmer']:
+            #        bounds = [0.0, mx]
+            #    else:
+            #        # MgII and other UV lines are dropped relatively frequently
+            #        # due to the lower bound on the amplitude.
+            #        #bounds = [None, mx]
+            #        #bounds = [-1e2, mx]
+            #        #bounds = [0.0, mx]
+            #        bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+            #else:
+            #    #bounds = [0.0, mx]
+            #    bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
 
             if (bounds[0] > bounds[1]) or (amp < bounds[0]) or (amp > bounds[1]):
                 log.warning('Initial amplitude is outside its bound for line {}.'.format(linename))
@@ -1345,6 +1395,10 @@ class FastFit(ContinuumTools):
 
             initial_guesses[linename+'_amp'] = amp
             param_bounds[linename+'_amp'] = bounds
+            initial_guesses[linename+'_civar'] = civar
+
+            #if linename == 'hbeta_broad':
+            #    pdb.set_trace()
     
         # Now update the linewidth but here we need to loop over *all* lines
         # (not just those in range). E.g., if H-alpha is out of range we need to
@@ -1400,7 +1454,7 @@ class FastFit(ContinuumTools):
 
         return parameters, parameter_extras
 
-    def _populate_linemodel(self, linemodel, initial_guesses, param_bounds):
+    def _populate_linemodel(self, linemodel, initial_guesses, param_bounds, broadbalmer_snrmin=3.0):
         """Population an input linemodel with initial guesses and parameter bounds,
         taking into account fixed parameters.
 
@@ -1414,6 +1468,16 @@ class FastFit(ContinuumTools):
                     linemodel['initial'][iparam] = initial_guesses[param]
                     if param in param_bounds.keys():
                         linemodel['bounds'][iparam] = param_bounds[param]
+                        # set the lower boundary on broad lines to be XX times the local noise
+                        if linemodel['isbalmer'][iparam] and linemodel['isbroad'][iparam]:
+                            civarkey = linemodel['linename'][iparam]+'_civar'
+                            linemodel['civar'][iparam] = initial_guesses[civarkey]
+
+                            #linemodel['bounds'][iparam][0] = broadbalmer_snrmin * initial_guesses[noisekey]
+                            #if linemodel['initial'][iparam] < linemodel['bounds'][iparam][0]:
+                            #    linemodel['initial'][iparam] = linemodel['bounds'][iparam][0]
+                            #if linemodel['initial'][iparam] > linemodel['bounds'][iparam][1]:
+                            #    linemodel['initial'][iparam] = linemodel['bounds'][iparam][1]
             else:
                 if linemodel['fixed'][iparam]:
                     linemodel['initial'][iparam] = 0.0
@@ -1436,7 +1500,7 @@ class FastFit(ContinuumTools):
                     self.log.warning(errmsg)
                     #raise ValueError(errmsg)
                     linemodel['initial'][iparam] = linemodel['bounds'][iparam, 1]
-                    
+
         # Now loop back through and ensure that tied relationships are enforced.
         Itied = np.where((linemodel['tiedtoparam'] != -1) * (linemodel['fixed'] == False))[0]
         if len(Itied) > 0:
@@ -1465,42 +1529,50 @@ class FastFit(ContinuumTools):
                 (Ifree, Itied, tiedtoparam, tiedfactor, doubletindx, 
                  doubletpair, linewaves)
 
-        fit_info = least_squares(_objective_function, parameters[Ifree],
-                                 args=farg, max_nfev=self.maxiter, 
-                                 xtol=self.accuracy, 
-                                 #method='lm')
-                                 #verbose=2,
-                                 tr_solver='lsmr', tr_options={'regularize': True},
-                                 method='trf', bounds=tuple(zip(*bounds)))
+        fit_info = least_squares(_objective_function, parameters[Ifree], args=farg, max_nfev=self.maxiter, 
+                                 xtol=self.accuracy, tr_solver='lsmr', tr_options={'regularize': True},
+                                 method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
         parameters[Ifree] = fit_info.x
 
         # Conditions for dropping a parameter (all parameters, not just those
         # being fitted):
         # --negative amplitude or sigma
         # --parameter at its default value (fit failed, right??)
-        # --parameter outside its bounds [should never be needed if method='trf']
+        # --parameter within 0.1% of its bounds
         lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
         notfixed = np.logical_not(linemodel['fixed'])
 
         drop1 = np.hstack((lineamps < 0, np.zeros(len(linevshifts), bool), linesigmas <= 0)) * notfixed
-        
+
+        # Require equality, not np.isclose, because the optimization can be very
+        # small (<1e-6) but still significant, especially for the doublet
+        # ratios. If linesigma is dropped this way, make sure the corresponding
+        # line-amplitude is dropped, too (see MgII 2796 on
+        # sv1-bright-17680-39627622543528153).
         drop2 = np.zeros(len(parameters), bool)
-        drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree] # want 'value' here not 'initial'
+        drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree]
         drop2 *= notfixed
-        
+
+        sigmadropped = np.where(self.sigma_param_bool * drop2)[0]
+        if len(sigmadropped) > 0:
+            for dropline in linemodel[sigmadropped]['linename']:
+                drop2[linemodel['param_name'] == '{}_amp'.format(dropline)] = True
+
+        # It's OK for parameters to be *at* their bounds.
         drop3 = np.zeros(len(parameters), bool)
         drop3[Ifree] = np.logical_or(parameters[Ifree] < linemodel['bounds'][Ifree, 0], 
                                      parameters[Ifree] > linemodel['bounds'][Ifree, 1])
         drop3 *= notfixed
         
-        self.log.debug('Dropping {} negative amplitudes or line-widths.'.format(np.sum(drop1)))
+        self.log.debug('Dropping {} negative-amplitude lines.'.format(np.sum(drop1))) # linewidth can't be negative
         self.log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
         self.log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
         Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
 
-        if debug:
-            pass
+        #if debug:
+        #    pdb.set_trace()
 
+        ## If we are fitting the broad Balmer lines, do some additional sanity checks.
         if len(Idrop) > 0:
             self.log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
             parameters[Idrop] = 0.0
@@ -1584,7 +1656,7 @@ class FastFit(ContinuumTools):
         from fastspecfit.emlines import build_emline_model
 
         if redshift is None:
-            redshift = fastspecfit_table['CONTINUUM_Z']
+            redshift = fastspecfit_table['Z']
         
         linewaves = self.linetable['restwave'].data
 
@@ -1602,8 +1674,9 @@ class FastFit(ContinuumTools):
 
         return emlinemodel
 
-    def emline_specfit(self, data, result, continuummodel, smooth_continuum, 
-                       synthphot=True, broadlinefit=True, verbose=False):
+    def emline_specfit(self, data, result, continuummodel, smooth_continuum,
+                       synthphot=True, broadlinefit=True, percamera_models=False,
+                       verbose=False):
         """Perform the fit minimization / chi2 minimization.
 
         Parameters
@@ -1652,7 +1725,7 @@ class FastFit(ContinuumTools):
         # Build all the emission-line models for this object.
         final_linemodel, final_linemodel_nobroad, initial_linemodel, initial_linemodel_nobroad = \
             self.build_linemodels(redshift, wavelims=(np.min(emlinewave)+5, np.max(emlinewave)-5),
-                                  verbose=False)
+                                  verbose=False, strict_finalmodel=True)
 
         # Get initial guesses on the parameters and populate the two "initial"
         # linemodels; the "final" linemodels will be initialized with the
@@ -1660,7 +1733,8 @@ class FastFit(ContinuumTools):
         initial_guesses, param_bounds = self._initial_guesses_and_bounds(data, emlinewave, emlineflux)
 
         for linemodel in [initial_linemodel, initial_linemodel_nobroad]:
-            self._populate_linemodel(linemodel, initial_guesses, param_bounds)
+            self._populate_linemodel(linemodel, initial_guesses, param_bounds,
+                                     broadbalmer_snrmin=self.minsnr_balmer_broad)
 
         # Initial fit - initial_linemodel_nobroad
         t0 = time.time()
@@ -1673,19 +1747,41 @@ class FastFit(ContinuumTools):
         self.log.info('Initial line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
             nfree, time.time()-t0, initfit.meta['nfev'], initchi2))
 
-        ## Now try adding bround Balmer and helium lines and see if we improve
-        ## the chi2. First, do we have enough pixels around Halpha and Hbeta to
-        ## do this test?
+        # Now try adding bround Balmer and helium lines and see if we improve
+        # the chi2.
+
+        ## First, do we have enough pixels around Halpha and Hbeta to do this test?
         #broadlinepix = []
         #for icam in np.arange(len(data['cameras'])):
         #    pixoffset = int(np.sum(data['npixpercamera'][:icam]))
         #    for linename, linepix in zip(data['linename'][icam], data['linepix'][icam]):
-        #        if linename == 'halpha_broad' or linename == 'hbeta_broad' or linename == 'hgamma_broad':
+        #        if linename == 'halpha_broad' or linename == 'hbeta_broad' or linename == 'hgamma_broad' or linename == 'hdelta_broad':
         #            broadlinepix.append(linepix + pixoffset)
         #            #print(data['wave'][icam][linepix])
 
-        # Require minimum XX pixels.
-        if broadlinefit:# and len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10:
+        ## Check the velocity width in the narrow lines.
+        #minsigma = 250.0 # [km/s]
+        #OIII = initfit['param_name'] == 'oiii_5007_sigma'
+        #if initfit['value'][OIII][0] != initfit['initial'][OIII][0]:
+        #    if initfit['value'][OIII][0] > minsigma:
+        #        candidate_broadline = True
+        #        log.info('Candidate broad-line: [OIII] sigma {:.2f} > {:.0f} km/s'.format(initfit['value'][OIII][0], minsigma))
+        #    else:
+        #        candidate_broadline = False
+        #else:
+        #    candidate_broadline = True
+            
+        # Require minimum XX pixels and a minimum 
+        if broadlinefit:# and candidate_broadline:
+        #if broadlinefit:# and len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10:
+        
+            ## Copy over the doublet ratios but none of the other initial values
+            ## so that we're not driven to the same local minimum.
+            #doubletindx = initial_linemodel['doubletpair'] != -1
+            #doubletpair = initial_linemodel['doubletpair'][doubletindx].data
+            #initial_linemodel['value'][doubletindx] = initfit[doubletindx]['value']
+            #initial_linemodel['value'][initial_linemodel['doubletpair'][doubletindx]] *= initial_linemodel['value'][doubletindx]
+
             t0 = time.time()
             broadfit = self._optimize(initial_linemodel, emlinewave, emlineflux, weights, 
                                       redshift, resolution_matrix, camerapix, debug=False)
@@ -1708,27 +1804,58 @@ class FastFit(ContinuumTools):
             #        dof_init, dof_broad)
             #    self.log.critical(errmsg)
             #    raise ValueError(errmsg)
-            #
             #linechi2_init = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - initmodel[broadlinepix])**2) / dof_init
             #linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / dof_broad
-            #self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [delta-chi2={:.5f}]'.format(
-            #    linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
-
+            
             linechi2_broad, linechi2_init = broadchi2, initchi2
 
-            self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [delta-chi2={:.5f}]'.format(
+            self.log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [chi2_narrow-chi2_broad={:.5f}]'.format(
                 linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
+            
+            # Choose narrow-only model if:
+            # --chi2_broad > chi2_narrow;
+            # --broad_sigma < narrow_sigma;
+            # --broad_sigma < 250;
+            # --the two reddest broad Balmer lines are both dropped.
+            Bbroad = broadfit['isbalmer'] * broadfit['isbroad'] * (broadfit['fixed'] == False) * self.amp_param_bool
+            Habroad = broadfit['param_name'] == 'halpha_broad_sigma'
+            
+            dchi2fail = (linechi2_init - linechi2_broad) < self.delta_linerchi2_cut
+            #alldrop = np.all(broadfit[Bbroad]['value'].data == 0.0)
+            sigdrop1 = (broadfit[Habroad]['value'] <= broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
+            sigdrop2 = broadfit[Habroad]['value'][0] < self.minsigma_balmer_broad
 
-            # If chi2_broad > chi2_narrow then choose narrow.
-            if (linechi2_init - linechi2_broad) > self.delta_linerchi2_cut:
-                bestfit = broadfit
-            else:
+            ampsnr = broadfit[Bbroad]['value'].data * np.sqrt(broadfit[Bbroad]['civar'].data)
+            ampdrop = np.any(ampsnr[-2:] < self.minsnr_balmer_broad)
+
+            #W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
+            #W2 = (broadfit['fixed'] == False) * (broadfit['tiedtoparam']==-1)
+
+            if dchi2fail or ampdrop or sigdrop1 or sigdrop2:
+                if dchi2fail:
+                    log.info('Dropping broad-line model: delta-rchi2 {:.3f}<{:.3f}.'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
+                elif ampdrop:
+                    log.info('Dropping broad-line model: S/N in either of the two reddest broad lines < {:.1f}.'.format(self.minsnr_balmer_broad))
+                #if alldrop:
+                #    log.info('Dropping broad-line model: all broad lines dropped.')
+                elif sigdrop1:
+                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < Halpha_narrow_sigma {:.2f} km/s.'.format(
+                        broadfit[Habroad]['value'][0],
+                        broadfit[broadfit['param_name'] == 'halpha_sigma']['value'][0]))
+                elif sigdrop2:
+                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < {:.0f} km/s.'.format(
+                        broadfit[Habroad]['value'][0], self.minsigma_balmer_broad))
                 bestfit = initfit
+                use_linemodel_broad = False
+            else:
+                log.info('Adopting broad-line model: delta-rchi2={:.3f}>{:.3f}'.format(linechi2_init - linechi2_broad, self.delta_linerchi2_cut))
+                bestfit = broadfit
+                use_linemodel_broad = True
         else:
-            self.log.info('Skipping broad-line fitting.')
-
+            self.log.info('Skipping broad-line fitting (broadlinefit=False).')
             bestfit = initfit
             linechi2_broad, linechi2_init = 1e6, initchi2
+            use_linemodel_broad = False
             
             #if broadlinefit:
             #    self.log.info('Too few pixels centered on candidate broad emission lines.')
@@ -1738,7 +1865,7 @@ class FastFit(ContinuumTools):
 
         # Finally, one more fitting loop with all the line-constraints relaxed
         # but starting from the previous best-fitting values.
-        if (linechi2_init - linechi2_broad) > self.delta_linerchi2_cut:
+        if use_linemodel_broad:
             linemodel = final_linemodel
         else:
             linemodel = final_linemodel_nobroad
@@ -1753,14 +1880,19 @@ class FastFit(ContinuumTools):
             # copy initial values
             if bestfit['initial'][I] != 0:
                 linemodel['initial'][I] = bestfit['initial'][I]
-            # copy best-fit values
-            if bestfit['value'][I] != 0:
-                linemodel['value'][I] = bestfit['value'][I]
+            # copy best-fit values (including zero!)
+            if bestfit['tiedtoparam'][I] != -1:
+                linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
             else:
-                if bestfit['tiedtoparam'][I] != -1:
-                    linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
-                else:
-                    linemodel['value'][I] = linemodel['initial'][I]
+                linemodel['value'][I] = bestfit['value'][I] # value here not init!
+                
+            #if bestfit['value'][I] != 0:
+            #    linemodel['value'][I] = bestfit['value'][I]
+            #else:
+            #    if bestfit['tiedtoparam'][I] != -1:
+            #        linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
+            #    else:
+            #        linemodel['value'][I] = linemodel['initial'][I]
 
         # Are the broad and narrow lines swapped? If so, swap them here.
         if not linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['fixed'] and \
@@ -1774,13 +1906,30 @@ class FastFit(ContinuumTools):
                     linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename)] = sigma_narrow
                     linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename).replace('_broad', '')] = sigma_broad
 
-        # Tied parameters can have initial values of zero if they are fixed
-        # (e.g., broad emission lines) but nothing else.
-        I = (linemodel['value'][Ifree] == 0) * (linemodel['tiedtoparam'][Ifree] == -1)
-        if np.any(I):
-            errmsg = 'Initial values should never be zero [targetid={}]!'.format(data['targetid'])
-            self.log.critical(errmsg)
-            raise ValueError(errmsg)
+        # This error condition was very helpful for getting the code right, but
+        # is actually too stringent. For example, an object can have an initial
+        # amplitude of zero if it was dropped / not needed in the initial
+        # fitting round, which can happen for the broad Balmer lines.
+
+        ## Tied parameters can have initial values of zero if they are fixed
+        ## (e.g., broad emission lines) but nothing else.
+        #I = (linemodel['value'][Ifree] == 0) * (linemodel['tiedtoparam'][Ifree] == -1)
+        #if np.any(I):
+        #    errmsg = 'Initial values should never be zero [targetid={}]!'.format(data['targetid'])
+        #    self.log.critical(errmsg)
+        #    raise ValueError(errmsg)
+
+        # Tighten up the bounds to within +/-10% around the initial parameter
+        # values except for the amplitudes.
+        I = np.where((self.amp_param_bool == False) * (linemodel['fixed'] == False) *
+                     (linemodel['tiedtoparam'] == -1) * (linemodel['doubletpair'] == -1))[0]
+        if len(I) > 0:
+            neg = linemodel['value'][I] < 0
+            pos = linemodel['value'][I] >= 0
+            if np.any(neg):
+                linemodel['bounds'][I[neg], :] = np.vstack((linemodel['value'][I[neg]] / 0.8, linemodel['value'][I[neg]] / 1.2)).T
+            if np.any(pos):
+                linemodel['bounds'][I[pos], :] = np.vstack((linemodel['value'][I[pos]] * 0.8, linemodel['value'][I[pos]] * 1.2)).T
 
         #linemodel[linemodel['linename'] == 'halpha']
         #B = np.where(['ne' in param for param in self.param_names])[0]
@@ -1789,7 +1938,7 @@ class FastFit(ContinuumTools):
         t0 = time.time()
         finalfit = self._optimize(linemodel, emlinewave, emlineflux, weights, 
                                   redshift, resolution_matrix, camerapix, 
-                                  debug=False)
+                                  debug=True)
         finalmodel = self.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
         finalchi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel)
         nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
@@ -1808,17 +1957,21 @@ class FastFit(ContinuumTools):
         ##plt.plot(emlinewave[W], specflux_nolines[W], color='orange', alpha=0.7)
         #plt.savefig('desi-users/ioannis/tmp/junk2.png')
 
-        # Initialize the output table; see init_fastspecfit for the data model.
-        result['RCHI2'] = finalchi2
-        result['LINERCHI2_BROAD'] = linechi2_broad
-        result['DELTA_LINERCHI2'] = linechi2_init - linechi2_broad
-
         # Now fill the output table.
         self._populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
-                               emlineivar, oemlineivar, specflux_nolines, redshift)
+                               emlineivar, oemlineivar, specflux_nolines, redshift,
+                               resolution_matrix, camerapix)
 
         # Build the model spectra.
         emmodel = np.hstack(self.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
+
+        result['RCHI2_LINE'] = finalchi2
+        result['DELTA_LINERCHI2'] = linechi2_init - linechi2_broad
+
+        # full-fit reduced chi2
+        rchi2 = np.sum(oemlineivar * (specflux - (continuummodelflux + smoothcontinuummodelflux + emmodel))**2)
+        rchi2 /= np.sum(oemlineivar > 0) # dof??
+        result['RCHI2'] = rchi2
 
         # As a consistency check, make sure that the emission-line spectrum
         # rebuilt from the final table is not (very) different from the one
@@ -1861,9 +2014,10 @@ class FastFit(ContinuumTools):
         modelspectra.meta['DC-FLAG'] = (0, '0 = linear wavelength vector')
         modelspectra.meta['AIRORVAC'] = ('vac', 'wavelengths in vacuum (vac)')
 
-        modelcontinuum = np.interp(modelwave, emlinewave, continuummodelflux).reshape(1, npix)
-        modelsmoothcontinuum = np.interp(modelwave, emlinewave, smoothcontinuummodelflux).reshape(1, npix)
-        modelemspectrum = np.interp(modelwave, emlinewave, emmodel).reshape(1, npix)
+        wavesrt = np.argsort(emlinewave)
+        modelcontinuum = np.interp(modelwave, emlinewave[wavesrt], continuummodelflux[wavesrt]).reshape(1, npix)
+        modelsmoothcontinuum = np.interp(modelwave, emlinewave[wavesrt], smoothcontinuummodelflux[wavesrt]).reshape(1, npix)
+        modelemspectrum = np.interp(modelwave, emlinewave[wavesrt], emmodel[wavesrt]).reshape(1, npix)
         
         modelspectra.add_column(Column(name='CONTINUUM', dtype='f4', data=modelcontinuum))
         modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4', data=modelsmoothcontinuum))
@@ -1922,14 +2076,21 @@ class FastFit(ContinuumTools):
 
         log.info('Emission-line fitting took {:.2f} seconds.'.format(time.time()-tall))
 
+        if percamera_models:
+            errmsg = 'percamera-models option not yet implemented.'
+            log.critical(errmsg)
+            raise NotImplementedError(errmsg)
+
         return modelspectra
 
     def _populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
-                          emlineivar, oemlineivar, specflux_nolines, redshift):
+                          emlineivar, oemlineivar, specflux_nolines, redshift,
+                          resolution_matrix, camerapix):
         """Populate the output table with the emission-line measurements.
 
         """
         from scipy.stats import sigmaclip
+        from fastspecfit.emlines import build_emline_model
 
         for param in finalfit:
             val = param['value']
@@ -2038,13 +2199,35 @@ class FastFit(ContinuumTools):
                         # get the emission-line flux
                         linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang # * u.Angstrom
                         result['{}_FLUX'.format(linename)] = result['{}_AMP'.format(linename)] * linenorm
-            
+
                         #result['{}_FLUX_IVAR'.format(linename)] = result['{}_AMP_IVAR'.format(linename)] / linenorm**2
                         #weight = np.exp(-0.5 * np.log10(emlinewave/linezwave)**2 / log10sigma**2)
                         #weight = (weight / np.max(weight)) > 1e-3
                         #result['{}_FLUX_IVAR'.format(linename)] = 1 / np.sum(1 / emlineivar[weight])
-                        result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
-    
+                        #result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
+                        
+                        # weight by the per-pixel inverse variance line-profile
+                        lineprofile = build_emline_model(self.log10wave, redshift, np.array([result['{}_AMP'.format(linename)]]),
+                                                         np.array([result['{}_VSHIFT'.format(linename)]]), np.array([result['{}_SIGMA'.format(linename)]]),
+                                                         np.array([oneline['restwave']]), emlinewave, resolution_matrix, camerapix)
+                        
+                        weight = np.sum(lineprofile[lineindx])
+                        if weight == 0.0:
+                            errmsg = 'Line-profile should never sum to zero!'
+                            self.log.critical(errmsg)
+                            raise ValueError(errmsg)
+                            
+                        flux_ivar = weight / np.sum(lineprofile[lineindx] / emlineivar[lineindx])
+                        result['{}_FLUX_IVAR'.format(linename)] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
+                        
+                        ##if linename == 'OII_3729':
+                        #_indx = np.arange((lineindx[-1]+20)-(lineindx[0]-20))+(lineindx[0]-20)
+                        #import matplotlib.pyplot as plt
+                        #plt.clf()
+                        #plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
+                        #plt.plot(emlinewave[_indx], lineprofile[_indx], color='red')
+                        #plt.savefig('desi-users/ioannis/tmp/junk-{}.png'.format(linename))
+
                         dof = npix - 3 # ??? [redshift, sigma, and amplitude]
                         chi2 = np.sum(emlineivar[lineindx]*(emlineflux[lineindx]-finalmodel[lineindx])**2) / dof
     
@@ -2095,13 +2278,18 @@ class FastFit(ContinuumTools):
                     result['{}_CONT_IVAR'.format(linename)] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
     
                 if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
-                    factor = 1 / ((1 + redshift) * result['{}_CONT'.format(linename)]) # --> rest frame
-                    ew = result['{}_FLUX'.format(linename)] * factor # rest frame [A]
-                    ewivar = result['{}_FLUX_IVAR'.format(linename)] / factor**2
-    
+                    lineflux = result['{}_FLUX'.format(linename)]
+                    linefluxivar = result['{}_FLUX_IVAR'.format(linename)]
+                    if lineflux > 0 and linefluxivar > 0:
+                        # add the uncertainties in flux and the continuum in quadrature
+                        ew = lineflux / cmed / (1 + redshift) # rest frame [A]
+                        ewivar = (1+redshift)**2 / (1 / (cmed**2 * linefluxivar) + lineflux**2 / (cmed**4 * civar))
+                    else:
+                        ew, ewivar = 0.0, 0.0
+                        
                     # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
                     fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) # * u.erg/(u.second*u.cm**2)
-                    ewlimit = fluxlimit * factor
+                    ewlimit = fluxlimit * cmed / (1+redshift)
     
                     result['{}_EW'.format(linename)] = ew
                     result['{}_EW_IVAR'.format(linename)] = ewivar
@@ -2248,7 +2436,8 @@ class FastFit(ContinuumTools):
         from PIL import Image, ImageDraw
 
         from fastspecfit.util import ivar2var
-
+        from fastspecfit.emlines import build_emline_model
+        
         Image.MAX_IMAGE_PIXELS = None
 
         sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
@@ -2338,10 +2527,14 @@ class FastFit(ContinuumTools):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
+        #print('Hack to skip existing files!')
+        #if os.path.isfile(pngfile):
+        #    return
+
         #target += bit
 
         apercorr = fastspec['APERCORR']
-        redshift = fastspec['CONTINUUM_Z']
+        redshift = fastspec['Z']
 
         leg = {
             'radec': '$(\\alpha,\\delta)=({:.7f},{:.6f})$'.format(metadata['RA'], metadata['DEC']),
@@ -2352,14 +2545,15 @@ class FastFit(ContinuumTools):
             'zwarn': '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN']),
             'dn4000_model': '$D_{{n}}(4000)_{{\\rm model}}={:.3f}$'.format(fastspec['DN4000_MODEL']),
 
-            'cchi2': '$\\chi^{{2}}_{{\\nu,phot}}$={:.3f}'.format(fastspec['CONTINUUM_RCHI2']),
-            'rchi2': '$\\chi^{{2}}_{{\\nu,spec}}$={:.3f}'.format(fastspec['RCHI2']),
+            'rchi2': '$\\chi^{{2}}_{{\\nu, \\rm specphot}}$={:.2f}'.format(fastspec['RCHI2']), 
+            'rchi2_cont': '$\\chi^{{2}}_{{\\nu, \\rm cont}}$={:.2f}'.format(fastspec['RCHI2_CONT']),
+            'rchi2_phot': '$\\chi^{{2}}_{{\\nu, \\rm phot}}$={:.2f}'.format(fastspec['RCHI2_PHOT']),
 
             'age': 'Age$={:.3f}$ Gyr'.format(fastspec['AGE']),
             'AV': '$A_{{V}}={:.3f}$ mag'.format(fastspec['AV']),
             'mstar': '$\\log_{{10}}(M/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
             'sfr': '${{\\rm SFR}}={:.1f}\ M_{{\odot}}/{{\\rm yr}}$'.format(fastspec['SFR']),
-            'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
+            #'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
             'zzsun': '$Z/Z_{{\\odot}}={:.3f}$'.format(fastspec['ZZSUN']),
 
             'absmag_r': '$M_{{0.1r}}={:.2f}$'.format(fastspec['ABSMAG_SDSS_R']),
@@ -2376,7 +2570,7 @@ class FastFit(ContinuumTools):
             leg['vdisp'] = '$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
 
         if fastspec['DN4000_IVAR'] > 0:
-            leg['dn4000_spec'] = '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}$'.format(fastspec['DN4000'])
+            leg['dn4000_spec'] = '$D_{{n}}(4000)_{{\\rm data}}={:.3f}$'.format(fastspec['DN4000'])
             #leg.update({'dn4000_spec': '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}\pm{:.3f}$'.format(fastspec['DN4000'], 1/np.sqrt(fastspec['DN4000_IVAR']))})
 
         # kinematics
@@ -2427,6 +2621,8 @@ class FastFit(ContinuumTools):
         # emission lines
 
         # UV
+        if fastspec['LYALPHA_AMP']*np.sqrt(fastspec['LYALPHA_AMP_IVAR']) > snrcut:
+            leg_uv['ewlya'] = 'EW(Ly$\\alpha)={:.1f}\ \\AA$'.format(fastspec['LYALPHA_EW'])
         if fastspec['CIV_1549_AMP']*np.sqrt(fastspec['CIV_1549_AMP_IVAR']) > snrcut:
             leg_uv['ewciv'] = 'EW(CIV)$={:.1f}\ \\AA$'.format(fastspec['CIV_1549_EW'])
         if fastspec['CIII_1908_AMP']*np.sqrt(fastspec['CIII_1908_AMP_IVAR']) > snrcut:
@@ -2436,8 +2632,10 @@ class FastFit(ContinuumTools):
             leg_uv['ewmgii'] = 'EW(MgII)$={:.1f}\ \\AA$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])
             leg_uv['mgii_doublet'] = 'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
 
+        leg_broad['linerchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm line}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
         #leg_broad['deltarchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
-        leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
+        #if fastspec['DELTA_LINERCHI2'] != 0:
+        leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINERCHI2'])
 
         # choose one broad Balmer line
         if fastspec['HALPHA_BROAD_AMP']*np.sqrt(fastspec['HALPHA_BROAD_AMP_IVAR']) > snrcut:
@@ -2492,7 +2690,7 @@ class FastFit(ContinuumTools):
         sedmodel, sedphot = self.templates2data(
             self.templateflux, self.templatewave, 
             redshift=redshift, synthphot=True, 
-            coeff=fastspec['CONTINUUM_COEFF'] * self.massnorm)
+            coeff=fastspec['COEFF'] * self.massnorm)
         sedwave = self.templatewave * (1 + redshift)
 
         phot = self.parse_photometry(self.bands,
@@ -2518,7 +2716,7 @@ class FastFit(ContinuumTools):
                                                specwave=data['wave'], specres=data['res'],
                                                specmask=data['mask'], cameras=data['cameras'],
                                                vdisp=fastspec['VDISP'],
-                                               coeff=fastspec['CONTINUUM_COEFF'])
+                                               coeff=fastspec['COEFF'])
 
         # remove the aperture correction
         desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
@@ -2534,7 +2732,7 @@ class FastFit(ContinuumTools):
                 resid[I] = 0.0
             desiresiduals.append(resid)
         
-        if np.all(fastspec['CONTINUUM_COEFF'] == 0):
+        if np.all(fastspec['COEFF'] == 0):
             fullsmoothcontinuum = np.zeros_like(fullwave)
         else:
             fullsmoothcontinuum, _ = self.smooth_continuum(
@@ -2549,43 +2747,24 @@ class FastFit(ContinuumTools):
         desiemlines = self.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
 
         desiemlines_oneline = []
-        for refline in self.linetable: # [self.inrange]: # for all lines in range
-            T = Table(fastspec['CONTINUUM_Z', 'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'])
-            for oneline in self.linetable: # need all lines for the model
-                linename = oneline['name']
-                for linecol in ['AMP', 'VSHIFT', 'SIGMA']:
-                    col = linename.upper()+'_'+linecol
-                    if linename == refline['name']:
-                        T.add_column(Column(name=col, data=fastspec[col], dtype=fastspec[col].dtype))
-                    else:
-                        T.add_column(Column(name=col, data=0.0, dtype=fastspec[col].dtype))
-            # special case the parameter doublets
-            if refline['name'] == 'mgii_2796':
-                T['MGII_2803_AMP'] = fastspec['MGII_2803_AMP']
-            if refline['name'] == 'oii_3726':
-                T['OII_3729_AMP'] = fastspec['OII_3729_AMP']
-            if refline['name'] == 'sii_6731':
-                T['SII_6716_AMP'] = fastspec['SII_6716_AMP']
-            desiemlines_oneline1 = self.emlinemodel_bestfit(data['wave'], data['res'], T[0])
-            if np.sum(np.hstack(desiemlines_oneline1)) > 0:
+        inrange = ( (self.linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
+                    (self.linetable['restwave'] * (1+redshift) < np.max(fullwave)) )
+         
+        for oneline in self.linetable[inrange]: # for all lines in range
+            linename = oneline['name'].upper()
+            amp = fastspec['{}_AMP'.format(linename)]
+            if amp != 0:
+                desiemlines_oneline1 = build_emline_model(
+                    self.log10wave, redshift, np.array([amp]),
+                    np.array([fastspec['{}_VSHIFT'.format(linename)]]),
+                    np.array([fastspec['{}_SIGMA'.format(linename)]]),
+                    np.array([oneline['restwave']]), data['wave'], data['res'])
                 desiemlines_oneline.append(desiemlines_oneline1)
 
         # Grab the viewer cutout.
         pixscale = 0.262
         width = int(30 / pixscale)   # =1 arcmin
         height = int(width / 1.3) # 3:2 aspect ratio
-
-        cutoutpng = os.path.join('/tmp', 'tmp.'+os.path.basename(pngfile))
-        if not os.path.isfile(cutoutpng):
-            cmd = 'wget -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer=ls-dr9'
-            cmd = cmd.format(outfile=cutoutpng, ra=metadata['RA'], dec=metadata['DEC'],
-                             width=width, height=height)
-            print(cmd)
-            err = subprocess.call(cmd.split())
-            if err != 0:
-                errmsg = 'Something went wrong retrieving the png cutout'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
 
         hdr = fits.Header()
         hdr['NAXIS'] = 2
@@ -2602,6 +2781,21 @@ class FastFit(ContinuumTools):
         hdr['CD2_1'] = 0.0
         hdr['CD2_2'] = +pixscale/3600
         wcs = WCS(hdr)
+
+        cutoutpng = os.path.join('/tmp', 'tmp.'+os.path.basename(pngfile))
+        if not os.path.isfile(cutoutpng):
+            cmd = 'wget -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer=ls-dr9'
+            cmd = cmd.format(outfile=cutoutpng, ra=metadata['RA'], dec=metadata['DEC'],
+                             width=width, height=height)
+            print(cmd)
+            cuterr = subprocess.call(cmd.split())
+            if cuterr != 0:
+                errmsg = 'Something went wrong retrieving the png cutout'
+                log.warning(errmsg)
+                #log.critical(errmsg)
+                #raise ValueError(errmsg)
+        else:
+            cuterr = 0
 
         # QA choices
 
@@ -2631,48 +2825,40 @@ class FastFit(ContinuumTools):
         bbox2 = dict(boxstyle='round', facecolor='lightgray', alpha=0.7)
 
         # viewer cutout
-        with Image.open(cutoutpng) as im:
-            sz = im.size
-            cutax.imshow(im, origin='lower')#, interpolation='nearest')
-
-        #cutax.coords[0].set_format_unit(u.degree)
-        #cutax.coords[1].set_format_unit(u.degree)
-        #cutax.coords[0].set_auto_axislabel(False)
-        #cutax.coords[1].set_auto_axislabel(False)
-        cutax.set_xlabel('RA [J2000]')
-        cutax.set_ylabel('Dec [J2000]')
-
-        cutax.coords[1].set_ticks_position('r')
-        cutax.coords[1].set_ticklabel_position('r')
-        cutax.coords[1].set_axislabel_position('r')
-
-        if metadata['DEC'] > 0:
-            sgn = '+'
-        else:
-            sgn = ''
-            
-        cutax.text(0.04, 0.95, '$(\\alpha,\\delta)$=({:.7f}, {}{:.6f})'.format(metadata['RA'], sgn, metadata['DEC']),
-                   ha='left', va='top', color='k', fontsize=18, bbox=bbox2,
-                   transform=cutax.transAxes)
+        if cuterr == 0:
+            with Image.open(cutoutpng) as im:
+                sz = im.size
+                cutax.imshow(im, origin='lower')#, interpolation='nearest')
+            cutax.set_xlabel('RA [J2000]')
+            cutax.set_ylabel('Dec [J2000]')
     
-        cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=1.5/2/pixscale, facecolor='none', # DESI fiber=1.5 arcsec diameter
-                                edgecolor='red', ls='-', alpha=0.8))#, label='3" diameter'))
-        cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=10/2/pixscale, facecolor='none',
-                                edgecolor='red', ls='--', alpha=0.8))#, label='15" diameter'))
-        handles = [Line2D([0], [0], color='red', lw=2, ls='-', label='1.5 arcsec'),
-                   Line2D([0], [0], color='red', lw=2, ls='--', label='10 arcsec')]
+            cutax.coords[1].set_ticks_position('r')
+            cutax.coords[1].set_ticklabel_position('r')
+            cutax.coords[1].set_axislabel_position('r')
+    
+            if metadata['DEC'] > 0:
+                sgn = '+'
+            else:
+                sgn = ''
+                
+            cutax.text(0.04, 0.95, '$(\\alpha,\\delta)$=({:.7f}, {}{:.6f})'.format(metadata['RA'], sgn, metadata['DEC']),
+                       ha='left', va='top', color='k', fontsize=18, bbox=bbox2,
+                       transform=cutax.transAxes)
         
-        #cutax.get_xaxis().set_visible(False)
-        #cutax.get_yaxis().set_visible(False)
-        #cutax.axis('off')
-        #cutax.autoscale(False)
-        cutax.legend(handles=handles, loc='lower left', fontsize=18, facecolor='lightgray')
+            cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=1.5/2/pixscale, facecolor='none', # DESI fiber=1.5 arcsec diameter
+                                    edgecolor='red', ls='-', alpha=0.8))#, label='3" diameter'))
+            cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=10/2/pixscale, facecolor='none',
+                                    edgecolor='red', ls='--', alpha=0.8))#, label='15" diameter'))
+            handles = [Line2D([0], [0], color='red', lw=2, ls='-', label='1.5 arcsec'),
+                       Line2D([0], [0], color='red', lw=2, ls='--', label='10 arcsec')]
+
+            cutax.legend(handles=handles, loc='lower left', fontsize=18, facecolor='lightgray')
     
         # plot the full spectrum + best-fitting (total) model
         spec_ymin, spec_ymax = 1e6, -1e6
 
-        specax.plot(fullwave/1e4, fullcontinuum, color='gray', alpha=0.4)
         specax.plot(fullwave/1e4, fullsmoothcontinuum, color='gray', alpha=0.4)
+        specax.plot(fullwave/1e4, fullcontinuum, color='k', alpha=0.6)
 
         desimodelspec = []
         for ii in np.arange(len(data['cameras'])): # iterate over cameras
@@ -2698,14 +2884,16 @@ class FastFit(ContinuumTools):
                 if 6 * sigflux > spec_ymax:
                     spec_ymax = 6 * sigflux
                 if np.max(filtflux) > spec_ymax:
-                    spec_ymax = np.max(filtflux)
+                    #print(ii, spec_ymax, np.max(filtflux), np.max(filtflux) * 1.2)
+                    spec_ymax = np.max(filtflux) * 1.25
                 if np.max(modelflux) > spec_ymax:
-                    spec_ymax = np.max(modelflux) * 1.2
+                    spec_ymax = np.max(modelflux) * 1.25
                 #print(spec_ymin, spec_ymax)
+                #pdb.set_trace()
         
             #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[ii], alpha=0.2)
             specax.plot(wave/1e4, flux, color=col1[ii], alpha=0.8)
-            specax.plot(wave/1e4, modelflux, color=col2[ii], lw=3)
+            specax.plot(wave/1e4, modelflux, color=col2[ii], lw=2, alpha=0.8)
 
         fullmodelspec = np.hstack(desimodelspec)
 
@@ -2717,9 +2905,18 @@ class FastFit(ContinuumTools):
         specax.set_ylabel(r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
 
         # photometric SED   
+        abmag_good = phot['abmag_ivar'] > 0
+        abmag_goodlim = phot['abmag_limit'] > 0
+        
         if len(sedmodel) == 0:
             self.log.warning('Best-fitting photometric continuum is all zeros or negative!')
-            sedmodel_abmag = sedmodel*0 + np.median(phot['abmag'])
+            if np.sum(abmag_good) > 0:
+                medmag = np.median(phot['abmag'][abmag_good])
+            elif np.sum(abmag_goodlim) > 0:
+                medmag = np.median(phot['abmag_limit'][abmag_goodlim])
+            else:
+                medmag = 0.0
+            sedmodel_abmag = np.zeros_like(self.templatewave) + medmag
         else:
             factor = 10**(0.4 * 48.6) * sedwave**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
             sedmodel_abmag = -2.5*np.log10(sedmodel * factor)
@@ -2738,29 +2935,27 @@ class FastFit(ContinuumTools):
 
         # we have to set the limits *before* we call errorbar, below!
         dm = 1.5
-        good = phot['abmag_ivar'] > 0
-        goodlim = phot['abmag_limit'] > 0
-        if np.sum(good) > 0 and np.sum(goodlim) > 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(phot['abmag_limit'][goodlim]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(phot['abmag_limit'][goodlim]), np.nanmin(sedmodel_abmag))) - dm
-        elif np.sum(good) > 0 and np.sum(goodlim) == 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(sedmodel_abmag))) - dm
-        elif np.sum(good) == 0 and np.sum(goodlim) > 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag_limit'][goodlim]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag_limit'][goodlim]), np.nanmin(sedmodel_abmag))) - dm
+        if np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) > 0:
+            sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(phot['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(phot['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
+        elif np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) == 0:
+            sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(sedmodel_abmag))) - dm
+        elif np.sum(abmag_good) == 0 and np.sum(abmag_goodlim) > 0:
+            sed_ymin = np.max((np.nanmax(phot['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
         else:
-            good = phot['abmag'] > 0
-            goodlim = phot['abmag_limit'] > 0
-            if np.sum(good) > 0 and np.sum(goodlim) > 0:
-                sed_ymin = np.max((np.nanmax(phot['abmag'][good]), np.nanmax(phot['abmag_limit'][goodlim]))) + dm
-                sed_ymax = np.min((np.nanmin(phot['abmag'][good]), np.nanmin(phot['abmag_limit'][goodlim]))) - dm
-            elif np.sum(good) > 0 and np.sum(goodlim) == 0:                
-                sed_ymin = np.nanmax(phot['abmag'][good]) + dm
-                sed_ymax = np.nanmin(phot['abmag'][good]) - dm
-            elif np.sum(good) == 0 and np.sum(goodlim) > 0:
-                sed_ymin = np.nanmax(phot['abmag_limit'][goodlim]) + dm
-                sed_ymax = np.nanmin(phot['abmag_limit'][goodlim]) - dm
+            abmag_good = phot['abmag'] > 0
+            abmag_goodlim = phot['abmag_limit'] > 0
+            if np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) > 0:
+                sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(phot['abmag_limit'][abmag_goodlim]))) + dm
+                sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(phot['abmag_limit'][abmag_goodlim]))) - dm
+            elif np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) == 0:                
+                sed_ymin = np.nanmax(phot['abmag'][abmag_good]) + dm
+                sed_ymax = np.nanmin(phot['abmag'][abmag_good]) - dm
+            elif np.sum(abmag_good) == 0 and np.sum(abmag_goodlim) > 0:
+                sed_ymin = np.nanmax(phot['abmag_limit'][abmag_goodlim]) + dm
+                sed_ymax = np.nanmin(phot['abmag_limit'][abmag_goodlim]) - dm
             else:
                 sed_ymin, sed_ymax = [30, 20]
             
@@ -2768,7 +2963,7 @@ class FastFit(ContinuumTools):
             sed_ymin = 30
         if np.isnan(sed_ymin) or np.isnan(sed_ymax):
             raise('Problem here!')
-    
+
         #sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
         sedax.set_xlim(phot_wavelims[0], phot_wavelims[1])
         sedax.set_xscale('log')
@@ -2846,13 +3041,12 @@ class FastFit(ContinuumTools):
                    'DESI x {:.2f}'.format(apercorr), ha='center', va='center', fontsize=16,
                    color='k')
 
-        txt = '\n'.join((leg['cchi2'], leg['rchi2']))
+        txt = '\n'.join((leg['rchi2_cont'], leg['rchi2_phot'], leg['rchi2']))
         sedax.text(0.02, 0.94, txt, ha='left', va='top',
                     transform=sedax.transAxes, fontsize=legfntsz)#, bbox=bbox)
 
         txt = '\n'.join((
-            #r'{}'.format(leg['cchi2']),
-            r'{}'.format(leg['fagn']),
+            #r'{}'.format(leg['fagn']),
             r'{}'.format(leg['zzsun']),
             r'{}'.format(leg['AV']),
             r'{}'.format(leg['sfr']),
@@ -2954,36 +3148,36 @@ class FastFit(ContinuumTools):
             #print(linename, wmin, wmax)
         
             # iterate over cameras
-            for ii in np.arange(len(data['cameras'])): # iterate over cameras
-                emlinewave = data['wave'][ii]
-                emlineflux = data['flux'][ii] - desicontinuum[ii] - desismoothcontinuum[ii]
-                emlinemodel = desiemlines[ii]
+            for icam in np.arange(len(data['cameras'])): # iterate over cameras
+                emlinewave = data['wave'][icam]
+                emlineflux = data['flux'][icam] - desicontinuum[icam] - desismoothcontinuum[icam]
+                emlinemodel = desiemlines[icam]
         
-                emlinesigma, good = ivar2var(data['ivar'][ii], sigma=True, allmasked_ok=True, clip=0)
+                emlinesigma, good = ivar2var(data['ivar'][icam], sigma=True, allmasked_ok=True, clip=0)
                 emlinewave = emlinewave[good]
                 emlineflux = emlineflux[good]
                 emlinesigma = emlinesigma[good]
                 emlinemodel = emlinemodel[good]
         
-                #if ii == 0:
+                #if icam == 0:
                 #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
                     
                 emlinemodel_oneline = []
                 for desiemlines_oneline1 in desiemlines_oneline:
-                    emlinemodel_oneline.append(desiemlines_oneline1[ii][good])
-        
+                    emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
+                    
                 indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
                 if len(indx) > 1:
                     removelabels[iax] = False
-                    xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[ii], alpha=0.5)
+                    xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
                     #xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
-                    #                emlineflux[indx]+emlinesigma[indx], color=col1[ii], alpha=0.5)
+                    #                emlineflux[indx]+emlinesigma[indx], color=col1[icam], alpha=0.5)
                     # plot the individual lines first then the total model
                     for emlinemodel_oneline1 in emlinemodel_oneline:
                         if np.sum(emlinemodel_oneline1[indx]) > 0:
                             #P = emlinemodel_oneline1[indx] > 0
-                            xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[ii])
-                    xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[ii], lw=3)
+                            xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
+                    xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
 
                     #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
                     #xx.axhline(y=0, color='gray', ls='--')
@@ -3033,19 +3227,33 @@ class FastFit(ContinuumTools):
         plt.subplots_adjust(wspace=0.4, top=0.9, bottom=0.1, left=0.07, right=0.92, hspace=0.33)
 
         # common axis labels
-        ulpos = ax[0].get_position()
-        urpos = ax[2].get_position()
-        lpos = ax[nline-1].get_position()
-        xpos = (urpos.x1 - ulpos.x0) / 2 + ulpos.x0# + 0.03
-        ypos = lpos.y0 - 0.04
-        fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
-                 ha='center', va='center', fontsize=24)
-
-        xpos = urpos.x1 + 0.05
-        ypos = (urpos.y1 - lpos.y0) / 2 + lpos.y0# + 0.03
-        fig.text(xpos, ypos, 
-                 r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
-                 ha='center', va='center', rotation=270, fontsize=24)
+        if len(ax) > 0:
+            if len(ax) == 2:
+                xx = fig.add_subplot(gs[irow, icol+1])
+                xx.axis('off')
+                ax.append(xx)
+            elif len(ax) == 1:
+                xx = fig.add_subplot(gs[irow, icol+1])
+                xx.axis('off')
+                ax.append(xx)
+                xx = fig.add_subplot(gs[irow, icol+2])
+                xx.axis('off')
+                ax.append(xx)
+            
+            ulpos = ax[0].get_position()
+            lpos = ax[nline-1].get_position()
+            urpos = ax[2].get_position()
+            xpos = (urpos.x1 - ulpos.x0) / 2 + ulpos.x0# + 0.03
+                
+            ypos = lpos.y0 - 0.04
+            fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
+                     ha='center', va='center', fontsize=24)
+    
+            xpos = urpos.x1 + 0.05
+            ypos = (urpos.y1 - lpos.y0) / 2 + lpos.y0# + 0.03
+            fig.text(xpos, ypos, 
+                     r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
+                     ha='center', va='center', rotation=270, fontsize=24)
 
         ppos = sedax.get_position()
         xpos = (ppos.x1 - ppos.x0) / 2 + ppos.x0
@@ -3076,8 +3284,9 @@ class FastFit(ContinuumTools):
         txt += [            
             #r'{}'.format(leg['zwarn']),
             r'{}'.format(leg['vdisp']),
-            '',
         ]
+        if 'dv_narrow' in legkeys or 'dv_uv' in leg_uv.keys() or 'dv_broad' in leg_broad.keys():
+            txt += ['']
 
         if 'dv_narrow' in legkeys:
             txt += [

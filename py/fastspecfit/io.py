@@ -20,8 +20,7 @@ log = get_logger()
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 DR9_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
-FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
-#FASTSPECFIT_TEMPLATES_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z'
+FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
@@ -52,6 +51,9 @@ EXPFMCOLS = {
 
 # redshift columns to read
 REDSHIFTCOLS = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
+
+# tsnr columns to read
+TSNR2COLS = ['TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA']
 
 # quasarnet afterburner columns to read
 QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
@@ -164,7 +166,7 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, FFit, fastphot, synth
         data.update({'wave': [], 'flux': [], 'ivar': [], 'mask': [], 'res': [],
                      'linemask': [], 'linemask_all': [],
                      'linename': [], 'linepix': [], 'contpix': [],
-                     'smoothflux': [],
+                     #'smoothflux': [], 
                      'snr': np.zeros(3, 'f4')})
                      #'std': np.zeros(3, 'f4'), # emission-line free standard deviation, per-camera
     
@@ -229,13 +231,15 @@ def unpack_one_spectrum(spec, coadd_spec, igal, meta, ebv, FFit, fastphot, synth
         data['linesigma_narrow_snr'] = coadd_linemask_dict['linesigma_narrow_snr']
         data['linesigma_balmer_snr'] = coadd_linemask_dict['linesigma_balmer_snr']
         data['linesigma_uv_snr'] = coadd_linemask_dict['linesigma_uv_snr']
-    
+
+        data['smoothsigma'] = coadd_linemask_dict['smoothsigma']
+        
         # Map the pixels belonging to individual emission lines and
         # their local continuum back onto the original per-camera
         # spectra. These lists of arrays are used in
         # continuum.ContinnuumTools.smooth_continuum.
         for icam in np.arange(len(data['cameras'])):
-            data['smoothflux'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['smoothflux']))
+            #data['smoothflux'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['smoothflux']))
             data['linemask'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask']*1) > 0)
             data['linemask_all'].append(np.interp(data['wave'][icam], coadd_wave, coadd_linemask_dict['linemask_all']*1) > 0)
             _linename, _linenpix, _contpix = [], [], []
@@ -478,6 +482,7 @@ class DESISpectra(object):
         """
         from desiutil.depend import getdep
         from desitarget.io import releasedict        
+        from desitarget.targets import main_cmx_or_sv
         from desispec.io.photo import gather_tractorphot
 
         if zmin <= 0.0:
@@ -654,31 +659,46 @@ class DESISpectra(object):
             else:
                 zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=REDSHIFTCOLS))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=READFMCOLS))
+            tsnr2 = Table(fitsio.read(redrockfile, 'TSNR2', rows=fitindx, columns=TSNR2COLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
-            # Update the redrock redshift when quasarnet disagrees. From Edmond:
-            # the QN afterburner is run with a threshold 0.5. With VI, we choose
-            # 0.95 as final threshold. Note, the IS_QSO_QN_NEW_RR column
-            # contains only QSO for QN which are not QSO for RR.
+            # Update the redrock redshift when quasarnet disagrees **but only
+            # for QSO targets**. From Edmond: the QN afterburner is run with a
+            # threshold 0.5. With VI, we choose 0.95 as final threshold. Note,
+            # the IS_QSO_QN_NEW_RR column contains only QSO for QN which are not
+            # QSO for RR.
+            zb['Z_RR'] = zb['Z'] # add it at the end
             if use_qn:
-                qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
-                assert(np.all(qn['TARGETID'] == meta['TARGETID']))
-                log.info('Updating QSO redshifts using a QN threshold of 0.95.')
-                qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > 0.95
-                qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
-                #zb.add_column(zb['Z'], name='Z_RR', index=2) # add it after 'Z'
-                zb['Z_RR'] = zb['Z'] # add it at the end
-                if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
-                    zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
-                del qn
-            else:
-                zb['Z_RR'] = zb['Z'] # add it at the end
-                
+                surv_target, surv_mask, surv = main_cmx_or_sv(meta)
+                if surv == 'cmx':
+                    desi_target = surv_target[0]
+                    desi_mask = surv_mask[0]
+                    # need to check multiple QSO masks
+                    IQSO = []
+                    for bitname in desi_mask.names():
+                        if 'QSO' in bitname:
+                            IQSO.append(np.where(meta[desi_target] & desi_mask[bitname] != 0)[0])
+                    if len(IQSO) > 0:
+                        IQSO = np.sort(np.unique(np.hstack(IQSO)))
+                else:
+                    desi_target, bgs_target, mws_target = surv_target
+                    desi_mask, bgs_mask, mws_mask = surv_mask
+                    IQSO = np.where(meta[desi_target] & desi_mask['QSO'] != 0)[0]
+                if len(IQSO) > 0:
+                    qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx[IQSO], columns=QNCOLS))
+                    assert(np.all(qn['TARGETID'] == meta['TARGETID'][IQSO]))
+                    log.info('Updating QSO redshifts using a QN threshold of 0.95.')
+                    qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > 0.95
+                    qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
+                    if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
+                        zb['Z'][IQSO[qn['IS_QSO_QN_NEW_RR']]] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
+                    del qn
+
             # astropy 5.0 "feature" -- join no longer preserves order, ugh.
             zb.remove_column('TARGETID')
-            meta = hstack((zb, meta))
+            meta = hstack((zb, meta, tsnr2))
             #meta = join(zb, meta, keys='TARGETID')
-            del zb
+            del zb, tsnr2
 
             # Get the unique set of tiles contributing to the coadded spectra
             # from EXP_FIBERMAP.
@@ -974,7 +994,8 @@ class DESISpectra(object):
                    }
 
         skipcols = ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE'] + fluxcols
-        redrockcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR']
+        redrockcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR', 'TSNR2_BGS',
+                       'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA']
         
         meta = Table()
         metacols = self.meta.colnames
@@ -1029,10 +1050,10 @@ class DESISpectra(object):
         # output tables.)
         if data is not None:
             for iobj, _data in enumerate(data):
-                out['CONTINUUM_Z'][iobj] = _data['zredrock']
+                out['Z'][iobj] = _data['zredrock']
                 if not fastphot:
                     for icam, cam in enumerate(_data['cameras']):
-                        out['CONTINUUM_SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
+                        out['SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
                 for iband, band in enumerate(FFit.fiber_bands):
                     meta['FIBERTOTFLUX_{}'.format(band.upper())][iobj] = _data['fiberphot']['nanomaggies'][iband]
                     #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
@@ -1096,7 +1117,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     import gzip, shutil
     from astropy.io import fits
     from desispec.io.util import fitsheader
-    from desiutil.depend import add_dependencies
+    from desiutil.depend import add_dependencies, possible_dependencies
 
     t0 = time.time()
     outdir = os.path.dirname(os.path.abspath(outfile))
@@ -1127,12 +1148,12 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
         primhdr.append(('EXTNAME', 'PRIMARY'))
         primhdr.append(('SPECPROD', (specprod, 'spectroscopic production name')))
     if coadd_type:
-        primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd fitted')))
+        primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd type')))
 
     primhdr = fitsheader(primhdr)
-    add_dependencies(primhdr)
-    add_dependencies(primhdr, module_names=['fastspecfit'])
-    
+    add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
+                     envvar_names=['DESI_ROOT', 'FTEMPLATES_DIR', 'DUST_DIR', 'DR9_DIR'])
+
     hdus = fits.HDUList()
     hdus.append(fits.PrimaryHDU(None, primhdr))
     hdus.append(fits.convenience.table_to_hdu(out))

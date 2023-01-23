@@ -3,13 +3,12 @@
 """Load the input sample into a database table.
 
 """
-import os
+import os, pdb
 import numpy as np
 import fitsio
 import django
-
+from pkg_resources import resource_filename
 from astropy.table import Table, hstack
-#from astrometry.util.starutil_numpy import radectoxyz
 
 C_LIGHT = 299792.458 # [km/s]
 
@@ -17,8 +16,6 @@ C_LIGHT = 299792.458 # [km/s]
 specprod = 'fuji'
 
 DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
-#DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/test/{}/catalogs'.format(specprod)
-#DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
 
 fastspecfile = os.path.join(DATADIR, 'fastspec-{}.fits'.format(specprod))
 fastphotfile = os.path.join(DATADIR, 'fastphot-{}.fits'.format(specprod))
@@ -44,14 +41,15 @@ def main():
 
     meta_columns = [
         'TARGETID',
-        'RA',
-        'DEC',
-        'COADD_FIBERSTATUS',
-        'TILEID_LIST',
-        #'TILEID',
         'SURVEY',
         'PROGRAM',
         'HEALPIX',
+        'TILEID_LIST',
+        #'TILEID',
+        'RA',
+        'DEC',
+        'COADD_FIBERSTATUS',
+        'CMX_TARGET',
         'DESI_TARGET',
         'BGS_TARGET',
         'MWS_TARGET',
@@ -69,10 +67,15 @@ def main():
         'SV2_SCND_TARGET',
         'SV3_SCND_TARGET',
         'Z',
-        'Z_RR',
         'ZWARN',
         'DELTACHI2',
         'SPECTYPE',
+        'Z_RR',
+        'TSNR2_BGS',
+        'TSNR2_LRG',
+        'TSNR2_ELG',
+        'TSNR2_QSO',
+        'TSNR2_LYA',
         'PHOTSYS',
         'EBV',
         'MW_TRANSMISSION_G',
@@ -195,6 +198,21 @@ def main():
         'MGII_DOUBLET_RATIO',
         'OII_DOUBLET_RATIO',
         'SII_DOUBLET_RATIO',
+        'LYALPHA_AMP',
+        'LYALPHA_AMP_IVAR',
+        'LYALPHA_FLUX',
+        'LYALPHA_FLUX_IVAR',
+        'LYALPHA_BOXFLUX',
+        'LYALPHA_VSHIFT',
+        'LYALPHA_SIGMA',
+        'LYALPHA_CONT',
+        'LYALPHA_CONT_IVAR',
+        'LYALPHA_EW',
+        'LYALPHA_EW_IVAR',
+        'LYALPHA_FLUX_LIMIT',
+        'LYALPHA_EW_LIMIT',
+        'LYALPHA_CHI2',
+        'LYALPHA_NPIX',
         'OI_1304_AMP',
         'OI_1304_AMP_IVAR',
         'OI_1304_FLUX',
@@ -936,9 +954,22 @@ def main():
     bgs_bitnames = np.zeros(len(meta), dtype='U150')
     mws_bitnames = np.zeros(len(meta), dtype='U150')
     scnd_bitnames = np.zeros(len(meta), dtype='U150')
-    for survey, prefix in zip(['SV1', 'SV2', 'SV3', 'MAIN'], ['SV1_', 'SV2_', 'SV3_', '']):
-        I = meta['SURVEY'] == survey.lower()
+    cmx_bitnames = np.zeros(len(meta), dtype='U150')
+    targetclass = np.zeros(len(meta), dtype='U50')
 
+    def get_targetclass(targetclass, name):
+        for cc in ['BGS', 'LRG', 'ELG', 'QSO', 'MWS', 'SCND', 'STD']:
+            if cc in name:
+                for iobj, tclass in enumerate(targetclass):
+                    if tclass == '':
+                        targetclass[iobj] = cc
+                    else:
+                        if not cc in tclass: # only once
+                            targetclass[iobj] = ' '.join([tclass, cc])
+        return targetclass
+    
+    for survey, prefix in zip(['CMX', 'SV1', 'SV2', 'SV3', 'MAIN'], ['CMX_', 'SV1_', 'SV2_', 'SV3_', '']):
+        I = meta['SURVEY'] == survey.lower()
         if np.sum(I) > 0:
             if survey == 'MAIN':
                 from desitarget.targetmask import desi_mask, bgs_mask, mws_mask, scnd_mask
@@ -948,31 +979,49 @@ def main():
                 from desitarget.sv2.sv2_targetmask import desi_mask, bgs_mask, mws_mask, scnd_mask
             elif survey == 'SV3':
                 from desitarget.sv3.sv3_targetmask import desi_mask, bgs_mask, mws_mask, scnd_mask
+            elif survey == 'CMX':
+                from desitarget.cmx.cmx_targetmask import cmx_mask
 
-            for name in desi_mask.names():
-                J = meta['{}DESI_TARGET'.format(prefix)] & desi_mask.mask(name) != 0
-                if np.sum(J) > 0:
-                    desi_bitnames[J] = [' '.join([bit, name]) for bit in desi_bitnames[J]]
-                    
-            for name in bgs_mask.names():
-                J = meta['{}BGS_TARGET'.format(prefix)] & bgs_mask.mask(name) != 0
-                if np.sum(J) > 0:
-                    bgs_bitnames[J] = [' '.join([bit, name]) for bit in bgs_bitnames[J]]
-                    
-            for name in mws_mask.names():
-                J = meta['{}MWS_TARGET'.format(prefix)] & mws_mask.mask(name) != 0
-                if np.sum(J) > 0:
-                    mws_bitnames[J] = [' '.join([bit, name]) for bit in mws_bitnames[J]]
-                    
-            for name in scnd_mask.names():
-                J = meta['{}SCND_TARGET'.format(prefix)] & scnd_mask.mask(name) != 0
-                if np.sum(J) > 0:
-                    scnd_bitnames[J] = [' '.join([bit, name]) for bit in scnd_bitnames[J]]
-                    
+            if survey == 'CMX':
+                for name in cmx_mask.names():
+                    J = np.where(meta['CMX_TARGET'.format(prefix)] & cmx_mask.mask(name) != 0)[0]
+                    if len(J) > 0:
+                        cmx_bitnames[J] = [' '.join([bit, name]) for bit in cmx_bitnames[J]]
+                        #if 'QSO' in name:
+                        #    pdb.set_trace()
+                        #print(name, targetclass[J])
+                        targetclass[J] = get_targetclass(targetclass[J], name)
+            else:
+                for name in desi_mask.names():
+                    J = np.where(meta['{}DESI_TARGET'.format(prefix)] & desi_mask.mask(name) != 0)[0]
+                    if len(J) > 0:
+                        desi_bitnames[J] = [' '.join([bit, name]) for bit in desi_bitnames[J]]
+                        targetclass[J] = get_targetclass(targetclass[J], name)
+                        
+                for name in bgs_mask.names():
+                    J = np.where(meta['{}BGS_TARGET'.format(prefix)] & bgs_mask.mask(name) != 0)[0]
+                    if len(J) > 0:
+                        bgs_bitnames[J] = [' '.join([bit, name]) for bit in bgs_bitnames[J]]
+                        targetclass[J] = get_targetclass(targetclass[J], name)
+                        
+                for name in mws_mask.names():
+                    J = np.where(meta['{}MWS_TARGET'.format(prefix)] & mws_mask.mask(name) != 0)[0]
+                    if len(J) > 0:
+                        mws_bitnames[J] = [' '.join([bit, name]) for bit in mws_bitnames[J]]
+                        targetclass[J] = get_targetclass(targetclass[J], name)
+                        
+                for name in scnd_mask.names():
+                    J = np.where(meta['{}SCND_TARGET'.format(prefix)] & scnd_mask.mask(name) != 0)[0]
+                    if len(J) > 0:
+                        scnd_bitnames[J] = [' '.join([bit, name]) for bit in scnd_bitnames[J]]
+                        targetclass[J] = get_targetclass(targetclass[J], name)
+
     meta['DESI_BITNAMES'] = desi_bitnames
     meta['BGS_BITNAMES'] = bgs_bitnames
     meta['MWS_BITNAMES'] = mws_bitnames
     meta['SCND_BITNAMES'] = scnd_bitnames
+    meta['CMX_BITNAMES'] = cmx_bitnames
+    meta['TARGETCLASS'] = targetclass
 
     # rename a couple columns
     meta.rename_column('Z_RR', 'ZREDROCK')
@@ -1063,20 +1112,60 @@ def main():
         data['{}_SIGMA_ERR'.format(suffix)] = np.array(list(map(lambda x: '&#177;{:.0f}'.format(x).strip(), data['{}_SIGMARMS'.format(suffix)])))
 
     # get uncertainties on the emission-line measurements
-    lines = np.array([col[:-4] for col in data.colnames if col[-4:] == '_AMP'])
-    for line in lines:
-        # S/N
-        #print('{}_SNR'.format(line).lower()+" = FloatField(null=True)")
-        data['{}_SNR'.format(line)] = data['{}_AMP'.format(line)]*np.sqrt(data['{}_AMP_IVAR'.format(line)])
+    def val_plusminus(val, err):
+        ret = '{:.3g}&#177;{:.3g}'.format(val, err)
+        #if len(ret) > 16:
+        #    import pdb ; pdb.set_trace()
+        return ret
+
+    linefile = resource_filename('fastspecfit', 'data/emlines.ecsv')    
+    linetable = Table.read(linefile, format='ascii.ecsv', guess=False)
+    lines = np.array([name.upper() for name in linetable['name'].data])
+    #lines1 = np.array([col[:-4] for col in data.colnames if col[-4:] == '_AMP'])
+    
+    for line, restwave in zip(lines, linetable['restwave']):
+        linewave = '{:.4f}'.format(restwave)
+        if linewave[-2:] == '00':
+            linewave = linewave[:-2]
+        if linewave[-1:] == '0':
+            linewave = linewave[:-1]
+        data['{}_WAVE'.format(line)] = linewave
+        
+        # S/N, vshift, sigma, and chi2
+        data['{}_SNR'.format(line)] = np.array('', dtype='U15')
+        data['{}_VSHIFT_STR'.format(line)] = np.array('', dtype='U15')
+        data['{}_SIGMA_STR'.format(line)] = np.array('', dtype='U15')
+        data['{}_CHI2_STR'.format(line)] = np.array('', dtype='U15')
+
+        snr = data['{}_AMP'.format(line)]*np.sqrt(data['{}_AMP_IVAR'.format(line)])
+        good = np.where(snr > 0)[0]
+        if len(good) > 0:
+            data['{}_SNR'.format(line)][good] = np.array(list(map(lambda x: '{:.3g}'.format(x), snr[good])))
+            data['{}_VSHIFT_STR'.format(line)][good] = np.array(list(map(lambda x: '{:.4g}'.format(x), data['{}_VSHIFT'.format(line)][good])))
+            data['{}_SIGMA_STR'.format(line)][good] = np.array(list(map(lambda x: '{:.4g}'.format(x), data['{}_SIGMA'.format(line)][good])))
+            data['{}_CHI2_STR'.format(line)][good] = np.array(list(map(lambda x: '{:.3g}'.format(x), data['{}_CHI2'.format(line)][good])))
+            
+        zero = np.where(snr == 0)[0]
+        if len(zero) > 0:
+            data['{}_SNR'.format(line)][zero] = '0'
+            data['{}_VSHIFT_STR'.format(line)][zero] = '0'
+            data['{}_SIGMA_STR'.format(line)][zero] = '0'
+            data['{}_CHI2_STR'.format(line)][zero] = '0'
+
+        # amp, flux, cont, and EW
         for suffix in ['AMP', 'FLUX', 'CONT', 'EW']:
-            #print('{}_{}_ERR'.format(line, suffix).lower()+" = CharField(max_length=15, default='')")
-            #data['{}_{}_ERR'.format(line, suffix)] = np.zeros(len(data), 'f4')
-            data['{}_{}_ERR'.format(line, suffix)] = np.array('', dtype='U15')
+            data['{}_{}_ERR'.format(line, suffix)] = np.array('', dtype='U50')
             good = np.where(data['{}_{}_IVAR'.format(line, suffix)] > 0)[0]
             if len(good) > 0:
-                #data['{}_{}_ERR'.format(line, suffix)][good] = 1 / np.sqrt(data['{}_{}_IVAR'.format(line, suffix)][good])
-                data['{}_{}_ERR'.format(line, suffix)][good] = np.array(list(map(lambda x: '&#177;{:.3g}'.format(x),
-                                                                                 1 / np.sqrt(data['{}_{}_IVAR'.format(line, suffix)][good]))))
+                data['{}_{}_ERR'.format(line, suffix)][good] = np.array(list(map(val_plusminus, data['{}_{}'.format(line, suffix)][good],
+                                                                                 1 / np.sqrt(data['{}_{}_IVAR'.format(line, suffix)][good]) )))
+            zero = np.where(data['{}_{}_IVAR'.format(line, suffix)] == 0)[0]
+            if len(zero) > 0:
+                data['{}_{}_ERR'.format(line, suffix)][zero] = '0'
+            
+                #print(data['{}_{}_ERR'.format(line, suffix)][good])
+                
+    #import pdb ; pdb.set_trace()
                 
     print(data.colnames)
     print('Read {} rows from {}'.format(len(data), fastspecfile))

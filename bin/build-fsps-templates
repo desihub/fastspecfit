@@ -2,35 +2,30 @@
 
 '''Build a set of FSPS templates for use with FastSpecFit.
 
-Chabrier IMF
-MIST isochrones
-C3K_a stellar library
-DL07 dust emission SEDs
-
-We choose uniform priors along the following physical dimensions:
---15 log-age [10 Myr to 14 Gyr, logarithmically spaced]
---5 log-metallicity [-2 to 0.5 or roughly Z=0.002-0.063]
---8 tau_dust [0.0 to 2.5, logarithmically spaced]
---3 q_PAH [0.1 to 6.0] -- prior matches Leja+17
-
-And the following fixed parameters:
---SSP (sfh=0)
---Reradiated dust emission
---Chabrier (2003) IMF
---Power-law dust law with fixed -0.7 slope
+* Chabrier, Salpeter, or Kroupa IMF
+* MIST isochrones
+* C3K_a stellar library
+* DL07 dust emission spectra
+* 7 variable-width age bins between 30 Myr and 13.7 Gyr with constant star
+  formation within each age bin
+* 3 stellar metallicity values between -1 and 0.3 (relative to solar)
+* 8 dust attenuation values between zero and roughly 3 mag
+* Power-law dust law with fixed -0.7 slope
 
 Note that Figure 3 in Leja et al. 2017 nicely shows the effect of various
 free parameters on the resulting SED.
 
 conda activate fastspecfit
-time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates
-rsync -auvP /Users/ioannis/work/desi/science/gqp/templates/fastspecfit/fastspecfit-templates-v1.0.fits dtn01:"desi/science/gqp/templates/fastspecfit/"
+time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf salpeter
+time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf chabrier
+time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf kroupa
 
 '''
 import os, time, pdb
 import numpy as np
 import fitsio, fsps
 from scipy.ndimage import gaussian_filter1d
+import argparse
 
 from astropy.io import fits
 from astropy.table import Table
@@ -108,8 +103,8 @@ def smooth_continuum(wave, flux, medbin=1000, smooth_window=200,
 
     return smooth
 
-def build_templates(models, logages, agebins, pixkms=25.0, wavesplit=1e4, 
-                    irfactor=4, include_nebular=True):
+def build_templates(models, logages, agebins, imf='chabrier', pixkms=25.0, 
+                    wavesplit=1e4, irfactor=4, include_nebular=True):
 
     nsed = len(models)
 
@@ -117,10 +112,13 @@ def build_templates(models, logages, agebins, pixkms=25.0, wavesplit=1e4,
     meta['age'] = 10**models['logage']
     meta['zzsun'] = models['logmet']
     meta['av'] = models['dust'] * 1.086
-    meta['fagn'] = models['fagn']
+    #meta['fagn'] = models['fagn']
     #meta['qpah'] = models['qpah']
     meta['mstar'] = np.zeros(nsed, 'f4')
     meta['sfr'] = np.zeros(nsed, 'f4')
+
+    # https://dfm.io/python-fsps/current/stellarpop_api/
+    imfdict = {'salpeter': 0, 'chabrier': 1, 'kroupa': 2}
 
     print('Instantiating the StellarPopulation object...', end='')
     t0 = time.time()
@@ -128,7 +126,7 @@ def build_templates(models, logages, agebins, pixkms=25.0, wavesplit=1e4,
                                 add_dust_emission=True,
                                 add_neb_emission=True,
                                 nebemlineinspec=include_nebular,
-                                imf_type=1, # =Chabrier IMF
+                                imf_type=imfdict[imf], # 0=Salpeter, 1=Chabrier, 2=Kroupa
                                 dust_type=0,
                                 dust_index=-0.7,
                                 #sfh=0 # SSP parameters
@@ -148,7 +146,7 @@ def build_templates(models, logages, agebins, pixkms=25.0, wavesplit=1e4,
         sp.params['dust1'] = model['dust']
         sp.params['dust2'] = model['dust']
         sp.params['logzsol'] = model['logmet']
-        sp.params['fagn'] = model['fagn']
+        #sp.params['fagn'] = model['fagn']
         #sp.params['duste_qpah'] = model['qpah']
 
         # SSP spectrum - deprecated
@@ -217,9 +215,9 @@ def build_templates(models, logages, agebins, pixkms=25.0, wavesplit=1e4,
 
     return meta, newwave, fluxes
 
-def main():
+def main(args):
 
-    version = 'v1.0'
+    version = '1.0.0'
 
     # pixel resampling choices
     pixkms = 25.0   # pixel size [km/s]
@@ -262,11 +260,11 @@ def main():
     maxlogdust = 0.477
     dusts = np.hstack((mindust, np.logspace(minlogdust, maxlogdust, ndusts-1)))
 
-    nfagns = 3
-    minfagn = 0.0
-    minlogfagn = np.log10(0.1)
-    maxlogfagn = np.log10(2.0)
-    fagns = np.hstack((minfagn, np.logspace(minlogfagn, maxlogfagn, nfagns-1)))
+    #nfagns = 3
+    #minfagn = 0.0
+    #minlogfagn = np.log10(0.1)
+    #maxlogfagn = np.log10(2.0)
+    #fagns = np.hstack((minfagn, np.logspace(minlogfagn, maxlogfagn, nfagns-1)))
     
     #nqpahs = 3
     ##nqpahs = 2
@@ -278,31 +276,41 @@ def main():
     if False:
         dusts = np.array([0.0])
         logmets = [0.0]
-        fagns = [0.0]
+        #fagns = [0.0]
         ndusts = 1
         nmets = 1
-        nfagns = 1
+        #nfagns = 1
     
-    dims = (nages, nmets, ndusts, nfagns)
+    dims = (nages, nmets, ndusts)
+    #dims = (nages, nmets, ndusts, nfagns)
 
     models_dtype = np.dtype(
         [('logmet', np.float32),
          ('dust', np.float32),
-         ('fagn', np.float32),
+         #('fagn', np.float32),
          #('qpah', np.float32),
          ('logage', np.float32)])
 
     # Let's be pedantic about the procedure so we don't mess up the indexing...
     #dims = (nages, nmets, ndusts, nfagns, nqpahs)
     models = np.zeros(dims, dtype=models_dtype)
+
     for iage, logage in enumerate(logages):
         for imet, logmet in enumerate(logmets):
             for idust, dust in enumerate(dusts):
-                for ifagn, fagn in enumerate(fagns):
-                    models[iage, imet, idust, ifagn]['logmet'] = logmet
-                    models[iage, imet, idust, ifagn]['dust'] = dust
-                    models[iage, imet, idust, ifagn]['logage'] = logage
-                    models[iage, imet, idust, ifagn]['fagn'] = fagn
+                models[iage, imet, idust]['logmet'] = logmet
+                models[iage, imet, idust]['dust'] = dust
+                models[iage, imet, idust]['logage'] = logage
+
+    #for iage, logage in enumerate(logages):
+    #    for imet, logmet in enumerate(logmets):
+    #        for idust, dust in enumerate(dusts):
+    #            for ifagn, fagn in enumerate(fagns):
+    #                models[iage, imet, idust, ifagn]['logmet'] = logmet
+    #                models[iage, imet, idust, ifagn]['dust'] = dust
+    #                models[iage, imet, idust, ifagn]['logage'] = logage
+    #                models[iage, imet, idust, ifagn]['fagn'] = fagn
+
     #for iage, logage in enumerate(logages):
     #    for imet, logmet in enumerate(logmets):
     #        for idust, dust in enumerate(dusts):
@@ -318,9 +326,11 @@ def main():
 
     # Build models with and without line-emission.
     meta, wave, flux = build_templates(models, logages, agebins, pixkms=pixkms, 
-                                         wavesplit=wavesplit, include_nebular=True)
+                                       wavesplit=wavesplit, include_nebular=True,
+                                       imf=args.imf)
     _, _, fluxnolines = build_templates(models, logages, agebins, pixkms=pixkms, 
-                                           wavesplit=wavesplit, include_nebular=False)
+                                        wavesplit=wavesplit, include_nebular=False,
+                                        imf=args.imf)
     lineflux = flux - fluxnolines
 
     #I = (wave > 3500) * (wave < 9000)
@@ -331,15 +341,16 @@ def main():
     #plt.savefig('junk2.png')
     #pdb.set_trace()
 
-    # Build the velocity dispersion templates: Select just the line-free models
-    # with AV==0 and fagn==0 trimmed to the 1200-10000 A wavelength range and
-    # with the absorption-free stellar continuum normalized out.
+    # Build the velocity dispersion templates.
+
+    # Select just the line-free models trimmed to the 1200-10000 A wavelength
+    # range.
     I = np.where((wave > 1200) * (wave < wavesplit))[0]
+    #J = np.where(meta['fagn'] == 0)[0]
     vdispwave = wave[I]
+    #nvdispmodel = len(J)
 
-    J = np.where(meta['fagn'] == 0)[0]
-    nvdispmodel = len(J)
-
+    # Deprecated - stellar continuum normalized out.
     #normflux = np.zeros_like(fluxnolines[I, :][:, J])
     #for imodel in np.arange(nvdispmodel):
     #    smooth = smooth_continuum(vdispwave, fluxnolines[I, J[imodel]], smooth_window=200, 
@@ -348,9 +359,19 @@ def main():
 
     vdispflux = []
     for sigma in vdisp / pixkms:
-        vdispflux.append(gaussian_filter1d(fluxnolines[I, :][:, J], sigma=sigma, axis=0))
-        #vdispflux.append(gaussian_filter1d(normflux, sigma=sigma, axis=0))
+        vdispflux.append(gaussian_filter1d(fluxnolines[I, :], sigma=sigma, axis=0))
     vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
+
+    #vdispflux = []
+    #for sigma in vdisp / pixkms:
+    #    vdispflux.append(gaussian_filter1d(fluxnolines[I, :][:, J], sigma=sigma, axis=0))
+    #    #vdispflux.append(gaussian_filter1d(normflux, sigma=sigma, axis=0))
+    #vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
+
+    #vdispflux = []
+    #for sigma in vdisp / pixkms:
+    #    vdispflux.append(gaussian_filter1d(fluxnolines, sigma=sigma, axis=0))
+    #vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
 
     #K = np.where((vdispwave > 3500) * (vdispwave < 4300))[0]
     #plt.clf()
@@ -361,7 +382,7 @@ def main():
 
     # Write out.
     outdir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit')
-    outfile = os.path.join(outdir, 'fastspecfit-templates-{}.fits'.format(version))
+    outfile = os.path.join(outdir, 'ftemplates-{}-{}.fits'.format(args.imf, version))
 
     hduflux1 = fits.PrimaryHDU(flux)
     hduflux1.header['EXTNAME'] = 'FLUX'
@@ -373,6 +394,14 @@ def main():
     hduflux2.header['VERSION'] = version
     hduflux2.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
+    hduflux3 = fits.ImageHDU(vdispflux)
+    hduflux3.header['EXTNAME'] = 'VDISPFLUX'
+    hduflux3.header['VERSION'] = version
+    hduflux3.header['VDISPMIN'] = (vdispmin, 'minimum velocity dispersion [km/s]')
+    hduflux3.header['VDISPMAX'] = (vdispmax, 'maximum velocity dispersion [km/s]')
+    hduflux3.header['VDISPRES'] = (dvdisp, 'velocity dispersion spacing [km/s]')
+    hduflux3.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+
     isplit = np.argmin(np.abs(wave-wavesplit)) + 1
 
     hduwave1 = fits.ImageHDU(wave)
@@ -383,14 +412,6 @@ def main():
     hduwave1.header['PIXSZRED'] = (irfactor*pixkms, 'pixel size redward of PIXSZSPT [km/s]')
     hduwave1.header['PIXSZSPT'] = (wave[isplit], 'wavelength where pixel size changes [Angstrom]')
 
-    hduflux3 = fits.ImageHDU(vdispflux)
-    hduflux3.header['EXTNAME'] = 'VDISPFLUX'
-    hduflux3.header['VERSION'] = version
-    hduflux3.header['VDISPMIN'] = (vdispmin, 'minimum velocity dispersion [km/s]')
-    hduflux3.header['VDISPMAX'] = (vdispmax, 'maximum velocity dispersion [km/s]')
-    hduflux3.header['VDISPRES'] = (dvdisp, 'velocity dispersion spacing [km/s]')
-    hduflux3.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
-
     hduwave2 = fits.ImageHDU(vdispwave)
     hduwave2.header['EXTNAME'] = 'VDISPWAVE'
     hduwave2.header['BUNIT'] = 'Angstrom'
@@ -399,6 +420,7 @@ def main():
 
     hdutable = fits.convenience.table_to_hdu(meta)
     hdutable.header['EXTNAME'] = 'METADATA'
+    hdutable.header['imf'] = args.imf
 
     hx = fits.HDUList([hduflux1, hduflux2, hduwave1, hduflux3, hduwave2, hdutable])
 
@@ -406,4 +428,9 @@ def main():
     hx.writeto(outfile, overwrite=True)
 
 if __name__ == '__main__':
-    main()
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'])
+    args = parser.parse_args()
+
+    main(args)

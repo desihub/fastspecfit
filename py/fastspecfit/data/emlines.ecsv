@@ -24,6 +24,7 @@
 #     jm21mar19 - more lines added
 #     jm21aug01 - [OI], HeI, HeII and more added'}
 name restwave amp isbalmer isbroad nicename plotgroup
+        lyalpha   1215.67      1.0   False  True   Ly$\alpha$                                   lya
         oi_1304   1304.35      1.0   False  True   OI-$\lambda$1304                             oi_1304
      siliv_1396   1396.76      1.0   False  True   SiIV-$\lambda$1396                           siliv_1396
        civ_1549   1549.06      1.0   False  True   CIV-$\lambda$1549                            civ_1549
