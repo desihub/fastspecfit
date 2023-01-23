@@ -102,7 +102,8 @@
               </tr>
               <tr>
                 <th class="search_th"><label for="targetclassmatch">Target Class</label></th>
-                <td><input id="targetclassmatch" name="targetclass__match" type="text" value="" placeholder="bgs,lrg,elg,qso,..."/></td> 
+                <td><input id="targetclassmatch" name="targetclass__match"
+                type="text" placeholder="bgs,lrg,elg,qso,..." value="{{form.name.value|default_if_none:''}}"></td> 
               </tr>
               <!--
               <tr>

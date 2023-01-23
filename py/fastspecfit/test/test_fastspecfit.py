@@ -31,8 +31,7 @@ class TestFastspec(unittest.TestCase):
 
         cls.outdir = tempfile.mkdtemp()
         cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-1.0.0.fits')
-        cmd = 'wget -O {} https://portal.nersc.gov/project/cosmo/temp/ioannis/templates/ftemplates-chabrier-1.0.0.fits'.format(cls.templates)
-        #cmd = 'wget -O {} https://data.desi.lbl.gov/desi/public/external/templates/fastspecfit/1.0.0/ftemplates-chabrier-1.0.0.fits'.format(cls.templates)
+        cmd = 'wget -O {} https://data.desi.lbl.gov/desi/public/external/templates/fastspecfit/1.0.0/ftemplates-chabrier-1.0.0.fits'.format(cls.templates)
         
         err = subprocess.call(cmd.split())
         cls.cwd = os.getcwd()
