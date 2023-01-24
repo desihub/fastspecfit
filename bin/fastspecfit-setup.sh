@@ -32,7 +32,8 @@ elif [[ $1 == "env" ]]; then
 
     export DESI_ROOT='/global/cfs/cdirs/desi'
     export DUST_DIR='/global/cfs/cdirs/cosmo/data/dust/v0_1'
-    export FTEMPLATES='/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
+    export DR9_DIR='/global/cfs/cdirs/desi/external/legacysurvey/dr9'
+    export FTEMPLATES_DIR='/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
     export OMP_NUM_THREADS=1
     export MKL_NUM_THREADS=1
