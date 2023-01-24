@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-2.0.0 (not released yet)
+2.0.1 (not released yet)
 ------------------------
+
+* 
+
+2.0.0 (2023-01-23)
+------------------
 
 * Support custom coadds, update laboratory line-wavelengths, and fix major EW
   bug [`PR #87`_].
