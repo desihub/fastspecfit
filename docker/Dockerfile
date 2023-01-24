@@ -78,7 +78,7 @@ RUN pip3 install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSIO
 RUN pip3 install git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
 RUN pip3 install git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#egg=desispec
 RUN pip3 install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
-RUN pip3 install git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit && echo 3
+RUN pip3 install git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit && echo 1.1
 
 ENV PYTHONPATH /src/fastspecfit/py
 ENV PATH /src/fastspecfit/bin:/opt/conda/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
