@@ -2493,7 +2493,7 @@ class FastFit(ContinuumTools):
         elif coadd_type == 'cumulative':
             target = [
                 'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
-                'Night/Fiber {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
+                'Night/Fiber: {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
                 'TargetID: {}'.format(metadata['TARGETID']),
             ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
@@ -2501,7 +2501,7 @@ class FastFit(ContinuumTools):
         elif coadd_type == 'pernight':
             target = [
                 'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
-                'Night/Fiber {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
+                'Night/Fiber: {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
                 'TargetID: {}'.format(metadata['TARGETID']),
             ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
@@ -2509,7 +2509,7 @@ class FastFit(ContinuumTools):
         elif coadd_type == 'perexp':
             target = [
                 'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
-                'Night/Fiber {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
+                'Night/Fiber: {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
                 'TargetID: {}'.format(metadata['TARGETID']),
             ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(

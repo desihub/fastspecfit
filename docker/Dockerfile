@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 RUN mkdir -p /src
 WORKDIR /src
 
-RUN apt-get -y clean && apt -y update && apt install -y apt-utils && apt -y upgrade && echo 1
+RUN apt-get -y clean && apt -y update && apt install -y apt-utils && apt -y upgrade && echo 2
 
 RUN DEBIAN_FRONTEND=noninteractive \
     apt install -y --no-install-recommends \
@@ -15,6 +15,10 @@ RUN DEBIAN_FRONTEND=noninteractive \
     libbz2-dev \ 
     libgsl-dev \ 
     libssl-dev \
+    libcfitsio-dev \
+    libcfitsio-bin \
+    # libhdf5 needed by h5py
+    libhdf5-dev \
     # mpich \
     python3-dev \
     python3-pip \
@@ -46,7 +50,7 @@ RUN for x in \
     wheel \
     setuptools \
     pytest \
-    numpy==1.22.4 \
+    numpy \
     scipy \
     astropy \
     healpy \
@@ -60,7 +64,7 @@ RUN for x in \
     h5py \
     ; do pip3 install $x; done \
     && rm -Rf /root/.cache/pip \
-    && echo 1
+    && echo 2
 
 ENV DESIUTIL_VERSION 3.2.6
 ENV DESIMODEL_VERSION 0.18.0

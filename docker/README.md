@@ -2,12 +2,19 @@ Build a Docker container for fastspecfit.
 =========================================
 
 Build a cross-platform docker container as documented [here](https://www.docker.com/blog/faster-multi-platform-builds-dockerfile-cross-compilation-guide), [here](https://blog.jaimyn.dev/how-to-build-multi-architecture-docker-images-on-an-m1-mac/), and [here](https://docs.nersc.gov/development/shifter/how-to-use/).
+
+First (but just once), create the builder instance:
+```
+docker buildx create --name mybuilder --use
+```
+
+Then, subsequently, to create a new (or the latest) version or tag:
 ```
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
 
-docker buildx create --name mybuilder --use
-docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:v1.0.1 .
+docker buildx use mybuilder
+docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:2.0.0 .
 docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:latest .
 ```
 
@@ -18,8 +25,8 @@ docker run -it desihub/fastspecfit:latest
 ```
 or
 ```
-docker pull desihub/fastspecfit:v1.0.1
-docker run -it desihub/fastspecfit:v1.0.1
+docker pull desihub/fastspecfit:2.0.0
+docker run -it desihub/fastspecfit:2.0.0
 ```
 
 Or at NERSC:

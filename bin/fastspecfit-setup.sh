@@ -6,7 +6,7 @@
 if [[ $1 == "shifter" ]]; then
     # Load the desigal Docker container using shifter
     #SHIFTER=docker:desihub/fastspecfit:latest
-    SHIFTER=docker:desihub/fastspecfit:v1.0.1
+    SHIFTER=docker:desihub/fastspecfit:2.0.0
     
     if [[ $NERSC_HOST == "perlmutter" ]]; then
         MPILIB=mpich
