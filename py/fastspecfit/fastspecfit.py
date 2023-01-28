@@ -2492,23 +2492,25 @@ class FastFit(ContinuumTools):
                     outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
         elif coadd_type == 'cumulative':
             target = [
-                'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
-                'Night/Fiber: {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
+                'Tile/Night/Fiber: {}/{}/{}'.format(metadata['TILEID'], metadata['NIGHT'], metadata['FIBER']),
+                #'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
+                #'Night/Fiber: {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
                 'TargetID: {}'.format(metadata['TARGETID']),
             ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
         elif coadd_type == 'pernight':
             target = [
-                'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
-                'Night/Fiber: {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
+                #'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
+                'Tile/Night/Fiber: {}/{}/{}'.format(metadata['TILEID'], metadata['NIGHT'], metadata['FIBER']),
                 'TargetID: {}'.format(metadata['TARGETID']),
             ]
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                     outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
         elif coadd_type == 'perexp':
             target = [
-                'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
+                #'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
+                'Tile/Night/Fiber: {}/{}/{}'.format(metadata['TILEID'], metadata['NIGHT'], metadata['FIBER']),
                 'Night/Fiber: {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
                 'TargetID: {}'.format(metadata['TARGETID']),
             ]
@@ -2825,10 +2827,18 @@ class FastFit(ContinuumTools):
         bbox2 = dict(boxstyle='round', facecolor='lightgray', alpha=0.7)
 
         # viewer cutout
+        cuterr2 = 0
         if cuterr == 0:
-            with Image.open(cutoutpng) as im:
-                sz = im.size
-                cutax.imshow(im, origin='lower')#, interpolation='nearest')
+            try:
+                with Image.open(cutoutpng) as im:
+                    sz = im.size
+                    cutax.imshow(im, origin='lower')#, interpolation='nearest')
+                cuterr2 = 0
+            except:
+                cuterr2 = 1
+                errmsg = 'Something went wrong reading the png cutout'
+                log.warning(errmsg)
+                
             cutax.set_xlabel('RA [J2000]')
             cutax.set_ylabel('Dec [J2000]')
     
@@ -2844,15 +2854,16 @@ class FastFit(ContinuumTools):
             cutax.text(0.04, 0.95, '$(\\alpha,\\delta)$=({:.7f}, {}{:.6f})'.format(metadata['RA'], sgn, metadata['DEC']),
                        ha='left', va='top', color='k', fontsize=18, bbox=bbox2,
                        transform=cutax.transAxes)
-        
-            cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=1.5/2/pixscale, facecolor='none', # DESI fiber=1.5 arcsec diameter
-                                    edgecolor='red', ls='-', alpha=0.8))#, label='3" diameter'))
-            cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=10/2/pixscale, facecolor='none',
-                                    edgecolor='red', ls='--', alpha=0.8))#, label='15" diameter'))
-            handles = [Line2D([0], [0], color='red', lw=2, ls='-', label='1.5 arcsec'),
-                       Line2D([0], [0], color='red', lw=2, ls='--', label='10 arcsec')]
 
-            cutax.legend(handles=handles, loc='lower left', fontsize=18, facecolor='lightgray')
+            if cuterr2 == 0:
+                cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=1.5/2/pixscale, facecolor='none', # DESI fiber=1.5 arcsec diameter
+                                        edgecolor='red', ls='-', alpha=0.8))#, label='3" diameter'))
+                cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=10/2/pixscale, facecolor='none',
+                                        edgecolor='red', ls='--', alpha=0.8))#, label='15" diameter'))
+                handles = [Line2D([0], [0], color='red', lw=2, ls='-', label='1.5 arcsec'),
+                           Line2D([0], [0], color='red', lw=2, ls='--', label='10 arcsec')]
+    
+                cutax.legend(handles=handles, loc='lower left', fontsize=18, facecolor='lightgray')
     
         # plot the full spectrum + best-fitting (total) model
         spec_ymin, spec_ymax = 1e6, -1e6
@@ -2935,6 +2946,8 @@ class FastFit(ContinuumTools):
 
         # we have to set the limits *before* we call errorbar, below!
         dm = 1.5
+        sed_ymin = np.nanmax(sedmodel_abmag) + dm
+        sed_ymax = np.nanmin(sedmodel_abmag) - dm
         if np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) > 0:
             sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(phot['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
             sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(phot['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
@@ -2956,13 +2969,14 @@ class FastFit(ContinuumTools):
             elif np.sum(abmag_good) == 0 and np.sum(abmag_goodlim) > 0:
                 sed_ymin = np.nanmax(phot['abmag_limit'][abmag_goodlim]) + dm
                 sed_ymax = np.nanmin(phot['abmag_limit'][abmag_goodlim]) - dm
-            else:
-                sed_ymin, sed_ymax = [30, 20]
+            #else:
+            #    sed_ymin, sed_ymax = [30, 20]
             
         if sed_ymin > 30:
             sed_ymin = 30
         if np.isnan(sed_ymin) or np.isnan(sed_ymax):
             raise('Problem here!')
+        print(sed_ymin, sed_ymax)
 
         #sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
         sedax.set_xlim(phot_wavelims[0], phot_wavelims[1])
