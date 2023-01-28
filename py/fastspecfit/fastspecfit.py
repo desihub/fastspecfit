@@ -299,6 +299,7 @@ class FastFit(ContinuumTools):
                     param_names.append(param_name)
             self.param_names = np.hstack(param_names)
             self.amp_param_bool = np.array(['_amp' in pp for pp in self.param_names])
+            self.amp_balmer_bool = np.array(['_amp' in pp and 'hei_' not in pp and 'heii_' not in pp for pp in self.param_names]) # just Balmer lines
             self.sigma_param_bool = np.array(['_sigma' in pp for pp in self.param_names])
     
             self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
@@ -1817,11 +1818,10 @@ class FastFit(ContinuumTools):
             # --broad_sigma < narrow_sigma;
             # --broad_sigma < 250;
             # --the two reddest broad Balmer lines are both dropped.
-            Bbroad = broadfit['isbalmer'] * broadfit['isbroad'] * (broadfit['fixed'] == False) * self.amp_param_bool
+            Bbroad = broadfit['isbalmer'] * broadfit['isbroad'] * (broadfit['fixed'] == False) * self.amp_balmer_bool
             Habroad = broadfit['param_name'] == 'halpha_broad_sigma'
             
             dchi2fail = (linechi2_init - linechi2_broad) < self.delta_linerchi2_cut
-            #alldrop = np.all(broadfit[Bbroad]['value'].data == 0.0)
             sigdrop1 = (broadfit[Habroad]['value'] <= broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
             sigdrop2 = broadfit[Habroad]['value'][0] < self.minsigma_balmer_broad
 
@@ -2861,19 +2861,19 @@ class FastFit(ContinuumTools):
         specax.plot(fullwave/1e4, fullcontinuum, color='k', alpha=0.6)
 
         desimodelspec = []
-        for ii in np.arange(len(data['cameras'])): # iterate over cameras
-            wave = data['wave'][ii]
-            flux = data['flux'][ii]
-            modelflux = desiemlines[ii] + desicontinuum[ii] + desismoothcontinuum[ii]
+        for icam in np.arange(len(data['cameras'])): # iterate over cameras
+            wave = data['wave'][icam]
+            flux = data['flux'][icam]
+            modelflux = desiemlines[icam] + desicontinuum[icam] + desismoothcontinuum[icam]
 
-            sigma, camgood = ivar2var(data['ivar'][ii], sigma=True, allmasked_ok=True, clip=0)
+            sigma, camgood = ivar2var(data['ivar'][icam], sigma=True, allmasked_ok=True, clip=0)
 
             wave = wave[camgood]
             flux = flux[camgood]
             sigma = sigma[camgood]
             modelflux = modelflux[camgood]
 
-            desimodelspec.append(apercorr * (desicontinuum[ii] + desiemlines[ii]))
+            desimodelspec.append(apercorr * (desicontinuum[icam] + desiemlines[icam]))
             
             # get the robust range
             filtflux = median_filter(flux, 51, mode='nearest')
@@ -2884,16 +2884,16 @@ class FastFit(ContinuumTools):
                 if 6 * sigflux > spec_ymax:
                     spec_ymax = 6 * sigflux
                 if np.max(filtflux) > spec_ymax:
-                    #print(ii, spec_ymax, np.max(filtflux), np.max(filtflux) * 1.2)
+                    #print(icam, spec_ymax, np.max(filtflux), np.max(filtflux) * 1.2)
                     spec_ymax = np.max(filtflux) * 1.25
                 if np.max(modelflux) > spec_ymax:
                     spec_ymax = np.max(modelflux) * 1.25
                 #print(spec_ymin, spec_ymax)
                 #pdb.set_trace()
         
-            #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[ii], alpha=0.2)
-            specax.plot(wave/1e4, flux, color=col1[ii], alpha=0.8)
-            specax.plot(wave/1e4, modelflux, color=col2[ii], lw=2, alpha=0.8)
+            #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[icam], alpha=0.2)
+            specax.plot(wave/1e4, flux, color=col1[icam], alpha=0.8)
+            specax.plot(wave/1e4, modelflux, color=col2[icam], lw=2, alpha=0.8)
 
         fullmodelspec = np.hstack(desimodelspec)
 
@@ -2928,10 +2928,10 @@ class FastFit(ContinuumTools):
         #factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) / self.fluxnorm # [erg/s/cm2/A --> maggies]
         #good = fullmodelspec > 0
         #sedax.plot(fullwave[good]/1e4, -2.5*np.log10(fullmodelspec[good]*factor[good]), color='purple', alpha=0.8)
-        for ii in np.arange(len(data['cameras'])):
-            factor = 10**(0.4 * 48.6) * data['wave'][ii]**2 / (C_LIGHT * 1e13) / self.fluxnorm # [erg/s/cm2/A --> maggies]
-            good = desimodelspec[ii] > 0
-            sedax.plot(data['wave'][ii][good]/1e4, -2.5*np.log10(desimodelspec[ii][good]*factor[good]), color=col2[ii], alpha=0.8)
+        for icam in np.arange(len(data['cameras'])):
+            factor = 10**(0.4 * 48.6) * data['wave'][icam]**2 / (C_LIGHT * 1e13) / self.fluxnorm # [erg/s/cm2/A --> maggies]
+            good = desimodelspec[icam] > 0
+            sedax.plot(data['wave'][icam][good]/1e4, -2.5*np.log10(desimodelspec[icam][good]*factor[good]), color=col2[icam], alpha=0.8)
 
         # we have to set the limits *before* we call errorbar, below!
         dm = 1.5
