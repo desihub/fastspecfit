@@ -1248,16 +1248,14 @@ class ContinuumTools(TabulatedDESI):
         # Apply the redshift factor. The models are normalized to 10 pc, so
         # apply the luminosity distance factor here. Also normalize to a nominal
         # stellar mass.
-        if redshift:
+        if redshift > 0:
             ztemplatewave = templatewave * (1.0 + redshift)
             dfactor = (10.0 / (1e6 * self.luminosity_distance(redshift)))**2
-            #dfactor = (10.0 / self.cosmo.luminosity_distance(redshift).to(u.pc).value)**2
-            #dfactor = (10.0 / np.interp(redshift, self.redshift_ref, self.dlum_ref))**2
             T = self.transmission_Lyman(redshift, ztemplatewave)
             T *= self.fluxnorm * self.massnorm * dfactor / (1.0 + redshift)
             ztemplateflux = templateflux * T[:, np.newaxis]
         else:
-            errmsg = 'Input redshift not defined or equal to zero!'
+            errmsg = 'Input redshift not defined, zero, or negative!'
             self.log.warning(errmsg)
             ztemplatewave = templatewave.copy() # ???
             ztemplateflux = self.fluxnorm * self.massnorm * templateflux
@@ -1375,6 +1373,15 @@ class ContinuumTools(TabulatedDESI):
         from scipy.ndimage import median_filter
         
         redshift = data['zredrock']
+        if redshift <= 0.0:
+            errmsg = 'Input redshift not defined, zero, or negative!'
+            self.log.warning(errmsg)
+            kcorr = np.zeros(len(self.absmag_bands))
+            absmag = np.zeros(len(self.absmag_bands))#-99.0
+            ivarabsmag = np.zeros(len(self.absmag_bands))
+            bestmaggies = np.zeros(len(self.bands))
+            lums, cfluxes = {}, {}
+            return kcorr, absmag, ivarabsmag, bestmaggies, lums, cfluxes
         
         if data['photsys'] == 'S':
             filters_in = self.decamwise
