@@ -2,22 +2,17 @@
 
 """Make the spectrum underlying the FastSpecFit logo.
 
-fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits --targetids 39633345008634465 --outfile fastspec-example.fits
-
 fastspec /global/cfs/cdirs/desi/spectro/redux/guadalupe/healpix/main/bright/104/10460/redrock-main-bright-10460.fits --targetids 39633005802685491 --outfile fastspec-example.fits
-
 make-logo
 
 """
 import os, argparse, pdb
 import numpy as np
 from fastspecfit.io import DESISpectra, read_fastspecfit, DESI_ROOT_NERSC
-from fastspecfit.continuum import ContinuumFit
-from fastspecfit.emlines import EMLineFit
+from fastspecfit.fastspecfit import FastFit
 from fastspecfit.util import C_LIGHT
 
-def makelogo(data, fastspec, fastphot, metaspec, metaphot,
-             EMFit, CFit, outdir=None):
+def makelogo(data, fastspec, metaspec, Fit, outdir=None):
     """QA plot the emission-line spectrum and best-fitting model."""
     
     from astropy.table import Table, Column
@@ -42,135 +37,82 @@ def makelogo(data, fastspec, fastphot, metaspec, metaphot,
         
     pngfile = 'desi-users/ioannis/tmp/fastspecfit-spectrum-logo.png'
 
-    redshift = fastspec['CONTINUUM_Z']
-    npixpercamera = [len(gw) for gw in data['wave']] # all pixels
-    npixpercam = np.hstack([0, npixpercamera])
+    apercorr = fastspec['APERCORR']
+    redshift = fastspec['Z']
 
-    if metaphot['PHOTSYS'] == 'S':
-        filters = CFit.decam
-        allfilters = CFit.decamwise
+    if metaspec['PHOTSYS'] == 'S':
+        filters = FFit.decam
+        allfilters = FFit.decamwise
     else:
-        filters = CFit.bassmzls
-        allfilters = CFit.bassmzlswise
+        filters = FFit.bassmzls
+        allfilters = FFit.bassmzlswise
 
-    stackwave = np.hstack(data['wave'])
+    # Rebuild the best-fitting spectroscopic model; prefix "desi" means
+    # "per-camera" and prefix "full" has the cameras h-stacked.
+    fullwave = np.hstack(data['wave'])
 
-    inodust = np.ndarray.item(np.where(CFit.AV == 0)[0]) # should always be index 0        
-    continuum_phot, synthmodelphot = CFit.SSP2data(
-        CFit.sspflux_dustnomvdisp[:, :, inodust], CFit.sspwave, redshift=redshift,
-        synthphot=True, AV=fastphot['CONTINUUM_AV'], #test=True,
-        coeff=fastphot['CONTINUUM_COEFF'] * CFit.massnorm)
+    desicontinuum, _ = FFit.templates2data(FFit.templateflux_nolines, FFit.templatewave, 
+                                           redshift=redshift, synthphot=False,
+                                           specwave=data['wave'], specres=data['res'],
+                                           specmask=data['mask'], cameras=data['cameras'],
+                                           vdisp=fastspec['VDISP'],
+                                           coeff=fastspec['COEFF'])
 
-    continuum_wave_phot = CFit.sspwave * (1 + redshift)
+    # remove the aperture correction
+    desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
+    fullcontinuum = np.hstack(desicontinuum)
 
-    # rebuild the best-fitting spectroscopic and photometric models
-    continuum, _ = CFit.SSP2data(EMFit.sspflux, EMFit.sspwave, redshift=redshift, 
-                                 specwave=data['wave'], specres=data['res'],
-                                 cameras=data['cameras'],
-                                 AV=fastspec['CONTINUUM_AV'],
-                                 vdisp=fastspec['CONTINUUM_VDISP'],
-                                 coeff=fastspec['CONTINUUM_COEFF'],
-                                 synthphot=False)
-    residuals = [data['flux'][icam] - continuum[icam] for icam in np.arange(len(data['cameras']))]
-    _smooth_continuum, _ = EMFit.smooth_continuum(np.hstack(data['wave']), np.hstack(residuals),
-                                                  np.hstack(data['ivar']), redshift=redshift,
-                                                  linemask=np.hstack(data['linemask']))
-    smooth_continuum = []
-    for icam in np.arange(len(data['cameras'])): # iterate over cameras
-        ipix = np.sum(npixpercam[:icam+1])
-        jpix = np.sum(npixpercam[:icam+2])
-        smooth_continuum.append(_smooth_continuum[ipix:jpix])
-     
-    _emlinemodel = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
+     # Need to be careful we don't pass a large negative residual where
+     # there are gaps in the data.
+    desiresiduals = []
+    for icam in np.arange(len(data['cameras'])):
+        resid = data['flux'][icam] - desicontinuum[icam]
+        I = (data['flux'][icam] == 0.0) * (data['flux'][icam] == 0.0)
+        if np.any(I):
+            resid[I] = 0.0
+        desiresiduals.append(resid)
+    
+    if np.all(fastspec['COEFF'] == 0):
+        fullsmoothcontinuum = np.zeros_like(fullwave)
+    else:
+        fullsmoothcontinuum, _ = FFit.smooth_continuum(
+            fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
+            redshift=redshift, linemask=np.hstack(data['linemask']))
 
-    fig, ax1 = plt.subplots(figsize=(14, 6))
+    desismoothcontinuum = []
+    for campix in data['camerapix']:
+        desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
+
+    # full model spectrum + individual line-spectra
+    desiemlines = FFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
+
+    fig, specax = plt.subplots(figsize=(14, 6))
 
     wavemin, wavemax = 3600, 9800
 
-    if False:
-        wavemin, wavemax = 0.1, 30.0 # 6.0
-        indx = np.where((continuum_wave_phot/1e4 > wavemin) * (continuum_wave_phot/1e4 < wavemax))[0]     
-    
-        phot = CFit.parse_photometry(CFit.bands,
-                                     maggies=np.array([metaphot['FLUX_{}'.format(band.upper())] for band in CFit.bands]),
-                                     ivarmaggies=np.array([metaphot['FLUX_IVAR_{}'.format(band.upper())] for band in CFit.bands]),
-                                     lambda_eff=allfilters.effective_wavelengths.value,
-                                     min_uncertainty=CFit.min_uncertainty)
-    
-    
-        indx = indx[continuum_phot[indx] > 0] # trim zeros
-        factor = 10**(0.4 * 48.6) * continuum_wave_phot[indx]**2 / (C_LIGHT * 1e13) / CFit.fluxnorm / CFit.massnorm # [erg/s/cm2/A --> maggies]
-        continuum_phot_abmag = -2.5*np.log10(continuum_phot[indx] * factor)
-        ax1.plot(continuum_wave_phot[indx] / 1e4, continuum_phot_abmag,
-                    color='tan', zorder=1)
+    for icam in np.arange(len(data['cameras'])): # iterate over cameras
+        wave = data['wave'][icam]
+        flux = data['flux'][icam]
+        modelflux = desiemlines[icam] + desicontinuum[icam] + desismoothcontinuum[icam]
 
-        for ii in np.arange(len(data['cameras'])): # iterate over cameras
-            sigma, good = ivar2var(data['ivar'][ii], sigma=True)
-            specwave = data['wave'][ii]
-            factor = 10**(0.4 * 48.6) * specwave**2 / (C_LIGHT * 1e13) / CFit.fluxnorm # [erg/s/cm2/A --> maggies]
-            specabmag_lo = -2.5*np.log10(median_filter(data['flux'][ii]-sigma, 30) * factor)
-            specabmag_hi = -2.5*np.log10(median_filter(data['flux'][ii]+sigma, 30) * factor)
-            ax1.fill_between(specwave/1e4, specabmag_lo, specabmag_hi, color=col1[ii])
-            ax1.set_xscale('log')    
-            ax1.set_ylim(25, 15)
-            
-    @ticker.FuncFormatter
-    def major_formatter(x, pos):
-        if x > 1:
-            return f'{x:.0f}'
-        else:
-            return f'{x:.1f}'
-    
-        ax1.xaxis.set_major_formatter(major_formatter)
-        #ax1.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.0f'))
-        ax1.set_xticks([0.1, 0.2, 0.4, 0.6, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
-    
-        abmag = np.squeeze(phot['abmag'])
-        abmag_limit = np.squeeze(phot['abmag_limit'])
-        abmag_fainterr = np.squeeze(phot['abmag_fainterr'])
-        abmag_brighterr = np.squeeze(phot['abmag_brighterr'])
-        yerr = np.squeeze([abmag_brighterr, abmag_fainterr])
-    
-        dofit = np.where(CFit.bands_to_fit)[0]
-        if len(dofit) > 0:
-            good = np.where((abmag[dofit] > 0) * (abmag_limit[dofit] == 0))[0]
-            upper = np.where(abmag_limit[dofit] > 0)[0]
-            if len(good) > 0:
-                ax1.errorbar(phot['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
-                            yerr=yerr[:, dofit[good]],
-                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col4,
-                            markerfacecolor=col4, elinewidth=3, ecolor=col4, capsize=4,
-                            label=r'$grz\,W_{1}W_{2}W_{3}W_{4}$', zorder=2)
-            if len(upper) > 0:
-                ax1.errorbar(phot['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
-                            lolims=True, yerr=0.75,
-                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col4,
-                            markerfacecolor=col4, elinewidth=3, ecolor=col4, capsize=4)
-    
-        ignorefit = np.where(CFit.bands_to_fit == False)[0]
-        if len(ignorefit) > 0:
-            good = np.where((abmag[ignorefit] > 0) * (abmag_limit[ignorefit] == 0))[0]
-            upper = np.where(abmag_limit[ignorefit] > 0)[0]
-            if len(good) > 0:
-                ax1.errorbar(phot['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
-                            yerr=yerr[:, ignorefit[good]],
-                            fmt='o', markersize=12, markeredgewidth=3, markeredgecolor=col4,
-                            markerfacecolor='none', elinewidth=3, ecolor=col4, capsize=4)
-            if len(upper) > 0:
-                ax1.errorbar(phot['lambda_eff'][ignorefit][upper]/1e4, abmag_limit[ignorefit][upper],
-                            lolims=True, yerr=0.75, fmt='o', markersize=12, markeredgewidth=3,
-                            markeredgecolor=col4, markerfacecolor='none', elinewidth=3,
-                            ecolor=col4, capsize=5)
-    
-    for ii in np.arange(len(data['cameras'])): # iterate over cameras
-        sigma, good = ivar2var(data['ivar'][ii], sigma=True)
-        ax1.fill_between(data['wave'][ii], median_filter(data['flux'][ii]-sigma, 5),
-                            median_filter(data['flux'][ii]+sigma, 5), color=col1[ii])
-        ax1.plot(data['wave'][ii], continuum[ii]+smooth_continuum[ii]+_emlinemodel[ii], color=col2[ii])
+        sigma, camgood = ivar2var(data['ivar'][icam], sigma=True, allmasked_ok=True, clip=0)
 
-    ax1.set_xlim(wavemin, wavemax)
-    #ax1.set_ylim(-4, 35)
-    ax1.axis('off')
+        # trim the end of camera 'r'
+        if icam == 1:
+            camgood = np.where(camgood)[0]
+            camgood = camgood[:-35]
+
+        wave = wave[camgood]
+        flux = flux[camgood]
+        sigma = sigma[camgood]
+        modelflux = modelflux[camgood]
+
+        specax.plot(wave/1e4, flux, color=col1[icam], alpha=1.0)
+        specax.plot(wave/1e4, modelflux, color=col2[icam], lw=3, alpha=0.8)
+
+    #specax.set_xlim(wavemin, wavemax)
+    #specax.set_ylim(-4, 35)
+    specax.axis('off')
 
     fig.subplots_adjust(left=0.01, right=0.99, top=0.99, bottom=0.01)
     
@@ -185,21 +127,18 @@ if __name__ == '__main__':
     args = p.parse_args()
 
     fastspec, metaspec, coadd_type, _ = read_fastspecfit('fastspec-example.fits')
-    fastphot, metaphot, coadd_type, _ = read_fastspecfit('fastphot-example.fits')
+    #fastphot, metaphot, coadd_type, _ = read_fastspecfit('fastphot-example.fits')
 
     specprod = 'guadalupe'
-    #specprod = 'fuji'
     survey, program, healpix = fastspec['SURVEY'][0], fastspec['PROGRAM'][0], fastspec['HEALPIX'][0]
     
     redux_dir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux')
     redrockfile = os.path.join(redux_dir, specprod, 'healpix', str(survey), str(program), str(healpix // 100), 
                                str(healpix), 'redrock-{}-{}-{}.fits'.format(survey, program, healpix))
 
-    CFit = ContinuumFit()
-    EMFit = EMLineFit()
+    FFit = FastFit()
     Spec = DESISpectra(redux_dir=redux_dir)
-
     Spec.select(redrockfile, targetids=[fastspec['TARGETID'][0]])
-    data = Spec.read_and_unpack(CFit, fastphot=False, synthphot=False, remember_coadd=True)
+    data = Spec.read_and_unpack(FFit, fastphot=False, synthphot=False)
 
-    makelogo(data[0], fastspec[0], fastphot[0], metaspec[0], metaphot[0], EMFit, CFit, outdir=args.outdir)    
+    makelogo(data[0], fastspec[0], metaspec[0], FFit, outdir=args.outdir)    
