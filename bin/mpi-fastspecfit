@@ -149,13 +149,12 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
-    parser.add_argument('--specprod', type=str, default='fuji', #choices=['everest', 'denali', 'daily'],
+    parser.add_argument('--specprod', type=str, default='fuji', #choices=['fuji', 'guadalupe', 'iron'],
                         help='Spectroscopic production to process.')
     
     parser.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpixels to process.')
     parser.add_argument('--survey', type=str, default='main,special,cmx,sv1,sv2,sv3', help='Survey to process.')
     parser.add_argument('--program', type=str, default='bright,dark,other,backup', help='Program to process.') # backup not supported
-
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
     
@@ -167,6 +166,7 @@ def main():
     parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
     parser.add_argument('--mergeall', action='store_true', help='Merge all the individual merged catalogs into a single merged catalog.')
     parser.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
+    parser.add_argument('--ntest', type=int, default=None, help='Select ntest healpixels as a test sample drawn randomly from the full specprod (only for coadd-type==healpix).')
     
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
@@ -195,7 +195,28 @@ def main():
     if args.coadd_type == 'healpix':
         args.survey = args.survey.split(',')
         args.program = args.program.split(',')
+
+        # For a test sample, use a range of tiles 
+        if args.ntest:
+            from astropy.table import Table
+            rand = np.random.RandomState(seed=1)
+            tilepix = Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/healpix/tilepix.fits'.format(args.specprod))
+            # trim to survey/program
+            tilepix = tilepix[np.unique(np.hstack([np.where(tilepix['SURVEY'] == survey)[0] for survey in args.survey]))]
+            if len(tilepix) == 0:
+                log.warning('No matching surveys; nothing to do.')
+                return            
+            tilepix = tilepix[np.unique(np.hstack([np.where(tilepix['PROGRAM'] == program)[0] for program in args.program]))]
+            if len(tilepix) == 0:
+                log.warning('No matching programs; nothing to do.')
+                return
             
+            survprog = np.array([ss+pp for ss, pp in zip(tilepix['SURVEY'], tilepix['PROGRAM'])])
+            I = rand.choice(len(tilepix), args.ntest, replace=False)
+            args.healpix = ','.join(tilepix['HEALPIX'][I].astype(str))
+            log.info('Selecting {} test healpixels: {}'.format(len(I), args.healpix))
+            print(tilepix[I])
+
     if args.merge or args.mergeall:
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
