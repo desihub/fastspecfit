@@ -1399,9 +1399,6 @@ class FastFit(ContinuumTools):
             param_bounds[linename+'_amp'] = bounds
             initial_guesses[linename+'_civar'] = civar
 
-            #if linename == 'hbeta_broad':
-            #    pdb.set_trace()
-    
         # Now update the linewidth but here we need to loop over *all* lines
         # (not just those in range). E.g., if H-alpha is out of range we need to
         # set its initial value correctly since other lines are tied to it
@@ -1557,7 +1554,13 @@ class FastFit(ContinuumTools):
 
         sigmadropped = np.where(self.sigma_param_bool * drop2)[0]
         if len(sigmadropped) > 0:
-            for dropline in linemodel[sigmadropped]['linename']:
+            for lineindx, dropline in zip(sigmadropped, linemodel[sigmadropped]['linename']):
+                # Check whether lines are tied to this line. If so, find the
+                # corresponding amplitude and drop that, too.
+                T = linemodel['tiedtoparam'] == lineindx
+                if np.any(T):
+                    for tiedline in set(linemodel['linename'][T]):
+                        drop2[linemodel['param_name'] == '{}_amp'.format(tiedline)] = True
                 drop2[linemodel['param_name'] == '{}_amp'.format(dropline)] = True
 
         # It's OK for parameters to be *at* their bounds.
@@ -1938,7 +1941,7 @@ class FastFit(ContinuumTools):
         t0 = time.time()
         finalfit = self._optimize(linemodel, emlinewave, emlineflux, weights, 
                                   redshift, resolution_matrix, camerapix, 
-                                  debug=True)
+                                  debug=False)
         finalmodel = self.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
         finalchi2 = self.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel)
         nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
