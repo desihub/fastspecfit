@@ -1053,9 +1053,9 @@ class FastFit(ContinuumTools):
         init_oii_doublet = 0.74 # [OII] 3726/3729
         init_sii_doublet = 0.74 # [SII] 6731/6716
 
-        bounds_mgii_doublet = [0.01, 10.0] 
-        bounds_oii_doublet = [0.1, 2.0] # [0.5, 1.5] # [0.66, 1.4]
-        bounds_sii_doublet = [0.1, 2.0] # [0.5, 1.5] # [0.67, 1.2]
+        bounds_mgii_doublet = [0.0, 10.0] 
+        bounds_oii_doublet = [0.0, 2.0] # [0.5, 1.5] # [0.66, 1.4]
+        bounds_sii_doublet = [0.0, 2.0] # [0.5, 1.5] # [0.67, 1.2]
     
         # Create a new line-fitting table which contains the redshift-dependent
         # quantities for this object.
@@ -1244,7 +1244,8 @@ class FastFit(ContinuumTools):
         _fix_parameters(final_linemodel, verbose=False)
 
         assert(np.all(final_linemodel['tiedtoparam'][final_linemodel['tiedfactor'] != 0] != -1))
-        assert(len(final_linemodel[np.sum(final_linemodel['bounds'] == [0.0, 0.0], axis=1) > 0]) == 0)
+        # It's OK for the doublet ratios to be bounded at zero.
+        #assert(len(final_linemodel[np.sum(final_linemodel['bounds'] == [0.0, 0.0], axis=1) > 0]) == 0)
     
         #_print_linemodel(final_linemodel)
         #final_linemodel[np.logical_and(final_linemodel['fixed'] == False, final_linemodel['tiedtoparam'] == -1)]
@@ -1934,7 +1935,6 @@ class FastFit(ContinuumTools):
         #linemodel[linemodel['linename'] == 'halpha']
         #B = np.where(['ne' in param for param in self.param_names])[0]
         #B = np.where(['broad' in param for param in self.param_names])[0]
-
         t0 = time.time()
         finalfit = self._optimize(linemodel, emlinewave, emlineflux, weights, 
                                   redshift, resolution_matrix, camerapix, 
