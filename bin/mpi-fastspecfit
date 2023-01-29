@@ -201,6 +201,7 @@ def main():
             from astropy.table import Table
             rand = np.random.RandomState(seed=1)
             tilepix = Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/healpix/tilepix.fits'.format(args.specprod))
+            
             # trim to survey/program
             tilepix = tilepix[np.unique(np.hstack([np.where(tilepix['SURVEY'] == survey)[0] for survey in args.survey]))]
             if len(tilepix) == 0:

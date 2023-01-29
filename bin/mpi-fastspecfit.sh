@@ -81,7 +81,7 @@ program=$6
 args="--outdir-data $outdir_data --outdir-html $outdir_html"
 
 if [[ $stage == "fastspec-test" ]]; then
-    args=$args" --ntest 100"
+    args=$args" --ntest 10"
 fi
 if [[ $stage == "fastphot-test" ]]; then
     args=$args" --fastphot --ntest 100"

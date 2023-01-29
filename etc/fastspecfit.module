@@ -76,7 +76,9 @@ setenv [string toupper $product] $PRODUCT_DIR
 #
 # Add any non-standard Module code below this point.
 #
-setenv FASTSPECFIT_TEMPLATES $env(DESI_ROOT)/external/templates/fastspecfit
+setenv DUST_DIR /global/cfs/cdirs/cosmo/data/dust/v0_1
+setenv DR9_DIR /global/cfs/cdirs/desi/external/legacysurvey/dr9
+setenv FTEMPLATES_DIR $env(DESI_ROOT)/external/templates/fastspecfit
 
 # for MPI+multiprocessing coordination
 setenv MPICH_GNI_FORK_MODE FULLCOPY
