@@ -45,8 +45,8 @@ def _assign_units_to_columns(fastfit, metadata, Spec, FFit, fastphot=False):
         if col in metacols:
             metadata[col].unit = M[col].unit
 
-def fastspec_one(iobj, data, out, meta, broadlinefit=True, log=None, 
-                 fastphot=False, percamera_models=False, verbose=False):
+def fastspec_one(iobj, data, templatecache, out, meta, broadlinefit=True,
+                 log=None, fastphot=False, percamera_models=False, verbose=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -132,6 +132,7 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
 
     """
     from astropy.table import Table, vstack
+    from fastspecfit.continuum import cache_templates
     from fastspecfit.io import DESISpectra, write_fastspecfit
     from desiutil.log import get_logger, DEBUG
 
@@ -175,9 +176,12 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
     out, meta = Spec.init_output(data, FFit=FFit, fastphot=fastphot)
     log.info('Initializing the output tables took {:.2f} seconds.'.format(time.time()-t0))
 
+    templatecache = cache_templates(templates=args.templates, mintemplatewave=450.0,
+                                    maxtemplatewave=40e4, fastphot=fastphot, log=log)
+
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], args.broadlinefit,
+    fitargs = [(iobj, data[iobj], templatecache, out[iobj], meta[iobj], args.broadlinefit,
                 log, fastphot, args.percamera_models, args.verbose)
                 for iobj in np.arange(Spec.ntargets)]
     #fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], args.broadlinefit,
