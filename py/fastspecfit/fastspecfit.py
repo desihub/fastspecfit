@@ -55,7 +55,8 @@ def fastspec_one(iobj, data, templatecache, out, meta, broadlinefit=True,
     log.info('Working on object {} [targetid={}, z={:.6f}].'.format(
         iobj, meta['TARGETID'], meta['Z']))
 
-    continuummodel, smooth_continuum = continuum_specfit(data, out, fastphot=fastphot, log=log, verbose=verbose)
+    continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fastphot=fastphot,
+                                                         log=log, verbose=verbose)
 
     # Fit the emission-line spectrum.
     if fastphot:
@@ -178,7 +179,7 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
 
     templatecache = cache_templates(templates=args.templates, mintemplatewave=450.0,
                                     maxtemplatewave=40e4, fastphot=fastphot, log=log)
-
+    
     # Fit in parallel
     t0 = time.time()
     fitargs = [(iobj, data[iobj], templatecache, out[iobj], meta[iobj], args.broadlinefit,

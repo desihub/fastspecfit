@@ -343,5 +343,13 @@ class TabulatedDESI(object):
 
         def _agefunc(z):
             return 1.0 / self.efunc(z) / (1.0 + z)
-        integ, _ =  quad(_agefunc, z, self._z[-1])
-        return integ * self.hubble_time
+        
+        if np.isscalar(z):
+            integ, _ =  quad(_agefunc, z, self._z[-1])
+            return integ * self.hubble_time
+        else:
+            age = []
+            for _z in z:
+                integ, _ =  quad(_agefunc, _z, self._z[-1])
+                age.append(integ * self.hubble_time)
+            return np.array(age)

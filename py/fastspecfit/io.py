@@ -13,6 +13,8 @@ import numpy as np
 import fitsio
 from astropy.table import Table, vstack, hstack
 
+from fastspecfit.util import TabulatedDESI
+
 from desiutil.log import get_logger
 log = get_logger()
 
@@ -87,14 +89,11 @@ class _ZWarningMask(object):
     POORDATA          = 2**11 #- Poor input data quality but try fitting anyway
 ZWarningMask = _ZWarningMask()
 
-class FiltInfo(object):
-    pass
-
 def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(igal, specdata, meta, ebv, FInfo, fastphot, synthphot):
+def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot, fluxnorm):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
@@ -102,12 +101,14 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, FInfo, fastphot, synthphot):
     from desiutil.dust import mwdust_transmission, dust_transmission
 
     if specdata['photsys'] == 'S':
-        filters = FInfo.decam
-        allfilters = FInfo.decamwise
+        filters = Filters.decam
+        allfilters = Filters.decamwise
     else:
-        filters = FInfo.bassmzls
-        allfilters = FInfo.bassmzlswise
-    
+        filters = Filters.bassmzls
+        allfilters = Filters.bassmzlswise
+
+    RV = 3.1
+        
     # Unpack the imaging photometry and correct for MW dust.
     
     # Do not match the Legacy Surveys here because we want the MW
@@ -115,16 +116,16 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, FInfo, fastphot, synthphot):
     # self-consistent with how we correct the photometry for dust.
     meta['EBV'] = ebv
     if specdata['photsys'] != '':
-        mw_transmission_flux = np.array([mwdust_transmission(ebv, band, specdata['photsys'], match_legacy_surveys=False) for band in FInfo.bands])
-        for band, mwdust in zip(FInfo.bands, mw_transmission_flux):
+        mw_transmission_flux = np.array([mwdust_transmission(ebv, band, specdata['photsys'], match_legacy_surveys=False) for band in Filters.bands])
+        for band, mwdust in zip(Filters.bands, mw_transmission_flux):
             meta['MW_TRANSMISSION_{}'.format(band.upper())] = mwdust 
     else:
-        #mw_transmission_fiberflux = np.ones(len(FInfo.bands))
-        mw_transmission_flux = 10**(-0.4 * ebv * FInfo.RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=FInfo.RV))
+        #mw_transmission_fiberflux = np.ones(len(Filters.bands))
+        mw_transmission_flux = 10**(-0.4 * ebv * RV * ext_odonnell(allfilters.effective_wavelengths.value, Rv=RV))
 
-    maggies = np.zeros(len(FInfo.bands))
-    ivarmaggies = np.zeros(len(FInfo.bands))
-    for iband, band in enumerate(FInfo.bands):
+    maggies = np.zeros(len(Filters.bands))
+    ivarmaggies = np.zeros(len(Filters.bands))
+    for iband, band in enumerate(Filters.bands):
         maggies[iband] = meta['FLUX_{}'.format(band.upper())] / mw_transmission_flux[iband]
         ivarmaggies[iband] = meta['FLUX_IVAR_{}'.format(band.upper())] * mw_transmission_flux[iband]**2
         
@@ -133,30 +134,30 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, FInfo, fastphot, synthphot):
         log.critical(errmsg)
         raise ValueError(errmsg)
     
-    specdata['phot'] = FInfo.parse_photometry(
-        FInfo.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
+    specdata['phot'] = Filters.parse_photometry(
+        Filters.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
         lambda_eff=allfilters.effective_wavelengths.value,
-        min_uncertainty=FInfo.min_uncertainty)
+        min_uncertainty=Filters.min_uncertainty)
     
     # fiber fluxes
     if specdata['photsys'] != '':                
-        mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, band, specdata['photsys']) for band in FInfo.fiber_bands])
+        mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, band, specdata['photsys']) for band in Filters.fiber_bands])
     else:
-        #mw_transmission_fiberflux = np.ones(len(FInfo.fiber_bands))
-        mw_transmission_fiberflux = 10**(-0.4 * ebv * FInfo.RV * ext_odonnell(filters.effective_wavelengths.value, Rv=FInfo.RV))
+        #mw_transmission_fiberflux = np.ones(len(Filters.fiber_bands))
+        mw_transmission_fiberflux = 10**(-0.4 * ebv * RV * ext_odonnell(filters.effective_wavelengths.value, Rv=RV))
     
-    fibermaggies = np.zeros(len(FInfo.fiber_bands))
-    fibertotmaggies = np.zeros(len(FInfo.fiber_bands))
-    #ivarfibermaggies = np.zeros(len(FInfo.fiber_bands))
-    for iband, band in enumerate(FInfo.fiber_bands):
+    fibermaggies = np.zeros(len(Filters.fiber_bands))
+    fibertotmaggies = np.zeros(len(Filters.fiber_bands))
+    #ivarfibermaggies = np.zeros(len(Filters.fiber_bands))
+    for iband, band in enumerate(Filters.fiber_bands):
         fibermaggies[iband] = meta['FIBERFLUX_{}'.format(band.upper())] / mw_transmission_fiberflux[iband]
         fibertotmaggies[iband] = meta['FIBERTOTFLUX_{}'.format(band.upper())] / mw_transmission_fiberflux[iband]
         #ivarfibermaggies[iband] = meta['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] * mw_transmission_fiberflux[iband]**2
     
-    specdata['fiberphot'] = FInfo.parse_photometry(FInfo.fiber_bands,
+    specdata['fiberphot'] = Filters.parse_photometry(Filters.fiber_bands,
         maggies=fibermaggies, nanomaggies=True,
         lambda_eff=filters.effective_wavelengths.value)
-    specdata['fibertotphot'] = FInfo.parse_photometry(FInfo.fiber_bands,
+    specdata['fibertotphot'] = Filters.parse_photometry(Filters.fiber_bands,
         maggies=fibertotmaggies, nanomaggies=True,
         lambda_eff=filters.effective_wavelengths.value)
 
@@ -182,8 +183,8 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, FInfo, fastphot, synthphot):
                 else:
                     # Compute the SNR before we correct for dust.
                     specdata['snr'][icam] = np.median(specdata['flux'][icam] * np.sqrt(ivar))
-                    #mw_transmission_spec = 10**(-0.4 * ebv * FInfo.RV * ext_odonnell(wave[camera], Rv=FInfo.RV))
-                    mw_transmission_spec = dust_transmission(specdata['wave'][icam], ebv, Rv=FInfo.RV)
+                    #mw_transmission_spec = 10**(-0.4 * ebv * RV * ext_odonnell(wave[camera], Rv=RV))
+                    mw_transmission_spec = dust_transmission(specdata['wave'][icam], ebv, Rv=RV)
                     specdata['flux'][icam] /= mw_transmission_spec
                     specdata['ivar'][icam] *= mw_transmission_spec**2
             
@@ -202,9 +203,9 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, FInfo, fastphot, synthphot):
             specdata['camerapix'][icam, :] = [np.sum(npixpercam[:icam+1]), np.sum(npixpercam[:icam+2])]
                                 
         # coadded spectrum
-        coadd_linemask_dict = FInfo.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                   specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                   linetable=FInfo.linetable)
+        coadd_linemask_dict = Filters.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
+                                                     specdata['coadd_ivar'], redshift=specdata['zredrock'],
+                                                     linetable=Filters.linetable)
         specdata['coadd_linename'] = coadd_linemask_dict['linename']
         specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
         specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -238,13 +239,6 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, FInfo, fastphot, synthphot):
             specdata['linename'].append(_linename)
             specdata['linepix'].append(_linenpix)
             specdata['contpix'].append(_contpix)
-            #for ipix in np.arange(len(coadd_linemask_dict['contpix'])):
-            #    if icam == 1:
-            #        pdb.set_trace()
-            #    J = np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['contpix'][ipix]*1) > 0
-            #    if np.sum(J) > 0:
-            #        _contpix.append(np.where(J)[0])
-            #specdata['contpix'].append(_contpix)
     
         #import matplotlib.pyplot as plt
         #plt.clf()
@@ -260,7 +254,7 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, FInfo, fastphot, synthphot):
         # Optionally synthesize photometry from the coadded spectrum.
         if synthphot:
             padflux, padwave = filters.pad_spectrum(specdata['coadd_flux'], specdata['coadd_wave'], method='edge')
-            synthmaggies = filters.get_ab_maggies(padflux / FInfo.fluxnorm, padwave)
+            synthmaggies = filters.get_ab_maggies(padflux / fluxnorm, padwave)
             synthmaggies = synthmaggies.as_array().view('f8')
     
             # code to synthesize uncertainties from the variance spectrum
@@ -269,18 +263,18 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, FInfo, fastphot, synthphot):
             #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
             #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
     
-            #specdata['synthphot'] = FInfo.parse_photometry(FInfo.bands,
+            #specdata['synthphot'] = Filters.parse_photometry(Filters.bands,
             #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
             #    ivarmaggies=synthivarmaggies, nanomaggies=False)
     
-            specdata['synthphot'] = FInfo.parse_photometry(FInfo.synth_bands,
+            specdata['synthphot'] = Filters.parse_photometry(Filters.synth_bands,
                 maggies=synthmaggies, nanomaggies=False,
                 lambda_eff=filters.effective_wavelengths.value)
 
     return specdata, meta
 
-class DESISpectra(object):
-    def __init__(self, redux_dir=None, fiberassign_dir=None, dr9dir=None):
+class DESISpectra(TabulatedDESI):
+    def __init__(self, redux_dir=None, fiberassign_dir=None, dr9dir=None, fluxnorm=1e17):
         """Class to read in DESI spectra and associated metadata.
 
         Parameters
@@ -294,6 +288,8 @@ class DESISpectra(object):
             defaults to `$DESI_ROOT/target/fiberassign/tiles/trunk`.
 
         """
+        super(DESISpectra, self).__init__()
+        
         desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
 
         if redux_dir is None:
@@ -310,6 +306,8 @@ class DESISpectra(object):
             self.dr9dir = os.environ.get('DR9_DIR', DR9_DIR_NERSC)
         else:
             self.dr9dir = dr9dir
+
+        self.fluxnorm = fluxnorm
 
     @staticmethod
     def resolve(targets):
@@ -876,6 +874,9 @@ class DESISpectra(object):
         """
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
+        from fastspecfit.continuum import Filters
+        
+        Filt = Filters()
 
         alldata = []
         for ispec, (specfile, meta) in enumerate(zip(self.specfiles, self.meta)):
@@ -887,28 +888,34 @@ class DESISpectra(object):
 
             ebv = FFit.SFDMap.ebv(meta['RA'], meta['DEC'])
 
-            # Gather up some filter info.
-            FInfo = FiltInfo()
-            FInfo.RV = FFit.RV
-            FInfo.decam = FFit.decam
-            FInfo.decamwise = FFit.decamwise
-            FInfo.bassmzls = FFit.bassmzls
-            FInfo.bassmzlswise = FFit.bassmzlswise
-            FInfo.bands = FFit.bands
-            FInfo.fiber_bands = FFit.fiber_bands
-            FInfo.synth_bands = FFit.synth_bands
-            FInfo.fluxnorm = FFit.fluxnorm
-            FInfo.min_uncertainty = FFit.min_uncertainty
-            FInfo.parse_photometry = FFit.parse_photometry
+            ## Gather up some filter info.
+            #FInfo = FiltInfo()
+            #FInfo.RV = FFit.RV
+            #FInfo.decam = FFit.decam
+            #FInfo.decamwise = FFit.decamwise
+            #FInfo.bassmzls = FFit.bassmzls
+            #FInfo.bassmzlswise = FFit.bassmzlswise
+            #FInfo.bands = FFit.bands
+            #FInfo.fiber_bands = FFit.fiber_bands
+            #FInfo.synth_bands = FFit.synth_bands
+            #FInfo.fluxnorm = FFit.fluxnorm
+            #FInfo.min_uncertainty = FFit.min_uncertainty
+            #FInfo.parse_photometry = FFit.parse_photometry
 
+            # Age, luminosity, and distance modulus.
+            dlum = self.luminosity_distance(meta['Z'])
+            dmod = self.distance_modulus(meta['Z'])
+            tuniv = self.universe_age(meta['Z'])
+            
             if fastphot:
                 unpackargs = []
                 for igal in np.arange(len(meta)):
                     specdata = {
                         'targetid': meta['TARGETID'][igal], 'zredrock': meta['Z'][igal],
-                        'photsys': meta['PHOTSYS'][igal]
+                        'photsys': meta['PHOTSYS'][igal],
+                        'dluminosity': dlum[igal], 'dmodulus': dmod[igal], 'tuniv': tuniv[igal],
                         }
-                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], FInfo, True, False))
+                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], Filt, True, False, self.fluxnorm))
             else:
                 from desispec.resolution import Resolution
                 
@@ -920,8 +927,9 @@ class DESISpectra(object):
                 coadd_spec = coadd_cameras(spec)
                 log.info('Coadding across cameras took {:.2f} seconds.'.format(time.time()-t0))
 
-                FInfo.build_linemask = FFit.build_linemask
-                FInfo.linetable = FFit.linetable
+                print('Gotta figure this out.')
+                Filt.build_linemask = FFit.build_linemask
+                Filt.linetable = FFit.linetable
 
                 # unpack the desispec.spectra.Spectra objects into simple arrays
                 cameras = spec.bands
@@ -931,6 +939,7 @@ class DESISpectra(object):
                     specdata = {
                         'targetid': meta['TARGETID'][igal], 'zredrock': meta['Z'][igal],
                         'photsys': meta['PHOTSYS'][igal], 'cameras': cameras,
+                        'dluminosity': dlum[igal], 'dmodulus': dmod[igal], 'tuniv': tuniv[igal],                        
                         'wave': [spec.wave[cam] for cam in cameras],
                         'flux': [spec.flux[cam][igal, :] for cam in cameras],
                         'ivar': [spec.ivar[cam][igal, :] for cam in cameras],
@@ -942,7 +951,7 @@ class DESISpectra(object):
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][igal, :],
                         'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][igal, :]),
                         }
-                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], FInfo, fastphot, synthphot))
+                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], Filt, fastphot, synthphot, self.fluxnorm))
                     
             if mp > 1:
                 import multiprocessing
