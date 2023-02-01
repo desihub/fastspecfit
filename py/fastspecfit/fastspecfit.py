@@ -57,13 +57,14 @@ def fastspec_one(iobj, data, templatecache, out, meta, broadlinefit=True,
 
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fastphot=fastphot,
                                                          log=log, verbose=verbose)
+    emmodel = None
 
-    # Fit the emission-line spectrum.
-    if fastphot:
-        emmodel = None
-    else:
-        emmodel = FFit.emline_specfit(data, out, continuummodel, smooth_continuum,
-                                      broadlinefit=broadlinefit, percamera_models=percamera_models)
+    ## Fit the emission-line spectrum.
+    #if fastphot:
+    #    emmodel = None
+    #else:
+    #    emmodel = FFit.emline_specfit(data, out, continuummodel, smooth_continuum,
+    #                                  broadlinefit=broadlinefit, percamera_models=percamera_models)
 
     return out, meta, emmodel
 
@@ -133,8 +134,7 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
 
     """
     from astropy.table import Table, vstack
-    from fastspecfit.continuum import cache_templates
-    from fastspecfit.io import DESISpectra, write_fastspecfit
+    from fastspecfit.io import DESISpectra, cache_templates, write_fastspecfit
     from desiutil.log import get_logger, DEBUG
 
     if verbose:
@@ -179,7 +179,7 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
 
     templatecache = cache_templates(templates=args.templates, mintemplatewave=450.0,
                                     maxtemplatewave=40e4, fastphot=fastphot, log=log)
-    
+
     # Fit in parallel
     t0 = time.time()
     fitargs = [(iobj, data[iobj], templatecache, out[iobj], meta[iobj], args.broadlinefit,
@@ -194,7 +194,7 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
     else:
         _out = [fastspec_one(*_fitargs) for _fitargs in fitargs]
         
-    pdb.set_trace()
+    return #pdb.set_trace()
 
     _out = list(zip(*_out))
     out = Table(np.hstack(_out[0]))

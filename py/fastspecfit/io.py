@@ -874,9 +874,10 @@ class DESISpectra(TabulatedDESI):
         """
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
-        from fastspecfit.continuum import Filters
+        from fastspecfit.continuum import ContinuumTools2
         
-        Filt = Filters()
+        #Filt = Filters()
+        CTools = ContinuumTools2()
 
         alldata = []
         for ispec, (specfile, meta) in enumerate(zip(self.specfiles, self.meta)):
@@ -915,7 +916,7 @@ class DESISpectra(TabulatedDESI):
                         'photsys': meta['PHOTSYS'][igal],
                         'dluminosity': dlum[igal], 'dmodulus': dmod[igal], 'tuniv': tuniv[igal],
                         }
-                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], Filt, True, False, self.fluxnorm))
+                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], CTools, True, False, self.fluxnorm))
             else:
                 from desispec.resolution import Resolution
                 
@@ -927,9 +928,9 @@ class DESISpectra(TabulatedDESI):
                 coadd_spec = coadd_cameras(spec)
                 log.info('Coadding across cameras took {:.2f} seconds.'.format(time.time()-t0))
 
-                print('Gotta figure this out.')
-                Filt.build_linemask = FFit.build_linemask
-                Filt.linetable = FFit.linetable
+                #print('Gotta figure this out.')
+                #Filt.build_linemask = FFit.build_linemask
+                #Filt.linetable = FFit.linetable
 
                 # unpack the desispec.spectra.Spectra objects into simple arrays
                 cameras = spec.bands
@@ -951,7 +952,7 @@ class DESISpectra(TabulatedDESI):
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][igal, :],
                         'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][igal, :]),
                         }
-                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], Filt, fastphot, synthphot, self.fluxnorm))
+                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], CTools, fastphot, synthphot, self.fluxnorm))
                     
             if mp > 1:
                 import multiprocessing
@@ -1245,3 +1246,97 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
         return np.where(keep)[0]
     else:
         return fastfit[keep], metadata[keep]
+
+def cache_templates(templates=None, templateversion='1.0.0', imf='chabrier',
+                    mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.0,
+                    fastphot=False, log=None, verbose=False):
+    """"Read the templates into a dictionary.
+
+    """
+    import fitsio
+    from fastspecfit.io import FTEMPLATES_DIR_NERSC
+    from fastspecfit.continuum import _convolve_vdisp
+    
+    if log is None:
+        from desiutil.log import get_logger, DEBUG
+        if verbose:
+            log = get_logger(DEBUG)
+        else:
+            log = get_logger()
+    
+    if templates is None:
+        templates_dir = os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC)
+        templates = os.path.join(templates_dir, templateversion, 'ftemplates-{}-{}.fits'.format(
+            imf, templateversion))
+        
+    if not os.path.isfile(templates):
+        errmsg = 'Templates file not found {}'.format(templates)
+        log.critical(errmsg)
+        raise IOError(errmsg)
+
+    log.info('Reading {}'.format(templates))
+    wave, wavehdr = fitsio.read(templates, ext='WAVE', header=True) # [npix]
+    templateflux = fitsio.read(templates, ext='FLUX')  # [npix,nsed]
+    templatelineflux = fitsio.read(templates, ext='LINEFLUX')  # [npix,nsed]
+    templateinfo, templatehdr = fitsio.read(templates, ext='METADATA', header=True)
+    
+    continuum_pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
+    pixkms_wavesplit = wavehdr['PIXSZSPT'] # wavelength where the pixel size changes [A]
+
+    # Trim the wavelengths and select the number/ages of the templates.
+    # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
+    if mintemplatewave is None:
+        mintemplatewave = np.min(wave)
+    wavekeep = np.where((wave >= mintemplatewave) * (wave <= maxtemplatewave))[0]
+
+    templatewave = wave[wavekeep]
+    templateflux = templateflux[wavekeep, :]
+    templateflux_nolines = templateflux - templatelineflux[wavekeep, :]
+    del wave, templatelineflux
+    
+    # Cache a copy of the line-free templates at the nominal velocity
+    # dispersion (needed for fastphot as well).
+    I = np.where(templatewave < pixkms_wavesplit)[0]
+    templateflux_nolines_nomvdisp = templateflux_nolines.copy()
+    templateflux_nolines_nomvdisp[I, :] = _convolve_vdisp(templateflux_nolines_nomvdisp[I, :], vdisp_nominal,
+                                                          pixsize_kms=continuum_pixkms)
+
+    templateflux_nomvdisp = templateflux.copy()
+    templateflux_nomvdisp[I, :] = _convolve_vdisp(templateflux_nomvdisp[I, :], vdisp_nominal,
+                                                  pixsize_kms=continuum_pixkms)
+
+    # pack into a dictionary
+    templatecache = {'imf': templatehdr['IMF'],
+                     #'nsed': len(templateinfo), 'npix': len(wavekeep),
+                     'continuum_pixkms': continuum_pixkms,                     
+                     'pixkms_wavesplit': pixkms_wavesplit,
+                     'vdisp_nominal': vdisp_nominal,
+                     'templateinfo': Table(templateinfo),
+                     'templatewave': templatewave,
+                     'templateflux': templateflux,
+                     'templateflux_nomvdisp': templateflux_nomvdisp,
+                     'templateflux_nolines': templateflux_nolines,
+                     'templateflux_nolines_nomvdisp': templateflux_nolines_nomvdisp,
+                     }
+        
+    if not fastphot:
+        vdispwave = fitsio.read(templates, ext='VDISPWAVE')
+        vdispflux, vdisphdr = fitsio.read(templates, ext='VDISPFLUX', header=True) # [nvdisppix,nvdispsed,nvdisp]
+
+        # see bin/build-fsps-templates
+        nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
+        vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
+    
+        if not vdisp_nominal in vdisp:
+            errmsg = 'Nominal velocity dispersion is not in velocity dispersion vector.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+    
+        templatecache.update({
+            'vdispflux': vdispflux,
+            'vdispwave': vdispwave,
+            'vdisp': vdisp,
+            'vdisp_nominal_indx': np.where(vdisp == vdisp_nominal)[0],
+            })
+
+    return templatecache
