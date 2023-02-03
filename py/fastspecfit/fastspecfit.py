@@ -45,26 +45,32 @@ def _assign_units_to_columns(fastfit, metadata, Spec, FFit, fastphot=False):
         if col in metacols:
             metadata[col].unit = M[col].unit
 
-def fastspec_one(iobj, data, templatecache, out, meta, broadlinefit=True,
-                 log=None, fastphot=False, percamera_models=False, verbose=False):
+def fastspec_one(iobj, data, out, meta, templates, log=None, broadlinefit=True, 
+                 fastphot=False, percamera_models=False, verbose=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
+    from fastspecfit.io import cache_templates
+    from fastspecfit.emlines import emline_specfit
     from fastspecfit.continuum import continuum_specfit
     
     log.info('Working on object {} [targetid={}, z={:.6f}].'.format(
         iobj, meta['TARGETID'], meta['Z']))
 
-    continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fastphot=fastphot,
-                                                         log=log, verbose=verbose)
-    emmodel = None
+    # Fit the continuum spectrum.
+    templatecache = cache_templates(templates, log=log, mintemplatewave=450.0,
+                                    maxtemplatewave=40e4, fastphot=fastphot)
 
-    ## Fit the emission-line spectrum.
-    #if fastphot:
-    #    emmodel = None
-    #else:
-    #    emmodel = FFit.emline_specfit(data, out, continuummodel, smooth_continuum,
-    #                                  broadlinefit=broadlinefit, percamera_models=percamera_models)
+    continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache,
+                                                         fastphot=fastphot,
+                                                         log=log, verbose=verbose)
+
+    # Fit the emission-line spectrum.
+    if fastphot:
+        emmodel = None
+    else:
+        emmodel = emline_specfit(data, templatecache, out, continuummodel, smooth_continuum,
+                                 broadlinefit=broadlinefit, percamera_models=percamera_models)
 
     return out, meta, emmodel
 
@@ -96,7 +102,9 @@ def parse(options=None, log=None):
                         help='Do not allow for broad Balmer and Helium line-fitting.')
     parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
     parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
-    parser.add_argument('--templates', type=str, default=None, help='Optional name of the templates.')
+    parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
+    parser.add_argument('--templateversion', type=str, default='1.0.0', help='Template version number.')
+    parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
@@ -134,8 +142,8 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
 
     """
     from astropy.table import Table, vstack
-    from fastspecfit.io import DESISpectra, cache_templates, write_fastspecfit
     from desiutil.log import get_logger, DEBUG
+    from fastspecfit.io import DESISpectra, get_templates_filename, init_fastspec_output, write_fastspecfit
 
     if verbose:
         log = get_logger(DEBUG)
@@ -150,43 +158,30 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
     else:
         targetids = args.targetids
 
-    # Initialize the fitting class.
-    t0 = time.time()
-    FFit = FastFit(templates=args.templates, mapdir=args.mapdir, 
-                   verbose=args.verbose, solve_vdisp=args.solve_vdisp, 
-                   nophoto=args.nophoto, fastphot=fastphot,
-                   mintemplatewave=450.0, maxtemplatewave=40e4)
-    Spec = DESISpectra(dr9dir=args.dr9dir)
-    log.info('Initializing the classes took {:.2f} sec'.format(time.time()-t0))
-
     # Read the data.
     t0 = time.time()
-    Spec.select(args.redrockfiles, firsttarget=args.firsttarget,
-                targetids=targetids, ntargets=args.ntargets,
-                redrockfile_prefix=args.redrockfile_prefix,
-                specfile_prefix=args.specfile_prefix,
-                qnfile_prefix=args.qnfile_prefix)
+    Spec = DESISpectra(dr9dir=args.dr9dir, mapdir=args.mapdir)
+
+    Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
+                ntargets=args.ntargets, redrockfile_prefix=args.redrockfile_prefix,
+                specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix)
     if len(Spec.specfiles) == 0:
         return
 
-    data = Spec.read_and_unpack(FFit, fastphot=fastphot, synthphot=True, mp=args.mp)
+    data = Spec.read_and_unpack(fastphot=fastphot, mp=args.mp)
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
 
-    t0 = time.time()
-    out, meta = Spec.init_output(data, FFit=FFit, fastphot=fastphot)
+    templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
+    out, meta = init_fastspec_output(Spec.meta, Spec.specprod, templates, data=data,
+                                     log=log, fastphot=fastphot)
     log.info('Initializing the output tables took {:.2f} seconds.'.format(time.time()-t0))
-
-    templatecache = cache_templates(templates=args.templates, mintemplatewave=450.0,
-                                    maxtemplatewave=40e4, fastphot=fastphot, log=log)
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], templatecache, out[iobj], meta[iobj], args.broadlinefit,
-                log, fastphot, args.percamera_models, args.verbose)
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], templates, log,
+                args.broadlinefit, fastphot, args.percamera_models, args.verbose)
                 for iobj in np.arange(Spec.ntargets)]
-    #fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], args.broadlinefit,
-    #            fastphot, args.percamera_models) for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
         with multiprocessing.Pool(args.mp) as P:
@@ -194,7 +189,7 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
     else:
         _out = [fastspec_one(*_fitargs) for _fitargs in fitargs]
         
-    return #pdb.set_trace()
+    return # pdb.set_trace()
 
     _out = list(zip(*_out))
     out = Table(np.hstack(_out[0]))
@@ -2033,7 +2028,7 @@ class FastFit(ContinuumTools):
 
         # Pad (simply) in wavelength...
         padflux, padwave = filters.pad_spectrum(modelflux, modelwave, method='edge')
-        synthmaggies = filters.get_ab_maggies(padflux / self.fluxnorm, padwave)
+        synthmaggies = filters.get_ab_maggies(padflux / FLUXNORM, padwave)
         synthmaggies = synthmaggies.as_array().view('f8')
         model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
                                                 nanomaggies=False,
@@ -2561,18 +2556,18 @@ class FastFit(ContinuumTools):
                 medmag = 0.0
             sedmodel_abmag = np.zeros_like(self.templatewave) + medmag
         else:
-            factor = 10**(0.4 * 48.6) * sedwave**2 / (C_LIGHT * 1e13) / self.fluxnorm / self.massnorm # [erg/s/cm2/A --> maggies]
+            factor = 10**(0.4 * 48.6) * sedwave**2 / (C_LIGHT * 1e13) / FLUXNORM / self.massnorm # [erg/s/cm2/A --> maggies]
             sedmodel_abmag = -2.5*np.log10(sedmodel * factor)
             sedax.plot(sedwave / 1e4, sedmodel_abmag, color='slategrey', alpha=0.9, zorder=1)
     
         sedax.scatter(sedphot['lambda_eff']/1e4, sedphot['abmag'], marker='s', 
                       s=400, color='k', facecolor='none', linewidth=2, alpha=1.0, zorder=2)
 
-        #factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) / self.fluxnorm # [erg/s/cm2/A --> maggies]
+        #factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
         #good = fullmodelspec > 0
         #sedax.plot(fullwave[good]/1e4, -2.5*np.log10(fullmodelspec[good]*factor[good]), color='purple', alpha=0.8)
         for icam in np.arange(len(data['cameras'])):
-            factor = 10**(0.4 * 48.6) * data['wave'][icam]**2 / (C_LIGHT * 1e13) / self.fluxnorm # [erg/s/cm2/A --> maggies]
+            factor = 10**(0.4 * 48.6) * data['wave'][icam]**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
             good = desimodelspec[icam] > 0
             sedax.plot(data['wave'][icam][good]/1e4, -2.5*np.log10(desimodelspec[icam][good]*factor[good]), color=col2[icam], alpha=0.8)
 

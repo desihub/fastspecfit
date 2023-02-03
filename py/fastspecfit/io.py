@@ -73,6 +73,8 @@ TARGETCOLS = ['TARGETID', 'RA', 'DEC',
               'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
               'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']#,
 
+FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
+
 # Taken from Redrock/0.15.4
 class _ZWarningMask(object):
     SKY               = 2**0  #- sky fiber
@@ -93,7 +95,7 @@ def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot, fluxnorm):
+def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
@@ -254,7 +256,7 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot,
         # Optionally synthesize photometry from the coadded spectrum.
         if synthphot:
             padflux, padwave = filters.pad_spectrum(specdata['coadd_flux'], specdata['coadd_wave'], method='edge')
-            synthmaggies = filters.get_ab_maggies(padflux / fluxnorm, padwave)
+            synthmaggies = filters.get_ab_maggies(padflux / FLUXNORM, padwave)
             synthmaggies = synthmaggies.as_array().view('f8')
     
             # code to synthesize uncertainties from the variance spectrum
@@ -274,7 +276,7 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot,
     return specdata, meta
 
 class DESISpectra(TabulatedDESI):
-    def __init__(self, redux_dir=None, fiberassign_dir=None, dr9dir=None, fluxnorm=1e17):
+    def __init__(self, redux_dir=None, fiberassign_dir=None, dr9dir=None, mapdir=None):
         """Class to read in DESI spectra and associated metadata.
 
         Parameters
@@ -307,8 +309,11 @@ class DESISpectra(TabulatedDESI):
         else:
             self.dr9dir = dr9dir
 
-        self.fluxnorm = fluxnorm
-
+        if mapdir is None:
+            self.mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
+        else:
+            self.mapdir = mapdir
+            
     @staticmethod
     def resolve(targets):
         """Resolve which targets are primary in imaging overlap regions.
@@ -796,14 +801,11 @@ class DESISpectra(TabulatedDESI):
         log.info('Gathered photometric metadata for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
         self.meta = metas # update
 
-    def read_and_unpack(self, FFit, fastphot=False, synthphot=True, mp=1):
+    def read_and_unpack(self, fastphot=False, synthphot=True, mp=1):
         """Read and unpack selected spectra or broadband photometry.
         
         Parameters
         ----------
-        FFit : :class:`fastspecfit.continuum.ContinuumFit` class
-            Continuum-fitting class which contains filter curves and some additional
-            photometric convenience functions.
         fastphot : bool
             Read and unpack the broadband photometry; otherwise, handle the DESI
             three-camera spectroscopy. Optional; defaults to `False`.
@@ -874,10 +876,11 @@ class DESISpectra(TabulatedDESI):
         """
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
-        from fastspecfit.continuum import ContinuumTools2
+        from desiutil.dust import SFDMap
+        from fastspecfit.continuum import ContinuumTools
         
-        #Filt = Filters()
-        CTools = ContinuumTools2()
+        CTools = ContinuumTools()
+        SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
         alldata = []
         for ispec, (specfile, meta) in enumerate(zip(self.specfiles, self.meta)):
@@ -887,21 +890,7 @@ class DESISpectra(TabulatedDESI):
             else:
                 log.info('Reading {} spectra from {}'.format(nobj, specfile))
 
-            ebv = FFit.SFDMap.ebv(meta['RA'], meta['DEC'])
-
-            ## Gather up some filter info.
-            #FInfo = FiltInfo()
-            #FInfo.RV = FFit.RV
-            #FInfo.decam = FFit.decam
-            #FInfo.decamwise = FFit.decamwise
-            #FInfo.bassmzls = FFit.bassmzls
-            #FInfo.bassmzlswise = FFit.bassmzlswise
-            #FInfo.bands = FFit.bands
-            #FInfo.fiber_bands = FFit.fiber_bands
-            #FInfo.synth_bands = FFit.synth_bands
-            #FInfo.fluxnorm = FFit.fluxnorm
-            #FInfo.min_uncertainty = FFit.min_uncertainty
-            #FInfo.parse_photometry = FFit.parse_photometry
+            ebv = SFD.ebv(meta['RA'], meta['DEC'])
 
             # Age, luminosity, and distance modulus.
             dlum = self.luminosity_distance(meta['Z'])
@@ -916,7 +905,7 @@ class DESISpectra(TabulatedDESI):
                         'photsys': meta['PHOTSYS'][igal],
                         'dluminosity': dlum[igal], 'dmodulus': dmod[igal], 'tuniv': tuniv[igal],
                         }
-                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], CTools, True, False, self.fluxnorm))
+                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], CTools, True, False))
             else:
                 from desispec.resolution import Resolution
                 
@@ -927,10 +916,6 @@ class DESISpectra(TabulatedDESI):
                 t0 = time.time()                
                 coadd_spec = coadd_cameras(spec)
                 log.info('Coadding across cameras took {:.2f} seconds.'.format(time.time()-t0))
-
-                #print('Gotta figure this out.')
-                #Filt.build_linemask = FFit.build_linemask
-                #Filt.linetable = FFit.linetable
 
                 # unpack the desispec.spectra.Spectra objects into simple arrays
                 cameras = spec.bands
@@ -952,7 +937,7 @@ class DESISpectra(TabulatedDESI):
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][igal, :],
                         'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][igal, :]),
                         }
-                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], CTools, fastphot, synthphot, self.fluxnorm))
+                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], CTools, fastphot, synthphot))
                     
             if mp > 1:
                 import multiprocessing
@@ -972,128 +957,264 @@ class DESISpectra(TabulatedDESI):
 
         return alldata
 
-    def init_output(self, data=None, FFit=None, fastphot=False):
-        """Initialize the fastspecfit output data table.
+def init_fastspec_output(input_meta, specprod, templates, data=None,
+                         log=None, fastphot=False):
+    """Initialize the fastspecfit output data and metadata table.
 
-        Parameters
-        ----------
-        tile : :class:`str`
-            Tile number.
-        night : :class:`str`
-            Night on which `tile` was observed.
-        redrock : :class:`astropy.table.Table`
-            Redrock redshift table (row-aligned to `fibermap`).
-        fibermap : :class:`astropy.table.Table`
-            Fiber map (row-aligned to `redrock`).
-        FFit : :class:`fastspecfit.continuum.ContinuumFit`
-            Continuum-fitting class.
+    Parameters
+    ----------
+    tile : :class:`str`
+        Tile number.
+    night : :class:`str`
+        Night on which `tile` was observed.
+    redrock : :class:`astropy.table.Table`
+        Redrock redshift table (row-aligned to `fibermap`).
+    fibermap : :class:`astropy.table.Table`
+        Fiber map (row-aligned to `redrock`).
 
-        Returns
-        -------
+    Returns
+    -------
 
 
-        Notes
-        -----
+    Notes
+    -----
 
-        """
-        import astropy.units as u
-        from astropy.table import hstack, Column
+    """
+    import astropy.units as u
+    from astropy.table import hstack, Column
+    from fastspecfit.emlines import read_emlines        
+    from fastspecfit.continuum import Filters
 
-        nobj = len(self.meta)
+    if log is None:
+        from desiutil.log import get_logger
+        log = get_logger()
 
-        # The information stored in the metadata table depends on which spectra
-        # were fitted (exposures, nightly coadds, deep coadds).
-        fluxcols = ['PHOTSYS', 'LS_ID',
-                    #'RELEASE',
-                    'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
-                    'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-                    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
-                    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-                    'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4',
-                    'EBV',
-                    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
-                    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4']
-            
-        colunit = {'RA': u.deg, 'DEC': u.deg, 'EBV': u.mag,
-                   'FIBERFLUX_G': 'nanomaggies', 'FIBERFLUX_R': 'nanomaggies', 'FIBERFLUX_Z': 'nanomaggies',
-                   'FIBERTOTFLUX_G': 'nanomaggies', 'FIBERTOTFLUX_R': 'nanomaggies', 'FIBERTOTFLUX_Z': 'nanomaggies',
-                   'FLUX_G': 'nanomaggies', 'FLUX_R': 'nanomaggies', 'FLUX_Z': 'nanomaggies',
-                   'FLUX_W1': 'nanomaggies', 'FLUX_W2': 'nanomaggies', 'FLUX_W3': 'nanomaggies', 'FLUX_W4': 'nanomaggies', 
-                   'FLUX_IVAR_G': 'nanomaggies-2', 'FLUX_IVAR_R': 'nanomaggies-2',
-                   'FLUX_IVAR_Z': 'nanomaggies-2', 'FLUX_IVAR_W1': 'nanomaggies-2',
-                   'FLUX_IVAR_W2': 'nanomaggies-2', 'FLUX_IVAR_W3': 'nanomaggies-2',
-                   'FLUX_IVAR_W4': 'nanomaggies-2',
-                   }
+    linetable = read_emlines()
+    Filt = Filters(load_filters=False)
 
-        skipcols = ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE'] + fluxcols
-        redrockcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR', 'TSNR2_BGS',
-                       'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA']
+    nobj = len(input_meta)
+
+    # get the number of templates
+    if not os.path.isfile(templates):
+        errmsg = 'Templates file not found {}'.format(templates)
+        log.critical(errmsg)
+        raise IOError(errmsg)
+    
+    templatehdr = fitsio.read_header(templates, ext='METADATA')
+    ncoeff = templatehdr['NAXIS2']
+
+    # The information stored in the metadata table depends on which spectra
+    # were fitted (exposures, nightly coadds, deep coadds).
+    fluxcols = ['PHOTSYS', 'LS_ID',
+                #'RELEASE',
+                'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
+                'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+                'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
+                'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+                'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4',
+                'EBV',
+                'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
+                'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4']
         
-        meta = Table()
-        metacols = self.meta.colnames
+    colunit = {'RA': u.deg, 'DEC': u.deg, 'EBV': u.mag,
+               'FIBERFLUX_G': 'nanomaggies', 'FIBERFLUX_R': 'nanomaggies', 'FIBERFLUX_Z': 'nanomaggies',
+               'FIBERTOTFLUX_G': 'nanomaggies', 'FIBERTOTFLUX_R': 'nanomaggies', 'FIBERTOTFLUX_Z': 'nanomaggies',
+               'FLUX_G': 'nanomaggies', 'FLUX_R': 'nanomaggies', 'FLUX_Z': 'nanomaggies',
+               'FLUX_W1': 'nanomaggies', 'FLUX_W2': 'nanomaggies', 'FLUX_W3': 'nanomaggies', 'FLUX_W4': 'nanomaggies', 
+               'FLUX_IVAR_G': 'nanomaggies-2', 'FLUX_IVAR_R': 'nanomaggies-2',
+               'FLUX_IVAR_Z': 'nanomaggies-2', 'FLUX_IVAR_W1': 'nanomaggies-2',
+               'FLUX_IVAR_W2': 'nanomaggies-2', 'FLUX_IVAR_W3': 'nanomaggies-2',
+               'FLUX_IVAR_W4': 'nanomaggies-2',
+               }
 
-        # All of this business is so we can get the columns in the order we want
-        # (i.e., the order that matches the data model).
-        for metacol in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
-                        'EXPID', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS']:
-            if metacol in metacols:
-                meta[metacol] = self.meta[metacol]
-                if metacol in colunit.keys():
-                    meta[metacol].unit = colunit[metacol]
+    skipcols = ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE'] + fluxcols
+    redrockcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR', 'TSNR2_BGS',
+                   'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA']
+    
+    meta = Table()
+    metacols = input_meta.colnames
 
-        if self.specprod == 'fuji': # EDR
-            TARGETINGCOLS = TARGETINGBITS[self.specprod]
+    # All of this business is so we can get the columns in the order we want
+    # (i.e., the order that matches the data model).
+    for metacol in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
+                    'EXPID', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS']:
+        if metacol in metacols:
+            meta[metacol] = input_meta[metacol]
+            if metacol in colunit.keys():
+                meta[metacol].unit = colunit[metacol]
+
+    if specprod == 'fuji': # EDR
+        TARGETINGCOLS = TARGETINGBITS[specprod]
+    else:
+        TARGETINGCOLS = TARGETINGBITS['default']
+
+    for metacol in metacols:
+        if metacol in skipcols or metacol in TARGETINGCOLS or metacol in meta.colnames or metacol in redrockcols:
+            continue
         else:
-            TARGETINGCOLS = TARGETINGBITS['default']
+            meta[metacol] = input_meta[metacol]
+            if metacol in colunit.keys():
+                meta[metacol].unit = colunit[metacol]
 
-        for metacol in metacols:
-            if metacol in skipcols or metacol in TARGETINGCOLS or metacol in meta.colnames or metacol in redrockcols:
-                continue
-            else:
-                meta[metacol] = self.meta[metacol]
-                if metacol in colunit.keys():
-                    meta[metacol].unit = colunit[metacol]
+    for bitcol in TARGETINGCOLS:
+        if bitcol in metacols:
+            meta[bitcol] = input_meta[bitcol]
+        else:
+            meta[bitcol] = np.zeros(shape=(1,), dtype=np.int64)
 
-        for bitcol in TARGETINGCOLS:
-            if bitcol in metacols:
-                meta[bitcol] = self.meta[bitcol]
-            else:
-                meta[bitcol] = np.zeros(shape=(1,), dtype=np.int64)
+    for redrockcol in redrockcols:
+        if redrockcol in metacols: # the Z_RR from quasarnet may not be present
+            meta[redrockcol] = input_meta[redrockcol]
+        if redrockcol in colunit.keys():
+            meta[redrockcol].unit = colunit[redrockcol]
 
-        for redrockcol in redrockcols:
-            if redrockcol in metacols: # the Z_RR from quasarnet may not be present
-                meta[redrockcol] = self.meta[redrockcol]
-            if redrockcol in colunit.keys():
-                meta[redrockcol].unit = colunit[redrockcol]
+    for fluxcol in fluxcols:
+        meta[fluxcol] = input_meta[fluxcol]
+        if fluxcol in colunit.keys():
+            meta[fluxcol].unit = colunit[fluxcol]
 
-        for fluxcol in fluxcols:
-            meta[fluxcol] = self.meta[fluxcol]
-            if fluxcol in colunit.keys():
-                meta[fluxcol].unit = colunit[fluxcol]
+    # fastspec table
+    out = Table()
+    for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID']:
+        if col in metacols:
+            out[col] = input_meta[col]
 
-        out = Table()
-        for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID']:
-            if col in metacols:
-                out[col] = self.meta[col]
-        out = hstack((out, FFit.init_output(nobj, fastphot=fastphot)))
+    out = Table()
+    out.add_column(Column(name='Z', length=nobj, dtype='f8')) # redshift
+    out.add_column(Column(name='COEFF', length=nobj, shape=(ncoeff,), dtype='f4'))
 
-        # Optionally copy over some quantities of interest from the data
-        # dictionary. (This step is not needed when assigning units to the
-        # output tables.)
-        if data is not None:
-            for iobj, _data in enumerate(data):
-                out['Z'][iobj] = _data['zredrock']
-                if not fastphot:
-                    for icam, cam in enumerate(_data['cameras']):
-                        out['SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
-                for iband, band in enumerate(FFit.fiber_bands):
-                    meta['FIBERTOTFLUX_{}'.format(band.upper())][iobj] = _data['fiberphot']['nanomaggies'][iband]
-                    #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
-                for iband, band in enumerate(FFit.bands):
-                    meta['FLUX_{}'.format(band.upper())][iobj] = _data['phot']['nanomaggies'][iband]
-                    meta['FLUX_IVAR_{}'.format(band.upper())][iobj] = _data['phot']['nanomaggies_ivar'][iband]
+    out.add_column(Column(name='RCHI2', length=nobj, dtype='f4'))      # full-spectrum reduced chi2
+    out.add_column(Column(name='RCHI2_CONT', length=nobj, dtype='f4')) # rchi2 fitting just to the continuum (spec+phot)
+    out.add_column(Column(name='RCHI2_PHOT', length=nobj, dtype='f4')) # rchi2 fitting just to the photometry (=RCHI2_CONT if fastphot=True)
 
-        return out, meta
+    if not fastphot:
+        for cam in ['B', 'R', 'Z']:
+            out.add_column(Column(name='SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
+        for cam in ['B', 'R', 'Z']:
+            out.add_column(Column(name='SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
+
+    out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
+    out.add_column(Column(name='VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
+    out.add_column(Column(name='AV', length=nobj, dtype='f4', unit=u.mag))
+    out.add_column(Column(name='AGE', length=nobj, dtype='f4', unit=u.Gyr))
+    out.add_column(Column(name='ZZSUN', length=nobj, dtype='f4'))
+    out.add_column(Column(name='LOGMSTAR', length=nobj, dtype='f4', unit=u.solMass))
+    out.add_column(Column(name='SFR', length=nobj, dtype='f4', unit=u.solMass/u.year))
+    #out.add_column(Column(name='FAGN', length=nobj, dtype='f4'))
+    
+    if not fastphot:
+        out.add_column(Column(name='DN4000', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000_OBS', length=nobj, dtype='f4'))
+        out.add_column(Column(name='DN4000_IVAR', length=nobj, dtype='f4'))
+    out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
+
+    # observed-frame photometry synthesized from the spectra
+    for band in Filt.synth_bands:
+        out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies')) 
+        #out.add_column(Column(name='FLUX_SYNTH_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies-2'))
+    # observed-frame photometry synthesized the best-fitting spectroscopic model
+    for band in Filt.synth_bands:
+        out.add_column(Column(name='FLUX_SYNTH_SPECMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
+    # observed-frame photometry synthesized the best-fitting continuum model
+    for band in Filt.bands:
+        out.add_column(Column(name='FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
+
+    for band in Filt.absmag_bands:
+        out.add_column(Column(name='KCORR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag))
+        out.add_column(Column(name='ABSMAG_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag)) # absolute magnitudes
+        out.add_column(Column(name='ABSMAG_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.mag**2))
+
+    for cflux in ['LOGLNU_1500', 'LOGLNU_2800']:
+        out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz))
+    out.add_column(Column(name='LOGL_5100', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
+
+    for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
+        out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+
+    if not fastphot:
+        # Add chi2 metrics
+        #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
+        out.add_column(Column(name='RCHI2_LINE', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
+        #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
+        out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
+
+        # aperture corrections
+        out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # median aperture correction
+        out.add_column(Column(name='APERCORR_G', length=nobj, dtype='f4'))
+        out.add_column(Column(name='APERCORR_R', length=nobj, dtype='f4'))
+        out.add_column(Column(name='APERCORR_Z', length=nobj, dtype='f4'))
+
+        out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
+        out.add_column(Column(name='NARROW_ZRMS', length=nobj, dtype='f8'))
+        out.add_column(Column(name='BROAD_Z', length=nobj, dtype='f8'))
+        out.add_column(Column(name='BROAD_ZRMS', length=nobj, dtype='f8'))
+        out.add_column(Column(name='UV_Z', length=nobj, dtype='f8'))
+        out.add_column(Column(name='UV_ZRMS', length=nobj, dtype='f8'))
+
+        out.add_column(Column(name='NARROW_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='NARROW_SIGMARMS', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='BROAD_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='BROAD_SIGMARMS', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='UV_SIGMA', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+        out.add_column(Column(name='UV_SIGMARMS', length=nobj, dtype='f4', unit=u.kilometer / u.second))
+
+        # special columns for the fitted doublets
+        out.add_column(Column(name='MGII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+        out.add_column(Column(name='OII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+        out.add_column(Column(name='SII_DOUBLET_RATIO', length=nobj, dtype='f4'))
+
+        for line in linetable['name']:
+            line = line.upper()
+            out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+            out.add_column(Column(name='{}_AMP_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
+            out.add_column(Column(name='{}_FLUX'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2)))
+            out.add_column(Column(name='{}_FLUX_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4/u.erg**2))
+            out.add_column(Column(name='{}_BOXFLUX'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2)))
+            out.add_column(Column(name='{}_BOXFLUX_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4/u.erg**2))
+            
+            out.add_column(Column(name='{}_VSHIFT'.format(line), length=nobj, dtype='f4',
+                                  unit=u.kilometer/u.second))
+            out.add_column(Column(name='{}_SIGMA'.format(line), length=nobj, dtype='f4',
+                                  unit=u.kilometer / u.second))
+            
+            out.add_column(Column(name='{}_CONT'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
+            out.add_column(Column(name='{}_CONT_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2))
+            out.add_column(Column(name='{}_EW'.format(line), length=nobj, dtype='f4',
+                                  unit=u.Angstrom))
+            out.add_column(Column(name='{}_EW_IVAR'.format(line), length=nobj, dtype='f4',
+                                  unit=1/u.Angstrom**2))
+            out.add_column(Column(name='{}_FLUX_LIMIT'.format(line), length=nobj, dtype='f4',
+                                  unit=u.erg/(u.second*u.cm**2)))
+            out.add_column(Column(name='{}_EW_LIMIT'.format(line), length=nobj, dtype='f4',
+                                  unit=u.Angstrom))
+            out.add_column(Column(name='{}_CHI2'.format(line), length=nobj, dtype='f4'))
+            out.add_column(Column(name='{}_NPIX'.format(line), length=nobj, dtype=np.int32))
+
+    # Optionally copy over some quantities of interest from the data
+    # dictionary. (This step is not needed when assigning units to the
+    # output tables.)
+    if data is not None:
+        for iobj, _data in enumerate(data):
+            out['Z'][iobj] = _data['zredrock']
+            if not fastphot:
+                for icam, cam in enumerate(_data['cameras']):
+                    out['SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
+            for iband, band in enumerate(Filt.fiber_bands):
+                meta['FIBERTOTFLUX_{}'.format(band.upper())][iobj] = _data['fiberphot']['nanomaggies'][iband]
+                #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+            for iband, band in enumerate(Filt.bands):
+                meta['FLUX_{}'.format(band.upper())][iobj] = _data['phot']['nanomaggies'][iband]
+                meta['FLUX_IVAR_{}'.format(band.upper())][iobj] = _data['phot']['nanomaggies_ivar'][iband]
+
+    return out, meta
 
 def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
     """Read the fitting results.
@@ -1247,27 +1368,29 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
     else:
         return fastfit[keep], metadata[keep]
 
+def get_templates_filename(templateversion='1.0.0', imf='chabrier'):
+    """Get the templates filename. """
+    from fastspecfit.io import FTEMPLATES_DIR_NERSC
+    templates_dir = os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC)
+    templates = os.path.join(templates_dir, templateversion, 'ftemplates-{}-{}.fits'.format(
+        imf, templateversion))
+    return templates
+
 def cache_templates(templates=None, templateversion='1.0.0', imf='chabrier',
                     mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.0,
-                    fastphot=False, log=None, verbose=False):
+                    fastphot=False, log=None):
     """"Read the templates into a dictionary.
 
     """
     import fitsio
-    from fastspecfit.io import FTEMPLATES_DIR_NERSC
     from fastspecfit.continuum import _convolve_vdisp
     
     if log is None:
-        from desiutil.log import get_logger, DEBUG
-        if verbose:
-            log = get_logger(DEBUG)
-        else:
-            log = get_logger()
-    
+        from desiutil.log import get_logger
+        log = get_logger()
+
     if templates is None:
-        templates_dir = os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC)
-        templates = os.path.join(templates_dir, templateversion, 'ftemplates-{}-{}.fits'.format(
-            imf, templateversion))
+        templates = get_templates_filename(templateversion='1.0.0', imf='chabrier')
         
     if not os.path.isfile(templates):
         errmsg = 'Templates file not found {}'.format(templates)
