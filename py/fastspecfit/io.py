@@ -43,6 +43,7 @@ FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE',
           #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2'
           ]
 #FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE']
+
 EXPFMCOLS = {
     'perexp': ['TARGETID', 'TILEID', 'FIBER', 'EXPID'],
     'pernight': ['TARGETID', 'TILEID', 'FIBER'],
@@ -447,7 +448,7 @@ class DESISpectra(TabulatedDESI):
         ----------
         coadd_type : str
             Type of coadded spectra (healpix, cumulative, pernight, or perexp).
-        meta : list of :class:`astropy.table.Table`s
+        meta : list of :class:`astropy.table.Table`
             Array of tables (one per input `redrockfile`) with the metadata
             needed to fit the data and to write to the output file(s).
         redrockfiles : str array
