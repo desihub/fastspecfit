@@ -879,6 +879,7 @@ class DESISpectra(TabulatedDESI):
                 z-band filter curves, respectively.
 
         """
+        from astropy.table import vstack
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
         from desiutil.dust import SFDMap

@@ -172,6 +172,8 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
     if args.templates is None:
         from fastspecfit.io import get_templates_filename
         templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
+    else:
+        templates = args.templates
     out, meta = init_fastspec_output(Spec.meta, Spec.specprod, templates=templates, data=data,
                                      log=log, fastphot=fastphot)
     log.info('Initializing the output tables took {:.2f} seconds.'.format(time.time()-t0))

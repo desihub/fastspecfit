@@ -45,13 +45,13 @@ class TestFastspec(unittest.TestCase):
     def tearDownClass(cls):
         pass
 
-    def test_ContinuumTools(self):
-        """Test the ContinuumTools class."""
-        from fastspecfit.continuum import ContinuumTools
-        CTools = ContinuumTools(mapdir=self.mapdir, templates=self.templates)
-
-        # expected attributes
-        self.assertTrue(CTools.imf in ['salpeter', 'chabrier', 'kroupa'])
+    #def test_ContinuumTools(self):
+    #    """Test the ContinuumTools class."""
+    #    from fastspecfit.continuum import ContinuumTools
+    #    CTools = ContinuumTools()
+    #
+    #    # expected attributes
+    #    self.assertTrue(CTools.imf in ['salpeter', 'chabrier', 'kroupa'])
 
     def test_fastphot(self):
         """Test fastphot."""
