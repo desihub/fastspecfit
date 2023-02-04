@@ -1582,9 +1582,8 @@ class ContinuumTools(Filters):
 
         return kcorr, absmag, ivarabsmag, bestmaggies, lums, cfluxes
 
-def continuum_specfit(data, result, templatecache, nophoto=False,
-                      constrain_age=True, fastphot=False, log=None,
-                      verbose=False):
+def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=True,
+                      fastphot=False, log=None, verbose=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -1602,8 +1601,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False,
     Notes
     -----
       - Consider using cross-correlation to update the redrock redshift.
-      - We solve for velocity dispersion if solve_vdisp=True or ((SNR_B>3 or
-        SNR_R>3) and REDSHIFT<1).
+      - We solve for velocity dispersion if ...
 
     """
     if log is None:
@@ -1663,13 +1661,15 @@ def continuum_specfit(data, result, templatecache, nophoto=False,
             log.info('All photometry is masked.')
             coeff = np.zeros(nsed, 'f4')
             rchi2_cont, rchi2_phot = 0.0, 0.0
-            sedmodel = np.zeros(len(self.templatewave))
+            sedmodel = np.zeros(len(templatecache['templatewave']))
         else:
            # Get the coefficients and chi2 at the nominal velocity dispersion. 
            t0 = time.time()
-           sedtemplates, sedphot = self.templates2data(
-               self.templateflux_nomvdisp[:, agekeep], self.templatewave, 
-               redshift=redshift, vdisp=None, synthphot=True, 
+           sedtemplates, sedphot = CTools.templates2data(
+               templatecache['templateflux_nomvdisp[:, agekeep]'],
+               templatecache['templatewave'],
+               redshift=redshift, dluminosity=data['dluminosity'],
+               vdisp=None, synthphot=True, 
                south=data['photsys'] == 'S')
            sedflam = sedphot['flam'].data * CTools.massnorm * FLUXNORM
 
@@ -1681,18 +1681,21 @@ def continuum_specfit(data, result, templatecache, nophoto=False,
 
            if np.all(coeff == 0):
                log.warning('Continuum coefficients are all zero.')
-               sedmodel = np.zeros(len(self.templatewave))
+               sedmodel = np.zeros(len(templatecache['templatewave']))
                dn4000_model = 0.0
            else:
                sedmodel = sedtemplates.dot(coeff)
 
                # Measure Dn(4000) from the line-free model.
-               sedtemplates_nolines, _ = self.templates2data(
-                   self.templateflux_nolines_nomvdisp[:, agekeep], self.templatewave, 
-                   redshift=redshift, vdisp=None, synthphot=False)
+               sedtemplates_nolines, _ = CTools.templates2data(
+                   templatecache['templateflux_nolines_nomvdisp[:, agekeep]'],
+                   templatecache['templatewave'],
+                   redshift=redshift, dluminosity=data['dluminosity'],
+                   vdisp=None, synthphot=False)
                sedmodel_nolines = sedtemplates_nolines.dot(coeff)
 
-               dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel_nolines, rest=True, log=log)
+               dn4000_model, _ = CTools.get_dn4000(templatecache['templatewave'],
+                                                   sedmodel_nolines, rest=True, log=log)
                log.info('Model Dn(4000)={:.3f}.'.format(dn4000_model))
     else:
         # Combine all three cameras; we will unpack them to build the
@@ -1760,10 +1763,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False,
                 log.info('Finding vdisp failed; adopting vdisp={:.0f} km/s.'.format(vdisp_nominal))
         else:
             vdispbest, vdispivar = vdisp_nominal, 0.0
-            if compute_vdisp:
-                log.info('Sufficient wavelength covereage to compute vdisp but solve_vdisp=False; adopting nominal vdisp={:.0f} km/s.'.format(vdispbest))
-            else:
-                log.info('Insufficient wavelength covereage to compute vdisp; adopting nominal vdisp={:.2f} km/s'.format(vdispbest))
+            log.info('Insufficient wavelength covereage to compute vdisp; adopting nominal vdisp={:.2f} km/s'.format(vdispbest))
 
         # Derive the aperture correction. 
         t0 = time.time()
@@ -1782,8 +1782,8 @@ def continuum_specfit(data, result, templatecache, nophoto=False,
             input_templateflux_nolines = templatecache['templateflux_nolines'][:, agekeep]
 
         desitemplates, desitemplatephot = CTools.templates2data(
-            input_templateflux, templatecache['templatewave'], redshift=redshift,
-            dluminosity=data['dluminosity'],
+            input_templateflux, templatecache['templatewave'],
+            redshift=redshift, dluminosity=data['dluminosity'],
             specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
             vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
             synthphot=True, south=data['photsys'] == 'S')

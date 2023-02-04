@@ -2243,11 +2243,9 @@ class EMFitTools(Filters):
         fig.savefig(pngfile)#, dpi=150)
         plt.close()
 
-
 def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum,
                    minspecwave=3500.0, maxspecwave=9900.0, synthphot=True,
-                   broadlinefit=True, percamera_models=False, log=None,
-                   verbose=False):
+                   broadlinefit=True, percamera_models=False, log=None, verbose=False):
     """Perform the fit minimization / chi2 minimization.
 
     Parameters

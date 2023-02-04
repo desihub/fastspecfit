@@ -957,8 +957,8 @@ class DESISpectra(TabulatedDESI):
 
         return alldata
 
-def init_fastspec_output(input_meta, specprod, templates, data=None,
-                         log=None, fastphot=False):
+def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
+                         data=None, log=None, fastphot=False):
     """Initialize the fastspecfit output data and metadata table.
 
     Parameters
@@ -979,6 +979,8 @@ def init_fastspec_output(input_meta, specprod, templates, data=None,
     Notes
     -----
 
+    Must provide templates or ncoeff.
+
     """
     import astropy.units as u
     from astropy.table import hstack, Column
@@ -995,13 +997,14 @@ def init_fastspec_output(input_meta, specprod, templates, data=None,
     nobj = len(input_meta)
 
     # get the number of templates
-    if not os.path.isfile(templates):
-        errmsg = 'Templates file not found {}'.format(templates)
-        log.critical(errmsg)
-        raise IOError(errmsg)
-    
-    templatehdr = fitsio.read_header(templates, ext='METADATA')
-    ncoeff = templatehdr['NAXIS2']
+    if ncoeff is None:
+        if not os.path.isfile(templates):
+            errmsg = 'Templates file not found {}'.format(templates)
+            log.critical(errmsg)
+            raise IOError(errmsg)
+        
+        templatehdr = fitsio.read_header(templates, ext='METADATA')
+        ncoeff = templatehdr['NAXIS2']
 
     # The information stored in the metadata table depends on which spectra
     # were fitted (exposures, nightly coadds, deep coadds).
@@ -1079,7 +1082,6 @@ def init_fastspec_output(input_meta, specprod, templates, data=None,
         if col in metacols:
             out[col] = input_meta[col]
 
-    out = Table()
     out.add_column(Column(name='Z', length=nobj, dtype='f8')) # redshift
     out.add_column(Column(name='COEFF', length=nobj, shape=(ncoeff,), dtype='f4'))
 
