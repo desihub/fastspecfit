@@ -140,7 +140,7 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
     """
     from astropy.table import Table, vstack
     from desiutil.log import get_logger, DEBUG
-    from fastspecfit.io import DESISpectra, get_templates_filename, init_fastspec_output, write_fastspecfit
+    from fastspecfit.io import DESISpectra, init_fastspec_output, write_fastspecfit
 
     if verbose:
         log = get_logger(DEBUG)
@@ -169,7 +169,9 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
 
-    templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
+    if args.templates is None:
+        from fastspecfit.io import get_templates_filename
+        templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
     out, meta = init_fastspec_output(Spec.meta, Spec.specprod, templates=templates, data=data,
                                      log=log, fastphot=fastphot)
     log.info('Initializing the output tables took {:.2f} seconds.'.format(time.time()-t0))

@@ -9,11 +9,10 @@ import pdb # for debugging
 
 import os, time
 import numpy as np
-import numba
+from astropy.table import Table
 
 from fastspecfit.io import FLUXNORM
 from fastspecfit.continuum import Filters
-from astropy.table import Table, Column
 from fastspecfit.util import C_LIGHT
 
 def read_emlines():
@@ -27,6 +26,7 @@ def read_emlines():
     
     return linetable    
 
+#import numba
 #@numba.jit(nopython=True)
 def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas, 
                        linewaves, emlinewave, resolution_matrix, camerapix=None):
@@ -35,7 +35,7 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
     ToDo: can this be optimized using numba?
 
     """
-    from fastspecfit.util import trapz_rebin, C_LIGHT
+    from fastspecfit.util import trapz_rebin
 
     log10model = np.zeros_like(log10wave) # [erg/s/cm2/A, observed frame]
 
@@ -2263,6 +2263,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     modelflux
  
     """
+    from astropy.table import Column
     from fastspecfit.util import ivar2var
 
     tall = time.time()

@@ -11,7 +11,7 @@ import pdb # for debugging
 import os, time
 import numpy as np
 import fitsio
-from astropy.table import Table, vstack, hstack
+from astropy.table import Table
 
 from fastspecfit.util import TabulatedDESI
 
@@ -464,6 +464,7 @@ class DESISpectra(TabulatedDESI):
         the header of the first file.
 
         """
+        from astropy.table import vstack, hstack
         from desiutil.depend import getdep
         from desitarget.io import releasedict        
         from desitarget.targets import main_cmx_or_sv

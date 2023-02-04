@@ -9,9 +9,7 @@ import pdb # for debugging
 
 import os, time
 import numpy as np
-
-import astropy.units as u
-from astropy.table import Table, Column
+from astropy.table import Table
 
 from fastspecfit.io import FLUXNORM
 from fastspecfit.util import C_LIGHT
@@ -598,6 +596,8 @@ class Filters(object):
         -----
 
         """
+        from astropy.table import Column
+
         if log is None:
             from desiutil.log import get_logger, DEBUG
             if verbose:
