@@ -139,7 +139,7 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot)
     specdata['phot'] = Filters.parse_photometry(
         Filters.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
         lambda_eff=allfilters.effective_wavelengths.value,
-        min_uncertainty=Filters.min_uncertainty)
+        min_uncertainty=Filters.min_uncertainty, log=log)
     
     # fiber fluxes
     if specdata['photsys'] != '':                
@@ -158,10 +158,10 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot)
     
     specdata['fiberphot'] = Filters.parse_photometry(Filters.fiber_bands,
         maggies=fibermaggies, nanomaggies=True,
-        lambda_eff=filters.effective_wavelengths.value)
+        lambda_eff=filters.effective_wavelengths.value, log=log)
     specdata['fibertotphot'] = Filters.parse_photometry(Filters.fiber_bands,
         maggies=fibertotmaggies, nanomaggies=True,
-        lambda_eff=filters.effective_wavelengths.value)
+        lambda_eff=filters.effective_wavelengths.value, log=log)
 
     if not fastphot:
         specdata.update({'linemask': [], 'linemask_all': [], 'linename': [],
@@ -267,11 +267,11 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot)
     
             #specdata['synthphot'] = Filters.parse_photometry(Filters.bands,
             #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
-            #    ivarmaggies=synthivarmaggies, nanomaggies=False)
+            #    ivarmaggies=synthivarmaggies, nanomaggies=False, log=log)
     
             specdata['synthphot'] = Filters.parse_photometry(Filters.synth_bands,
                 maggies=synthmaggies, nanomaggies=False,
-                lambda_eff=filters.effective_wavelengths.value)
+                lambda_eff=filters.effective_wavelengths.value, log=log)
 
     return specdata, meta
 

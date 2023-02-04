@@ -706,6 +706,109 @@ class Filters(object):
 
         return phot
     
+    @staticmethod
+    def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True, log=None):
+        """Compute DN(4000) and, optionally, the inverse variance.
+
+        Parameters
+        ----------
+        wave
+        flam
+        flam_ivar
+        redshift
+        rest
+
+        Returns
+        -------
+
+        Notes
+        -----
+        If `rest`=``False`` then `redshift` input is required.
+
+        Require full wavelength coverage over the definition of the index.
+
+        See eq. 11 in Bruzual 1983
+        (https://articles.adsabs.harvard.edu/pdf/1983ApJ...273..105B) but with
+        the "narrow" definition of Balogh et al. 1999.
+
+        """
+        from fastspecfit.util import ivar2var
+
+        if log is None:
+            from desiutil.log import get_logger
+            log = get_logger()
+    
+        dn4000, dn4000_ivar = 0.0, 0.0
+
+        if rest:
+            restwave = wave
+            flam2fnu =  restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+        else:
+            restwave = wave / (1 + redshift) # [Angstrom]
+            flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+
+        # Require a 2-Angstrom pad around the break definition.
+        wpad = 2.0
+        if np.min(restwave) > (3850-wpad) or np.max(restwave) < (4100+wpad):
+            log.warning('Too little wavelength coverage to compute Dn(4000)')
+            return dn4000, dn4000_ivar
+
+        fnu = flam * flam2fnu # [erg/s/cm2/Hz]
+
+        if flam_ivar is not None:
+            fnu_ivar = flam_ivar / flam2fnu**2
+        else:
+            fnu_ivar = np.ones_like(flam) # uniform weights
+
+        def _integrate(wave, flux, ivar, w1, w2):
+            from scipy import integrate, interpolate
+            # trim for speed
+            I = (wave > (w1-wpad)) * (wave < (w2+wpad))
+            J = np.logical_and(I, ivar > 0)
+            # Require no more than 20% of pixels are masked.
+            if np.sum(J) / np.sum(I) < 0.8:
+                log.warning('More than 20% of pixels in Dn(4000) definition are masked.')
+                return 0.0
+            wave = wave[J]
+            flux = flux[J]
+            ivar = ivar[J]
+            # should never have to extrapolate
+            f = interpolate.interp1d(wave, flux, assume_sorted=False, bounds_error=True)
+            f1 = f(w1)
+            f2 = f(w2)
+            i = interpolate.interp1d(wave, ivar, assume_sorted=False, bounds_error=True)
+            i1 = i(w1)
+            i2 = i(w2)
+            # insert the boundary wavelengths then integrate
+            I = np.where((wave > w1) * (wave < w2))[0]
+            wave = np.insert(wave[I], [0, len(I)], [w1, w2])
+            flux = np.insert(flux[I], [0, len(I)], [f1, f2])
+            ivar = np.insert(ivar[I], [0, len(I)], [i1, i2])
+            weight = integrate.simps(x=wave, y=ivar)
+            index = integrate.simps(x=wave, y=flux*ivar) / weight
+            index_var = 1 / weight
+            return index, index_var
+
+        blufactor = 3950.0 - 3850.0
+        redfactor = 4100.0 - 4000.0
+        try:
+            # yes, blue wavelength go with red integral bounds
+            numer, numer_var = _integrate(restwave, fnu, fnu_ivar, 4000, 4100)
+            denom, denom_var = _integrate(restwave, fnu, fnu_ivar, 3850, 3950)
+        except:
+            log.warning('Integration failed when computing DN(4000).')
+            return dn4000, dn4000_ivar
+
+        if denom == 0.0 or numer == 0.0:
+            log.warning('DN(4000) is ill-defined or could not be computed.')
+            return dn4000, dn4000_ivar
+        
+        dn4000 =  (blufactor / redfactor) * numer / denom
+        if flam_ivar is not None:
+            dn4000_ivar = (1.0 / (dn4000**2)) / (denom_var / (denom**2) + numer_var / (numer**2))
+    
+        return dn4000, dn4000_ivar
+
 class ContinuumTools(Filters):
     """Tools for dealing with stellar continua.
 
@@ -1134,7 +1237,7 @@ class ContinuumTools(Filters):
                 maggies = filters.get_ab_maggies(ztemplateflux, ztemplatewave, axis=0) # speclite.filters wants an [nmodel,npix] array
                 maggies = np.vstack(maggies.as_array().tolist()).T
                 maggies /= FLUXNORM * self.massnorm
-                templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, verbose=debug)
+                templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, verbose=debug, log=log)
 
         # Are we returning per-camera spectra or a single model? Handle that here.
         if specwave is None and specres is None:
@@ -1150,7 +1253,7 @@ class ContinuumTools(Filters):
                     maggies = filters.get_ab_maggies(datatemplateflux, ztemplatewave, axis=0)
                     maggies = np.array(maggies.as_array().tolist()[0])
                     maggies /= FLUXNORM * self.massnorm
-                    templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False)
+                    templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, log=log)
         else:
             # loop over cameras
             datatemplateflux = []
@@ -1286,109 +1389,6 @@ class ContinuumTools(Filters):
             fig.savefig('desi-users/ioannis/tmp/qa-chi2min.png')
     
         return chi2min, xbest, xivar, bestcoeff
-
-    @staticmethod
-    def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True, log=None):
-        """Compute DN(4000) and, optionally, the inverse variance.
-
-        Parameters
-        ----------
-        wave
-        flam
-        flam_ivar
-        redshift
-        rest
-
-        Returns
-        -------
-
-        Notes
-        -----
-        If `rest`=``False`` then `redshift` input is required.
-
-        Require full wavelength coverage over the definition of the index.
-
-        See eq. 11 in Bruzual 1983
-        (https://articles.adsabs.harvard.edu/pdf/1983ApJ...273..105B) but with
-        the "narrow" definition of Balogh et al. 1999.
-
-        """
-        from fastspecfit.util import ivar2var
-
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-    
-        dn4000, dn4000_ivar = 0.0, 0.0
-
-        if rest:
-            restwave = wave
-            flam2fnu =  restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
-        else:
-            restwave = wave / (1 + redshift) # [Angstrom]
-            flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
-
-        # Require a 2-Angstrom pad around the break definition.
-        wpad = 2.0
-        if np.min(restwave) > (3850-wpad) or np.max(restwave) < (4100+wpad):
-            log.warning('Too little wavelength coverage to compute Dn(4000)')
-            return dn4000, dn4000_ivar
-
-        fnu = flam * flam2fnu # [erg/s/cm2/Hz]
-
-        if flam_ivar is not None:
-            fnu_ivar = flam_ivar / flam2fnu**2
-        else:
-            fnu_ivar = np.ones_like(flam) # uniform weights
-
-        def _integrate(wave, flux, ivar, w1, w2):
-            from scipy import integrate, interpolate
-            # trim for speed
-            I = (wave > (w1-wpad)) * (wave < (w2+wpad))
-            J = np.logical_and(I, ivar > 0)
-            # Require no more than 20% of pixels are masked.
-            if np.sum(J) / np.sum(I) < 0.8:
-                log.warning('More than 20% of pixels in Dn(4000) definition are masked.')
-                return 0.0
-            wave = wave[J]
-            flux = flux[J]
-            ivar = ivar[J]
-            # should never have to extrapolate
-            f = interpolate.interp1d(wave, flux, assume_sorted=False, bounds_error=True)
-            f1 = f(w1)
-            f2 = f(w2)
-            i = interpolate.interp1d(wave, ivar, assume_sorted=False, bounds_error=True)
-            i1 = i(w1)
-            i2 = i(w2)
-            # insert the boundary wavelengths then integrate
-            I = np.where((wave > w1) * (wave < w2))[0]
-            wave = np.insert(wave[I], [0, len(I)], [w1, w2])
-            flux = np.insert(flux[I], [0, len(I)], [f1, f2])
-            ivar = np.insert(ivar[I], [0, len(I)], [i1, i2])
-            weight = integrate.simps(x=wave, y=ivar)
-            index = integrate.simps(x=wave, y=flux*ivar) / weight
-            index_var = 1 / weight
-            return index, index_var
-
-        blufactor = 3950.0 - 3850.0
-        redfactor = 4100.0 - 4000.0
-        try:
-            # yes, blue wavelength go with red integral bounds
-            numer, numer_var = _integrate(restwave, fnu, fnu_ivar, 4000, 4100)
-            denom, denom_var = _integrate(restwave, fnu, fnu_ivar, 3850, 3950)
-        except:
-            log.warning('Integration failed when computing DN(4000).')
-            return dn4000, dn4000_ivar
-
-        if denom == 0.0 or numer == 0.0:
-            log.warning('DN(4000) is ill-defined or could not be computed.')
-            return dn4000, dn4000_ivar
-        
-        dn4000 =  (blufactor / redfactor) * numer / denom
-        if flam_ivar is not None:
-            dn4000_ivar = (1.0 / (dn4000**2)) / (denom_var / (denom**2) + numer_var / (numer**2))
-    
-        return dn4000, dn4000_ivar
 
     @staticmethod
     def get_mean_property(templateinfo, physical_property, coeff, agekeep,
@@ -1692,7 +1692,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False,
                    redshift=redshift, vdisp=None, synthphot=False)
                sedmodel_nolines = sedtemplates_nolines.dot(coeff)
 
-               dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel_nolines, rest=True)
+               dn4000_model, _ = self.get_dn4000(self.templatewave, sedmodel_nolines, rest=True, log=log)
                log.info('Model Dn(4000)={:.3f}.'.format(dn4000_model))
     else:
         # Combine all three cameras; we will unpack them to build the
@@ -1808,7 +1808,8 @@ def continuum_specfit(data, result, templatecache, nophoto=False,
                 quicksedflux = sedtemplates.dot(quickcoeff)
                 
                 quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / FLUXNORM, ztemplatewave).as_array().tolist()[0])
-                quickphot = CTools.parse_photometry(CTools.synth_bands, quickmaggies, filters_in.effective_wavelengths.value, nanomaggies=False)
+                quickphot = CTools.parse_photometry(CTools.synth_bands, quickmaggies, filters_in.effective_wavelengths.value,
+                                                    nanomaggies=False, log=log)
 
                 numer = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
                                    for band in CTools.synth_bands])
@@ -1874,11 +1875,11 @@ def continuum_specfit(data, result, templatecache, nophoto=False,
                 synthphot=False)
             sedmodel_nolines = sedtemplates_nolines.dot(coeff)
            
-            dn4000_model, _ = CTools.get_dn4000(templatecache['templatewave'], sedmodel_nolines, rest=True)
+            dn4000_model, _ = CTools.get_dn4000(templatecache['templatewave'], sedmodel_nolines, rest=True, log=log)
 
         # Get DN(4000). Specivar is line-masked so we can't use it!
         dn4000, dn4000_ivar = CTools.get_dn4000(specwave, specflux, flam_ivar=flamivar, 
-                                                redshift=redshift, rest=False)
+                                                redshift=redshift, rest=False, log=log)
         
         if dn4000_ivar > 0:
             log.info('Spectroscopic DN(4000)={:.3f}+/-{:.3f}, Model Dn(4000)={:.3f}'.format(
