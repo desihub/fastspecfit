@@ -176,6 +176,10 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot)
                 ivar = specdata['ivar'][icam]
                 mask = specdata['mask'][icam]
 
+                # always mask the first and last pixels
+                mask[0] = 1
+                mask[-1] = 1
+
                 # In the pipeline, if mask!=0 that does not mean ivar==0, but we
                 # want to be more aggressive about masking here.
                 ivar[mask != 0] = 0

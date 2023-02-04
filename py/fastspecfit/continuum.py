@@ -1666,14 +1666,14 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
            # Get the coefficients and chi2 at the nominal velocity dispersion. 
            t0 = time.time()
            sedtemplates, sedphot = CTools.templates2data(
-               templatecache['templateflux_nomvdisp[:, agekeep]'],
+               templatecache['templateflux_nomvdisp'][:, agekeep],
                templatecache['templatewave'],
                redshift=redshift, dluminosity=data['dluminosity'],
                vdisp=None, synthphot=True, 
                south=data['photsys'] == 'S')
            sedflam = sedphot['flam'].data * CTools.massnorm * FLUXNORM
 
-           coeff, rchi2_phot = _call_nnls(sedflam, objflam, objflamivar)
+           coeff, rchi2_phot = CTools.call_nnls(sedflam, objflam, objflamivar)
            rchi2_phot /= np.sum(objflamivar > 0) # dof???
            rchi2_cont = rchi2_phot # equivalent
            log.info('Fitting {} models took {:.2f} seconds.'.format(
@@ -1688,7 +1688,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
 
                # Measure Dn(4000) from the line-free model.
                sedtemplates_nolines, _ = CTools.templates2data(
-                   templatecache['templateflux_nolines_nomvdisp[:, agekeep]'],
+                   templatecache['templateflux_nolines_nomvdisp'][:, agekeep],
                    templatecache['templatewave'],
                    redshift=redshift, dluminosity=data['dluminosity'],
                    vdisp=None, synthphot=False)

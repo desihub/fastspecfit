@@ -270,16 +270,20 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
     photcol1 = colors.to_hex('darkorange')
     #photcol1 = colors.to_hex('darkblue') # 'darkgreen', 'darkred', 'dodgerblue', 'darkseagreen', 'orangered']]
-    
+
     if outdir is None:
         outdir = '.'
     if outprefix is None:
-        outprefix = 'fastspec'
+        if fastphot:
+            outprefix = 'fastphot'
+        else:
+            outprefix = 'fastspec'
 
     CTools = ContinuumTools(nophoto=nophoto,
                             continuum_pixkms=templatecache['continuum_pixkms'],
                             pixkms_wavesplit=templatecache['pixkms_wavesplit'])
-    EMFit = EMFitTools()
+    if not fastphot:
+        EMFit = EMFitTools()
 
     if metadata['PHOTSYS'] == 'S':
         filters = CTools.decam
@@ -359,25 +363,21 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     #print('Hack to skip existing files!')
     #if os.path.isfile(pngfile):
     #    return
-
     #target += bit
 
-    apercorr = fastspec['APERCORR']
     redshift = fastspec['Z']
 
     leg = {
         'radec': '$(\\alpha,\\delta)=({:.7f},{:.6f})$'.format(metadata['RA'], metadata['DEC']),
-        #'targetid': '{} {}'.format(metadata['TARGETID'], metadata['FIBER']),
-        #'targetid': 'targetid={} fiber={}'.format(metadata['TARGETID'], metadata['FIBER']),
 
         'z': '$z={:.7f}$'.format(redshift),
         'zwarn': '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN']),
-        'dn4000_model': '$D_{{n}}(4000)_{{\\rm model}}={:.3f}$'.format(fastspec['DN4000_MODEL']),
 
-        'rchi2': '$\\chi^{{2}}_{{\\nu, \\rm specphot}}$={:.2f}'.format(fastspec['RCHI2']), 
+        'rchi2': '$\\chi^{{2}}_{{\\nu, \\rm specphot}}$={:.2f}'.format(fastspec['RCHI2']),
         'rchi2_cont': '$\\chi^{{2}}_{{\\nu, \\rm cont}}$={:.2f}'.format(fastspec['RCHI2_CONT']),
         'rchi2_phot': '$\\chi^{{2}}_{{\\nu, \\rm phot}}$={:.2f}'.format(fastspec['RCHI2_PHOT']),
 
+        'dn4000_model': '$D_{{n}}(4000)_{{\\rm model}}={:.3f}$'.format(fastspec['DN4000_MODEL']),
         'age': 'Age$={:.3f}$ Gyr'.format(fastspec['AGE']),
         'AV': '$A_{{V}}={:.3f}$ mag'.format(fastspec['AV']),
         'mstar': '$\\log_{{10}}(M/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
@@ -398,122 +398,131 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     else:
         leg['vdisp'] = '$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
 
-    if fastspec['DN4000_IVAR'] > 0:
-        leg['dn4000_spec'] = '$D_{{n}}(4000)_{{\\rm data}}={:.3f}$'.format(fastspec['DN4000'])
-        #leg.update({'dn4000_spec': '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}\pm{:.3f}$'.format(fastspec['DN4000'], 1/np.sqrt(fastspec['DN4000_IVAR']))})
-
-    # kinematics
-    if fastspec['NARROW_Z'] != redshift:
-        if fastspec['NARROW_ZRMS'] > 0:
-            leg['dv_narrow'] = '$\\Delta v_{{\\rm narrow}}={:.0f}\pm{:.0f}$ km/s'.format(
-                C_LIGHT*(fastspec['NARROW_Z']-redshift), C_LIGHT*fastspec['NARROW_ZRMS'])
-        else:
-            leg['dv_narrow'] = '$\\Delta v_{{\\rm narrow}}={:.0f}$ km/s'.format(
-                C_LIGHT*(fastspec['NARROW_Z']-redshift))
-    if fastspec['NARROW_SIGMA'] != 0.0:
-        if fastspec['NARROW_SIGMARMS'] > 0:
-            leg['sigma_narrow'] = '$\\sigma_{{\\rm narrow}}={:.0f}\pm{:.0f}$ km/s'.format(
-                fastspec['NARROW_SIGMA'], fastspec['NARROW_SIGMARMS'])
-        else:
-            leg['sigma_narrow'] = '$\\sigma_{{\\rm narrow}}={:.0f}$ km/s'.format(fastspec['NARROW_SIGMA'])
-
-    snrcut = 1.5
-    leg_broad, leg_narrow, leg_uv = {}, {}, {}
-
-    if fastspec['UV_Z'] != redshift:
-        if fastspec['UV_ZRMS'] > 0:
-            leg_uv['dv_uv'] = '$\\Delta v_{{\\rm UV}}={:.0f}\pm{:.0f}$ km/s'.format(
-                C_LIGHT*(fastspec['UV_Z']-redshift), C_LIGHT*fastspec['UV_ZRMS'])
-        else:
-            leg_uv['dv_uv'] = '$\\Delta v_{{\\rm UV}}={:.0f}$ km/s'.format(
-                C_LIGHT*(fastspec['UV_Z']-redshift))
-    if fastspec['UV_SIGMA'] != 0.0:
-        if fastspec['UV_SIGMARMS'] > 0:
-            leg_uv['sigma_uv'] = '$\\sigma_{{\\rm UV}}={:.0f}\pm{:.0f}$ km/s'.format(
-                fastspec['UV_SIGMA'], fastspec['UV_SIGMARMS'])
-        else:
-            leg_uv['sigma_uv'] = '$\\sigma_{{\\rm UV}}={:.0f}$ km/s'.format(fastspec['UV_SIGMA'])
-    if fastspec['BROAD_Z'] != redshift:
-        if fastspec['BROAD_ZRMS'] > 0:
-            leg_broad['dv_broad'] = '$\\Delta v_{{\\rm broad}}={:.0f}\pm{:.0f}$ km/s'.format(
-                C_LIGHT*(fastspec['BROAD_Z']-redshift), C_LIGHT*fastspec['BROAD_ZRMS'])
-        else:
-            leg_broad['dv_broad'] = '$\\Delta v_{{\\rm broad}}={:.0f}$ km/s'.format(
-                C_LIGHT*(fastspec['BROAD_Z']-redshift))
-    if fastspec['BROAD_SIGMA'] != 0.0:
-        if fastspec['BROAD_SIGMARMS'] > 0:
-            leg_broad['sigma_broad'] = '$\\sigma_{{\\rm broad}}={:.0f}\pm{:.0f}$ km/s'.format(
-                fastspec['BROAD_SIGMA'], fastspec['BROAD_SIGMARMS'])
-        else:
-            leg_broad['sigma_broad'] = '$\\sigma_{{\\rm broad}}={:.0f}$ km/s'.format(fastspec['BROAD_SIGMA'])
-
-    # emission lines
-
-    # UV
-    if fastspec['LYALPHA_AMP']*np.sqrt(fastspec['LYALPHA_AMP_IVAR']) > snrcut:
-        leg_uv['ewlya'] = 'EW(Ly$\\alpha)={:.1f}\ \\AA$'.format(fastspec['LYALPHA_EW'])
-    if fastspec['CIV_1549_AMP']*np.sqrt(fastspec['CIV_1549_AMP_IVAR']) > snrcut:
-        leg_uv['ewciv'] = 'EW(CIV)$={:.1f}\ \\AA$'.format(fastspec['CIV_1549_EW'])
-    if fastspec['CIII_1908_AMP']*np.sqrt(fastspec['CIII_1908_AMP_IVAR']) > snrcut:
-        leg_uv['ewciii'] = 'EW(CIII])$={:.1f}\ \\AA$'.format(fastspec['CIII_1908_EW'])
-    if (fastspec['MGII_2796_AMP']*np.sqrt(fastspec['MGII_2796_AMP_IVAR']) > snrcut or
-        fastspec['MGII_2803_AMP']*np.sqrt(fastspec['MGII_2803_AMP_IVAR']) > snrcut):
-        leg_uv['ewmgii'] = 'EW(MgII)$={:.1f}\ \\AA$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])
-        leg_uv['mgii_doublet'] = 'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
-
-    leg_broad['linerchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm line}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
-    #leg_broad['deltarchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
-    #if fastspec['DELTA_LINERCHI2'] != 0:
-    leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINERCHI2'])
-
-    # choose one broad Balmer line
-    if fastspec['HALPHA_BROAD_AMP']*np.sqrt(fastspec['HALPHA_BROAD_AMP_IVAR']) > snrcut:
-        leg_broad['ewbalmer_broad'] = 'EW(H$\\alpha)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HALPHA_BROAD_EW'])
-    elif fastspec['HBETA_BROAD_AMP']*np.sqrt(fastspec['HBETA_BROAD_AMP_IVAR']) > snrcut:
-        leg_broad['ewbalmer_broad'] = 'EW(H$\\beta)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HBETA_BROAD_EW'])
-    elif fastspec['HGAMMA_BROAD_AMP']*np.sqrt(fastspec['HGAMMA_BROAD_AMP_IVAR']) > snrcut:
-        leg_broad['ewbalmer_broad'] = 'EW(H$\\gamma)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HGAMMA_BROAD_EW'])
-
-    if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
-        fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
-        #leg_narrow['ewoii'] = 'EW([OII] $\lambda\lambda3726,29)={:.1f}\,\\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
-        leg_narrow['ewoii'] = 'EW([OII])$={:.1f}\ \\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
-
-    if fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut:
-        leg_narrow['ewoiii'] = 'EW([OIII])$={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
-        #leg_narrow['ewoiii'] = 'EW([OIII] $\lambda5007={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
-
-    # choose one Balmer line
-    if fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut:
-        leg_narrow['ewbalmer_narrow'] = 'EW(H$\\alpha)={:.1f}\ \\AA$'.format(fastspec['HALPHA_EW'])
-    elif fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut:
-        leg_narrow['ewbalmer_narrow'] = 'EW(H$\\beta)={:.1f}\ \\AA$'.format(fastspec['HBETA_EW'])
-    elif fastspec['HGAMMA_AMP']*np.sqrt(fastspec['HGAMMA_AMP_IVAR']) > snrcut:
-        leg_narrow['ewbalmer_narrow'] = 'EW(H$\\gamma)={:.1f}\ \\AA$'.format(fastspec['HGAMMA_EW'])
-
-    if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
-        fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut):
-        leg_narrow['hahb'] = '${{\\rm H}}\\alpha/{{\\rm H}}\\beta={:.3f}$'.format(fastspec['HALPHA_FLUX']/fastspec['HBETA_FLUX'])
-    if 'hahb' not in leg_narrow.keys() and (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
-        fastspec['HGAMMA_AMP']*np.sqrt(fastspec['HGAMMA_AMP_IVAR']) > snrcut):
-        leg_narrow['hbhg'] = '${{\\rm H}}\\beta/{{\\rm H}}\\gamma={:.3f}$'.format(fastspec['HBETA_FLUX']/fastspec['HGAMMA_FLUX'])
-    if (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
-        fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut and 
-        fastspec['HBETA_FLUX'] > 0 and fastspec['OIII_5007_FLUX'] > 0):
-        leg_narrow['oiiihb'] = '$\\log_{{10}}({{\\rm [OIII]/H}}\\beta)={:.3f}$'.format(np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
-    if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
-        fastspec['NII_6584_AMP']*np.sqrt(fastspec['NII_6584_AMP_IVAR']) > snrcut and 
-        fastspec['HALPHA_FLUX'] > 0 and fastspec['NII_6584_FLUX'] > 0):
-        leg_narrow['niiha'] = '$\\log_{{10}}({{\\rm [NII]/H}}\\alpha)={:.3f}$'.format(np.log10(fastspec['NII_6584_FLUX']/fastspec['HALPHA_FLUX']))
-
-    if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
-        fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
-        #if fastspec['OII_DOUBLET_RATIO'] != 0:
-        leg_narrow['oii_doublet'] = '[OII] $\lambda3726/\lambda3729={:.3f}$'.format(fastspec['OII_DOUBLET_RATIO'])
-
-    if fastspec['SII_6716_AMP']*np.sqrt(fastspec['SII_6716_AMP_IVAR']) > snrcut or fastspec['SII_6731_AMP']*np.sqrt(fastspec['SII_6731_AMP_IVAR']) > snrcut:
-        #if fastspec['SII_DOUBLET_RATIO'] != 0:
-        leg_narrow['sii_doublet'] = '[SII] $\lambda6731/\lambda6716={:.3f}$'.format(fastspec['SII_DOUBLET_RATIO'])
+    if fastphot:
+        fontsize1 = 16
+        fontsize2 = 22
+    else:
+        fontsize1 = 18 # 24
+        fontsize2 = 24
+        
+        apercorr = fastspec['APERCORR']
+    
+        if fastspec['DN4000_IVAR'] > 0:
+            leg['dn4000_spec'] = '$D_{{n}}(4000)_{{\\rm data}}={:.3f}$'.format(fastspec['DN4000'])
+            #leg.update({'dn4000_spec': '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}\pm{:.3f}$'.format(fastspec['DN4000'], 1/np.sqrt(fastspec['DN4000_IVAR']))})
+    
+        # kinematics
+        if fastspec['NARROW_Z'] != redshift:
+            if fastspec['NARROW_ZRMS'] > 0:
+                leg['dv_narrow'] = '$\\Delta v_{{\\rm narrow}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['NARROW_Z']-redshift), C_LIGHT*fastspec['NARROW_ZRMS'])
+            else:
+                leg['dv_narrow'] = '$\\Delta v_{{\\rm narrow}}={:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['NARROW_Z']-redshift))
+        if fastspec['NARROW_SIGMA'] != 0.0:
+            if fastspec['NARROW_SIGMARMS'] > 0:
+                leg['sigma_narrow'] = '$\\sigma_{{\\rm narrow}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    fastspec['NARROW_SIGMA'], fastspec['NARROW_SIGMARMS'])
+            else:
+                leg['sigma_narrow'] = '$\\sigma_{{\\rm narrow}}={:.0f}$ km/s'.format(fastspec['NARROW_SIGMA'])
+    
+        snrcut = 1.5
+        leg_broad, leg_narrow, leg_uv = {}, {}, {}
+    
+        if fastspec['UV_Z'] != redshift:
+            if fastspec['UV_ZRMS'] > 0:
+                leg_uv['dv_uv'] = '$\\Delta v_{{\\rm UV}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['UV_Z']-redshift), C_LIGHT*fastspec['UV_ZRMS'])
+            else:
+                leg_uv['dv_uv'] = '$\\Delta v_{{\\rm UV}}={:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['UV_Z']-redshift))
+        if fastspec['UV_SIGMA'] != 0.0:
+            if fastspec['UV_SIGMARMS'] > 0:
+                leg_uv['sigma_uv'] = '$\\sigma_{{\\rm UV}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    fastspec['UV_SIGMA'], fastspec['UV_SIGMARMS'])
+            else:
+                leg_uv['sigma_uv'] = '$\\sigma_{{\\rm UV}}={:.0f}$ km/s'.format(fastspec['UV_SIGMA'])
+        if fastspec['BROAD_Z'] != redshift:
+            if fastspec['BROAD_ZRMS'] > 0:
+                leg_broad['dv_broad'] = '$\\Delta v_{{\\rm broad}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['BROAD_Z']-redshift), C_LIGHT*fastspec['BROAD_ZRMS'])
+            else:
+                leg_broad['dv_broad'] = '$\\Delta v_{{\\rm broad}}={:.0f}$ km/s'.format(
+                    C_LIGHT*(fastspec['BROAD_Z']-redshift))
+        if fastspec['BROAD_SIGMA'] != 0.0:
+            if fastspec['BROAD_SIGMARMS'] > 0:
+                leg_broad['sigma_broad'] = '$\\sigma_{{\\rm broad}}={:.0f}\pm{:.0f}$ km/s'.format(
+                    fastspec['BROAD_SIGMA'], fastspec['BROAD_SIGMARMS'])
+            else:
+                leg_broad['sigma_broad'] = '$\\sigma_{{\\rm broad}}={:.0f}$ km/s'.format(fastspec['BROAD_SIGMA'])
+    
+        # emission lines
+    
+        # UV
+        if fastspec['LYALPHA_AMP']*np.sqrt(fastspec['LYALPHA_AMP_IVAR']) > snrcut:
+            leg_uv['ewlya'] = 'EW(Ly$\\alpha)={:.1f}\ \\AA$'.format(fastspec['LYALPHA_EW'])
+        if fastspec['CIV_1549_AMP']*np.sqrt(fastspec['CIV_1549_AMP_IVAR']) > snrcut:
+            leg_uv['ewciv'] = 'EW(CIV)$={:.1f}\ \\AA$'.format(fastspec['CIV_1549_EW'])
+        if fastspec['CIII_1908_AMP']*np.sqrt(fastspec['CIII_1908_AMP_IVAR']) > snrcut:
+            leg_uv['ewciii'] = 'EW(CIII])$={:.1f}\ \\AA$'.format(fastspec['CIII_1908_EW'])
+        if (fastspec['MGII_2796_AMP']*np.sqrt(fastspec['MGII_2796_AMP_IVAR']) > snrcut or
+            fastspec['MGII_2803_AMP']*np.sqrt(fastspec['MGII_2803_AMP_IVAR']) > snrcut):
+            leg_uv['ewmgii'] = 'EW(MgII)$={:.1f}\ \\AA$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])
+            leg_uv['mgii_doublet'] = 'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
+    
+        leg_broad['linerchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm line}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
+        #leg_broad['deltarchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
+        #if fastspec['DELTA_LINERCHI2'] != 0:
+        leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINERCHI2'])
+    
+        # choose one broad Balmer line
+        if fastspec['HALPHA_BROAD_AMP']*np.sqrt(fastspec['HALPHA_BROAD_AMP_IVAR']) > snrcut:
+            leg_broad['ewbalmer_broad'] = 'EW(H$\\alpha)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HALPHA_BROAD_EW'])
+        elif fastspec['HBETA_BROAD_AMP']*np.sqrt(fastspec['HBETA_BROAD_AMP_IVAR']) > snrcut:
+            leg_broad['ewbalmer_broad'] = 'EW(H$\\beta)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HBETA_BROAD_EW'])
+        elif fastspec['HGAMMA_BROAD_AMP']*np.sqrt(fastspec['HGAMMA_BROAD_AMP_IVAR']) > snrcut:
+            leg_broad['ewbalmer_broad'] = 'EW(H$\\gamma)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HGAMMA_BROAD_EW'])
+    
+        if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
+            fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
+            #leg_narrow['ewoii'] = 'EW([OII] $\lambda\lambda3726,29)={:.1f}\,\\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
+            leg_narrow['ewoii'] = 'EW([OII])$={:.1f}\ \\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
+    
+        if fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut:
+            leg_narrow['ewoiii'] = 'EW([OIII])$={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
+            #leg_narrow['ewoiii'] = 'EW([OIII] $\lambda5007={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
+    
+        # choose one Balmer line
+        if fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut:
+            leg_narrow['ewbalmer_narrow'] = 'EW(H$\\alpha)={:.1f}\ \\AA$'.format(fastspec['HALPHA_EW'])
+        elif fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut:
+            leg_narrow['ewbalmer_narrow'] = 'EW(H$\\beta)={:.1f}\ \\AA$'.format(fastspec['HBETA_EW'])
+        elif fastspec['HGAMMA_AMP']*np.sqrt(fastspec['HGAMMA_AMP_IVAR']) > snrcut:
+            leg_narrow['ewbalmer_narrow'] = 'EW(H$\\gamma)={:.1f}\ \\AA$'.format(fastspec['HGAMMA_EW'])
+    
+        if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
+            fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut):
+            leg_narrow['hahb'] = '${{\\rm H}}\\alpha/{{\\rm H}}\\beta={:.3f}$'.format(fastspec['HALPHA_FLUX']/fastspec['HBETA_FLUX'])
+        if 'hahb' not in leg_narrow.keys() and (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
+            fastspec['HGAMMA_AMP']*np.sqrt(fastspec['HGAMMA_AMP_IVAR']) > snrcut):
+            leg_narrow['hbhg'] = '${{\\rm H}}\\beta/{{\\rm H}}\\gamma={:.3f}$'.format(fastspec['HBETA_FLUX']/fastspec['HGAMMA_FLUX'])
+        if (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
+            fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut and 
+            fastspec['HBETA_FLUX'] > 0 and fastspec['OIII_5007_FLUX'] > 0):
+            leg_narrow['oiiihb'] = '$\\log_{{10}}({{\\rm [OIII]/H}}\\beta)={:.3f}$'.format(np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
+        if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
+            fastspec['NII_6584_AMP']*np.sqrt(fastspec['NII_6584_AMP_IVAR']) > snrcut and 
+            fastspec['HALPHA_FLUX'] > 0 and fastspec['NII_6584_FLUX'] > 0):
+            leg_narrow['niiha'] = '$\\log_{{10}}({{\\rm [NII]/H}}\\alpha)={:.3f}$'.format(np.log10(fastspec['NII_6584_FLUX']/fastspec['HALPHA_FLUX']))
+    
+        if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
+            fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
+            #if fastspec['OII_DOUBLET_RATIO'] != 0:
+            leg_narrow['oii_doublet'] = '[OII] $\lambda3726/\lambda3729={:.3f}$'.format(fastspec['OII_DOUBLET_RATIO'])
+    
+        if fastspec['SII_6716_AMP']*np.sqrt(fastspec['SII_6716_AMP_IVAR']) > snrcut or fastspec['SII_6731_AMP']*np.sqrt(fastspec['SII_6731_AMP_IVAR']) > snrcut:
+            #if fastspec['SII_DOUBLET_RATIO'] != 0:
+            leg_narrow['sii_doublet'] = '[SII] $\lambda6731/\lambda6716={:.3f}$'.format(fastspec['SII_DOUBLET_RATIO'])
 
     # rebuild the best-fitting broadband photometric model
     sedmodel, sedphot = CTools.templates2data(
@@ -536,59 +545,60 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     sedwave = sedwave[indx_phot]
     sedmodel = sedmodel[indx_phot]
 
-    # Rebuild the best-fitting spectroscopic model; prefix "desi" means
-    # "per-camera" and prefix "full" has the cameras h-stacked.
-    fullwave = np.hstack(data['wave'])
-
-    desicontinuum, _ = CTools.templates2data(templatecache['templateflux_nolines'], templatecache['templatewave'],
-                                             redshift=redshift, dluminosity=data['dluminosity'], synthphot=False,
-                                             specwave=data['wave'], specres=data['res'],
-                                             specmask=data['mask'], cameras=data['cameras'],
-                                             vdisp=fastspec['VDISP'],
-                                             coeff=fastspec['COEFF'])
-
-    # remove the aperture correction
-    desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
-    fullcontinuum = np.hstack(desicontinuum)
-
-     # Need to be careful we don't pass a large negative residual where
-     # there are gaps in the data.
-    desiresiduals = []
-    for icam in np.arange(len(data['cameras'])):
-        resid = data['flux'][icam] - desicontinuum[icam]
-        I = (data['flux'][icam] == 0.0) * (data['flux'][icam] == 0.0)
-        if np.any(I):
-            resid[I] = 0.0
-        desiresiduals.append(resid)
+    if not fastphot:
+        # Rebuild the best-fitting spectroscopic model; prefix "desi" means
+        # "per-camera" and prefix "full" has the cameras h-stacked.
+        fullwave = np.hstack(data['wave'])
     
-    if np.all(fastspec['COEFF'] == 0):
-        fullsmoothcontinuum = np.zeros_like(fullwave)
-    else:
-        fullsmoothcontinuum, _ = CTools.smooth_continuum(
-                fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
-                redshift=redshift, linemask=np.hstack(data['linemask']))
-
-    desismoothcontinuum = []
-    for campix in data['camerapix']:
-        desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
-
-    # full model spectrum + individual line-spectra
-    desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
-
-    desiemlines_oneline = []
-    inrange = ( (EMFit.linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
-                (EMFit.linetable['restwave'] * (1+redshift) < np.max(fullwave)) )
-     
-    for oneline in EMFit.linetable[inrange]: # for all lines in range
-        linename = oneline['name'].upper()
-        amp = fastspec['{}_AMP'.format(linename)]
-        if amp != 0:
-            desiemlines_oneline1 = build_emline_model(
-                EMFit.log10wave, redshift, np.array([amp]),
-                np.array([fastspec['{}_VSHIFT'.format(linename)]]),
-                np.array([fastspec['{}_SIGMA'.format(linename)]]),
-                np.array([oneline['restwave']]), data['wave'], data['res'])
-            desiemlines_oneline.append(desiemlines_oneline1)
+        desicontinuum, _ = CTools.templates2data(templatecache['templateflux_nolines'], templatecache['templatewave'],
+                                                 redshift=redshift, dluminosity=data['dluminosity'], synthphot=False,
+                                                 specwave=data['wave'], specres=data['res'],
+                                                 specmask=data['mask'], cameras=data['cameras'],
+                                                 vdisp=fastspec['VDISP'],
+                                                 coeff=fastspec['COEFF'])
+    
+        # remove the aperture correction
+        desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
+        fullcontinuum = np.hstack(desicontinuum)
+    
+         # Need to be careful we don't pass a large negative residual where
+         # there are gaps in the data.
+        desiresiduals = []
+        for icam in np.arange(len(data['cameras'])):
+            resid = data['flux'][icam] - desicontinuum[icam]
+            I = (data['flux'][icam] == 0.0) * (data['flux'][icam] == 0.0)
+            if np.any(I):
+                resid[I] = 0.0
+            desiresiduals.append(resid)
+        
+        if np.all(fastspec['COEFF'] == 0):
+            fullsmoothcontinuum = np.zeros_like(fullwave)
+        else:
+            fullsmoothcontinuum, _ = CTools.smooth_continuum(
+                    fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
+                    redshift=redshift, linemask=np.hstack(data['linemask']))
+    
+        desismoothcontinuum = []
+        for campix in data['camerapix']:
+            desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
+    
+        # full model spectrum + individual line-spectra
+        desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
+    
+        desiemlines_oneline = []
+        inrange = ( (EMFit.linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
+                    (EMFit.linetable['restwave'] * (1+redshift) < np.max(fullwave)) )
+         
+        for oneline in EMFit.linetable[inrange]: # for all lines in range
+            linename = oneline['name'].upper()
+            amp = fastspec['{}_AMP'.format(linename)]
+            if amp != 0:
+                desiemlines_oneline1 = build_emline_model(
+                    EMFit.log10wave, redshift, np.array([amp]),
+                    np.array([fastspec['{}_VSHIFT'.format(linename)]]),
+                    np.array([fastspec['{}_SIGMA'.format(linename)]]),
+                    np.array([oneline['restwave']]), data['wave'], data['res'])
+                desiemlines_oneline.append(desiemlines_oneline1)
 
     # Grab the viewer cutout.
     pixscale = 0.262
@@ -625,34 +635,46 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             #raise ValueError(errmsg)
     else:
         cuterr = 0
-
-    # QA choices
-
-    # 8 columns: 3 for the SED, 5 for the spectra, and 8 for the lines
-    # 8 rows: 4 for the SED, 2 each for the spectra, 1 gap, and 3 for the lines
-    ngaprows = 1
-    nlinerows = 6
-    nlinecols = 3
-    nrows = 9 + ngaprows
-    ncols = 8
-
-    fullheight = 18 # inches
-    fullwidth = 24
-
-    height_ratios = np.hstack(([1.0]*3, 0.25, [1.0]*6)) # small gap
-    width_ratios = np.hstack(([1.0]*5, [1.0]*3))
-
-    fig = plt.figure(figsize=(fullwidth, fullheight))
-    gs = fig.add_gridspec(nrows, ncols, height_ratios=height_ratios, width_ratios=width_ratios)
-
-    cutax = fig.add_subplot(gs[0:3, 5:8], projection=wcs) # rows x cols
-    sedax = fig.add_subplot(gs[0:3, 0:5])
-    specax = fig.add_subplot(gs[4:8, 0:5])
     
+    # QA choices
     legxpos, legypos, legypos2, legfntsz1, legfntsz = 0.98, 0.94, 0.05, 16, 18
     bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.15)
     bbox2 = dict(boxstyle='round', facecolor='lightgray', alpha=0.7)
 
+    if fastphot:
+        fullheight = 9 # inches
+        fullwidth = 18
+        
+        nrows = 3
+        ncols = 8
+
+        fig = plt.figure(figsize=(fullwidth, fullheight))
+        gs = fig.add_gridspec(nrows, ncols)#, width_ratios=width_ratios)
+
+        cutax = fig.add_subplot(gs[0:2, 5:8], projection=wcs) # rows x cols
+        sedax = fig.add_subplot(gs[0:3, 0:5])
+    else:
+        fullheight = 18 # inches
+        fullwidth = 24
+
+        # 8 columns: 3 for the SED, 5 for the spectra, and 8 for the lines
+        # 8 rows: 4 for the SED, 2 each for the spectra, 1 gap, and 3 for the lines
+        ngaprows = 1
+        nlinerows = 6
+        nlinecols = 3
+        nrows = 9 + ngaprows
+        ncols = 8
+    
+        height_ratios = np.hstack(([1.0]*3, 0.25, [1.0]*6)) # small gap
+        #width_ratios = np.hstack(([1.0]*5, [1.0]*3))
+    
+        fig = plt.figure(figsize=(fullwidth, fullheight))
+        gs = fig.add_gridspec(nrows, ncols, height_ratios=height_ratios)#, width_ratios=width_ratios)
+    
+        cutax = fig.add_subplot(gs[0:3, 5:8], projection=wcs) # rows x cols
+        sedax = fig.add_subplot(gs[0:3, 0:5])
+        specax = fig.add_subplot(gs[4:8, 0:5])
+    
     # viewer cutout
     cuterr2 = 0
     if cuterr == 0:
@@ -665,7 +687,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             cuterr2 = 1
             errmsg = 'Something went wrong reading the png cutout'
             log.warning(errmsg)
-            
+
         cutax.set_xlabel('RA [J2000]')
         cutax.set_ylabel('Dec [J2000]')
 
@@ -679,7 +701,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             sgn = ''
             
         cutax.text(0.04, 0.95, '$(\\alpha,\\delta)$=({:.7f}, {}{:.6f})'.format(metadata['RA'], sgn, metadata['DEC']),
-                   ha='left', va='top', color='k', fontsize=18, bbox=bbox2,
+                   ha='left', va='top', color='k', fontsize=fontsize1, bbox=bbox2,
                    transform=cutax.transAxes)
 
         if cuterr2 == 0:
@@ -690,57 +712,58 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             handles = [Line2D([0], [0], color='red', lw=2, ls='-', label='1.5 arcsec'),
                        Line2D([0], [0], color='red', lw=2, ls='--', label='10 arcsec')]
 
-            cutax.legend(handles=handles, loc='lower left', fontsize=18, facecolor='lightgray')
+            cutax.legend(handles=handles, loc='lower left', fontsize=fontsize1, facecolor='lightgray')
 
-    # plot the full spectrum + best-fitting (total) model
-    spec_ymin, spec_ymax = 1e6, -1e6
+    if not fastphot:
+        # plot the full spectrum + best-fitting (total) model
+        specax.plot(fullwave/1e4, fullsmoothcontinuum, color='gray', alpha=0.4)
+        specax.plot(fullwave/1e4, fullcontinuum, color='k', alpha=0.6)
 
-    specax.plot(fullwave/1e4, fullsmoothcontinuum, color='gray', alpha=0.4)
-    specax.plot(fullwave/1e4, fullcontinuum, color='k', alpha=0.6)
-
-    desimodelspec = []
-    for icam in np.arange(len(data['cameras'])): # iterate over cameras
-        wave = data['wave'][icam]
-        flux = data['flux'][icam]
-        modelflux = desiemlines[icam] + desicontinuum[icam] + desismoothcontinuum[icam]
-
-        sigma, camgood = ivar2var(data['ivar'][icam], sigma=True, allmasked_ok=True, clip=0)
-
-        wave = wave[camgood]
-        flux = flux[camgood]
-        sigma = sigma[camgood]
-        modelflux = modelflux[camgood]
-
-        desimodelspec.append(apercorr * (desicontinuum[icam] + desiemlines[icam]))
-        
-        # get the robust range
-        filtflux = median_filter(flux, 51, mode='nearest')
-        if np.sum(camgood) > 0:
-            sigflux = np.diff(np.percentile(flux - modelflux, [25, 75]))[0] / 1.349 # robust
-            if -2 * sigflux < spec_ymin:
-                spec_ymin = -2 * sigflux
-            if 6 * sigflux > spec_ymax:
-                spec_ymax = 6 * sigflux
-            if np.max(filtflux) > spec_ymax:
-                #print(icam, spec_ymax, np.max(filtflux), np.max(filtflux) * 1.2)
-                spec_ymax = np.max(filtflux) * 1.25
-            if np.max(modelflux) > spec_ymax:
-                spec_ymax = np.max(modelflux) * 1.25
-            #print(spec_ymin, spec_ymax)
-            #pdb.set_trace()
+        spec_ymin, spec_ymax = 1e6, -1e6
     
-        #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[icam], alpha=0.2)
-        specax.plot(wave/1e4, flux, color=col1[icam], alpha=0.8)
-        specax.plot(wave/1e4, modelflux, color=col2[icam], lw=2, alpha=0.8)
-
-    fullmodelspec = np.hstack(desimodelspec)
-
-    specax.spines[['top']].set_visible(False)        
-    specax.set_xlim(spec_wavelims[0]/1e4, spec_wavelims[1]/1e4)
-    specax.set_ylim(spec_ymin, spec_ymax)
-    specax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
-    #specax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
-    specax.set_ylabel(r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
+        desimodelspec = []
+        for icam in np.arange(len(data['cameras'])): # iterate over cameras
+            wave = data['wave'][icam]
+            flux = data['flux'][icam]
+            modelflux = desiemlines[icam] + desicontinuum[icam] + desismoothcontinuum[icam]
+    
+            sigma, camgood = ivar2var(data['ivar'][icam], sigma=True, allmasked_ok=True, clip=0)
+    
+            wave = wave[camgood]
+            flux = flux[camgood]
+            sigma = sigma[camgood]
+            modelflux = modelflux[camgood]
+    
+            desimodelspec.append(apercorr * (desicontinuum[icam] + desiemlines[icam]))
+            
+            # get the robust range
+            filtflux = median_filter(flux, 51, mode='nearest')
+            if np.sum(camgood) > 0:
+                sigflux = np.diff(np.percentile(flux - modelflux, [25, 75]))[0] / 1.349 # robust
+                if -2 * sigflux < spec_ymin:
+                    spec_ymin = -2 * sigflux
+                if 6 * sigflux > spec_ymax:
+                    spec_ymax = 6 * sigflux
+                if np.max(filtflux) > spec_ymax:
+                    #print(icam, spec_ymax, np.max(filtflux), np.max(filtflux) * 1.2)
+                    spec_ymax = np.max(filtflux) * 1.25
+                if np.max(modelflux) > spec_ymax:
+                    spec_ymax = np.max(modelflux) * 1.25
+                #print(spec_ymin, spec_ymax)
+                #pdb.set_trace()
+        
+            #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[icam], alpha=0.2)
+            specax.plot(wave/1e4, flux, color=col1[icam], alpha=0.8)
+            specax.plot(wave/1e4, modelflux, color=col2[icam], lw=2, alpha=0.8)
+    
+        fullmodelspec = np.hstack(desimodelspec)
+    
+        specax.spines[['top']].set_visible(False)        
+        specax.set_xlim(spec_wavelims[0]/1e4, spec_wavelims[1]/1e4)
+        specax.set_ylim(spec_ymin, spec_ymax)
+        specax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
+        #specax.set_xlabel(r'Observed-frame Wavelength ($\AA$)') 
+        specax.set_ylabel(r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
 
     # photometric SED   
     abmag_good = phot['abmag_ivar'] > 0
@@ -763,13 +786,14 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     sedax.scatter(sedphot['lambda_eff']/1e4, sedphot['abmag'], marker='s', 
                   s=400, color='k', facecolor='none', linewidth=2, alpha=1.0, zorder=2)
 
-    #factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
-    #good = fullmodelspec > 0
-    #sedax.plot(fullwave[good]/1e4, -2.5*np.log10(fullmodelspec[good]*factor[good]), color='purple', alpha=0.8)
-    for icam in np.arange(len(data['cameras'])):
-        factor = 10**(0.4 * 48.6) * data['wave'][icam]**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
-        good = desimodelspec[icam] > 0
-        sedax.plot(data['wave'][icam][good]/1e4, -2.5*np.log10(desimodelspec[icam][good]*factor[good]), color=col2[icam], alpha=0.8)
+    if not fastphot:
+        #factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
+        #good = fullmodelspec > 0
+        #sedax.plot(fullwave[good]/1e4, -2.5*np.log10(fullmodelspec[good]*factor[good]), color='purple', alpha=0.8)
+        for icam in np.arange(len(data['cameras'])):
+            factor = 10**(0.4 * 48.6) * data['wave'][icam]**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
+            good = desimodelspec[icam] > 0
+            sedax.plot(data['wave'][icam][good]/1e4, -2.5*np.log10(desimodelspec[icam][good]*factor[good]), color=col2[icam], alpha=0.8)
 
     # we have to set the limits *before* we call errorbar, below!
     dm = 1.5
@@ -825,6 +849,9 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     obsticks = np.array([0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
     sedax.set_xticks(obsticks)
 
+    if fastphot:
+        sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
+
     sedax_twin = sedax.twiny()
     sedax_twin.set_xlim(phot_wavelims[0]/(1+redshift), phot_wavelims[1]/(1+redshift))
     sedax_twin.set_xscale('log')
@@ -875,16 +902,20 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                            markeredgecolor='k', markerfacecolor='none', elinewidth=3,
                            ecolor=photcol1, capsize=5, alpha=0.7)
 
-    # Label the DESI wavelength range and the aperture correction.
-    sedax.plot([np.min(fullwave)/1e4, np.max(fullwave)/1e4], [sed_ymin-1, sed_ymin-1],
-               lw=2, ls='-', color='gray', marker='s')#, alpha=0.5)
-    sedax.text(((np.max(fullwave)-np.min(fullwave))/2+np.min(fullwave)*0.8)/1e4, sed_ymin-1.7,
-               'DESI x {:.2f}'.format(apercorr), ha='center', va='center', fontsize=16,
-               color='k')
+    if not fastphot:
+        # Label the DESI wavelength range and the aperture correction.
+        sedax.plot([np.min(fullwave)/1e4, np.max(fullwave)/1e4], [sed_ymin-1, sed_ymin-1],
+                   lw=2, ls='-', color='gray', marker='s')#, alpha=0.5)
+        sedax.text(((np.max(fullwave)-np.min(fullwave))/2+np.min(fullwave)*0.8)/1e4, sed_ymin-1.7,
+                   'DESI x {:.2f}'.format(apercorr), ha='center', va='center', fontsize=16,
+                   color='k')
 
-    txt = '\n'.join((leg['rchi2_cont'], leg['rchi2_phot'], leg['rchi2']))
+        txt = '\n'.join((leg['rchi2_cont'], leg['rchi2_phot'], leg['rchi2']))
+    else:
+        txt = leg['rchi2_phot']
+        
     sedax.text(0.02, 0.94, txt, ha='left', va='top',
-                transform=sedax.transAxes, fontsize=legfntsz)#, bbox=bbox)
+               transform=sedax.transAxes, fontsize=legfntsz)#, bbox=bbox)
 
     txt = '\n'.join((
         #r'{}'.format(leg['fagn']),
@@ -897,307 +928,350 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     sedax.text(legxpos, legypos2, txt, ha='right', va='bottom',
                 transform=sedax.transAxes, fontsize=legfntsz1, bbox=bbox)
 
-    # draw lines connecting the SED and spectral plots
-    sedax.add_artist(ConnectionPatch(xyA=(spec_wavelims[0]/1e4, sed_ymin), 
-                                     xyB=(spec_wavelims[0]/1e4, spec_ymax), 
-                                     coordsA='data', coordsB='data',
-                                     axesA=sedax, axesB=specax, color='k'))
-    sedax.add_artist(ConnectionPatch(xyA=(spec_wavelims[1]/1e4, sed_ymin), 
-                                     xyB=(spec_wavelims[1]/1e4, spec_ymax), 
-                                     coordsA='data', coordsB='data',
-                                     axesA=sedax, axesB=specax, color='k'))
-
-    # zoom in on individual emission lines - use linetable!
-    linetable = EMFit.linetable
-    inrange = (linetable['restwave'] * (1+redshift) > np.min(fullwave)) * (linetable['restwave'] * (1+redshift) < np.max(fullwave))
-    linetable = linetable[inrange]
-
-    nline = len(set(linetable['plotgroup']))
-
-    plotsig_default = 200.0 # [km/s]
-    plotsig_default_balmer = 500.0 # [km/s]
-    plotsig_default_broad = 2000.0 # [km/s]
-
-    meanwaves, deltawaves, sigmas, linenames = [], [], [], []
-    for plotgroup in set(linetable['plotgroup']):
-        I = np.where(plotgroup == linetable['plotgroup'])[0]
-        linename = linetable['nicename'][I[0]].replace('-', ' ')
-        linenames.append(linename)
-        meanwaves.append(np.mean(linetable['restwave'][I]))
-        deltawaves.append((np.max(linetable['restwave'][I]) - np.min(linetable['restwave'][I])) / 2)
+    if not fastphot:
+        # draw lines connecting the SED and spectral plots
+        sedax.add_artist(ConnectionPatch(xyA=(spec_wavelims[0]/1e4, sed_ymin), 
+                                         xyB=(spec_wavelims[0]/1e4, spec_ymax), 
+                                         coordsA='data', coordsB='data',
+                                         axesA=sedax, axesB=specax, color='k'))
+        sedax.add_artist(ConnectionPatch(xyA=(spec_wavelims[1]/1e4, sed_ymin), 
+                                         xyB=(spec_wavelims[1]/1e4, spec_ymax), 
+                                         coordsA='data', coordsB='data',
+                                         axesA=sedax, axesB=specax, color='k'))
     
-        sigmas1 = np.array([fastspec['{}_SIGMA'.format(line.upper())] for line in linetable[I]['name']])
-        sigmas1 = sigmas1[sigmas1 > 0]
-        if len(sigmas1) > 0:
-            plotsig = 1.5*np.mean(sigmas1)
-            if plotsig < 50:
-                plotsig = 50.0
-        else:
-            if np.any(linetable['isbroad'][I]):
-                if np.any(linetable['isbalmer'][I]):
-                    plotsig = fastspec['BROAD_SIGMA']
-                    if plotsig < 50:
-                        plotsig = fastspec['NARROW_SIGMA']
-                        if plotsig < 50:
-                            plotsig = plotsig_default
-                            #plotsig = plotsig_default_broad
-                else:
-                    plotsig = fastspec['UV_SIGMA']                    
-                    if plotsig < 50:
-                        plotsig = plotsig_default_broad
-            else:
-                plotsig = fastspec['NARROW_SIGMA']
+        # zoom in on individual emission lines - use linetable!
+        linetable = EMFit.linetable
+        inrange = (linetable['restwave'] * (1+redshift) > np.min(fullwave)) * (linetable['restwave'] * (1+redshift) < np.max(fullwave))
+        linetable = linetable[inrange]
+    
+        nline = len(set(linetable['plotgroup']))
+    
+        plotsig_default = 200.0 # [km/s]
+        plotsig_default_balmer = 500.0 # [km/s]
+        plotsig_default_broad = 2000.0 # [km/s]
+    
+        meanwaves, deltawaves, sigmas, linenames = [], [], [], []
+        for plotgroup in set(linetable['plotgroup']):
+            I = np.where(plotgroup == linetable['plotgroup'])[0]
+            linename = linetable['nicename'][I[0]].replace('-', ' ')
+            linenames.append(linename)
+            meanwaves.append(np.mean(linetable['restwave'][I]))
+            deltawaves.append((np.max(linetable['restwave'][I]) - np.min(linetable['restwave'][I])) / 2)
+        
+            sigmas1 = np.array([fastspec['{}_SIGMA'.format(line.upper())] for line in linetable[I]['name']])
+            sigmas1 = sigmas1[sigmas1 > 0]
+            if len(sigmas1) > 0:
+                plotsig = 1.5*np.mean(sigmas1)
                 if plotsig < 50:
-                    plotsig = plotsig_default
-        sigmas.append(plotsig)
-    
-    srt = np.argsort(meanwaves)
-    meanwaves = np.hstack(meanwaves)[srt]
-    deltawaves = np.hstack(deltawaves)[srt]
-    sigmas = np.hstack(sigmas)[srt]
-    linenames = np.hstack(linenames)[srt]
-
-    # Add the linenames to the spectrum plot.
-    for meanwave, linename in zip(meanwaves*(1+redshift), linenames):
-        #print(meanwave, ymax_spec)
-        if meanwave > spec_wavelims[0] and meanwave < spec_wavelims[1]:
-            if 'SiIII' in linename:
-                thislinename = '\n'+linename.replace('+', '+\n  ')
-            elif '4363' in linename:
-                thislinename = linename+'\n'
+                    plotsig = 50.0
             else:
-                thislinename = linename
-            specax.text(meanwave/1e4, spec_ymax, thislinename, ha='center', va='top',
-                        rotation=270, fontsize=12, alpha=0.5)
-
-    removelabels = np.ones(nline, bool)
-    line_ymin, line_ymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
+                if np.any(linetable['isbroad'][I]):
+                    if np.any(linetable['isbalmer'][I]):
+                        plotsig = fastspec['BROAD_SIGMA']
+                        if plotsig < 50:
+                            plotsig = fastspec['NARROW_SIGMA']
+                            if plotsig < 50:
+                                plotsig = plotsig_default
+                                #plotsig = plotsig_default_broad
+                    else:
+                        plotsig = fastspec['UV_SIGMA']                    
+                        if plotsig < 50:
+                            plotsig = plotsig_default_broad
+                else:
+                    plotsig = fastspec['NARROW_SIGMA']
+                    if plotsig < 50:
+                        plotsig = plotsig_default
+            sigmas.append(plotsig)
+        
+        srt = np.argsort(meanwaves)
+        meanwaves = np.hstack(meanwaves)[srt]
+        deltawaves = np.hstack(deltawaves)[srt]
+        sigmas = np.hstack(sigmas)[srt]
+        linenames = np.hstack(linenames)[srt]
     
-    ax, irow, colshift = [], 4, 5 # skip the gap row
-    for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
-        icol = iax % nlinecols
-        icol += colshift
-        if iax > 0 and iax % nlinecols == 0:
-            irow += 1
-        #print(iax, irow, icol)
+        # Add the linenames to the spectrum plot.
+        for meanwave, linename in zip(meanwaves*(1+redshift), linenames):
+            #print(meanwave, ymax_spec)
+            if meanwave > spec_wavelims[0] and meanwave < spec_wavelims[1]:
+                if 'SiIII' in linename:
+                    thislinename = '\n'+linename.replace('+', '+\n  ')
+                elif '4363' in linename:
+                    thislinename = linename+'\n'
+                else:
+                    thislinename = linename
+                specax.text(meanwave/1e4, spec_ymax, thislinename, ha='center', va='top',
+                            rotation=270, fontsize=12, alpha=0.5)
     
-        xx = fig.add_subplot(gs[irow, icol])
-        ax.append(xx)
-    
-        wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
-        wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
-        #print(linename, wmin, wmax)
-    
-        # iterate over cameras
-        for icam in np.arange(len(data['cameras'])): # iterate over cameras
-            emlinewave = data['wave'][icam]
-            emlineflux = data['flux'][icam] - desicontinuum[icam] - desismoothcontinuum[icam]
-            emlinemodel = desiemlines[icam]
-    
-            emlinesigma, good = ivar2var(data['ivar'][icam], sigma=True, allmasked_ok=True, clip=0)
-            emlinewave = emlinewave[good]
-            emlineflux = emlineflux[good]
-            emlinesigma = emlinesigma[good]
-            emlinemodel = emlinemodel[good]
-    
-            #if icam == 0:
-            #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
-                
-            emlinemodel_oneline = []
-            for desiemlines_oneline1 in desiemlines_oneline:
-                emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
-                
-            indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
-            if len(indx) > 1:
-                removelabels[iax] = False
-                xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
-                #xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
-                #                emlineflux[indx]+emlinesigma[indx], color=col1[icam], alpha=0.5)
-                # plot the individual lines first then the total model
-                for emlinemodel_oneline1 in emlinemodel_oneline:
-                    if np.sum(emlinemodel_oneline1[indx]) > 0:
-                        #P = emlinemodel_oneline1[indx] > 0
-                        xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
-                xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
-
-                #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
-                #xx.axhline(y=0, color='gray', ls='--')
-    
-                # get the robust range
-                sigflux = np.std(emlineflux[indx])
-                filtflux = median_filter(emlineflux[indx], 3, mode='nearest')
-    
-                #_line_ymin, _line_ymax = -1.5 * sigflux, 4 * sigflux
-                #if np.max(emlinemodel[indx]) > _line_ymax:
-                #    _line_ymax = np.max(emlinemodel[indx]) * 1.3
-                _line_ymin, _line_ymax = -1.5 * sigflux, np.max(emlinemodel[indx]) * 1.4
-                if 4 * sigflux > _line_ymax:
-                    _line_ymax = 4 * sigflux
-                if np.max(filtflux) > _line_ymax:
-                    _line_ymax = np.max(filtflux)
-                if np.min(emlinemodel[indx]) < _line_ymin:
-                    _line_ymin = 0.8 * np.min(emlinemodel[indx])
-                if _line_ymax > line_ymax[iax]:
-                    line_ymax[iax] = _line_ymax
-                if _line_ymin < line_ymin[iax]:
-                    line_ymin[iax] = _line_ymin
-                #print(linename, line_ymin[iax], line_ymax[iax])
-                #if linename == '[OII] $\lambda\lambda$3726,29':
-                #    pdb.set_trace()
-    
-                xx.set_xlim(wmin/1e4, wmax/1e4)
-                
-            xx.text(0.03, 0.89, linename, ha='left', va='center',
-                    transform=xx.transAxes, fontsize=12)
-            xx.tick_params(axis='x', labelsize=16)
-            xx.tick_params(axis='y', labelsize=16)
-            
-    for iax, xx in enumerate(ax):
-        if removelabels[iax]:
-            xx.set_ylim(0, 1)
-            xx.set_xticklabels([])
-            xx.set_yticklabels([])
-        else:
-            xx.set_yticklabels([])
-            xx.set_ylim(line_ymin[iax], line_ymax[iax])
-            xx_twin = xx.twinx()
-            xx_twin.set_ylim(line_ymin[iax], line_ymax[iax])
-            xlim = xx.get_xlim()
-            xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
-    
-    plt.subplots_adjust(wspace=0.4, top=0.9, bottom=0.1, left=0.07, right=0.92, hspace=0.33)
-
-    # common axis labels
-    if len(ax) > 0:
-        if len(ax) == 2:
-            xx = fig.add_subplot(gs[irow, icol+1])
-            xx.axis('off')
-            ax.append(xx)
-        elif len(ax) == 1:
-            xx = fig.add_subplot(gs[irow, icol+1])
-            xx.axis('off')
-            ax.append(xx)
-            xx = fig.add_subplot(gs[irow, icol+2])
-            xx.axis('off')
+        removelabels = np.ones(nline, bool)
+        line_ymin, line_ymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
+        
+        ax, irow, colshift = [], 4, 5 # skip the gap row
+        for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
+            icol = iax % nlinecols
+            icol += colshift
+            if iax > 0 and iax % nlinecols == 0:
+                irow += 1
+            #print(iax, irow, icol)
+        
+            xx = fig.add_subplot(gs[irow, icol])
             ax.append(xx)
         
-        ulpos = ax[0].get_position()
-        lpos = ax[nline-1].get_position()
-        urpos = ax[2].get_position()
-        xpos = (urpos.x1 - ulpos.x0) / 2 + ulpos.x0# + 0.03
+            wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
+            wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
+            #print(linename, wmin, wmax)
+        
+            # iterate over cameras
+            for icam in np.arange(len(data['cameras'])): # iterate over cameras
+                emlinewave = data['wave'][icam]
+                emlineflux = data['flux'][icam] - desicontinuum[icam] - desismoothcontinuum[icam]
+                emlinemodel = desiemlines[icam]
+        
+                emlinesigma, good = ivar2var(data['ivar'][icam], sigma=True, allmasked_ok=True, clip=0)
+                emlinewave = emlinewave[good]
+                emlineflux = emlineflux[good]
+                emlinesigma = emlinesigma[good]
+                emlinemodel = emlinemodel[good]
+        
+                #if icam == 0:
+                #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
+                    
+                emlinemodel_oneline = []
+                for desiemlines_oneline1 in desiemlines_oneline:
+                    emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
+                    
+                indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
+                if len(indx) > 1:
+                    removelabels[iax] = False
+                    xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
+                    #xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
+                    #                emlineflux[indx]+emlinesigma[indx], color=col1[icam], alpha=0.5)
+                    # plot the individual lines first then the total model
+                    for emlinemodel_oneline1 in emlinemodel_oneline:
+                        if np.sum(emlinemodel_oneline1[indx]) > 0:
+                            #P = emlinemodel_oneline1[indx] > 0
+                            xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
+                    xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
+    
+                    #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
+                    #xx.axhline(y=0, color='gray', ls='--')
+        
+                    # get the robust range
+                    sigflux = np.std(emlineflux[indx])
+                    filtflux = median_filter(emlineflux[indx], 3, mode='nearest')
+        
+                    #_line_ymin, _line_ymax = -1.5 * sigflux, 4 * sigflux
+                    #if np.max(emlinemodel[indx]) > _line_ymax:
+                    #    _line_ymax = np.max(emlinemodel[indx]) * 1.3
+                    _line_ymin, _line_ymax = -1.5 * sigflux, np.max(emlinemodel[indx]) * 1.4
+                    if 4 * sigflux > _line_ymax:
+                        _line_ymax = 4 * sigflux
+                    if np.max(filtflux) > _line_ymax:
+                        _line_ymax = np.max(filtflux)
+                    if np.min(emlinemodel[indx]) < _line_ymin:
+                        _line_ymin = 0.8 * np.min(emlinemodel[indx])
+                    if _line_ymax > line_ymax[iax]:
+                        line_ymax[iax] = _line_ymax
+                    if _line_ymin < line_ymin[iax]:
+                        line_ymin[iax] = _line_ymin
+                    #print(linename, line_ymin[iax], line_ymax[iax])
+                    #if linename == '[OII] $\lambda\lambda$3726,29':
+                    #    pdb.set_trace()
+        
+                    xx.set_xlim(wmin/1e4, wmax/1e4)
+                    
+                xx.text(0.03, 0.89, linename, ha='left', va='center',
+                        transform=xx.transAxes, fontsize=12)
+                xx.tick_params(axis='x', labelsize=16)
+                xx.tick_params(axis='y', labelsize=16)
+                
+        for iax, xx in enumerate(ax):
+            if removelabels[iax]:
+                xx.set_ylim(0, 1)
+                xx.set_xticklabels([])
+                xx.set_yticklabels([])
+            else:
+                xx.set_yticklabels([])
+                xx.set_ylim(line_ymin[iax], line_ymax[iax])
+                xx_twin = xx.twinx()
+                xx_twin.set_ylim(line_ymin[iax], line_ymax[iax])
+                xlim = xx.get_xlim()
+                xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
+
+    if fastphot:
+        plt.subplots_adjust(wspace=0.6, top=0.85, bottom=0.13, left=0.07, right=0.86)
+
+    else:
+        plt.subplots_adjust(wspace=0.4, top=0.9, bottom=0.1, left=0.07, right=0.92, hspace=0.33)
+
+        # common axis labels
+        if len(ax) > 0:
+            if len(ax) == 2:
+                xx = fig.add_subplot(gs[irow, icol+1])
+                xx.axis('off')
+                ax.append(xx)
+            elif len(ax) == 1:
+                xx = fig.add_subplot(gs[irow, icol+1])
+                xx.axis('off')
+                ax.append(xx)
+                xx = fig.add_subplot(gs[irow, icol+2])
+                xx.axis('off')
+                ax.append(xx)
             
-        ypos = lpos.y0 - 0.04
-        fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
-                 ha='center', va='center', fontsize=24)
+            ulpos = ax[0].get_position()
+            lpos = ax[nline-1].get_position()
+            urpos = ax[2].get_position()
+            xpos = (urpos.x1 - ulpos.x0) / 2 + ulpos.x0# + 0.03
+                
+            ypos = lpos.y0 - 0.04
+            fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
+                     ha='center', va='center', fontsize=fontsize2)
+    
+            xpos = urpos.x1 + 0.05
+            ypos = (urpos.y1 - lpos.y0) / 2 + lpos.y0# + 0.03
+            fig.text(xpos, ypos, 
+                     r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
+                     ha='center', va='center', rotation=270, fontsize=fontsize2)
 
-        xpos = urpos.x1 + 0.05
-        ypos = (urpos.y1 - lpos.y0) / 2 + lpos.y0# + 0.03
-        fig.text(xpos, ypos, 
-                 r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
-                 ha='center', va='center', rotation=270, fontsize=24)
-
-    ppos = sedax.get_position()
-    xpos = (ppos.x1 - ppos.x0) / 2 + ppos.x0
-    ypos = ppos.y1 + 0.03
-    fig.text(xpos, ypos, r'Rest-frame Wavelength ($\mu$m)',
-             ha='center', va='bottom', fontsize=24)
-
-    fig.text(0.647, 0.925, '\n'.join(target), ha='left', va='bottom',
-             fontsize=23, linespacing=1.4)
-
-    #fig.suptitle(title, fontsize=22)
-
-    # add some key results about the object at the bottom of the figure
     legkeys = leg.keys()
-
     legfntsz = 17
-    #toppos, startpos, deltapos = 0.21, 0.04, 0.13
-    toppos, leftpos, rightpos, adjust = 0.21, 0.03, 0.62, 0.01
-    nbox = 2 + 1*bool(leg_narrow) + bool(leg_broad)
-    boxpos = np.arange(nbox) * (rightpos - leftpos)/nbox + leftpos
 
-    txt = [
-        r'{}'.format(leg['z']),
-    ]
-    if 'zredrock' in legkeys:
-        txt += [r'{}'.format(leg['zredrock'])]
+    # rest wavelength plus targeting information
+    if fastphot:
+        ppos = sedax.get_position()
+        xpos = (ppos.x1 - ppos.x0) / 2 + ppos.x0
+        ypos = ppos.y1 + 0.07
 
-    txt += [            
-        #r'{}'.format(leg['zwarn']),
-        r'{}'.format(leg['vdisp']),
-    ]
-    if 'dv_narrow' in legkeys or 'dv_uv' in leg_uv.keys() or 'dv_broad' in leg_broad.keys():
-        txt += ['']
+        fig.text(xpos, ypos, r'Rest-frame Wavelength ($\mu$m)',
+                 ha='center', va='bottom', fontsize=fontsize2)
+        fig.text(0.58, 0.87, '\n'.join(target), ha='left', va='bottom',
+                 fontsize=fontsize2, linespacing=1.4)
 
-    if 'dv_narrow' in legkeys:
-        txt += [
-            r'{}'.format(leg['sigma_narrow']),
-            r'{}'.format(leg['dv_narrow']),
+        toppos, leftpos = 0.25, 0.59
+
+        txt = [
+            r'{}'.format(leg['z']),
         ]
-    if 'dv_uv' in leg_uv.keys():
-        txt += [
-            r'{}'.format(leg_uv['sigma_uv']),
-            r'{}'.format(leg_uv['dv_uv']),
+        if 'zredrock' in legkeys:
+            txt += [r'{}'.format(leg['zredrock'])]
+        txt += [            
+            #r'{}'.format(leg['zwarn']),
+            #'',
+            r'{}'.format(leg['vdisp']),
+            '',
+            r'{}'.format(leg['dn4000_model']),
         ]
-        _ = leg_uv.pop('sigma_uv')
-        _ = leg_uv.pop('dv_uv')
-    if 'dv_broad' in leg_broad.keys():
-        txt += [
-            r'{}'.format(leg_broad['sigma_broad']),
-            r'{}'.format(leg_broad['dv_broad']),
+    
+        fig.text(leftpos, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
+                 bbox=bbox, linespacing=1.4)
+
+        txt = [            
+            r'{}'.format(leg['absmag_r']),
+            r'{}'.format(leg['absmag_gr']),
+            r'{}'.format(leg['absmag_rz']), 
         ]
-        _ = leg_broad.pop('sigma_broad')
-        _ = leg_broad.pop('dv_broad')
-
-    ibox = 0
-    #fig.text(startpos, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
-    fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
-             bbox=bbox, linespacing=1.4)
-    ibox += 1
-
-    txt = [
-        r'{}'.format(leg['absmag_r']),
-        r'{}'.format(leg['absmag_gr']),
-        r'{}'.format(leg['absmag_rz']), 
-        '',
-        r'{}'.format(leg['dn4000_model'])
-    ]
-    if 'dn4000_spec' in legkeys:
-        txt += [r'{}'.format(leg['dn4000_spec'])]
+    
+        fig.text(leftpos+0.18, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
+                 bbox=bbox, linespacing=1.4)
         
-    #fig.text(startpos+deltapos, toppos, '\n'.join(txt), ha='left', va='top', 
-    fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top', 
-             fontsize=legfntsz, bbox=bbox, linespacing=1.4)
-    ibox += 1        
+    else:
+        ppos = sedax.get_position()
+        xpos = (ppos.x1 - ppos.x0) / 2 + ppos.x0
+        ypos = ppos.y1 + 0.03
 
-    #factor = 2
-    if bool(leg_narrow):
-        txt = []
-        for key in leg_narrow.keys():
-            txt += [r'{}'.format(leg_narrow[key])]
-        #fig.text(startpos+deltapos*factor, toppos, '\n'.join(txt), ha='left', va='top',
-        fig.text(boxpos[ibox]-adjust*2, toppos, '\n'.join(txt), ha='left', va='top',
+        fig.text(xpos, ypos, r'Rest-frame Wavelength ($\mu$m)',
+                 ha='center', va='bottom', fontsize=fontsize2)
+        fig.text(0.647, 0.925, '\n'.join(target), ha='left', va='bottom',
+                 fontsize=fontsize2, linespacing=1.4)
+        
+        # add some key results about the object at the bottom of the figure
+
+        #toppos, startpos, deltapos = 0.21, 0.04, 0.13
+        toppos, leftpos, rightpos, adjust = 0.21, 0.03, 0.62, 0.01
+        nbox = 2 + 1*bool(leg_narrow) + bool(leg_broad)
+        boxpos = np.arange(nbox) * (rightpos - leftpos)/nbox + leftpos
+    
+        txt = [
+            r'{}'.format(leg['z']),
+        ]
+        if 'zredrock' in legkeys:
+            txt += [r'{}'.format(leg['zredrock'])]
+    
+        txt += [            
+            #r'{}'.format(leg['zwarn']),
+            r'{}'.format(leg['vdisp']),
+        ]
+        if 'dv_narrow' in legkeys or 'dv_uv' in leg_uv.keys() or 'dv_broad' in leg_broad.keys():
+            txt += ['']
+    
+        if 'dv_narrow' in legkeys:
+            txt += [
+                r'{}'.format(leg['sigma_narrow']),
+                r'{}'.format(leg['dv_narrow']),
+            ]
+        if 'dv_uv' in leg_uv.keys():
+            txt += [
+                r'{}'.format(leg_uv['sigma_uv']),
+                r'{}'.format(leg_uv['dv_uv']),
+            ]
+            _ = leg_uv.pop('sigma_uv')
+            _ = leg_uv.pop('dv_uv')
+        if 'dv_broad' in leg_broad.keys():
+            txt += [
+                r'{}'.format(leg_broad['sigma_broad']),
+                r'{}'.format(leg_broad['dv_broad']),
+            ]
+            _ = leg_broad.pop('sigma_broad')
+            _ = leg_broad.pop('dv_broad')
+    
+        ibox = 0
+        #fig.text(startpos, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
+        fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
+                 bbox=bbox, linespacing=1.4)
+        ibox += 1
+    
+        txt = [
+            r'{}'.format(leg['absmag_r']),
+            r'{}'.format(leg['absmag_gr']),
+            r'{}'.format(leg['absmag_rz']), 
+            '',
+            r'{}'.format(leg['dn4000_model'])
+        ]
+        if 'dn4000_spec' in legkeys:
+            txt += [r'{}'.format(leg['dn4000_spec'])]
+            
+        #fig.text(startpos+deltapos, toppos, '\n'.join(txt), ha='left', va='top', 
+        fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top', 
                  fontsize=legfntsz, bbox=bbox, linespacing=1.4)
         ibox += 1        
-        #factor += 1.25
-
-    if bool(leg_broad):
-        txt = []
-        for key in leg_broad.keys():
-            txt += [r'{}'.format(leg_broad[key])]
-
-    if bool(leg_uv):
-        if bool(leg_broad):
-            txt += ['']
-        else:
+    
+        #factor = 2
+        if bool(leg_narrow):
             txt = []
-        for key in leg_uv.keys():
-            txt += [r'{}'.format(leg_uv[key])]
-
-    if bool(leg_uv) or bool(leg_broad):
-        #fig.text(startpos+deltapos*factor, toppos, '\n'.join(txt), ha='left', va='top',
-        fig.text(boxpos[ibox]-adjust*1, toppos, '\n'.join(txt), ha='left', va='top',
-                 fontsize=legfntsz, bbox=bbox, linespacing=1.4)
+            for key in leg_narrow.keys():
+                txt += [r'{}'.format(leg_narrow[key])]
+            #fig.text(startpos+deltapos*factor, toppos, '\n'.join(txt), ha='left', va='top',
+            fig.text(boxpos[ibox]-adjust*2, toppos, '\n'.join(txt), ha='left', va='top',
+                     fontsize=legfntsz, bbox=bbox, linespacing=1.4)
+            ibox += 1        
+            #factor += 1.25
+    
+        if bool(leg_broad):
+            txt = []
+            for key in leg_broad.keys():
+                txt += [r'{}'.format(leg_broad[key])]
+    
+        if bool(leg_uv):
+            if bool(leg_broad):
+                txt += ['']
+            else:
+                txt = []
+            for key in leg_uv.keys():
+                txt += [r'{}'.format(leg_uv[key])]
+    
+        if bool(leg_uv) or bool(leg_broad):
+            #fig.text(startpos+deltapos*factor, toppos, '\n'.join(txt), ha='left', va='top',
+            fig.text(boxpos[ibox]-adjust*1, toppos, '\n'.join(txt), ha='left', va='top',
+                     fontsize=legfntsz, bbox=bbox, linespacing=1.4)
 
     log.info('Writing {}'.format(pngfile))
     fig.savefig(pngfile)#, dpi=150)
