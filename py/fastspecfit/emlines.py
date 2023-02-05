@@ -116,7 +116,7 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
     return residuals
 
 class EMFitTools(Filters):
-    def __init__(self, minspecwave=3500.0, maxspecwave=9900.0):
+    def __init__(self, minspecwave=3500.0, maxspecwave=9900.0, targetid=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -153,6 +153,8 @@ class EMFitTools(Filters):
 
         """
         super(EMFitTools, self).__init__()
+
+        self.targetid = targetid
 
         self.linetable = read_emlines()
 
@@ -799,10 +801,18 @@ class EMFitTools(Filters):
                 (Ifree, Itied, tiedtoparam, tiedfactor, doubletindx, 
                  doubletpair, linewaves)
 
-        fit_info = least_squares(_objective_function, parameters[Ifree], args=farg, max_nfev=5000, 
-                                 xtol=1e-2, tr_solver='lsmr', tr_options={'regularize': True},
-                                 method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
-        parameters[Ifree] = fit_info.x
+        try:
+            fit_info = least_squares(_objective_function, parameters[Ifree], args=farg, max_nfev=5000, 
+                                     xtol=1e-2, tr_solver='lsmr', tr_options={'regularize': True},
+                                     method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
+            parameters[Ifree] = fit_info.x
+        except:
+            if self.targetid:
+                errmsg = 'Problem in scipy.optimize.least_squares for targetid {}.'.format(self.targetid)
+            else:
+                errmsg = 'Problem in scipy.optimize.least_squares.'
+            log.critical(errmsg)
+            raise RuntimeError(errmsg)
 
         # Conditions for dropping a parameter (all parameters, not just those
         # being fitted):
@@ -2276,7 +2286,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
         else:
             log = get_logger()
 
-    EMFit = EMFitTools(minspecwave=minspecwave, maxspecwave=maxspecwave)
+    EMFit = EMFitTools(minspecwave=minspecwave, maxspecwave=maxspecwave, targetid=data['targetid'])
                             
     # Combine all three cameras; we will unpack them to build the
     # best-fitting model (per-camera) below.
@@ -2442,6 +2452,11 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
             linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
         else:
             linemodel['value'][I] = bestfit['value'][I] # value here not init!
+
+        # Make sure the bounds are not violated.
+        if (linemodel['value'][I] < linemodel['bounds'][I, 0]) or (linemodel['value'][I] > linemodel['bounds'][I, 1]):
+            #print(linemodel[I])
+            linemodel['value'][I] = linemodel['initial'][I]
             
         #if bestfit['value'][I] != 0:
         #    linemodel['value'][I] = bestfit['value'][I]

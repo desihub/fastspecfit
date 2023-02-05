@@ -96,12 +96,15 @@ def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot):
+def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot, log):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
     """
     from desiutil.dust import mwdust_transmission, dust_transmission
+
+    log.info('Pre-processing object {} [targetid {}, z={:.6f}].'.format(
+        iobj, meta['TARGETID'], meta['Z']))
 
     if specdata['photsys'] == 'S':
         filters = Filters.decam
@@ -921,13 +924,13 @@ class DESISpectra(TabulatedDESI):
             
             if fastphot:
                 unpackargs = []
-                for igal in np.arange(len(meta)):
+                for iobj in np.arange(len(meta)):
                     specdata = {
-                        'targetid': meta['TARGETID'][igal], 'zredrock': meta['Z'][igal],
-                        'photsys': meta['PHOTSYS'][igal],
-                        'dluminosity': dlum[igal], 'dmodulus': dmod[igal], 'tuniv': tuniv[igal],
+                        'targetid': meta['TARGETID'][iobj], 'zredrock': meta['Z'][iobj],
+                        'photsys': meta['PHOTSYS'][iobj],
+                        'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
-                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], CTools, True, False))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], CTools, True, False, log))
             else:
                 from desispec.resolution import Resolution
                 
@@ -943,23 +946,23 @@ class DESISpectra(TabulatedDESI):
                 cameras = spec.bands
                 coadd_cameras = coadd_spec.bands[0]
                 unpackargs = []
-                for igal in np.arange(len(meta)):
+                for iobj in np.arange(len(meta)):
                     specdata = {
-                        'targetid': meta['TARGETID'][igal], 'zredrock': meta['Z'][igal],
-                        'photsys': meta['PHOTSYS'][igal], 'cameras': cameras,
-                        'dluminosity': dlum[igal], 'dmodulus': dmod[igal], 'tuniv': tuniv[igal],                        
+                        'targetid': meta['TARGETID'][iobj], 'zredrock': meta['Z'][iobj],
+                        'photsys': meta['PHOTSYS'][iobj], 'cameras': cameras,
+                        'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],                        
                         'wave0': [spec.wave[cam] for cam in cameras],
-                        'flux0': [spec.flux[cam][igal, :] for cam in cameras],
-                        'ivar0': [spec.ivar[cam][igal, :] for cam in cameras],
+                        'flux0': [spec.flux[cam][iobj, :] for cam in cameras],
+                        'ivar0': [spec.ivar[cam][iobj, :] for cam in cameras],
                         # Also track the mask---see https://github.com/desihub/desispec/issues/1389 
-                        'mask0': [spec.mask[cam][igal, :] for cam in cameras],
-                        'res0': [Resolution(spec.resolution_data[cam][igal, :, :]) for cam in cameras],
+                        'mask0': [spec.mask[cam][iobj, :] for cam in cameras],
+                        'res0': [Resolution(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
                         'coadd_wave': coadd_spec.wave[coadd_cameras],
-                        'coadd_flux': coadd_spec.flux[coadd_cameras][igal, :],
-                        'coadd_ivar': coadd_spec.ivar[coadd_cameras][igal, :],
-                        'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][igal, :]),
+                        'coadd_flux': coadd_spec.flux[coadd_cameras][iobj, :],
+                        'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
+                        'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :]),
                         }
-                    unpackargs.append((igal, specdata, meta[igal], ebv[igal], CTools, fastphot, synthphot))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], CTools, fastphot, synthphot, log))
                     
             if mp > 1:
                 import multiprocessing
