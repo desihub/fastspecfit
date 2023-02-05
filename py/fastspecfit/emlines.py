@@ -2371,22 +2371,6 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
         log.info('Second (broad) line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
             nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
 
-        ## Compare chi2 just in and around the broad lines.
-        #broadlinepix = np.hstack(broadlinepix)
-        #I = ((EMFit.fit_linetable[EMFit.fit_linetable['inrange']]['zwave'] > np.min(emlinewave[broadlinepix])) *
-        #     (EMFit.fit_linetable[EMFit.fit_linetable['inrange']]['zwave'] < np.max(emlinewave[broadlinepix])))
-        #Iline = initfit[np.isin(broadfit['linename'], EMFit.fit_linetable[EMFit.fit_linetable['inrange']][I]['name'])]
-        #Bline = broadfit[np.isin(broadfit['linename'], EMFit.fit_linetable[EMFit.fit_linetable['inrange']][I]['name'])]
-        #dof_init = np.count_nonzero(emlineivar[broadlinepix] > 0) - np.count_nonzero((Iline['fixed'] == False) * (Iline['tiedtoparam'] == -1))
-        #dof_broad = np.count_nonzero(emlineivar[broadlinepix] > 0) - np.count_nonzero((Bline['fixed'] == False) * (Bline['tiedtoparam'] == -1))
-        #if dof_init == 0 or dof_broad == 0:
-        #    errmsg = 'Number of degrees of freedom should never be zero: dof_init={}, dof_free={}'.format(
-        #        dof_init, dof_broad)
-        #    log.critical(errmsg)
-        #    raise ValueError(errmsg)
-        #linechi2_init = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - initmodel[broadlinepix])**2) / dof_init
-        #linechi2_broad = np.sum(emlineivar[broadlinepix] * (emlineflux[broadlinepix] - broadmodel[broadlinepix])**2) / dof_broad
-        
         linechi2_broad, linechi2_init = broadchi2, initchi2
 
         log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [chi2_narrow-chi2_broad={:.5f}]'.format(
@@ -2436,12 +2420,6 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
         linechi2_broad, linechi2_init = 1e6, initchi2
         use_linemodel_broad = False
         
-        #if broadlinefit:
-        #    log.info('Too few pixels centered on candidate broad emission lines.')
-        #else:
-        #    log.info('Skipping broad-line fitting.')
-        #linechi2_init, linechi2_broad = 0.0, 0.0
-
     # Finally, one more fitting loop with all the line-constraints relaxed
     # but starting from the previous best-fitting values.
     if use_linemodel_broad:
@@ -2499,8 +2477,9 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     #    raise ValueError(errmsg)
 
     # Tighten up the bounds to within +/-10% around the initial parameter
-    # values except for the amplitudes.
+    # values except for the amplitudes. Be sure to check for zero.
     I = np.where((EMFit.amp_param_bool == False) * (linemodel['fixed'] == False) *
+                 (linemodel['value'] != 0.0) *
                  (linemodel['tiedtoparam'] == -1) * (linemodel['doubletpair'] == -1))[0]
     if len(I) > 0:
         neg = linemodel['value'][I] < 0
