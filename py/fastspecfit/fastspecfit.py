@@ -631,7 +631,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         cmd = cmd.format(outfile=cutoutpng, ra=metadata['RA'], dec=metadata['DEC'],
                          width=width, height=height)
         print(cmd)
-        cuterr = subprocess.call(cmd.split())
+        cuterr = subprocess.check_call(cmd.split())
         if cuterr != 0:
             errmsg = 'Something went wrong retrieving the png cutout'
             log.warning(errmsg)
