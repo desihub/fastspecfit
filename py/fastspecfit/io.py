@@ -166,16 +166,18 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot)
 
     if not fastphot:
         specdata.update({'linemask': [], 'linemask_all': [], 'linename': [],
-                         'linepix': [], 'contpix': [], 'snr': np.zeros(3, 'f4')})
+                         'linepix': [], 'contpix': [],
+                         'wave': [], 'flux': [], 'ivar': [], 'mask': [], 'res': [], 
+                         'snr': np.zeros(3, 'f4')})
     
         cameras, npixpercamera = [], []
         for icam, camera in enumerate(specdata['cameras']):
             # Check whether the camera is fully masked.
-            if np.sum(specdata['ivar'][icam]) == 0:
-                log.warning('Dropping fully masked camera {}'.format(camera))
+            if np.sum(specdata['ivar0'][icam]) == 0:
+                log.warning('Dropping fully masked camera {}.'.format(camera))
             else:
-                ivar = specdata['ivar'][icam]
-                mask = specdata['mask'][icam]
+                ivar = specdata['ivar0'][icam]
+                mask = specdata['mask0'][icam]
 
                 # always mask the first and last pixels
                 mask[0] = 1
@@ -186,17 +188,30 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot)
                 ivar[mask != 0] = 0
 
                 if np.all(ivar == 0):
-                    log.warning('Dropping fully masked camera {}'.format(camera))
+                    log.warning('Dropping fully masked camera {}.'.format(camera))                    
                 else:
-                    # Compute the SNR before we correct for dust.
-                    specdata['snr'][icam] = np.median(specdata['flux'][icam] * np.sqrt(ivar))
-                    #mw_transmission_spec = 10**(-0.4 * ebv * RV * ext_odonnell(wave[camera], Rv=RV))
-                    mw_transmission_spec = dust_transmission(specdata['wave'][icam], ebv, Rv=RV)
-                    specdata['flux'][icam] /= mw_transmission_spec
-                    specdata['ivar'][icam] *= mw_transmission_spec**2
-            
                     cameras.append(camera)
-                    npixpercamera.append(len(specdata['wave'][icam])) # number of pixels in this camera
+                    npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
+
+                    # Compute the SNR before we correct for dust.
+                    specdata['snr'][icam] = np.median(specdata['flux0'][icam] * np.sqrt(ivar))
+                    
+                    #mw_transmission_spec = 10**(-0.4 * ebv * RV * ext_odonnell(wave[camera], Rv=RV))
+                    mw_transmission_spec = dust_transmission(specdata['wave0'][icam], ebv, Rv=RV)
+                    specdata['flux'].append(specdata['flux0'][icam] / mw_transmission_spec)
+                    specdata['ivar'].append(ivar * mw_transmission_spec**2)
+                    specdata['wave'].append(specdata['wave0'][icam])
+                    specdata['mask'].append(specdata['mask0'][icam])
+                    specdata['res'].append(specdata['res0'][icam])
+                    
+        if len(cameras) == 0:
+            errmsg = 'No good data, which should never happen.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+        # clean up the data dictionary
+        for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0']:
+            del specdata[key]
 
         # Pre-compute some convenience variables for "un-hstacking"
         # an "hstacked" spectrum.
@@ -246,7 +261,7 @@ def unpack_one_spectrum(igal, specdata, meta, ebv, Filters, fastphot, synthphot)
             specdata['linename'].append(_linename)
             specdata['linepix'].append(_linenpix)
             specdata['contpix'].append(_contpix)
-    
+
         #import matplotlib.pyplot as plt
         #plt.clf()
         #for ii in np.arange(3):
@@ -933,12 +948,12 @@ class DESISpectra(TabulatedDESI):
                         'targetid': meta['TARGETID'][igal], 'zredrock': meta['Z'][igal],
                         'photsys': meta['PHOTSYS'][igal], 'cameras': cameras,
                         'dluminosity': dlum[igal], 'dmodulus': dmod[igal], 'tuniv': tuniv[igal],                        
-                        'wave': [spec.wave[cam] for cam in cameras],
-                        'flux': [spec.flux[cam][igal, :] for cam in cameras],
-                        'ivar': [spec.ivar[cam][igal, :] for cam in cameras],
+                        'wave0': [spec.wave[cam] for cam in cameras],
+                        'flux0': [spec.flux[cam][igal, :] for cam in cameras],
+                        'ivar0': [spec.ivar[cam][igal, :] for cam in cameras],
                         # Also track the mask---see https://github.com/desihub/desispec/issues/1389 
-                        'mask': [spec.mask[cam][igal, :] for cam in cameras],
-                        'res': [Resolution(spec.resolution_data[cam][igal, :, :]) for cam in cameras],
+                        'mask0': [spec.mask[cam][igal, :] for cam in cameras],
+                        'res0': [Resolution(spec.resolution_data[cam][igal, :, :]) for cam in cameras],
                         'coadd_wave': coadd_spec.wave[coadd_cameras],
                         'coadd_flux': coadd_spec.flux[coadd_cameras][igal, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][igal, :],

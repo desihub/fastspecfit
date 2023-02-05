@@ -1702,7 +1702,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
         # best-fitting model (per-camera) below.
         specwave = np.hstack(data['wave'])
         specflux = np.hstack(data['flux'])
-        flamivar = np.hstack(data['ivar']) 
+        flamivar = np.hstack(data['ivar'])
         specivar = flamivar * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
 
         if np.all(specivar == 0) or np.any(specivar < 0):
@@ -1730,7 +1730,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
         #Ivdisp = np.where((specivar > 0) * (specsmooth != 0.0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
         compute_vdisp = (len(Ivdisp) > 0) and (np.ptp(restwave[Ivdisp]) > 500.0)
 
-        log.info('S/N_b={:.2f}, S/N_r={:.2f}, , S/N_z={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
+        log.info('S/N_b={:.2f}, S/N_r={:.2f}, S/N_z={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
             result['SNR_B'], result['SNR_R'], result['SNR_Z'], restwave[0], restwave[-1]))
 
         if compute_vdisp:
@@ -1752,7 +1752,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
                 # against tiny ivar becomming infinite in the output table.
                 vdispsnr = vdispbest * np.sqrt(vdispivar)
                 if vdispsnr < 1:
-                    log.warning('vdisp signal-to-noise {:.3f} is less than one; adopting vdisp={:.0f} km/s.'.format(
+                    log.warning('vdisp signal-to-noise {:.2f} is less than one; adopting vdisp={:.0f} km/s.'.format(
                         vdispsnr, vdisp_nominal))
                     vdispbest, vdispivar = vdisp_nominal, 0.0
                 else:
