@@ -47,7 +47,7 @@ def fastspec_one(iobj, data, out, meta, templates, log=None, broadlinefit=True,
     from fastspecfit.emlines import emline_specfit
     from fastspecfit.continuum import continuum_specfit
     
-    log.info('Working on object {} [targetid={}, z={:.6f}].'.format(
+    log.info('Working on object {} [targetid {}, z={:.6f}].'.format(
         iobj, meta['TARGETID'], meta['Z']))
 
     # Read the templates and then fit the continuum spectrum.
@@ -169,14 +169,14 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
 
+    # Initialize the output tables.
     if args.templates is None:
         from fastspecfit.io import get_templates_filename
         templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
     else:
         templates = args.templates
-    out, meta = init_fastspec_output(Spec.meta, Spec.specprod, templates=templates, data=data,
-                                     log=log, fastphot=fastphot)
-    log.info('Initializing the output tables took {:.2f} seconds.'.format(time.time()-t0))
+    out, meta = init_fastspec_output(Spec.meta, Spec.specprod, templates=templates,
+                                     data=data, log=log, fastphot=fastphot)
 
     # Fit in parallel
     t0 = time.time()

@@ -315,6 +315,8 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
     """Estimate the velocity width from potentially strong, isolated lines.
 
     """
+    import warnings
+    
     if log is None:
         from desiutil.log import get_logger, DEBUG
         if verbose:
@@ -375,10 +377,10 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
     
                     stacksigma = 1 / np.sqrt(stackivar)
                     try:
-                        popt, _ = curve_fit(onegauss, xdata=stackdvel, ydata=stackflux,
-                                            sigma=stacksigma, p0=[1.0, init_linesigma, 0.0])
-                                            #sigma=stacksigma, p0=[1.0, init_linesigma, np.median(stackflux)])
-                                            #sigma=stacksigma, p0=[1.0, sigma, np.median(stackflux), 0.0])
+                        with warnings.catch_warnings():
+                            warnings.simplefilter('ignore')
+                            popt, _ = curve_fit(onegauss, xdata=stackdvel, ydata=stackflux,
+                                                sigma=stacksigma, p0=[1.0, init_linesigma, 0.0])
                         popt[1] = np.abs(popt[1])
                         if popt[0] > 0 and popt[1] > 0:
                             linesigma = popt[1]
@@ -416,7 +418,7 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
                         ax.legend(loc='upper left', fontsize=8, frameon=False)
                         _empty = False
     
-        log.info('{} masking sigma={:.0f} km/s and S/N={:.0f}'.format(label, linesigma, linesigma_snr))
+        log.debug('{} masking sigma={:.0f} km/s and S/N={:.0f}'.format(label, linesigma, linesigma_snr))
     
         if ax and _empty:
             ax.plot([0, 0], [0, 0], label='{}-No Data'.format(label))

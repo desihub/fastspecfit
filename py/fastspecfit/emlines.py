@@ -630,9 +630,10 @@ class EMFitTools(Filters):
             if mx < 0: # ???
                 mx = 5*np.max(np.abs(coadd_emlineflux[linepix]))
             
-            # force broad Balmer lines to be positive
             iline = self.linetable[self.linetable['name'] == linename]
             bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+            
+            # force broad Balmer lines to be positive - deprecated
             #if iline['isbroad']:
             #    if iline['isbalmer']:
             #        bounds = [0.0, mx]
