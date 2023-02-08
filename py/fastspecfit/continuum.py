@@ -1677,7 +1677,6 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
 
            coeff, rchi2_phot = CTools.call_nnls(sedflam, objflam, objflamivar)
            rchi2_phot /= np.sum(objflamivar > 0) # dof???
-           rchi2_cont = rchi2_phot # equivalent
            log.info('Fitting {} models took {:.2f} seconds.'.format(
                nage, time.time()-t0))
 
@@ -1951,10 +1950,8 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
 
     # Pack it in and return.
     result['COEFF'][agekeep] = coeff
-    result['RCHI2_CONT'] = rchi2_cont
     result['RCHI2_PHOT'] = rchi2_phot
     result['VDISP'] = vdispbest # * u.kilometer/u.second
-    result['VDISP_IVAR'] = vdispivar # * (u.second/u.kilometer)**2
     result['AV'] = AV # * u.mag
     result['AGE'] = age # * u.Gyr
     result['ZZSUN'] = zzsun
@@ -1977,6 +1974,9 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
             result[cflux] = cfluxes[cflux]
 
     if not fastphot:
+        result['RCHI2_CONT'] = rchi2_cont
+        result['VDISP_IVAR'] = vdispivar # * (u.second/u.kilometer)**2
+        
         result['APERCORR'] = apercorr
         result['APERCORR_G'] = apercorr_g
         result['APERCORR_R'] = apercorr_r

@@ -377,8 +377,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         'z': '$z={:.7f}$'.format(redshift),
         'zwarn': '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN']),
 
-        'rchi2': '$\\chi^{{2}}_{{\\nu, \\rm specphot}}$={:.2f}'.format(fastspec['RCHI2']),
-        'rchi2_cont': '$\\chi^{{2}}_{{\\nu, \\rm cont}}$={:.2f}'.format(fastspec['RCHI2_CONT']),
         'rchi2_phot': '$\\chi^{{2}}_{{\\nu, \\rm phot}}$={:.2f}'.format(fastspec['RCHI2_PHOT']),
 
         'dn4000_model': '$D_{{n}}(4000)_{{\\rm model}}={:.3f}$'.format(fastspec['DN4000_MODEL']),
@@ -394,13 +392,19 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         'absmag_rz': '$^{{0.1}}(r-z)={:.3f}$'.format(fastspec['ABSMAG_SDSS_R']-fastspec['ABSMAG_SDSS_Z']),       
         }
 
+    if fastphot:
+        leg['vdisp'] = '$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+    else:
+        if fastspec['VDISP_IVAR'] > 0:
+            leg['vdisp'] = '$\\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
+        else:
+            leg['vdisp'] = '$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+            
+        leg['rchi2'] = '$\\chi^{{2}}_{{\\nu, \\rm specphot}}$={:.2f}'.format(fastspec['RCHI2'])
+        leg['rchi2_cont'] = '$\\chi^{{2}}_{{\\nu, \\rm cont}}$={:.2f}'.format(fastspec['RCHI2_CONT'])
+
     if redshift != metadata['Z_RR']:
         leg['zredrock'] = '$z_{{\\rm Redrock}}={:.7f}$'.format(metadata['Z_RR'])
-
-    if fastspec['VDISP_IVAR'] > 0:
-        leg['vdisp'] = '$\\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
-    else:
-        leg['vdisp'] = '$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
 
     if fastphot:
         fontsize1 = 16
@@ -906,7 +910,9 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                            markeredgecolor='k', markerfacecolor='none', elinewidth=3,
                            ecolor=photcol1, capsize=5, alpha=0.7)
 
-    if not fastphot:
+    if fastphot:
+        txt = leg['rchi2_phot']
+    else:
         # Label the DESI wavelength range and the aperture correction.
         sedax.plot([np.min(fullwave)/1e4, np.max(fullwave)/1e4], [sed_ymin-1, sed_ymin-1],
                    lw=2, ls='-', color='gray', marker='s')#, alpha=0.5)
@@ -915,8 +921,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                    color='k')
 
         txt = '\n'.join((leg['rchi2_cont'], leg['rchi2_phot'], leg['rchi2']))
-    else:
-        txt = leg['rchi2_phot']
         
     sedax.text(0.02, 0.94, txt, ha='left', va='top',
                transform=sedax.transAxes, fontsize=legfntsz)#, bbox=bbox)

@@ -614,6 +614,8 @@ class DESISpectra(TabulatedDESI):
                     tileinfo = self.tileinfo[self.tileinfo['TILEID'] == tileid]
                     survey = tileinfo['SURVEY'][0]
                     program = tileinfo['PROGRAM'][0]
+                else:
+                    survey, program = '', ''
 
             if survey == 'main' or survey == 'special':
                 TARGETINGCOLS = TARGETINGBITS['default']
@@ -1128,9 +1130,10 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
     out.add_column(Column(name='Z', length=nobj, dtype='f8')) # redshift
     out.add_column(Column(name='COEFF', length=nobj, shape=(ncoeff,), dtype='f4'))
 
-    out.add_column(Column(name='RCHI2', length=nobj, dtype='f4'))      # full-spectrum reduced chi2
-    out.add_column(Column(name='RCHI2_CONT', length=nobj, dtype='f4')) # rchi2 fitting just to the continuum (spec+phot)
-    out.add_column(Column(name='RCHI2_PHOT', length=nobj, dtype='f4')) # rchi2 fitting just to the photometry (=RCHI2_CONT if fastphot=True)
+    if not fastphot:
+        out.add_column(Column(name='RCHI2', length=nobj, dtype='f4'))      # full-spectrum reduced chi2
+        out.add_column(Column(name='RCHI2_CONT', length=nobj, dtype='f4')) # rchi2 fitting just to the continuum (spec+phot)
+    out.add_column(Column(name='RCHI2_PHOT', length=nobj, dtype='f4')) # rchi2 fitting just to the photometry
 
     if not fastphot:
         for cam in ['B', 'R', 'Z']:
@@ -1139,7 +1142,8 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
             out.add_column(Column(name='SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
 
     out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
-    out.add_column(Column(name='VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
+    if not fastphot:
+        out.add_column(Column(name='VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
     out.add_column(Column(name='AV', length=nobj, dtype='f4', unit=u.mag))
     out.add_column(Column(name='AGE', length=nobj, dtype='f4', unit=u.Gyr))
     out.add_column(Column(name='ZZSUN', length=nobj, dtype='f4'))
@@ -1153,13 +1157,14 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
         out.add_column(Column(name='DN4000_IVAR', length=nobj, dtype='f4'))
     out.add_column(Column(name='DN4000_MODEL', length=nobj, dtype='f4'))
 
-    # observed-frame photometry synthesized from the spectra
-    for band in Filt.synth_bands:
-        out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies')) 
-        #out.add_column(Column(name='FLUX_SYNTH_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies-2'))
-    # observed-frame photometry synthesized the best-fitting spectroscopic model
-    for band in Filt.synth_bands:
-        out.add_column(Column(name='FLUX_SYNTH_SPECMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
+    if not fastphot:
+        # observed-frame photometry synthesized from the spectra
+        for band in Filt.synth_bands:
+            out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies')) 
+            #out.add_column(Column(name='FLUX_SYNTH_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies-2'))
+        # observed-frame photometry synthesized the best-fitting spectroscopic model
+        for band in Filt.synth_bands:
+            out.add_column(Column(name='FLUX_SYNTH_SPECMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
     # observed-frame photometry synthesized the best-fitting continuum model
     for band in Filt.bands:
         out.add_column(Column(name='FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
