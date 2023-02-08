@@ -26,6 +26,11 @@ FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
+    'all': ['CMX_TARGET', 'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET',
+             'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
+             'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
+             'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
+             'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET'],
     'fuji': ['CMX_TARGET', 'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET',
              'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
              'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
@@ -336,7 +341,7 @@ class DESISpectra(TabulatedDESI):
             self.mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
         else:
             self.mapdir = mapdir
-            
+
     @staticmethod
     def resolve(targets):
         """Resolve which targets are primary in imaging overlap regions.
@@ -487,7 +492,7 @@ class DESISpectra(TabulatedDESI):
         from desiutil.depend import getdep
         from desitarget.io import releasedict        
         from desitarget.targets import main_cmx_or_sv
-        from desispec.io.photo import gather_tractorphot
+        from desispec.io.photo import gather_tractorphot, gather_targetphot
 
         if zmin <= 0.0:
             errmsg = 'zmin should generally be >= 0; proceed with caution!'
@@ -557,11 +562,6 @@ class DESISpectra(TabulatedDESI):
             
             self.specprod = specprod
             
-            if specprod == 'fuji': # EDR
-                TARGETINGCOLS = TARGETINGBITS[specprod]
-            else:
-                TARGETINGCOLS = TARGETINGBITS['default']
-
             if 'SPGRP' in hdr:
                 self.coadd_type = hdr['SPGRP']
             else:
@@ -614,7 +614,12 @@ class DESISpectra(TabulatedDESI):
                     tileinfo = self.tileinfo[self.tileinfo['TILEID'] == tileid]
                     survey = tileinfo['SURVEY'][0]
                     program = tileinfo['PROGRAM'][0]
-                    
+
+            if survey == 'main' or survey == 'special':
+                TARGETINGCOLS = TARGETINGBITS['default']
+            else:
+                TARGETINGCOLS = TARGETINGBITS['all']
+            
             # add targeting columns
             allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
             READFMCOLS = FMCOLS + [col for col in TARGETINGCOLS if col in allfmcols]
@@ -714,21 +719,20 @@ class DESISpectra(TabulatedDESI):
                 raise ValueError(errmsg)
             expmeta = Table(expmeta[I])
 
-            #tiles = np.unique(np.atleast_1d(expmeta['TILEID']).data)
-            #alltiles.append(tiles)
-
             # build the list of tiles that went into each unique target / coadd
             tileid_list = [] # variable length, so need to build the array first
             for tid in meta['TARGETID']:
                 I = tid == expmeta['TARGETID']
                 tileid_list.append(' '.join(np.unique(expmeta['TILEID'][I]).astype(str)))
                 #meta['TILEID_LIST'][M] = ' '.join(np.unique(expmeta['TILEID'][I]).astype(str))
+                # store just the zeroth tile for gather_targetphot, below
                 if self.coadd_type == 'healpix':
-                    alltiles.append(expmeta['TILEID'][I][0]) # store just the zeroth tile for gather_targetphot, below
+                    alltiles.append(expmeta['TILEID'][I][0]) 
                 elif self.coadd_type == 'custom':
-                    alltiles.append(expmeta['TILEID'][I][0]) # store just the zeroth tile for gather_targetphot, below
+                    alltiles.append(expmeta['TILEID'][I][0])
                 else:
                     alltiles.append(tileid)
+                    
             if self.coadd_type == 'healpix':                    
                 meta['TILEID_LIST'] = tileid_list
             elif self.coadd_type == 'custom':
@@ -768,32 +772,44 @@ class DESISpectra(TabulatedDESI):
             return
 
         # Use the metadata in the fibermap to retrieve the LS-DR9 source
-        # photometry.
+        # photometry. Note that we have to make a copy of the input_meta table
+        # because otherwise BRICKNAME gets "repaired!"
         t0 = time.time()
-        targets = gather_tractorphot(vstack(self.meta), columns=TARGETCOLS, dr9dir=self.dr9dir)
-        #targets = gather_tractorphot(vstack(self.meta), columns=np.hstack((
+        input_meta = vstack(self.meta).copy() 
+        tractor = gather_tractorphot(input_meta, columns=TARGETCOLS, dr9dir=self.dr9dir)
+        #tractor = gather_tractorphot(input_meta, columns=np.hstack((
         #    TARGETCOLS, 'FRACFLUX_W1', 'FRACFLUX_W2', 'FRACFLUX_W3', 'FRACFLUX_W4')), dr9dir=self.dr9dir)
-
-        # bug! https://github.com/desihub/fastspecfit/issues/75
-        #from desitarget.io import releasedict
-        #for imeta, meta in enumerate(self.meta):
-        #    ibug = np.where((meta['RELEASE'] > 0) * (meta['BRICKID'] > 0) * (meta['BRICK_OBJID'] > 0) * (meta['PHOTSYS'] == ''))[0]
-        #    if len(ibug) > 0:
-        #        meta['PHOTSYS', 'RELEASE', 'BRICKID', 'BRICK_OBJID', 'TARGETID', 'TILEID', 'NIGHT', 'FIBER'][ibug]
-        #        from desitarget.targets import decode_targetid
-        #        objid, brickid, release, mock, sky, gaia = decode_targetid(meta['TARGETID'][ibug])
-        #        meta['PHOTSYS'][ibug] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE'][ibug]]
-        #        self.meta[imeta] = meta                    
-        #targets = gather_tractorphot(vstack(self.meta), columns=TARGETCOLS, dr9dir=self.dr9dir)
 
         metas = []
         for meta in self.meta:
-            srt = np.hstack([np.where(tid == targets['TARGETID'])[0] for tid in meta['TARGETID']])
-            assert(np.all(meta['TARGETID'] == targets['TARGETID'][srt]))
-            # Prefer the target catalog quantities over those in the fiberassign
-            # table, unless the target catalog is zero.
-            for col in targets.colnames:
-                meta[col] = targets[col][srt]
+            srt = np.hstack([np.where(tid == tractor['TARGETID'])[0] for tid in meta['TARGETID']])
+            assert(np.all(meta['TARGETID'] == tractor['TARGETID'][srt]))
+
+            # The fibermaps in fuji and guadalupe (plus earlier productions) had a
+            # variety of errors. Fix those here using
+            # desispec.io.photo.gather_targetphot.
+            if specprod == 'fuji' or specprod == 'guadalupe': # fragile...
+                input_meta = meta['TARGETID', 'TARGET_RA', 'TARGET_DEC']
+                input_meta['TILEID'] = alltiles
+                targets = gather_targetphot(input_meta, fiberassign_dir=self.fiberassign_dir)
+                assert(np.all(input_meta['TARGETID'] == targets['TARGETID']))
+                for col in meta.colnames:
+                    if col in targets.colnames:
+                        diffcol = meta[col] != targets[col]
+                        if np.any(diffcol):
+                            log.warning('Updating column {} in metadata table: {}-->{}.'.format(
+                                col, meta[col][0], targets[col][0]))
+                            meta[col][diffcol] = targets[col][diffcol]
+            #else:
+            #    for col in ['BRICKNAME', 'SV3_DESI_TARGET', 'SV3_SCND_TARGET']:
+            #        print(meta[col][0])
+
+            srt = np.hstack([np.where(tid == tractor['TARGETID'])[0] for tid in meta['TARGETID']])
+            assert(np.all(meta['TARGETID'] == tractor['TARGETID'][srt]))
+            
+            # Add the tractor catalog quantities (overwriting columns if necessary).
+            for col in tractor.colnames:
+                meta[col] = tractor[col][srt]
                 
             # special case for some secondary and ToOs
             I = (meta['RA'] == 0) * (meta['DEC'] == 0) * (meta['TARGET_RA'] != 0) * (meta['TARGET_DEC'] != 0)
@@ -820,11 +836,13 @@ class DESISpectra(TabulatedDESI):
             meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
             for band in ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']:
                 meta['MW_TRANSMISSION_{}'.format(band)] = np.ones(shape=(1,), dtype='f4')
-            metas.append(meta)
-            
-        log.info('Gathered photometric metadata for {} objects in {:.2f} sec'.format(len(targets), time.time()-t0))
-        self.meta = metas # update
 
+            metas.append(meta)
+
+        log.info('Gathered photometric metadata for {} objects in {:.2f} sec'.format(len(tractor), time.time()-t0))
+            
+        self.meta = metas # update
+            
     def read_and_unpack(self, fastphot=False, synthphot=True, mp=1):
         """Read and unpack selected spectra or broadband photometry.
         
@@ -1071,11 +1089,11 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
             if metacol in colunit.keys():
                 meta[metacol].unit = colunit[metacol]
 
-    if specprod == 'fuji': # EDR
-        TARGETINGCOLS = TARGETINGBITS[specprod]
-    else:
+    if np.any(np.isin(meta['SURVEY'], 'main')) or np.any(np.isin(meta['SURVEY'], 'special')):
         TARGETINGCOLS = TARGETINGBITS['default']
-
+    else:
+        TARGETINGCOLS = TARGETINGBITS['all']
+            
     for metacol in metacols:
         if metacol in skipcols or metacol in TARGETINGCOLS or metacol in meta.colnames or metacol in redrockcols:
             continue
