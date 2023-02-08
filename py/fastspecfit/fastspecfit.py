@@ -107,6 +107,7 @@ def parse(options=None, log=None):
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--dr9dir', type=str, default=None, help='Optional directory name for the DR9 photometry.')
+    parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
     if log is None:
@@ -161,7 +162,8 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
 
     Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
                 ntargets=args.ntargets, redrockfile_prefix=args.redrockfile_prefix,
-                specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix)
+                specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
+                specprod_dir=args.specproddir)
     if len(Spec.specfiles) == 0:
         return
 

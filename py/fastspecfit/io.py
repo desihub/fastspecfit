@@ -427,7 +427,7 @@ class DESISpectra(TabulatedDESI):
 
     def select(self, redrockfiles, zmin=0.001, zmax=None, zwarnmax=None,
                targetids=None, firsttarget=0, ntargets=None,
-               use_quasarnet=True, redrockfile_prefix='redrock-',
+               specprod_dir=None, use_quasarnet=True, redrockfile_prefix='redrock-',
                specfile_prefix='coadd-', qnfile_prefix='qso_qn-'):
         """Select targets for fitting and gather the necessary spectroscopic metadata.
 
@@ -525,7 +525,7 @@ class DESISpectra(TabulatedDESI):
         log.info('Reading and parsing {} unique redrockfile(s).'.format(len(redrockfiles)))
 
         alltiles = []
-        self.redrockfiles, self.specfiles, self.meta = [], [], []
+        self.redrockfiles, self.specfiles, self.meta, self.surveys = [], [], [], []
         
         for ired, redrockfile in enumerate(np.atleast_1d(redrockfiles)):
             if not os.path.isfile(redrockfile):
@@ -606,7 +606,9 @@ class DESISpectra(TabulatedDESI):
 
                 # cache the tiles file so we can grab the survey and program name appropriate for this tile
                 if not hasattr(self, 'tileinfo'):
-                    infofile = os.path.join(self.redux_dir, self.specprod, 'tiles-{}.csv'.format(self.specprod))
+                    if specprod_dir is None:
+                        specprod_dir = os.path.join(self.redux_dir, self.specprod)
+                    infofile = os.path.join(specprod_dir, 'tiles-{}.csv'.format(self.specprod))
                     if os.path.isfile(infofile):
                         self.tileinfo = Table.read(infofile)
                         
@@ -768,6 +770,7 @@ class DESISpectra(TabulatedDESI):
             self.meta.append(Table(meta))
             self.redrockfiles.append(redrockfile)
             self.specfiles.append(specfile)
+            self.surveys.append(survey)
 
         if len(self.meta) == 0:
             log.warning('No targets read!')
