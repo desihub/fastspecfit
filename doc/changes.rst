@@ -2,10 +2,12 @@
 Change Log
 ==========
 
-2.0.1 (not released yet)
+2.1.0 (not released yet)
 ------------------------
 
-* 
+* Tests, bug fixes, and speed-ups of version 2.0.0 [`PR #99`_].
+
+.. _`PR #99`: https://github.com/desihub/fastspecfit/pull/99
 
 2.0.0 (2023-01-23)
 ------------------
