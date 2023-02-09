@@ -250,6 +250,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     from matplotlib.patches import Circle, Rectangle, ConnectionPatch
     from matplotlib.lines import Line2D
     import matplotlib.gridspec as gridspec
+    import matplotlib.image as mpimg
 
     import astropy.units as u
     from astropy.io import fits
@@ -631,21 +632,24 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     hdr['CD2_2'] = +pixscale/3600
     wcs = WCS(hdr)
 
-    cutoutpng = os.path.join('/tmp', 'tmp.'+os.path.basename(pngfile))
-    if not os.path.isfile(cutoutpng):
-        cmd = 'wget -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer=ls-dr9'
-        cmd = cmd.format(outfile=cutoutpng, ra=metadata['RA'], dec=metadata['DEC'],
-                         width=width, height=height)
-        print(cmd)
-        cuterr = subprocess.check_call(cmd.split())
-        if cuterr != 0:
-            errmsg = 'Something went wrong retrieving the png cutout'
-            log.warning(errmsg)
-            #log.critical(errmsg)
-            #raise ValueError(errmsg)
-    else:
-        cuterr = 0
-    
+    cutoutjpeg = os.path.join('/tmp', 'tmp.'+os.path.basename(pngfile.replace('.png', '.jpeg')))
+    if not os.path.isfile(cutoutjpeg):
+        wait = 15 # seconds
+        cmd = 'timeout {wait} wget -q -o /dev/null -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer=ls-dr9'
+        cmd = cmd.format(wait=wait, outfile=cutoutjpeg, ra=metadata['RA'],
+                         dec=metadata['DEC'], width=width, height=height)
+        log.info(cmd)
+        try:
+            subprocess.check_call(cmd.split(), stderr=subprocess.DEVNULL)
+        except:
+            log.warning('No cutout from viewer after {} seconds; stopping wget'.format(wait))
+            
+    try:
+        img = mpimg.imread(cutoutjpeg)
+    except:
+        log.warning('Problem reading cutout for targetid {}.'.format(metadata['TARGETID']))
+        img = np.zeros((height, width, 3))
+        
     # QA choices
     legxpos, legypos, legypos2, legfntsz1, legfntsz = 0.98, 0.94, 0.05, 16, 18
     bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.15)
@@ -686,43 +690,32 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         specax = fig.add_subplot(gs[4:8, 0:5])
     
     # viewer cutout
-    cuterr2 = 0
-    if cuterr == 0:
-        try:
-            with Image.open(cutoutpng) as im:
-                sz = im.size
-                cutax.imshow(im, origin='lower')#, interpolation='nearest')
-            cuterr2 = 0
-        except:
-            cuterr2 = 1
-            errmsg = 'Something went wrong reading the png cutout'
-            log.warning(errmsg)
+    cutax.imshow(img, origin='lower')#, interpolation='nearest')
+    cutax.set_xlabel('RA [J2000]')
+    cutax.set_ylabel('Dec [J2000]')
 
-        cutax.set_xlabel('RA [J2000]')
-        cutax.set_ylabel('Dec [J2000]')
+    cutax.coords[1].set_ticks_position('r')
+    cutax.coords[1].set_ticklabel_position('r')
+    cutax.coords[1].set_axislabel_position('r')
 
-        cutax.coords[1].set_ticks_position('r')
-        cutax.coords[1].set_ticklabel_position('r')
-        cutax.coords[1].set_axislabel_position('r')
+    if metadata['DEC'] > 0:
+        sgn = '+'
+    else:
+        sgn = ''
+        
+    cutax.text(0.04, 0.95, '$(\\alpha,\\delta)$=({:.7f}, {}{:.6f})'.format(metadata['RA'], sgn, metadata['DEC']),
+               ha='left', va='top', color='k', fontsize=fontsize1, bbox=bbox2,
+               transform=cutax.transAxes)
 
-        if metadata['DEC'] > 0:
-            sgn = '+'
-        else:
-            sgn = ''
-            
-        cutax.text(0.04, 0.95, '$(\\alpha,\\delta)$=({:.7f}, {}{:.6f})'.format(metadata['RA'], sgn, metadata['DEC']),
-                   ha='left', va='top', color='k', fontsize=fontsize1, bbox=bbox2,
-                   transform=cutax.transAxes)
+    sz = img.shape
+    cutax.add_artist(Circle((sz[1] / 2, sz[0] / 2), radius=1.5/2/pixscale, facecolor='none', # DESI fiber=1.5 arcsec diameter
+                            edgecolor='red', ls='-', alpha=0.8))#, label='3" diameter'))
+    cutax.add_artist(Circle((sz[1] / 2, sz[0] / 2), radius=10/2/pixscale, facecolor='none',
+                            edgecolor='red', ls='--', alpha=0.8))#, label='15" diameter'))
+    handles = [Line2D([0], [0], color='red', lw=2, ls='-', label='1.5 arcsec'),
+               Line2D([0], [0], color='red', lw=2, ls='--', label='10 arcsec')]
 
-        if cuterr2 == 0:
-            cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=1.5/2/pixscale, facecolor='none', # DESI fiber=1.5 arcsec diameter
-                                    edgecolor='red', ls='-', alpha=0.8))#, label='3" diameter'))
-            cutax.add_artist(Circle((sz[0] / 2, sz[1] / 2), radius=10/2/pixscale, facecolor='none',
-                                    edgecolor='red', ls='--', alpha=0.8))#, label='15" diameter'))
-            handles = [Line2D([0], [0], color='red', lw=2, ls='-', label='1.5 arcsec'),
-                       Line2D([0], [0], color='red', lw=2, ls='--', label='10 arcsec')]
-
-            cutax.legend(handles=handles, loc='lower left', fontsize=fontsize1, facecolor='lightgray')
+    cutax.legend(handles=handles, loc='lower left', fontsize=fontsize1, facecolor='lightgray')
 
     if not fastphot:
         # plot the full spectrum + best-fitting (total) model
