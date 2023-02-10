@@ -259,7 +259,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     from PIL import Image, ImageDraw
 
     from fastspecfit.util import ivar2var, C_LIGHT
-    from fastspecfit.io import FLUXNORM    
+    from fastspecfit.io import FLUXNORM, get_qa_filename
     from fastspecfit.continuum import ContinuumTools
     from fastspecfit.emlines import build_emline_model, EMFitTools
 
@@ -276,15 +276,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     col3 = [colors.to_hex(col) for col in ['blue', 'green', 'red']]
 
     photcol1 = colors.to_hex('darkorange')
-    #photcol1 = colors.to_hex('darkblue') # 'darkgreen', 'darkred', 'dodgerblue', 'darkseagreen', 'orangered']]
-
-    if outdir is None:
-        outdir = '.'
-    if outprefix is None:
-        if fastphot:
-            outprefix = 'fastphot'
-        else:
-            outprefix = 'fastspec'
 
     CTools = ContinuumTools(nophoto=nophoto,
                             continuum_pixkms=templatecache['continuum_pixkms'],
@@ -299,80 +290,42 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         filters = CTools.bassmzls
         allfilters = CTools.bassmzlswise
 
-    #survey = None
-    #if 'SURVEY' not in metadata.colnames:
-    #    if np.any([metadata['DESI_TARGET'] > 0, metadata['BGS_TARGET'] > 0, metadata['MWS_TARGET'] > 0, metadata['SCND_TARGET'] > 0]):
-    #        survey = 'Main'
-    #    else:
-    #        for checksurvey in ['SV1', 'SV2', 'SV3']:
-    #            #bit = []
-    #            for targ in ['DESI', 'BGS', 'MWS', 'SCND']:
-    #                if metadata['{}_{}_TARGET'.format(checksurvey, targ)] > 0:
-    #                    survey = checksurvey.lower()
-    #                    #bit += ['{}_{}_TARGET: {}'.format(checksurvey, targ, metadata['{}_{}_TARGET'.format(checksurvey, targ)])]
-    #            if survey is not None:
-    #                break
-    #        if survey is None:
-    #            if metadata['CMX_TARGET'] == 0:
-    #                errmsg = 'Unable to determine survey!'
-    #                log.critical(errmsg)
-    #                raise ValueError(errmsg)
-    #            else:
-    #                survey = 'CMX'
-    #else:
+    redshift = fastspec['Z']
 
+    pngfile = get_qa_filename(metadata, coadd_type, outprefix=outprefix,
+                              outdir=outdir, fastphot=fastphot, log=log)
+
+    # some arrays to use for the legend
     if coadd_type == 'healpix':
         target = [
             'Survey/Program/Healpix: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX']),
             'TargetID: {}'.format(metadata['TARGETID']),
             ]
-        pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
-                outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
     elif coadd_type == 'cumulative':
         target = [
             'Tile/Night/Fiber: {}/{}/{}'.format(metadata['TILEID'], metadata['NIGHT'], metadata['FIBER']),
-            #'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
-            #'Night/Fiber: {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
             'TargetID: {}'.format(metadata['TARGETID']),
         ]
-        pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
-                outprefix, metadata['TILEID'], coadd_type, metadata['TARGETID']))
     elif coadd_type == 'pernight':
         target = [
-            #'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
             'Tile/Night/Fiber: {}/{}/{}'.format(metadata['TILEID'], metadata['NIGHT'], metadata['FIBER']),
             'TargetID: {}'.format(metadata['TARGETID']),
         ]
-        pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
-                outprefix, metadata['TILEID'], metadata['NIGHT'], metadata['TARGETID']))
     elif coadd_type == 'perexp':
         target = [
-            #'Survey/Program/Tile: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['TILEID']),
             'Tile/Night/Fiber: {}/{}/{}'.format(metadata['TILEID'], metadata['NIGHT'], metadata['FIBER']),
             'Night/Fiber: {}/{}'.format(metadata['NIGHT'], metadata['FIBER']),
             'TargetID: {}'.format(metadata['TARGETID']),
         ]
-        pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
-                outprefix, metadata['TILEID'], metadata['NIGHT'],
-                metadata['EXPID'], metadata['TARGETID']))
     elif coadd_type == 'custom':
         target = [
             'Survey/Program/Healpix: {}/{}/{}'.format(metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX']),
             'TargetID: {}'.format(metadata['TARGETID']),
             ]
-        pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
-                outprefix, metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX'], metadata['TARGETID']))
     else:
         errmsg = 'Unrecognized coadd_type {}!'.format(coadd_type)
         log.critical(errmsg)
         raise ValueError(errmsg)
-
-    #print('Hack to skip existing files!')
-    #if os.path.isfile(pngfile):
-    #    return
-    #target += bit
-
-    redshift = fastspec['Z']
 
     leg = {
         'radec': '$(\\alpha,\\delta)=({:.7f},{:.6f})$'.format(metadata['RA'], metadata['DEC']),

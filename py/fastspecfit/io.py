@@ -1429,6 +1429,58 @@ def get_templates_filename(templateversion='1.0.0', imf='chabrier'):
         imf, templateversion))
     return templates
 
+def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
+                    fastphot=False, log=None):
+    """Build the QA filename.
+
+    """
+    import astropy
+
+    if log is None:
+        from desiutil.log import get_logger
+        log = get_logger()
+
+    if outdir is None:
+        outdir = '.'
+        
+    if outprefix is None:
+        if fastphot:
+            outprefix = 'fastphot'
+        else:
+            outprefix = 'fastspec'
+
+    def _one_filename(_metadata):
+        if coadd_type == 'healpix':
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
+                _metadata['HEALPIX'], _metadata['TARGETID']))
+        elif coadd_type == 'cumulative':
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
+                outprefix, _metadata['TILEID'], coadd_type, _metadata['TARGETID']))
+        elif coadd_type == 'pernight':
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
+                outprefix, _metadata['TILEID'], _metadata['NIGHT'], _metadata['TARGETID']))
+        elif coadd_type == 'perexp':
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                outprefix, _metadata['TILEID'], _metadata['NIGHT'],
+                _metadata['EXPID'], _metadata['TARGETID']))
+        elif coadd_type == 'custom':
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
+                _metadata['HEALPIX'], _metadata['TARGETID']))
+        else:
+            errmsg = 'Unrecognized coadd_type {}!'.format(coadd_type)
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+        return pngfile
+
+    if type(metadata) is astropy.table.row.Row:
+        pngfile = _one_filename(metadata)
+    else:
+        pngfile = [_one_filename(_metadata) for _metadata in metadata]
+    
+    return pngfile
+
 def cache_templates(templates=None, templateversion='1.0.0', imf='chabrier',
                     mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.0,
                     fastphot=False, log=None):
