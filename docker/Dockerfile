@@ -69,9 +69,9 @@ RUN for x in \
 ENV DESIUTIL_VERSION 3.2.6
 ENV DESIMODEL_VERSION 0.18.0
 ENV DESITARGET_VERSION 2.6.0
-ENV DESISPEC_VERSION 0.56.3
+ENV DESISPEC_VERSION 0.57.0
 ENV SPECLITE_VERSION v0.16
-ENV FASTSPECFIT_VERSION 2.0.0
+ENV FASTSPECFIT_VERSION 2.1.0
 
 RUN pip3 install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
 RUN pip3 install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel

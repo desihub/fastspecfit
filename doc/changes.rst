@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-2.1.0 (not released yet)
+2.1.1 (not released yet)
 ------------------------
+
+* No changes yet.
+
+2.1.0 (2023-02-17)
+------------------
 
 * Tests, bug fixes, and speed-ups of version 2.0.0 [`PR #99`_].
 
