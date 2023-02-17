@@ -6,7 +6,13 @@
 
 # Example: build the coadds using 16 MPI tasks with 8 cores per node (and therefore 16*8/32=4 nodes)
 
-# Perlmutter
+# Perlmutter w/o shifter
+#salloc -N 4 -C cpu -A desi -L cfs -t 04:00:00 --qos interactive
+
+# Testing--
+#srun -n 4 -c 128 /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec-test fuji 128 > /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/logs/fastspec-test.log.1 2>&1 &
+
+# Perlmutter w/ shifter
 #salloc -N 4 -C cpu -A desi -L cfs -t 04:00:00 --qos interactive --image=docker:desihub/fastspecfit:2.0.0
 #srun -n 4 -c 128 --kill-on-bad-exit=0 --no-kill shifter --module=mpich /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec fuji 128 healpix sv1 > /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/logs/fastspec-fuji-sv1.log.1 2>&1 &
 
@@ -28,7 +34,10 @@ codedir=/global/homes/i/ioannis/code/desihub
 #codedir=/usr/local/bin
 mpiscript=$codedir/fastspecfit/bin/mpi-fastspecfit
 
-for package in fastspecfit desi; do
+echo 'Loading DESI software stack 23.1'
+source /global/cfs/cdirs/desi/software/desi_environment.sh 23.1
+
+for package in fastspecfit; do
     echo Loading local check-out of $package
     export PATH=$codedir/$package/bin:$PATH
     export PYTHONPATH=$codedir/$package/py:$PYTHONPATH
@@ -39,7 +48,8 @@ outdir_html=/global/cfs/cdirs/desi/users/ioannis/fastspecfit
 
 export DESI_ROOT='/global/cfs/cdirs/desi'
 export DUST_DIR='/global/cfs/cdirs/cosmo/data/dust/v0_1'
-export FASTSPECFIT_TEMPLATES='/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
+export DR9_DIR='/global/cfs/cdirs/desi/external/legacysurvey/dr9'
+export FTEMPLATES_DIR='/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 export TMPCACHE=$(mktemp -d)
 export MPLCONFIGDIR=$TMPCACHE/matplotlib
@@ -68,15 +78,21 @@ program=$6
 # petal 8 on tiles 80613, 80606, 80607
 #args="--outdir-data $outdir_data --outdir-html $outdir_html --healpix 17684,17685,17686,17687,17692,7015,7020,7021,7022,7023,7026,7032,7015,7020,7021,7022,7023,7032"
 
-# tiles 80613, 80606, 80607
-args="--outdir-data $outdir_data --outdir-html $outdir_html --healpix 17680,17681,17682,17683,17689,17692,17682,17683,17688,17689,17692,17688,17689,17690,17691,17692,17689,17691,17692,17694,17692,17694,17716,17692,17693,17694,17695,17692,17693,17695,17686,17687,17692,17693,17684,17685,17686,17687,17692,17681,17683,17684,17686,17692,7017,7018,7019,7020,7022,7018,7019,7022,7104,7105,7019,7022,7104,7105,7108,7022,7105,7107,7108,7022,7023,7108,7109,7022,7023,7034,7109,7120,7022,7023,7032,7033,7034,7021,7022,7023,7032,7015,7020,7021,7022,7023,7026,7032,7017,7020,7022,7017,7018,7019,7020,7022,7018,7019,7022,7104,7105,7019,7022,7104,7105,7108,7022,7105,7107,7108,7022,7023,7108,7109,7022,7023,7034,7109,7120,7022,7023,7032,7033,7034,7021,7022,7023,7032,7015,7020,7021,7022,7023,7032,7017,7020,7022"
+args="--outdir-data $outdir_data --outdir-html $outdir_html"
 
+if [[ $stage == "fastspec-test" ]]; then
+    args=$args" --ntest 12"
+fi
+if [[ $stage == "fastphot-test" ]]; then
+    args=$args" --fastphot --ntest 100"
+fi
 if [[ $stage == "fastphot" ]]; then
     args=$args" --fastphot"
 fi
 if [[ $stage == "makeqa" ]]; then
     args=$args" --makeqa"
 fi
+
 if [[ $specprod != " " ]] && [[ $specprod != "" ]] && [[ $specprod != "-" ]]; then
     args=$args" --specprod $specprod"
 fi

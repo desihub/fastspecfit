@@ -11,10 +11,6 @@ import numpy as np
 from desiutil.log import get_logger
 log = get_logger()
 
-## ridiculousness!
-#import tempfile
-#os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
-
 def parse(options=None):
     """Parse input arguments.
 
@@ -41,6 +37,11 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
+
+    parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
+    parser.add_argument('--templateversion', type=str, default='1.0.0', help='Template version number.')
+    parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
 
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
     parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
@@ -62,8 +63,9 @@ def main(args=None, comm=None):
     """
     import fitsio
     from astropy.table import Table
-    from fastspecfit.fastspecfit import FastFit, _desiqa_one, desiqa_one
-    from fastspecfit.io import DESISpectra, read_fastspecfit, DESI_ROOT_NERSC, select
+    from fastspecfit.fastspecfit import _desiqa_one, desiqa_one
+    from fastspecfit.io import (DESISpectra, get_templates_filename, get_qa_filename,
+                                read_fastspecfit, DESI_ROOT_NERSC, select)
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
@@ -106,15 +108,32 @@ def main(args=None, comm=None):
         log.critical(errmsg)
         raise IOError(errmsg)
 
-    # Initialize the continuum- and emission-line fitting classes.
-    t0 = time.time()
-    FFit = FastFit(nophoto=args.nophoto, mapdir=args.mapdir)
-    Spec = DESISpectra(redux_dir=args.redux_dir, dr9dir=args.dr9dir)
-    log.info('Initializing the classes took: {:.2f} sec'.format(time.time()-t0))
-
     if args.outdir:
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
+
+    pngfile = get_qa_filename(metadata, coadd_type, outprefix=args.outprefix,
+                              outdir=args.outdir, fastphot=fastphot, log=log)
+
+    # are we overwriting?
+    if args.overwrite is False:
+        I = np.array([not os.path.isfile(_pngfile) for _pngfile in pngfile])
+        J = ~I
+        if np.sum(J) > 0:
+            log.info('Skipping {} existing QA files.'.format(np.sum(J)))
+            fastfit = fastfit[I]
+            metadata = metadata[I]
+
+        if len(metadata) == 0:
+            log.info('Done making all QA files!')
+            return
+
+    log.info('Building QA for {} objects.'.format(len(metadata)))
+
+    # Initialize the I/O class.
+    Spec = DESISpectra(redux_dir=args.redux_dir, dr9dir=args.dr9dir, mapdir=args.mapdir)
+
+    templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
 
     def _wrap_qa(redrockfile, indx=None):
         if indx is None:
@@ -125,10 +144,11 @@ def main(args=None, comm=None):
                     redrockfile_prefix=args.redrockfile_prefix,
                     specfile_prefix=args.specfile_prefix,
                     qnfile_prefix=args.qnfile_prefix)
-        data = Spec.read_and_unpack(FFit, fastphot=fastphot, synthphot=True)
+        data = Spec.read_and_unpack(fastphot=fastphot, synthphot=True, mp=args.mp)
 
-        qaargs = [(FFit, data[igal], fastfit[indx[igal]], metadata[indx[igal]],
-                   coadd_type, fastphot, args.outdir, args.outprefix)
+        qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
+                   templates, coadd_type, fastphot, args.nophoto, args.outdir,
+                   args.outprefix, log)
                    for igal in np.arange(len(indx))]                
         if args.mp > 1:
             import multiprocessing
