@@ -108,7 +108,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot,
     """
     from desiutil.dust import mwdust_transmission, dust_transmission
 
-    log.info('Pre-processing object {} [targetid {}, z={:.6f}].'.format(
+    log.info('Pre-processing object {} [targetid {} z={:.6f}].'.format(
         iobj, meta['TARGETID'], meta['Z']))
 
     if specdata['photsys'] == 'S':

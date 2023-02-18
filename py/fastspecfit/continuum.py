@@ -1475,8 +1475,11 @@ class ContinuumTools(Filters):
                                                                FLUXNORM, templatewave * (1 + band_shift))
             synth_outmaggies_rest = np.array(synth_outmaggies_rest.as_array().tolist()[0]) / (1 + band_shift)
     
-            # output bandpasses, observed frame
-            synth_outmaggies_obs = filters_out.get_ab_maggies(continuum / FLUXNORM, ztemplatewave)
+            # output bandpasses, observed frame; pad in the case of an object at
+            # z>5.53 (min(templatewave)=450 A, set in fastspec_one)
+            padflux, padwave = filters_out.pad_spectrum(continuum / FLUXNORM, ztemplatewave, method='edge')
+            synth_outmaggies_obs = filters_out.get_ab_maggies(padflux, padwave)
+            #synth_outmaggies_obs = filters_out.get_ab_maggies(continuum / FLUXNORM, ztemplatewave)
             synth_outmaggies_obs = np.array(synth_outmaggies_obs.as_array().tolist()[0])
     
             absmag = np.zeros(nout, dtype='f4')
