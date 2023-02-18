@@ -12,7 +12,7 @@ Change Log
 
 * Be robust to synthesizing photometry of the highest-redshift targets [`PR #101`_].
 
-.. _`PR #101`: https://github.com/desihub/fastspecfit/pull/100
+.. _`PR #101`: https://github.com/desihub/fastspecfit/pull/101
 
 2.1.0 (2023-02-17)
 ------------------
