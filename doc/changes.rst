@@ -2,10 +2,17 @@
 Change Log
 ==========
 
-2.1.1 (not released yet)
+2.1.2 (not released yet)
 ------------------------
 
 * No changes yet.
+
+2.1.1 (2023-02-18)
+------------------------
+
+* Be robust to synthesizing photometry of the highest-redshift targets [`PR #101`_].
+
+.. _`PR #101`: https://github.com/desihub/fastspecfit/pull/100
 
 2.1.0 (2023-02-17)
 ------------------

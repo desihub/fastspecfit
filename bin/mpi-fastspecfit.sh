@@ -13,7 +13,7 @@
 #srun -n 4 -c 128 /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec-test fuji 128 > /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/logs/fastspec-test.log.1 2>&1 &
 
 # Perlmutter w/ shifter
-#salloc -N 4 -C cpu -A desi -L cfs -t 04:00:00 --qos interactive --image=docker:desihub/fastspecfit:2.0.0
+#salloc -N 4 -C cpu -A desi -L cfs -t 04:00:00 --qos interactive --image=docker:desihub/fastspecfit:2.1.1
 #srun -n 4 -c 128 --kill-on-bad-exit=0 --no-kill shifter --module=mpich /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec fuji 128 healpix sv1 > /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/logs/fastspec-fuji-sv1.log.1 2>&1 &
 
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec 32 sv2 dark > /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/logs/fastspec-fuji-sv2-dark.log.1 2>&1 &
@@ -22,7 +22,7 @@
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh qafastphot 32 > qafastphot-fuji.log.1 2>&1 &
 
 # Cori
-#salloc -N 32 -C haswell -A desi -L cfs -t 04:00:00 --qos interactive --image=docker:desihub/fastspecfit:2.0.0
+#salloc -N 32 -C haswell -A desi -L cfs -t 04:00:00 --qos interactive --image=docker:desihub/fastspecfit:2.1.1
 #srun -n 32 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec fuji 32 healpix sv1 > /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/logs/fastspec-fuji-sv2sv3.log.1 2>&1 &
 
 #srun -n 16 -c 32 --kill-on-bad-exit=0 --no-kill shifter --module=mpich-cle6 /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.sh fastspec fuji 32 - sv1 > /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/logs/fastspec-fuji-sv1.log.1 2>&1 &
@@ -37,7 +37,7 @@ mpiscript=$codedir/fastspecfit/bin/mpi-fastspecfit
 echo 'Loading DESI software stack 23.1'
 source /global/cfs/cdirs/desi/software/desi_environment.sh 23.1
 module swap desispec/0.57.0
-module load fastspecfit/2.1.0
+module load fastspecfit/2.1.1
 
 #for package in desispec fastspecfit; do
 #    echo Loading local check-out of $package
