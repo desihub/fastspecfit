@@ -33,7 +33,8 @@ Value-Added Catalogs
 .. toctree::
    :maxdepth: 1
 
-   fujilupe.rst
+   fuji.rst
+   iron.rst
 
 Data Model
 ----------

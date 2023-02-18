@@ -16,9 +16,6 @@ API
 .. automodule:: fastspecfit.fastspecfit
    :members:
 
-.. automodule:: fastspecfit.fnnls
-   :members:
-
 .. automodule:: fastspecfit.html
    :members:
 
