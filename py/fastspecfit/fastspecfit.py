@@ -50,7 +50,10 @@ def fastspec_one(iobj, data, out, meta, templates, log=None, broadlinefit=True,
     log.info('Continuum- and emission-line fitting object {} [targetid {}, z={:.6f}].'.format(
         iobj, meta['TARGETID'], meta['Z']))
 
-    # Read the templates and then fit the continuum spectrum.
+    # Read the templates and then fit the continuum spectrum. Note that 450 A as
+    # the minimum wavelength will allow us to synthesize u-band photometry only
+    # up to z=5.53, even though some targets are at higher redshift. Handle this
+    # case in continuum.ContinuumTools.
     templatecache = cache_templates(templates, log=log, mintemplatewave=450.0,
                                     maxtemplatewave=40e4, fastphot=fastphot)
 
