@@ -9,15 +9,15 @@ Fuji VAC
 Overview
 --------
 
-This page describes the content and construction of the **version 2.0**
-``FastSpecFit`` value-added catalogs (VACs) which were generated from the DESI
-**Fuji** spectroscopic production, which will be publicly released as part of
-the `DESI Early Data Release (DESI/EDR)`_ in mid-2023 (exact date TBD).
+This page describes the content and construction of the ``FastSpecFit``
+value-added catalogs (VACs) which were generated from the DESI **Fuji**
+spectroscopic production. These catalogs will be publicly released as part of
+the `DESI Early Data Release (DESI/EDR)`_ in April 2023.
     
 Data Access and Organization
 ----------------------------
 
-The Fuji VAC can be accessed at the following url:
+The Fuji VACs can be accessed at the following url:
 
 ========================== ===================================================================
 Value-Added Catalog        URL
@@ -36,8 +36,8 @@ Fuji (EDR)                 https://data.desi.lbl.gov/public/edr/vac/fastspecfit/
 
 .. highlight:: default
 
-Within each data release directory, there are two key subdirectories, `healpix`
-and `catalogs`, which we now describe in more detail. 
+Within the data release directory, there are two key subdirectories, `healpix`
+and `catalogs`, which we now describe in more detail.
 
 Healpix Catalogs
 ~~~~~~~~~~~~~~~~
@@ -61,7 +61,7 @@ documented `here`_.
    data model<fastspec datamodel>` pages for a full description of the contents
    of these files.
 
-.. _`merged catalogs`:
+.. _`fuji merged catalogs`:
 
 Merged Catalogs
 ~~~~~~~~~~~~~~~
@@ -160,7 +160,7 @@ model<fastphot datamodel>`) using the following bit of code:
       zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
 
 For reference, the table below summarizes the number of objects with updated
-redshifts in each of the Fuji and Guadalupe :ref:`merged catalogs`:
+redshifts in the :ref:`fuji merged catalogs`:
 
 .. rst-class:: columns
 

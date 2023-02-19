@@ -1,6 +1,6 @@
-.. _fujilupe vac:
+.. _iron vac:
 
-Fuji and Guadalupe VACs
+Iron and Guadalupe VACs
 =======================
 
 .. contents:: Contents
@@ -9,25 +9,20 @@ Fuji and Guadalupe VACs
 Overview
 --------
 
-This page describes the content and construction of the **version 1.0**
-``FastSpecFit`` value-added catalogs (VACs) which were generated from the DESI
-**Fuji** and **Guadalupe** spectroscopic productions. Both VACs will be publicly
-released in the near future but are available to all DESI collaborators now:
+This page describes the content and construction of the ``FastSpecFit``
+value-added catalogs (VACs) which were generated from the DESI **Iron** and
+**Guadalupe** spectroscopic productions. Both VACs will be publicly released as
+part of the `DESI Data Release 1 (DESI/DR1)`_ sometime in 2024 (exact date TBD).
 
-  * Fuji will be publicly released as part of the `DESI Early Data Release
-    (DESI/EDR)`_ in early 2023 (exact date TBD); and
-  * Guadalupe will be released as a supplemental dataset to `DESI Data Release 1
-    (DESI/DR1)`_ sometime in 2024 (exact date TBD).
-    
 Data Access and Organization
 ----------------------------
 
-The Fuji and Guadalupe VACs can be accessed at the following urls:
+The Iron and Guadalupe VACs can be accessed at the following urls:
 
 ========================== ===================================================================
 Value-Added Catalog        URL
 ========================== ===================================================================
-Fuji (EDR)                 https://data.desi.lbl.gov/public/edr/vac/fastspecfit/fuji/v1.0
+Iron (EDR)                 https://data.desi.lbl.gov/public/edr/vac/fastspecfit/iron/v1.0
 Guadalupe (DR1 Supplement) https://data.desi.lbl.gov/public/dr1/vac/fastspecfit/guadalupe/v1.0
 ========================== ===================================================================
 
@@ -38,8 +33,8 @@ Guadalupe (DR1 Supplement) https://data.desi.lbl.gov/public/dr1/vac/fastspecfit/
    DESI Collaborators may access the catalogs directly at `NERSC`_ at the
    following directories::
   
-     /global/cfs/cdirs/desi/public/edr/vac/fastspecfit/fuji/v1.0
-     /global/cfs/cdirs/desi/public/dr1/vac/fastspecfit/guadalupe/v1.0
+     /global/cfs/cdirs/desi/public/dr1/vac/fastspecfit/iron/v1.0
+     /global/cfs/cdirs/desi/public/dr1/vac/fastspecfit/guadalupe/v2.0
 
 .. highlight:: default
 
@@ -52,11 +47,10 @@ Healpix Catalogs
 We run ``FastSpecFit`` on the healpix-coadded DESI spectra, and organize the
 files identically to how the spectra, redshift catalogs, and other data products
 are organized in the DESI data releases (as documented `here`_). In other words,
-for a given spectroscopic production ``SPECPROD={fuji, guadalupe}``), the
-individual ``fastspec`` and ``fastphot`` files (see :ref:`algorithms`) can be
-found at the following locations::
+for a given spectroscopic production ``SPECPROD={iron, guadalupe}``), the
+individual ``fastspec`` files (see :ref:`algorithms`) can be
+found at the following location::
 
-  healpix/SURVEY/PROGRAM/HPIXGROUP/HEALPIX/fastphot-SURVEY-PROGRAM-HEALPIX.fits
   healpix/SURVEY/PROGRAM/HPIXGROUP/HEALPIX/fastspec-SURVEY-PROGRAM-HEALPIX.fits.gz
 
 where ``SURVEY``, ``PROGRAM``, ``HPIXGROUP``, and ``HEALPIX`` are fully
@@ -65,59 +59,60 @@ documented `here`_.
 .. note::
 
    The ``fastspec`` catalogs are gzipped because they contain the fitting
-   results as well as the best-fitting model spectra, whereas the ``fastphot``
-   files only contain fitting results; see the :ref:`fastspec data
-   model<fastspec datamodel>` and :ref:`fastphot data model<fastphot datamodel>`
-   pages for a full description of the contents of these files.
+   results as well as the best-fitting model spectra; see the :ref:`fastspec
+   data model<fastspec datamodel>` pages for a full description of the contents
+   of these files.
 
-.. _`merged catalogs`:
+.. _`iron merged catalogs`:
 
 Merged Catalogs
 ~~~~~~~~~~~~~~~
 
 Most users will be interested in the merged ``FastSpecFit`` catalogs, which we
-summarize in the tables below, separately for the Fuji and Guadalupe
+summarize in the tables below, separately for the Iron and Guadalupe
 productions. Note that the last row of each table is a super-merge of all the
 preceding catalogs (i.e., a merge over all possible surveys and programs) listed
 in the table.
 
-Fuji
+Iron
 """"
 
 .. rst-class:: columns
 
-=============================== ========= ================= =============================== ========= =================
-File Name                       File Size Number of Targets File Name                       File Size Number of Targets
-=============================== ========= ================= =============================== ========= =================
-fastspec-fuji-cmx-other.fits    9.27 MB   2,771             fastphot-fuji-cmx-other.fits    1.82 MB   2,771
-fastspec-fuji-special-dark.fits 119 MB    35,647            fastphot-fuji-special-dark.fits 24.6 MB   35,647
-fastspec-fuji-sv1-backup.fits   12.4 MB   3,683             fastphot-fuji-sv1-backup.fits   2.56 MB   3,683
-fastspec-fuji-sv1-bright.fits   419 MB    126,677           fastphot-fuji-sv1-bright.fits   82.7 MB   126,677
-fastspec-fuji-sv1-dark.fits     780 MB    235,881           fastphot-fuji-sv1-dark.fits     154 MB    235,881
-fastspec-fuji-sv1-other.fits    113 MB    34,150            fastphot-fuji-sv1-other.fits    22.2 MB   34,150
-fastspec-fuji-sv2-backup.fits   498 KB    107               fastphot-fuji-sv2-backup.fits   101 KB    107
-fastspec-fuji-sv2-bright.fits   154 MB    46,510            fastphot-fuji-sv2-bright.fits   30.6 MB   46,510
-fastspec-fuji-sv2-dark.fits     175 MB    52,771            fastphot-fuji-sv2-dark.fits     34.6 MB   52,771
-fastspec-fuji-sv3-backup.fits   5.31 MB   1,564             fastphot-fuji-sv3-backup.fits   1.06 MB   1,564
-fastspec-fuji-sv3-bright.fits   883 MB    265,324           fastphot-fuji-sv3-bright.fits   179 MB    265,324
-fastspec-fuji-sv3-dark.fits     1.92 GB   592,394           fastphot-fuji-sv3-dark.fits     400 MB    592,394
-fastspec-fuji.fits              4.57 GB   1,397,479         fastphot-fuji.fits              970 MB    1,397,479
-=============================== ========= ================= =============================== ========= =================
+=============================== ========= =================
+File Name                       File Size Number of Targets
+=============================== ========= =================
+fastspec-iron-cmx-other.fits    9.27 MB   2,771            
+fastspec-iron-special-dark.fits 119 MB    35,647           
+fastspec-iron-sv1-backup.fits   12.4 MB   3,683            
+fastspec-iron-sv1-bright.fits   419 MB    126,677          
+fastspec-iron-sv1-dark.fits     780 MB    235,881          
+fastspec-iron-sv1-other.fits    113 MB    34,150           
+fastspec-iron-sv2-backup.fits   498 KB    107              
+fastspec-iron-sv2-bright.fits   154 MB    46,510           
+fastspec-iron-sv2-dark.fits     175 MB    52,771           
+fastspec-iron-sv3-backup.fits   5.31 MB   1,564            
+fastspec-iron-sv3-bright.fits   883 MB    265,324          
+fastspec-iron-sv3-dark.fits     1.92 GB   592,394          
+fastspec-iron-main-bright.fits  3.42 GB   1,092,038        
+fastspec-iron-main-dark.fits    3.54 GB   1,131,601        
+fastspec-iron.fits              4.57 GB   1,397,479        
+=============================== ========= =================
 
 Guadalupe
 """""""""
 
 .. rst-class:: columns
 
-====================================== ========= ================= ====================================== ========= =================
-File Name                              File Size Number of Targets File Name                              File Size Number of Targets
-====================================== ========= ================= ====================================== ========= =================
-fastspec-guadalupe-special-dark.fits   12.5 MB   3,847             fastphot-guadalupe-special-dark.fits   2.15 MB   3,847
-fastspec-guadalupe-special-bright.fits 30.9 MB   9,598             fastphot-guadalupe-special-bright.fits 5.36 MB   9,598
-fastspec-guadalupe-main-bright.fits    3.42 GB   1,092,038         fastphot-guadalupe-main-bright.fits    606 MB    1,092,038
-fastspec-guadalupe-main-dark.fits      3.54 GB   1,131,601         fastphot-guadalupe-main-dark.fits      622 MB    1,131,601
-fastspec-guadalupe.fits                7.02 GB   2,237,084         fastphot-guadalupe.fits                1.23 GB   2,237,084
-====================================== ========= ================= ====================================== ========= =================
+====================================== ========= =================
+File Name                              File Size Number of Targets
+====================================== ========= =================
+fastspec-guadalupe-special-dark.fits   12.5 MB   3,847            
+fastspec-guadalupe-special-bright.fits 30.9 MB   9,598            
+fastspec-guadalupe-main-bright.fits    3.42 GB   1,092,038        
+fastspec-guadalupe-main-dark.fits      3.54 GB   1,131,601        
+fastspec-guadalupe.fits                7.02 GB   2,237,084        
+====================================== ========= =================
 
 .. note::
 
@@ -132,7 +127,7 @@ The sample selection---in other words, the criteria used the choose which DESI
 targets to fit---were chosen to be very inclusive so that modeling results would
 be available for as many objects as possible. In brief, we fit *all*
 extragalactic (redshift greater than 0.001) non-sky (i.e., object) targets in
-both Fuji and Guadalupe, with no cuts on targeting bits, redshift or
+both Iron and Guadalupe, with no cuts on targeting bits, redshift or
 fiber-assignment warning bits, or other quality cuts. 
 
 Specifically, let ``redrockfile`` be the full pathname to a given `redrock
@@ -159,7 +154,7 @@ Updated QSO Redshifts
 For a small but important fraction of quasar (QSO) targets, the redshift
 determined by Redrock is incorrect. To mitigate this issue, the DESI team has
 developed an approach to rectify the redshift nominally measured by Redrock
-using the machine-learning algorithm ``QuasarNet``. In the Fuji and Guadalupe
+using the machine-learning algorithm ``QuasarNet``. In the Iron and Guadalupe
 ``FastSpecFit`` VACs we adopt the same algorithm. 
 
 Specifically, let ``redrockfile`` and ``qnfile`` be the full pathname to a given
@@ -185,26 +180,26 @@ model<fastphot datamodel>`) using the following bit of code:
       zb['Z'][qn['IS_QSO_QN_NEW_RR']] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
 
 For reference, the table below summarizes the number of objects with updated
-redshifts in each of the Fuji and Guadalupe :ref:`merged catalogs`:
+redshifts in each of the Iron and Guadalupe :ref:`iron merged catalogs`:
 
 .. rst-class:: columns
 
 ========================================== ================= ===============================
 Catalog                                    Number of Targets Number with Corrected Redshifts
 ========================================== ================= ===============================
-{fastspec,fastphot}-fuji-cmx-other.fits    2,771             63
-{fastspec,fastphot}-fuji-special-dark.fits 35,647            389
-{fastspec,fastphot}-fuji-sv1-backup.fits   3,683             119
-{fastspec,fastphot}-fuji-sv1-bright.fits   126,677           402
-{fastspec,fastphot}-fuji-sv1-dark.fits     235,881           4,656
-{fastspec,fastphot}-fuji-sv1-other.fits    34,150            372
-{fastspec,fastphot}-fuji-sv2-backup.fits   107               0
-{fastspec,fastphot}-fuji-sv2-bright.fits   46,510            151
-{fastspec,fastphot}-fuji-sv2-dark.fits     52,771            1,185
-{fastspec,fastphot}-fuji-sv3-backup.fits   1,564             32
-{fastspec,fastphot}-fuji-sv3-bright.fits   265,324           649
-{fastspec,fastphot}-fuji-sv3-dark.fits     592,394           5,973
-{fastspec,fastphot}-fuji.fits              1,397,479         13,991
+{fastspec,fastphot}-iron-cmx-other.fits    2,771             63
+{fastspec,fastphot}-iron-special-dark.fits 35,647            389
+{fastspec,fastphot}-iron-sv1-backup.fits   3,683             119
+{fastspec,fastphot}-iron-sv1-bright.fits   126,677           402
+{fastspec,fastphot}-iron-sv1-dark.fits     235,881           4,656
+{fastspec,fastphot}-iron-sv1-other.fits    34,150            372
+{fastspec,fastphot}-iron-sv2-backup.fits   107               0
+{fastspec,fastphot}-iron-sv2-bright.fits   46,510            151
+{fastspec,fastphot}-iron-sv2-dark.fits     52,771            1,185
+{fastspec,fastphot}-iron-sv3-backup.fits   1,564             32
+{fastspec,fastphot}-iron-sv3-bright.fits   265,324           649
+{fastspec,fastphot}-iron-sv3-dark.fits     592,394           5,973
+{fastspec,fastphot}-iron.fits              1,397,479         13,991
 ========================================== ================= ===============================
 
 .. rst-class:: columns
@@ -237,13 +232,17 @@ U.S. Department of Energy, Office of Science, Office of High Energy Physics
 under Award Number DE-SC0020086. We also gratefully acknowledge important
 contributions to the VACs presented herein from the following individuals:
 
+* Arjun Dey (NSF's NOIRLab)
 * Stephen Bailey (Lawrence Berkeley National Lab)
 * Rebecca Canning (University of Portsmouth)
 * Victoria Fawcett (Durham University)  
 * Stephanie Juneau (NSF's NOIRLab)
+* Ashod Khederlarian (University of Pittsburgh)
 * Dustin Lang (Perimeter Institute of Theoretical Physics)
 * Adam Myers (University of Wyoming)
+* Jeffrey Newman (University of Pittsburgh)
 * Ragadeepika Pucha (University of Arizona)
+* Anand Raichoor (Lawrence Berkeley National Lab)
 * Khaled Said (Australian National University)  
 * David Setton (University of Pittsburgh)
 * Benjamin Weaver (NSF's NOIRLab)
@@ -261,9 +260,7 @@ and Atomic Energy Commission (CEA); the National Council of Science and
 Technology of Mexico (CONACYT); the Ministry of Science and Innovation of Spain
 (MICINN), and by the `DESI Member Institutions`_.
 
-.. _`DESI Early Data Release (DESI/EDR)`: https://data.desi.lbl.gov/public/edr
 .. _`DESI Data Release 1 (DESI/DR1)`: https://data.desi.lbl.gov/public/dr1
-.. _`DESI/EDR`: https://data.desi.lbl.gov/public/edr
 .. _`DESI/DR1`: https://data.desi.lbl.gov/public/dr1
 .. _`NERSC`: https://nersc.gov
 .. _`here`: https://data.desi.lbl.gov/doc/organization/
