@@ -1236,7 +1236,13 @@ class ContinuumTools(Filters):
 
             if ((specwave is None and specres is None and coeff is None) or
                (specwave is not None and specres is not None)):
-                maggies = filters.get_ab_maggies(ztemplateflux, ztemplatewave, axis=0) # speclite.filters wants an [nmodel,npix] array
+                try:
+                    maggies = filters.get_ab_maggies(padflux, padwave) # speclite.filters wants an [nmodel,npix] array
+                except:
+                    # pad in the case of an object at very high redshift (z>5.5).
+                    log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
+                    padflux, padwave = filters.pad_spectrum(ztemplateflux.T, ztemplatewave, axis=0, method='edge')
+                    maggies = filters.get_ab_maggies(padflux.T, padwave, axis=0)
                 maggies = np.vstack(maggies.as_array().tolist()).T
                 maggies /= FLUXNORM * self.massnorm
                 templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, verbose=debug, log=log)
@@ -1252,7 +1258,13 @@ class ContinuumTools(Filters):
             if coeff is not None:
                 datatemplateflux = datatemplateflux.dot(coeff)
                 if synthphot:
-                    maggies = filters.get_ab_maggies(datatemplateflux, ztemplatewave, axis=0)
+                    try:
+                        maggies = filters.get_ab_maggies(datatemplateflux, ztemplatewave, axis=0)
+                    except:
+                        # pad in the case of an object at very high redshift (z>5.5).
+                        log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
+                        padflux, padwave = filters.pad_spectrum(datatemplateflux, ztemplatewave, axis=0, method='edge')
+                        maggies = filters.get_ab_maggies(padflux, padwave)
                     maggies = np.array(maggies.as_array().tolist()[0])
                     maggies /= FLUXNORM * self.massnorm
                     templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, log=log)
@@ -1457,7 +1469,14 @@ class ContinuumTools(Filters):
 
         # input bandpasses, observed frame; maggies and bestmaggies should be
         # very close.
-        bestmaggies = filters_in.get_ab_maggies(continuum / FLUXNORM, ztemplatewave)
+        try:
+            bestmaggies = filters_in.get_ab_maggies(continuum / FLUXNORM, ztemplatewave)
+        except:
+            # pad in the case of an object at very high redshift (z>5.5).
+            log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
+            padflux, padwave = filters_in.pad_spectrum(continuum / FLUXNORM, ztemplatewave, axis=0, method='edge')
+            bestmaggies = filters_in.get_ab_maggies(padflux, padwave)
+            
         bestmaggies = np.array(bestmaggies.as_array().tolist()[0])
 
         # need to handle filters with band_shift!=0 separately from those with band_shift==0
@@ -1477,9 +1496,12 @@ class ContinuumTools(Filters):
     
             # output bandpasses, observed frame; pad in the case of an object at
             # z>5.53 (min(templatewave)=450 A, set in fastspec_one)
-            padflux, padwave = filters_out.pad_spectrum(continuum / FLUXNORM, ztemplatewave, method='edge')
-            synth_outmaggies_obs = filters_out.get_ab_maggies(padflux, padwave)
-            #synth_outmaggies_obs = filters_out.get_ab_maggies(continuum / FLUXNORM, ztemplatewave)
+            try:
+                synth_outmaggies_obs = filters_out.get_ab_maggies(continuum / FLUXNORM, ztemplatewave)
+            except:
+                log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
+                padflux, padwave = filters_out.pad_spectrum(continuum / FLUXNORM, ztemplatewave, method='edge')
+                synth_outmaggies_obs = filters_out.get_ab_maggies(padflux, padwave)
             synth_outmaggies_obs = np.array(synth_outmaggies_obs.as_array().tolist()[0])
     
             absmag = np.zeros(nout, dtype='f4')
@@ -1810,8 +1832,14 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
                 # Synthesize grz photometry from the full-wavelength SED to make
                 # sure we get the z-band correct.
                 quicksedflux = sedtemplates.dot(quickcoeff)
-                
-                quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / FLUXNORM, ztemplatewave).as_array().tolist()[0])
+                try:
+                    quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / FLUXNORM, ztemplatewave).as_array().tolist()[0])
+                except:
+                    # pad in the case of an object at very high redshift (z>5.5).
+                    log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
+                    padflux, padwave = filters_in.pad_spectrum(quicksedflux / FLUXNORM, ztemplatewave, axis=0, method='edge')
+                    quickmaggies = np.array(filters_in.get_ab_maggies(padflux, padwave, axis=0).as_array().tolist()[0])
+                    
                 quickphot = CTools.parse_photometry(CTools.synth_bands, quickmaggies, filters_in.effective_wavelengths.value,
                                                     nanomaggies=False, log=log)
 
