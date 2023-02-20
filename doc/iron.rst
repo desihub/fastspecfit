@@ -22,8 +22,8 @@ The Iron and Guadalupe VACs can be accessed at the following urls:
 ========================== ===================================================================
 Value-Added Catalog        URL
 ========================== ===================================================================
-Iron (EDR)                 https://data.desi.lbl.gov/public/edr/vac/fastspecfit/iron/v1.0
-Guadalupe (DR1 Supplement) https://data.desi.lbl.gov/public/dr1/vac/fastspecfit/guadalupe/v1.0
+Iron (DR1)                 https://data.desi.lbl.gov/public/edr/vac/fastspecfit/iron/v1.0
+Guadalupe (DR1 Supplement) https://data.desi.lbl.gov/public/dr1/vac/fastspecfit/guadalupe/v2.0
 ========================== ===================================================================
 
 .. highlight:: none
@@ -82,21 +82,21 @@ Iron
 =============================== ========= =================
 File Name                       File Size Number of Targets
 =============================== ========= =================
-fastspec-iron-cmx-other.fits    9.27 MB   2,771            
-fastspec-iron-special-dark.fits 119 MB    35,647           
-fastspec-iron-sv1-backup.fits   12.4 MB   3,683            
-fastspec-iron-sv1-bright.fits   419 MB    126,677          
-fastspec-iron-sv1-dark.fits     780 MB    235,881          
-fastspec-iron-sv1-other.fits    113 MB    34,150           
-fastspec-iron-sv2-backup.fits   498 KB    107              
-fastspec-iron-sv2-bright.fits   154 MB    46,510           
-fastspec-iron-sv2-dark.fits     175 MB    52,771           
-fastspec-iron-sv3-backup.fits   5.31 MB   1,564            
-fastspec-iron-sv3-bright.fits   883 MB    265,324          
-fastspec-iron-sv3-dark.fits     1.92 GB   592,394          
-fastspec-iron-main-bright.fits  3.42 GB   1,092,038        
-fastspec-iron-main-dark.fits    3.54 GB   1,131,601        
-fastspec-iron.fits              4.57 GB   1,397,479        
+fastspec-iron-cmx-other.fits    9.27 MB    2,771            
+fastspec-iron-special-dark.fits 119 MB     35,647           
+fastspec-iron-sv1-backup.fits   12.4 MB    3,683            
+fastspec-iron-sv1-bright.fits   419 MB     126,677          
+fastspec-iron-sv1-dark.fits     780 MB     235,881          
+fastspec-iron-sv1-other.fits    113 MB     34,150           
+fastspec-iron-sv2-backup.fits   498 KB     107              
+fastspec-iron-sv2-bright.fits   154 MB     46,510           
+fastspec-iron-sv2-dark.fits     175 MB     52,771           
+fastspec-iron-sv3-backup.fits   5.31 MB    1,564            
+fastspec-iron-sv3-bright.fits   883 MB     265,324          
+fastspec-iron-sv3-dark.fits     1.92 GB    592,394          
+fastspec-iron-main-bright.fits  3.42 GB    1,092,038        
+fastspec-iron-main-dark.fits    3.54 GB    1,131,601        
+fastspec-iron.fits              4.57 GB    1,397,479        
 =============================== ========= =================
 
 Guadalupe
@@ -107,11 +107,11 @@ Guadalupe
 ====================================== ========= =================
 File Name                              File Size Number of Targets
 ====================================== ========= =================
-fastspec-guadalupe-special-dark.fits   12.5 MB   3,847            
-fastspec-guadalupe-special-bright.fits 30.9 MB   9,598            
-fastspec-guadalupe-main-bright.fits    3.42 GB   1,092,038        
-fastspec-guadalupe-main-dark.fits      3.54 GB   1,131,601        
-fastspec-guadalupe.fits                7.02 GB   2,237,084        
+fastspec-guadalupe-special-dark.fits   12.5 MB    3,847            
+fastspec-guadalupe-special-bright.fits 30.9 MB    9,598            
+fastspec-guadalupe-main-bright.fits    3.42 GB    1,092,038        
+fastspec-guadalupe-main-dark.fits      3.54 GB    1,131,601        
+fastspec-guadalupe.fits                7.02 GB    2,237,084        
 ====================================== ========= =================
 
 .. note::
@@ -160,8 +160,8 @@ using the machine-learning algorithm ``QuasarNet``. In the Iron and Guadalupe
 Specifically, let ``redrockfile`` and ``qnfile`` be the full pathname to a given
 `redrock catalog`_ and `QuasarNet catalog`_, respectively. We update the Redrock
 redshift ``Z`` (and store the original Redrock redshift in ``Z_RR``; see the
-:ref:`fastspec data model<fastspec datamodel>` and :ref:`fastphot data
-model<fastphot datamodel>`) using the following bit of code:
+:ref:`fastspec data model<fastspec datamodel>`) for all QSO targets using the
+following bit of code:
 
 .. code-block:: python
 
@@ -184,35 +184,35 @@ redshifts in each of the Iron and Guadalupe :ref:`iron merged catalogs`:
 
 .. rst-class:: columns
 
-========================================== ================= ===============================
-Catalog                                    Number of Targets Number with Corrected Redshifts
-========================================== ================= ===============================
-{fastspec,fastphot}-iron-cmx-other.fits    2,771             63
-{fastspec,fastphot}-iron-special-dark.fits 35,647            389
-{fastspec,fastphot}-iron-sv1-backup.fits   3,683             119
-{fastspec,fastphot}-iron-sv1-bright.fits   126,677           402
-{fastspec,fastphot}-iron-sv1-dark.fits     235,881           4,656
-{fastspec,fastphot}-iron-sv1-other.fits    34,150            372
-{fastspec,fastphot}-iron-sv2-backup.fits   107               0
-{fastspec,fastphot}-iron-sv2-bright.fits   46,510            151
-{fastspec,fastphot}-iron-sv2-dark.fits     52,771            1,185
-{fastspec,fastphot}-iron-sv3-backup.fits   1,564             32
-{fastspec,fastphot}-iron-sv3-bright.fits   265,324           649
-{fastspec,fastphot}-iron-sv3-dark.fits     592,394           5,973
-{fastspec,fastphot}-iron.fits              1,397,479         13,991
-========================================== ================= ===============================
+=============================== ================= ===============================
+Catalog                         Number of Targets Number with Corrected Redshifts
+=============================== ================= ===============================
+fastspec-iron-cmx-other.fits    2,771             63
+fastspec-iron-special-dark.fits 35,647            389
+fastspec-iron-sv1-backup.fits   3,683             119
+fastspec-iron-sv1-bright.fits   126,677           402
+fastspec-iron-sv1-dark.fits     235,881           4,656
+fastspec-iron-sv1-other.fits    34,150            372
+fastspec-iron-sv2-backup.fits   107               0
+fastspec-iron-sv2-bright.fits   46,510            151
+fastspec-iron-sv2-dark.fits     52,771            1,185
+fastspec-iron-sv3-backup.fits   1,564             32
+fastspec-iron-sv3-bright.fits   265,324           649
+fastspec-iron-sv3-dark.fits     592,394           5,973
+fastspec-iron.fits              1,397,479         13,991
+=============================== ================= ===============================
 
 .. rst-class:: columns
 
-================================================= ================= ===============================
-Catalog                                           Number of Targets Number with Corrected Redshifts
-================================================= ================= ===============================
-{fastspec,fastphot}-guadalupe-main-bright.fits    1,092,038         2,080
-{fastspec,fastphot}-guadalupe-main-dark.fits      1,131,601         26,741
-{fastspec,fastphot}-guadalupe-special-bright.fits 9,598             13
-{fastspec,fastphot}-guadalupe-special-dark.fits   3,847             121
-{fastspec,fastphot}-guadalupe.fits                2,237,084         28,955
-================================================= ================= ===============================
+====================================== ================= ===============================
+Catalog                                Number of Targets Number with Corrected Redshifts
+====================================== ================= ===============================
+fastspec-guadalupe-main-bright.fits    1,092,038         2,080
+fastspec-guadalupe-main-dark.fits      1,131,601         26,741
+fastspec-guadalupe-special-bright.fits 9,598             13
+fastspec-guadalupe-special-dark.fits   3,847             121
+fastspec-guadalupe.fits                2,237,084         28,955
+====================================== ================ ===============================
 
 Known Issues
 ------------

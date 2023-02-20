@@ -140,8 +140,8 @@ using the machine-learning algorithm ``QuasarNet``. In the Fuji and Guadalupe
 Specifically, let ``redrockfile`` and ``qnfile`` be the full pathname to a given
 `redrock catalog`_ and `QuasarNet catalog`_, respectively. We update the Redrock
 redshift ``Z`` (and store the original Redrock redshift in ``Z_RR``; see the
-:ref:`fastspec data model<fastspec datamodel>` and :ref:`fastphot data
-model<fastphot datamodel>`) using the following bit of code:
+:ref:`fastspec data model<fastspec datamodel>`) for all QSO targets using the
+following bit of code:
 
 .. code-block:: python
 
