@@ -1686,8 +1686,9 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
 
         if np.all(objflamivar == 0):
             log.info('All photometry is masked.')
-            coeff = np.zeros(nsed, 'f4')
+            coeff = np.zeros(nage, 'f4') # nage not nsed
             rchi2_cont, rchi2_phot = 0.0, 0.0
+            dn4000_model = 0.0
             sedmodel = np.zeros(len(templatecache['templatewave']))
         else:
            # Get the coefficients and chi2 at the nominal velocity dispersion. 
