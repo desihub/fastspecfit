@@ -11,8 +11,10 @@ Change Log
 ------------------------
 
 * Be robust to synthesizing photometry of the highest-redshift targets [`PR #101`_].
+* Fix another corner-case crash to the highest-redshift targets [`PR #102`_].
 
 .. _`PR #101`: https://github.com/desihub/fastspecfit/pull/101
+.. _`PR #102`: https://github.com/desihub/fastspecfit/pull/102
 
 2.1.0 (2023-02-17)
 ------------------

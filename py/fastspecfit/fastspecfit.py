@@ -588,7 +588,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     hdr['CD2_2'] = +pixscale/3600
     wcs = WCS(hdr)
 
-    cutoutjpeg = os.path.join('/tmp', 'tmp.'+os.path.basename(pngfile.replace('.png', '.jpeg')))
+    cutoutjpeg = os.path.join(outdir, 'tmp.'+os.path.basename(pngfile.replace('.png', '.jpeg')))
     if not os.path.isfile(cutoutjpeg):
         wait = 15 # seconds
         cmd = 'timeout {wait} wget -q -o /dev/null -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer=ls-dr9'
@@ -605,6 +605,9 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     except:
         log.warning('Problem reading cutout for targetid {}.'.format(metadata['TARGETID']))
         img = np.zeros((height, width, 3))
+
+    if os.path.isfile(cutoutjpeg):
+        os.remove(cutoutjpeg)
         
     # QA choices
     legxpos, legypos, legypos2, legfntsz1, legfntsz = 0.98, 0.94, 0.05, 16, 18
