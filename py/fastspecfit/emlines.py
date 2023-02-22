@@ -801,18 +801,25 @@ class EMFitTools(Filters):
                 (Ifree, Itied, tiedtoparam, tiedfactor, doubletindx, 
                  doubletpair, linewaves)
 
-        try:
-            fit_info = least_squares(_objective_function, parameters[Ifree], args=farg, max_nfev=5000, 
-                                     xtol=1e-2, tr_solver='lsmr', tr_options={'regularize': True},
-                                     method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
-            parameters[Ifree] = fit_info.x
-        except:
-            if self.targetid:
-                errmsg = 'Problem in scipy.optimize.least_squares for targetid {}.'.format(self.targetid)
-            else:
-                errmsg = 'Problem in scipy.optimize.least_squares.'
-            log.critical(errmsg)
-            raise RuntimeError(errmsg)
+        # corner case where all lines are out of the wavelength range, which can
+        # happen at high redshift and with the red camera masked, e.g.,
+        # iron/main/dark/6642/39633239580608311).
+
+        if len(Ifree) == 0:
+            fit_info = {'nfev': 0}
+        else:
+            try:
+                fit_info = least_squares(_objective_function, parameters[Ifree], args=farg, max_nfev=5000, 
+                                         xtol=1e-2, tr_solver='lsmr', tr_options={'regularize': True},
+                                         method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
+                parameters[Ifree] = fit_info.x
+            except:
+                if self.targetid:
+                    errmsg = 'Problem in scipy.optimize.least_squares for targetid {}.'.format(self.targetid)
+                else:
+                    errmsg = 'Problem in scipy.optimize.least_squares.'
+                log.critical(errmsg)
+                raise RuntimeError(errmsg)
 
         # Conditions for dropping a parameter (all parameters, not just those
         # being fitted):
