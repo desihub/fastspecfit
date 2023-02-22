@@ -284,8 +284,9 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         for ii, outfile in enumerate(outfiles):
             if os.path.isfile(outfile) and not overwrite:
                 todo[ii] = False
-        redrockfiles = redrockfiles[todo]
-        outfiles = outfiles[todo]
+        if np.count_nonzero(todo) > 0:
+            redrockfiles = redrockfiles[todo]
+            outfiles = outfiles[todo]
         log.info('Found {}/{} redrockfiles (left) to do.'.format(len(redrockfiles), nfile))
         ntargs = [(redrockfile, False) for redrockfile in redrockfiles]
 
