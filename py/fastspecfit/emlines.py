@@ -634,6 +634,16 @@ class EMFitTools(Filters):
             
             iline = self.linetable[self.linetable['name'] == linename]
             bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
+
+            # In extremely rare cases many of the pixels are zero, in which case
+            # bounds[0] becomes zero, which is bad (e.g.,
+            # iron/main/dark/27054/39627811564029314). Fix that here.
+            if np.abs(bounds[0]) == 0.0:
+                N = coadd_emlineflux[linepix] != 0
+                if np.sum(N) > 0:
+                    bounds[0] = -1.5*np.min(np.abs(coadd_emlineflux[linepix][N]))
+                if np.abs(bounds[0]) == 0.0:
+                    bounds[0] = -1e-3 # ??
             
             # force broad Balmer lines to be positive - deprecated
             #if iline['isbroad']:
