@@ -944,120 +944,123 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                     if plotsig < 50:
                         plotsig = plotsig_default
             sigmas.append(plotsig)
+
+        if len(linetable) == 0:
+            ax = []
+        else:
+            srt = np.argsort(meanwaves)
+            meanwaves = np.hstack(meanwaves)[srt]
+            deltawaves = np.hstack(deltawaves)[srt]
+            sigmas = np.hstack(sigmas)[srt]
+            linenames = np.hstack(linenames)[srt]
         
-        srt = np.argsort(meanwaves)
-        meanwaves = np.hstack(meanwaves)[srt]
-        deltawaves = np.hstack(deltawaves)[srt]
-        sigmas = np.hstack(sigmas)[srt]
-        linenames = np.hstack(linenames)[srt]
-    
-        # Add the linenames to the spectrum plot.
-        for meanwave, linename in zip(meanwaves*(1+redshift), linenames):
-            #print(meanwave, ymax_spec)
-            if meanwave > spec_wavelims[0] and meanwave < spec_wavelims[1]:
-                if 'SiIII' in linename:
-                    thislinename = '\n'+linename.replace('+', '+\n  ')
-                elif '4363' in linename:
-                    thislinename = linename+'\n'
+            # Add the linenames to the spectrum plot.
+            for meanwave, linename in zip(meanwaves*(1+redshift), linenames):
+                #print(meanwave, ymax_spec)
+                if meanwave > spec_wavelims[0] and meanwave < spec_wavelims[1]:
+                    if 'SiIII' in linename:
+                        thislinename = '\n'+linename.replace('+', '+\n  ')
+                    elif '4363' in linename:
+                        thislinename = linename+'\n'
+                    else:
+                        thislinename = linename
+                    specax.text(meanwave/1e4, spec_ymax, thislinename, ha='center', va='top',
+                                rotation=270, fontsize=12, alpha=0.5)
+        
+            removelabels = np.ones(nline, bool)
+            line_ymin, line_ymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
+            
+            ax, irow, colshift = [], 4, 5 # skip the gap row
+            for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
+                icol = iax % nlinecols
+                icol += colshift
+                if iax > 0 and iax % nlinecols == 0:
+                    irow += 1
+                #print(iax, irow, icol)
+            
+                xx = fig.add_subplot(gs[irow, icol])
+                ax.append(xx)
+            
+                wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
+                wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
+                #print(linename, wmin, wmax)
+            
+                # iterate over cameras
+                for icam in np.arange(len(data['cameras'])): # iterate over cameras
+                    emlinewave = data['wave'][icam]
+                    emlineflux = data['flux'][icam] - desicontinuum[icam] - desismoothcontinuum[icam]
+                    emlinemodel = desiemlines[icam]
+            
+                    emlinesigma, good = ivar2var(data['ivar'][icam], sigma=True, allmasked_ok=True, clip=0)
+                    emlinewave = emlinewave[good]
+                    emlineflux = emlineflux[good]
+                    emlinesigma = emlinesigma[good]
+                    emlinemodel = emlinemodel[good]
+            
+                    #if icam == 0:
+                    #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
+                        
+                    emlinemodel_oneline = []
+                    for desiemlines_oneline1 in desiemlines_oneline:
+                        emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
+                        
+                    indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
+                    if len(indx) > 1:
+                        removelabels[iax] = False
+                        xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
+                        #xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
+                        #                emlineflux[indx]+emlinesigma[indx], color=col1[icam], alpha=0.5)
+                        # plot the individual lines first then the total model
+                        for emlinemodel_oneline1 in emlinemodel_oneline:
+                            if np.sum(emlinemodel_oneline1[indx]) > 0:
+                                #P = emlinemodel_oneline1[indx] > 0
+                                xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
+                        xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
+        
+                        #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
+                        #xx.axhline(y=0, color='gray', ls='--')
+            
+                        # get the robust range
+                        sigflux = np.std(emlineflux[indx])
+                        filtflux = median_filter(emlineflux[indx], 3, mode='nearest')
+            
+                        #_line_ymin, _line_ymax = -1.5 * sigflux, 4 * sigflux
+                        #if np.max(emlinemodel[indx]) > _line_ymax:
+                        #    _line_ymax = np.max(emlinemodel[indx]) * 1.3
+                        _line_ymin, _line_ymax = -1.5 * sigflux, np.max(emlinemodel[indx]) * 1.4
+                        if 4 * sigflux > _line_ymax:
+                            _line_ymax = 4 * sigflux
+                        if np.max(filtflux) > _line_ymax:
+                            _line_ymax = np.max(filtflux)
+                        if np.min(emlinemodel[indx]) < _line_ymin:
+                            _line_ymin = 0.8 * np.min(emlinemodel[indx])
+                        if _line_ymax > line_ymax[iax]:
+                            line_ymax[iax] = _line_ymax
+                        if _line_ymin < line_ymin[iax]:
+                            line_ymin[iax] = _line_ymin
+                        #print(linename, line_ymin[iax], line_ymax[iax])
+                        #if linename == '[OII] $\lambda\lambda$3726,29':
+                        #    pdb.set_trace()
+            
+                        xx.set_xlim(wmin/1e4, wmax/1e4)
+                        
+                    xx.text(0.03, 0.89, linename, ha='left', va='center',
+                            transform=xx.transAxes, fontsize=12)
+                    xx.tick_params(axis='x', labelsize=16)
+                    xx.tick_params(axis='y', labelsize=16)
+                    
+            for iax, xx in enumerate(ax):
+                if removelabels[iax]:
+                    xx.set_ylim(0, 1)
+                    xx.set_xticklabels([])
+                    xx.set_yticklabels([])
                 else:
-                    thislinename = linename
-                specax.text(meanwave/1e4, spec_ymax, thislinename, ha='center', va='top',
-                            rotation=270, fontsize=12, alpha=0.5)
-    
-        removelabels = np.ones(nline, bool)
-        line_ymin, line_ymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
-        
-        ax, irow, colshift = [], 4, 5 # skip the gap row
-        for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
-            icol = iax % nlinecols
-            icol += colshift
-            if iax > 0 and iax % nlinecols == 0:
-                irow += 1
-            #print(iax, irow, icol)
-        
-            xx = fig.add_subplot(gs[irow, icol])
-            ax.append(xx)
-        
-            wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
-            wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
-            #print(linename, wmin, wmax)
-        
-            # iterate over cameras
-            for icam in np.arange(len(data['cameras'])): # iterate over cameras
-                emlinewave = data['wave'][icam]
-                emlineflux = data['flux'][icam] - desicontinuum[icam] - desismoothcontinuum[icam]
-                emlinemodel = desiemlines[icam]
-        
-                emlinesigma, good = ivar2var(data['ivar'][icam], sigma=True, allmasked_ok=True, clip=0)
-                emlinewave = emlinewave[good]
-                emlineflux = emlineflux[good]
-                emlinesigma = emlinesigma[good]
-                emlinemodel = emlinemodel[good]
-        
-                #if icam == 0:
-                #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
-                    
-                emlinemodel_oneline = []
-                for desiemlines_oneline1 in desiemlines_oneline:
-                    emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
-                    
-                indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
-                if len(indx) > 1:
-                    removelabels[iax] = False
-                    xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
-                    #xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
-                    #                emlineflux[indx]+emlinesigma[indx], color=col1[icam], alpha=0.5)
-                    # plot the individual lines first then the total model
-                    for emlinemodel_oneline1 in emlinemodel_oneline:
-                        if np.sum(emlinemodel_oneline1[indx]) > 0:
-                            #P = emlinemodel_oneline1[indx] > 0
-                            xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
-                    xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
-    
-                    #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
-                    #xx.axhline(y=0, color='gray', ls='--')
-        
-                    # get the robust range
-                    sigflux = np.std(emlineflux[indx])
-                    filtflux = median_filter(emlineflux[indx], 3, mode='nearest')
-        
-                    #_line_ymin, _line_ymax = -1.5 * sigflux, 4 * sigflux
-                    #if np.max(emlinemodel[indx]) > _line_ymax:
-                    #    _line_ymax = np.max(emlinemodel[indx]) * 1.3
-                    _line_ymin, _line_ymax = -1.5 * sigflux, np.max(emlinemodel[indx]) * 1.4
-                    if 4 * sigflux > _line_ymax:
-                        _line_ymax = 4 * sigflux
-                    if np.max(filtflux) > _line_ymax:
-                        _line_ymax = np.max(filtflux)
-                    if np.min(emlinemodel[indx]) < _line_ymin:
-                        _line_ymin = 0.8 * np.min(emlinemodel[indx])
-                    if _line_ymax > line_ymax[iax]:
-                        line_ymax[iax] = _line_ymax
-                    if _line_ymin < line_ymin[iax]:
-                        line_ymin[iax] = _line_ymin
-                    #print(linename, line_ymin[iax], line_ymax[iax])
-                    #if linename == '[OII] $\lambda\lambda$3726,29':
-                    #    pdb.set_trace()
-        
-                    xx.set_xlim(wmin/1e4, wmax/1e4)
-                    
-                xx.text(0.03, 0.89, linename, ha='left', va='center',
-                        transform=xx.transAxes, fontsize=12)
-                xx.tick_params(axis='x', labelsize=16)
-                xx.tick_params(axis='y', labelsize=16)
-                
-        for iax, xx in enumerate(ax):
-            if removelabels[iax]:
-                xx.set_ylim(0, 1)
-                xx.set_xticklabels([])
-                xx.set_yticklabels([])
-            else:
-                xx.set_yticklabels([])
-                xx.set_ylim(line_ymin[iax], line_ymax[iax])
-                xx_twin = xx.twinx()
-                xx_twin.set_ylim(line_ymin[iax], line_ymax[iax])
-                xlim = xx.get_xlim()
-                xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
+                    xx.set_yticklabels([])
+                    xx.set_ylim(line_ymin[iax], line_ymax[iax])
+                    xx_twin = xx.twinx()
+                    xx_twin.set_ylim(line_ymin[iax], line_ymax[iax])
+                    xlim = xx.get_xlim()
+                    xx.xaxis.set_major_locator(ticker.MaxNLocator(2))
 
     if fastphot:
         plt.subplots_adjust(wspace=0.6, top=0.85, bottom=0.13, left=0.07, right=0.86)
