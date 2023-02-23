@@ -17,18 +17,17 @@ standard dependencies. Here, we describe three different ways of setting up
 ---------------------
 
 At `NERSC`_, ``FastSpecFit`` can be loaded trivially on top of the standard DESI
-software stack. In a login or interactive node simply run the following commands
-and you are ready to go::
+software stack. In a login or interactive node, run the following
+commands to load a specific set of versions and you are ready to go::
+
+  source /global/cfs/cdirs/desi/software/desi_environment.sh 23.1
+  module load fastspecfit/v2.1.1
+
+Alternatively, Note that these commands will load the development (latest) versions of all the
+software, which are not guaranteed to be stable. 
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
-
-Note that these commands will load the development (latest) versions of all the
-software, which are not guaranteed to be stable. To load a specific set of
-versions you can do::
-
-  source /global/cfs/cdirs/desi/software/desi_environment.sh 22.5
-  module load fastspecfit/v1.0.1
 
 Alternatively, some users may want to access ``FastSpecFit`` through `NERSC`_'s
 `JupyterHub`_ notebook server. To set up the kernel first do::

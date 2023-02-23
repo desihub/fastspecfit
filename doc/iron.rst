@@ -107,11 +107,11 @@ Guadalupe
 ====================================== ========= =================
 File Name                              File Size Number of Targets
 ====================================== ========= =================
-fastspec-guadalupe-special-dark.fits   12.5 MB    3,847            
-fastspec-guadalupe-special-bright.fits 30.9 MB    9,598            
-fastspec-guadalupe-main-bright.fits    3.42 GB    1,092,038        
-fastspec-guadalupe-main-dark.fits      3.54 GB    1,131,601        
-fastspec-guadalupe.fits                7.02 GB    2,237,084        
+fastspec-guadalupe-special-dark.fits   15.7 MB    3,847            
+fastspec-guadalupe-special-bright.fits 38.9 MB    9,598            
+fastspec-guadalupe-main-bright.fits    4.31 GB    1,092,038        
+fastspec-guadalupe-main-dark.fits      4.46 GB    1,131,601        
+fastspec-guadalupe.fits                8.83 GB    2,237,084        
 ====================================== ========= =================
 
 .. note::
@@ -207,7 +207,7 @@ fastspec-iron.fits              1,397,479         13,991
 ====================================== ================= ===============================
 Catalog                                Number of Targets Number with Corrected Redshifts
 ====================================== ================= ===============================
-fastspec-guadalupe-main-bright.fits    1,092,038         2,080
+fastspec-guadalupe-main-bright.fits    1,092,038         153
 fastspec-guadalupe-main-dark.fits      1,131,601         26,741
 fastspec-guadalupe-special-bright.fits 9,598             13
 fastspec-guadalupe-special-dark.fits   3,847             121
