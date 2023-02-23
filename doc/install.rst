@@ -17,14 +17,16 @@ standard dependencies. Here, we describe three different ways of setting up
 ---------------------
 
 At `NERSC`_, ``FastSpecFit`` can be loaded trivially on top of the standard DESI
-software stack. In a login or interactive node, run the following
-commands to load a specific set of versions and you are ready to go::
+software stack. In a login or interactive `Perlmutter
+<https://docs.nersc.gov/systems/perlmutter>`_ node, run the following commands
+to load a stable version of ``FastSpecFit`` and its dependencies::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh 23.1
+  module swap desispec/0.57.0
   module load fastspecfit/v2.1.1
 
-Alternatively, Note that these commands will load the development (latest) versions of all the
-software, which are not guaranteed to be stable. 
+Alternatively, the following commands will load the development version of
+``FastSpecFit``, which is updated nightly and not guaranteed to be stable::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
@@ -45,16 +47,16 @@ set!
 ----------------------
 
 To install ``FastSpecFit`` and all its dependencies on a laptop we recommend a
-dedicated `conda`_ environment. For example, to install everything transparently
-into an environment called, e.g., *fastconda* one would do::
+dedicated `Miniforge`_ environment. For example, to install everything
+transparently into an environment called, e.g., *fastconda* one would do::
 
-  conda create -y --name fastspecfit python numpy scipy numba astropy matplotlib seaborn
+  conda create -y --name fastconda python=3.10
   conda activate fastconda
-  pip install fitsio healpy speclite
-  
-  for package in desiutil desimodel desitarget desispec fastspecfit; do
-    python -m pip install git+https://github.com/desihub/$package.git@main#egg=$package
-  done
+  export DESIUTIL_VERSION=3.2.6
+  python -m pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
+  python -m pip install -r requirements.txt
+
+  pip install sphinx-toolbox sphinx-rtd-theme sphinxcontrib-napoleon
 
 Alternatively, some users may want the DESI software to be installed in a more
 accessible location (e.g., */path/to/desi/code*), in which case one would do::
@@ -138,7 +140,7 @@ interactive work at `NERSC`_ (e.g., in a login node) do::
   or data release), please do not use a login node; instead, see the
   :ref:`running_fastspecfit` documentation for instructions and best practices.
 
-.. _`conda`: https://anaconda.org/
+.. _`Miniforge`: https://github.com/conda-forge/miniforge
 
 .. _`Schlegel, Finkbeiner, & Davis dust maps`: https://ui.adsabs.harvard.edu/abs/1998ApJ...500..525S/abstract
 

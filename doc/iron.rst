@@ -212,7 +212,7 @@ fastspec-guadalupe-main-dark.fits      1,131,601         26,741
 fastspec-guadalupe-special-bright.fits 9,598             13
 fastspec-guadalupe-special-dark.fits   3,847             121
 fastspec-guadalupe.fits                2,237,084         28,955
-====================================== ================ ===============================
+====================================== ================= ===============================
 
 Known Issues
 ------------
