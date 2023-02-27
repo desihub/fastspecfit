@@ -1,7 +1,7 @@
 # one time--
   mamba create -n fastspecfit-webapp python numpy scipy matplotlib astropy Django
   mamba activate fastspecfit-webapp
-  pip install fitsio django-filter
+  pip install fitsio django-filter psycopg2
   tdir=$(mktemp -d)
   pushd $tdir
   for package in desiutil desitarget; do git clone https://github.com/desihub/$package && cd $package && python setup.py install && cd ..; done
