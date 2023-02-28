@@ -32,6 +32,13 @@ RUN for x in \
     uWSGI \
     ; do pip3 install $x; done
 
+RUN apt update && apt install -y --no-install-recommends \
+    postgresql-client-12
+RUN pip3 install --no-cache psycopg2-binary
+
+RUN echo "desi:desi:44591:58102:desi,,,:/:/bin/bash" >> /etc/passwd
+RUN echo "desi:x:58102:" >> /etc/group
+
 RUN mkdir /app
 WORKDIR /app
 COPY entry.sh /app
