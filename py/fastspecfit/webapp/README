@@ -11,6 +11,7 @@ module load python
 mamba activate fastspecfit-webapp
 export PYTHONPATH=/global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py:$PYTHONPATH
 export DJANGO_SETTINGS_MODULE=fastspecfit.webapp.settings
+export POSTGRES_DB_PASSWORD=[insert-the-password-here]
 cd /global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py/fastspecfit/webapp
 
 # one time--
@@ -21,7 +22,6 @@ cd /global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py/fastspecfit/webapp
 # note that if the pre-production database gets funky, you can reset it by doing
 find . -path "*/migrations/*.py" -not -name "__init__.py" -delete
 find . -path "*/migrations/*.pyc"  -delete
-export POSTGRES_DB_PASSWORD=[insert-the-password-here]
 python manage.py makemigrations
 python manage.py migrate
 python load.py

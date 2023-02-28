@@ -33,10 +33,11 @@ class Sample(Model):
     #         print('{} = IntegerField(null=True)'.format(col.lower()))
 
     # metadata columns
-    targetid = CharField(max_length=20, default='', db_index=True)
+    #targetid = CharField(max_length=20, default='', db_index=True)
+    targetid = BigIntegerField(null=True, db_index=True)
     survey = CharField(max_length=4, default='', db_index=True)
     program = CharField(max_length=6, default='', db_index=True)
-    healpix = CharField(max_length=20, default='', db_index=True)
+    healpix = IntegerField(null=True)
     tileid_list = CharField(max_length=100, default='')
     #tileid = IntegerField(null=True)
     ra = FloatField(null=True, db_index=True)
@@ -737,7 +738,7 @@ class Sample(Model):
         return str(self.healpix)
 
     def str_targetid(self):
-        return '{}'.format(self.targetid)
+        return str(self.targetid)
 
     def base_html_dir(self):
         # Hack!
@@ -751,12 +752,12 @@ class Sample(Model):
         # Hack!
         #baseurl = '/data/fuji-webapp-test/html/tiles/cumulative/{}/'.format(self.tileid_list)
         baseurl = '/data/{}/html/healpix/{}/{}/'.format(self.specprod, self.survey, self.program)
-        baseurl += str(self.healpix//100) +'/'+ self.str_healpix()
+        baseurl += str(int(self.healpix)//100) +'/'+ self.str_healpix()
         return baseurl
 
     def data_base_url(self):
         # different for cumulative coadds!
         #baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji-webapp-test/tiles/cumulative/{}/'.format(self.tileid_list) # no html subdir
         baseurl = 'https://data.desi.lbl.gov/desi/spectro/fastspecfit/{}/healpix/{}/{}/'.format(self.specprod, self.survey, self.program) # no html subdir
-        baseurl += str(self.healpix//100) +'/'+ self.str_healpix()
+        baseurl += str(int(self.healpix)//100) +'/'+ self.str_healpix()
         return baseurl

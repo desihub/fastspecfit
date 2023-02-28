@@ -905,13 +905,13 @@ def main():
         'SIII_9532_NPIX'
         ]
 
-    meta = Table(fitsio.read(fastspecfile, ext='METADATA', columns=meta_columns, rows=np.arange(100)))
+    meta = Table(fitsio.read(fastspecfile, ext='METADATA', columns=meta_columns))#, rows=np.arange(100)))
 
     #print('Hacking the HEALPIX columns!')
     #meta['HEALPIX'] = 10000
     #meta['TILEID_LIST'] = meta['TILEID'].astype(str)
     
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC', columns=fastspec_cols, rows=np.arange(100)))
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC', columns=fastspec_cols))#, rows=np.arange(100)))
     #print('Ignoring fastphot!!')
     #if False:
     #    fastphot = Table(fitsio.read(fastphotfile, ext='FASTPHOT', columns=fastphot_cols))
