@@ -86,6 +86,12 @@ TEMPLATE_CONTEXT_PROCESSORS = (
 
 WSGI_APPLICATION = 'fastspecfit.webapp.wsgi.application'
 
+if DEBUG:
+    import logging
+    l = logging.getLogger('django.db.backends')
+    l.setLevel(logging.DEBUG)
+    l.addHandler(logging.StreamHandler())
+
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
 
@@ -102,7 +108,7 @@ DATABASES = {
        'NAME': 'fastspecfit',
        'USER': 'fastspecfit',
        'PASSWORD': os.environ.get('POSTGRES_DB_PASSWORD'),
-       'HOST': 'db',
+       'HOST': 'db-loadbalancer.cosmo-fastspecfit.production.svc.spin.nersc.org',
    }
 }
 

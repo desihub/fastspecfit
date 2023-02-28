@@ -7,8 +7,7 @@ as columns.
 """
 import os
 import numpy as np
-from django.db.models import (Model, IntegerField, CharField, FloatField, IPAddressField,
-                              DateTimeField, ManyToManyField, TextField, BooleanField)
+from django.db.models import Model, IntegerField, BigIntegerField, CharField, FloatField
 
 # python manage.py makemigrations sample
 # python manage.py migrate
@@ -21,7 +20,7 @@ class Sample(Model):
     #    return 'Sample '+self.target_name
     
     # in FITS table
-    row_index = IntegerField(default=-1)
+    row_index = BigIntegerField(default=0, db_index=True)
 
     # derived target name, e.g., sv3-bright-80613-TARGETID
     specprod = CharField(max_length=15, default='')
@@ -34,34 +33,34 @@ class Sample(Model):
     #         print('{} = IntegerField(null=True)'.format(col.lower()))
 
     # metadata columns
-    targetid = IntegerField(null=True)
-    survey = CharField(max_length=4, default='')
-    program = CharField(max_length=6, default='')
-    healpix = IntegerField(null=True)
+    targetid = CharField(max_length=20, default='', db_index=True)
+    survey = CharField(max_length=4, default='', db_index=True)
+    program = CharField(max_length=6, default='', db_index=True)
+    healpix = CharField(max_length=20, default='', db_index=True)
     tileid_list = CharField(max_length=100, default='')
     #tileid = IntegerField(null=True)
-    ra = FloatField(null=True)
-    dec = FloatField(null=True)
-    coadd_fiberstatus = IntegerField(null=True)
+    ra = FloatField(null=True, db_index=True)
+    dec = FloatField(null=True, db_index=True)
+    coadd_fiberstatus = CharField(max_length=20, default='')
     #fiber = IntegerField(null=True)
 
-    cmx_target = IntegerField(null=True)
-    desi_target = IntegerField(null=True)
-    bgs_target = IntegerField(null=True)
-    mws_target = IntegerField(null=True)
-    sv1_desi_target = IntegerField(null=True)
-    sv1_bgs_target = IntegerField(null=True)
-    sv1_mws_target = IntegerField(null=True)
-    sv2_desi_target = IntegerField(null=True)
-    sv2_bgs_target = IntegerField(null=True)
-    sv2_mws_target = IntegerField(null=True)
-    sv3_desi_target = IntegerField(null=True)
-    sv3_bgs_target = IntegerField(null=True)
-    sv3_mws_target = IntegerField(null=True)
-    scnd_target = IntegerField(null=True)
-    sv1_scnd_target = IntegerField(null=True)
-    sv2_scnd_target = IntegerField(null=True)
-    sv3_scnd_target = IntegerField(null=True)
+    cmx_target = CharField(max_length=20, default='')
+    desi_target = CharField(max_length=20, default='')
+    bgs_target = CharField(max_length=20, default='')
+    mws_target = CharField(max_length=20, default='')
+    sv1_desi_target = CharField(max_length=20, default='')
+    sv1_bgs_target = CharField(max_length=20, default='')
+    sv1_mws_target = CharField(max_length=20, default='')
+    sv2_desi_target = CharField(max_length=20, default='')
+    sv2_bgs_target = CharField(max_length=20, default='')
+    sv2_mws_target = CharField(max_length=20, default='')
+    sv3_desi_target = CharField(max_length=20, default='')
+    sv3_bgs_target = CharField(max_length=20, default='')
+    sv3_mws_target = CharField(max_length=20, default='')
+    scnd_target = CharField(max_length=20, default='')
+    sv1_scnd_target = CharField(max_length=20, default='')
+    sv2_scnd_target = CharField(max_length=20, default='')
+    sv3_scnd_target = CharField(max_length=20, default='')
 
     desi_bitnames = CharField(max_length=150, default='')
     bgs_bitnames = CharField(max_length=150, default='')
@@ -71,7 +70,7 @@ class Sample(Model):
 
     targetclass = CharField(max_length=50, default='')
 
-    z = FloatField(null=True)
+    z = FloatField(null=True, db_index=True)
     zwarn = IntegerField(null=True)
     deltachi2 = FloatField(null=True)
     spectype = CharField(max_length=6, default='')

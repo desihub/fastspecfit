@@ -17,15 +17,13 @@ cd /global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py/fastspecfit/webapp
   python manage.py makemigrations sample
 
 # every time--
-/bin/rm db/db.sqlite3
-python manage.py makemigrations ; python manage.py migrate
-python load.py ; chmod 666 db/db.sqlite3 ; chgrp -R desi *
-touch wsgi.py
 
 # note that if the pre-production database gets funky, you can reset it by doing
-/bin/rm db/db.sqlite3
 find . -path "*/migrations/*.py" -not -name "__init__.py" -delete
 find . -path "*/migrations/*.pyc"  -delete
-python manage.py makemigrations ; python manage.py migrate
-python load.py ; chmod 666 db/db.sqlite3 ; chgrp -R desi *
+export POSTGRES_DB_PASSWORD=[insert-the-password-here]
+python manage.py makemigrations
+python manage.py migrate
+python load.py
+chgrp -R desi *
 touch wsgi.py

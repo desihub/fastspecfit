@@ -408,5 +408,8 @@ if __name__ == '__main__':
         f.write(x)
     f.close()
 
-    main()
+    from django.db import connection
+    print(connection.queries)
+
+    #main()
     
