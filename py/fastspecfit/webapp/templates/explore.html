@@ -9,40 +9,46 @@
 
 <div class="e-content entry-content" itemprop="articleBody text">
   <div>
-    <br />
-    <br />
+    <!--<div>
+      <form style="display:inline;" action="{% url 'index' %}"><button>Home</button></form> 
+      <form style="display:inline;" action="{% url 'index' %}#query"><button>Query</button></form> 
+      <form style="display:inline;" action="{% url 'index' %}#results"><button>Results</button></form> 
+      <br />
+    </div>-->
     <div class="row">
       <!--<div class="col-md-8 col-left docutils container">-->
       <div class="col">
-        <a href="https://github.com/desihub/fastspecfit"><img style="width: 400px;" src="{% static "fastspecfit-logo.png" %}" alt="FastSpecFit Logo"/></a> 
+        <br />
+        <a href="https://fastspecfit.desi.lbl.gov"><img style="width: 400px;" src="{% static "fastspecfit-logo.png" %}" alt="FastSpecFit Logo"/></a> 
         <br />
         <br />
-        <h4>Fujilupe Value-Added Catalogs (v2.0)</h4>
+        <h4>DESI Early Data Release (Fuji)</h4>
         <br />
-        <p>Welcome to the <a href="https://fastspecfit.legacysurvey.org">data
-        portal</a> for the <a href="https://desi.lbl.gov">DESI</a> FastSpecFit
+        <p>Welcome to the <a href="https://fastspecfit.desi.lbl.gov">data
+        portal</a> for
+        the <a href="https://desi.lbl.gov">DESI</a> <a href="https://fastspecfit.readthedocs.io/en/latest/">FastSpecFit</a>
         value-added catalogs! FastSpecFit is a stellar continuum and
         emission-line modeling code for DESI which forward-models the
         three-camera optical spectrophotometry jointly with the optical through
-        infrared broadband photometry in order to extract a wide range of
-        observed and intrinsic physical properties for galaxy and quasar
-        targets.</p>
+        infrared broadband photometry of galaxy and quasar targets in order to
+        extract a wide range of observed and intrinsic physical properties.</p>
         
         <p>Please refer to
            the <a href="https://fastspecfit.readthedocs.io/en/latest/">FastSpecFit
-           documentation</a> for full details regarding this data release,
-           particularly
+           documentation</a> for full details regarding the code and this data
+           release, particularly
            the <a href="https://fastspecfit.readthedocs.io/en/latest/fujilupe.html#acknowledgements">required
            acknowledgments and conditions of use</a>. Questions, problems, or
-           feature requests can be communicated
+           feature requests can be communicated to the FastSpecFit development
+           team
            by <a href="https://github.com/desihub/fastspecfit/issues">filing a
-           ticket</a>. Have fun exploring the data!</p>
-      </div>
+            ticket</a>.</p>
+        <p>Have fun exploring the data!</p>
+      </div> <!--close div-col-->
   
       <!--<div class="col-md-8 col-right docutils container">-->
       <div class="col">
-        <br />
-        <br />
+        <br /><br /><br /><br />
         <div class="jumbotron">
           <h4>Merged Catalog</h4>
           <p>
@@ -54,29 +60,27 @@
           <p><a href="https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v2.0">https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v2.0</a></p>
           
           <h4>At NERSC (for collaborators)</h4><p>/global/cfs/cdirs/desi/spectro/fastspecfit/fuji/v2.0</p>
-        </div>
-      </div>
-    </div>
+        </div> <!--close div-jumbotron-->
+      </div> <!--close div-col-->
+    </div> <!--close div-row-->
     
-  <div class="container"></div>
-    <hr />
-    <div>
-      <a id="query"></a>
-    </div>
-
-    <div class="row">
-      <!--<div class="col-md-8 col-left docutils container">-->
-      <div class="col">
-        <p>Scroll down to browse the full sample or select a subset of objects
-        using one of the three filter options: simple filter, cone search, or
-        upload your own sample.</p>
-      </div>
-    </div>
+    <div class="container"></div>
+      <hr />
+      <div><a id="query"></a></div>
+  
+      <div class="row">
+        <div class="col">
+          <h3>Query</h3>
+          <p>Select a subset of objects using one of the three filter options:
+          simple filter, cone search, or upload your own catalog.</p>
+        </div> <!--close div-col-->
+      </div> <!--close div-row-->
+    </div> <!--close div-container-->
 
     <div style="text-align: center; vertical-align: middle;">
-      <div class="row">    
+      <div class="row">
         <div class="col" style="text-align: center;">
-          <h3>Simple Filter</h3><br style="line-height:0.5em;" />
+          <h4>Simple Filter</h4><br style="line-height:0.5em;" />
           <form style="display: inline-block;" method="get" action="#results">
             <table>
               <tr>
@@ -115,10 +119,10 @@
             </table>
             <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Filter</button>
           </form>
-        </div>
+        </div> <!--close div-col-->
         
         <div class="col" style="text-align: center;">        
-          <h3>Cone Search</h3><br style="line-height:0.5em;" />
+          <h4>Cone Search</h4><br style="line-height:0.5em;" />
           <form style="display: inline-block;" method="get" action="#results">
             <table>
               <tr>
@@ -136,129 +140,143 @@
             </table>
             <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Search</button>
           </form>
-        </div>
+        </div> <!--close div-col-->
         
         <div class="col" style="text-align: center;">                  
-          <h3>Upload Catalog</h3><br style="line-height:0.5em;" />
+          <h4>Upload Catalog</h4><br style="line-height:0.5em;" />
             <form action="{% url 'upload-catalog' %}" method="POST" enctype="multipart/form-data">{% csrf_token %}
               <input type="file" name="catalog" />
               <button type="submit" value="Upload" id="usercat_submit" class="btn btn-primary" style="margin-top: 15px;">Upload</button>
               <!--<input type="submit" value="Upload" id="usercat_submit" />-->
             </form>
             <br />
-            <p style="text-align: left;">Uploaded catalog must be a binary FITS table with
-            mandatory, case-insensitive
+            <p style="text-align: left;">The uploaded catalog must be a binary
+            FITS table with mandatory, case-insensitive
             columns <i>SURVEY</i>, <i>PROGRAM</i>, <i>HEALPIX</i>
-            and <i>TARGETID</i>.</p>  
-        </div>
+            and <i>TARGETID</i>.</p>
+        </div> <!--close div-col-->
+      </div> <!--close div-row-->
+    </div> <!--close div (outer)-->
 
-      </div>
-
+    <div class="container"></div>
       <hr />
-
       <div><a id="results"></a></div>
-        <h3>Results</h3>
-    
-        <p class="search_log">Showing {{ page.start_index }} - {{ page.end_index }} of {{paginator.count}}</p>
-    
-        <form method="post">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-primary" name="dbutn" >Download</button>
-        </form>
-        <br />
-      </div>
 
-      <br />
+      <div class="row">
+        <div class="col">
+          <h3>Results</h3>
+          <p>Browse the selected sample here or <i>Download</i> the
+          results. Click on the <i>TargetID</i> column to view detailed modeling
+          results for a specific object.</p>
+        </div> <!--close div-col-->
+      </div> <!--close div-row-->
+    </div> <!--close div-container-->
 
-      <table class="table table-bordered table-hover">
-        <thead>
-          <tr>
-            <th style="vertical-align: middle; text-align: center;">Number</th>
-            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'survey' %}#results">Survey</a></th>
-            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'program' %}#results">Program</a></th>
-            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'tileid_list' %}#results">TileIDs</a></th>
-            <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
-            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'healpix' %}#results">Healpixel</a></th>
-            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetclass' %}#results">Target Class</a></th>
-            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
-            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br />(degrees)</a></th>
-            <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'z' %}#results">Redshift</a></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for sam in page %}
+    <div style="text-align: center; vertical-align: middle;">
+      <div class="row">
+        <div class="col" style="text-align: center;">
+          <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary" name="dbutn" >Download</button>
+          </form>
+          <br />
+          <p class="search_log">Showing objects {{ page.start_index }} - {{ page.end_index }} of {{paginator.count}}</p>
+        </div> <!--close div-col-->
+      </div> <!--close div-row-->
+
+      <div class="row">
+        <table class="table table-bordered table-hover">
+          <thead>
             <tr>
-              <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.survey }}</td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.program }}</td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.tileid_list }}</td>
-              <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.targetid }}</a></td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.healpix }}</td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.targetclass }}</td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
-              <td style="vertical-align: middle; text-align: center;">{{ sam.z|floatformat:8 }}</td>
+              <!--<th style="vertical-align: middle; text-align: center;">Row</th>-->
+              <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'row_index' %}#results">Row Number</a></th>
+              <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'survey' %}#results">Survey</a></th>
+              <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'program' %}#results">Program</a></th>
+              <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'healpix' %}#results">Healpixel</a></th>
+              <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
+              <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetclass' %}#results">Target Class(es)</a></th>
+              <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'tileid_list' %}#results">TileID(s)</a></th>
+              <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
+              <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br />(degrees)</a></th>
+              <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'z' %}#results">Redshift</a></th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      
-      {% comment %}
-      <div class="panel panel-primary accordion"> <!-- Panel (collapasable) -->
-          <div class="panel-heading"> <!-- Panel head -->
-              <a class="accordion-toggle" data-toggle="collapse" data-parent=".accordion" href="#collapseOne">
-                <button type="submit" class="btn btn-primary" style="margin-top:15px;">Expand/Collapse Results</button>
-              </a>           
-          </div> <!-- END Panel head -->
-          <br /><br />
-          <div id="collapseOne" class="panel-collapse collapse in"> <!-- Collapsable section -->
-              <div class="panel-body"> <!-- Panel body -->
-                <table class="table table-bordered table-hover">
-                  <thead>
+          </thead>
+          <tbody>
+            {% for sam in page %}
+              <tr>
+                <!--<td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>-->
+                <td style="vertical-align: middle; text-align: center;">{{ sam.row_index }}</td>
+                <td style="vertical-align: middle; text-align: center;">{{ sam.survey }}</td>
+                <td style="vertical-align: middle; text-align: center;">{{ sam.program }}</td>
+                <td style="vertical-align: middle; text-align: center;">{{ sam.healpix }}</td>
+                <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.targetid }}</a></td>
+                <td style="vertical-align: middle; text-align: center;">{{ sam.targetclass }}</td>
+                <td style="vertical-align: middle; text-align: center;">{{ sam.tileid_list }}</td>
+                <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
+                <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
+                <td style="vertical-align: middle; text-align: center;">{{ sam.z|floatformat:8 }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div> <!--close div-row-->
+    </div> <!--close div (generic)-->
+    
+    {% comment %}
+    <div class="panel panel-primary accordion"> <!-- Panel (collapasable) -->
+        <div class="panel-heading"> <!-- Panel head -->
+            <a class="accordion-toggle" data-toggle="collapse" data-parent=".accordion" href="#collapseOne">
+              <button type="submit" class="btn btn-primary" style="margin-top:15px;">Expand/Collapse Results</button>
+            </a>           
+        </div> <!-- END Panel head -->
+        <br /><br />
+        <div id="collapseOne" class="panel-collapse collapse in"> <!-- Collapsable section -->
+            <div class="panel-body"> <!-- Panel body -->
+              <table class="table table-bordered table-hover">
+                <thead>
+                  <tr>
+                    <th style="vertical-align: middle; text-align: center;">Number</th>
+                    <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
+                    <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
+                    <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br />(degrees)</a></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for sam in page %}
                     <tr>
-                      <th style="vertical-align: middle; text-align: center;">Number</th>
-                      <th style="min-width: 155px; vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'targetid' %}#results">TargetID</a></th>
-                      <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'ra' %}#results">RA<br />(degrees)</a></th>
-                      <th style="vertical-align: middle; text-align: center;"><a href="?{% url_replace_sort request 'dec' %}#results">Dec<br />(degrees)</a></th>
+                      <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
+                      <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.targetid }}</a></td>
+                      <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
+                      <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {% for sam in page %}
-                      <tr>
-                        <td style="vertical-align: middle; text-align: center;">{{ forloop.counter0|add:page.start_index }}</a></td>
-                        <td style="vertical-align: middle; text-align: center;"><a href="{% url 'target' sam.target_name %}?index={{forloop.counter0|add:page.start_index}}" target="_blank">{{ sam.targetid }}</a></td>
-                        <td style="vertical-align: middle; text-align: center;">{{ sam.ra|floatformat:7 }}</td>
-                        <td style="vertical-align: middle; text-align: center;">{{ sam.dec|floatformat:6 }}</td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div> <!-- END Panel body -->
-          </div> <!-- END Collapse section -->
-      </div> <!-- end accordian div -->
-      {% endcomment %}
-  
-      <div style="text-align:center; padding: 10px;">
-        <span class="step-links">
-          {% if page.has_previous %}
-            <a href="?{% url_replace request 'page' 1 %}">&laquo; first</a>
-            <a href="?{% url_replace request 'page' page.previous_page_number %}">previous</a>
-          {% endif %}
-            
-          <span class="current">
-            Page {{ page.number }} of {{ page.paginator.num_pages }}
-          </span>
-          
-          {% if page.has_next %}
-            <a href="?{% url_replace request 'page' page.next_page_number %}#results">next</a>
-            <a href="?{% url_replace request 'page' paginator.num_pages %}#results">last &raquo;</a>
-          {% endif %}
-        </span>
-      </div>
-      <br /><br />
-    </div>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div> <!-- END Panel body -->
+        </div> <!-- END Collapse section -->
+    </div> <!-- end accordian div -->
+    {% endcomment %}
 
-  </div> 
-</div>
+    <div style="text-align:center; padding: 10px;">
+      <span class="step-links">
+        {% if page.has_previous %}
+          <a href="?{% url_replace request 'page' 1 %}">&laquo; first</a>
+          <a href="?{% url_replace request 'page' page.previous_page_number %}">previous</a>
+        {% endif %}
+          
+        <span class="current">
+          Page {{ page.number }} of {{ page.paginator.num_pages }}
+        </span>
+        
+        {% if page.has_next %}
+          <a href="?{% url_replace request 'page' page.next_page_number %}#results">next</a>
+          <a href="?{% url_replace request 'page' paginator.num_pages %}#results">last &raquo;</a>
+        {% endif %}
+      </span>
+    </div>
+    <br /><br />
+    
+  </div> <!--close div (generic)-->
+</div> <!--close div-entry-content-->
 
 {% endblock %}

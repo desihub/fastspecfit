@@ -1,4 +1,5 @@
-# one time--
+To create the conda environment for the first time, do:
+
   mamba create -n fastspecfit-webapp python numpy scipy matplotlib astropy Django
   mamba activate fastspecfit-webapp
   pip install fitsio django-filter psycopg2
@@ -7,6 +8,8 @@
   for package in desiutil desitarget; do git clone https://github.com/desihub/$package && cd $package && python setup.py install && cd ..; done
   popd
 
+Then, subsequently, do:
+
 module load python
 mamba activate fastspecfit-webapp
 export PYTHONPATH=/global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py:$PYTHONPATH
@@ -14,12 +17,12 @@ export DJANGO_SETTINGS_MODULE=fastspecfit.webapp.settings
 export POSTGRES_DB_PASSWORD=[insert-the-password-here]
 cd /global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py/fastspecfit/webapp
 
-# one time--
+The very first time do:
   python manage.py makemigrations sample
 
-# every time--
+And then subsequently (note that the first two commands are only needed if the
+pre-production database gets funky):
 
-# note that if the pre-production database gets funky, you can reset it by doing
 find . -path "*/migrations/*.py" -not -name "__init__.py" -delete
 find . -path "*/migrations/*.pyc"  -delete
 python manage.py makemigrations
@@ -27,3 +30,10 @@ python manage.py migrate
 python load.py
 chgrp -R desi *
 touch wsgi.py
+
+Finally, if you need to delete the database and start over do:
+
+  python manage.py shell
+  from fastspecfit.webapp.sample.models import Sample
+  Sample.objects.all().delete()
+  exit()
