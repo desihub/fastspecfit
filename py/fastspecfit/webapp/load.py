@@ -18,7 +18,7 @@ specprod = 'fuji'
 DATADIR = '/global/cfs/cdirs/desi/spectro/fastspecfit/{}/catalogs'.format(specprod)
 
 fastspecfile = os.path.join(DATADIR, 'fastspec-{}.fits'.format(specprod))
-fastphotfile = os.path.join(DATADIR, 'fastphot-{}.fits'.format(specprod))
+#fastphotfile = os.path.join(DATADIR, 'fastphot-{}.fits'.format(specprod))
 
 # RA, Dec in degrees: scalars or 1-d arrays.
 # returns xyz of shape (N,3)
@@ -37,7 +37,7 @@ def main():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fastspecfit.webapp.settings")
     django.setup()
 
-    from fastspecfit.webapp.sample.models import Sample
+    from fastspecfit.webapp.fastmodel.models import FastModel
 
     meta_columns = [
         'TARGETID',
@@ -905,13 +905,21 @@ def main():
         'SIII_9532_NPIX'
         ]
 
-    meta = Table(fitsio.read(fastspecfile, ext='METADATA', columns=meta_columns))
+    F = fitsio.FITS(fastspecfile)
+    nrows = F['METADATA'].get_nrows()
 
-    #print('Hacking the HEALPIX columns!')
-    #meta['HEALPIX'] = 10000
-    #meta['TILEID_LIST'] = meta['TILEID'].astype(str)
-    
-    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC', columns=fastspec_cols))
+    if False:
+        rows = np.arange(10000) + 10000
+    elif False:
+        rand = np.random.RandomState(seed=1)
+        rows = rand.choice(nrows, size=75, replace=False)
+        np.sort(rows)
+    else:
+        rows = np.arange(nrows)
+
+    meta = Table(fitsio.read(fastspecfile, ext='METADATA', columns=meta_columns, rows=rows))
+
+    fastspec = Table(fitsio.read(fastspecfile, ext='FASTSPEC', columns=fastspec_cols, rows=rows))
     #print('Ignoring fastphot!!')
     #if False:
     #    fastphot = Table(fitsio.read(fastphotfile, ext='FASTPHOT', columns=fastphot_cols))
@@ -925,37 +933,13 @@ def main():
     #print(meta)
     #print(meta.colnames, fast.colnames)
 
-    # build the list of tiles contributing to the observation of each target
-    #if specprod == 'everest': # bug in the everest tilepix.fits file, so read the .json file
-    #    #import json
-    #    #with open('/global/cfs/cdirs/desi/spectro/redux/everest/healpix/tilepix.json', 'r') as F: 
-    #    #    tilepix = json.load(F)
-    #    tilepix = Table.read('/global/cfs/cdirs/desi/users/ioannis/tmp/new-tilepix.fits')
-    #else:
-    #    tilepix = Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/healpix/tilepix.fits'.format(specprod))
-        
-    #tiles = np.zeros(len(meta), dtype='U50') # 5 characters per tile, max of 10 tiles??
-    #tilepix = Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/healpix/tilepix.fits'.format(specprod))
-    #
-    #for pixel in set(meta['HEALPIX']):
-    #    # should take into account PETAL_LOC
-    #    I = meta['HEALPIX'] == pixel
-    #    J = tilepix['HEALPIX'] == pixel
-    #    assert(np.sum(J) > 0)
-    #
-    #    tt = Table(fitsio.FITS('/global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/100/10016/coadd-sv3-bright-10016.fits')['EXP_FIBERMAP'].read(columns=['TARGETID', 'TILEID', 'FIBER']))
-    #    meta['TARGETID'][I]
-    #    ' '.join(tilepix[J]['TILEID'].astype(str))       
-    #    
-    #    import pdb ; pdb.set_trace()
-
     # parse the targeting bit names
-    desi_bitnames = np.zeros(len(meta), dtype='U150')
-    bgs_bitnames = np.zeros(len(meta), dtype='U150')
-    mws_bitnames = np.zeros(len(meta), dtype='U150')
-    scnd_bitnames = np.zeros(len(meta), dtype='U150')
-    cmx_bitnames = np.zeros(len(meta), dtype='U150')
-    targetclass = np.zeros(len(meta), dtype='U50')
+    desi_bitnames = np.zeros(len(meta), dtype='U300')
+    bgs_bitnames = np.zeros(len(meta), dtype='U300')
+    mws_bitnames = np.zeros(len(meta), dtype='U300')
+    scnd_bitnames = np.zeros(len(meta), dtype='U300')
+    cmx_bitnames = np.zeros(len(meta), dtype='U300')
+    targetclass = np.zeros(len(meta), dtype='U300')
 
     def get_targetclass(targetclass, name):
         for cc in ['BGS', 'LRG', 'ELG', 'QSO', 'MWS', 'SCND', 'STD']:
@@ -1028,6 +1012,7 @@ def main():
             
     # join metadata and fastspec fitting results
     data = hstack((meta, fastspec))
+    del meta, fastspec
 
     ## join everything with fastphot fitting results but we need to add a prefix
     #print('Ignoring fastphot!!')
@@ -1044,7 +1029,7 @@ def main():
             maggies = data['{}FLUX{}_{}'.format(prefix, suffix, band)]
             if 'FIBER' in prefix or 'SYNTH' in suffix:
                 # e.g., FIBERABMAG_G, FIBERTOTMAG_G, ABMAG_SYNTH_G, and ABMAG_SYNTH_PHOTMODEL_G, and ABMAG_SYNTH_SPECMODEL_G
-                data['{}ABMAG{}_{}'.format(prefix, suffix, band)] = np.array('', dtype='U6') 
+                data['{}ABMAG{}_{}'.format(prefix, suffix, band)] = np.array('', dtype='U50') 
                 good = np.where(maggies > 0)[0]
                 if len(good) > 0:
                     data['{}ABMAG{}_{}'.format(prefix, suffix, band)][good] = np.array(list(
@@ -1054,8 +1039,8 @@ def main():
                     data['{}ABMAG{}_{}'.format(prefix, suffix, band)][neg] = '...'
             else:
                 # e.g., ABMAG_G and ABMAG_ERR_G
-                data['ABMAG_{}'.format(band)] = np.array('', dtype='U7')
-                data['ABMAG_ERR_{}'.format(band)] = np.array('', dtype='U13')
+                data['ABMAG_{}'.format(band)] = np.array('', dtype='U50')
+                data['ABMAG_ERR_{}'.format(band)] = np.array('', dtype='U50')
             
                 ivarmaggies = data['FLUX_IVAR_{}'.format(band)]
         
@@ -1095,10 +1080,8 @@ def main():
              ]):
         data = convert_phot(data, prefix, suffix, bands)
 
-    #import pdb ; pdb.set_trace()
-
     # parse some uncertainties
-    data['VDISP_ERR'] = np.zeros(len(data), dtype='U10') #np.repeat('          ', len(data))
+    data['VDISP_ERR'] = np.zeros(len(data), dtype='U50')
     I = data['VDISP_IVAR'] > 0
     if np.any(I):
         vdisp_err = 1 / np.sqrt(data['VDISP_IVAR'][I])
@@ -1132,10 +1115,10 @@ def main():
         data['{}_WAVE'.format(line)] = linewave
         
         # S/N, vshift, sigma, and chi2
-        data['{}_SNR'.format(line)] = np.array('', dtype='U15')
-        data['{}_VSHIFT_STR'.format(line)] = np.array('', dtype='U15')
-        data['{}_SIGMA_STR'.format(line)] = np.array('', dtype='U15')
-        data['{}_CHI2_STR'.format(line)] = np.array('', dtype='U15')
+        data['{}_SNR'.format(line)] = np.array('', dtype='U50')
+        data['{}_VSHIFT_STR'.format(line)] = np.array('', dtype='U50')
+        data['{}_SIGMA_STR'.format(line)] = np.array('', dtype='U50')
+        data['{}_CHI2_STR'.format(line)] = np.array('', dtype='U50')
 
         snr = data['{}_AMP'.format(line)]*np.sqrt(data['{}_AMP_IVAR'.format(line)])
         good = np.where(snr > 0)[0]
@@ -1162,40 +1145,106 @@ def main():
             zero = np.where(data['{}_{}_IVAR'.format(line, suffix)] == 0)[0]
             if len(zero) > 0:
                 data['{}_{}_ERR'.format(line, suffix)][zero] = '0'
-            
                 #print(data['{}_{}_ERR'.format(line, suffix)][good])
-                
-    #import pdb ; pdb.set_trace()
                 
     print(data.colnames)
     print('Read {} rows from {}'.format(len(data), fastspecfile))
     xyz = radectoxyz(data['RA'], data['DEC'])
 
-    objs = []
-    nextpow = 1024
-    for ii, onegal in enumerate(data):
-        if ii == nextpow:
-            print('Row', ii)
-            nextpow *= 2
+    # Load the database in chunks to avoid memory issues.
+    chunksize = 50000
+    chunkindx = np.arange(len(data))
+    chunks = np.array_split(chunkindx, np.ceil(len(data) / chunksize).astype(int))
 
-        sam = Sample()
-        sam.row_index = ii
-        sam.ux = xyz[ii, 0]
-        sam.uy = xyz[ii, 1]
-        sam.uz = xyz[ii, 2]
-
-        for col in data.colnames:
-            val = onegal[col]
-            if type(val) == np.str_:
-                val.strip()
-            #if 'TARGET' in col:
-            #    print(col, val)
-            setattr(sam, col.lower(), val)
-
-        objs.append(sam)
+    for ichunk, chunk in enumerate(chunks):
+        objs = []
+        for ii in chunk:
+            sam = FastModel()
+            sam.row_index = ii
+            sam.ux = xyz[ii, 0]
+            sam.uy = xyz[ii, 1]
+            sam.uz = xyz[ii, 2]
+            for col in data.colnames:
+                val = data[ii][col]
+                if type(val) == np.str_:
+                    val = val.strip()
+                setattr(sam, col.lower(), val)
+            objs.append(sam)
             
-    print('Bulk creating the database.')
-    Sample.objects.bulk_create(objs)
+        print('Loading chunk {} / {} (N={}) into the database.'.format(
+            ichunk+1, len(chunks), len(chunk)))
+        FastModel.objects.bulk_create(objs)
+
+    del data
+
+#    ##################
+#    from fastspecfit.webapp.sample.models import TestSample
+#    for ichunk, chunk in enumerate(chunks[7:8]):
+#        objs = []
+#        for ii in chunk[551:552]:
+#            sam = TestSample()
+#            for col in data.colnames:
+#                if hasattr(sam, col.lower()):
+#                    val = data[ii][col]
+#                    if type(val) == np.str_:
+#                        val = val.strip()
+#                    setattr(sam, col.lower(), val)
+#            objs.append(sam)
+#            
+#        print('Loading chunk {} / {} (N={}) into the database.'.format(
+#            ichunk+1, len(chunks), len(chunk)))
+#        try:
+#            TestSample.objects.bulk_create(objs)
+#        except:
+#            #for field in TestSample._meta.get_fields():
+#            #    print([field.name, getattr(field, 'max_length', 'Not Supported'), type(field)])
+#            pdb.set_trace()
+#
+#    print('Success')
+#    pdb.set_trace()
+#    del data
+#
+#
+#    ##################
+#
+#    for ichunk, chunk in enumerate(chunks[7:8]):
+#        objs = []
+#        for ii in chunk[551:552]:
+#            sam = Sample()
+#            sam.row_index = ii
+#            sam.ux = xyz[ii, 0]
+#            sam.uy = xyz[ii, 1]
+#            sam.uz = xyz[ii, 2]
+#            for col in data.colnames:
+#                val = data[ii][col]
+#                if type(val) == np.str_:
+#                    val = val.strip()
+#                    #if 'BITNAMES' in col:
+#                    if data[col].dtype.num == 4:
+#                        print(ii, col, val, len(val), data[col].dtype)
+#                    #if len(val) > data[col].dtype.num:
+#                    #    print(ii, col, val, len(val), data[col].dtype)
+#                setattr(sam, col.lower(), val)
+#            objs.append(sam)
+#            
+#        print('Loading chunk {} / {} (N={}) into the database.'.format(
+#            ichunk+1, len(chunks), len(chunk)))
+#        try:
+#            Sample.objects.bulk_create(objs)
+#        except:
+#            for field in Sample._meta.get_fields():
+#                print([field.name, getattr(field, 'max_length', 'Not Supported'), type(field)])
+#            pdb.set_trace()
+#            for obj in objs:
+#                l = len(obj['your_problematic_field'])
+#                if len(l) > 7:
+#                    print(f'obj with id {obj["pk"]} has that field at {l} characters long')
+#                        
+#            pdb.set_trace()
+#
+#    print('Success')
+#    pdb.set_trace()
+#    del data
 
 if __name__ == '__main__':
     main()
