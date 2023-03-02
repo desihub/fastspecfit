@@ -27,13 +27,13 @@ find . -path "*/migrations/*.py" -not -name "__init__.py" -delete
 find . -path "*/migrations/*.pyc"  -delete
 python manage.py makemigrations
 python manage.py migrate
-python load.py
+time python load.py
 chgrp -R desi *
 touch wsgi.py
 
 Finally, if you need to delete the database and start over do:
 
-  python manage.py shell
-  from fastspecfit.webapp.sample.models import Sample
-  Sample.objects.all().delete()
-  exit()
+python manage.py shell
+from fastspecfit.webapp.sample.models import Sample
+Sample.objects.all().delete()
+exit()
