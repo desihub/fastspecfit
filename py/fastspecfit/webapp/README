@@ -18,7 +18,7 @@ export POSTGRES_DB_PASSWORD=[insert-the-password-here]
 cd /global/cfs/cdirs/desi/spectro/fastspecfit/webapp/py/fastspecfit/webapp
 
 The very first time do:
-  python manage.py makemigrations sample
+  python manage.py makemigrations fastmodel
 
 And then subsequently (note that the first two commands are only needed if the
 pre-production database gets funky):
@@ -34,6 +34,6 @@ touch wsgi.py
 Finally, if you need to delete the database and start over do:
 
 python manage.py shell
-from fastspecfit.webapp.sample.models import Sample
-Sample.objects.all().delete()
+from fastspecfit.webapp.fastmodel.models import FastModel
+FastModel.objects.all().delete()
 exit()

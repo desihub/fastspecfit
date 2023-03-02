@@ -5,7 +5,7 @@ in the database based on meeting the desired criteria.
 
 """
 import django_filters
-from fastspecfit.webapp.sample.models import FastModel
+from fastspecfit.webapp.fastmodel.models import FastModel
 
 class FastModelFilter(django_filters.FilterSet):
     """Custom filter for the FastModel model.  Filter options include greater than or

@@ -37,7 +37,7 @@ def main():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fastspecfit.webapp.settings")
     django.setup()
 
-    from fastspecfit.webapp.sample.models import FastModel
+    from fastspecfit.webapp.fastmodel.models import FastModel
 
     meta_columns = [
         'TARGETID',
@@ -908,7 +908,7 @@ def main():
     F = fitsio.FITS(fastspecfile)
     nrows = F['METADATA'].get_nrows()
 
-    if True:
+    if False:
         rows = np.arange(10000) + 10000
     elif False:
         rand = np.random.RandomState(seed=1)
@@ -1152,11 +1152,11 @@ def main():
     xyz = radectoxyz(data['RA'], data['DEC'])
 
     # Load the database in chunks to avoid memory issues.
-    chunksize = 1000 # 100000
+    chunksize = 50000
     chunkindx = np.arange(len(data))
     chunks = np.array_split(chunkindx, np.ceil(len(data) / chunksize).astype(int))
 
-    for ichunk, chunk in enumerate(chunks[7:8]):
+    for ichunk, chunk in enumerate(chunks):
         objs = []
         for ii in chunk:
             sam = FastModel()
@@ -1175,7 +1175,6 @@ def main():
             ichunk+1, len(chunks), len(chunk)))
         FastModel.objects.bulk_create(objs)
 
-    pdb.set_trace()
     del data
 
 #    ##################

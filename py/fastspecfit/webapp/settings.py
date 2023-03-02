@@ -32,7 +32,6 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['127.0.0.1',
                  'testserver',
-                 #'lb.cosmo-sga.development.svc.spin.nersc.org',
                  'fastspecfit.desi.lbl.gov',
                  'fastspecfit.legacysurvey.org',
                  ]
@@ -47,7 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'fastspecfit.webapp.sample',
+    'fastspecfit.webapp.fastmodel',
 ]
 
 MIDDLEWARE = [

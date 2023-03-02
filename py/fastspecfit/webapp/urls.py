@@ -20,7 +20,7 @@ from django.contrib import admin
 from django.urls import re_path, path
 from django.views.generic import TemplateView
 
-import fastspecfit.webapp.sample.views as fastmodel
+import fastspecfit.webapp.fastmodel.views as fastmodel
 
 urlpatterns = [
     re_path('^$', fastmodel.explore, name='index'),

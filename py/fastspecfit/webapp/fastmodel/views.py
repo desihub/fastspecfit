@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """Holds the functions that send http responses to the browser, including
-rendering the html pages index.html, explore.html, and sample.html, or sending a
+rendering the html pages index.html, explore.html, and fastmodel.html, or sending a
 download file.
 
 All logic that must be done before the browser renders the html occurs here,
@@ -26,8 +26,8 @@ from django.http import HttpResponse
 from django.urls import reverse
 from django.db.models import Case, When
 
-from fastspecfit.webapp.sample.filters import FastModelFilter
-from fastspecfit.webapp.sample.models import FastModel
+from fastspecfit.webapp.fastmodel.filters import FastModelFilter
+from fastspecfit.webapp.fastmodel.models import FastModel
 
 def explore(req):
     """Returns the explore.html file, or renders the explore.html page after it
