@@ -24,14 +24,17 @@
         <br />
         <h4>DESI Early Data Release (Fuji)</h4>
         <br />
+
         <p>Welcome to the <a href="https://fastspecfit.desi.lbl.gov">data
         portal</a> for
         the <a href="https://desi.lbl.gov">DESI</a> <a href="https://fastspecfit.readthedocs.io/en/latest/">FastSpecFit</a>
-        value-added catalogs! FastSpecFit is a stellar continuum and
-        emission-line modeling code for DESI which forward-models the
-        three-camera optical spectrophotometry jointly with the optical through
-        infrared broadband photometry of galaxy and quasar targets in order to
-        extract a wide range of observed and intrinsic physical properties.</p>
+        value-added catalogs!<p>
+
+        <p>FastSpecFit is a stellar continuum and emission-line modeling code
+        for DESI which forward-models the three-camera optical spectrophotometry
+        jointly with the optical through infrared broadband photometry of galaxy
+        and quasar targets in order to extract a wide range of observed and
+        intrinsic physical properties.</p>
         
         <p>Please refer to
            the <a href="https://fastspecfit.readthedocs.io/en/latest/">FastSpecFit
@@ -106,8 +109,7 @@
               </tr>
               <tr>
                 <th class="search_th"><label for="targetclassmatch">Target Class</label></th>
-                <td><input id="targetclassmatch" name="targetclass__match"
-                type="text" placeholder="bgs,lrg,elg,qso,..." value="{{form.name.value|default_if_none:''}}"></td> 
+                <td><input id="targetclassmatch" name="targetclass__match" type="text" placeholder="bgs,lrg,elg,qso,..." value="{{targetclass}}"></td> 
               </tr>
               <!--
               <tr>
@@ -274,6 +276,13 @@
         {% endif %}
       </span>
     </div>
+    <p>
+      <a href="https://jigsaw.w3.org/css-validator/check/referer">
+        <img style="border:0;width:88px;height:31px"
+             src="https://jigsaw.w3.org/css-validator/images/vcss-blue"
+             alt="Valid CSS!" />
+      </a>
+    </p>
     <br /><br />
     
   </div> <!--close div (generic)-->
