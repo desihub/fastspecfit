@@ -5,7 +5,9 @@ Change Log
 2.1.2 (not released yet)
 ------------------------
 
-* No changes yet.
+* Web-app updates needed for Fuji/v2.0 database load [`PR #107`_].
+
+.. _`PR #107`: https://github.com/desihub/fastspecfit/pull/107
 
 2.1.1 (2023-02-22)
 ------------------

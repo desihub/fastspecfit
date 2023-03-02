@@ -32,7 +32,6 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['127.0.0.1',
                  'testserver',
-                 #'lb.cosmo-sga.development.svc.spin.nersc.org',
                  'fastspecfit.desi.lbl.gov',
                  'fastspecfit.legacysurvey.org',
                  ]
@@ -47,7 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'fastspecfit.webapp.sample',
+    'fastspecfit.webapp.fastmodel',
 ]
 
 MIDDLEWARE = [
@@ -86,6 +85,12 @@ TEMPLATE_CONTEXT_PROCESSORS = (
 
 WSGI_APPLICATION = 'fastspecfit.webapp.wsgi.application'
 
+if DEBUG:
+    import logging
+    l = logging.getLogger('django.db.backends')
+    l.setLevel(logging.DEBUG)
+    l.addHandler(logging.StreamHandler())
+
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
 
@@ -102,7 +107,7 @@ DATABASES = {
        'NAME': 'fastspecfit',
        'USER': 'fastspecfit',
        'PASSWORD': os.environ.get('POSTGRES_DB_PASSWORD'),
-       'HOST': 'db',
+       'HOST': 'db-loadbalancer.cosmo-fastspecfit.production.svc.spin.nersc.org',
    }
 }
 

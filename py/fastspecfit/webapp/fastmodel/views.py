@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """Holds the functions that send http responses to the browser, including
-rendering the html pages index.html, explore.html, and sample.html, or sending a
+rendering the html pages index.html, explore.html, and fastmodel.html, or sending a
 download file.
 
 All logic that must be done before the browser renders the html occurs here,
@@ -26,8 +26,8 @@ from django.http import HttpResponse
 from django.urls import reverse
 from django.db.models import Case, When
 
-from fastspecfit.webapp.sample.filters import SampleFilter
-from fastspecfit.webapp.sample.models import Sample
+from fastspecfit.webapp.fastmodel.filters import FastModelFilter
+from fastspecfit.webapp.fastmodel.models import FastModel
 
 def explore(req):
     """Returns the explore.html file, or renders the explore.html page after it
@@ -48,9 +48,9 @@ def explore(req):
         from fastspecfit.webapp.load import DATADIR, fastspecfile
         
         print('download: req.GET:', req.GET)
-        query = pickle.loads(req.session['sample_query'])
+        query = pickle.loads(req.session['fastmodel_query'])
         print('Query:', query)
-        qs = Sample.objects.all()
+        qs = FastModel.objects.all()
         qs.query = query
         inds = qs.values_list('row_index')
         datafile = os.path.join(DATADIR, fastspecfile)
@@ -105,7 +105,7 @@ def explore(req):
         # query and preserve order
         # https://stackoverflow.com/questions/4916851/django-get-a-queryset-from-array-of-ids-in-specific-order
         inorder = Case(*[When(target_name__iexact=targname, then=pos) for pos, targname in enumerate(target_name)])
-        queryset = Sample.objects.filter(target_name__in=target_name).order_by(inorder)
+        queryset = FastModel.objects.filter(target_name__in=target_name).order_by(inorder)
     else:
         cone_ra  = req.GET.get('conera','')
         cone_dec = req.GET.get('conedec','')
@@ -124,34 +124,34 @@ def explore(req):
                 cosd = np.cos(dd)
                 x, y, z = cosd * np.cos(rr), cosd * np.sin(rr), np.sin(dd)
                 r2 = np.deg2rad(cone_rad)**2
-                queryset = Sample.objects.all().annotate(
+                queryset = FastModel.objects.all().annotate(
                     r2=((F('ux')-x)*(F('ux')-x) +
                         (F('uy')-y)*(F('uy')-y) +
                         (F('uz')-z)*(F('uz')-z)))
                 queryset = queryset.filter(r2__lt=r2)
                 if sort is None:
                     sort='r2'
-                #queryset = sample_near_radec(cone_ra, cone_dec, cone_rad).order_by(sort)
+                #queryset = fastmodel_near_radec(cone_ra, cone_dec, cone_rad).order_by(sort)
             except ValueError:
                 pass
 
     if queryset is None:
-        queryset = Sample.objects.all()
+        queryset = FastModel.objects.all()
 
     if req.GET.get('catalog', None) is None:
         if sort is None:
             sort = 'targetid'
         queryset = queryset.order_by(sort)
 
-    #apply filter to Sample model, then store in queryset.
-    sample_filter = SampleFilter(req.GET, queryset)
-    sample_filtered = sample_filter.qs
+    #apply filter to FastModel model, then store in queryset.
+    fastmodel_filter = FastModelFilter(req.GET, queryset)
+    fastmodel_filtered = fastmodel_filter.qs
 
     #use pickle to serialize queryset (just the SQL query), and store in session
-    req.session['sample_query'] = pickle.dumps(sample_filtered.query)
+    req.session['fastmodel_query'] = pickle.dumps(fastmodel_filtered.query)
     
     #use django pagination functionality
-    paginator = Paginator(sample_filtered, 50)
+    paginator = Paginator(fastmodel_filtered, 50)
     page_num = req.GET.get('page')
     page = paginator.get_page(page_num)
     
@@ -174,7 +174,7 @@ def target_test(req):
 def target(req, target_name):
 
     # grab this one (unique) target
-    target = Sample.objects.all().filter(target_name=target_name)
+    target = FastModel.objects.all().filter(target_name=target_name)
     target.order_by('targetid')
     
     result_index = req.GET.get('index', '-1')
@@ -200,8 +200,8 @@ def get_next_target(req, index, qs=None, direction=1):
     # "index" is actually 1-indexed...
     index -= 1
     if qs is None:
-        query = pickle.loads(req.session['sample_query'])
-        qs = Sample.objects.all()
+        query = pickle.loads(req.session['fastmodel_query'])
+        qs = FastModel.objects.all()
         qs.query = query
     N = qs.count()
     if index >= N or index < 0:
@@ -287,8 +287,8 @@ def send_file(fn, content_type, unlink=False, modsince=None, expires=3600, filen
     res['Last-Modified'] = lastmod.strftime(timefmt)
     return res
 
-def sample_near_radec(ra, dec, rad, tablename='sample',
-                      extra_where='', clazz=Sample):
+def fastmodel_near_radec(ra, dec, rad, tablename='fastmodel',
+                         extra_where='', clazz=FastModel):
     #from astrometry.util.starutil import deg2distsq
     dec = np.deg2rad(dec)
     ra = np.deg2rad(ra)
@@ -408,5 +408,8 @@ if __name__ == '__main__':
         f.write(x)
     f.close()
 
-    main()
+    from django.db import connection
+    print(connection.queries)
+
+    #main()
     
