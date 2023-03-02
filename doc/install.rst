@@ -47,23 +47,26 @@ set!
 ----------------------
 
 To install ``FastSpecFit`` and all its dependencies on a laptop we recommend a
-dedicated `Miniforge`_ environment. For example, to install everything
-transparently into an environment called, e.g., *fastconda* one would do::
+dedicated `Miniforge`_ environment. For example, to install the latest stable
+version transparently into an environment called, e.g., *fastconda* one would
+do::
 
   conda create -y --name fastconda python=3.10
   conda activate fastconda
-  export DESIUTIL_VERSION=3.2.6
-  python -m pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
-  python -m pip install -r requirements.txt
+  python -m pip install fastspecfit
 
-  pip install sphinx-toolbox sphinx-rtd-theme sphinxcontrib-napoleon
+Note that if you are planning to write documentation you will also need to
+install the following dependencies::
 
-Alternatively, some users may want the DESI software to be installed in a more
-accessible location (e.g., */path/to/desi/code*), in which case one would do::
+  python -m pip install sphinx sphinx-toolbox sphinx-rtd-theme sphinxcontrib-napoleon
+
+Alternatively, some users may want ``FastSpecFit`` and its dependencies to be
+installed in a more accessible location (e.g., */path/to/desi/code*), in which
+case one would do::
   
-  conda create -y --name fastconda python numpy scipy numba astropy matplotlib seaborn
+  conda create -y --name fastconda python=3.10 numpy scipy numba astropy matplotlib seaborn
   conda activate fastconda
-  pip install fitsio healpy speclite
+  python -m pip install fitsio healpy speclite
 
   export DESI_CODE=/path/to/desi/code
   mkdir -p $DESI_CODE
@@ -76,19 +79,21 @@ accessible location (e.g., */path/to/desi/code*), in which case one would do::
   done
   popd
 
-Finally, ``FastSpecFit`` has three more data dependencies, each specified with
+Finally, ``FastSpecFit`` has four more data dependencies, each specified with
 their own environment variable:
 
   * ``DESI_ROOT``, which specifies the top-level location of the DESI data;
   * ``DUST_DIR``, which specifies the location of the `Schlegel, Finkbeiner, &
     Davis dust maps`_; and
-  * ``FASTSPECFIT_TEMPLATES``, which indicates the location of the simple
-    stellar population (SSP) templates used to model the stellar continuum.
+  * ``DR9_DIR``, which specifies the location of the `DESI Legacy Imaging
+    Surveys Data Release 9 (DR9)`_ data; and
+  * ``FTEMPLATES_DIR``, which indicates the location of the stellar population
+    synthesis models used by ``FastSpecFit``.
 
 .. note::
    
   Currently, the DESI data are only available to DESI collaborators; however,
-  the `Early Data Release (EDR)`_ is expected to be publicly available in early
+  the `Early Data Release (EDR)`_ is expected to be publicly available in April
   2023 and other data releases will be announced in the `DESI Data Release`_
   page, after which point the instructions here will be updated.
 
@@ -97,12 +102,13 @@ with the following commands::
 
   export DESI_ROOT=/path/to/desi/data
   export DUST_DIR=/path/to/dustmaps
-  export FASTSPECFIT_TEMPLATES=/path/to/templates/SSP-CKC14z
+  export DR9_DIR=/path/to/dr9/data
+  export FTEMPLATES_DIR=/path/to/templates/fastspecfit
 
   wget -r -np -nH --cut-dirs 5 -A fits -P $DUST_DIR \
-    "https://portal.nersc.gov/project/cosmo/data/dust/v0_1/maps"
-  wget -r -e robots=off -np -nH --cut-dirs 4 -A fits -P $FASTSPECFIT_TEMPLATES \
-    "https://data.desi.lbl.gov/public/external/templates/SSP-CKC14z/v1.0"
+    https://portal.nersc.gov/project/cosmo/data/dust/v0_1/maps
+  wget -O $FTEMPLATES_DIR/ftemplates-chabrier-1.0.0.fits \
+    https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.0.0/ftemplates-chabrier-1.0.0.fits
   
 .. _docker installation:
 
@@ -113,16 +119,16 @@ Finally, for production runs and for expert users, ``FastSpecFit`` is also
 available as a Docker container which is served publicly in the
 `DockerHub/desihub`_ repository.
 
-For example, on a laptop one would retrieve (or update) and enter the *v1.0.1*
+For example, on a laptop one would retrieve (or update) and enter the *2.1.1*
 version of the container with::
   
-  docker pull desihub/fastspecfit:v1.0.1
-  docker run -it desihub/fastspecfit:v1.0.1
+  docker pull desihub/fastspecfit:2.1.1
+  docker run -it desihub/fastspecfit:2.1.1
 
 Alternatively, at `NERSC`_ one would need to use `shifter`_::
 
-  shifterimg pull docker:desihub/fastspecfit:v1.0.1
-  shifter --image docker:desihub/fastspecfit:v1.0.1 bash
+  shifterimg pull docker:desihub/fastspecfit:2.1.1
+  shifter --image docker:desihub/fastspecfit:2.1.1 bash
 
 However, neither of the preceding commands define the required environment
 variables, although we provide a simple setup script which does. For simple
@@ -143,6 +149,8 @@ interactive work at `NERSC`_ (e.g., in a login node) do::
 .. _`Miniforge`: https://github.com/conda-forge/miniforge
 
 .. _`Schlegel, Finkbeiner, & Davis dust maps`: https://ui.adsabs.harvard.edu/abs/1998ApJ...500..525S/abstract
+
+.. _`DESI Legacy Imaging Surveys Data Release 9 (DR9)`: https://www.legacysurvey.org/dr9
 
 .. _`NERSC`: https://www.nersc.gov/
 

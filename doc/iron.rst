@@ -79,25 +79,29 @@ Iron
 
 .. rst-class:: columns
 
-=============================== ========= =================
-File Name                       File Size Number of Targets
-=============================== ========= =================
-fastspec-iron-cmx-other.fits    9.27 MB    2,771            
-fastspec-iron-special-dark.fits 119 MB     35,647           
-fastspec-iron-sv1-backup.fits   12.4 MB    3,683            
-fastspec-iron-sv1-bright.fits   419 MB     126,677          
-fastspec-iron-sv1-dark.fits     780 MB     235,881          
-fastspec-iron-sv1-other.fits    113 MB     34,150           
-fastspec-iron-sv2-backup.fits   498 KB     107              
-fastspec-iron-sv2-bright.fits   154 MB     46,510           
-fastspec-iron-sv2-dark.fits     175 MB     52,771           
-fastspec-iron-sv3-backup.fits   5.31 MB    1,564            
-fastspec-iron-sv3-bright.fits   883 MB     265,324          
-fastspec-iron-sv3-dark.fits     1.92 GB    592,394          
-fastspec-iron-main-bright.fits  3.42 GB    1,092,038        
-fastspec-iron-main-dark.fits    3.54 GB    1,131,601        
-fastspec-iron.fits              4.57 GB    1,397,479        
-=============================== ========= =================
+================================= ========= =================
+File Name                         File Size Number of Targets
+================================= ========= =================
+fastspec-iron-cmx-other.fits      11.5 MB   2,761
+fastspec-iron-special-dark.fits   60.5 MB   14,953
+fastspec-iron-special-bright.fits 175 MB    43,261
+fastspec-iron-special-other.fits  172 MB    42,064
+fastspec-iron-special-backup.fits 2.38 MB   552
+fastspec-iron-sv1-dark.fits       965 MB    233,158
+fastspec-iron-sv1-bright.fits     524 MB    126,649
+fastspec-iron-sv1-other.fits      141 MB    34,112
+fastspec-iron-sv1-backup.fits     14 MB     3,331
+fastspec-iron-sv2-dark.fits       218 MB    52,682
+fastspec-iron-sv2-bright.fits     193 MB    46,486
+fastspec-iron-sv2-backup.fits     593 KB    105
+fastspec-iron-sv3-dark.fits       2.4 GB    592,165
+fastspec-iron-sv3-bright.fits     1.08 GB   265,291
+fastspec-iron-sv3-backup.fits     6.45 MB   1,524
+fastspec-iron-main-dark.fits      39.9 GB   10,074,406
+fastspec-iron-main-bright.fits    25.5 GB   6,445,915
+fastspec-iron-main-backup.fits    61.3 MB   15,163
+fastspec-iron.fits                73.4 GB   17,994,578
+================================= ========= =================
 
 Guadalupe
 """""""""
@@ -109,8 +113,8 @@ File Name                              File Size Number of Targets
 ====================================== ========= =================
 fastspec-guadalupe-special-dark.fits   15.7 MB    3,847            
 fastspec-guadalupe-special-bright.fits 38.9 MB    9,598            
-fastspec-guadalupe-main-bright.fits    4.31 GB    1,092,038        
 fastspec-guadalupe-main-dark.fits      4.46 GB    1,131,601        
+fastspec-guadalupe-main-bright.fits    4.31 GB    1,092,038        
 fastspec-guadalupe.fits                8.83 GB    2,237,084        
 ====================================== ========= =================
 

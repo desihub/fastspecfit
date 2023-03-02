@@ -81,16 +81,16 @@ File Name                       File Size Number of Targets
 =============================== ========= =================
 fastspec-fuji-cmx-other.fits    11.6 MB   2,771
 fastspec-fuji-special-dark.fits 145 MB    35,647
-fastspec-fuji-sv1-backup.fits   15.5 MB   3,683
-fastspec-fuji-sv1-bright.fits   524 MB    126,677
 fastspec-fuji-sv1-dark.fits     976 MB    235,881
+fastspec-fuji-sv1-bright.fits   524 MB    126,677
 fastspec-fuji-sv1-other.fits    141 MB    34,150
-fastspec-fuji-sv2-backup.fits   602 KB    107
-fastspec-fuji-sv2-bright.fits   193 MB    46,510
+fastspec-fuji-sv1-backup.fits   15.5 MB   3,683
 fastspec-fuji-sv2-dark.fits     218 MB    52,771
-fastspec-fuji-sv3-backup.fits   6.62 MB   1,564
-fastspec-fuji-sv3-bright.fits   1.08 GB   265,324
+fastspec-fuji-sv2-bright.fits   193 MB    46,510
+fastspec-fuji-sv2-backup.fits   602 KB    107
 fastspec-fuji-sv3-dark.fits     2.41 GB   592,394
+fastspec-fuji-sv3-bright.fits   1.08 GB   265,324
+fastspec-fuji-sv3-backup.fits   6.62 MB   1,564
 fastspec-fuji.fits              5.7 GB    1,397,479
 =============================== ========= =================
 
