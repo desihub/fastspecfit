@@ -339,14 +339,11 @@ def main():
     parser.add_argument('--program', type=str, default='bright,dark,other,backup', help='Program to process.') # backup not supported
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
-    
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
-    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
-    
+
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
-    parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
     parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
