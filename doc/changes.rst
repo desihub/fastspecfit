@@ -6,8 +6,10 @@ Change Log
 ------------------------
 
 * Web-app updates needed for Fuji/v2.0 database load [`PR #107`_].
+* Get target cutouts using image coadds on-disk [`PR #108`_].
 
 .. _`PR #107`: https://github.com/desihub/fastspecfit/pull/107
+.. _`PR #108`: https://github.com/desihub/fastspecfit/pull/108
 
 2.1.1 (2023-02-22)
 ------------------
