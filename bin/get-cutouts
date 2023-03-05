@@ -1,9 +1,15 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """MPI wrapper to get a large number of image cutouts. Only run ahead of a VAC
 release.
 
-get-cutouts --mp 128
+get-cutouts --survey cmx --mp 16 --dry-run
+
+shifterimg pull dstndstn/viewer-cutouts:latest
+shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915 --dec 16.7684 --size 256 --layer ls-dr9 --pixscale 0.262 --force
+
+shifter --image dstndstn/viewer-cutouts bash
+/global/u2/i/ioannis/code/desihub/fastspecfit/bin/get-cutouts --survey cmx --program other --mp 128
 
 """
 import pdb # for debugging
@@ -14,16 +20,19 @@ import fitsio
 import multiprocessing
 from glob import glob
 
-from desiutil.log import get_logger
-log = get_logger()
-
 def _cutout_one(args):
     return cutout_one(*args)
 
 def cutout_one(jpegfile, ra, dec, dry_run):
+    """
+    pixscale = 0.262
+    width = int(30 / pixscale)   # =114
+    height = int(width / 1.3) # =87 [3:2 aspect ratio]
+
+    """
     import subprocess
 
-    cmd = 'cutout --output {} --ra {} --dec {} --size 256 --layer ls-dr9 --pixscale 0.262 --force'.format(
+    cmd = 'cutout --output {} --ra {} --dec {} --width 114 --height 87 --layer ls-dr9 --pixscale 0.262 --force'.format(
         jpegfile, ra, dec)
     if dry_run:
         print(cmd)
@@ -33,32 +42,28 @@ def cutout_one(jpegfile, ra, dec, dry_run):
 def _get_jpegfiles_one(args):
     return get_jpegfiles_one(*args)
 
-def get_jpegfiles_one(fastspecfile, coadd_type, htmldir_root, overwrite, log):
+def get_jpegfiles_one(fastspecfile, coadd_type, htmldir_root, overwrite):
     meta = fitsio.read(fastspecfile, 'METADATA', columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID', 'RA', 'DEC'])
     htmldir = os.path.join(htmldir_root, meta['SURVEY'][0], meta['PROGRAM'][0], str(meta['HEALPIX'][0]//100), str(meta['HEALPIX'][0]))
     jpegfiles = get_cutout_filename(meta, coadd_type, outprefix='fastspec',
-                                    htmldir=htmldir, log=log)
+                                    htmldir=htmldir)
     allra, alldec = meta['RA'], meta['DEC']
     if overwrite is False:
         I = np.array([not os.path.isfile(jpegfile) for jpegfile in jpegfiles])
         J = ~I
         if np.sum(J) > 0:
-            log.info('Skipping {} existing QA file(s).'.format(np.sum(J)))
+            print('Skipping {} existing QA file(s).'.format(np.sum(J)))
             jpegfiles = jpegfiles[I]
             allra = allra[I]
             alldec = alldec[I]
 
     return jpegfiles, allra, alldec, len(jpegfiles)
 
-def get_cutout_filename(metadata, coadd_type, outprefix=None, htmldir=None, log=None):
+def get_cutout_filename(metadata, coadd_type, outprefix=None, htmldir=None):
     """Build the cutout filename.
 
     """
     import astropy
-
-    if log is None:
-        from desiutil.log import get_logger
-        log = get_logger()
 
     if htmldir is None:
         htmldir = '.'
@@ -87,7 +92,7 @@ def get_cutout_filename(metadata, coadd_type, outprefix=None, htmldir=None, log=
                 _metadata['HEALPIX'], _metadata['TARGETID']))
         else:
             errmsg = 'Unrecognized coadd_type {}!'.format(coadd_type)
-            log.critical(errmsg)
+            print(errmsg)
             raise ValueError(errmsg)
         return jpegfile
 
@@ -103,7 +108,6 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
          outdir_data='.', outdir_html='.', mp=1, overwrite=False):
 
     from astropy.table import Table
-    from fastspecfit.io import DESI_ROOT_NERSC
                                 
     t0 = time.time()
     if comm is None:
@@ -111,7 +115,8 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
     else:
         rank, size = comm.rank, comm.size
 
-    desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
+    desi_root = '/global/cfs/cdirs/desi'
+    #desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
     # look for data in the standard location
 
     if coadd_type == 'healpix':
@@ -127,7 +132,7 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
             alltileinfo = Table.read(tilefile)
             tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
 
-            log.info('Retrieved a list of {} {} tiles from {}'.format(
+            print('Retrieved a list of {} {} tiles from {}'.format(
                 len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
 
             tile = np.array(list(set(tileinfo['TILEID'])))
@@ -146,7 +151,7 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
             thesefiles = []
             for onesurvey in np.atleast_1d(survey):
                 for oneprogram in np.atleast_1d(program):
-                    log.info('Building file list for survey={} and program={}'.format(onesurvey, oneprogram))
+                    print('Building file list for survey={} and program={}'.format(onesurvey, oneprogram))
                     if healpix is not None:
                         for onepix in healpixels:
                             _thesefiles = glob(os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
@@ -213,12 +218,12 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
 
     if nfile == 0:
         if rank == 0:
-            log.info('No fastspecfiles found!')
+            print('No fastspecfiles found!')
         return list(), list(), list(), list
 
-    log.info('Found {} fastspecfiles.'.format(nfile))
+    print('Found {} fastspecfiles.'.format(nfile))
 
-    mpargs = [(fastspecfile, coadd_type, htmldir, overwrite, log)
+    mpargs = [(fastspecfile, coadd_type, htmldir, overwrite)
               for fastspecfile in fastspecfiles]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
@@ -234,7 +239,7 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
         
     iempty = np.where(ntargets == 0)[0]
     if len(iempty) > 0:
-        log.info('Skipping {} fastspecfiles with no jpeg files to make.'.format(len(iempty)))
+        print('Skipping {} fastspecfiles with no jpeg files to make.'.format(len(iempty)))
 
     itodo = np.where(ntargets > 0)[0]
     if len(itodo) > 0:
@@ -243,8 +248,8 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
         alldec = alldec[itodo]
         ntargets = ntargets[itodo]
 
-        log.info('Missing cutouts for {} targets.'.format(np.sum(ntargets)))
-        #log.info('Working on {} files with a total of {} targets.'.format(len(itodo), np.sum(ntargets)))
+        print('Missing cutouts for {} targets.'.format(np.sum(ntargets)))
+        #print('Working on {} files with a total of {} targets.'.format(len(itodo), np.sum(ntargets)))
 
         indices = np.arange(len(jpegfiles))
 
@@ -280,7 +285,7 @@ def do_cutouts(args, comm=None, outdir_data='.', outdir_html='.'):
                 healpix=args.healpix, tile=args.tile, night=args.night,
                 outdir_data=outdir_data, outdir_html=outdir_html,
                 overwrite=args.overwrite, mp=args.mp)
-        log.info('Planning took {:.2f} sec'.format(time.time() - t0))
+        print('Planning took {:.2f} sec'.format(time.time() - t0))
     else:
         jpegfiles, allra, alldec = [], [], []
 
@@ -289,18 +294,16 @@ def do_cutouts(args, comm=None, outdir_data='.', outdir_html='.'):
         allra = comm.bcast(allra, root=0)
         alldec = comm.bcast(alldec, root=0)
         groups = comm.bcast(groups, root=0)
-
     sys.stdout.flush()
     
+    assert(len(groups) == size)
+
     # all done
-    if len(jpegfiles) == 0:
+    if len(np.hstack(jpegfiles)) == 0:
         return
         
-    assert(len(groups) == size)
-    assert(len(np.concatenate(groups)) == len(jpegfiles))
-
     for ii in groups[rank]:
-        log.debug('Rank {} started at {}'.format(rank, time.asctime()))
+        print('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
 
         mpargs = [(jpegfile, ra, dec, args.dry_run) for jpegfile, ra, dec in zip(jpegfiles[ii], allra[ii], alldec[ii])]
@@ -310,16 +313,14 @@ def do_cutouts(args, comm=None, outdir_data='.', outdir_html='.'):
         else:
             [cutout_one(*mparg) for mparg in mpargs]
 
-        pdb.set_trace()
-
-    log.debug('  rank {} is done'.format(rank))
+    print('  rank {} is done'.format(rank))
     sys.stdout.flush()
 
     if comm is not None:
         comm.barrier()
 
     if rank == 0 and not args.dry_run:
-        log.info('All done at {}'.format(time.asctime()))
+        print('All done at {}'.format(time.asctime()))
         
 def main():
     """Main wrapper.
