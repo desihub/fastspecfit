@@ -11,6 +11,19 @@ shifter --image dstndstn/viewer-cutouts cutout --output cutout.jpg --ra 234.2915
 shifter --image dstndstn/viewer-cutouts bash
 /global/u2/i/ioannis/code/desihub/fastspecfit/bin/get-cutouts --survey cmx --program other --mp 128
 
+cd /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/html/healpix
+nftot = 0
+for survey in sorted(glob('*')):
+    for program in glob(os.path.join(survey, '*')):
+        nf = 0
+        for hp100 in glob(os.path.join(program, '*')):
+            for hp in glob(os.path.join(hp100, '*')):
+                nf += len(glob(hp+'/tmp*.jpeg'))
+        nftot += nf
+        print(program, nf)
+print()
+print('Total: ', nftot)
+
 """
 import pdb # for debugging
 
@@ -37,7 +50,9 @@ def cutout_one(jpegfile, ra, dec, dry_run):
     if dry_run:
         print(cmd)
     else:
-        subprocess.call(cmd.split())    
+        err = subprocess.call(cmd.split())
+        if err != 0:
+            print('Warning: Problem writing {}'.format(jpegfile))
 
 def _get_jpegfiles_one(args):
     return get_jpegfiles_one(*args)
@@ -45,6 +60,9 @@ def _get_jpegfiles_one(args):
 def get_jpegfiles_one(fastspecfile, coadd_type, htmldir_root, overwrite):
     meta = fitsio.read(fastspecfile, 'METADATA', columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID', 'RA', 'DEC'])
     htmldir = os.path.join(htmldir_root, meta['SURVEY'][0], meta['PROGRAM'][0], str(meta['HEALPIX'][0]//100), str(meta['HEALPIX'][0]))
+    if not os.path.isdir(htmldir):
+        os.makedirs(htmldir, exist_ok=True)
+        
     jpegfiles = get_cutout_filename(meta, coadd_type, outprefix='fastspec',
                                     htmldir=htmldir)
     allra, alldec = meta['RA'], meta['DEC']
@@ -52,7 +70,7 @@ def get_jpegfiles_one(fastspecfile, coadd_type, htmldir_root, overwrite):
         I = np.array([not os.path.isfile(jpegfile) for jpegfile in jpegfiles])
         J = ~I
         if np.sum(J) > 0:
-            print('Skipping {} existing QA file(s).'.format(np.sum(J)))
+            print('Skipping {} existing QA file(s) from fastspecfile {}.'.format(np.sum(J), fastspecfile))
             jpegfiles = jpegfiles[I]
             allra = allra[I]
             alldec = alldec[I]
@@ -287,7 +305,7 @@ def do_cutouts(args, comm=None, outdir_data='.', outdir_html='.'):
                 overwrite=args.overwrite, mp=args.mp)
         print('Planning took {:.2f} sec'.format(time.time() - t0))
     else:
-        jpegfiles, allra, alldec = [], [], []
+        jpegfiles, allra, alldec, groups = [], [], [], []
 
     if comm:
         jpegfiles = comm.bcast(jpegfiles, root=0)
@@ -296,12 +314,12 @@ def do_cutouts(args, comm=None, outdir_data='.', outdir_html='.'):
         groups = comm.bcast(groups, root=0)
     sys.stdout.flush()
     
-    assert(len(groups) == size)
-
     # all done
-    if len(np.hstack(jpegfiles)) == 0:
+    if len(jpegfiles) == 0 or len(np.hstack(jpegfiles)) == 0:
         return
         
+    assert(len(groups) == size)
+
     for ii in groups[rank]:
         print('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
