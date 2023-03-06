@@ -12,6 +12,7 @@ shifter --image dstndstn/viewer-cutouts bash
 /global/u2/i/ioannis/code/desihub/fastspecfit/bin/get-cutouts --survey cmx --program other --mp 128
 
 cd /global/cfs/cdirs/desi/spectro/fastspecfit/fuji/html/healpix
+from glob import glob
 nftot = 0
 for survey in sorted(glob('*')):
     for program in glob(os.path.join(survey, '*')):
@@ -45,7 +46,7 @@ def cutout_one(jpegfile, ra, dec, dry_run):
     """
     import subprocess
 
-    cmd = 'cutout --output {} --ra {} --dec {} --width 114 --height 87 --layer ls-dr9 --pixscale 0.262 --force'.format(
+    cmd = 'cutout --output={} --ra={} --dec={} --width=114 --height=87 --layer=ls-dr9 --pixscale=0.262 --force'.format(
         jpegfile, ra, dec)
     if dry_run:
         print(cmd)
@@ -57,7 +58,7 @@ def cutout_one(jpegfile, ra, dec, dry_run):
 def _get_jpegfiles_one(args):
     return get_jpegfiles_one(*args)
 
-def get_jpegfiles_one(fastspecfile, coadd_type, htmldir_root, overwrite):
+def get_jpegfiles_one(fastspecfile, coadd_type, htmldir_root, overwrite, verbose):
     meta = fitsio.read(fastspecfile, 'METADATA', columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID', 'RA', 'DEC'])
     htmldir = os.path.join(htmldir_root, meta['SURVEY'][0], meta['PROGRAM'][0], str(meta['HEALPIX'][0]//100), str(meta['HEALPIX'][0]))
     if not os.path.isdir(htmldir):
@@ -70,7 +71,8 @@ def get_jpegfiles_one(fastspecfile, coadd_type, htmldir_root, overwrite):
         I = np.array([not os.path.isfile(jpegfile) for jpegfile in jpegfiles])
         J = ~I
         if np.sum(J) > 0:
-            print('Skipping {} existing QA file(s) from fastspecfile {}.'.format(np.sum(J), fastspecfile))
+            if verbose:
+                print('Skipping {} existing QA file(s) from fastspecfile {}.'.format(np.sum(J), fastspecfile))
             jpegfiles = jpegfiles[I]
             allra = allra[I]
             alldec = alldec[I]
@@ -241,7 +243,8 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
 
     print('Found {} fastspecfiles.'.format(nfile))
 
-    mpargs = [(fastspecfile, coadd_type, htmldir, overwrite)
+    verbose = False
+    mpargs = [(fastspecfile, coadd_type, htmldir, overwrite, verbose)
               for fastspecfile in fastspecfiles]
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
