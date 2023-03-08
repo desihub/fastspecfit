@@ -1474,7 +1474,7 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
             raise ValueError(errmsg)
         return pngfile
 
-    if type(metadata) is astropy.table.row.Row:
+    if type(metadata) is astropy.table.row.Row or type(metadata) is np.void:
         pngfile = _one_filename(metadata)
     else:
         pngfile = [_one_filename(_metadata) for _metadata in metadata]

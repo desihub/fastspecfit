@@ -14,15 +14,28 @@ import multiprocessing
 import fitsio
 from astropy.table import Table
 
+from fastspecfit.io import get_qa_filename
+
 from desiutil.log import get_logger
 log = get_logger()
 
 def _get_ntargets_one(args):
     return get_ntargets_one(*args)
 
-def get_ntargets_one(specfile, makeqa=False):
+def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
+                     makeqa=False, overwrite=False, fastphot=False):
     if makeqa:
-        ntargets = fitsio.FITS(specfile)[1].get_nrows() # fragile?
+        if overwrite:
+            ntargets = fitsio.FITS(specfile)[1].get_nrows()
+        else:
+            outdir = os.path.dirname(specfile).replace(outdir_root, htmldir_root)
+            meta = fitsio.read(specfile, 'METADATA', columns=['SURVEY', 'PROGRAM', 'TARGETID', 'HEALPIX'])
+            ntargets = 0
+            for meta1 in meta:
+                pngfile = get_qa_filename(meta1, coadd_type, outdir=outdir, fastphot=fastphot)
+                #print(pngfile)
+                if not os.path.isfile(pngfile):
+                    ntargets += 1
     else:
         from fastspecfit.io import ZWarningMask
         zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z', 'ZWARN'])
@@ -268,7 +281,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         redrockfiles = None
         outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
         log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
-        ntargs = [(outfile, True) for outfile in outfiles]
+        ntargs = [(outfile, htmldir, outdir, coadd_type, True, overwrite, fastphot) for outfile in outfiles]
     else:
         redrockfiles = _findfiles(specprod_dir, prefix='redrock', survey=survey, program=program, healpix=healpix, tile=tile, night=night)
         nfile = len(redrockfiles)
@@ -288,7 +301,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
             redrockfiles = redrockfiles[todo]
             outfiles = outfiles[todo]
         log.info('Found {}/{} redrockfiles (left) to do.'.format(len(redrockfiles), nfile))
-        ntargs = [(redrockfile, False) for redrockfile in redrockfiles]
+        ntargs = [(redrockfile, None, None, None, False, False, False) for redrockfile in redrockfiles]
 
     # create groups weighted by the number of targets
     if merge:
@@ -327,14 +340,11 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
                 srt = np.argsort(ntargets[groups[ii]])
                 groups[ii] = groups[ii][srt]
         else:
+            if redrockfiles is not None:
+                redrockfiles = []
+            if outfiles is not None:
+                outfiles = []
             groups = [np.array([])]
-
-    #if comm:
-    #    outdir = comm.bcast(outdir, root=0)
-    #    redrockfiles = comm.bcast(redrockfiles, root=0)
-    #    outfiles = comm.bcast(outfiles, root=0)
-    #    groups = comm.bcast(groups, root=0)
-    #    ntargets = comm.bcast(ntargets, root=0)
 
     if merge:
         if len(outfiles) == 0:
@@ -345,7 +355,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
     elif makeqa:
         if len(outfiles) == 0:
             if rank == 0:
-                log.debug('No {} files in {} found!'.format(outprefix, outdir))
+                log.debug('No {} files left to do!'.format(outprefix, outdir))
             return '', list(), list(), list(), None
         #  hack--build the output directories and pass them in the 'redrockfiles'
         #  position! for coadd_type==cumulative, strip out the 'lastnight' argument
