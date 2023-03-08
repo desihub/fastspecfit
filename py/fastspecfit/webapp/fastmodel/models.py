@@ -20,11 +20,11 @@ class FastModel(Model):
     #    return 'Sample '+self.target_name
     
     # in FITS table
-    row_index = BigIntegerField(default=0)#, db_index=True)
+    row_index = BigIntegerField(default=0, db_index=True)
 
     # derived target name, e.g., sv3-bright-80613-TARGETID
     specprod = CharField(max_length=50, default='')
-    target_name = CharField(max_length=40, default='')
+    target_name = CharField(max_length=40, default='', db_index=True)
 
     # for col in tt.colnames:
     #     if tt[col].dtype.name == 'float64':
