@@ -34,11 +34,11 @@ class FastModel(Model):
 
     # metadata columns
     #targetid = CharField(max_length=20, default='', db_index=True)
-    targetid = BigIntegerField(null=True)#, db_index=True)
-    survey = CharField(max_length=10, default='')#, db_index=True)
-    program = CharField(max_length=10, default='')#, db_index=True)
-    healpix = IntegerField(null=True)
-    tileid_list = CharField(max_length=100, default='')
+    targetid = BigIntegerField(null=True, db_index=True)
+    survey = CharField(max_length=10, default='', db_index=True)
+    program = CharField(max_length=10, default='', db_index=True)
+    healpix = IntegerField(null=True, db_index=True)
+    tileid_list = CharField(max_length=100, default='', db_index=True)
     #tileid = IntegerField(null=True)
     ra = FloatField(null=True)#, db_index=True)
     dec = FloatField(null=True)#, db_index=True)
@@ -69,7 +69,7 @@ class FastModel(Model):
     scnd_bitnames = CharField(max_length=300, default='')
     cmx_bitnames = CharField(max_length=300, default='')
 
-    targetclass = CharField(max_length=500, default='')
+    targetclass = CharField(max_length=500, default='', db_index=True)
 
     z = FloatField(null=True)#, db_index=True)
     zwarn = IntegerField(null=True)
