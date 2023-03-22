@@ -634,6 +634,13 @@ class DESISpectra(TabulatedDESI):
                 zb = fitsio.read(redrockfile, 'REDSHIFTS', columns=REDSHIFTCOLS)
                 # Are we reading individual exposures or coadds?
                 meta = fitsio.read(specfile, 'FIBERMAP', columns=READFMCOLS)
+                # Check for uniqueness.
+                uu, cc = np.unique(meta['TARGETID'], return_counts=True)
+                if np.any(cc > 1):
+                    errmsg = 'Found {} duplicate TARGETIDs in {}: {}'.format(
+                        np.sum(cc>1), specfile, ' '.join(uu[cc > 1].astype(str)))
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
                 # need to also update mpi.get_ntargets_one
                 fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
@@ -789,7 +796,7 @@ class DESISpectra(TabulatedDESI):
         for meta in self.meta:
             srt = np.hstack([np.where(tid == tractor['TARGETID'])[0] for tid in meta['TARGETID']])
             assert(np.all(meta['TARGETID'] == tractor['TARGETID'][srt]))
-
+            
             # The fibermaps in fuji and guadalupe (plus earlier productions) had a
             # variety of errors. Fix those here using
             # desispec.io.photo.gather_targetphot.
@@ -1502,7 +1509,7 @@ def cache_templates(templates=None, templateversion='1.0.0', imf='chabrier',
         log.critical(errmsg)
         raise IOError(errmsg)
 
-    log.info('Reading {}'.format(templates))
+    #log.info('Reading {}'.format(templates))
     wave, wavehdr = fitsio.read(templates, ext='WAVE', header=True) # [npix]
     templateflux = fitsio.read(templates, ext='FLUX')  # [npix,nsed]
     templatelineflux = fitsio.read(templates, ext='LINEFLUX')  # [npix,nsed]
