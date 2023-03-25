@@ -14,12 +14,10 @@ Running FastSpecFit
 Overview
 --------
 
-Running ``FastSpecFit`` is accomplished through a handful of high-level Python
-scripts. The two primary, independent scripts which can be run on one (or a
-small number) of `Redrock`_ redshift catalogs are:
-
-  * ``fastspec``, to jointly model the DESI spectrophotometry and broadband photometry; and
-  * ``fastphot``, to model just the DESI broadband photometry.
+The primary executable script for ``FastSpecFit`` is called ``fastspec``, which
+takes one or more `Redrock`_ redshift catalogs as input (and one or more
+corresponding DESI spectra) and, by default, jointly models the DESI
+spectrophotometry and broadband photometry.
 
 .. collapse:: Click to view the fastspec help message.
 
@@ -67,6 +65,13 @@ small number) of `Redrock`_ redshift catalogs are:
 
 |
 
+accomplished through a handful of high-level Python
+scripts. The two primary, independent scripts which can be run on one (or a
+small number) of `Redrock`_ redshift catalogs are:
+
+  * ``fastspec``, to jointly model the DESI spectrophotometry and broadband photometry; and
+  * ``fastphot``, to model just the DESI broadband photometry.
+
 Note that in addition to the `Redrock`_ catalog, ``fastspec`` also requires the
 DESI coadded spectrum to be located in the same directory (with a default
 *coadd-* prefix). In addition, there are two key support routines, which we
@@ -83,46 +88,52 @@ describe in more detail below:
 One fastspec Example
 --------------------
 
-To model the spectrum of a single object, we just need to provide ``fastspec``
-the full path of an input Redrock catalog and an (arbitrary) output filename::
+To model the spectrum of a single object, we simply provide ``fastspec`` the
+full path of an input Redrock catalog, the ``targetid`` of the object we are
+interested in, and an (arbitrary) output filename::
 
   $> fastspec $DESI_ROOT/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465 --outfile fastspec-example.fits
 
-Executing this command produces the following informational output::    
+.. collapse:: Click to view the informational output printed to the screen after
+              executing this command. 
 
-      INFO:fastspecfit.py:122:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastspec /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits --targetids 39633345008634465 --outfile fastspec-example.fits
-      INFO:io.py:525:select: Reading and parsing 1 unique redrockfile(s).
-      INFO:io.py:579:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
-      INFO:io.py:847:select: Gathered photometric metadata for 1 objects in 0.19 sec
-      INFO:io.py:937:read_and_unpack: Reading 1 spectrum from /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
-      INFO:spectra.py:291:read_spectra: iotime 0.215 sec to read coadd-sv1-bright-7108.fits at 2023-02-24T04:49:07.030436
-      INFO:io.py:966:read_and_unpack: Coadding across cameras took 0.01 seconds.
-      INFO:io.py:111:unpack_one_spectrum: Pre-processing object 0 [targetid 39633345008634465 z=0.368744].
-      INFO:fastspecfit.py:174:fastspec: Reading and unpacking 1 spectra to be fitted took 3.57 seconds.
-      INFO:fastspecfit.py:50:fastspec_one: Continuum- and emission-line fitting object 0 [targetid 39633345008634465, z=0.368744].
-      INFO:io.py:1505:cache_templates: Reading /global/cfs/cdirs/desi/science/gqp/templates/fastspecfit/1.0.0/ftemplates-chabrier-1.0.0.fits
-      INFO:continuum.py:1760:continuum_specfit: S/N_b=3.20, S/N_r=6.20, S/N_z=6.04, rest wavelength coverage=2630-7177 A.
-      INFO:continuum.py:1775:continuum_specfit: Fitting for the velocity dispersion took 1.44 seconds.
-      INFO:continuum.py:1790:continuum_specfit: Finding vdisp failed; adopting vdisp=125 km/s.
-      WARNING:continuum.py:1243:templates2data: Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.
-      INFO:continuum.py:1857:continuum_specfit: Median aperture correction = 1.320 [1.209-1.471].
-      INFO:continuum.py:1884:continuum_specfit: Final fitting with 120 models took 0.38 seconds.
-      INFO:continuum.py:1918:continuum_specfit: Spectroscopic DN(4000)=0.944+/-0.028, Model Dn(4000)=1.101
-      INFO:continuum.py:1953:continuum_specfit: Smooth continuum correction: b=-0.252%, r=0.125%, z=0.036%
-      INFO:continuum.py:1978:continuum_specfit: Mstar=9.178 Msun, Mr=-19.80 mag, A(V)=0.542, Age=0.753 Gyr, SFR=3.535 Msun/yr, Z/Zsun=-0.473
-      INFO:continuum.py:2019:continuum_specfit: Continuum-fitting took 2.10 seconds.
-      INFO:emlines.py:2337:emline_specfit: Initial line-fitting with 28 free parameters took 0.35 seconds [niter=2, rchi2=1.5841].
-      INFO:emlines.py:2381:emline_specfit: Second (broad) line-fitting with 39 free parameters took 0.77 seconds [niter=3, rchi2=1.7877].
-      INFO:emlines.py:2386:emline_specfit: Chi2 with broad lines = 1.78772 and without broad lines = 1.58412 [chi2_narrow-chi2_broad=-0.20360]
-      INFO:emlines.py:2409:emline_specfit: Dropping broad-line model: delta-rchi2 -0.204<0.000.
-      INFO:emlines.py:2517:emline_specfit: Final line-fitting with 35 free parameters took 0.41 seconds [niter=2, rchi2=1.5550].
-      INFO:emlines.py:2608:emline_specfit: Dn(4000)=1.033 in the emission-line subtracted spectrum.
-      INFO:emlines.py:2649:emline_specfit: Emission-line fitting took 1.71 seconds.
-      INFO:fastspecfit.py:214:fastspec: Fitting 1 object(s) took 4.31 seconds.
-      INFO:io.py:1335:write_fastspecfit: Writing results for 1 object to fastspec-example.fits
-      INFO:io.py:1392:write_fastspecfit: Writing out took 1.38 seconds.
+    .. code-block:: python
 
+        INFO:fastspecfit.py:122:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastspec /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits --targetids 39633345008634465 --outfile fastspec-example.fits
+        INFO:io.py:525:select: Reading and parsing 1 unique redrockfile(s).
+        INFO:io.py:579:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
+        INFO:io.py:847:select: Gathered photometric metadata for 1 objects in 0.19 sec
+        INFO:io.py:937:read_and_unpack: Reading 1 spectrum from /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
+        INFO:spectra.py:291:read_spectra: iotime 0.215 sec to read coadd-sv1-bright-7108.fits at 2023-02-24T04:49:07.030436
+        INFO:io.py:966:read_and_unpack: Coadding across cameras took 0.01 seconds.
+        INFO:io.py:111:unpack_one_spectrum: Pre-processing object 0 [targetid 39633345008634465 z=0.368744].
+        INFO:fastspecfit.py:174:fastspec: Reading and unpacking 1 spectra to be fitted took 3.57 seconds.
+        INFO:fastspecfit.py:50:fastspec_one: Continuum- and emission-line fitting object 0 [targetid 39633345008634465, z=0.368744].
+        INFO:io.py:1505:cache_templates: Reading /global/cfs/cdirs/desi/science/gqp/templates/fastspecfit/1.0.0/ftemplates-chabrier-1.0.0.fits
+        INFO:continuum.py:1760:continuum_specfit: S/N_b=3.20, S/N_r=6.20, S/N_z=6.04, rest wavelength coverage=2630-7177 A.
+        INFO:continuum.py:1775:continuum_specfit: Fitting for the velocity dispersion took 1.44 seconds.
+        INFO:continuum.py:1790:continuum_specfit: Finding vdisp failed; adopting vdisp=125 km/s.
+        WARNING:continuum.py:1243:templates2data: Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.
+        INFO:continuum.py:1857:continuum_specfit: Median aperture correction = 1.320 [1.209-1.471].
+        INFO:continuum.py:1884:continuum_specfit: Final fitting with 120 models took 0.38 seconds.
+        INFO:continuum.py:1918:continuum_specfit: Spectroscopic DN(4000)=0.944+/-0.028, Model Dn(4000)=1.101
+        INFO:continuum.py:1953:continuum_specfit: Smooth continuum correction: b=-0.252%, r=0.125%, z=0.036%
+        INFO:continuum.py:1978:continuum_specfit: Mstar=9.178 Msun, Mr=-19.80 mag, A(V)=0.542, Age=0.753 Gyr, SFR=3.535 Msun/yr, Z/Zsun=-0.473
+        INFO:continuum.py:2019:continuum_specfit: Continuum-fitting took 2.10 seconds.
+        INFO:emlines.py:2337:emline_specfit: Initial line-fitting with 28 free parameters took 0.35 seconds [niter=2, rchi2=1.5841].
+        INFO:emlines.py:2381:emline_specfit: Second (broad) line-fitting with 39 free parameters took 0.77 seconds [niter=3, rchi2=1.7877].
+        INFO:emlines.py:2386:emline_specfit: Chi2 with broad lines = 1.78772 and without broad lines = 1.58412 [chi2_narrow-chi2_broad=-0.20360]
+        INFO:emlines.py:2409:emline_specfit: Dropping broad-line model: delta-rchi2 -0.204<0.000.
+        INFO:emlines.py:2517:emline_specfit: Final line-fitting with 35 free parameters took 0.41 seconds [niter=2, rchi2=1.5550].
+        INFO:emlines.py:2608:emline_specfit: Dn(4000)=1.033 in the emission-line subtracted spectrum.
+        INFO:emlines.py:2649:emline_specfit: Emission-line fitting took 1.71 seconds.
+        INFO:fastspecfit.py:214:fastspec: Fitting 1 object(s) took 4.31 seconds.
+        INFO:io.py:1335:write_fastspecfit: Writing results for 1 object to fastspec-example.fits
+        INFO:io.py:1392:write_fastspecfit: Writing out took 1.38 seconds.
+
+|
+        
 See the :ref:`fastspec data model<fastspec datamodel>` for a full description of
 the contents of the ``fastspec-example.fits`` file which is written out. We can
 visualize the results by invoking the following command::

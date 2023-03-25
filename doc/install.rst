@@ -23,7 +23,7 @@ to load a stable version of ``FastSpecFit`` and its dependencies::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh 23.1
   module swap desispec/0.57.0
-  module load fastspecfit/v2.1.1
+  module load fastspecfit/2.1.1
 
 Alternatively, the following commands will load the development version of
 ``FastSpecFit``, which is updated nightly and not guaranteed to be stable::
@@ -31,7 +31,7 @@ Alternatively, the following commands will load the development version of
   source /global/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
 
-Alternatively, some users may want to access ``FastSpecFit`` through `NERSC`_'s
+Finally, some users may want to access ``FastSpecFit`` through `NERSC`_'s
 `JupyterHub`_ notebook server. To set up the kernel first do::
 
   mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit
@@ -48,25 +48,25 @@ set!
 
 To install ``FastSpecFit`` and all its dependencies on a laptop we recommend a
 dedicated `Miniforge`_ environment. For example, to install the latest stable
-version transparently into an environment called, e.g., *fastconda* one would
+version transparently into an environment called, e.g., *fastspec* one would
 do::
 
-  conda create -y --name fastconda python=3.10
-  conda activate fastconda
-  python -m pip install fastspecfit
+  conda create -y --name fastspec python=3.10
+  conda activate fastspec
+  pip install fastspecfit
 
 Note that if you are planning to write documentation you will also need to
 install the following dependencies::
 
-  python -m pip install sphinx sphinx-toolbox sphinx-rtd-theme sphinxcontrib-napoleon
+  pip install sphinx sphinx-toolbox sphinx-rtd-theme sphinxcontrib-napoleon
 
 Alternatively, some users may want ``FastSpecFit`` and its dependencies to be
 installed in a more accessible location (e.g., */path/to/desi/code*), in which
 case one would do::
   
-  conda create -y --name fastconda python=3.10 numpy scipy numba astropy matplotlib seaborn
-  conda activate fastconda
-  python -m pip install fitsio healpy speclite
+  conda create -y --name fastspec python=3.10 numpy scipy numba astropy matplotlib seaborn
+  conda activate fastspec
+  pip install fitsio healpy speclite
 
   export DESI_CODE=/path/to/desi/code
   mkdir -p $DESI_CODE
@@ -84,7 +84,7 @@ their own environment variable:
 
   * ``DESI_ROOT``, which specifies the top-level location of the DESI data;
   * ``DUST_DIR``, which specifies the location of the `Schlegel, Finkbeiner, &
-    Davis dust maps`_; and
+    Davis dust maps`_; 
   * ``DR9_DIR``, which specifies the location of the `DESI Legacy Imaging
     Surveys Data Release 9 (DR9)`_ data; and
   * ``FTEMPLATES_DIR``, which indicates the location of the stellar population
@@ -93,7 +93,7 @@ their own environment variable:
 .. note::
    
   Currently, the DESI data are only available to DESI collaborators; however,
-  the `Early Data Release (EDR)`_ is expected to be publicly available in April
+  the `Early Data Release (EDR)`_ is expected to be publicly available in Spring
   2023 and other data releases will be announced in the `DESI Data Release`_
   page, after which point the instructions here will be updated.
 
