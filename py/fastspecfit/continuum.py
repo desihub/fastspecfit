@@ -1446,7 +1446,7 @@ class ContinuumTools(Filters):
         redshift = data['zredrock']
         if redshift <= 0.0:
             errmsg = 'Input redshift not defined, zero, or negative!'
-            self.log.warning(errmsg)
+            log.warning(errmsg)
             kcorr = np.zeros(len(self.absmag_bands))
             absmag = np.zeros(len(self.absmag_bands))#-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
@@ -1757,8 +1757,10 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
         #Ivdisp = np.where((specivar > 0) * (specsmooth != 0.0) * (restwave > 3500.0) * (restwave < 5500.0))[0]
         compute_vdisp = (len(Ivdisp) > 0) and (np.ptp(restwave[Ivdisp]) > 500.0)
 
-        log.info('S/N_b={:.2f}, S/N_r={:.2f}, S/N_z={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
-            result['SNR_B'], result['SNR_R'], result['SNR_Z'], restwave[0], restwave[-1]))
+        # stacked spectra do not have all three cameras
+        if 'SNR_B' in result.columns and 'SNR_R' in result.columns and 'SNR_Z' in result.columns:
+            log.info('S/N_b={:.2f}, S/N_r={:.2f}, S/N_z={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
+                result['SNR_B'], result['SNR_R'], result['SNR_Z'], restwave[0], restwave[-1]))
 
         if compute_vdisp:
             t0 = time.time()
@@ -1950,8 +1952,9 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
                 corr = np.median(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
                 result['SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
 
-        log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
-            result['SMOOTHCORR_B'], result['SMOOTHCORR_R'], result['SMOOTHCORR_Z']))
+        if 'SMOOTHCORR_B' in result.columns and 'SMOOTHCORR_R' in result.columns and 'SMOOTHCORR_Z' in result.columns:
+            log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
+                result['SMOOTHCORR_B'], result['SMOOTHCORR_R'], result['SMOOTHCORR_Z']))
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if np.all(coeff == 0):

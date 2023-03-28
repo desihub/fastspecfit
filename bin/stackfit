@@ -2,7 +2,7 @@
 """Fast broadband photometry fitting.
 
 Example call:
-  stackfit /global/cfs/cdirs/desi/science/gqp/fastspecfit_stacks/test_stack_file.fits -o stackfit.fits --ntargets 2 --mp 1
+  stackfit /global/cfs/cdirs/desi/science/gqp/fastspecfit_stacks/test_stack_file_mstar_z_bins.fits -o stackfit.fits --ntargets 2 --mp 1
 
 """
 if __name__ == '__main__':

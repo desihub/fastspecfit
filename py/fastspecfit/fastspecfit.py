@@ -19,7 +19,7 @@ def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, log):
+def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stackfit, log):
     """Assign astropy units to output tables.
 
     """
@@ -29,7 +29,7 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, log):
     metacols = metadata.colnames
 
     T, M = init_fastspec_output(Spec.meta, Spec.specprod, templates=templates,
-                                log=log, fastphot=fastphot)
+                                log=log, fastphot=fastphot, stackfit=stackfit)
     
     for col in T.colnames:
         if col in fastcols:
@@ -38,8 +38,9 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, log):
         if col in metacols:
             metadata[col].unit = M[col].unit
 
-def fastspec_one(iobj, data, out, meta, templates, log=None, broadlinefit=True, 
-                 fastphot=False, nophoto=False, percamera_models=False):
+def fastspec_one(iobj, data, out, meta, templates, log=None,
+                 minspecwave=3500.0, maxspecwave=9900.0, broadlinefit=True,
+                 fastphot=False, stackfit=False, nophoto=False, percamera_models=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -48,7 +49,7 @@ def fastspec_one(iobj, data, out, meta, templates, log=None, broadlinefit=True,
     from fastspecfit.continuum import continuum_specfit
     
     log.info('Continuum- and emission-line fitting object {} [targetid {}, z={:.6f}].'.format(
-        iobj, meta['TARGETID'], meta['Z']))
+        iobj, data['targetid'], meta['Z']))
 
     # Read the templates and then fit the continuum spectrum. Note that 450 A as
     # the minimum wavelength will allow us to synthesize u-band photometry only
@@ -66,6 +67,7 @@ def fastspec_one(iobj, data, out, meta, templates, log=None, broadlinefit=True,
         emmodel = None
     else:
         emmodel = emline_specfit(data, templatecache, out, continuummodel, smooth_continuum,
+                                 minspecwave=minspecwave, maxspecwave=maxspecwave,
                                  broadlinefit=broadlinefit, percamera_models=percamera_models,
                                  log=log)
         
@@ -144,7 +146,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     """
     from astropy.table import Table, vstack
     from desiutil.log import get_logger, DEBUG
-    from fastspecfit.io import DESISpectra, init_fastspec_output, write_fastspecfit
+    from fastspecfit.io import DESISpectra, write_fastspecfit, init_fastspec_output
 
     if verbose:
         log = get_logger(DEBUG)
@@ -167,6 +169,12 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         data = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
                                  stackids=targetids, ntargets=args.ntargets,
                                  mp=args.mp)
+        # force nophoto=True
+        args.nophoto = True
+
+        # stacked spectra can have variable beginning and ending wavelengths
+        minspecwave = np.min(data[0]['coadd_wave']) - 20
+        maxspecwave = np.max(data[0]['coadd_wave']) + 20
     else:
         Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
                     ntargets=args.ntargets, redrockfile_prefix=args.redrockfile_prefix,
@@ -176,6 +184,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
             return
     
         data = Spec.read_and_unpack(fastphot=fastphot, mp=args.mp)
+
+        # default wavelength ranges
+        minspecwave = 3600.0
+        maxspecwave = 9900.0
         
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
@@ -188,12 +200,13 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         templates = args.templates
 
     out, meta = init_fastspec_output(Spec.meta, Spec.specprod, templates=templates,
-                                     data=data, log=log, fastphot=fastphot)
+                                     data=data, log=log, fastphot=fastphot, stackfit=stackfit)
 
     # Fit in parallel
     t0 = time.time()
     fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], templates, log,
-                args.broadlinefit, fastphot, args.nophoto, args.percamera_models)
+                minspecwave, maxspecwave, args.broadlinefit, fastphot, stackfit,
+                args.nophoto, args.percamera_models)
                 for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -221,7 +234,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     log.info('Fitting {} object(s) took {:.2f} seconds.'.format(Spec.ntargets, time.time()-t0))
 
     # Assign units and write out.
-    _assign_units_to_columns(out, meta, Spec, templates, fastphot, log)
+    _assign_units_to_columns(out, meta, Spec, templates, fastphot, stackfit, log)
 
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type, fastphot=fastphot)
