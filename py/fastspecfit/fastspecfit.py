@@ -126,7 +126,7 @@ def parse(options=None, log=None):
 
     return args
 
-def fastspec(fastphot=False, args=None, comm=None, verbose=False):
+def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False):
     """Main fastspec script.
 
     This script is the engine to model one or more DESI spectra. It initializes
@@ -163,14 +163,20 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
     t0 = time.time()
     Spec = DESISpectra(dr9dir=args.dr9dir, mapdir=args.mapdir)
 
-    Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
-                ntargets=args.ntargets, redrockfile_prefix=args.redrockfile_prefix,
-                specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
-                specprod_dir=args.specproddir)
-    if len(Spec.specfiles) == 0:
-        return
-
-    data = Spec.read_and_unpack(fastphot=fastphot, mp=args.mp)
+    if stackfit:
+        data = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
+                                 stackids=targetids, ntargets=args.ntargets,
+                                 mp=args.mp)
+    else:
+        Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
+                    ntargets=args.ntargets, redrockfile_prefix=args.redrockfile_prefix,
+                    specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
+                    specprod_dir=args.specproddir)
+        if len(Spec.specfiles) == 0:
+            return
+    
+        data = Spec.read_and_unpack(fastphot=fastphot, mp=args.mp)
+        
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
 
@@ -180,6 +186,7 @@ def fastspec(fastphot=False, args=None, comm=None, verbose=False):
         templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
     else:
         templates = args.templates
+
     out, meta = init_fastspec_output(Spec.meta, Spec.specprod, templates=templates,
                                      data=data, log=log, fastphot=fastphot)
 
@@ -236,6 +243,19 @@ def fastphot(args=None, comm=None):
 
     """
     fastspec(fastphot=True, args=args, comm=comm)
+
+def stackfit(args=None, comm=None):
+    """Wrapper script to fit (model) generic stacked spectra.
+
+    Parameters
+    ----------
+    args : :class:`argparse.Namespace` or ``None``
+        Required and optional arguments parsed via inputs to the command line. 
+    comm : :class:`mpi4py.MPI.MPI.COMM_WORLD` or `None`
+        Intracommunicator used with MPI parallelism.
+
+    """
+    fastspec(stackfit=True, args=args, comm=comm)
 
 def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
