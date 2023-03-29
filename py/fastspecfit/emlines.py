@@ -2611,7 +2611,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     modelspectra.add_column(Column(name='CONTINUUM', dtype='f4', data=modelcontinuum))
     modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4', data=modelsmoothcontinuum))
     modelspectra.add_column(Column(name='EMLINEMODEL', dtype='f4', data=modelemspectrum))
-
+    pdb.set_trace()
     # Finally, optionally synthesize photometry (excluding the
     # smoothcontinuum!) and measure Dn(4000) from the line-free spectrum.
     if synthphot:

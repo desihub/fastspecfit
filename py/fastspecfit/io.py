@@ -1488,7 +1488,11 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
     # All of this business is so we can get the columns in the order we want
     # (i.e., the order that matches the data model).
     if stackfit:
-        print('WRITE ME')
+        for metacol in ['STACKID', 'SURVEY', 'PROGRAM']:
+            if metacol in metacols:
+                meta[metacol] = input_meta[metacol]
+                if metacol in colunit.keys():
+                    meta[metacol].unit = colunit[metacol]
     else:
         for metacol in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
                         'EXPID', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS']:
