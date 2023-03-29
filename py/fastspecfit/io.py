@@ -1250,8 +1250,12 @@ class DESISpectra(TabulatedDESI):
         stackfiles = np.array(sorted(set(np.atleast_1d(stackfiles))))
         log.info('Reading and parsing {} unique stackfile(s).'.format(len(stackfiles)))
 
-        self.specprod = 'custom'
-        self.coadd_type = 'custom'
+        self.specprod = 'stacked'
+        self.coadd_type = 'stacked'
+        survey = 'stacked'
+        program = 'stacked'
+        healpix = np.int32(0)
+        
         READCOLS = ['STACKID', 'REDSHIFT']
         
         self.stackfiles, self.meta = [], []
@@ -1262,36 +1266,22 @@ class DESISpectra(TabulatedDESI):
                 continue
 
             # Gather some coadd information from the header.
-            hdr = fitsio.read_header(stackfile, ext=0)
+            #hdr = fitsio.read_header(stackfile, ext=0)
 
-            if self.coadd_type == 'custom':
-                survey = 'custom'
-                program = 'custom'
-                healpix = np.int32(0)
-                thrunight = None
-                log.info('specprod={}, coadd_type={}, survey={}, program={}, healpix={}'.format(
-                    self.specprod, self.coadd_type, survey, program, healpix))
+            log.info('specprod={}, coadd_type={}, survey={}, program={}, healpix={}'.format(
+                self.specprod, self.coadd_type, survey, program, healpix))
                     
             # If stackids is *not* given, read everything.
-
             if stackids is None:
-                meta = fitsio.read(stackfile, 'SPECINFO', columns=READCOLS)
-                fitindx = np.arange(len(meta))
-                #fitindx = fitsio.FITS(stackfile)['SPECINFO'].get_nrows()
-
-                # Check for uniqueness.
-                uu, cc = np.unique(meta['STACKID'], return_counts=True)
-                if np.any(cc > 1):
-                    errmsg = 'Found {} duplicate STACKIDs in {}: {}'.format(
-                        np.sum(cc>1), stackfile, ' '.join(uu[cc > 1].astype(str)))
-                    log.critical(errmsg)
-                    raise ValueError(errmsg)
+                fitindx = np.arange(fitsio.FITS(stackfile)['SPECINFO'].get_nrows())
+                #meta = fitsio.read(stackfile, 'SPECINFO', columns=READCOLS)
+                #fitindx = np.arange(len(meta))
             else:
                 # We already know we like the input stackids, so no selection
                 # needed.
                 allstackids = fitsio.read(stackfile, 'SPECINFO', columns='STACKID')
                 fitindx = np.where([tid in stackids for tid in allstackids])[0]                
-                
+
             if len(fitindx) == 0:
                 log.info('No requested targets found in stackfile {}'.format(stackfile))
                 continue
@@ -1311,21 +1301,25 @@ class DESISpectra(TabulatedDESI):
                 log.info('All {} targets in stackfile {} have been dropped (firsttarget={}, ntargets={}).'.format(
                     __ntargets, stackfile, firsttarget, _ntargets))
                 continue
-                
-            # If firsttarget is a large index then the set can become empty.
-            if stackids is None:
-                meta = Table(meta[fitindx])
-            else:
-                meta = Table(fitsio.read(stackfile, 'SPECINFO', rows=fitindx, columns=READCOLS))
 
-            print('FIX ME - renaming REDSHIFT --> Z')
+            # If firsttarget is a large index then the set can become empty.
+            meta = Table(fitsio.read(stackfile, 'SPECINFO', rows=fitindx, columns=READCOLS))
+            print('Hack - renaming redshift')
             meta.rename_column('REDSHIFT', 'Z')
 
-            if self.coadd_type == 'custom':
-                meta['PHOTSYS'] = 'S'
-                meta['SURVEY'] = survey
-                meta['PROGRAM'] = program
-                meta['HEALPIX'] = healpix
+            # Check for uniqueness.
+            uu, cc = np.unique(meta['STACKID'], return_counts=True)
+            if np.any(cc > 1):
+                errmsg = 'Found {} duplicate STACKIDs in {}: {}'.format(
+                    np.sum(cc>1), stackfile, ' '.join(uu[cc > 1].astype(str)))
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+            
+            # Add some columns and append.
+            meta['PHOTSYS'] = 'S'
+            meta['SURVEY'] = survey
+            meta['PROGRAM'] = program
+            meta['HEALPIX'] = healpix
 
             self.meta.append(Table(meta))
             self.stackfiles.append(stackfile)
@@ -1352,9 +1346,13 @@ class DESISpectra(TabulatedDESI):
 
             log.info('Fix me -- handle fitting a subset of objects.')
             wave = fitsio.read(stackfile, 'WAVE')
-            flux = fitsio.read(stackfile, 'FLUX')
-            ivar = fitsio.read(stackfile, 'IVAR')
             npix = len(wave)
+
+            flux = fitsio.read(stackfile, 'FLUX')
+            flux = flux[fitindx, :]
+            
+            ivar = fitsio.read(stackfile, 'IVAR')
+            ivar = ivar[fitindx, :]
 
             # unpack the desispec.spectra.Spectra objects into simple arrays
             unpackargs = []
