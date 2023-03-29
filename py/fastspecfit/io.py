@@ -1531,9 +1531,14 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
 
     # fastspec table
     out = Table()
-    for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID']:
-        if col in metacols:
-            out[col] = input_meta[col]
+    if stackfit:
+        for col in ['STACKID', 'SURVEY', 'PROGRAM']:
+            if col in metacols:
+                out[col] = input_meta[col]
+    else:
+        for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID']:
+            if col in metacols:
+                out[col] = input_meta[col]
 
     out.add_column(Column(name='Z', length=nobj, dtype='f8')) # redshift
     out.add_column(Column(name='COEFF', length=nobj, shape=(ncoeff,), dtype='f4'))
@@ -1880,6 +1885,9 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                 outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
                 _metadata['HEALPIX'], _metadata['TARGETID']))
+        elif coadd_type == 'stacked':
+            pngfile = os.path.join(outdir, '{}-{}-{}.png'.format(
+                outprefix, coadd_type, _metadata['STACKID']))
         else:
             errmsg = 'Unrecognized coadd_type {}!'.format(coadd_type)
             log.critical(errmsg)
