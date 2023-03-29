@@ -53,7 +53,7 @@ def check_one_catalog(zcatfile, specprod):
             np.sum(zdiff), len(fast), np.sum(zdiff)/len(fast), fastfile))
 
     outfile = os.path.basename(fastfile)
-    outfile = outfile.replace('fastspec-', '{fastspec,fastphot}-')
+    outfile = outfile.replace('fastspec-', '{fastspec}-')
 
     return outfile, len(fast), np.sum(zdiff)
 
@@ -77,7 +77,7 @@ def check_catalogs(specprod_dir, fastspecdir, specprod, mp=1):
     fast = fitsio.read(fastfile, ext='METADATA', columns=['Z', 'Z_RR'])
     zdiff = fast['Z'] != fast['Z_RR']
     fastfile = os.path.basename(fastfile)
-    fastfile = fastfile.replace('fastspec-', '{fastspec,fastphot}-')
+    fastfile = fastfile.replace('fastspec-', '{fastspec}-')
 
     fastfiles.append(fastfile)
     nrows.append(len(fast))

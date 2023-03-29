@@ -186,8 +186,8 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         data = Spec.read_and_unpack(fastphot=fastphot, mp=args.mp)
 
         # default wavelength ranges
-        minspecwave = 3600.0
-        maxspecwave = 9900.0
+        minspecwave = 3500.
+        maxspecwave = 9900.
         
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
