@@ -39,7 +39,7 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
             metadata[col].unit = M[col].unit
 
 def fastspec_one(iobj, data, out, meta, templates, log=None,
-                 minspecwave=3500.0, maxspecwave=9900.0, broadlinefit=True,
+                 minspecwave=3500., maxspecwave=9900., broadlinefit=True,
                  fastphot=False, stackfit=False, nophoto=False, percamera_models=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
@@ -85,7 +85,7 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type,
                                     maxtemplatewave=40e4, fastphot=fastphot)
 
     qa_fastspec(data, templatecache, fastfit, metadata, coadd_type=coadd_type,
-                minspecwave=minspecwave, maxspecwave=maxspecwave,
+                spec_wavelims=(minspecwave, maxspecwave),
                 fastphot=fastphot, nophoto=nophoto, stackfit=stackfit,
                 outprefix=outprefix, outdir=outdir, log=log)
 
@@ -274,7 +274,6 @@ def stackfit(args=None, comm=None):
 
 def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
-                minspecwave=3500.0, maxspecwave=9900.0, 
                 fastphot=False, nophoto=False, stackfit=False, outprefix=None,
                 outdir=None, log=None):
     """QA plot the emission-line spectrum and best-fitting model.
@@ -310,17 +309,29 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
     sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
 
-    col1 = [colors.to_hex(col) for col in ['dodgerblue', 'darkseagreen', 'orangered']]
-    col2 = [colors.to_hex(col) for col in ['darkblue', 'darkgreen', 'darkred']]
-    col3 = [colors.to_hex(col) for col in ['blue', 'green', 'red']]
+    if stackfit:
+        col1 = [colors.to_hex(col) for col in ['violet']]
+        col2 = [colors.to_hex(col) for col in ['purple']]
+    else:
+        col1 = [colors.to_hex(col) for col in ['dodgerblue', 'darkseagreen', 'orangered']]
+        col2 = [colors.to_hex(col) for col in ['darkblue', 'darkgreen', 'darkred']]
 
     photcol1 = colors.to_hex('darkorange')
 
+    @ticker.FuncFormatter
+    def major_formatter(x, pos):
+        if (x >= 0.01) and (x < 0.1):
+            return f'{x:.2f}'
+        elif (x >= 0.1) and (x < 1):
+            return f'{x:.1f}'
+        else:
+            return f'{x:.0f}'
+    
     CTools = ContinuumTools(nophoto=nophoto,
                             continuum_pixkms=templatecache['continuum_pixkms'],
                             pixkms_wavesplit=templatecache['pixkms_wavesplit'])
     if not fastphot:
-        EMFit = EMFitTools(minspecwave=minspecwave, maxspecwave=maxspecwave)
+        EMFit = EMFitTools(minspecwave=spec_wavelims[0], maxspecwave=spec_wavelims[1])
 
     if metadata['PHOTSYS'] == 'S':
         filters = CTools.decam
@@ -389,9 +400,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         'absmag_rz': '$^{{0.1}}(r-z)={:.3f}$'.format(fastspec['ABSMAG_SDSS_R']-fastspec['ABSMAG_SDSS_Z']),       
         }
 
-    if not stackfit:
-        leg['radec'] = '$(\\alpha,\\delta)=({:.7f},{:.6f})$'.format(metadata['RA'], metadata['DEC'])
-        #leg['zwarn'] = '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN'])
+    #leg['radec'] = '$(\\alpha,\\delta)=({:.7f},{:.6f})$'.format(metadata['RA'], metadata['DEC'])
+    #leg['zwarn'] = '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN'])
 
     if fastphot:
         leg['vdisp'] = '$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
@@ -412,8 +422,12 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         fontsize1 = 16
         fontsize2 = 22
     else:
-        fontsize1 = 18 # 24
-        fontsize2 = 24
+        if stackfit:
+            fontsize1 = 16
+            fontsize2 = 22
+        else:
+            fontsize1 = 18 # 24
+            fontsize2 = 24
         
         apercorr = fastspec['APERCORR']
     
@@ -669,9 +683,26 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         fig = plt.figure(figsize=(fullwidth, fullheight))
         gs = fig.add_gridspec(nrows, ncols)#, width_ratios=width_ratios)
 
-        if not stackfit:
-            cutax = fig.add_subplot(gs[0:2, 5:8], projection=wcs) # rows x cols
+        cutax = fig.add_subplot(gs[0:2, 5:8], projection=wcs) # rows x cols
         sedax = fig.add_subplot(gs[0:3, 0:5])
+    elif stackfit:
+        fullheight = 14 # inches
+        fullwidth = 24
+
+        # 8 columns: 3 for the spectra, and 5 for the lines
+        # 8 rows: 4 for the SED, 2 each for the spectra, 1 gap, and 3 for the lines
+        nlinerows = 6
+        nlinecols = 3
+        nrows = nlinerows
+        ncols = 8
+    
+        #height_ratios = np.hstack(([1.0]*3, 0.25, [1.0]*6))
+        #width_ratios = np.hstack(([1.0]*5, [1.0]*3))
+    
+        fig = plt.figure(figsize=(fullwidth, fullheight))
+        gs = fig.add_gridspec(nrows, ncols)#, height_ratios=height_ratios)#, width_ratios=width_ratios)
+    
+        specax = fig.add_subplot(gs[0:4, 0:5])
     else:
         fullheight = 18 # inches
         fullwidth = 24
@@ -690,8 +721,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         fig = plt.figure(figsize=(fullwidth, fullheight))
         gs = fig.add_gridspec(nrows, ncols, height_ratios=height_ratios)#, width_ratios=width_ratios)
     
-        if not stackfit:
-            cutax = fig.add_subplot(gs[0:3, 5:8], projection=wcs) # rows x cols
+        cutax = fig.add_subplot(gs[0:3, 5:8], projection=wcs) # rows x cols
         sedax = fig.add_subplot(gs[0:3, 0:5])
         specax = fig.add_subplot(gs[4:8, 0:5])
     
@@ -767,8 +797,17 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             specax.plot(wave/1e4, modelflux, color=col2[icam], lw=2, alpha=0.8)
     
         fullmodelspec = np.hstack(desimodelspec)
-    
-        specax.spines[['top']].set_visible(False)        
+
+        if stackfit:
+            specax_twin = specax.twiny()
+            specax_twin.set_xlim(spec_wavelims[0]/(1+redshift)/1e4, spec_wavelims[1]/(1+redshift)/1e4)
+            specax_twin.xaxis.set_major_formatter(major_formatter)
+            restticks = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1])
+            restticks = restticks[(restticks >= spec_wavelims[0]/(1+redshift)/1e4) * (restticks <= spec_wavelims[1]/(1+redshift)/1e4)]
+            specax_twin.set_xticks(restticks)
+        else:
+            specax.spines[['top']].set_visible(False)
+            
         specax.set_xlim(spec_wavelims[0]/1e4, spec_wavelims[1]/1e4)
         specax.set_ylim(spec_ymin, spec_ymax)
         specax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
@@ -847,15 +886,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         #sedax.set_ylabel(r'Apparent Brightness (AB mag)') 
         sedax.set_ylim(sed_ymin, sed_ymax)
     
-        @ticker.FuncFormatter
-        def major_formatter(x, pos):
-            if (x >= 0.01) and (x < 0.1):
-                return f'{x:.2f}'
-            elif (x >= 0.1) and (x < 1):
-                return f'{x:.1f}'
-            else:
-                return f'{x:.0f}'
-        
         sedax.xaxis.set_major_formatter(major_formatter)
         obsticks = np.array([0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
         sedax.set_xticks(obsticks)
@@ -1013,13 +1043,21 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                     thislinename = linename+'\n'
                 else:
                     thislinename = linename
-                specax.text(meanwave/1e4, spec_ymax, thislinename, ha='center', va='top',
-                            rotation=270, fontsize=12, alpha=0.5)
+                if stackfit:
+                    specax.text(meanwave/1e4, spec_ymax*0.97, thislinename, ha='center', va='top',
+                                rotation=270, fontsize=12, alpha=0.5)
+                else:
+                    specax.text(meanwave/1e4, spec_ymax, thislinename, ha='center', va='top',
+                                rotation=270, fontsize=12, alpha=0.5)
     
         removelabels = np.ones(nline, bool)
         line_ymin, line_ymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
-        
-        ax, irow, colshift = [], 4, 5 # skip the gap row
+
+        if stackfit:
+            ax, irow, colshift = [], 0, 5
+        else:
+            ax, irow, colshift = [], 4, 5 # skip the gap row
+            
         for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
             icol = iax % nlinecols
             icol += colshift
@@ -1188,19 +1226,33 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                  bbox=bbox, linespacing=1.4)
         
     else:
-        ppos = sedax.get_position()
-        xpos = (ppos.x1 - ppos.x0) / 2 + ppos.x0
-        ypos = ppos.y1 + 0.03
+        if stackfit:
+            ppos = specax.get_position()
+            xpos = (ppos.x1 - ppos.x0) / 2 + ppos.x0
+            ypos = ppos.y1 + 0.05
 
-        fig.text(xpos, ypos, r'Rest-frame Wavelength ($\mu$m)',
-                 ha='center', va='bottom', fontsize=fontsize2)
-        fig.text(0.647, 0.925, '\n'.join(target), ha='left', va='bottom',
-                 fontsize=fontsize2, linespacing=1.4)
+            fig.text(xpos, ypos, r'Rest-frame Wavelength ($\mu$m)',
+                     ha='center', va='bottom', fontsize=fontsize2)
+            fig.text(0.62, 0.91, '\n'.join(target), ha='left', va='bottom',
+                     fontsize=fontsize2, linespacing=1.4)
+        else:
+            ppos = sedax.get_position()
+            xpos = (ppos.x1 - ppos.x0) / 2 + ppos.x0
+            ypos = ppos.y1 + 0.03
+
+            fig.text(xpos, ypos, r'Rest-frame Wavelength ($\mu$m)',
+                     ha='center', va='bottom', fontsize=fontsize2)
+            fig.text(0.647, 0.925, '\n'.join(target), ha='left', va='bottom',
+                     fontsize=fontsize2, linespacing=1.4)
         
         # add some key results about the object at the bottom of the figure
 
-        #toppos, startpos, deltapos = 0.21, 0.04, 0.13
-        toppos, leftpos, rightpos, adjust = 0.21, 0.03, 0.62, 0.01
+        if stackfit:
+            #toppos, startpos, deltapos = 0.21, 0.04, 0.13
+            toppos, leftpos, rightpos, adjust = 0.27, 0.05, 0.62, 0.01
+        else:
+            toppos, leftpos, rightpos, adjust = 0.21, 0.03, 0.62, 0.01
+        
         nbox = 2 + 1*bool(leg_narrow) + bool(leg_broad)
         boxpos = np.arange(nbox) * (rightpos - leftpos)/nbox + leftpos
     
