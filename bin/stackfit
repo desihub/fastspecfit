@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+"""Fast broadband photometry fitting.
+
+Example call:
+  stackfit /global/cfs/cdirs/desi/science/gqp/fastspecfit_stacks/test_ivar_stack_mstar_z_bins_3.fits -o stackfit.fits --ntargets 2 --mp 1
+  fastspecfit-qa stackfit.fits --redrockfiles /global/cfs/cdirs/desi/science/gqp/fastspecfit_stacks/test_ivar_stack_mstar_z_bins_3.fits -o desi-users/ioannis/tmp
+
+"""
+if __name__ == '__main__':
+    from fastspecfit.fastspecfit import stackfit
+    stackfit(comm=None)

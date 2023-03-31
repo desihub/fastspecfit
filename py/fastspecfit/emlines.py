@@ -2584,8 +2584,8 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     minwave, maxwave, dwave = np.min(data['coadd_wave']), np.max(data['coadd_wave']), np.diff(data['coadd_wave'][:2])[0]
     minwave = float(int(minwave * 1000) / 1000)
     maxwave = float(int(maxwave * 1000) / 1000)
-    dwave = float(int(dwave * 1000) / 1000)
-    npix = int((maxwave-minwave)/dwave)+1
+    dwave = float(int(np.round(dwave * 1000)) / 1000)
+    npix = int(np.round((maxwave-minwave)/dwave)) + 1
     modelwave = minwave + dwave * np.arange(npix)
 
     modelspectra = Table()
