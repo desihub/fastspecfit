@@ -65,13 +65,6 @@ spectrophotometry and broadband photometry.
 
 |
 
-accomplished through a handful of high-level Python
-scripts. The two primary, independent scripts which can be run on one (or a
-small number) of `Redrock`_ redshift catalogs are:
-
-  * ``fastspec``, to jointly model the DESI spectrophotometry and broadband photometry; and
-  * ``fastphot``, to model just the DESI broadband photometry.
-
 Note that in addition to the `Redrock`_ catalog, ``fastspec`` also requires the
 DESI coadded spectrum to be located in the same directory (with a default
 *coadd-* prefix). In addition, there are two key support routines, which we
@@ -136,34 +129,34 @@ interested in, and an (arbitrary) output filename::
         
 See the :ref:`fastspec data model<fastspec datamodel>` for a full description of
 the contents of the ``fastspec-example.fits`` file which is written out. We can
-visualize the results by invoking the following command::
+visualize the results to create the
+``fastspec-sv1-bright-7108-39633345008634465.png`` file by invoking the
+following command::
 
-  $> fastspecfit-qa ./fastspec-example.fits
+  $> fastspecfit-qa ./fastspec-example.fits --outdir ./
 
-.. collapse:: Log
-    :open:          
-       
-    The log output shows the results are written to the file
-    ``fastspec-sv1-bright-7108-39633345008634465.png``, which we display below::
+.. collapse:: Click to view the informational output printed to the screen after
+              executing this command. 
 
-      INFO:io.py:984:read_fastspecfit: Read 1 object(s) from fastspec.fits
-      INFO:continuum.py:137:__init__: Reading /global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z/v1.0/SSP_Padova_CKC14z_Kroupa_Z0.0190.fits
-      INFO:continuum.py:137:__init__: Reading /global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z/v1.0/SSP_Padova_CKC14z_Kroupa_Z0.0190.fits
-      INFO:fastspecfit-qa:102:main: Initializing the classes took: 1.43 sec
-      INFO:io.py:296:select: Reading and parsing 1 unique redrockfile(s)
-      INFO:io.py:348:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
-      INFO:io.py:443:select: Updating QSO redshifts using a QN threshold of 0.95.
-      INFO:io.py:569:select: Gathered photometric metadata for 1 objects in 0.07 sec
-      INFO:io.py:658:read_and_unpack: Reading 1 spectra from /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
-      INFO:spectra.py:291:read_spectra: iotime 0.161 sec to read coadd-sv1-bright-7108.fits at 2022-08-07T04:01:18.246061
-      INFO:continuum.py:836:get_linesigma: Forbidden masking sigma=98.374 km/s and S/N=73.893
-      INFO:continuum.py:836:get_linesigma: Balmer masking sigma=88.367 km/s and S/N=84.792
-      INFO:continuum.py:836:get_linesigma: UV/Broad masking sigma=0.000 km/s and S/N=0.000
-      INFO:io.py:855:read_and_unpack: Read data for 1 objects in 0.62 sec
-      INFO:emlines.py:2111:qa_fastspec: Writing ./fastspec-sv1-bright-7108-39633345008634465.png
-      INFO:fastspecfit-qa:186:main: QA for everything took: 4.77 sec
+    .. code-block:: python
 
-.. figure:: _static/fastspec-sv3-dark-26964-39627781683807297.png
+        INFO:fastspecfit-qa:53:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastspecfit-qa ./fastspec-example.fits --outdir ./
+        INFO:io.py:1716:read_fastspecfit: Read 1 object(s) from ./fastspec-example.fits
+        INFO:fastspecfit-qa:131:main: Building QA for 1 objects.
+        INFO:io.py:665:select: Reading and parsing 1 unique redrockfile(s).
+        INFO:io.py:720:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
+        INFO:io.py:995:select: Gathered photometric metadata for 1 objects in 0.07 sec
+        INFO:io.py:1085:read_and_unpack: Reading 1 spectrum from /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
+        INFO:spectra.py:291:read_spectra: iotime 0.470 sec to read coadd-sv1-bright-7108.fits at 2023-03-31T14:14:14.983411
+        INFO:io.py:1114:read_and_unpack: Coadding across cameras took 0.01 seconds.
+        INFO:io.py:111:unpack_one_spectrum: Pre-processing object 0 [targetid 39633345008634465 z=0.368744].
+        INFO:fastspecfit.py:656:qa_fastspec: timeout 15 wget -q -o /dev/null -O ./tmp.fastspec-sv1-bright-7108-39633345008634465.jpeg "https://www.legacysurvey.org/viewer/jpeg-cutout?ra=105.48977452498902&dec=56.669300058331935&width=114&height=87&layer=ls-dr9"
+        INFO:fastspecfit.py:1342:qa_fastspec: Writing ./fastspec-sv1-bright-7108-39633345008634465.png
+        INFO:fastspecfit-qa:241:main: QA for everything took: 12.64 sec
+
+|
+
+.. figure:: _static/fastspec-sv1-bright-7108-39633345008634465.png
 
 The figure above succinctly summarizes the ``fastspec`` inputs and modeling
 results:
@@ -175,7 +168,7 @@ results:
 
   * *Middle-left panel*: Three-camera observed DESI spectrophotometry and
     best-fitting model, shown as light and dark blue, green, and red spectra,
-    respectively, and spanning the observed-frame :math:`0.3600-0.98~\mu m`
+    respectively, and spanning the observed-frame :math:`0.36-0.98~\mu m`
     wavelength range. The thin, light gray curve around zero flux shows the
     *smooth continuum* correction which is added to the thick, dark gray
     best-fitting stellar population synthesis model (see the :ref:`algorithms
@@ -186,15 +179,12 @@ results:
     points (or arrows) show the observed *grz* (optical) and *W1-W4* (infrared)
     fluxes or :math:`2\sigma` upper limits from the *Legacy Surveys*, and the
     open square markers represent the photometry synthesized from the
-    best-fitting model. The blue, green, and red spectra are the
+    best-fitting model. The blue, green, and red spectra in this panel are the
+    best-fitting DESI model after multiplying by the derived aperture correction
+    (showin the bottom portion of the panel as the factor of 1.32).
 
-
-underlying stellar continuum for each of the three DESI cameras (blue, green and
-red); (middle) the fit to the (residual) emission-line spectrum after
-subtracting from the data the best-fitting stellar continuum model and the
-smooth continuum correction (shown as a light gray curve in the top panel); and
-(bottom) panels which zoom into all the individual lines modeled by
-``FastSpecFit``.
+  * *Lower-right panel*: Zoomed panels showing the data and best-fit model for
+    all the emission lines within the observed spectral range.
 
 In some cases it may be convenient to generate your own figure of the data and
 the best-fitting models, which you can do by reading the data yourself and using
@@ -264,55 +254,64 @@ redshift) using ``fastphot``. Using the same example object as above, we have::
 
   $> fastphot $DESI_ROOT/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465 --outfile fastphot-example.fits
-    
-  INFO:fastspecfit.py:123:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastphot /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits --targetids 39633345008634465 --outfile fastphot-example.fits
-  INFO:continuum.py:137:__init__: Reading /global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z/v1.0/SSP_Padova_CKC14z_Kroupa_Z0.0190.fits
-  INFO:fastspecfit.py:249:fastphot: Initializing the classes took: 1.28 sec
-  INFO:io.py:296:select: Reading and parsing 1 unique redrockfile(s)
-  INFO:io.py:348:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
-  INFO:io.py:443:select: Updating QSO redshifts using a QN threshold of 0.95.
-  INFO:io.py:569:select: Gathered photometric metadata for 1 objects in 0.14 sec
-  INFO:io.py:658:read_and_unpack: Reading 1 spectra from /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
-  INFO:io.py:855:read_and_unpack: Read data for 1 objects in 0.08 sec
-  INFO:fastspecfit.py:260:fastphot: Reading and unpacking the 1 spectra to be fitted took: 1.75 sec
-  INFO:continuum.py:1815:continuum_fastphot: Preparing the models took 0.22 sec
-  INFO:continuum.py:1843:continuum_fastphot: Fitting the photometry took: 0.05 sec
-  INFO:continuum.py:1853:continuum_fastphot: Finding photometric A(V) failed; adopting A(V)=0.0000
-  INFO:continuum.py:1896:continuum_fastphot: Photometric DN(4000)=1.170, Age=1.25 Gyr, Mr=-20.61 mag, Mstar=6.089e+09
-  INFO:fastspecfit.py:83:fastphot_one: Continuum-fitting object 0 [targetid 39633345008634465] took 0.40 sec
-  INFO:fastspecfit.py:276:fastphot: Fitting everything took: 0.41 sec
-  INFO:io.py:1019:write_fastspecfit: Writing results for 1 objects to fastphot-example.fits
-  INFO:io.py:1074:write_fastspecfit: Writing out took 0.11 sec
 
-  $> fastspecfit-qa fastphot-example.fits
-  
-  INFO:fastspecfit-qa:44:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastspecfit-qa fastphot-example.fits
-  INFO:io.py:984:read_fastspecfit: Read 1 object(s) from fastphot-example.fits
-  INFO:continuum.py:137:__init__: Reading /global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z/v1.0/SSP_Padova_CKC14z_Kroupa_Z0.0190.fits
-  INFO:continuum.py:137:__init__: Reading /global/cfs/cdirs/desi/science/gqp/templates/SSP-CKC14z/v1.0/SSP_Padova_CKC14z_Kroupa_Z0.0190.fits
-  INFO:fastspecfit-qa:102:main: Initializing the classes took: 1.95 sec
-  INFO:io.py:296:select: Reading and parsing 1 unique redrockfile(s)
-  INFO:io.py:348:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
-  INFO:io.py:443:select: Updating QSO redshifts using a QN threshold of 0.95.
-  INFO:io.py:569:select: Gathered photometric metadata for 1 objects in 0.11 sec
-  INFO:io.py:658:read_and_unpack: Reading 1 spectra from /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
-  INFO:io.py:855:read_and_unpack: Read data for 1 objects in 0.07 sec
-  INFO:continuum.py:2489:qa_fastphot: Writing ./fastphot-sv1-bright-7108-39633345008634465.png
-  INFO:fastspecfit-qa:186:main: QA for everything took: 1.71 sec
+.. collapse:: Click to view the informational output printed to the screen after
+              executing this command. 
+
+    .. code-block:: python
+
+        INFO:fastspecfit.py:127:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastphot /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits --targetids 39633345008634465 --outfile fastphot-example.fits
+        INFO:io.py:665:select: Reading and parsing 1 unique redrockfile(s).
+        INFO:io.py:720:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
+        INFO:io.py:995:select: Gathered photometric metadata for 1 objects in 0.22 sec
+        INFO:io.py:1085:read_and_unpack: Reading 1 spectrum from /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
+        INFO:io.py:111:unpack_one_spectrum: Pre-processing object 0 [targetid 39633345008634465 z=0.368744].
+        INFO:fastspecfit.py:194:fastspec: Reading and unpacking 1 spectra to be fitted took 3.22 seconds.
+        INFO:fastspecfit.py:51:fastspec_one: Continuum- and emission-line fitting object 0 [targetid 39633345008634465, z=0.368744].
+        INFO:continuum.py:1685:continuum_specfit: Adopting nominal vdisp=125 km/s.
+        WARNING:continuum.py:1243:templates2data: Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.
+        INFO:continuum.py:1706:continuum_specfit: Fitting 120 models took 0.07 seconds.
+        INFO:continuum.py:1726:continuum_specfit: Model Dn(4000)=1.139.
+        INFO:continuum.py:1981:continuum_specfit: Mstar=9.528 Msun, Mr=-19.92 mag, A(V)=0.817, Age=1.679 Gyr, SFR=1.469 Msun/yr, Z/Zsun=-0.992
+        INFO:continuum.py:2022:continuum_specfit: Continuum-fitting took 0.20 seconds.
+        INFO:fastspecfit.py:236:fastspec: Fitting 1 object(s) took 0.86 seconds.
+        INFO:io.py:1759:write_fastspecfit: Writing results for 1 object to fastphot-example.fits
+        INFO:io.py:1816:write_fastspecfit: Writing out took 0.10 seconds.
+
+|
+
+And to generate the QA::
+
+  $> fastspecfit-qa fastphot-example.fits --outdir ./
+
+.. collapse:: Click to view the informational output printed to the screen after
+              executing this command. 
+
+    .. code-block:: python
+
+        INFO:fastspecfit-qa:53:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastspecfit-qa fastphot-example.fits --outdir ./
+        INFO:io.py:1716:read_fastspecfit: Read 1 object(s) from fastphot-example.fits
+        INFO:fastspecfit-qa:131:main: Building QA for 1 objects.
+        INFO:io.py:665:select: Reading and parsing 1 unique redrockfile(s).
+        INFO:io.py:720:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
+        INFO:io.py:995:select: Gathered photometric metadata for 1 objects in 0.10 sec
+        INFO:io.py:1085:read_and_unpack: Reading 1 spectrum from /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
+        INFO:io.py:111:unpack_one_spectrum: Pre-processing object 0 [targetid 39633345008634465 z=0.368744].
+        INFO:fastspecfit.py:656:qa_fastspec: timeout 15 wget -q -o /dev/null -O ./tmp.fastphot-sv1-bright-7108-39633345008634465.jpeg "https://www.legacysurvey.org/viewer/jpeg-cutout?ra=105.48977452498902&dec=56.669300058331935&width=114&height=87&layer=ls-dr9"
+        INFO:fastspecfit.py:1343:qa_fastspec: Writing ./fastphot-sv1-bright-7108-39633345008634465.png
+        INFO:fastspecfit-qa:241:main: QA for everything took: 6.19 sec
 
 .. image:: _static/fastphot-sv1-bright-7108-39633345008634465.png
 
 Once again, please refer to the :ref:`fastphot data model<fastphot datamodel>`
 for a full description of the contents of the ``fastphot-example.fits`` file.
 
-
 .. note::
    
-   The current version of ``FastSpecFit`` only models the rest-frame optical
-   spectra of galaxies; there is no re-radiated dust emission. Consequently, in
-   the figure above the *grzW1* photometric points which are used in the fit are
-   shown using filled symbols while the open symbols (representing *W2*, *W3*,
-   and *W4*) are not used in the fit.
+   As documented above, the orange points (or arrows) show the observed *grz*
+   (optical) and *W1-W4* (infrared) fluxes or :math:`2\sigma` upper limits from
+   the *Legacy Surveys*, and the open square markers represent the photometry
+   synthesized from the best-fitting model.
 
 .. _`production`:
 
@@ -352,14 +351,15 @@ the ``--help`` option, although most users will only invoke the options
 documented above::
 
   $> fastspec --help
-  usage: fastspec [-h] -o OUTFILE [--mp MP] [-n NTARGETS] [--firsttarget FIRSTTARGET] [--targetids TARGETIDS] [--solve-vdisp] [--ssptemplates SSPTEMPLATES]
-                  [--mapdir MAPDIR] [--dr9dir DR9DIR] [--verbose]
+  usage: fastspec [-h] -o OUTFILE [--mp MP] [-n NTARGETS] [--firsttarget FIRSTTARGET] [--targetids TARGETIDS] [--no-broadlinefit] [--nophoto] [--percamera-models]
+                  [--imf IMF] [--templateversion TEMPLATEVERSION] [--templates TEMPLATES] [--redrockfile-prefix REDROCKFILE_PREFIX]
+                  [--specfile-prefix SPECFILE_PREFIX] [--qnfile-prefix QNFILE_PREFIX] [--mapdir MAPDIR] [--dr9dir DR9DIR] [--specproddir SPECPRODDIR] [--verbose]
                   [redrockfiles ...]
   
   positional arguments:
     redrockfiles          Full path to input redrock file(s). (default: None)
   
-  optional arguments:
+  options:
     -h, --help            show this help message and exit
     -o OUTFILE, --outfile OUTFILE
                           Full path to output filename (required). (default: None)
@@ -370,11 +370,24 @@ documented above::
                           Index of first object to to process in each file, zero-indexed. (default: 0)
     --targetids TARGETIDS
                           Comma-separated list of TARGETIDs to process. (default: None)
-    --solve-vdisp         Solve for the velocity dispersion (only when using fastspec). (default: False)
-    --ssptemplates SSPTEMPLATES
-                          Optional name of the SSP templates. (default: None)
+    --no-broadlinefit     Do not allow for broad Balmer and Helium line-fitting. (default: True)
+    --nophoto             Do not include the photometry in the model fitting. (default: False)
+    --percamera-models    Return the per-camera (not coadded) model spectra. (default: False)
+    --imf IMF             Initial mass function. (default: chabrier)
+    --templateversion TEMPLATEVERSION
+                          Template version number. (default: 1.0.0)
+    --templates TEMPLATES
+                          Optional full path and filename to the templates. (default: None)
+    --redrockfile-prefix REDROCKFILE_PREFIX
+                          Prefix of the input Redrock file name(s). (default: redrock-)
+    --specfile-prefix SPECFILE_PREFIX
+                          Prefix of the spectral file(s). (default: coadd-)
+    --qnfile-prefix QNFILE_PREFIX
+                          Prefix of the QuasarNet afterburner file(s). (default: qso_qn-)
     --mapdir MAPDIR       Optional directory name for the dust maps. (default: None)
     --dr9dir DR9DIR       Optional directory name for the DR9 photometry. (default: None)
+    --specproddir SPECPRODDIR
+                          Optional directory name for the spectroscopic production. (default: None)
     --verbose             Be verbose (for debugging purposes). (default: False)
 
 What if you want to fit a particular survey, program, or healpixel. Do you
