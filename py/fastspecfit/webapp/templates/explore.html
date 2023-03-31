@@ -89,7 +89,7 @@
               <tr>
                 <th class="search_th"><label for="surveymatch">Survey</label></th>
                 <td><input id="surveymatch" name="survey__match" type="text"
-                value="" placeholder="main,sv1,sv3,..."/></td> 
+                value="" placeholder="sv1,sv2,sv3,..."/></td> 
               </tr>
               <tr>
                 <th class="search_th"><label for="programmatch">Program</label></th>
@@ -155,7 +155,11 @@
             <p style="text-align: left;">The uploaded catalog must be a binary
             FITS table with mandatory, case-insensitive
             columns <i>SURVEY</i>, <i>PROGRAM</i>, <i>HEALPIX</i>
-            and <i>TARGETID</i>.</p>
+              and <i>TARGETID</i>.</p>
+
+            <p style="text-align: left;">Click <a href="https://github.com/desihub/fastspecfit/blob/main/doc/nb/tutorial-upload-catalog.ipynb">here</a>
+            for a simple demonstration of how to generate your own catalog to
+            upload.</p> 
         </div> <!--close div-col-->
       </div> <!--close div-row-->
     </div> <!--close div (outer)-->

@@ -7,7 +7,7 @@
 #SBATCH -q regular
 #SBATCH -N 32
 #SBATCH -n 32
-#SBATCH -t 01:00:00
+#SBATCH -t 02:00:00
 
 # sbatch /global/homes/i/ioannis/code/desihub/fastspecfit/bin/mpi-fastspecfit.slurm
 

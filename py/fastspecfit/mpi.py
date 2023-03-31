@@ -14,15 +14,28 @@ import multiprocessing
 import fitsio
 from astropy.table import Table
 
+from fastspecfit.io import get_qa_filename
+
 from desiutil.log import get_logger
 log = get_logger()
 
 def _get_ntargets_one(args):
     return get_ntargets_one(*args)
 
-def get_ntargets_one(specfile, makeqa=False):
+def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
+                     makeqa=False, overwrite=False, fastphot=False):
     if makeqa:
-        ntargets = fitsio.FITS(specfile)[1].get_nrows() # fragile?
+        if overwrite:
+            ntargets = fitsio.FITS(specfile)[1].get_nrows()
+        else:
+            outdir = os.path.dirname(specfile).replace(outdir_root, htmldir_root)
+            meta = fitsio.read(specfile, 'METADATA', columns=['SURVEY', 'PROGRAM', 'TARGETID', 'HEALPIX'])
+            ntargets = 0
+            for meta1 in meta:
+                pngfile = get_qa_filename(meta1, coadd_type, outdir=outdir, fastphot=fastphot)
+                #print(pngfile)
+                if not os.path.isfile(pngfile):
+                    ntargets += 1
     else:
         from fastspecfit.io import ZWarningMask
         zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z', 'ZWARN'])
@@ -268,7 +281,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         redrockfiles = None
         outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
         log.info('Found {} {} files for QA.'.format(len(outfiles), outprefix))
-        ntargs = [(outfile, True) for outfile in outfiles]
+        ntargs = [(outfile, htmldir, outdir, coadd_type, True, overwrite, fastphot) for outfile in outfiles]
     else:
         redrockfiles = _findfiles(specprod_dir, prefix='redrock', survey=survey, program=program, healpix=healpix, tile=tile, night=night)
         nfile = len(redrockfiles)
@@ -288,7 +301,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
             redrockfiles = redrockfiles[todo]
             outfiles = outfiles[todo]
         log.info('Found {}/{} redrockfiles (left) to do.'.format(len(redrockfiles), nfile))
-        ntargs = [(redrockfile, False) for redrockfile in redrockfiles]
+        ntargs = [(redrockfile, None, None, None, False, False, False) for redrockfile in redrockfiles]
 
     # create groups weighted by the number of targets
     if merge:
@@ -327,14 +340,11 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
                 srt = np.argsort(ntargets[groups[ii]])
                 groups[ii] = groups[ii][srt]
         else:
+            if redrockfiles is not None:
+                redrockfiles = []
+            if outfiles is not None:
+                outfiles = []
             groups = [np.array([])]
-
-    #if comm:
-    #    outdir = comm.bcast(outdir, root=0)
-    #    redrockfiles = comm.bcast(redrockfiles, root=0)
-    #    outfiles = comm.bcast(outfiles, root=0)
-    #    groups = comm.bcast(groups, root=0)
-    #    ntargets = comm.bcast(ntargets, root=0)
 
     if merge:
         if len(outfiles) == 0:
@@ -345,7 +355,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
     elif makeqa:
         if len(outfiles) == 0:
             if rank == 0:
-                log.debug('No {} files in {} found!'.format(outprefix, outdir))
+                log.debug('No {} files left to do!'.format(outprefix, outdir))
             return '', list(), list(), list(), None
         #  hack--build the output directories and pass them in the 'redrockfiles'
         #  position! for coadd_type==cumulative, strip out the 'lastnight' argument
@@ -383,6 +393,58 @@ def read_to_merge_one(filename, extname):
     meta = Table(info['METADATA'].read())
     return out, meta
 
+def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
+             outprefix=None, specprod=None, coadd_type=None, mergefile=None,
+             fastphot=False, mp=1):
+    """Support routine to merge a set of input files.
+
+    """
+    from astropy.table import vstack
+    from fastspecfit.io import write_fastspecfit
+    
+    t0 = time.time()
+    out, meta = [], []
+
+    mpargs = [[outfile, extname] for outfile in outfiles]
+    if mp > 1:
+        with multiprocessing.Pool(mp) as P:
+            _out = P.map(_read_to_merge_one, mpargs)
+    else:
+        _out = [read_to_merge_one(*mparg) for mparg in mpargs]
+    _out = list(zip(*_out))
+    out = vstack(_out[0])
+    meta = vstack(_out[1])
+    del _out
+        
+    #for outfile in outfiles:
+    #    info = fitsio.FITS(outfile)
+    #    ext = [_info.get_extname() for _info in info]
+    #    if extname not in ext:
+    #        log.warning('Missing extension {} in file {}'.format(extname, outfile))
+    #        continue
+    #    if 'METADATA' not in ext:
+    #        log.warning('Missing extension METADATA in file {}'.format(outfile))
+    #        continue
+    #    out.append(Table(info[extname].read()))
+    #    meta.append(Table(info['METADATA'].read()))
+    #out = vstack(out)
+    #meta = vstack(meta)
+
+    # sort?
+    srt = np.argsort(meta['TARGETID'])
+    out = out[srt]
+    meta = meta[srt]
+
+    if outprefix:
+        log.info('Merging {:,d} objects from {} {} files took {:.2f} min.'.format(
+            len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
+    else:
+        log.info('Merging {:,d} objects from {} files took {:.2f} min.'.format(
+            len(out), len(outfiles), (time.time()-t0)/60.0))
+    
+    write_fastspecfit(out, meta, outfile=mergefile, specprod=specprod,
+                      coadd_type=coadd_type, fastphot=fastphot)
+
 def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                       healpix=None, tile=None, night=None, outsuffix=None,
                       fastphot=False, specprod_dir=None, outdir_data='.',
@@ -398,7 +460,6 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
     from astropy.io import fits
     from astropy.table import Table, vstack
     from fastspecfit.mpi import plan
-    from fastspecfit.io import write_fastspecfit
     
     if fastphot:
         outprefix = 'fastphot'
@@ -415,46 +476,6 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
     if outsuffix is None:
         outsuffix = specprod
 
-    def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None, mergefile=None, mp=1):
-        t0 = time.time()
-        out, meta = [], []
-
-        mpargs = [[outfile, extname] for outfile in outfiles]
-        if mp > 1:
-            with multiprocessing.Pool(mp) as P:
-                _out = P.map(_read_to_merge_one, mpargs)
-        else:
-            _out = [read_to_merge_one(*mparg) for mparg in mpargs]
-        _out = list(zip(*_out))
-        out = vstack(_out[0])
-        meta = vstack(_out[1])
-        del _out
-            
-        #for outfile in outfiles:
-        #    info = fitsio.FITS(outfile)
-        #    ext = [_info.get_extname() for _info in info]
-        #    if extname not in ext:
-        #        log.warning('Missing extension {} in file {}'.format(extname, outfile))
-        #        continue
-        #    if 'METADATA' not in ext:
-        #        log.warning('Missing extension METADATA in file {}'.format(outfile))
-        #        continue
-        #    out.append(Table(info[extname].read()))
-        #    meta.append(Table(info['METADATA'].read()))
-        #out = vstack(out)
-        #meta = vstack(meta)
-
-        # sort?
-        srt = np.argsort(meta['TARGETID'])
-        out = out[srt]
-        meta = meta[srt]
-        
-        log.info('Merging {:,d} objects from {} {} files took {:.2f} min.'.format(
-            len(out), len(outfiles), outprefix, (time.time()-t0)/60.0))
-        
-        write_fastspecfit(out, meta, outfile=mergefile, specprod=specprod,
-                          coadd_type=coadd_type, fastphot=fastphot)
-
     # merge previously merged catalogs into one big catalog (and then return)
     if supermerge:
         _outfiles = os.path.join(mergedir, '{}-{}-*.fits*'.format(outprefix, outsuffix))
@@ -463,7 +484,8 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
         if len(outfiles) > 0:
             log.info('Merging {:,d} catalogs'.format(len(outfiles)))
             mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, outsuffix))
-            _domerge(outfiles, extname=extname, mergefile=mergefile, mp=mp)
+            _domerge(outfiles, extname=extname, mergefile=mergefile, outprefix=outprefix,
+                     specprod=specprod, coadd_type=coadd_type, fastphot=fastphot, mp=mp)
         else:
             log.info('No catalogs found: {}'.format(_outfiles))
         return
@@ -486,7 +508,9 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                                             merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
                                             outdir_data=outdir_data, overwrite=overwrite)
                 if len(outfiles) > 0:
-                    _domerge(outfiles, extname=extname, survey=survey[0], program=program[0], mergefile=mergefile, mp=mp)
+                    _domerge(outfiles, extname=extname, survey=survey[0], program=program[0],
+                             mergefile=mergefile, outprefix=outprefix, specprod=specprod,
+                             coadd_type=coadd_type, fastphot=fastphot, mp=mp)
     else:
         mergefile = os.path.join(mergedir, '{}-{}-{}.fits'.format(outprefix, specprod, coadd_type))
         if os.path.isfile(mergefile) and not overwrite:
@@ -496,4 +520,5 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                                     merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
                                     outdir_data=outdir_data, overwrite=overwrite)
         if len(outfiles) > 0:
-            _domerge(outfiles, extname=extname, mergefile=mergefile, mp=mp)
+            _domerge(outfiles, extname=extname, mergefile=mergefile, outprefix=outprefix,
+                     specprod=specprod, coadd_type=coadd_type, fastphot=fastphot, mp=mp)

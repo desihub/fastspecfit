@@ -23,6 +23,8 @@ import numpy as np
 from desiutil.log import get_logger
 log = get_logger()
 
+
+
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                     makeqa=False, outdir_data='.', outdir_html='.'):
 
@@ -41,7 +43,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
             coadd_type=args.coadd_type, survey=args.survey, program=args.program,
             healpix=args.healpix, tile=args.tile, night=args.night,
-            makeqa=args.makeqa, 
+            makeqa=args.makeqa, mp=args.mp,
             fastphot=fastphot, outdir_data=outdir_data, outdir_html=outdir_html,
             overwrite=args.overwrite)
         log.info('Planning took {:.2f} sec'.format(time.time() - t0))
@@ -70,8 +72,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         log.debug('Rank {} started at {}'.format(rank, time.asctime()))
         sys.stdout.flush()
 
-        # With --makeqa the desired output directories are in the 'zbestfiles'
-        # variable.
+        # With --makeqa the desired output directories are in the 'zbestfiles'.
         if args.makeqa:
             cmd = 'fastspecfit-qa {} -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
             if args.ntargets:
@@ -90,6 +91,11 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         else:
             logfile = outfiles[ii].replace('.gz', '').replace('.fits', '.log')
         assert(logfile != outfiles[ii])
+
+        if args.makeqa and args.plan:
+            log.info('Still need to make {} QA figure(s) across {} input file(s)'.format(
+                np.sum(ntargets), len(groups)))
+            return
 
         log.info('Rank {}, ntargets={}: {}'.format(rank, ntargets[ii], cmd))
         #log.info('  rank {}: {}'.format(rank, cmd))
@@ -227,7 +233,7 @@ def main():
                           mp=args.mp)
         return
 
-    if args.plan:
+    if args.plan and args.makeqa is False:
         if comm is None:
             rank = 0
         else:
@@ -236,7 +242,7 @@ def main():
             plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
                  coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                  healpix=args.healpix, tile=args.tile, night=args.night,
-                 makeqa=args.makeqa, 
+                 makeqa=args.makeqa, mp=args.mp,
                  fastphot=args.fastphot, outdir_data=args.outdir_data,
                  outdir_html=args.outdir_html, overwrite=args.overwrite)
     else:

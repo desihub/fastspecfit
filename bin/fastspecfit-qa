@@ -135,20 +135,31 @@ def main(args=None, comm=None):
 
     templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
 
-    def _wrap_qa(redrockfile, indx=None):
+    def _wrap_qa(redrockfile, indx=None, stackfit=False):
         if indx is None:
             indx = np.arange(len(fastfit))
 
-        targetids = fastfit['TARGETID'][indx]
-        Spec.select(redrockfiles=redrockfile, targetids=targetids,
-                    redrockfile_prefix=args.redrockfile_prefix,
-                    specfile_prefix=args.specfile_prefix,
-                    qnfile_prefix=args.qnfile_prefix)
-        data = Spec.read_and_unpack(fastphot=fastphot, synthphot=True, mp=args.mp)
+        if stackfit:
+            stackids = fastfit['STACKID'][indx]
+            data = Spec.read_stacked(redrockfile, stackids=stackids, mp=args.mp)
+            args.nophoto = True # force nophoto=True
 
+            minspecwave = np.min(data[0]['coadd_wave']) - 20
+            maxspecwave = np.max(data[0]['coadd_wave']) + 20
+        else:
+            targetids = fastfit['TARGETID'][indx]
+            Spec.select(redrockfiles=redrockfile, targetids=targetids,
+                        redrockfile_prefix=args.redrockfile_prefix,
+                        specfile_prefix=args.specfile_prefix,
+                        qnfile_prefix=args.qnfile_prefix)
+            data = Spec.read_and_unpack(fastphot=fastphot, synthphot=True, mp=args.mp)
+
+            minspecwave = 3500.
+            maxspecwave = 9900.
+            
         qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
-                   templates, coadd_type, fastphot, args.nophoto, args.outdir,
-                   args.outprefix, log)
+                   templates, coadd_type, minspecwave, maxspecwave, 
+                   fastphot, args.nophoto, stackfit, args.outdir, args.outprefix, log)
                    for igal in np.arange(len(indx))]                
         if args.mp > 1:
             import multiprocessing
@@ -179,6 +190,9 @@ def main(args=None, comm=None):
     elif coadd_type == 'custom':
         for redrockfile in args.redrockfiles:
             _wrap_qa(redrockfile)
+    elif coadd_type == 'stacked':
+        for redrockfile in args.redrockfiles:
+            _wrap_qa(redrockfile, stackfit=True)
     else:
         allspecprods = metadata['SPECPROD'].data
         alltiles = metadata['TILEID'].astype(str).data

@@ -37,3 +37,7 @@ python manage.py shell
 from fastspecfit.webapp.fastmodel.models import FastModel
 FastModel.objects.all().delete()
 exit()
+
+To investigate the contents of the database:
+
+  python manage.py dbshell

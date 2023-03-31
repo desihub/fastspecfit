@@ -401,15 +401,29 @@ if __name__ == '__main__':
     logging.basicConfig(level=lvl, format='%(message)s', stream=sys.stdout)
 
     from django.test import Client
+    from time import time
     c = Client()
-    r = c.get('/')
+    t0 = time()
+    #r = c.get('/')
+    r = c.get('/?survey__match=sv1&program__match=&tileid__match=&targetid__match=&healpix__match=&targetclass__match=#results')
+    print('Took %.3f' % (time()-t0))
     f = open('debug.txt', 'wb')
     for x in r:
         f.write(x)
     f.close()
 
     from django.db import connection
-    print(connection.queries)
+    #print(connection.queries)
+    times = []
+    queries = []
+    for q in connection.queries:
+        queries.append(q['sql'])
+        times.append(float(q['time']))
+    import numpy as np
+    times = np.array(times)
+    I = np.argsort(times)
+    for i in I:
+        print('Time:', times[i], 'SQL:', queries[i])
 
     #main()
     
