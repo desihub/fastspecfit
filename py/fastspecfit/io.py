@@ -673,7 +673,8 @@ class DESISpectra(TabulatedDESI):
                 continue
 
             if not redrockfile_prefix in redrockfile:
-                errmsg = 'Redrockfile {} missing standard prefix {}; please specify redrockfile_prefix argument.'
+                errmsg = 'Redrockfile {} missing standard prefix {}; please specify redrockfile_prefix argument.'.format(
+                    redrockfile, redrockfile_prefix)
                 log.critical(errmsg)
                 raise ValueError(errmsg)
             
@@ -1555,11 +1556,17 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
             out.add_column(Column(name='SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4'))
     else:
         if not fastphot:
-            for cam in ['B', 'R', 'Z']:
-                out.add_column(Column(name='SNR_{}'.format(cam), length=nobj, dtype='f4')) # median S/N in each camera
-            for cam in ['B', 'R', 'Z']:
-                out.add_column(Column(name='SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4')) 
-
+            if data is not None:
+                for cam in data[0]['cameras']:
+                    out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
+                for cam in data[0]['cameras']:
+                    out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
+            else:
+                for cam in ['B', 'R', 'Z']:
+                    out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
+                for cam in ['B', 'R', 'Z']:
+                    out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
+                    
     out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
     if not fastphot:
         out.add_column(Column(name='VDISP_IVAR', length=nobj, dtype='f4', unit=u.second**2/u.kilometer**2))
