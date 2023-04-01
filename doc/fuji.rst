@@ -1,83 +1,55 @@
 .. _fuji vac:
 
-Fuji (Early Data Release)
-=========================
+Fuji VAC (EDR)
+==============
 
 .. contents:: Contents
-    :depth: 4
+    :depth: 3
 
 Overview
 --------
 
-This page describes the `Fuji` value-added catalogs, which will be publicly
+This page describes the ``Fuji`` value-added catalog, which will be publicly
 released as part of the `DESI Early Data Release (DESI/EDR)`_ in
 late-spring 2023.
 
-.. note::
-
-   We only document the **v2.0** version of this VAC; the **v1.0** version is
-   deprecated and has not been publicly released.
-
-Data Access
------------
-
-The Fuji VACs can be accessed at the following url:
-
-========================== ===================================================================
-Value-Added Catalog        URL
-========================== ===================================================================
-Fuji (EDR)                 https://data.desi.lbl.gov/public/edr/vac/fastspecfit/fuji/v2.0
-========================== ===================================================================
-
-.. highlight:: none
+Please refer to the :ref:`acknowledgments` section for the conditions for using
+this VAC.
 
 .. note::
 
-   DESI Collaborators may access the catalogs directly at `NERSC`_ at the
-   following directory::
+   We only document the *v2.0* version of this VAC; the *v1.0* version is
+   publicly accessible but has been deprecated and is not documented further.
+
+Data Content & Access
+---------------------
+
+Data from the ``Fuji`` VAC can be accessed at any of the following links:
+
+============================ ===================================================================
+Data url                     https://data.desi.lbl.gov/public/edr/vac/fastspecfit/fuji/v2.0
+Interactive web-app          https://fastspecfit.desi.lbl.gov
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/edr/vac/fastspecfit/fuji/v2.0``
+============================ ===================================================================
+
+For more information regarding the content and organization of the VAC, please
+click on the following links:
+
+* :ref:`Healpix Catalogs<healpix catalogs>`
+* :ref:`Merged Catalogs<merged catalogs>`
+* :ref:`Sample Selection<sample selection>`
+* :ref:`Updated QSO Redshifts<qso redshifts>`
+
+Summary Statistics
+------------------
   
-     /global/cfs/cdirs/desi/public/edr/vac/fastspecfit/fuji/v2.0
-
-.. highlight:: default
-
-
-
-Within the data release directory, there are two key subdirectories, `healpix`
-and `catalogs`, which we now describe in more detail.
-
-Healpix Catalogs
-~~~~~~~~~~~~~~~~
-
-We run ``FastSpecFit`` on the healpix-coadded DESI spectra, and organize the
-files identically to how the spectra, redshift catalogs, and other data products
-are organized in the DESI data releases (as documented `here`_). In other words,
-for a given spectroscopic production ``SPECPROD=fuji``), the individual
-``fastspec`` files (see :ref:`algorithms`) can be found at the following
-location::
-
-  VACDIR=/global/cfs/cdirs/desi/public/edr/vac/fastspecfit/fuji/v2.0
-  $VACDIR/healpix/SURVEY/PROGRAM/HPIXGROUP/HEALPIX/fastspec-SURVEY-PROGRAM-HEALPIX.fits.gz
-
-where ``SURVEY``, ``PROGRAM``, ``HPIXGROUP``, and ``HEALPIX`` are fully
-documented `here`_.
+The following table summarizes the size and number of targets in each merged
+catalog.
 
 .. note::
 
-   The ``fastspec`` catalogs are gzipped because they contain the fitting
-   results as well as the best-fitting model spectra; see the :ref:`fastspec
-   data model<fastspec datamodel>` pages for a full description of the contents
-   of these files.
-
-Merged Catalogs
-~~~~~~~~~~~~~~~
-
-Most users will be interested in the merged ``FastSpecFit`` catalogs, which we
-summarize in the tables below. Note that the last row of each table is a
-super-merge of all the preceding catalogs (i.e., a merge over all possible
-surveys and programs) listed in the table.
-
-Fuji
-""""
+   The last catalog listed in the table is a super-merge of all the preceding
+   catalogs, i.e., a merge over all surveys and programs.
 
 .. rst-class:: columns
 
@@ -99,14 +71,8 @@ fastspec-fuji-sv3-dark.fits     2.41 GB   592,394
 fastspec-fuji.fits              5.7 GB    1,397,479
 =============================== ========= =================
 
-.. note::
-
-   In order to keep the size of the files reasonable, the `fastspec` files do
-   not contain the ``MODELS`` FITS extension (see the :ref:`fastspec data
-   model<fastspec datamodel>` page for a description of this FITS extension).
-
-Updated QSO Redshifts
----------------------
+The following table summarizes the number of QSO targets whose redshift has been
+updated using the procedure documented :ref:`here<qso redshifts>`.
 
 .. rst-class:: columns
 
@@ -131,15 +97,11 @@ fastspec-fuji.fits              1,397,479         9,004
 Known Issues
 ------------
 
-This section documents any issues or problems which were identified with these
-VACs after their final release. To date, no major issues have been identified!
+This section documents any issues or problems which were identified with the VAC
+after its final release. To date, no major issues have been identified!
+
 To report projects or to request new features please `open a ticket`_.
 
 .. _`DESI Early Data Release (DESI/EDR)`: https://data.desi.lbl.gov/public/edr
-.. _`DESI/EDR`: https://data.desi.lbl.gov/public/edr
 .. _`NERSC`: https://nersc.gov
-.. _`here`: https://data.desi.lbl.gov/doc/organization/
-.. _`Redrock catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/redrock-SURVEY-PROGRAM-PIXNUM.html
-.. _`quasarnet catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_qn-SURVEY-PROGRAM-PIXNUM.html
 .. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
-.. _`DESI Member Institutions`: https://www.desi.lbl.gov/collaborating-institutions

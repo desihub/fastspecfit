@@ -1,13 +1,13 @@
 .. _vacs:
 
-Value Added Catalogs
-====================
+VAC Overview
+============
 
 .. contents:: Contents
     :depth: 3
 
-Overview
---------
+Description
+-----------
 
 The following pages describe the content and construction of the ``FastSpecFit``
 value-added catalogs (VACs) for the following DESI Data Releases and Data
@@ -19,9 +19,9 @@ Assemblies:
 
 .. note::
 
-   For DESI, a *data release* is publicly released whereas a *data assembly* is
-   only available internally to collaboration members (and may eventually be
-   released publicly).
+   A DESI *data release* has been *publicly* released whereas a *data assembly*
+   is only available internally to collaboration members; not all data
+   assemblies become data releases.
 
 .. _`data organization`:
 
@@ -73,10 +73,6 @@ combine all the individual `healpix` catalogs for a given ``SURVEY`` and
    the ``MODELS`` FITS extension (see the :ref:`fastspec data model<fastspec
    datamodel>` page for a description of this FITS extension). 
 
-   In addition, for the :ref:`Fuji<fuji vac>` and :ref:`Guadalupe<guadalupe
-   vac>` VACs we also provide a super-merged catalog which combines the fitting
-   results from all the individuals surveys and programs into a single file.)
-
 .. _`sample selection`:
 
 Sample Selection
@@ -106,6 +102,8 @@ catalog`_. The following bit of Python code illustrates which targets we fit:
 
 Here, the ``ZWarningMask.NODATA`` bit indicates a spectrum which contains no
 data (all inverse variance pixel values in the extracted spectrum are zero).
+
+.. _`qso redshifts`:
 
 Updated QSO Redshifts
 ---------------------
@@ -160,11 +158,13 @@ following bit of code:
       if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
           zb['Z'][IQSO[qn['IS_QSO_QN_NEW_RR']]] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
 
+.. _`acknowledgments`:
+
 Acknowledgments
 ----------------
 
 For questions (or problems) regarding these catalogs or their construction,
-please `open a ticket`_ and/or contact `John Moustakas`_ (JM).
+please `open a ticket`_ and/or contact `John Moustakas (Siena College)`_ (JM).
 
 JM gratefully acknowledges funding support for this work from the
 U.S. Department of Energy, Office of Science, Office of High Energy Physics
@@ -210,10 +210,10 @@ the following `acknowledgment`_ verbatim:
     honored to be permitted to conduct scientific research on Iolkam Du’ag (Kitt
     Peak), a mountain with particular significance to the Tohono O’odham Nation.
 
+.. _`here`: https://data.desi.lbl.gov/doc/organization/
 .. _`Redrock catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/redrock-SURVEY-PROGRAM-PIXNUM.html
 .. _`quasarnet catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_qn-SURVEY-PROGRAM-PIXNUM.html
 .. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
-.. _`John Moustakas`: mailto:jmoustakas@siena.edu
+.. _`John Moustakas (Siena College)`: mailto:jmoustakas@siena.edu
 .. _`acknowledgment`: https://data.desi.lbl.gov/public/doc/acknowledgements/
-.. _`here`: https://data.desi.lbl.gov/doc/organization/
       

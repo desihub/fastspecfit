@@ -28,11 +28,11 @@ Contents
    api.rst
    changes.rst
 
-Data
-----
+Value Added Catalogs (VACs)
+---------------------------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    vacs.rst
    fuji.rst
