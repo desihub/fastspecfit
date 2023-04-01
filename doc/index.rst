@@ -28,14 +28,16 @@ Contents
    api.rst
    changes.rst
 
-Value-Added Catalogs
---------------------
+Data
+----
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
+   vacs.rst
    fuji.rst
    iron.rst
+   guadalupe.rst
 
 Data Model
 ----------

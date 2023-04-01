@@ -1,7 +1,7 @@
-.. _iron vac:
+.. _guadalupe vac:
 
-Iron (Data Release 1)
-=====================
+Guadalupe (Data Release 1 Supplement)
+=====================================
 
 .. contents:: Contents
     :depth: 4

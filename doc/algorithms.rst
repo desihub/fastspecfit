@@ -3,15 +3,15 @@
 Algorithms
 ==========
 
+.. note::  
+
+  This page is still under construction!
+
 .. contents:: Contents
     :depth: 3
 
 Overview
 --------
-
-.. note::  
-
-  This page is still under construction!
 
 ``FastSpecFit`` leverages our understanding of galaxies and quasars to build a
 physical model of their observed-frame optical spectra and UV/optical/IR

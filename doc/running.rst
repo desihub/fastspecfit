@@ -172,7 +172,7 @@ results:
     wavelength range. The thin, light gray curve around zero flux shows the
     *smooth continuum* correction which is added to the thick, dark gray
     best-fitting stellar population synthesis model (see the :ref:`algorithms
-    <algorithms>` documentation for details).
+    <Algorithms>` documentation for details).
 
   * *Top-middle panel*: Observed and modeled broadband spectral energy
     distribution between :math:`0.1-35~\mu m` in the observed frame. The orange
