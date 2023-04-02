@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-2.1.2 (not released yet)
+2.1.3 (not released yet)
 ------------------------
+
+* 
+
+2.1.2 (2023-04-01)
+------------------
 
 * Web-app updates needed for Fuji/v2.0 database load [`PR #107`_].
 * Get target cutouts using image coadds on-disk [`PR #108`_].
