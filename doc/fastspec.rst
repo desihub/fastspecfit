@@ -1,7 +1,7 @@
 .. _fastspec datamodel:
 
 ===================
-fastspec Data Model
+Fastspec Data Model
 ===================
 
 :Summary: Spectroscopic fitting results.
@@ -113,7 +113,6 @@ Name                         Type         Units                         Descript
                   DN4000_OBS      float32                               Narrow 4000-A break index measured from the observed spectroscopic data.
                  DN4000_IVAR      float32                               Inverse variance of DN4000_OBS or DN4000.
                 DN4000_MODEL      float32                               Narrow 4000-A break index measured from the best-fitting continuum model.
-                DN4000_MODEL      float32                               Narrow 4000-A break index (from Balogh et al. 1999) measured from the best-fitting continuum model.
                 FLUX_SYNTH_G      float32                          nmgy g-band flux synthesized from the data.
                 FLUX_SYNTH_R      float32                          nmgy r-band flux synthesized from the data.
                 FLUX_SYNTH_Z      float32                          nmgy z-band flux synthesized from the data.
@@ -912,7 +911,7 @@ Name                   Type        Units      Description
              TSNR2_ELG float32                Template signal-to-noise ratio squared for ELG targets.
              TSNR2_QSO float32                Template signal-to-noise ratio squared for QSO targets.
              TSNR2_LYA float32                Template signal-to-noise ratio squared for LYA targets.
-               PHOTSYS  bytes1                Photometric system (*N* or *S*).
+               PHOTSYS    str1                Photometric system (*N* or *S*).
                LS_ID     int64                Unique Legacy Surveys identification number.
            FIBERFLUX_G float32           nmgy Fiber g-band flux corrected for Galactic extinction.
            FIBERFLUX_R float32           nmgy Fiber r-band flux corrected for Galactic extinction.
