@@ -77,6 +77,7 @@ def check_catalogs(specprod_dir, fastspecdir, specprod, mp=1):
     fast = fitsio.read(fastfile, ext='METADATA', columns=['Z', 'Z_RR'])
     zdiff = fast['Z'] != fast['Z_RR']
     fastfile = os.path.basename(fastfile)
+    #fastfile = fastfile.replace('fastspec-', '{fastspec,fastphot}-')
     fastfile = fastfile.replace('fastspec-', '{fastspec}-')
 
     fastfiles.append(fastfile)
@@ -169,7 +170,40 @@ def fileinfo(filelist, sortbyrows=False):
 
     return widths, lines, headers
 
-def build_table(specwidths, speclines, photwidths, photlines, specheaders, photheaders):
+def build_table(widths, lines, headers):
+
+    for ii, width in enumerate(widths):
+        if ii == len(widths)-1:
+            print(''.join(np.repeat('=', width)))
+        else:
+            print(''.join(np.repeat('=', width))+' ', end='')            
+            
+    for ii, (width, dd) in enumerate(zip(widths, headers)):
+        if ii == len(widths)-1:
+            print(str.ljust(dd, width))
+        else:
+            print(str.ljust(dd, width)+' ', end='')
+    
+    for ii, width in enumerate(widths):
+        if ii == len(widths)-1:
+            print(''.join(np.repeat('=', width)))
+        else:
+            print(''.join(np.repeat('=', width))+' ', end='')
+            
+    for line in lines:
+        for ii, (width, dd) in enumerate(zip(widths, line)):
+            if ii == len(widths)-1:
+                print(str.ljust(dd, width))
+            else:
+                print(str.ljust(dd, width)+' ', end='')
+                
+    for ii, width in enumerate(widths):
+        if ii == len(widths)-1:
+            print(''.join(np.repeat('=', width)))
+        else:
+            print(''.join(np.repeat('=', width))+' ', end='')            
+
+def build_table_withphot(specwidths, speclines, photwidths, photlines, specheaders, photheaders):
 
     headers = np.hstack((specheaders, photheaders))
     widths = np.hstack((specwidths, photwidths))
@@ -290,29 +324,28 @@ def main():
     fastspecdir = '/global/cfs/cdirs/desi/spectro/fastspecfit/'+args.specprod
     specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod)
 
-    if args.specprod == 'guadalupe':
-        sortbyrows = True
-    else:
+    if args.specprod == 'fuji':
         sortbyrows = False
+    else:
+        sortbyrows = True
 
     # Do statistics.
     if args.statistics:
         # by survey
         fastspecfiles = np.hstack((sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-*.fits'.format(args.specprod)))),
                                    os.path.join(fastspecdir, 'catalogs', 'fastspec-{}.fits'.format(args.specprod))))
-        fastphotfiles = np.hstack((sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastphot-{}-*.fits'.format(args.specprod)))),
-                                   os.path.join(fastspecdir, 'catalogs', 'fastphot-{}.fits'.format(args.specprod))))
-        #fastspecfiles = np.array(sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-*.fits'.format(args.specprod)))))
-        #fastphotfiles = np.array(sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastphot-{}-*.fits'.format(args.specprod)))))
         specwidths, speclines, specheaders = fileinfo(fastspecfiles, sortbyrows=sortbyrows)
-        photwidths, photlines, photheaders = fileinfo(fastphotfiles, sortbyrows=sortbyrows)
-        build_table(specwidths, speclines, photwidths, photlines, specheaders, photheaders)
+        build_table(specwidths, speclines, specheaders)
+        #fastphotfiles = np.hstack((sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastphot-{}-*.fits'.format(args.specprod)))),
+        #                           os.path.join(fastspecdir, 'catalogs', 'fastphot-{}.fits'.format(args.specprod))))
+        #photwidths, photlines, photheaders = fileinfo(fastphotfiles, sortbyrows=sortbyrows)
+        #build_table_withphot(specwidths, speclines, photwidths, photlines, specheaders, photheaders)
 
     # Validate files.
     if args.validate:
         # check for infinity and other crap
         check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp)
-        check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp, fastphot=True)
+        #check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp, fastphot=True)
         
         # verify that we have all the targets we expect and also summarize the
         # number of targets with corrected redshifts

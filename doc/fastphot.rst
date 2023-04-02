@@ -1,7 +1,7 @@
 .. _fastphot datamodel:
 
 ===================
-fastphot Data Model
+Fastphot Data Model
 ===================
 
 :Summary: Broadband photometric fitting results.

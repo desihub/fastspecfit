@@ -5,8 +5,7 @@ healpy
 numba
 seaborn
 matplotlib
-sphinx-toolbox
-git+https://github.com/desihub/desiutil.git@3.2.6#egg=desiutil
+fitsio
 git+https://github.com/desihub/desimodel.git@0.18.0#egg=desimodel
 git+https://github.com/desihub/desitarget.git@2.6.0#egg=desitarget
 git+https://github.com/desihub/desispec.git@0.57.0#egg=desispec
