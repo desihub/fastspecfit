@@ -23,8 +23,6 @@ import numpy as np
 from desiutil.log import get_logger
 log = get_logger()
 
-
-
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                     makeqa=False, outdir_data='.', outdir_html='.'):
 
@@ -83,9 +81,15 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             else:
                 cmd = 'fastspec {} -o {} --mp {}'.format(zbestfiles[ii], outfiles[ii], args.mp)
                     
-            if args.ntargets:
+            if args.ntargets is not None:
                 cmd += ' --ntargets {}'.format(args.ntargets)
-
+                
+            if args.targetids is not None:
+                cmd += ' --targetids {}'.format(args.targetids)
+                
+            if args.ignore_quasarnet is not None:
+                cmd += ' --ignore-quasarnet'
+                
         if args.makeqa:
             logfile = os.path.join(zbestfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
         else:
@@ -166,6 +170,7 @@ def main():
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
 
@@ -173,6 +178,8 @@ def main():
     parser.add_argument('--mergeall', action='store_true', help='Merge all the individual merged catalogs into a single merged catalog.')
     parser.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
     parser.add_argument('--ntest', type=int, default=None, help='Select ntest healpixels as a test sample drawn randomly from the full specprod (only for coadd-type==healpix).')
+    
+    parser.add_argument('--ignore-quasarnet', default=False, action='store_true', help='Do not use QuasarNet to improve QSO redshifts.')
     
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
