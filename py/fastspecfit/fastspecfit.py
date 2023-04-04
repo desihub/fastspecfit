@@ -106,6 +106,7 @@ def parse(options=None, log=None):
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not allow for broad Balmer and Helium line-fitting.')
     parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
+    parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')    
     parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
     parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
     parser.add_argument('--templateversion', type=str, default='1.0.0', help='Template version number.')
@@ -181,7 +182,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
                     ntargets=args.ntargets, redrockfile_prefix=args.redrockfile_prefix,
                     specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
-                    specprod_dir=args.specproddir)
+                    use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
         if len(Spec.specfiles) == 0:
             return
     
