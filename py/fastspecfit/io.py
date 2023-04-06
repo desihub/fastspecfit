@@ -1257,7 +1257,7 @@ class DESISpectra(TabulatedDESI):
         program = 'stacked'
         healpix = np.int32(0)
         
-        READCOLS = ['STACKID', 'REDSHIFT']
+        READCOLS = ['STACKID', 'Z']
         
         self.stackfiles, self.meta = [], []
         
@@ -1305,8 +1305,6 @@ class DESISpectra(TabulatedDESI):
 
             # If firsttarget is a large index then the set can become empty.
             meta = Table(fitsio.read(stackfile, 'SPECINFO', rows=fitindx, columns=READCOLS))
-            print('Hack - renaming redshift')
-            meta.rename_column('REDSHIFT', 'Z')
 
             # Check for uniqueness.
             uu, cc = np.unique(meta['STACKID'], return_counts=True)
@@ -1354,6 +1352,9 @@ class DESISpectra(TabulatedDESI):
             
             ivar = fitsio.read(stackfile, 'IVAR')
             ivar = ivar[fitindx, :]
+            
+            res = fitsio.read(stackfile, 'RES')
+            res = res[fitindx, :, :]
 
             # unpack the desispec.spectra.Spectra objects into simple arrays
             unpackargs = []
@@ -1369,7 +1370,7 @@ class DESISpectra(TabulatedDESI):
                     'flux0': [flux[iobj, :]],
                     'ivar0': [ivar[iobj, :]],
                     'mask0': [np.zeros(npix, np.int16)],
-                    'res0': [Resolution(identity(n=npix))], # Hack!
+                    'res0': [Resolution(res[iobj, :, :])], # Hack!
                     } 
                 specdata.update({
                     'coadd_wave': specdata['wave0'][0],
