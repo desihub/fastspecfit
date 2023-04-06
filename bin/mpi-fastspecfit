@@ -175,6 +175,8 @@ def main():
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
 
     parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
+    parser.add_argument('--mergedir', type=str, help='Output directory for merged catalogs.')
+    parser.add_argument('--merge-suffix', type=str, help='Filename suffix for merged catalogs.')
     parser.add_argument('--mergeall', action='store_true', help='Merge all the individual merged catalogs into a single merged catalog.')
     parser.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
     parser.add_argument('--ntest', type=int, default=None, help='Select ntest healpixels as a test sample drawn randomly from the full specprod (only for coadd-type==healpix).')
@@ -236,8 +238,8 @@ def main():
         merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
                           survey=args.survey, program=args.program, healpix=args.healpix,
                           tile=args.tile, night=args.night, outdir_data=args.outdir_data,
-                          overwrite=args.overwrite, fastphot=args.fastphot, supermerge=args.mergeall,
-                          mp=args.mp)
+                          outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
+                          fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
         return
 
     if args.plan and args.makeqa is False:
