@@ -692,9 +692,9 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         # 8 columns: 3 for the spectra, and 5 for the lines
         # 8 rows: 4 for the SED, 2 each for the spectra, 1 gap, and 3 for the lines
         nlinerows = 6
-        nlinecols = 3
+        nlinecols = 4
         nrows = nlinerows
-        ncols = 8
+        ncols = 9
     
         #height_ratios = np.hstack(([1.0]*3, 0.25, [1.0]*6))
         #width_ratios = np.hstack(([1.0]*5, [1.0]*3))
@@ -985,7 +985,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         linetable = EMFit.linetable
         inrange = (linetable['restwave'] * (1+redshift) > np.min(fullwave)) * (linetable['restwave'] * (1+redshift) < np.max(fullwave))
         linetable = linetable[inrange]
-    
+
         nline = len(set(linetable['plotgroup']))
     
         plotsig_default = 200.0 # [km/s]
@@ -1065,7 +1065,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 if iax > 0 and iax % nlinecols == 0:
                     irow += 1
                 #print(iax, irow, icol)
-            
+
                 xx = fig.add_subplot(gs[irow, icol])
                 ax.append(xx)
             
