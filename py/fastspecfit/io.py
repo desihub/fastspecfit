@@ -1339,8 +1339,10 @@ class DESISpectra(TabulatedDESI):
                 log.info('Reading {} spectra from {}'.format(nobj, stackfile))
 
             # Age of the universe.
-            #dlum = self.luminosity_distance(meta['Z'])
-            #dmod = self.distance_modulus(meta['Z'])
+            dlum = np.zeros(len(meta['Z']))
+            dmod = np.zeros(len(meta['Z']))
+            dlum[meta['Z']>0.] = self.luminosity_distance(meta['Z'][meta['Z']>0.])
+            dmod[meta['Z']>0.] = self.distance_modulus(meta['Z'][meta['Z']>0.])
             tuniv = self.universe_age(meta['Z'])
 
             log.info('Fix me -- handle fitting a subset of objects.')
@@ -1353,8 +1355,13 @@ class DESISpectra(TabulatedDESI):
             ivar = fitsio.read(stackfile, 'IVAR')
             ivar = ivar[fitindx, :]
             
-            res = fitsio.read(stackfile, 'RES')
-            res = res[fitindx, :, :]
+            # Check if the file contains a resolution matrix, if it does not
+            # then use an identity matrix
+            try:
+                res = fitsio.read(stackfile, 'RES')
+                res = res[fitindx, :, :]
+            except:
+                res = [identity(n=npix) for i in range(nobj)] # Hack!
 
             # unpack the desispec.spectra.Spectra objects into simple arrays
             unpackargs = []
@@ -1363,14 +1370,13 @@ class DESISpectra(TabulatedDESI):
                     'targetid': meta['STACKID'][iobj], 'zredrock': meta['Z'][iobj],
                     'photsys': 'S',
                     'cameras': ['brz'],
-                    #'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj],
-                    'dluminosity': 0.0, # hack
+                    'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj],
                     'tuniv': tuniv[iobj],
                     'wave0': [wave],
                     'flux0': [flux[iobj, :]],
                     'ivar0': [ivar[iobj, :]],
                     'mask0': [np.zeros(npix, np.int16)],
-                    'res0': [Resolution(res[iobj, :, :])], # Hack!
+                    'res0': [Resolution(res[iobj, :, :])]
                     } 
                 specdata.update({
                     'coadd_wave': specdata['wave0'][0],
