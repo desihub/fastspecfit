@@ -1274,13 +1274,13 @@ class DESISpectra(TabulatedDESI):
                     
             # If stackids is *not* given, read everything.
             if stackids is None:
-                fitindx = np.arange(fitsio.FITS(stackfile)['SPECINFO'].get_nrows())
-                #meta = fitsio.read(stackfile, 'SPECINFO', columns=READCOLS)
+                fitindx = np.arange(fitsio.FITS(stackfile)['STACKINFO'].get_nrows())
+                #meta = fitsio.read(stackfile, 'STACKINFO', columns=READCOLS)
                 #fitindx = np.arange(len(meta))
             else:
                 # We already know we like the input stackids, so no selection
                 # needed.
-                allstackids = fitsio.read(stackfile, 'SPECINFO', columns='STACKID')
+                allstackids = fitsio.read(stackfile, 'STACKINFO', columns='STACKID')
                 fitindx = np.where([tid in stackids for tid in allstackids])[0]                
 
             if len(fitindx) == 0:
@@ -1304,7 +1304,7 @@ class DESISpectra(TabulatedDESI):
                 continue
 
             # If firsttarget is a large index then the set can become empty.
-            meta = Table(fitsio.read(stackfile, 'SPECINFO', rows=fitindx, columns=READCOLS))
+            meta = Table(fitsio.read(stackfile, 'STACKINFO', rows=fitindx, columns=READCOLS))
 
             # Check for uniqueness.
             uu, cc = np.unique(meta['STACKID'], return_counts=True)
@@ -1361,7 +1361,7 @@ class DESISpectra(TabulatedDESI):
                 res = fitsio.read(stackfile, 'RES')
                 res = res[fitindx, :, :]
             except:
-                res = [identity(n=npix) for i in range(nobj)] # Hack!
+                res = np.stack([np.ones((1, npix)) for i in range(nobj)], axis=0) # Hack!
 
             # unpack the desispec.spectra.Spectra objects into simple arrays
             unpackargs = []
