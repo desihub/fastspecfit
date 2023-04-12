@@ -5,7 +5,9 @@ Change Log
 2.1.3 (not released yet)
 ------------------------
 
-* 
+* Allow the Redrock redshift to be overridden [`PR #115`_].
+
+.. _`PR #115`: https://github.com/desihub/fastspecfit/pull/115
 
 2.1.2 (2023-04-01)
 ------------------

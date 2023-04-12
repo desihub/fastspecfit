@@ -165,10 +165,10 @@ Name                         Type         Units                         Descript
                 FHALPHA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 6564.613 A in the rest-frame.
                   RCHI2_LINE      float32                               Reduced chi-squared of an emission-line model fit.
              DELTA_LINERCHI2      float32                               Difference in the reduced chi-squared values between an emission-line model with narrow lines only and a model with both broad and narrow lines.
-                     APERCOR      float32                               Median aperture correction factor.
-                   APERCOR_G      float32                               Median aperture correction factor measured in the g-band.
-                   APERCOR_R      float32                               Median aperture correction factor measured in the r-band.
-                   APERCOR_Z      float32                               Median aperture correction factor measured in the z-band.
+                    APERCORR      float32                               Median aperture correction factor.
+                  APERCORR_G      float32                               Median aperture correction factor measured in the g-band.
+                  APERCORR_R      float32                               Median aperture correction factor measured in the r-band.
+                  APERCORR_Z      float32                               Median aperture correction factor measured in the z-band.
                     NARROW_Z      float32                               Mean redshift of well-measured narrow rest-frame optical emission lines (defaults to Z).
                  NARROW_ZRMS      float32                               Root-mean-square scatter in NARROW_Z.
                      BROAD_Z      float32                               Mean redshift of well-measured broad rest-frame optical emission lines (defaults to Z).
