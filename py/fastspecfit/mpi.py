@@ -384,10 +384,10 @@ def read_to_merge_one(filename, extname):
     info = fitsio.FITS(filename)
     ext = [_info.get_extname() for _info in info]
     if extname not in ext:
-        log.warning('Missing extension {} in file {}'.format(extname, outfile))
+        log.warning('Missing extension {} in file {}'.format(extname, filename))
         return [], []
     if 'METADATA' not in ext:
-        log.warning('Missing extension METADATA in file {}'.format(outfile))
+        log.warning('Missing extension METADATA in file {}'.format(filename))
         return [], []
     out = Table(info[extname].read())
     meta = Table(info['METADATA'].read())

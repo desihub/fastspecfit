@@ -567,8 +567,9 @@ class DESISpectra(TabulatedDESI):
 
     def select(self, redrockfiles, zmin=0.001, zmax=None, zwarnmax=None,
                targetids=None, firsttarget=0, ntargets=None,
-               specprod_dir=None, use_quasarnet=True, redrockfile_prefix='redrock-',
-               specfile_prefix='coadd-', qnfile_prefix='qso_qn-'):
+               input_redshifts=None, specprod_dir=None, use_quasarnet=True,
+               redrockfile_prefix='redrock-', specfile_prefix='coadd-',
+               qnfile_prefix='qso_qn-'):
         """Select targets for fitting and gather the necessary spectroscopic metadata.
 
         Parameters
@@ -596,6 +597,9 @@ class DESISpectra(TabulatedDESI):
             Number of objects to analyze in each file. Useful for debugging and
             testing. If `None`, select all targets which satisfy the selection
             criteria.
+        input_redshifts : float or array or `None`
+            Input redshifts to use for each input `targetids` input If `None`,
+            use the nominal Redrock (or QuasarNet) redshifts.
         use_quasarnet : `bool`
             Use QuasarNet to improve QSO redshifts, if the afterburner file is
             present. Defaults to `True`.
@@ -685,7 +689,7 @@ class DESISpectra(TabulatedDESI):
             
             # Can we use the quasarnet afterburner file to improve QSO redshifts?
             qnfile = redrockfile.replace(redrockfile_prefix, qnfile_prefix)
-            if os.path.isfile(qnfile) and use_quasarnet:
+            if os.path.isfile(qnfile) and use_quasarnet and input_redshifts is not None:
                 use_qn = True
             else:
                 use_qn = False
@@ -820,6 +824,16 @@ class DESISpectra(TabulatedDESI):
             else:
                 zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=REDSHIFTCOLS))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=READFMCOLS))
+                if input_redshifts is not None:
+                    log.info('Applying {} input_redshifts.'.format(len(input_redshifts)))
+                    # fitsio doesn't preserve order, so make sure targetids and
+                    # input_redshifts are matched
+                    srt = np.hstack([np.where(targetids == tid)[0] for tid in zb['TARGETID']])
+                    targetids = np.array(targetids)[srt]
+                    input_redshifts = np.array(input_redshifts)[srt]
+                    assert(np.all(zb['TARGETID'] == targetids))
+                    zb['Z'] = input_redshifts
+                
             tsnr2 = Table(fitsio.read(redrockfile, 'TSNR2', rows=fitindx, columns=TSNR2COLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
@@ -1740,7 +1754,7 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
             return [None]*4
 
 def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
-                      coadd_type=None, fastphot=False):
+                      coadd_type=None, fastphot=False, input_redshifts=False):
     """Write out.
 
     """
@@ -1779,6 +1793,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
         primhdr.append(('SPECPROD', (specprod, 'spectroscopic production name')))
     if coadd_type:
         primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd type')))
+    primhdr.append(('INPUTZ', (input_redshifts is not None, 'input redshifts provided')))
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
