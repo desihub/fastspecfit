@@ -84,6 +84,13 @@ def main(args=None, comm=None):
 
     fastfit, metadata, coadd_type, fastphot = read_fastspecfit(args.fastfitfile[0])
 
+    # check for the input redshifts header card
+    hdr = fitsio.read_header(args.fastfitfile[0])
+    if 'INPUTZ' in hdr and hdr['INPUTZ']:
+        input_redshifts = True
+    else:
+        input_redshifts = False
+
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
@@ -159,7 +166,8 @@ def main(args=None, comm=None):
             
         qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
                    templates, coadd_type, minspecwave, maxspecwave, 
-                   fastphot, args.nophoto, stackfit, args.outdir, args.outprefix, log)
+                   fastphot, args.nophoto, stackfit, input_redshifts,
+                   args.outdir, args.outprefix, log)
                    for igal in np.arange(len(indx))]                
         if args.mp > 1:
             import multiprocessing
@@ -170,23 +178,27 @@ def main(args=None, comm=None):
             
     t0 = time.time()
     if coadd_type == 'healpix':
-        allspecprods = metadata['SPECPROD'].data
-        allsurveys = metadata['SURVEY'].data
-        allprograms = metadata['PROGRAM'].data
-        allpixels = metadata['HEALPIX'].data
-        for specprod in set(allspecprods):
-            for survey in set(allsurveys):
-                for program in set(allprograms):
-                    for pixel in set(allpixels):
-                        indx = np.where((specprod == allspecprods) * (survey == allsurveys) *
-                                        (program == allprograms) * (pixel == allpixels))[0]
-                        if len(indx) == 0:
-                            #log.warning('No object found with specprod={}, survey={}, program={}, and healpixel={}!'.format(
-                            #    specprod, survey, program, pixel))
-                            continue
-                        redrockfile = os.path.join(args.redux_dir, specprod, 'healpix', str(survey), str(program), str(pixel // 100), 
-                                                   str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
-                        _wrap_qa(redrockfile, indx)
+        if args.redrockfiles is not None:
+            for redrockfile in args.redrockfiles:
+                _wrap_qa(redrockfile)
+        else:
+            allspecprods = metadata['SPECPROD'].data
+            allsurveys = metadata['SURVEY'].data
+            allprograms = metadata['PROGRAM'].data
+            allpixels = metadata['HEALPIX'].data
+            for specprod in set(allspecprods):
+                for survey in set(allsurveys):
+                    for program in set(allprograms):
+                        for pixel in set(allpixels):
+                            indx = np.where((specprod == allspecprods) * (survey == allsurveys) *
+                                            (program == allprograms) * (pixel == allpixels))[0]
+                            if len(indx) == 0:
+                                #log.warning('No object found with specprod={}, survey={}, program={}, and healpixel={}!'.format(
+                                #    specprod, survey, program, pixel))
+                                continue
+                            redrockfile = os.path.join(args.redux_dir, specprod, 'healpix', str(survey), str(program), str(pixel // 100), 
+                                                       str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
+                            _wrap_qa(redrockfile, indx)
     elif coadd_type == 'custom':
         for redrockfile in args.redrockfiles:
             _wrap_qa(redrockfile)

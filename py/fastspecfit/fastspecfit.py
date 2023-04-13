@@ -75,8 +75,8 @@ def fastspec_one(iobj, data, out, meta, templates, log=None,
 
 def desiqa_one(data, fastfit, metadata, templates, coadd_type,
                minspecwave=3500., maxspecwave=9900., fastphot=False, 
-               nophoto=False, stackfit=False, outdir=None, outprefix=None,
-               log=None):
+               nophoto=False, stackfit=False, input_redshifts=False,
+               outdir=None, outprefix=None, log=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
@@ -84,10 +84,17 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type,
     templatecache = cache_templates(templates, log=log, mintemplatewave=450.0,
                                     maxtemplatewave=40e4, fastphot=fastphot)
 
+    if input_redshifts:
+        from fastspecfit.util import TabulatedDESI
+        cosmo = TabulatedDESI()
+    else:
+        cosmo = None
+
     qa_fastspec(data, templatecache, fastfit, metadata, coadd_type=coadd_type,
                 spec_wavelims=(minspecwave, maxspecwave),
                 fastphot=fastphot, nophoto=nophoto, stackfit=stackfit,
-                outprefix=outprefix, outdir=outdir, log=log)
+                outprefix=outprefix, outdir=outdir, log=log,
+                cosmo=cosmo)
 
 def parse(options=None, log=None):
     """Parse input arguments to fastspec and fastphot scripts.
@@ -103,9 +110,11 @@ def parse(options=None, log=None):
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
+    parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not allow for broad Balmer and Helium line-fitting.')
     parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
+    parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')    
     parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
     parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
     parser.add_argument('--templateversion', type=str, default='1.0.0', help='Template version number.')
@@ -159,8 +168,15 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args, log=log)
 
+    input_redshifts = None
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
+        if args.input_redshifts:
+            input_redshifts = [float(x) for x in args.input_redshifts.split(',')]
+            if len(input_redshifts) != len(targetids):
+                errmsg = 'targetids and input_redshifts must have the same number of elements.'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
     else:
         targetids = args.targetids
 
@@ -179,9 +195,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         maxspecwave = np.max(data[0]['coadd_wave']) + 20
     else:
         Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
-                    ntargets=args.ntargets, redrockfile_prefix=args.redrockfile_prefix,
+                    input_redshifts=input_redshifts, ntargets=args.ntargets,
+                    redrockfile_prefix=args.redrockfile_prefix,
                     specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
-                    specprod_dir=args.specproddir)
+                    use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
         if len(Spec.specfiles) == 0:
             return
     
@@ -239,7 +256,8 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     _assign_units_to_columns(out, meta, Spec, templates, fastphot, stackfit, log)
 
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
-                      specprod=Spec.specprod, coadd_type=Spec.coadd_type, fastphot=fastphot)
+                      specprod=Spec.specprod, coadd_type=Spec.coadd_type,
+                      fastphot=fastphot, input_redshifts=input_redshifts)
 
 def fastphot(args=None, comm=None):
     """Main fastphot script.
@@ -275,7 +293,7 @@ def stackfit(args=None, comm=None):
 def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
                 fastphot=False, nophoto=False, stackfit=False, outprefix=None,
-                outdir=None, log=None):
+                outdir=None, log=None, cosmo=None):
     """QA plot the emission-line spectrum and best-fitting model.
 
     """
@@ -341,6 +359,12 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         allfilters = CTools.bassmzlswise
 
     redshift = fastspec['Z']
+
+    # cosmo will be provided if input_redshifts are used
+    if cosmo is not None:
+        dlum = cosmo.luminosity_distance(redshift)
+    else:
+        dlum = data['dluminosity']
 
     pngfile = get_qa_filename(metadata, coadd_type, outprefix=outprefix,
                               outdir=outdir, fastphot=fastphot, log=log)
@@ -552,7 +576,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     if not stackfit:
         sedmodel, sedphot = CTools.templates2data(
                 templatecache['templateflux'], templatecache['templatewave'],
-                redshift=redshift, dluminosity=data['dluminosity'],
+                redshift=redshift, dluminosity=dlum,
                 synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm)
         sedwave = templatecache['templatewave'] * (1 + redshift)
     
@@ -576,7 +600,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         fullwave = np.hstack(data['wave'])
     
         desicontinuum, _ = CTools.templates2data(templatecache['templateflux_nolines'], templatecache['templatewave'],
-                                                 redshift=redshift, dluminosity=data['dluminosity'], synthphot=False,
+                                                 redshift=redshift, dluminosity=dlum, synthphot=False,
                                                  specwave=data['wave'], specres=data['res'],
                                                  specmask=data['mask'], cameras=data['cameras'],
                                                  vdisp=fastspec['VDISP'],
