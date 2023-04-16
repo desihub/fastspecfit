@@ -1359,7 +1359,6 @@ class DESISpectra(TabulatedDESI):
             dmod[meta['Z']>0.] = self.distance_modulus(meta['Z'][meta['Z']>0.])
             tuniv = self.universe_age(meta['Z'])
 
-            log.info('Fix me -- handle fitting a subset of objects.')
             wave = fitsio.read(stackfile, 'WAVE')
             npix = len(wave)
 
@@ -1371,11 +1370,11 @@ class DESISpectra(TabulatedDESI):
             
             # Check if the file contains a resolution matrix, if it does not
             # then use an identity matrix
-            try:
+            if 'RES' in fitsio.FITS(stackfile):
                 res = fitsio.read(stackfile, 'RES')
                 res = res[fitindx, :, :]
-            except:
-                res = np.stack([np.ones((1, npix)) for i in range(nobj)], axis=0) # Hack!
+            else:
+                res = np.ones((nobj, 1, npix)) # Hack!
 
             # unpack the desispec.spectra.Spectra objects into simple arrays
             unpackargs = []
