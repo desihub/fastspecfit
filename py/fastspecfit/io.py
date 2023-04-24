@@ -1271,7 +1271,7 @@ class DESISpectra(TabulatedDESI):
         program = 'stacked'
         healpix = np.int32(0)
         
-        READCOLS = ['STACKID', 'REDSHIFT']
+        READCOLS = ['STACKID', 'Z']
         
         self.stackfiles, self.meta = [], []
         
@@ -1288,13 +1288,13 @@ class DESISpectra(TabulatedDESI):
                     
             # If stackids is *not* given, read everything.
             if stackids is None:
-                fitindx = np.arange(fitsio.FITS(stackfile)['SPECINFO'].get_nrows())
-                #meta = fitsio.read(stackfile, 'SPECINFO', columns=READCOLS)
+                fitindx = np.arange(fitsio.FITS(stackfile)['STACKINFO'].get_nrows())
+                #meta = fitsio.read(stackfile, 'STACKINFO', columns=READCOLS)
                 #fitindx = np.arange(len(meta))
             else:
                 # We already know we like the input stackids, so no selection
                 # needed.
-                allstackids = fitsio.read(stackfile, 'SPECINFO', columns='STACKID')
+                allstackids = fitsio.read(stackfile, 'STACKINFO', columns='STACKID')
                 fitindx = np.where([tid in stackids for tid in allstackids])[0]                
 
             if len(fitindx) == 0:
@@ -1318,9 +1318,7 @@ class DESISpectra(TabulatedDESI):
                 continue
 
             # If firsttarget is a large index then the set can become empty.
-            meta = Table(fitsio.read(stackfile, 'SPECINFO', rows=fitindx, columns=READCOLS))
-            print('Hack - renaming redshift')
-            meta.rename_column('REDSHIFT', 'Z')
+            meta = Table(fitsio.read(stackfile, 'STACKINFO', rows=fitindx, columns=READCOLS))
 
             # Check for uniqueness.
             uu, cc = np.unique(meta['STACKID'], return_counts=True)
@@ -1355,11 +1353,12 @@ class DESISpectra(TabulatedDESI):
                 log.info('Reading {} spectra from {}'.format(nobj, stackfile))
 
             # Age of the universe.
-            #dlum = self.luminosity_distance(meta['Z'])
-            #dmod = self.distance_modulus(meta['Z'])
+            dlum = np.zeros(len(meta['Z']))
+            dmod = np.zeros(len(meta['Z']))
+            dlum[meta['Z']>0.] = self.luminosity_distance(meta['Z'][meta['Z']>0.])
+            dmod[meta['Z']>0.] = self.distance_modulus(meta['Z'][meta['Z']>0.])
             tuniv = self.universe_age(meta['Z'])
 
-            log.info('Fix me -- handle fitting a subset of objects.')
             wave = fitsio.read(stackfile, 'WAVE')
             npix = len(wave)
 
@@ -1368,6 +1367,14 @@ class DESISpectra(TabulatedDESI):
             
             ivar = fitsio.read(stackfile, 'IVAR')
             ivar = ivar[fitindx, :]
+            
+            # Check if the file contains a resolution matrix, if it does not
+            # then use an identity matrix
+            if 'RES' in fitsio.FITS(stackfile):
+                res = fitsio.read(stackfile, 'RES')
+                res = res[fitindx, :, :]
+            else:
+                res = np.ones((nobj, 1, npix)) # Hack!
 
             # unpack the desispec.spectra.Spectra objects into simple arrays
             unpackargs = []
@@ -1376,14 +1383,13 @@ class DESISpectra(TabulatedDESI):
                     'targetid': meta['STACKID'][iobj], 'zredrock': meta['Z'][iobj],
                     'photsys': 'S',
                     'cameras': ['brz'],
-                    #'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj],
-                    'dluminosity': 0.0, # hack
+                    'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj],
                     'tuniv': tuniv[iobj],
                     'wave0': [wave],
                     'flux0': [flux[iobj, :]],
                     'ivar0': [ivar[iobj, :]],
                     'mask0': [np.zeros(npix, np.int16)],
-                    'res0': [Resolution(identity(n=npix))], # Hack!
+                    'res0': [Resolution(res[iobj, :, :])]
                     } 
                 specdata.update({
                     'coadd_wave': specdata['wave0'][0],
