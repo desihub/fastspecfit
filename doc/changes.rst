@@ -6,8 +6,10 @@ Change Log
 ------------------------
 
 * Allow the Redrock redshift to be overridden [`PR #115`_].
+* Code to support fitting stacked spectra [`PR #116`_].
 
 .. _`PR #115`: https://github.com/desihub/fastspecfit/pull/115
+.. _`PR #116`: https://github.com/desihub/fastspecfit/pull/116
 
 2.1.2 (2023-04-01)
 ------------------
