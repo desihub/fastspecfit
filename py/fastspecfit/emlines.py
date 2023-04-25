@@ -468,7 +468,7 @@ class EMFitTools(Filters):
                 [O2] (5-->3): airwave: 7329.6613 vacwave: 7331.6807 emissivity: 1.35614e-23
                 [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.27488e-23
                 """
-                final_linemodel['tiedfactor'][param_names == linename+'_amp'] = 1 / 1.2251
+                final_linemodel['tiedfactor'][param_names == linename+'_amp'] = 1.0 / 1.2251
                 final_linemodel['tiedtoparam'][param_names == linename+'_amp'] = np.where(param_names == 'oii_7320_amp')[0]
                 for param in ['sigma', 'vshift']:
                     final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
