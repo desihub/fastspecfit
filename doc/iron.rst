@@ -96,7 +96,11 @@ Known Issues
 ------------
 
 This section documents any issues or problems which were identified with the VAC
-after its final release. To date, no major issues have been identified!
+after its final release.
+
+* The tied amplitudes of [OII]7320,7330 doublet were reversed in the line fitting [`#119`_].
+
+.. _`#119`: https://github.com/desihub/fastspecfit/issues/119
 
 To report projects or to request new features please `open a ticket`_.
 

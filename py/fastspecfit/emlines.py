@@ -461,7 +461,7 @@ class EMFitTools(Filters):
                 for param in ['sigma', 'vshift']:
                     final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
                     final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'sii_6716_'+param)[0]
-            if linename == 'oii_7320':
+            if linename == 'oii_7330':
                 """
                 [O2] (5-->2): airwave: 7318.9185 vacwave: 7320.9350 emissivity: 8.18137e-24
                 [O2] (4-->2): airwave: 7319.9849 vacwave: 7322.0018 emissivity: 2.40519e-23
@@ -469,10 +469,10 @@ class EMFitTools(Filters):
                 [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.27488e-23
                 """
                 final_linemodel['tiedfactor'][param_names == linename+'_amp'] = 1.0 / 1.2251
-                final_linemodel['tiedtoparam'][param_names == linename+'_amp'] = np.where(param_names == 'oii_7330_amp')[0]
+                final_linemodel['tiedtoparam'][param_names == linename+'_amp'] = np.where(param_names == 'oii_7320_amp')[0]
                 for param in ['sigma', 'vshift']:
                     final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
-                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oii_7330_'+param)[0]
+                    final_linemodel['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oii_7320_'+param)[0]
             if linename == 'siii_9069':
                 for param in ['sigma', 'vshift']:
                     final_linemodel['tiedfactor'][param_names == linename+'_'+param] = 1.0
