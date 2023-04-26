@@ -7,9 +7,11 @@ Change Log
 
 * Allow the Redrock redshift to be overridden [`PR #115`_].
 * Code to support fitting stacked spectra [`PR #116`_].
+* Bug fix of reversed tied flux ratio of [OII]7320,7330 doublet [`PR #120`_].
 
 .. _`PR #115`: https://github.com/desihub/fastspecfit/pull/115
 .. _`PR #116`: https://github.com/desihub/fastspecfit/pull/116
+.. _`PR #120`: https://github.com/desihub/fastspecfit/pull/120
 
 2.1.2 (2023-04-01)
 ------------------
