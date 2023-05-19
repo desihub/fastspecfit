@@ -1609,7 +1609,7 @@ class ContinuumTools(Filters):
 
         return kcorr, absmag, ivarabsmag, bestmaggies, lums, cfluxes
 
-def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=True,
+def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=False,
                       fastphot=False, log=None, verbose=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
