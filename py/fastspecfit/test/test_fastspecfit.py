@@ -31,10 +31,14 @@ class TestFastspec(unittest.TestCase):
         cls.redrockfile = resource_filename('fastspecfit.test', 'data/redrock-4-80613-thru20210324.fits')
 
         cls.outdir = tempfile.mkdtemp()
-        cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-1.0.0.fits')
-        cmd = 'wget -O {} https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.0.0/ftemplates-chabrier-1.0.0.fits'.format(cls.templates)
 
-        err = subprocess.call(cmd.split())
+        print('HACKING FTEMPLATES!')
+        cls.templates = '/Users/ioannis/tmp/ftemplates-chabrier-1.0.0.fits'
+        if False:
+            cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-1.0.0.fits')
+            cmd = 'wget -O {} https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.0.0/ftemplates-chabrier-1.0.0.fits'.format(cls.templates)
+            err = subprocess.call(cmd.split())
+
         cls.cwd = os.getcwd()
         cls.fastspec_outfile = os.path.join(cls.outdir, 'fastspec.fits')
         cls.fastphot_outfile = os.path.join(cls.outdir, 'fastphot.fits')
