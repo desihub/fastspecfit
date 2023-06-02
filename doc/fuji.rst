@@ -11,7 +11,7 @@ Overview
 
 This page describes the ``Fuji`` value-added catalog, which will be publicly
 released as part of the `DESI Early Data Release (DESI/EDR)`_ in
-late-spring 2023.
+late-summer 2023.
 
 Please refer to the :ref:`acknowledgments` section for the conditions for using
 this VAC.
@@ -27,9 +27,9 @@ Data Content & Access
 Data from the ``Fuji`` VAC can be accessed at any of the following links:
 
 ============================ ===================================================================
-Data url                     https://data.desi.lbl.gov/public/edr/vac/fastspecfit/fuji/v2.0
+Data url                     https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v2.0
 Interactive web-app          https://fastspecfit.desi.lbl.gov
-`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/edr/vac/fastspecfit/fuji/v2.0``
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/spectro/fastspecfit/fuji/v2.0``
 ============================ ===================================================================
 
 For more information regarding the content and organization of the VAC, please
@@ -101,8 +101,17 @@ This section documents any issues or problems which were identified with the VAC
 after its final release.
 
 * The tied amplitudes of [OII]7320,7330 doublet were reversed in the line fitting [`#119`_].
+* The photometry for approximately 1% of targets is not properly propagated into
+  the output metadata table [`#121`_].
+* The signal-to-noise ratio of extremely narrow lines can be under-estimated [`#124`_].
+* There is an unphysical break in the derived stellar masses [`#125`_].
+* The photometry for a small fraction of SV1 targets is incorrect [`#129`_].
 
 .. _`#119`: https://github.com/desihub/fastspecfit/issues/119
+.. _`#121`: https://github.com/desihub/fastspecfit/issues/121
+.. _`#124`: https://github.com/desihub/fastspecfit/issues/124
+.. _`#125`: https://github.com/desihub/fastspecfit/issues/125
+.. _`#129`: https://github.com/desihub/fastspecfit/issues/129
 
 To report projects or to request new features please `open a ticket`_.
 
