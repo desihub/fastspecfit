@@ -27,7 +27,7 @@ class TestFastspec(unittest.TestCase):
         os.environ['DESI_ROOT'] = resource_filename('fastspecfit.test', 'data')
         cls.specproddir = resource_filename('fastspecfit.test', 'data')
         cls.mapdir = resource_filename('fastspecfit.test', 'data')
-        cls.dr9dir = resource_filename('fastspecfit.test', 'data')
+        cls.legacysurveydir = resource_filename('fastspecfit.test', 'data')
         cls.redrockfile = resource_filename('fastspecfit.test', 'data/redrock-4-80613-thru20210324.fits')
 
         cls.outdir = tempfile.mkdtemp()
@@ -59,8 +59,8 @@ class TestFastspec(unittest.TestCase):
         import fitsio
         from fastspecfit.fastspecfit import fastphot, parse
 
-        cmd = 'fastphot {} -o {} --mapdir {} --dr9dir {} --specproddir {} --templates {}'.format(
-            self.redrockfile, self.fastphot_outfile, self.mapdir, self.dr9dir, self.specproddir, self.templates)
+        cmd = 'fastphot {} -o {} --mapdir {} --legacysurveydir {} --specproddir {} --templates {}'.format(
+            self.redrockfile, self.fastphot_outfile, self.mapdir, self.legacysurveydir, self.specproddir, self.templates)
         args = parse(options=cmd.split()[1:])
         fastphot(args=args)
 
@@ -76,8 +76,8 @@ class TestFastspec(unittest.TestCase):
         import fitsio
         from fastspecfit.fastspecfit import fastspec, parse
     
-        cmd = 'fastspec {} -o {} --mapdir {} --dr9dir {} --specproddir {} --templates {}'.format(
-            self.redrockfile, self.fastspec_outfile, self.mapdir, self.dr9dir, self.specproddir, self.templates)
+        cmd = 'fastspec {} -o {} --mapdir {} --legacysurveydir {} --specproddir {} --templates {}'.format(
+            self.redrockfile, self.fastspec_outfile, self.mapdir, self.legacysurveydir, self.specproddir, self.templates)
         args = parse(options=cmd.split()[1:])
         fastspec(args=args)
     

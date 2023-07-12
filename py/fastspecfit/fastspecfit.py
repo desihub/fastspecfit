@@ -123,7 +123,7 @@ def parse(options=None, log=None):
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
-    parser.add_argument('--dr9dir', type=str, default=None, help='Optional directory name for the DR9 photometry.')
+    parser.add_argument('--legacysurveydir', type=str, default=None, help='Optional directory name for the DR9 photometry.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
@@ -182,7 +182,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     # Read the data.
     t0 = time.time()
-    Spec = DESISpectra(dr9dir=args.dr9dir, mapdir=args.mapdir)
+    Spec = DESISpectra(legacysurveydir=args.legacysurveydir, mapdir=args.mapdir)
 
     if stackfit:
         data = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
