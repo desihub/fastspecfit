@@ -21,7 +21,7 @@ log = get_logger()
 # Default environment variables.
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
-DR9_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
+LEGACYSURVEY_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
 FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 # list of all possible targeting bit columns
@@ -444,7 +444,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, Filters, synthphot, log):
     return specdata, meta
 
 class DESISpectra(TabulatedDESI):
-    def __init__(self, redux_dir=None, fiberassign_dir=None, dr9dir=None, mapdir=None):
+    def __init__(self, redux_dir=None, fiberassign_dir=None, legacysurveydir=None, mapdir=None):
         """Class to read in DESI spectra and associated metadata.
 
         Parameters
@@ -472,10 +472,10 @@ class DESISpectra(TabulatedDESI):
         else:
             self.fiberassign_dir = fiberassign_dir
 
-        if dr9dir is None:
-            self.dr9dir = os.environ.get('DR9_DIR', DR9_DIR_NERSC)
+        if legacysurveydir is None:
+            self.legacysurveydir = os.environ.get('LEGACYSURVEY_DIR', LEGACYSURVEY_DIR_NERSC)
         else:
-            self.dr9dir = dr9dir
+            self.legacysurveydir = legacysurveydir
 
         if mapdir is None:
             self.mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
@@ -943,9 +943,9 @@ class DESISpectra(TabulatedDESI):
         # because otherwise BRICKNAME gets "repaired!"
         t0 = time.time()
         input_meta = vstack(self.meta).copy() 
-        tractor = gather_tractorphot(input_meta, columns=TARGETCOLS, dr9dir=self.dr9dir)
+        tractor = gather_tractorphot(input_meta, columns=TARGETCOLS, legacysurveydir=self.legacysurveydir)
         #tractor = gather_tractorphot(input_meta, columns=np.hstack((
-        #    TARGETCOLS, 'FRACFLUX_W1', 'FRACFLUX_W2', 'FRACFLUX_W3', 'FRACFLUX_W4')), dr9dir=self.dr9dir)
+        #    TARGETCOLS, 'FRACFLUX_W1', 'FRACFLUX_W2', 'FRACFLUX_W3', 'FRACFLUX_W4')), legacysurveydir=self.legacysurveydir)
 
         metas = []
         for meta in self.meta:
@@ -1803,7 +1803,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
-                     envvar_names=['DESI_ROOT', 'FTEMPLATES_DIR', 'DUST_DIR', 'DR9_DIR'])
+                     envvar_names=['DESI_ROOT', 'FTEMPLATES_DIR', 'DUST_DIR', 'LEGACYSURVEY_DIR'])
 
     hdus = fits.HDUList()
     hdus.append(fits.PrimaryHDU(None, primhdr))
