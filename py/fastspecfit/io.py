@@ -68,17 +68,6 @@ QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
           'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 
-# targeting and Tractor columns to read from disk
-#TARGETCOLS = ['TARGETID', 'RA', 'DEC', 'FLUX_W3', 'FLUX_W4', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
-TARGETCOLS = ['TARGETID', 'RA', 'DEC',
-              'RELEASE', 'LS_ID',
-              #'PHOTSYS',
-              'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-              'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-              'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
-              'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-              'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']#,
-
 FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
 
 # Taken from Redrock/0.15.4
@@ -477,6 +466,13 @@ class DESISpectra(TabulatedDESI):
         else:
             self.legacysurveydir = legacysurveydir
 
+        # Get source of the photometry, defaulting to DR9.
+        self.datarelease = 'dr9'
+        if 'dr10' in self.legacysurveydir:
+            self.datarelease = 'dr10'
+        elif 'subaru-cosmos' in self.legacysurveydir:
+            self.datarelease = 'subaru-cosmos'
+
         if mapdir is None:
             self.mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
         else:
@@ -636,7 +632,6 @@ class DESISpectra(TabulatedDESI):
         from desiutil.depend import getdep
         from desitarget.io import releasedict        
         from desitarget.targets import main_cmx_or_sv
-        from desispec.io.photo import gather_tractorphot, gather_targetphot
 
         if zmin <= 0.0:
             errmsg = 'zmin should generally be >= 0; proceed with caution!'
@@ -941,75 +936,11 @@ class DESISpectra(TabulatedDESI):
         # Use the metadata in the fibermap to retrieve the LS-DR9 source
         # photometry. Note that we have to make a copy of the input_meta table
         # because otherwise BRICKNAME gets "repaired!"
-        t0 = time.time()
-        input_meta = vstack(self.meta).copy() 
-        tractor = gather_tractorphot(input_meta, columns=TARGETCOLS, legacysurveydir=self.legacysurveydir)
-        #tractor = gather_tractorphot(input_meta, columns=np.hstack((
-        #    TARGETCOLS, 'FRACFLUX_W1', 'FRACFLUX_W2', 'FRACFLUX_W3', 'FRACFLUX_W4')), legacysurveydir=self.legacysurveydir)
-
-        metas = []
-        for meta in self.meta:
-            srt = np.hstack([np.where(tid == tractor['TARGETID'])[0] for tid in meta['TARGETID']])
-            assert(np.all(meta['TARGETID'] == tractor['TARGETID'][srt]))
-            
-            # The fibermaps in fuji and guadalupe (plus earlier productions) had a
-            # variety of errors. Fix those here using
-            # desispec.io.photo.gather_targetphot.
-            if specprod == 'fuji' or specprod == 'guadalupe': # fragile...
-                input_meta = meta['TARGETID', 'TARGET_RA', 'TARGET_DEC']
-                input_meta['TILEID'] = alltiles
-                targets = gather_targetphot(input_meta, fiberassign_dir=self.fiberassign_dir)
-                assert(np.all(input_meta['TARGETID'] == targets['TARGETID']))
-                for col in meta.colnames:
-                    if col in targets.colnames:
-                        diffcol = meta[col] != targets[col]
-                        if np.any(diffcol):
-                            log.warning('Updating column {} in metadata table: {}-->{}.'.format(
-                                col, meta[col][0], targets[col][0]))
-                            meta[col][diffcol] = targets[col][diffcol]
-            #else:
-            #    for col in ['BRICKNAME', 'SV3_DESI_TARGET', 'SV3_SCND_TARGET']:
-            #        print(meta[col][0])
-
-            srt = np.hstack([np.where(tid == tractor['TARGETID'])[0] for tid in meta['TARGETID']])
-            assert(np.all(meta['TARGETID'] == tractor['TARGETID'][srt]))
-            
-            # Add the tractor catalog quantities (overwriting columns if necessary).
-            for col in tractor.colnames:
-                meta[col] = tractor[col][srt]
-                
-            # special case for some secondary and ToOs
-            I = (meta['RA'] == 0) * (meta['DEC'] == 0) * (meta['TARGET_RA'] != 0) * (meta['TARGET_DEC'] != 0)
-            if np.sum(I) > 0:
-                meta['RA'][I] = meta['TARGET_RA'][I]
-                meta['DEC'][I] = meta['TARGET_DEC'][I]
-            assert(np.all((meta['RA'] != 0) * (meta['DEC'] != 0)))
-                
-            # try to repair PHOTSYS
-            # https://github.com/desihub/fastspecfit/issues/75
-            I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S') * (meta['RELEASE'] >= 9000)
-            if np.sum(I) > 0:
-                meta['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE'][I]]
-            I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S')
-            if np.sum(I) > 0:
-                meta['PHOTSYS'][I] = self.resolve(meta[I])
-            I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S')
-            if np.sum(I) > 0:
-                errmsg = 'Unsupported value of PHOTSYS.'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
-            
-            # placeholders (to be added in DESISpectra.read_and_unpack)
-            meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
-            for band in ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']:
-                meta['MW_TRANSMISSION_{}'.format(band)] = np.ones(shape=(1,), dtype='f4')
-
-            metas.append(meta)
-
-        log.info('Gathered photometric metadata for {} objects in {:.2f} sec'.format(len(tractor), time.time()-t0))
-            
+        t0 = time.time()       
+        metas = self._gather_photometry()
         self.meta = metas # update
-            
+        log.info('Gathered photometric metadata in {:.2f} sec'.format(time.time()-t0))
+
     def read_and_unpack(self, fastphot=False, synthphot=True, mp=1):
         """Read and unpack selected spectra or broadband photometry.
         
@@ -1416,6 +1347,119 @@ class DESISpectra(TabulatedDESI):
         self.ntargets = len(self.meta)
 
         return alldata
+
+    def _gather_photometry(self):
+        """Gather photometry according to the input data release string.
+    
+        """
+        from astropy.table import vstack
+        from desispec.io.photo import gather_tractorphot, gather_targetphot
+    
+        input_meta = vstack(self.meta).copy()
+
+        if self.datarelease == 'dr9':
+            # targeting and Tractor columns to read from disk
+            FIBERBANDS = ['G', 'R', 'Z']
+            BANDS = ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']
+            TARGETCOLS = ['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID']
+            for band in FIBERBANDS:
+                TARGETCOLS += [f'FIBERFLUX_{band}']
+            for band in FIBERBANDS:
+                TARGETCOLS += [f'FIBERTOTFLUX_{band}']
+            for band in BANDS:
+                TARGETCOLS += [f'FLUX_{band}']
+            for band in BANDS:
+                TARGETCOLS += [f'FLUX_IVAR_{band}']
+                
+            tractor = gather_tractorphot(input_meta, columns=TARGETCOLS, legacysurveydir=self.legacysurveydir)
+    
+            metas = []
+            for meta in self.meta:
+                srt = np.hstack([np.where(tid == tractor['TARGETID'])[0] for tid in meta['TARGETID']])
+                assert(np.all(meta['TARGETID'] == tractor['TARGETID'][srt]))
+                
+                # The fibermaps in fuji and guadalupe (plus earlier productions) had a
+                # variety of errors. Fix those here using
+                # desispec.io.photo.gather_targetphot.
+                if specprod == 'fuji' or specprod == 'guadalupe': # fragile...
+                    input_meta = meta['TARGETID', 'TARGET_RA', 'TARGET_DEC']
+                    input_meta['TILEID'] = alltiles
+                    targets = gather_targetphot(input_meta, fiberassign_dir=self.fiberassign_dir)
+                    assert(np.all(input_meta['TARGETID'] == targets['TARGETID']))
+                    for col in meta.colnames:
+                        if col in targets.colnames:
+                            diffcol = meta[col] != targets[col]
+                            if np.any(diffcol):
+                                log.warning('Updating column {} in metadata table: {}-->{}.'.format(
+                                    col, meta[col][0], targets[col][0]))
+                                meta[col][diffcol] = targets[col][diffcol]
+                srt = np.hstack([np.where(tid == tractor['TARGETID'])[0] for tid in meta['TARGETID']])
+                assert(np.all(meta['TARGETID'] == tractor['TARGETID'][srt]))
+                
+                # Add the tractor catalog quantities (overwriting columns if necessary).
+                for col in tractor.colnames:
+                    meta[col] = tractor[col][srt]
+                    
+                # special case for some secondary and ToOs
+                I = (meta['RA'] == 0) * (meta['DEC'] == 0) * (meta['TARGET_RA'] != 0) * (meta['TARGET_DEC'] != 0)
+                if np.sum(I) > 0:
+                    meta['RA'][I] = meta['TARGET_RA'][I]
+                    meta['DEC'][I] = meta['TARGET_DEC'][I]
+                assert(np.all((meta['RA'] != 0) * (meta['DEC'] != 0)))
+                    
+                # try to repair PHOTSYS
+                # https://github.com/desihub/fastspecfit/issues/75
+                I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S') * (meta['RELEASE'] >= 9000)
+                if np.sum(I) > 0:
+                    meta['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE'][I]]
+                I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S')
+                if np.sum(I) > 0:
+                    meta['PHOTSYS'][I] = self.resolve(meta[I])
+                I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S')
+                if np.sum(I) > 0:
+                    errmsg = 'Unsupported value of PHOTSYS.'
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
+                
+                # placeholders (to be added in DESISpectra.read_and_unpack)
+                meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
+                for band in BANDS:
+                    meta['MW_TRANSMISSION_{}'.format(band)] = np.ones(shape=(1,), dtype='f4')
+                metas.append(meta)
+        elif self.datarelease == 'dr10':
+            # targeting and Tractor columns to read from disk
+            FIBERBANDS = ['G', 'R', 'I', 'Z']
+            BANDS = ['G', 'R', 'I', 'Z', 'W1', 'W2', 'W3', 'W4']
+            TARGETCOLS = ['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID']
+            for band in FIBERBANDS:
+                TARGETCOLS += [f'FIBERFLUX_{band}']
+            for band in FIBERBANDS:
+                TARGETCOLS += [f'FIBERTOTFLUX_{band}']
+            for band in BANDS:
+                TARGETCOLS += [f'FLUX_{band}']
+            for band in BANDS:
+                TARGETCOLS += [f'FLUX_IVAR_{band}']
+                
+            tractor = gather_tractorphot(input_meta, columns=TARGETCOLS, legacysurveydir=self.legacysurveydir)
+    
+            metas = []
+            for meta in self.meta:
+                srt = np.hstack([np.where(tid == tractor['TARGETID'])[0] for tid in meta['TARGETID']])
+                assert(np.all(meta['TARGETID'] == tractor['TARGETID'][srt]))
+                
+                # Add the tractor catalog quantities (overwriting columns if necessary).
+                for col in tractor.colnames:
+                    meta[col] = tractor[col][srt]
+                    
+                # placeholders (to be added in DESISpectra.read_and_unpack)
+                meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
+                for band in BANDS:
+                    meta['MW_TRANSMISSION_{}'.format(band)] = np.ones(shape=(1,), dtype='f4')    
+                metas.append(meta)
+        else:
+            pass
+                
+        return metas
 
 def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
                          data=None, log=None, fastphot=False, stackfit=False):
