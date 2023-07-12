@@ -90,7 +90,7 @@ def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot, log):
+def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot, photorelease, log):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
@@ -100,13 +100,27 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot,
     log.info('Pre-processing object {} [targetid {} z={:.6f}].'.format(
         iobj, meta['TARGETID'], meta['Z']))
 
-    if specdata['photsys'] == 'S':
+    if photorelease == 'dr9':
+        if specdata['photsys'] == 'S':
+            filters = Filters.decam
+            allfilters = Filters.decamwise
+        else:
+            filters = Filters.bassmzls
+            allfilters = Filters.bassmzlswise
+    elif photorelease == 'dr10':
         filters = Filters.decam
         allfilters = Filters.decamwise
+    elif photorelease == 'subaru-cosmos':
+        raise NotImplemented('subaru-cosmos in progress.')
     else:
-        filters = Filters.bassmzls
-        allfilters = Filters.bassmzlswise
-
+        # default to dr9
+        if specdata['photsys'] == 'S':
+            filters = Filters.decam
+            allfilters = Filters.decamwise
+        else:
+            filters = Filters.bassmzls
+            allfilters = Filters.bassmzlswise
+            
     RV = 3.1
         
     # Unpack the imaging photometry and correct for MW dust.
@@ -465,13 +479,6 @@ class DESISpectra(TabulatedDESI):
             self.fphotodir = os.environ.get('FPHOTO_DIR', FPHOTO_DIR_NERSC)
         else:
             self.fphotodir = fphotodir
-
-        # Get source of the photometry, defaulting to DR9.
-        self.datarelease = 'dr9'
-        if 'dr10' in self.fphotodir:
-            self.datarelease = 'dr10'
-        elif 'subaru-cosmos' in self.fphotodir:
-            self.datarelease = 'subaru-cosmos'
 
         if mapdir is None:
             self.mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
@@ -1020,9 +1027,7 @@ class DESISpectra(TabulatedDESI):
         from desiutil.dust import SFDMap
         from fastspecfit.continuum import ContinuumTools
 
-        pdb.set_trace()
-        
-        CTools = ContinuumTools()
+        CTools = ContinuumTools(photorelease=self.photorelease)
         SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
         alldata = []
@@ -1048,7 +1053,7 @@ class DESISpectra(TabulatedDESI):
                         'photsys': meta['PHOTSYS'][iobj],
                         'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], CTools, True, False, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], CTools, True, False, self.photorelease, log))
             else:
                 from desispec.resolution import Resolution
                 
@@ -1080,7 +1085,7 @@ class DESISpectra(TabulatedDESI):
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
                         'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :]),
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], CTools, fastphot, synthphot, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], CTools, fastphot, synthphot, self.photorelease, log))
                     
             if mp > 1:
                 import multiprocessing
@@ -1351,15 +1356,23 @@ class DESISpectra(TabulatedDESI):
         return alldata
 
     def _gather_photometry(self, specprod=None):
-        """Gather photometry according to the input data release string.
-    
+        """Gather photometry. Unfortunately some of the bandpass information here will
+        be repeated (and has to be consistent with) continuum.Fiters.
+
         """
         from astropy.table import vstack
         from desispec.io.photo import gather_tractorphot, gather_targetphot
     
         input_meta = vstack(self.meta).copy()
 
-        if self.datarelease == 'dr9':
+        # Get source of the photometry, defaulting to LS/DR9. Fragile...
+        self.photorelease = 'dr9'
+        if 'dr10' in self.fphotodir:
+            self.photorelease = 'dr10'
+        elif 'subaru-cosmos' in self.fphotodir:
+            self.photorelease = 'subaru-cosmos'
+
+        if self.photorelease == 'dr9':
             # targeting and Tractor columns to read from disk
             FIBERBANDS = ['G', 'R', 'Z']
             BANDS = ['G', 'R', 'Z', 'W1', 'W2', 'W3', 'W4']
@@ -1428,7 +1441,7 @@ class DESISpectra(TabulatedDESI):
                 for band in BANDS:
                     meta['MW_TRANSMISSION_{}'.format(band)] = np.ones(shape=(1,), dtype='f4')
                 metas.append(meta)
-        elif self.datarelease == 'dr10':
+        elif self.photorelease == 'dr10':
             # targeting and Tractor columns to read from disk
             FIBERBANDS = ['G', 'R', 'I', 'Z']
             BANDS = ['G', 'R', 'I', 'Z', 'W1', 'W2', 'W3', 'W4']
@@ -1458,6 +1471,8 @@ class DESISpectra(TabulatedDESI):
                 for band in BANDS:
                     meta['MW_TRANSMISSION_{}'.format(band)] = np.ones(shape=(1,), dtype='f4')    
                 metas.append(meta)
+        elif self.photorelease == 'subaru-cosmos':
+            raise NotImplemented('subaru-cosmos in progress.')
         else:
             pass
                 
