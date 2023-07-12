@@ -21,7 +21,7 @@ log = get_logger()
 # Default environment variables.
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
-LEGACYSURVEY_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
+PHOTO_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
 FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 # list of all possible targeting bit columns
@@ -433,7 +433,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, Filters, synthphot, log):
     return specdata, meta
 
 class DESISpectra(TabulatedDESI):
-    def __init__(self, redux_dir=None, fiberassign_dir=None, legacysurveydir=None, mapdir=None):
+    def __init__(self, redux_dir=None, fiberassign_dir=None, fphotodir=None, mapdir=None):
         """Class to read in DESI spectra and associated metadata.
 
         Parameters
@@ -461,16 +461,16 @@ class DESISpectra(TabulatedDESI):
         else:
             self.fiberassign_dir = fiberassign_dir
 
-        if legacysurveydir is None:
-            self.legacysurveydir = os.environ.get('LEGACYSURVEY_DIR', LEGACYSURVEY_DIR_NERSC)
+        if fphotodir is None:
+            self.fphotodir = os.environ.get('FPHOTO_DIR', FPHOTO_DIR_NERSC)
         else:
-            self.legacysurveydir = legacysurveydir
+            self.fphotodir = fphotodir
 
         # Get source of the photometry, defaulting to DR9.
         self.datarelease = 'dr9'
-        if 'dr10' in self.legacysurveydir:
+        if 'dr10' in self.fphotodir:
             self.datarelease = 'dr10'
-        elif 'subaru-cosmos' in self.legacysurveydir:
+        elif 'subaru-cosmos' in self.fphotodir:
             self.datarelease = 'subaru-cosmos'
 
         if mapdir is None:
@@ -1019,6 +1019,8 @@ class DESISpectra(TabulatedDESI):
         from desispec.io import read_spectra
         from desiutil.dust import SFDMap
         from fastspecfit.continuum import ContinuumTools
+
+        pdb.set_trace()
         
         CTools = ContinuumTools()
         SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
@@ -1371,7 +1373,7 @@ class DESISpectra(TabulatedDESI):
             for band in BANDS:
                 TARGETCOLS += [f'FLUX_IVAR_{band}']
                 
-            tractor = gather_tractorphot(input_meta, columns=TARGETCOLS, legacysurveydir=self.legacysurveydir)
+            tractor = gather_tractorphot(input_meta, columns=TARGETCOLS, legacysurveydir=self.fphotodir)
     
             metas = []
             for meta in self.meta:
@@ -1440,7 +1442,7 @@ class DESISpectra(TabulatedDESI):
             for band in BANDS:
                 TARGETCOLS += [f'FLUX_IVAR_{band}']
                 
-            tractor = gather_tractorphot(input_meta, columns=TARGETCOLS, legacysurveydir=self.legacysurveydir)
+            tractor = gather_tractorphot(input_meta, columns=TARGETCOLS, legacysurveydir=self.fphotodir)
     
             metas = []
             for meta in self.meta:

@@ -30,7 +30,7 @@ def parse(options=None):
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
-    parser.add_argument('--legacysurveydir', type=str, default=None, help='Optional directory name for the DR9 photometry.')
+    parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')    
 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
@@ -138,7 +138,7 @@ def main(args=None, comm=None):
     log.info('Building QA for {} objects.'.format(len(metadata)))
 
     # Initialize the I/O class.
-    Spec = DESISpectra(redux_dir=args.redux_dir, legacysurveydir=args.legacysurveydir, mapdir=args.mapdir)
+    Spec = DESISpectra(redux_dir=args.redux_dir, fphotodir=args.fphotodir, mapdir=args.mapdir)
 
     templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
 
