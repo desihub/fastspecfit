@@ -1737,7 +1737,7 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
 
         # Add specprod to the metadata table so that we can stack across
         # productions (e.g., Fuji+Guadalupe).
-        hdr = fitsio.read_header(fastfitfile, ext='PRIMARY')
+        hdr = fitsio.read_header(fastfitfile)#, ext='PRIMARY')
         if 'SPECPROD' in hdr:
             specprod = hdr['SPECPROD']
             meta['SPECPROD'] = specprod
