@@ -937,7 +937,7 @@ class DESISpectra(TabulatedDESI):
         # photometry. Note that we have to make a copy of the input_meta table
         # because otherwise BRICKNAME gets "repaired!"
         t0 = time.time()       
-        metas = self._gather_photometry()
+        metas = self._gather_photometry(specprod=specprod)
         self.meta = metas # update
         log.info('Gathered photometric metadata in {:.2f} sec'.format(time.time()-t0))
 
@@ -1350,7 +1350,7 @@ class DESISpectra(TabulatedDESI):
 
         return alldata
 
-    def _gather_photometry(self):
+    def _gather_photometry(self, specprod=None):
         """Gather photometry according to the input data release string.
     
         """
