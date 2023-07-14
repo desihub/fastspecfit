@@ -535,17 +535,19 @@ class Filters(object):
         
         if fphoto is not None:
             keys = fphoto.keys()
-            self.photoid = fphoto['photoid']
+            self.uniqueid = fphoto['uniqueid']
+            self.readcols = np.array(fphoto['readcols'])
             self.bands = np.array(fphoto['bands'])
+            self.fluxcols = np.array(fphoto['fluxcols'])
+            self.fluxivarcols = np.array(fphoto['fluxivarcols'])
             self.min_uncertainty = np.array(fphoto['min_uncertainty'])
+            
+            if 'legacysurveydr' in keys:
+                self.legacysurveydr = fphoto['legacysurveydr']
             if 'synth_bands' in keys:
                 self.synth_bands = np.array(fphoto['synth_bands'])
             if 'fiber_bands' in keys:
                 self.fiber_bands = np.array(fphoto['fiber_bands'])
-            if 'readcols' in keys:
-                self.readcols = np.array(fphoto['readcols'])
-            if 'legacysurveydr' in keys:
-                self.legacysurveydr = fphoto['legacysurveydr']
 
             if load_filters:
                 # If fphoto['filters'] is a dictionary, then assume that there
@@ -572,13 +574,20 @@ class Filters(object):
                     # Simple list of filters.
                     self.fiber_filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['fiber_filters']])
         else:
-            self.photoid = 'targetid'
-            self.legacysurveydr = 'dr9'
-            self.readcols = np.array(['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID'])
+            self.uniqueid = 'TARGETID'
+            self.readcols = np.array(['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID',
+                                      'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
+                                      'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z'])
             self.bands = np.array(['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'])
+            self.fluxcols = np.array(['FLUX_G', 'FLUX_R', 'FLUX_Z',
+                                      'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4'])
+            self.fluxivarcols = np.array(['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+                                          'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4'])
+            self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
+            
+            self.legacysurveydr = 'dr9'
             self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
             self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
-            self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
 
             if load_filters:
                 self.filters = {'N': filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4'),

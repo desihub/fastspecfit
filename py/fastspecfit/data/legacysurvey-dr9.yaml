@@ -4,7 +4,7 @@
 
 legacysurveydr: 'dr9'
 
-photoid: 'TARGETID'
+uniqueid: 'TARGETID'
 
 bands: ['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4']
 synth_bands: ['g', 'r', 'z']
@@ -27,4 +27,12 @@ fiber_filters: {
 
 min_uncertainty: [0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]
 
-readcols: ['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID']
+readcols: ['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID',
+           'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
+           'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z']
+
+fluxcols: ['FLUX_G', 'FLUX_R', 'FLUX_Z',
+           'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4']
+
+fluxivarcols: ['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
+               'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
