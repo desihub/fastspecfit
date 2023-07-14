@@ -527,60 +527,78 @@ def _convolve_vdisp(templateflux, vdisp, pixsize_kms):
     return smoothflux
 
 class Filters(object):
-    def __init__(self, photorelease='dr9', nophoto=False, load_filters=True):
+    def __init__(self, nophoto=False, fphoto=None, load_filters=True):
         """Class to load filters, dust, and filter- and dust-related methods.
 
         """
         from speclite import filters
+        
+        if fphoto is not None:
+            keys = fphoto.keys()
+            self.photoid = fphoto['photoid']
+            self.bands = np.array(fphoto['bands'])
+            self.min_uncertainty = np.array(fphoto['min_uncertainty'])
+            if 'synth_bands' in keys:
+                self.synth_bands = np.array(fphoto['synth_bands'])
+            if 'fiber_bands' in keys:
+                self.fiber_bands = np.array(fphoto['fiber_bands'])
+            if 'readcols' in keys:
+                self.readcols = np.array(fphoto['readcols'])
+            if 'legacysurveydr' in keys:
+                self.legacysurveydr = fphoto['legacysurveydr']
 
-        if photorelease == 'dr9':
+            if load_filters:
+                # If fphoto['filters'] is a dictionary, then assume that there
+                # are N/S filters (as indicated by photsys).
+                if type(fphoto['filters']) is dict:
+                    self.filters = {}
+                    for key in fphoto['filters'].keys():
+                        self.filters[key] = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['filters'][key]])
+                else:
+                    # Simple list of filters.
+                    self.filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['filters']])
+                if type(fphoto['synth_filters']) is dict:
+                    self.synth_filters = {}
+                    for key in fphoto['synth_filters'].keys():
+                        self.synth_filters[key] = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['synth_filters'][key]])
+                else:
+                    # Simple list of filters.
+                    self.synth_filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['synth_filters']])
+                if type(fphoto['fiber_filters']) is dict:
+                    self.fiber_filters = {}
+                    for key in fphoto['fiber_filters'].keys():
+                        self.fiber_filters[key] = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['fiber_filters'][key]])
+                else:
+                    # Simple list of filters.
+                    self.fiber_filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['fiber_filters']])
+        else:
+            self.photoid = 'targetid'
+            self.legacysurveydr = 'dr9'
+            self.readcols = np.array(['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID'])
             self.bands = np.array(['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'])
             self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
             self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
-        elif photorelease == 'dr10':
-            self.bands = np.array(['g', 'r', 'i', 'z', 'W1', 'W2', 'W3', 'W4'])
-            self.synth_bands = np.array(['g', 'i', 'r', 'z']) # for synthesized photometry
-            self.fiber_bands = np.array(['g', 'i', 'r', 'z']) # for fiber fluxes
-        elif photorelease == 'subaru-cosmos':
-            raise NotImplemented('subaru-cosmos in progress.')
-        else:
-            # default to dr9
-            self.bands = np.array(['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'])
-            self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
-            self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
+            self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
 
-        # Do not fit the photometry.
-        if nophoto:
-            self.bands_to_fit = np.zeros(len(self.bands), bool)
-        else:
-            self.bands_to_fit = np.ones(len(self.bands), bool)            
-        #for B in ['W2', 'W3', 'W4']:
-        #    self.bands_to_fit[self.bands == B] = False # drop W2-W4
+            if load_filters:
+                self.filters = {'N': filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4'),
+                                'S': filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')}
+                self.synth_filters = {'N': filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z'),
+                                      'S': filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')}
+                self.fiber_filters = self.synth_filters
+                
+                #self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
+                #self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
+                #self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z'),
+                #self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
+                #self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
 
         # rest-frame filters
         self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1', 'W2']
         self.absmag_bands_00 = ['U', 'B', 'V', 'W1', 'W2'] # band_shift=0.0
         self.absmag_bands_01 = ['sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z'] # band_shift=0.1
-
-        self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
-
+        
         if load_filters:
-            if photorelease == 'dr9':
-                self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
-                self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z')
-                self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
-                self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
-            elif photorelease == 'dr10':
-                self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-i', 'decam2014-z')
-                self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-i', 'decam2014-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
-            elif photorelease == 'subaru-cosmos':
-                raise NotImplemented('subaru-cosmos in progress.')
-            else:
-                self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
-                self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z')
-                self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
-                self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
-
             self.absmag_filters_00 = filters.FilterSequence((
                 filters.load_filter('bessell-U'), filters.load_filter('bessell-B'),
                 filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1'),
@@ -594,6 +612,14 @@ class Filters(object):
                 filters.load_filter('sdss2010-i'),
                 filters.load_filter('sdss2010-z'),
                 ))
+
+        # Do not fit the photometry.
+        if nophoto:
+            self.bands_to_fit = np.zeros(len(self.bands), bool)
+        else:
+            self.bands_to_fit = np.ones(len(self.bands), bool)            
+        #for B in ['W2', 'W3', 'W4']:
+        #    self.bands_to_fit[self.bands == B] = False # drop W2-W4
 
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
@@ -852,10 +878,9 @@ class ContinuumTools(Filters):
         Need to document all the attributes.
 
     """
-    def __init__(self, photorelease='dr9', nophoto=False, continuum_pixkms=25.0,
-                 pixkms_wavesplit=1e4):
+    def __init__(self, nophoto=False, fphoto=None, continuum_pixkms=25.0, pixkms_wavesplit=1e4):
 
-        super(ContinuumTools, self).__init__(photorelease=photorelease, nophoto=nophoto)
+        super(ContinuumTools, self).__init__(nophoto=nophoto, fphoto=fphoto)
         
         from fastspecfit.emlines import read_emlines
         
