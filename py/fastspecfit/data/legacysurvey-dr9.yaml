@@ -1,0 +1,30 @@
+# DR9 photometric parameter file
+
+# Required rows: bands, filters, min_uncertainty.
+
+legacysurveydr: 'dr9'
+
+photoid: 'TARGETID'
+
+bands: ['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4']
+synth_bands: ['g', 'r', 'z']
+fiber_bands: ['g', 'r', 'z']
+
+filters: {
+  N: ['BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4'],
+  S: ['decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4'],
+}
+
+synth_filters: {
+  N: ['BASS-g', 'BASS-r', 'MzLS-z'],
+  S: ['decam2014-g', 'decam2014-r', 'decam2014-z'],
+}
+
+fiber_filters: {
+  N: ['BASS-g', 'BASS-r', 'MzLS-z'],
+  S: ['decam2014-g', 'decam2014-r', 'decam2014-z'],
+}
+
+min_uncertainty: [0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]
+
+readcols: ['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID']
