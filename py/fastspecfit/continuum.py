@@ -538,6 +538,7 @@ class Filters(object):
             self.uniqueid = fphoto['uniqueid']
             self.photounits = fphoto['photounits']
             self.readcols = np.array(fphoto['readcols'])
+            self.outcols = np.array(fphoto['outcols'])
             self.bands = np.array(fphoto['bands'])
             self.bands_to_fit = np.array(fphoto['bands_to_fit'])
             self.fluxcols = np.array(fphoto['fluxcols'])
@@ -597,6 +598,7 @@ class Filters(object):
             self.readcols = np.array(['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID',
                                       'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
                                       'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z'])
+            self.outcols = np.array(['PHOTSYS', 'LS_ID'])
             self.bands = np.array(['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'])
             self.bands_to_fit = np.ones(len(self.bands), bool)
             self.fluxcols = np.array(['FLUX_G', 'FLUX_R', 'FLUX_Z',
@@ -646,6 +648,11 @@ class Filters(object):
         #        filters.load_filter('sdss2010-i'),
         #        filters.load_filter('sdss2010-z'),
         #        ))
+
+        if self.photounits != 'nanomaggies':
+            errmsg = 'nanomaggies is the only currently supported photometric unit!'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
         # Do not fit the photometry.
         if nophoto:

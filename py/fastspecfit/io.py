@@ -1556,29 +1556,23 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
     if stackfit:
         fluxcols = ['PHOTSYS']
     else:
-        fluxcols = ['PHOTSYS', 'LS_ID',
-                    #'RELEASE',
-                    'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
-                    'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
-                    'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4',
-                    'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
-                    'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4',
-                    'EBV',
-                    'MW_TRANSMISSION_G', 'MW_TRANSMISSION_R', 'MW_TRANSMISSION_Z',
-                    'MW_TRANSMISSION_W1', 'MW_TRANSMISSION_W2', 'MW_TRANSMISSION_W3', 'MW_TRANSMISSION_W4']
-        
-    colunit = {'RA': u.deg, 'DEC': u.deg, 'EBV': u.mag,
-               'FIBERFLUX_G': 'nanomaggies', 'FIBERFLUX_R': 'nanomaggies', 'FIBERFLUX_Z': 'nanomaggies',
-               'FIBERTOTFLUX_G': 'nanomaggies', 'FIBERTOTFLUX_R': 'nanomaggies', 'FIBERTOTFLUX_Z': 'nanomaggies',
-               'FLUX_G': 'nanomaggies', 'FLUX_R': 'nanomaggies', 'FLUX_Z': 'nanomaggies',
-               'FLUX_W1': 'nanomaggies', 'FLUX_W2': 'nanomaggies', 'FLUX_W3': 'nanomaggies', 'FLUX_W4': 'nanomaggies', 
-               'FLUX_IVAR_G': 'nanomaggies-2', 'FLUX_IVAR_R': 'nanomaggies-2',
-               'FLUX_IVAR_Z': 'nanomaggies-2', 'FLUX_IVAR_W1': 'nanomaggies-2',
-               'FLUX_IVAR_W2': 'nanomaggies-2', 'FLUX_IVAR_W3': 'nanomaggies-2',
-               'FLUX_IVAR_W4': 'nanomaggies-2',
-               }
+        fluxcols = fphoto['outcols']
+        if 'legacysurveydr' in fphoto.keys():
+            fluxcols = np.hstack((fluxcols, ['FIBERFLUX_{}'.format(band.upper()) for band in fphoto['fiber_bands']]))
+            fluxcols = np.hstack((fluxcols, ['FIBERTOTFLUX_{}'.format(band.upper()) for band in fphoto['fiber_bands']]))
+        fluxcols = np.hstack((fluxcols, fphoto['fluxcols'], fphoto['fluxivarcols'], ['EBV']))
+        fluxcols = np.hstack((fluxcols, ['MW_TRANSMISSION_{}'.format(band.upper()) for band in fphoto['bands']]))
 
-    skipcols = ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE'] + fluxcols
+    colunit = {'RA': u.deg, 'DEC': u.deg, 'EBV': u.mag}
+    for fcol, icol in zip(fphoto['fluxcols'], fphoto['fluxivarcols']):
+        colunit[fcol.upper()] = fphoto['photounits']
+        colunit[icol.upper()] = '{}-2'.format(fphoto['photounits'])
+    if 'legacysurveydr' in fphoto.keys():
+        for band in fphoto['fiber_bands']:
+            colunit['FIBERFLUX_{}'.format(band.upper())] = fphoto['photounits']
+            colunit['FIBERTOTFLUX_{}'.format(band.upper())] = fphoto['photounits']
+
+    skipcols = np.hstack((['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE'], fluxcols))
 
     if stackfit:
         redrockcols = ['Z']

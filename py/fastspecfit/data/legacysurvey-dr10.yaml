@@ -25,6 +25,8 @@ readcols: ['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID',
             'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_I', 'FIBERFLUX_Z',
             'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_I', 'FIBERTOTFLUX_Z']
 
+outcols: ['PHOTSYS', 'LS_ID']
+
 fluxcols: ['FLUX_G', 'FLUX_R', 'FLUX_I', 'FLUX_Z',
            'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4']
 
