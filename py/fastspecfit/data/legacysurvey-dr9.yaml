@@ -6,9 +6,12 @@ legacysurveydr: 'dr9'
 
 uniqueid: 'TARGETID'
 
+photounits: 'nanomaggies'
+
 bands: ['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4']
 synth_bands: ['g', 'r', 'z']
 fiber_bands: ['g', 'r', 'z']
+bands_to_fit: [True, True, True, True, True, True, True]
 
 filters: {
   N: ['BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4'],
@@ -36,3 +39,11 @@ fluxcols: ['FLUX_G', 'FLUX_R', 'FLUX_Z',
 
 fluxivarcols: ['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
                'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
+
+absmag_bands: ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1', 'W2']
+
+band_shift: [0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0]
+
+absmag_filters: ['bessell-U', 'bessell-B', 'bessell-V', 
+                 'sdss2010-u', 'sdss2010-g', 'sdss2010-r', 'sdss2010-i', 'sdss2010-z',
+                 'wise2010-W1', 'wise2010-W2']

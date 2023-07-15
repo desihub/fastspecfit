@@ -21,7 +21,7 @@ log = get_logger()
 # Default environment variables.
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
-PHOTO_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
+FPHOTO_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
 FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 # list of all possible targeting bit columns
@@ -104,14 +104,16 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot,
     # DR9 or DR10
     if hasattr(Filters, 'legacysurveydr'):
         legacysurveydr = Filters.legacysurveydr
-
         filters = Filters.filters[specdata['photsys']]
+        synth_filters = Filters.synth_filters[specdata['photsys']]
         fiber_filters = Filters.fiber_filters[specdata['photsys']]
     else:
         legacysurveydr = None
         filters = Filters.filters
-        if hasattr(Filters, 'fiber_filters'):
-            fiber_filters = Filters.fiber_filters
+        if hasattr(Filters, 'synth_filters'):
+            synth_filters = Filters.synth_filters
+        else:
+            synth_filters = None
         
     # Unpack the imaging photometry and correct for MW dust.
     if legacysurveydr:
@@ -283,9 +285,9 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot,
                          'coadd_linemask_all': coadd_linemask_dict['linemask_all']})
     
         # Optionally synthesize photometry from the coadded spectrum.
-        if synthphot:
-            padflux, padwave = filters.pad_spectrum(specdata['coadd_flux'], specdata['coadd_wave'], method='edge')
-            synthmaggies = filters.get_ab_maggies(padflux / FLUXNORM, padwave)
+        if synthphot and synth_filters is not None:
+            padflux, padwave = synth_filters.pad_spectrum(specdata['coadd_flux'], specdata['coadd_wave'], method='edge')
+            synthmaggies = synth_filters.get_ab_maggies(padflux / FLUXNORM, padwave)
             synthmaggies = synthmaggies.as_array().view('f8')
     
             # code to synthesize uncertainties from the variance spectrum
@@ -297,10 +299,9 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot,
             #specdata['synthphot'] = Filters.parse_photometry(Filters.bands,
             #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
             #    ivarmaggies=synthivarmaggies, nanomaggies=False, log=log)
-    
-            specdata['synthphot'] = Filters.parse_photometry(Filters.synth_bands,
-                maggies=synthmaggies, nanomaggies=False,
-                lambda_eff=filters.effective_wavelengths.value, log=log)
+            specdata['synthphot'] = Filters.parse_photometry(
+                Filters.synth_bands, maggies=synthmaggies, nanomaggies=False,
+                lambda_eff=synth_filters.effective_wavelengths.value, log=log)
 
     return specdata, meta
 
@@ -485,8 +486,20 @@ class DESISpectra(TabulatedDESI):
             from pkg_resources import resource_filename
             fphotoinfo = resource_filename('fastspecfit', 'data/legacysurvey-dr9.yaml')
 
-        with open(fphotoinfo, 'r') as F:
-            fphoto = yaml.safe_load(F)
+        try:
+            with open(fphotoinfo, 'r') as F:
+                fphoto = yaml.safe_load(F)
+                #_fphoto = yaml.safe_load(F)
+            #class duck(object):
+            #    pass
+            #fphoto = duck()
+            #for key in _fphoto.keys():
+            #    setattr(fphoto, key, _fphoto[key])
+        except:
+            errmsg = f'Unable to read parameter file {fphotoinfo}'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
         self.fphoto = fphoto
 
         if mapdir is None:
@@ -951,7 +964,7 @@ class DESISpectra(TabulatedDESI):
         # Use the metadata in the fibermap to retrieve the LS-DR9 source
         # photometry. Note that we have to make a copy of the input_meta table
         # because otherwise BRICKNAME gets "repaired!"
-        t0 = time.time()       
+        t0 = time.time()  
         metas = self._gather_photometry(specprod=specprod)
         self.meta = metas # update
         log.info('Gathered photometric metadata in {:.2f} sec'.format(time.time()-t0))
@@ -1390,9 +1403,9 @@ class DESISpectra(TabulatedDESI):
 
             # targeting and Tractor columns to read from disk
             tractor = gather_tractorphot(input_meta, columns=PHOTCOLS, legacysurveydir=self.fphotodir)
-            
+
             # DR9-specific stuff
-            if legacysurveydr.lower() == 'dr9':
+            if legacysurveydr.lower() == 'dr9' or legacysurveydr.lower() == 'dr10':
                 metas = []
                 for meta in self.meta:
                     srt = np.hstack([np.where(tid == tractor[F.uniqueid])[0] for tid in meta[F.uniqueid]])
@@ -1447,29 +1460,29 @@ class DESISpectra(TabulatedDESI):
                         meta['MW_TRANSMISSION_{}'.format(band.upper())] = np.ones(shape=(1,), dtype='f4')
                         
                     metas.append(meta)
-            elif legacysurveydr.lower() == 'dr10':
-                metas = []
-                for meta in self.meta:
-                    srt = np.hstack([np.where(tid == tractor[F.uniqueid])[0] for tid in meta[F.uniqueid]])
-                    assert(np.all(meta[F.uniqueid] == tractor[F.uniqueid][srt]))
-                    
-                    # Add the tractor catalog quantities (overwriting columns if necessary).
-                    for col in tractor.colnames:
-                        meta[col] = tractor[col][srt]
-
-                    # add photsys
-                    meta['PHOTSYS'] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE']]
-                    if np.any(meta['PHOTSYS'] != 'S') > 0:
-                        errmsg = 'Unsupported value of PHOTSYS.'
-                        log.critical(errmsg)
-                        raise ValueError(errmsg)
-                        
-                    # placeholders (to be added in DESISpectra.read_and_unpack)
-                    meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
-                    for band in F.bands:
-                        meta['MW_TRANSMISSION_{}'.format(band.upper())] = np.ones(shape=(1,), dtype='f4')
-                        
-                    metas.append(meta)
+            #elif legacysurveydr.lower() == 'dr10':
+            #    metas = []
+            #    for meta in self.meta:
+            #        srt = np.hstack([np.where(tid == tractor[F.uniqueid])[0] for tid in meta[F.uniqueid]])
+            #        assert(np.all(meta[F.uniqueid] == tractor[F.uniqueid][srt]))
+            #        
+            #        # Add the tractor catalog quantities (overwriting columns if necessary).
+            #        for col in tractor.colnames:
+            #            meta[col] = tractor[col][srt]
+            #
+            #        # add photsys
+            #        meta['PHOTSYS'] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE']]
+            #        if np.any(meta['PHOTSYS'] != 'S') > 0:
+            #            errmsg = 'Unsupported value of PHOTSYS.'
+            #            log.critical(errmsg)
+            #            raise ValueError(errmsg)
+            #            
+            #        # placeholders (to be added in DESISpectra.read_and_unpack)
+            #        meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
+            #        for band in F.bands:
+            #            meta['MW_TRANSMISSION_{}'.format(band.upper())] = np.ones(shape=(1,), dtype='f4')
+            #            
+            #        metas.append(meta)
         else:
             raise NotImplemented()
             phot = Table(fitsio.read(self.fphotodir, columns=PHOTCOLS))
@@ -1485,8 +1498,9 @@ class DESISpectra(TabulatedDESI):
         
         return metas
 
-def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
-                         data=None, log=None, fastphot=False, stackfit=False):
+def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None, 
+                         ncoeff=None, data=None, log=None, fastphot=False, 
+                         stackfit=False):
     """Initialize the fastspecfit output data and metadata table.
 
     Parameters
@@ -1520,7 +1534,10 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
         log = get_logger()
 
     linetable = read_emlines()
-    Filt = Filters(load_filters=False)
+
+    if fphoto is None:
+        Filt = Filters(load_filters=False)
+        fphoto = Filt.__dict__
 
     nobj = len(input_meta)
 
@@ -1673,17 +1690,17 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
 
     if not fastphot:
         # observed-frame photometry synthesized from the spectra
-        for band in Filt.synth_bands:
+        for band in fphoto['synth_bands']:
             out.add_column(Column(name='FLUX_SYNTH_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies')) 
             #out.add_column(Column(name='FLUX_SYNTH_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies-2'))
         # observed-frame photometry synthesized the best-fitting spectroscopic model
-        for band in Filt.synth_bands:
+        for band in fphoto['synth_bands']:
             out.add_column(Column(name='FLUX_SYNTH_SPECMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
     # observed-frame photometry synthesized the best-fitting continuum model
-    for band in Filt.bands:
+    for band in fphoto['bands']:
         out.add_column(Column(name='FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
 
-    for band in Filt.absmag_bands:
+    for band in fphoto['absmag_bands']:
         out.add_column(Column(name='KCORR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag))
         out.add_column(Column(name='ABSMAG_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag)) # absolute magnitudes
         out.add_column(Column(name='ABSMAG_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.mag**2))
@@ -1772,10 +1789,10 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
                 for icam, cam in enumerate(_data['cameras']):
                     out['SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
             if not stackfit:
-                for iband, band in enumerate(Filt.fiber_bands):
+                for iband, band in enumerate(fphoto['fiber_bands']):
                     meta['FIBERTOTFLUX_{}'.format(band.upper())][iobj] = _data['fiberphot']['nanomaggies'][iband]
                     #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
-                for iband, band in enumerate(Filt.bands):
+                for iband, band in enumerate(fphoto['bands']):
                     meta['FLUX_{}'.format(band.upper())][iobj] = _data['phot']['nanomaggies'][iband]
                     meta['FLUX_IVAR_{}'.format(band.upper())][iobj] = _data['phot']['nanomaggies_ivar'][iband]
 

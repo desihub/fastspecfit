@@ -219,8 +219,11 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     else:
         templates = args.templates
 
-    out, meta = init_fastspec_output(Spec.meta, Spec.specprod, templates=templates,
-                                     data=data, log=log, fastphot=fastphot, stackfit=stackfit)
+    out, meta = init_fastspec_output(Spec.meta, Spec.specprod, fphoto=Spec.fphoto, 
+                                     templates=templates, data=data, log=log, 
+                                     fastphot=fastphot, stackfit=stackfit)
+
+    pdb.set_trace()
 
     # Fit in parallel
     t0 = time.time()

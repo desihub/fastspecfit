@@ -536,8 +536,10 @@ class Filters(object):
         if fphoto is not None:
             keys = fphoto.keys()
             self.uniqueid = fphoto['uniqueid']
+            self.photounits = fphoto['photounits']
             self.readcols = np.array(fphoto['readcols'])
             self.bands = np.array(fphoto['bands'])
+            self.bands_to_fit = np.array(fphoto['bands_to_fit'])
             self.fluxcols = np.array(fphoto['fluxcols'])
             self.fluxivarcols = np.array(fphoto['fluxivarcols'])
             self.min_uncertainty = np.array(fphoto['min_uncertainty'])
@@ -549,36 +551,54 @@ class Filters(object):
             if 'fiber_bands' in keys:
                 self.fiber_bands = np.array(fphoto['fiber_bands'])
 
+            self.absmag_bands = np.array(fphoto['absmag_bands'])
+            self.band_shift = np.array(fphoto['band_shift'])
+
             if load_filters:
                 # If fphoto['filters'] is a dictionary, then assume that there
                 # are N/S filters (as indicated by photsys).
                 if type(fphoto['filters']) is dict:
                     self.filters = {}
                     for key in fphoto['filters'].keys():
-                        self.filters[key] = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['filters'][key]])
+                        self.filters[key] = filters.FilterSequence([filters.load_filter(filtname)
+                                                                    for filtname in fphoto['filters'][key]])
                 else:
                     # Simple list of filters.
-                    self.filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['filters']])
+                    self.filters = filters.FilterSequence([filters.load_filter(filtname)
+                                                           for filtname in fphoto['filters']])
                 if type(fphoto['synth_filters']) is dict:
                     self.synth_filters = {}
                     for key in fphoto['synth_filters'].keys():
-                        self.synth_filters[key] = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['synth_filters'][key]])
+                        self.synth_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
+                                                                          for filtname in fphoto['synth_filters'][key]])
                 else:
                     # Simple list of filters.
-                    self.synth_filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['synth_filters']])
+                    self.synth_filters = filters.FilterSequence([filters.load_filter(filtname)
+                                                                 for filtname in fphoto['synth_filters']])
                 if type(fphoto['fiber_filters']) is dict:
                     self.fiber_filters = {}
                     for key in fphoto['fiber_filters'].keys():
-                        self.fiber_filters[key] = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['fiber_filters'][key]])
+                        self.fiber_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
+                                                                          for filtname in fphoto['fiber_filters'][key]])
                 else:
                     # Simple list of filters.
-                    self.fiber_filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['fiber_filters']])
+                    self.fiber_filters = filters.FilterSequence([filters.load_filter(filtname)
+                                                                 for filtname in fphoto['fiber_filters']])
+
+                # Simple list of filters.
+                self.absmag_filters = filters.FilterSequence([filters.load_filter(filtname)
+                                                              for filtname in fphoto['absmag_filters']])
+
         else:
+            # This should never happen in production because we read the default
+            # fphoto file in io.DESISpectra.__init__.
             self.uniqueid = 'TARGETID'
+            self.photounits = 'nanomaggies'
             self.readcols = np.array(['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID',
                                       'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
                                       'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z'])
             self.bands = np.array(['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'])
+            self.bands_to_fit = np.ones(len(self.bands), bool)
             self.fluxcols = np.array(['FLUX_G', 'FLUX_R', 'FLUX_Z',
                                       'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4'])
             self.fluxivarcols = np.array(['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z',
@@ -589,46 +609,47 @@ class Filters(object):
             self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
             self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
 
+            self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1', 'W2']
+            self.band_shift = [0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0]
+
             if load_filters:
-                self.filters = {'N': filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4'),
-                                'S': filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')}
+                self.filters = {'N': filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z', 
+                                                          'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4'),
+                                'S': filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z', 
+                                                          'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')}
                 self.synth_filters = {'N': filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z'),
                                       'S': filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')}
-                self.fiber_filters = self.synth_filters
-                
-                #self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
-                #self.decam = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')
-                #self.bassmzls = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z'),
-                #self.decamwise = filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
-                #self.bassmzlswise = filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z', 'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')
+                #self.fiber_filters = self.synth_filters
 
-        # rest-frame filters
-        self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1', 'W2']
-        self.absmag_bands_00 = ['U', 'B', 'V', 'W1', 'W2'] # band_shift=0.0
-        self.absmag_bands_01 = ['sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z'] # band_shift=0.1
+                self.absmag_filters = filters.FilterSequence((
+                    filters.load_filter('bessell-U'), filters.load_filter('bessell-B'), filters.load_filter('bessell-V'), 
+                    filters.load_filter('sdss2010-u'), filters.load_filter('sdss2010-g'), filters.load_filter('sdss2010-r'),
+                    filters.load_filter('sdss2010-i'), filters.load_filter('sdss2010-z'),
+                    filters.load_filter('wise2010-W1'), filters.load_filter('wise2010-W2')))
+
+        ## rest-frame filters
+        #self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1', 'W2']
+        #self.absmag_bands_00 = ['U', 'B', 'V', 'W1', 'W2'] # band_shift=0.0
+        #self.absmag_bands_01 = ['sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z'] # band_shift=0.1
         
-        if load_filters:
-            self.absmag_filters_00 = filters.FilterSequence((
-                filters.load_filter('bessell-U'), filters.load_filter('bessell-B'),
-                filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1'),
-                filters.load_filter('wise2010-W2'),
-                ))
-            
-            self.absmag_filters_01 = filters.FilterSequence((
-                filters.load_filter('sdss2010-u'),
-                filters.load_filter('sdss2010-g'),
-                filters.load_filter('sdss2010-r'),
-                filters.load_filter('sdss2010-i'),
-                filters.load_filter('sdss2010-z'),
-                ))
+        #if load_filters:
+        #    self.absmag_filters_00 = filters.FilterSequence((
+        #        filters.load_filter('bessell-U'), filters.load_filter('bessell-B'),
+        #        filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1'),
+        #        filters.load_filter('wise2010-W2'),
+        #        ))
+        #    
+        #    self.absmag_filters_01 = filters.FilterSequence((
+        #        filters.load_filter('sdss2010-u'),
+        #        filters.load_filter('sdss2010-g'),
+        #        filters.load_filter('sdss2010-r'),
+        #        filters.load_filter('sdss2010-i'),
+        #        filters.load_filter('sdss2010-z'),
+        #        ))
 
         # Do not fit the photometry.
         if nophoto:
-            self.bands_to_fit = np.zeros(len(self.bands), bool)
-        else:
-            self.bands_to_fit = np.ones(len(self.bands), bool)            
-        #for B in ['W2', 'W3', 'W4']:
-        #    self.bands_to_fit[self.bands == B] = False # drop W2-W4
+            self.bands_to_fit *= 0
 
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
