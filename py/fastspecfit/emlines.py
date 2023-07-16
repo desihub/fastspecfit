@@ -19,9 +19,8 @@ def read_emlines():
     """Read the set of emission lines of interest.
 
     """
-    from pkg_resources import resource_filename
-    
-    linefile = resource_filename('fastspecfit', 'data/emlines.ecsv')    
+    from importlib import resources
+    linefile = resources.files('fastspecfit').joinpath('data/emlines.ecsv')
     linetable = Table.read(linefile, format='ascii.ecsv', guess=False)
     
     return linetable    

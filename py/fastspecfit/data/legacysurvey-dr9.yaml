@@ -1,7 +1,5 @@
 # DR9 photometric parameter file
 
-# Required rows: bands, filters, min_uncertainty.
-
 legacysurveydr: 'dr9'
 
 uniqueid: 'TARGETID'

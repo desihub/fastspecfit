@@ -483,18 +483,12 @@ class DESISpectra(TabulatedDESI):
             self.fphotodir = fphotodir
 
         if fphotoinfo is None:
-            from pkg_resources import resource_filename
-            fphotoinfo = resource_filename('fastspecfit', 'data/legacysurvey-dr9.yaml')
+            from importlib import resources
+            fphotoinfo = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
 
         try:
             with open(fphotoinfo, 'r') as F:
                 fphoto = yaml.safe_load(F)
-                #_fphoto = yaml.safe_load(F)
-            #class duck(object):
-            #    pass
-            #fphoto = duck()
-            #for key in _fphoto.keys():
-            #    setattr(fphoto, key, _fphoto[key])
         except:
             errmsg = f'Unable to read parameter file {fphotoinfo}'
             log.critical(errmsg)
@@ -1556,7 +1550,9 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
     if stackfit:
         fluxcols = ['PHOTSYS']
     else:
-        fluxcols = fphoto['outcols']
+        fluxcols = []
+        if 'outcols' in fphoto.keys():
+            fluxcols = fphoto['outcols']
         if 'legacysurveydr' in fphoto.keys():
             fluxcols = np.hstack((fluxcols, ['FIBERFLUX_{}'.format(band.upper()) for band in fphoto['fiber_bands']]))
             fluxcols = np.hstack((fluxcols, ['FIBERTOTFLUX_{}'.format(band.upper()) for band in fphoto['fiber_bands']]))
