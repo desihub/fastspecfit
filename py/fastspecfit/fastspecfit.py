@@ -67,7 +67,7 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
         emmodel = None
     else:
         emmodel = emline_specfit(data, templatecache, out, continuummodel, smooth_continuum,
-                                 minspecwave=minspecwave, maxspecwave=maxspecwave,
+                                 minspecwave=minspecwave, maxspecwave=maxspecwave, fphoto=fphoto, 
                                  broadlinefit=broadlinefit, percamera_models=percamera_models,
                                  log=log)
         

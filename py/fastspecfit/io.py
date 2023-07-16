@@ -95,43 +95,26 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot,
     flag pixels which may be affected by emission lines.
 
     """
+    from fastspecfit.util import mwdust_transmission
+
     log.info('Pre-processing object {} [targetid {} z={:.6f}].'.format(
         iobj, meta[Filters.uniqueid], meta['Z']))
 
     RV = 3.1
     meta['EBV'] = ebv
     
-    # DR9 or DR10
-    if hasattr(Filters, 'legacysurveydr'):
-        legacysurveydr = Filters.legacysurveydr
-        filters = Filters.filters[specdata['photsys']]
-        synth_filters = Filters.synth_filters[specdata['photsys']]
+    filters = Filters.filters[specdata['photsys']]
+    synth_filters = Filters.synth_filters[specdata['photsys']]
+    if hasattr(Filters, 'fiber_filters'):
         fiber_filters = Filters.fiber_filters[specdata['photsys']]
     else:
-        legacysurveydr = None
-        filters = Filters.filters
-        if hasattr(Filters, 'synth_filters'):
-            synth_filters = Filters.synth_filters
-        else:
-            synth_filters = None
+        fiber_filters = None
         
     # Unpack the imaging photometry and correct for MW dust.
-    if legacysurveydr:
-        from fastspecfit.util import mwdust_transmission
-
-        #from desiutil.dust import mwdust_transmission
-        #from desiutil.dust import ext_odonnell
-        #mw_transmission_fiberflux = np.ones(len(Filters.fiber_bands))
-        #mw_transmission_fiberflux = 10**(-0.4 * ebv * RV * ext_odonnell(filters.effective_wavelengths.value, Rv=RV))
-
-        # Do not match the Legacy Surveys here because we want the MW
-        # dust extinction correction we apply to the spectra to be
-        # self-consistent with how we correct the photometry for dust.
-        
+    if fiber_filters is not None:
         # fiber fluxes
-        mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, band, photsys=specdata['photsys'],
-                                                                  match_legacy_surveys=False)
-                                                                  for band in Filters.fiber_bands])
+        mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, filtername) for filtername in
+                                                                  Filters.fiber_filters[specdata['photsys']].names])
         fibermaggies = np.zeros(len(Filters.fiber_bands))
         fibertotmaggies = np.zeros(len(Filters.fiber_bands))
         #ivarfibermaggies = np.zeros(len(Filters.fiber_bands))
@@ -148,12 +131,8 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot,
             lambda_eff=fiber_filters.effective_wavelengths.value, log=log)
 
     # total fluxes
-    #mw_transmission_fiberflux = np.ones(len(Filters.bands))
-    #mw_transmission_flux = 10**(-0.4 * ebv * RV * ext_odonnell(filters.effective_wavelengths.value, Rv=RV))
-
-    mw_transmission_flux = np.array([mwdust_transmission(ebv, band, photsys=specdata['photsys'],
-                                                         match_legacy_surveys=False)
-                                                         for band in Filters.bands])
+    mw_transmission_flux = np.array([mwdust_transmission(ebv, filtername) for filtername in 
+                                     Filters.filters[specdata['photsys']].names])
     for band, mwdust in zip(Filters.bands, mw_transmission_flux):
         meta['MW_TRANSMISSION_{}'.format(band.upper())] = mwdust
             
@@ -1454,41 +1433,22 @@ class DESISpectra(TabulatedDESI):
                         meta['MW_TRANSMISSION_{}'.format(band.upper())] = np.ones(shape=(1,), dtype='f4')
                         
                     metas.append(meta)
-            #elif legacysurveydr.lower() == 'dr10':
-            #    metas = []
-            #    for meta in self.meta:
-            #        srt = np.hstack([np.where(tid == tractor[F.uniqueid])[0] for tid in meta[F.uniqueid]])
-            #        assert(np.all(meta[F.uniqueid] == tractor[F.uniqueid][srt]))
-            #        
-            #        # Add the tractor catalog quantities (overwriting columns if necessary).
-            #        for col in tractor.colnames:
-            #            meta[col] = tractor[col][srt]
-            #
-            #        # add photsys
-            #        meta['PHOTSYS'] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE']]
-            #        if np.any(meta['PHOTSYS'] != 'S') > 0:
-            #            errmsg = 'Unsupported value of PHOTSYS.'
-            #            log.critical(errmsg)
-            #            raise ValueError(errmsg)
-            #            
-            #        # placeholders (to be added in DESISpectra.read_and_unpack)
-            #        meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
-            #        for band in F.bands:
-            #            meta['MW_TRANSMISSION_{}'.format(band.upper())] = np.ones(shape=(1,), dtype='f4')
-            #            
-            #        metas.append(meta)
         else:
-            raise NotImplemented()
             phot = Table(fitsio.read(self.fphotodir, columns=PHOTCOLS))
+            print('Read {} objects from {}'.format(len(phot), self.fphotodir))
 
-            for col in phot.colnames:
-                meta[col] = phot[col][srt]
+            metas = []
+            for meta in self.meta:
+                srt = np.hstack([np.where(tid == phot[F.uniqueid])[0] for tid in meta[F.uniqueid]])
+                assert(np.all(meta[F.uniqueid] == phot[F.uniqueid][srt]))
+                for col in phot.colnames:
+                    meta[col] = phot[col][srt]
                 
-            # placeholders (to be added in DESISpectra.read_and_unpack)
-            meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
-            for band in F.bands:
-                meta['MW_TRANSMISSION_{}'.format(band.upper())] = np.ones(shape=(1,), dtype='f4')
-            metas.append(meta)
+                # placeholders (to be added in DESISpectra.read_and_unpack)
+                meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
+                for band in F.bands:
+                    meta['MW_TRANSMISSION_{}'.format(band.upper())] = np.ones(shape=(1,), dtype='f4')
+                metas.append(meta)
         
         return metas
 
@@ -1553,7 +1513,7 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
         fluxcols = []
         if 'outcols' in fphoto.keys():
             fluxcols = fphoto['outcols']
-        if 'legacysurveydr' in fphoto.keys():
+        if 'fiber_bands' in fphoto.keys():
             fluxcols = np.hstack((fluxcols, ['FIBERFLUX_{}'.format(band.upper()) for band in fphoto['fiber_bands']]))
             fluxcols = np.hstack((fluxcols, ['FIBERTOTFLUX_{}'.format(band.upper()) for band in fphoto['fiber_bands']]))
         fluxcols = np.hstack((fluxcols, fphoto['fluxcols'], fphoto['fluxivarcols'], ['EBV']))
@@ -1563,7 +1523,7 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
     for fcol, icol in zip(fphoto['fluxcols'], fphoto['fluxivarcols']):
         colunit[fcol.upper()] = fphoto['photounits']
         colunit[icol.upper()] = '{}-2'.format(fphoto['photounits'])
-    if 'legacysurveydr' in fphoto.keys():
+    if 'fiber_bands' in fphoto.keys():
         for band in fphoto['fiber_bands']:
             colunit['FIBERFLUX_{}'.format(band.upper())] = fphoto['photounits']
             colunit['FIBERTOTFLUX_{}'.format(band.upper())] = fphoto['photounits']
@@ -1778,9 +1738,10 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
                 for icam, cam in enumerate(_data['cameras']):
                     out['SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
             if not stackfit:
-                for iband, band in enumerate(fphoto['fiber_bands']):
-                    meta['FIBERTOTFLUX_{}'.format(band.upper())][iobj] = _data['fiberphot']['nanomaggies'][iband]
-                    #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
+                if 'fiber_bands' in fphoto.keys():
+                    for iband, band in enumerate(fphoto['fiber_bands']):
+                        meta['FIBERTOTFLUX_{}'.format(band.upper())][iobj] = _data['fiberphot']['nanomaggies'][iband]
+                        #result['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] = data['fiberphot']['nanomaggies_ivar'][iband]
                 for iband, band in enumerate(fphoto['bands']):
                     meta['FLUX_{}'.format(band.upper())][iobj] = _data['phot']['nanomaggies'][iband]
                     meta['FLUX_IVAR_{}'.format(band.upper())][iobj] = _data['phot']['nanomaggies_ivar'][iband]

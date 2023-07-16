@@ -115,7 +115,7 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
     return residuals
 
 class EMFitTools(Filters):
-    def __init__(self, minspecwave=3500.0, maxspecwave=9900.0, uniqueid=None):
+    def __init__(self, minspecwave=3500.0, maxspecwave=9900.0, fphoto=None, uniqueid=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -151,7 +151,7 @@ class EMFitTools(Filters):
             distribution of the form x**2*np.exp(-2*x/scale).
 
         """
-        super(EMFitTools, self).__init__()
+        super(EMFitTools, self).__init__(fphoto=fphoto)
 
         self.uniqueid = uniqueid
 
@@ -2268,7 +2268,7 @@ class EMFitTools(Filters):
         plt.close()
 
 def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum,
-                   minspecwave=3500.0, maxspecwave=9900.0, synthphot=True,
+                   minspecwave=3500.0, maxspecwave=9900.0, fphoto=None, synthphot=True,
                    broadlinefit=True, percamera_models=False, log=None, verbose=False):
     """Perform the fit minimization / chi2 minimization.
 
@@ -2299,8 +2299,9 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
         else:
             log = get_logger()
 
-    EMFit = EMFitTools(minspecwave=minspecwave, maxspecwave=maxspecwave, uniqueid=data['uniqueid'])
-                            
+    EMFit = EMFitTools(minspecwave=minspecwave, maxspecwave=maxspecwave, 
+                       fphoto=fphoto, uniqueid=data['uniqueid'])
+
     # Combine all three cameras; we will unpack them to build the
     # best-fitting model (per-camera) below.
     redshift = data['zredrock']

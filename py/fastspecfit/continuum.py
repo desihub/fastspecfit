@@ -559,16 +559,18 @@ class Filters(object):
             if load_filters:
                 # If fphoto['filters'] is a dictionary, then assume that there
                 # are N/S filters (as indicated by photsys).
-                self.filters, self.synth_filters, self.fiber_filters = {}, {}, {}
+                self.filters = {}
                 for key in fphoto['filters'].keys():
                     self.filters[key] = filters.FilterSequence([filters.load_filter(filtname)
                                                                 for filtname in fphoto['filters'][key]])
-                    #self.band_effwaves = self.filters[key].effective_wavelengths
+                self.synth_filters = {}
                 for key in fphoto['synth_filters'].keys():
                     self.synth_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
                                                                       for filtname in fphoto['synth_filters'][key]])
-                for key in fphoto['fiber_filters'].keys():
-                    self.fiber_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
+                if hasattr(self, 'fiber_bands'):
+                    self.fiber_filters = {}
+                    for key in fphoto['fiber_filters'].keys():
+                        self.fiber_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
                                                                           for filtname in fphoto['fiber_filters'][key]])
                 # Simple list of filters.
                 self.absmag_filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['absmag_filters']])
@@ -604,34 +606,13 @@ class Filters(object):
                                                           'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4')}
                 self.synth_filters = {'N': filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z'),
                                       'S': filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')}
-                #self.fiber_filters = self.synth_filters
-                #self.band_effwaves = self.filters['S'].effective_wavelengths
+                self.fiber_filters = self.synth_filters
 
                 self.absmag_filters = filters.FilterSequence((
                     filters.load_filter('bessell-U'), filters.load_filter('bessell-B'), filters.load_filter('bessell-V'), 
                     filters.load_filter('sdss2010-u'), filters.load_filter('sdss2010-g'), filters.load_filter('sdss2010-r'),
                     filters.load_filter('sdss2010-i'), filters.load_filter('sdss2010-z'),
                     filters.load_filter('wise2010-W1'), filters.load_filter('wise2010-W2')))
-
-        ## rest-frame filters
-        #self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1', 'W2']
-        #self.absmag_bands_00 = ['U', 'B', 'V', 'W1', 'W2'] # band_shift=0.0
-        #self.absmag_bands_01 = ['sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z'] # band_shift=0.1
-        
-        #if load_filters:
-        #    self.absmag_filters_00 = filters.FilterSequence((
-        #        filters.load_filter('bessell-U'), filters.load_filter('bessell-B'),
-        #        filters.load_filter('bessell-V'), filters.load_filter('wise2010-W1'),
-        #        filters.load_filter('wise2010-W2'),
-        #        ))
-        #    
-        #    self.absmag_filters_01 = filters.FilterSequence((
-        #        filters.load_filter('sdss2010-u'),
-        #        filters.load_filter('sdss2010-g'),
-        #        filters.load_filter('sdss2010-r'),
-        #        filters.load_filter('sdss2010-i'),
-        #        filters.load_filter('sdss2010-z'),
-        #        ))
 
         if self.photounits != 'nanomaggies':
             errmsg = 'nanomaggies is the only currently supported photometric unit!'
@@ -2036,8 +2017,8 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
         sfr = CTools.get_mean_property(templatecache['templateinfo'], 'sfr', coeff, agekeep,
                                        normalization=1.0/CTools.massnorm, log10=False, log=log)       # [Msun/yr]
 
-    log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}'.format(
-        logmstar, absmag[np.isin(CTools.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun))
+    log.info('Mstar={:.4g} Msun, {}={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}'.format(
+        logmstar, 'M{}'.format(CTools.absmag_bands[1]), absmag[1], AV, age, sfr, zzsun))
     #log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
     #    logmstar, absmag[np.isin(CTools.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun, fagn))
 
