@@ -1715,9 +1715,8 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
 
         # aperture corrections
         out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # median aperture correction
-        out.add_column(Column(name='APERCORR_G', length=nobj, dtype='f4'))
-        out.add_column(Column(name='APERCORR_R', length=nobj, dtype='f4'))
-        out.add_column(Column(name='APERCORR_Z', length=nobj, dtype='f4'))
+        for band in fphoto['synth_bands']:        
+            out.add_column(Column(name='APERCORR_{}'.format(band.upper()), length=nobj, dtype='f4'))
 
         out.add_column(Column(name='NARROW_Z', length=nobj, dtype='f8'))
         out.add_column(Column(name='NARROW_ZRMS', length=nobj, dtype='f8'))

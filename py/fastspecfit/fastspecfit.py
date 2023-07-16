@@ -28,8 +28,9 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
     fastcols = fastfit.colnames
     metacols = metadata.colnames
 
-    T, M = init_fastspec_output(Spec.meta, Spec.specprod, templates=templates,
-                                log=log, fastphot=fastphot, stackfit=stackfit)
+    T, M = init_fastspec_output(Spec.meta, Spec.specprod, fphoto=Spec.fphoto, 
+                                templates=templates, log=log, fastphot=fastphot, 
+                                stackfit=stackfit)
     
     for col in T.colnames:
         if col in fastcols:
@@ -38,7 +39,7 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
         if col in metacols:
             metadata[col].unit = M[col].unit
 
-def fastspec_one(iobj, data, out, meta, templates, log=None,
+def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                  minspecwave=3500., maxspecwave=9900., broadlinefit=True,
                  fastphot=False, stackfit=False, nophoto=False, percamera_models=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
@@ -48,8 +49,8 @@ def fastspec_one(iobj, data, out, meta, templates, log=None,
     from fastspecfit.emlines import emline_specfit
     from fastspecfit.continuum import continuum_specfit
     
-    log.info('Continuum- and emission-line fitting object {} [targetid {}, z={:.6f}].'.format(
-        iobj, data['targetid'], meta['Z']))
+    log.info('Continuum- and emission-line fitting object {} [{} {}, z={:.6f}].'.format(
+        iobj, fphoto['uniqueid'].lower(), data['uniqueid'], meta['Z']))
 
     # Read the templates and then fit the continuum spectrum. Note that 450 A as
     # the minimum wavelength will allow us to synthesize u-band photometry only
@@ -58,9 +59,8 @@ def fastspec_one(iobj, data, out, meta, templates, log=None,
     templatecache = cache_templates(templates, log=log, mintemplatewave=450.0,
                                     maxtemplatewave=40e4, fastphot=fastphot)
 
-    continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache,
-                                                         fastphot=fastphot, nophoto=nophoto,
-                                                         log=log)
+    continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fphoto=fphoto,
+                                                         fastphot=fastphot, log=log)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -223,11 +223,9 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                                      templates=templates, data=data, log=log, 
                                      fastphot=fastphot, stackfit=stackfit)
 
-    pdb.set_trace()
-
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], templates, log,
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], Spec.fphoto, templates, log,
                 minspecwave, maxspecwave, args.broadlinefit, fastphot, stackfit,
                 args.nophoto, args.percamera_models)
                 for iobj in np.arange(Spec.ntargets)]

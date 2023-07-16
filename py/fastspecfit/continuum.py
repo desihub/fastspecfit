@@ -558,37 +558,19 @@ class Filters(object):
             if load_filters:
                 # If fphoto['filters'] is a dictionary, then assume that there
                 # are N/S filters (as indicated by photsys).
-                if type(fphoto['filters']) is dict:
-                    self.filters = {}
-                    for key in fphoto['filters'].keys():
-                        self.filters[key] = filters.FilterSequence([filters.load_filter(filtname)
-                                                                    for filtname in fphoto['filters'][key]])
-                else:
-                    # Simple list of filters.
-                    self.filters = filters.FilterSequence([filters.load_filter(filtname)
-                                                           for filtname in fphoto['filters']])
-                if type(fphoto['synth_filters']) is dict:
-                    self.synth_filters = {}
-                    for key in fphoto['synth_filters'].keys():
-                        self.synth_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
-                                                                          for filtname in fphoto['synth_filters'][key]])
-                else:
-                    # Simple list of filters.
-                    self.synth_filters = filters.FilterSequence([filters.load_filter(filtname)
-                                                                 for filtname in fphoto['synth_filters']])
-                if type(fphoto['fiber_filters']) is dict:
-                    self.fiber_filters = {}
-                    for key in fphoto['fiber_filters'].keys():
-                        self.fiber_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
+                self.filters, self.synth_filters, self.fiber_filters = {}, {}, {}
+                for key in fphoto['filters'].keys():
+                    self.filters[key] = filters.FilterSequence([filters.load_filter(filtname)
+                                                                for filtname in fphoto['filters'][key]])
+                    #self.band_effwaves = self.filters[key].effective_wavelengths
+                for key in fphoto['synth_filters'].keys():
+                    self.synth_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
+                                                                      for filtname in fphoto['synth_filters'][key]])
+                for key in fphoto['fiber_filters'].keys():
+                    self.fiber_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
                                                                           for filtname in fphoto['fiber_filters'][key]])
-                else:
-                    # Simple list of filters.
-                    self.fiber_filters = filters.FilterSequence([filters.load_filter(filtname)
-                                                                 for filtname in fphoto['fiber_filters']])
-
                 # Simple list of filters.
-                self.absmag_filters = filters.FilterSequence([filters.load_filter(filtname)
-                                                              for filtname in fphoto['absmag_filters']])
+                self.absmag_filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['absmag_filters']])
 
         else:
             # This should never happen in production because we read the default
@@ -622,6 +604,7 @@ class Filters(object):
                 self.synth_filters = {'N': filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z'),
                                       'S': filters.load_filters('decam2014-g', 'decam2014-r', 'decam2014-z')}
                 #self.fiber_filters = self.synth_filters
+                #self.band_effwaves = self.filters['S'].effective_wavelengths
 
                 self.absmag_filters = filters.FilterSequence((
                     filters.load_filter('bessell-U'), filters.load_filter('bessell-B'), filters.load_filter('bessell-V'), 
@@ -1230,7 +1213,7 @@ class ContinuumTools(Filters):
     
     def templates2data(self, _templateflux, _templatewave, redshift=0.0, dluminosity=None,
                        vdisp=None, cameras=['b', 'r', 'z'], specwave=None, specres=None, 
-                       specmask=None, coeff=None, south=True, synthphot=True, 
+                       specmask=None, coeff=None, photsys=None, synthphot=True, 
                        stack_cameras=False, debug=False, log=None):
         """Work-horse routine to turn input templates into spectra that can be compared
         to real data.
@@ -1311,10 +1294,10 @@ class ContinuumTools(Filters):
         # Optionally synthesize photometry.
         templatephot = None
         if synthphot:
-            if south:
-                filters = self.decamwise
+            if photsys is not None:
+                filters = self.filters[photsys]
             else:
-                filters = self.bassmzlswise
+                filters = self.filters
             effwave = filters.effective_wavelengths.value
 
             if ((specwave is None and specres is None and coeff is None) or
@@ -1541,10 +1524,7 @@ class ContinuumTools(Filters):
         dmod, dlum = data['dmodulus'], data['dluminosity']
         ztemplatewave = templatewave * (1 + redshift)
         
-        if data['photsys'] == 'S':
-            filters_in = self.decamwise
-        else:
-            filters_in = self.bassmzlswise
+        filters_in = self.filters[data['photsys']]
         lambda_in = filters_in.effective_wavelengths.value
 
         maggies = data['phot']['nanomaggies'].data * 1e-9
@@ -1614,24 +1594,19 @@ class ContinuumTools(Filters):
 
             return kcorr, absmag, ivarabsmag
 
-        kcorr_01, absmag_01, ivarabsmag_01 = _kcorr_and_absmag(self.absmag_filters_01, band_shift=0.1)
-        kcorr_00, absmag_00, ivarabsmag_00 = _kcorr_and_absmag(self.absmag_filters_00, band_shift=0.0)
-
-        nout = len(self.absmag_bands)
-        kcorr = np.zeros(nout, dtype='f4')
-        absmag = np.zeros(nout, dtype='f4')
-        ivarabsmag = np.zeros(nout, dtype='f4')
-
-        I00 = np.isin(self.absmag_bands, self.absmag_bands_00)
-        I01 = np.isin(self.absmag_bands, self.absmag_bands_01)
-
-        kcorr[I00] = kcorr_00
-        absmag[I00] = absmag_00
-        ivarabsmag[I00] = ivarabsmag_00
-
-        kcorr[I01] = kcorr_01
-        absmag[I01] = absmag_01
-        ivarabsmag[I01] = ivarabsmag_01
+        nabs = len(self.absmag_bands)
+        kcorr = np.zeros(nabs, dtype='f4')
+        absmag = np.zeros(nabs, dtype='f4')
+        ivarabsmag = np.zeros(nabs, dtype='f4')
+        for band_shift in set(self.band_shift):
+            I = np.where(band_shift == self.band_shift)[0]
+            # Unfortunately, self.absmag_filters is a FilterSequence object,
+            # which is an immutable list, so we have to calculate K-corrections
+            # using all the filters, every time, sigh.
+            _kcorr, _absmag, _ivarabsmag = _kcorr_and_absmag(self.absmag_filters, band_shift=band_shift)
+            kcorr[I] = _kcorr[I]
+            absmag[I] = _absmag[I]
+            ivarabsmag[I] = _ivarabsmag[I]
 
         #nage = len(coeff)
         
@@ -1692,7 +1667,7 @@ class ContinuumTools(Filters):
 
         return kcorr, absmag, ivarabsmag, bestmaggies, lums, cfluxes
 
-def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=False,
+def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=False,
                       fastphot=False, log=None, verbose=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
@@ -1723,7 +1698,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
             
     tall = time.time()
 
-    CTools = ContinuumTools(nophoto=nophoto,
+    CTools = ContinuumTools(fphoto=fphoto,
                             continuum_pixkms=templatecache['continuum_pixkms'],
                             pixkms_wavesplit=templatecache['pixkms_wavesplit'])
 
@@ -1732,12 +1707,12 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
     objflamivar = (data['phot']['flam_ivar'].data / FLUXNORM**2) * CTools.bands_to_fit
     assert(np.all(objflamivar >= 0))
 
-    if not nophoto:
+    if np.any(CTools.bands_to_fit):
         # Require at least one photometric optical band; do not just fit the IR
         # because we will not be able to compute the aperture correction, below.
-        grz = np.logical_or.reduce((data['phot']['band'] == 'g', data['phot']['band'] == 'r', data['phot']['band'] == 'z'))
-        if np.all(objflamivar[grz] == 0.0):
-            log.warning('All optical (grz) bands are masked; masking all photometry.')
+        opt = (data['phot']['lambda_eff'] > 3e3) * (data['phot']['lambda_eff'] < 1e4)
+        if np.all(objflamivar[opt] == 0.0):
+            log.warning('All optical bands are masked; masking all photometry.')
             objflamivar *= 0.0
 
     # Optionally ignore templates which are older than the age of the
@@ -1825,10 +1800,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
         npix = len(specwave)
 
         # We'll need the filters for the aperture correction, below.
-        if data['photsys'] == 'S':
-            filters_in = CTools.decam
-        else:
-            filters_in = CTools.bassmzls
+        filters_in = CTools.synth_filters[data['photsys']]
 
         # Prepare the spectral and photometric models at the galaxy
         # redshift. And if the wavelength coverage is sufficient, also solve for
@@ -1898,7 +1870,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
             redshift=redshift, dluminosity=data['dluminosity'],
             specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
             vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
-            synthphot=True, south=data['photsys'] == 'S')
+            synthphot=True, photsys=data['photsys'])
         desitemplateflam = desitemplatephot['flam'].data * CTools.massnorm * FLUXNORM
 
         apercorrs, apercorr = np.zeros(len(CTools.synth_bands), 'f4'), 0.0
@@ -1906,8 +1878,8 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
         sedtemplates, _ = CTools.templates2data(input_templateflux, templatecache['templatewave'],
                                                 vdisp=use_vdisp, redshift=redshift,
                                                 dluminosity=data['dluminosity'], synthphot=False)
-        if nophoto:
-            log.info('Skipping aperture correction since --nophoto was set.')
+        if not np.any(CTools.bands_to_fit):
+            log.info('Skipping aperture correction since no bands were fit.')
             apercorrs, apercorr = np.ones(len(CTools.synth_bands), 'f4'), 1.0
         else:
             # Fit using the templates with line-emission.
@@ -1925,8 +1897,9 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
                     log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
                     padflux, padwave = filters_in.pad_spectrum(quicksedflux / FLUXNORM, ztemplatewave, axis=0, method='edge')
                     quickmaggies = np.array(filters_in.get_ab_maggies(padflux, padwave, axis=0).as_array().tolist()[0])
-                    
-                quickphot = CTools.parse_photometry(CTools.synth_bands, quickmaggies, filters_in.effective_wavelengths.value,
+             
+                quickphot = CTools.parse_photometry(CTools.synth_bands, quickmaggies, 
+                                                    filters_in.effective_wavelengths.value,
                                                     nanomaggies=False, log=log)
 
                 numer = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
@@ -1946,7 +1919,7 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
                 log.warning('Aperture correction not well-defined; adopting 1.0.')
                 apercorr = 1.0
 
-        apercorr_g, apercorr_r, apercorr_z = apercorrs
+        #apercorr_g, apercorr_r, apercorr_z = apercorrs
 
         data['apercorr'] = apercorr # needed for the line-fitting
 
@@ -2050,7 +2023,8 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
         AV, age, zzsun, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0
         #AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     else:
-        kcorr, absmag, ivarabsmag, synth_bestmaggies, lums, cfluxes = CTools.kcorr_and_absmag(data, templatecache['templatewave'], sedmodel, log=log)
+        kcorr, absmag, ivarabsmag, synth_bestmaggies, lums, cfluxes = CTools.kcorr_and_absmag(
+            data, templatecache['templatewave'], sedmodel, log=log)
 
         AV = CTools.get_mean_property(templatecache['templateinfo'], 'av', coeff, agekeep, log=log)                      # [mag]
         age = CTools.get_mean_property(templatecache['templateinfo'], 'age', coeff, agekeep, normalization=1e9, log=log) # [Gyr]
@@ -2096,9 +2070,8 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
         result['VDISP_IVAR'] = vdispivar # * (u.second/u.kilometer)**2
         
         result['APERCORR'] = apercorr
-        result['APERCORR_G'] = apercorr_g
-        result['APERCORR_R'] = apercorr_r
-        result['APERCORR_Z'] = apercorr_z
+        for iband, band in enumerate(CTools.synth_bands):
+            result['APERCORR_{}'.format(band.upper())] = apercorrs[iband]
         result['DN4000_OBS'] = dn4000
         result['DN4000_IVAR'] = dn4000_ivar
 
