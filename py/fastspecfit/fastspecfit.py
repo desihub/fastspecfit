@@ -419,11 +419,29 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         'sfr': '${{\\rm SFR}}={:.1f}\ M_{{\odot}}/{{\\rm yr}}$'.format(fastspec['SFR']),
         #'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
         'zzsun': '$Z/Z_{{\\odot}}={:.3f}$'.format(fastspec['ZZSUN']),
+    }
 
-        'absmag_r': '$M_{{0.1r}}={:.2f}$'.format(fastspec['ABSMAG_SDSS_R']),
-        'absmag_gr': '$^{{0.1}}(g-r)={:.3f}$'.format(fastspec['ABSMAG_SDSS_G']-fastspec['ABSMAG_SDSS_R']),
-        'absmag_rz': '$^{{0.1}}(r-z)={:.3f}$'.format(fastspec['ABSMAG_SDSS_R']-fastspec['ABSMAG_SDSS_Z']),       
-        }
+    # try to figure out which absmags to display
+    gindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value - 4900))
+    rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value - 6500))
+    zindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value - 9200))
+    absmag_gband = CTools.absmag_bands[gindx]
+    absmag_rband = CTools.absmag_bands[rindx]
+    absmag_zband = CTools.absmag_bands[zindx]
+
+    leg.update({'absmag_r': '$M_{{{}}}={:.2f}$'.format(absmag_rband.lower(), fastspec['ABSMAG_{}'.format(absmag_rband.upper()).replace('decam_', '').replace('sdss_', '')])})
+    if gindx != rindx:
+        gr = fastspec['ABSMAG_{}'.format(absmag_gband.upper())] - fastspec['ABSMAG_{}'.format(absmag_rband.upper())]
+        leg.update({'absmag_gr': '$M_{{{}}}-M_{{{}}}={:.2f}$'.format(absmag_gband.lower(), absmag_rband.lower(), gr).replace('decam_', '').replace('sdss_', '')})
+    if zindx != rindx:
+        rz = fastspec['ABSMAG_{}'.format(absmag_rband.upper())] - fastspec['ABSMAG_{}'.format(absmag_zband.upper())]
+        leg.update({'absmag_rz': '$M_{{{}}}-M_{{{}}}={:.2f}$'.format(absmag_rband.lower(), absmag_zband.lower(), rz).replace('decam_', '').replace('sdss_', '')})
+
+    #leg.update({
+    #    'absmag_r': '$M_{{0.1r}}={:.2f}$'.format(fastspec['ABSMAG_SDSS_R']),
+    #    'absmag_gr': '$^{{0.1}}(g-r)={:.3f}$'.format(fastspec['ABSMAG_SDSS_G']-fastspec['ABSMAG_SDSS_R']),
+    #    'absmag_rz': '$^{{0.1}}(r-z)={:.3f}$'.format(fastspec['ABSMAG_SDSS_R']-fastspec['ABSMAG_SDSS_Z']),       
+    #    })
 
     #leg['radec'] = '$(\\alpha,\\delta)=({:.7f},{:.6f})$'.format(metadata['RA'], metadata['DEC'])
     #leg['zwarn'] = '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN'])
@@ -586,9 +604,13 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                                        ivarmaggies=np.array([metadata['FLUX_IVAR_{}'.format(band.upper())] for band in CTools.bands]),
                                        lambda_eff=allfilters.effective_wavelengths.value,
                                        min_uncertainty=CTools.min_uncertainty)
-        fiberphot = CTools.parse_photometry(CTools.fiber_bands,
-                                            maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())] for band in CTools.fiber_bands]),
-                                            lambda_eff=filters.effective_wavelengths.value)
+        #if hasattr(CTools, 'fiber_bands'):
+        #    fiberphot = CTools.parse_photometry(CTools.fiber_bands,
+        #                                        maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())]
+        #                                                          for band in CTools.fiber_bands]),
+        #                                        lambda_eff=filters.effective_wavelengths.value)
+        #else:
+        #    fiberphot = None
     
         indx_phot = np.where((sedmodel > 0) * (sedwave/1e4 > phot_wavelims[0]) * 
                              (sedwave/1e4 < phot_wavelims[1]))[0]
@@ -1243,11 +1265,11 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         fig.text(leftpos, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
                  bbox=bbox, linespacing=1.4)
 
-        txt = [            
-            r'{}'.format(leg['absmag_r']),
-            r'{}'.format(leg['absmag_gr']),
-            r'{}'.format(leg['absmag_rz']), 
-        ]
+        txt = [r'{}'.format(leg['absmag_r'])]
+        if 'absmag_gr' in legkeys:
+            txt += [r'{}'.format(leg['absmag_gr'])]
+        if 'absmag_rz' in legkeys:
+            txt += [r'{}'.format(leg['absmag_rz'])]
     
         fig.text(leftpos+0.18, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
                  bbox=bbox, linespacing=1.4)

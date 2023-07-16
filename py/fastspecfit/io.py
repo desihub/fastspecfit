@@ -1449,7 +1449,7 @@ class DESISpectra(TabulatedDESI):
                 for band in F.bands:
                     meta['MW_TRANSMISSION_{}'.format(band.upper())] = np.ones(shape=(1,), dtype='f4')
                 metas.append(meta)
-        
+
         return metas
 
 def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None, 
