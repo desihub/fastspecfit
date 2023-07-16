@@ -73,7 +73,7 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
         
     return out, meta, emmodel
 
-def desiqa_one(data, fastfit, metadata, templates, coadd_type,
+def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
                minspecwave=3500., maxspecwave=9900., fastphot=False, 
                nophoto=False, stackfit=False, input_redshifts=False,
                outdir=None, outprefix=None, log=None):
@@ -91,10 +91,9 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type,
         cosmo = None
 
     qa_fastspec(data, templatecache, fastfit, metadata, coadd_type=coadd_type,
-                spec_wavelims=(minspecwave, maxspecwave),
-                fastphot=fastphot, nophoto=nophoto, stackfit=stackfit,
-                outprefix=outprefix, outdir=outdir, log=log,
-                cosmo=cosmo)
+                spec_wavelims=(minspecwave, maxspecwave), fastphot=fastphot, 
+                fphoto=fphoto, stackfit=stackfit, outprefix=outprefix, 
+                outdir=outdir, log=log, cosmo=cosmo)
 
 def parse(options=None, log=None):
     """Parse input arguments to fastspec and fastphot scripts.
@@ -294,7 +293,7 @@ def stackfit(args=None, comm=None):
 
 def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
-                fastphot=False, nophoto=False, stackfit=False, outprefix=None,
+                fastphot=False, fphoto=None, stackfit=False, outprefix=None,
                 outdir=None, log=None, cosmo=None):
     """QA plot the emission-line spectrum and best-fitting model.
 
@@ -346,20 +345,20 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             return f'{x:.1f}'
         else:
             return f'{x:.0f}'
-    
-    CTools = ContinuumTools(nophoto=nophoto,
+
+    CTools = ContinuumTools(fphoto=fphoto,
                             continuum_pixkms=templatecache['continuum_pixkms'],
                             pixkms_wavesplit=templatecache['pixkms_wavesplit'])
+    if 'legacysurveydr' in fphoto.keys():
+        layer = 'ls-{}'.format(fphoto['legacysurveydr'])
+    else:
+        layer = 'ls-dr9'
+
     if not fastphot:
         EMFit = EMFitTools(minspecwave=spec_wavelims[0], maxspecwave=spec_wavelims[1])
 
-    if metadata['PHOTSYS'] == 'S':
-        filters = CTools.decam
-        allfilters = CTools.decamwise
-    else:
-        filters = CTools.bassmzls
-        allfilters = CTools.bassmzlswise
-
+    filters = CTools.synth_filters[metadata['PHOTSYS']]
+    allfilters = CTools.filters[metadata['PHOTSYS']]
     redshift = fastspec['Z']
 
     # cosmo will be provided if input_redshifts are used
@@ -578,7 +577,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     if not stackfit:
         sedmodel, sedphot = CTools.templates2data(
                 templatecache['templateflux'], templatecache['templatewave'],
-                redshift=redshift, dluminosity=dlum,
+                redshift=redshift, dluminosity=dlum, photsys=metadata['PHOTSYS'],
                 synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm)
         sedwave = templatecache['templatewave'] * (1 + redshift)
     
@@ -676,9 +675,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         cutoutjpeg = os.path.join(outdir, 'tmp.'+os.path.basename(pngfile.replace('.png', '.jpeg')))
         if not os.path.isfile(cutoutjpeg):
             wait = 15 # seconds
-            cmd = 'timeout {wait} wget -q -o /dev/null -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer=ls-dr9'
+            cmd = 'timeout {wait} wget -q -o /dev/null -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer={layer}'
             cmd = cmd.format(wait=wait, outfile=cutoutjpeg, ra=metadata['RA'],
-                             dec=metadata['DEC'], width=width, height=height)
+                             dec=metadata['DEC'], width=width, height=height,
+                             layer=layer)
             log.info(cmd)
             try:
                 subprocess.check_call(cmd.split(), stderr=subprocess.DEVNULL)

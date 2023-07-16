@@ -31,6 +31,7 @@ def parse(options=None):
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')    
+    parser.add_argument('--fphotoinfo', type=str, default=None, help='Photometric information file.')
 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
@@ -138,7 +139,9 @@ def main(args=None, comm=None):
     log.info('Building QA for {} objects.'.format(len(metadata)))
 
     # Initialize the I/O class.
-    Spec = DESISpectra(redux_dir=args.redux_dir, fphotodir=args.fphotodir, mapdir=args.mapdir)
+
+    Spec = DESISpectra(redux_dir=args.redux_dir, fphotodir=args.fphotodir, 
+                       fphotoinfo=args.fphotoinfo, mapdir=args.mapdir)
 
     templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
 
@@ -163,12 +166,12 @@ def main(args=None, comm=None):
 
             minspecwave = 3500.
             maxspecwave = 9900.
-            
+
         qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
-                   templates, coadd_type, minspecwave, maxspecwave, 
+                   templates, coadd_type, Spec.fphoto, minspecwave, maxspecwave, 
                    fastphot, args.nophoto, stackfit, input_redshifts,
                    args.outdir, args.outprefix, log)
-                   for igal in np.arange(len(indx))]                
+                   for igal in np.arange(len(indx))]
         if args.mp > 1:
             import multiprocessing
             with multiprocessing.Pool(args.mp) as P:

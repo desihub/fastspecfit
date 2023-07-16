@@ -116,7 +116,7 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
     return residuals
 
 class EMFitTools(Filters):
-    def __init__(self, minspecwave=3500.0, maxspecwave=9900.0, targetid=None):
+    def __init__(self, minspecwave=3500.0, maxspecwave=9900.0, uniqueid=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -154,7 +154,7 @@ class EMFitTools(Filters):
         """
         super(EMFitTools, self).__init__()
 
-        self.targetid = targetid
+        self.uniqueid = uniqueid
 
         self.linetable = read_emlines()
 
@@ -824,8 +824,8 @@ class EMFitTools(Filters):
                                          method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
                 parameters[Ifree] = fit_info.x
             except:
-                if self.targetid:
-                    errmsg = 'Problem in scipy.optimize.least_squares for targetid {}.'.format(self.targetid)
+                if self.uniqueid:
+                    errmsg = 'Problem in scipy.optimize.least_squares for {}.'.format(self.uniqueid)
                 else:
                     errmsg = 'Problem in scipy.optimize.least_squares.'
                 log.critical(errmsg)
@@ -1289,10 +1289,7 @@ class EMFitTools(Filters):
         """Synthesize photometry from the best-fitting model (continuum+emission lines).
 
         """
-        if data['photsys'] == 'S':
-            filters = self.decam
-        else:
-            filters = self.bassmzls
+        filters = self.synth_filters[data['photsys']]
 
         # Pad (simply) in wavelength...
         padflux, padwave = filters.pad_spectrum(modelflux, modelwave, method='edge')
@@ -2303,7 +2300,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
         else:
             log = get_logger()
 
-    EMFit = EMFitTools(minspecwave=minspecwave, maxspecwave=maxspecwave, targetid=data['targetid'])
+    EMFit = EMFitTools(minspecwave=minspecwave, maxspecwave=maxspecwave, uniqueid=data['uniqueid'])
                             
     # Combine all three cameras; we will unpack them to build the
     # best-fitting model (per-camera) below.
