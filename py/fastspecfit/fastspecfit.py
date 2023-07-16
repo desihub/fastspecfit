@@ -74,9 +74,9 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
     return out, meta, emmodel
 
 def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
-               minspecwave=3500., maxspecwave=9900., fastphot=False, 
-               nophoto=False, stackfit=False, input_redshifts=False,
-               outdir=None, outprefix=None, log=None):
+               minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
+               maxphotwave=35., fastphot=False, nophoto=False, stackfit=False, 
+               input_redshifts=False, outdir=None, outprefix=None, log=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
@@ -91,9 +91,10 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
         cosmo = None
 
     qa_fastspec(data, templatecache, fastfit, metadata, coadd_type=coadd_type,
-                spec_wavelims=(minspecwave, maxspecwave), fastphot=fastphot, 
-                fphoto=fphoto, stackfit=stackfit, outprefix=outprefix, 
-                outdir=outdir, log=log, cosmo=cosmo)
+                spec_wavelims=(minspecwave, maxspecwave), 
+                phot_wavelims=(minphotwave, maxphotwave), 
+                fastphot=fastphot, fphoto=fphoto, stackfit=stackfit, 
+                outprefix=outprefix, outdir=outdir, log=log, cosmo=cosmo)
 
 def parse(options=None, log=None):
     """Parse input arguments to fastspec and fastphot scripts.
@@ -108,6 +109,8 @@ def parse(options=None, log=None):
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads per MPI rank.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
+    parser.add_argument('--minspecwave', type=float, default=3500., help='Minimum spectral wavelength (Angstrom).') 
+    parser.add_argument('--maxspecwave', type=float, default=9900., help='Maximum spectral wavelength (Angstrom).') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
@@ -203,11 +206,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
             return
     
         data = Spec.read_and_unpack(fastphot=fastphot, mp=args.mp)
-
-        # default wavelength ranges
-        minspecwave = 3500.
-        maxspecwave = 9900.
         
+        minspecwave = args.minspecwave
+        maxspecwave = args.maxspecwave
+
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
 
@@ -936,6 +938,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     
         sedax.xaxis.set_major_formatter(major_formatter)
         obsticks = np.array([0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
+        obsticks = obsticks[(obsticks >= phot_wavelims[0]) * (obsticks <= phot_wavelims[1])]
         sedax.set_xticks(obsticks)
     
         if fastphot:
