@@ -76,8 +76,9 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
 
 def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
-               maxphotwave=35., fastphot=False, nophoto=False, stackfit=False, 
-               inputz=False, outdir=None, outprefix=None, log=None):
+               maxphotwave=35., emline_snrmin=0.0, fastphot=False, 
+               nophoto=False, stackfit=False, inputz=False, outdir=None, 
+               outprefix=None, log=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
@@ -94,6 +95,7 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
     qa_fastspec(data, templatecache, fastfit, metadata, coadd_type=coadd_type,
                 spec_wavelims=(minspecwave, maxspecwave), 
                 phot_wavelims=(minphotwave, maxphotwave), 
+                emline_snrmin=emline_snrmin,
                 fastphot=fastphot, fphoto=fphoto, stackfit=stackfit, 
                 outprefix=outprefix, outdir=outdir, log=log, cosmo=cosmo)
 
@@ -297,7 +299,7 @@ def stackfit(args=None, comm=None):
 def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
                 fastphot=False, fphoto=None, stackfit=False, outprefix=None,
-                outdir=None, log=None, cosmo=None):
+                emline_snrmin=0.0, outdir=None, log=None, cosmo=None):
     """QA plot the emission-line spectrum and best-fitting model.
 
     """
@@ -659,7 +661,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
     
         # full model spectrum + individual line-spectra
-        desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec, snrcut=1) # ???
+        desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec, snrcut=emline_snrmin)
     
         desiemlines_oneline = []
         inrange = ( (EMFit.linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
