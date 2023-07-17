@@ -41,7 +41,8 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
 
 def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                  minspecwave=3500., maxspecwave=9900., broadlinefit=True,
-                 fastphot=False, stackfit=False, nophoto=False, percamera_models=False):
+                 fastphot=False, stackfit=False, nophoto=False, 
+                 percamera_models=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -163,13 +164,13 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     from desiutil.log import get_logger, DEBUG
     from fastspecfit.io import DESISpectra, write_fastspecfit, init_fastspec_output
 
-    if verbose:
+    if isinstance(args, (list, tuple, type(None))):
+        args = parse(args)
+
+    if args.verbose or verbose:
         log = get_logger(DEBUG)
     else:
         log = get_logger()
-
-    if isinstance(args, (list, tuple, type(None))):
-        args = parse(args, log=log)
 
     input_redshifts = None
     if args.targetids:
@@ -197,10 +198,6 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         minspecwave = np.min(data[0]['coadd_wave']) - 20
         maxspecwave = np.max(data[0]['coadd_wave']) + 20
     else:
-        if inputz:
-            input_redshifts = meta['Z']
-        else:
-            input_redshifts = None
         Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
                     input_redshifts=input_redshifts, ntargets=args.ntargets,
                     redrockfile_prefix=args.redrockfile_prefix,
