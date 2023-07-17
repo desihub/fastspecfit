@@ -42,7 +42,8 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
 def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                  minspecwave=3500., maxspecwave=9900., broadlinefit=True,
                  fastphot=False, stackfit=False, nophoto=False, 
-                 no_smooth_continuum=False, percamera_models=False):
+                 constrain_age=False, no_smooth_continuum=False, 
+                 percamera_models=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -61,6 +62,7 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                                     maxtemplatewave=40e4, fastphot=fastphot)
 
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fphoto=fphoto,
+                                                         constrain_age=constrain_age,
                                                          no_smooth_continuum=no_smooth_continuum,
                                                          fastphot=fastphot, log=log)
 
@@ -121,6 +123,7 @@ def parse(options=None, log=None):
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not allow for broad Balmer and Helium line-fitting.')
     parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
+    parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
     parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
     parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')    
     parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
@@ -234,7 +237,8 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     t0 = time.time()
     fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], Spec.fphoto, templates, log,
                 minspecwave, maxspecwave, args.broadlinefit, fastphot, stackfit,
-                args.nophoto, args.no_smooth_continuum, args.percamera_models)
+                args.nophoto, args.constrain_age, args.no_smooth_continuum, 
+                args.percamera_models)
                 for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -860,9 +864,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             if nsmoothspec > 1:
                 from scipy.ndimage import gaussian_filter
                 specax.plot(wave/1e4, gaussian_filter(flux, nsmoothspec), color=col1[icam], alpha=0.8)
+                specax.plot(wave/1e4, gaussian_filter(modelflux, nsmoothspec), color=col2[icam], lw=2, alpha=0.8)
             else:
                 specax.plot(wave/1e4, flux, color=col1[icam], alpha=0.8)
-            specax.plot(wave/1e4, modelflux, color=col2[icam], lw=2, alpha=0.8)
+                specax.plot(wave/1e4, modelflux, color=col2[icam], lw=2, alpha=0.8)
     
         fullmodelspec = np.hstack(desimodelspec)
 
@@ -1157,9 +1162,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                     emlinesigma = emlinesigma[good]
                     emlinemodel = emlinemodel[good]
             
-                    #if icam == 0:
-                    #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
-                        
                     emlinemodel_oneline = []
                     for desiemlines_oneline1 in desiemlines_oneline:
                         emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
@@ -1168,14 +1170,22 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                     if len(indx) > 1:
                         removelabels[iax] = False
                         xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
-                        #xx.fill_between(emlinewave[indx], emlineflux[indx]-emlinesigma[indx],
-                        #                emlineflux[indx]+emlinesigma[indx], color=col1[icam], alpha=0.5)
-                        # plot the individual lines first then the total model
+                        #if nsmoothspec > 1:
+                        #    xx.plot(emlinewave[indx]/1e4, gaussian_filter(emlineflux[indx], nsmoothspec), color=col1[icam], alpha=0.5)
+                        #else:
+                        #    xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
                         for emlinemodel_oneline1 in emlinemodel_oneline:
                             if np.sum(emlinemodel_oneline1[indx]) > 0:
-                                #P = emlinemodel_oneline1[indx] > 0
                                 xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
+                                #if nsmoothspec > 1:
+                                #    xx.plot(emlinewave[indx]/1e4, gaussian_filter(emlinemodel_oneline1[indx], nsmoothspec), lw=1, alpha=0.8, color=col2[icam])
+                                #else:
+                                #    xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
                         xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
+                        #if nsmoothspec > 1:
+                        #    xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
+                        #else:
+                        #    xx.plot(emlinewave[indx]/1e4, gaussian_filter(emlinemodel[indx], nsmoothspec), color=col2[icam], lw=2, alpha=0.8)
         
                         #xx.plot(emlinewave[indx], emlineflux[indx]-emlinemodel[indx], color='gray', alpha=0.3)
                         #xx.axhline(y=0, color='gray', ls='--')
