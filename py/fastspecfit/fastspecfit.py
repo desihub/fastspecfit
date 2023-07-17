@@ -659,7 +659,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
     
         # full model spectrum + individual line-spectra
-        desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec)
+        desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec, snrcut=1) # ???
     
         desiemlines_oneline = []
         inrange = ( (EMFit.linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
@@ -895,8 +895,11 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             for icam in np.arange(len(data['cameras'])):
                 factor = 10**(0.4 * 48.6) * data['wave'][icam]**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
                 good = desimodelspec[icam] > 0
-                sedax.plot(data['wave'][icam][good]/1e4, -2.5*np.log10(desimodelspec[icam][good]*factor[good]), color=col2[icam], alpha=0.8)
-    
+                _wave = data['wave'][icam][good]/1e4
+                _flux = -2.5*np.log10(desimodelspec[icam][good]*factor[good])
+                sedax.plot(_wave, _flux, color=col2[icam], alpha=0.8)
+                #pdb.set_trace()
+
         # we have to set the limits *before* we call errorbar, below!
         dm = 1.5
         sed_ymin = np.nanmax(sedmodel_abmag) + dm

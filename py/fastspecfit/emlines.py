@@ -51,7 +51,7 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
         log10sigmas = linesigmas / C_LIGHT / np.log(10) 
         linezwaves = np.log10(linewaves * (1.0 + redshift + linevshifts / C_LIGHT))
 
-        for lineamp, linezwave, log10sigma in zip(lineamps, linezwaves, log10sigmas):
+        for iline, (lineamp, linezwave, log10sigma) in enumerate(zip(lineamps, linezwaves, log10sigmas)):
             J = np.abs(log10wave - linezwave) < (8 * log10sigma) # cut to pixels within +/-N-sigma
             if np.count_nonzero(J) > 0:
                 #print(lineamp, 10**linezwave, 10**log10wave[J].min(), 10**log10wave[J].max())
@@ -951,7 +951,8 @@ class EMFitTools(Filters):
 
         return emlinemodel
 
-    def emlinemodel_bestfit(self, specwave, specres, fastspecfit_table, redshift=None):
+    def emlinemodel_bestfit(self, specwave, specres, fastspecfit_table, redshift=None, 
+                            snrcut=None):
         """Wrapper function to get the best-fitting emission-line model
         from an fastspecfit table (used for QA and elsewhere).
 
@@ -970,6 +971,10 @@ class EMFitTools(Filters):
         # Handle the doublets. Note we are implicitly assuming that the
         # amplitude parameters are always in the first third of parameters.
         lineamps[self.doubletindx] *= lineamps[self.doubletpair]
+
+        if snrcut is not None:
+            lineamps_ivar = [fastspecfit_table[param.upper()+'_AMP_IVAR'] for param in self.linetable['name']]
+            lineamps[lineamps * np.sqrt(lineamps_ivar) < snrcut] = 0.
 
         emlinemodel = build_emline_model(self.log10wave, redshift, lineamps, 
                                          linevshifts, linesigmas, linewaves, 
