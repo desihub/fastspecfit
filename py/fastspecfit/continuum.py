@@ -1650,7 +1650,8 @@ class ContinuumTools(Filters):
         return kcorr, absmag, ivarabsmag, bestmaggies, lums, cfluxes
 
 def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=False,
-                      fastphot=False, log=None, verbose=False):
+                      no_smooth_continuum=False, fastphot=False, log=None, 
+                      verbose=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -1977,6 +1978,9 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
             _smooth_continuum, _ = CTools.smooth_continuum(
                 specwave, residuals, specivar / apercorr**2,
                 redshift, linemask=linemask, png=png)
+            if no_smooth_continuum:
+                log.info('Zeroing out the smooth continuum correction.')
+                _smooth_continuum *= 0
 
         # Unpack the continuum into individual cameras.
         continuummodel, smooth_continuum = [], []

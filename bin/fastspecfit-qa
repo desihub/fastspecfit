@@ -124,6 +124,11 @@ def main(args=None, comm=None):
     else:
         inputz = False
 
+    if 'NOSCORR' in hdr and hdr['NOSCORR']:
+        no_smooth_continuum = True
+    else:
+        no_smooth_continuum = False
+
     if args.outdir:
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
@@ -184,7 +189,7 @@ def main(args=None, comm=None):
                    templates, coadd_type, Spec.fphoto, minspecwave, maxspecwave, 
                    args.minphotwave, args.maxphotwave, args.emline_snrmin, 
                    args.nsmoothspec, fastphot, args.nophoto, stackfit, inputz, 
-                   args.outdir, args.outprefix, log)
+                   no_smooth_continuum, args.outdir, args.outprefix, log)
                    for igal in np.arange(len(indx))]
         if args.mp > 1:
             import multiprocessing

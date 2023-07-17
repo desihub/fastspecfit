@@ -42,7 +42,7 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
 def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                  minspecwave=3500., maxspecwave=9900., broadlinefit=True,
                  fastphot=False, stackfit=False, nophoto=False, 
-                 percamera_models=False):
+                 no_smooth_continuum=False, percamera_models=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -61,6 +61,7 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                                     maxtemplatewave=40e4, fastphot=fastphot)
 
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fphoto=fphoto,
+                                                         no_smooth_continuum=no_smooth_continuum,
                                                          fastphot=fastphot, log=log)
 
     # Optionally fit the emission-line spectrum.
@@ -78,7 +79,7 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
                maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1, 
                fastphot=False, nophoto=False, stackfit=False, inputz=False, 
-               outdir=None, outprefix=None, log=None):
+               no_smooth_continuum=False, outdir=None, outprefix=None, log=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
@@ -95,6 +96,7 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
     qa_fastspec(data, templatecache, fastfit, metadata, coadd_type=coadd_type,
                 spec_wavelims=(minspecwave, maxspecwave), 
                 phot_wavelims=(minphotwave, maxphotwave), 
+                no_smooth_continuum=no_smooth_continuum,
                 emline_snrmin=emline_snrmin, nsmoothspec=nsmoothspec,
                 fastphot=fastphot, fphoto=fphoto, stackfit=stackfit, 
                 outprefix=outprefix, outdir=outdir, log=log, cosmo=cosmo)
@@ -119,6 +121,7 @@ def parse(options=None, log=None):
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not allow for broad Balmer and Helium line-fitting.')
     parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
+    parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
     parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')    
     parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
     parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
@@ -231,7 +234,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     t0 = time.time()
     fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], Spec.fphoto, templates, log,
                 minspecwave, maxspecwave, args.broadlinefit, fastphot, stackfit,
-                args.nophoto, args.percamera_models)
+                args.nophoto, args.no_smooth_continuum, args.percamera_models)
                 for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -263,7 +266,8 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
-                      fastphot=fastphot, input_redshifts=input_redshifts)
+                      fastphot=fastphot, input_redshifts=input_redshifts,
+                      no_smooth_continuum=args.no_smooth_continuum)
 
 def fastphot(args=None, comm=None):
     """Main fastphot script.
@@ -299,7 +303,8 @@ def stackfit(args=None, comm=None):
 def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
                 fastphot=False, fphoto=None, stackfit=False, outprefix=None,
-                emline_snrmin=0.0, nsmoothspec=1, outdir=None, log=None, cosmo=None):
+                no_smooth_continuum=False, emline_snrmin=0.0, nsmoothspec=1, 
+                outdir=None, log=None, cosmo=None):
     """QA plot the emission-line spectrum and best-fitting model.
 
     """
@@ -655,6 +660,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             fullsmoothcontinuum, _ = CTools.smooth_continuum(
                     fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
                     redshift=redshift, linemask=np.hstack(data['linemask']))
+            if no_smooth_continuum:
+                fullsmoothcontinuum *= 0
     
         desismoothcontinuum = []
         for campix in data['camerapix']:
@@ -702,17 +709,20 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     
         cutoutjpeg = os.path.join(outdir, 'tmp.'+os.path.basename(pngfile.replace('.png', '.jpeg')))
         if not os.path.isfile(cutoutjpeg):
-            wait = 15 # seconds
-            cmd = 'timeout {wait} wget -q -o /dev/null -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer={layer}'
-            cmd = cmd.format(wait=wait, outfile=cutoutjpeg, ra=metadata['RA'],
-                             dec=metadata['DEC'], width=width, height=height,
-                             layer=layer)
+            wait = 5 # seconds
+            #cmd = 'timeout {wait} wget -q -o /dev/null -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer={layer}'
+            #cmd = cmd.format(wait=wait, outfile=cutoutjpeg, ra=metadata['RA'],
+            #                 dec=metadata['DEC'], width=width, height=height,
+            #                 layer=layer)
+            cmd = 'wget -q -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer={layer}'
+            cmd = cmd.format(outfile=cutoutjpeg, ra=metadata['RA'], dec=metadata['DEC'], 
+                             width=width, height=height, layer=layer)
             log.info(cmd)
             try:
-                subprocess.check_call(cmd.split(), stderr=subprocess.DEVNULL)
+                subprocess.check_output(cmd.split(), stderr=subprocess.DEVNULL, timeout=wait)
+                #subprocess.check_call(cmd.split(), stderr=subprocess.DEVNULL)
             except:
                 log.warning('No cutout from viewer after {} seconds; stopping wget'.format(wait))
-                
         try:
             img = mpimg.imread(cutoutjpeg)
         except:

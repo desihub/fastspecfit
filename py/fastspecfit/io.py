@@ -1798,7 +1798,8 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
             return [None]*4
 
 def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
-                      coadd_type=None, fastphot=False, input_redshifts=False):
+                      coadd_type=None, fastphot=False, input_redshifts=False,
+                      no_smooth_continuum=False):
     """Write out.
 
     """
@@ -1838,6 +1839,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     if coadd_type:
         primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd type')))
     primhdr.append(('INPUTZ', (input_redshifts is not None, 'input redshifts provided')))
+    primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
