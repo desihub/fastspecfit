@@ -90,13 +90,6 @@ def main(args=None, comm=None):
 
     fastfit, metadata, coadd_type, fastphot = read_fastspecfit(args.fastfitfile[0])
 
-    # check for the input redshifts header card
-    hdr = fitsio.read_header(args.fastfitfile[0])
-    if 'INPUTZ' in hdr and hdr['INPUTZ']:
-        input_redshifts = True
-    else:
-        input_redshifts = False
-
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
@@ -120,6 +113,13 @@ def main(args=None, comm=None):
         errmsg = 'redrockfiles input is required if coadd_type==custom'
         log.critical(errmsg)
         raise IOError(errmsg)
+
+    # check for the input redshifts header card
+    hdr = fitsio.read_header(args.fastfitfile[0])
+    if 'INPUTZ' in hdr and hdr['INPUTZ']:
+        inputz = True
+    else:
+        inputz = False
 
     if args.outdir:
         if not os.path.isdir(args.outdir):
@@ -163,7 +163,12 @@ def main(args=None, comm=None):
             maxspecwave = np.max(data[0]['coadd_wave']) + 20
         else:
             targetids = fastfit['TARGETID'][indx]
-            Spec.select(redrockfiles=redrockfile, targetids=targetids,
+            if inputz:
+                input_redshifts = fastfit['Z'][indx]
+            else:
+                input_redshifts = None
+            Spec.select(redrockfiles=redrockfile, targetids=targetids, 
+                        input_redshifts=input_redshifts,
                         redrockfile_prefix=args.redrockfile_prefix,
                         specfile_prefix=args.specfile_prefix,
                         qnfile_prefix=args.qnfile_prefix)
@@ -175,7 +180,7 @@ def main(args=None, comm=None):
         qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
                    templates, coadd_type, Spec.fphoto, minspecwave, maxspecwave, 
                    args.minphotwave, args.maxphotwave, fastphot, args.nophoto, 
-                   stackfit, input_redshifts, args.outdir, args.outprefix, log)
+                   stackfit, inputz, args.outdir, args.outprefix, log)
                    for igal in np.arange(len(indx))]
         if args.mp > 1:
             import multiprocessing

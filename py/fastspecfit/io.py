@@ -1035,7 +1035,10 @@ class DESISpectra(TabulatedDESI):
             ebv = SFD.ebv(meta['RA'], meta['DEC'])
 
             # Age, luminosity, and distance modulus.
-            dlum = self.luminosity_distance(meta['Z'])
+            try:
+                dlum = self.luminosity_distance(meta['Z'])
+            except:
+                pdb.set_trace()
             dmod = self.distance_modulus(meta['Z'])
             tuniv = self.universe_age(meta['Z'])
 

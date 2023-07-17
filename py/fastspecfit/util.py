@@ -437,8 +437,8 @@ class TabulatedDESI(object):
 
     """
     def __init__(self):
-        from pkg_resources import resource_filename
-        cosmofile = resource_filename('fastspecfit', 'data/desi_fiducial_cosmology.dat')
+        from importlib import resources
+        cosmofile = resources.files('fastspecfit').joinpath('data/desi_fiducial_cosmology.dat')
 
         self._z, self._efunc, self._comoving_radial_distance = np.loadtxt(cosmofile, comments='#', usecols=None, unpack=True)
 

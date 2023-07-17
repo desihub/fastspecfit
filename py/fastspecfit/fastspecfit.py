@@ -76,7 +76,7 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
 def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
                maxphotwave=35., fastphot=False, nophoto=False, stackfit=False, 
-               input_redshifts=False, outdir=None, outprefix=None, log=None):
+               inputz=False, outdir=None, outprefix=None, log=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
@@ -84,7 +84,7 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
     templatecache = cache_templates(templates, log=log, mintemplatewave=450.0,
                                     maxtemplatewave=40e4, fastphot=fastphot)
 
-    if input_redshifts:
+    if inputz:
         from fastspecfit.util import TabulatedDESI
         cosmo = TabulatedDESI()
     else:
@@ -197,6 +197,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         minspecwave = np.min(data[0]['coadd_wave']) - 20
         maxspecwave = np.max(data[0]['coadd_wave']) + 20
     else:
+        if inputz:
+            input_redshifts = meta['Z']
+        else:
+            input_redshifts = None
         Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
                     input_redshifts=input_redshifts, ntargets=args.ntargets,
                     redrockfile_prefix=args.redrockfile_prefix,
@@ -431,7 +435,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     absmag_rband = CTools.absmag_bands[rindx]
     absmag_zband = CTools.absmag_bands[zindx]
 
-    leg.update({'absmag_r': '$M_{{{}}}={:.2f}$'.format(absmag_rband.lower(), fastspec['ABSMAG_{}'.format(absmag_rband.upper()).replace('decam_', '').replace('sdss_', '')])})
+    leg.update({'absmag_r': '$M_{{{}}}={:.2f}$'.format(absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
+                                                       fastspec['ABSMAG_{}'.format(absmag_rband.upper())])})
     if gindx != rindx:
         gr = fastspec['ABSMAG_{}'.format(absmag_gband.upper())] - fastspec['ABSMAG_{}'.format(absmag_rband.upper())]
         leg.update({'absmag_gr': '$M_{{{}}}-M_{{{}}}={:.2f}$'.format(absmag_gband.lower(), absmag_rband.lower(), gr).replace('decam_', '').replace('sdss_', '')})
