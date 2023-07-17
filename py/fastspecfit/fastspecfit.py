@@ -76,9 +76,9 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
 
 def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
-               maxphotwave=35., emline_snrmin=0.0, fastphot=False, 
-               nophoto=False, stackfit=False, inputz=False, outdir=None, 
-               outprefix=None, log=None):
+               maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1, 
+               fastphot=False, nophoto=False, stackfit=False, inputz=False, 
+               outdir=None, outprefix=None, log=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
@@ -95,7 +95,7 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
     qa_fastspec(data, templatecache, fastfit, metadata, coadd_type=coadd_type,
                 spec_wavelims=(minspecwave, maxspecwave), 
                 phot_wavelims=(minphotwave, maxphotwave), 
-                emline_snrmin=emline_snrmin,
+                emline_snrmin=emline_snrmin, nsmoothspec=nsmoothspec,
                 fastphot=fastphot, fphoto=fphoto, stackfit=stackfit, 
                 outprefix=outprefix, outdir=outdir, log=log, cosmo=cosmo)
 
@@ -299,7 +299,7 @@ def stackfit(args=None, comm=None):
 def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
                 fastphot=False, fphoto=None, stackfit=False, outprefix=None,
-                emline_snrmin=0.0, outdir=None, log=None, cosmo=None):
+                emline_snrmin=0.0, nsmoothspec=1, outdir=None, log=None, cosmo=None):
     """QA plot the emission-line spectrum and best-fitting model.
 
     """
@@ -847,7 +847,11 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 #pdb.set_trace()
         
             #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[icam], alpha=0.2)
-            specax.plot(wave/1e4, flux, color=col1[icam], alpha=0.8)
+            if nsmoothspec > 1:
+                from scipy.ndimage import gaussian_filter
+                specax.plot(wave/1e4, gaussian_filter(flux, nsmoothspec), color=col1[icam], alpha=0.8)
+            else:
+                specax.plot(wave/1e4, flux, color=col1[icam], alpha=0.8)
             specax.plot(wave/1e4, modelflux, color=col2[icam], lw=2, alpha=0.8)
     
         fullmodelspec = np.hstack(desimodelspec)

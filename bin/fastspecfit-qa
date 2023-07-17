@@ -34,6 +34,8 @@ def parse(options=None):
     parser.add_argument('--fphotoinfo', type=str, default=None, help='Photometric information file.')
 
     parser.add_argument('--emline_snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
+    parser.add_argument('--nsmoothspec', type=int, default=0, help='Smoothing pixel value.')
+
     parser.add_argument('--minspecwave', type=float, default=3500., help='Minimum spectral wavelength (Angstrom).') 
     parser.add_argument('--maxspecwave', type=float, default=9900., help='Maximum spectral wavelength (Angstrom).') 
     parser.add_argument('--minphotwave', type=float, default=0.1, help='Minimum photometric wavelength (micron).') 
@@ -180,9 +182,9 @@ def main(args=None, comm=None):
 
         qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
                    templates, coadd_type, Spec.fphoto, minspecwave, maxspecwave, 
-                   args.minphotwave, args.maxphotwave, args.emline_snrmin, fastphot, 
-                   args.nophoto, stackfit, inputz, args.outdir, args.outprefix, 
-                   log)
+                   args.minphotwave, args.maxphotwave, args.emline_snrmin, 
+                   args.nsmoothspec, fastphot, args.nophoto, stackfit, inputz, 
+                   args.outdir, args.outprefix, log)
                    for igal in np.arange(len(indx))]
         if args.mp > 1:
             import multiprocessing
