@@ -27,78 +27,15 @@ Lyman_series = {
     'Ly5'     : { 'line':937.8035, 'A':0.0023/53.36202, 'B':3.64, 'var_evol':3.8 },
 }
 
-def extinction_total_to_selective_ratio(band, photsys, match_legacy_surveys=False):
-    """
-
-    Return the linear coefficient R_X = A(X)/E(B-V) where
-    A(X) = -2.5*log10(transmission in X band),
-    for band X in 'G','R' or 'Z' when
-    photsys = 'N' or 'S' specifies the survey (BASS+MZLS or DECALS),
-    or for band X in 'G', 'BP', 'RP' when photsys = 'G' (when gaia dr2)
-    or for band X in 'W1', 'W2', 'W3', 'W4' when photsys is either 'N' or 'S'
-    E(B-V) is interpreted as SFD.
-
-    Args:
-        band : 'G', 'R', 'Z', 'BP', 'RP', 'W1', 'W2', 'W3', or 'W4'
-        photsys : 'N' or 'S'
-
-    Returns:
-        scalar, total extinction A(band) = -2.5*log10(transmission(band))
-
-    """
-    
-    R = {
-        # From https://desi.lbl.gov/trac/wiki/ImagingStandardBandpass
-        # DECam u  3881.6   3.994
-        # DECam g  4830.8   3.212
-        # DECam r  6409.0   2.164
-        # DECam i  7787.5   1.591
-        # DECam z  9142.7   1.211
-        # DECam Y  9854.5   1.063
-        # BASS g  4772.1   3.258
-        # BASS r  6383.6   2.176
-        # MzLS z  9185.1   1.199
-        # Consistent with the synthetic magnitudes and function dust_transmission
-        'BASS-g': 3.258,
-        'BASS-r': 2.176,
-        'MzLS-z': 1.199,
-        'decam2014-u': 3.994,
-        'decam2014-g': 3.212,
-        'decam2014-r': 2.164,
-        'decam2014-i': 1.591,
-        'decam2014-z': 1.211,
-        'decam2014-Y': 1.063,
-        # Arjun Dey, private communication
-        'hsc2017-g': 3.214, 
-        'hsc2017-r': 2.165, 
-        'hsc2017-i': 1.592, 
-        'hsc2017-z': 1.211, 
-        'hsc2017-y': 1.064,
-        'hscib-IA427': 4.202,
-        'hscib-IA464': 3.894,
-        'hscib-IA484': 3.694,
-        'hscib-IA505': 3.490,
-        'hscib-IA527': 3.304,
-        # Add WISE from
-        # https://github.com/dstndstn/tractor/blob/main/tractor/sfd.py#L23-L35
-        'wise2010-W1': 0.184,
-        'wise2010-W2': 0.113,
-        'wise2010-W3': 0.0241,
-        'wise2010-W4': 0.00910,
-        }
-
-    return R["{}_{}".format(band.upper(), photsys.upper())]
-
-
 def mwdust_transmission(ebv, filtername):
-    """Convert SFD E(B-V) value to dust transmission 0-1 for band and photsys
+    """Convert SFD E(B-V) value to dust transmission 0-1 given the bandpass.
 
     Args:
         ebv (float or array-like): SFD E(B-V) value(s)
         filtername (str): Filter name, e.g., 'decam2014-r'.
 
     Returns:
-        Scalar or array (same as ebv input), Milky Way dust transmission 0-1
+        Scalar or array (same as ebv input), Milky Way dust transmission 0-1.
 
     Note:
 
@@ -109,6 +46,9 @@ def mwdust_transmission(ebv, filtername):
 
     Returns:
         scalar, total extinction A(band) = -2.5*log10(transmission(band))
+
+    Notes:
+        Based on `desiutil.dust.mwdust_transmission`.
 
     """
     k_X = {
