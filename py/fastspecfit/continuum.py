@@ -1738,8 +1738,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
                templatecache['templateflux_nomvdisp'][:, agekeep],
                templatecache['templatewave'],
                redshift=redshift, dluminosity=data['dluminosity'],
-               vdisp=None, synthphot=True, 
-               south=data['photsys'] == 'S')
+               vdisp=None, synthphot=True, photsys=data['photsys'])
            sedflam = sedphot['flam'].data * CTools.massnorm * FLUXNORM
 
            coeff, rchi2_phot = CTools.call_nnls(sedflam, objflam, objflamivar)
