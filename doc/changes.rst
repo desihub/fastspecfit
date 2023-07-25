@@ -2,18 +2,20 @@
 Change Log
 ==========
 
-2.1.3 (not released yet)
+2.2.0 (not released yet)
 ------------------------
 
 * Allow the Redrock redshift to be overridden [`PR #115`_].
 * Code to support fitting stacked spectra [`PR #116`_].
 * Bug fix of reversed tied flux ratio of [OII]7320,7330 doublet [`PR #120`_].
 * Do not constrain the SPS age by default [`PR #132`_].
+* Bug fix of emission-line subtracted Dn(4000) measurement [`PR #135`_].
 
 .. _`PR #115`: https://github.com/desihub/fastspecfit/pull/115
 .. _`PR #116`: https://github.com/desihub/fastspecfit/pull/116
 .. _`PR #120`: https://github.com/desihub/fastspecfit/pull/120
 .. _`PR #132`: https://github.com/desihub/fastspecfit/pull/132
+.. _`PR #135`: https://github.com/desihub/fastspecfit/pull/135
 
 2.1.2 (2023-04-01)
 ------------------
