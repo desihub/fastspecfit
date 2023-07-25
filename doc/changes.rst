@@ -10,12 +10,14 @@ Change Log
 * Bug fix of reversed tied flux ratio of [OII]7320,7330 doublet [`PR #120`_].
 * Do not constrain the SPS age by default [`PR #132`_].
 * Bug fix of emission-line subtracted Dn(4000) measurement [`PR #135`_].
+* Update IGM attenuation coefficients [`PR #136`_].
 
 .. _`PR #115`: https://github.com/desihub/fastspecfit/pull/115
 .. _`PR #116`: https://github.com/desihub/fastspecfit/pull/116
 .. _`PR #120`: https://github.com/desihub/fastspecfit/pull/120
 .. _`PR #132`: https://github.com/desihub/fastspecfit/pull/132
 .. _`PR #135`: https://github.com/desihub/fastspecfit/pull/135
+.. _`PR #136`: https://github.com/desihub/fastspecfit/pull/136
 
 2.1.2 (2023-04-01)
 ------------------
