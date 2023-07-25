@@ -742,12 +742,12 @@ class Filters(object):
     
         dn4000, dn4000_ivar = 0.0, 0.0
 
-        if rest:
-            restwave = wave
-            flam2fnu =  restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
-        else:
+        if rest is False or redshift is not None:
             restwave = wave / (1 + redshift) # [Angstrom]
             flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+        else:
+            restwave = wave
+            flam2fnu =  restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
 
         # Require a 2-Angstrom pad around the break definition.
         wpad = 2.0

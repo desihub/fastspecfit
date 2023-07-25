@@ -2621,7 +2621,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     # measure DN(4000) without the emission lines
     if result['DN4000_IVAR'] > 0:
         fluxnolines = data['coadd_flux'] - modelemspectrum[0, :]
-        dn4000_nolines, _ = EMFit.get_dn4000(modelwave, fluxnolines, redshift=redshift, log=log)
+        dn4000_nolines, _ = EMFit.get_dn4000(modelwave, fluxnolines, redshift=redshift, log=log, rest=False)
         log.info('Dn(4000)={:.3f} in the emission-line subtracted spectrum.'.format(dn4000_nolines))
         result['DN4000'] = dn4000_nolines
 

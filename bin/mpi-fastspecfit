@@ -87,7 +87,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             if args.targetids is not None:
                 cmd += ' --targetids {}'.format(args.targetids)
                 
-            if args.ignore_quasarnet is not None:
+            if args.ignore_quasarnet:
                 cmd += ' --ignore-quasarnet'
                 
         if args.makeqa:

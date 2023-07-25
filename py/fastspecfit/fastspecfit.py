@@ -160,13 +160,13 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     from desiutil.log import get_logger, DEBUG
     from fastspecfit.io import DESISpectra, write_fastspecfit, init_fastspec_output
 
-    if verbose:
+    if isinstance(args, (list, tuple, type(None))):
+        args = parse(args)
+
+    if args.verbose or verbose:
         log = get_logger(DEBUG)
     else:
         log = get_logger()
-
-    if isinstance(args, (list, tuple, type(None))):
-        args = parse(args, log=log)
 
     input_redshifts = None
     if args.targetids:
