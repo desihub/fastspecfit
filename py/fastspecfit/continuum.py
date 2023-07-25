@@ -531,6 +531,8 @@ class Filters(object):
         """Class to load filters, dust, and filter- and dust-related methods.
 
         """
+        super(Filters, self).__init__()
+        
         from speclite import filters
 
         self.bands = np.array(['g', 'r', 'z', 'W1', 'W2', 'W3', 'W4'])
@@ -844,6 +846,8 @@ class Inoue14(object):
         SOFTWARE.
         
         """
+        super(Inoue14, self).__init__()
+        
         self._load_data()
         self.scale_tau = scale_tau
 
@@ -1041,7 +1045,7 @@ class ContinuumTools(Filters, Inoue14):
     def __init__(self, nophoto=False, continuum_pixkms=25.0, pixkms_wavesplit=1e4):
 
         super(ContinuumTools, self).__init__(nophoto=nophoto)
-        
+
         from fastspecfit.emlines import read_emlines
         
         self.massnorm = 1e10 # stellar mass normalization factor [Msun]
@@ -1281,29 +1285,6 @@ class ContinuumTools(Filters, Inoue14):
 
         return linemask_dict
 
-    @staticmethod
-    def transmission_Lyman(zObj, lObs):
-        """Calculate the transmitted flux fraction from the Lyman series
-        This returns the transmitted flux fraction:
-        1 -> everything is transmitted (medium is transparent)
-        0 -> nothing is transmitted (medium is opaque)
-        Args:
-            zObj (float): Redshift of object
-            lObs (array of float): wavelength grid
-        Returns:
-            array of float: transmitted flux fraction
-
-        """
-        from fastspecfit.util import Lyman_series
-
-        lRF = lObs/(1.+zObj)
-        T = np.ones(lObs.size)
-        for l in list(Lyman_series.keys()):
-            w      = lRF<Lyman_series[l]['line']
-            zpix   = lObs[w]/Lyman_series[l]['line']-1.
-            tauEff = Lyman_series[l]['A']*(1.+zpix)**Lyman_series[l]['B']
-            T[w]  *= np.exp(-tauEff)
-        return T
 
     @staticmethod
     def smooth_and_resample(templateflux, templatewave, specwave=None, specres=None):
@@ -1422,7 +1403,7 @@ class ContinuumTools(Filters, Inoue14):
         # stellar mass.
         if redshift > 0:
             ztemplatewave = templatewave * (1.0 + redshift)
-            T = self.transmission_Lyman(redshift, ztemplatewave)
+            T = self.full_IGM(redshift, ztemplatewave)
             T *= FLUXNORM * self.massnorm * (10.0 / (1e6 * dluminosity))**2 / (1.0 + redshift)
             ztemplateflux = templateflux * T[:, np.newaxis]
         else:
