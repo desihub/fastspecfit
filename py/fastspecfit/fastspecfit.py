@@ -1016,11 +1016,13 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         plotsig_default_balmer = 500.0 # [km/s]
         plotsig_default_broad = 2000.0 # [km/s]
     
-        meanwaves, deltawaves, sigmas, linenames = [], [], [], []
+        minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames = [], [], [], [], [], []
         for plotgroup in set(linetable['plotgroup']):
             I = np.where(plotgroup == linetable['plotgroup'])[0]
             linename = linetable['nicename'][I[0]].replace('-', ' ')
             linenames.append(linename)
+            minwaves.append(np.min(linetable['restwave'][I]))
+            maxwaves.append(np.max(linetable['restwave'][I]))
             meanwaves.append(np.mean(linetable['restwave'][I]))
             deltawaves.append((np.max(linetable['restwave'][I]) - np.min(linetable['restwave'][I])) / 2)
         
@@ -1053,6 +1055,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             ax = []
         else:
             srt = np.argsort(meanwaves)
+            minwaves = np.hstack(minwaves)[srt]
+            maxwaves = np.hstack(maxwaves)[srt]
             meanwaves = np.hstack(meanwaves)[srt]
             deltawaves = np.hstack(deltawaves)[srt]
             sigmas = np.hstack(sigmas)[srt]
@@ -1083,7 +1087,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             else:
                 ax, irow, colshift = [], 4, 5 # skip the gap row
                 
-            for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
+            for iax, (minwave, maxwave, meanwave, deltawave, sig, linename) in enumerate(
+                    zip(minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames)):
                 icol = iax % nlinecols
                 icol += colshift
                 if iax > 0 and iax % nlinecols == 0:
@@ -1093,9 +1098,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 xx = fig.add_subplot(gs[irow, icol])
                 ax.append(xx)
             
-                wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
-                wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
-                #print(linename, wmin, wmax)
+                wmin = (minwave - deltawave) * (1+redshift) - 6 * sig * minwave * (1+redshift) / C_LIGHT
+                wmax = (maxwave + deltawave) * (1+redshift) + 6 * sig * maxwave * (1+redshift) / C_LIGHT
+                #wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
+                #wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
             
                 # iterate over cameras
                 for icam in np.arange(len(data['cameras'])): # iterate over cameras
@@ -1109,9 +1115,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                     emlinesigma = emlinesigma[good]
                     emlinemodel = emlinemodel[good]
             
-                    #if icam == 0:
-                    #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
-                        
                     emlinemodel_oneline = []
                     for desiemlines_oneline1 in desiemlines_oneline:
                         emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
