@@ -1002,6 +1002,9 @@ class EMFitTools(Filters):
             else:
                 result[param['param_name'].upper()] = val
 
+        npad = 10
+        nminpix = 8
+        
         # get continuum fluxes, EWs, and upper limits
         narrow_sigmas, broad_sigmas, uv_sigmas = [], [], []
         narrow_redshifts, broad_redshifts, uv_redshifts = [], [], []
@@ -1041,28 +1044,25 @@ class EMFitTools(Filters):
                                     (emlineivar > 0))[0]
     
                 # can happen if sigma is very small (depending on the wavelength)
-                #if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * len(lineindx) > 0 and len(lineindx) <= 3: 
-                if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * (len(lineindx) <= 3):
+                if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * (len(lineindx) < nminpix):
                     dwave = emlinewave - linezwave
-                    lineindx = np.argmin(np.abs(dwave))
-                    if dwave[lineindx] > 0:
-                        pad = np.array([-2, -1, 0, +1])
-                    else:
-                        pad = np.array([-1, 0, +1, +2])
-    
-                    # check to make sure we don't hit the edges
-                    if (lineindx-pad[0]) < 0 or (lineindx+pad[-1]) >= len(emlineivar):
-                        lineindx = np.array([])
-                    else:
-                        lineindx += pad
-                        # the padded pixels can have ivar==0
-                        good = oemlineivar[lineindx] > 0 # use the original ivar
+                    lineindx = np.argmin(np.abs(dwave)) + (np.arange(npad+1) - npad//2) # +/- NPAD-pixel pad
+
+                    # check to make sure we don't hit the edges and also trim
+                    # out padded pixels with ivar==0
+                    good = (lineindx >= 0) * (lineindx < len(emlineivar))
+                    if np.any(good):
                         lineindx = lineindx[good]
+                        good = oemlineivar[lineindx] > 0 # use the original ivar
+                        if np.any(good):
+                            lineindx = np.atleast_1d(lineindx[good])
+                        else:
+                            lineindx = np.array([])
     
                 npix = len(lineindx)
                 result['{}_NPIX'.format(linename)] = npix
     
-                if npix > 3: # magic number: required at least XX unmasked pixels centered on the line
+                if npix >= nminpix: # magic number: required at least XX unmasked pixels centered on the line
     
                     if np.any(emlineivar[lineindx] == 0):
                         errmsg = 'Ivar should never be zero within an emission line!'
