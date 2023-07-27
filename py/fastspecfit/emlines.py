@@ -48,6 +48,10 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
         lineamps = lineamps[I]
         linewaves = linewaves[I]
 
+        # demand at least 20 km/s for rendering the model
+        if np.any(linesigmas) < 20.:
+            linesigmas[linesigmas<20.] = 20.
+
         # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
         log10sigmas = linesigmas / C_LIGHT / np.log(10) 
         linezwaves = np.log10(linewaves * (1.0 + redshift + linevshifts / C_LIGHT))
@@ -352,6 +356,7 @@ class EMFitTools(Filters):
         final_linemodel['bounds'] = np.zeros((nparam, 2), 'f8')
         final_linemodel['initial'] = np.zeros(nparam, 'f8')
         final_linemodel['value'] = np.zeros(nparam, 'f8')
+        final_linemodel['obsvalue'] = np.zeros(nparam, 'f8')
         final_linemodel['civar'] = np.zeros(nparam, 'f8') # continuum inverse variance
 
         final_linemodel['doubletpair'][self.doubletindx] = self.doubletpair
@@ -793,6 +798,7 @@ class EMFitTools(Filters):
 
         """
         from scipy.optimize import least_squares
+        from fastspecfit.util import trapz_rebin        
         from fastspecfit.emlines import _objective_function
 
         if log is None:
@@ -896,17 +902,66 @@ class EMFitTools(Filters):
         out_linemodel['value'] = parameters
         out_linemodel.meta['nfev'] = fit_info['nfev']
 
-        if False:
-            bestfit = self.bestfit(out_linemodel, redshift, emlinewave, resolution_matrix, camerapix)
-            import matplotlib.pyplot as plt
-            plt.clf()
-            plt.plot(emlinewave, emlineflux)
-            plt.plot(emlinewave, bestfit)
-            #plt.xlim(5800, 6200)
-            #plt.xlim(6600, 6950)
-            plt.xlim(5050, 5120)
-            #plt.xlim(8850, 9050)
-            plt.savefig('junk.png')
+        # Get the final line-amplitudes, after resampling and convolution (see
+        # https://github.com/desihub/fastspecfit/issues/139). Some repeated code
+        # from build_emline_model...
+        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
+        lineindxs = np.arange(len(lineamps))
+        
+        I = lineamps > 0
+        if np.count_nonzero(I) > 0:
+            linevshifts = linevshifts[I]
+            linesigmas = linesigmas[I]
+            lineamps = lineamps[I]
+            linewaves = linewaves[I]
+            lineindxs = lineindxs[I]
+
+            # demand at least 20 km/s for rendering the model
+            if np.any(linesigmas) < 20.:
+                linesigmas[linesigmas<20.] = 20.
+
+            #camindx = []
+            _emlinewave = []
+            for icam, campix in enumerate(camerapix):
+                _emlinewave.append(emlinewave[campix[0]:campix[1]])
+    
+            # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
+            log10sigmas = linesigmas / C_LIGHT / np.log(10)
+            
+            linezwaves = np.log10(linewaves * (1.0 + redshift + linevshifts / C_LIGHT))
+    
+            for lineindx, lineamp, linezwave, log10sigma in zip(lineindxs, lineamps, linezwaves, log10sigmas):
+                J = np.abs(self.log10wave - linezwave) < (8 * log10sigma) # cut to pixels within +/-N-sigma
+                if np.count_nonzero(J) > 0:
+                    log10model = self.log10wave * 0
+                    log10model[J] = lineamp * np.exp(-0.5 * (self.log10wave[J]-linezwave)**2 / log10sigma**2)
+                    # Determine which camera we're on and then resample and
+                    # convolve with the resolution matrix.
+                    icam = np.argmin([np.abs((np.max(emwave)-np.min(emwave))/2+np.min(emwave)-10**linezwave) for emwave in _emlinewave])
+                    model_resamp = trapz_rebin(10**self.log10wave, log10model, _emlinewave[icam])
+                    model_convol = resolution_matrix[icam].dot(model_resamp)
+                    out_linemodel['obsvalue'] = np.max(model_convol)
+                    #if out_linemodel[lineindx]['param_name'] == 'oiii_4363_amp':
+                    #    import matplotlib.pyplot as plt
+                    #    plt.clf()
+                    #    plt.plot(10**self.log10wave, log10model)
+                    #    plt.plot(_emlinewave[icam], model_resamp)
+                    #    plt.plot(_emlinewave[icam], model_convol)
+                    #    plt.xlim(np.min(10**self.log10wave[J]), np.max(10**self.log10wave[J]))
+                    #    plt.savefig('desi-users/ioannis/tmp/junk.png')
+                    #    pdb.set_trace()
+
+        #if False:
+        #    bestfit = self.bestfit(out_linemodel, redshift, emlinewave, resolution_matrix, camerapix)
+        #    import matplotlib.pyplot as plt
+        #    plt.clf()
+        #    plt.plot(emlinewave, emlineflux)
+        #    plt.plot(emlinewave, bestfit)
+        #    #plt.xlim(5800, 6200)
+        #    #plt.xlim(6600, 6950)
+        #    plt.xlim(5050, 5120)
+        #    #plt.xlim(8850, 9050)
+        #    plt.savefig('junk.png')
         
         return out_linemodel
 
