@@ -1075,8 +1075,8 @@ class EMFitTools(Filters):
                         raise ValueError(errmsg)
                         
                     # boxcar integration of the flux; should we weight by the line-profile???
-                    boxflux = np.sum(emlineflux[lineindx])                
-                    boxflux_ivar = 1 / np.sum(1 / emlineivar[lineindx])
+                    boxflux = np.trapz(emlineflux[lineindx], x=emlinewave[lineindx])
+                    boxflux_ivar = 1 / np.trapz(1 / emlineivar[lineindx], x=emlinewave[lineindx])
     
                     result['{}_BOXFLUX'.format(linename)] = boxflux # * u.erg/(u.second*u.cm**2)
                     result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
@@ -1159,7 +1159,7 @@ class EMFitTools(Filters):
                                   #(finalmodel == 0))[0]
                 indx = np.hstack((indxlo, indxhi))
     
-                if len(indx) >= 3: # require at least XX pixels to get the continuum level
+                if len(indx) >= nminpix: # require at least XX pixels to get the continuum level
                     #_, cmed, csig = sigma_clipped_stats(specflux_nolines[indx], sigma=3.0)
                     clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
                     # corner case: if a portion of a camera is masked
