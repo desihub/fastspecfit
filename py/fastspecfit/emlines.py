@@ -74,7 +74,7 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
     else:
         for icam, campix in enumerate(camerapix):
             _emlinemodel = trapz_rebin(10**log10wave, log10model, emlinewave[campix[0]:campix[1]])
-            _emlinemomdel = resolution_matrix[icam].dot(_emlinemodel)
+            _emlinemodel = resolution_matrix[icam].dot(_emlinemodel)
             emlinemodel.append(_emlinemodel)
         return np.hstack(emlinemodel)
 
@@ -854,8 +854,9 @@ class EMFitTools(Filters):
         # line-amplitude is dropped, too (see MgII 2796 on
         # sv1-bright-17680-39627622543528153).
         drop2 = np.zeros(len(parameters), bool)
-        drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree]
-        drop2 *= notfixed
+        if False:
+            drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree]
+            drop2 *= notfixed
         
         sigmadropped = np.where(self.sigma_param_bool * drop2)[0]
         if len(sigmadropped) > 0:
@@ -939,30 +940,19 @@ class EMFitTools(Filters):
                         model_resamp = trapz_rebin(10**self.log10wave, log10model, _emlinewave[icam])
                         model_convol = resolution_matrix[icam].dot(model_resamp)
                         out_linemodel['obsvalue'][lineindx] = np.max(model_convol)
-                        if out_linemodel[lineindx]['param_name'] == 'oiii_5007_amp':
-                            data = [[10**self.log10wave, log10model], [_emlinewave[icam], model_resamp], [_emlinewave[icam], model_convol]]
-                            #import matplotlib.pyplot as plt
-                            #plt.clf()
-                            #plt.plot(10**self.log10wave, log10model)
-                            #plt.plot(_emlinewave[icam], model_resamp)
-                            #plt.plot(_emlinewave[icam], model_convol)
-                            #plt.xlim(np.min(10**self.log10wave[J]), np.max(10**self.log10wave[J]))
-                            #plt.savefig('desi-users/ioannis/tmp/junk.png')
-                            #pdb.set_trace()
-
-            if True:
-                bestfit = self.bestfit(out_linemodel, redshift, emlinewave, resolution_matrix, camerapix)
-                import matplotlib.pyplot as plt
-                plt.clf()
-                plt.plot(emlinewave, emlineflux, label='data', color='gray', lw=4)
-                plt.plot(emlinewave, bestfit, label='bestfit', ls='--', lw=3, alpha=0.7, color='k')
-                plt.plot(data[0][0], data[0][1], label='hires model')
-                plt.plot(data[1][0], data[1][1], label='resamp')
-                plt.plot(data[2][0], data[2][1], label='convol', lw=2)
-                plt.xlim(5386, 5394)
-                plt.legend()
-                plt.savefig('desi-users/ioannis/tmp/junk.png')
-                pdb.set_trace()
+                        #if out_linemodel[lineindx]['param_name'] == 'oiii_5007_amp':
+                        #    import matplotlib.pyplot as plt
+                        #    bestfit = self.bestfit(out_linemodel, redshift, emlinewave, resolution_matrix, camerapix)
+                        #    plt.clf()
+                        #    plt.plot(emlinewave, emlineflux, label='data', color='gray', lw=4)
+                        #    plt.plot(emlinewave, bestfit, label='bestfit', ls='--', lw=3, alpha=0.7, color='k')
+                        #    plt.plot(10**self.log10wave, log10model, label='hires model')
+                        #    plt.plot(_emlinewave[icam], model_resamp, label='resamp')
+                        #    plt.plot(_emlinewave[icam], model_convol, label='convol', lw=2)
+                        #    plt.xlim(5386, 5394)
+                        #    plt.legend()
+                        #    plt.savefig('desi-users/ioannis/tmp/junk.png')
+                        #    pdb.set_trace()
         
         return out_linemodel
 
@@ -2412,7 +2402,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     t0 = time.time()
     initfit = EMFit.optimize(initial_linemodel_nobroad, emlinewave, emlineflux, 
                              weights, redshift, resolution_matrix, camerapix, 
-                             log=log, debug=False)
+                             log=log, debug=False, get_finalamp=False)
     initmodel = EMFit.bestfit(initfit, redshift, emlinewave, resolution_matrix, camerapix)
     initchi2 = EMFit.chi2(initfit, emlinewave, emlineflux, emlineivar, initmodel)
     nfree = np.sum((initfit['fixed'] == False) * (initfit['tiedtoparam'] == -1))
