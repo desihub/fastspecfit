@@ -1250,33 +1250,33 @@ class EMFitTools(Filters):
                 print()
                 #log.debug(' ')
     
-            # simple QA
-            if linename == 'OIII_5007':
-                import matplotlib.pyplot as plt
-                _indx = np.arange(indx[-1]-indx[0])+indx[0]
-                # continuum bandpasses and statistics
-                plt.clf()
-                plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='gray')
-                plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
-                plt.axhline(y=cmed, color='k')
-                plt.axhline(y=cmed+1/np.sqrt(civar), color='k', ls='--')
-                plt.axhline(y=cmed-1/np.sqrt(civar), color='k', ls='--')
-                plt.savefig('desi-users/ioannis/tmp/junk.png')
-            
-                # emission-line integration
-                plt.clf()
-                plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
-                plt.plot(emlinewave[_indx], finalmodel[_indx], color='red')
-                #plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='orange', alpha=0.5)
-                plt.axvline(x=emlinewave[lineindx[0]], color='blue')
-                plt.axvline(x=emlinewave[lineindx[-1]], color='blue')
-                plt.axhline(y=0, color='k', ls='--')
-                plt.axhline(y=amp_sigma, color='k', ls='--')
-                plt.axhline(y=2*amp_sigma, color='k', ls='--')
-                plt.axhline(y=3*amp_sigma, color='k', ls='--')
-                plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
-                plt.savefig('desi-users/ioannis/tmp/junk2.png')
-                pdb.set_trace()
+            ## simple QA
+            #if linename == 'OIII_5007':
+            #    import matplotlib.pyplot as plt
+            #    _indx = np.arange(indx[-1]-indx[0])+indx[0]
+            #    # continuum bandpasses and statistics
+            #    plt.clf()
+            #    plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='gray')
+            #    plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
+            #    plt.axhline(y=cmed, color='k')
+            #    plt.axhline(y=cmed+1/np.sqrt(civar), color='k', ls='--')
+            #    plt.axhline(y=cmed-1/np.sqrt(civar), color='k', ls='--')
+            #    plt.savefig('desi-users/ioannis/tmp/junk.png')
+            #
+            #    # emission-line integration
+            #    plt.clf()
+            #    plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
+            #    plt.plot(emlinewave[_indx], finalmodel[_indx], color='red')
+            #    #plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='orange', alpha=0.5)
+            #    plt.axvline(x=emlinewave[lineindx[0]], color='blue')
+            #    plt.axvline(x=emlinewave[lineindx[-1]], color='blue')
+            #    plt.axhline(y=0, color='k', ls='--')
+            #    plt.axhline(y=amp_sigma, color='k', ls='--')
+            #    plt.axhline(y=2*amp_sigma, color='k', ls='--')
+            #    plt.axhline(y=3*amp_sigma, color='k', ls='--')
+            #    plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
+            #    plt.savefig('desi-users/ioannis/tmp/junk2.png')
+            #    pdb.set_trace()
 
         # Clean up the doublets whose amplitudes were tied in the fitting since
         # they may have been zeroed out in the clean-up, above. This should be
@@ -2123,9 +2123,6 @@ class EMFitTools(Filters):
                 emlinesigma = emlinesigma[good]
                 emlinemodel = emlinemodel[good]
         
-                #if icam == 0:
-                #    import matplotlib.pyplot as plt ; plt.clf() ; plt.plot(emlinewave, emlineflux) ; plt.plot(emlinewave, emlinemodel) ; plt.xlim(4180, 4210) ; plt.ylim(-15, 17) ; plt.savefig('desi-users/ioannis/tmp/junkg.png')
-                    
                 emlinemodel_oneline = []
                 for desiemlines_oneline1 in desiemlines_oneline:
                     emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
