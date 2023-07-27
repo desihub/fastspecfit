@@ -60,7 +60,7 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
             J = np.abs(log10wave - linezwave) < (8 * log10sigma) # cut to pixels within +/-N-sigma
             if np.count_nonzero(J) > 0:
                 #print(lineamp, 10**linezwave, 10**log10wave[J].min(), 10**log10wave[J].max())
-                log10model[J] = log10model[J] + lineamp * np.exp(-0.5 * (log10wave[J]-linezwave)**2 / log10sigma**2)
+                log10model[J] += lineamp * np.exp(-0.5 * (log10wave[J]-linezwave)**2 / log10sigma**2)
 
     # Optionally split into cameras, resample, and convolve with the resolution
     # matrix.
@@ -919,7 +919,6 @@ class EMFitTools(Filters):
                 if np.any(linesigmas) < 20.:
                     linesigmas[linesigmas<20.] = 20.
     
-                #camindx = []
                 _emlinewave = []
                 for icam, campix in enumerate(camerapix):
                     _emlinewave.append(emlinewave[campix[0]:campix[1]])
@@ -940,27 +939,30 @@ class EMFitTools(Filters):
                         model_resamp = trapz_rebin(10**self.log10wave, log10model, _emlinewave[icam])
                         model_convol = resolution_matrix[icam].dot(model_resamp)
                         out_linemodel['obsvalue'][lineindx] = np.max(model_convol)
-                        #if out_linemodel[lineindx]['param_name'] == 'oiii_4363_amp':
-                        #    import matplotlib.pyplot as plt
-                        #    plt.clf()
-                        #    plt.plot(10**self.log10wave, log10model)
-                        #    plt.plot(_emlinewave[icam], model_resamp)
-                        #    plt.plot(_emlinewave[icam], model_convol)
-                        #    plt.xlim(np.min(10**self.log10wave[J]), np.max(10**self.log10wave[J]))
-                        #    plt.savefig('desi-users/ioannis/tmp/junk.png')
-                        #    pdb.set_trace()
+                        if out_linemodel[lineindx]['param_name'] == 'oiii_5007_amp':
+                            data = [[10**self.log10wave, log10model], [_emlinewave[icam], model_resamp], [_emlinewave[icam], model_convol]]
+                            #import matplotlib.pyplot as plt
+                            #plt.clf()
+                            #plt.plot(10**self.log10wave, log10model)
+                            #plt.plot(_emlinewave[icam], model_resamp)
+                            #plt.plot(_emlinewave[icam], model_convol)
+                            #plt.xlim(np.min(10**self.log10wave[J]), np.max(10**self.log10wave[J]))
+                            #plt.savefig('desi-users/ioannis/tmp/junk.png')
+                            #pdb.set_trace()
 
-        #if False:
-        #    bestfit = self.bestfit(out_linemodel, redshift, emlinewave, resolution_matrix, camerapix)
-        #    import matplotlib.pyplot as plt
-        #    plt.clf()
-        #    plt.plot(emlinewave, emlineflux)
-        #    plt.plot(emlinewave, bestfit)
-        #    #plt.xlim(5800, 6200)
-        #    #plt.xlim(6600, 6950)
-        #    plt.xlim(5050, 5120)
-        #    #plt.xlim(8850, 9050)
-        #    plt.savefig('junk.png')
+            if True:
+                bestfit = self.bestfit(out_linemodel, redshift, emlinewave, resolution_matrix, camerapix)
+                import matplotlib.pyplot as plt
+                plt.clf()
+                plt.plot(emlinewave, emlineflux, label='data', color='gray', lw=4)
+                plt.plot(emlinewave, bestfit, label='bestfit', ls='--', lw=3, alpha=0.7, color='k')
+                plt.plot(data[0][0], data[0][1], label='hires model')
+                plt.plot(data[1][0], data[1][1], label='resamp')
+                plt.plot(data[2][0], data[2][1], label='convol', lw=2)
+                plt.xlim(5386, 5394)
+                plt.legend()
+                plt.savefig('desi-users/ioannis/tmp/junk.png')
+                pdb.set_trace()
         
         return out_linemodel
 
@@ -999,10 +1001,8 @@ class EMFitTools(Filters):
         # doublets
         lineamps[doubletindx] *= lineamps[doubletpair]
 
-        emlinemodel = build_emline_model(self.log10wave, redshift, lineamps, 
-                                         linevshifts, linesigmas, linewaves, 
-                                         emlinewave, resolution_matrix,
-                                         camerapix)
+        emlinemodel = build_emline_model(self.log10wave, redshift, lineamps, linevshifts, linesigmas,
+                                         linewaves, emlinewave, resolution_matrix, camerapix)
 
         return emlinemodel
 
@@ -1018,7 +1018,12 @@ class EMFitTools(Filters):
         
         linewaves = self.linetable['restwave'].data
 
-        parameters = [fastspecfit_table[param.upper()] for param in self.param_names]
+        parameters = []
+        for param in self.param_names:
+            if '_amp' in param:
+                param = param.replace('_amp', '_modelamp')
+            parameters.append(fastspecfit_table[param.upper()])
+        #parameters = [fastspecfit_table[param.upper()] for param in self.param_names]
 
         lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line    
 
@@ -1255,33 +1260,33 @@ class EMFitTools(Filters):
                 print()
                 #log.debug(' ')
     
-            ## simple QA
-            #if linename == 'OIII_4363':
-            #    import matplotlib.pyplot as plt
-            #    _indx = np.arange(indx[-1]-indx[0])+indx[0]
-            #    # continuum bandpasses and statistics
-            #    plt.clf()
-            #    plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='gray')
-            #    plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
-            #    plt.axhline(y=cmed, color='k')
-            #    plt.axhline(y=cmed+1/np.sqrt(civar), color='k', ls='--')
-            #    plt.axhline(y=cmed-1/np.sqrt(civar), color='k', ls='--')
-            #    plt.savefig('desi-users/ioannis/tmp/junk.png')
-            #
-            #    # emission-line integration
-            #    plt.clf()
-            #    plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
-            #    plt.plot(emlinewave[_indx], finalmodel[_indx], color='red')
-            #    #plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='orange', alpha=0.5)
-            #    plt.axvline(x=emlinewave[lineindx[0]], color='blue')
-            #    plt.axvline(x=emlinewave[lineindx[-1]], color='blue')
-            #    plt.axhline(y=0, color='k', ls='--')
-            #    plt.axhline(y=amp_sigma, color='k', ls='--')
-            #    plt.axhline(y=2*amp_sigma, color='k', ls='--')
-            #    plt.axhline(y=3*amp_sigma, color='k', ls='--')
-            #    plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
-            #    plt.savefig('desi-users/ioannis/tmp/junk2.png')
-            #    pdb.set_trace()
+            # simple QA
+            if linename == 'OIII_5007':
+                import matplotlib.pyplot as plt
+                _indx = np.arange(indx[-1]-indx[0])+indx[0]
+                # continuum bandpasses and statistics
+                plt.clf()
+                plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='gray')
+                plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
+                plt.axhline(y=cmed, color='k')
+                plt.axhline(y=cmed+1/np.sqrt(civar), color='k', ls='--')
+                plt.axhline(y=cmed-1/np.sqrt(civar), color='k', ls='--')
+                plt.savefig('desi-users/ioannis/tmp/junk.png')
+            
+                # emission-line integration
+                plt.clf()
+                plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
+                plt.plot(emlinewave[_indx], finalmodel[_indx], color='red')
+                #plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='orange', alpha=0.5)
+                plt.axvline(x=emlinewave[lineindx[0]], color='blue')
+                plt.axvline(x=emlinewave[lineindx[-1]], color='blue')
+                plt.axhline(y=0, color='k', ls='--')
+                plt.axhline(y=amp_sigma, color='k', ls='--')
+                plt.axhline(y=2*amp_sigma, color='k', ls='--')
+                plt.axhline(y=3*amp_sigma, color='k', ls='--')
+                plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
+                plt.savefig('desi-users/ioannis/tmp/junk2.png')
+                pdb.set_trace()
 
         # Clean up the doublets whose amplitudes were tied in the fitting since
         # they may have been zeroed out in the clean-up, above. This should be

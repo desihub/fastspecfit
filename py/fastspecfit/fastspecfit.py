@@ -640,7 +640,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
          
         for oneline in EMFit.linetable[inrange]: # for all lines in range
             linename = oneline['name'].upper()
-            amp = fastspec['{}_AMP'.format(linename)]
+            amp = fastspec['{}_MODELAMP'.format(linename)]
             if amp != 0:
                 desiemlines_oneline1 = build_emline_model(
                     EMFit.log10wave, redshift, np.array([amp]),
