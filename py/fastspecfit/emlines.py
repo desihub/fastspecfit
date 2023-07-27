@@ -1028,10 +1028,15 @@ class EMFitTools(Filters):
             linesigma_ang = linesigma * linezwave / C_LIGHT    # [observed-frame Angstrom]
             #log10sigma = linesigma / C_LIGHT / np.log(10)     # line-width [log-10 Angstrom]            
 
+            if linesigma_ang < 2.:
+                linesigma_ang_window = 2.
+            else:
+                linesigma_ang_window = linesigma_ang
+
             # Are the pixels based on the original inverse spectrum fully
             # masked? If so, set everything to zero and move onto the next line.
-            lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang)) *
-                                (emlinewave <= (linezwave + 3.0*linesigma_ang)))[0]
+            lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang_window)) *
+                                (emlinewave <= (linezwave + 3.0*linesigma_ang_window)))[0]
             
             if len(lineindx) > 0 and np.sum(oemlineivar[lineindx] == 0) / len(lineindx) > 0.3: # use original ivar
                 result['{}_AMP'.format(linename)] = 0.0
@@ -1039,8 +1044,8 @@ class EMFitTools(Filters):
                 result['{}_SIGMA'.format(linename)] = 0.0
             else:
                 # number of pixels, chi2, and boxcar integration
-                lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang)) *
-                                    (emlinewave <= (linezwave + 3.0*linesigma_ang)) *
+                lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang_window)) *
+                                    (emlinewave <= (linezwave + 3.0*linesigma_ang_window)) *
                                     (emlineivar > 0))[0]
     
                 # can happen if sigma is very small (depending on the wavelength)
@@ -1144,12 +1149,12 @@ class EMFitTools(Filters):
                                 narrow_redshifts.append(linez)
     
                 # next, get the continuum, the inverse variance in the line-amplitude, and the EW
-                indxlo = np.where((emlinewave > (linezwave - 10*linesigma * linezwave / C_LIGHT)) *
-                                  (emlinewave < (linezwave - 3.*linesigma * linezwave / C_LIGHT)) *
+                indxlo = np.where((emlinewave > (linezwave - 10*linesigma_ang_window)) *
+                                  (emlinewave < (linezwave - 3.*linesigma_ang_window)) *
                                   (oemlineivar > 0))[0]
                                   #(finalmodel == 0))[0]
-                indxhi = np.where((emlinewave < (linezwave + 10*linesigma * linezwave / C_LIGHT)) *
-                                  (emlinewave > (linezwave + 3.*linesigma * linezwave / C_LIGHT)) *
+                indxhi = np.where((emlinewave < (linezwave + 10*linesigma_ang_window)) *
+                                  (emlinewave > (linezwave + 3.*linesigma_ang_window)) *
                                   (oemlineivar > 0))[0]
                                   #(finalmodel == 0))[0]
                 indx = np.hstack((indxlo, indxhi))
@@ -1200,7 +1205,7 @@ class EMFitTools(Filters):
                 #log.debug(' ')
     
             ## simple QA
-            #if linename == 'OIII_5007':
+            #if linename == 'OIII_4363':
             #    import matplotlib.pyplot as plt
             #    _indx = np.arange(indx[-1]-indx[0])+indx[0]
             #    # continuum bandpasses and statistics
