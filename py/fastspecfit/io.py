@@ -1661,6 +1661,8 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
 
         for line in linetable['name']:
             line = line.upper()
+            out.add_column(Column(name='{}_MODELAMP'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
             out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
             out.add_column(Column(name='{}_AMP_IVAR'.format(line), length=nobj, dtype='f4',
