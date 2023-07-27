@@ -68,7 +68,7 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
     if camerapix is None:
         for icam, specwave in enumerate(emlinewave):
             _emlinemodel = trapz_rebin(10**log10wave, log10model, specwave)
-            _emlinemomdel = resolution_matrix[icam].dot(_emlinemodel)
+            _emlinemodel = resolution_matrix[icam].dot(_emlinemodel)
             emlinemodel.append(_emlinemodel)
         return emlinemodel
     else:
