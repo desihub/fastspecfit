@@ -1105,37 +1105,9 @@ class EMFitTools(Filters):
                                     (emlinewave <= (linezwave + 3.0*linesigma_ang_window)) *
                                     (emlineivar > 0))[0]
 
-                ## can happen if sigma is very small (depending on the wavelength)
-                #if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * (len(lineindx) < nminpix):
-                #
-                #    linesigma_ang2 = self.limitsigma_narrow * linezwave / C_LIGHT    # [observed-frame Angstrom]
-                #    lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang2)) *
-                #                        (emlinewave <= (linezwave + 3.0*linesigma_ang2)))[0]
-                #
-                #    good = oemlineivar[lineindx] > 0 # use the original ivar
-                #    if np.any(good):
-                #        lineindx = np.atleast_1d(lineindx[good])
-                #    else:
-                #        lineindx = np.array([])
-                #    
-                #    #dwave = emlinewave - linezwave
-                #    #lineindx = np.argmin(np.abs(dwave)) + (np.arange(npad+1) - npad//2) # +/- NPAD-pixel pad
-                #    #
-                #    ## check to make sure we don't hit the edges and also trim
-                #    ## out padded pixels with ivar==0
-                #    #good = (lineindx >= 0) * (lineindx < len(emlineivar))
-                #    #if np.any(good):
-                #    #    lineindx = lineindx[good]
-                #    #    good = oemlineivar[lineindx] > 0 # use the original ivar
-                #    #    if np.any(good):
-                #    #        lineindx = np.atleast_1d(lineindx[good])
-                #    #    else:
-                #    #        lineindx = np.array([])
-    
                 npix = len(lineindx)
                 result['{}_NPIX'.format(linename)] = npix
     
-                #if npix >= nminpix: # magic number: required at least XX unmasked pixels centered on the line
                 if npix >= nminpix: # magic number: required at least XX unmasked pixels centered on the line
                     
                     if np.any(emlineivar[lineindx] == 0):
@@ -1182,14 +1154,6 @@ class EMFitTools(Filters):
                         
                         result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
                         
-                        ##if linename == 'OII_3729':
-                        #_indx = np.arange((lineindx[-1]+20)-(lineindx[0]-20))+(lineindx[0]-20)
-                        #import matplotlib.pyplot as plt
-                        #plt.clf()
-                        #plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
-                        #plt.plot(emlinewave[_indx], lineprofile[_indx], color='red')
-                        #plt.savefig('desi-users/ioannis/tmp/junk-{}.png'.format(linename))
-
                         dof = npix - 3 # ??? [redshift, sigma, and amplitude]
                         chi2 = np.sum(emlineivar[lineindx]*(emlineflux[lineindx]-finalmodel[lineindx])**2) / dof
     
@@ -1221,20 +1185,6 @@ class EMFitTools(Filters):
                                   #(finalmodel == 0))[0]
                 indx = np.hstack((indxlo, indxhi))
 
-                #    dwave = emlinewave - linezwave
-                #    lineindx = np.argmin(np.abs(dwave)) + (np.arange(npad+1) - npad//2) # +/- NPAD-pixel pad
-                #
-                #    # check to make sure we don't hit the edges and also trim
-                #    # out padded pixels with ivar==0
-                #    good = (lineindx >= 0) * (lineindx < len(emlineivar))
-                #    if np.any(good):
-                #        lineindx = lineindx[good]
-                #        good = oemlineivar[lineindx] > 0 # use the original ivar
-                #        if np.any(good):
-                #            lineindx = np.atleast_1d(lineindx[good])
-                #        else:
-                #            lineindx = np.array([])
-                
                 if len(indx) >= nminpix: # require at least XX pixels to get the continuum level
                     #_, cmed, csig = sigma_clipped_stats(specflux_nolines[indx], sigma=3.0)
                     clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
