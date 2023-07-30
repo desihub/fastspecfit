@@ -1153,11 +1153,8 @@ class EMFitTools(Filters):
                         #result['{}_FLUX_IVAR'.format(linename)] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
                         
                         result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
-                        
-                        dof = npix - 3 # ??? [redshift, sigma, and amplitude]
-                        chi2 = np.sum(emlineivar[lineindx]*(emlineflux[lineindx]-finalmodel[lineindx])**2) / dof
-    
-                        result['{}_CHI2'.format(linename)] = chi2
+
+                        result['{}_CHI2'.format(linename)] = np.sum(emlineivar[lineindx] * (emlineflux[lineindx] - finalmodel[lineindx])**2)
     
                         # keep track of sigma and z but only using XX-sigma lines
                         linesnr = result['{}_AMP'.format(linename)] * np.sqrt(result['{}_AMP_IVAR'.format(linename)])
