@@ -1029,7 +1029,7 @@ class EMFitTools(Filters):
 
     def populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
                          emlineivar, oemlineivar, specflux_nolines, redshift,
-                         resolution_matrix, camerapix, log, npad=10, nminpix=8):
+                         resolution_matrix, camerapix, log, nminpix=7):
         """Populate the output table with the emission-line measurements.
 
         """
@@ -1058,6 +1058,8 @@ class EMFitTools(Filters):
                     result[param['param_name'].upper()] = obsval
                 else:
                     result[param['param_name'].upper()] = val                    
+
+        dpixwave = emlinewave[1]-emlinewave[0] # pixel size [Angstrom]
                     
         # get continuum fluxes, EWs, and upper limits
         narrow_sigmas, broad_sigmas, uv_sigmas = [], [], []
@@ -1080,10 +1082,10 @@ class EMFitTools(Filters):
                     linesigma = self.limitsigma_broad
 
             linesigma_ang = linesigma * linezwave / C_LIGHT    # [observed-frame Angstrom]
-            #log10sigma = linesigma / C_LIGHT / np.log(10)     # line-width [log-10 Angstrom]            
 
-            if linesigma_ang < 2.:
-                linesigma_ang_window = 2.
+            # require at least 3 pixels
+            if linesigma_ang < 3 * dpixwave:
+                linesigma_ang_window = 3 * dpixwave
             else:
                 linesigma_ang_window = linesigma_ang
 
@@ -1102,28 +1104,40 @@ class EMFitTools(Filters):
                 lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang_window)) *
                                     (emlinewave <= (linezwave + 3.0*linesigma_ang_window)) *
                                     (emlineivar > 0))[0]
-    
-                # can happen if sigma is very small (depending on the wavelength)
-                if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * (len(lineindx) < nminpix):
-                    dwave = emlinewave - linezwave
-                    lineindx = np.argmin(np.abs(dwave)) + (np.arange(npad+1) - npad//2) # +/- NPAD-pixel pad
 
-                    # check to make sure we don't hit the edges and also trim
-                    # out padded pixels with ivar==0
-                    good = (lineindx >= 0) * (lineindx < len(emlineivar))
-                    if np.any(good):
-                        lineindx = lineindx[good]
-                        good = oemlineivar[lineindx] > 0 # use the original ivar
-                        if np.any(good):
-                            lineindx = np.atleast_1d(lineindx[good])
-                        else:
-                            lineindx = np.array([])
+                ## can happen if sigma is very small (depending on the wavelength)
+                #if (linezwave > np.min(emlinewave)) * (linezwave < np.max(emlinewave)) * (len(lineindx) < nminpix):
+                #
+                #    linesigma_ang2 = self.limitsigma_narrow * linezwave / C_LIGHT    # [observed-frame Angstrom]
+                #    lineindx = np.where((emlinewave >= (linezwave - 3.0*linesigma_ang2)) *
+                #                        (emlinewave <= (linezwave + 3.0*linesigma_ang2)))[0]
+                #
+                #    good = oemlineivar[lineindx] > 0 # use the original ivar
+                #    if np.any(good):
+                #        lineindx = np.atleast_1d(lineindx[good])
+                #    else:
+                #        lineindx = np.array([])
+                #    
+                #    #dwave = emlinewave - linezwave
+                #    #lineindx = np.argmin(np.abs(dwave)) + (np.arange(npad+1) - npad//2) # +/- NPAD-pixel pad
+                #    #
+                #    ## check to make sure we don't hit the edges and also trim
+                #    ## out padded pixels with ivar==0
+                #    #good = (lineindx >= 0) * (lineindx < len(emlineivar))
+                #    #if np.any(good):
+                #    #    lineindx = lineindx[good]
+                #    #    good = oemlineivar[lineindx] > 0 # use the original ivar
+                #    #    if np.any(good):
+                #    #        lineindx = np.atleast_1d(lineindx[good])
+                #    #    else:
+                #    #        lineindx = np.array([])
     
                 npix = len(lineindx)
                 result['{}_NPIX'.format(linename)] = npix
     
+                #if npix >= nminpix: # magic number: required at least XX unmasked pixels centered on the line
                 if npix >= nminpix: # magic number: required at least XX unmasked pixels centered on the line
-    
+                    
                     if np.any(emlineivar[lineindx] == 0):
                         errmsg = 'Ivar should never be zero within an emission line!'
                         log.critical(errmsg)
@@ -1152,19 +1166,21 @@ class EMFitTools(Filters):
                         linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang # * u.Angstrom
                         result['{}_FLUX'.format(linename)] = result['{}_MODELAMP'.format(linename)] * linenorm
 
-                        # weight by the per-pixel inverse variance line-profile
-                        lineprofile = build_emline_model(self.log10wave, redshift, np.array([result['{}_MODELAMP'.format(linename)]]),
-                                                         np.array([result['{}_VSHIFT'.format(linename)]]), np.array([result['{}_SIGMA'.format(linename)]]),
-                                                         np.array([oneline['restwave']]), emlinewave, resolution_matrix, camerapix)
+                        ## weight by the per-pixel inverse variance line-profile
+                        #lineprofile = build_emline_model(self.log10wave, redshift, np.array([result['{}_MODELAMP'.format(linename)]]),
+                        #                                 np.array([result['{}_VSHIFT'.format(linename)]]), np.array([result['{}_SIGMA'.format(linename)]]),
+                        #                                 np.array([oneline['restwave']]), emlinewave, resolution_matrix, camerapix)
+                        #
+                        #weight = np.sum(lineprofile[lineindx])
+                        #if weight == 0.0:
+                        #    errmsg = 'Line-profile should never sum to zero!'
+                        #    log.critical(errmsg)
+                        #    raise ValueError(errmsg)
+                        #    
+                        #flux_ivar = weight / np.sum(lineprofile[lineindx] / emlineivar[lineindx])
+                        #result['{}_FLUX_IVAR'.format(linename)] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
                         
-                        weight = np.sum(lineprofile[lineindx])
-                        if weight == 0.0:
-                            errmsg = 'Line-profile should never sum to zero!'
-                            log.critical(errmsg)
-                            raise ValueError(errmsg)
-                            
-                        flux_ivar = weight / np.sum(lineprofile[lineindx] / emlineivar[lineindx])
-                        result['{}_FLUX_IVAR'.format(linename)] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
+                        result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
                         
                         ##if linename == 'OII_3729':
                         #_indx = np.arange((lineindx[-1]+20)-(lineindx[0]-20))+(lineindx[0]-20)
@@ -1204,7 +1220,21 @@ class EMFitTools(Filters):
                                   (oemlineivar > 0))[0]
                                   #(finalmodel == 0))[0]
                 indx = np.hstack((indxlo, indxhi))
-    
+
+                #    dwave = emlinewave - linezwave
+                #    lineindx = np.argmin(np.abs(dwave)) + (np.arange(npad+1) - npad//2) # +/- NPAD-pixel pad
+                #
+                #    # check to make sure we don't hit the edges and also trim
+                #    # out padded pixels with ivar==0
+                #    good = (lineindx >= 0) * (lineindx < len(emlineivar))
+                #    if np.any(good):
+                #        lineindx = lineindx[good]
+                #        good = oemlineivar[lineindx] > 0 # use the original ivar
+                #        if np.any(good):
+                #            lineindx = np.atleast_1d(lineindx[good])
+                #        else:
+                #            lineindx = np.array([])
+                
                 if len(indx) >= nminpix: # require at least XX pixels to get the continuum level
                     #_, cmed, csig = sigma_clipped_stats(specflux_nolines[indx], sigma=3.0)
                     clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
@@ -1225,6 +1255,7 @@ class EMFitTools(Filters):
     
                 if result['{}_CONT'.format(linename)] != 0.0 and result['{}_CONT_IVAR'.format(linename)] != 0.0:
                     lineflux = result['{}_FLUX'.format(linename)]
+                    #linefluxivar = result['{}_BOXFLUX_IVAR'.format(linename)]
                     linefluxivar = result['{}_FLUX_IVAR'.format(linename)]
                     if lineflux > 0 and linefluxivar > 0:
                         # add the uncertainties in flux and the continuum in quadrature
