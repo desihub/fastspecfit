@@ -1084,8 +1084,8 @@ class EMFitTools(Filters):
             linesigma_ang = linesigma * linezwave / C_LIGHT    # [observed-frame Angstrom]
 
             # require at least 3 pixels
-            if linesigma_ang < 3 * dpixwave:
-                linesigma_ang_window = 3 * dpixwave
+            if linesigma_ang < 2 * dpixwave:
+                linesigma_ang_window = 2 * dpixwave
             else:
                 linesigma_ang_window = linesigma_ang
 
@@ -2421,7 +2421,8 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
 
         t0 = time.time()
         broadfit = EMFit.optimize(initial_linemodel, emlinewave, emlineflux, weights, 
-                                  redshift, resolution_matrix, camerapix, log=log, debug=False)
+                                  redshift, resolution_matrix, camerapix, log=log,
+                                  debug=False, get_finalamp=True)
         broadmodel = EMFit.bestfit(broadfit, redshift, emlinewave, resolution_matrix, camerapix)
         broadchi2 = EMFit.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel)
         nfree = np.sum((broadfit['fixed'] == False) * (broadfit['tiedtoparam'] == -1))
@@ -2444,7 +2445,8 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
         sigdrop1 = (broadfit[Habroad]['value'] <= broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
         sigdrop2 = broadfit[Habroad]['value'][0] < EMFit.minsigma_balmer_broad
 
-        ampsnr = broadfit[Bbroad]['value'].data * np.sqrt(broadfit[Bbroad]['civar'].data)
+        ampsnr = broadfit[Bbroad]['obsvalue'].data * np.sqrt(broadfit[Bbroad]['civar'].data)
+        #ampdrop = np.any(ampsnr[-1:] < EMFit.minsnr_balmer_broad)
         ampdrop = np.any(ampsnr[-2:] < EMFit.minsnr_balmer_broad)
 
         #W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
