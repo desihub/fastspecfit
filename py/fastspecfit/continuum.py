@@ -1430,7 +1430,7 @@ class ContinuumTools(Filters, Inoue14):
 
     @staticmethod
     def call_nnls(modelflux, flux, ivar, xparam=None, debug=False,
-                  interpolate_coeff=False, xlabel=None, log=None):
+                  interpolate_coeff=False, xlabel=None, png=None, log=None):
         """Wrapper on nnls.
     
         Works with both spectroscopic and photometric input and with both 2D and
@@ -1480,11 +1480,14 @@ class ContinuumTools(Filters, Inoue14):
         
         try:
             imin = find_minima(chi2grid)[0]
-            xbest, xerr, chi2min, warn = minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
+            if debug:
+                xbest, xerr, chi2min, warn, (a, b, c) = minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2], return_coeff=True)
+            else:
+                xbest, xerr, chi2min, warn = minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
         except:
             errmsg = 'A problem was encountered minimizing chi2.'
             log.warning(errmsg)
-            imin, xbest, xerr, chi2min, warn = 0, 0.0, 0.0, 0.0, 1
+            imin, xbest, xerr, chi2min, warn, (a, b, c) = 0, 0.0, 0.0, 0.0, 1, (0., 0., 0.)
     
         if warn == 0:
             xivar = 1.0 / xerr**2
@@ -1510,29 +1513,37 @@ class ContinuumTools(Filters, Inoue14):
     
         if debug:
             if xivar > 0:
-                leg = r'${:.3f}\pm{:.3f}\ (\chi^2_{{min}}={:.2f})$'.format(xbest, 1/np.sqrt(xivar), chi2min)
+                leg = r'${:.1f}\pm{:.1f}$'.format(xbest, 1 / np.sqrt(xivar))
+                #leg = r'${:.3f}\pm{:.3f}\ (\chi^2_{{min}}={:.2f})$'.format(xbest, 1/np.sqrt(xivar), chi2min)
             else:
                 leg = r'${:.3f}$'.format(xbest)
                 
+            if xlabel:
+                leg = f'{xlabel} = {leg}'
+                
             import matplotlib.pyplot as plt
+            import seaborn as sns
+            sns.set(context='talk', style='ticks', font_scale=0.8)
             fig, ax = plt.subplots()
-            ax.scatter(xparam, chi2grid)
-            ax.scatter(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2], color='red')
-            #ax.set_ylim(chi2min*0.95, np.max(chi2grid[imin-1:imin+2])*1.05)
-            #ax.plot(xx, np.polyval([aa, bb, cc], xx), ls='--')
-            ax.axvline(x=xbest, color='k')
-            if xivar > 0:
-                ax.axhline(y=chi2min, color='k')
-            #ax.set_yscale('log')
-            #ax.set_ylim(chi2min, 63.3)
+            ax.scatter(xparam, chi2grid-chi2min, marker='s', s=50, color='gray', edgecolor='k')
+            #ax.scatter(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2]-chi2min, color='red')
+            if not np.all(np.array([a, b, c]) == 0):
+                ax.plot(xparam, np.polyval([a, b, c], xparam)-chi2min, lw=2, ls='--')
+            #ax.axvline(x=xbest, color='k')
+            #if xivar > 0:
+            #    ax.axhline(y=chi2min, color='k')
             if xlabel:
                 ax.set_xlabel(xlabel)
                 #ax.text(0.03, 0.9, '{}={}'.format(xlabel, leg), ha='left',
                 #        va='center', transform=ax.transAxes)
-            ax.text(0.03, 0.9, leg, ha='left', va='center', transform=ax.transAxes)
-            ax.set_ylabel(r'$\chi^2$')
+            ax.text(0.9, 0.9, leg, ha='right', va='center', transform=ax.transAxes)
+            ax.set_ylabel(r'$\Delta\chi^2$')
+            #ax.set_ylabel(r'$\chi^2 - {:.1f}$'.format(chi2min))
             #fig.savefig('qa-chi2min.png')
-            fig.savefig('desi-users/ioannis/tmp/qa-chi2min.png')
+            fig.tight_layout()
+            if png:
+                log.info(f'Writing {png}')
+                fig.savefig(png)
     
         return chi2min, xbest, xivar, bestcoeff
 
@@ -1742,7 +1753,7 @@ class ContinuumTools(Filters, Inoue14):
         return kcorr, absmag, ivarabsmag, bestmaggies, lums, cfluxes
 
 def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=False,
-                      fastphot=False, log=None, verbose=False):
+                      fastphot=False, log=None, verbose=False, debug_plots=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -1905,9 +1916,10 @@ def continuum_specfit(data, result, templatecache, nophoto=False, constrain_age=
             vdispchi2min, vdispbest, vdispivar, _ = CTools.call_nnls(
                 ztemplateflux_vdisp[Ivdisp, :, :], 
                 specflux[Ivdisp], specivar[Ivdisp],
-                xparam=templatecache['vdisp'], xlabel=r'$\sigma$ (km/s)', debug=False, log=log)
+                xparam=templatecache['vdisp'], xlabel=r'$\sigma$ (km/s)', log=log,
+                debug=debug_plots, png='deltachi2-vdisp.png')
             log.info('Fitting for the velocity dispersion took {:.2f} seconds.'.format(time.time()-t0))
-
+            
             if vdispivar > 0:
                 # Require vdisp to be measured with S/N>1, which protects
                 # against tiny ivar becomming infinite in the output table.

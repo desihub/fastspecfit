@@ -40,7 +40,8 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
 
 def fastspec_one(iobj, data, out, meta, templates, log=None,
                  minspecwave=3500., maxspecwave=9900., broadlinefit=True,
-                 fastphot=False, stackfit=False, nophoto=False, percamera_models=False):
+                 fastphot=False, stackfit=False, nophoto=False,
+                 percamera_models=False, debug_plots=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -60,7 +61,7 @@ def fastspec_one(iobj, data, out, meta, templates, log=None,
 
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache,
                                                          fastphot=fastphot, nophoto=nophoto,
-                                                         log=log)
+                                                         debug_plots=debug_plots, log=log)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -125,6 +126,7 @@ def parse(options=None, log=None):
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--dr9dir', type=str, default=None, help='Optional directory name for the DR9 photometry.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
+    parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
     if log is None:
@@ -225,7 +227,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     t0 = time.time()
     fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], templates, log,
                 minspecwave, maxspecwave, args.broadlinefit, fastphot, stackfit,
-                args.nophoto, args.percamera_models)
+                args.nophoto, args.percamera_models, args.debug_plots)
                 for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
