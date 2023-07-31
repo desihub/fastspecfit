@@ -643,7 +643,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             amp = fastspec['{}_MODELAMP'.format(linename)]
             if amp != 0:
                 desiemlines_oneline1 = build_emline_model(
-                    EMFit.log10wave, redshift, np.array([amp]),
+                    EMFit.dlog10wave, redshift, np.array([amp]),
                     np.array([fastspec['{}_VSHIFT'.format(linename)]]),
                     np.array([fastspec['{}_SIGMA'.format(linename)]]),
                     np.array([oneline['restwave']]), data['wave'], data['res'])

@@ -28,7 +28,7 @@ def read_emlines():
 
 #import numba
 #@numba.jit(nopython=True)
-def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas, 
+def build_emline_model(dlog10wave, redshift, lineamps, linevshifts, linesigmas, 
                        linewaves, emlinewave, resolution_matrix, camerapix=None):
     """Given parameters, build the model emission-line spectrum.
 
@@ -37,7 +37,7 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
     """
     from fastspecfit.util import trapz_rebin
 
-    log10model = np.zeros_like(log10wave) # [erg/s/cm2/A, observed frame]
+    #log10model = np.zeros_like(log10wave) # [erg/s/cm2/A, observed frame]
 
     # Cut to lines with non-zero amplitudes.
     #I = linesigmas > 0
@@ -56,11 +56,30 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
         log10sigmas = linesigmas / C_LIGHT / np.log(10) 
         linezwaves = np.log10(linewaves * (1.0 + redshift + linevshifts / C_LIGHT))
 
+        # Build the wavelength vector on-the-fly.
+        if camerapix is None:
+            minwave = emlinewave[0][0]-2.
+            maxwave = emlinewave[-1][-1]+2.
+        else:
+            minwave = emlinewave[0]-2.
+            maxwave = emlinewave[-1]+2.
+        
+        log10wave = []
+        for linezwave, log10sigma in zip(linezwaves, log10sigmas):
+            log10wave.append(np.arange(linezwave - (5 * log10sigma), linezwave + (5 * log10sigma), dlog10wave))
+        log10wave = np.hstack([np.log10(minwave), np.log10(maxwave), ] + log10wave)
+        S = np.argsort(log10wave)
+        log10wave = log10wave[S]
+        log10model = np.zeros_like(log10wave)
+        
         for lineamp, linezwave, log10sigma in zip(lineamps, linezwaves, log10sigmas):
-            J = np.abs(log10wave - linezwave) < (8 * log10sigma) # cut to pixels within +/-N-sigma
-            if np.count_nonzero(J) > 0:
-                #print(lineamp, 10**linezwave, 10**log10wave[J].min(), 10**log10wave[J].max())
-                log10model[J] += lineamp * np.exp(-0.5 * (log10wave[J]-linezwave)**2 / log10sigma**2)
+            J = np.abs(log10wave - linezwave) < (5 * log10sigma)
+            #print(lineamp, 10**linezwave, 10**log10wave[J].min(), 10**log10wave[J].max())
+            log10model[J] += lineamp * np.exp(-0.5 * (log10wave[J]-linezwave)**2 / log10sigma**2)
+
+    #import matplotlib.pyplot as plt
+    #plt.clf() ; plt.scatter(10**log10wave, log10model, s=1) ; plt.xlim(7500, 8100) ; plt.savefig('desi-users/ioannis/tmp/junk.png')
+    #pdb.set_trace()
 
     # Optionally split into cameras, resample, and convolve with the resolution
     # matrix.
@@ -79,7 +98,7 @@ def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
         return np.hstack(emlinemodel)
 
 def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshift, 
-                        log10wave, resolution_matrix, camerapix, parameters, Ifree, 
+                        dlog10wave, resolution_matrix, camerapix, parameters, Ifree, 
                         Itied, tiedtoparam, tiedfactor, doubletindx, doubletpair, 
                         linewaves):
     """The parameters array should only contain free (not tied or fixed) parameters."""
@@ -108,7 +127,7 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
     lineamps[doubletindx] *= lineamps[doubletpair]
 
     # Build the emission-line model.
-    emlinemodel = build_emline_model(log10wave, redshift, lineamps, linevshifts, 
+    emlinemodel = build_emline_model(dlog10wave, redshift, lineamps, linevshifts, 
                                      linesigmas, linewaves, emlinewave, 
                                      resolution_matrix, camerapix)
 
@@ -162,9 +181,8 @@ class EMFitTools(Filters):
 
         self.linetable = read_emlines()
 
-        self.emwave_pixkms = 5.0                                  # pixel size for internal wavelength array [km/s]
-        self.dlogwave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
-        self.log10wave = np.arange(np.log10(minspecwave), np.log10(maxspecwave), self.dlogwave)
+        self.emwave_pixkms = 5.                                   # pixel size for internal wavelength array [km/s]
+        self.dlog10wave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
 
         # default line-sigma for computing upper limits
         self.limitsigma_narrow = 75.0
@@ -800,7 +818,6 @@ class EMFitTools(Filters):
         """
         from scipy.optimize import least_squares
         from fastspecfit.util import trapz_rebin        
-        from fastspecfit.emlines import _objective_function
 
         if log is None:
             from desiutil.log import get_logger, DEBUG
@@ -813,7 +830,7 @@ class EMFitTools(Filters):
                      linewaves) = self._linemodel_to_parameters(linemodel, self.fit_linetable)
         log.debug('Optimizing {} free parameters'.format(len(Ifree)))
 
-        farg = (emlinewave, emlineflux, weights, redshift, self.log10wave, 
+        farg = (emlinewave, emlineflux, weights, redshift, self.dlog10wave, 
                 resolution_matrix, camerapix, parameters, ) + \
                 (Ifree, Itied, tiedtoparam, tiedfactor, doubletindx, 
                  doubletpair, linewaves)
@@ -919,40 +936,45 @@ class EMFitTools(Filters):
                 # demand at least 20 km/s for rendering the model
                 if np.any(linesigmas) < 20.:
                     linesigmas[linesigmas<20.] = 20.
-    
+
+                if camerapix is None:
+                    minwave = emlinewave[0][0]-2.
+                    maxwave = emlinewave[-1][-1]+2.
+                else:
+                    minwave = emlinewave[0]-2.
+                    maxwave = emlinewave[-1]+2.
+                    
                 _emlinewave = []
                 for icam, campix in enumerate(camerapix):
                     _emlinewave.append(emlinewave[campix[0]:campix[1]])
         
                 # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
-                log10sigmas = linesigmas / C_LIGHT / np.log(10)
-                
+                log10sigmas = linesigmas / C_LIGHT / np.log(10)                
                 linezwaves = np.log10(linewaves * (1.0 + redshift + linevshifts / C_LIGHT))
         
                 for lineindx, lineamp, linezwave, log10sigma in zip(lineindxs, lineamps, linezwaves, log10sigmas):
-                    J = np.abs(self.log10wave - linezwave) < (8 * log10sigma) # cut to pixels within +/-N-sigma
-                    if np.count_nonzero(J) > 0:
-                        log10model = self.log10wave * 0
-                        log10model[J] = lineamp * np.exp(-0.5 * (self.log10wave[J]-linezwave)**2 / log10sigma**2)
-                        # Determine which camera we're on and then resample and
-                        # convolve with the resolution matrix.
-                        icam = np.argmin([np.abs((np.max(emwave)-np.min(emwave))/2+np.min(emwave)-10**linezwave) for emwave in _emlinewave])
-                        model_resamp = trapz_rebin(10**self.log10wave, log10model, _emlinewave[icam])
-                        model_convol = resolution_matrix[icam].dot(model_resamp)
-                        out_linemodel['obsvalue'][lineindx] = np.max(model_convol)
-                        #if out_linemodel[lineindx]['param_name'] == 'oiii_5007_amp':
-                        #    import matplotlib.pyplot as plt
-                        #    bestfit = self.bestfit(out_linemodel, redshift, emlinewave, resolution_matrix, camerapix)
-                        #    plt.clf()
-                        #    plt.plot(emlinewave, emlineflux, label='data', color='gray', lw=4)
-                        #    plt.plot(emlinewave, bestfit, label='bestfit', ls='--', lw=3, alpha=0.7, color='k')
-                        #    plt.plot(10**self.log10wave, log10model, label='hires model')
-                        #    plt.plot(_emlinewave[icam], model_resamp, label='resamp')
-                        #    plt.plot(_emlinewave[icam], model_convol, label='convol', lw=2)
-                        #    plt.xlim(5386, 5394)
-                        #    plt.legend()
-                        #    plt.savefig('desi-users/ioannis/tmp/junk.png')
-                        #    pdb.set_trace()
+                    log10wave = np.arange(linezwave - (5 * log10sigma), linezwave + (5 * log10sigma), self.dlog10wave)
+                    log10wave = np.hstack((np.log10(minwave), log10wave, np.log10(maxwave)))
+                    log10model = lineamp * np.exp(-0.5 * (log10wave-linezwave)**2 / log10sigma**2)
+                    # Determine which camera we're on and then resample and
+                    # convolve with the resolution matrix.
+                    icam = np.argmin([np.abs((np.max(emwave)-np.min(emwave))/2+np.min(emwave)-10**linezwave) for emwave in _emlinewave])
+                    model_resamp = trapz_rebin(10**log10wave, log10model, _emlinewave[icam])
+                    model_convol = resolution_matrix[icam].dot(model_resamp)
+                    out_linemodel['obsvalue'][lineindx] = np.max(model_convol)
+                    #if out_linemodel[lineindx]['param_name'] == 'oiii_5007_amp':
+                    #    import matplotlib.pyplot as plt
+                    #    bestfit = self.bestfit(out_linemodel, redshift, emlinewave, resolution_matrix, camerapix)
+                    #    plt.clf()
+                    #    plt.plot(emlinewave, emlineflux, label='data', color='gray', lw=4)
+                    #    plt.plot(emlinewave, bestfit, label='bestfit', ls='--', lw=3, alpha=0.7, color='k')
+                    #    plt.plot(10**self.log10wave, log10model, label='hires model')
+                    #    plt.plot(_emlinewave[icam], model_resamp, label='resamp')
+                    #    plt.plot(_emlinewave[icam], model_convol, label='convol', lw=2)
+                    #    plt.xlim(5386, 5394)
+                    #    plt.legend()
+                    #    plt.savefig('desi-users/ioannis/tmp/junk.png')
+                    #    pdb.set_trace()
         
         return out_linemodel
 
@@ -991,7 +1013,7 @@ class EMFitTools(Filters):
         # doublets
         lineamps[doubletindx] *= lineamps[doubletpair]
 
-        emlinemodel = build_emline_model(self.log10wave, redshift, lineamps, linevshifts, linesigmas,
+        emlinemodel = build_emline_model(self.dlog10wave, redshift, lineamps, linevshifts, linesigmas,
                                          linewaves, emlinewave, resolution_matrix, camerapix)
 
         return emlinemodel
@@ -1021,7 +1043,7 @@ class EMFitTools(Filters):
         # amplitude parameters are always in the first third of parameters.
         lineamps[self.doubletindx] *= lineamps[self.doubletpair]
 
-        emlinemodel = build_emline_model(self.log10wave, redshift, lineamps, 
+        emlinemodel = build_emline_model(self.dlog10wave, redshift, lineamps, 
                                          linevshifts, linesigmas, linewaves, 
                                          specwave, specres, None)
 
@@ -1139,7 +1161,7 @@ class EMFitTools(Filters):
                         result['{}_FLUX'.format(linename)] = result['{}_MODELAMP'.format(linename)] * linenorm
 
                         ## weight by the per-pixel inverse variance line-profile
-                        #lineprofile = build_emline_model(self.log10wave, redshift, np.array([result['{}_MODELAMP'.format(linename)]]),
+                        #lineprofile = build_emline_model(self.dlog10wave, redshift, np.array([result['{}_MODELAMP'.format(linename)]]),
                         #                                 np.array([result['{}_VSHIFT'.format(linename)]]), np.array([result['{}_SIGMA'.format(linename)]]),
                         #                                 np.array([oneline['restwave']]), emlinewave, resolution_matrix, camerapix)
                         #
@@ -1685,7 +1707,7 @@ class EMFitTools(Filters):
             amp = fastspec['{}_AMP'.format(linename)]
             if amp != 0:
                 desiemlines_oneline1 = build_emline_model(
-                    self.log10wave, redshift, np.array([amp]),
+                    self.dlog10wave, redshift, np.array([amp]),
                     np.array([fastspec['{}_VSHIFT'.format(linename)]]),
                     np.array([fastspec['{}_SIGMA'.format(linename)]]),
                     np.array([oneline['restwave']]), data['wave'], data['res'])
