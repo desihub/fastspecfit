@@ -11,6 +11,17 @@ Change Log
 * Do not constrain the SPS age by default [`PR #132`_].
 * Bug fix of emission-line subtracted Dn(4000) measurement [`PR #135`_].
 * Update IGM attenuation coefficients [`PR #136`_].
+* Several significant changes [`PR #137`_]:
+  
+  * Record the observed-space emission-line amplitude in ``_AMP`` and move the
+    model-space amplitude to ``_MODELAMP``. 
+  * Demand at least 12 pixels to measure the scatter in the pixels under the
+    line (therefore ``_AMP_IVAR`` should be more reliable for narrow lines).
+  * Major bug fix whereby the model emission-line spectra were not being
+    convolved with the resolution matrix.
+  * Redefine ``_CHI2`` for an emission line as the observed not reduced chi2.
+  * Switch from (deprecated) ``pkg_resources`` to ``importlib``.
+  * Updated documentation (data model) and several non-negligible speed-ups.
 
 .. _`PR #115`: https://github.com/desihub/fastspecfit/pull/115
 .. _`PR #116`: https://github.com/desihub/fastspecfit/pull/116
@@ -18,6 +29,7 @@ Change Log
 .. _`PR #132`: https://github.com/desihub/fastspecfit/pull/132
 .. _`PR #135`: https://github.com/desihub/fastspecfit/pull/135
 .. _`PR #136`: https://github.com/desihub/fastspecfit/pull/136
+.. _`PR #137`: https://github.com/desihub/fastspecfit/pull/137
 
 2.1.2 (2023-04-01)
 ------------------

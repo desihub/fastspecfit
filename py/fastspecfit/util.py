@@ -231,7 +231,7 @@ def find_minima(x):
     return ii[jj]
 
 
-def minfit(x, y):
+def minfit(x, y, return_coeff=False):
     """Fits y = y0 + ((x-x0)/xerr)**2
 
     See redrock.zwarning.ZWarningMask.BAD_MINFIT for zwarn failure flags
@@ -244,17 +244,27 @@ def minfit(x, y):
         (tuple):  (x0, xerr, y0, zwarn) where zwarn=0 is good fit.
 
     """
+    a, b, c = 0., 0., 0.
     if len(x) < 3:
-        return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
+        if return_coeff:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT,(a,b,c))
+        else:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
 
     try:
         #- y = a x^2 + b x + c
         a,b,c = np.polyfit(x,y,2)
     except np.linalg.LinAlgError:
-        return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
+        if return_coeff:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT,(a,b,c))
+        else:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
 
     if a == 0.0:
-        return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
+        if return_coeff:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT,(a,b,c))
+        else:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
 
     #- recast as y = y0 + ((x-x0)/xerr)^2
     x0 = -b / (2*a)
@@ -272,7 +282,10 @@ def minfit(x, y):
         xerr = 1 / np.sqrt(-a)
         zwarn |= ZWarningMask.BAD_MINFIT
 
-    return (x0, xerr, y0, zwarn)
+    if return_coeff:
+        return (x0, xerr, y0, zwarn,(a,b,c))
+    else:
+        return (x0, xerr, y0, zwarn)
 
 class TabulatedDESI(object):
     """
@@ -292,8 +305,8 @@ class TabulatedDESI(object):
 
     """
     def __init__(self):
-        from pkg_resources import resource_filename
-        cosmofile = resource_filename('fastspecfit', 'data/desi_fiducial_cosmology.dat')
+        from importlib import resources
+        cosmofile = resources.files('fastspecfit').joinpath('data/desi_fiducial_cosmology.dat')
 
         self._z, self._efunc, self._comoving_radial_distance = np.loadtxt(cosmofile, comments='#', usecols=None, unpack=True)
 
