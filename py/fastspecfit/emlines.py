@@ -995,7 +995,7 @@ class EMFitTools(Filters):
             chi2 = 0.0
             
         if return_dof:
-            return chi2, dof
+            return chi2, dof, nfree
         else:
             return chi2
 
@@ -1164,7 +1164,7 @@ class EMFitTools(Filters):
                         #                                 np.array([result['{}_VSHIFT'.format(linename)]]), np.array([result['{}_SIGMA'.format(linename)]]),
                         #                                 np.array([oneline['restwave']]), emlinewave, resolution_matrix, camerapix)
                         #
-                        #weight = np.sum(lineprofile[lineindx])
+                        #weight = np.sum(lineprofile[lineindx])#**2
                         #if weight == 0.0:
                         #    errmsg = 'Line-profile should never sum to zero!'
                         #    log.critical(errmsg)
@@ -1849,7 +1849,6 @@ class EMFitTools(Filters):
                 if np.max(modelflux) > spec_ymax:
                     spec_ymax = np.max(modelflux) * 1.25
                 #print(spec_ymin, spec_ymax)
-                #pdb.set_trace()
         
             #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[icam], alpha=0.2)
             specax.plot(wave/1e4, flux, color=col1[icam], alpha=0.8)
@@ -2161,8 +2160,6 @@ class EMFitTools(Filters):
                     if _line_ymin < line_ymin[iax]:
                         line_ymin[iax] = _line_ymin
                     #print(linename, line_ymin[iax], line_ymax[iax])
-                    #if linename == '[OII] $\lambda\lambda$3726,29':
-                    #    pdb.set_trace()
         
                     xx.set_xlim(wmin/1e4, wmax/1e4)
                     
@@ -2342,7 +2339,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     modelflux
  
     """
-    from astropy.table import Column
+    from astropy.table import Column, vstack
     from fastspecfit.util import ivar2var
 
     tall = time.time()
@@ -2400,8 +2397,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
                              weights, redshift, resolution_matrix, camerapix, 
                              log=log, debug=False, get_finalamp=False)
     initmodel = EMFit.bestfit(initfit, redshift, emlinewave, resolution_matrix, camerapix)
-    initchi2 = EMFit.chi2(initfit, emlinewave, emlineflux, emlineivar, initmodel)
-    nfree = np.sum((initfit['fixed'] == False) * (initfit['tiedtoparam'] == -1))
+    initchi2, initndof, nfree = EMFit.chi2(initfit, emlinewave, emlineflux, emlineivar, initmodel, return_dof=True)
     log.info('Initial line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
         nfree, time.time()-t0, initfit.meta['nfev'], initchi2))
 
@@ -2428,7 +2424,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     #        candidate_broadline = False
     #else:
     #    candidate_broadline = True
-        
+
     # Require minimum XX pixels and a minimum 
     if broadlinefit:# and candidate_broadline:
     #if broadlinefit:# and len(broadlinepix) > 0 and len(np.hstack(broadlinepix)) > 10:
@@ -2445,11 +2441,56 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
                                   redshift, resolution_matrix, camerapix, log=log,
                                   debug=False, get_finalamp=True)
         broadmodel = EMFit.bestfit(broadfit, redshift, emlinewave, resolution_matrix, camerapix)
-        broadchi2 = EMFit.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel)
-        nfree = np.sum((broadfit['fixed'] == False) * (broadfit['tiedtoparam'] == -1))
+
+        # Gather the pixels around the broad Balmer lines and the number of
+        # degrees of freedom.
+        balmer_pix, balmer_linemodel, balmer_linemodel_nobroad = [], [], []
+        for icam in np.arange(len(data['cameras'])):
+            pixoffset = int(np.sum(data['npixpercamera'][:icam]))
+            if len(data['linename'][icam]) > 0:
+                I = (initial_linemodel['isbalmer'] * initial_linemodel['isbroad'] *
+                     np.isin(initial_linemodel['linename'], data['linename'][icam]))
+                _balmer_linemodel = initial_linemodel[I]
+                _balmer_linemodel_nobroad = initial_linemodel_nobroad[I]
+                balmer_linemodel.append(_balmer_linemodel)
+                balmer_linemodel_nobroad.append(_balmer_linemodel_nobroad)
+                if len(_balmer_linemodel) > 0: # use balmer_linemodel not balmer_linemodel_nobroad
+                    I = np.where(np.isin(data['linename'][icam], _balmer_linemodel['linename']))[0]
+                    for ii in I:
+                        #print(data['linename'][icam][ii])
+                        balmer_pix.append(data['linepix'][icam][ii] + pixoffset)
+                        
+        if len(balmer_linemodel) > 0:
+            balmer_pix = np.hstack(balmer_pix)
+
+            balmer_linemodel = vstack(balmer_linemodel)
+            balmer_nfree = (np.count_nonzero((balmer_linemodel['fixed'] == False) *
+                                             (balmer_linemodel['tiedtoparam'] == -1)))
+            balmer_ndof = np.count_nonzero(emlineivar[balmer_pix] > 0) - balmer_nfree
+
+            balmer_linemodel_nobroad = vstack(balmer_linemodel_nobroad)
+            balmer_nfree_nobroad = (np.count_nonzero((balmer_linemodel_nobroad['fixed'] == False) *
+                                                     (balmer_linemodel_nobroad['tiedtoparam'] == -1)))
+            balmer_ndof_nobroad = np.count_nonzero(emlineivar[balmer_pix] > 0) - balmer_nfree_nobroad
+
+            linechi2_balmer = np.sum(emlineivar[balmer_pix] * (emlineflux[balmer_pix] - broadmodel[balmer_pix])**2)
+            linechi2_balmer_nobroad = np.sum(emlineivar[balmer_pix] * (emlineflux[balmer_pix] - initmodel[balmer_pix])**2)
+            delta_linechi2_balmer = linechi2_balmer_nobroad - linechi2_balmer
+            delta_linendof_balmer = balmer_ndof_nobroad - balmer_ndof
+
+            # if delta_linechi2_balmer > delta_linendof_balmer then accept the broad-line model
+            
+
+            #import matplotlib.pyplot as plt
+            #plt.clf() ; plt.scatter(emlinewave[balmer_pix], emlineflux[balmer_pix], s=1) ; plt.plot(emlinewave[balmer_pix], broadmodel[balmer_pix], color='red') ; plt.xlim(7600, 8000) ; plt.savefig('desi-users/ioannis/tmp/junk.png')
+            
+        pdb.set_trace()
+                    
+        
+        broadchi2, broadndof, nfree = EMFit.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel, return_dof=True)
         log.info('Second (broad) line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
             nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
-        linechi2_broad, linechi2_init = broadchi2, initchi2
+        linechi2_broad, linechi2_init, linendof_broad, linendof_init = broadchi2, initchi2, broadndof, initndof
 
         log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [chi2_narrow-chi2_broad={:.5f}]'.format(
             linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
@@ -2496,7 +2537,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     else:
         log.info('Skipping broad-line fitting (broadlinefit=False).')
         bestfit = initfit
-        linechi2_broad, linechi2_init = 1e6, initchi2
+        linechi2_broad, linechi2_init, linendof_broad, linendof_init = 1e6, initchi2, 0, 0
         use_linemodel_broad = False
         
     # Finally, one more fitting loop with all the line-constraints relaxed
@@ -2581,8 +2622,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
                               redshift, resolution_matrix, camerapix, 
                               log=log, debug=False, get_finalamp=True)
     finalmodel = EMFit.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
-    finalchi2 = EMFit.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel)
-    nfree = np.sum((finalfit['fixed'] == False) * (finalfit['tiedtoparam'] == -1))
+    finalchi2, finalndof, nfree = EMFit.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel, return_dof=True)
     log.info('Final line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
         nfree, time.time()-t0, finalfit.meta['nfev'], finalchi2))
 
@@ -2607,7 +2647,11 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     emmodel = np.hstack(EMFit.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
 
     result['RCHI2_LINE'] = finalchi2
+    #result['NDOF_LINE'] = finalndof
     result['DELTA_LINERCHI2'] = linechi2_init - linechi2_broad
+    result['DELTA_LINENDOF'] = linendof_init - linendof_broad
+
+    pdb.set_trace()
 
     # full-fit reduced chi2
     rchi2 = np.sum(oemlineivar * (specflux - (continuummodelflux + smoothcontinuummodelflux + emmodel))**2)
