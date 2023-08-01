@@ -164,7 +164,8 @@ Name                         Type         Units                         Descript
              FOIII_5007_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 5008.239 A in the rest-frame.
                 FHALPHA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 6564.613 A in the rest-frame.
                   RCHI2_LINE      float32                               Reduced chi-squared of an emission-line model fit.
-             DELTA_LINERCHI2      float32                               Difference in the reduced chi-squared values between an emission-line model with narrow lines only and a model with both broad and narrow lines.
+              DELTA_LINECHI2      float32                               Chi-squared difference between an emission-line model without and with broad lines.
+              DELTA_LINENDOF        int32                               Difference in the degrees of freedom between an emission-line model without and with broad lines.
                     APERCORR      float32                               Median aperture correction factor.
                   APERCORR_G      float32                               Median aperture correction factor measured in the g-band.
                   APERCORR_R      float32                               Median aperture correction factor measured in the r-band.
