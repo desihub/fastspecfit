@@ -2422,7 +2422,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
                         #print(data['linename'][icam][ii])
                         balmer_pix.append(data['linepix'][icam][ii] + pixoffset)
                         
-        if len(balmer_linemodel) > 0:
+        if len(balmer_pix) > 0:
             t0 = time.time()
             broadfit = EMFit.optimize(initial_linemodel, emlinewave, emlineflux, weights, 
                                       redshift, resolution_matrix, camerapix, log=log,
@@ -2434,8 +2434,8 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
 
             # compute delta-chi2 around just the Balmer lines
             balmer_pix = np.hstack(balmer_pix)
-
             balmer_linemodel = vstack(balmer_linemodel)
+
             balmer_nfree = (np.count_nonzero((balmer_linemodel['fixed'] == False) *
                                              (balmer_linemodel['tiedtoparam'] == -1)))
             balmer_ndof = np.count_nonzero(emlineivar[balmer_pix] > 0) - balmer_nfree
