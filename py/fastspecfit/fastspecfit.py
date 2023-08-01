@@ -523,7 +523,9 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         leg_broad['linerchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm line}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
         #leg_broad['deltarchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
         #if fastspec['DELTA_LINERCHI2'] != 0:
-        leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINERCHI2'])
+        #leg_broad['deltachi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINECHI2'])
+        leg_broad['deltachi2'] = '$\\Delta\\chi^{{2}}_{{\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINECHI2'])
+        leg_broad['deltandof'] = '$\\Delta\\nu_{{\\rm nobroad}}={:.0f}$'.format(fastspec['DELTA_LINENDOF'])
     
         # choose one broad Balmer line
         if fastspec['HALPHA_BROAD_AMP']*np.sqrt(fastspec['HALPHA_BROAD_AMP_IVAR']) > snrcut:
