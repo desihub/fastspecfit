@@ -2450,86 +2450,45 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
             delta_linechi2_balmer = linechi2_balmer_nobroad - linechi2_balmer
             delta_linendof_balmer = balmer_ndof_nobroad - balmer_ndof
 
-            if delta_linechi2_balmer > delta_linendof_balmer:
-                log.info('Adopting broad-line model: delta-chi2={:.1f} > delta-ndof={:.0f}'.format(
-                    delta_linechi2_balmer, delta_linendof_balmer))
+            # Choose broad-line model only if:
+            # --delta-chi2 > delta-ndof
+            # --broad_sigma < narrow_sigma
+            # --broad_sigma < 250
+
+            dchi2test = delta_linechi2_balmer > delta_linendof_balmer
+            Habroad = broadfit['param_name'] == 'halpha_broad_sigma'
+            sigtest1 = broadfit[Habroad]['value'][0] > EMFit.minsigma_balmer_broad
+            sigtest2 = (broadfit[Habroad]['value'] > broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
+
+            if dchi2test and sigtest1 and sigtest2:
+                log.info('Adopting broad-line model: delta-chi2={:.1f} > delta-ndof={:.0f} (sigma={:.2f} km/s)'.format(
+                    delta_linechi2_balmer, delta_linendof_balmer, broadfit[Habroad]['value'][0]))
                 bestfit = broadfit
                 use_linemodel_broad = True
             else:
-                log.info('Dropping broad-line model: delta-chi2={:.1f} < delta-ndof={:.0f}'.format(
-                    delta_linechi2_balmer, delta_linendof_balmer))
+                if dchi2test == False:
+                    log.info('Dropping broad-line model: delta-chi2={:.1f} < delta-ndof={:.0f}'.format(
+                        delta_linechi2_balmer, delta_linendof_balmer))
+                elif sigtest1 == False:
+                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < {:.0f} km/s (delta-chi2={:.1f}, delta-ndof={:.0f}).'.format(
+                        broadfit[Habroad]['value'][0], EMFit.minsigma_balmer_broad, delta_linechi2_balmer, delta_linendof_balmer))
+                elif sigtest2 == False:
+                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < Halpha_narrow_sigma {:.2f} km/s (delta-chi2={:.1f}, delta-ndof={:.0f}).'.format(
+                        broadfit[Habroad]['value'][0], broadfit[broadfit['param_name'] == 'halpha_sigma']['value'][0],
+                        delta_linechi2_balmer, delta_linendof_balmer))
                 bestfit = initfit
                 use_linemodel_broad = False
-
         else:
             log.info('Insufficient Balmer lines to test the broad-line model.')
             bestfit = initfit
             delta_linechi2_balmer, delta_linendof_balmer = 1e6, int(1e6)
             use_linemodel_broad = False
-
     else:
         log.info('Skipping broad-line fitting (broadlinefit=False).')
         bestfit = initfit
         delta_linechi2_balmer, delta_linendof_balmer = 1e6, int(1e6)
         use_linemodel_broad = False
 
-    # HERE---------------
-        
-    #    broadchi2, broadndof, nfree = EMFit.chi2(broadfit, emlinewave, emlineflux, emlineivar, broadmodel, return_dof=True)
-    #    log.info('Second (broad) line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
-    #        nfree, time.time()-t0, broadfit.meta['nfev'], broadchi2))
-    #    linechi2_broad, linechi2_init, linendof_broad, linendof_init = broadchi2, initchi2, broadndof, initndof
-    #
-    #    log.info('Chi2 with broad lines = {:.5f} and without broad lines = {:.5f} [chi2_narrow-chi2_broad={:.5f}]'.format(
-    #        linechi2_broad, linechi2_init, linechi2_init - linechi2_broad))
-    #    
-    #    # Choose narrow-only model if:
-    #    # --chi2_broad > chi2_narrow;
-    #    # --broad_sigma < narrow_sigma;
-    #    # --broad_sigma < 250;
-    #    # --the two reddest broad Balmer lines are both dropped.
-    #    Bbroad = broadfit['isbalmer'] * broadfit['isbroad'] * (broadfit['fixed'] == False) * EMFit.amp_balmer_bool
-    #    Habroad = broadfit['param_name'] == 'halpha_broad_sigma'
-    #    
-    #    dchi2fail = (linechi2_init - linechi2_broad) < EMFit.delta_linerchi2_cut
-    #    sigdrop1 = (broadfit[Habroad]['value'] <= broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
-    #    sigdrop2 = broadfit[Habroad]['value'][0] < EMFit.minsigma_balmer_broad
-    #
-    #    ampsnr = broadfit[Bbroad]['obsvalue'].data * np.sqrt(broadfit[Bbroad]['civar'].data)
-    #    #ampdrop = np.any(ampsnr[-1:] < EMFit.minsnr_balmer_broad)
-    #    ampdrop = np.any(ampsnr[-2:] < EMFit.minsnr_balmer_broad)
-    #
-    #    #W = (initfit['fixed'] == False) * (initfit['tiedtoparam']==-1)
-    #    #W2 = (broadfit['fixed'] == False) * (broadfit['tiedtoparam']==-1)
-    #
-    #    if dchi2fail or ampdrop or sigdrop1 or sigdrop2:
-    #        if dchi2fail:
-    #            log.info('Dropping broad-line model: delta-rchi2 {:.3f}<{:.3f}.'.format(linechi2_init - linechi2_broad, EMFit.delta_linerchi2_cut))
-    #        elif ampdrop:
-    #            log.info('Dropping broad-line model: S/N in either of the two reddest broad lines < {:.1f}.'.format(EMFit.minsnr_balmer_broad))
-    #        #if alldrop:
-    #        #    log.info('Dropping broad-line model: all broad lines dropped.')
-    #        elif sigdrop1:
-    #            log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < Halpha_narrow_sigma {:.2f} km/s.'.format(
-    #                broadfit[Habroad]['value'][0],
-    #                broadfit[broadfit['param_name'] == 'halpha_sigma']['value'][0]))
-    #        elif sigdrop2:
-    #            log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < {:.0f} km/s.'.format(
-    #                broadfit[Habroad]['value'][0], EMFit.minsigma_balmer_broad))
-    #        bestfit = initfit
-    #        use_linemodel_broad = False
-    #    else:
-    #        log.info('Adopting broad-line model: delta-rchi2={:.3f}>{:.3f}'.format(linechi2_init - linechi2_broad, EMFit.delta_linerchi2_cut))
-    #        bestfit = broadfit
-    #        use_linemodel_broad = True
-    #else:
-    #    log.info('Skipping broad-line fitting (broadlinefit=False).')
-    #    bestfit = initfit
-    #    linechi2_broad, linechi2_init, linendof_broad, linendof_init = 1e6, initchi2, 0, 0
-    #    use_linemodel_broad = False
-
-    # HERE---------------
-        
     # Finally, one more fitting loop with all the line-constraints relaxed
     # but starting from the previous best-fitting values.
     if use_linemodel_broad:
