@@ -1123,7 +1123,17 @@ class EMFitTools(Filters):
                     result[param['param_name'].upper()] = val                    
 
         dpixwave = emlinewave[1]-emlinewave[0] # pixel size [Angstrom]
-                    
+
+        # zero out all out-of-range lines
+        for oneline in self.fit_linetable[~self.fit_linetable['inrange']]:
+            linename = oneline['name'].upper()
+            #print(linename, result['{}_AMP'.format(linename)], result['{}_MODELAMP'.format(linename)],
+            #      result['{}_SIGMA'.format(linename)], result['{}_VSHIFT'.format(linename)])
+            result['{}_AMP'.format(linename)] = 0.0
+            result['{}_MODELAMP'.format(linename)] = 0.0
+            result['{}_VSHIFT'.format(linename)] = 0.0
+            result['{}_SIGMA'.format(linename)] = 0.0
+
         # get continuum fluxes, EWs, and upper limits
         narrow_sigmas, broad_sigmas, uv_sigmas = [], [], []
         narrow_redshifts, broad_redshifts, uv_redshifts = [], [], []
@@ -1146,7 +1156,7 @@ class EMFitTools(Filters):
 
             linesigma_ang = linesigma * linezwave / C_LIGHT    # [observed-frame Angstrom]
 
-            # require at least 3 pixels
+            # require at least 2 pixels
             if linesigma_ang < 2 * dpixwave:
                 linesigma_ang_window = 2 * dpixwave
             else:
