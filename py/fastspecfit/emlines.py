@@ -37,6 +37,7 @@ def build_emline_model(dlog10wave, redshift, lineamps, linevshifts, linesigmas,
     from fastspecfit.util import trapz_rebin
 
     #log10model = np.zeros_like(log10wave) # [erg/s/cm2/A, observed frame]
+    log10wave = [] # initialize
 
     # Cut to lines with non-zero amplitudes.
     #I = linesigmas > 0
@@ -85,14 +86,21 @@ def build_emline_model(dlog10wave, redshift, lineamps, linevshifts, linesigmas,
     emlinemodel = []
     if camerapix is None:
         for icam, specwave in enumerate(emlinewave):
-            _emlinemodel = trapz_rebin(10**log10wave, log10model, specwave)
-            _emlinemodel = resolution_matrix[icam].dot(_emlinemodel)
+            if len(log10wave) > 0:
+                _emlinemodel = trapz_rebin(10**log10wave, log10model, specwave)
+                _emlinemodel = resolution_matrix[icam].dot(_emlinemodel)
+            else:
+                _emlinemodel = specwave * 0
             emlinemodel.append(_emlinemodel)
         return emlinemodel
     else:
         for icam, campix in enumerate(camerapix):
-            _emlinemodel = trapz_rebin(10**log10wave, log10model, emlinewave[campix[0]:campix[1]])
-            _emlinemodel = resolution_matrix[icam].dot(_emlinemodel)
+            # can be zero-length if all lines are dropped
+            if len(log10wave) > 0:
+                _emlinemodel = trapz_rebin(10**log10wave, log10model, emlinewave[campix[0]:campix[1]])
+                _emlinemodel = resolution_matrix[icam].dot(_emlinemodel)
+            else:
+                _emlinemodel = emlinewave[campix[0]:campix[1]] * 0
             emlinemodel.append(_emlinemodel)
         return np.hstack(emlinemodel)
 
@@ -212,13 +220,20 @@ class EMFitTools(Filters):
         self.amp_param_bool = np.array(['_amp' in pp for pp in self.param_names])
         self.amp_balmer_bool = np.array(['_amp' in pp and 'hei_' not in pp and 'heii_' not in pp for pp in self.param_names]) # just Balmer lines
         self.sigma_param_bool = np.array(['_sigma' in pp for pp in self.param_names])
+        self.vshift_param_bool = np.array(['_vshift' in pp for pp in self.param_names])
+
+        self.sigma_param_bool2 = np.zeros(len(self.param_names), bool)
+        self.vshift_param_bool2 = np.zeros(len(self.param_names), bool)
+        for pp in self.param_names[self.amp_param_bool]:
+            self.sigma_param_bool2[np.where(pp.replace('_amp', '_sigma') == self.param_names)[0]] = True
+            self.vshift_param_bool2[np.where(pp.replace('_amp', '_vshift') == self.param_names)[0]] = True
 
         self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
         self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
 
-        self.delta_linerchi2_cut = 0.0
+        #self.delta_linerchi2_cut = 0.0
+        #self.minsnr_balmer_broad = 3.0
         self.minsigma_balmer_broad = 250.0 # minimum broad-line sigma [km/s]
-        self.minsnr_balmer_broad = 3.0
 
     def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False, strict_finalmodel=True):
         """Build all the multi-parameter emission-line models we will use.
@@ -751,7 +766,7 @@ class EMFitTools(Filters):
         return parameters, parameter_extras
 
     @staticmethod
-    def populate_linemodel(linemodel, initial_guesses, param_bounds, log, broadbalmer_snrmin=3.0):
+    def populate_linemodel(linemodel, initial_guesses, param_bounds, log):
         """Population an input linemodel with initial guesses and parameter bounds,
         taking into account fixed parameters.
 
@@ -770,6 +785,7 @@ class EMFitTools(Filters):
                             civarkey = linemodel['linename'][iparam]+'_civar'
                             linemodel['civar'][iparam] = initial_guesses[civarkey]
 
+                            #broadbalmer_snrmin = 3.
                             #linemodel['bounds'][iparam][0] = broadbalmer_snrmin * initial_guesses[noisekey]
                             #if linemodel['initial'][iparam] < linemodel['bounds'][iparam][0]:
                             #    linemodel['initial'][iparam] = linemodel['bounds'][iparam][0]
@@ -870,13 +886,40 @@ class EMFitTools(Filters):
         # line-amplitude is dropped, too (see MgII 2796 on
         # sv1-bright-17680-39627622543528153).
         drop2 = np.zeros(len(parameters), bool)
-        if False:
-            drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree]
-            drop2 *= notfixed
+
+        amp_param_bool = self.amp_param_bool[Ifree]
+        I = np.where(parameters[Ifree][amp_param_bool] == 0)[0]
+        if len(I) > 0:
+            _Ifree = np.zeros(len(parameters), bool)
+            _Ifree[Ifree] = True
+            for pp in linemodel[Ifree][amp_param_bool][I]['param_name']:
+                J = np.where(_Ifree * (linemodel['param_name'] == pp.replace('_amp', '_sigma')))[0]
+                if len(J) > 0:
+                    drop2[J] = True
+                K = np.where(_Ifree * (linemodel['param_name'] == pp.replace('_amp', '_vshift')))[0]
+                if len(K) > 0:
+                    drop2[K] = True
+                #print(pp, J, K, np.sum(drop2))
+                #pdb.set_trace()
+        
+        #drop2[self.amp_param_bool] = parameters[self.amp_param_bool] == 0.0
+        #drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree]
+        #drop2 *= notfixed
         
         sigmadropped = np.where(self.sigma_param_bool * drop2)[0]
         if len(sigmadropped) > 0:
             for lineindx, dropline in zip(sigmadropped, linemodel[sigmadropped]['linename']):
+                # Check whether lines are tied to this line. If so, find the
+                # corresponding amplitude and drop that, too.
+                T = linemodel['tiedtoparam'] == lineindx
+                if np.any(T):
+                    for tiedline in set(linemodel['linename'][T]):
+                        drop2[linemodel['param_name'] == '{}_amp'.format(tiedline)] = True
+                drop2[linemodel['param_name'] == '{}_amp'.format(dropline)] = True
+
+        vshiftdropped = np.where(self.vshift_param_bool * drop2)[0]
+        if len(vshiftdropped) > 0:
+            for lineindx, dropline in zip(vshiftdropped, linemodel[vshiftdropped]['linename']):
                 # Check whether lines are tied to this line. If so, find the
                 # corresponding amplitude and drop that, too.
                 T = linemodel['tiedtoparam'] == lineindx
@@ -892,11 +935,10 @@ class EMFitTools(Filters):
         drop3 *= notfixed
         
         log.debug('Dropping {} negative-amplitude lines.'.format(np.sum(drop1))) # linewidth can't be negative
-        log.debug('Dropping {} parameters which were not optimized.'.format(np.sum(drop2)))
+        log.debug('Dropping {} sigma,vshift parameters of zero-amplitude lines.'.format(np.sum(drop2)))
         log.debug('Dropping {} parameters which are out-of-bounds.'.format(np.sum(drop3)))
         Idrop = np.where(np.logical_or.reduce((drop1, drop2, drop3)))[0]
-
-        ## If we are fitting the broad Balmer lines, do some additional sanity checks.
+        
         if len(Idrop) > 0:
             log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
             parameters[Idrop] = 0.0
@@ -1249,6 +1291,8 @@ class EMFitTools(Filters):
                 print()
                 #log.debug(' ')
     
+            #if linename == 'HALPHA_BROAD':
+            #    pdb.set_trace()
             ## simple QA
             #if linename == 'OIII_5007':
             #    import matplotlib.pyplot as plt
@@ -2388,8 +2432,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     initial_guesses, param_bounds = EMFit.initial_guesses_and_bounds(data, emlinewave, emlineflux, log)
 
     for linemodel in [initial_linemodel, initial_linemodel_nobroad]:
-        EMFit.populate_linemodel(linemodel, initial_guesses, param_bounds, log,
-                                 broadbalmer_snrmin=EMFit.minsnr_balmer_broad)
+        EMFit.populate_linemodel(linemodel, initial_guesses, param_bounds, log)
 
     # Initial fit - initial_linemodel_nobroad
     t0 = time.time()
