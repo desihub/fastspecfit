@@ -159,7 +159,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
-    parser.add_argument('--specprod', type=str, default='fuji', #choices=['fuji', 'guadalupe', 'iron'],
+    parser.add_argument('--specprod', type=str, default='iron', #choices=['fuji', 'guadalupe', 'iron'],
                         help='Spectroscopic production to process.')
     
     parser.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpixels to process.')
@@ -189,10 +189,8 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
-    parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
-                        type=str, help='Base output HTML directory.')
-    parser.add_argument('--outdir-data', default='/global/cfs/cdirs/desi/spectro/fastspecfit',
-                        type=str, help='Base output data directory.')
+    parser.add_argument('--outdir-html', default='$PSCRATCH/fastspecfit/html', type=str, help='Base output HTML directory.')
+    parser.add_argument('--outdir-data', default='$PSCRATCH/fastspecfit/data', type=str, help='Base output data directory.')
     
     specprod_dir = None
 
@@ -215,7 +213,7 @@ def main():
         if args.ntest:
             from astropy.table import Table
             rand = np.random.RandomState(seed=1)
-            tilepix = Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/healpix/tilepix.fits'.format(args.specprod))
+            tilepix = Table.read(f'$DESI_ROOT/spectro/redux/{args.specprod}/healpix/tilepix.fits')
             
             # trim to survey/program
             tilepix = tilepix[np.unique(np.hstack([np.where(tilepix['SURVEY'] == survey)[0] for survey in args.survey]))]
