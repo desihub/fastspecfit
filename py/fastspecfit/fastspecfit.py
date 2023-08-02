@@ -41,9 +41,9 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
 
 def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                  minspecwave=3500., maxspecwave=9900., broadlinefit=True,
-                 fastphot=False, stackfit=False, nophoto=False,
-                 constrain_age=False, no_smooth_continuum=False, 
-                 percamera_models=False, debug_plots=False):
+                 fastphot=False, stackfit=False, constrain_age=False,
+                 no_smooth_continuum=False, percamera_models=False,
+                 debug_plots=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -64,8 +64,8 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fphoto=fphoto,
                                                          constrain_age=constrain_age,
                                                          no_smooth_continuum=no_smooth_continuum,
-                                                         fastphot=fastphot, nophoto=nophoto,
-                                                         debug_plots=debug_plots, log=log)
+                                                         fastphot=fastphot, debug_plots=debug_plots,
+                                                         log=log)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -239,9 +239,8 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     t0 = time.time()
     fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], Spec.fphoto, templates, log,
                 minspecwave, maxspecwave, args.broadlinefit, fastphot, stackfit,
-                args.nophoto, args.constrain_age, args.no_smooth_continuum, 
-                args.percamera_models, args.debug_plots)
-                for iobj in np.arange(Spec.ntargets)]
+                args.constrain_age, args.no_smooth_continuum, args.percamera_models,
+                args.debug_plots) for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
         with multiprocessing.Pool(args.mp) as P:
