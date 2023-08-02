@@ -2,8 +2,15 @@
 Change Log
 ==========
 
-2.2.0 (not released yet)
+2.3.0 (not released yet)
 ------------------------
+
+* Support non-DR9 photometry via a new photometric configuration file [`PR #133`_].
+
+.. _`PR #133`: https://github.com/desihub/fastspecfit/pull/133
+
+2.2.0 (2023-08-02)
+------------------
 
 * Allow the Redrock redshift to be overridden [`PR #115`_].
 * Code to support fitting stacked spectra [`PR #116`_].

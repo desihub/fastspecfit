@@ -1,0 +1,42 @@
+# DR10 photometric parameter file
+
+# Required rows: bands, filters, min_uncertainty.
+# All columns must be uppercase.
+
+legacysurveydr: 'dr10'
+
+uniqueid: 'TARGETID'
+
+photounits: 'nanomaggies'
+
+synth_bands: ['g', 'r', 'i', 'z']
+fiber_bands: ['g', 'r', 'i', 'z']
+bands: ['g', 'r', 'i', 'z', 'W1', 'W2', 'W3', 'W4']
+bands_to_fit: [True, True, True, True, True, True, True, True]
+
+synth_filters: {'S': ['decam2014-g', 'decam2014-r', 'decam2014-i', 'decam2014-z']}
+fiber_filters: {'S': ['decam2014-g', 'decam2014-r', 'decam2014-i', 'decam2014-z']}
+filters: {'S': ['decam2014-g', 'decam2014-r', 'decam2014-i', 'decam2014-z',
+          'wise2010-W1', 'wise2010-W2', 'wise2010-W3', 'wise2010-W4']}
+
+min_uncertainty: [0.02, 0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]
+
+readcols: ['TARGETID', 'RA', 'DEC', 'RELEASE', 'LS_ID',
+            'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_I', 'FIBERFLUX_Z',
+            'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_I', 'FIBERTOTFLUX_Z']
+
+outcols: ['PHOTSYS', 'LS_ID']
+
+fluxcols: ['FLUX_G', 'FLUX_R', 'FLUX_I', 'FLUX_Z',
+           'FLUX_W1', 'FLUX_W2', 'FLUX_W3', 'FLUX_W4']
+
+fluxivarcols: ['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_I', 'FLUX_IVAR_Z',
+               'FLUX_IVAR_W1', 'FLUX_IVAR_W2', 'FLUX_IVAR_W3', 'FLUX_IVAR_W4']
+
+absmag_bands: ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1', 'W2']
+
+band_shift: [0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0]
+
+absmag_filters: ['bessell-U', 'bessell-B', 'bessell-V', 
+                 'sdss2010-u', 'sdss2010-g', 'sdss2010-r', 'sdss2010-i', 'sdss2010-z',
+                 'wise2010-W1', 'wise2010-W2']

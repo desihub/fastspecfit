@@ -17,6 +17,81 @@ try: # this fails when building the documentation
 except:
     C_LIGHT = 299792.458 # [km/s]
 
+def mwdust_transmission(ebv, filtername):
+    """Convert SFD E(B-V) value to dust transmission 0-1 given the bandpass.
+
+    Args:
+        ebv (float or array-like): SFD E(B-V) value(s)
+        filtername (str): Filter name, e.g., 'decam2014-r'.
+
+    Returns:
+        Scalar or array (same as ebv input), Milky Way dust transmission 0-1.
+
+    Note:
+
+        This function tabulates the total-to-selective extinction ratio,
+        k_X=A(X)/E(B-V) for many different filter bandpasses, X, where
+        A(X)=-2.5*log10(transmission in X band). And so given the ebv, it
+        returns mwdust_transmission=10**(-0.4*k_X*ebv).
+
+    Returns:
+        scalar, total extinction A(band) = -2.5*log10(transmission(band))
+
+    Notes:
+        Based on `desiutil.dust.mwdust_transmission`.
+
+    """
+    k_X = {
+        # From https://desi.lbl.gov/trac/wiki/ImagingStandardBandpass
+        # DECam u  3881.6   3.994
+        # DECam g  4830.8   3.212
+        # DECam r  6409.0   2.164
+        # DECam i  7787.5   1.591
+        # DECam z  9142.7   1.211
+        # DECam Y  9854.5   1.063
+        # BASS g  4772.1   3.258
+        # BASS r  6383.6   2.176
+        # MzLS z  9185.1   1.199
+        # Consistent with the synthetic magnitudes and function dust_transmission
+        'BASS-g': 3.258,
+        'BASS-r': 2.176,
+        'MzLS-z': 1.199,
+        'decam2014-u': 3.994,
+        'decam2014-g': 3.212,
+        'decam2014-r': 2.164,
+        'decam2014-i': 1.591,
+        'decam2014-z': 1.211,
+        'decam2014-Y': 1.063,
+        # Arjun Dey, private communication
+        'hsc2017-g': 3.214, 
+        'hsc2017-r': 2.165, 
+        'hsc2017-i': 1.592, 
+        'hsc2017-z': 1.211, 
+        'hsc2017-y': 1.064,
+        'hscib-IA427': 4.202,
+        'hscib-IA464': 3.894,
+        'hscib-IA484': 3.694,
+        'hscib-IA505': 3.490,
+        'hscib-IA527': 3.304,
+        # Add WISE from
+        # https://github.com/dstndstn/tractor/blob/main/tractor/sfd.py#L23-L35
+        'wise2010-W1': 0.184,
+        'wise2010-W2': 0.113,
+        'wise2010-W3': 0.0241,
+        'wise2010-W4': 0.00910,
+        }
+
+    if filtername not in k_X.keys():
+        errmsg = f'Filtername {filtername} is missing from dictionary of known bandpasses!'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
+
+    A_X = k_X[filtername] * ebv
+
+    transmission = 10**(-0.4 * A_X)
+    
+    return transmission
+
 def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
     """Safely convert an inverse variance to a variance. Note that we clip at 1e-3
     by default, not zero.
@@ -72,7 +147,7 @@ def centers2edges(centers):
 # of this code have already been tested and shown to perform no better
 # than numba on Intel haswell and KNL architectures.
 
-@numba.jit
+@numba.jit(nopython=True)
 def _trapz_rebin(x, y, edges, results):
     '''
     Numba-friendly version of trapezoidal rebinning
