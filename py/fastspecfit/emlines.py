@@ -222,17 +222,15 @@ class EMFitTools(Filters):
         self.sigma_param_bool = np.array(['_sigma' in pp for pp in self.param_names])
         self.vshift_param_bool = np.array(['_vshift' in pp for pp in self.param_names])
 
-        self.sigma_param_bool2 = np.zeros(len(self.param_names), bool)
-        self.vshift_param_bool2 = np.zeros(len(self.param_names), bool)
-        for pp in self.param_names[self.amp_param_bool]:
-            self.sigma_param_bool2[np.where(pp.replace('_amp', '_sigma') == self.param_names)[0]] = True
-            self.vshift_param_bool2[np.where(pp.replace('_amp', '_vshift') == self.param_names)[0]] = True
+        #self.sigma_param_bool2 = np.zeros(len(self.param_names), bool)
+        #self.vshift_param_bool2 = np.zeros(len(self.param_names), bool)
+        #for pp in self.param_names[self.amp_param_bool]:
+        #    self.sigma_param_bool2[np.where(pp.replace('_amp', '_sigma') == self.param_names)[0]] = True
+        #    self.vshift_param_bool2[np.where(pp.replace('_amp', '_vshift') == self.param_names)[0]] = True
 
         self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
         self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
 
-        #self.delta_linerchi2_cut = 0.0
-        #self.minsnr_balmer_broad = 3.0
         self.minsigma_balmer_broad = 250.0 # minimum broad-line sigma [km/s]
 
     def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False, strict_finalmodel=True):
@@ -1638,8 +1636,6 @@ class EMFitTools(Filters):
             leg_uv['mgii_doublet'] = 'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
 
         leg_broad['linerchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm line}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
-        #leg_broad['deltarchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
-        #if fastspec['DELTA_LINERCHI2'] != 0:
         leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINERCHI2'])
 
         # choose one broad Balmer line
@@ -2509,13 +2505,14 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
             # --broad_sigma < 250
 
             dchi2test = delta_linechi2_balmer > delta_linendof_balmer
+            Hanarrow = broadfit['param_name'] == 'halpha_sigma' # Balmer lines are tied to H-alpha even if out of range
             Habroad = broadfit['param_name'] == 'halpha_broad_sigma'
             sigtest1 = broadfit[Habroad]['value'][0] > EMFit.minsigma_balmer_broad
-            sigtest2 = (broadfit[Habroad]['value'] > broadfit[broadfit['param_name'] == 'halpha_sigma']['value'])[0]
+            sigtest2 = (broadfit[Habroad]['value'] > broadfit[Hanarrow]['value'])[0]
 
             if dchi2test and sigtest1 and sigtest2:
-                log.info('Adopting broad-line model: delta-chi2={:.1f} > delta-ndof={:.0f} (sigma={:.2f} km/s)'.format(
-                    delta_linechi2_balmer, delta_linendof_balmer, broadfit[Habroad]['value'][0]))
+                log.info('Adopting broad-line model: delta-chi2={:.1f} > delta-ndof={:.0f} (sigma_broad={:.1f} km/s, sigma_narrow={:.1f} km/s)'.format(
+                    delta_linechi2_balmer, delta_linendof_balmer, broadfit[Habroad]['value'][0], broadfit[Hanarrow]['value'][0]))
                 bestfit = broadfit
                 use_linemodel_broad = True
             else:
@@ -2523,23 +2520,22 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
                     log.info('Dropping broad-line model: delta-chi2={:.1f} < delta-ndof={:.0f}'.format(
                         delta_linechi2_balmer, delta_linendof_balmer))
                 elif sigtest1 == False:
-                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < {:.0f} km/s (delta-chi2={:.1f}, delta-ndof={:.0f}).'.format(
+                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.1f} km/s < {:.0f} km/s (delta-chi2={:.1f}, delta-ndof={:.0f}).'.format(
                         broadfit[Habroad]['value'][0], EMFit.minsigma_balmer_broad, delta_linechi2_balmer, delta_linendof_balmer))
                 elif sigtest2 == False:
-                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.2f} km/s < Halpha_narrow_sigma {:.2f} km/s (delta-chi2={:.1f}, delta-ndof={:.0f}).'.format(
-                        broadfit[Habroad]['value'][0], broadfit[broadfit['param_name'] == 'halpha_sigma']['value'][0],
-                        delta_linechi2_balmer, delta_linendof_balmer))
+                    log.info('Dropping broad-line model: Halpha_broad_sigma {:.1f} km/s < Halpha_narrow_sigma {:.1f} km/s (delta-chi2={:.1f}, delta-ndof={:.0f}).'.format(
+                        broadfit[Habroad]['value'][0], broadfit[Hanarrow]['value'][0], delta_linechi2_balmer, delta_linendof_balmer))
                 bestfit = initfit
                 use_linemodel_broad = False
         else:
             log.info('Insufficient Balmer lines to test the broad-line model.')
             bestfit = initfit
-            delta_linechi2_balmer, delta_linendof_balmer = 1e6, int(1e6)
+            delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
             use_linemodel_broad = False
     else:
         log.info('Skipping broad-line fitting (broadlinefit=False).')
         bestfit = initfit
-        delta_linechi2_balmer, delta_linendof_balmer = 1e6, int(1e6)
+        delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
         use_linemodel_broad = False
 
     # Finally, one more fitting loop with all the line-constraints relaxed

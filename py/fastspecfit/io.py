@@ -1637,7 +1637,7 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
         #out.add_column(Column(name='NDOF_LINE', length=nobj, dtype='i8')) # number of degrees of freedom corresponding to rchi2_line
         #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
         out.add_column(Column(name='DELTA_LINECHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
-        out.add_column(Column(name='DELTA_LINENDOF', length=nobj, dtype='i8'))
+        out.add_column(Column(name='DELTA_LINENDOF', length=nobj, dtype=np.int32))
 
         # aperture corrections
         out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # median aperture correction

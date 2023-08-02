@@ -163,7 +163,7 @@ Name                         Type         Units                         Descript
                  FHBETA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 4862.683 A in the rest-frame.
              FOIII_5007_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 5008.239 A in the rest-frame.
                 FHALPHA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 6564.613 A in the rest-frame.
-                  RCHI2_LINE      float32                               Reduced chi-squared of an emission-line model fit.
+                  RCHI2_LINE      float32                               Reduced chi-squared of the emission-line model fit.
               DELTA_LINECHI2      float32                               Chi-squared difference between an emission-line model without and with broad lines.
               DELTA_LINENDOF        int32                               Difference in the degrees of freedom between an emission-line model without and with broad lines.
                     APERCORR      float32                               Median aperture correction factor.
