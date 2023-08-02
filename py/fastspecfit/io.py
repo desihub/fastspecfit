@@ -90,7 +90,7 @@ def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(iobj, specdata, meta, ebv, fastphot, synthphot, log):
+def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot, synthphot, log):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
@@ -98,18 +98,18 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fastphot, synthphot, log):
     from fastspecfit.util import mwdust_transmission
     from fastspecfit.continuum import ContinuumTools
 
-    CTools = ContinuumTools()
+    CTools = ContinuumTools(fphoto=fphoto)
     
     log.info('Pre-processing object {} [targetid {} z={:.6f}].'.format(
-        iobj, meta[Filters.uniqueid], meta['Z']))
+        iobj, meta[CTools.uniqueid], meta['Z']))
     
     RV = 3.1
     meta['EBV'] = ebv
     
-    filters = Filters.filters[specdata['photsys']]
-    synth_filters = Filters.synth_filters[specdata['photsys']]
-    if hasattr(Filters, 'fiber_filters'):
-        fiber_filters = Filters.fiber_filters[specdata['photsys']]
+    filters = CTools.filters[specdata['photsys']]
+    synth_filters = CTools.synth_filters[specdata['photsys']]
+    if hasattr(CTools, 'fiber_filters'):
+        fiber_filters = CTools.fiber_filters[specdata['photsys']]
     else:
         fiber_filters = None
         
@@ -117,31 +117,31 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fastphot, synthphot, log):
     if fiber_filters is not None:
         # fiber fluxes
         mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, filtername) for filtername in
-                                                                  Filters.fiber_filters[specdata['photsys']].names])
-        fibermaggies = np.zeros(len(Filters.fiber_bands))
-        fibertotmaggies = np.zeros(len(Filters.fiber_bands))
-        #ivarfibermaggies = np.zeros(len(Filters.fiber_bands))
-        for iband, band in enumerate(Filters.fiber_bands):
+                                                                  CTools.fiber_filters[specdata['photsys']].names])
+        fibermaggies = np.zeros(len(CTools.fiber_bands))
+        fibertotmaggies = np.zeros(len(CTools.fiber_bands))
+        #ivarfibermaggies = np.zeros(len(CTools.fiber_bands))
+        for iband, band in enumerate(CTools.fiber_bands):
             fibermaggies[iband] = meta['FIBERFLUX_{}'.format(band.upper())] / mw_transmission_fiberflux[iband]
             fibertotmaggies[iband] = meta['FIBERTOTFLUX_{}'.format(band.upper())] / mw_transmission_fiberflux[iband]
             #ivarfibermaggies[iband] = meta['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] * mw_transmission_fiberflux[iband]**2
         
-        specdata['fiberphot'] = Filters.parse_photometry(Filters.fiber_bands,
+        specdata['fiberphot'] = CTools.parse_photometry(CTools.fiber_bands,
             maggies=fibermaggies, nanomaggies=True,
             lambda_eff=fiber_filters.effective_wavelengths.value, log=log)
-        specdata['fibertotphot'] = Filters.parse_photometry(Filters.fiber_bands,
+        specdata['fibertotphot'] = CTools.parse_photometry(CTools.fiber_bands,
             maggies=fibertotmaggies, nanomaggies=True,
             lambda_eff=fiber_filters.effective_wavelengths.value, log=log)
 
     # total fluxes
     mw_transmission_flux = np.array([mwdust_transmission(ebv, filtername) for filtername in 
-                                     Filters.filters[specdata['photsys']].names])
-    for band, mwdust in zip(Filters.bands, mw_transmission_flux):
+                                     CTools.filters[specdata['photsys']].names])
+    for band, mwdust in zip(CTools.bands, mw_transmission_flux):
         meta['MW_TRANSMISSION_{}'.format(band.upper())] = mwdust
             
-    maggies = np.zeros(len(Filters.bands))
-    ivarmaggies = np.zeros(len(Filters.bands))
-    for iband, (fluxcol, ivarcol) in enumerate(zip(Filters.fluxcols, Filters.fluxivarcols)):
+    maggies = np.zeros(len(CTools.bands))
+    ivarmaggies = np.zeros(len(CTools.bands))
+    for iband, (fluxcol, ivarcol) in enumerate(zip(CTools.fluxcols, CTools.fluxivarcols)):
         maggies[iband] = meta['{}'.format(fluxcol.upper())] / mw_transmission_flux[iband]
         ivarmaggies[iband] = meta['{}'.format(ivarcol.upper())] * mw_transmission_flux[iband]**2
         
@@ -150,10 +150,10 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fastphot, synthphot, log):
         log.critical(errmsg)
         raise ValueError(errmsg)
     
-    specdata['phot'] = Filters.parse_photometry(
-        Filters.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
+    specdata['phot'] = CTools.parse_photometry(
+        CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
         lambda_eff=filters.effective_wavelengths.value,
-        min_uncertainty=Filters.min_uncertainty, log=log)
+        min_uncertainty=CTools.min_uncertainty, log=log)
         
     if not fastphot:
         from desiutil.dust import dust_transmission
@@ -281,8 +281,8 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fastphot, synthphot, log):
             #specdata['synthphot'] = CTools.parse_photometry(CTools.bands,
             #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
             #    ivarmaggies=synthivarmaggies, nanomaggies=False, log=log)
-            specdata['synthphot'] = Filters.parse_photometry(
-                Filters.synth_bands, maggies=synthmaggies, nanomaggies=False,
+            specdata['synthphot'] = CTools.parse_photometry(
+                CTools.synth_bands, maggies=synthmaggies, nanomaggies=False,
                 lambda_eff=synth_filters.effective_wavelengths.value, log=log)
 
     return specdata, meta
@@ -1060,7 +1060,7 @@ class DESISpectra(TabulatedDESI):
                         'photsys': photsys[iobj],
                         'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], True, False, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], fphoto, True, False, log))
             else:
                 from desispec.resolution import Resolution
                 
