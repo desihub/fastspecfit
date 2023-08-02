@@ -194,7 +194,7 @@ class EMFitTools(Filters):
         # default line-sigma for computing upper limits
         self.limitsigma_narrow = 75.0
         self.limitsigma_broad = 1200.0 
-        self.wavepad = 5.0 # Angstrom
+        self.wavepad = 2.5 # Angstrom
 
         # Establish the names of the parameters and doublets here, at
         # initialization, because we use them when instantiating the best-fit
