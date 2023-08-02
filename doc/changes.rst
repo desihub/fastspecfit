@@ -2,14 +2,20 @@
 Change Log
 ==========
 
-2.2.0 (not released yet)
+2.3.0 (not released yet)
 ------------------------
+
+* Support non-DR9 photometry via a new photometric configuration file [`PR #133`_].
+
+.. _`PR #133`: https://github.com/desihub/fastspecfit/pull/133
+
+2.2.0 (2023-08-02)
+------------------
 
 * Allow the Redrock redshift to be overridden [`PR #115`_].
 * Code to support fitting stacked spectra [`PR #116`_].
 * Bug fix of reversed tied flux ratio of [OII]7320,7330 doublet [`PR #120`_].
 * Do not constrain the SPS age by default [`PR #132`_].
-* Support non-DR9 photometry via a new photometric configuration file [`PR #133`_].
 * Bug fix of emission-line subtracted Dn(4000) measurement [`PR #135`_].
 * Update IGM attenuation coefficients [`PR #136`_].
 * Several significant changes [`PR #137`_]:
@@ -30,7 +36,6 @@ Change Log
 .. _`PR #116`: https://github.com/desihub/fastspecfit/pull/116
 .. _`PR #120`: https://github.com/desihub/fastspecfit/pull/120
 .. _`PR #132`: https://github.com/desihub/fastspecfit/pull/132
-.. _`PR #133`: https://github.com/desihub/fastspecfit/pull/133
 .. _`PR #135`: https://github.com/desihub/fastspecfit/pull/135
 .. _`PR #136`: https://github.com/desihub/fastspecfit/pull/136
 .. _`PR #137`: https://github.com/desihub/fastspecfit/pull/137

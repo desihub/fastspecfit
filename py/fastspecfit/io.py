@@ -21,7 +21,7 @@ log = get_logger()
 # Default environment variables.
 DESI_ROOT_NERSC = '/dvs_ro/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1'
-DR9_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9'
+FPHOTO_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9'
 FTEMPLATES_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 # list of all possible targeting bit columns
@@ -945,7 +945,7 @@ class DESISpectra(TabulatedDESI):
         # photometry. Note that we have to make a copy of the input_meta table
         # because otherwise BRICKNAME gets "repaired!"
         t0 = time.time()  
-        metas = self._gather_photometry(specprod=specprod)
+        metas = self._gather_photometry(specprod=specprod, alltiles=alltiles)
         self.meta = metas # update
         log.info('Gathered photometric metadata in {:.2f} sec'.format(time.time()-t0))
 
@@ -1360,7 +1360,7 @@ class DESISpectra(TabulatedDESI):
 
         return alldata
 
-    def _gather_photometry(self, specprod=None):
+    def _gather_photometry(self, specprod=None, alltiles=None):
         """Gather photometry. Unfortunately some of the bandpass information here will
         be repeated (and has to be consistent with) continuum.Fiters.
 
