@@ -1060,7 +1060,7 @@ class DESISpectra(TabulatedDESI):
                         'photsys': photsys[iobj],
                         'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], fphoto, True, False, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, True, False, log))
             else:
                 from desispec.resolution import Resolution
                 
@@ -1092,7 +1092,7 @@ class DESISpectra(TabulatedDESI):
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
                         'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :]),
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], fastphot, synthphot, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, fastphot, synthphot, log))
                     
             if mp > 1:
                 import multiprocessing

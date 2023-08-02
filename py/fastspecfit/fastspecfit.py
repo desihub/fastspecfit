@@ -425,15 +425,15 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     leg = {
         'z': '$z={:.7f}$'.format(redshift),
 
-        'rchi2_phot': '$\\chi^{{2}}_{{\\nu, \\rm phot}}$={:.2f}'.format(fastspec['RCHI2_PHOT']),
+        'rchi2_phot': r'$\\chi^{{2}}_{{\\nu, \\rm phot}}$={:.2f}'.format(fastspec['RCHI2_PHOT']),
 
-        'dn4000_model': '$D_{{n}}(4000)_{{\\rm model}}={:.3f}$'.format(fastspec['DN4000_MODEL']),
-        'age': 'Age$={:.3f}$ Gyr'.format(fastspec['AGE']),
-        'AV': '$A_{{V}}={:.3f}$ mag'.format(fastspec['AV']),
-        'mstar': '$\\log_{{10}}(M/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
-        'sfr': '${{\\rm SFR}}={:.1f}\ M_{{\odot}}/{{\\rm yr}}$'.format(fastspec['SFR']),
-        #'fagn': '$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
-        'zzsun': '$Z/Z_{{\\odot}}={:.3f}$'.format(fastspec['ZZSUN']),
+        'dn4000_model': r'$D_{{n}}(4000)_{{\\rm model}}={:.3f}$'.format(fastspec['DN4000_MODEL']),
+        'age': r'Age$={:.3f}$ Gyr'.format(fastspec['AGE']),
+        'AV': r'$A_{{V}}={:.3f}$ mag'.format(fastspec['AV']),
+        'mstar': r'$\\log_{{10}}(M/M_{{\odot}})={:.3f}$'.format(fastspec['LOGMSTAR']),
+        'sfr': r'${{\\rm SFR}}={:.1f}\ M_{{\odot}}/{{\\rm yr}}$'.format(fastspec['SFR']),
+        #'fagn': r'$f_{{\\rm AGN}}={:.3f}$'.format(fastspec['FAGN']),
+        'zzsun': r'$Z/Z_{{\\odot}}={:.3f}$'.format(fastspec['ZZSUN']),
     }
 
     # try to figure out which absmags to display
@@ -463,15 +463,15 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     #leg['zwarn'] = '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN'])
 
     if fastphot:
-        leg['vdisp'] = '$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+        leg['vdisp'] = r'$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
     else:
         if fastspec['VDISP_IVAR'] > 0:
-            leg['vdisp'] = '$\\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
+            leg['vdisp'] = r'$\\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
         else:
-            leg['vdisp'] = '$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+            leg['vdisp'] = r'$\\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
             
-        leg['rchi2'] = '$\\chi^{{2}}_{{\\nu, \\rm specphot}}$={:.2f}'.format(fastspec['RCHI2'])
-        leg['rchi2_cont'] = '$\\chi^{{2}}_{{\\nu, \\rm cont}}$={:.2f}'.format(fastspec['RCHI2_CONT'])
+        leg['rchi2'] = r'$\\chi^{{2}}_{{\\nu, \\rm specphot}}$={:.2f}'.format(fastspec['RCHI2'])
+        leg['rchi2_cont'] = r'$\\chi^{{2}}_{{\\nu, \\rm cont}}$={:.2f}'.format(fastspec['RCHI2_CONT'])
 
     if not stackfit:
         if redshift != metadata['Z_RR']:
@@ -491,123 +491,123 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         apercorr = fastspec['APERCORR']
     
         if fastspec['DN4000_IVAR'] > 0:
-            leg['dn4000_spec'] = '$D_{{n}}(4000)_{{\\rm data}}={:.3f}$'.format(fastspec['DN4000'])
+            leg['dn4000_spec'] = r'$D_{{n}}(4000)_{{\\rm data}}={:.3f}$'.format(fastspec['DN4000'])
             #leg.update({'dn4000_spec': '$D_{{n}}(4000)_{{\\rm spec}}={:.3f}\pm{:.3f}$'.format(fastspec['DN4000'], 1/np.sqrt(fastspec['DN4000_IVAR']))})
     
         # kinematics
         if fastspec['NARROW_Z'] != redshift:
             if fastspec['NARROW_ZRMS'] > 0:
-                leg['dv_narrow'] = '$\\Delta v_{{\\rm narrow}}={:.0f}\pm{:.0f}$ km/s'.format(
+                leg['dv_narrow'] = r'$\\Delta v_{{\\rm narrow}}={:.0f}\pm{:.0f}$ km/s'.format(
                     C_LIGHT*(fastspec['NARROW_Z']-redshift), C_LIGHT*fastspec['NARROW_ZRMS'])
             else:
-                leg['dv_narrow'] = '$\\Delta v_{{\\rm narrow}}={:.0f}$ km/s'.format(
+                leg['dv_narrow'] = r'$\\Delta v_{{\\rm narrow}}={:.0f}$ km/s'.format(
                     C_LIGHT*(fastspec['NARROW_Z']-redshift))
         if fastspec['NARROW_SIGMA'] != 0.0:
             if fastspec['NARROW_SIGMARMS'] > 0:
-                leg['sigma_narrow'] = '$\\sigma_{{\\rm narrow}}={:.0f}\pm{:.0f}$ km/s'.format(
+                leg['sigma_narrow'] = r'$\\sigma_{{\\rm narrow}}={:.0f}\pm{:.0f}$ km/s'.format(
                     fastspec['NARROW_SIGMA'], fastspec['NARROW_SIGMARMS'])
             else:
-                leg['sigma_narrow'] = '$\\sigma_{{\\rm narrow}}={:.0f}$ km/s'.format(fastspec['NARROW_SIGMA'])
+                leg['sigma_narrow'] = r'$\\sigma_{{\\rm narrow}}={:.0f}$ km/s'.format(fastspec['NARROW_SIGMA'])
     
         snrcut = 1.5
         leg_broad, leg_narrow, leg_uv = {}, {}, {}
     
         if fastspec['UV_Z'] != redshift:
             if fastspec['UV_ZRMS'] > 0:
-                leg_uv['dv_uv'] = '$\\Delta v_{{\\rm UV}}={:.0f}\pm{:.0f}$ km/s'.format(
+                leg_uv['dv_uv'] = r'$\\Delta v_{{\\rm UV}}={:.0f}\pm{:.0f}$ km/s'.format(
                     C_LIGHT*(fastspec['UV_Z']-redshift), C_LIGHT*fastspec['UV_ZRMS'])
             else:
-                leg_uv['dv_uv'] = '$\\Delta v_{{\\rm UV}}={:.0f}$ km/s'.format(
+                leg_uv['dv_uv'] = r'$\\Delta v_{{\\rm UV}}={:.0f}$ km/s'.format(
                     C_LIGHT*(fastspec['UV_Z']-redshift))
         if fastspec['UV_SIGMA'] != 0.0:
             if fastspec['UV_SIGMARMS'] > 0:
-                leg_uv['sigma_uv'] = '$\\sigma_{{\\rm UV}}={:.0f}\pm{:.0f}$ km/s'.format(
+                leg_uv['sigma_uv'] = r'$\\sigma_{{\\rm UV}}={:.0f}\pm{:.0f}$ km/s'.format(
                     fastspec['UV_SIGMA'], fastspec['UV_SIGMARMS'])
             else:
-                leg_uv['sigma_uv'] = '$\\sigma_{{\\rm UV}}={:.0f}$ km/s'.format(fastspec['UV_SIGMA'])
+                leg_uv['sigma_uv'] = r'$\\sigma_{{\\rm UV}}={:.0f}$ km/s'.format(fastspec['UV_SIGMA'])
         if fastspec['BROAD_Z'] != redshift:
             if fastspec['BROAD_ZRMS'] > 0:
-                leg_broad['dv_broad'] = '$\\Delta v_{{\\rm broad}}={:.0f}\pm{:.0f}$ km/s'.format(
+                leg_broad['dv_broad'] = r'$\\Delta v_{{\\rm broad}}={:.0f}\pm{:.0f}$ km/s'.format(
                     C_LIGHT*(fastspec['BROAD_Z']-redshift), C_LIGHT*fastspec['BROAD_ZRMS'])
             else:
-                leg_broad['dv_broad'] = '$\\Delta v_{{\\rm broad}}={:.0f}$ km/s'.format(
+                leg_broad['dv_broad'] = r'$\\Delta v_{{\\rm broad}}={:.0f}$ km/s'.format(
                     C_LIGHT*(fastspec['BROAD_Z']-redshift))
         if fastspec['BROAD_SIGMA'] != 0.0:
             if fastspec['BROAD_SIGMARMS'] > 0:
-                leg_broad['sigma_broad'] = '$\\sigma_{{\\rm broad}}={:.0f}\pm{:.0f}$ km/s'.format(
+                leg_broad['sigma_broad'] = r'$\\sigma_{{\\rm broad}}={:.0f}\pm{:.0f}$ km/s'.format(
                     fastspec['BROAD_SIGMA'], fastspec['BROAD_SIGMARMS'])
             else:
-                leg_broad['sigma_broad'] = '$\\sigma_{{\\rm broad}}={:.0f}$ km/s'.format(fastspec['BROAD_SIGMA'])
+                leg_broad['sigma_broad'] = r'$\\sigma_{{\\rm broad}}={:.0f}$ km/s'.format(fastspec['BROAD_SIGMA'])
     
         # emission lines
     
         # UV
         if fastspec['LYALPHA_AMP']*np.sqrt(fastspec['LYALPHA_AMP_IVAR']) > snrcut:
-            leg_uv['ewlya'] = 'EW(Ly$\\alpha)={:.1f}\ \\AA$'.format(fastspec['LYALPHA_EW'])
+            leg_uv['ewlya'] = r'EW(Ly$\\alpha)={:.1f}\ \\AA$'.format(fastspec['LYALPHA_EW'])
         if fastspec['CIV_1549_AMP']*np.sqrt(fastspec['CIV_1549_AMP_IVAR']) > snrcut:
-            leg_uv['ewciv'] = 'EW(CIV)$={:.1f}\ \\AA$'.format(fastspec['CIV_1549_EW'])
+            leg_uv['ewciv'] = r'EW(CIV)$={:.1f}\ \\AA$'.format(fastspec['CIV_1549_EW'])
         if fastspec['CIII_1908_AMP']*np.sqrt(fastspec['CIII_1908_AMP_IVAR']) > snrcut:
-            leg_uv['ewciii'] = 'EW(CIII])$={:.1f}\ \\AA$'.format(fastspec['CIII_1908_EW'])
+            leg_uv['ewciii'] = r'EW(CIII])$={:.1f}\ \\AA$'.format(fastspec['CIII_1908_EW'])
         if (fastspec['MGII_2796_AMP']*np.sqrt(fastspec['MGII_2796_AMP_IVAR']) > snrcut or
             fastspec['MGII_2803_AMP']*np.sqrt(fastspec['MGII_2803_AMP_IVAR']) > snrcut):
-            leg_uv['ewmgii'] = 'EW(MgII)$={:.1f}\ \\AA$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])
-            leg_uv['mgii_doublet'] = 'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
+            leg_uv['ewmgii'] = r'EW(MgII)$={:.1f}\ \\AA$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])
+            leg_uv['mgii_doublet'] = r'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
     
-        leg_broad['linerchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm line}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
-        #leg_broad['deltarchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
+        leg_broad['linerchi2'] = r'$\\chi^{{2}}_{{\\nu,\\rm line}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
+        #leg_broad['deltarchi2'] = r'$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
         #if fastspec['DELTA_LINERCHI2'] != 0:
-        #leg_broad['deltachi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINECHI2'])
-        leg_broad['deltachi2'] = '$\\Delta\\chi^{{2}}_{{\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINECHI2'])
-        leg_broad['deltandof'] = '$\\Delta\\nu_{{\\rm nobroad}}={:.0f}$'.format(fastspec['DELTA_LINENDOF'])
+        #leg_broad['deltachi2'] = r'$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINECHI2'])
+        leg_broad['deltachi2'] = r'$\\Delta\\chi^{{2}}_{{\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINECHI2'])
+        leg_broad['deltandof'] = r'$\\Delta\\nu_{{\\rm nobroad}}={:.0f}$'.format(fastspec['DELTA_LINENDOF'])
     
         # choose one broad Balmer line
         if fastspec['HALPHA_BROAD_AMP']*np.sqrt(fastspec['HALPHA_BROAD_AMP_IVAR']) > snrcut:
-            leg_broad['ewbalmer_broad'] = 'EW(H$\\alpha)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HALPHA_BROAD_EW'])
+            leg_broad['ewbalmer_broad'] = r'EW(H$\\alpha)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HALPHA_BROAD_EW'])
         elif fastspec['HBETA_BROAD_AMP']*np.sqrt(fastspec['HBETA_BROAD_AMP_IVAR']) > snrcut:
-            leg_broad['ewbalmer_broad'] = 'EW(H$\\beta)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HBETA_BROAD_EW'])
+            leg_broad['ewbalmer_broad'] = r'EW(H$\\beta)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HBETA_BROAD_EW'])
         elif fastspec['HGAMMA_BROAD_AMP']*np.sqrt(fastspec['HGAMMA_BROAD_AMP_IVAR']) > snrcut:
-            leg_broad['ewbalmer_broad'] = 'EW(H$\\gamma)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HGAMMA_BROAD_EW'])
+            leg_broad['ewbalmer_broad'] = r'EW(H$\\gamma)_{{\\rm broad}}={:.1f}\ \\AA$'.format(fastspec['HGAMMA_BROAD_EW'])
     
         if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
             fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
             #leg_narrow['ewoii'] = 'EW([OII] $\lambda\lambda3726,29)={:.1f}\,\\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
-            leg_narrow['ewoii'] = 'EW([OII])$={:.1f}\ \\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
+            leg_narrow['ewoii'] = r'EW([OII])$={:.1f}\ \\AA$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])
     
         if fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut:
-            leg_narrow['ewoiii'] = 'EW([OIII])$={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
+            leg_narrow['ewoiii'] = r'EW([OIII])$={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
             #leg_narrow['ewoiii'] = 'EW([OIII] $\lambda5007={:.1f}\,\\AA$'.format(fastspec['OIII_5007_EW'])
     
         # choose one Balmer line
         if fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut:
-            leg_narrow['ewbalmer_narrow'] = 'EW(H$\\alpha)={:.1f}\ \\AA$'.format(fastspec['HALPHA_EW'])
+            leg_narrow['ewbalmer_narrow'] = r'EW(H$\\alpha)={:.1f}\ \\AA$'.format(fastspec['HALPHA_EW'])
         elif fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut:
-            leg_narrow['ewbalmer_narrow'] = 'EW(H$\\beta)={:.1f}\ \\AA$'.format(fastspec['HBETA_EW'])
+            leg_narrow['ewbalmer_narrow'] = r'EW(H$\\beta)={:.1f}\ \\AA$'.format(fastspec['HBETA_EW'])
         elif fastspec['HGAMMA_AMP']*np.sqrt(fastspec['HGAMMA_AMP_IVAR']) > snrcut:
-            leg_narrow['ewbalmer_narrow'] = 'EW(H$\\gamma)={:.1f}\ \\AA$'.format(fastspec['HGAMMA_EW'])
+            leg_narrow['ewbalmer_narrow'] = r'EW(H$\\gamma)={:.1f}\ \\AA$'.format(fastspec['HGAMMA_EW'])
     
         if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
             fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut):
-            leg_narrow['hahb'] = '${{\\rm H}}\\alpha/{{\\rm H}}\\beta={:.3f}$'.format(fastspec['HALPHA_FLUX']/fastspec['HBETA_FLUX'])
+            leg_narrow['hahb'] = r'${{\\rm H}}\\alpha/{{\\rm H}}\\beta={:.3f}$'.format(fastspec['HALPHA_FLUX']/fastspec['HBETA_FLUX'])
         if 'hahb' not in leg_narrow.keys() and (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
             fastspec['HGAMMA_AMP']*np.sqrt(fastspec['HGAMMA_AMP_IVAR']) > snrcut):
-            leg_narrow['hbhg'] = '${{\\rm H}}\\beta/{{\\rm H}}\\gamma={:.3f}$'.format(fastspec['HBETA_FLUX']/fastspec['HGAMMA_FLUX'])
+            leg_narrow['hbhg'] = r'${{\\rm H}}\\beta/{{\\rm H}}\\gamma={:.3f}$'.format(fastspec['HBETA_FLUX']/fastspec['HGAMMA_FLUX'])
         if (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
             fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut and 
             fastspec['HBETA_FLUX'] > 0 and fastspec['OIII_5007_FLUX'] > 0):
-            leg_narrow['oiiihb'] = '$\\log_{{10}}({{\\rm [OIII]/H}}\\beta)={:.3f}$'.format(np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
+            leg_narrow['oiiihb'] = r'$\\log_{{10}}({{\\rm [OIII]/H}}\\beta)={:.3f}$'.format(np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
         if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
             fastspec['NII_6584_AMP']*np.sqrt(fastspec['NII_6584_AMP_IVAR']) > snrcut and 
             fastspec['HALPHA_FLUX'] > 0 and fastspec['NII_6584_FLUX'] > 0):
-            leg_narrow['niiha'] = '$\\log_{{10}}({{\\rm [NII]/H}}\\alpha)={:.3f}$'.format(np.log10(fastspec['NII_6584_FLUX']/fastspec['HALPHA_FLUX']))
+            leg_narrow['niiha'] = r'$\\log_{{10}}({{\\rm [NII]/H}}\\alpha)={:.3f}$'.format(np.log10(fastspec['NII_6584_FLUX']/fastspec['HALPHA_FLUX']))
     
         if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
             fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
             #if fastspec['OII_DOUBLET_RATIO'] != 0:
-            leg_narrow['oii_doublet'] = '[OII] $\lambda3726/\lambda3729={:.3f}$'.format(fastspec['OII_DOUBLET_RATIO'])
+            leg_narrow['oii_doublet'] = r'[OII] $\lambda3726/\lambda3729={:.3f}$'.format(fastspec['OII_DOUBLET_RATIO'])
     
         if fastspec['SII_6716_AMP']*np.sqrt(fastspec['SII_6716_AMP_IVAR']) > snrcut or fastspec['SII_6731_AMP']*np.sqrt(fastspec['SII_6731_AMP_IVAR']) > snrcut:
             #if fastspec['SII_DOUBLET_RATIO'] != 0:
-            leg_narrow['sii_doublet'] = '[SII] $\lambda6731/\lambda6716={:.3f}$'.format(fastspec['SII_DOUBLET_RATIO'])
+            leg_narrow['sii_doublet'] = r'[SII] $\lambda6731/\lambda6716={:.3f}$'.format(fastspec['SII_DOUBLET_RATIO'])
 
     # rebuild the best-fitting broadband photometric model
     if not stackfit:
