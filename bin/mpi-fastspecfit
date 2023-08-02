@@ -196,6 +196,9 @@ def main():
 
     args = parser.parse_args()
 
+    outdir_data = os.path.expandvars(args.outdir_data)
+    outdir_html = os.path.expandvars(args.outdir_html)
+
     if args.merge or args.mergeall or args.nompi:
         comm = None
     else:
@@ -235,7 +238,7 @@ def main():
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
                           survey=args.survey, program=args.program, healpix=args.healpix,
-                          tile=args.tile, night=args.night, outdir_data=args.outdir_data,
+                          tile=args.tile, night=args.night, outdir_data=outdir_data,
                           outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
                           fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
         return
@@ -250,12 +253,11 @@ def main():
                  coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                  healpix=args.healpix, tile=args.tile, night=args.night,
                  makeqa=args.makeqa, mp=args.mp,
-                 fastphot=args.fastphot, outdir_data=args.outdir_data,
-                 outdir_html=args.outdir_html, overwrite=args.overwrite)
+                 fastphot=args.fastphot, outdir_data=outdir_data,
+                 outdir_html=outdir_html, overwrite=args.overwrite)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=args.outdir_data,
-                        outdir_html=args.outdir_html)
+                        makeqa=args.makeqa, outdir_data=outdir_data, outdir_html=outdir_html)
 
 if __name__ == '__main__':
     main()
