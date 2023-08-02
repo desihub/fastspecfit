@@ -23,6 +23,8 @@ Change Log
   * Switch from (deprecated) ``pkg_resources`` to ``importlib``.
   * Updated documentation (data model) and several non-negligible speed-ups.
 
+* Improved modeling of galaxies with broad+narrow line-emission [`PR #142`_]:
+  
 .. _`PR #115`: https://github.com/desihub/fastspecfit/pull/115
 .. _`PR #116`: https://github.com/desihub/fastspecfit/pull/116
 .. _`PR #120`: https://github.com/desihub/fastspecfit/pull/120
@@ -30,6 +32,7 @@ Change Log
 .. _`PR #135`: https://github.com/desihub/fastspecfit/pull/135
 .. _`PR #136`: https://github.com/desihub/fastspecfit/pull/136
 .. _`PR #137`: https://github.com/desihub/fastspecfit/pull/137
+.. _`PR #142`: https://github.com/desihub/fastspecfit/pull/142
 
 2.1.2 (2023-04-01)
 ------------------

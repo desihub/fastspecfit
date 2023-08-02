@@ -19,10 +19,10 @@ from desiutil.log import get_logger
 log = get_logger()
 
 # Default environment variables.
-DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
-DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
-DR9_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
-FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
+DESI_ROOT_NERSC = '/dvs_ro/cfs/cdirs/desi'
+DUST_DIR_NERSC = '/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1'
+DR9_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9'
+FTEMPLATES_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
@@ -1634,8 +1634,10 @@ def init_fastspec_output(input_meta, specprod, templates=None, ncoeff=None,
         # Add chi2 metrics
         #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
         out.add_column(Column(name='RCHI2_LINE', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
+        #out.add_column(Column(name='NDOF_LINE', length=nobj, dtype='i8')) # number of degrees of freedom corresponding to rchi2_line
         #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
-        out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
+        out.add_column(Column(name='DELTA_LINECHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
+        out.add_column(Column(name='DELTA_LINENDOF', length=nobj, dtype=np.int32))
 
         # aperture corrections
         out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # median aperture correction
