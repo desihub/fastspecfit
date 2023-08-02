@@ -17,16 +17,6 @@ try: # this fails when building the documentation
 except:
     C_LIGHT = 299792.458 # [km/s]
 
-# Lyman-alpha from eqn 5 of Calura et al. 2012 (Arxiv: 1201.5121)
-# Other from eqn 1.1 of Irsic et al. 2013 , (Arxiv: 1307.3403)
-Lyman_series = {
-    'Lya'     : { 'line':1215.67,  'A':0.0023,          'B':3.64, 'var_evol':3.8 },
-    'Lyb'     : { 'line':1025.72,  'A':0.0023/5.2615,   'B':3.64, 'var_evol':3.8 },
-    'Ly3'     : { 'line':972.537,  'A':0.0023/14.356,   'B':3.64, 'var_evol':3.8 },
-    'Ly4'     : { 'line':949.7431, 'A':0.0023/29.85984, 'B':3.64, 'var_evol':3.8 },
-    'Ly5'     : { 'line':937.8035, 'A':0.0023/53.36202, 'B':3.64, 'var_evol':3.8 },
-}
-
 def mwdust_transmission(ebv, filtername):
     """Convert SFD E(B-V) value to dust transmission 0-1 given the bandpass.
 
@@ -316,7 +306,7 @@ def find_minima(x):
     return ii[jj]
 
 
-def minfit(x, y):
+def minfit(x, y, return_coeff=False):
     """Fits y = y0 + ((x-x0)/xerr)**2
 
     See redrock.zwarning.ZWarningMask.BAD_MINFIT for zwarn failure flags
@@ -329,17 +319,27 @@ def minfit(x, y):
         (tuple):  (x0, xerr, y0, zwarn) where zwarn=0 is good fit.
 
     """
+    a, b, c = 0., 0., 0.
     if len(x) < 3:
-        return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
+        if return_coeff:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT,(a,b,c))
+        else:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
 
     try:
         #- y = a x^2 + b x + c
         a,b,c = np.polyfit(x,y,2)
     except np.linalg.LinAlgError:
-        return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
+        if return_coeff:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT,(a,b,c))
+        else:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
 
     if a == 0.0:
-        return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
+        if return_coeff:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT,(a,b,c))
+        else:
+            return (-1,-1,-1,ZWarningMask.BAD_MINFIT)
 
     #- recast as y = y0 + ((x-x0)/xerr)^2
     x0 = -b / (2*a)
@@ -357,7 +357,10 @@ def minfit(x, y):
         xerr = 1 / np.sqrt(-a)
         zwarn |= ZWarningMask.BAD_MINFIT
 
-    return (x0, xerr, y0, zwarn)
+    if return_coeff:
+        return (x0, xerr, y0, zwarn,(a,b,c))
+    else:
+        return (x0, xerr, y0, zwarn)
 
 class TabulatedDESI(object):
     """

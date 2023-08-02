@@ -41,9 +41,9 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
 
 def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                  minspecwave=3500., maxspecwave=9900., broadlinefit=True,
-                 fastphot=False, stackfit=False, nophoto=False, 
+                 fastphot=False, stackfit=False, nophoto=False,
                  constrain_age=False, no_smooth_continuum=False, 
-                 percamera_models=False):
+                 percamera_models=False, debug_plots=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -64,7 +64,8 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fphoto=fphoto,
                                                          constrain_age=constrain_age,
                                                          no_smooth_continuum=no_smooth_continuum,
-                                                         fastphot=fastphot, log=log)
+                                                         fastphot=fastphot, nophoto=nophoto,
+                                                         debug_plots=debug_plots, log=log)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -137,6 +138,7 @@ def parse(options=None, log=None):
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
     parser.add_argument('--fphotoinfo', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
+    parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
     if log is None:
@@ -238,7 +240,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], Spec.fphoto, templates, log,
                 minspecwave, maxspecwave, args.broadlinefit, fastphot, stackfit,
                 args.nophoto, args.constrain_age, args.no_smooth_continuum, 
-                args.percamera_models)
+                args.percamera_models, args.debug_plots)
                 for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -555,7 +557,9 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         leg_broad['linerchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm line}}$={:.2f}'.format(fastspec['RCHI2_LINE'])
         #leg_broad['deltarchi2'] = '$\\chi^{{2}}_{{\\nu,\\rm narrow}}-\\chi^{{2}}_{{\\nu,\\rm narrow+broad}}={:.3f}$'.format(fastspec['DELTA_LINERCHI2'])
         #if fastspec['DELTA_LINERCHI2'] != 0:
-        leg_broad['deltarchi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINERCHI2'])
+        #leg_broad['deltachi2'] = '$\\Delta\\chi^{{2}}_{{\\nu,\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINECHI2'])
+        leg_broad['deltachi2'] = '$\\Delta\\chi^{{2}}_{{\\rm nobroad}}={:.2f}$'.format(fastspec['DELTA_LINECHI2'])
+        leg_broad['deltandof'] = '$\\Delta\\nu_{{\\rm nobroad}}={:.0f}$'.format(fastspec['DELTA_LINENDOF'])
     
         # choose one broad Balmer line
         if fastspec['HALPHA_BROAD_AMP']*np.sqrt(fastspec['HALPHA_BROAD_AMP_IVAR']) > snrcut:
@@ -680,10 +684,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
          
         for oneline in EMFit.linetable[inrange]: # for all lines in range
             linename = oneline['name'].upper()
-            amp = fastspec['{}_AMP'.format(linename)]
+            amp = fastspec['{}_MODELAMP'.format(linename)]
             if amp != 0:
                 desiemlines_oneline1 = build_emline_model(
-                    EMFit.log10wave, redshift, np.array([amp]),
+                    EMFit.dlog10wave, redshift, np.array([amp]),
                     np.array([fastspec['{}_VSHIFT'.format(linename)]]),
                     np.array([fastspec['{}_SIGMA'.format(linename)]]),
                     np.array([oneline['restwave']]), data['wave'], data['res'])
@@ -1069,11 +1073,13 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         plotsig_default_balmer = 500.0 # [km/s]
         plotsig_default_broad = 2000.0 # [km/s]
     
-        meanwaves, deltawaves, sigmas, linenames = [], [], [], []
+        minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames = [], [], [], [], [], []
         for plotgroup in set(linetable['plotgroup']):
             I = np.where(plotgroup == linetable['plotgroup'])[0]
             linename = linetable['nicename'][I[0]].replace('-', ' ')
             linenames.append(linename)
+            minwaves.append(np.min(linetable['restwave'][I]))
+            maxwaves.append(np.max(linetable['restwave'][I]))
             meanwaves.append(np.mean(linetable['restwave'][I]))
             deltawaves.append((np.max(linetable['restwave'][I]) - np.min(linetable['restwave'][I])) / 2)
         
@@ -1106,6 +1112,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             ax = []
         else:
             srt = np.argsort(meanwaves)
+            minwaves = np.hstack(minwaves)[srt]
+            maxwaves = np.hstack(maxwaves)[srt]
             meanwaves = np.hstack(meanwaves)[srt]
             deltawaves = np.hstack(deltawaves)[srt]
             sigmas = np.hstack(sigmas)[srt]
@@ -1136,7 +1144,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             else:
                 ax, irow, colshift = [], 4, 5 # skip the gap row
                 
-            for iax, (meanwave, deltawave, sig, linename) in enumerate(zip(meanwaves, deltawaves, sigmas, linenames)):
+            for iax, (minwave, maxwave, meanwave, deltawave, sig, linename) in enumerate(
+                    zip(minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames)):
                 icol = iax % nlinecols
                 icol += colshift
                 if iax > 0 and iax % nlinecols == 0:
@@ -1146,9 +1155,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 xx = fig.add_subplot(gs[irow, icol])
                 ax.append(xx)
             
-                wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
-                wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
-                #print(linename, wmin, wmax)
+                wmin = (minwave - deltawave) * (1+redshift) - 6 * sig * minwave * (1+redshift) / C_LIGHT
+                wmax = (maxwave + deltawave) * (1+redshift) + 6 * sig * maxwave * (1+redshift) / C_LIGHT
+                #wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
+                #wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
             
                 # iterate over cameras
                 for icam in np.arange(len(data['cameras'])): # iterate over cameras

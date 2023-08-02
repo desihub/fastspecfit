@@ -19,10 +19,10 @@ from desiutil.log import get_logger
 log = get_logger()
 
 # Default environment variables.
-DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
-DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
-FPHOTO_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
-FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
+DESI_ROOT_NERSC = '/dvs_ro/cfs/cdirs/desi'
+DUST_DIR_NERSC = '/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1'
+DR9_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9'
+FTEMPLATES_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
@@ -90,16 +90,19 @@ def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot, log):
+def unpack_one_spectrum(iobj, specdata, meta, ebv, fastphot, synthphot, log):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
     """
     from fastspecfit.util import mwdust_transmission
+    from fastspecfit.continuum import ContinuumTools
 
+    CTools = ContinuumTools()
+    
     log.info('Pre-processing object {} [targetid {} z={:.6f}].'.format(
         iobj, meta[Filters.uniqueid], meta['Z']))
-
+    
     RV = 3.1
     meta['EBV'] = ebv
     
@@ -215,9 +218,9 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot,
             specdata['camerapix'][icam, :] = [np.sum(npixpercam[:icam+1]), np.sum(npixpercam[:icam+2])]
                                 
         # coadded spectrum
-        coadd_linemask_dict = Filters.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                     specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                     linetable=Filters.linetable)
+        coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
+                                                    specdata['coadd_ivar'], redshift=specdata['zredrock'],
+                                                    linetable=CTools.linetable)
         specdata['coadd_linename'] = coadd_linemask_dict['linename']
         specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
         specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -275,7 +278,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, Filters, fastphot, synthphot,
             #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
             #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
     
-            #specdata['synthphot'] = Filters.parse_photometry(Filters.bands,
+            #specdata['synthphot'] = CTools.parse_photometry(CTools.bands,
             #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
             #    ivarmaggies=synthivarmaggies, nanomaggies=False, log=log)
             specdata['synthphot'] = Filters.parse_photometry(
@@ -288,29 +291,33 @@ def _unpack_one_stacked_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_stacked_spectrum(*args)
 
-def unpack_one_stacked_spectrum(iobj, specdata, meta, Filters, synthphot, log):
+def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot, log):
     """Unpack the data for a single stacked spectrum. Also flag pixels which may be
     affected by emission lines.
 
     """
+    from fastspecfit.continuum import ContinuumTools
+    
+    CTools = ContinuumTools()
+    
     log.info('Pre-processing object {} [stackid {} z={:.6f}].'.format(
         iobj, meta['STACKID'], meta['Z']))
 
     if specdata['photsys'] == 'S':
-        filters = Filters.decam
-        allfilters = Filters.decamwise
+        filters = CTools.decam
+        allfilters = CTools.decamwise
     else:
-        filters = Filters.bassmzls
-        allfilters = Filters.bassmzlswise
+        filters = CTools.bassmzls
+        allfilters = CTools.bassmzlswise
 
     # Dummy imaging photometry.
-    maggies = np.zeros(len(Filters.bands))
-    ivarmaggies = np.zeros(len(Filters.bands))
+    maggies = np.zeros(len(CTools.bands))
+    ivarmaggies = np.zeros(len(CTools.bands))
     
-    specdata['phot'] = Filters.parse_photometry(
-        Filters.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
+    specdata['phot'] = CTools.parse_photometry(
+        CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
         lambda_eff=allfilters.effective_wavelengths.value,
-        min_uncertainty=Filters.min_uncertainty, log=log)
+        min_uncertainty=CTools.min_uncertainty, log=log)
     
     #specdata['fiberphot'] = specdata['phot']
     #specdata['fibertotphot'] = specdata['phot']
@@ -372,9 +379,9 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, Filters, synthphot, log):
         del specdata[key]
 
     # coadded spectrum
-    coadd_linemask_dict = Filters.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                 specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                 linetable=Filters.linetable)
+    coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
+                                                specdata['coadd_ivar'], redshift=specdata['zredrock'],
+                                                linetable=CTools.linetable)
     specdata['coadd_linename'] = coadd_linemask_dict['linename']
     specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
     specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -418,7 +425,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, Filters, synthphot, log):
         synthmaggies = filters.get_ab_maggies(padflux / FLUXNORM, padwave)
         synthmaggies = synthmaggies.as_array().view('f8')
 
-        specdata['synthphot'] = Filters.parse_photometry(Filters.synth_bands,
+        specdata['synthphot'] = CTools.parse_photometry(CTools.synth_bands,
             maggies=synthmaggies, nanomaggies=False,
             lambda_eff=filters.effective_wavelengths.value, log=log)
 
@@ -1022,6 +1029,7 @@ class DESISpectra(TabulatedDESI):
         from fastspecfit.continuum import ContinuumTools
 
         CTools = ContinuumTools(fphoto=self.fphoto)
+
         SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
         alldata = []
@@ -1035,10 +1043,7 @@ class DESISpectra(TabulatedDESI):
             ebv = SFD.ebv(meta['RA'], meta['DEC'])
 
             # Age, luminosity, and distance modulus.
-            try:
-                dlum = self.luminosity_distance(meta['Z'])
-            except:
-                pdb.set_trace()
+            dlum = self.luminosity_distance(meta['Z'])
             dmod = self.distance_modulus(meta['Z'])
             tuniv = self.universe_age(meta['Z'])
 
@@ -1055,7 +1060,7 @@ class DESISpectra(TabulatedDESI):
                         'photsys': photsys[iobj],
                         'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], CTools, True, False, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], True, False, log))
             else:
                 from desispec.resolution import Resolution
                 
@@ -1087,7 +1092,7 @@ class DESISpectra(TabulatedDESI):
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
                         'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :]),
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], CTools, fastphot, synthphot, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], fastphot, synthphot, log))
                     
             if mp > 1:
                 import multiprocessing
@@ -1282,8 +1287,6 @@ class DESISpectra(TabulatedDESI):
             return
 
         # Now read the data as in self.read_and_unpack (for unstacked spectra).
-        CTools = ContinuumTools()
-
         alldata = []
         for ispec, (stackfile, meta) in enumerate(zip(self.stackfiles, self.meta)):
             nobj = len(meta)
@@ -1337,7 +1340,7 @@ class DESISpectra(TabulatedDESI):
                     'coadd_ivar': specdata['ivar0'][0],
                     'coadd_res': specdata['res0'][0],
                     })
-                unpackargs.append((iobj, specdata, meta[iobj], CTools, synthphot, log))
+                unpackargs.append((iobj, specdata, meta[iobj], synthphot, log))
                     
             if mp > 1:
                 import multiprocessing
@@ -1669,8 +1672,10 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
         # Add chi2 metrics
         #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
         out.add_column(Column(name='RCHI2_LINE', length=nobj, dtype='f4')) # reduced chi2 with broad line-emission
+        #out.add_column(Column(name='NDOF_LINE', length=nobj, dtype='i8')) # number of degrees of freedom corresponding to rchi2_line
         #out.add_column(Column(name='DOF_BROAD', length=nobj, dtype='i8'))
-        out.add_column(Column(name='DELTA_LINERCHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
+        out.add_column(Column(name='DELTA_LINECHI2', length=nobj, dtype='f4')) # delta-reduced chi2 with and without broad line-emission
+        out.add_column(Column(name='DELTA_LINENDOF', length=nobj, dtype=np.int32))
 
         # aperture corrections
         out.add_column(Column(name='APERCORR', length=nobj, dtype='f4')) # median aperture correction
@@ -1698,6 +1703,8 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
 
         for line in linetable['name']:
             line = line.upper()
+            out.add_column(Column(name='{}_MODELAMP'.format(line), length=nobj, dtype='f4',
+                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
             out.add_column(Column(name='{}_AMP'.format(line), length=nobj, dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
             out.add_column(Column(name='{}_AMP_IVAR'.format(line), length=nobj, dtype='f4',
@@ -1775,7 +1782,8 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
 
         # Add specprod to the metadata table so that we can stack across
         # productions (e.g., Fuji+Guadalupe).
-        hdr = fitsio.read_header(fastfitfile)#, ext='PRIMARY')
+        hdr = fitsio.read_header(fastfitfile, ext=0)#, ext='PRIMARY')
+
         if 'SPECPROD' in hdr:
             specprod = hdr['SPECPROD']
             meta['SPECPROD'] = specprod

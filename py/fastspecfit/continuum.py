@@ -14,61 +14,6 @@ from astropy.table import Table
 from fastspecfit.io import FLUXNORM
 from fastspecfit.util import C_LIGHT
 
-#import numba
-#@numba.jit(nopython=True)
-def nnls(A, b, maxiter=None, eps=1e-7, v=False):
-    # https://en.wikipedia.org/wiki/Non-negative_least_squares#Algorithms
-    # not sure what eps should be set to
-    m, n = A.shape
-    if b.shape[0] != m:
-        raise ValueError()#f"Shape mismatch: {A.shape} {b.shape}. Expected: (m, n) (m) ")
-    if maxiter is None:
-        # this is what scipy does when maxiter is not specified
-        maxiter = 3 * n
-    # init
-    P = np.zeros(n).astype(bool)
-    R = np.ones(n).astype(bool)
-    x = np.zeros(n)
-    s = np.zeros(n)
-    # compute these once ahead of time
-    ATA = A.T.dot(A)
-    ATb = A.T.dot(b)
-    # main loop
-    w = ATb - ATA.dot(x)
-    j = np.argmax(R * w)
-    c = 0 # iteration count
-    # while R != {} and max(w[R]) > eps
-    while np.any(R) and w[j] > eps:
-        #if v: print(f"{c=}", f"{P=}\n {R=}\n {w=}\n {j=}")
-        # add j to P, remove j from R
-        P[j], R[j] = True, False
-        s[P] = np.linalg.inv(ATA[P][:, P]).dot(ATb[P])
-        s[R] = 0
-        d = 0 # inner loop iteration count, for debugging
-        #if v: print(f"{c=}", f"{P=}\n {R=}\n {s=}")
-        # while P != {} and min(s[P]) < eps
-        # make sure P is not empty before checking min s[P]
-        while np.any(P) and np.min(s[P]) < eps:
-            i = P & (s < eps)
-            #if v: print(f" {d=}", f"  {P=}\n  {i=}\n  {s=}\n  {x=}")
-            a = np.min(x[i] / (x[i] - s[i]))
-            x = x + a * (s - x)
-            j = P & (x < eps)
-            R[j], P[j] = True, False
-            s[P] = np.linalg.inv(ATA[P][:, P]).dot(ATb[P])
-            s[R] = 0
-            d += 1
-        x[:] = s
-        # w = A.T.dot(b - A.dot(x))
-        w = ATb - ATA.dot(x)
-        j = np.argmax(R * w)
-        #if v: print(f"{c=}", f"{P=}\n {R=}\n {w=}\n {j=}")
-        c += 1
-        if c >= maxiter:
-            break
-    res = np.linalg.norm(A.dot(x) - b)
-    return x, res
-
 def _smooth_continuum(wave, flux, ivar, redshift, medbin=150, 
                       smooth_window=50, smooth_step=10, maskkms_uv=3000.0, 
                       maskkms_balmer=1000.0, maskkms_narrow=200.0,
@@ -531,6 +476,8 @@ class Filters(object):
         """Class to load filters, dust, and filter- and dust-related methods.
 
         """
+        super(Filters, self).__init__()
+        
         from speclite import filters
         
         if fphoto is not None:
@@ -790,12 +737,12 @@ class Filters(object):
     
         dn4000, dn4000_ivar = 0.0, 0.0
 
-        if rest:
-            restwave = wave
-            flam2fnu =  restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
-        else:
+        if rest is False or redshift is not None:
             restwave = wave / (1 + redshift) # [Angstrom]
             flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+        else:
+            restwave = wave
+            flam2fnu =  restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
 
         # Require a 2-Angstrom pad around the break definition.
         wpad = 2.0
@@ -859,7 +806,215 @@ class Filters(object):
     
         return dn4000, dn4000_ivar
 
-class ContinuumTools(Filters):
+class Inoue14(object):
+    def __init__(self, scale_tau=1.):
+        """
+        IGM absorption from Inoue et al. (2014)
+        
+        Parameters
+        ----------
+        scale_tau : float
+            Parameter multiplied to the IGM :math:`\tau` values (exponential 
+            in the linear absorption fraction).  
+            I.e., :math:`f_\mathrm{igm} = e^{-\mathrm{scale\_tau} \tau}`.
+
+        Copyright (c) 2016-2022 Gabriel Brammer
+
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+        """
+        super(Inoue14, self).__init__()
+        
+        self._load_data()
+        self.scale_tau = scale_tau
+
+    @staticmethod
+    def _pow(a, b):
+        """C-like power, a**b
+        """
+        return a**b
+    
+    def _load_data(self):
+        from importlib import resources
+        LAF_file = resources.files('fastspecfit').joinpath('data/LAFcoeff.txt')
+        DLA_file = resources.files('fastspecfit').joinpath('data/DLAcoeff.txt')
+    
+        data = np.loadtxt(LAF_file, unpack=True)
+        ix, lam, ALAF1, ALAF2, ALAF3 = data
+        self.lam = lam[:,np.newaxis]
+        self.ALAF1 = ALAF1[:,np.newaxis]
+        self.ALAF2 = ALAF2[:,np.newaxis]
+        self.ALAF3 = ALAF3[:,np.newaxis]
+        
+        data = np.loadtxt(DLA_file, unpack=True)
+        ix, lam, ADLA1, ADLA2 = data
+        self.ADLA1 = ADLA1[:,np.newaxis]
+        self.ADLA2 = ADLA2[:,np.newaxis]
+                
+        return True
+
+
+    @property
+    def NA(self):
+        """
+        Number of Lyman-series lines
+        """
+        return self.lam.shape[0]
+
+
+    def tLSLAF(self, zS, lobs):
+        """
+        Lyman series, Lyman-alpha forest
+        """
+        z1LAF = 1.2
+        z2LAF = 4.7
+
+        l2 = self.lam #[:, np.newaxis]
+        tLSLAF_value = np.zeros_like(lobs*l2).T
+        
+        x0 = (lobs < l2*(1+zS))
+        x1 = x0 & (lobs < l2*(1+z1LAF))
+        x2 = x0 & ((lobs >= l2*(1+z1LAF)) & (lobs < l2*(1+z2LAF)))
+        x3 = x0 & (lobs >= l2*(1+z2LAF))
+        
+        tLSLAF_value = np.zeros_like(lobs*l2)
+        tLSLAF_value[x1] += ((self.ALAF1/l2**1.2)*lobs**1.2)[x1]
+        tLSLAF_value[x2] += ((self.ALAF2/l2**3.7)*lobs**3.7)[x2]
+        tLSLAF_value[x3] += ((self.ALAF3/l2**5.5)*lobs**5.5)[x3]
+
+        return tLSLAF_value.sum(axis=0)
+
+
+    def tLSDLA(self, zS, lobs):
+        """
+        Lyman Series, DLA
+        """
+        z1DLA = 2.0
+        
+        l2 = self.lam #[:, np.newaxis]
+        tLSDLA_value = np.zeros_like(lobs*l2)
+        
+        x0 = (lobs < l2*(1+zS)) & (lobs < l2*(1.+z1DLA))
+        x1 = (lobs < l2*(1+zS)) & ~(lobs < l2*(1.+z1DLA))
+        
+        tLSDLA_value[x0] += ((self.ADLA1/l2**2)*lobs**2)[x0]
+        tLSDLA_value[x1] += ((self.ADLA2/l2**3)*lobs**3)[x1]
+                
+        return tLSDLA_value.sum(axis=0)
+
+
+    def tLCDLA(self, zS, lobs):
+        """
+        Lyman continuum, DLA
+        """
+        z1DLA = 2.0
+        lamL = 911.8
+        
+        tLCDLA_value = np.zeros_like(lobs)
+        
+        x0 = lobs < lamL*(1.+zS)
+        if zS < z1DLA:
+            tLCDLA_value[x0] = 0.2113 * self._pow(1.0+zS, 2) - 0.07661 * self._pow(1.0+zS, 2.3) * self._pow(lobs[x0]/lamL, (-3e-1)) - 0.1347 * self._pow(lobs[x0]/lamL, 2)
+        else:
+            x1 = lobs >= lamL*(1.+z1DLA)
+            
+            tLCDLA_value[x0 & x1] = 0.04696 * self._pow(1.0+zS, 3) - 0.01779 * self._pow(1.0+zS, 3.3) * self._pow(lobs[x0 & x1]/lamL, (-3e-1)) - 0.02916 * self._pow(lobs[x0 & x1]/lamL, 3)
+            tLCDLA_value[x0 & ~x1] =0.6340 + 0.04696 * self._pow(1.0+zS, 3) - 0.01779 * self._pow(1.0+zS, 3.3) * self._pow(lobs[x0 & ~x1]/lamL, (-3e-1)) - 0.1347 * self._pow(lobs[x0 & ~x1]/lamL, 2) - 0.2905 * self._pow(lobs[x0 & ~x1]/lamL, (-3e-1))
+        
+        return tLCDLA_value
+
+
+    def tLCLAF(self, zS, lobs):
+        """
+        Lyman continuum, LAF
+        """
+        z1LAF = 1.2
+        z2LAF = 4.7
+        lamL = 911.8
+
+        tLCLAF_value = np.zeros_like(lobs)
+        
+        x0 = lobs < lamL*(1.+zS)
+        
+        if zS < z1LAF:
+            tLCLAF_value[x0] = 0.3248 * (self._pow(lobs[x0]/lamL, 1.2) - self._pow(1.0+zS, -9e-1) * self._pow(lobs[x0]/lamL, 2.1))
+        elif zS < z2LAF:
+            x1 = lobs >= lamL*(1+z1LAF)
+            tLCLAF_value[x0 & x1] = 2.545e-2 * (self._pow(1.0+zS, 1.6) * self._pow(lobs[x0 & x1]/lamL, 2.1) - self._pow(lobs[x0 & x1]/lamL, 3.7))
+            tLCLAF_value[x0 & ~x1] = 2.545e-2 * self._pow(1.0+zS, 1.6) * self._pow(lobs[x0 & ~x1]/lamL, 2.1) + 0.3248 * self._pow(lobs[x0 & ~x1]/lamL, 1.2) - 0.2496 * self._pow(lobs[x0 & ~x1]/lamL, 2.1)
+        else:
+            x1 = lobs > lamL*(1.+z2LAF)
+            x2 = (lobs >= lamL*(1.+z1LAF)) & (lobs < lamL*(1.+z2LAF))
+            x3 = lobs < lamL*(1.+z1LAF)
+            
+            tLCLAF_value[x0 & x1] = 5.221e-4 * (self._pow(1.0+zS, 3.4) * self._pow(lobs[x0 & x1]/lamL, 2.1) - self._pow(lobs[x0 & x1]/lamL, 5.5))
+            tLCLAF_value[x0 & x2] = 5.221e-4 * self._pow(1.0+zS, 3.4) * self._pow(lobs[x0 & x2]/lamL, 2.1) + 0.2182 * self._pow(lobs[x0 & x2]/lamL, 2.1) - 2.545e-2 * self._pow(lobs[x0 & x2]/lamL, 3.7)
+            tLCLAF_value[x0 & x3] = 5.221e-4 * self._pow(1.0+zS, 3.4) * self._pow(lobs[x0 & x3]/lamL, 2.1) + 0.3248 * self._pow(lobs[x0 & x3]/lamL, 1.2) - 3.140e-2 * self._pow(lobs[x0 & x3]/lamL, 2.1)
+            
+        return tLCLAF_value
+
+
+    def full_IGM(self, z, lobs):
+        """Get full Inoue IGM absorption
+        
+        Parameters
+        ----------
+        z : float
+            Redshift to evaluate IGM absorption
+        
+        lobs : array
+            Observed-frame wavelength(s) in Angstroms.
+        
+        Returns
+        -------
+        abs : array
+            IGM absorption
+        
+        """
+        tau_LS = self.tLSLAF(z, lobs) + self.tLSDLA(z, lobs)
+        tau_LC = self.tLCLAF(z, lobs) + self.tLCDLA(z, lobs)
+        
+        ### Upturn at short wavelengths, low-z
+        #k = 1./100
+        #l0 = 600-6/k
+        #clip = lobs/(1+z) < 600.
+        #tau_clip = 100*(1-1./(1+np.exp(-k*(lobs/(1+z)-l0))))
+        tau_clip = 0.
+        
+        return np.exp(-self.scale_tau*(tau_LC + tau_LS + tau_clip))
+
+
+    def build_grid(self, zgrid, lrest):
+        """Build a spline interpolation object for fast IGM models
+        
+        Returns: self.interpolate
+        """
+        
+        from scipy.interpolate import CubicSpline
+        igm_grid = np.zeros((len(zgrid), len(lrest)))
+        for iz in range(len(zgrid)):
+            igm_grid[iz,:] = self.full_IGM(zgrid[iz], lrest*(1+zgrid[iz]))
+        
+        self.interpolate = CubicSpline(zgrid, igm_grid)
+
+
+class ContinuumTools(Filters, Inoue14):
     """Tools for dealing with stellar continua.
 
     Parameters
@@ -883,7 +1038,7 @@ class ContinuumTools(Filters):
     def __init__(self, nophoto=False, fphoto=None, continuum_pixkms=25.0, pixkms_wavesplit=1e4):
 
         super(ContinuumTools, self).__init__(nophoto=nophoto, fphoto=fphoto)
-        
+
         from fastspecfit.emlines import read_emlines
         
         self.massnorm = 1e10 # stellar mass normalization factor [Msun]
@@ -1123,29 +1278,6 @@ class ContinuumTools(Filters):
 
         return linemask_dict
 
-    @staticmethod
-    def transmission_Lyman(zObj, lObs):
-        """Calculate the transmitted flux fraction from the Lyman series
-        This returns the transmitted flux fraction:
-        1 -> everything is transmitted (medium is transparent)
-        0 -> nothing is transmitted (medium is opaque)
-        Args:
-            zObj (float): Redshift of object
-            lObs (array of float): wavelength grid
-        Returns:
-            array of float: transmitted flux fraction
-
-        """
-        from fastspecfit.util import Lyman_series
-
-        lRF = lObs/(1.+zObj)
-        T = np.ones(lObs.size)
-        for l in list(Lyman_series.keys()):
-            w      = lRF<Lyman_series[l]['line']
-            zpix   = lObs[w]/Lyman_series[l]['line']-1.
-            tauEff = Lyman_series[l]['A']*(1.+zpix)**Lyman_series[l]['B']
-            T[w]  *= np.exp(-tauEff)
-        return T
 
     @staticmethod
     def smooth_and_resample(templateflux, templatewave, specwave=None, specres=None):
@@ -1264,7 +1396,7 @@ class ContinuumTools(Filters):
         # stellar mass.
         if redshift > 0:
             ztemplatewave = templatewave * (1.0 + redshift)
-            T = self.transmission_Lyman(redshift, ztemplatewave)
+            T = self.full_IGM(redshift, ztemplatewave)
             T *= FLUXNORM * self.massnorm * (10.0 / (1e6 * dluminosity))**2 / (1.0 + redshift)
             ztemplateflux = templateflux * T[:, np.newaxis]
         else:
@@ -1346,7 +1478,7 @@ class ContinuumTools(Filters):
 
     @staticmethod
     def call_nnls(modelflux, flux, ivar, xparam=None, debug=False,
-                  interpolate_coeff=False, xlabel=None, log=None):
+                  interpolate_coeff=False, xlabel=None, png=None, log=None):
         """Wrapper on nnls.
     
         Works with both spectroscopic and photometric input and with both 2D and
@@ -1396,11 +1528,14 @@ class ContinuumTools(Filters):
         
         try:
             imin = find_minima(chi2grid)[0]
-            xbest, xerr, chi2min, warn = minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
+            if debug:
+                xbest, xerr, chi2min, warn, (a, b, c) = minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2], return_coeff=True)
+            else:
+                xbest, xerr, chi2min, warn = minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
         except:
             errmsg = 'A problem was encountered minimizing chi2.'
             log.warning(errmsg)
-            imin, xbest, xerr, chi2min, warn = 0, 0.0, 0.0, 0.0, 1
+            imin, xbest, xerr, chi2min, warn, (a, b, c) = 0, 0.0, 0.0, 0.0, 1, (0., 0., 0.)
     
         if warn == 0:
             xivar = 1.0 / xerr**2
@@ -1426,29 +1561,37 @@ class ContinuumTools(Filters):
     
         if debug:
             if xivar > 0:
-                leg = r'${:.3f}\pm{:.3f}\ (\chi^2_{{min}}={:.2f})$'.format(xbest, 1/np.sqrt(xivar), chi2min)
+                leg = r'${:.1f}\pm{:.1f}$'.format(xbest, 1 / np.sqrt(xivar))
+                #leg = r'${:.3f}\pm{:.3f}\ (\chi^2_{{min}}={:.2f})$'.format(xbest, 1/np.sqrt(xivar), chi2min)
             else:
                 leg = r'${:.3f}$'.format(xbest)
                 
+            if xlabel:
+                leg = f'{xlabel} = {leg}'
+                
             import matplotlib.pyplot as plt
+            import seaborn as sns
+            sns.set(context='talk', style='ticks', font_scale=0.8)
             fig, ax = plt.subplots()
-            ax.scatter(xparam, chi2grid)
-            ax.scatter(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2], color='red')
-            #ax.set_ylim(chi2min*0.95, np.max(chi2grid[imin-1:imin+2])*1.05)
-            #ax.plot(xx, np.polyval([aa, bb, cc], xx), ls='--')
-            ax.axvline(x=xbest, color='k')
-            if xivar > 0:
-                ax.axhline(y=chi2min, color='k')
-            #ax.set_yscale('log')
-            #ax.set_ylim(chi2min, 63.3)
+            ax.scatter(xparam, chi2grid-chi2min, marker='s', s=50, color='gray', edgecolor='k')
+            #ax.scatter(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2]-chi2min, color='red')
+            if not np.all(np.array([a, b, c]) == 0):
+                ax.plot(xparam, np.polyval([a, b, c], xparam)-chi2min, lw=2, ls='--')
+            #ax.axvline(x=xbest, color='k')
+            #if xivar > 0:
+            #    ax.axhline(y=chi2min, color='k')
             if xlabel:
                 ax.set_xlabel(xlabel)
                 #ax.text(0.03, 0.9, '{}={}'.format(xlabel, leg), ha='left',
                 #        va='center', transform=ax.transAxes)
-            ax.text(0.03, 0.9, leg, ha='left', va='center', transform=ax.transAxes)
-            ax.set_ylabel(r'$\chi^2$')
+            ax.text(0.9, 0.9, leg, ha='right', va='center', transform=ax.transAxes)
+            ax.set_ylabel(r'$\Delta\chi^2$')
+            #ax.set_ylabel(r'$\chi^2 - {:.1f}$'.format(chi2min))
             #fig.savefig('qa-chi2min.png')
-            fig.savefig('desi-users/ioannis/tmp/qa-chi2min.png')
+            fig.tight_layout()
+            if png:
+                log.info(f'Writing {png}')
+                fig.savefig(png)
     
         return chi2min, xbest, xivar, bestcoeff
 
@@ -1651,7 +1794,7 @@ class ContinuumTools(Filters):
 
 def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=False,
                       no_smooth_continuum=False, fastphot=False, log=None, 
-                      verbose=False):
+                      debug_plots=False, verbose=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -1810,9 +1953,10 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
             vdispchi2min, vdispbest, vdispivar, _ = CTools.call_nnls(
                 ztemplateflux_vdisp[Ivdisp, :, :], 
                 specflux[Ivdisp], specivar[Ivdisp],
-                xparam=templatecache['vdisp'], xlabel=r'$\sigma$ (km/s)', debug=False, log=log)
+                xparam=templatecache['vdisp'], xlabel=r'$\sigma$ (km/s)', log=log,
+                debug=debug_plots, png='deltachi2-vdisp.png')
             log.info('Fitting for the velocity dispersion took {:.2f} seconds.'.format(time.time()-t0))
-
+            
             if vdispivar > 0:
                 # Require vdisp to be measured with S/N>1, which protects
                 # against tiny ivar becomming infinite in the output table.
