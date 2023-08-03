@@ -121,8 +121,9 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             if args.nolog:
                 fast(args=cmdargs.split())
             else:
-                with stdouterr_redirected(to=logfile, overwrite=args.overwrite):
-                    fast(args=cmdargs.split())
+                #with stdouterr_redirected(to=logfile, comm=comm, overwrite=args.overwrite):
+                #    fast(args=cmdargs.split())
+                fast(args=cmdargs.split())
             dt1 = time.time() - t1
             log.info('  rank {} done in {:.2f} sec'.format(rank, dt1))
             if not os.path.exists(outfiles[ii]):
