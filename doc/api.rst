@@ -25,6 +25,9 @@ API
 .. automodule:: fastspecfit.mpi
    :members:
 
+.. automodule:: fastspecfit.qa
+   :members:
+
 .. automodule:: fastspecfit.templates.qa
    :members:
 
