@@ -70,8 +70,6 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         # With --makeqa the desired output directories are in the 'zbestfiles'.
         if args.makeqa:
             cmdargs = f'fastspecfit-qa {outfiles[ii]} -o {zbestfiles[ii]} --mp {args.mp}'
-            if args.ntargets:
-                cmdargs += f' --ntargets {args.ntargets}'
         else:
             if fastphot:
                 from fastspecfit.fastspecfit import fastphot as fast
@@ -81,14 +79,17 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                 cmd = 'fastspec'
             cmdargs = f'{zbestfiles[ii]} -o {outfiles[ii]} --mp {args.mp}'
                     
-            if args.ntargets is not None:
-                cmdargs += f' --ntargets {args.ntargets}'
-                
-            if args.targetids is not None:
-                cmdargs += f' --targetids {args.targetids}'
-                
             if args.ignore_quasarnet:
                 cmdargs += ' --ignore-quasarnet'
+                
+        if args.ntargets is not None:
+            cmdargs += f' --ntargets {args.ntargets}'
+                
+        if args.firsttarget is not None:
+            cmdargs += f' --firsttarget {args.firsttarget}'
+                
+        if args.targetids is not None:
+            cmdargs += f' --targetids {args.targetids}'
                 
         if args.makeqa:
             logfile = os.path.join(zbestfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
@@ -116,7 +117,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             if not os.path.isdir(outdir):
                 os.makedirs(outdir, exist_ok=True)
             if args.nolog:
-                err = fast(args=cmdargs.split())
+                fast(args=cmdargs.split())
             else:
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite):
                     fast(args=cmdargs.split())
@@ -125,7 +126,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             if not os.path.exists(outfiles[ii]):
                 log.warning(f'  rank {rank} missing {outfiles[ii]}')
                 raise IOError
-        except Exception as err:
+        except:
             log.warning(f'  rank {rank} raised an exception')
             import traceback
             traceback.print_exc()
@@ -141,7 +142,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             if not os.path.exists(outfile):
                 log.warning(f'Missing {outfile}')
 
-        log.info('All done at {time.asctime()}')
+        log.info(f'All done at {time.asctime()}')
         
 def main():
     """Main wrapper on fastphot and fastspec.
@@ -166,6 +167,7 @@ def main():
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
