@@ -112,7 +112,7 @@ def parse(options=None, log=None):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('redrockfiles', nargs='*', help='Full path to input redrock file(s).')
+    parser.add_argument('redrockfiles', nargs='+', help='Full path to input redrock file(s).')
     parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename (required).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads per MPI rank.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')

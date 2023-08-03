@@ -135,18 +135,6 @@ def group_redrockfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
 
     return groups, ntargets, grouptimes
 
-def backup_logs(logfile):
-    '''
-    Move logfile -> logfile.0 or logfile.1 or logfile.n as needed
-
-    TODO: make robust against logfile.abc also existing
-    '''
-    logfiles = glob(logfile+'.*')
-    newlog = logfile+'.'+str(len(logfiles))
-    assert not os.path.exists(newlog)
-    os.rename(logfile, newlog)
-    return newlog
-
 def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None, 
          outdir_data='.', outdir_html='.', mp=1, merge=False, makeqa=False,

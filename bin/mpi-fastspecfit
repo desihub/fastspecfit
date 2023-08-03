@@ -26,8 +26,9 @@ log = get_logger()
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                     makeqa=False, outdir_data='.', outdir_html='.'):
 
-    import sys, subprocess
-    from fastspecfit.mpi import backup_logs, plan
+    import sys
+    from desispec.parallel import stdouterr_redirected
+    from fastspecfit.mpi import plan
 
     if comm is None:
         rank, size = 0, 1
@@ -36,7 +37,6 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
     t0 = time.time()
     if rank == 0:
-        #log.info('Starting at {}'.format(time.asctime()))
         _, zbestfiles, outfiles, groups, ntargets = plan(
             comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
             coadd_type=args.coadd_type, survey=args.survey, program=args.program,
@@ -54,8 +54,6 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         groups = comm.bcast(groups, root=0)
         ntargets = comm.bcast(ntargets, root=0)
 
-    #if comm:
-    #    comm.barrier()
     sys.stdout.flush()
     
     # all done
@@ -65,45 +63,48 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
     assert(len(groups) == size)
     assert(len(np.concatenate(groups)) == len(zbestfiles))
 
-    #pixels = np.array([int(os.path.basename(os.path.dirname(x))) for x in zbestfiles])
     for ii in groups[rank]:
-        log.debug('Rank {} started at {}'.format(rank, time.asctime()))
+        log.debug(f'Rank {rank} started at {time.asctime()}')
         sys.stdout.flush()
 
         # With --makeqa the desired output directories are in the 'zbestfiles'.
         if args.makeqa:
-            cmd = 'fastspecfit-qa {} -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
+            cmdargs = f'fastspecfit-qa {outfiles[ii]} -o {zbestfiles[ii]} --mp {args.mp}'
             if args.ntargets:
-                cmd += ' --ntargets {}'.format(args.ntargets)
+                cmdargs += f' --ntargets {args.ntargets}'
         else:
             if fastphot:
-                cmd = 'fastphot {} -o {} --mp {}'.format(zbestfiles[ii], outfiles[ii], args.mp)
+                from fastspecfit.fastspecfit import fastphot as fast
+                cmd = 'fastphot'
             else:
-                cmd = 'fastspec {} -o {} --mp {}'.format(zbestfiles[ii], outfiles[ii], args.mp)
+                from fastspecfit.fastspecfit import fastspec as fast
+                cmd = 'fastspec'
+            cmdargs = f'{zbestfiles[ii]} -o {outfiles[ii]} --mp {args.mp}'
                     
             if args.ntargets is not None:
-                cmd += ' --ntargets {}'.format(args.ntargets)
+                cmdargs += f' --ntargets {args.ntargets}'
                 
             if args.targetids is not None:
-                cmd += ' --targetids {}'.format(args.targetids)
+                cmdargs += f' --targetids {args.targetids}'
                 
             if args.ignore_quasarnet:
-                cmd += ' --ignore-quasarnet'
+                cmdargs += ' --ignore-quasarnet'
                 
         if args.makeqa:
             logfile = os.path.join(zbestfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
         else:
             logfile = outfiles[ii].replace('.gz', '').replace('.fits', '.log')
-        assert(logfile != outfiles[ii])
+            
+        if logfile == outfiles[ii]:
+            errmsg = f'Log file {logfile} cannot be the same as outfile!'
+            self.log.critical(errmsg)
+            raise ValueError(errmsg)
 
         if args.makeqa and args.plan:
-            log.info('Still need to make {} QA figure(s) across {} input file(s)'.format(
-                np.sum(ntargets), len(groups)))
+            log.info(f'Still need to make {np.sum(ntargets)} QA figure(s) across {len(groups)} input file(s)')
             return
 
-        log.info('Rank {}, ntargets={}: {}'.format(rank, ntargets[ii], cmd))
-        #log.info('  rank {}: {}'.format(rank, cmd))
-        #log.info('LOGGING to {}'.format(logfile))
+        log.info(f'Rank {rank}, ntargets={ntargets[ii]}: {cmd} {cmdargs}')
         sys.stdout.flush()
 
         if args.dry_run:
@@ -111,30 +112,25 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
         try:
             t1 = time.time()
-            if os.path.exists(logfile) and not args.overwrite:
-                backup_logs(logfile)
-            # memory leak?  Try making system call instead
             outdir = os.path.dirname(logfile)
             if not os.path.isdir(outdir):
                 os.makedirs(outdir, exist_ok=True)
             if args.nolog:
-                err = subprocess.call(cmd.split())
+                err = fast(args=cmdargs.split())
             else:
-                with open(logfile, 'w') as mylog:
-                    err = subprocess.call(cmd.split(), stdout=mylog, stderr=mylog)
+                with stdouterr_redirected(to=logfile, overwrite=args.overwrite):
+                    fast(args=cmdargs.split())
             dt1 = time.time() - t1
-            if err == 0:
-                log.info('  rank {} done in {:.2f} sec'.format(rank, dt1))
-                if not os.path.exists(outfiles[ii]):
-                    log.warning('  rank {} missing {}'.format(rank, outfiles[ii]))
-            else:
-                log.warning('  rank {} broke after {:.1f} sec with error code {}'.format(rank, dt1, err))
+            log.info('  rank {} done in {:.2f} sec'.format(rank, dt1))
+            if not os.path.exists(outfiles[ii]):
+                log.warning(f'  rank {rank} missing {outfiles[ii]}')
+                raise IOError
         except Exception as err:
-            log.warning('  rank {} raised an exception'.format(rank))
+            log.warning(f'  rank {rank} raised an exception')
             import traceback
             traceback.print_exc()
 
-    log.debug('  rank {} is done'.format(rank))
+    log.debug(f'  rank {rank} is done')
     sys.stdout.flush()
 
     if comm is not None:
@@ -143,9 +139,9 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
     if rank == 0 and not args.dry_run:
         for outfile in outfiles:
             if not os.path.exists(outfile):
-                log.warning('Missing {}'.format(outfile))
+                log.warning(f'Missing {outfile}')
 
-        log.info('All done at {}'.format(time.asctime()))
+        log.info('All done at {time.asctime()}')
         
 def main():
     """Main wrapper on fastphot and fastspec.
@@ -231,7 +227,7 @@ def main():
             survprog = np.array([ss+pp for ss, pp in zip(tilepix['SURVEY'], tilepix['PROGRAM'])])
             I = rand.choice(len(tilepix), args.ntest, replace=False)
             args.healpix = ','.join(tilepix['HEALPIX'][I].astype(str))
-            log.info('Selecting {} test healpixels: {}'.format(len(I), args.healpix))
+            log.info(f'Selecting {len(I)} test healpixels: {args.healpix}')
             print(tilepix[I])
 
     if args.merge or args.mergeall:
