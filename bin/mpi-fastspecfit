@@ -69,7 +69,9 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
         # With --makeqa the desired output directories are in the 'zbestfiles'.
         if args.makeqa:
-            cmdargs = f'fastspecfit-qa {outfiles[ii]} -o {zbestfiles[ii]} --mp {args.mp}'
+            from fastspecfit.qa import fastqa as fast
+            cmd = 'fastqa'
+            cmdargs = f'{outfiles[ii]} -o {zbestfiles[ii]} --mp {args.mp}'
         else:
             if fastphot:
                 from fastspecfit.fastspecfit import fastphot as fast

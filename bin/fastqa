@@ -1,0 +1,9 @@
+#!/usr/bin/env python
+"""fastspecfit QA
+
+fastqa /global/cfs/cdirs/desi/spectro/fastspecfit/blanc/tiles/80606/deep/fastphot-0-80606-deep.fits --outdir . --ntargets 1 --firsttarget 50
+
+"""
+if __name__ == '__main__':
+    from fastspecfit.qa import fastqa
+    fastqa(comm=None)
