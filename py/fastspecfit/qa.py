@@ -177,21 +177,23 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     absmag_gband = CTools.absmag_bands[gindx]
     absmag_rband = CTools.absmag_bands[rindx]
     absmag_zband = CTools.absmag_bands[zindx]
+    shift_gband = CTools.band_shift[gindx]
+    shift_rband = CTools.band_shift[rindx]
+    shift_zband = CTools.band_shift[zindx]
 
-    leg.update({'absmag_r': '$M_{{{}}}={:.2f}$'.format(absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
-                                                       fastspec['ABSMAG_{}'.format(absmag_rband.upper())])})
+    leg.update({'absmag_r': '$M_{{{}}}={:.2f}$'.format(
+        absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
+        fastspec['ABSMAG{:02d}_{}'.format(int(10*shift_gband), absmag_rband.upper())])})
     if gindx != rindx:
-        gr = fastspec['ABSMAG_{}'.format(absmag_gband.upper())] - fastspec['ABSMAG_{}'.format(absmag_rband.upper())]
-        leg.update({'absmag_gr': '$M_{{{}}}-M_{{{}}}={:.2f}$'.format(absmag_gband.lower(), absmag_rband.lower(), gr).replace('decam_', '').replace('sdss_', '')})
+        gr = (fastspec['ABSMAG{:02d}_{}'.format(int(10*shift_gband), absmag_gband.upper())] -
+              fastspec['ABSMAG{:02d}_{}'.format(int(10*shift_rband), absmag_rband.upper())])
+        leg.update({'absmag_gr': '$M_{{{}}}-M_{{{}}}={:.3f}$'.format(
+            absmag_gband.lower(), absmag_rband.lower(), gr).replace('decam_', '').replace('sdss_', '')})
     if zindx != rindx:
-        rz = fastspec['ABSMAG_{}'.format(absmag_rband.upper())] - fastspec['ABSMAG_{}'.format(absmag_zband.upper())]
-        leg.update({'absmag_rz': '$M_{{{}}}-M_{{{}}}={:.2f}$'.format(absmag_rband.lower(), absmag_zband.lower(), rz).replace('decam_', '').replace('sdss_', '')})
-
-    #leg.update({
-    #    'absmag_r': '$M_{{0.1r}}={:.2f}$'.format(fastspec['ABSMAG_SDSS_R']),
-    #    'absmag_gr': '$^{{0.1}}(g-r)={:.3f}$'.format(fastspec['ABSMAG_SDSS_G']-fastspec['ABSMAG_SDSS_R']),
-    #    'absmag_rz': '$^{{0.1}}(r-z)={:.3f}$'.format(fastspec['ABSMAG_SDSS_R']-fastspec['ABSMAG_SDSS_Z']),       
-    #    })
+        rz = (fastspec['ABSMAG{:02d}_{}'.format(int(10*shift_rband), absmag_rband.upper())] -
+              fastspec['ABSMAG{:02d}_{}'.format(int(10*shift_zband), absmag_zband.upper())])
+        leg.update({'absmag_rz': '$M_{{{}}}-M_{{{}}}={:.3f}$'.format(
+            absmag_rband.lower(), absmag_zband.lower(), rz).replace('decam_', '').replace('sdss_', '')})
 
     #leg['radec'] = '$(\\alpha,\\delta)=({:.7f},{:.6f})$'.format(metadata['RA'], metadata['DEC'])
     #leg['zwarn'] = '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN'])
@@ -287,7 +289,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             leg_uv['mgii_doublet'] = r'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
     
         leg_broad['linerchi2'] = r'$\chi^{2}_{\nu,\mathrm{line}}=$'+r'${:.2f}$'.format(fastspec['RCHI2_LINE'])
-        leg_broad['deltachi2'] = r'$\Delta\chi^{2}_{\mathrm{nobroad}}=$'+r'${:.2f}$'.format(fastspec['DELTA_LINECHI2'])
+        leg_broad['deltachi2'] = r'$\Delta\chi^{2}_{\mathrm{nobroad}}=$'+r'${:.0f}$'.format(fastspec['DELTA_LINECHI2'])
         leg_broad['deltandof'] = r'$\Delta\nu_{\mathrm{nobroad}}=$'+r'${:.0f}$'.format(fastspec['DELTA_LINENDOF'])
     
         # choose one broad Balmer line
@@ -322,11 +324,13 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         if (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
             fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut and 
             fastspec['HBETA_FLUX'] > 0 and fastspec['OIII_5007_FLUX'] > 0):
-            leg_narrow['oiiihb'] = r'$\log_{10}(\mathrm{[OIII]/H}\beta)=$'+r'${:.3f}$'.format(np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
+            leg_narrow['oiiihb'] = r'$\log_{10}(\mathrm{[OIII]/H}\beta)=$'+r'${:.3f}$'.format(
+                np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
         if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
             fastspec['NII_6584_AMP']*np.sqrt(fastspec['NII_6584_AMP_IVAR']) > snrcut and 
             fastspec['HALPHA_FLUX'] > 0 and fastspec['NII_6584_FLUX'] > 0):
-            leg_narrow['niiha'] = r'$\log_{10}(\mathrm{[NII]/H}}\alpha)=$'+r'${:.3f}$'.format(np.log10(fastspec['NII_6584_FLUX']/fastspec['HALPHA_FLUX']))
+            leg_narrow['niiha'] = r'$\log_{10}(\mathrm{[NII]/H}\alpha)=$'+r'${:.3f}$'.format(
+                np.log10(fastspec['NII_6584_FLUX']/fastspec['HALPHA_FLUX']))
     
         if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
             fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):

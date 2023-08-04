@@ -2187,9 +2187,9 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
     result['DN4000_MODEL'] = dn4000_model
 
     for iband, (band, shift) in enumerate(zip(CTools.absmag_bands, CTools.band_shift)):
-        result['KCORR{}_{}'.format(int(10*shift), band.upper())] = kcorr[iband] # * u.mag
-        result['ABSMAG{}_{}'.format(int(10*shift), band.upper())] = absmag[iband] # * u.mag
-        result['ABSMAG{}_IVAR_{}'.format(int(10*shift), band.upper())] = ivarabsmag[iband] # / (u.mag**2)
+        result['KCORR{:02d}_{}'.format(int(10*shift), band.upper())] = kcorr[iband] # * u.mag
+        result['ABSMAG{:02d}_{}'.format(int(10*shift), band.upper())] = absmag[iband] # * u.mag
+        result['ABSMAG{:02d}_IVAR_{}'.format(int(10*shift), band.upper())] = ivarabsmag[iband] # / (u.mag**2)
     for iband, band in enumerate(CTools.bands):
         result['FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper())] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
     if bool(lums):
