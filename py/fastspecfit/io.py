@@ -1663,9 +1663,12 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
 
     for cflux in ['LOGLNU_1500', 'LOGLNU_2800']:
         out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz))
+    out.add_column(Column(name='LOGL_1450', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
+    out.add_column(Column(name='LOGL_1700', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
+    out.add_column(Column(name='LOGL_3000', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
     out.add_column(Column(name='LOGL_5100', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
 
-    for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
+    for cflux in ['FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
         out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
 
     if not fastphot:
