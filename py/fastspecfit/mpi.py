@@ -44,97 +44,6 @@ def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
         ntargets = np.sum(J)
     return ntargets
 
-def weighted_partition(weights, n):
-    """
-    Partition ``weights`` into ``n`` groups with approximately same sum(weights).
-
-    Args:
-        weights: array-like weights
-        n: number of groups
-
-    Returns (groups, groupweights):
-        groups: list of lists of indices of weights for each group
-        groupweights: sum of weights assigned to each group
-
-    
-    """
-    sumweights = np.zeros(n, dtype=float)
-    groups = list()
-    for i in range(n):
-        groups.append(list())
-    weights = np.asarray(weights)
-    for i in np.argsort(-weights):
-        j = np.argmin(sumweights)
-        groups[j].append(i)
-        sumweights[j] += weights[i]
-
-    return groups, np.array([np.sum(x) for x in sumweights])
-
-def group_redrockfiles(specfiles, maxnodes=256, comm=None, makeqa=False):
-    '''
-    Group redrockfiles to balance runtimes
-
-    Args:
-        specfiles: list of spectra filepaths
-
-    Options:
-        maxnodes: split the spectra into this number of nodes
-        comm: MPI communicator
-
-    Returns (groups, ntargets, grouptimes):
-      * groups: list of lists of indices to specfiles
-      * list of number of targets per group
-      * grouptimes: list of expected runtimes for each group
-
-    '''
-    import fitsio
-    
-    if comm is None:
-        rank, size = 0, 1
-    else:
-        rank, size = comm.rank, comm.size
-
-    npix = len(specfiles)
-    pixgroups = np.array_split(np.arange(npix), size)
-    ntargets = np.zeros(len(pixgroups[rank]), dtype=int)
-    for i, j in enumerate(pixgroups[rank]):
-        if makeqa:
-            ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
-        else:
-            from fastspecfit.io import ZWarningMask
-            #ntargets[i] = fitsio.FITS(specfiles[j])[1].get_nrows()
-            zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z', 'ZWARN'])
-            fm = fitsio.read(specfile, 'FIBERMAP', columns=['TARGETID', 'OBJTYPE'])
-            J = ((zb['Z'] > 0.001) * (fm['OBJTYPE'] == 'TGT') * (zb['ZWARN'] & ZWarningMask.NODATA == 0))
-            nt = np.sum(J)
-            ntargets[i] = nt
-        log.debug(i, j, specfiles[j], ntargets[i])
-
-    if False:
-        if comm is not None:
-            ntargets = comm.gather(ntargets)
-            if rank == 0:
-                ntargets = np.concatenate(ntargets)
-            ntargets = comm.bcast(ntargets, root=0)
-
-        sumntargets = np.sum(sumntargets)
-        runtimes = 30 + 0.4*sumntargets
-
-        # Aim for 25 minutes, but don't exceed maxnodes number of nodes.
-        ntime = 25
-        if comm is not None:
-            numnodes = comm.size
-        else:
-            numnodes = min(maxnodes, int(np.ceil(np.sum(runtimes)/(ntime*60))))
-
-        groups, grouptimes = weighted_partition(runtimes, numnodes)
-        ntargets = np.array([np.sum(ntargets[ii]) for ii in groups])
-    else:
-        groups = pixgroups
-        grouptimes = None
-
-    return groups, ntargets, grouptimes
-
 def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None, 
          outdir_data='.', outdir_html='.', mp=1, merge=False, makeqa=False,
@@ -142,6 +51,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
 
     import fitsio
     from astropy.table import Table, vstack
+    from desispec.parallel import weighted_partition
     from fastspecfit.io import DESI_ROOT_NERSC
 
     t0 = time.time()
@@ -310,23 +220,25 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         itodo = np.where(ntargets > 0)[0]
         if len(itodo) > 0:
             ntargets = ntargets[itodo]
-            indices = np.arange(len(ntargets))
             if redrockfiles is not None:
                 redrockfiles = redrockfiles[itodo]
             if outfiles is not None:
                 outfiles = outfiles[itodo]
+                
+            groups = weighted_partition(ntargets, size)
 
-            # Assign the sample to ranks to make the ntargets distribution per rank ~flat.
-            # https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
-            cumuweight = ntargets.cumsum() / ntargets.sum()
-            idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
-            if len(idx) < size: # can happen in corner cases or with 1 rank
-                groups = np.array_split(indices, size) # unweighted
-            else:
-                groups = np.array_split(indices, idx) # weighted
-            for ii in range(size): # sort by weight
-                srt = np.argsort(ntargets[groups[ii]])
-                groups[ii] = groups[ii][srt]
+            ## Assign the sample to ranks to make the ntargets distribution per rank ~flat.
+            ## https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
+            #indices = np.arange(len(ntargets))
+            #cumuweight = ntargets.cumsum() / ntargets.sum()
+            #idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
+            #if len(idx) < size: # can happen in corner cases or with 1 rank
+            #    groups = np.array_split(indices, size) # unweighted
+            #else:
+            #    groups = np.array_split(indices, idx) # weighted
+            #for ii in range(size): # sort by weight
+            #    srt = np.argsort(ntargets[groups[ii]])
+            #    groups[ii] = groups[ii][srt]
         else:
             if redrockfiles is not None:
                 redrockfiles = []
@@ -348,11 +260,6 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         #  hack--build the output directories and pass them in the 'redrockfiles'
         #  position! for coadd_type==cumulative, strip out the 'lastnight' argument
         if coadd_type == 'cumulative':
-            #redrockfiles = []
-            #for outfile in outfiles:
-            #    dd = os.path.split(outfile)
-            #    redrockfiles.append(os.path.dirname(dd[0]).replace(outdir, htmldir))
-            #    os.path.dirname(dd[0])
             redrockfiles = np.array([os.path.dirname(os.path.dirname(outfile)).replace(outdir, htmldir) for outfile in outfiles])
         else:
             redrockfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir) for outfile in outfiles])
