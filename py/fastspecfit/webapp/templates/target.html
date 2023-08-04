@@ -385,13 +385,25 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
     <tr>
       <!--<th>f<sub>agn</sub></th>-->
       <th>Z/Z<sub>sun</sub></th>
-      <th>A<sub>V</sub><br />(mag)</th>
-      <th>SFR<br />(M<sub>sun</sub>/yr)</th>
+      <th>A<sub>V</sub></th>
+      <th>SFR</th>
       <th>Age<br />(Gyr)</th>
       <th>log<sub>10</sub>(M/M<sub>sun</sub>)</th>
-      <th>log<sub>10</sub>(L<sub>&nu;, 1500 &#8491;</sub>)<br />(10<sup>-28</sup> erg s<sup>-1</sup>Hz<sup>-1</sup>)</th>
-      <th>log<sub>10</sub>(L<sub>&nu;, 2800 &#8491;</sub>)<br />(10<sup>-28</sup> erg s<sup>-1</sup>Hz<sup>-1</sup>)</th>
-      <th>log<sub>10</sub>(L<sub>5100 &#8491;</sub>)<br />(10<sup>10</sup> L<sub>sun</sub>)</th>
+      <th>log<sub>10</sub>(L<sub>&nu;, 1500 &#8491;</sub>)</th>
+      <th>log<sub>10</sub>(L<sub>&nu;, 2800 &#8491;</sub>)</th>
+      <th>log<sub>10</sub>(L<sub>1450 &#8491;</sub>)</th>
+      <th>log<sub>10</sub>(L<sub>1700 &#8491;</sub>)</th>
+      <th>log<sub>10</sub>(L<sub>3000 &#8491;</sub>)</th>
+      <th>log<sub>10</sub>(L<sub>5100 &#8491;</sub>)</th>
+    </tr>
+    <tr>
+      <th>&nbsp</th>
+      <th>(mag)</th>
+      <th>(M<sub>sun</sub>/yr)</th>
+      <th>(Gyr)</th>
+      <th>&nbsp</th>
+      <th colspan="2">(10<sup>-28</sup> erg s<sup>-1</sup>Hz<sup>-1</sup>)</th>
+      <th colspan="4">(10<sup>10</sup> L<sub>sun</sub>)</th>
     </tr>
   </thead>
   <tdata>
@@ -404,6 +416,9 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
       <td>{{ target.logmstar|floatformat:3 }}</td>
       <td>{{ target.loglnu_1500|floatformat:3 }}</td>
       <td>{{ target.loglnu_2800|floatformat:3 }}</td>
+      <td>{{ target.logl_1450|floatformat:3 }}</td>
+      <td>{{ target.logl_1700|floatformat:3 }}</td>
+      <td>{{ target.logl_3000|floatformat:3 }}</td>
       <td>{{ target.logl_5100|floatformat:3 }}</td>
     </tr>
   </tdata>
@@ -417,12 +432,18 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
   <thead class="alert alert-info">
     <tr>
       <th></th>
+      <th colspan="3">DECam</th>
       <th colspan="5">SDSS</th>
       <th colspan="3">Johnson-Morgan</th>
+      <!--
       <th colspan="2">WISE</th>
+      -->
     </tr>
     <tr>
       <th>&nbsp</th>
+      <th><sup>1.0</sup>g</th>
+      <th><sup>1.0</sup>r</th>
+      <th><sup>1.0</sup>z</th>
       <th><sup>0.1</sup>u</th>
       <th><sup>0.1</sup>g</th>
       <th><sup>0.1</sup>r</th>
@@ -431,36 +452,48 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
       <th><sup>0.0</sup>U</th>
       <th><sup>0.0</sup>B</th>
       <th><sup>0.0</sup>V</th>
+      <!--
       <th><sup>0.0</sup>W1</th>
       <th><sup>0.0</sup>W2</th>
+      -->
     </tr>
   </thead>
   <tdata>
     <tr>
       <td>M<sub>abs</sub></td>
-      <td>{{ target.absmag_sdss_u|floatformat:3 }}</td>
-      <td>{{ target.absmag_sdss_g|floatformat:3 }}</td>
-      <td>{{ target.absmag_sdss_r|floatformat:3 }}</td>
-      <td>{{ target.absmag_sdss_i|floatformat:3 }}</td>
-      <td>{{ target.absmag_sdss_z|floatformat:3 }}</td>
-      <td>{{ target.absmag_u|floatformat:3 }}</td>
-      <td>{{ target.absmag_b|floatformat:3 }}</td>
-      <td>{{ target.absmag_v|floatformat:3 }}</td>
+      <td>{{ target.absmag10_decam_g|floatformat:3 }}</td>
+      <td>{{ target.absmag10_decam_r|floatformat:3 }}</td>
+      <td>{{ target.absmag10_decam_z|floatformat:3 }}</td>
+      <td>{{ target.absmag01_sdss_u|floatformat:3 }}</td>
+      <td>{{ target.absmag01_sdss_g|floatformat:3 }}</td>
+      <td>{{ target.absmag01_sdss_r|floatformat:3 }}</td>
+      <td>{{ target.absmag01_sdss_i|floatformat:3 }}</td>
+      <td>{{ target.absmag01_sdss_z|floatformat:3 }}</td>
+      <td>{{ target.absmag00_u|floatformat:3 }}</td>
+      <td>{{ target.absmag00_b|floatformat:3 }}</td>
+      <td>{{ target.absmag00_v|floatformat:3 }}</td>
+      <!--
       <td>{{ target.absmag_w1|floatformat:3 }}</td>
       <td>{{ target.absmag_w2|floatformat:3 }}</td>
+      -->
     </tr>
     <tr>
       <td>K<sub>corr</sub></td>
-      <td>{{ target.kcorr_sdss_u|floatformat:3 }}</td>
-      <td>{{ target.kcorr_sdss_g|floatformat:3 }}</td>
-      <td>{{ target.kcorr_sdss_r|floatformat:3 }}</td>
-      <td>{{ target.kcorr_sdss_i|floatformat:3 }}</td>
-      <td>{{ target.kcorr_sdss_z|floatformat:3 }}</td>
-      <td>{{ target.kcorr_u|floatformat:3 }}</td>
-      <td>{{ target.kcorr_b|floatformat:3 }}</td>
-      <td>{{ target.kcorr_v|floatformat:3 }}</td>
+      <td>{{ target.kcorr10_decam_g|floatformat:3 }}</td>
+      <td>{{ target.kcorr10_decam_r|floatformat:3 }}</td>
+      <td>{{ target.kcorr10_decam_z|floatformat:3 }}</td>
+      <td>{{ target.kcorr01_sdss_u|floatformat:3 }}</td>
+      <td>{{ target.kcorr01_sdss_g|floatformat:3 }}</td>
+      <td>{{ target.kcorr01_sdss_r|floatformat:3 }}</td>
+      <td>{{ target.kcorr01_sdss_i|floatformat:3 }}</td>
+      <td>{{ target.kcorr01_sdss_z|floatformat:3 }}</td>
+      <td>{{ target.kcorr00_u|floatformat:3 }}</td>
+      <td>{{ target.kcorr00_b|floatformat:3 }}</td>
+      <td>{{ target.kcorr00_v|floatformat:3 }}</td>
+      <!--
       <td>{{ target.kcorr_w1|floatformat:3 }}</td>
       <td>{{ target.kcorr_w2|floatformat:3 }}</td>
+      -->
     </tr>
   </tdata>
 </table>
@@ -485,12 +518,13 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
 <table class="table table-bordered table-hover">
   <thead class="alert alert-info">
     <tr>
-      <th colspan="2">&nbsp</th>
+      <th colspan="3">&nbsp</th>
       <th colspan="3">Doublet Ratios</th>
     </tr>
     <tr>
       <th>&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;,line</sub></th> <!-- chi^2 -->
-      <th>&#916;&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>&nu;,nobroad</sub></th>
+      <th>&#916;&#967;<sup>2</sup><sub style='position: relative; left: -0.5em;'>nobroad</sub></th>
+      <th>&#916;&nu;<sub style='position: relative; left: -0.5em;'>nobroad</sub></th>
       <th>Mg II<br />&lambda;2796/&lambda;2803</th>
       <th>[OII]<br />&lambda;3726/&lambda;3729</th>
       <th>[SII]<br />&lambda;6731/&lambda;6716</th>
@@ -499,7 +533,8 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
   <tdata>
     <tr>
       <td>{{ target.rchi2_line|floatformat:3 }}</td>
-      <td>{{ target.delta_linerchi2|floatformat:3 }}</td>
+      <td>{{ target.delta_linechi2|floatformat:3 }}</td>
+      <td>{{ target.delta_linendof }}</td>
       <td>{{ target.mgii_doublet_ratio|floatformat:3 }}</td>
       <td>{{ target.oii_doublet_ratio|floatformat:3 }}</td>
       <td>{{ target.sii_doublet_ratio|floatformat:3 }}</td>
