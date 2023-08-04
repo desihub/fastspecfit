@@ -121,9 +121,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             if args.nolog:
                 fast(args=cmdargs.split())
             else:
-                #with stdouterr_redirected(to=logfile, comm=comm, overwrite=args.overwrite):
-                #    fast(args=cmdargs.split())
-                fast(args=cmdargs.split())
+                with stdouterr_redirected(to=logfile, overwrite=args.overwrite):
+                    fast(args=cmdargs.split())
             dt1 = time.time() - t1
             log.info('  rank {} done in {:.2f} sec'.format(rank, dt1))
             if not os.path.exists(outfiles[ii]):
@@ -208,6 +207,11 @@ def main():
             comm = MPI.COMM_WORLD
         except ImportError:
             comm = None
+
+    # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
+    if args.mp > 1 and 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        multiprocessing.set_start_method('spawn')
 
     if args.coadd_type == 'healpix':
         args.survey = args.survey.split(',')

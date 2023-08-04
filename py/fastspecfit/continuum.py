@@ -561,6 +561,11 @@ class Filters(object):
                     filters.load_filter('sdss2010-i'), filters.load_filter('sdss2010-z'),
                     filters.load_filter('wise2010-W1'), filters.load_filter('wise2010-W2')))
 
+        if len(self.absmag_bands) != len(self.band_shift):
+            errmsg = 'absmag_bands and band_shift must have the same number of elements.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+        
         if self.photounits != 'nanomaggies':
             errmsg = 'nanomaggies is the only currently supported photometric unit!'
             log.critical(errmsg)
@@ -2181,10 +2186,10 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
     #result['FAGN'] = fagn
     result['DN4000_MODEL'] = dn4000_model
 
-    for iband, band in enumerate(CTools.absmag_bands):
-        result['KCORR_{}'.format(band.upper())] = kcorr[iband] # * u.mag
-        result['ABSMAG_{}'.format(band.upper())] = absmag[iband] # * u.mag
-        result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband] # / (u.mag**2)
+    for iband, (band, shift) in enumerate(zip(CTools.absmag_bands, CTools.band_shift)):
+        result['KCORR{}_{}'.format(int(10*shift), band.upper())] = kcorr[iband] # * u.mag
+        result['ABSMAG{}_{}'.format(int(10*shift), band.upper())] = absmag[iband] # * u.mag
+        result['ABSMAG{}_IVAR_{}'.format(int(10*shift), band.upper())] = ivarabsmag[iband] # / (u.mag**2)
     for iband, band in enumerate(CTools.bands):
         result['FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper())] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
     if bool(lums):
