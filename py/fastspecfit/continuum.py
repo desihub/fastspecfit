@@ -1753,8 +1753,8 @@ class ContinuumTools(Filters, Inoue14):
         dfactor = (1 + redshift) * 4.0 * np.pi * (3.08567758e24 * dlum)**2 / FLUXNORM
                 
         lums = {}
-        cwaves = [1500.0, 2800.0, 5100.0]
-        labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_5100']
+        cwaves = [1500.0, 2800.0, 1450., 1700., 3000., 5100.]
+        labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_1450', 'LOGL_1700', 'LOGL_3000', 'LOGL_5100']
         norms = [1e28, 1e28, 1e10]
         for cwave, norm, label in zip(cwaves, norms, labels):
             J = (templatewave > cwave-500) * (templatewave < cwave+500)
@@ -1763,7 +1763,7 @@ class ContinuumTools(Filters, Inoue14):
             clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
             cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
             cflux *= dfactor # [monochromatic luminosity in erg/s/A]
-            if label == 'LOGL_5100':
+            if 'LOGL_' in label:
                 cflux *= cwave / 3.846e33 / norm # [luminosity in 10**10 L_sun]
             else:
                 # Convert the UV fluxes to rest-frame luminosity in erg/s/Hz. This
@@ -1774,8 +1774,8 @@ class ContinuumTools(Filters, Inoue14):
                 lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
         cfluxes = {}
-        cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
-        labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
+        cwaves = [1215.67, 3728.483, 4862.683, 5008.239, 6564.613]
+        labels = ['FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
         for cwave, label in zip(cwaves, labels):
             J = (templatewave > cwave-500) * (templatewave < cwave+500)
             I = (templatewave[J] > cwave-20) * (templatewave[J] < cwave+20)
