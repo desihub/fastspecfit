@@ -182,6 +182,7 @@ contributions to the VACs presented herein from the following individuals:
 * Jeffrey Newman (University of Pittsburgh)
 * Ragadeepika Pucha (University of Arizona)
 * Anand Raichoor (Lawrence Berkeley National Lab)
+* Dirk Scholte (University College London)
 * Khaled Said (Australian National University)  
 * David Setton (University of Pittsburgh)
 * Benjamin Weaver (NSF's NOIRLab)

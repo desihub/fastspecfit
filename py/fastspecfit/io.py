@@ -1657,9 +1657,9 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
         out.add_column(Column(name='FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
 
     for band, shift in zip(fphoto['absmag_bands'], fphoto['band_shift']):
-        out.add_column(Column(name='KCORR{:02d}_{}'.format(int(10*shift), band.upper()), length=nobj, dtype='f4', unit=u.mag))
         out.add_column(Column(name='ABSMAG{:02d}_{}'.format(int(10*shift), band.upper()), length=nobj, dtype='f4', unit=u.mag)) # absolute magnitudes
         out.add_column(Column(name='ABSMAG{:02d}_IVAR_{}'.format(int(10*shift), band.upper()), length=nobj, dtype='f4', unit=1/u.mag**2))
+        out.add_column(Column(name='KCORR{:02d}_{}'.format(int(10*shift), band.upper()), length=nobj, dtype='f4', unit=u.mag))
 
     for cflux in ['LOGLNU_1500', 'LOGLNU_2800']:
         out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz))
