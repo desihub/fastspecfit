@@ -30,11 +30,10 @@ elif [[ $1 == "env" ]]; then
     #    export PYTHONPATH=/global/homes/i/ioannis/code/desihub/$package/py:$PYTHONPATH
     #done
 
-    export DESI_ROOT='/dvs_ro/cfs/cdirs/desi'
-    export DUST_DIR='/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1'
-    export DR9_DIR='/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9'
-    export FPHOTO_DIR='/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9'
-    export FTEMPLATES_DIR='/dvs_ro/cfs/cdirs/desi/external/templates/fastspecfit'
+    export DESI_ROOT='/global/cfs/cdirs/desi'
+    export DUST_DIR='/global/cfs/cdirs/cosmo/data/dust/v0_1'
+    export FPHOTO_DIR='/global/cfs/cdirs/desi/external/legacysurvey/dr9'
+    export FTEMPLATES_DIR='/global/cfs/cdirs/desi/external/templates/fastspecfit'
 
     export OMP_NUM_THREADS=1
     export MKL_NUM_THREADS=1

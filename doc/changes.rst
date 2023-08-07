@@ -6,8 +6,10 @@ Change Log
 ------------------------
 
 * Support non-DR9 photometry via a new photometric configuration file [`PR #133`_].
+* Miscellaneous updates and bug fixes ahead of next version of VACs [`PR #145`_].
 
 .. _`PR #133`: https://github.com/desihub/fastspecfit/pull/133
+.. _`PR #145`: https://github.com/desihub/fastspecfit/pull/145
 
 2.2.0 (2023-08-02)
 ------------------
