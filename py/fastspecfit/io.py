@@ -19,10 +19,10 @@ from desiutil.log import get_logger
 log = get_logger()
 
 # Default environment variables.
-DESI_ROOT_NERSC = '/dvs_ro/cfs/cdirs/desi'
-DUST_DIR_NERSC = '/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1'
-FPHOTO_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9'
-FTEMPLATES_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
+DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
+DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
+FPHOTO_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
+FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
