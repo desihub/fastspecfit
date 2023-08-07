@@ -1096,7 +1096,7 @@ class EMFitTools(Filters):
 
         """
         from scipy.stats import sigmaclip
-        from fastspecfit.emlines import build_emline_model
+        from fastspecfit.util import centers2edges
 
         for param in finalfit:
             val = param['value']
@@ -1121,7 +1121,8 @@ class EMFitTools(Filters):
                 else:
                     result[param['param_name'].upper()] = val                    
 
-        dpixwave = emlinewave[1]-emlinewave[0] # pixel size [Angstrom]
+        emlinewave_edges = centers2edges(emlinewave)
+        dpixwave = np.diff(emlinewave_edges)[0] # pixel size [Angstrom]
 
         # zero out all out-of-range lines
         for oneline in self.fit_linetable[~self.fit_linetable['inrange']]:
@@ -1188,9 +1189,10 @@ class EMFitTools(Filters):
                         raise ValueError(errmsg)
                         
                     # boxcar integration of the flux; should we weight by the line-profile???
-                    boxflux = np.trapz(emlineflux[lineindx], x=emlinewave[lineindx])
-                    boxflux_ivar = 1 / np.trapz(1 / emlineivar[lineindx], x=emlinewave[lineindx])
-    
+                    dwave = np.abs(np.diff(emlinewave_edges[lineindx]))
+                    boxflux = np.sum(emlineflux[lineindx] * dwave)
+                    boxflux_ivar = 1 / np.sum((1 / emlineivar[lineindx]) * dwave**2)
+
                     result['{}_BOXFLUX'.format(linename)] = boxflux # * u.erg/(u.second*u.cm**2)
                     result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
                     
@@ -1210,21 +1212,22 @@ class EMFitTools(Filters):
                         linenorm = np.sqrt(2.0 * np.pi) * linesigma_ang # * u.Angstrom
                         result['{}_FLUX'.format(linename)] = result['{}_MODELAMP'.format(linename)] * linenorm
 
-                        ## weight by the per-pixel inverse variance line-profile
-                        #lineprofile = build_emline_model(self.dlog10wave, redshift, np.array([result['{}_MODELAMP'.format(linename)]]),
-                        #                                 np.array([result['{}_VSHIFT'.format(linename)]]), np.array([result['{}_SIGMA'.format(linename)]]),
-                        #                                 np.array([oneline['restwave']]), emlinewave, resolution_matrix, camerapix)
-                        #
-                        #weight = np.sum(lineprofile[lineindx])#**2
-                        #if weight == 0.0:
-                        #    errmsg = 'Line-profile should never sum to zero!'
-                        #    log.critical(errmsg)
-                        #    raise ValueError(errmsg)
-                        #    
-                        #flux_ivar = weight / np.sum(lineprofile[lineindx] / emlineivar[lineindx])
-                        #result['{}_FLUX_IVAR'.format(linename)] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
+                        # weight by the per-pixel inverse variance line-profile
+                        lineprofile = build_emline_model(self.dlog10wave, redshift,
+                                                         np.array([result['{}_MODELAMP'.format(linename)]]),
+                                                         np.array([result['{}_VSHIFT'.format(linename)]]),
+                                                         np.array([result['{}_SIGMA'.format(linename)]]),
+                                                         np.array([oneline['restwave']]), emlinewave,
+                                                         resolution_matrix, camerapix)
                         
-                        result['{}_FLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
+                        lineweight = np.sum(lineprofile[lineindx])**2
+                        if lineweight == 0.0:
+                            errmsg = 'Line-profile should never sum to zero!'
+                            log.critical(errmsg)
+                            raise ValueError(errmsg)
+                            
+                        flux_ivar = lineweight / np.sum(lineprofile[lineindx]**2 / emlineivar[lineindx])
+                        result['{}_FLUX_IVAR'.format(linename)] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
 
                         result['{}_CHI2'.format(linename)] = np.sum(emlineivar[lineindx] * (emlineflux[lineindx] - finalmodel[lineindx])**2)
     
