@@ -2,8 +2,11 @@
 Change Log
 ==========
 
-2.3.0 (not released yet)
+2.3.1 (not released yet)
 ------------------------
+
+2.3.0 (2023-08-07)
+------------------
 
 * Support non-DR9 photometry via a new photometric configuration file [`PR #133`_].
 * Miscellaneous updates and bug fixes ahead of next version of VACs [`PR #145`_].
