@@ -19,10 +19,10 @@ from desiutil.log import get_logger
 log = get_logger()
 
 # Default environment variables.
-DESI_ROOT_NERSC = '/dvs_ro/cfs/cdirs/desi'
-DUST_DIR_NERSC = '/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1'
-FPHOTO_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9'
-FTEMPLATES_DIR_NERSC = '/dvs_ro/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
+DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
+DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
+FPHOTO_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
+FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
@@ -1656,16 +1656,19 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
     for band in fphoto['bands']:
         out.add_column(Column(name='FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper()), length=nobj, dtype='f4', unit='nanomaggies'))
 
-    for band in fphoto['absmag_bands']:
-        out.add_column(Column(name='KCORR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag))
-        out.add_column(Column(name='ABSMAG_{}'.format(band.upper()), length=nobj, dtype='f4', unit=u.mag)) # absolute magnitudes
-        out.add_column(Column(name='ABSMAG_IVAR_{}'.format(band.upper()), length=nobj, dtype='f4', unit=1/u.mag**2))
+    for band, shift in zip(fphoto['absmag_bands'], fphoto['band_shift']):
+        out.add_column(Column(name='ABSMAG{:02d}_{}'.format(int(10*shift), band.upper()), length=nobj, dtype='f4', unit=u.mag)) # absolute magnitudes
+        out.add_column(Column(name='ABSMAG{:02d}_IVAR_{}'.format(int(10*shift), band.upper()), length=nobj, dtype='f4', unit=1/u.mag**2))
+        out.add_column(Column(name='KCORR{:02d}_{}'.format(int(10*shift), band.upper()), length=nobj, dtype='f4', unit=u.mag))
 
     for cflux in ['LOGLNU_1500', 'LOGLNU_2800']:
         out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz))
+    out.add_column(Column(name='LOGL_1450', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
+    out.add_column(Column(name='LOGL_1700', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
+    out.add_column(Column(name='LOGL_3000', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
     out.add_column(Column(name='LOGL_5100', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
 
-    for cflux in ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
+    for cflux in ['FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
         out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
 
     if not fastphot:

@@ -135,10 +135,9 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
     else:
         rank, size = comm.rank, comm.size
 
-    desi_root = '/global/cfs/cdirs/desi'
-    #desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
-    # look for data in the standard location
+    desi_root = os.environ.get('DESI_ROOT', '/dvs_ro/cfs/cdirs/desi')
 
+    # look for data in the standard location
     if coadd_type == 'healpix':
         subdir = 'healpix'
         if healpix is not None:
@@ -352,7 +351,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
-    parser.add_argument('--specprod', type=str, default='fuji', #choices=['fuji', 'guadalupe', 'iron'],
+    parser.add_argument('--specprod', type=str, default='iron', #choices=['fuji', 'guadalupe', 'iron'],
                         help='Spectroscopic production to process.')
     
     parser.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpixels to process.')
@@ -367,12 +366,13 @@ def main():
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
-    parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
-                        type=str, help='Base output HTML directory.')
-    parser.add_argument('--outdir-data', default='/global/cfs/cdirs/desi/spectro/fastspecfit',
-                        type=str, help='Base output data directory.')
+    parser.add_argument('--outdir-html', default='$PSCRATCH/fastspecfit/html', type=str, help='Base output HTML directory.')
+    parser.add_argument('--outdir-data', default='$PSCRATCH/fastspecfit/data', type=str, help='Base output data directory.')
     
     args = parser.parse_args()
+
+    outdir_data = os.path.expandvars(args.outdir_data)
+    outdir_html = os.path.expandvars(args.outdir_html)
 
     if args.nompi:
         comm = None
@@ -397,11 +397,10 @@ def main():
             plan(comm=comm, specprod=args.specprod, coadd_type=args.coadd_type,
                  survey=args.survey, program=args.program,
                  healpix=args.healpix, tile=args.tile, night=args.night,
-                 outdir_data=args.outdir_data, outdir_html=args.outdir_html,
+                 outdir_data=outdir_data, outdir_html=outdir_html,
                  overwrite=args.overwrite, mp=args.mp)
     else:
-        do_cutouts(args, comm=comm, outdir_data=args.outdir_data,
-                   outdir_html=args.outdir_html)
+        do_cutouts(args, comm=comm, outdir_data=outdir_data, outdir_html=outdir_html)
 
 if __name__ == '__main__':
     main()

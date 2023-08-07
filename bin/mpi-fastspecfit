@@ -26,8 +26,9 @@ log = get_logger()
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                     makeqa=False, outdir_data='.', outdir_html='.'):
 
-    import sys, subprocess
-    from fastspecfit.mpi import backup_logs, plan
+    import sys
+    from desispec.parallel import stdouterr_redirected
+    from fastspecfit.mpi import plan
 
     if comm is None:
         rank, size = 0, 1
@@ -36,7 +37,6 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
     t0 = time.time()
     if rank == 0:
-        #log.info('Starting at {}'.format(time.asctime()))
         _, zbestfiles, outfiles, groups, ntargets = plan(
             comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
             coadd_type=args.coadd_type, survey=args.survey, program=args.program,
@@ -54,8 +54,6 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
         groups = comm.bcast(groups, root=0)
         ntargets = comm.bcast(ntargets, root=0)
 
-    #if comm:
-    #    comm.barrier()
     sys.stdout.flush()
     
     # all done
@@ -65,45 +63,51 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
     assert(len(groups) == size)
     assert(len(np.concatenate(groups)) == len(zbestfiles))
 
-    #pixels = np.array([int(os.path.basename(os.path.dirname(x))) for x in zbestfiles])
     for ii in groups[rank]:
-        log.debug('Rank {} started at {}'.format(rank, time.asctime()))
+        log.debug(f'Rank {rank} started at {time.asctime()}')
         sys.stdout.flush()
 
         # With --makeqa the desired output directories are in the 'zbestfiles'.
         if args.makeqa:
-            cmd = 'fastspecfit-qa {} -o {} --mp {}'.format(outfiles[ii], zbestfiles[ii], args.mp)
-            if args.ntargets:
-                cmd += ' --ntargets {}'.format(args.ntargets)
+            from fastspecfit.qa import fastqa as fast
+            cmd = 'fastqa'
+            cmdargs = f'{outfiles[ii]} -o {zbestfiles[ii]} --mp {args.mp}'
         else:
             if fastphot:
-                cmd = 'fastphot {} -o {} --mp {}'.format(zbestfiles[ii], outfiles[ii], args.mp)
+                from fastspecfit.fastspecfit import fastphot as fast
+                cmd = 'fastphot'
             else:
-                cmd = 'fastspec {} -o {} --mp {}'.format(zbestfiles[ii], outfiles[ii], args.mp)
+                from fastspecfit.fastspecfit import fastspec as fast
+                cmd = 'fastspec'
+            cmdargs = f'{zbestfiles[ii]} -o {outfiles[ii]} --mp {args.mp}'
                     
-            if args.ntargets is not None:
-                cmd += ' --ntargets {}'.format(args.ntargets)
-                
-            if args.targetids is not None:
-                cmd += ' --targetids {}'.format(args.targetids)
-                
             if args.ignore_quasarnet:
-                cmd += ' --ignore-quasarnet'
+                cmdargs += ' --ignore-quasarnet'
+                
+        if args.ntargets is not None:
+            cmdargs += f' --ntargets {args.ntargets}'
+                
+        if args.firsttarget is not None:
+            cmdargs += f' --firsttarget {args.firsttarget}'
+                
+        if args.targetids is not None:
+            cmdargs += f' --targetids {args.targetids}'
                 
         if args.makeqa:
             logfile = os.path.join(zbestfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
         else:
             logfile = outfiles[ii].replace('.gz', '').replace('.fits', '.log')
-        assert(logfile != outfiles[ii])
+            
+        if logfile == outfiles[ii]:
+            errmsg = f'Log file {logfile} cannot be the same as outfile!'
+            self.log.critical(errmsg)
+            raise ValueError(errmsg)
 
         if args.makeqa and args.plan:
-            log.info('Still need to make {} QA figure(s) across {} input file(s)'.format(
-                np.sum(ntargets), len(groups)))
+            log.info(f'Still need to make {np.sum(ntargets)} QA figure(s) across {len(groups)} input file(s)')
             return
 
-        log.info('Rank {}, ntargets={}: {}'.format(rank, ntargets[ii], cmd))
-        #log.info('  rank {}: {}'.format(rank, cmd))
-        #log.info('LOGGING to {}'.format(logfile))
+        log.info(f'Rank {rank}, ntargets={ntargets[ii]}: {cmd} {cmdargs}')
         sys.stdout.flush()
 
         if args.dry_run:
@@ -111,30 +115,25 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
         try:
             t1 = time.time()
-            if os.path.exists(logfile) and not args.overwrite:
-                backup_logs(logfile)
-            # memory leak?  Try making system call instead
             outdir = os.path.dirname(logfile)
             if not os.path.isdir(outdir):
                 os.makedirs(outdir, exist_ok=True)
             if args.nolog:
-                err = subprocess.call(cmd.split())
+                fast(args=cmdargs.split())
             else:
-                with open(logfile, 'w') as mylog:
-                    err = subprocess.call(cmd.split(), stdout=mylog, stderr=mylog)
+                with stdouterr_redirected(to=logfile, overwrite=args.overwrite):
+                    fast(args=cmdargs.split())
             dt1 = time.time() - t1
-            if err == 0:
-                log.info('  rank {} done in {:.2f} sec'.format(rank, dt1))
-                if not os.path.exists(outfiles[ii]):
-                    log.warning('  rank {} missing {}'.format(rank, outfiles[ii]))
-            else:
-                log.warning('  rank {} broke after {:.1f} sec with error code {}'.format(rank, dt1, err))
-        except Exception as err:
-            log.warning('  rank {} raised an exception'.format(rank))
+            log.info('  rank {} done in {:.2f} sec'.format(rank, dt1))
+            if not os.path.exists(outfiles[ii]):
+                log.warning(f'  rank {rank} missing {outfiles[ii]}')
+                raise IOError
+        except:
+            log.warning(f'  rank {rank} raised an exception')
             import traceback
             traceback.print_exc()
 
-    log.debug('  rank {} is done'.format(rank))
+    log.debug(f'  rank {rank} is done')
     sys.stdout.flush()
 
     if comm is not None:
@@ -143,9 +142,9 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
     if rank == 0 and not args.dry_run:
         for outfile in outfiles:
             if not os.path.exists(outfile):
-                log.warning('Missing {}'.format(outfile))
+                log.warning(f'Missing {outfile}')
 
-        log.info('All done at {}'.format(time.asctime()))
+        log.info(f'All done at {time.asctime()}')
         
 def main():
     """Main wrapper on fastphot and fastspec.
@@ -159,7 +158,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
-    parser.add_argument('--specprod', type=str, default='fuji', #choices=['fuji', 'guadalupe', 'iron'],
+    parser.add_argument('--specprod', type=str, default='iron', #choices=['fuji', 'guadalupe', 'iron'],
                         help='Spectroscopic production to process.')
     
     parser.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpixels to process.')
@@ -170,6 +169,7 @@ def main():
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
@@ -189,14 +189,15 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
-    parser.add_argument('--outdir-html', default='/global/cfs/cdirs/desi/users/ioannis/fastspecfit',
-                        type=str, help='Base output HTML directory.')
-    parser.add_argument('--outdir-data', default='/global/cfs/cdirs/desi/spectro/fastspecfit',
-                        type=str, help='Base output data directory.')
+    parser.add_argument('--outdir-html', default='$PSCRATCH/fastspecfit/html', type=str, help='Base output HTML directory.')
+    parser.add_argument('--outdir-data', default='$PSCRATCH/fastspecfit/data', type=str, help='Base output data directory.')
     
     specprod_dir = None
 
     args = parser.parse_args()
+
+    outdir_data = os.path.expandvars(args.outdir_data)
+    outdir_html = os.path.expandvars(args.outdir_html)
 
     if args.merge or args.mergeall or args.nompi:
         comm = None
@@ -207,6 +208,11 @@ def main():
         except ImportError:
             comm = None
 
+    # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
+    if args.mp > 1 and 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        multiprocessing.set_start_method('spawn')
+
     if args.coadd_type == 'healpix':
         args.survey = args.survey.split(',')
         args.program = args.program.split(',')
@@ -215,7 +221,7 @@ def main():
         if args.ntest:
             from astropy.table import Table
             rand = np.random.RandomState(seed=1)
-            tilepix = Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/healpix/tilepix.fits'.format(args.specprod))
+            tilepix = Table.read(f'$DESI_ROOT/spectro/redux/{args.specprod}/healpix/tilepix.fits')
             
             # trim to survey/program
             tilepix = tilepix[np.unique(np.hstack([np.where(tilepix['SURVEY'] == survey)[0] for survey in args.survey]))]
@@ -230,14 +236,14 @@ def main():
             survprog = np.array([ss+pp for ss, pp in zip(tilepix['SURVEY'], tilepix['PROGRAM'])])
             I = rand.choice(len(tilepix), args.ntest, replace=False)
             args.healpix = ','.join(tilepix['HEALPIX'][I].astype(str))
-            log.info('Selecting {} test healpixels: {}'.format(len(I), args.healpix))
+            log.info(f'Selecting {len(I)} test healpixels: {args.healpix}')
             print(tilepix[I])
 
     if args.merge or args.mergeall:
         from fastspecfit.mpi import merge_fastspecfit
         merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
                           survey=args.survey, program=args.program, healpix=args.healpix,
-                          tile=args.tile, night=args.night, outdir_data=args.outdir_data,
+                          tile=args.tile, night=args.night, outdir_data=outdir_data,
                           outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
                           fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
         return
@@ -252,12 +258,11 @@ def main():
                  coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                  healpix=args.healpix, tile=args.tile, night=args.night,
                  makeqa=args.makeqa, mp=args.mp,
-                 fastphot=args.fastphot, outdir_data=args.outdir_data,
-                 outdir_html=args.outdir_html, overwrite=args.overwrite)
+                 fastphot=args.fastphot, outdir_data=outdir_data,
+                 outdir_html=outdir_html, overwrite=args.overwrite)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=args.outdir_data,
-                        outdir_html=args.outdir_html)
+                        makeqa=args.makeqa, outdir_data=outdir_data, outdir_html=outdir_html)
 
 if __name__ == '__main__':
     main()

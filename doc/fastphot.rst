@@ -107,39 +107,49 @@ Name                     Type         Units                        Description
  FLUX_SYNTH_PHOTMODEL_W2 float32                              nmgy W2-band flux synthesized from the best-fitting photometric continuum model.
  FLUX_SYNTH_PHOTMODEL_W3 float32                              nmgy W3-band flux synthesized from the best-fitting photometric continuum model.
  FLUX_SYNTH_PHOTMODEL_W4 float32                              nmgy W4-band flux synthesized from the best-fitting photometric continuum model.
-                 KCORR_U float32                               mag K-correction used to derive ABSMAG_U band-shifted to z=0.0 assuming h=1.0.
-                ABSMAG_U float32                               mag Absolute magnitude in Johnson/Cousins U-band band-shifted to z=0.0 assuming h=1.0.
-           ABSMAG_IVAR_U float32                          1 / mag2 Inverse variance corresponding to ABSMAG_U.
-                 KCORR_B float32                               mag Like KCORR_U but for Johnson/Cousins B-band.
-                ABSMAG_B float32                               mag Like ABSMAG_U but for Johnson/Cousins B-band.
-           ABSMAG_IVAR_B float32                          1 / mag2 Like ABSMAG_IVAR_U but for Johnson/Cousins B-band.
-                 KCORR_V float32                               mag Like KCORR_U but for Johnson/Cousins V-band.
-                ABSMAG_V float32                               mag Like ABSMAG_U but for Johnson/Cousins V-band.
-           ABSMAG_IVAR_V float32                          1 / mag2 Like ABSMAG_IVAR_U but for Johnson/Cousins V-band.
-            KCORR_SDSS_U float32                               mag K-correction used to derive ABSMAG_SDSS_U band-shifted to z=0.1 assuming h=1.0.
-           ABSMAG_SDSS_U float32                               mag Absolute magnitude in SDSS u-band band-shifted to z=0.1 assuming h=1.0.
-      ABSMAG_IVAR_SDSS_U float32                          1 / mag2 Inverse variance corresponding to ABSMAG_SDSS_U.
-            KCORR_SDSS_G float32                               mag Like KCORR_SDSS_U but for SDSS g-band.
-           ABSMAG_SDSS_G float32                               mag Like ABSMAG_SDSS_U but for SDSS g-band.
-      ABSMAG_IVAR_SDSS_G float32                          1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS g-band.
-            KCORR_SDSS_R float32                               mag Like KCORR_SDSS_U but for SDSS r-band.
-           ABSMAG_SDSS_R float32                               mag Like ABSMAG_SDSS_U but for SDSS r-band.
-      ABSMAG_IVAR_SDSS_R float32                          1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS r-band.
-            KCORR_SDSS_I float32                               mag Like KCORR_SDSS_U but for SDSS i-band.
-           ABSMAG_SDSS_I float32                               mag Like ABSMAG_SDSS_U but for SDSS i-band.
-      ABSMAG_IVAR_SDSS_I float32                          1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS i-band.
-            KCORR_SDSS_Z float32                               mag Like KCORR_SDSS_U but for SDSS z-band.
-           ABSMAG_SDSS_Z float32                               mag Like ABSMAG_SDSS_U but for SDSS z-band.
-      ABSMAG_IVAR_SDSS_Z float32                          1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS z-band.
-                KCORR_W1 float32                               mag K-correction used to derive ABSMAG_W1 band-shifted to z=0.0 assuming h=1.0.
-               ABSMAG_W1 float32                               mag Absolute magnitude in WISE W1-band band-shifted to z=0.0 assuming h=1.0.
-          ABSMAG_IVAR_W1 float32                          1 / mag2 Inverse variance corresponding to ABSMAG_W1.
-                KCORR_W2 float32                               mag K-correction used to derive ABSMAG_W2 band-shifted to z=0.0 assuming h=1.0.
-               ABSMAG_W2 float32                               mag Absolute magnitude in WISE W2-band band-shifted to z=0.0 assuming h=1.0.
-          ABSMAG_IVAR_W2 float32                          1 / mag2 Inverse variance corresponding to ABSMAG_W2.
+   ABSMAG10_DECAM_G [4]_ float32                               mag Absolute magnitude in DECam g-band band-shifted to z=1.0 assuming h=1.0.
+   ABSMAG10_IVAR_DECAM_G float32                          1 / mag2 Inverse variance corresponding to ABSMAG10_DECAM_G.
+         KCORR10_DECAM_G float32                               mag K-correction used to derive ABSMAG10_DECAM_G band-shifted to z=1.0.
+   ABSMAG10_DECAM_R [4]_ float32                               mag Absolute magnitude in DECam r-band band-shifted to z=1.0 assuming h=1.0.
+   ABSMAG10_IVAR_DECAM_R float32                          1 / mag2 Inverse variance corresponding to ABSMAG10_DECAM_R.
+         KCORR10_DECAM_R float32                               mag K-correction used to derive ABSMAG10_DECAM_R band-shifted to z=1.0.
+   ABSMAG10_DECAM_Z [4]_ float32                               mag Absolute magnitude in DECam z-band band-shifted to z=1.0 assuming h=1.0.
+   ABSMAG10_IVAR_DECAM_Z float32                          1 / mag2 Inverse variance corresponding to ABSMAG10_DECAM_Z.
+         KCORR10_DECAM_Z float32                               mag K-correction used to derive ABSMAG10_DECAM_Z band-shifted to z=1.0.
+         ABSMAG00_U [4]_ float32                               mag Absolute magnitude in Johnson/Cousins U-band band-shifted to z=0.0 assuming h=1.0.
+         ABSMAG00_IVAR_U float32                          1 / mag2 Inverse variance corresponding to ABSMAG_U.
+               KCORR00_U float32                               mag K-correction used to derive ABSMAG_U band-shifted to z=0.0.
+         ABSMAG00_B [4]_ float32                               mag Like ABSMAG_U but for Johnson/Cousins B-band.
+         ABSMAG00_IVAR_B float32                          1 / mag2 Like ABSMAG_IVAR_U but for Johnson/Cousins B-band.
+               KCORR00_B float32                               mag Like KCORR_U but for Johnson/Cousins B-band.
+         ABSMAG00_V [4]_ float32                               mag Like ABSMAG_U but for Johnson/Cousins V-band.
+         ABSMAG00_IVAR_V float32                          1 / mag2 Like ABSMAG_IVAR_U but for Johnson/Cousins V-band.
+               KCORR00_V float32                               mag Like KCORR_U but for Johnson/Cousins V-band.
+    ABSMAG01_SDSS_U [4]_ float32                               mag Absolute magnitude in SDSS u-band band-shifted to z=0.1 assuming h=1.0.
+    ABSMAG01_IVAR_SDSS_U float32                          1 / mag2 Inverse variance corresponding to ABSMAG_SDSS_U.
+          KCORR01_SDSS_U float32                               mag K-correction used to derive ABSMAG_SDSS_U band-shifted to z=0.1.
+    ABSMAG01_SDSS_G [4]_ float32                               mag Like ABSMAG_SDSS_U but for SDSS g-band.
+    ABSMAG01_IVAR_SDSS_G float32                          1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS g-band.
+          KCORR01_SDSS_G float32                               mag Like KCORR_SDSS_U but for SDSS g-band.
+    ABSMAG01_SDSS_R [4]_ float32                               mag Like ABSMAG_SDSS_U but for SDSS r-band.
+    ABSMAG01_IVAR_SDSS_R float32                          1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS r-band.
+          KCORR01_SDSS_R float32                               mag Like KCORR_SDSS_U but for SDSS r-band.
+    ABSMAG01_SDSS_I [4]_ float32                               mag Like ABSMAG_SDSS_U but for SDSS i-band.
+    ABSMAG01_IVAR_SDSS_I float32                          1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS i-band.
+          KCORR01_SDSS_I float32                               mag Like KCORR_SDSS_U but for SDSS i-band.
+    ABSMAG01_SDSS_Z [4]_ float32                               mag Like ABSMAG_SDSS_U but for SDSS z-band.
+    ABSMAG01_IVAR_SDSS_Z float32                          1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS z-band.
+          KCORR01_SDSS_Z float32                               mag Like KCORR_SDSS_U but for SDSS z-band.
+        ABSMAG00_W1 [4]_ float32                               mag Absolute magnitude in WISE W1-band band-shifted to z=0.0 assuming h=1.0.
+        ABSMAG00_IVAR_W1 float32                          1 / mag2 Inverse variance corresponding to ABSMAG_W1.
+              KCORR00_W1 float32                               mag K-correction used to derive ABSMAG_W1 band-shifted to z=0.0.
              LOGLNU_1500 float32                1e-28 erg / (s Hz) Monochromatic luminosity at 1500 A in the rest-frame.
              LOGLNU_2800 float32                1e-28 erg / (s Hz) Monochromatic luminosity at 2800 A in the rest-frame.
-               LOGL_5100 float32                        1e+10 Lsun Total luminosity at 5100 A in the rest-frame.
+               LOGL_1450 float32                        1e+10 Lsun Integrated luminosity at 1450 A in the rest-frame.
+               LOGL_1700 float32                        1e+10 Lsun Integrated luminosity at 1700 A in the rest-frame.
+               LOGL_3000 float32                        1e+10 Lsun Integrated luminosity at 3000 A in the rest-frame.
+               LOGL_5100 float32                        1e+10 Lsun Integrated luminosity at 5100 A in the rest-frame.
+          FLYA_1215_CONT float32      1e-17 erg / (Angstrom cm2 s) Continuum flux at 1215.67 A in the rest-frame.
           FOII_3727_CONT float32      1e-17 erg / (Angstrom cm2 s) Continuum flux at 3728.483 A in the rest-frame.
              FHBETA_CONT float32      1e-17 erg / (Angstrom cm2 s) Continuum flux at 4862.683 A in the rest-frame.
          FOIII_5007_CONT float32      1e-17 erg / (Angstrom cm2 s) Continuum flux at 5008.239 A in the rest-frame.
@@ -195,18 +205,18 @@ Name                   Type        Units      Description
             BGS_TARGET   int64                BGS targeting bit.
             MWS_TARGET   int64                MWS targeting bit.
            SCND_TARGET   int64                Secondary target targeting bit.
-  SV1_DESI_TARGET [4]_   int64                SV1 DESI targeting bit.
-   SV1_BGS_TARGET [4]_   int64                SV1 BGS targeting bit.
-   SV1_MWS_TARGET [4]_   int64                SV1 MWS targeting bit.
-  SV2_DESI_TARGET [4]_   int64                SV2 DESI targeting bit.
-   SV2_BGS_TARGET [4]_   int64                SV2 BGS targeting bit.
-   SV2_MWS_TARGET [4]_   int64                SV2 MWS targeting bit.
-  SV3_DESI_TARGET [4]_   int64                SV3 DESI targeting bit.
-   SV3_BGS_TARGET [4]_   int64                SV3 BGS targeting bit.
-   SV3_MWS_TARGET [4]_   int64                SV3 MWS targeting bit.
-  SV1_SCND_TARGET [4]_   int64                SV1 secondary targeting bit.
-  SV2_SCND_TARGET [4]_   int64                SV2 secondary targeting bit.
-  SV3_SCND_TARGET [4]_   int64                SV3 secondary targeting bit.
+  SV1_DESI_TARGET [5]_   int64                SV1 DESI targeting bit.
+   SV1_BGS_TARGET [5]_   int64                SV1 BGS targeting bit.
+   SV1_MWS_TARGET [5]_   int64                SV1 MWS targeting bit.
+  SV2_DESI_TARGET [5]_   int64                SV2 DESI targeting bit.
+   SV2_BGS_TARGET [5]_   int64                SV2 BGS targeting bit.
+   SV2_MWS_TARGET [5]_   int64                SV2 MWS targeting bit.
+  SV3_DESI_TARGET [5]_   int64                SV3 DESI targeting bit.
+   SV3_BGS_TARGET [5]_   int64                SV3 BGS targeting bit.
+   SV3_MWS_TARGET [5]_   int64                SV3 MWS targeting bit.
+  SV1_SCND_TARGET [5]_   int64                SV1 secondary targeting bit.
+  SV2_SCND_TARGET [5]_   int64                SV2 secondary targeting bit.
+  SV3_SCND_TARGET [5]_   int64                SV3 secondary targeting bit.
                      Z float64                Redshift based on Redrock or QuasarNet (for QSO targets only).
                  ZWARN    int8                Redrock zwarning bit.
              DELTACHI2 float64                Redrock delta-chi-squared.
@@ -255,4 +265,11 @@ Name                   Type        Units      Description
        
 .. [3] Column only present when fitting per-exposure tile-based coadds.
 
-.. [4] Column only present in Commissioning and Survey Validation spectroscopic observations.
+.. [4] Only observed photometry with a minimum signal-to-noise ratio of two is
+       used to compute K-corrections. Absolute magnitudes are estimated using
+       from the (S/N>2) observed-frame bandpass nearest in wavelength to the
+       desired band-shifted rest-frame bandpass. If no observed-frame photometry
+       is available, then the absolute magnitude is synthesized from the
+       best-fitting model and the corresponding inverse variance is set to zero.
+
+.. [5] Column only present in Commissioning and Survey Validation spectroscopic observations.

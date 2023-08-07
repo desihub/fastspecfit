@@ -543,8 +543,14 @@ class Filters(object):
             self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
             self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
 
-            self.absmag_bands = ['U', 'B', 'V', 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z', 'W1', 'W2']
-            self.band_shift = [0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0]
+            self.absmag_bands = ['decam2014_g', 'decam2014_r', 'decam2014_z',
+                                 'U', 'B', 'V',
+                                 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z',
+                                 'W1']#, 'W2']
+            self.band_shift = [1.0, 1.0, 1.0,
+                               0.0, 0.0, 0.0,
+                               0.1, 0.1, 0.1, 0.1, 0.1,
+                               0.1]#, 0.1]
 
             if load_filters:
                 self.filters = {'N': filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z', 
@@ -556,11 +562,17 @@ class Filters(object):
                 self.fiber_filters = self.synth_filters
 
                 self.absmag_filters = filters.FilterSequence((
+                    filters.load_filter('decam2014-g'), filters.load_filter('decam2014-r'), filters.load_filter('decam2014-z'), 
                     filters.load_filter('bessell-U'), filters.load_filter('bessell-B'), filters.load_filter('bessell-V'), 
                     filters.load_filter('sdss2010-u'), filters.load_filter('sdss2010-g'), filters.load_filter('sdss2010-r'),
                     filters.load_filter('sdss2010-i'), filters.load_filter('sdss2010-z'),
-                    filters.load_filter('wise2010-W1'), filters.load_filter('wise2010-W2')))
+                    filters.load_filter('wise2010-W1')))#, filters.load_filter('wise2010-W2')))
 
+        if len(self.absmag_bands) != len(self.band_shift):
+            errmsg = 'absmag_bands and band_shift must have the same number of elements.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+        
         if self.photounits != 'nanomaggies':
             errmsg = 'nanomaggies is the only currently supported photometric unit!'
             log.critical(errmsg)
@@ -1748,8 +1760,8 @@ class ContinuumTools(Filters, Inoue14):
         dfactor = (1 + redshift) * 4.0 * np.pi * (3.08567758e24 * dlum)**2 / FLUXNORM
                 
         lums = {}
-        cwaves = [1500.0, 2800.0, 5100.0]
-        labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_5100']
+        cwaves = [1500.0, 2800.0, 1450., 1700., 3000., 5100.]
+        labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_1450', 'LOGL_1700', 'LOGL_3000', 'LOGL_5100']
         norms = [1e28, 1e28, 1e10]
         for cwave, norm, label in zip(cwaves, norms, labels):
             J = (templatewave > cwave-500) * (templatewave < cwave+500)
@@ -1758,7 +1770,7 @@ class ContinuumTools(Filters, Inoue14):
             clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
             cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
             cflux *= dfactor # [monochromatic luminosity in erg/s/A]
-            if label == 'LOGL_5100':
+            if 'LOGL_' in label:
                 cflux *= cwave / 3.846e33 / norm # [luminosity in 10**10 L_sun]
             else:
                 # Convert the UV fluxes to rest-frame luminosity in erg/s/Hz. This
@@ -1769,8 +1781,8 @@ class ContinuumTools(Filters, Inoue14):
                 lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
         cfluxes = {}
-        cwaves = [3728.483, 4862.683, 5008.239, 6564.613]
-        labels = ['FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
+        cwaves = [1215.67, 3728.483, 4862.683, 5008.239, 6564.613]
+        labels = ['FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
         for cwave, label in zip(cwaves, labels):
             J = (templatewave > cwave-500) * (templatewave < cwave+500)
             I = (templatewave[J] > cwave-20) * (templatewave[J] < cwave+20)
@@ -2181,10 +2193,10 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
     #result['FAGN'] = fagn
     result['DN4000_MODEL'] = dn4000_model
 
-    for iband, band in enumerate(CTools.absmag_bands):
-        result['KCORR_{}'.format(band.upper())] = kcorr[iband] # * u.mag
-        result['ABSMAG_{}'.format(band.upper())] = absmag[iband] # * u.mag
-        result['ABSMAG_IVAR_{}'.format(band.upper())] = ivarabsmag[iband] # / (u.mag**2)
+    for iband, (band, shift) in enumerate(zip(CTools.absmag_bands, CTools.band_shift)):
+        result['KCORR{:02d}_{}'.format(int(10*shift), band.upper())] = kcorr[iband] # * u.mag
+        result['ABSMAG{:02d}_{}'.format(int(10*shift), band.upper())] = absmag[iband] # * u.mag
+        result['ABSMAG{:02d}_IVAR_{}'.format(int(10*shift), band.upper())] = ivarabsmag[iband] # / (u.mag**2)
     for iband, band in enumerate(CTools.bands):
         result['FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper())] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
     if bool(lums):
