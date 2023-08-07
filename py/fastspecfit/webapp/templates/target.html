@@ -433,7 +433,7 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
     <tr>
       <th></th>
       <th colspan="3">DECam</th>
-      <th colspan="5">SDSS</th>
+      <th colspan="6">SDSS/WISE</th>
       <th colspan="3">Johnson-Morgan</th>
       <!--
       <th colspan="2">WISE</th>
@@ -449,6 +449,7 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
       <th><sup>0.1</sup>r</th>
       <th><sup>0.1</sup>i</th>
       <th><sup>0.1</sup>z</th>
+      <th><sup>0.1</sup>W1</th>
       <th><sup>0.0</sup>U</th>
       <th><sup>0.0</sup>B</th>
       <th><sup>0.0</sup>V</th>
@@ -469,6 +470,7 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
       <td>{{ target.absmag01_sdss_r|floatformat:3 }}</td>
       <td>{{ target.absmag01_sdss_i|floatformat:3 }}</td>
       <td>{{ target.absmag01_sdss_z|floatformat:3 }}</td>
+      <td>{{ target.absmag01_w1|floatformat:3 }}</td>
       <td>{{ target.absmag00_u|floatformat:3 }}</td>
       <td>{{ target.absmag00_b|floatformat:3 }}</td>
       <td>{{ target.absmag00_v|floatformat:3 }}</td>
@@ -487,6 +489,7 @@ DESI {{ target.survey }}/{{ target.program }}/{{ target.str_healpix }}/{{ target
       <td>{{ target.kcorr01_sdss_r|floatformat:3 }}</td>
       <td>{{ target.kcorr01_sdss_i|floatformat:3 }}</td>
       <td>{{ target.kcorr01_sdss_z|floatformat:3 }}</td>
+      <td>{{ target.kcorr01_w1|floatformat:3 }}</td>
       <td>{{ target.kcorr00_u|floatformat:3 }}</td>
       <td>{{ target.kcorr00_b|floatformat:3 }}</td>
       <td>{{ target.kcorr00_v|floatformat:3 }}</td>

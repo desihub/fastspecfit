@@ -159,12 +159,9 @@ Name                         Type         Units                         Descript
         ABSMAG01_SDSS_Z [4]_      float32                           mag Like ABSMAG_SDSS_U but for SDSS z-band.
         ABSMAG01_IVAR_SDSS_Z      float32                      1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS z-band.
               KCORR01_SDSS_Z      float32                           mag Like KCORR_SDSS_U but for SDSS z-band.
-            ABSMAG00_W1 [4]_      float32                           mag Absolute magnitude in WISE W1-band band-shifted to z=0.0 assuming h=1.0.
-            ABSMAG00_IVAR_W1      float32                      1 / mag2 Inverse variance corresponding to ABSMAG_W1.
-                  KCORR00_W1      float32                           mag K-correction used to derive ABSMAG_W1 band-shifted to z=0.0.
-            ABSMAG00_W2 [4]_      float32                           mag Absolute magnitude in WISE W2-band band-shifted to z=0.0 assuming h=1.0.
-            ABSMAG00_IVAR_W2      float32                      1 / mag2 Inverse variance corresponding to ABSMAG_W2.
-                  KCORR00_W2      float32                           mag K-correction used to derive ABSMAG_W2 band-shifted to z=0.0.
+            ABSMAG01_W1 [4]_      float32                           mag Absolute magnitude in WISE W1-band band-shifted to z=0.0 assuming h=1.0.
+            ABSMAG01_IVAR_W1      float32                      1 / mag2 Inverse variance corresponding to ABSMAG_W1.
+                  KCORR01_W1      float32                           mag K-correction used to derive ABSMAG_W1 band-shifted to z=0.0.
                  LOGLNU_1500      float32            1e-28 erg / (s Hz) Monochromatic luminosity at 1500 A in the rest-frame.
                  LOGLNU_2800      float32            1e-28 erg / (s Hz) Monochromatic luminosity at 2800 A in the rest-frame.
                    LOGL_1450      float32                    1e+10 Lsun Integrated luminosity at 1450 A in the rest-frame.

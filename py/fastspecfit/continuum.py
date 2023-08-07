@@ -545,10 +545,12 @@ class Filters(object):
 
             self.absmag_bands = ['decam2014_g', 'decam2014_r', 'decam2014_z',
                                  'U', 'B', 'V',
-                                 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z']#, 'W1', 'W2']
+                                 'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z',
+                                 'W1']#, 'W2']
             self.band_shift = [1.0, 1.0, 1.0,
                                0.0, 0.0, 0.0,
-                               0.1, 0.1, 0.1, 0.1, 0.1]#, 0.0, 0.0]
+                               0.1, 0.1, 0.1, 0.1, 0.1,
+                               0.1]#, 0.1]
 
             if load_filters:
                 self.filters = {'N': filters.load_filters('BASS-g', 'BASS-r', 'MzLS-z', 
@@ -563,8 +565,8 @@ class Filters(object):
                     filters.load_filter('decam2014-g'), filters.load_filter('decam2014-r'), filters.load_filter('decam2014-z'), 
                     filters.load_filter('bessell-U'), filters.load_filter('bessell-B'), filters.load_filter('bessell-V'), 
                     filters.load_filter('sdss2010-u'), filters.load_filter('sdss2010-g'), filters.load_filter('sdss2010-r'),
-                    filters.load_filter('sdss2010-i'), filters.load_filter('sdss2010-z')))
-                    #filters.load_filter('wise2010-W1'), filters.load_filter('wise2010-W2')))
+                    filters.load_filter('sdss2010-i'), filters.load_filter('sdss2010-z'),
+                    filters.load_filter('wise2010-W1')))#, filters.load_filter('wise2010-W2')))
 
         if len(self.absmag_bands) != len(self.band_shift):
             errmsg = 'absmag_bands and band_shift must have the same number of elements.'

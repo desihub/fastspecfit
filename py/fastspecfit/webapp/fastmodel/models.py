@@ -164,13 +164,9 @@ class FastModel(Model):
     kcorr00_u = FloatField(null=True)
     kcorr00_b = FloatField(null=True)
     kcorr00_v = FloatField(null=True)
-    #kcorr_w1 = FloatField(null=True)
-    #kcorr_w2 = FloatField(null=True)
     absmag00_u = FloatField(null=True)
     absmag00_b = FloatField(null=True)
     absmag00_v = FloatField(null=True)
-    #absmag_w1 = FloatField(null=True)
-    #absmag_w2 = FloatField(null=True)
 
     kcorr01_sdss_u = FloatField(null=True)
     kcorr01_sdss_g = FloatField(null=True)
@@ -182,6 +178,11 @@ class FastModel(Model):
     absmag01_sdss_r = FloatField(null=True)
     absmag01_sdss_i = FloatField(null=True)
     absmag01_sdss_z = FloatField(null=True)
+
+    kcorr01_w1 = FloatField(null=True)
+    #kcorr_w2 = FloatField(null=True)
+    absmag01_w1 = FloatField(null=True)
+    #absmag01_w2 = FloatField(null=True)
 
     abmag_g = CharField(max_length=50, default='')
     abmag_r = CharField(max_length=50, default='')
