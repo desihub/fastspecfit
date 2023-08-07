@@ -1188,8 +1188,8 @@ class EMFitTools(Filters):
                         log.critical(errmsg)
                         raise ValueError(errmsg)
                         
-                    # boxcar integration of the flux; should we weight by the line-profile???
-                    dwave = np.abs(np.diff(emlinewave_edges[lineindx]))
+                    # boxcar integration of the flux
+                    dwave = np.median(np.abs(np.diff(emlinewave_edges[lineindx])))
                     boxflux = np.sum(emlineflux[lineindx] * dwave)
                     boxflux_ivar = 1 / np.sum((1 / emlineivar[lineindx]) * dwave**2)
 
