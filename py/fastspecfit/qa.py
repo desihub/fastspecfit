@@ -107,7 +107,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         layer = 'ls-dr9'
 
     if not fastphot:
-        EMFit = EMFitTools(minspecwave=spec_wavelims[0], maxspecwave=spec_wavelims[1])
+        EMFit = EMFitTools()
 
     filters = CTools.synth_filters[metadata['PHOTSYS']]
     allfilters = CTools.filters[metadata['PHOTSYS']]
@@ -1201,6 +1201,7 @@ def parse(options=None):
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parser.add_argument('--stackfit', action='store_true', help='Generate QA for stacked spectra.')
     parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
 
@@ -1307,8 +1308,7 @@ def fastqa(args=None, comm=None):
     log.info('Building QA for {} objects.'.format(len(metadata)))
 
     # Initialize the I/O class.
-
-    Spec = DESISpectra(redux_dir=args.redux_dir, fphotodir=args.fphotodir, 
+    Spec = DESISpectra(stackfit=args.stackfit, redux_dir=args.redux_dir, fphotodir=args.fphotodir, 
                        fphotoinfo=args.fphotoinfo, mapdir=args.mapdir)
 
     templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
