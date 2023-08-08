@@ -359,7 +359,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot, log):
                 specdata['wave'].append(specdata['wave0'][icam])
                 specdata['mask'].append(specdata['mask0'][icam])
                 specdata['res'].append(specdata['res0'][icam])
-                
+
     if len(cameras) == 0:
         errmsg = 'No good data, which should never happen.'
         log.critical(errmsg)
@@ -1617,16 +1617,16 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
             out.add_column(Column(name='SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4'))
     else:
         if not fastphot:
-            if data is not None:
-                for cam in data[0]['cameras']:
-                    out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
-                for cam in data[0]['cameras']:
-                    out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
-            else:
-                for cam in ['B', 'R', 'Z']:
-                    out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
-                for cam in ['B', 'R', 'Z']:
-                    out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
+            # if the zeroth object has a fully masked camera, this data model will fail
+            #if data is not None:
+            #    for cam in data[0]['cameras']:
+            #        out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
+            #    for cam in data[0]['cameras']:
+            #        out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
+            for cam in ['B', 'R', 'Z']:
+                out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
+            for cam in ['B', 'R', 'Z']:
+                out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
                     
     out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
     if not fastphot:
@@ -1749,7 +1749,10 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
             out['Z'][iobj] = _data['zredrock']
             if not fastphot:
                 for icam, cam in enumerate(_data['cameras']):
-                    out['SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
+                    try:
+                        out['SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
+                    except:
+                        pdb.set_trace()
             if not stackfit:
                 if 'fiber_bands' in fphoto.keys():
                     for iband, band in enumerate(fphoto['fiber_bands']):
