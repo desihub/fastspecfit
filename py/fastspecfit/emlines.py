@@ -142,7 +142,7 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
     return residuals
 
 class EMFitTools(Filters):
-    def __init__(self, minspecwave=3500.0, maxspecwave=9900.0, fphoto=None, uniqueid=None):
+    def __init__(self, fphoto=None, uniqueid=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -154,11 +154,6 @@ class EMFitTools(Filters):
             available wavelength is used (around 100 Angstrom).
         maxtemplatewave : :class:`float`, optional, defaults to 6e4
             Maximum template wavelength to read into memory. 
-        minspecwave : :class:`float`, optional, defaults to 3000 A.
-            Minimum observed-frame wavelength, which is used internally for the
-            forward modeling of the emission-line spectrum.
-        maxspecwave : :class:`float`, optional, defaults to 3000 A.
-            Like `minspecwave` but the maximum observed-frame wavelength.
         chi2_default : :class:`float`, optional, defaults to 0.0.
             Default chi2 value for a emission line not fitted.
         maxiter : :class:`int`, optional, defaults to 5000.
@@ -2371,8 +2366,8 @@ class EMFitTools(Filters):
         plt.close()
 
 def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum,
-                   minspecwave=3500.0, maxspecwave=9900.0, fphoto=None, synthphot=True,
-                   broadlinefit=True, percamera_models=False, log=None, verbose=False):
+                   fphoto=None, synthphot=True, broadlinefit=True, percamera_models=False,
+                   log=None, verbose=False):
     """Perform the fit minimization / chi2 minimization.
 
     Parameters
@@ -2402,8 +2397,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
         else:
             log = get_logger()
 
-    EMFit = EMFitTools(minspecwave=minspecwave, maxspecwave=maxspecwave, 
-                       fphoto=fphoto, uniqueid=data['uniqueid'])
+    EMFit = EMFitTools(fphoto=fphoto, uniqueid=data['uniqueid'])
 
     # Combine all three cameras; we will unpack them to build the
     # best-fitting model (per-camera) below.

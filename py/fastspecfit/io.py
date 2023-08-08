@@ -291,24 +291,20 @@ def _unpack_one_stacked_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_stacked_spectrum(*args)
 
-def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot, log):
+def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot, log):
     """Unpack the data for a single stacked spectrum. Also flag pixels which may be
     affected by emission lines.
 
     """
     from fastspecfit.continuum import ContinuumTools
     
-    CTools = ContinuumTools()
+    CTools = ContinuumTools(fphoto=fphoto)
     
     log.info('Pre-processing object {} [stackid {} z={:.6f}].'.format(
-        iobj, meta['STACKID'], meta['Z']))
+        iobj, meta[CTools.uniqueid], meta['Z']))
 
-    if specdata['photsys'] == 'S':
-        filters = CTools.decam
-        allfilters = CTools.decamwise
-    else:
-        filters = CTools.bassmzls
-        allfilters = CTools.bassmzlswise
+    filters = CTools.filters[specdata['photsys']]
+    synth_filters = CTools.synth_filters[specdata['photsys']]
 
     # Dummy imaging photometry.
     maggies = np.zeros(len(CTools.bands))
@@ -316,17 +312,13 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot, log):
     
     specdata['phot'] = CTools.parse_photometry(
         CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
-        lambda_eff=allfilters.effective_wavelengths.value,
+        lambda_eff=filters.effective_wavelengths.value,
         min_uncertainty=CTools.min_uncertainty, log=log)
     
-    #specdata['fiberphot'] = specdata['phot']
-    #specdata['fibertotphot'] = specdata['phot']
-
     specdata.update({'linemask': [], 'linemask_all': [], 'linename': [],
                      'linepix': [], 'contpix': [],
                      'wave': [], 'flux': [], 'ivar': [], 'mask': [], 'res': [], 
                      'snr': np.zeros(1, 'f4'),
-                     #'npixpercamera': len(specdata['wave0'][0]),
                      })
 
     cameras, npixpercamera = [], []
@@ -421,19 +413,19 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot, log):
 
     # Optionally synthesize photometry from the coadded spectrum.
     if synthphot:
-        padflux, padwave = filters.pad_spectrum(specdata['coadd_flux'], specdata['coadd_wave'], method='edge')
-        synthmaggies = filters.get_ab_maggies(padflux / FLUXNORM, padwave)
+        padflux, padwave = synth_filters.pad_spectrum(specdata['coadd_flux'], specdata['coadd_wave'], method='edge')
+        synthmaggies = synth_filters.get_ab_maggies(padflux / FLUXNORM, padwave)
         synthmaggies = synthmaggies.as_array().view('f8')
 
         specdata['synthphot'] = CTools.parse_photometry(CTools.synth_bands,
             maggies=synthmaggies, nanomaggies=False,
-            lambda_eff=filters.effective_wavelengths.value, log=log)
+            lambda_eff=synth_filters.effective_wavelengths.value, log=log)
 
     return specdata, meta
 
 class DESISpectra(TabulatedDESI):
-    def __init__(self, redux_dir=None, fiberassign_dir=None, fphotodir=None,
-                 fphotoinfo=None, mapdir=None):
+    def __init__(self, stackfit=False, redux_dir=None, fiberassign_dir=None,
+                 fphotodir=None, fphotoinfo=None, mapdir=None):
         """Class to read in DESI spectra and associated metadata.
 
         Parameters
@@ -470,8 +462,10 @@ class DESISpectra(TabulatedDESI):
 
         if fphotoinfo is None:
             from importlib import resources
-            fphotoinfo = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
-
+            if stackfit:
+                fphotoinfo = resources.files('fastspecfit').joinpath('data/stacked-phot.yaml')
+            else:
+                fphotoinfo = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
         try:
             with open(fphotoinfo, 'r') as F:
                 fphoto = yaml.safe_load(F)
@@ -1197,6 +1191,8 @@ class DESISpectra(TabulatedDESI):
         from desispec.resolution import Resolution
         from fastspecfit.continuum import ContinuumTools
 
+        CTools = ContinuumTools(fphoto=self.fphoto)
+        
         if stackfiles is None:
             errmsg = 'At least one stackfiles file is required.'
             log.critical(errmsg)
@@ -1274,7 +1270,7 @@ class DESISpectra(TabulatedDESI):
                 raise ValueError(errmsg)
             
             # Add some columns and append.
-            meta['PHOTSYS'] = 'S'
+            meta['PHOTSYS'] = ''
             meta['SURVEY'] = survey
             meta['PROGRAM'] = program
             meta['HEALPIX'] = healpix
@@ -1298,8 +1294,8 @@ class DESISpectra(TabulatedDESI):
             # Age of the universe.
             dlum = np.zeros(len(meta['Z']))
             dmod = np.zeros(len(meta['Z']))
-            dlum[meta['Z']>0.] = self.luminosity_distance(meta['Z'][meta['Z']>0.])
-            dmod[meta['Z']>0.] = self.distance_modulus(meta['Z'][meta['Z']>0.])
+            dlum[meta['Z'] > 0.] = self.luminosity_distance(meta['Z'][meta['Z'] > 0.])
+            dmod[meta['Z'] > 0.] = self.distance_modulus(meta['Z'][meta['Z'] > 0.])
             tuniv = self.universe_age(meta['Z'])
 
             wave = fitsio.read(stackfile, 'WAVE')
@@ -1323,8 +1319,9 @@ class DESISpectra(TabulatedDESI):
             unpackargs = []
             for iobj in np.arange(len(meta)):
                 specdata = {
-                    'targetid': meta['STACKID'][iobj], 'zredrock': meta['Z'][iobj],
-                    'photsys': 'S',
+                    'uniqueid': meta[CTools.uniqueid][iobj],
+                    'zredrock': meta['Z'][iobj],
+                    'photsys': meta['PHOTSYS'][iobj],
                     'cameras': ['brz'],
                     'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj],
                     'tuniv': tuniv[iobj],
@@ -1340,7 +1337,7 @@ class DESISpectra(TabulatedDESI):
                     'coadd_ivar': specdata['ivar0'][0],
                     'coadd_res': specdata['res0'][0],
                     })
-                unpackargs.append((iobj, specdata, meta[iobj], synthphot, log))
+                unpackargs.append((iobj, specdata, meta[iobj], self.fphoto, synthphot, log))
                     
             if mp > 1:
                 import multiprocessing

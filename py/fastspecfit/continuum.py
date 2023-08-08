@@ -484,7 +484,8 @@ class Filters(object):
             keys = fphoto.keys()
             self.uniqueid = fphoto['uniqueid']
             self.photounits = fphoto['photounits']
-            self.readcols = np.array(fphoto['readcols'])
+            if 'readcols' in keys:
+                self.readcols = np.array(fphoto['readcols'])
             if 'outcols' in keys:
                 self.outcols = np.array(fphoto['outcols'])
             self.bands = np.array(fphoto['bands'])
