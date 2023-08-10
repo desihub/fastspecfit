@@ -848,7 +848,8 @@ class EMFitTools(Filters):
         else:
             try:
                 fit_info = least_squares(_objective_function, parameters[Ifree], args=farg, max_nfev=5000, 
-                                         xtol=1e-2, tr_solver='lsmr', tr_options={'regularize': True},
+                                         #xtol=1e-2,
+                                         tr_solver='lsmr', tr_options={'regularize': True},
                                          method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
                 parameters[Ifree] = fit_info.x
             except:
@@ -889,7 +890,6 @@ class EMFitTools(Filters):
                 if len(K) > 0:
                     drop2[K] = True
                 #print(pp, J, K, np.sum(drop2))
-                #pdb.set_trace()
         
         #drop2[self.amp_param_bool] = parameters[self.amp_param_bool] == 0.0
         #drop2[Ifree] = parameters[Ifree] == linemodel['value'][Ifree]
@@ -931,7 +931,7 @@ class EMFitTools(Filters):
         if len(Idrop) > 0:
             log.debug('  Dropping {} unique parameters.'.format(len(Idrop)))
             parameters[Idrop] = 0.0
-
+            
         # apply tied constraints
         if len(Itied) > 0:
             for I, indx, factor in zip(Itied, tiedtoparam, tiedfactor):
@@ -1004,7 +1004,6 @@ class EMFitTools(Filters):
                     #    plt.xlim(5386, 5394)
                     #    plt.legend()
                     #    plt.savefig('desi-users/ioannis/tmp/junk.png')
-                    #    pdb.set_trace()
         
         return out_linemodel
 
@@ -2595,18 +2594,19 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     #    log.critical(errmsg)
     #    raise ValueError(errmsg)
 
-    # Tighten up the bounds to within +/-10% around the initial parameter
-    # values except for the amplitudes. Be sure to check for zero.
-    I = np.where((EMFit.amp_param_bool == False) * (linemodel['fixed'] == False) *
-                 (linemodel['value'] != 0.0) *
-                 (linemodel['tiedtoparam'] == -1) * (linemodel['doubletpair'] == -1))[0]
-    if len(I) > 0:
-        neg = linemodel['value'][I] < 0
-        pos = linemodel['value'][I] >= 0
-        if np.any(neg):
-            linemodel['bounds'][I[neg], :] = np.vstack((linemodel['value'][I[neg]] / 0.8, linemodel['value'][I[neg]] / 1.2)).T
-        if np.any(pos):
-            linemodel['bounds'][I[pos], :] = np.vstack((linemodel['value'][I[pos]] * 0.8, linemodel['value'][I[pos]] * 1.2)).T
+    ## Tighten up the bounds to within +/-10% around the initial parameter
+    ## values except for the amplitudes. Be sure to check for zero.
+    #if False:
+    #    I = np.where((EMFit.amp_param_bool == False) * (linemodel['fixed'] == False) *
+    #                 (linemodel['value'] != 0.0) *
+    #                 (linemodel['tiedtoparam'] == -1) * (linemodel['doubletpair'] == -1))[0]
+    #    if len(I) > 0:
+    #        neg = linemodel['value'][I] < 0
+    #        pos = linemodel['value'][I] >= 0
+    #        if np.any(neg):
+    #            linemodel['bounds'][I[neg], :] = np.vstack((linemodel['value'][I[neg]] / 0.8, linemodel['value'][I[neg]] / 1.2)).T
+    #        if np.any(pos):
+    #            linemodel['bounds'][I[pos], :] = np.vstack((linemodel['value'][I[pos]] * 0.8, linemodel['value'][I[pos]] * 1.2)).T
 
     #linemodel[linemodel['linename'] == 'halpha']
     #B = np.where(['ne' in param for param in EMFit.param_names])[0]
