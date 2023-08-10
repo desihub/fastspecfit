@@ -105,6 +105,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         layer = 'ls-{}'.format(fphoto['legacysurveydr'])
     else:
         layer = 'ls-dr9'
+    #layer = 'hsc-dr3'
 
     if not fastphot:
         EMFit = EMFitTools()
