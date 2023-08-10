@@ -1746,10 +1746,7 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
             out['Z'][iobj] = _data['zredrock']
             if not fastphot:
                 for icam, cam in enumerate(_data['cameras']):
-                    try:
-                        out['SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
-                    except:
-                        pdb.set_trace()
+                    out['SNR_{}'.format(cam.upper())][iobj] = _data['snr'][icam]
             if not stackfit:
                 if 'fiber_bands' in fphoto.keys():
                     for iband, band in enumerate(fphoto['fiber_bands']):
