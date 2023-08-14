@@ -5,7 +5,9 @@ Change Log
 2.3.1 (not released yet)
 ------------------------
 
-* 
+* Bug fixes and miscellaneous feature requests for next VACs [`PR #148`_].
+
+.. _`PR #148`: https://github.com/desihub/fastspecfit/pull/148
 
 2.3.0 (2023-08-07)
 ------------------
