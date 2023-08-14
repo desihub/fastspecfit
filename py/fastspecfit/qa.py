@@ -407,24 +407,9 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         for campix in data['camerapix']:
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
     
-        # full model spectrum + individual line-spectra
+        # full model spectrum
         desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec, snrcut=emline_snrmin)
     
-        desiemlines_oneline = []
-        inrange = ( (EMFit.linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
-                    (EMFit.linetable['restwave'] * (1+redshift) < np.max(fullwave)) )
-         
-        for oneline in EMFit.linetable[inrange]: # for all lines in range
-            linename = oneline['name'].upper()
-            amp = fastspec['{}_MODELAMP'.format(linename)]
-            if amp != 0:
-                desiemlines_oneline1 = build_emline_model(
-                    EMFit.dlog10wave, redshift, np.array([amp]),
-                    np.array([fastspec['{}_VSHIFT'.format(linename)]]),
-                    np.array([fastspec['{}_SIGMA'.format(linename)]]),
-                    np.array([oneline['restwave']]), data['wave'], data['res'])
-                desiemlines_oneline.append(desiemlines_oneline1)
-
     # Grab the viewer cutout.
     if not stackfit:
         pixscale = 0.262
@@ -796,7 +781,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     # zoom in on individual emission lines - use linetable!
     if not fastphot:
         linetable = EMFit.linetable
-        inrange = (linetable['restwave'] * (1+redshift) > np.min(fullwave)) * (linetable['restwave'] * (1+redshift) < np.max(fullwave))
+        inrange = ((linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
+            (linetable['restwave'] * (1+redshift) < np.max(fullwave)))
         linetable = linetable[inrange]
 
         nline = len(set(linetable['plotgroup']))
@@ -805,11 +791,12 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         plotsig_default_balmer = 500.0 # [km/s]
         plotsig_default_broad = 2000.0 # [km/s]
     
-        minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames = [], [], [], [], [], []
+        minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames, _linenames = [], [], [], [], [], [], []
         for plotgroup in set(linetable['plotgroup']):
             I = np.where(plotgroup == linetable['plotgroup'])[0]
             linename = linetable['nicename'][I[0]].replace('-', ' ')
             linenames.append(linename)
+            _linenames.append(linetable['nicename'][I[0]])
             minwaves.append(np.min(linetable['restwave'][I]))
             maxwaves.append(np.max(linetable['restwave'][I]))
             meanwaves.append(np.mean(linetable['restwave'][I]))
@@ -850,6 +837,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             deltawaves = np.hstack(deltawaves)[srt]
             sigmas = np.hstack(sigmas)[srt]
             linenames = np.hstack(linenames)[srt]
+            _linenames = np.hstack(_linenames)[srt]
         
             # Add the linenames to the spectrum plot.
             for meanwave, linename in zip(meanwaves*(1+redshift), linenames):
@@ -876,8 +864,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             else:
                 ax, irow, colshift = [], 4, 5 # skip the gap row
                 
-            for iax, (minwave, maxwave, meanwave, deltawave, sig, linename) in enumerate(
-                    zip(minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames)):
+            for iax, (minwave, maxwave, meanwave, deltawave, sig, linename, _linename) in enumerate(
+                    zip(minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames, _linenames)):
                 icol = iax % nlinecols
                 icol += colshift
                 if iax > 0 and iax % nlinecols == 0:
@@ -887,10 +875,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 xx = fig.add_subplot(gs[irow, icol])
                 ax.append(xx)
             
-                wmin = (minwave - deltawave) * (1+redshift) - 6 * sig * minwave * (1+redshift) / C_LIGHT
-                wmax = (maxwave + deltawave) * (1+redshift) + 6 * sig * maxwave * (1+redshift) / C_LIGHT
-                #wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
-                #wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
+                wmin = (minwave - deltawave) * (1+redshift) - 5 * sig * minwave * (1+redshift) / C_LIGHT
+                wmax = (maxwave + deltawave) * (1+redshift) + 5 * sig * maxwave * (1+redshift) / C_LIGHT
             
                 # iterate over cameras
                 for icam in np.arange(len(data['cameras'])): # iterate over cameras
@@ -903,10 +889,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                     emlineflux = emlineflux[good]
                     emlinesigma = emlinesigma[good]
                     emlinemodel = emlinemodel[good]
-            
-                    emlinemodel_oneline = []
-                    for desiemlines_oneline1 in desiemlines_oneline:
-                        emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
+
+                    #emlinemodel_oneline = []
+                    #for desiemlines_oneline1 in desiemlines_oneline:
+                    #    emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
                         
                     indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
                     if len(indx) > 1:
@@ -916,13 +902,21 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                         #    xx.plot(emlinewave[indx]/1e4, gaussian_filter(emlineflux[indx], nsmoothspec), color=col1[icam], alpha=0.5)
                         #else:
                         #    xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
-                        for emlinemodel_oneline1 in emlinemodel_oneline:
-                            if np.sum(emlinemodel_oneline1[indx]) > 0:
-                                xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
-                                #if nsmoothspec > 1:
-                                #    xx.plot(emlinewave[indx]/1e4, gaussian_filter(emlinemodel_oneline1[indx], nsmoothspec), lw=1, alpha=0.8, color=col2[icam])
-                                #else:
-                                #    xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
+
+                        for oneline in linetable[linetable['nicename'] == _linename]:
+                            thisline = oneline['name'].upper()
+                            ampsnr = fastspec['{}_AMP'.format(thisline)] * np.sqrt(fastspec['{}_AMP_IVAR'.format(thisline)])
+                            if ampsnr > emline_snrmin:
+                                emlinemodel_oneline1 = build_emline_model(
+                                    EMFit.dlog10wave, redshift,
+                                    np.array([fastspec['{}_MODELAMP'.format(thisline)]]),
+                                    np.array([fastspec['{}_VSHIFT'.format(thisline)]]),
+                                    np.array([fastspec['{}_SIGMA'.format(thisline)]]),
+                                    np.array([oneline['restwave']]), [data['wave'][icam]], [data['res'][icam]])
+                                _emlinemodel_oneline1 = emlinemodel_oneline1[0][good][indx]
+                                #notzero = _emlinemodel_oneline1 != 0
+                                xx.plot(emlinewave[indx]/1e4, _emlinemodel_oneline1, lw=1, alpha=0.8, color=col2[icam])
+                        
                         xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
                         #if nsmoothspec > 1:
                         #    xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
@@ -1190,7 +1184,7 @@ def parse(options=None):
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')    
     parser.add_argument('--fphotoinfo', type=str, default=None, help='Photometric information file.')
 
-    parser.add_argument('--emline_snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
+    parser.add_argument('--emline-snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
     parser.add_argument('--nsmoothspec', type=int, default=0, help='Smoothing pixel value.')
 
     parser.add_argument('--minspecwave', type=float, default=3500., help='Minimum spectral wavelength (Angstrom).') 
