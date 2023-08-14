@@ -279,14 +279,14 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     
         # UV
         if fastspec['LYALPHA_AMP']*np.sqrt(fastspec['LYALPHA_AMP_IVAR']) > snrcut:
-            leg_uv['ewlya'] = r'EW(Ly$\alpha)=$'+r'${:.1f}$'.format(fastspec['LYALPHA_EW'])+r' $\AA$'
+            leg_uv['ewlya'] = r'EW(Ly$\alpha$)'+r'$={:.1f}$'.format(fastspec['LYALPHA_EW'])+r' $\AA$'
         if fastspec['CIV_1549_AMP']*np.sqrt(fastspec['CIV_1549_AMP_IVAR']) > snrcut:
-            leg_uv['ewciv'] = r'EW(CIV)=$'+r'${:.1f}$'.format(fastspec['CIV_1549_EW'])+r' $\AA$'
+            leg_uv['ewciv'] = r'EW(CIV)'+r'$={:.1f}$'.format(fastspec['CIV_1549_EW'])+r' $\AA$'
         if fastspec['CIII_1908_AMP']*np.sqrt(fastspec['CIII_1908_AMP_IVAR']) > snrcut:
-            leg_uv['ewciii'] = r'EW(CIII])=$'+r'${:.1f}$'.format(fastspec['CIII_1908_EW'])+r' $\AA$'
+            leg_uv['ewciii'] = r'EW(CIII])'+r'$={:.1f}$'.format(fastspec['CIII_1908_EW'])+r' $\AA$'
         if (fastspec['MGII_2796_AMP']*np.sqrt(fastspec['MGII_2796_AMP_IVAR']) > snrcut or
             fastspec['MGII_2803_AMP']*np.sqrt(fastspec['MGII_2803_AMP_IVAR']) > snrcut):
-            leg_uv['ewmgii'] = r'EW(MgII)=$'+r'${:.1f}$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])+r' $\AA$'
+            leg_uv['ewmgii'] = r'EW(MgII)'+r'$={:.1f}$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])+r' $\AA$'
             leg_uv['mgii_doublet'] = r'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
     
         leg_broad['linerchi2'] = r'$\chi^{2}_{\nu,\mathrm{line}}=$'+r'${:.2f}$'.format(fastspec['RCHI2_LINE'])
@@ -840,20 +840,23 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             _linenames = np.hstack(_linenames)[srt]
         
             # Add the linenames to the spectrum plot.
-            for meanwave, linename in zip(meanwaves*(1+redshift), linenames):
+            for meanwave, linename, _linename in zip(meanwaves*(1+redshift), linenames, _linenames):
                 #print(meanwave, ymax_spec)
                 if meanwave > spec_wavelims[0] and meanwave < spec_wavelims[1]:
-                    if 'SiIII' in linename:
-                        thislinename = '\n'+linename.replace('+', '+\n  ')
-                    elif '4363' in linename:
-                        thislinename = linename+'\n'
+                    if '1640' in linename or 'AlIII' in linename:
+                        # separate HeII 1640 from CIV 1549 and AlIII 1857 from SiIII] 1892 and CIII] 1908
+                        for oneline, thislinename in zip(linetable[linetable['nicename'] == _linename], _linename.split('+')):
+                            thislinename = thislinename.replace('-', ' ')
+                            if 'CIII]'  in thislinename:
+                                thislinename = thislinename+'\n'
+                            specax.text(oneline['restwave']*(1+redshift)/1e4, spec_ymax*0.97, thislinename, 
+                                        ha='center', va='top', rotation=270, fontsize=12, alpha=0.5)
                     else:
-                        thislinename = linename
-                    if stackfit:
+                        if '4363' in linename:
+                            thislinename = linename+'\n'
+                        else:
+                            thislinename = linename
                         specax.text(meanwave/1e4, spec_ymax*0.97, thislinename, ha='center', va='top',
-                                    rotation=270, fontsize=12, alpha=0.5)
-                    else:
-                        specax.text(meanwave/1e4, spec_ymax, thislinename, ha='center', va='top',
                                     rotation=270, fontsize=12, alpha=0.5)
         
             removelabels = np.ones(nline, bool)
@@ -890,10 +893,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                     emlinesigma = emlinesigma[good]
                     emlinemodel = emlinemodel[good]
 
-                    #emlinemodel_oneline = []
-                    #for desiemlines_oneline1 in desiemlines_oneline:
-                    #    emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
-                        
                     indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
                     if len(indx) > 1:
                         removelabels[iax] = False
@@ -949,9 +948,14 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                         #    pdb.set_trace()
             
                         xx.set_xlim(wmin/1e4, wmax/1e4)
+
+                    if icam == 0: # only label once
+                        if 'AlIII' in linename:
+                            _line = linename.split('+')
+                            linename = '+'.join(_line[:2])+'+\n'+_line[2] # more space
+                        xx.text(0.03, 0.94, linename, ha='left', va='top',
+                                transform=xx.transAxes, fontsize=11)
                         
-                    xx.text(0.03, 0.89, linename, ha='left', va='center',
-                            transform=xx.transAxes, fontsize=12)
                     xx.tick_params(axis='x', labelsize=16)
                     xx.tick_params(axis='y', labelsize=16)
                     
