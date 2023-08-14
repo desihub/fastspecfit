@@ -854,7 +854,7 @@ class EMFitTools(Filters):
         else:
             try:
                 fit_info = least_squares(_objective_function, parameters[Ifree], args=farg, max_nfev=5000, 
-                                         #xtol=1e-2,
+                                         xtol=1e-10,
                                          tr_solver='lsmr', tr_options={'regularize': True},
                                          method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
                 parameters[Ifree] = fit_info.x
@@ -953,6 +953,9 @@ class EMFitTools(Filters):
         out_linemodel = linemodel.copy()
         out_linemodel['value'] = parameters
         out_linemodel.meta['nfev'] = fit_info['nfev']
+
+        #if debug:
+        #    pdb.set_trace()
 
         # Get the final line-amplitudes, after resampling and convolution (see
         # https://github.com/desihub/fastspecfit/issues/139). Some repeated code
@@ -2644,9 +2647,6 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     #        if np.any(pos):
     #            linemodel['bounds'][I[pos], :] = np.vstack((linemodel['value'][I[pos]] * 0.8, linemodel['value'][I[pos]] * 1.2)).T
 
-    #linemodel[linemodel['linename'] == 'halpha']
-    #B = np.where(['ne' in param for param in EMFit.param_names])[0]
-    #B = np.where(['broad' in param for param in EMFit.param_names])[0]
     t0 = time.time()
     finalfit = EMFit.optimize(linemodel, emlinewave, emlineflux, weights, 
                               redshift, resolution_matrix, camerapix, 
@@ -2658,15 +2658,6 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
 
     # Residual spectrum with no emission lines.
     specflux_nolines = specflux - finalmodel
-
-    #import matplotlib.pyplot as plt
-    #W = (emlinewave>6560)*(emlinewave<6660)
-    #plt.clf()
-    #plt.plot(emlinewave[W], emlineflux[W], color='gray')
-    #plt.plot(emlinewave[W], finalmodel[W], color='orange', alpha=0.7)
-    ##plt.plot(emlinewave[W], specflux[W], color='gray')
-    ##plt.plot(emlinewave[W], specflux_nolines[W], color='orange', alpha=0.7)
-    #plt.savefig('desi-users/ioannis/tmp/junk2.png')
 
     # Now fill the output table.
     EMFit.populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
