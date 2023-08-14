@@ -36,9 +36,9 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
             metadata[col].unit = M[col].unit
 
 def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
-                 broadlinefit=True, fastphot=False, constrain_age=False,
-                 no_smooth_continuum=False, percamera_models=False,
-                 debug_plots=False):
+                 emlinesfile=None, broadlinefit=True, fastphot=False,
+                 constrain_age=False, no_smooth_continuum=False,
+                 percamera_models=False, debug_plots=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -57,7 +57,7 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                                     maxtemplatewave=40e4, fastphot=fastphot)
 
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fphoto=fphoto,
-                                                         constrain_age=constrain_age,
+                                                         emlinesfile=emlinesfile, constrain_age=constrain_age,
                                                          no_smooth_continuum=no_smooth_continuum,
                                                          fastphot=fastphot, debug_plots=debug_plots,
                                                          log=log)
@@ -67,8 +67,8 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
         emmodel = None
     else:
         emmodel = emline_specfit(data, templatecache, out, continuummodel, smooth_continuum,
-                                 fphoto=fphoto, broadlinefit=broadlinefit, percamera_models=percamera_models,
-                                 log=log)
+                                 fphoto=fphoto, emlinesfile=emlinesfile, broadlinefit=broadlinefit,
+                                 percamera_models=percamera_models, log=log)
         
     return out, meta, emmodel
 
@@ -103,6 +103,7 @@ def parse(options=None, log=None):
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
     parser.add_argument('--fphotoinfo', type=str, default=None, help='Photometric information file.')
+    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
@@ -148,6 +149,12 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     else:
         log = get_logger()
 
+    if args.emlinesfile is not None:
+        if not os.path.isfile(args.emlinesfile):
+            errmsg = f'Problem reading emission lines parameter file {args.emlinesfile}.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
     input_redshifts = None
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
@@ -192,14 +199,16 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         templates = args.templates
 
     out, meta = init_fastspec_output(Spec.meta, Spec.specprod, fphoto=Spec.fphoto, 
-                                     templates=templates, data=data, log=log, 
+                                     templates=templates, data=data, log=log,
+                                     emlinesfile=args.emlinesfile,
                                      fastphot=fastphot, stackfit=stackfit)
 
     # Fit in parallel
     t0 = time.time()
     fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], Spec.fphoto, templates, log,
-                args.broadlinefit, fastphot, args.constrain_age, args.no_smooth_continuum,
-                args.percamera_models, args.debug_plots) for iobj in np.arange(Spec.ntargets)]
+                args.emlinesfile, args.broadlinefit, fastphot, args.constrain_age,
+                args.no_smooth_continuum, args.percamera_models, args.debug_plots)
+                for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
         with multiprocessing.Pool(args.mp) as P:

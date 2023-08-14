@@ -17,7 +17,7 @@ from fastspecfit.util import C_LIGHT
 def _smooth_continuum(wave, flux, ivar, redshift, medbin=150, 
                       smooth_window=50, smooth_step=10, maskkms_uv=3000.0, 
                       maskkms_balmer=1000.0, maskkms_narrow=200.0,
-                      linetable=None, linemask=None, png=None,
+                      linetable=None, emlinesfile=None, linemask=None, png=None,
                       log=None, verbose=False):
     """Build a smooth, nonparametric continuum spectrum.
 
@@ -80,7 +80,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, medbin=150,
 
     if linetable is None:
         from fastspecfit.emlines import read_emlines        
-        linetable = read_emlines()
+        linetable = read_emlines(emlinesfile=emlinesfile)
         
     npix = len(wave)
 
@@ -1048,7 +1048,8 @@ class ContinuumTools(Filters, Inoue14):
         Need to document all the attributes.
 
     """
-    def __init__(self, nophoto=False, fphoto=None, continuum_pixkms=25.0, pixkms_wavesplit=1e4):
+    def __init__(self, nophoto=False, fphoto=None, emlinesfile=None,
+                 continuum_pixkms=25.0, pixkms_wavesplit=1e4):
 
         super(ContinuumTools, self).__init__(nophoto=nophoto, fphoto=fphoto)
 
@@ -1058,7 +1059,7 @@ class ContinuumTools(Filters, Inoue14):
         self.pixkms_wavesplit = pixkms_wavesplit
         self.continuum_pixkms = continuum_pixkms
 
-        self.linetable = read_emlines()
+        self.linetable = read_emlines(emlinesfile=emlinesfile)
 
     @staticmethod
     def smooth_continuum(*args, **kwargs):
@@ -1070,7 +1071,7 @@ class ContinuumTools(Filters, Inoue14):
 
     @staticmethod
     def build_linemask(wave, flux, ivar, redshift=0.0, nsig=7.0, linetable=None,
-                       log=None, verbose=False):
+                       emlinesfile=None, log=None, verbose=False):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -1115,7 +1116,7 @@ class ContinuumTools(Filters, Inoue14):
 
         if linetable is None:
             from fastspecfit.emlines import read_emlines        
-            linetable = read_emlines()
+            linetable = read_emlines(emlinesfile=emlinesfile)
 
         # Initially, mask aggressively, especially the Balmer lines.
         png = None
@@ -1123,8 +1124,8 @@ class ContinuumTools(Filters, Inoue14):
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
         smooth, smoothsigma = _smooth_continuum(wave, flux, ivar, redshift, maskkms_uv=5000.0,
                                                 maskkms_balmer=5000.0, maskkms_narrow=500.0,
-                                                linetable=linetable, log=log, verbose=verbose,
-                                                png=png)
+                                                linetable=linetable, emlinesfile=emlinesfile,
+                                                log=log, verbose=verbose, png=png)
 
         # Get a better estimate of the Balmer, forbidden, and UV/QSO line-widths.
         png = None
@@ -1805,9 +1806,9 @@ class ContinuumTools(Filters, Inoue14):
 
         return kcorr, absmag, ivarabsmag, bestmaggies, lums, cfluxes
 
-def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=False,
-                      no_smooth_continuum=False, fastphot=False, log=None, 
-                      debug_plots=False, verbose=False):
+def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None,
+                      constrain_age=False, no_smooth_continuum=False, fastphot=False,
+                      log=None, debug_plots=False, verbose=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -1837,7 +1838,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
             
     tall = time.time()
 
-    CTools = ContinuumTools(fphoto=fphoto,
+    CTools = ContinuumTools(fphoto=fphoto, emlinesfile=emlinesfile,
                             continuum_pixkms=templatecache['continuum_pixkms'],
                             pixkms_wavesplit=templatecache['pixkms_wavesplit'])
 
@@ -2133,7 +2134,8 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
                 residuals[I] = 0.0
             _smooth_continuum, _ = CTools.smooth_continuum(
                 specwave, residuals, specivar / apercorr**2,
-                redshift, linemask=linemask, png=png)
+                redshift, emlinesfile=emlinesfile, linemask=linemask,
+                png=png)
             if no_smooth_continuum:
                 log.info('Zeroing out the smooth continuum correction.')
                 _smooth_continuum *= 0

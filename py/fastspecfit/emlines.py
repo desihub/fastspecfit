@@ -15,13 +15,15 @@ from fastspecfit.io import FLUXNORM
 from fastspecfit.continuum import Filters
 from fastspecfit.util import C_LIGHT
 
-def read_emlines():
+def read_emlines(emlinesfile=None):
     """Read the set of emission lines of interest.
 
     """
-    from importlib import resources
-    linefile = resources.files('fastspecfit').joinpath('data/emlines.ecsv')
-    linetable = Table.read(linefile, format='ascii.ecsv', guess=False)
+    if emlinesfile is None:
+        from importlib import resources
+        emlinesfile = resources.files('fastspecfit').joinpath('data/emlines.ecsv')
+        
+    linetable = Table.read(emlinesfile, format='ascii.ecsv', guess=False)
     
     return linetable    
 
@@ -145,7 +147,7 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
     return residuals
 
 class EMFitTools(Filters):
-    def __init__(self, fphoto=None, uniqueid=None):
+    def __init__(self, fphoto=None, emlinesfile=None, uniqueid=None):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -180,7 +182,7 @@ class EMFitTools(Filters):
 
         self.uniqueid = uniqueid
 
-        self.linetable = read_emlines()
+        self.linetable = read_emlines(emlinesfile=emlinesfile)
 
         self.emwave_pixkms = 5.                                   # pixel size for internal wavelength array [km/s]
         self.dlog10wave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
@@ -2383,8 +2385,8 @@ class EMFitTools(Filters):
         plt.close()
 
 def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum,
-                   fphoto=None, synthphot=True, broadlinefit=True, percamera_models=False,
-                   log=None, verbose=False):
+                   fphoto=None, emlinesfile=None, synthphot=True, broadlinefit=True,
+                   percamera_models=False, log=None, verbose=False):
     """Perform the fit minimization / chi2 minimization.
 
     Parameters
@@ -2414,7 +2416,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
         else:
             log = get_logger()
 
-    EMFit = EMFitTools(fphoto=fphoto, uniqueid=data['uniqueid'])
+    EMFit = EMFitTools(emlinesfile=emlinesfile, fphoto=fphoto, uniqueid=data['uniqueid'])
 
     # Combine all three cameras; we will unpack them to build the
     # best-fitting model (per-camera) below.

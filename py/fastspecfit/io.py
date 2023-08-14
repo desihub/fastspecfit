@@ -1457,7 +1457,7 @@ class DESISpectra(TabulatedDESI):
 
 def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None, 
                          ncoeff=None, data=None, log=None, fastphot=False, 
-                         stackfit=False):
+                         emlinesfile=None, stackfit=False):
     """Initialize the fastspecfit output data and metadata table.
 
     Parameters
@@ -1490,7 +1490,7 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
         from desiutil.log import get_logger
         log = get_logger()
 
-    linetable = read_emlines()
+    linetable = read_emlines(emlinesfile=emlinesfile)
 
     if fphoto is None:
         Filt = Filters(load_filters=False)
