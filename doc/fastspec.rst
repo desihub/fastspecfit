@@ -263,6 +263,40 @@ Name                         Type         Units                         Descript
            CIV_1549_EW_LIMIT      float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
                CIV_1549_CHI2      float32                               Chi-squared of the line-fit.
                CIV_1549_NPIX        int32                               Number of pixels attributed to the emission line.
+          HEII_1640_MODELAMP      float32  1e-17 erg / (Angstrom cm2 s) Model emission line amplitude.
+               HEII_1640_AMP      float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
+          HEII_1640_AMP_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
+              HEII_1640_FLUX      float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
+         HEII_1640_FLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
+           HEII_1640_BOXFLUX      float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+      HEII_1640_BOXFLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of boxcar-integrated flux.
+            HEII_1640_VSHIFT      float32                        km / s Velocity shift relative to Z.
+             HEII_1640_SIGMA      float32                        km / s Gaussian emission-line width.
+              HEII_1640_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
+         HEII_1640_CONT_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
+                HEII_1640_EW      float32                      Angstrom Rest-frame emission-line equivalent width.
+           HEII_1640_EW_IVAR      float32                 1 / Angstrom2 Inverse variance of equivalent width.
+        HEII_1640_FLUX_LIMIT      float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
+          HEII_1640_EW_LIMIT      float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
+              HEII_1640_CHI2      float32                               Chi-squared of the line-fit.
+              HEII_1640_NPIX        int32                               Number of pixels attributed to the emission line.
+         AlIII_1857_MODELAMP      float32  1e-17 erg / (Angstrom cm2 s) Model emission line amplitude.
+              AlIII_1857_AMP      float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
+         AlIII_1857_AMP_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
+             AlIII_1857_FLUX      float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
+        AlIII_1857_FLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
+          AlIII_1857_BOXFLUX      float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+     AlIII_1857_BOXFLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of boxcar-integrated flux.
+           AlIII_1857_VSHIFT      float32                        km / s Velocity shift relative to Z.
+            AlIII_1857_SIGMA      float32                        km / s Gaussian emission-line width.
+             AlIII_1857_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
+        AlIII_1857_CONT_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
+               AlIII_1857_EW      float32                      Angstrom Rest-frame emission-line equivalent width.
+          AlIII_1857_EW_IVAR      float32                 1 / Angstrom2 Inverse variance of equivalent width.
+       AlIII_1857_FLUX_LIMIT      float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
+         AlIII_1857_EW_LIMIT      float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
+             AlIII_1857_CHI2      float32                               Chi-squared of the line-fit.
+             AlIII_1857_NPIX        int32                               Number of pixels attributed to the emission line.
         SILIII_1892_MODELAMP      float32  1e-17 erg / (Angstrom cm2 s) Model emission line amplitude.
              SILIII_1892_AMP      float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
         SILIII_1892_AMP_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
