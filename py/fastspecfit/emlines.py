@@ -214,15 +214,9 @@ class EMFitTools(Filters):
                 param_names.append(param_name)
         self.param_names = np.hstack(param_names)
         self.amp_param_bool = np.array(['_amp' in pp for pp in self.param_names])
-        self.amp_balmer_bool = np.array(['_amp' in pp and 'hei_' not in pp and 'heii_' not in pp for pp in self.param_names]) # just Balmer lines
+        self.amp_balmer_bool = np.array(['_amp' in pp and 'hei_' not in pp and 'heii_' not in pp for pp in self.param_names]) # no helium lines
         self.sigma_param_bool = np.array(['_sigma' in pp for pp in self.param_names])
         self.vshift_param_bool = np.array(['_vshift' in pp for pp in self.param_names])
-
-        #self.sigma_param_bool2 = np.zeros(len(self.param_names), bool)
-        #self.vshift_param_bool2 = np.zeros(len(self.param_names), bool)
-        #for pp in self.param_names[self.amp_param_bool]:
-        #    self.sigma_param_bool2[np.where(pp.replace('_amp', '_sigma') == self.param_names)[0]] = True
-        #    self.vshift_param_bool2[np.where(pp.replace('_amp', '_vshift') == self.param_names)[0]] = True
 
         self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
         self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
@@ -356,6 +350,7 @@ class EMFitTools(Filters):
         fit_linetable = Table()
         fit_linetable['name'] = self.linetable['name']
         fit_linetable['isbalmer'] = self.linetable['isbalmer']
+        fit_linetable['ishelium'] = self.linetable['ishelium']
         fit_linetable['isbroad'] = self.linetable['isbroad']
         fit_linetable['restwave'] = self.linetable['restwave']
         fit_linetable['zwave'] = self.linetable['restwave'].data * (1 + redshift)
@@ -375,6 +370,7 @@ class EMFitTools(Filters):
         final_linemodel['index'] = np.arange(nparam).astype(np.int32)
         final_linemodel['linename'] = np.tile(linenames, 3) # 3 parameters per line
         final_linemodel['isbalmer'] = np.zeros(nparam, bool)
+        final_linemodel['ishelium'] = np.zeros(nparam, bool)
         final_linemodel['isbroad'] = np.zeros(nparam, bool)
         final_linemodel['tiedfactor'] = np.zeros(nparam, 'f8')
         final_linemodel['tiedtoparam'] = np.zeros(nparam, np.int16)-1
@@ -399,6 +395,7 @@ class EMFitTools(Filters):
     
         for iline, linename in enumerate(linenames):
             final_linemodel['isbalmer'][final_linemodel['linename'] == linename] = fit_linetable[fit_linetable['name'] == linename]['isbalmer']
+            final_linemodel['ishelium'][final_linemodel['linename'] == linename] = fit_linetable[fit_linetable['name'] == linename]['ishelium']
             final_linemodel['isbroad'][final_linemodel['linename'] == linename] = fit_linetable[fit_linetable['name'] == linename]['isbroad']
             
             # initial values and bounds - broad He+Balmer lines
@@ -2477,7 +2474,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
         for icam in np.arange(len(data['cameras'])):
             pixoffset = int(np.sum(data['npixpercamera'][:icam]))
             if len(data['linename'][icam]) > 0:
-                I = (initial_linemodel['isbalmer'] * initial_linemodel['isbroad'] *
+                I = (initial_linemodel['isbalmer'] * (initial_linemodel['ishelium'] == False) * initial_linemodel['isbroad'] * 
                      np.isin(initial_linemodel['linename'], data['linename'][icam]))
                 _balmer_linemodel = initial_linemodel[I]
                 _balmer_linemodel_nobroad = initial_linemodel_nobroad[I]
@@ -2532,6 +2529,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
             sigtest2 = (broadfit[Habroad]['value'] > broadfit[Hanarrow]['value'])[0]
             if len(broadsnr) == 0:
                 broadsnrtest = False
+                _broadsnr = 0.
             elif len(broadsnr) == 1:
                 broadsnrtest =  broadsnr[-1] > EMFit.minsnr_balmer_broad
                 _broadsnr = 'S/N ({}) = {:.1f}'.format(broadfit[Bbroad]['linename'][-1], broadsnr[-1])
@@ -2544,7 +2542,8 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
                 log.info('Adopting broad-line model:')
                 log.info('  delta-chi2={:.1f} > delta-ndof={:.0f}'.format(delta_linechi2_balmer, delta_linendof_balmer))
                 log.info('  sigma_broad={:.1f} km/s, sigma_narrow={:.1f} km/s'.format(broadfit[Habroad]['value'][0], broadfit[Hanarrow]['value'][0]))
-                log.info('  {} > {:.0f}'.format(_broadsnr, EMFit.minsnr_balmer_broad))
+                if _broadsnr:
+                    log.info('  {} > {:.0f}'.format(_broadsnr, EMFit.minsnr_balmer_broad))
                 bestfit = broadfit
                 use_linemodel_broad = True
             else:
