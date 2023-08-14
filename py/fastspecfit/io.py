@@ -1851,7 +1851,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
-                     envvar_names=['DESI_ROOT', 'FTEMPLATES_DIR', 'DUST_DIR', 'LEGACYSURVEY_DIR'])
+                     envvar_names=['DESI_ROOT', 'FTEMPLATES_DIR', 'DUST_DIR', 'FPHOTO_DIR'])
 
     hdus = fits.HDUList()
     hdus.append(fits.PrimaryHDU(None, primhdr))
