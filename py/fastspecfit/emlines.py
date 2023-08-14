@@ -225,7 +225,8 @@ class EMFitTools(Filters):
         self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
         self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
 
-        self.minsigma_balmer_broad = 250.0 # minimum broad-line sigma [km/s]
+        self.minsigma_balmer_broad = 250. # minimum broad-line sigma [km/s]
+        self.minsnr_balmer_broad = 3.     # minimum broad-line S/N
 
     def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False, strict_finalmodel=True):
         """Build all the multi-parameter emission-line models we will use.
@@ -2519,12 +2520,26 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
             dchi2test = delta_linechi2_balmer > delta_linendof_balmer
             Hanarrow = broadfit['param_name'] == 'halpha_sigma' # Balmer lines are tied to H-alpha even if out of range
             Habroad = broadfit['param_name'] == 'halpha_broad_sigma'
+            Bbroad = broadfit['isbalmer'] * broadfit['isbroad'] * (broadfit['fixed'] == False) * EMFit.amp_balmer_bool
+            broadsnr = broadfit[Bbroad]['value'].data * np.sqrt(broadfit[Bbroad]['civar'].data)
+
             sigtest1 = broadfit[Habroad]['value'][0] > EMFit.minsigma_balmer_broad
             sigtest2 = (broadfit[Habroad]['value'] > broadfit[Hanarrow]['value'])[0]
+            if len(broadsnr) == 0:
+                broadsnrtest = False
+            elif len(broadsnr) == 1:
+                broadsnrtest =  broadsnr[-1] > EMFit.minsnr_balmer_broad
+                _broadsnr = 'S/N ({}) = {:.1f}'.format(broadfit[Bbroad]['linename'][-1], broadsnr[-1])
+            else:
+                broadsnrtest =  np.any(broadsnr[-2:] > EMFit.minsnr_balmer_broad)
+                _broadsnr = 'S/N ({}) = {:.1f}, S/N ({}) = {:.1f}'.format(
+                    broadfit[Bbroad]['linename'][-2], broadsnr[-2], broadfit[Bbroad]['linename'][-1], broadsnr[-1])
 
-            if dchi2test and sigtest1 and sigtest2:
-                log.info('Adopting broad-line model: delta-chi2={:.1f} > delta-ndof={:.0f} (sigma_broad={:.1f} km/s, sigma_narrow={:.1f} km/s)'.format(
-                    delta_linechi2_balmer, delta_linendof_balmer, broadfit[Habroad]['value'][0], broadfit[Hanarrow]['value'][0]))
+            if dchi2test and sigtest1 and sigtest2 and broadsnrtest:
+                log.info('Adopting broad-line model:')
+                log.info('  delta-chi2={:.1f} > delta-ndof={:.0f}'.format(delta_linechi2_balmer, delta_linendof_balmer))
+                log.info('  sigma_broad={:.1f} km/s, sigma_narrow={:.1f} km/s'.format(broadfit[Habroad]['value'][0], broadfit[Hanarrow]['value'][0]))
+                log.info('  {} > {:.0f}'.format(_broadsnr, EMFit.minsnr_balmer_broad))
                 bestfit = broadfit
                 use_linemodel_broad = True
             else:
@@ -2537,6 +2552,8 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
                 elif sigtest2 == False:
                     log.info('Dropping broad-line model: Halpha_broad_sigma {:.1f} km/s < Halpha_narrow_sigma {:.1f} km/s (delta-chi2={:.1f}, delta-ndof={:.0f}).'.format(
                         broadfit[Habroad]['value'][0], broadfit[Hanarrow]['value'][0], delta_linechi2_balmer, delta_linendof_balmer))
+                elif broadsnrtest == False:
+                    log.info('Dropping broad-line model: {} < {:.0f}'.format(_broadsnr, EMFit.minsnr_balmer_broad))
                 bestfit = initfit
                 use_linemodel_broad = False
         else:
