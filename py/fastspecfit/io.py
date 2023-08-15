@@ -686,7 +686,7 @@ class DESISpectra(TabulatedDESI):
             
             # Can we use the quasarnet afterburner file to improve QSO redshifts?
             qnfile = redrockfile.replace(redrockfile_prefix, qnfile_prefix)
-            if os.path.isfile(qnfile) and use_quasarnet and input_redshifts is not None:
+            if os.path.isfile(qnfile) and use_quasarnet and input_redshifts is None:
                 use_qn = True
             else:
                 use_qn = False
@@ -785,9 +785,18 @@ class DESISpectra(TabulatedDESI):
                     raise ValueError(errmsg)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
                 # need to also update mpi.get_ntargets_one
-                fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
-                                   (meta['OBJTYPE'] == 'TGT') * (zb['ZWARN'] <= zwarnmax) *
-                                   (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
+                if use_qn:
+                    # If using QuasarNet, it can happen that zb['Z']<zmin and
+                    # therefore the object falls out of the sample before we
+                    # have a chance to even read it. So apply the minimum
+                    # redshift cut below after we correct the redshift.
+                    fitindx = np.where((zb['Z'] < zmax) *
+                                       (meta['OBJTYPE'] == 'TGT') * (zb['ZWARN'] <= zwarnmax) *
+                                       (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
+                else:
+                    fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
+                                       (meta['OBJTYPE'] == 'TGT') * (zb['ZWARN'] <= zwarnmax) *
+                                       (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -831,9 +840,6 @@ class DESISpectra(TabulatedDESI):
                     assert(np.all(zb['TARGETID'] == targetids))
                     zb['Z'] = input_redshifts
                 
-            tsnr2 = Table(fitsio.read(redrockfile, 'TSNR2', rows=fitindx, columns=TSNR2COLS))
-            assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-
             # Update the redrock redshift when quasarnet disagrees **but only
             # for QSO targets**. From Edmond: the QN afterburner is run with a
             # threshold 0.5. With VI, we choose 0.95 as final threshold. Note,
@@ -865,6 +871,17 @@ class DESISpectra(TabulatedDESI):
                     if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
                         zb['Z'][IQSO[qn['IS_QSO_QN_NEW_RR']]] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
                     del qn
+                # now apply zmin
+                keep = np.where(zb['Z'] > zmin)[0]
+                if len(keep) == 0:
+                    log.info('No requested targets found in redrockfile {}'.format(redrockfile))
+                    continue
+                zb = zb[keep]
+                meta = meta[keep]
+                fitindx = fitindx[keep]
+
+            tsnr2 = Table(fitsio.read(redrockfile, 'TSNR2', rows=fitindx, columns=TSNR2COLS))
+            assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
             # astropy 5.0 "feature" -- join no longer preserves order, ugh.
             zb.remove_column('TARGETID')
