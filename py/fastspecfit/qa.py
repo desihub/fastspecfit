@@ -56,7 +56,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
     from matplotlib import colors
-    from matplotlib.patches import Circle, Rectangle, ConnectionPatch
+    from matplotlib.patches import Circle, ConnectionPatch
     from matplotlib.lines import Line2D
     import matplotlib.gridspec as gridspec
     import matplotlib.image as mpimg

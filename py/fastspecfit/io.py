@@ -1455,7 +1455,7 @@ class DESISpectra(TabulatedDESI):
                     metas.append(meta)
         else:
             phot = Table(fitsio.read(self.fphotodir, columns=PHOTCOLS))
-            print('Read {} objects from {}'.format(len(phot), self.fphotodir))
+            print('Read {:,d} objects from {}'.format(len(phot), self.fphotodir))
 
             metas = []
             for meta in self.meta:
