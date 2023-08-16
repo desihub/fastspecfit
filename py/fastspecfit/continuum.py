@@ -14,8 +14,8 @@ from astropy.table import Table
 from fastspecfit.io import FLUXNORM
 from fastspecfit.util import C_LIGHT
 
-def _smooth_continuum(wave, flux, ivar, redshift, medbin=150, 
-                      smooth_window=50, smooth_step=10, maskkms_uv=3000.0, 
+def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175, 
+                      smooth_window=75, smooth_step=25, maskkms_uv=3000.0, 
                       maskkms_balmer=1000.0, maskkms_narrow=200.0,
                       linetable=None, emlinesfile=None, linemask=None, png=None,
                       log=None, verbose=False):
@@ -70,7 +70,8 @@ def _smooth_continuum(wave, flux, ivar, redshift, medbin=150,
     from scipy.ndimage import median_filter
     from scipy.stats import sigmaclip
     #from astropy.stats import sigma_clip
-
+    from scipy.interpolate import make_interp_spline
+        
     if log is None:
         from desiutil.log import get_logger, DEBUG
         if verbose:
@@ -125,12 +126,18 @@ def _smooth_continuum(wave, flux, ivar, redshift, medbin=150,
         log.critical(errmsg)
         raise ValueError(errmsg)
 
+    # If camerapix is given, mask the 10 (presumably noisy) pixels from the edge
+    # of each per-camera spectrum.
+    if camerapix is not None:
+        for campix in camerapix:
+            ivar[campix[0]:campix[0]+10] = 0.
+            ivar[campix[1]-10:campix[1]] = 0.
+
     # Build the smooth (line-free) continuum by computing statistics in a
     # sliding window, accounting for masked pixels and trying to be smart
     # about broad lines. See:
     #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
     #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
-    
     wave_win = sliding_window_view(wave, window_shape=smooth_window)
     flux_win = sliding_window_view(flux, window_shape=smooth_window)
     ivar_win = sliding_window_view(ivar, window_shape=smooth_window)
@@ -210,14 +217,24 @@ def _smooth_continuum(wave, flux, ivar, redshift, medbin=150,
     # corner case for very wacky spectra
     if len(smooth_flux) == 0:
         smooth_flux = flux
-        smooth_sigma = flux * 0 + np.std(flux)
+        #smooth_sigma = flux * 0 + np.std(flux)
     else:
-        smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
-        smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
+        #smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
+        #smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
+        srt = np.argsort(smooth_wave)
+        bspl_flux = make_interp_spline(smooth_wave[srt], smooth_flux[srt], k=1)
+        smooth_flux = bspl_flux(wave)
 
     smooth = median_filter(smooth_flux, medbin, mode='nearest')
-    smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
+    #smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
+    #smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
 
+    I = ivar > 0
+    if np.sum(I) > 0:
+        smoothsigma = np.zeros_like(wave) + np.median(1. / np.sqrt(ivar[I]))
+        smoothsigma[I] = 1. / np.sqrt(ivar[I])
+        
+    # very important!
     Z = (flux == 0.0) * (ivar == 0.0)
     if np.sum(Z) > 0:
         smooth[Z] = 0.0
@@ -235,13 +252,13 @@ def _smooth_continuum(wave, flux, ivar, redshift, medbin=150,
         ax[1].plot(wave, flux - smooth)
         ax[1].axhline(y=0, color='k')
 
+        #for xx in ax:
+        #    #xx.set_xlim(3800, 4300)
+        #    #xx.set_xlim(5200, 6050)
+        #    #xx.set_xlim(7000, 9000)
+        #    xx.set_xlim(7000, 7800)
         for xx in ax:
-            #xx.set_xlim(3800, 4300)
-            #xx.set_xlim(5200, 6050)
-            #xx.set_xlim(7000, 9000)
-            xx.set_xlim(7000, 7800)
-        for xx in ax:
-            xx.set_ylim(-2.5, 2)
+            xx.set_ylim(-0.2, 1.5)
         zlinewaves = linetable['restwave'] * (1 + redshift)
         linenames = linetable['name']
         inrange = np.where((zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave)))[0]
@@ -1132,7 +1149,7 @@ class ContinuumTools(Filters, Inoue14):
         #png = 'linesigma.png'
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
         linesigma_narrow, linesigma_balmer, linesigma_uv, linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr = \
-          _estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png)
+          _estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png, log=log)
 
         # Next, build the emission-line mask.
         linemask = np.zeros_like(wave, bool)      # True = affected by possible emission line.
@@ -1147,7 +1164,7 @@ class ContinuumTools(Filters, Inoue14):
         png = None
         #png = 'linemask.png'
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linemask.png'
-        snr_strong = 3.0
+        snr_strong = 1.5#3.0
     
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
         nline = np.sum(inrange)
@@ -2134,12 +2151,11 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                 residuals[I] = 0.0
             _smooth_continuum, _ = CTools.smooth_continuum(
                 specwave, residuals, specivar / apercorr**2,
-                redshift, emlinesfile=emlinesfile, linemask=linemask,
-                png=png)
+                redshift, camerapix=data['camerapix'], emlinesfile=emlinesfile,
+                linemask=linemask, png=png)
             if no_smooth_continuum:
                 log.info('Zeroing out the smooth continuum correction.')
                 _smooth_continuum *= 0
-
         # Unpack the continuum into individual cameras.
         continuummodel, smooth_continuum = [], []
         for camerapix in data['camerapix']:

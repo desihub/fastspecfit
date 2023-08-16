@@ -394,14 +394,13 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 resid[I] = 0.0
             desiresiduals.append(resid)
         
-        if np.all(fastspec['COEFF'] == 0):
+        if np.all(fastspec['COEFF'] == 0) or no_smooth_continuum:
             fullsmoothcontinuum = np.zeros_like(fullwave)
         else:
             fullsmoothcontinuum, _ = CTools.smooth_continuum(
-                    fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
-                    redshift=redshift, linemask=np.hstack(data['linemask']))
-            if no_smooth_continuum:
-                fullsmoothcontinuum *= 0
+                fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
+                redshift=redshift, linemask=np.hstack(data['linemask']),
+                camerapix=data['camerapix'])
     
         desismoothcontinuum = []
         for campix in data['camerapix']:
