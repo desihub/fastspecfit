@@ -35,6 +35,8 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import C_LIGHT
 from fastspecfit.continuum import PIXKMS_BLU, PIXKMS_RED, PIXKMS_WAVESPLIT
 
+irfactor = int(PIXKMS_RED / PIXKMS_BLU)
+
 def smooth_continuum(wave, flux, medbin=1000, smooth_window=200, 
                      smooth_step=50, png=None):
     """Build a smooth, nonparametric continuum spectrum.
@@ -191,7 +193,7 @@ def build_templates(models, logages, agebins, imf='chabrier',
             dlogwave = PIXKMS_BLU / C_LIGHT / np.log(10) # pixel size [log-lambda]
             newwave = 10**np.arange(np.log10(np.min(wave)), np.log10(np.max(wave)), dlogwave)
     
-            isplit = np.argmin(np.abs(newwave-wavesplit)) + 1
+            isplit = np.argmin(np.abs(newwave-PIXKMS_WAVESPLIT)) + 1
             newwave = np.hstack((newwave[:isplit], newwave[isplit:][::irfactor]))
             npix = len(newwave)
     
@@ -219,9 +221,6 @@ def build_templates(models, logages, agebins, imf='chabrier',
 def main(args):
 
     version = '1.1.0'
-
-    # pixel resampling choices
-    irfactor = int(PIXKMS_RED / PIXKMS_BLU)
 
     # velocity dispersion grid
     vdispmin = 50.
@@ -336,7 +335,7 @@ def main(args):
 
     # Select just the line-free models trimmed to the 1200-10000 A wavelength
     # range.
-    I = np.where((wave > 1200) * (wave < wavesplit))[0]
+    I = np.where((wave > 1200) * (wave < PIXKMS_WAVESPLIT))[0]
     #J = np.where(meta['fagn'] == 0)[0]
     vdispwave = wave[I]
     #nvdispmodel = len(J)
@@ -395,7 +394,7 @@ def main(args):
     hduflux3.header['VDISPRES'] = (dvdisp, 'velocity dispersion spacing [km/s]')
     hduflux3.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
-    isplit = np.argmin(np.abs(wave-wavesplit)) + 1
+    isplit = np.argmin(np.abs(wave-PIXKMS_WAVESPLIT)) + 1
 
     hduwave1 = fits.ImageHDU(wave)
     hduwave1.header['EXTNAME'] = 'WAVE'
