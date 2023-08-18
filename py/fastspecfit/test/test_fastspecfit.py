@@ -31,8 +31,8 @@ class TestFastspec(unittest.TestCase):
         cls.redrockfile = resource_filename('fastspecfit.test', 'data/redrock-4-80613-thru20210324.fits')
 
         cls.outdir = tempfile.mkdtemp()
-        cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-1.0.0.fits')
-        cmd = 'wget -O {} https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.0.0/ftemplates-chabrier-1.0.0.fits'.format(cls.templates)
+        cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-1.1.0.fits')
+        cmd = 'wget -O {} https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.1.0/ftemplates-chabrier-1.1.0.fits'.format(cls.templates)
 
         err = subprocess.call(cmd.split())
         cls.cwd = os.getcwd()
