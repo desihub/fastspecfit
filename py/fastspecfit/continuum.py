@@ -14,6 +14,11 @@ from astropy.table import Table
 from fastspecfit.io import FLUXNORM
 from fastspecfit.util import C_LIGHT
 
+# SPS template constants (used by build-fsps-templates)
+PIXKMS_BLU = 25.  # [km/s]
+PIXKMS_RED = 100. # [km/s]
+PIXKMS_WAVESPLIT = 1e4 # [Angstrom]
+
 def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175, 
                       smooth_window=75, smooth_step=25, maskkms_uv=3000.0, 
                       maskkms_balmer=1000.0, maskkms_narrow=200.0,
@@ -1065,16 +1070,13 @@ class ContinuumTools(Filters, Inoue14):
         Need to document all the attributes.
 
     """
-    def __init__(self, nophoto=False, fphoto=None, emlinesfile=None,
-                 continuum_pixkms=25.0, pixkms_wavesplit=1e4):
+    def __init__(self, nophoto=False, fphoto=None, emlinesfile=None):
 
         super(ContinuumTools, self).__init__(nophoto=nophoto, fphoto=fphoto)
 
         from fastspecfit.emlines import read_emlines
         
         self.massnorm = 1e10 # stellar mass normalization factor [Msun]
-        self.pixkms_wavesplit = pixkms_wavesplit
-        self.continuum_pixkms = continuum_pixkms
 
         self.linetable = read_emlines(emlinesfile=emlinesfile)
 
@@ -1419,8 +1421,8 @@ class ContinuumTools(Filters, Inoue14):
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
             #templateflux = convolve_vdisp(templateflux, vdisp)
-            I = np.where(templatewave < self.pixkms_wavesplit)[0]
-            templateflux[I, :] = self.convolve_vdisp(templateflux[I, :], vdisp, self.continuum_pixkms)
+            I = np.where(templatewave < PIXKMS_WAVESPLIT)[0]
+            templateflux[I, :] = self.convolve_vdisp(templateflux[I, :], vdisp, PIXKMS_BLU)
 
         # Apply the redshift factor. The models are normalized to 10 pc, so
         # apply the luminosity distance factor here. Also normalize to a nominal
@@ -1855,9 +1857,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             
     tall = time.time()
 
-    CTools = ContinuumTools(fphoto=fphoto, emlinesfile=emlinesfile,
-                            continuum_pixkms=templatecache['continuum_pixkms'],
-                            pixkms_wavesplit=templatecache['pixkms_wavesplit'])
+    CTools = ContinuumTools(fphoto=fphoto, emlinesfile=emlinesfile)
 
     redshift = result['Z']
     objflam = data['phot']['flam'].data * FLUXNORM

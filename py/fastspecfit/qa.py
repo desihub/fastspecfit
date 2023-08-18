@@ -98,9 +98,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         else:
             return f'{x:.0f}'
 
-    CTools = ContinuumTools(fphoto=fphoto,
-                            continuum_pixkms=templatecache['continuum_pixkms'],
-                            pixkms_wavesplit=templatecache['pixkms_wavesplit'])
+    CTools = ContinuumTools(fphoto=fphoto)
     if 'legacysurveydr' in fphoto.keys():
         layer = 'ls-{}'.format(fphoto['legacysurveydr'])
     else:

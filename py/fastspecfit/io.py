@@ -2001,7 +2001,7 @@ def cache_templates(templates=None, templateversion='1.1.0', imf='chabrier',
 
     """
     import fitsio
-    from fastspecfit.continuum import _convolve_vdisp
+    from fastspecfit.continuum import _convolve_vdisp, PIXKMS_WAVESPLIT, PIXKMS_BLU
     
     if log is None:
         from desiutil.log import get_logger
@@ -2021,9 +2021,6 @@ def cache_templates(templates=None, templateversion='1.1.0', imf='chabrier',
     templatelineflux = fitsio.read(templates, ext='LINEFLUX')  # [npix,nsed]
     templateinfo, templatehdr = fitsio.read(templates, ext='METADATA', header=True)
     
-    continuum_pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
-    pixkms_wavesplit = wavehdr['PIXSZSPT'] # wavelength where the pixel size changes [A]
-
     # Trim the wavelengths and select the number/ages of the templates.
     # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
     if mintemplatewave is None:
@@ -2037,20 +2034,18 @@ def cache_templates(templates=None, templateversion='1.1.0', imf='chabrier',
     
     # Cache a copy of the line-free templates at the nominal velocity
     # dispersion (needed for fastphot as well).
-    I = np.where(templatewave < pixkms_wavesplit)[0]
+    I = np.where(templatewave < PIXKMS_WAVESPLIT)[0]
     templateflux_nolines_nomvdisp = templateflux_nolines.copy()
     templateflux_nolines_nomvdisp[I, :] = _convolve_vdisp(templateflux_nolines_nomvdisp[I, :], vdisp_nominal,
-                                                          pixsize_kms=continuum_pixkms)
+                                                          pixsize_kms=PIXKMS_BLU)
 
     templateflux_nomvdisp = templateflux.copy()
     templateflux_nomvdisp[I, :] = _convolve_vdisp(templateflux_nomvdisp[I, :], vdisp_nominal,
-                                                  pixsize_kms=continuum_pixkms)
+                                                  pixsize_kms=PIXKMS_BLU)
 
     # pack into a dictionary
     templatecache = {'imf': templatehdr['IMF'],
                      #'nsed': len(templateinfo), 'npix': len(wavekeep),
-                     'continuum_pixkms': continuum_pixkms,                     
-                     'pixkms_wavesplit': pixkms_wavesplit,
                      'vdisp_nominal': vdisp_nominal,
                      'templateinfo': Table(templateinfo),
                      'templatewave': templatewave,

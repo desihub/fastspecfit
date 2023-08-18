@@ -33,6 +33,7 @@ import matplotlib.pyplot as plt
 
 from desispec.interpolation import resample_flux
 from fastspecfit.util import C_LIGHT
+from fastspecfit.continuum import PIXKMS_BLU, PIXKMS_RED, PIXKMS_WAVESPLIT
 
 def smooth_continuum(wave, flux, medbin=1000, smooth_window=200, 
                      smooth_step=50, png=None):
@@ -103,8 +104,8 @@ def smooth_continuum(wave, flux, medbin=1000, smooth_window=200,
 
     return smooth
 
-def build_templates(models, logages, agebins, imf='chabrier', pixkms=25.0, 
-                    wavesplit=1e4, irfactor=4, include_nebular=True):
+def build_templates(models, logages, agebins, imf='chabrier',
+                    include_nebular=True):
 
     nsed = len(models)
 
@@ -187,7 +188,7 @@ def build_templates(models, logages, agebins, imf='chabrier', pixkms=25.0,
         # Resample to constant log-lambda / velocity. In the IR (starting at ~1
         # micron), take every fourth sampling, to save space.
         if imodel == 0:
-            dlogwave = pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
+            dlogwave = PIXKMS_BLU / C_LIGHT / np.log(10) # pixel size [log-lambda]
             newwave = 10**np.arange(np.log10(np.min(wave)), np.log10(np.max(wave)), dlogwave)
     
             isplit = np.argmin(np.abs(newwave-wavesplit)) + 1
@@ -220,9 +221,7 @@ def main(args):
     version = '1.1.0'
 
     # pixel resampling choices
-    pixkms = 25.   # pixel size [km/s]
-    irfactor = 4    
-    wavesplit = 1e4 # [A]
+    irfactor = int(PIXKMS_RED / PIXKMS_BLU)
 
     # velocity dispersion grid
     vdispmin = 50.
@@ -321,12 +320,8 @@ def main(args):
     models = models.flatten()
 
     # Build models with and without line-emission.
-    meta, wave, flux = build_templates(models, logages, agebins, pixkms=pixkms, 
-                                       wavesplit=wavesplit, include_nebular=True,
-                                       imf=args.imf)
-    _, _, fluxnolines = build_templates(models, logages, agebins, pixkms=pixkms, 
-                                        wavesplit=wavesplit, include_nebular=False,
-                                        imf=args.imf)
+    meta, wave, flux = build_templates(models, logages, agebins, include_nebular=True, imf=args.imf)
+    _, _, fluxnolines = build_templates(models, logages, agebins, include_nebular=False, imf=args.imf)
     lineflux = flux - fluxnolines
 
     #I = (wave > 3500) * (wave < 9000)
@@ -354,18 +349,18 @@ def main(args):
     #    normflux[:, imodel] = fluxnolines[I, J[imodel]] / smooth
 
     vdispflux = []
-    for sigma in vdisp / pixkms:
+    for sigma in vdisp / PIXKMS_BLU:
         vdispflux.append(gaussian_filter1d(fluxnolines[I, :], sigma=sigma, axis=0))
     vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
 
     #vdispflux = []
-    #for sigma in vdisp / pixkms:
+    #for sigma in vdisp / PIXKMS_BLU:
     #    vdispflux.append(gaussian_filter1d(fluxnolines[I, :][:, J], sigma=sigma, axis=0))
     #    #vdispflux.append(gaussian_filter1d(normflux, sigma=sigma, axis=0))
     #vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
 
     #vdispflux = []
-    #for sigma in vdisp / pixkms:
+    #for sigma in vdisp / PIXKMS_BLU:
     #    vdispflux.append(gaussian_filter1d(fluxnolines, sigma=sigma, axis=0))
     #vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
 
@@ -406,15 +401,15 @@ def main(args):
     hduwave1.header['EXTNAME'] = 'WAVE'
     hduwave1.header['BUNIT'] = 'Angstrom'
     hduwave1.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
-    hduwave1.header['PIXSZBLU'] = (pixkms, 'pixel size blueward of PIXSZSPT [km/s]')
-    hduwave1.header['PIXSZRED'] = (irfactor*pixkms, 'pixel size redward of PIXSZSPT [km/s]')
+    hduwave1.header['PIXSZBLU'] = (PIXKMS_BLU, 'pixel size blueward of PIXSZSPT [km/s]')
+    hduwave1.header['PIXSZRED'] = (PIXKMS_RED, 'pixel size redward of PIXSZSPT [km/s]')
     hduwave1.header['PIXSZSPT'] = (wave[isplit], 'wavelength where pixel size changes [Angstrom]')
 
     hduwave2 = fits.ImageHDU(vdispwave)
     hduwave2.header['EXTNAME'] = 'VDISPWAVE'
     hduwave2.header['BUNIT'] = 'Angstrom'
     hduwave2.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
-    hduwave2.header['PIXSZ'] = (pixkms, 'pixel size [km/s]')
+    hduwave2.header['PIXSZ'] = (PIXKMS_BLU, 'pixel size [km/s]')
 
     hdutable = fits.convenience.table_to_hdu(meta)
     hdutable.header['EXTNAME'] = 'METADATA'
