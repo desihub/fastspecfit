@@ -217,17 +217,17 @@ def build_templates(models, logages, agebins, imf='chabrier', pixkms=25.0,
 
 def main(args):
 
-    version = '1.0.0'
+    version = '1.1.0'
 
     # pixel resampling choices
-    pixkms = 25.0   # pixel size [km/s]
+    pixkms = 25.   # pixel size [km/s]
     irfactor = 4    
     wavesplit = 1e4 # [A]
 
     # velocity dispersion grid
-    vdispmin = 100.0
-    vdispmax = 350.0
-    dvdisp = 25.0
+    vdispmin = 50.
+    vdispmax = 350.
+    dvdisp = 25.
     nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp)) + 1
     vdisp = np.linspace(vdispmin, vdispmax, nvdisp)
 
@@ -239,14 +239,10 @@ def main(args):
     #logages = np.linspace(minlogage, maxlogage, nages)
 
     # Choose lookback time bins. 
-    nages = 7
-    tuniv = 13.7 # [Gyr]
-    tbinmax = (tuniv * 0.85) * 1e9
-    lim1, lim2 = 7.4772, 8.0
-    agelims = np.hstack(((0, lim1), np.linspace(lim2, np.log10(tbinmax), nages-2), np.log10(tuniv*1e9)))
-    agelims = 10**agelims / 1e9
-    agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
+    agelims = np.array([0., 0.01, 0.03, 0.1, 0.33, 1.1, 3.6, 12., 14.]) # [Gyr]
+    nages = len(agelims) - 1
 
+    agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
     logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [yr] in each bin
 
     #logmets = np.array([-1.0, -0.3, 0.0, 0.3])
@@ -381,7 +377,9 @@ def main(args):
     #pdb.set_trace()
 
     # Write out.
-    outdir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit')
+    outdir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit', version)
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
     outfile = os.path.join(outdir, 'ftemplates-{}-{}.fits'.format(args.imf, version))
 
     hduflux1 = fits.PrimaryHDU(flux)

@@ -2008,7 +2008,7 @@ def cache_templates(templates=None, templateversion='1.0.0', imf='chabrier',
         log = get_logger()
 
     if templates is None:
-        templates = get_templates_filename(templateversion='1.0.0', imf='chabrier')
+        templates = get_templates_filename(templateversion=templateversion, imf='chabrier')
         
     if not os.path.isfile(templates):
         errmsg = 'Templates file not found {}'.format(templates)
