@@ -1931,7 +1931,7 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
     else:
         return fastfit[keep], metadata[keep]
 
-def get_templates_filename(templateversion='1.0.0', imf='chabrier'):
+def get_templates_filename(templateversion='1.1.0', imf='chabrier'):
     """Get the templates filename. """
     from fastspecfit.io import FTEMPLATES_DIR_NERSC
     templates_dir = os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC)
@@ -1994,7 +1994,7 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
     
     return pngfile
 
-def cache_templates(templates=None, templateversion='1.0.0', imf='chabrier',
+def cache_templates(templates=None, templateversion='1.1.0', imf='chabrier',
                     mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.0,
                     fastphot=False, log=None):
     """"Read the templates into a dictionary.
@@ -2008,7 +2008,7 @@ def cache_templates(templates=None, templateversion='1.0.0', imf='chabrier',
         log = get_logger()
 
     if templates is None:
-        templates = get_templates_filename(templateversion=templateversion, imf='chabrier')
+        templates = get_templates_filename(templateversion=templateversion, imf=imf)
         
     if not os.path.isfile(templates):
         errmsg = 'Templates file not found {}'.format(templates)

@@ -171,10 +171,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         'zzsun': r'$Z/Z_{\odot}=$'+r'${:.3f}$'.format(fastspec['ZZSUN']),
     }
 
-    # try to figure out which absmags to display
-    gindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value - 4900))
-    rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value - 6500))
-    zindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value - 9200))
+    # try to figure out which absmags to display - default should be SDSS ^{0.1}grz
+    gindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 4300))
+    rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 5600))
+    zindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 8100))
     absmag_gband = CTools.absmag_bands[gindx]
     absmag_rband = CTools.absmag_bands[rindx]
     absmag_zband = CTools.absmag_bands[zindx]
@@ -1204,7 +1204,7 @@ def parse(options=None):
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
 
     parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default='1.0.0', help='Template version number.')
+    parser.add_argument('--templateversion', type=str, default='1.1.0', help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
 
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
