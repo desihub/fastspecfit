@@ -291,24 +291,20 @@ def _unpack_one_stacked_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_stacked_spectrum(*args)
 
-def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot, log):
+def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot, log):
     """Unpack the data for a single stacked spectrum. Also flag pixels which may be
     affected by emission lines.
 
     """
     from fastspecfit.continuum import ContinuumTools
     
-    CTools = ContinuumTools()
+    CTools = ContinuumTools(fphoto=fphoto)
     
     log.info('Pre-processing object {} [stackid {} z={:.6f}].'.format(
-        iobj, meta['STACKID'], meta['Z']))
+        iobj, meta[CTools.uniqueid], meta['Z']))
 
-    if specdata['photsys'] == 'S':
-        filters = CTools.decam
-        allfilters = CTools.decamwise
-    else:
-        filters = CTools.bassmzls
-        allfilters = CTools.bassmzlswise
+    filters = CTools.filters[specdata['photsys']]
+    synth_filters = CTools.synth_filters[specdata['photsys']]
 
     # Dummy imaging photometry.
     maggies = np.zeros(len(CTools.bands))
@@ -316,17 +312,13 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot, log):
     
     specdata['phot'] = CTools.parse_photometry(
         CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
-        lambda_eff=allfilters.effective_wavelengths.value,
+        lambda_eff=filters.effective_wavelengths.value,
         min_uncertainty=CTools.min_uncertainty, log=log)
     
-    #specdata['fiberphot'] = specdata['phot']
-    #specdata['fibertotphot'] = specdata['phot']
-
     specdata.update({'linemask': [], 'linemask_all': [], 'linename': [],
                      'linepix': [], 'contpix': [],
                      'wave': [], 'flux': [], 'ivar': [], 'mask': [], 'res': [], 
                      'snr': np.zeros(1, 'f4'),
-                     #'npixpercamera': len(specdata['wave0'][0]),
                      })
 
     cameras, npixpercamera = [], []
@@ -359,7 +351,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot, log):
                 specdata['wave'].append(specdata['wave0'][icam])
                 specdata['mask'].append(specdata['mask0'][icam])
                 specdata['res'].append(specdata['res0'][icam])
-                
+
     if len(cameras) == 0:
         errmsg = 'No good data, which should never happen.'
         log.critical(errmsg)
@@ -421,19 +413,19 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot, log):
 
     # Optionally synthesize photometry from the coadded spectrum.
     if synthphot:
-        padflux, padwave = filters.pad_spectrum(specdata['coadd_flux'], specdata['coadd_wave'], method='edge')
-        synthmaggies = filters.get_ab_maggies(padflux / FLUXNORM, padwave)
+        padflux, padwave = synth_filters.pad_spectrum(specdata['coadd_flux'], specdata['coadd_wave'], method='edge')
+        synthmaggies = synth_filters.get_ab_maggies(padflux / FLUXNORM, padwave)
         synthmaggies = synthmaggies.as_array().view('f8')
 
         specdata['synthphot'] = CTools.parse_photometry(CTools.synth_bands,
             maggies=synthmaggies, nanomaggies=False,
-            lambda_eff=filters.effective_wavelengths.value, log=log)
+            lambda_eff=synth_filters.effective_wavelengths.value, log=log)
 
     return specdata, meta
 
 class DESISpectra(TabulatedDESI):
-    def __init__(self, redux_dir=None, fiberassign_dir=None, fphotodir=None,
-                 fphotoinfo=None, mapdir=None):
+    def __init__(self, stackfit=False, redux_dir=None, fiberassign_dir=None,
+                 fphotodir=None, fphotoinfo=None, mapdir=None):
         """Class to read in DESI spectra and associated metadata.
 
         Parameters
@@ -470,8 +462,10 @@ class DESISpectra(TabulatedDESI):
 
         if fphotoinfo is None:
             from importlib import resources
-            fphotoinfo = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
-
+            if stackfit:
+                fphotoinfo = resources.files('fastspecfit').joinpath('data/stacked-phot.yaml')
+            else:
+                fphotoinfo = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
         try:
             with open(fphotoinfo, 'r') as F:
                 fphoto = yaml.safe_load(F)
@@ -692,7 +686,7 @@ class DESISpectra(TabulatedDESI):
             
             # Can we use the quasarnet afterburner file to improve QSO redshifts?
             qnfile = redrockfile.replace(redrockfile_prefix, qnfile_prefix)
-            if os.path.isfile(qnfile) and use_quasarnet and input_redshifts is not None:
+            if os.path.isfile(qnfile) and use_quasarnet and input_redshifts is None:
                 use_qn = True
             else:
                 use_qn = False
@@ -791,9 +785,18 @@ class DESISpectra(TabulatedDESI):
                     raise ValueError(errmsg)
                 assert(np.all(zb['TARGETID'] == meta['TARGETID']))
                 # need to also update mpi.get_ntargets_one
-                fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
-                                   (meta['OBJTYPE'] == 'TGT') * (zb['ZWARN'] <= zwarnmax) *
-                                   (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
+                if use_qn:
+                    # If using QuasarNet, it can happen that zb['Z']<zmin and
+                    # therefore the object falls out of the sample before we
+                    # have a chance to even read it. So apply the minimum
+                    # redshift cut below after we correct the redshift.
+                    fitindx = np.where((zb['Z'] < zmax) *
+                                       (meta['OBJTYPE'] == 'TGT') * (zb['ZWARN'] <= zwarnmax) *
+                                       (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
+                else:
+                    fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
+                                       (meta['OBJTYPE'] == 'TGT') * (zb['ZWARN'] <= zwarnmax) *
+                                       (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
             else:
                 # We already know we like the input targetids, so no selection
                 # needed.
@@ -837,9 +840,6 @@ class DESISpectra(TabulatedDESI):
                     assert(np.all(zb['TARGETID'] == targetids))
                     zb['Z'] = input_redshifts
                 
-            tsnr2 = Table(fitsio.read(redrockfile, 'TSNR2', rows=fitindx, columns=TSNR2COLS))
-            assert(np.all(zb['TARGETID'] == meta['TARGETID']))
-
             # Update the redrock redshift when quasarnet disagrees **but only
             # for QSO targets**. From Edmond: the QN afterburner is run with a
             # threshold 0.5. With VI, we choose 0.95 as final threshold. Note,
@@ -871,6 +871,17 @@ class DESISpectra(TabulatedDESI):
                     if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
                         zb['Z'][IQSO[qn['IS_QSO_QN_NEW_RR']]] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
                     del qn
+                # now apply zmin
+                keep = np.where(zb['Z'] > zmin)[0]
+                if len(keep) == 0:
+                    log.info('No requested targets found in redrockfile {}'.format(redrockfile))
+                    continue
+                zb = zb[keep]
+                meta = meta[keep]
+                fitindx = fitindx[keep]
+
+            tsnr2 = Table(fitsio.read(redrockfile, 'TSNR2', rows=fitindx, columns=TSNR2COLS))
+            assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
             # astropy 5.0 "feature" -- join no longer preserves order, ugh.
             zb.remove_column('TARGETID')
@@ -1197,6 +1208,8 @@ class DESISpectra(TabulatedDESI):
         from desispec.resolution import Resolution
         from fastspecfit.continuum import ContinuumTools
 
+        CTools = ContinuumTools(fphoto=self.fphoto)
+        
         if stackfiles is None:
             errmsg = 'At least one stackfiles file is required.'
             log.critical(errmsg)
@@ -1274,7 +1287,7 @@ class DESISpectra(TabulatedDESI):
                 raise ValueError(errmsg)
             
             # Add some columns and append.
-            meta['PHOTSYS'] = 'S'
+            meta['PHOTSYS'] = ''
             meta['SURVEY'] = survey
             meta['PROGRAM'] = program
             meta['HEALPIX'] = healpix
@@ -1298,8 +1311,8 @@ class DESISpectra(TabulatedDESI):
             # Age of the universe.
             dlum = np.zeros(len(meta['Z']))
             dmod = np.zeros(len(meta['Z']))
-            dlum[meta['Z']>0.] = self.luminosity_distance(meta['Z'][meta['Z']>0.])
-            dmod[meta['Z']>0.] = self.distance_modulus(meta['Z'][meta['Z']>0.])
+            dlum[meta['Z'] > 0.] = self.luminosity_distance(meta['Z'][meta['Z'] > 0.])
+            dmod[meta['Z'] > 0.] = self.distance_modulus(meta['Z'][meta['Z'] > 0.])
             tuniv = self.universe_age(meta['Z'])
 
             wave = fitsio.read(stackfile, 'WAVE')
@@ -1323,8 +1336,9 @@ class DESISpectra(TabulatedDESI):
             unpackargs = []
             for iobj in np.arange(len(meta)):
                 specdata = {
-                    'targetid': meta['STACKID'][iobj], 'zredrock': meta['Z'][iobj],
-                    'photsys': 'S',
+                    'uniqueid': meta[CTools.uniqueid][iobj],
+                    'zredrock': meta['Z'][iobj],
+                    'photsys': meta['PHOTSYS'][iobj],
                     'cameras': ['brz'],
                     'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj],
                     'tuniv': tuniv[iobj],
@@ -1340,7 +1354,7 @@ class DESISpectra(TabulatedDESI):
                     'coadd_ivar': specdata['ivar0'][0],
                     'coadd_res': specdata['res0'][0],
                     })
-                unpackargs.append((iobj, specdata, meta[iobj], synthphot, log))
+                unpackargs.append((iobj, specdata, meta[iobj], self.fphoto, synthphot, log))
                     
             if mp > 1:
                 import multiprocessing
@@ -1441,7 +1455,7 @@ class DESISpectra(TabulatedDESI):
                     metas.append(meta)
         else:
             phot = Table(fitsio.read(self.fphotodir, columns=PHOTCOLS))
-            print('Read {} objects from {}'.format(len(phot), self.fphotodir))
+            print('Read {:,d} objects from {}'.format(len(phot), self.fphotodir))
 
             metas = []
             for meta in self.meta:
@@ -1460,7 +1474,7 @@ class DESISpectra(TabulatedDESI):
 
 def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None, 
                          ncoeff=None, data=None, log=None, fastphot=False, 
-                         stackfit=False):
+                         emlinesfile=None, stackfit=False):
     """Initialize the fastspecfit output data and metadata table.
 
     Parameters
@@ -1493,7 +1507,7 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
         from desiutil.log import get_logger
         log = get_logger()
 
-    linetable = read_emlines()
+    linetable = read_emlines(emlinesfile=emlinesfile)
 
     if fphoto is None:
         Filt = Filters(load_filters=False)
@@ -1617,16 +1631,16 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
             out.add_column(Column(name='SMOOTHCORR_{}'.format(cam), length=nobj, dtype='f4'))
     else:
         if not fastphot:
-            if data is not None:
-                for cam in data[0]['cameras']:
-                    out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
-                for cam in data[0]['cameras']:
-                    out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
-            else:
-                for cam in ['B', 'R', 'Z']:
-                    out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
-                for cam in ['B', 'R', 'Z']:
-                    out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
+            # if the zeroth object has a fully masked camera, this data model will fail
+            #if data is not None:
+            #    for cam in data[0]['cameras']:
+            #        out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
+            #    for cam in data[0]['cameras']:
+            #        out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
+            for cam in ['B', 'R', 'Z']:
+                out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
+            for cam in ['B', 'R', 'Z']:
+                out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
                     
     out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
     if not fastphot:
@@ -1854,7 +1868,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
-                     envvar_names=['DESI_ROOT', 'FTEMPLATES_DIR', 'DUST_DIR', 'LEGACYSURVEY_DIR'])
+                     envvar_names=['DESI_ROOT', 'FTEMPLATES_DIR', 'DUST_DIR', 'FPHOTO_DIR'])
 
     hdus = fits.HDUList()
     hdus.append(fits.PrimaryHDU(None, primhdr))
@@ -1917,7 +1931,7 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
     else:
         return fastfit[keep], metadata[keep]
 
-def get_templates_filename(templateversion='1.0.0', imf='chabrier'):
+def get_templates_filename(templateversion='1.1.0', imf='chabrier'):
     """Get the templates filename. """
     from fastspecfit.io import FTEMPLATES_DIR_NERSC
     templates_dir = os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC)
@@ -1980,21 +1994,21 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
     
     return pngfile
 
-def cache_templates(templates=None, templateversion='1.0.0', imf='chabrier',
+def cache_templates(templates=None, templateversion='1.1.0', imf='chabrier',
                     mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.0,
                     fastphot=False, log=None):
     """"Read the templates into a dictionary.
 
     """
     import fitsio
-    from fastspecfit.continuum import _convolve_vdisp
+    from fastspecfit.continuum import _convolve_vdisp, PIXKMS_WAVESPLIT, PIXKMS_BLU
     
     if log is None:
         from desiutil.log import get_logger
         log = get_logger()
 
     if templates is None:
-        templates = get_templates_filename(templateversion='1.0.0', imf='chabrier')
+        templates = get_templates_filename(templateversion=templateversion, imf=imf)
         
     if not os.path.isfile(templates):
         errmsg = 'Templates file not found {}'.format(templates)
@@ -2007,9 +2021,6 @@ def cache_templates(templates=None, templateversion='1.0.0', imf='chabrier',
     templatelineflux = fitsio.read(templates, ext='LINEFLUX')  # [npix,nsed]
     templateinfo, templatehdr = fitsio.read(templates, ext='METADATA', header=True)
     
-    continuum_pixkms = wavehdr['PIXSZBLU'] # pixel size [km/s]
-    pixkms_wavesplit = wavehdr['PIXSZSPT'] # wavelength where the pixel size changes [A]
-
     # Trim the wavelengths and select the number/ages of the templates.
     # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
     if mintemplatewave is None:
@@ -2023,20 +2034,18 @@ def cache_templates(templates=None, templateversion='1.0.0', imf='chabrier',
     
     # Cache a copy of the line-free templates at the nominal velocity
     # dispersion (needed for fastphot as well).
-    I = np.where(templatewave < pixkms_wavesplit)[0]
+    I = np.where(templatewave < PIXKMS_WAVESPLIT)[0]
     templateflux_nolines_nomvdisp = templateflux_nolines.copy()
     templateflux_nolines_nomvdisp[I, :] = _convolve_vdisp(templateflux_nolines_nomvdisp[I, :], vdisp_nominal,
-                                                          pixsize_kms=continuum_pixkms)
+                                                          pixsize_kms=PIXKMS_BLU)
 
     templateflux_nomvdisp = templateflux.copy()
     templateflux_nomvdisp[I, :] = _convolve_vdisp(templateflux_nomvdisp[I, :], vdisp_nominal,
-                                                  pixsize_kms=continuum_pixkms)
+                                                  pixsize_kms=PIXKMS_BLU)
 
     # pack into a dictionary
     templatecache = {'imf': templatehdr['IMF'],
                      #'nsed': len(templateinfo), 'npix': len(wavekeep),
-                     'continuum_pixkms': continuum_pixkms,                     
-                     'pixkms_wavesplit': pixkms_wavesplit,
                      'vdisp_nominal': vdisp_nominal,
                      'templateinfo': Table(templateinfo),
                      'templatewave': templatewave,

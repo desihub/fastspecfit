@@ -56,7 +56,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
     from matplotlib import colors
-    from matplotlib.patches import Circle, Rectangle, ConnectionPatch
+    from matplotlib.patches import Circle, ConnectionPatch
     from matplotlib.lines import Line2D
     import matplotlib.gridspec as gridspec
     import matplotlib.image as mpimg
@@ -98,16 +98,15 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         else:
             return f'{x:.0f}'
 
-    CTools = ContinuumTools(fphoto=fphoto,
-                            continuum_pixkms=templatecache['continuum_pixkms'],
-                            pixkms_wavesplit=templatecache['pixkms_wavesplit'])
+    CTools = ContinuumTools(fphoto=fphoto)
     if 'legacysurveydr' in fphoto.keys():
         layer = 'ls-{}'.format(fphoto['legacysurveydr'])
     else:
         layer = 'ls-dr9'
+    #layer = 'hsc-dr3'
 
     if not fastphot:
-        EMFit = EMFitTools(minspecwave=spec_wavelims[0], maxspecwave=spec_wavelims[1])
+        EMFit = EMFitTools()
 
     filters = CTools.synth_filters[metadata['PHOTSYS']]
     allfilters = CTools.filters[metadata['PHOTSYS']]
@@ -170,10 +169,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         'zzsun': r'$Z/Z_{\odot}=$'+r'${:.3f}$'.format(fastspec['ZZSUN']),
     }
 
-    # try to figure out which absmags to display
-    gindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value - 4900))
-    rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value - 6500))
-    zindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value - 9200))
+    # try to figure out which absmags to display - default should be SDSS ^{0.1}grz
+    gindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 4300))
+    rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 5600))
+    zindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 8100))
     absmag_gband = CTools.absmag_bands[gindx]
     absmag_rband = CTools.absmag_bands[rindx]
     absmag_zband = CTools.absmag_bands[zindx]
@@ -278,14 +277,14 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     
         # UV
         if fastspec['LYALPHA_AMP']*np.sqrt(fastspec['LYALPHA_AMP_IVAR']) > snrcut:
-            leg_uv['ewlya'] = r'EW(Ly$\alpha)=$'+r'${:.1f}$'.format(fastspec['LYALPHA_EW'])+r' $\AA$'
+            leg_uv['ewlya'] = r'EW(Ly$\alpha$)'+r'$={:.1f}$'.format(fastspec['LYALPHA_EW'])+r' $\AA$'
         if fastspec['CIV_1549_AMP']*np.sqrt(fastspec['CIV_1549_AMP_IVAR']) > snrcut:
-            leg_uv['ewciv'] = r'EW(CIV)=$'+r'${:.1f}$'.format(fastspec['CIV_1549_EW'])+r' $\AA$'
+            leg_uv['ewciv'] = r'EW(CIV)'+r'$={:.1f}$'.format(fastspec['CIV_1549_EW'])+r' $\AA$'
         if fastspec['CIII_1908_AMP']*np.sqrt(fastspec['CIII_1908_AMP_IVAR']) > snrcut:
-            leg_uv['ewciii'] = r'EW(CIII])=$'+r'${:.1f}$'.format(fastspec['CIII_1908_EW'])+r' $\AA$'
+            leg_uv['ewciii'] = r'EW(CIII])'+r'$={:.1f}$'.format(fastspec['CIII_1908_EW'])+r' $\AA$'
         if (fastspec['MGII_2796_AMP']*np.sqrt(fastspec['MGII_2796_AMP_IVAR']) > snrcut or
             fastspec['MGII_2803_AMP']*np.sqrt(fastspec['MGII_2803_AMP_IVAR']) > snrcut):
-            leg_uv['ewmgii'] = r'EW(MgII)=$'+r'${:.1f}$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])+r' $\AA$'
+            leg_uv['ewmgii'] = r'EW(MgII)'+r'$={:.1f}$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])+r' $\AA$'
             leg_uv['mgii_doublet'] = r'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
     
         leg_broad['linerchi2'] = r'$\chi^{2}_{\nu,\mathrm{line}}=$'+r'${:.2f}$'.format(fastspec['RCHI2_LINE'])
@@ -393,37 +392,21 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 resid[I] = 0.0
             desiresiduals.append(resid)
         
-        if np.all(fastspec['COEFF'] == 0):
+        if np.all(fastspec['COEFF'] == 0) or no_smooth_continuum:
             fullsmoothcontinuum = np.zeros_like(fullwave)
         else:
             fullsmoothcontinuum, _ = CTools.smooth_continuum(
-                    fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
-                    redshift=redshift, linemask=np.hstack(data['linemask']))
-            if no_smooth_continuum:
-                fullsmoothcontinuum *= 0
+                fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
+                redshift=redshift, linemask=np.hstack(data['linemask']),
+                camerapix=data['camerapix'])
     
         desismoothcontinuum = []
         for campix in data['camerapix']:
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
     
-        # full model spectrum + individual line-spectra
+        # full model spectrum
         desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec, snrcut=emline_snrmin)
     
-        desiemlines_oneline = []
-        inrange = ( (EMFit.linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
-                    (EMFit.linetable['restwave'] * (1+redshift) < np.max(fullwave)) )
-         
-        for oneline in EMFit.linetable[inrange]: # for all lines in range
-            linename = oneline['name'].upper()
-            amp = fastspec['{}_MODELAMP'.format(linename)]
-            if amp != 0:
-                desiemlines_oneline1 = build_emline_model(
-                    EMFit.dlog10wave, redshift, np.array([amp]),
-                    np.array([fastspec['{}_VSHIFT'.format(linename)]]),
-                    np.array([fastspec['{}_SIGMA'.format(linename)]]),
-                    np.array([oneline['restwave']]), data['wave'], data['res'])
-                desiemlines_oneline.append(desiemlines_oneline1)
-
     # Grab the viewer cutout.
     if not stackfit:
         pixscale = 0.262
@@ -795,7 +778,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     # zoom in on individual emission lines - use linetable!
     if not fastphot:
         linetable = EMFit.linetable
-        inrange = (linetable['restwave'] * (1+redshift) > np.min(fullwave)) * (linetable['restwave'] * (1+redshift) < np.max(fullwave))
+        inrange = ((linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
+            (linetable['restwave'] * (1+redshift) < np.max(fullwave)))
         linetable = linetable[inrange]
 
         nline = len(set(linetable['plotgroup']))
@@ -804,11 +788,12 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         plotsig_default_balmer = 500.0 # [km/s]
         plotsig_default_broad = 2000.0 # [km/s]
     
-        minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames = [], [], [], [], [], []
+        minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames, _linenames = [], [], [], [], [], [], []
         for plotgroup in set(linetable['plotgroup']):
             I = np.where(plotgroup == linetable['plotgroup'])[0]
             linename = linetable['nicename'][I[0]].replace('-', ' ')
             linenames.append(linename)
+            _linenames.append(linetable['nicename'][I[0]])
             minwaves.append(np.min(linetable['restwave'][I]))
             maxwaves.append(np.max(linetable['restwave'][I]))
             meanwaves.append(np.mean(linetable['restwave'][I]))
@@ -849,22 +834,26 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             deltawaves = np.hstack(deltawaves)[srt]
             sigmas = np.hstack(sigmas)[srt]
             linenames = np.hstack(linenames)[srt]
+            _linenames = np.hstack(_linenames)[srt]
         
             # Add the linenames to the spectrum plot.
-            for meanwave, linename in zip(meanwaves*(1+redshift), linenames):
+            for meanwave, linename, _linename in zip(meanwaves*(1+redshift), linenames, _linenames):
                 #print(meanwave, ymax_spec)
                 if meanwave > spec_wavelims[0] and meanwave < spec_wavelims[1]:
-                    if 'SiIII' in linename:
-                        thislinename = '\n'+linename.replace('+', '+\n  ')
-                    elif '4363' in linename:
-                        thislinename = linename+'\n'
+                    if '1640' in linename or 'AlIII' in linename:
+                        # separate HeII 1640 from CIV 1549 and AlIII 1857 from SiIII] 1892 and CIII] 1908
+                        for oneline, thislinename in zip(linetable[linetable['nicename'] == _linename], _linename.split('+')):
+                            thislinename = thislinename.replace('-', ' ')
+                            if 'CIII]'  in thislinename:
+                                thislinename = thislinename+'\n'
+                            specax.text(oneline['restwave']*(1+redshift)/1e4, spec_ymax*0.97, thislinename, 
+                                        ha='center', va='top', rotation=270, fontsize=12, alpha=0.5)
                     else:
-                        thislinename = linename
-                    if stackfit:
+                        if '4363' in linename:
+                            thislinename = linename+'\n'
+                        else:
+                            thislinename = linename
                         specax.text(meanwave/1e4, spec_ymax*0.97, thislinename, ha='center', va='top',
-                                    rotation=270, fontsize=12, alpha=0.5)
-                    else:
-                        specax.text(meanwave/1e4, spec_ymax, thislinename, ha='center', va='top',
                                     rotation=270, fontsize=12, alpha=0.5)
         
             removelabels = np.ones(nline, bool)
@@ -875,8 +864,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             else:
                 ax, irow, colshift = [], 4, 5 # skip the gap row
                 
-            for iax, (minwave, maxwave, meanwave, deltawave, sig, linename) in enumerate(
-                    zip(minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames)):
+            for iax, (minwave, maxwave, meanwave, deltawave, sig, linename, _linename) in enumerate(
+                    zip(minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames, _linenames)):
                 icol = iax % nlinecols
                 icol += colshift
                 if iax > 0 and iax % nlinecols == 0:
@@ -886,10 +875,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 xx = fig.add_subplot(gs[irow, icol])
                 ax.append(xx)
             
-                wmin = (minwave - deltawave) * (1+redshift) - 6 * sig * minwave * (1+redshift) / C_LIGHT
-                wmax = (maxwave + deltawave) * (1+redshift) + 6 * sig * maxwave * (1+redshift) / C_LIGHT
-                #wmin = (meanwave - deltawave) * (1+redshift) - 6 * sig * meanwave * (1+redshift) / C_LIGHT
-                #wmax = (meanwave + deltawave) * (1+redshift) + 6 * sig * meanwave * (1+redshift) / C_LIGHT
+                wmin = (minwave - deltawave) * (1+redshift) - 5 * sig * minwave * (1+redshift) / C_LIGHT
+                wmax = (maxwave + deltawave) * (1+redshift) + 5 * sig * maxwave * (1+redshift) / C_LIGHT
             
                 # iterate over cameras
                 for icam in np.arange(len(data['cameras'])): # iterate over cameras
@@ -902,11 +889,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                     emlineflux = emlineflux[good]
                     emlinesigma = emlinesigma[good]
                     emlinemodel = emlinemodel[good]
-            
-                    emlinemodel_oneline = []
-                    for desiemlines_oneline1 in desiemlines_oneline:
-                        emlinemodel_oneline.append(desiemlines_oneline1[icam][good])
-                        
+
                     indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
                     if len(indx) > 1:
                         removelabels[iax] = False
@@ -915,13 +898,21 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                         #    xx.plot(emlinewave[indx]/1e4, gaussian_filter(emlineflux[indx], nsmoothspec), color=col1[icam], alpha=0.5)
                         #else:
                         #    xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
-                        for emlinemodel_oneline1 in emlinemodel_oneline:
-                            if np.sum(emlinemodel_oneline1[indx]) > 0:
-                                xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
-                                #if nsmoothspec > 1:
-                                #    xx.plot(emlinewave[indx]/1e4, gaussian_filter(emlinemodel_oneline1[indx], nsmoothspec), lw=1, alpha=0.8, color=col2[icam])
-                                #else:
-                                #    xx.plot(emlinewave[indx]/1e4, emlinemodel_oneline1[indx], lw=1, alpha=0.8, color=col2[icam])
+
+                        for oneline in linetable[linetable['nicename'] == _linename]:
+                            thisline = oneline['name'].upper()
+                            ampsnr = fastspec['{}_AMP'.format(thisline)] * np.sqrt(fastspec['{}_AMP_IVAR'.format(thisline)])
+                            if ampsnr > emline_snrmin:
+                                emlinemodel_oneline1 = build_emline_model(
+                                    EMFit.dlog10wave, redshift,
+                                    np.array([fastspec['{}_MODELAMP'.format(thisline)]]),
+                                    np.array([fastspec['{}_VSHIFT'.format(thisline)]]),
+                                    np.array([fastspec['{}_SIGMA'.format(thisline)]]),
+                                    np.array([oneline['restwave']]), [data['wave'][icam]], [data['res'][icam]])
+                                _emlinemodel_oneline1 = emlinemodel_oneline1[0][good][indx]
+                                #notzero = _emlinemodel_oneline1 != 0
+                                xx.plot(emlinewave[indx]/1e4, _emlinemodel_oneline1, lw=1, alpha=0.8, color=col2[icam])
+                        
                         xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
                         #if nsmoothspec > 1:
                         #    xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
@@ -954,9 +945,14 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                         #    pdb.set_trace()
             
                         xx.set_xlim(wmin/1e4, wmax/1e4)
+
+                    if icam == 0: # only label once
+                        if 'AlIII' in linename:
+                            _line = linename.split('+')
+                            linename = '+'.join(_line[:2])+'+\n'+_line[2] # more space
+                        xx.text(0.03, 0.94, linename, ha='left', va='top',
+                                transform=xx.transAxes, fontsize=11)
                         
-                    xx.text(0.03, 0.89, linename, ha='left', va='center',
-                            transform=xx.transAxes, fontsize=12)
                     xx.tick_params(axis='x', labelsize=16)
                     xx.tick_params(axis='y', labelsize=16)
                     
@@ -1189,7 +1185,7 @@ def parse(options=None):
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')    
     parser.add_argument('--fphotoinfo', type=str, default=None, help='Photometric information file.')
 
-    parser.add_argument('--emline_snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
+    parser.add_argument('--emline-snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
     parser.add_argument('--nsmoothspec', type=int, default=0, help='Smoothing pixel value.')
 
     parser.add_argument('--minspecwave', type=float, default=3500., help='Minimum spectral wavelength (Angstrom).') 
@@ -1201,11 +1197,12 @@ def parse(options=None):
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parser.add_argument('--stackfit', action='store_true', help='Generate QA for stacked spectra.')
     parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
 
     parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default='1.0.0', help='Template version number.')
+    parser.add_argument('--templateversion', type=str, default='1.1.0', help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
 
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
@@ -1307,8 +1304,7 @@ def fastqa(args=None, comm=None):
     log.info('Building QA for {} objects.'.format(len(metadata)))
 
     # Initialize the I/O class.
-
-    Spec = DESISpectra(redux_dir=args.redux_dir, fphotodir=args.fphotodir, 
+    Spec = DESISpectra(stackfit=args.stackfit, redux_dir=args.redux_dir, fphotodir=args.fphotodir, 
                        fphotoinfo=args.fphotoinfo, mapdir=args.mapdir)
 
     templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)

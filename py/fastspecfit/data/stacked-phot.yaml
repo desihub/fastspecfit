@@ -1,0 +1,25 @@
+# Stacked spectrum photometric parameter file
+
+uniqueid: 'STACKID'
+
+photounits: 'nanomaggies'
+
+bands: ['g', 'r', 'z']
+synth_bands: ['g', 'r', 'z']
+bands_to_fit: [False, False, False]
+
+filters: {'': ['decam2014-g', 'decam2014-r', 'decam2014-z']}
+
+synth_filters: {'': ['decam2014-g', 'decam2014-r', 'decam2014-z']}
+
+min_uncertainty: [0.02, 0.02, 0.02]
+
+fluxcols: ['FLUX_G', 'FLUX_R', 'FLUX_Z']
+
+fluxivarcols: ['FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z']
+
+absmag_bands: ['sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z']
+
+band_shift: [0.1, 0.1, 0.1, 0.1, 0.1]
+
+absmag_filters: ['sdss2010-u', 'sdss2010-g', 'sdss2010-r', 'sdss2010-i', 'sdss2010-z']

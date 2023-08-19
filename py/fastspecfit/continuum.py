@@ -14,10 +14,15 @@ from astropy.table import Table
 from fastspecfit.io import FLUXNORM
 from fastspecfit.util import C_LIGHT
 
-def _smooth_continuum(wave, flux, ivar, redshift, medbin=150, 
-                      smooth_window=50, smooth_step=10, maskkms_uv=3000.0, 
+# SPS template constants (used by build-fsps-templates)
+PIXKMS_BLU = 25.  # [km/s]
+PIXKMS_RED = 100. # [km/s]
+PIXKMS_WAVESPLIT = 1e4 # [Angstrom]
+
+def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175, 
+                      smooth_window=75, smooth_step=25, maskkms_uv=3000.0, 
                       maskkms_balmer=1000.0, maskkms_narrow=200.0,
-                      linetable=None, linemask=None, png=None,
+                      linetable=None, emlinesfile=None, linemask=None, png=None,
                       log=None, verbose=False):
     """Build a smooth, nonparametric continuum spectrum.
 
@@ -70,7 +75,8 @@ def _smooth_continuum(wave, flux, ivar, redshift, medbin=150,
     from scipy.ndimage import median_filter
     from scipy.stats import sigmaclip
     #from astropy.stats import sigma_clip
-
+    from scipy.interpolate import make_interp_spline
+        
     if log is None:
         from desiutil.log import get_logger, DEBUG
         if verbose:
@@ -80,7 +86,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, medbin=150,
 
     if linetable is None:
         from fastspecfit.emlines import read_emlines        
-        linetable = read_emlines()
+        linetable = read_emlines(emlinesfile=emlinesfile)
         
     npix = len(wave)
 
@@ -125,12 +131,18 @@ def _smooth_continuum(wave, flux, ivar, redshift, medbin=150,
         log.critical(errmsg)
         raise ValueError(errmsg)
 
+    # If camerapix is given, mask the 10 (presumably noisy) pixels from the edge
+    # of each per-camera spectrum.
+    if camerapix is not None:
+        for campix in camerapix:
+            ivar[campix[0]:campix[0]+10] = 0.
+            ivar[campix[1]-10:campix[1]] = 0.
+
     # Build the smooth (line-free) continuum by computing statistics in a
     # sliding window, accounting for masked pixels and trying to be smart
     # about broad lines. See:
     #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
     #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
-    
     wave_win = sliding_window_view(wave, window_shape=smooth_window)
     flux_win = sliding_window_view(flux, window_shape=smooth_window)
     ivar_win = sliding_window_view(ivar, window_shape=smooth_window)
@@ -210,14 +222,24 @@ def _smooth_continuum(wave, flux, ivar, redshift, medbin=150,
     # corner case for very wacky spectra
     if len(smooth_flux) == 0:
         smooth_flux = flux
-        smooth_sigma = flux * 0 + np.std(flux)
+        #smooth_sigma = flux * 0 + np.std(flux)
     else:
-        smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
-        smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
+        #smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
+        #smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
+        srt = np.argsort(smooth_wave)
+        bspl_flux = make_interp_spline(smooth_wave[srt], smooth_flux[srt], k=1)
+        smooth_flux = bspl_flux(wave)
 
     smooth = median_filter(smooth_flux, medbin, mode='nearest')
-    smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
+    #smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
+    #smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
 
+    I = ivar > 0
+    if np.sum(I) > 0:
+        smoothsigma = np.zeros_like(wave) + np.median(1. / np.sqrt(ivar[I]))
+        smoothsigma[I] = 1. / np.sqrt(ivar[I])
+        
+    # very important!
     Z = (flux == 0.0) * (ivar == 0.0)
     if np.sum(Z) > 0:
         smooth[Z] = 0.0
@@ -235,13 +257,13 @@ def _smooth_continuum(wave, flux, ivar, redshift, medbin=150,
         ax[1].plot(wave, flux - smooth)
         ax[1].axhline(y=0, color='k')
 
+        #for xx in ax:
+        #    #xx.set_xlim(3800, 4300)
+        #    #xx.set_xlim(5200, 6050)
+        #    #xx.set_xlim(7000, 9000)
+        #    xx.set_xlim(7000, 7800)
         for xx in ax:
-            #xx.set_xlim(3800, 4300)
-            #xx.set_xlim(5200, 6050)
-            #xx.set_xlim(7000, 9000)
-            xx.set_xlim(7000, 7800)
-        for xx in ax:
-            xx.set_ylim(-2.5, 2)
+            xx.set_ylim(-0.2, 1.5)
         zlinewaves = linetable['restwave'] * (1 + redshift)
         linenames = linetable['name']
         inrange = np.where((zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave)))[0]
@@ -447,6 +469,177 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
     return (linesigma_narrow, linesigma_balmer, linesigma_uv,
             linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr)
 
+
+def restframe_photometry(redshift, zmodelflux, zmodelwave, maggies, ivarmaggies,
+                         filters_in, absmag_filters, band_shift=None, snrmin=2.,
+                         dmod=None, cosmo=None, log=None):
+    """Compute K-corrections and rest-frame photometry for a single object.
+
+    Parameters
+    ----------
+    redshift : :class:`float`
+        Galaxy or QSO redshift.
+    zmodelwave : `numpy.ndarray`
+        Observed-frame (redshifted) model wavelength array.
+    zmodelflux : `numpy.ndarray`
+        Observed-frame model spectrum.
+    maggies : `numpy.ndarray`
+        Input photometric fluxes in the `filters_in` bandpasses.
+    ivarmaggies : `numpy.ndarray`
+        Inverse variance photometry corresponding to `maggies`.
+    filters_in : `speclite.filters.FilterSequence`
+        Input filter curves.
+    absmag_filters : `speclite.filters.FilterSequence`
+        Filter curves corresponding to desired bandpasses.
+    band_shift : `numpy.ndarray` or `None`
+        Band-shift each bandpass in `absmag_filters` by this amount.
+    snrmin : :class:`float`, defaults to 2.
+        Minimum signal-to-noise ratio in the input photometry (`maggies`) in
+        order for that bandpass to be used to compute a K-correction.
+    dmod : :class:`float` or `None`
+        Distance modulus corresponding to `redshift`. Not needed if `cosmo` is
+        provided.
+    cosmo : `fastspecfit.util.TabulatedDESI` or `None`
+        Cosmological model class needed to compute the distance modulus.
+    log : `desiutil.log`
+        Logging object.
+    
+    Returns
+    -------
+    kcorr : `numpy.ndarray`
+        K-corrections for each bandpass in `absmag_filters`.
+    absmag : `numpy.ndarray`
+        Absolute magnitudes, band-shifted according to `band_shift` (if
+        provided) for each bandpass in `absmag_filters`. 
+    ivarabsmag : `numpy.ndarray`
+        Inverse variance corresponding to `absmag`.
+    synth_absmag : `numpy.ndarray`
+        Like `absmag`, but entirely based on synthesized photometry.
+    synth_maggies_in : `numpy.ndarray`
+        Synthesized input photometry (should closely match `maggies` if the
+        model fit is good).
+
+    Notes
+    -----
+    By default, the K-correction is computed by finding the observed-frame
+    bandpass closest in wavelength (and with a minimum signal-to-noise ratio) to
+    the desired band-shifted absolute magnitude bandpass. In other words, by
+    default we endeavor to minimize the K-correction. The inverse variance,
+    `ivarabsmag`, is derived from the inverse variance of the K-corrected
+    photometry. If no bandpass is available then `ivarabsmag` is set to zero and
+    `absmag` is derived from the synthesized rest-frame photometry.
+
+    """
+    if log is None:
+        from desiutil.log import get_logger
+        log = get_logger()
+
+    nabs = len(absmag_filters)
+    kcorr = np.zeros(nabs, dtype='f4')
+    absmag = np.zeros(nabs, dtype='f4')
+    ivarabsmag = np.zeros(nabs, dtype='f4')
+    synth_absmag = np.zeros(nabs, dtype='f4')
+    synth_maggies_in = np.zeros(len(maggies))
+
+    if redshift <= 0.0:
+        errmsg = 'Input redshift not defined, zero, or negative!'
+        log.warning(errmsg)
+        return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
+
+    if cosmo is None:
+        from fastspecfit.util import TabulatedDESI
+        cosmo = TabulatedDESI()
+
+    if dmod is None:
+        dmod = cosmo.distance_modulus(redshift)
+    
+    modelwave = zmodelwave / (1. + redshift)
+    lambda_in = filters_in.effective_wavelengths.value
+
+    if band_shift is None:
+        band_shift = np.zeros_like(lambda_in)
+
+    # input bandpasses, observed frame; maggies and synth_maggies_in should be
+    # very close.
+    try:
+        synth_maggies_in = filters_in.get_ab_maggies(zmodelflux / FLUXNORM, zmodelwave)
+    except:
+        # pad in the case of an object at very high redshift (z>5.5).
+        log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
+        padflux, padwave = filters_in.pad_spectrum(zmodelflux / FLUXNORM, zmodelwave, axis=0, method='edge')
+        synth_maggies_in = filters_in.get_ab_maggies(padflux, padwave)
+        
+    synth_maggies_in = np.array(synth_maggies_in.as_array().tolist()[0])
+
+    def _kcorr_and_absmag(filters_out, band_shift):
+        """Little internal method to handle a single value of band_shift."""
+        
+        nout = len(filters_out)
+
+        # note the factor of 1+band_shift
+        lambda_out = filters_out.effective_wavelengths.value / (1 + band_shift)
+
+        # Multiply by (1+z) to convert the best-fitting model to the "rest
+        # frame" and then divide by 1+band_shift to shift it and the wavelength
+        # vector to the band-shifted redshift. Also need one more factor of
+        # 1+band_shift in order maintain the AB mag normalization.
+        synth_outmaggies_rest = filters_out.get_ab_maggies(
+            zmodelflux * (1. + redshift) / (1. + band_shift) /
+            FLUXNORM, modelwave * (1. + band_shift))
+        synth_outmaggies_rest = np.array(synth_outmaggies_rest.as_array().tolist()[0]) / (1. + band_shift)
+    
+        # Output bandpasses, observed frame; pad in the case of an object at
+        # very high redshift. Note that min(modelwave)=450 A is set in
+        # fastspec_one.
+        try:
+            synth_outmaggies_obs = filters_out.get_ab_maggies(zmodelflux / FLUXNORM, zmodelwave)
+        except:
+            log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
+            padflux, padwave = filters_out.pad_spectrum(
+                zmodelflux / FLUXNORM, zmodelwave, method='edge')
+            synth_outmaggies_obs = filters_out.get_ab_maggies(padflux, padwave)
+        synth_outmaggies_obs = np.array(synth_outmaggies_obs.as_array().tolist()[0])
+    
+        kcorr = np.zeros(nout, dtype='f4')
+        absmag = np.zeros(nout, dtype='f4')
+        ivarabsmag = np.zeros(nout, dtype='f4')
+        synth_absmag = np.zeros(nout, dtype='f4')
+        for jj in np.arange(nout):
+            lambdadist = np.abs(lambda_in / (1. + redshift) - lambda_out[jj])
+            # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
+            #oband = np.argmin(lambdadist)
+            #oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e10)
+            oband = np.argmin(lambdadist + (maggies*np.sqrt(ivarmaggies) < snrmin)*1e10)
+            kcorr[jj] = + 2.5 * np.log10(synth_outmaggies_rest[jj] / synth_maggies_in[oband])
+
+            synth_absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
+            
+            # m_R = M_Q + DM(z) + K_QR(z) or
+            # M_Q = m_R - DM(z) - K_QR(z)
+            if maggies[oband] * np.sqrt(ivarmaggies[oband]) > snrmin:
+                absmag[jj] = -2.5 * np.log10(maggies[oband]) - dmod - kcorr[jj]
+                ivarabsmag[jj] = maggies[oband]**2 * ivarmaggies[oband] * (0.4 * np.log(10.))**2
+            else:
+                # if we use synthesized photometry then ivarabsmag is zero
+                # (which should never happen?)
+                absmag[jj] = synth_absmag[jj]
+
+        return kcorr, absmag, ivarabsmag, synth_absmag
+
+    for _band_shift in set(band_shift):
+        I = np.where(_band_shift == np.array(band_shift))[0]
+        # Unfortunately, absmag_filters is a FilterSequence object, which is an
+        # immutable list, so we have to calculate K-corrections using all the
+        # filters, every time, sigh.
+        _kcorr, _absmag, _ivarabsmag, _synth_absmag = _kcorr_and_absmag(absmag_filters, band_shift=_band_shift)
+        kcorr[I] = _kcorr[I]
+        absmag[I] = _absmag[I]
+        ivarabsmag[I] = _ivarabsmag[I]
+        synth_absmag[I] = _synth_absmag[I]
+
+    return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
+    
+
 def _convolve_vdisp(templateflux, vdisp, pixsize_kms):
     """Convolve by the velocity dispersion.
 
@@ -484,7 +677,8 @@ class Filters(object):
             keys = fphoto.keys()
             self.uniqueid = fphoto['uniqueid']
             self.photounits = fphoto['photounits']
-            self.readcols = np.array(fphoto['readcols'])
+            if 'readcols' in keys:
+                self.readcols = np.array(fphoto['readcols'])
             if 'outcols' in keys:
                 self.outcols = np.array(fphoto['outcols'])
             self.bands = np.array(fphoto['bands'])
@@ -543,7 +737,7 @@ class Filters(object):
             self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
             self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
 
-            self.absmag_bands = ['decam2014_g', 'decam2014_r', 'decam2014_z',
+            self.absmag_bands = ['decam_g', 'decam_r', 'decam_z',
                                  'U', 'B', 'V',
                                  'sdss_u', 'sdss_g', 'sdss_r', 'sdss_i', 'sdss_z',
                                  'W1']#, 'W2']
@@ -1047,17 +1241,15 @@ class ContinuumTools(Filters, Inoue14):
         Need to document all the attributes.
 
     """
-    def __init__(self, nophoto=False, fphoto=None, continuum_pixkms=25.0, pixkms_wavesplit=1e4):
+    def __init__(self, nophoto=False, fphoto=None, emlinesfile=None):
 
         super(ContinuumTools, self).__init__(nophoto=nophoto, fphoto=fphoto)
 
         from fastspecfit.emlines import read_emlines
         
         self.massnorm = 1e10 # stellar mass normalization factor [Msun]
-        self.pixkms_wavesplit = pixkms_wavesplit
-        self.continuum_pixkms = continuum_pixkms
 
-        self.linetable = read_emlines()
+        self.linetable = read_emlines(emlinesfile=emlinesfile)
 
     @staticmethod
     def smooth_continuum(*args, **kwargs):
@@ -1069,7 +1261,7 @@ class ContinuumTools(Filters, Inoue14):
 
     @staticmethod
     def build_linemask(wave, flux, ivar, redshift=0.0, nsig=7.0, linetable=None,
-                       log=None, verbose=False):
+                       emlinesfile=None, log=None, verbose=False):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -1114,7 +1306,7 @@ class ContinuumTools(Filters, Inoue14):
 
         if linetable is None:
             from fastspecfit.emlines import read_emlines        
-            linetable = read_emlines()
+            linetable = read_emlines(emlinesfile=emlinesfile)
 
         # Initially, mask aggressively, especially the Balmer lines.
         png = None
@@ -1122,15 +1314,15 @@ class ContinuumTools(Filters, Inoue14):
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
         smooth, smoothsigma = _smooth_continuum(wave, flux, ivar, redshift, maskkms_uv=5000.0,
                                                 maskkms_balmer=5000.0, maskkms_narrow=500.0,
-                                                linetable=linetable, log=log, verbose=verbose,
-                                                png=png)
+                                                linetable=linetable, emlinesfile=emlinesfile,
+                                                log=log, verbose=verbose, png=png)
 
         # Get a better estimate of the Balmer, forbidden, and UV/QSO line-widths.
         png = None
         #png = 'linesigma.png'
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
         linesigma_narrow, linesigma_balmer, linesigma_uv, linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr = \
-          _estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png)
+          _estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png, log=log)
 
         # Next, build the emission-line mask.
         linemask = np.zeros_like(wave, bool)      # True = affected by possible emission line.
@@ -1145,7 +1337,7 @@ class ContinuumTools(Filters, Inoue14):
         png = None
         #png = 'linemask.png'
         #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linemask.png'
-        snr_strong = 3.0
+        snr_strong = 1.5#3.0
     
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
         nline = np.sum(inrange)
@@ -1400,14 +1592,14 @@ class ContinuumTools(Filters, Inoue14):
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
             #templateflux = convolve_vdisp(templateflux, vdisp)
-            I = np.where(templatewave < self.pixkms_wavesplit)[0]
-            templateflux[I, :] = self.convolve_vdisp(templateflux[I, :], vdisp, self.continuum_pixkms)
+            I = np.where(templatewave < PIXKMS_WAVESPLIT)[0]
+            templateflux[I, :] = self.convolve_vdisp(templateflux[I, :], vdisp, PIXKMS_BLU)
 
         # Apply the redshift factor. The models are normalized to 10 pc, so
         # apply the luminosity distance factor here. Also normalize to a nominal
         # stellar mass.
         if redshift > 0:
-            ztemplatewave = templatewave * (1.0 + redshift)
+            ztemplatewave = templatewave * (1. + redshift)
             T = self.full_IGM(redshift, ztemplatewave)
             T *= FLUXNORM * self.massnorm * (10.0 / (1e6 * dluminosity))**2 / (1.0 + redshift)
             ztemplateflux = templateflux * T[:, np.newaxis]
@@ -1634,9 +1826,10 @@ class ContinuumTools(Filters, Inoue14):
                 meanvalue = np.log10(meanvalue)
         
         return meanvalue
-    
-    def kcorr_and_absmag(self, data, templatewave, continuum, snrmin=2.0, log=None):
-        """Computer K-corrections, absolute magnitudes, and a simple stellar mass.
+
+
+    def continuum_fluxes(self, data, templatewave, continuum, log=None):
+        """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
         from scipy.stats import sigmaclip
@@ -1645,125 +1838,27 @@ class ContinuumTools(Filters, Inoue14):
         if log is None:
             from desiutil.log import get_logger
             log = get_logger()
-        
+
         redshift = data['zredrock']
         if redshift <= 0.0:
             errmsg = 'Input redshift not defined, zero, or negative!'
             log.warning(errmsg)
-            kcorr = np.zeros(len(self.absmag_bands))
-            absmag = np.zeros(len(self.absmag_bands))#-99.0
-            ivarabsmag = np.zeros(len(self.absmag_bands))
-            bestmaggies = np.zeros(len(self.bands))
-            lums, cfluxes = {}, {}
-            return kcorr, absmag, ivarabsmag, bestmaggies, lums, cfluxes
-
-        # distance modulus, luminosity distance, and redshifted wavelength array
-        dmod, dlum = data['dmodulus'], data['dluminosity']
-        ztemplatewave = templatewave * (1 + redshift)
-        
-        filters_in = self.filters[data['photsys']]
-        lambda_in = filters_in.effective_wavelengths.value
-
-        maggies = data['phot']['nanomaggies'].data * 1e-9
-        ivarmaggies = (data['phot']['nanomaggies_ivar'].data / 1e-9**2) * self.bands_to_fit # mask W2-W4
-
-        # input bandpasses, observed frame; maggies and bestmaggies should be
-        # very close.
-        try:
-            bestmaggies = filters_in.get_ab_maggies(continuum / FLUXNORM, ztemplatewave)
-        except:
-            # pad in the case of an object at very high redshift (z>5.5).
-            log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
-            padflux, padwave = filters_in.pad_spectrum(continuum / FLUXNORM, ztemplatewave, axis=0, method='edge')
-            bestmaggies = filters_in.get_ab_maggies(padflux, padwave)
             
-        bestmaggies = np.array(bestmaggies.as_array().tolist()[0])
-
-        # need to handle filters with band_shift!=0 separately from those with band_shift==0
-        def _kcorr_and_absmag(filters_out, band_shift):
-            nout = len(filters_out)
-
-            # note the factor of 1+band_shift
-            lambda_out = filters_out.effective_wavelengths.value / (1 + band_shift)
-
-            # Multiply by (1+z) to convert the best-fitting model to the "rest
-            # frame" and then divide by 1+band_shift to shift it and the
-            # wavelength vector to the band-shifted redshift. Also need one more
-            # factor of 1+band_shift in order maintain the AB mag normalization.
-            synth_outmaggies_rest = filters_out.get_ab_maggies(continuum * (1 + redshift) / (1 + band_shift) /
-                                                               FLUXNORM, templatewave * (1 + band_shift))
-            synth_outmaggies_rest = np.array(synth_outmaggies_rest.as_array().tolist()[0]) / (1 + band_shift)
-    
-            # output bandpasses, observed frame; pad in the case of an object at
-            # z>5.53 (min(templatewave)=450 A, set in fastspec_one)
-            try:
-                synth_outmaggies_obs = filters_out.get_ab_maggies(continuum / FLUXNORM, ztemplatewave)
-            except:
-                log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
-                padflux, padwave = filters_out.pad_spectrum(continuum / FLUXNORM, ztemplatewave, method='edge')
-                synth_outmaggies_obs = filters_out.get_ab_maggies(padflux, padwave)
-            synth_outmaggies_obs = np.array(synth_outmaggies_obs.as_array().tolist()[0])
-    
-            absmag = np.zeros(nout, dtype='f4')
-            ivarabsmag = np.zeros(nout, dtype='f4')
-            kcorr = np.zeros(nout, dtype='f4')
-            for jj in np.arange(nout):
-                lambdadist = np.abs(lambda_in / (1 + redshift) - lambda_out[jj])
-                # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
-                #oband = np.argmin(lambdadist)
-                #oband = np.argmin(lambdadist + (ivarmaggies == 0)*1e10)
-                oband = np.argmin(lambdadist + (maggies*np.sqrt(ivarmaggies) < snrmin)*1e10)
-                kcorr[jj] = + 2.5 * np.log10(synth_outmaggies_rest[jj] / bestmaggies[oband])
-
-                # m_R = M_Q + DM(z) + K_QR(z) or
-                # M_Q = m_R - DM(z) - K_QR(z)
-                if maggies[oband] * np.sqrt(ivarmaggies[oband]) > snrmin:
-                #if (maggies[oband] > 0) and (ivarmaggies[oband]) > 0:
-                    absmag[jj] = -2.5 * np.log10(maggies[oband]) - dmod - kcorr[jj]
-                    ivarabsmag[jj] = maggies[oband]**2 * ivarmaggies[oband] * (0.4 * np.log(10.))**2
-                else:
-                    # if we use synthesized photometry then ivarabsmag is zero
-                    # (which should never happen?)
-                    absmag[jj] = -2.5 * np.log10(synth_outmaggies_rest[jj]) - dmod
-
-                #check = absmag[jj], -2.5*np.log10(synth_outmaggies_rest[jj]) - dmod
-                #log.debug(check)
-
-            return kcorr, absmag, ivarabsmag
-
-        nabs = len(self.absmag_bands)
-        kcorr = np.zeros(nabs, dtype='f4')
-        absmag = np.zeros(nabs, dtype='f4')
-        ivarabsmag = np.zeros(nabs, dtype='f4')
-        for band_shift in set(self.band_shift):
-            I = np.where(band_shift == self.band_shift)[0]
-            # Unfortunately, self.absmag_filters is a FilterSequence object,
-            # which is an immutable list, so we have to calculate K-corrections
-            # using all the filters, every time, sigh.
-            _kcorr, _absmag, _ivarabsmag = _kcorr_and_absmag(self.absmag_filters, band_shift=band_shift)
-            kcorr[I] = _kcorr[I]
-            absmag[I] = _absmag[I]
-            ivarabsmag[I] = _ivarabsmag[I]
-
-        #nage = len(coeff)
-        
-        # From Taylor+11, eq 8
-        #mstar = templateinfo['mstar'][:nage].dot(coeff) * self.massnorm
-        #https://researchportal.port.ac.uk/ws/files/328938/MNRAS_2011_Taylor_1587_620.pdf
-        #mstar = 1.15 + 0.7*(absmag[1]-absmag[3]) - 0.4*absmag[3]
+            lums, cfluxes = {}, {}
+            return lums, cfluxes
+            
+        dlum = data['dluminosity']
 
         # compute the model continuum flux at 1500 and 2800 A (to facilitate UV
         # luminosity-based SFRs) and at the positions of strong nebular emission
         # lines [OII], Hbeta, [OIII], and Halpha
-        #dfactor = (1 + redshift) * 4.0 * np.pi * self.cosmo.luminosity_distance(redshift).to(u.cm).value**2 / FLUXNORM
-        #dfactor = (1 + redshift) * 4.0 * np.pi * (3.08567758e24 * self.luminosity_distance(redshift))**2 / FLUXNORM
+        
         dfactor = (1 + redshift) * 4.0 * np.pi * (3.08567758e24 * dlum)**2 / FLUXNORM
                 
         lums = {}
         cwaves = [1500.0, 2800.0, 1450., 1700., 3000., 5100.]
         labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_1450', 'LOGL_1700', 'LOGL_3000', 'LOGL_5100']
-        norms = [1e28, 1e28, 1e10]
-        for cwave, norm, label in zip(cwaves, norms, labels):
+        for cwave, label in zip(cwaves, labels):
             J = (templatewave > cwave-500) * (templatewave < cwave+500)
             I = (templatewave[J] > cwave-20) * (templatewave[J] < cwave+20)
             smooth = median_filter(continuum[J], 200)
@@ -1771,11 +1866,13 @@ class ContinuumTools(Filters, Inoue14):
             cflux = np.median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
             cflux *= dfactor # [monochromatic luminosity in erg/s/A]
             if 'LOGL_' in label:
+                norm = 1e10
                 cflux *= cwave / 3.846e33 / norm # [luminosity in 10**10 L_sun]
             else:
                 # Convert the UV fluxes to rest-frame luminosity in erg/s/Hz. This
                 # luminosity can be converted into a SFR using, e.g., Kennicutt+98,
                 # SFR=1.4e-28 * L_UV
+                norm = 1e28
                 cflux *= cwave**2 / (C_LIGHT * 1e13) / norm # [monochromatic luminosity in 10**(-28) erg/s/Hz]
             if cflux > 0:
                 lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
@@ -1802,11 +1899,47 @@ class ContinuumTools(Filters, Inoue14):
             #plt.savefig('junk.png')
             ##plt.savefig('desi-users/ioannis/tmp/junk.png')
 
-        return kcorr, absmag, ivarabsmag, bestmaggies, lums, cfluxes
+        return lums, cfluxes
 
-def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=False,
-                      no_smooth_continuum=False, fastphot=False, log=None, 
-                      debug_plots=False, verbose=False):
+    def kcorr_and_absmag(self, data, templatewave, continuum, snrmin=2.0, log=None):
+        """Compute K-corrections and absolute magnitudes.
+
+        """
+        if log is None:
+            from desiutil.log import get_logger
+            log = get_logger()
+        
+        redshift = data['zredrock']
+        if redshift <= 0.0:
+            errmsg = 'Input redshift not defined, zero, or negative!'
+            log.warning(errmsg)
+            
+            kcorr = np.zeros(len(self.absmag_bands))
+            absmag = np.zeros(len(self.absmag_bands))#-99.0
+            ivarabsmag = np.zeros(len(self.absmag_bands))
+            synth_maggies_in = np.zeros(len(self.bands))
+            return kcorr, absmag, ivarabsmag, synth_maggies_in
+
+        # distance modulus, luminosity distance, and redshifted wavelength array
+        dmod = data['dmodulus']
+        ztemplatewave = templatewave * (1 + redshift)
+        
+        filters_in = self.filters[data['photsys']]
+
+        maggies = data['phot']['nanomaggies'].data * 1e-9
+        ivarmaggies = (data['phot']['nanomaggies_ivar'].data / 1e-9**2) * self.bands_to_fit
+
+        kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in = restframe_photometry(
+            redshift, continuum, ztemplatewave, maggies, ivarmaggies,
+            filters_in=filters_in, absmag_filters=self.absmag_filters,
+            band_shift=self.band_shift, dmod=data['dmodulus'],
+            snrmin=snrmin, log=log)
+
+        return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
+
+def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None,
+                      constrain_age=False, no_smooth_continuum=False, fastphot=False,
+                      log=None, debug_plots=False, verbose=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -1836,9 +1969,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
             
     tall = time.time()
 
-    CTools = ContinuumTools(fphoto=fphoto,
-                            continuum_pixkms=templatecache['continuum_pixkms'],
-                            pixkms_wavesplit=templatecache['pixkms_wavesplit'])
+    CTools = ContinuumTools(fphoto=fphoto, emlinesfile=emlinesfile)
 
     redshift = result['Z']
     objflam = data['phot']['flam'].data * FLUXNORM
@@ -2132,11 +2263,11 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
                 residuals[I] = 0.0
             _smooth_continuum, _ = CTools.smooth_continuum(
                 specwave, residuals, specivar / apercorr**2,
-                redshift, linemask=linemask, png=png)
+                redshift, camerapix=data['camerapix'], emlinesfile=emlinesfile,
+                linemask=linemask, png=png)
             if no_smooth_continuum:
                 log.info('Zeroing out the smooth continuum correction.')
                 _smooth_continuum *= 0
-
         # Unpack the continuum into individual cameras.
         continuummodel, smooth_continuum = [], []
         for camerapix in data['camerapix']:
@@ -2164,8 +2295,9 @@ def continuum_specfit(data, result, templatecache, fphoto=None, constrain_age=Fa
         AV, age, zzsun, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0
         #AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     else:
-        kcorr, absmag, ivarabsmag, synth_bestmaggies, lums, cfluxes = CTools.kcorr_and_absmag(
+        kcorr, absmag, ivarabsmag, _, synth_bestmaggies = CTools.kcorr_and_absmag(
             data, templatecache['templatewave'], sedmodel, log=log)
+        lums, cfluxes = CTools.continuum_fluxes(data, templatecache['templatewave'], sedmodel, log=log)
 
         AV = CTools.get_mean_property(templatecache['templateinfo'], 'av', coeff, agekeep, log=log)                      # [mag]
         age = CTools.get_mean_property(templatecache['templateinfo'], 'age', coeff, agekeep, normalization=1e9, log=log) # [Gyr]
