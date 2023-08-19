@@ -10,8 +10,8 @@ Change Log
 2.4.0 (2023-08-18)
 ------------------
 
-* Bug fixes and miscellaneous feature requests for next VACs, including slightly
-  modified SPS templates [`PR #148`_].
+* Bug fixes and miscellaneous feature requests for next VACs, including modified
+  SPS templates and a user-friendly refactor of the K-correction code [`PR #148`_].
 
 .. _`PR #148`: https://github.com/desihub/fastspecfit/pull/148
 
