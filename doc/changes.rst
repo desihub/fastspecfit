@@ -7,7 +7,7 @@ Change Log
 
 * 
 
-2.4.0 (2023-08-18)
+2.4.0 (2023-08-19)
 ------------------
 
 * Bug fixes and miscellaneous feature requests for next VACs, including modified

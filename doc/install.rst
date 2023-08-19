@@ -23,7 +23,7 @@ to load a stable version of ``FastSpecFit`` and its dependencies::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh 23.1
   module swap desispec/0.59.2
-  module load fastspecfit/2.3.0
+  module load fastspecfit/2.4.0
 
 Alternatively, the following commands will load the development version of
 ``FastSpecFit``, which is updated nightly and not guaranteed to be stable::
