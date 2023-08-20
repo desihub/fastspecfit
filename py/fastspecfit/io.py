@@ -2076,3 +2076,60 @@ def cache_templates(templates=None, templateversion='1.1.0', imf='chabrier',
             })
 
     return templatecache
+
+def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
+                      outdir='.', overwrite=False):
+    """Utility function to write a single DESI spectrum (e.g., for paper figures or
+    unit tests).
+
+    """
+    from redrock.external.desi import write_zbest
+    from desispec.io import write_spectra, read_spectra
+    from fastspecfit.qa import fastqa
+    from fastspecfit.fastspecfit import fastspec
+
+    os.environ['SPECPROD'] = specprod # needed to get write_spectra have the correct dependency
+
+    specdir = os.path.join(os.environ.get('DESI_ROOT'), 'spectro', 'redux', specprod, 'healpix',
+                           survey, program, str(healpix//100), str(healpix))
+    coaddfile = os.path.join(specdir, f'coadd-{survey}-{program}-{healpix}.fits')
+    redrockfile = os.path.join(specdir, f'redrock-{survey}-{program}-{healpix}.fits')
+
+    out_coaddfile = os.path.join(outdir, f'coadd-{survey}-{program}-{healpix}-{targetid}.fits')
+    out_redrockfile = os.path.join(outdir, f'redrock-{survey}-{program}-{healpix}-{targetid}.fits')
+    out_fastfile = os.path.join(outdir, f'fastspec-{survey}-{program}-{healpix}-{targetid}.fits')
+    if (os.path.isfile(out_coaddfile) or os.path.isfile(out_redrockfile) or os.path.isfile(out_fastfile)) and not overwrite:
+        if os.path.isfile(out_coaddfile):
+            print(f'Coadd file {out_coaddfile} exists and overwrite is False')
+        if os.path.isfile(out_redrockfile):
+            print(f'Redrock file {out_redrockfile} exists and overwrite is False')
+        if os.path.isfile(out_fastfile):
+            print(f'fastspec file {out_fastfile} exists and overwrite is False')
+        return
+    
+    redhdr = fitsio.read_header(redrockfile)
+    zbest = Table.read(redrockfile, 'REDSHIFTS')
+    fibermap = Table.read(redrockfile, 'FIBERMAP')
+    expfibermap = Table.read(redrockfile, 'EXP_FIBERMAP')
+    tsnr2 = Table.read(redrockfile, 'TSNR2')
+    
+    spechdr = fitsio.read_header(coaddfile)
+    
+    zbest = zbest[np.isin(zbest['TARGETID'], targetid)]
+    fibermap = fibermap[np.isin(fibermap['TARGETID'], targetid)]
+    expfibermap = expfibermap[np.isin(expfibermap['TARGETID'], targetid)]
+    tsnr2 = tsnr2[np.isin(tsnr2['TARGETID'], targetid)]
+    
+    archetype_version = None
+    template_version = {redhdr['TEMNAM{:02d}'.format(nn)]: redhdr['TEMVER{:02d}'.format(nn)] for nn in np.arange(10)}
+
+    print(f'Writing {out_redrockfile}')
+    write_zbest(out_redrockfile, zbest, fibermap, expfibermap, tsnr2,
+                template_version, archetype_version, spec_header=spechdr)
+    
+    spec = read_spectra(coaddfile).select(targets=targetid)
+    print(f'Writing {out_coaddfile}')
+    write_spectra(out_coaddfile, spec)
+
+    fastspec(args=f'{out_redrockfile} -o {out_fastfile}'.split())
+    fastqa(args=f'{out_fastfile} --redrockfiles {out_redrockfile} -o {outdir} --overwrite {overwrite}'.split())
