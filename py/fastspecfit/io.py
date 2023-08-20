@@ -1795,7 +1795,7 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
                 models = models[rows, :, :]
         else:
             models = None
-        log.info('Read {} object(s) from {}'.format(len(fastfit), fastfitfile))
+        log.info('Read {:,d} object(s) from {}'.format(len(fastfit), fastfitfile))
 
         # Add specprod to the metadata table so that we can stack across
         # productions (e.g., Fuji+Guadalupe).
@@ -2132,4 +2132,7 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
     write_spectra(out_coaddfile, spec)
 
     fastspec(args=f'{out_redrockfile} -o {out_fastfile}'.split())
-    fastqa(args=f'{out_fastfile} --redrockfiles {out_redrockfile} -o {outdir} --overwrite {overwrite}'.split())
+    cmdargs = f'{out_fastfile} --redrockfiles {out_redrockfile} -o {outdir}'
+    if overwrite:
+        cmdargs += '--overwrite'
+    fastqa(args=cmdargs.split())
