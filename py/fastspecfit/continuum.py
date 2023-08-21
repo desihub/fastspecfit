@@ -2317,8 +2317,9 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         sfr = CTools.get_mean_property(templatecache['templateinfo'], 'sfr', coeff, agekeep,
                                        normalization=1.0/CTools.massnorm, log10=False, log=log)       # [Msun/yr]
 
+    rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 5600))
     log.info('Mstar={:.4g} Msun, {}={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}'.format(
-        logmstar, 'M{}'.format(CTools.absmag_bands[1]), absmag[1], AV, age, sfr, zzsun))
+        logmstar, 'M{}'.format(CTools.absmag_bands[rindx]), absmag[rindx], AV, age, sfr, zzsun))
     #log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
     #    logmstar, absmag[np.isin(CTools.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun, fagn))
 
