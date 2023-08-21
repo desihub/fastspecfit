@@ -186,7 +186,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         if len(Spec.specfiles) == 0:
             return
     
-        data = Spec.read_and_unpack(fastphot=fastphot, mp=args.mp)
+        data = Spec.read_and_unpack(fastphot=fastphot, mp=args.mp, verbose=args.verbose)
         
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))

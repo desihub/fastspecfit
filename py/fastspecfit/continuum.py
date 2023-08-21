@@ -230,6 +230,14 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
         bspl_flux = make_interp_spline(smooth_wave[srt], smooth_flux[srt], k=1)
         smooth_flux = bspl_flux(wave)
 
+        # check for extrapolation
+        blu = np.where(wave < np.min(smooth_wave[srt]))[0]
+        red = np.where(wave > np.max(smooth_wave[srt]))[0]
+        if len(blu) > 0:
+            smooth_flux[:blu[-1]] = smooth_flux[blu[-1]]
+        if len(red) > 0:
+            smooth_flux[red[0]:] = smooth_flux[red[0]]
+
     smooth = median_filter(smooth_flux, medbin, mode='nearest')
     #smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
     #smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
@@ -262,8 +270,8 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
         #    #xx.set_xlim(5200, 6050)
         #    #xx.set_xlim(7000, 9000)
         #    xx.set_xlim(7000, 7800)
-        for xx in ax:
-            xx.set_ylim(-0.2, 1.5)
+        #for xx in ax:
+        #    xx.set_ylim(-0.2, 1.5)
         zlinewaves = linetable['restwave'] * (1 + redshift)
         linenames = linetable['name']
         inrange = np.where((zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave)))[0]
@@ -2264,10 +2272,11 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             _smooth_continuum, _ = CTools.smooth_continuum(
                 specwave, residuals, specivar / apercorr**2,
                 redshift, camerapix=data['camerapix'], emlinesfile=emlinesfile,
-                linemask=linemask, png=png)
+                linemask=linemask, log=log, png=png)
             if no_smooth_continuum:
                 log.info('Zeroing out the smooth continuum correction.')
                 _smooth_continuum *= 0
+
         # Unpack the continuum into individual cameras.
         continuummodel, smooth_continuum = [], []
         for camerapix in data['camerapix']:

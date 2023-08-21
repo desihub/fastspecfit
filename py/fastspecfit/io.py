@@ -220,7 +220,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot, synthphot, 
         # coadded spectrum
         coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
                                                     specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                    linetable=CTools.linetable)
+                                                    linetable=CTools.linetable, log=log)
         specdata['coadd_linename'] = coadd_linemask_dict['linename']
         specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
         specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -373,7 +373,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot, log):
     # coadded spectrum
     coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
                                                 specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                linetable=CTools.linetable)
+                                                linetable=CTools.linetable, log=log)
     specdata['coadd_linename'] = coadd_linemask_dict['linename']
     specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
     specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -960,7 +960,7 @@ class DESISpectra(TabulatedDESI):
         self.meta = metas # update
         log.info('Gathered photometric metadata in {:.2f} sec'.format(time.time()-t0))
 
-    def read_and_unpack(self, fastphot=False, synthphot=True, mp=1):
+    def read_and_unpack(self, fastphot=False, synthphot=True, verbose=False, mp=1):
         """Read and unpack selected spectra or broadband photometry.
         
         Parameters
@@ -1037,7 +1037,13 @@ class DESISpectra(TabulatedDESI):
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
         from desiutil.dust import SFDMap
+        from desiutil.log import get_logger, DEBUG
         from fastspecfit.continuum import ContinuumTools
+        
+        if verbose:
+            log = get_logger(DEBUG)
+        else:
+            log = get_logger()
 
         CTools = ContinuumTools(fphoto=self.fphoto)
 
