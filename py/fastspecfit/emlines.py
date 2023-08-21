@@ -2492,7 +2492,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
                 log.info('  sigma_broad={:.1f} km/s, sigma_narrow={:.1f} km/s'.format(fit_broad[Habroad]['value'][0], fit_broad[Hanarrow]['value'][0]))
                 if _broadsnr:
                     log.info('  {} > {:.0f}'.format(_broadsnr, EMFit.minsnr_balmer_broad))
-                bestfit = fit_broad
+                finalfit, finalmodel, finalchi2 = fit_broad, model_broad, chi2_broad
             else:
                 if dchi2test == False:
                     log.info('Dropping broad-line model: delta-chi2={:.1f} < delta-ndof={:.0f}'.format(
@@ -2505,101 +2505,15 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
                         fit_broad[Habroad]['value'][0], fit_broad[Hanarrow]['value'][0], delta_linechi2_balmer, delta_linendof_balmer))
                 elif broadsnrtest == False:
                     log.info('Dropping broad-line model: {} < {:.0f}'.format(_broadsnr, EMFit.minsnr_balmer_broad))
-                bestfit = fit_nobroad
+                finalfit, finalmodel, finalchi2 = fit_nobroad, model_nobroad, chi2_nobroad
         else:
             log.info('Insufficient Balmer lines to test the broad-line model.')
-            bestfit = initfit_nobroad
+            finalfit, finalmodel, finalchi2 = fit_nobroad, model_nobroad, chi2_nobroad
             delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
     else:
         log.info('Skipping broad-line fitting (broadlinefit=False).')
-        bestfit = fit_nobroad
+        finalfit, finalmodel, finalchi2 = fit_nobroad, model_nobroad, chi2_nobroad
         delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
-
-    pdb.set_trace()
-
-    # Finally, one more fitting loop with all the line-constraints relaxed
-    # but starting from the previous best-fitting values.
-    if use_linemodel_broad:
-        linemodel = final_linemodel
-    else:
-        linemodel = final_linemodel_nobroad
-
-    # Populate the new linemodel being careful to handle the fact that the
-    # "tied" relationships are very different between the initial and final
-    # linemodels.
-    linemodel['bounds'] = bestfit['bounds']
-
-    Ifree = np.where(linemodel['fixed'] == False)[0]
-    for I in Ifree:
-        # copy initial values
-        if bestfit['initial'][I] != 0:
-            linemodel['initial'][I] = bestfit['initial'][I]
-        # copy best-fit values (including zero!)
-        if bestfit['tiedtoparam'][I] != -1:
-            linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
-        else:
-            linemodel['value'][I] = bestfit['value'][I] # value here not init!
-
-        # Make sure the bounds are not violated.
-        if (linemodel['value'][I] < linemodel['bounds'][I, 0]) or (linemodel['value'][I] > linemodel['bounds'][I, 1]):
-            #print(linemodel[I])
-            linemodel['value'][I] = linemodel['initial'][I]
-            
-        #if bestfit['value'][I] != 0:
-        #    linemodel['value'][I] = bestfit['value'][I]
-        #else:
-        #    if bestfit['tiedtoparam'][I] != -1:
-        #        linemodel['value'][I] = bestfit['value'][bestfit['tiedtoparam'][I]]
-        #    else:
-        #        linemodel['value'][I] = linemodel['initial'][I]
-
-    # Are the broad and narrow lines swapped? If so, swap them here.
-    if not linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['fixed'] and \
-      (linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['value'] > 0) and \
-      (linemodel[linemodel['param_name'] == 'halpha_broad_sigma']['value'] < linemodel[linemodel['param_name'] == 'halpha_sigma']['value']):
-        for linename in EMFit.fit_linetable[EMFit.fit_linetable['isbalmer'] * EMFit.fit_linetable['isbroad']]['name']:
-            if not linemodel[linemodel['param_name'] == '{}_sigma'.format(linename)]['fixed']:
-                sigma_broad = linemodel[linemodel['param_name'] == '{}_sigma'.format(linename)]['value']
-                sigma_narrow = linemodel[linemodel['param_name'] == '{}_sigma'.format(linename).replace('_broad', '')]['value']
-                #print(linename, sigma_broad[0], sigma_narrow[0])
-                linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename)] = sigma_narrow
-                linemodel['value'][linemodel['param_name'] == '{}_sigma'.format(linename).replace('_broad', '')] = sigma_broad
-
-    # This error condition was very helpful for getting the code right, but
-    # is actually too stringent. For example, an object can have an initial
-    # amplitude of zero if it was dropped / not needed in the initial
-    # fitting round, which can happen for the broad Balmer lines.
-
-    ## Tied parameters can have initial values of zero if they are fixed
-    ## (e.g., broad emission lines) but nothing else.
-    #I = (linemodel['value'][Ifree] == 0) * (linemodel['tiedtoparam'][Ifree] == -1)
-    #if np.any(I):
-    #    errmsg = 'Initial values should never be zero [targetid={}]!'.format(data['targetid'])
-    #    log.critical(errmsg)
-    #    raise ValueError(errmsg)
-
-    ## Tighten up the bounds to within +/-10% around the initial parameter
-    ## values except for the amplitudes. Be sure to check for zero.
-    #if False:
-    #    I = np.where((EMFit.amp_param_bool == False) * (linemodel['fixed'] == False) *
-    #                 (linemodel['value'] != 0.0) *
-    #                 (linemodel['tiedtoparam'] == -1) * (linemodel['doubletpair'] == -1))[0]
-    #    if len(I) > 0:
-    #        neg = linemodel['value'][I] < 0
-    #        pos = linemodel['value'][I] >= 0
-    #        if np.any(neg):
-    #            linemodel['bounds'][I[neg], :] = np.vstack((linemodel['value'][I[neg]] / 0.8, linemodel['value'][I[neg]] / 1.2)).T
-    #        if np.any(pos):
-    #            linemodel['bounds'][I[pos], :] = np.vstack((linemodel['value'][I[pos]] * 0.8, linemodel['value'][I[pos]] * 1.2)).T
-
-    t0 = time.time()
-    finalfit = EMFit.optimize(linemodel, emlinewave, emlineflux, weights, 
-                              redshift, resolution_matrix, camerapix, 
-                              log=log, debug=False, get_finalamp=True)
-    finalmodel = EMFit.bestfit(finalfit, redshift, emlinewave, resolution_matrix, camerapix)
-    finalchi2, finalndof, nfree = EMFit.chi2(finalfit, emlinewave, emlineflux, emlineivar, finalmodel, return_dof=True)
-    log.info('Final line-fitting with {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
-        nfree, time.time()-t0, finalfit.meta['nfev'], finalchi2))
 
     # Residual spectrum with no emission lines.
     specflux_nolines = specflux - finalmodel
@@ -2614,8 +2528,8 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
 
     result['RCHI2_LINE'] = finalchi2
     #result['NDOF_LINE'] = finalndof
-    result['DELTA_LINECHI2'] = delta_linechi2_balmer # linechi2_init - linechi2_broad
-    result['DELTA_LINENDOF'] = delta_linendof_balmer # linendof_init - linendof_broad
+    result['DELTA_LINECHI2'] = delta_linechi2_balmer # chi2_nobroad - chi2_broad
+    result['DELTA_LINENDOF'] = delta_linendof_balmer # ndof_nobroad - ndof_broad
 
     # full-fit reduced chi2
     rchi2 = np.sum(oemlineivar * (specflux - (continuummodelflux + smoothcontinuummodelflux + emmodel))**2)
