@@ -1629,12 +1629,13 @@ class ContinuumTools(Filters, Inoue14):
             if ((specwave is None and specres is None and coeff is None) or
                (specwave is not None and specres is not None)):
                 try:
-                    maggies = filters.get_ab_maggies(padflux, padwave) # speclite.filters wants an [nmodel,npix] array
+                    maggies = filters.get_ab_maggies(ztemplateflux.T, ztemplatewave) # speclite.filters wants an [nmodel,npix] array
                 except:
                     # pad in the case of an object at very high redshift (z>5.5).
                     log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
-                    padflux, padwave = filters.pad_spectrum(ztemplateflux.T, ztemplatewave, axis=0, method='edge')
-                    maggies = filters.get_ab_maggies(padflux.T, padwave, axis=0)
+                    padflux, padwave = filters.pad_spectrum(ztemplateflux, ztemplatewave, axis=0, method='edge')
+                    maggies = filters.get_ab_maggies(padflux.T, padwave)
+                    
                 maggies = np.vstack(maggies.as_array().tolist()).T
                 maggies /= FLUXNORM * self.massnorm
                 templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, verbose=debug, log=log)
