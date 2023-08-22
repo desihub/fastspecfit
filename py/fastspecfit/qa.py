@@ -1183,7 +1183,7 @@ def parse(options=None):
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')    
-    parser.add_argument('--fphotoinfo', type=str, default=None, help='Photometric information file.')
+    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
 
     parser.add_argument('--emline-snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
     parser.add_argument('--nsmoothspec', type=int, default=0, help='Smoothing pixel value.')
@@ -1305,7 +1305,7 @@ def fastqa(args=None, comm=None):
 
     # Initialize the I/O class.
     Spec = DESISpectra(stackfit=args.stackfit, redux_dir=args.redux_dir, fphotodir=args.fphotodir, 
-                       fphotoinfo=args.fphotoinfo, mapdir=args.mapdir)
+                       fphotofile=args.fphotofile, mapdir=args.mapdir)
 
     templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
 

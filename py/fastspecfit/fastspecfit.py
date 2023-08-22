@@ -102,7 +102,7 @@ def parse(options=None, log=None):
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
-    parser.add_argument('--fphotoinfo', type=str, default=None, help='Photometric information file.')
+    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
@@ -170,7 +170,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     # Read the data.
     t0 = time.time()
     Spec = DESISpectra(stackfit=stackfit, fphotodir=args.fphotodir,
-                       fphotoinfo=args.fphotoinfo, mapdir=args.mapdir)
+                       fphotofile=args.fphotofile, mapdir=args.mapdir)
 
     if stackfit:
         data = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
@@ -239,7 +239,9 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
-                      fastphot=fastphot, input_redshifts=input_redshifts,
+                      fphotofile=Spec.fphotofile, templates=templates,
+                      emlinesfile=args.emlinesfile, fastphot=fastphot,
+                      input_redshifts=input_redshifts, nophoto=args.nophoto,
                       no_smooth_continuum=args.no_smooth_continuum)
 
 def fastphot(args=None, comm=None):

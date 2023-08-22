@@ -425,7 +425,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot, log):
 
 class DESISpectra(TabulatedDESI):
     def __init__(self, stackfit=False, redux_dir=None, fiberassign_dir=None,
-                 fphotodir=None, fphotoinfo=None, mapdir=None):
+                 fphotodir=None, fphotofile=None, mapdir=None):
         """Class to read in DESI spectra and associated metadata.
 
         Parameters
@@ -460,17 +460,19 @@ class DESISpectra(TabulatedDESI):
         else:
             self.fphotodir = fphotodir
 
-        if fphotoinfo is None:
+        if fphotofile is None:
             from importlib import resources
             if stackfit:
-                fphotoinfo = resources.files('fastspecfit').joinpath('data/stacked-phot.yaml')
+                fphotofile = resources.files('fastspecfit').joinpath('data/stacked-phot.yaml')
             else:
-                fphotoinfo = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
+                fphotofile = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
+
         try:
-            with open(fphotoinfo, 'r') as F:
+            with open(fphotofile, 'r') as F:
                 fphoto = yaml.safe_load(F)
+            self.fphotofile = fphotofile
         except:
-            errmsg = f'Unable to read parameter file {fphotoinfo}'
+            errmsg = f'Unable to read parameter file {fphotofile}'
             log.critical(errmsg)
             raise ValueError(errmsg)
 
@@ -1829,15 +1831,16 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
             return [None]*4
 
 def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
-                      coadd_type=None, fastphot=False, input_redshifts=False,
-                      no_smooth_continuum=False):
+                      coadd_type=None, fphotofile=None, templates=None,
+                      emlinesfile=None, fastphot=False, input_redshifts=False,
+                      no_smooth_continuum=False, nophoto=False):
     """Write out.
 
     """
     import gzip, shutil
     from astropy.io import fits
     from desispec.io.util import fitsheader
-    from desiutil.depend import add_dependencies, possible_dependencies
+    from desiutil.depend import add_dependencies, possible_dependencies, setdep
 
     t0 = time.time()
     outdir = os.path.dirname(os.path.abspath(outfile))
@@ -1871,10 +1874,17 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
         primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd type')))
     primhdr.append(('INPUTZ', (input_redshifts is not None, 'input redshifts provided')))
     primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))
+    primhdr.append(('NOPHOTO', (nophoto is True, 'no fitting to photometry')))
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
-                     envvar_names=['DESI_ROOT', 'FTEMPLATES_DIR', 'DUST_DIR', 'FPHOTO_DIR'])
+                     envvar_names=['DESI_ROOT', 'DUST_DIR', 'FTEMPLATES_DIR', 'FPHOTO_DIR'])
+    if fphotofile:
+        setdep(primhdr, 'FPHOTO_FILE', str(fphotofile))
+    if templates:
+        setdep(primhdr, 'FTEMPLATES_FILE', os.path.basename(templates))
+    if emlinesfile:
+        setdep(primhdr, 'EMLINES_FILE', str(emlinesfile))
 
     hdus = fits.HDUList()
     hdus.append(fits.PrimaryHDU(None, primhdr))
