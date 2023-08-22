@@ -246,9 +246,9 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
                       fphotofile=Spec.fphotofile, templates=templates,
                       emlinesfile=emlinesfile, fastphot=fastphot,
-                      input_redshifts=input_redshifts, nophoto=args.nophoto,
+                      inputz=input_redshifts is not None, nophoto=args.nophoto,
                       broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
-                      ignore_quasarnet=args.ignore_quasarnet,
+                      use_quasarnet=args.use_quasarnet,
                       no_smooth_continuum=args.no_smooth_continuum)
 
 def fastphot(args=None, comm=None):
