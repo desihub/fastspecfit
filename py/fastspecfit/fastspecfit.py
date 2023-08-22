@@ -149,11 +149,16 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     else:
         log = get_logger()
 
-    if args.emlinesfile is not None:
-        if not os.path.isfile(args.emlinesfile):
-            errmsg = f'Problem reading emission lines parameter file {args.emlinesfile}.'
-            log.critical(errmsg)
-            raise ValueError(errmsg)
+    if args.emlinesfile is None:
+        from importlib import resources
+        emlinesfile = resources.files('fastspecfit').joinpath('data/emlines.ecsv')
+    else:
+        emlinesfile = args.emlinesfile
+        
+    if not os.path.isfile(emlinesfile):
+        errmsg = f'Emission lines parameter file {emlinesfile} does not exist.'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
 
     input_redshifts = None
     if args.targetids:
@@ -200,13 +205,13 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     out, meta = init_fastspec_output(Spec.meta, Spec.specprod, fphoto=Spec.fphoto, 
                                      templates=templates, data=data, log=log,
-                                     emlinesfile=args.emlinesfile,
-                                     fastphot=fastphot, stackfit=stackfit)
+                                     emlinesfile=emlinesfile, fastphot=fastphot,
+                                     stackfit=stackfit)
 
     # Fit in parallel
     t0 = time.time()
     fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], Spec.fphoto, templates, log,
-                args.emlinesfile, args.broadlinefit, fastphot, args.constrain_age,
+                emlinesfile, args.broadlinefit, fastphot, args.constrain_age,
                 args.no_smooth_continuum, args.percamera_models, args.debug_plots)
                 for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
@@ -240,8 +245,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
                       fphotofile=Spec.fphotofile, templates=templates,
-                      emlinesfile=args.emlinesfile, fastphot=fastphot,
+                      emlinesfile=emlinesfile, fastphot=fastphot,
                       input_redshifts=input_redshifts, nophoto=args.nophoto,
+                      broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
+                      ignore_quasarnet=args.ignore_quasarnet,
                       no_smooth_continuum=args.no_smooth_continuum)
 
 def fastphot(args=None, comm=None):

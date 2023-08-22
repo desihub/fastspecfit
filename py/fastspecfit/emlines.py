@@ -22,8 +22,15 @@ def read_emlines(emlinesfile=None):
     if emlinesfile is None:
         from importlib import resources
         emlinesfile = resources.files('fastspecfit').joinpath('data/emlines.ecsv')
-        
-    linetable = Table.read(emlinesfile, format='ascii.ecsv', guess=False)
+
+    try:
+        linetable = Table.read(emlinesfile, format='ascii.ecsv', guess=False)
+    except: 
+        from desiutil.log import get_logger
+        log = get_logger()
+        errmsg = f'Problem reading emission lines parameter file {emlinesfile}.'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
     
     return linetable    
 

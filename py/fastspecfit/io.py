@@ -1833,7 +1833,8 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
 def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
                       coadd_type=None, fphotofile=None, templates=None,
                       emlinesfile=None, fastphot=False, input_redshifts=False,
-                      no_smooth_continuum=False, nophoto=False):
+                      no_smooth_continuum=False, nophoto=False, broadlinefit=True,
+                      ignore_quasarnet=False, constrain_age=False):
     """Write out.
 
     """
@@ -1875,6 +1876,9 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     primhdr.append(('INPUTZ', (input_redshifts is not None, 'input redshifts provided')))
     primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))
     primhdr.append(('NOPHOTO', (nophoto is True, 'no fitting to photometry')))
+    primhdr.append(('BRDLFIT', (broadlinefit is True, 'carry out broad-line fitting')))
+    primhdr.append(('CONSAGE', (constrain_age is True, 'constrain SPS ages')))
+    primhdr.append(('IGNQNET', (ignore_quasarnet is True, 'ignore QuasarNet redshifts')))
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
