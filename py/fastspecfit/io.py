@@ -1082,7 +1082,8 @@ class DESISpectra(TabulatedDESI):
                         'photsys': photsys[iobj],
                         'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, True, False, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto,
+                                       True, False, ignore_photometry, log))
             else:
                 from desispec.resolution import Resolution
                 
