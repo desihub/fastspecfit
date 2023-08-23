@@ -601,15 +601,15 @@ class EMFitTools(Filters):
             if amp < 0:
                 amp = np.abs(amp)
 
-            noise = np.median(coadd_sigma[linepix])
-            if noise == 0:
-                civar = 0.0
+            noise = np.mean(coadd_sigma[linepix])
+            if noise == 0.:
+                civar = 0.
                 errmsg = 'Noise estimate for line {} is zero!'.format(linename)
                 log.warning(errmsg)
                 #raise ValueError(errmsg)
             else:
-                civar = 1.0 / noise**2
-                
+                civar = 1. / noise**2
+
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 3*np.max(coadd_emlineflux[linepix])]
             mx = 5*np.max(coadd_emlineflux[linepix])
@@ -629,21 +629,6 @@ class EMFitTools(Filters):
                 if np.abs(bounds[0]) == 0.0:
                     bounds[0] = -1e-3 # ??
             
-            # force broad Balmer lines to be positive - deprecated
-            #if iline['isbroad']:
-            #    if iline['isbalmer']:
-            #        bounds = [0.0, mx]
-            #    else:
-            #        # MgII and other UV lines are dropped relatively frequently
-            #        # due to the lower bound on the amplitude.
-            #        #bounds = [None, mx]
-            #        #bounds = [-1e2, mx]
-            #        #bounds = [0.0, mx]
-            #        bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
-            #else:
-            #    #bounds = [0.0, mx]
-            #    bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
-
             if (bounds[0] > bounds[1]) or (amp < bounds[0]) or (amp > bounds[1]):
                 log.warning('Initial amplitude is outside its bound for line {}.'.format(linename))
                 amp = np.diff(bounds)/2 + bounds[0]
@@ -2479,7 +2464,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
             Hanarrow = fit_broad['param_name'] == 'halpha_sigma' # Balmer lines are tied to H-alpha even if out of range
             Habroad = fit_broad['param_name'] == 'halpha_broad_sigma'
             Bbroad = fit_broad['isbalmer'] * fit_broad['isbroad'] * (fit_broad['fixed'] == False) * EMFit.amp_balmer_bool
-            broadsnr = fit_broad[Bbroad]['value'].data * np.sqrt(fit_broad[Bbroad]['civar'].data)
+            broadsnr = fit_broad[Bbroad]['obsvalue'].data * np.sqrt(fit_broad[Bbroad]['civar'].data)
 
             sigtest1 = fit_broad[Habroad]['value'][0] > EMFit.minsigma_balmer_broad
             sigtest2 = (fit_broad[Habroad]['value'] > fit_broad[Hanarrow]['value'])[0]
@@ -2543,17 +2528,6 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     rchi2 = np.sum(oemlineivar * (specflux - (continuummodelflux + smoothcontinuummodelflux + emmodel))**2)
     rchi2 /= np.sum(oemlineivar > 0) # dof??
     result['RCHI2'] = rchi2
-
-    # As a consistency check, make sure that the emission-line spectrum
-    # rebuilt from the final table is not (very) different from the one
-    # based on the best-fitting model parameters.
-    #assert(np.all(np.isclose(emmodel, emlinemodel, rtol=1e-4)))
-        
-    #import matplotlib.pyplot as plt
-    #plt.clf()
-    #plt.plot(emlinewave, np.hstack(emmodel)-emlinemodel)
-    ##plt.plot(emlinewave, emlinemodel)
-    #plt.savefig('desi-users/ioannis/tmp/junk.png')
 
     # I believe that all the elements of the coadd_wave vector are contained
     # within one or more of the per-camera wavelength vectors, and so we
