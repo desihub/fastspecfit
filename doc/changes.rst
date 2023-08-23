@@ -2,10 +2,17 @@
 Change Log
 ==========
 
-2.4.1 (not released yet)
+2.4.2 (not released yet)
 ------------------------
 
 * 
+
+2.4.1 (2023-08-23)
+------------------
+
+* Just two rounds of emission-line fitting [`PR #151`_].
+
+.. _`PR #151`: https://github.com/desihub/fastspecfit/pull/151
 
 2.4.0 (2023-08-19)
 ------------------
