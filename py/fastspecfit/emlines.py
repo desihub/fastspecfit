@@ -1057,6 +1057,7 @@ class EMFitTools(Filters):
         for param in finalfit:
             val = param['value']
             obsval = param['obsvalue']
+
             # special case the tied doublets
             if param['param_name'] == 'oii_doublet_ratio':
                 result['OII_DOUBLET_RATIO'] = val
@@ -2414,7 +2415,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     # Initial fit - initial_linemodel_nobroad
     t0 = time.time()
     fit_nobroad = EMFit.optimize(linemodel_nobroad, emlinewave, emlineflux, weights, redshift,
-                                 resolution_matrix, camerapix, log=log, debug=False, get_finalamp=False)
+                                 resolution_matrix, camerapix, log=log, debug=False, get_finalamp=True)
     model_nobroad = EMFit.bestfit(fit_nobroad, redshift, emlinewave, resolution_matrix, camerapix)
     chi2_nobroad, ndof_nobroad, nfree_nobroad = EMFit.chi2(fit_nobroad, emlinewave, emlineflux, emlineivar, model_nobroad, return_dof=True)
     log.info('Line-fitting with no broad lines and {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
