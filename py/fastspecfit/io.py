@@ -90,7 +90,8 @@ def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot, synthphot, log):
+def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
+                        synthphot, ignore_photometry, log):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
@@ -98,7 +99,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot, synthphot, 
     from fastspecfit.util import mwdust_transmission
     from fastspecfit.continuum import ContinuumTools
 
-    CTools = ContinuumTools(fphoto=fphoto)
+    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
     
     log.info('Pre-processing object {} [targetid {} z={:.6f}].'.format(
         iobj, meta[CTools.uniqueid], meta['Z']))
@@ -291,14 +292,15 @@ def _unpack_one_stacked_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_stacked_spectrum(*args)
 
-def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot, log):
+def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
+                                ignore_photometry, log):
     """Unpack the data for a single stacked spectrum. Also flag pixels which may be
     affected by emission lines.
 
     """
     from fastspecfit.continuum import ContinuumTools
     
-    CTools = ContinuumTools(fphoto=fphoto)
+    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
     
     log.info('Pre-processing object {} [stackid {} z={:.6f}].'.format(
         iobj, meta[CTools.uniqueid], meta['Z']))
@@ -962,7 +964,8 @@ class DESISpectra(TabulatedDESI):
         self.meta = metas # update
         log.info('Gathered photometric metadata in {:.2f} sec'.format(time.time()-t0))
 
-    def read_and_unpack(self, fastphot=False, synthphot=True, verbose=False, mp=1):
+    def read_and_unpack(self, fastphot=False, synthphot=True, ignore_photometry=False,
+                        verbose=False, mp=1):
         """Read and unpack selected spectra or broadband photometry.
         
         Parameters
@@ -1047,7 +1050,7 @@ class DESISpectra(TabulatedDESI):
         else:
             log = get_logger()
 
-        CTools = ContinuumTools(fphoto=self.fphoto)
+        CTools = ContinuumTools(fphoto=self.fphoto, ignore_photometry=ignore_photometry)
 
         SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
@@ -1111,7 +1114,8 @@ class DESISpectra(TabulatedDESI):
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
                         'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :]),
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, fastphot, synthphot, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, fastphot,
+                                       synthphot, ignore_photometry, log))
                     
             if mp > 1:
                 import multiprocessing
@@ -1132,7 +1136,8 @@ class DESISpectra(TabulatedDESI):
         return alldata
 
     def read_stacked(self, stackfiles, firsttarget=0, ntargets=None,
-                     stackids=None, synthphot=True, mp=1):
+                     stackids=None, synthphot=True, ignore_photometry=False,
+                     mp=1):
         """Read one or more stacked spectra.
         
         Parameters
@@ -1216,7 +1221,7 @@ class DESISpectra(TabulatedDESI):
         from desispec.resolution import Resolution
         from fastspecfit.continuum import ContinuumTools
 
-        CTools = ContinuumTools(fphoto=self.fphoto)
+        CTools = ContinuumTools(fphoto=self.fphoto, ignore_photometry=ignore_photometry)
         
         if stackfiles is None:
             errmsg = 'At least one stackfiles file is required.'
@@ -1362,7 +1367,8 @@ class DESISpectra(TabulatedDESI):
                     'coadd_ivar': specdata['ivar0'][0],
                     'coadd_res': specdata['res0'][0],
                     })
-                unpackargs.append((iobj, specdata, meta[iobj], self.fphoto, synthphot, log))
+                unpackargs.append((iobj, specdata, meta[iobj], self.fphoto, synthphot,
+                                   ignore_photometry, log))
                     
             if mp > 1:
                 import multiprocessing
@@ -1833,8 +1839,8 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
 def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
                       coadd_type=None, fphotofile=None, templates=None,
                       emlinesfile=None, fastphot=False, inputz=False,
-                      no_smooth_continuum=False, nophoto=False, broadlinefit=True,
-                      use_quasarnet=True, constrain_age=False):
+                      no_smooth_continuum=False, ignore_photometry=False, broadlinefit=True,
+                      use_quasarnet=True, constrain_age=False, verbose=True):
     """Write out.
 
     """
@@ -1850,9 +1856,9 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
 
     nobj = len(out)
     if nobj == 1:
-        log.info('Writing results for {} object to {}'.format(nobj, outfile))
+        log.info('Writing {} object to {}'.format(nobj, outfile))
     else:
-        log.info('Writing results for {:,d} objects to {}'.format(nobj, outfile))
+        log.info('Writing {:,d} objects to {}'.format(nobj, outfile))
     
     if outfile.endswith('.gz'):
         tmpfile = outfile[:-3]+'.tmp'
@@ -1875,7 +1881,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
         primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd type')))
     primhdr.append(('INPUTZ', (inputz is True, 'input redshifts provided')))
     primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))
-    primhdr.append(('NOPHOTO', (nophoto is True, 'no fitting to photometry')))
+    primhdr.append(('NOPHOTO', (ignore_photometry is True, 'no fitting to photometry')))
     primhdr.append(('BRDLFIT', (broadlinefit is True, 'carry out broad-line fitting')))
     primhdr.append(('CONSAGE', (constrain_age is True, 'constrain SPS ages')))
     primhdr.append(('USEQNET', (use_quasarnet is True, 'use QuasarNet redshifts')))
@@ -1919,7 +1925,8 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     else:
         os.rename(tmpfile, outfile)
 
-    log.info('Writing out took {:.2f} seconds.'.format(time.time()-t0))
+    if verbose:
+        log.info('Writing out took {:.2f} seconds.'.format(time.time()-t0))
 
 def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
            nights=None, return_index=False):

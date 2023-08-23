@@ -179,9 +179,6 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
         sig = np.std(cflux) # simple median and sigma
         mn = np.median(cflux)
 
-        #if png and mn < -1:# and np.mean(swave[I]) > 7600:
-        #    print(np.mean(swave[I]), mn)
-
         # One more check for crummy spectral regions.
         if mn == 0.0:
             smooth_mask.append(True)
@@ -277,7 +274,6 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
         inrange = np.where((zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave)))[0]
         if len(inrange) > 0:
             for linename, zlinewave in zip(linenames[inrange], zlinewaves[inrange]):
-                #print(linename, zlinewave)
                 for xx in ax:
                     xx.axvline(x=zlinewave, color='gray')
 
@@ -673,7 +669,7 @@ def _convolve_vdisp(templateflux, vdisp, pixsize_kms):
     return smoothflux
 
 class Filters(object):
-    def __init__(self, nophoto=False, fphoto=None, load_filters=True):
+    def __init__(self, ignore_photometry=False, fphoto=None, load_filters=True):
         """Class to load filters, dust, and filter- and dust-related methods.
 
         """
@@ -781,8 +777,8 @@ class Filters(object):
             raise ValueError(errmsg)
 
         # Do not fit the photometry.
-        if nophoto:
-            self.bands_to_fit *= 0
+        if ignore_photometry:
+            self.bands_to_fit *= [False]
 
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
@@ -1249,14 +1245,13 @@ class ContinuumTools(Filters, Inoue14):
         Need to document all the attributes.
 
     """
-    def __init__(self, nophoto=False, fphoto=None, emlinesfile=None):
+    def __init__(self, ignore_photometry=False, fphoto=None, emlinesfile=None):
 
-        super(ContinuumTools, self).__init__(nophoto=nophoto, fphoto=fphoto)
+        super(ContinuumTools, self).__init__(ignore_photometry=ignore_photometry, fphoto=fphoto)
 
         from fastspecfit.emlines import read_emlines
         
         self.massnorm = 1e10 # stellar mass normalization factor [Msun]
-
         self.linetable = read_emlines(emlinesfile=emlinesfile)
 
     @staticmethod
@@ -1947,8 +1942,8 @@ class ContinuumTools(Filters, Inoue14):
         return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
 
 def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None,
-                      constrain_age=False, no_smooth_continuum=False, fastphot=False,
-                      log=None, debug_plots=False, verbose=False):
+                      constrain_age=False, no_smooth_continuum=False, ignore_photometry=False,
+                      fastphot=False, log=None, debug_plots=False, verbose=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -1978,7 +1973,8 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             
     tall = time.time()
 
-    CTools = ContinuumTools(fphoto=fphoto, emlinesfile=emlinesfile)
+    CTools = ContinuumTools(fphoto=fphoto, emlinesfile=emlinesfile,
+                            ignore_photometry=ignore_photometry)
 
     redshift = result['Z']
     objflam = data['phot']['flam'].data * FLUXNORM

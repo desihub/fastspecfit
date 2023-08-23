@@ -350,7 +350,7 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
                       coadd_type=coadd_type, fastphot=fastphot,
                       fphotofile=deps2['FPHOTO_FILE'], templates=deps2['FTEMPLATES_FILE'],
                       emlinesfile=deps2['EMLINES_FILE'], inputz=deps['INPUTZ'],
-                      nophoto=deps['NOPHOTO'], broadlinefit=deps['BRDLFIT'],
+                      ignore_photometry=deps['NOPHOTO'], broadlinefit=deps['BRDLFIT'],
                       constrain_age=deps['CONSAGE'], use_quasarnet=deps['USEQNET'],
                       no_smooth_continuum=deps['NOSCORR'])
 
