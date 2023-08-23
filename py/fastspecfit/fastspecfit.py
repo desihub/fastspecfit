@@ -38,7 +38,8 @@ def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stack
 def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                  emlinesfile=None, broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
-                 percamera_models=False, debug_plots=False):
+                 ignore_photometry=False, percamera_models=False,
+                 debug_plots=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -59,6 +60,7 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fphoto=fphoto,
                                                          emlinesfile=emlinesfile, constrain_age=constrain_age,
                                                          no_smooth_continuum=no_smooth_continuum,
+                                                         ignore_photometry=ignore_photometry,
                                                          fastphot=fastphot, debug_plots=debug_plots,
                                                          log=log)
 
@@ -88,11 +90,11 @@ def parse(options=None, log=None):
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
-                        help='Do not allow for broad Balmer and Helium line-fitting.')
-    parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
+                        help='Do not model broad Balmer and helium line-emission.')
+    parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
+    parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')    
     parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
     parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
-    parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')    
     parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
     parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
     parser.add_argument('--templateversion', type=str, default='1.1.0', help='Template version number.')
@@ -102,7 +104,7 @@ def parse(options=None, log=None):
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
-    parser.add_argument('--fphotoinfo', type=str, default=None, help='Photometric information file.')
+    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
@@ -149,11 +151,16 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     else:
         log = get_logger()
 
-    if args.emlinesfile is not None:
-        if not os.path.isfile(args.emlinesfile):
-            errmsg = f'Problem reading emission lines parameter file {args.emlinesfile}.'
-            log.critical(errmsg)
-            raise ValueError(errmsg)
+    if args.emlinesfile is None:
+        from importlib import resources
+        emlinesfile = resources.files('fastspecfit').joinpath('data/emlines.ecsv')
+    else:
+        emlinesfile = args.emlinesfile
+        
+    if not os.path.isfile(emlinesfile):
+        errmsg = f'Emission lines parameter file {emlinesfile} does not exist.'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
 
     input_redshifts = None
     if args.targetids:
@@ -170,23 +177,25 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     # Read the data.
     t0 = time.time()
     Spec = DESISpectra(stackfit=stackfit, fphotodir=args.fphotodir,
-                       fphotoinfo=args.fphotoinfo, mapdir=args.mapdir)
+                       fphotofile=args.fphotofile, mapdir=args.mapdir)
 
     if stackfit:
+        args.ignore_photometry = True
         data = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
                                  stackids=targetids, ntargets=args.ntargets,
-                                 mp=args.mp)
-        args.nophoto = True # force nophoto=True
+                                 mp=args.mp, ignore_photometry=args.ignore_photometry)
     else:
         Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
                     input_redshifts=input_redshifts, ntargets=args.ntargets,
                     redrockfile_prefix=args.redrockfile_prefix,
                     specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
                     use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
+
         if len(Spec.specfiles) == 0:
             return
-    
-        data = Spec.read_and_unpack(fastphot=fastphot, mp=args.mp)
+
+        data = Spec.read_and_unpack(fastphot=fastphot, ignore_photometry=args.ignore_photometry,
+                                    mp=args.mp, verbose=args.verbose)
         
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))
@@ -200,14 +209,15 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     out, meta = init_fastspec_output(Spec.meta, Spec.specprod, fphoto=Spec.fphoto, 
                                      templates=templates, data=data, log=log,
-                                     emlinesfile=args.emlinesfile,
-                                     fastphot=fastphot, stackfit=stackfit)
+                                     emlinesfile=emlinesfile, fastphot=fastphot,
+                                     stackfit=stackfit)
 
     # Fit in parallel
     t0 = time.time()
     fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], Spec.fphoto, templates, log,
-                args.emlinesfile, args.broadlinefit, fastphot, args.constrain_age,
-                args.no_smooth_continuum, args.percamera_models, args.debug_plots)
+                emlinesfile, args.broadlinefit, fastphot, args.constrain_age,
+                args.no_smooth_continuum, args.ignore_photometry, args.percamera_models,
+                args.debug_plots)
                 for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing
@@ -239,7 +249,12 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
-                      fastphot=fastphot, input_redshifts=input_redshifts,
+                      fphotofile=Spec.fphotofile, templates=templates,
+                      emlinesfile=emlinesfile, fastphot=fastphot,
+                      inputz=input_redshifts is not None,
+                      ignore_photometry=args.ignore_photometry,
+                      broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
+                      use_quasarnet=args.use_quasarnet,
                       no_smooth_continuum=args.no_smooth_continuum)
 
 def fastphot(args=None, comm=None):

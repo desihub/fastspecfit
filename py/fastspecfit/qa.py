@@ -19,8 +19,9 @@ def _desiqa_one(args):
 def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
                maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1, 
-               fastphot=False, nophoto=False, stackfit=False, inputz=False, 
-               no_smooth_continuum=False, outdir=None, outprefix=None, log=None):
+               fastphot=False, ignore_photometry=False, stackfit=False,
+               inputz=False, no_smooth_continuum=False, outdir=None,
+               outprefix=None, log=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
@@ -38,6 +39,7 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
                 spec_wavelims=(minspecwave, maxspecwave), 
                 phot_wavelims=(minphotwave, maxphotwave), 
                 no_smooth_continuum=no_smooth_continuum,
+                ignore_photometry=ignore_photometry,
                 emline_snrmin=emline_snrmin, nsmoothspec=nsmoothspec,
                 fastphot=fastphot, fphoto=fphoto, stackfit=stackfit, 
                 outprefix=outprefix, outdir=outdir, log=log, cosmo=cosmo)
@@ -45,8 +47,9 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
 def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
                 fastphot=False, fphoto=None, stackfit=False, outprefix=None,
-                no_smooth_continuum=False, emline_snrmin=0.0, nsmoothspec=1, 
-                outdir=None, log=None, cosmo=None):
+                no_smooth_continuum=False, ignore_photometry=False,
+                emline_snrmin=0.0, nsmoothspec=1, outdir=None, log=None,
+                cosmo=None):
     """QA plot the emission-line spectrum and best-fitting model.
 
     """
@@ -98,7 +101,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         else:
             return f'{x:.0f}'
 
-    CTools = ContinuumTools(fphoto=fphoto)
+    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
     if 'legacysurveydr' in fphoto.keys():
         layer = 'ls-{}'.format(fphoto['legacysurveydr'])
     else:
@@ -576,7 +579,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 if np.max(modelflux) > spec_ymax:
                     spec_ymax = np.max(modelflux) * 1.25
                 #print(spec_ymin, spec_ymax)
-                #pdb.set_trace()
         
             #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[icam], alpha=0.2)
             if nsmoothspec > 1:
@@ -637,7 +639,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 _wave = data['wave'][icam][good]/1e4
                 _flux = -2.5*np.log10(desimodelspec[icam][good]*factor[good])
                 sedax.plot(_wave, _flux, color=col2[icam], alpha=0.8)
-                #pdb.set_trace()
 
         # we have to set the limits *before* we call errorbar, below!
         dm = 1.5
@@ -941,8 +942,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                         if _line_ymin < line_ymin[iax]:
                             line_ymin[iax] = _line_ymin
                         #print(linename, line_ymin[iax], line_ymax[iax])
-                        #if linename == '[OII] $\lambda\lambda$3726,29':
-                        #    pdb.set_trace()
             
                         xx.set_xlim(wmin/1e4, wmax/1e4)
 
@@ -1183,7 +1182,7 @@ def parse(options=None):
     parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')    
-    parser.add_argument('--fphotoinfo', type=str, default=None, help='Photometric information file.')
+    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
 
     parser.add_argument('--emline-snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
     parser.add_argument('--nsmoothspec', type=int, default=0, help='Smoothing pixel value.')
@@ -1198,7 +1197,6 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('--stackfit', action='store_true', help='Generate QA for stacked spectra.')
-    parser.add_argument('--nophoto', action='store_true', help='Do not include the photometry in the model fitting.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
 
     parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
@@ -1269,17 +1267,18 @@ def fastqa(args=None, comm=None):
         log.critical(errmsg)
         raise IOError(errmsg)
 
-    # check for the input redshifts header card
+    # check for various header cards
     hdr = fitsio.read_header(args.fastfitfile[0])
+    inputz = False
+    no_smooth_continuum = False
+    ignore_photometry = False
+    
     if 'INPUTZ' in hdr and hdr['INPUTZ']:
         inputz = True
-    else:
-        inputz = False
-
     if 'NOSCORR' in hdr and hdr['NOSCORR']:
         no_smooth_continuum = True
-    else:
-        no_smooth_continuum = False
+    if 'NOPHOTO' in hdr and hdr['NOPHOTO']:
+        ignore_photometry = True
 
     if args.outdir:
         if not os.path.isdir(args.outdir):
@@ -1305,7 +1304,7 @@ def fastqa(args=None, comm=None):
 
     # Initialize the I/O class.
     Spec = DESISpectra(stackfit=args.stackfit, redux_dir=args.redux_dir, fphotodir=args.fphotodir, 
-                       fphotoinfo=args.fphotoinfo, mapdir=args.mapdir)
+                       fphotofile=args.fphotofile, mapdir=args.mapdir)
 
     templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
 
@@ -1316,7 +1315,6 @@ def fastqa(args=None, comm=None):
         if stackfit:
             stackids = fastfit['STACKID'][indx]
             data = Spec.read_stacked(redrockfile, stackids=stackids, mp=args.mp)
-            args.nophoto = True # force nophoto=True
 
             minspecwave = np.min(data[0]['coadd_wave']) - 20
             maxspecwave = np.max(data[0]['coadd_wave']) + 20
@@ -1339,7 +1337,7 @@ def fastqa(args=None, comm=None):
         qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
                    templates, coadd_type, Spec.fphoto, minspecwave, maxspecwave, 
                    args.minphotwave, args.maxphotwave, args.emline_snrmin, 
-                   args.nsmoothspec, fastphot, args.nophoto, stackfit, inputz, 
+                   args.nsmoothspec, fastphot, ignore_photometry, stackfit, inputz, 
                    no_smooth_continuum, args.outdir, args.outprefix, log)
                    for igal in np.arange(len(indx))]
         if args.mp > 1:

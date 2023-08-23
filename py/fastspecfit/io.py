@@ -90,7 +90,8 @@ def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
 
-def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot, synthphot, log):
+def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
+                        synthphot, ignore_photometry, log):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
@@ -98,7 +99,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot, synthphot, 
     from fastspecfit.util import mwdust_transmission
     from fastspecfit.continuum import ContinuumTools
 
-    CTools = ContinuumTools(fphoto=fphoto)
+    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
     
     log.info('Pre-processing object {} [targetid {} z={:.6f}].'.format(
         iobj, meta[CTools.uniqueid], meta['Z']))
@@ -220,7 +221,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot, synthphot, 
         # coadded spectrum
         coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
                                                     specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                    linetable=CTools.linetable)
+                                                    linetable=CTools.linetable, log=log)
         specdata['coadd_linename'] = coadd_linemask_dict['linename']
         specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
         specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -291,14 +292,15 @@ def _unpack_one_stacked_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_stacked_spectrum(*args)
 
-def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot, log):
+def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
+                                ignore_photometry, log):
     """Unpack the data for a single stacked spectrum. Also flag pixels which may be
     affected by emission lines.
 
     """
     from fastspecfit.continuum import ContinuumTools
     
-    CTools = ContinuumTools(fphoto=fphoto)
+    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
     
     log.info('Pre-processing object {} [stackid {} z={:.6f}].'.format(
         iobj, meta[CTools.uniqueid], meta['Z']))
@@ -373,7 +375,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot, log):
     # coadded spectrum
     coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
                                                 specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                linetable=CTools.linetable)
+                                                linetable=CTools.linetable, log=log)
     specdata['coadd_linename'] = coadd_linemask_dict['linename']
     specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
     specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -425,7 +427,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot, log):
 
 class DESISpectra(TabulatedDESI):
     def __init__(self, stackfit=False, redux_dir=None, fiberassign_dir=None,
-                 fphotodir=None, fphotoinfo=None, mapdir=None):
+                 fphotodir=None, fphotofile=None, mapdir=None):
         """Class to read in DESI spectra and associated metadata.
 
         Parameters
@@ -460,17 +462,19 @@ class DESISpectra(TabulatedDESI):
         else:
             self.fphotodir = fphotodir
 
-        if fphotoinfo is None:
+        if fphotofile is None:
             from importlib import resources
             if stackfit:
-                fphotoinfo = resources.files('fastspecfit').joinpath('data/stacked-phot.yaml')
+                fphotofile = resources.files('fastspecfit').joinpath('data/stacked-phot.yaml')
             else:
-                fphotoinfo = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
+                fphotofile = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
+
         try:
-            with open(fphotoinfo, 'r') as F:
+            with open(fphotofile, 'r') as F:
                 fphoto = yaml.safe_load(F)
+            self.fphotofile = fphotofile
         except:
-            errmsg = f'Unable to read parameter file {fphotoinfo}'
+            errmsg = f'Unable to read parameter file {fphotofile}'
             log.critical(errmsg)
             raise ValueError(errmsg)
 
@@ -960,7 +964,8 @@ class DESISpectra(TabulatedDESI):
         self.meta = metas # update
         log.info('Gathered photometric metadata in {:.2f} sec'.format(time.time()-t0))
 
-    def read_and_unpack(self, fastphot=False, synthphot=True, mp=1):
+    def read_and_unpack(self, fastphot=False, synthphot=True, ignore_photometry=False,
+                        verbose=False, mp=1):
         """Read and unpack selected spectra or broadband photometry.
         
         Parameters
@@ -1037,9 +1042,15 @@ class DESISpectra(TabulatedDESI):
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
         from desiutil.dust import SFDMap
+        from desiutil.log import get_logger, DEBUG
         from fastspecfit.continuum import ContinuumTools
+        
+        if verbose:
+            log = get_logger(DEBUG)
+        else:
+            log = get_logger()
 
-        CTools = ContinuumTools(fphoto=self.fphoto)
+        CTools = ContinuumTools(fphoto=self.fphoto, ignore_photometry=ignore_photometry)
 
         SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
@@ -1071,7 +1082,8 @@ class DESISpectra(TabulatedDESI):
                         'photsys': photsys[iobj],
                         'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, True, False, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto,
+                                       True, False, ignore_photometry, log))
             else:
                 from desispec.resolution import Resolution
                 
@@ -1103,7 +1115,8 @@ class DESISpectra(TabulatedDESI):
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
                         'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :]),
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, fastphot, synthphot, log))
+                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, fastphot,
+                                       synthphot, ignore_photometry, log))
                     
             if mp > 1:
                 import multiprocessing
@@ -1124,7 +1137,8 @@ class DESISpectra(TabulatedDESI):
         return alldata
 
     def read_stacked(self, stackfiles, firsttarget=0, ntargets=None,
-                     stackids=None, synthphot=True, mp=1):
+                     stackids=None, synthphot=True, ignore_photometry=False,
+                     mp=1):
         """Read one or more stacked spectra.
         
         Parameters
@@ -1208,7 +1222,7 @@ class DESISpectra(TabulatedDESI):
         from desispec.resolution import Resolution
         from fastspecfit.continuum import ContinuumTools
 
-        CTools = ContinuumTools(fphoto=self.fphoto)
+        CTools = ContinuumTools(fphoto=self.fphoto, ignore_photometry=ignore_photometry)
         
         if stackfiles is None:
             errmsg = 'At least one stackfiles file is required.'
@@ -1354,7 +1368,8 @@ class DESISpectra(TabulatedDESI):
                     'coadd_ivar': specdata['ivar0'][0],
                     'coadd_res': specdata['res0'][0],
                     })
-                unpackargs.append((iobj, specdata, meta[iobj], self.fphoto, synthphot, log))
+                unpackargs.append((iobj, specdata, meta[iobj], self.fphoto, synthphot,
+                                   ignore_photometry, log))
                     
             if mp > 1:
                 import multiprocessing
@@ -1795,7 +1810,7 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
                 models = models[rows, :, :]
         else:
             models = None
-        log.info('Read {} object(s) from {}'.format(len(fastfit), fastfitfile))
+        log.info('Read {:,d} object(s) from {}'.format(len(fastfit), fastfitfile))
 
         # Add specprod to the metadata table so that we can stack across
         # productions (e.g., Fuji+Guadalupe).
@@ -1823,15 +1838,17 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
             return [None]*4
 
 def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
-                      coadd_type=None, fastphot=False, input_redshifts=False,
-                      no_smooth_continuum=False):
+                      coadd_type=None, fphotofile=None, templates=None,
+                      emlinesfile=None, fastphot=False, inputz=False,
+                      no_smooth_continuum=False, ignore_photometry=False, broadlinefit=True,
+                      use_quasarnet=True, constrain_age=False, verbose=True):
     """Write out.
 
     """
     import gzip, shutil
     from astropy.io import fits
     from desispec.io.util import fitsheader
-    from desiutil.depend import add_dependencies, possible_dependencies
+    from desiutil.depend import add_dependencies, possible_dependencies, setdep
 
     t0 = time.time()
     outdir = os.path.dirname(os.path.abspath(outfile))
@@ -1840,9 +1857,9 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
 
     nobj = len(out)
     if nobj == 1:
-        log.info('Writing results for {} object to {}'.format(nobj, outfile))
+        log.info('Writing {} object to {}'.format(nobj, outfile))
     else:
-        log.info('Writing results for {:,d} objects to {}'.format(nobj, outfile))
+        log.info('Writing {:,d} objects to {}'.format(nobj, outfile))
     
     if outfile.endswith('.gz'):
         tmpfile = outfile[:-3]+'.tmp'
@@ -1863,12 +1880,22 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
         primhdr.append(('SPECPROD', (specprod, 'spectroscopic production name')))
     if coadd_type:
         primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd type')))
-    primhdr.append(('INPUTZ', (input_redshifts is not None, 'input redshifts provided')))
+    primhdr.append(('INPUTZ', (inputz is True, 'input redshifts provided')))
     primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))
+    primhdr.append(('NOPHOTO', (ignore_photometry is True, 'no fitting to photometry')))
+    primhdr.append(('BRDLFIT', (broadlinefit is True, 'carry out broad-line fitting')))
+    primhdr.append(('CONSAGE', (constrain_age is True, 'constrain SPS ages')))
+    primhdr.append(('USEQNET', (use_quasarnet is True, 'use QuasarNet redshifts')))
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
-                     envvar_names=['DESI_ROOT', 'FTEMPLATES_DIR', 'DUST_DIR', 'FPHOTO_DIR'])
+                     envvar_names=['DESI_ROOT', 'DUST_DIR', 'FTEMPLATES_DIR', 'FPHOTO_DIR'])
+    if fphotofile:
+        setdep(primhdr, 'FPHOTO_FILE', str(fphotofile))
+    if templates:
+        setdep(primhdr, 'FTEMPLATES_FILE', os.path.basename(templates))
+    if emlinesfile:
+        setdep(primhdr, 'EMLINES_FILE', str(emlinesfile))
 
     hdus = fits.HDUList()
     hdus.append(fits.PrimaryHDU(None, primhdr))
@@ -1899,7 +1926,8 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     else:
         os.rename(tmpfile, outfile)
 
-    log.info('Writing out took {:.2f} seconds.'.format(time.time()-t0))
+    if verbose:
+        log.info('Writing out took {:.2f} seconds.'.format(time.time()-t0))
 
 def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
            nights=None, return_index=False):
@@ -2076,3 +2104,63 @@ def cache_templates(templates=None, templateversion='1.1.0', imf='chabrier',
             })
 
     return templatecache
+
+def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
+                      outdir='.', overwrite=False):
+    """Utility function to write a single DESI spectrum (e.g., for paper figures or
+    unit tests).
+
+    """
+    from redrock.external.desi import write_zbest
+    from desispec.io import write_spectra, read_spectra
+    from fastspecfit.qa import fastqa
+    from fastspecfit.fastspecfit import fastspec
+
+    os.environ['SPECPROD'] = specprod # needed to get write_spectra have the correct dependency
+
+    specdir = os.path.join(os.environ.get('DESI_ROOT'), 'spectro', 'redux', specprod, 'healpix',
+                           survey, program, str(healpix//100), str(healpix))
+    coaddfile = os.path.join(specdir, f'coadd-{survey}-{program}-{healpix}.fits')
+    redrockfile = os.path.join(specdir, f'redrock-{survey}-{program}-{healpix}.fits')
+
+    out_coaddfile = os.path.join(outdir, f'coadd-{survey}-{program}-{healpix}-{targetid}.fits')
+    out_redrockfile = os.path.join(outdir, f'redrock-{survey}-{program}-{healpix}-{targetid}.fits')
+    out_fastfile = os.path.join(outdir, f'fastspec-{survey}-{program}-{healpix}-{targetid}.fits')
+    if (os.path.isfile(out_coaddfile) or os.path.isfile(out_redrockfile) or os.path.isfile(out_fastfile)) and not overwrite:
+        if os.path.isfile(out_coaddfile):
+            print(f'Coadd file {out_coaddfile} exists and overwrite is False')
+        if os.path.isfile(out_redrockfile):
+            print(f'Redrock file {out_redrockfile} exists and overwrite is False')
+        if os.path.isfile(out_fastfile):
+            print(f'fastspec file {out_fastfile} exists and overwrite is False')
+        return
+    
+    redhdr = fitsio.read_header(redrockfile)
+    zbest = Table.read(redrockfile, 'REDSHIFTS')
+    fibermap = Table.read(redrockfile, 'FIBERMAP')
+    expfibermap = Table.read(redrockfile, 'EXP_FIBERMAP')
+    tsnr2 = Table.read(redrockfile, 'TSNR2')
+    
+    spechdr = fitsio.read_header(coaddfile)
+    
+    zbest = zbest[np.isin(zbest['TARGETID'], targetid)]
+    fibermap = fibermap[np.isin(fibermap['TARGETID'], targetid)]
+    expfibermap = expfibermap[np.isin(expfibermap['TARGETID'], targetid)]
+    tsnr2 = tsnr2[np.isin(tsnr2['TARGETID'], targetid)]
+    
+    archetype_version = None
+    template_version = {redhdr['TEMNAM{:02d}'.format(nn)]: redhdr['TEMVER{:02d}'.format(nn)] for nn in np.arange(10)}
+
+    print(f'Writing {out_redrockfile}')
+    write_zbest(out_redrockfile, zbest, fibermap, expfibermap, tsnr2,
+                template_version, archetype_version, spec_header=spechdr)
+    
+    spec = read_spectra(coaddfile).select(targets=targetid)
+    print(f'Writing {out_coaddfile}')
+    write_spectra(out_coaddfile, spec)
+
+    fastspec(args=f'{out_redrockfile} -o {out_fastfile}'.split())
+    cmdargs = f'{out_fastfile} --redrockfiles {out_redrockfile} -o {outdir}'
+    if overwrite:
+        cmdargs += '--overwrite'
+    fastqa(args=cmdargs.split())

@@ -295,6 +295,7 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
 
     """
     from astropy.table import vstack
+    from desiutil.depend import getdep, hasdep
     from fastspecfit.io import write_fastspecfit
     
     t0 = time.time()
@@ -311,20 +312,6 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
     meta = vstack(_out[1])
     del _out
         
-    #for outfile in outfiles:
-    #    info = fitsio.FITS(outfile)
-    #    ext = [_info.get_extname() for _info in info]
-    #    if extname not in ext:
-    #        log.warning('Missing extension {} in file {}'.format(extname, outfile))
-    #        continue
-    #    if 'METADATA' not in ext:
-    #        log.warning('Missing extension METADATA in file {}'.format(outfile))
-    #        continue
-    #    out.append(Table(info[extname].read()))
-    #    meta.append(Table(info['METADATA'].read()))
-    #out = vstack(out)
-    #meta = vstack(meta)
-
     # sort?
     srt = np.argsort(meta['TARGETID'])
     out = out[srt]
@@ -336,9 +323,36 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
     else:
         log.info('Merging {:,d} objects from {} files took {:.2f} min.'.format(
             len(out), len(outfiles), (time.time()-t0)/60.0))
-    
+
+    hdr = fitsio.read_header(outfiles[0])
+
+    # sensible defaults
+    deps = {}
+    deps['INPUTZ'] = False
+    deps['NOSCORR'] = False
+    deps['NOPHOTO'] = False
+    deps['BRDLFIT'] = True
+    deps['CONSAGE'] = False
+    deps['USEQNET'] = True
+    for key in deps.keys():
+        if key in hdr:
+            deps[key] = hdr[key]
+            
+    deps2 = {}
+    deps2['FPHOTO_FILE'] = None
+    deps2['FTEMPLATES_FILE'] = None
+    deps2['EMLINES_FILE'] = None
+    for key in deps2.keys():
+        if hasdep(hdr, key):
+            deps2[key] = getdep(hdr, key)
+
     write_fastspecfit(out, meta, outfile=mergefile, specprod=specprod,
-                      coadd_type=coadd_type, fastphot=fastphot)
+                      coadd_type=coadd_type, fastphot=fastphot,
+                      fphotofile=deps2['FPHOTO_FILE'], templates=deps2['FTEMPLATES_FILE'],
+                      emlinesfile=deps2['EMLINES_FILE'], inputz=deps['INPUTZ'],
+                      ignore_photometry=deps['NOPHOTO'], broadlinefit=deps['BRDLFIT'],
+                      constrain_age=deps['CONSAGE'], use_quasarnet=deps['USEQNET'],
+                      no_smooth_continuum=deps['NOSCORR'])
 
 def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                       healpix=None, tile=None, night=None, outsuffix=None,
