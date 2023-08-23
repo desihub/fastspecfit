@@ -1329,7 +1329,8 @@ def fastqa(args=None, comm=None):
                         redrockfile_prefix=args.redrockfile_prefix,
                         specfile_prefix=args.specfile_prefix,
                         qnfile_prefix=args.qnfile_prefix)
-            data = Spec.read_and_unpack(fastphot=fastphot, synthphot=True, mp=args.mp)
+            data = Spec.read_and_unpack(fastphot=fastphot, synthphot=True, mp=args.mp,
+                                        ignore_photometry=ignore_photometry)
 
             minspecwave = args.minspecwave
             maxspecwave = args.maxspecwave

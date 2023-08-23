@@ -2258,7 +2258,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         linemask = np.hstack(data['linemask'])
         if np.all(coeff == 0):
             log.warning('Continuum coefficients are all zero.')
-            _smooth_continuum = np.zeros_like(specwave)
+            _smoothcontinuum = np.zeros_like(specwave)
         else:
             # Need to be careful we don't pass a large negative residual
             # where there are gaps in the data.
@@ -2266,24 +2266,24 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             I = (specflux == 0.0) * (specivar == 0.0)
             if np.any(I):
                 residuals[I] = 0.0
-            _smooth_continuum, _ = CTools.smooth_continuum(
+            _smoothcontinuum, _ = CTools.smooth_continuum(
                 specwave, residuals, specivar / apercorr**2,
                 redshift, camerapix=data['camerapix'], emlinesfile=emlinesfile,
                 linemask=linemask, log=log, png=png)
             if no_smooth_continuum:
                 log.info('Zeroing out the smooth continuum correction.')
-                _smooth_continuum *= 0
+                _smoothcontinuum *= 0
 
         # Unpack the continuum into individual cameras.
-        continuummodel, smooth_continuum = [], []
+        continuummodel, smoothcontinuum = [], []
         for camerapix in data['camerapix']:
             continuummodel.append(desimodel_nolines[camerapix[0]:camerapix[1]])
-            smooth_continuum.append(_smooth_continuum[camerapix[0]:camerapix[1]])
+            smoothcontinuum.append(_smoothcontinuum[camerapix[0]:camerapix[1]])
 
         for icam, cam in enumerate(data['cameras']):
             nonzero = continuummodel[icam] != 0
             if np.sum(nonzero) > 0:
-                corr = np.median(smooth_continuum[icam][nonzero] / continuummodel[icam][nonzero])
+                corr = np.median(smoothcontinuum[icam][nonzero] / continuummodel[icam][nonzero])
                 result['SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
 
         if 'SMOOTHCORR_B' in result.columns and 'SMOOTHCORR_R' in result.columns and 'SMOOTHCORR_Z' in result.columns:
@@ -2362,6 +2362,6 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
     else:
         # divide out the aperture correction
         continuummodel = [_continuummodel / apercorr for _continuummodel in continuummodel]
-        smooth_continuum = [_smooth_continuum / apercorr for _smooth_continuum in smooth_continuum]
-        return continuummodel, smooth_continuum
+        smoothcontinuum = [_smoothcontinuum / apercorr for _smoothcontinuum in smoothcontinuum]
+        return continuummodel, smoothcontinuum
 

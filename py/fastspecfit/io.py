@@ -637,6 +637,7 @@ class DESISpectra(TabulatedDESI):
         """
         from astropy.table import vstack, hstack
         from desiutil.depend import getdep
+        from desitarget import geomask
         from desitarget.targets import main_cmx_or_sv
 
         if zmin <= 0.0:
@@ -803,10 +804,17 @@ class DESISpectra(TabulatedDESI):
                                        (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
             else:
                 # We already know we like the input targetids, so no selection
-                # needed.
-                alltargetids = fitsio.read(redrockfile, 'REDSHIFTS', columns='TARGETID')
-                fitindx = np.where([tid in targetids for tid in alltargetids])[0]                
+                # needed. But make sure there are no duplicates.
+                uu, cc = np.unique(targetids, return_counts=True)
+                if np.any(cc > 1):
+                    errmsg = 'Found {} duplicate TARGETIDs in {}: {}'.format(
+                        np.sum(cc>1), specfile, ' '.join(uu[cc > 1].astype(str)))
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
                 
+                alltargetids = fitsio.read(redrockfile, 'REDSHIFTS', columns='TARGETID')
+                fitindx = np.where(np.isin(alltargetids, targetids))[0]
+
             if len(fitindx) == 0:
                 log.info('No requested targets found in redrockfile {}'.format(redrockfile))
                 continue
@@ -892,6 +900,12 @@ class DESISpectra(TabulatedDESI):
             meta = hstack((zb, meta, tsnr2))
             #meta = join(zb, meta, keys='TARGETID')
             del zb, tsnr2
+
+            # make sure we're sorted
+            if targetids is not None:
+                srt = geomask.match_to(meta['TARGETID'], targetids)
+                meta = meta[srt]
+                assert(np.all(meta['TARGETID'] == targetids))
 
             # Get the unique set of tiles contributing to the coadded spectra
             # from EXP_FIBERMAP.
@@ -1039,6 +1053,7 @@ class DESISpectra(TabulatedDESI):
 
         """
         from astropy.table import vstack
+        from desitarget import geomask
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
         from desiutil.dust import SFDMap
@@ -1086,8 +1101,13 @@ class DESISpectra(TabulatedDESI):
                                        True, False, ignore_photometry, log))
             else:
                 from desispec.resolution import Resolution
-                
-                spec = read_spectra(specfile).select(targets=meta[CTools.uniqueid])
+
+                # Don't use .select since meta and spec can be sorted
+                # differently if a non-sorted targetids was passed. Do the
+                # selection and sort ourselves.
+                spec = read_spectra(specfile)#.select(targets=meta[CTools.uniqueid])
+                srt = geomask.match_to(spec.fibermap[CTools.uniqueid], meta['TARGETID'])
+                spec = spec[srt]
                 assert(np.all(spec.fibermap[CTools.uniqueid] == meta[CTools.uniqueid]))
 
                 # Coadd across cameras.
