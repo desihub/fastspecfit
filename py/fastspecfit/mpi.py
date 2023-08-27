@@ -357,6 +357,7 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
 def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                       healpix=None, tile=None, night=None, outsuffix=None,
                       fastphot=False, specprod_dir=None, outdir_data='.',
+                      fastfiles_to_merge=None, 
                       mergedir=None, supermerge=False, overwrite=False, mp=1):
     """Merge all the individual catalogs into a single large catalog. Runs only on
     rank 0.
@@ -387,9 +388,10 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
 
     # merge previously merged catalogs into one big catalog (and then return)
     if supermerge:
-        _outfiles = os.path.join(mergedir, '{}-{}-*.fits*'.format(outprefix, outsuffix))
-        outfiles = glob(_outfiles)
-        #print(_outfiles, outfiles)
+        if fastfiles_to_merge is None:
+            outfiles = glob(os.path.join(mergedir, '{}-{}-*.fits*'.format(outprefix, outsuffix)))
+        else:
+            outfiles = fastfiles_to_merge
         if len(outfiles) > 0:
             log.info('Merging {:,d} catalogs'.format(len(outfiles)))
             mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, outsuffix))

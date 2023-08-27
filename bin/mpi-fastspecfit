@@ -178,6 +178,9 @@ def main():
     parser.add_argument('--mergedir', type=str, help='Output directory for merged catalogs.')
     parser.add_argument('--merge-suffix', type=str, help='Filename suffix for merged catalogs.')
     parser.add_argument('--mergeall', action='store_true', help='Merge all the individual merged catalogs into a single merged catalog.')
+    parser.add_argument('--mergeall-main', action='store_true', help='Merge all the main catalogs.')
+    parser.add_argument('--mergeall-sv', action='store_true', help='Merge all the SV catalogs.')
+    parser.add_argument('--mergeall-special', action='store_true', help='Merge all the special catalogs.')
     parser.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
     parser.add_argument('--ntest', type=int, default=None, help='Select ntest healpixels as a test sample drawn randomly from the full specprod (only for coadd-type==healpix).')
     
@@ -239,11 +242,45 @@ def main():
             log.info(f'Selecting {len(I)} test healpixels: {args.healpix}')
             print(tilepix[I])
 
+    if args.mergeall_main or args.mergeall_sv or args.mergeall_special:
+        args.mergeall = True
+
     if args.merge or args.mergeall:
         from fastspecfit.mpi import merge_fastspecfit
+
+        # convenience code to make the super-merge catalogs, e.g., fastspec-iron-{main,special,sv}.fits
+        if args.fastphot:
+            fastprefix = 'fastphot'
+        else:
+            fastprefix = 'fastspec'
+        
+        if args.mergeall_main or args.mergeall_sv or args.mergeall_special:
+            from glob import glob
+            if args.mergedir is None:
+                mergedir = os.path.join(outdir_data, args.specprod, 'catalogs')
+            else:
+                mergedir = args.mergedir
+                
+            if args.mergeall_main:
+                args.merge_suffix = f'{args.specprod}-main'
+                fastfiles_to_merge = glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main-*.fits'))
+            elif args.mergeall_special:
+                args.merge_suffix = f'{args.specprod}-special'
+                fastfiles_to_merge = glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special-*.fits'))
+            elif args.mergeall_sv:
+                args.merge_suffix = f'{args.specprod}-sv'
+                fastfiles_to_merge = list(set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-*.fits'))) -
+                                          set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main.fits'))) -
+                                          set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special.fits'))))
+            else:
+                fastfiles_to_merge = None
+        else:
+            fastfiles_to_merge = None
+
         merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
                           survey=args.survey, program=args.program, healpix=args.healpix,
                           tile=args.tile, night=args.night, outdir_data=outdir_data,
+                          fastfiles_to_merge=fastfiles_to_merge,
                           outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
                           fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
         return
