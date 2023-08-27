@@ -1628,8 +1628,8 @@ class ContinuumTools(Filters, Inoue14):
                 except:
                     # pad in the case of an object at very high redshift (z>5.5).
                     log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
-                    padflux, padwave = filters.pad_spectrum(ztemplateflux, ztemplatewave, axis=0, method='edge')
-                    maggies = filters.get_ab_maggies(padflux.T, padwave)
+                    padflux, padwave = filters.pad_spectrum(ztemplateflux.T, ztemplatewave, axis=0, method='edge')
+                    maggies = filters.get_ab_maggies(padflux.T, padwave, axis=0)
                     
                 maggies = np.vstack(maggies.as_array().tolist()).T
                 maggies /= FLUXNORM * self.massnorm
