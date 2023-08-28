@@ -2,10 +2,18 @@
 Change Log
 ==========
 
-2.4.2 (not released yet)
+2.4.3 (not released yet)
 ------------------------
 
 * 
+
+2.4.2 (2023-08-28)
+------------------
+
+* Fix incorrect syntax synthesizing photometry for highest-redshift targets bug
+  [`PR #152`_]. 
+
+.. _`PR #152`: https://github.com/desihub/fastspecfit/pull/152
 
 2.4.1 (2023-08-23)
 ------------------
