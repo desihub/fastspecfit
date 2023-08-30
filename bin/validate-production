@@ -30,28 +30,29 @@ def _check_one_catalog(args):
     """Multiprocessing wrapper."""
     return check_one_catalog(*args) 
 
-def check_one_catalog(zcatfile, specprod):
+def check_one_catalog(zcatfile, specprod, version):
+
+    from desitarget import geomask
     
-    fastfile = zcatfile.replace('redux/{}/zcatalog/zpix-'.format(specprod), 'fastspecfit/{0}/catalogs/fastspec-{0}-'.format(specprod))
+    fastfile = zcatfile.replace('redux/{}/zcatalog/zpix-'.format(specprod), 'fastspecfit/{0}/{1}/catalogs/fastspec-{0}-'.format(specprod, version))
     
-    log.info('Reading {}'.format(zcatfile))
+    log.info(f'Reading {zcatfile}')
     zcat = Table(fitsio.read(zcatfile, ext='ZCATALOG', columns=['TARGETID', 'Z', 'ZWARN', 'OBJTYPE']))
-    I = np.where((zcat['Z'] > 0.001) * (zcat['OBJTYPE'] == 'TGT') * (zcat['ZWARN'] & ZWarningMask.NODATA == 0))[0]
-    zcat = zcat[I]
 
+    log.info(f'Reading {fastfile}')
     fast = Table(fitsio.read(fastfile, ext='METADATA', columns=['TARGETID', 'Z', 'Z_RR', 'ZWARN']))
-    srt = np.hstack([np.where(zcat['TARGETID'] == tid)[0] for tid in fast['TARGETID']])
-    zcat = zcat[srt]
 
+    indx_zcat, indx_fast = geomask.match(zcat['TARGETID'], fast['TARGETID'])
+    zcat = zcat[indx_zcat]
+    fast = fast[indx_fast]
     assert(len(zcat) == len(fast))
+    assert(np.all(zcat['TARGETID'] == fast['TARGETID']))
 
-    for fcol, zcol in zip(['TARGETID', 'Z_RR', 'ZWARN'], ['TARGETID', 'Z', 'ZWARN']):
-        try:
-            assert(np.all(fast[fcol] == zcat[zcol]))
-        except:
-            log.warning('Assert failed on column {} in catalog {}'.format(fcol, fastfile))
+    # zcat['Z'] and fast['Z_RR'] should always match but where zcat['Z'] and
+    # fast['Z'] differ should be the QSOs with updated redshifts.
+    assert(np.all(zcat['Z'] == fast['Z_RR']))
 
-    zdiff = fast['Z'] != zcat['Z']
+    zdiff = zcat['Z'] != fast['Z']
     if np.sum(zdiff) > 0:
         log.info('Found {:,d}/{:,d} ({:.4f}%) updated QSO redshifts in catalog {}'.format(
             np.sum(zdiff), len(fast), np.sum(zdiff)/len(fast), fastfile))
@@ -61,13 +62,13 @@ def check_one_catalog(zcatfile, specprod):
 
     return outfile, len(fast), np.sum(zdiff)
 
-def check_catalogs(specprod_dir, fastspecdir, specprod, mp=1):
+def check_catalogs(specprod_dir, fastspecdir, specprod, version, mp=1):
     
     # Read all the zpix catalogs in parallel.
     zcatfiles = sorted(glob(os.path.join(specprod_dir, 'zcatalog', 'zpix-*-*.fits')))
     mpargs = []
     for zcatfile in zcatfiles:
-        mpargs.append([zcatfile, specprod])
+        mpargs.append([zcatfile, specprod, version])
     if mp > 1:
         with multiprocessing.Pool(mp) as P:
             out = P.map(_check_one_catalog, mpargs)
@@ -88,7 +89,7 @@ def check_catalogs(specprod_dir, fastspecdir, specprod, mp=1):
     nrows.append(len(fast))
     nznews.append(np.sum(zdiff))
 
-    headers = ['Catalog', 'Number of Targets', 'Number with Corrected Redshifts']
+    headers = ['Catalog', 'Number of Objects', 'Number with Corrected Redshifts']
     widths = np.array([len(header) for header in headers])
     lines = []
     for fastfile, nrow, nznew in zip(fastfiles, nrows, nznews):
@@ -320,12 +321,13 @@ def main():
 
     p = argparse.ArgumentParser()
     p.add_argument('--specprod', type=str, required=True, help='output file prefix')
+    p.add_argument('--version', type=str, required=True, help='production version')
     p.add_argument('--mp', type=int, default=1, help='number of multiprocessing cores')
     p.add_argument('--statistics', action='store_true', help='Do file statistics.')
     p.add_argument('--validate', action='store_true', help='Validate the files.')
     args = p.parse_args()
 
-    fastspecdir = '/global/cfs/cdirs/desi/spectro/fastspecfit/'+args.specprod
+    fastspecdir = os.path.join(desi_root, 'spectro', 'fastspecfit', args.specprod, args.version)
     specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod)
 
     if args.specprod == 'fuji':
@@ -350,12 +352,12 @@ def main():
     # Validate files.
     if args.validate:
         # check for infinity and other crap
-        check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp)
+        #check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp)
         #check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp, fastphot=True)
         
         # verify that we have all the targets we expect and also summarize the
         # number of targets with corrected redshifts
-        check_catalogs(specprod_dir, fastspecdir, args.specprod, mp=args.mp)
+        check_catalogs(specprod_dir, fastspecdir, args.specprod, args.version, mp=args.mp)
 
 if __name__ == '__main__':
     main()
