@@ -327,7 +327,8 @@ def main():
     p.add_argument('--validate', action='store_true', help='Validate the files.')
     args = p.parse_args()
 
-    fastspecdir = os.path.join(desi_root, 'spectro', 'fastspecfit', args.specprod, args.version)
+    fastspecdir = '/pscratch/sd/i/ioannis/fastspecfit/vac/data/iron'
+    #fastspecdir = os.path.join(desi_root, 'spectro', 'fastspecfit', args.specprod, args.version)
     specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod)
 
     if args.specprod == 'fuji':
@@ -352,7 +353,7 @@ def main():
     # Validate files.
     if args.validate:
         # check for infinity and other crap
-        #check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp)
+        check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp)
         #check_infinity(fastspecdir, specprod_dir, args.specprod, mp=args.mp, fastphot=True)
         
         # verify that we have all the targets we expect and also summarize the

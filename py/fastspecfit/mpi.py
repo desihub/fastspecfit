@@ -389,9 +389,11 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
     # merge previously merged catalogs into one big catalog (and then return)
     if supermerge:
         if fastfiles_to_merge is None:
-            outfiles = glob(os.path.join(mergedir, '{}-{}-*.fits*'.format(outprefix, outsuffix)))
+            _outfiles = os.path.join(mergedir, '{}-{}-*.fits*'.format(outprefix, outsuffix))
+            outfiles = glob(_outfiles)
         else:
-            outfiles = fastfiles_to_merge
+            _outfiles = fastfiles_to_merge
+            outfiles = outfiles
         if len(outfiles) > 0:
             log.info('Merging {:,d} catalogs'.format(len(outfiles)))
             mergefile = os.path.join(mergedir, '{}-{}.fits'.format(outprefix, outsuffix))
