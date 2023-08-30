@@ -10,16 +10,15 @@ Overview
 --------
 
 This page describes the ``Fuji`` value-added catalog, which will be publicly
-released as part of the `DESI Early Data Release (DESI/EDR)`_ in
-late-summer 2023.
+released as part of the `DESI Early Data Release (DESI/EDR)`_ in late-2023. 
 
 Please refer to the :ref:`acknowledgments` section for the conditions for using
 this VAC.
 
 .. note::
 
-   We only document the *v2.0* version of this VAC; the *v1.0* version is
-   publicly accessible but has been deprecated and is not documented further.
+   We only document the *v3.0* version of this VAC; the *v1.0* and *v2.0*
+   versions have been deprecated and are not documented further.
 
 Data Content & Access
 ---------------------
@@ -27,9 +26,9 @@ Data Content & Access
 Data from the ``Fuji`` VAC can be accessed at any of the following links:
 
 ============================ ============================================================
-Data url                     https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v2.0
+Data url                     https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v3.0
 Interactive web-app          https://fastspecfit.desi.lbl.gov
-`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/spectro/fastspecfit/fuji/v2.0``
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/spectro/fastspecfit/fuji/v3.0``
 ============================ ============================================================
 
 For more information regarding the content and organization of the VAC, please
@@ -56,19 +55,19 @@ catalog.
 =============================== ========= =================
 File Name                       File Size Number of Targets
 =============================== ========= =================
-fastspec-fuji-cmx-other.fits    11.6 MB   2,771
-fastspec-fuji-special-dark.fits 145 MB    35,647
-fastspec-fuji-sv1-backup.fits   15.5 MB   3,683
-fastspec-fuji-sv1-bright.fits   524 MB    126,677
-fastspec-fuji-sv1-dark.fits     976 MB    235,881
-fastspec-fuji-sv1-other.fits    141 MB    34,150
-fastspec-fuji-sv2-backup.fits   602 KB    107
-fastspec-fuji-sv2-bright.fits   193 MB    46,510
-fastspec-fuji-sv2-dark.fits     218 MB    52,771
-fastspec-fuji-sv3-backup.fits   6.62 MB   1,564
-fastspec-fuji-sv3-bright.fits   1.08 GB   265,324
-fastspec-fuji-sv3-dark.fits     2.41 GB   592,394
-fastspec-fuji.fits              5.7 GB    1,397,479
+fastspec-fuji-cmx-other.fits    12.8 MB   2,771
+fastspec-fuji-special-dark.fits 161 MB    35,649
+fastspec-fuji-sv1-backup.fits   17.1 MB   3,683
+fastspec-fuji-sv1-bright.fits   579 MB    126,678
+fastspec-fuji-sv1-dark.fits     1.05 GB   235,942
+fastspec-fuji-sv1-other.fits    156 MB    34,152
+fastspec-fuji-sv2-backup.fits   664 KB    107
+fastspec-fuji-sv2-bright.fits   213 MB    46,510
+fastspec-fuji-sv2-dark.fits     241 MB    52,781
+fastspec-fuji-sv3-backup.fits   7.31 MB   1,564
+fastspec-fuji-sv3-bright.fits   1.19 GB   265,325
+fastspec-fuji-sv3-dark.fits     2.66 GB   592,441
+fastspec-fuji.fits              6.29 GB   1,397,603
 =============================== ========= =================
 
 The following table summarizes the number of QSO targets whose redshift has been
@@ -76,42 +75,31 @@ updated using the procedure documented :ref:`here<qso redshifts>`.
 
 .. rst-class:: columns
 
-=============================== ================= ===============================
-Catalog                         Number of Targets Number with Corrected Redshifts
-=============================== ================= ===============================
-fastspec-fuji-cmx-other.fits    2,771             56
-fastspec-fuji-special-dark.fits 35,647            311
-fastspec-fuji-sv1-backup.fits   3,683             100
-fastspec-fuji-sv1-bright.fits   126,677           64
-fastspec-fuji-sv1-dark.fits     235,881           3,749
-fastspec-fuji-sv1-other.fits    34,150            168
-fastspec-fuji-sv2-backup.fits   107               0
-fastspec-fuji-sv2-bright.fits   46,510            8
-fastspec-fuji-sv2-dark.fits     52,771            1,019
-fastspec-fuji-sv3-backup.fits   1,564             0
-fastspec-fuji-sv3-bright.fits   265,324           132
-fastspec-fuji-sv3-dark.fits     592,394           3,397
-fastspec-fuji.fits              1,397,479         9,004
-=============================== ================= ===============================
+================================= ================= ===============================
+Catalog                           Number of Objects Number with Corrected Redshifts
+================================= ================= ===============================
+{fastspec}-fuji-cmx-other.fits    2,771             56
+{fastspec}-fuji-special-dark.fits 35,649            313
+{fastspec}-fuji-sv1-backup.fits   3,683             100
+{fastspec}-fuji-sv1-bright.fits   126,678           65
+{fastspec}-fuji-sv1-dark.fits     235,942           3,810
+{fastspec}-fuji-sv1-other.fits    34,152            170
+{fastspec}-fuji-sv2-backup.fits   107               0
+{fastspec}-fuji-sv2-bright.fits   46,510            8
+{fastspec}-fuji-sv2-dark.fits     52,781            1,029
+{fastspec}-fuji-sv3-backup.fits   1,564             0
+{fastspec}-fuji-sv3-bright.fits   265,325           133
+{fastspec}-fuji-sv3-dark.fits     592,441           3,444
+{fastspec}-fuji.fits              1,397,603         9,128
+================================= ================= ===============================
+
+.. _known issues:
 
 Known Issues
 ------------
 
 This section documents any issues or problems which were identified with the VAC
-after its final release.
-
-* The tied amplitudes of [OII]7320,7330 doublet were reversed in the line fitting [`#119`_].
-* The photometry for approximately 1% of targets is not properly propagated into
-  the output metadata table [`#121`_].
-* The signal-to-noise ratio of extremely narrow lines can be under-estimated [`#124`_].
-* There is an unphysical break in the derived stellar masses [`#125`_].
-* The photometry for a small fraction of SV1 targets is incorrect [`#129`_].
-
-.. _`#119`: https://github.com/desihub/fastspecfit/issues/119
-.. _`#121`: https://github.com/desihub/fastspecfit/issues/121
-.. _`#124`: https://github.com/desihub/fastspecfit/issues/124
-.. _`#125`: https://github.com/desihub/fastspecfit/issues/125
-.. _`#129`: https://github.com/desihub/fastspecfit/issues/129
+after its final release. So far, none have been identified!
 
 To report projects or to request new features please `open a ticket`_.
 

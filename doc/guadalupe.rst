@@ -18,18 +18,18 @@ this VAC.
 
 .. note::
 
-   We only document the *v2.0* version of this VAC; the *v1.0* version is
-   publicly accessible but has been deprecated and is not documented further.
+   We only document the *v3.0* version of this VAC; the *v1.0* and *v2.0*
+   versions have been deprecated and are not documented further.
 
 Data Content & Access
 ---------------------
 
 Data from the ``Guadalupe`` VAC can be accessed at any of the following links:
 
-============================ =======================================================================
-Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/guadalupe/v2.0
-`NERSC`_ (for collaborators) /global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/guadalupe/v2.0
-============================ =======================================================================
+============================ =================================================================
+Data url                     https://data.desi.lbl.gov/desi/spectro/fastspecfit/guadalupe/v3.0
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/spectro/fastspecfit/guadalupe/v3.0``
+============================ =================================================================
 
 For more information regarding the content and organization of the VAC, please
 click on the following links:
@@ -55,11 +55,11 @@ catalog.
 ====================================== ========= =================
 File Name                              File Size Number of Targets
 ====================================== ========= =================
-fastspec-guadalupe-special-dark.fits   15.7 MB   3,847
-fastspec-guadalupe-special-bright.fits 38.9 MB   9,598
-fastspec-guadalupe-main-bright.fits    4.31 GB   1,092,038
-fastspec-guadalupe-main-dark.fits      4.46 GB   1,131,601
-fastspec-guadalupe.fits                8.83 GB   2,237,084
+fastspec-guadalupe-special-dark.fits   17.4 MB   3,848
+fastspec-guadalupe-special-bright.fits 43.1 MB   9,598
+fastspec-guadalupe-main-bright.fits    4.77 GB   1,092,041
+fastspec-guadalupe-main-dark.fits      4.94 GB   1,131,858
+fastspec-guadalupe.fits                9.79 GB   2,237,345
 ====================================== ========= =================
 
 The following table summarizes the number of QSO targets whose redshift has been
@@ -67,15 +67,15 @@ updated using the procedure documented :ref:`here<qso redshifts>`.
 
 .. rst-class:: columns
 
-====================================== ================= ===============================
-Catalog                                Number of Targets Number with Corrected Redshifts
-====================================== ================= ===============================
-fastspec-guadalupe-main-bright.fits    1,092,038         153
-fastspec-guadalupe-main-dark.fits      1,131,601         26,741
-fastspec-guadalupe-special-bright.fits 9,598             13
-fastspec-guadalupe-special-dark.fits   3,847             121
-fastspec-guadalupe.fits                2,237,084         28,955
-====================================== ================= ===============================
+======================================== ================= ===============================
+Catalog                                  Number of Objects Number with Corrected Redshifts
+======================================== ================= ===============================
+{fastspec}-guadalupe-main-bright.fits    1,092,041         156
+{fastspec}-guadalupe-main-dark.fits      1,131,858         22,445
+{fastspec}-guadalupe-special-bright.fits 9,598             0
+{fastspec}-guadalupe-special-dark.fits   3,848             111
+{fastspec}-guadalupe.fits                2,237,345         22,712
+======================================== ================= ===============================
 
 Known Issues
 ------------

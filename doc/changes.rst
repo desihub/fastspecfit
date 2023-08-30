@@ -7,7 +7,7 @@ Change Log
 
 * 
 
-2.4.2 (2023-08-28)
+2.4.2 (2023-08-30)
 ------------------
 
 * Fix incorrect syntax synthesizing photometry for highest-redshift targets bug
