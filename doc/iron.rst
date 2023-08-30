@@ -21,10 +21,10 @@ Data Content & Access
 
 Data from the ``Iron`` VAC can be accessed at any of the following links:
 
-============================ ==================================================================
-Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/iron/v1.0
-`NERSC`_ (for collaborators) /global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/iron/v1.0
-============================ ==================================================================
+============================ ============================================================
+Data url                     https://data.desi.lbl.gov/desi/spectro/fastspecfit/iron/v2.0
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/spectro/fastspecfit/iron/v2.0``
+============================ ============================================================
 
 For more information regarding the content and organization of the VAC, please
 click on the following links:
@@ -37,13 +37,10 @@ click on the following links:
 Summary Statistics
 ------------------
   
-The following table summarizes the size and number of targets in each merged
-catalog.
-
-.. note::
-
-   The last catalog listed in the table is a super-merge of all the preceding
-   catalogs, i.e., a merge over all surveys and programs.
+The next two tables summarize the size and number of targets in each merged
+catalog. The first table gives the sample in each survey and program, while the
+second table combines all the individual programs into separate ``main``,
+``sv``, and ``special`` catalogs.
 
 .. rst-class:: columns
 
@@ -96,11 +93,7 @@ Known Issues
 ------------
 
 This section documents any issues or problems which were identified with the VAC
-after its final release.
-
-* The tied amplitudes of [OII]7320,7330 doublet were reversed in the line fitting [`#119`_].
-
-.. _`#119`: https://github.com/desihub/fastspecfit/issues/119
+after its final release. So far, none have been identified!
 
 To report projects or to request new features please `open a ticket`_.
 

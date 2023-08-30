@@ -77,7 +77,7 @@ def check_catalogs(specprod_dir, fastspecdir, specprod, version, mp=1):
     out = list(zip(*out))
     fastfiles, nrows, nznews = list(out[0]), list(out[1]), list(out[2])
 
-    # add the super-merged catalog
+    # add the super-merged catalogs
     fastfile = os.path.join(fastspecdir, 'catalogs', 'fastspec-{}.fits'.format(specprod))
     fast = fitsio.read(fastfile, ext='METADATA', columns=['Z', 'Z_RR'])
     zdiff = fast['Z'] != fast['Z_RR']
@@ -339,8 +339,13 @@ def main():
     # Do statistics.
     if args.statistics:
         # by survey
-        fastspecfiles = np.hstack((sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-*.fits'.format(args.specprod)))),
-                                   os.path.join(fastspecdir, 'catalogs', 'fastspec-{}.fits'.format(args.specprod))))
+        fastspecfiles = np.hstack((
+            sorted(glob(os.path.join(fastspecdir, 'catalogs', f'fastspec-{args.specprod}-*-*.fits'))),
+            glob(os.path.join(fastspecdir, 'catalogs', f'fastspec-{args.specprod}.fits')),
+            glob(os.path.join(fastspecdir, 'catalogs', f'fastspec-{args.specprod}-special.fits')),
+            glob(os.path.join(fastspecdir, 'catalogs', f'fastspec-{args.specprod}-sv.fits')),
+            glob(os.path.join(fastspecdir, 'catalogs', f'fastspec-{args.specprod}-main.fits'))
+            ))
         #fastphotfiles = np.hstack((sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastphot-{}-*.fits'.format(args.specprod)))),
         #                           os.path.join(fastspecdir, 'catalogs', 'fastphot-{}.fits'.format(args.specprod))))
         #fastspecfiles = np.array(sorted(glob(os.path.join(fastspecdir, 'catalogs', 'fastspec-{}-*.fits'.format(args.specprod)))))
