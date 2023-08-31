@@ -270,12 +270,12 @@ def main():
                 fastfiles_to_merge = sorted(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special-*.fits')))
             elif args.mergeall_sv:
                 args.merge_suffix = f'{args.specprod}-sv'
-                fastfiles_to_merge = sorted(list(set(glob(os.path.join(mergedir, f'{fastprefix}-{specprod}-*.fits'))) -
-                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{specprod}-main.fits'))) -
-                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{specprod}-special.fits'))) -
-                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{specprod}-special-*.fits'))) -
-                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{specprod}-main-*.fits'))) -
-                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{specprod}-sv.fits')))))
+                fastfiles_to_merge = sorted(list(set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-*.fits'))) -
+                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main.fits'))) -
+                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special.fits'))) -
+                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special-*.fits'))) -
+                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main-*.fits'))) -
+                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-sv.fits')))))
             else:
                 fastfiles_to_merge = None
         else:
