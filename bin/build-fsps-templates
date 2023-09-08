@@ -16,9 +16,9 @@ Note that Figure 3 in Leja et al. 2017 nicely shows the effect of various
 free parameters on the resulting SED.
 
 conda activate fastspecfit
-time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf salpeter
-time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf chabrier
-time python /Users/ioannis/code/desihub/fastspecfit/bin/build-fsps-templates --imf kroupa
+time python $HOME/code/desihub/fastspecfit/bin/build-fsps-templates --imf salpeter
+time python $HOME/code/desihub/fastspecfit/bin/build-fsps-templates --imf chabrier
+time python $HOME/code/desihub/fastspecfit/bin/build-fsps-templates --imf kroupa
 
 '''
 import os, time, pdb
@@ -199,9 +199,14 @@ def build_templates(models, logages, agebins, imf='chabrier',
     
             fluxes = np.zeros((npix, nsed), dtype=np.float32)
 
+            # emission lines
+            linewaves = sp.emline_wavelengths
+            linefluxes = np.zeros((len(sp.emline_wavelengths), nsed), dtype=np.float32)
+
         newflux = resample_flux(newwave, wave, flux)
     
         fluxes[:, imodel] = newflux
+        linefluxes[:, imodel] = sp.emline_luminosity * lodot / (4.0 * np.pi * tenpc2)
 
         meta['mstar'][imodel] = sp.stellar_mass
         meta['sfr'][imodel] = sp.sfr
@@ -216,11 +221,11 @@ def build_templates(models, logages, agebins, imf='chabrier',
 
     print('...took {:.3f} min'.format((time.time()-t0)/60))
 
-    return meta, newwave, fluxes
+    return meta, newwave, fluxes, linewaves, linefluxes
 
 def main(args):
 
-    version = '1.1.0'
+    version = '1.1.1'
 
     # velocity dispersion grid
     vdispmin = 50.
@@ -319,8 +324,10 @@ def main(args):
     models = models.flatten()
 
     # Build models with and without line-emission.
-    meta, wave, flux = build_templates(models, logages, agebins, include_nebular=True, imf=args.imf)
-    _, _, fluxnolines = build_templates(models, logages, agebins, include_nebular=False, imf=args.imf)
+    meta, wave, flux, linewaves, linefluxes = build_templates(
+        models, logages, agebins, include_nebular=True, imf=args.imf)
+    _, _, fluxnolines, _, _ = build_templates(
+        models, logages, agebins, include_nebular=False, imf=args.imf)
     lineflux = flux - fluxnolines
 
     #I = (wave > 3500) * (wave < 9000)
@@ -414,7 +421,18 @@ def main(args):
     hdutable.header['EXTNAME'] = 'METADATA'
     hdutable.header['imf'] = args.imf
 
-    hx = fits.HDUList([hduflux1, hduflux2, hduwave1, hduflux3, hduwave2, hdutable])
+    # emission lines
+    hduflux4 = fits.ImageHDU(linefluxes)
+    hduflux4.header['EXTNAME'] = 'LINEFLUXES'
+    hduflux4.header['VERSION'] = version
+    hduflux4.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+
+    hduwave3 = fits.ImageHDU(linewaves)
+    hduwave3.header['EXTNAME'] = 'LINEWAVES'
+    hduwave3.header['BUNIT'] = 'Angstrom'
+    hduwave3.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+
+    hx = fits.HDUList([hduflux1, hduflux2, hduwave1, hduflux3, hduwave2, hdutable, hduflux4, hduwave3])
 
     print('Writing {} model spectra to {}'.format(len(models), outfile))
     hx.writeto(outfile, overwrite=True)
