@@ -5,7 +5,7 @@ Change Log
 2.4.3 (not released yet)
 ------------------------
 
-* 
+* Fix minor bug that broke the stackfit functionality [`PR #155`_].
 
 2.4.2 (2023-08-30)
 ------------------
