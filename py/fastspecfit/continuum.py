@@ -2301,7 +2301,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         AV, age, zzsun, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0
         #AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     else:
-        kcorr, absmag, ivarabsmag, _, synth_bestmaggies = CTools.kcorr_and_absmag(
+        kcorr, absmag, ivarabsmag, synth_bestmaggies = CTools.kcorr_and_absmag(
             data, templatecache['templatewave'], sedmodel, log=log)
         lums, cfluxes = CTools.continuum_fluxes(data, templatecache['templatewave'], sedmodel, log=log)
 
