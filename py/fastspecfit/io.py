@@ -2044,7 +2044,7 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
 
 def cache_templates(templates=None, templateversion='1.1.0', imf='chabrier',
                     mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.0,
-                    fastphot=False, log=None):
+                    read_linefluxes=False, fastphot=False, log=None):
     """"Read the templates into a dictionary.
 
     """
@@ -2122,6 +2122,12 @@ def cache_templates(templates=None, templateversion='1.1.0', imf='chabrier',
             'vdisp': vdisp,
             'vdisp_nominal_indx': np.where(vdisp == vdisp_nominal)[0],
             })
+
+    # read the model emission-line fluxes (only present for templateversion>=1.1.1)
+    if read_linefluxes:
+        templatecache.update({
+            'linefluxes': fitsio.read(templates, ext='LINEFLUXES'),
+            'linewaves': fitsio.read(templates, ext='LINEWAVES')})
 
     return templatecache
 
