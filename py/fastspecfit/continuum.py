@@ -1921,8 +1921,9 @@ class ContinuumTools(Filters, Inoue14):
             kcorr = np.zeros(len(self.absmag_bands))
             absmag = np.zeros(len(self.absmag_bands))#-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
+            synth_absmag = np.zeros(len(self.bands))
             synth_maggies_in = np.zeros(len(self.bands))
-            return kcorr, absmag, ivarabsmag, synth_maggies_in
+            return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
 
         # distance modulus, luminosity distance, and redshifted wavelength array
         dmod = data['dmodulus']
