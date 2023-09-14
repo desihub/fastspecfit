@@ -23,8 +23,8 @@ photometry. For extensive details please see the `latest documentation`_.
 If you make use of ``FastSpecFit`` in your research please be sure to include
 the following citation:
 
-```
-@MISC{fastspecfit23,
+```tex
+@MISC{fastspecfit23,  
   author = {{Moustakas}, John},  
   title = "{FastSpecFit: Fast spectral synthesis and emission-line fitting of DESI spectra}",  
   keywords = {Software},  
@@ -37,7 +37,7 @@ the following citation:
   eprint = {2308.005},  
   adsurl = {https://ui.adsabs.harvard.edu/abs/2023ascl.soft08005M},  
   adsnote = {Provided by the SAO/NASA Astrophysics Data System}  
-}
+}  
 ```
 
 John Moustakas gratefully acknowledges funding support for this work from the
