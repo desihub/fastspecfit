@@ -5,7 +5,9 @@ Change Log
 2.4.3 (not released yet)
 ------------------------
 
-* 
+* Fix minor bug that broke the stackfit functionality [`PR #155`_].
+
+.. _`PR #155`: https://github.com/desihub/fastspecfit/pull/155
 
 2.4.2 (2023-08-30)
 ------------------
