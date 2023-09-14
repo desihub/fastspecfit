@@ -1921,8 +1921,9 @@ class ContinuumTools(Filters, Inoue14):
             kcorr = np.zeros(len(self.absmag_bands))
             absmag = np.zeros(len(self.absmag_bands))#-99.0
             ivarabsmag = np.zeros(len(self.absmag_bands))
+            synth_absmag = np.zeros(len(self.bands))
             synth_maggies_in = np.zeros(len(self.bands))
-            return kcorr, absmag, ivarabsmag, synth_maggies_in
+            return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
 
         # distance modulus, luminosity distance, and redshifted wavelength array
         dmod = data['dmodulus']
@@ -2301,7 +2302,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         AV, age, zzsun, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0
         #AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     else:
-        kcorr, absmag, ivarabsmag, synth_bestmaggies = CTools.kcorr_and_absmag(
+        kcorr, absmag, ivarabsmag, _, synth_bestmaggies = CTools.kcorr_and_absmag(
             data, templatecache['templatewave'], sedmodel, log=log)
         lums, cfluxes = CTools.continuum_fluxes(data, templatecache['templatewave'], sedmodel, log=log)
 
