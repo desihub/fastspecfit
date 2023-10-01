@@ -672,7 +672,7 @@ class DESISpectra(TabulatedDESI):
 
         alltiles = []
         self.redrockfiles, self.specfiles, self.meta, self.surveys = [], [], [], []
-        
+
         for ired, redrockfile in enumerate(np.atleast_1d(redrockfiles)):
             if not os.path.isfile(redrockfile):
                 log.warning('File {} not found!'.format(redrockfile))
@@ -684,7 +684,7 @@ class DESISpectra(TabulatedDESI):
                 log.critical(errmsg)
                 raise ValueError(errmsg)
             
-            specfile = redrockfile.replace(redrockfile_prefix, specfile_prefix)
+            specfile = os.path.join(os.path.dirname(redrockfile), os.path.basename(redrockfile).replace(redrockfile_prefix, specfile_prefix))
             if not os.path.isfile(specfile):
                 log.warning('File {} not found!'.format(specfile))
                 continue
@@ -1610,10 +1610,13 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
                 if metacol in colunit.keys():
                     meta[metacol].unit = colunit[metacol]
 
-        if np.any(np.isin(meta['SURVEY'], 'main')) or np.any(np.isin(meta['SURVEY'], 'special')):
-            TARGETINGCOLS = TARGETINGBITS['default']
+        if 'SURVEY' in meta.colnames:
+            if np.any(np.isin(meta['SURVEY'], 'main')) or np.any(np.isin(meta['SURVEY'], 'special')):
+                TARGETINGCOLS = TARGETINGBITS['default']
+            else:
+                TARGETINGCOLS = TARGETINGBITS['all']
         else:
-            TARGETINGCOLS = TARGETINGBITS['all']
+            TARGETINGCOLS = TARGETINGBITS['all']            
                 
         for metacol in metacols:
             if metacol in skipcols or metacol in TARGETINGCOLS or metacol in meta.colnames or metacol in redrockcols:

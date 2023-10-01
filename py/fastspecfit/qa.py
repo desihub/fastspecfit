@@ -1347,7 +1347,7 @@ def fastqa(args=None, comm=None):
                 P.map(_desiqa_one, qaargs)
         else:
             [desiqa_one(*_qaargs) for _qaargs in qaargs]
-            
+
     t0 = time.time()
     if coadd_type == 'healpix':
         if args.redrockfiles is not None:
@@ -1378,49 +1378,53 @@ def fastqa(args=None, comm=None):
         for redrockfile in args.redrockfiles:
             _wrap_qa(redrockfile, stackfit=True)
     else:
-        allspecprods = metadata['SPECPROD'].data
-        alltiles = metadata['TILEID'].astype(str).data
-        allnights = metadata['NIGHT'].astype(str).data
-        allpetals = metadata['FIBER'].data // 500
-        if coadd_type == 'cumulative':
-            for specprod in set(allspecprods):
-                for tile in set(alltiles):
-                    for petal in set(allpetals):
-                        indx = np.where((specprod == allspecprods) * (tile == alltiles) * (petal == allpetals))[0]
-                        if len(indx) == 0:
-                            #log.warning('No object found with tileid={} and petal={}!'.format(
-                            #    tile, petal))
-                            continue
-                        redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'cumulative', str(tile), allnights[indx[0]],
-                                                   'redrock-{}-{}-thru{}.fits'.format(petal, tile, allnights[indx[0]]))
-                        _wrap_qa(redrockfile, indx)
-        elif coadd_type == 'pernight':
-            for specprod in set(allspecprods):
-                for night in set(allnights):
+        if args.redrockfiles is not None:
+            for redrockfile in args.redrockfiles:
+                _wrap_qa(redrockfile)
+        else:
+            allspecprods = metadata['SPECPROD'].data
+            alltiles = metadata['TILEID'].astype(str).data
+            allnights = metadata['NIGHT'].astype(str).data
+            allpetals = metadata['FIBER'].data // 500
+            if coadd_type == 'cumulative':
+                for specprod in set(allspecprods):
                     for tile in set(alltiles):
                         for petal in set(allpetals):
-                            indx = np.where((specprod == allspecprods) * (night == allnights) *
-                                            (tile == alltiles) * (petal == allpetals))[0]
+                            indx = np.where((specprod == allspecprods) * (tile == alltiles) * (petal == allpetals))[0]
                             if len(indx) == 0:
+                                #log.warning('No object found with tileid={} and petal={}!'.format(
+                                #    tile, petal))
                                 continue
-                            redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'pernight', str(tile), str(night),
-                                                       'redrock-{}-{}-{}.fits'.format(petal, tile, night))
+                            redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'cumulative', str(tile), allnights[indx[0]],
+                                                       'redrock-{}-{}-thru{}.fits'.format(petal, tile, allnights[indx[0]]))
                             _wrap_qa(redrockfile, indx)
-        elif coadd_type == 'perexp':
-            allexpids = metadata['EXPID'].data
-            for specprod in set(allspecprods):
-                for night in set(allnights):
-                    for expid in set(allexpids):
+            elif coadd_type == 'pernight':
+                for specprod in set(allspecprods):
+                    for night in set(allnights):
                         for tile in set(alltiles):
                             for petal in set(allpetals):
                                 indx = np.where((specprod == allspecprods) * (night == allnights) *
-                                                (expid == allexpids) * (tile == alltiles) *
-                                                (petal == allpetals))[0]
+                                                (tile == alltiles) * (petal == allpetals))[0]
                                 if len(indx) == 0:
                                     continue
-                                redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid), 
-                                                           'redrock-{}-{}-exp{:08d}.fits'.format(petal, tile, expid))
+                                redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'pernight', str(tile), str(night),
+                                                           'redrock-{}-{}-{}.fits'.format(petal, tile, night))
                                 _wrap_qa(redrockfile, indx)
+            elif coadd_type == 'perexp':
+                allexpids = metadata['EXPID'].data
+                for specprod in set(allspecprods):
+                    for night in set(allnights):
+                        for expid in set(allexpids):
+                            for tile in set(alltiles):
+                                for petal in set(allpetals):
+                                    indx = np.where((specprod == allspecprods) * (night == allnights) *
+                                                    (expid == allexpids) * (tile == alltiles) *
+                                                    (petal == allpetals))[0]
+                                    if len(indx) == 0:
+                                        continue
+                                    redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid), 
+                                                               'redrock-{}-{}-exp{:08d}.fits'.format(petal, tile, expid))
+                                    _wrap_qa(redrockfile, indx)
                                 
     log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
 
