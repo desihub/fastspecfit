@@ -684,7 +684,7 @@ class Filters(object):
             if 'readcols' in keys:
                 self.readcols = np.array(fphoto['readcols'])
             if 'outcols' in keys:
-                self.outcols = np.array()
+                self.outcols = np.array(fphoto['outcols'])
             self.bands = np.array(fphoto['bands'])
             self.bands_to_fit = np.array(fphoto['bands_to_fit'])
             self.fluxcols = np.array(fphoto['fluxcols'])
