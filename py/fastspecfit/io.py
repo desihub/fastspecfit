@@ -458,8 +458,20 @@ class DESISpectra(TabulatedDESI):
             self.fiberassign_dir = fiberassign_dir
 
         if fphotodir is None:
+            self.fphotoext = None
             self.fphotodir = os.environ.get('FPHOTO_DIR', FPHOTO_DIR_NERSC)
         else:
+            # parse the extension name, if any
+            fphotoext = None
+            photodir = os.path.dirname(fphotodir)
+            photobase = os.path.basename(fphotodir)
+            if '[' in photobase and ']' in photobase:
+                try:
+                    fphotoext = photobase[photobase.find('[')+1:photobase.find(']')]
+                    fphotodir = os.path.join(photodir, photobase[:photobase.find('[')])
+                except:
+                    pass
+            self.fphotoext = fphotoext
             self.fphotodir = fphotodir
 
         if fphotofile is None:
@@ -1489,8 +1501,8 @@ class DESISpectra(TabulatedDESI):
                         
                     metas.append(meta)
         else:
-            phot = Table(fitsio.read(self.fphotodir, columns=PHOTCOLS))
-            print('Read {:,d} objects from {}'.format(len(phot), self.fphotodir))
+            phot = Table(fitsio.read(self.fphotodir, ext=self.fphotoext, columns=PHOTCOLS))
+            log.info('Read {:,d} objects from {}'.format(len(phot), self.fphotodir))
 
             metas = []
             for meta in self.meta:
