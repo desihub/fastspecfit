@@ -54,3 +54,7 @@ absmag_filters: ['decam2014-g', 'decam2014-r', 'decam2014-z',
                  'bessell-U', 'bessell-B', 'bessell-V', 
                  'sdss2010-u', 'sdss2010-g', 'sdss2010-r', 'sdss2010-i', 'sdss2010-z',
                  'wise2010-W1']
+
+viewer_layer: ls-dr9
+
+viewer_pixscale: 0.262

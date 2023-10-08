@@ -40,3 +40,7 @@ band_shift: [0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0]
 absmag_filters: ['bessell-U', 'bessell-B', 'bessell-V', 
                  'sdss2010-u', 'sdss2010-g', 'sdss2010-r', 'sdss2010-i', 'sdss2010-z',
                  'wise2010-W1', 'wise2010-W2']
+
+viewer_layer: ls-dr10
+
+viewer_pixscale: 0.262

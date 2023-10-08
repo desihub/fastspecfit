@@ -102,11 +102,18 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             return f'{x:.0f}'
 
     CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
-    if 'legacysurveydr' in fphoto.keys():
+
+    if 'viewer_layer' in fphoto.keys():
+        layer = fphoto['viewer_layer']
+    elif 'legacysurveydr' in fphoto.keys():
         layer = 'ls-{}'.format(fphoto['legacysurveydr'])
     else:
         layer = 'ls-dr9'
-    #layer = 'hsc-dr3'
+
+    if 'viewer_pixscale' in fphoto.keys():
+        pixscale = fphoto['viewer_pixscale']
+    else:
+        pixscale = 0.262 # [arcsec/pixel]
 
     if not fastphot:
         EMFit = EMFitTools()
@@ -412,7 +419,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     
     # Grab the viewer cutout.
     if not stackfit:
-        pixscale = 0.262
         width = int(30 / pixscale)   # =1 arcmin
         height = int(width / 1.3) # 3:2 aspect ratio
     

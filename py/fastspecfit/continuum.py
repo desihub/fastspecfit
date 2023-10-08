@@ -684,7 +684,7 @@ class Filters(object):
             if 'readcols' in keys:
                 self.readcols = np.array(fphoto['readcols'])
             if 'outcols' in keys:
-                self.outcols = np.array(fphoto['outcols'])
+                self.outcols = np.array()
             self.bands = np.array(fphoto['bands'])
             self.bands_to_fit = np.array(fphoto['bands_to_fit'])
             self.fluxcols = np.array(fphoto['fluxcols'])
@@ -693,6 +693,10 @@ class Filters(object):
             
             if 'legacysurveydr' in keys:
                 self.legacysurveydr = fphoto['legacysurveydr']
+            if 'viewer_layer' in keys:
+                self.viewer_layer = fphoto['viewer_layer']
+            if 'viewer_pixscale' in keys:
+                self.viewer_pixscale = fphoto['viewer_pixscale']
             if 'synth_bands' in keys:
                 self.synth_bands = np.array(fphoto['synth_bands'])
             if 'fiber_bands' in keys:
@@ -738,6 +742,8 @@ class Filters(object):
             self.min_uncertainty = np.array([0.02, 0.02, 0.02, 0.05, 0.05, 0.05, 0.05]) # mag
             
             self.legacysurveydr = 'dr9'
+            self.viewer_layer = 'ls-dr9'
+            self.viewer_pixscale = 0.262
             self.synth_bands = np.array(['g', 'r', 'z']) # for synthesized photometry
             self.fiber_bands = np.array(['g', 'r', 'z']) # for fiber fluxes
 
