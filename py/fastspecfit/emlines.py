@@ -154,7 +154,8 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
     return residuals
 
 class EMFitTools(Filters):
-    def __init__(self, fphoto=None, emlinesfile=None, uniqueid=None):
+    def __init__(self, fphoto=None, emlinesfile=None, uniqueid=None,
+                 minsnr_balmer_broad=3.):
         """Class to model a galaxy stellar continuum.
 
         Parameters
@@ -229,7 +230,7 @@ class EMFitTools(Filters):
         self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
 
         self.minsigma_balmer_broad = 250. # minimum broad-line sigma [km/s]
-        self.minsnr_balmer_broad = 3.     # minimum broad-line S/N
+        self.minsnr_balmer_broad = minsnr_balmer_broad # minimum broad-line S/N
 
     def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False, strict_finalmodel=True):
         """Build all the multi-parameter emission-line models we will use.
@@ -2326,6 +2327,7 @@ class EMFitTools(Filters):
         plt.close()
 
 def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum,
+                   minsnr_balmer_broad=3., 
                    fphoto=None, emlinesfile=None, synthphot=True, broadlinefit=True,
                    percamera_models=False, log=None, verbose=False):
     """Perform the fit minimization / chi2 minimization.
@@ -2357,7 +2359,8 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
         else:
             log = get_logger()
 
-    EMFit = EMFitTools(emlinesfile=emlinesfile, fphoto=fphoto, uniqueid=data['uniqueid'])
+    EMFit = EMFitTools(emlinesfile=emlinesfile, fphoto=fphoto, uniqueid=data['uniqueid'],
+                       minsnr_balmer_broad=minsnr_balmer_broad)
 
     # Combine all three cameras; we will unpack them to build the
     # best-fitting model (per-camera) below.
