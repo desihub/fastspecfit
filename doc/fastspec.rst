@@ -177,9 +177,9 @@ Name                         Type         Units                         Descript
               DELTA_LINECHI2      float32                               Chi-squared difference between an emission-line model without and with broad lines.
               DELTA_LINENDOF        int32                               Difference in the degrees of freedom between an emission-line model without and with broad lines.
                     APERCORR      float32                               Median aperture correction factor.
-                  APERCORR_G      float32                               Median aperture correction factor measured in the g-band.
-                  APERCORR_R      float32                               Median aperture correction factor measured in the r-band.
-                  APERCORR_Z      float32                               Median aperture correction factor measured in the z-band.
+                  APERCORR_G      float32                               Aperture correction factor measured in the g-band.
+                  APERCORR_R      float32                               Aperture correction factor measured in the r-band.
+                  APERCORR_Z      float32                               Aperture correction factor measured in the z-band.
                     NARROW_Z      float32                               Mean redshift of well-measured narrow rest-frame optical emission lines (defaults to Z).
                  NARROW_ZRMS      float32                               Root-mean-square scatter in NARROW_Z.
                      BROAD_Z      float32                               Mean redshift of well-measured broad rest-frame optical emission lines (defaults to Z).
