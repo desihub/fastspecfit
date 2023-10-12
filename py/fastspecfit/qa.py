@@ -437,21 +437,16 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         hdr['CD2_1'] = 0.0
         hdr['CD2_2'] = +pixscale/3600
         wcs = WCS(hdr)
-    
+
         cutoutjpeg = os.path.join(outdir, 'tmp.'+os.path.basename(pngfile.replace('.png', '.jpeg')))
         if not os.path.isfile(cutoutjpeg):
             wait = 5 # seconds
-            #cmd = 'timeout {wait} wget -q -o /dev/null -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer={layer}'
-            #cmd = cmd.format(wait=wait, outfile=cutoutjpeg, ra=metadata['RA'],
-            #                 dec=metadata['DEC'], width=width, height=height,
-            #                 layer=layer)
             cmd = 'wget -q -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer={layer}'
             cmd = cmd.format(outfile=cutoutjpeg, ra=metadata['RA'], dec=metadata['DEC'], 
                              width=width, height=height, layer=layer)
             log.info(cmd)
             try:
                 subprocess.check_output(cmd.split(), stderr=subprocess.DEVNULL, timeout=wait)
-                #subprocess.check_call(cmd.split(), stderr=subprocess.DEVNULL)
             except:
                 log.warning('No cutout from viewer after {} seconds; stopping wget'.format(wait))
         try:
@@ -459,10 +454,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         except:
             log.warning('Problem reading cutout for targetid {}.'.format(metadata['TARGETID']))
             img = np.zeros((height, width, 3))
-    
+
         if os.path.isfile(cutoutjpeg):
             os.remove(cutoutjpeg)
-        
+
     # QA choices
     legxpos, legypos, legypos2, legfntsz1, legfntsz = 0.98, 0.94, 0.05, 16, 18
     bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.15)
@@ -525,6 +520,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         cutax.imshow(img, origin='lower')#, interpolation='nearest')
         cutax.set_xlabel('RA [J2000]')
         cutax.set_ylabel('Dec [J2000]')
+        cutax.invert_yaxis() # JPEG is flipped relative to my FITS WCS
     
         cutax.coords[1].set_ticks_position('r')
         cutax.coords[1].set_ticklabel_position('r')
