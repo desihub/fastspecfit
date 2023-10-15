@@ -1064,10 +1064,13 @@ class EMFitTools(Filters):
                 else:
                     result[param['param_name'].upper()] = val                    
 
-        gausscorr = erf(nsigma / np.sqrt(2)) # correct for the flux outside of +/-nsigma
+        gausscorr = erf(nsigma / np.sqrt(2))      # correct for the flux outside of +/-nsigma
+        dpixwave = np.median(np.diff(emlinewave)) # median pixel size [Angstrom]
 
-        emlinewave_edges = centers2edges(emlinewave)
-        dpixwave = np.diff(emlinewave_edges)[0] # pixel size [Angstrom]
+        # Where the cameras overlap, we have to account for the variable pixel
+        # size by sorting in wavelength.
+        Wsrt = np.argsort(emlinewave)
+        dwaves = np.diff(centers2edges(emlinewave[Wsrt]))
 
         # zero out all out-of-range lines
         for oneline in self.fit_linetable[~self.fit_linetable['inrange']]:
@@ -1134,11 +1137,15 @@ class EMFitTools(Filters):
                         errmsg = 'Ivar should never be zero within an emission line!'
                         log.critical(errmsg)
                         raise ValueError(errmsg)
-                        
+
+                    lineindx_Wsrt = np.where((emlinewave[Wsrt] >= (linezwave - nsigma*linesigma_ang_window)) *
+                                             (emlinewave[Wsrt] <= (linezwave + nsigma*linesigma_ang_window)) *
+                                             (emlineivar[Wsrt] > 0))[0]
+
                     # boxcar integration of the flux
-                    dwave = np.median(np.abs(np.diff(emlinewave_edges[lineindx])))
-                    boxflux = np.sum(emlineflux[lineindx] * dwave)
-                    boxflux_ivar = 1 / np.sum((1 / emlineivar[lineindx]) * dwave**2)
+                    #dwave = np.median(np.abs(np.diff(emlinewave_edges[lineindx])))
+                    boxflux = np.sum(emlineflux[Wsrt][lineindx_Wsrt] * dwaves[lineindx_Wsrt])
+                    boxflux_ivar = 1 / np.sum((1 / emlineivar[Wsrt][lineindx_Wsrt]) * dwaves[lineindx_Wsrt]**2)
 
                     result['{}_BOXFLUX'.format(linename)] = boxflux # * u.erg/(u.second*u.cm**2)
                     result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
@@ -1174,10 +1181,10 @@ class EMFitTools(Filters):
                         #flux_ivar = np.sum(lineprofile[lineindx])**2 / np.sum(lineprofile[lineindx]**2 / emlineivar[lineindx])
 
                         # matched-filter (maximum-likelihood) Gaussian flux
-                        pro_j = lineprofile[lineindx] / np.sum(lineprofile[lineindx])
+                        pro_j = lineprofile[Wsrt][lineindx_Wsrt] / np.sum(lineprofile[Wsrt][lineindx_Wsrt])
                         I = pro_j > 0. # very narrow lines can have a profile that goes to zero
-                        weight_j = (pro_j[I]**2 / dwave**2) * emlineivar[lineindx][I]
-                        flux = np.sum(weight_j * dwave * lineprofile[lineindx][I] / pro_j[I]) / np.sum(weight_j)
+                        weight_j = (pro_j[I]**2 / dwaves[lineindx_Wsrt][I]**2) * emlineivar[Wsrt][lineindx_Wsrt][I]
+                        flux = np.sum(weight_j * dwaves[lineindx_Wsrt][I] * lineprofile[Wsrt][lineindx_Wsrt][I] / pro_j[I]) / np.sum(weight_j)
                         flux_ivar = np.sum(weight_j)
 
                         # correction for missing flux
