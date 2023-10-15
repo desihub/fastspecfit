@@ -786,15 +786,16 @@ class EMFitTools(Filters):
         # corner case where all lines are out of the wavelength range, which can
         # happen at high redshift and with the red camera masked, e.g.,
         # iron/main/dark/6642/39633239580608311).
+        initial_guesses = parameters[Ifree]
 
         if len(Ifree) == 0:
             fit_info = {'nfev': 0}
         else:
             try:
-                fit_info = least_squares(_objective_function, parameters[Ifree], args=farg, max_nfev=5000, 
-                                         xtol=1e-10,
+                fit_info = least_squares(_objective_function, initial_guesses, args=farg, max_nfev=5000, 
+                                         xtol=1e-10, #x_scale='jac', #ftol=1e-10, gtol=1e-10,
                                          tr_solver='lsmr', tr_options={'regularize': True},
-                                         method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
+                                         method='trf', bounds=tuple(zip(*bounds)), verbose=2)
                 parameters[Ifree] = fit_info.x
             except:
                 if self.uniqueid:
@@ -803,6 +804,30 @@ class EMFitTools(Filters):
                     errmsg = 'Problem in scipy.optimize.least_squares.'
                 log.critical(errmsg)
                 raise RuntimeError(errmsg)
+
+            # If sigma didn't change by more than ~one km/s from its initial guess,
+            # then something has gone awry, so perturb the initial guess by 10% and
+            # try again.
+            S = np.where(self.sigma_param_bool[Ifree])[0]
+            if len(S) > 0:
+                sig_init = initial_guesses[S]
+                sig_final = parameters[Ifree][S]
+                G = (sig_init - sig_final) < 1.
+                if np.any(G):
+                    initial_guesses[S[G]] *= 0.9
+                    try:
+                        fit_info = least_squares(_objective_function, initial_guesses, args=farg, max_nfev=5000, 
+                                                 xtol=1e-10, #x_scale='jac', #ftol=1e-10, gtol=1e-10,
+                                                 tr_solver='lsmr', tr_options={'regularize': True},
+                                                 method='trf', bounds=tuple(zip(*bounds)), verbose=2)
+                        parameters[Ifree] = fit_info.x
+                    except:
+                        if self.uniqueid:
+                            errmsg = 'Problem in scipy.optimize.least_squares for {}.'.format(self.uniqueid)
+                        else:
+                            errmsg = 'Problem in scipy.optimize.least_squares.'
+                        log.critical(errmsg)
+                        raise RuntimeError(errmsg)
 
         # Conditions for dropping a parameter (all parameters, not just those
         # being fitted):
@@ -891,6 +916,7 @@ class EMFitTools(Filters):
         out_linemodel = linemodel.copy()
         out_linemodel['value'] = parameters
         out_linemodel.meta['nfev'] = fit_info['nfev']
+        out_linemodel.meta['status'] = fit_info['status']
 
         #if debug:
         #    pdb.set_trace()
@@ -1266,8 +1292,6 @@ class EMFitTools(Filters):
                 print()
                 #log.debug(' ')
     
-            #if linename == 'HALPHA_BROAD':
-            #    pdb.set_trace()
             ## simple QA
             #if linename == 'OIII_5007':
             #    import matplotlib.pyplot as plt
@@ -1294,7 +1318,6 @@ class EMFitTools(Filters):
             #    plt.axhline(y=3*amp_sigma, color='k', ls='--')
             #    plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
             #    plt.savefig('desi-users/ioannis/tmp/junk2.png')
-            #    pdb.set_trace()
 
         # Clean up the doublets whose amplitudes were tied in the fitting since
         # they may have been zeroed out in the clean-up, above. This should be
