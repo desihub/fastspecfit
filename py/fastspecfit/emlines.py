@@ -812,7 +812,7 @@ class EMFitTools(Filters):
             if len(S) > 0:
                 sig_init = initial_guesses[S]
                 sig_final = parameters[Ifree][S]
-                G = (sig_init - sig_final) < 1.
+                G = np.abs(sig_init - sig_final) < 1.
                 if np.any(G):
                     initial_guesses[S[G]] *= 0.9
                     try:
