@@ -70,7 +70,7 @@ DESI coadded spectrum to be located in the same directory (with a default
 *coadd-* prefix). In addition, there are two key support routines, which we
 describe in more detail below:
 
-  * ``fastspecfit-qa``, to build quality assurance (QA) figures; and
+  * ``fastqa``, to build quality assurance (QA) figures; and
   * ``mpi-fastspecfit``, to execute a variety of tasks (in parallel) on larger
     numbers of input files or catalogs.
 
@@ -133,16 +133,16 @@ visualize the results to create the
 ``fastspec-sv1-bright-7108-39633345008634465.png`` file by invoking the
 following command::
 
-  $> fastspecfit-qa ./fastspec-example.fits --outdir ./
+  $> fastqa ./fastspec-example.fits --outdir ./
 
 .. collapse:: Click to view the informational output printed to the screen after
               executing this command. 
 
     .. code-block:: python
 
-        INFO:fastspecfit-qa:53:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastspecfit-qa ./fastspec-example.fits --outdir ./
+        INFO:fastqa:53:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastqa ./fastspec-example.fits --outdir ./
         INFO:io.py:1716:read_fastspecfit: Read 1 object(s) from ./fastspec-example.fits
-        INFO:fastspecfit-qa:131:main: Building QA for 1 objects.
+        INFO:fastqa:131:main: Building QA for 1 objects.
         INFO:io.py:665:select: Reading and parsing 1 unique redrockfile(s).
         INFO:io.py:720:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
         INFO:io.py:995:select: Gathered photometric metadata for 1 objects in 0.07 sec
@@ -152,7 +152,7 @@ following command::
         INFO:io.py:111:unpack_one_spectrum: Pre-processing object 0 [targetid 39633345008634465 z=0.368744].
         INFO:fastspecfit.py:656:qa_fastspec: timeout 15 wget -q -o /dev/null -O ./tmp.fastspec-sv1-bright-7108-39633345008634465.jpeg "https://www.legacysurvey.org/viewer/jpeg-cutout?ra=105.48977452498902&dec=56.669300058331935&width=114&height=87&layer=ls-dr9"
         INFO:fastspecfit.py:1342:qa_fastspec: Writing ./fastspec-sv1-bright-7108-39633345008634465.png
-        INFO:fastspecfit-qa:241:main: QA for everything took: 12.64 sec
+        INFO:fastqa:241:main: QA for everything took: 12.64 sec
 
 |
 
@@ -282,16 +282,16 @@ redshift) using ``fastphot``. Using the same example object as above, we have::
 
 And to generate the QA::
 
-  $> fastspecfit-qa fastphot-example.fits --outdir ./
+  $> fastqa fastphot-example.fits --outdir ./
 
 .. collapse:: Click to view the informational output printed to the screen after
               executing this command. 
 
     .. code-block:: python
 
-        INFO:fastspecfit-qa:53:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastspecfit-qa fastphot-example.fits --outdir ./
+        INFO:fastqa:53:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastqa fastphot-example.fits --outdir ./
         INFO:io.py:1716:read_fastspecfit: Read 1 object(s) from fastphot-example.fits
-        INFO:fastspecfit-qa:131:main: Building QA for 1 objects.
+        INFO:fastqa:131:main: Building QA for 1 objects.
         INFO:io.py:665:select: Reading and parsing 1 unique redrockfile(s).
         INFO:io.py:720:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
         INFO:io.py:995:select: Gathered photometric metadata for 1 objects in 0.10 sec
@@ -299,7 +299,7 @@ And to generate the QA::
         INFO:io.py:111:unpack_one_spectrum: Pre-processing object 0 [targetid 39633345008634465 z=0.368744].
         INFO:fastspecfit.py:656:qa_fastspec: timeout 15 wget -q -o /dev/null -O ./tmp.fastphot-sv1-bright-7108-39633345008634465.jpeg "https://www.legacysurvey.org/viewer/jpeg-cutout?ra=105.48977452498902&dec=56.669300058331935&width=114&height=87&layer=ls-dr9"
         INFO:fastspecfit.py:1343:qa_fastspec: Writing ./fastphot-sv1-bright-7108-39633345008634465.png
-        INFO:fastspecfit-qa:241:main: QA for everything took: 6.19 sec
+        INFO:fastqa:241:main: QA for everything took: 6.19 sec
 
 .. image:: _static/fastphot-sv1-bright-7108-39633345008634465.png
 
