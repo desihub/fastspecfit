@@ -5,9 +5,11 @@ Change Log
 2.4.3 (not released yet)
 ------------------------
 
+* Handle variable pixel size in camera-overlap region bug [`PR #157`_].
 * Fix minor bug that broke the stackfit functionality [`PR #155`_].
 
 .. _`PR #155`: https://github.com/desihub/fastspecfit/pull/155
+.. _`PR #157`: https://github.com/desihub/fastspecfit/pull/157
 
 2.4.2 (2023-08-30)
 ------------------
