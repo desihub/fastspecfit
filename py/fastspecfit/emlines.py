@@ -795,7 +795,7 @@ class EMFitTools(Filters):
                 fit_info = least_squares(_objective_function, initial_guesses, args=farg, max_nfev=5000, 
                                          xtol=1e-10, #x_scale='jac', #ftol=1e-10, gtol=1e-10,
                                          tr_solver='lsmr', tr_options={'regularize': True},
-                                         method='trf', bounds=tuple(zip(*bounds)), verbose=2)
+                                         method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
                 parameters[Ifree] = fit_info.x
             except:
                 if self.uniqueid:
@@ -805,25 +805,28 @@ class EMFitTools(Filters):
                 log.critical(errmsg)
                 raise RuntimeError(errmsg)
 
-            # If sigma didn't change by more than ~one km/s from its initial guess,
-            # then something has gone awry, so perturb the initial guess by 10% and
-            # try again.
-            S = np.where(self.sigma_param_bool[Ifree])[0]
+            # If the narrow-line sigma didn't change by more than ~one km/s from
+            # its initial guess, then something has gone awry, so perturb the
+            # initial guess by 10% and try again. Examples where this matters:
+            #   fuji-sv3-bright-28119-39628390055022140
+            #   fuji-sv3-dark-25960-1092092734472204
+            S = np.where(self.sigma_param_bool[Ifree] * (linemodel['isbroad'][Ifree] == False))[0]
             if len(S) > 0:
                 sig_init = initial_guesses[S]
                 sig_final = parameters[Ifree][S]
                 G = np.abs(sig_init - sig_final) < 1.
                 if np.any(G):
+                    log.warning(f'Poor convergence on line-sigma for {self.uniqueid}; perturbing initial guess and refitting.')
                     initial_guesses[S[G]] *= 0.9
                     try:
                         fit_info = least_squares(_objective_function, initial_guesses, args=farg, max_nfev=5000, 
                                                  xtol=1e-10, #x_scale='jac', #ftol=1e-10, gtol=1e-10,
                                                  tr_solver='lsmr', tr_options={'regularize': True},
-                                                 method='trf', bounds=tuple(zip(*bounds)), verbose=2)
+                                                 method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
                         parameters[Ifree] = fit_info.x
                     except:
                         if self.uniqueid:
-                            errmsg = 'Problem in scipy.optimize.least_squares for {}.'.format(self.uniqueid)
+                            errmsg = f'Problem in scipy.optimize.least_squares for {self.uniqueid}.'
                         else:
                             errmsg = 'Problem in scipy.optimize.least_squares.'
                         log.critical(errmsg)
