@@ -8,5 +8,5 @@ matplotlib
 fitsio
 git+https://github.com/desihub/desimodel.git@0.18.0#egg=desimodel
 git+https://github.com/desihub/desitarget.git@2.6.0#egg=desitarget
-git+https://github.com/desihub/desispec.git@0.59.2#egg=desispec
-git+https://github.com/desihub/speclite.git@v0.16#egg=speclite
+git+https://github.com/desihub/desispec.git@0.60.1#egg=desispec
+git+https://github.com/desihub/speclite.git@v0.17#egg=speclite

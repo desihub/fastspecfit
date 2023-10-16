@@ -17,10 +17,10 @@ jobs:
             fail-fast: true
             matrix:
                 os: [ubuntu-latest]
-                python-version: ['3.10'] 
-                fitsio-version: ['==1.1.7']
+                python-version: ['3.10', '3.11'] 
+                fitsio-version: ['>=1.1.7']
         env:
-            DESIUTIL_VERSION: 3.3.1
+            DESIUTIL_VERSION: 3.4.1
             FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
             DESI_ROOT: ${FASTSPECFIT}/desi
 
@@ -57,10 +57,10 @@ jobs:
             fail-fast: true
             matrix:
                 os: [ubuntu-latest]
-                python-version: ['3.10']
-                fitsio-version: ['==1.1.7']
+                python-version: ['3.10', '3.11']
+                fitsio-version: ['>=1.1.7']
         env:
-            DESIUTIL_VERSION: 3.3.1
+            DESIUTIL_VERSION: 3.4.1
             FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
             DESI_ROOT: ${FASTSPECFIT}/desi
 
@@ -96,7 +96,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest]
-                python-version: ['3.10']
+                python-version: ['3.10', '3.11']
 
         steps:
             - name: Checkout code
@@ -124,7 +124,7 @@ jobs:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest]
-                python-version: ['3.10']
+                python-version: ['3.10', '3.11']
 
         steps:
             - name: Checkout code
