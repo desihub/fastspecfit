@@ -1997,7 +1997,7 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
 def get_templates_filename(templateversion='1.2.0', imf='chabrier'):
     """Get the templates filename. """
     from fastspecfit.io import FTEMPLATES_DIR_NERSC
-    templates_dir = os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC)
+    templates_dir = os.path.expandvars(os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC))
     templates = os.path.join(templates_dir, templateversion, 'ftemplates-{}-{}.fits'.format(
         imf, templateversion))
     return templates
