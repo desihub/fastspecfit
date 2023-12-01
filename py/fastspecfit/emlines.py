@@ -786,13 +786,14 @@ class EMFitTools(Filters):
         # corner case where all lines are out of the wavelength range, which can
         # happen at high redshift and with the red camera masked, e.g.,
         # iron/main/dark/6642/39633239580608311).
+        initial_guesses = parameters[Ifree]
 
         if len(Ifree) == 0:
             fit_info = {'nfev': 0}
         else:
             try:
-                fit_info = least_squares(_objective_function, parameters[Ifree], args=farg, max_nfev=5000, 
-                                         xtol=1e-10,
+                fit_info = least_squares(_objective_function, initial_guesses, args=farg, max_nfev=5000, 
+                                         xtol=1e-10, #x_scale='jac', #ftol=1e-10, gtol=1e-10,
                                          tr_solver='lsmr', tr_options={'regularize': True},
                                          method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
                 parameters[Ifree] = fit_info.x
@@ -803,6 +804,33 @@ class EMFitTools(Filters):
                     errmsg = 'Problem in scipy.optimize.least_squares.'
                 log.critical(errmsg)
                 raise RuntimeError(errmsg)
+
+            # If the narrow-line sigma didn't change by more than ~one km/s from
+            # its initial guess, then something has gone awry, so perturb the
+            # initial guess by 10% and try again. Examples where this matters:
+            #   fuji-sv3-bright-28119-39628390055022140
+            #   fuji-sv3-dark-25960-1092092734472204
+            S = np.where(self.sigma_param_bool[Ifree] * (linemodel['isbroad'][Ifree] == False))[0]
+            if len(S) > 0:
+                sig_init = initial_guesses[S]
+                sig_final = parameters[Ifree][S]
+                G = np.abs(sig_init - sig_final) < 1.
+                if np.any(G):
+                    log.warning(f'Poor convergence on line-sigma for {self.uniqueid}; perturbing initial guess and refitting.')
+                    initial_guesses[S[G]] *= 0.9
+                    try:
+                        fit_info = least_squares(_objective_function, initial_guesses, args=farg, max_nfev=5000, 
+                                                 xtol=1e-10, #x_scale='jac', #ftol=1e-10, gtol=1e-10,
+                                                 tr_solver='lsmr', tr_options={'regularize': True},
+                                                 method='trf', bounds=tuple(zip(*bounds)))#, verbose=2)
+                        parameters[Ifree] = fit_info.x
+                    except:
+                        if self.uniqueid:
+                            errmsg = f'Problem in scipy.optimize.least_squares for {self.uniqueid}.'
+                        else:
+                            errmsg = 'Problem in scipy.optimize.least_squares.'
+                        log.critical(errmsg)
+                        raise RuntimeError(errmsg)
 
         # Conditions for dropping a parameter (all parameters, not just those
         # being fitted):
@@ -891,6 +919,7 @@ class EMFitTools(Filters):
         out_linemodel = linemodel.copy()
         out_linemodel['value'] = parameters
         out_linemodel.meta['nfev'] = fit_info['nfev']
+        out_linemodel.meta['status'] = fit_info['status']
 
         #if debug:
         #    pdb.set_trace()
@@ -1064,10 +1093,13 @@ class EMFitTools(Filters):
                 else:
                     result[param['param_name'].upper()] = val                    
 
-        gausscorr = erf(nsigma / np.sqrt(2)) # correct for the flux outside of +/-nsigma
+        gausscorr = erf(nsigma / np.sqrt(2))      # correct for the flux outside of +/-nsigma
+        dpixwave = np.median(np.diff(emlinewave)) # median pixel size [Angstrom]
 
-        emlinewave_edges = centers2edges(emlinewave)
-        dpixwave = np.diff(emlinewave_edges)[0] # pixel size [Angstrom]
+        # Where the cameras overlap, we have to account for the variable pixel
+        # size by sorting in wavelength.
+        Wsrt = np.argsort(emlinewave)
+        dwaves = np.diff(centers2edges(emlinewave[Wsrt]))
 
         # zero out all out-of-range lines
         for oneline in self.fit_linetable[~self.fit_linetable['inrange']]:
@@ -1134,11 +1166,15 @@ class EMFitTools(Filters):
                         errmsg = 'Ivar should never be zero within an emission line!'
                         log.critical(errmsg)
                         raise ValueError(errmsg)
-                        
+
+                    lineindx_Wsrt = np.where((emlinewave[Wsrt] >= (linezwave - nsigma*linesigma_ang_window)) *
+                                             (emlinewave[Wsrt] <= (linezwave + nsigma*linesigma_ang_window)) *
+                                             (emlineivar[Wsrt] > 0))[0]
+
                     # boxcar integration of the flux
-                    dwave = np.median(np.abs(np.diff(emlinewave_edges[lineindx])))
-                    boxflux = np.sum(emlineflux[lineindx] * dwave)
-                    boxflux_ivar = 1 / np.sum((1 / emlineivar[lineindx]) * dwave**2)
+                    #dwave = np.median(np.abs(np.diff(emlinewave_edges[lineindx])))
+                    boxflux = np.sum(emlineflux[Wsrt][lineindx_Wsrt] * dwaves[lineindx_Wsrt])
+                    boxflux_ivar = 1 / np.sum((1 / emlineivar[Wsrt][lineindx_Wsrt]) * dwaves[lineindx_Wsrt]**2)
 
                     result['{}_BOXFLUX'.format(linename)] = boxflux # * u.erg/(u.second*u.cm**2)
                     result['{}_BOXFLUX_IVAR'.format(linename)] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
@@ -1174,10 +1210,10 @@ class EMFitTools(Filters):
                         #flux_ivar = np.sum(lineprofile[lineindx])**2 / np.sum(lineprofile[lineindx]**2 / emlineivar[lineindx])
 
                         # matched-filter (maximum-likelihood) Gaussian flux
-                        pro_j = lineprofile[lineindx] / np.sum(lineprofile[lineindx])
+                        pro_j = lineprofile[Wsrt][lineindx_Wsrt] / np.sum(lineprofile[Wsrt][lineindx_Wsrt])
                         I = pro_j > 0. # very narrow lines can have a profile that goes to zero
-                        weight_j = (pro_j[I]**2 / dwave**2) * emlineivar[lineindx][I]
-                        flux = np.sum(weight_j * dwave * lineprofile[lineindx][I] / pro_j[I]) / np.sum(weight_j)
+                        weight_j = (pro_j[I]**2 / dwaves[lineindx_Wsrt][I]**2) * emlineivar[Wsrt][lineindx_Wsrt][I]
+                        flux = np.sum(weight_j * dwaves[lineindx_Wsrt][I] * lineprofile[Wsrt][lineindx_Wsrt][I] / pro_j[I]) / np.sum(weight_j)
                         flux_ivar = np.sum(weight_j)
 
                         # correction for missing flux
@@ -1259,8 +1295,6 @@ class EMFitTools(Filters):
                 print()
                 #log.debug(' ')
     
-            #if linename == 'HALPHA_BROAD':
-            #    pdb.set_trace()
             ## simple QA
             #if linename == 'OIII_5007':
             #    import matplotlib.pyplot as plt
@@ -1287,7 +1321,6 @@ class EMFitTools(Filters):
             #    plt.axhline(y=3*amp_sigma, color='k', ls='--')
             #    plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
             #    plt.savefig('desi-users/ioannis/tmp/junk2.png')
-            #    pdb.set_trace()
 
         # Clean up the doublets whose amplitudes were tied in the fitting since
         # they may have been zeroed out in the clean-up, above. This should be
