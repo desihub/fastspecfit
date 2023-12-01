@@ -5,11 +5,14 @@ Change Log
 2.4.3 (not released yet)
 ------------------------
 
+* Expand velocity dispersion grid to 425 km/s and bump the template version to
+  1.2.0 [`PR #158`_].
 * Handle variable pixel size in camera-overlap region bug [`PR #157`_].
 * Fix minor bug that broke the stackfit functionality [`PR #155`_].
 
 .. _`PR #155`: https://github.com/desihub/fastspecfit/pull/155
 .. _`PR #157`: https://github.com/desihub/fastspecfit/pull/157
+.. _`PR #158`: https://github.com/desihub/fastspecfit/pull/158
 
 2.4.2 (2023-08-30)
 ------------------
