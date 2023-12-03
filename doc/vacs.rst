@@ -20,7 +20,7 @@ Assemblies:
 .. note::
 
    A DESI *data release* has been *publicly* released whereas a *data assembly*
-   is only available internally to collaboration members; not all data
+   is only available internally to DESI collaboration members; not all data
    assemblies become data releases.
 
 .. _`data organization`:

@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-2.4.3 (not released yet)
+2.4.4 (not released yet)
 ------------------------
+
+* 
+
+2.4.3 (2023-12-03)
+------------------
 
 * Expand velocity dispersion grid to 425 km/s and bump the template version to
   1.2.0 [`PR #158`_].

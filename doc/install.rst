@@ -85,8 +85,8 @@ These environment variables can be set with the following commands::
 
   wget -r -np -nH --cut-dirs 5 -A fits -P $DUST_DIR \
     https://portal.nersc.gov/project/cosmo/data/dust/v0_1/maps
-  wget -O $FTEMPLATES_DIR/ftemplates-chabrier-1.1.0.fits \
-    https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.1.0/ftemplates-chabrier-1.1.0.fits
+  wget -O $FTEMPLATES_DIR/ftemplates-chabrier-1.2.0.fits \
+    https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.2.0/ftemplates-chabrier-1.2.0.fits
     
 .. note::
    

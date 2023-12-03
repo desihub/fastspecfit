@@ -17,8 +17,8 @@ this VAC.
 
 .. note::
 
-   We only document the *v3.0* version of this VAC; the *v1.0* and *v2.0*
-   versions have been deprecated and are not documented further.
+   We only document the *latest* version of this VAC here; please see below for
+   information regarding `Previous Versions<previous versions>`.
 
 Data Content & Access
 ---------------------
@@ -95,6 +95,52 @@ Catalog                           Number of Objects Number with Corrected Redshi
 
 .. _known issues:
 
+Code Versions
+-------------
+
+The following tables document the code versions and environment variables used
+to produce this VAC. For details regarding the revision history of
+``FastSpecFit``, please see the `change log`_.
+
+Note that the tagged dependencies can be retrieve from any FITS file with the
+following bit of code::
+
+  import fitsio
+  from desiutil.depend import Dependencies
+  codever = Dependencies(fitsio.read_header('/path/to/fastspecfit/file.fits, ext=0))
+  for codename, version in codever.items():
+      print(codename, version)
+
+================ =======
+Software Package Version
+================ =======
+python           3.10.8
+numpy            1.22.4
+scipy            1.8.1
+astropy          5.2.1
+yaml             6.0
+matplotlib       3.6.2
+fitsio           1.1.8
+desiutil         3.3.1
+desispec         0.59.2
+desitarget       2.6.0
+desimodel        0.18.0
+speclite         0.16
+fastspecfit      2.4.0,2.4.1
+================ =======
+
+==================== =====
+Environment Variable Value
+==================== =====
+DESI_ROOT            /dvs_ro/cfs/cdirs/desi
+DUST_DIR             /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
+FPHOTO_DIR           /dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
+FTEMPLATES_DIR       /dvs_ro/cfs/cdirs/desi/science/gqp/templates/fastspecfit
+FTEMPLATES_FILE      ftemplates-chabrier-1.1.0.fits
+FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.1/lib/python3.10/site-packages/fastspecfit/data/legacysurvey-dr9.yaml
+EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.1/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
+==================== =====
+
 Known Issues
 ------------
 
@@ -103,6 +149,12 @@ after its final release. So far, none have been identified!
 
 To report projects or to request new features please `open a ticket`_.
 
+.. _previous versions:
+
+Previous Versions
+-----------------
+
 .. _`DESI Early Data Release (DESI/EDR)`: https://data.desi.lbl.gov/public/edr
 .. _`NERSC`: https://nersc.gov
 .. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
+.. _`change log`: https://github.com/desihub/fastspecfit/blob/main/doc/changes.rst
