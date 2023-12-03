@@ -1202,7 +1202,7 @@ def parse(options=None):
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
 
     parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default='1.1.0', help='Template version number.')
+    parser.add_argument('--templateversion', type=str, default='1.2.0', help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
 
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')

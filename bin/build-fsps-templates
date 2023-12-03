@@ -225,11 +225,11 @@ def build_templates(models, logages, agebins, imf='chabrier',
 
 def main(args):
 
-    version = '1.1.1'
+    version = '1.2.0'
 
     # velocity dispersion grid
     vdispmin = 50.
-    vdispmax = 350.
+    vdispmax = 425.
     dvdisp = 25.
     nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp)) + 1
     vdisp = np.linspace(vdispmin, vdispmax, nvdisp)
