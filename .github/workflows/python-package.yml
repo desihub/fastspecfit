@@ -20,7 +20,7 @@ jobs:
                 python-version: ['3.10', '3.11'] 
                 fitsio-version: ['>=1.1.7']
         env:
-            DESIUTIL_VERSION: 3.4.1
+            DESIUTIL_VERSION: 3.4.2
             FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
             DESI_ROOT: ${FASTSPECFIT}/desi
 
@@ -60,7 +60,7 @@ jobs:
                 python-version: ['3.10', '3.11']
                 fitsio-version: ['>=1.1.7']
         env:
-            DESIUTIL_VERSION: 3.4.1
+            DESIUTIL_VERSION: 3.4.2
             FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
             DESI_ROOT: ${FASTSPECFIT}/desi
 
