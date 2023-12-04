@@ -46,7 +46,7 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'sphinx_toolbox.collapse',
-    napoleon_extension
+    'sphinx.ext.napoleon'
 ]
 
 # Configuration for intersphinx, copied from astropy.
@@ -57,6 +57,7 @@ intersphinx_mapping = {
     'matplotlib': ('http://matplotlib.org/', None),
     'astropy': ('http://docs.astropy.org/en/stable/', None),
     'h5py': ('http://docs.h5py.org/en/latest/', None)
+    'desiutil': ('https://desiutil.readthedocs.io/en/latest/', None)    
     }
 
 # Add any paths that contain templates here, relative to this directory.
