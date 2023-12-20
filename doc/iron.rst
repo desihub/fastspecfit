@@ -19,7 +19,7 @@ this VAC.
 .. note::
 
    We only document the *latest* version of this VAC here; please see below for
-   information regarding :ref:`Previous Versions<previous versions - iron>`.
+   information regarding :ref:`previous versions<previous versions - iron>`.
 
 Data Content & Access
 ---------------------
@@ -144,45 +144,62 @@ FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20230111-
 EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.1/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
 ==================== =====
 
-Known Issues
-------------
-
-This section documents any issues or problems which were identified with the VAC
-after its final release. To report additional problems or to request new
-features please `open a ticket`_. 
-
-* Fluxes (and EWs) of lines which lie in the camera-overlap region are
-  overestimated by a factor of 2 due to a bug handling the different pixel scale
-  (see `issue/#157`_).
-* Stellar masses are systematically higher (by 0.2-0.5 dex) compared to other
-  methods, so they should be used with caution; see `issue/#159`_. Similarly,
-  star-formation rates have not been fully validated.
-
-.. _`issue/#157`: https://github.com/desihub/fastspecfit/issues/157
-.. _`issue/#159`: https://github.com/desihub/fastspecfit/issues/159
-
 .. _previous versions - iron:
 
-Previous Versions
------------------
+Notes & Known Issues
+--------------------
 
-In this section we document the version of ``FastSpecFit`` used to generate
-previous, earlier versions of this VAC. Please see the `change log`_ for a
-record of what code and data model changes have occurred since these previous
-versions were released.
+v2.0 (latest release)
+~~~~~~~~~~~~~~~~~~~~~
 
-.. rst-class:: columns
+* Release date: August 2023
+* ``FastSpecFit`` versions: ``2.4.1``, ``2.4.2``
+* Templates: ``ftemplates-chabrier-1.1.0.fits``  (see `README.txt`_).
+* Notes:
 
-=========== ======================
-VAC Version FastSpecFit Version(s)
-=========== ======================
-v1.0        2.1.0, 2.1.1
-=========== ======================
+  * Minor updates to spectrophotometric templates.
+  * Just two rounds of emission-line fitting, not three (see `PR/#151`_).
+  * Updated IGM attenuation coefficients (see `PR/#136`_).
+  * Major algorithmic updates related to how emission-line amplitudes, fluxes,
+    and inverse variances are computed, including a bug fix which the
+    emission-line model spectra were not being convolved with the resolution
+    matrix (see `PR/#137`_). 
+* Known Issues:
+  
+  * **Warning**: Stellar masses are systematically higher (by 0.2-0.5 dex)
+    compared to other methods, so they should be used with caution (see
+    `issue/#159`_). Similarly, star-formation rates and other SPS model
+    parameters have not been fully validated.
+  * **Bug**: Fluxes (and EWs) of lines which lie in the camera-overlap region
+    are overestimated by a factor of 2 due to a bug handling the different pixel
+    scale (fixed in `PR/#157`_).
+
+v1.0
+~~~~
+
+* Release date: February 2023
+* ``FastSpecFit`` versions: ``2.1.0``, ``2.1.1``
+* Templates: ``ftemplates-chabrier-1.0.0.fits``  (see `README.txt`_).
+* Known Issues:
+  
+  * **Bug**: [OII] 7320,7330 doublet amplitude ratio incorrectly inverted (fixed
+    in `PR/#120`_).
+  * **Bug**: Artificial redshift dependence in derived stellar masses due to age
+    prior (fixed in `PR/#132`_). 
+  * **Bug**: Emission-line subtracted Dn(4000) values incorrectly computed
+    (fixed in `PR/#135`_). 
 
 .. _`DESI Data Release 1 (DESI/DR1)`: https://data.desi.lbl.gov/public/dr1
 .. _`NERSC`: https://nersc.gov
 .. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
 .. _`change log`: https://github.com/desihub/fastspecfit/blob/main/doc/changes.rst
+.. _`README.txt`: https://data.desi.lbl.gov/public/external/templates/fastspecfit/README.txt
 .. _`issue/#159`: https://github.com/desihub/fastspecfit/issues/159
-.. _`README.txt`: https://data.desi.lbl.gov/desi/public/external/templates/fastspecfit/README.txt
-
+.. _`PR/#120`: https://github.com/desihub/fastspecfit/pull/120
+.. _`PR/#132`: https://github.com/desihub/fastspecfit/pull/132
+.. _`PR/#135`: https://github.com/desihub/fastspecfit/pull/135
+.. _`PR/#136`: https://github.com/desihub/fastspecfit/pull/136
+.. _`PR/#137`: https://github.com/desihub/fastspecfit/pull/137
+.. _`PR/#151`: https://github.com/desihub/fastspecfit/pull/151
+.. _`PR/#157`: https://github.com/desihub/fastspecfit/pull/157
+.. _`PR/#158`: https://github.com/desihub/fastspecfit/pull/158

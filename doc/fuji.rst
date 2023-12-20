@@ -9,8 +9,8 @@ Fuji VAC (EDR)
 Overview
 --------
 
-This page describes the ``Fuji`` value-added catalog, which will be publicly
-released as part of the `DESI Early Data Release (DESI/EDR)`_ in late-2023. 
+This page describes the ``Fuji`` value-added catalog which was publicly released
+as part of the `DESI Early Data Release (DESI/EDR)`_ in December 2023.
 
 Please refer to the :ref:`acknowledgments` section for the conditions for using
 this VAC.
@@ -18,7 +18,7 @@ this VAC.
 .. note::
 
    We only document the *latest* version of this VAC here; please see below for
-   information regarding :ref:`Previous Versions<previous versions - fuji>`.
+   information regarding :ref:`previous versions<previous versions - fuji>`.
 
 Data Content & Access
 ---------------------
@@ -27,7 +27,7 @@ Data from the ``Fuji`` VAC can be accessed at any of the following links:
 
 ============================ ===================================================================
 Data url                     https://data.desi.lbl.gov/public/edr/vac/edr/fastspecfit/fuji/v3.1
-Interactive web-app          https://fastspecfit.desi.lbl.gov
+Web-app (for collaborators)  https://fastspecfit.desi.lbl.gov
 `NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/edr/vac/edr/fastspecfit/fuji/v3.1``
 ============================ ===================================================================
 
@@ -143,42 +143,102 @@ FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20230111-
 EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.3/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
 ==================== =====
 
-Known Issues
-------------
-
-This section documents any issues or problems which were identified with the VAC
-after its final release. To report additional problems or to request new
-features please `open a ticket`_. 
-
-* Stellar masses are systematically higher (by 0.2-0.5 dex) compared to other
-  methods, so they should be used with caution; see `issue/#159`_. Similarly,
-  star-formation rates have not been fully validated.
-
-.. _`issue/#159`: https://github.com/desihub/fastspecfit/issues/159
-
 .. _previous versions - fuji:
 
-Previous Versions
------------------
+Notes & Known Issues
+--------------------
 
-In this section we document the version of ``FastSpecFit`` used to generate
-previous, earlier versions of this VAC. Please see the `change log`_ for a
-record of what code and data model changes have occurred since these previous
-versions were released.
+In this section we briefly document issues or problems which were identified
+with the VAC after its final release, and provide additional details regarding
+previous versions of this VAC. 
 
-.. rst-class:: columns
+Please see the `change log`_ for a record of what code and data model changes
+have occurred since these versions were released and to report additional
+problems or to request new features please `open a ticket`_.
 
-=========== ======================
-VAC Version FastSpecFit Version(s)
-=========== ======================
-v3.0        2.4.1, 2.4.2
-v2.0        2.1.0, 2.1.1
-v1.0        1.0.0, 1.0.1
-=========== ======================
+v3.1 (latest release)
+~~~~~~~~~~~~~~~~~~~~~
+
+* Release date: December 2023
+* ``FastSpecFit`` version: ``2.4.3``
+* Templates: ``ftemplates-chabrier-1.2.0.fits``  (see `README.txt`_).
+* Notes:
+
+  * Minor updates to spectrophotometric templates (expanded velocity dispersion
+    grid; see `PR/#158`_). 
+* Known Issues:
+  
+  * **Warning**: Stellar masses are systematically higher (by 0.2-0.5 dex)
+    compared to other methods, so they should be used with caution (see
+    `issue/#159`_). Similarly, star-formation rates and other SPS model
+    parameters have not been fully validated.
+
+v3.0
+~~~~
+
+* Release date: August 2023
+* ``FastSpecFit`` versions: ``2.4.1``, ``2.4.2``
+* Templates: ``ftemplates-chabrier-1.1.0.fits``  (see `README.txt`_).
+* Notes:
+
+  * Minor updates to spectrophotometric templates.
+  * Just two rounds of emission-line fitting, not three (see `PR/#151`_).
+  * Updated IGM attenuation coefficients (see `PR/#136`_).
+  * Major algorithmic updates related to how emission-line amplitudes, fluxes,
+    and inverse variances are computed, including a bug fix which the
+    emission-line model spectra were not being convolved with the resolution
+    matrix (see `PR/#137`_). 
+* Known Issues:
+  
+  * **Warning**: Stellar masses are systematically higher (by 0.2-0.5 dex)
+    compared to other methods, so they should be used with caution (see
+    `issue/#159`_). Similarly, star-formation rates and other SPS model
+    parameters have not been fully validated.
+  * **Bug**: Fluxes (and EWs) of lines which lie in the camera-overlap region
+    are overestimated by a factor of 2 due to a bug handling the different pixel
+    scale (fixed in `PR/#157`_).
+
+v2.0
+~~~~
+
+* Release date: February 2023
+* ``FastSpecFit`` versions: ``2.1.0``, ``2.1.1``
+* Templates: ``ftemplates-chabrier-1.0.0.fits``  (see `README.txt`_).
+* Notes:
+
+  * Major update of underlying spectrophotometric templates.
+* Known Issues:
+  
+  * **Bug**: [OII] 7320,7330 doublet amplitude ratio incorrectly inverted (fixed
+    in `PR/#120`_).
+  * **Bug**: Artificial redshift dependence in derived stellar masses due to age
+    prior (fixed in `PR/#132`_). 
+  * **Bug**: Emission-line subtracted Dn(4000) values incorrectly computed
+    (fixed in `PR/#135`_). 
+
+v1.0
+~~~~
+
+* Release date: August 2022
+* ``FastSpecFit`` versions: ``1.0.0``, ``1.0.1``
+* Templates: `SSP-CKC14z/v1.0`_
+* Notes & Known Issues:
+  
+  * First major release; many issues addressed in future releases.
 
 .. _`DESI Early Data Release (DESI/EDR)`: https://data.desi.lbl.gov/public/edr
 .. _`NERSC`: https://nersc.gov
 .. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
 .. _`change log`: https://github.com/desihub/fastspecfit/blob/main/doc/changes.rst
+.. _`README.txt`: https://data.desi.lbl.gov/public/external/templates/fastspecfit/README.txt
+.. _`SSP-CKC14z/v1.0`: https://data.desi.lbl.gov/public/external/templates/SSP-CKC14z/README.txt
 .. _`issue/#159`: https://github.com/desihub/fastspecfit/issues/159
-.. _`README.txt`: https://data.desi.lbl.gov/desi/public/external/templates/fastspecfit/README.txt
+.. _`PR/#120`: https://github.com/desihub/fastspecfit/pull/120
+.. _`PR/#132`: https://github.com/desihub/fastspecfit/pull/132
+.. _`PR/#135`: https://github.com/desihub/fastspecfit/pull/135
+.. _`PR/#136`: https://github.com/desihub/fastspecfit/pull/136
+.. _`PR/#137`: https://github.com/desihub/fastspecfit/pull/137
+.. _`PR/#151`: https://github.com/desihub/fastspecfit/pull/151
+.. _`PR/#157`: https://github.com/desihub/fastspecfit/pull/157
+.. _`PR/#158`: https://github.com/desihub/fastspecfit/pull/158
+
