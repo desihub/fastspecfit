@@ -25,10 +25,10 @@ Data Content & Access
 
 Data from the ``Fuji`` VAC can be accessed at any of the following links:
 
-============================ ============================================================
-Data url                     https://data.desi.lbl.gov/desi/spectro/fastspecfit/fuji/v3.0
+============================ ==================================================================
+Data url                     https://data.desi.lbl.gov/public/edr/vac/edr/fastspecfit/fuji/v3.1
 Interactive web-app          https://fastspecfit.desi.lbl.gov
-`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/spectro/fastspecfit/fuji/v3.0``
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/edr/vac/edr/fastspecfit/fuji/v3.1``
 ============================ ============================================================
 
 For more information regarding the content and organization of the VAC, please
@@ -121,12 +121,12 @@ astropy          5.2.1
 yaml             6.0
 matplotlib       3.6.2
 fitsio           1.1.8
-desiutil         3.3.1
-desispec         0.59.2
-desitarget       2.6.0
-desimodel        0.18.0
-speclite         0.16
-fastspecfit      2.4.1, 2.4.2
+desiutil         3.4.2
+desispec         0.60.2
+desitarget       2.6.1
+desimodel        0.19.0
+speclite         0.17
+fastspecfit      2.4.3
 ================ ==========
 
 .. rst-class:: columns
@@ -138,9 +138,9 @@ DESI_ROOT            /dvs_ro/cfs/cdirs/desi
 DUST_DIR             /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
 FPHOTO_DIR           /dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
 FTEMPLATES_DIR       /dvs_ro/cfs/cdirs/desi/science/gqp/templates/fastspecfit
-FTEMPLATES_FILE      ftemplates-chabrier-1.1.0.fits (see `README.txt`_)
-FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.1/lib/python3.10/site-packages/fastspecfit/data/legacysurvey-dr9.yaml
-EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.1/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
+FTEMPLATES_FILE      ftemplates-chabrier-1.2.0.fits (see `README.txt`_)
+FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.3/lib/python3.10/site-packages/fastspecfit/data/legacysurvey-dr9.yaml
+EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.3/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
 ==================== =====
 
 Known Issues
