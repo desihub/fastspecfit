@@ -25,11 +25,11 @@ Data Content & Access
 
 Data from the ``Fuji`` VAC can be accessed at any of the following links:
 
-============================ ==================================================================
+============================ ===================================================================
 Data url                     https://data.desi.lbl.gov/public/edr/vac/edr/fastspecfit/fuji/v3.1
 Interactive web-app          https://fastspecfit.desi.lbl.gov
 `NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/edr/vac/edr/fastspecfit/fuji/v3.1``
-============================ ============================================================
+============================ ===================================================================
 
 For more information regarding the content and organization of the VAC, please
 click on the following links:
@@ -150,14 +150,10 @@ This section documents any issues or problems which were identified with the VAC
 after its final release. To report additional problems or to request new
 features please `open a ticket`_. 
 
-* Fluxes (and EWs) of lines which lie in the camera-overlap region are
-  overestimated by a factor of 2 due to a bug handling the different pixel scale
-  (see `issue/#157`_).
 * Stellar masses are systematically higher (by 0.2-0.5 dex) compared to other
   methods, so they should be used with caution; see `issue/#159`_. Similarly,
   star-formation rates have not been fully validated.
 
-.. _`issue/#157`: https://github.com/desihub/fastspecfit/issues/157
 .. _`issue/#159`: https://github.com/desihub/fastspecfit/issues/159
 
 .. _previous versions - fuji:
@@ -175,6 +171,7 @@ versions were released.
 =========== ======================
 VAC Version FastSpecFit Version(s)
 =========== ======================
+v3.0        2.4.1, 2.4.2
 v2.0        2.1.0, 2.1.1
 v1.0        1.0.0, 1.0.1
 =========== ======================
