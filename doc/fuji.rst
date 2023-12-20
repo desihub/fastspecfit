@@ -10,7 +10,7 @@ Overview
 --------
 
 This page describes the ``Fuji`` value-added catalog which was publicly released
-as part of the `DESI Early Data Release (DESI/EDR)`_ in December 2023.
+in December 2023 and is based on the `DESI Early Data Release (DESI/EDR)`_.
 
 Please refer to the :ref:`acknowledgments` section for the conditions for using
 this VAC.
