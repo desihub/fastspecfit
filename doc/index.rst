@@ -38,6 +38,7 @@ Value Added Catalogs (VACs)
    fuji.rst
    iron.rst
    guadalupe.rst
+   acknowledgments.rst
 
 Data Model
 ----------
