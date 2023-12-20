@@ -1,0 +1,12 @@
+#!/bin/bash -l
+
+# Generate checksums from the top level of a production / release.
+
+for f in $(find healpix -type f); do
+    d=$(dirname ${f})
+    b=$(basename ${f})
+    s=edr_vac_edr_fastspecfit_fuji_v3.1_$(tr '/' '_' <<<${d}).sha256sum
+    [[ -f ${d}/${s} ]] || touch ${d}/${s}
+    echo "(cd ${d}; sha256sum ${b} >> ${s})"
+    (cd ${d}; sha256sum ${b} >> ${s})
+done
