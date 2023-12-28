@@ -16,6 +16,10 @@ FastSpecFit
     :target: https://fastspecfit.readthedocs.io/en/latest/
     :alt: Documentation Status
 
+.. |ASCL Reference| image:: https://img.shields.io/badge/ascl-2308.005-blue.svg?colorB=262255
+    :target: https://ascl.net/2308.005
+    :alt: ASCL Reference
+
 This repository contains code and documentation for performing fast spectral
 synthesis and emission-line fitting of `DESI`_ spectra and broadband
 photometry. For extensive details please see the `latest documentation`_.
