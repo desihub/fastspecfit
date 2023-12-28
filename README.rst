@@ -1,4 +1,8 @@
-<img src="doc/_static/fastspecfit-logo.png" height=75/>  <!-- . -->
+FastSpecFit Logo
+
+.. FastSpecFit Logo image:: doc/_static/fastspecfit-logo.png
+    :target: doc/_static/fastspecfit-logo.png
+    :alt: FastSpecFit logo
 
 ===========
 FastSpecFit
