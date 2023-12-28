@@ -1,3 +1,5 @@
+<img src="doc/_static/fastspecfit-logo.png" height=75/>  <!-- . -->
+
 ===========
 FastSpecFit
 ===========
