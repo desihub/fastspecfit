@@ -2,7 +2,7 @@
 FastSpecFit
 ===========
 
-|Actions Status| |Coveralls Status| |Documentation Status|
+|Actions Status| |Coveralls Status| |Documentation Status| |ASCL Reference|
 
 .. |Actions Status| image:: https://github.com/desihub/fastspecfit/workflows/CI/badge.svg
     :target: https://github.com/desihub/fastspecfit/actions
