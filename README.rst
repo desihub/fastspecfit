@@ -1,12 +1,7 @@
-FastSpecFit Logo
-
-.. FastSpecFit Logo image:: doc/_static/fastspecfit-logo.png
-    :target: doc/_static/fastspecfit-logo.png
-    :alt: FastSpecFit logo
-
-===========
-FastSpecFit
-===========
+.. image:: doc/_static/fastspecfit-logo.png
+   :height: 75px
+   :target: doc/_static/fastspecfit-logo.png
+   :alt: FastSpecFit logo
 
 |Actions Status| |Coveralls Status| |Documentation Status| |ASCL Reference|
 
