@@ -1,5 +1,5 @@
 .. image:: doc/_static/fastspecfit-logo.png
-   :height: 250px
+   :height: 180px
    :target: doc/_static/fastspecfit-logo.png
    :alt: FastSpecFit logo
 
