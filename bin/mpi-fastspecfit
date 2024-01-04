@@ -25,7 +25,7 @@ from desiutil.log import get_logger
 log = get_logger()
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
-                    makeqa=False, outdir_data='.', outdir_html='.'):
+                    makeqa=False, outdir_data='.'):
 
     import sys
     from desispec.parallel import stdouterr_redirected
@@ -42,8 +42,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
             coadd_type=args.coadd_type, survey=args.survey, program=args.program,
             healpix=args.healpix, tile=args.tile, night=args.night,
-            makeqa=args.makeqa, mp=args.mp,
-            fastphot=fastphot, outdir_data=outdir_data, outdir_html=outdir_html,
+            makeqa=args.makeqa, mp=args.mp, fastphot=fastphot, outdir_data=outdir_data, 
             overwrite=args.overwrite)
         log.info('Planning took {:.2f} sec'.format(time.time() - t0))
     else:
@@ -201,7 +200,6 @@ def main():
     args = parser.parse_args()
 
     outdir_data = os.path.expandvars(args.outdir_data)
-    outdir_html = os.path.expandvars(args.outdir_html)
 
     if args.merge or args.mergeall or args.nompi:
         comm = None
@@ -298,12 +296,11 @@ def main():
             plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
                  coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                  healpix=args.healpix, tile=args.tile, night=args.night,
-                 makeqa=args.makeqa, mp=args.mp,
-                 fastphot=args.fastphot, outdir_data=outdir_data,
-                 outdir_html=outdir_html, overwrite=args.overwrite)
+                 makeqa=args.makeqa, mp=args.mp, fastphot=args.fastphot,
+                 outdir_data=outdir_data, overwrite=args.overwrite)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=outdir_data, outdir_html=outdir_html)
+                        makeqa=args.makeqa, outdir_data=outdir_data)
 
 if __name__ == '__main__':
     main()

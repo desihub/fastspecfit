@@ -46,8 +46,8 @@ def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
 
 def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None, 
-         outdir_data='.', outdir_html='.', mp=1, merge=False, makeqa=False,
-         fastphot=False, overwrite=False):
+         outdir_data='.', mp=1, merge=False, makeqa=False, fastphot=False,
+         overwrite=False):
 
     import fitsio
     from astropy.table import Table, vstack
@@ -98,7 +98,6 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
 
     outdir = os.path.join(outdir_data, specprod, subdir)
     htmldir = os.path.join(outdir_data, specprod, 'html', subdir)
-    #htmldir = os.path.join(outdir_html, specprod, subdir)
 
     def _findfiles(filedir, prefix='redrock', survey=None, program=None, healpix=None, tile=None, night=None, gzip=False):
         if gzip:
