@@ -101,7 +101,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
 
     CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
     
-    log.info(f'Pre-processing object {iobj} [targetid {meta[CTools.uniqueid]} z={meta['Z']:.6f}].')
+    log.info(f'Pre-processing object {iobj} [targetid {meta[CTools.uniqueid]} z={meta["Z"]:.6f}].')
     
     RV = 3.1
     meta['EBV'] = ebv
