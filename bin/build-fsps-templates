@@ -249,7 +249,7 @@ def main(args):
 
     # velocity dispersion grid
     vdispmin = 50.
-    vdispmax = 425.
+    vdispmax = 475.
     dvdisp = 25.
     nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp)) + 1
     vdisp = np.linspace(vdispmin, vdispmax, nvdisp)
