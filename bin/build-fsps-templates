@@ -124,8 +124,6 @@ def build_templates(models, logages, agebins=None, imf='chabrier',
     meta['age'] = 10**models['logage']
     meta['zzsun'] = models['logmet']
     meta['av'] = models['dust'] * 1.086
-    #meta['fagn'] = models['fagn']
-    #meta['qpah'] = models['qpah']
     meta['mstar'] = np.zeros(nsed, 'f4')
     meta['sfr'] = np.zeros(nsed, 'f4')
 
@@ -171,8 +169,6 @@ def build_templates(models, logages, agebins=None, imf='chabrier',
         sp.params['dust1'] = model['dust']
         sp.params['dust2'] = model['dust']
         sp.params['logzsol'] = model['logmet']
-        #sp.params['fagn'] = model['fagn']
-        #sp.params['duste_qpah'] = model['qpah']
 
         if sfh_ssp:
             # SSP
@@ -272,51 +268,31 @@ def main(args):
         agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
         logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [yr] in each bin
 
-    #logmets = np.array([-1.0, -0.3, 0.0, 0.3])
-    #logmets = np.array([0.0])
-    logmets = np.array([-1.0, 0.0, 0.3])
+    logmets = np.array([-1.0, 0.0, 0.3]) # [-1.0, -0.3, 0.0, 0.3]
     nmets = len(logmets)
     zsolar = 0.019
 
     ndusts = 8
     mindust = 0.0
     minlogdust = -1.7
-    maxlogdust = 0.3 # 0.477
+    maxlogdust = 0.477
     dusts = np.hstack((mindust, np.logspace(minlogdust, maxlogdust, ndusts-1)))
-
-    #nfagns = 3
-    #minfagn = 0.0
-    #minlogfagn = np.log10(0.1)
-    #maxlogfagn = np.log10(2.0)
-    #fagns = np.hstack((minfagn, np.logspace(minlogfagn, maxlogfagn, nfagns-1)))
-    
-    #nqpahs = 3
-    ##nqpahs = 2
-    #minqlogpah = np.log10(0.1)
-    #maxqlogpah = np.log10(7.0)
-    #qpahs = np.logspace(minqlogpah, maxqlogpah, nqpahs)
 
     # for testing
     if args.test:
         dusts = np.array([0.0])
         logmets = [0.0]
-        #fagns = [0.0]
         ndusts = 1
         nmets = 1
-        #nfagns = 1
     
     dims = (nages, nmets, ndusts)
-    #dims = (nages, nmets, ndusts, nfagns)
 
     models_dtype = np.dtype(
         [('logmet', np.float32),
          ('dust', np.float32),
-         #('fagn', np.float32),
-         #('qpah', np.float32),
          ('logage', np.float32)])
 
     # Let's be pedantic about the procedure so we don't mess up the indexing...
-    #dims = (nages, nmets, ndusts, nfagns, nqpahs)
     models = np.zeros(dims, dtype=models_dtype)
 
     for iage, logage in enumerate(logages):
@@ -351,7 +327,6 @@ def main(args):
     # Select just the line-free models trimmed to the 1200-10000 A wavelength
     # range.
     I = np.where((wave > 1200) * (wave < PIXKMS_WAVESPLIT))[0]
-    #J = np.where(meta['fagn'] == 0)[0]
     vdispwave = wave[I]
     #nvdispmodel = len(J)
 
@@ -366,17 +341,6 @@ def main(args):
     for sigma in vdisp / PIXKMS_BLU:
         vdispflux.append(gaussian_filter1d(fluxnolines[I, :], sigma=sigma, axis=0))
     vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
-
-    #vdispflux = []
-    #for sigma in vdisp / PIXKMS_BLU:
-    #    vdispflux.append(gaussian_filter1d(fluxnolines[I, :][:, J], sigma=sigma, axis=0))
-    #    #vdispflux.append(gaussian_filter1d(normflux, sigma=sigma, axis=0))
-    #vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
-
-    #vdispflux = []
-    #for sigma in vdisp / PIXKMS_BLU:
-    #    vdispflux.append(gaussian_filter1d(fluxnolines, sigma=sigma, axis=0))
-    #vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
 
     #K = np.where((vdispwave > 3500) * (vdispwave < 4300))[0]
     #plt.clf()
