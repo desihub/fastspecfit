@@ -1809,36 +1809,6 @@ class ContinuumTools(Filters, Inoue14):
     
         return chi2min, xbest, xivar, bestcoeff
 
-    @staticmethod
-    def get_mean_property(templateinfo, physical_property, coeff, agekeep,
-                          normalization=None, log10=False, log=None):
-        """Compute the mean physical properties, given a set of coefficients.
-
-        """
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-        
-        values = templateinfo[physical_property][agekeep] # account for age of the universe trimming
-
-        if np.count_nonzero(coeff > 0) == 0:
-            log.warning('Coefficients are all zero!')
-            meanvalue = 0.0
-            #raise ValueError
-        else:
-            meanvalue = values.dot(coeff)
-            # the coefficients include the stellar mass normalization
-            #if physical_property == 'mstar':
-            #    meanvalue /= np.sum(values[coeff > 0])
-            if physical_property != 'mstar' and physical_property != 'sfr':
-                meanvalue /= np.sum(coeff) 
-            if normalization:
-                meanvalue /= normalization
-            if log10 and meanvalue > 0:
-                meanvalue = np.log10(meanvalue)
-        
-        return meanvalue
-
 
     def continuum_fluxes(self, data, templatewave, continuum, log=None):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
