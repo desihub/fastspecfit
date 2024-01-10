@@ -266,7 +266,7 @@ def main(args):
         nages = len(agelims) - 1
 
         agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
-        logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [yr] in each bin
+        logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [log10(yr)] in each bin
 
     logmets = np.array([-1.0, 0.0, 0.3]) # [-1.0, -0.3, 0.0, 0.3]
     nmets = len(logmets)
