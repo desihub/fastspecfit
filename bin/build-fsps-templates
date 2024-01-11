@@ -227,14 +227,16 @@ def build_templates(models, logages, agebins=None, imf='chabrier',
 
         meta['mstar'][imodel] = sp.stellar_mass
         meta['sfr'][imodel] = sp.sfr
-        #print(sp.formed_mass, sp.stellar_mass)
+        #print(tage, sp.formed_mass, sp.stellar_mass)
+        if sp.stellar_mass < 0:
+            raise ValueError('Stellar mass is negative!')
 
         #plt.clf()
         #I = np.where((wave > 3500) * (wave < 5600))[0]
         #J = np.where((newwave > 3500) * (newwave < 3600))[0]
         #plt.plot(wave[I], flux[I])
         #plt.plot(newwave[J], fluxes[J, imodel])
-        #plt.show()
+        #plt.savefig('junk.png')
         #pdb.set_trace()
 
     print('...took {:.3f} min'.format((time.time()-t0)/60))
@@ -262,13 +264,26 @@ def main(args):
         agebins = None
     else:
         # Choose lookback time bins. 
-        agelims = np.array([0., 0.01, 0.03, 0.1, 0.33, 1.1, 3.6, 12., 14.]) # [Gyr]
-        nages = len(agelims) - 1
+        #agelims = np.array([0., 0.03, 0.1, 0.6, 3.6, 13.]) # [Gyr]
+        #agelims = np.array([0., 0.01, 0.03, 0.1, 0.33, 1.1, 3.6, 12., 14.]) # [Gyr]
+
+        # from prospect.templates.adjust_continuity_agebins
+        nbins = 5
+        tuniv = 13.7
+        tbinmax = (tuniv * 0.85) * 1e9
+        lim1, lim2 = 7.4772, 8.0
+        agelims = np.array([0, lim1] + np.linspace(lim2, np.log10(tbinmax), nbins-2).tolist() + [np.log10(tuniv*1e9)]) # log10(yr)
+        agelims = 10.**agelims / 1e9 # [Gyr]
 
         agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
         logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [log10(yr)] in each bin
+        
+        print('<Ages>: '+' '.join(['{:.4f} Gyr'.format(10.**logage/1e9) for logage in logages]))
 
-    logmets = np.array([-1.0, 0.0, 0.3]) # [-1.0, -0.3, 0.0, 0.3]
+        nages = len(logages)
+
+    logmets = np.array([0.0]) # [-1.0, -0.3, 0.0, 0.3]
+    #logmets = np.array([-1.0, 0.0, 0.3]) # [-1.0, -0.3, 0.0, 0.3]
     nmets = len(logmets)
     zsolar = 0.019
 
