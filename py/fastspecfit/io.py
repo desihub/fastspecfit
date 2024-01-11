@@ -69,6 +69,8 @@ QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
 QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 
 FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
+DEFAULT_TEMPLATEVERSION = '1.3.0'
+DEFAULT_IMF = 'chabrier'
 
 # Taken from Redrock/0.15.4
 class _ZWarningMask(object):
@@ -1993,7 +1995,7 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
     else:
         return fastfit[keep], metadata[keep]
 
-def get_templates_filename(templateversion='1.2.1', imf='chabrier'):
+def get_templates_filename(templateversion=DEFAULT_TEMPLATEVERSION, imf=DEFAULT_IMF):
     """Get the templates filename. """
     from fastspecfit.io import FTEMPLATES_DIR_NERSC
     templates_dir = os.path.expandvars(os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC))
@@ -2056,7 +2058,7 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
     
     return pngfile
 
-def cache_templates(templates=None, templateversion='1.2.1', imf='chabrier',
+def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf=DEFAULT_IMF,
                     mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.,
                     read_linefluxes=False, fastphot=False, log=None):
     """"Read the templates into a dictionary.

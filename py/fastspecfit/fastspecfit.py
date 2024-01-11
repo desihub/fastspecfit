@@ -80,6 +80,7 @@ def parse(options=None, log=None):
 
     """
     import argparse, sys
+    from fastspecfit.io import DEFAULT_TEMPLATEVERSION, DEFAULT_IMF
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -97,8 +98,8 @@ def parse(options=None, log=None):
     parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
     parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
     parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
-    parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default='1.2.1', help='Template version number.')
+    parser.add_argument('--imf', type=str, default=DEFAULT_IMF, help='Initial mass function.')
+    parser.add_argument('--templateversion', type=str, default=DEFAULT_TEMPLATEVERSION, help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
