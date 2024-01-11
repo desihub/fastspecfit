@@ -2290,10 +2290,10 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         coefftot = np.sum(coeff)
         logmstar = np.log10(CTools.massnorm * masstot)
         zzsun = np.log10(coeff.dot(mstars * 10.**templatecache['templateinfo']['zzsun'][agekeep]) / masstot) # mass-weighted
-        AV = coeff.dot(templatecache['templateinfo']['av'][agekeep]) / coefftot                 # luminosity-weighted [mag]
-        age = coeff.dot(templatecache['templateinfo']['age'][agekeep]) / coefftot / 1e9         # luminosity-weighted [Gyr]
+        AV = coeff.dot(templatecache['templateinfo']['av'][agekeep]) / coefftot                  # luminosity-weighted [mag]
+        age = coeff.dot(templatecache['templateinfo']['age'][agekeep]) / coefftot / 1e9          # luminosity-weighted [Gyr]
         #age = coeff.dot(mstars * templatecache['templateinfo']['age'][agekeep]) / masstot / 1e9 # mass-weighted [Gyr]
-        sfr = coeff.dot(mstars * templatecache['templateinfo']['sfr'][agekeep]) / masstot        # mass-weighted [Msun/yr]
+        sfr = CTools.massnorm * coeff.dot(templatecache['templateinfo']['sfr'][agekeep])                           # [Msun/yr]
 
     rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 5600))
     log.info(f'log(M/Msun)={logmstar:.2f}, M{CTools.absmag_bands[rindx]}={absmag[rindx]:.2f} mag, A(V)={AV:.3f}, Age={age:.3f} Gyr, SFR={sfr:.3f} Msun/yr, Z/Zsun={zzsun:.3f}')
