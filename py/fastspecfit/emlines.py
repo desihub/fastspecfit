@@ -232,7 +232,7 @@ class EMFitTools(Filters):
         self.minsigma_balmer_broad = 250. # minimum broad-line sigma [km/s]
         self.minsnr_balmer_broad = minsnr_balmer_broad # minimum broad-line S/N
 
-    def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False, strict_finalmodel=True):
+    def build_linemodels(self, redshift, wavelims=[3000, 10000], verbose=False, strict_broadmodel=True):
         """Build all the multi-parameter emission-line models we will use.
     
         """
@@ -315,6 +315,7 @@ class EMFitTools(Filters):
         initvshift = 1.0
         vmaxshift_narrow = 500.0
         vmaxshift_broad = 2500.0 # 3000.0
+        vmaxshift_balmer_broad = 2500.
     
         minsigma_narrow = 1.0
         maxsigma_narrow = 750.0 # 500.0
@@ -411,7 +412,7 @@ class EMFitTools(Filters):
                 for param, bounds, default in zip(['amp', 'sigma', 'vshift'],
                                                   [[minamp_balmer_broad, maxamp_balmer_broad], 
                                                    [minsigma_balmer_broad, maxsigma_balmer_broad],
-                                                   [-vmaxshift_broad, +vmaxshift_broad]],
+                                                   [-vmaxshift_balmer_broad, +vmaxshift_balmer_broad]],
                                                   [initamp, initsigma_broad, initvshift]):
                     linemodel_broad['initial'][param_names == linename+'_'+param] = default
                     linemodel_broad['bounds'][param_names == linename+'_'+param] = bounds
@@ -520,17 +521,21 @@ class EMFitTools(Filters):
                     linemodel_broad['tiedfactor'][param_names == linename+'_'+param] = 1.0
                     linemodel_broad['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'ciii_1908_'+param)[0]
 
-            # Stephanie Juneau argues that the narrow *forbidden* line-widths
-            # should never be fully untied, so optionally keep them tied to
-            # [OIII] 5007 here; vshift can be free, however, to allow for
-            # wavelength calibration uncertainties.
-            if strict_finalmodel:
-                # Tie all forbidden lines to [OIII] 5007; the narrow Balmer and
-                # helium lines are separately tied together.
-                if fit_linetable['isbroad'][iline] == False and fit_linetable['isbalmer'][iline] == False and linename != 'oiii_5007':
-                    for param in ['sigma']:
+            # Tie all the forbidden and narrow Balmer+helium lines to [OIII]
+            # 5007 when we have broad lines. See e.g.,
+            # https://github.com/desihub/fastspecfit/issues/160
+            if strict_broadmodel:
+                if fit_linetable['isbroad'][iline] == False and linename != 'oiii_5007':
+                    for param in ['sigma', 'vshift']:
                         linemodel_broad['tiedfactor'][param_names == linename+'_'+param] = 1.0
                         linemodel_broad['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oiii_5007_'+param)[0]
+                
+                ## Tie all forbidden lines to [OIII] 5007; the narrow Balmer and
+                ## helium lines are separately tied together.
+                #if fit_linetable['isbroad'][iline] == False and fit_linetable['isbalmer'][iline] == False and linename != 'oiii_5007':
+                #    for param in ['sigma']:
+                #        linemodel_broad['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                #        linemodel_broad['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'oiii_5007_'+param)[0]
                     
         # Finally set the initial values and bounds on the doublet ratio parameters.
         for param, bounds, default in zip(['mgii_doublet_ratio', 'oii_doublet_ratio', 'sii_doublet_ratio'],
@@ -564,6 +569,13 @@ class EMFitTools(Filters):
                     linemodel_nobroad['tiedfactor'][param_names == linename+'_'+param] = 1.0
                     linemodel_nobroad['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_broad_'+param)[0]
 
+            if strict_broadmodel:
+                # Tie narrow Balmer and helium lines together (but separately from the forbidden lines).
+                if fit_linetable['isbalmer'][iline] and fit_linetable['isbroad'][iline] == False and linename != 'halpha':
+                    for param in ['sigma', 'vshift']:
+                        linemodel_nobroad['tiedfactor'][param_names == linename+'_'+param] = 1.0
+                        linemodel_nobroad['tiedtoparam'][param_names == linename+'_'+param] = np.where(param_names == 'halpha_'+param)[0]
+                
         #linemodel_nobroad[np.logical_and(linemodel_nobroad['fixed'] == False, linemodel_nobroad['tiedtoparam'] == -1)]
 
         _fix_parameters(linemodel_nobroad, verbose=False)
@@ -2422,7 +2434,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     # Build all the emission-line models for this object.
     linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(
         redshift, wavelims=(np.min(emlinewave)+5, np.max(emlinewave)-5),
-        verbose=False, strict_finalmodel=True)
+        verbose=False, strict_broadmodel=True)
 
     # Get initial guesses on the parameters and populate the two "initial"
     # linemodels; the "final" linemodels will be initialized with the
