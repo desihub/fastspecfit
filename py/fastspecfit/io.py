@@ -69,6 +69,8 @@ QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
 QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 
 FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
+DEFAULT_TEMPLATEVERSION = '1.3.0'
+DEFAULT_IMF = 'chabrier'
 
 # Taken from Redrock/0.15.4
 class _ZWarningMask(object):
@@ -101,8 +103,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
 
     CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
     
-    log.info('Pre-processing object {} [targetid {} z={:.6f}].'.format(
-        iobj, meta[CTools.uniqueid], meta['Z']))
+    log.info(f'Pre-processing object {iobj} [targetid {meta[CTools.uniqueid]} z={meta["Z"]:.6f}].')
     
     RV = 3.1
     meta['EBV'] = ebv
@@ -1994,13 +1995,13 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
     else:
         return fastfit[keep], metadata[keep]
 
-def get_templates_filename(templateversion='1.2.0', imf='chabrier'):
+def get_templates_filename(templateversion=DEFAULT_TEMPLATEVERSION, imf=DEFAULT_IMF):
     """Get the templates filename. """
     from fastspecfit.io import FTEMPLATES_DIR_NERSC
     templates_dir = os.path.expandvars(os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC))
-    templates = os.path.join(templates_dir, templateversion, 'ftemplates-{}-{}.fits'.format(
-        imf, templateversion))
+    templates = os.path.join(templates_dir, templateversion, f'ftemplates-{imf}-{templateversion}.fits')
     return templates
+
 
 def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
                     fastphot=False, log=None):
@@ -2057,8 +2058,8 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
     
     return pngfile
 
-def cache_templates(templates=None, templateversion='1.2.0', imf='chabrier',
-                    mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.0,
+def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf=DEFAULT_IMF,
+                    mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.,
                     read_linefluxes=False, fastphot=False, log=None):
     """"Read the templates into a dictionary.
 
@@ -2074,7 +2075,7 @@ def cache_templates(templates=None, templateversion='1.2.0', imf='chabrier',
         templates = get_templates_filename(templateversion=templateversion, imf=imf)
         
     if not os.path.isfile(templates):
-        errmsg = 'Templates file not found {}'.format(templates)
+        errmsg = f'Templates file {templates} not found.'
         log.critical(errmsg)
         raise IOError(errmsg)
 
@@ -2083,7 +2084,7 @@ def cache_templates(templates=None, templateversion='1.2.0', imf='chabrier',
     templateflux = fitsio.read(templates, ext='FLUX')  # [npix,nsed]
     templatelineflux = fitsio.read(templates, ext='LINEFLUX')  # [npix,nsed]
     templateinfo, templatehdr = fitsio.read(templates, ext='METADATA', header=True)
-    
+
     # Trim the wavelengths and select the number/ages of the templates.
     # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
     if mintemplatewave is None:

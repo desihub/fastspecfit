@@ -24,8 +24,8 @@ import numpy as np
 from desiutil.log import get_logger
 log = get_logger()
 
-def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
-                    makeqa=False, outdir_data='.', outdir_html='.'):
+def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
+                    outdir_data='.', templates=None, templateversion=None):
 
     import sys
     from desispec.parallel import stdouterr_redirected
@@ -42,8 +42,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
             coadd_type=args.coadd_type, survey=args.survey, program=args.program,
             healpix=args.healpix, tile=args.tile, night=args.night,
-            makeqa=args.makeqa, mp=args.mp,
-            fastphot=fastphot, outdir_data=outdir_data, outdir_html=outdir_html,
+            makeqa=args.makeqa, mp=args.mp, fastphot=fastphot, outdir_data=outdir_data, 
             overwrite=args.overwrite)
         log.info('Planning took {:.2f} sec'.format(time.time() - t0))
     else:
@@ -84,6 +83,12 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                     
             if args.ignore_quasarnet:
                 cmdargs += ' --ignore-quasarnet'
+                
+            if args.templates:
+                cmdargs += f' --templates {args.templates}'
+                
+            if args.templateversion:
+                cmdargs += f' --templateversion {args.templateversion}'
                 
         if args.ntargets is not None:
             cmdargs += f' --ntargets {args.ntargets}'
@@ -175,6 +180,9 @@ def main():
     
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
 
+    parser.add_argument('--templateversion', type=str, default=None, help='Template version number.')
+    parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
+    
     parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
     parser.add_argument('--mergedir', type=str, help='Output directory for merged catalogs.')
     parser.add_argument('--merge-suffix', type=str, help='Filename suffix for merged catalogs.')
@@ -193,7 +201,6 @@ def main():
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
-    parser.add_argument('--outdir-html', default='$PSCRATCH/fastspecfit/html', type=str, help='Base output HTML directory.')
     parser.add_argument('--outdir-data', default='$PSCRATCH/fastspecfit/data', type=str, help='Base output data directory.')
     
     specprod_dir = None
@@ -201,7 +208,6 @@ def main():
     args = parser.parse_args()
 
     outdir_data = os.path.expandvars(args.outdir_data)
-    outdir_html = os.path.expandvars(args.outdir_html)
 
     if args.merge or args.mergeall or args.nompi:
         comm = None
@@ -298,12 +304,12 @@ def main():
             plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
                  coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                  healpix=args.healpix, tile=args.tile, night=args.night,
-                 makeqa=args.makeqa, mp=args.mp,
-                 fastphot=args.fastphot, outdir_data=outdir_data,
-                 outdir_html=outdir_html, overwrite=args.overwrite)
+                 makeqa=args.makeqa, mp=args.mp, fastphot=args.fastphot,
+                 outdir_data=outdir_data, overwrite=args.overwrite)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=outdir_data, outdir_html=outdir_html)
+                        makeqa=args.makeqa, outdir_data=outdir_data, templates=args.templates,
+                        templateversion=args.templateversion)
 
 if __name__ == '__main__':
     main()

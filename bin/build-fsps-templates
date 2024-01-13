@@ -20,6 +20,15 @@ time python $HOME/code/desihub/fastspecfit/bin/build-fsps-templates --imf salpet
 time python $HOME/code/desihub/fastspecfit/bin/build-fsps-templates --imf chabrier
 time python $HOME/code/desihub/fastspecfit/bin/build-fsps-templates --imf kroupa
 
+Note: to use different stellar libraries (e.g., MILES vs C3K), in a clean
+terminal make sure you've git-updated a local checkout of the python-fsps and
+that $SPS_HOME/src/sps_vars.f90 has been edited correctly and then:
+
+% echo SPS_HOME
+  /Users/ioannis/code/python-fsps/src/fsps/libfsps
+% python -m pip install . --no-cache-dir --force-reinstall
+% python -c "import fsps; sp = fsps.StellarPopulation(); print(sp.libraries)"
+
 '''
 import os, time, pdb
 import numpy as np
@@ -106,8 +115,8 @@ def smooth_continuum(wave, flux, medbin=1000, smooth_window=200,
 
     return smooth
 
-def build_templates(models, logages, agebins, imf='chabrier',
-                    include_nebular=True):
+def build_templates(models, logages, agebins=None, imf='chabrier',
+                    sfh_ssp=False, include_nebular=True):
 
     nsed = len(models)
 
@@ -115,8 +124,6 @@ def build_templates(models, logages, agebins, imf='chabrier',
     meta['age'] = 10**models['logage']
     meta['zzsun'] = models['logmet']
     meta['av'] = models['dust'] * 1.086
-    #meta['fagn'] = models['fagn']
-    #meta['qpah'] = models['qpah']
     meta['mstar'] = np.zeros(nsed, 'f4')
     meta['sfr'] = np.zeros(nsed, 'f4')
 
@@ -125,19 +132,32 @@ def build_templates(models, logages, agebins, imf='chabrier',
 
     print('Instantiating the StellarPopulation object...', end='')
     t0 = time.time()
-    sp = fsps.StellarPopulation(compute_vega_mags=False, 
-                                add_dust_emission=True,
-                                add_neb_emission=True,
-                                nebemlineinspec=include_nebular,
-                                imf_type=imfdict[imf], # 0=Salpeter, 1=Chabrier, 2=Kroupa
-                                dust_type=0,
-                                dust_index=-0.7,
-                                #sfh=0 # SSP parameters
-                                #zcontinuous=1,
-                                sfh=3,  # tabular SFH parameters
-                                zcontinuous=1,
-                                )
+    if sfh_ssp:
+        # SSP SFH
+        sp = fsps.StellarPopulation(compute_vega_mags=False, 
+                                    add_dust_emission=True,
+                                    add_neb_emission=True,
+                                    nebemlineinspec=include_nebular,
+                                    imf_type=imfdict[imf], # 0=Salpeter, 1=Chabrier, 2=Kroupa
+                                    dust_type=0,
+                                    dust_index=-0.7,
+                                    sfh=0, # SSP parameters
+                                    zcontinuous=1,
+                                    )
+    else:
+        # tabular SFH
+        sp = fsps.StellarPopulation(compute_vega_mags=False, 
+                                    add_dust_emission=True,
+                                    add_neb_emission=True,
+                                    nebemlineinspec=include_nebular,
+                                    imf_type=imfdict[imf], # 0=Salpeter, 1=Chabrier, 2=Kroupa
+                                    dust_type=0,
+                                    dust_index=-0.7,
+                                    sfh=3,  # tabular SFH parameters
+                                    zcontinuous=1,
+                                    )
     print('...took {:.3f} sec'.format((time.time()-t0)))
+    print(sp.libraries)
 
     if include_nebular:
         print('Creating {} model spectra with nebular emission...'.format(nsed), end='')
@@ -149,30 +169,29 @@ def build_templates(models, logages, agebins, imf='chabrier',
         sp.params['dust1'] = model['dust']
         sp.params['dust2'] = model['dust']
         sp.params['logzsol'] = model['logmet']
-        #sp.params['fagn'] = model['fagn']
-        #sp.params['duste_qpah'] = model['qpah']
 
-        # SSP spectrum - deprecated
-        #wave, flux = sp.get_spectrum(tage=10.**(logage - 9.0), peraa=True)
-
-        # lookback time of constant SFR
-        agebin_indx = np.where(model['logage'] == np.float32(logages))[0]
-        agebin = agebins[agebin_indx, :][0] # Gyr
-        fspstime = agebin - agebin[0]       # Gyr
-        tage = agebin[1] # time of observation [Gyr] 
-        #print(tage, model['logage'])
-
-        dt = np.diff(agebin) * 1e9          # [yr]
-        sfh = np.zeros_like(fspstime) + 1.0 / dt / 2 # [Msun/yr]
-
-        # force the SFR to go to zero at the edge
-        fspstime = np.hstack((fspstime, fspstime[-1]+1e-4))
-        sfh = np.hstack((sfh, 0.0))
-
-        sp.set_tabular_sfh(fspstime, sfh)
-
-        wave, flux = sp.get_spectrum(tage=tage, peraa=True) # tage in Gyr
-        #print(tage, sp.sfr)
+        if sfh_ssp:
+            # SSP
+            wave, flux = sp.get_spectrum(tage=10.**(model['logage'] - 9.), peraa=True)
+        else:
+            # lookback time of constant SFR
+            agebin_indx = np.where(model['logage'] == np.float32(logages))[0]
+            agebin = agebins[agebin_indx, :][0] # Gyr
+            fspstime = agebin - agebin[0]       # Gyr
+            tage = agebin[1] # time of observation [Gyr] 
+            #print(tage, model['logage'])
+    
+            dt = np.diff(agebin) * 1e9          # [yr]
+            sfh = np.zeros_like(fspstime) + 1. / dt #/ 2 # [Msun/yr]
+    
+            # force the SFR to go to zero at the edge
+            fspstime = np.hstack((fspstime, fspstime[-1]+1e-8))
+            sfh = np.hstack((sfh, 0.))
+    
+            sp.set_tabular_sfh(fspstime, sfh)
+            #print(tage, sp.sfr)
+    
+            wave, flux = sp.get_spectrum(tage=tage, peraa=True) # tage in Gyr
 
         #plt.clf()
         #I = (wave > 3500) * (wave < 9000)
@@ -180,12 +199,10 @@ def build_templates(models, logages, agebins, imf='chabrier',
         #plt.savefig('junk2.png')
         #pdb.set_trace()
 
-        logage = model['logage']
+        lodot = 3.828e33 # [erg/s]
+        tenpc2 = (10. * 3.085678e18)**2 # [cm^2]
     
-        lodot = 3.828  # 10^{33} erg/s
-        tenpc2 = (10.0 * 3.085678)**2 * 1e3  # 10^{33} cm^2
-    
-        flux = flux * lodot / (4.0 * np.pi * tenpc2)
+        flux = flux * lodot / (4. * np.pi * tenpc2) # [erg/s/cm2/A/Msun at 10pc]
 
         # Resample to constant log-lambda / velocity. In the IR (starting at ~1
         # micron), take every fourth sampling, to save space.
@@ -210,13 +227,16 @@ def build_templates(models, logages, agebins, imf='chabrier',
 
         meta['mstar'][imodel] = sp.stellar_mass
         meta['sfr'][imodel] = sp.sfr
+        #print(tage, sp.formed_mass, sp.stellar_mass)
+        if sp.stellar_mass < 0:
+            raise ValueError('Stellar mass is negative!')
 
         #plt.clf()
         #I = np.where((wave > 3500) * (wave < 5600))[0]
         #J = np.where((newwave > 3500) * (newwave < 3600))[0]
         #plt.plot(wave[I], flux[I])
         #plt.plot(newwave[J], fluxes[J, imodel])
-        #plt.show()
+        #plt.savefig('junk.png')
         #pdb.set_trace()
 
     print('...took {:.3f} min'.format((time.time()-t0)/60))
@@ -225,31 +245,45 @@ def build_templates(models, logages, agebins, imf='chabrier',
 
 def main(args):
 
-    version = '1.2.0'
-
     # velocity dispersion grid
     vdispmin = 50.
-    vdispmax = 425.
+    vdispmax = 500.
     dvdisp = 25.
     nvdisp = int(np.ceil((vdispmax - vdispmin) / dvdisp)) + 1
     vdisp = np.linspace(vdispmin, vdispmax, nvdisp)
 
-    ## SSP ages - deprecated
-    #nages = 15
-    #minlogage = 7.0    # =10 Myr
-    #maxlogage = 10.146 # =14 Gyr
-    #logages = np.linspace(minlogage, maxlogage, nages)
-    #logages = np.linspace(minlogage, maxlogage, nages)
+    if args.sfh_ssp:
+        # SSP ages
+        ages = np.array([0.05, 0.02, 0.065, 0.215, 0.715, 2.4, 7.8, 13.5]) # [Gyr]
+        logages = np.log10(1e9 * ages) # [yr]
+        nages = len(ages)
+        #nages = 8
+        #minlogage = 7.0    # =10 Myr
+        #maxlogage = 10.146 # =14 Gyr
+        #logages = np.linspace(minlogage, maxlogage, nages)
+        agebins = None
+    else:
+        # Choose lookback time bins. 
+        #agelims = np.array([0., 0.03, 0.1, 0.6, 3.6, 13.]) # [Gyr]
+        #agelims = np.array([0., 0.01, 0.03, 0.1, 0.33, 1.1, 3.6, 12., 14.]) # [Gyr]
 
-    # Choose lookback time bins. 
-    agelims = np.array([0., 0.01, 0.03, 0.1, 0.33, 1.1, 3.6, 12., 14.]) # [Gyr]
-    nages = len(agelims) - 1
+        # from prospect.templates.adjust_continuity_agebins
+        nbins = 5
+        tuniv = 13.7
+        tbinmax = (tuniv * 0.85) * 1e9
+        lim1, lim2 = 7.4772, 8.0
+        agelims = np.array([0, lim1] + np.linspace(lim2, np.log10(tbinmax), nbins-2).tolist() + [np.log10(tuniv*1e9)]) # log10(yr)
+        agelims = 10.**agelims / 1e9 # [Gyr]
 
-    agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
-    logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [yr] in each bin
+        agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
+        logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [log10(yr)] in each bin
+        
+        print('<Ages>: '+' '.join(['{:.4f} Gyr'.format(10.**logage/1e9) for logage in logages]))
 
-    #logmets = np.array([-1.0, -0.3, 0.0, 0.3])
-    logmets = np.array([-1.0, 0.0, 0.3])
+        nages = len(logages)
+
+    logmets = np.array([0.0]) # [-1.0, -0.3, 0.0, 0.3]
+    #logmets = np.array([-1.0, 0.0, 0.3]) # [-1.0, -0.3, 0.0, 0.3]
     nmets = len(logmets)
     zsolar = 0.019
 
@@ -259,39 +293,21 @@ def main(args):
     maxlogdust = 0.477
     dusts = np.hstack((mindust, np.logspace(minlogdust, maxlogdust, ndusts-1)))
 
-    #nfagns = 3
-    #minfagn = 0.0
-    #minlogfagn = np.log10(0.1)
-    #maxlogfagn = np.log10(2.0)
-    #fagns = np.hstack((minfagn, np.logspace(minlogfagn, maxlogfagn, nfagns-1)))
-    
-    #nqpahs = 3
-    ##nqpahs = 2
-    #minqlogpah = np.log10(0.1)
-    #maxqlogpah = np.log10(7.0)
-    #qpahs = np.logspace(minqlogpah, maxqlogpah, nqpahs)
-
     # for testing
-    if False:
+    if args.test:
         dusts = np.array([0.0])
         logmets = [0.0]
-        #fagns = [0.0]
         ndusts = 1
         nmets = 1
-        #nfagns = 1
     
     dims = (nages, nmets, ndusts)
-    #dims = (nages, nmets, ndusts, nfagns)
 
     models_dtype = np.dtype(
         [('logmet', np.float32),
          ('dust', np.float32),
-         #('fagn', np.float32),
-         #('qpah', np.float32),
          ('logage', np.float32)])
 
     # Let's be pedantic about the procedure so we don't mess up the indexing...
-    #dims = (nages, nmets, ndusts, nfagns, nqpahs)
     models = np.zeros(dims, dtype=models_dtype)
 
     for iage, logage in enumerate(logages):
@@ -301,33 +317,16 @@ def main(args):
                 models[iage, imet, idust]['dust'] = dust
                 models[iage, imet, idust]['logage'] = logage
 
-    #for iage, logage in enumerate(logages):
-    #    for imet, logmet in enumerate(logmets):
-    #        for idust, dust in enumerate(dusts):
-    #            for ifagn, fagn in enumerate(fagns):
-    #                models[iage, imet, idust, ifagn]['logmet'] = logmet
-    #                models[iage, imet, idust, ifagn]['dust'] = dust
-    #                models[iage, imet, idust, ifagn]['logage'] = logage
-    #                models[iage, imet, idust, ifagn]['fagn'] = fagn
-
-    #for iage, logage in enumerate(logages):
-    #    for imet, logmet in enumerate(logmets):
-    #        for idust, dust in enumerate(dusts):
-    #            for ifagn, fagn in enumerate(fagns):
-    #                for iqpah, qpah in enumerate(qpahs):
-    #                    models[iage, imet, idust, ifagn, iqpah]['logmet'] = logmet
-    #                    models[iage, imet, idust, ifagn, iqpah]['dust'] = dust
-    #                    models[iage, imet, idust, ifagn, iqpah]['logage'] = logage
-    #                    models[iage, imet, idust, ifagn, iqpah]['fagn'] = fagn
-    #                    models[iage, imet, idust, ifagn, iqpah]['qpah'] = qpah
-                                
     models = models.flatten()
 
     # Build models with and without line-emission.
     meta, wave, flux, linewaves, linefluxes = build_templates(
-        models, logages, agebins, include_nebular=True, imf=args.imf)
+        models, logages, agebins=agebins, include_nebular=True, 
+        imf=args.imf, sfh_ssp=args.sfh_ssp)
     _, _, fluxnolines, _, _ = build_templates(
-        models, logages, agebins, include_nebular=False, imf=args.imf)
+        models, logages, agebins=agebins, include_nebular=False, 
+        imf=args.imf, sfh_ssp=args.sfh_ssp)
+
     lineflux = flux - fluxnolines
 
     #I = (wave > 3500) * (wave < 9000)
@@ -343,7 +342,6 @@ def main(args):
     # Select just the line-free models trimmed to the 1200-10000 A wavelength
     # range.
     I = np.where((wave > 1200) * (wave < PIXKMS_WAVESPLIT))[0]
-    #J = np.where(meta['fagn'] == 0)[0]
     vdispwave = wave[I]
     #nvdispmodel = len(J)
 
@@ -359,17 +357,6 @@ def main(args):
         vdispflux.append(gaussian_filter1d(fluxnolines[I, :], sigma=sigma, axis=0))
     vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
 
-    #vdispflux = []
-    #for sigma in vdisp / PIXKMS_BLU:
-    #    vdispflux.append(gaussian_filter1d(fluxnolines[I, :][:, J], sigma=sigma, axis=0))
-    #    #vdispflux.append(gaussian_filter1d(normflux, sigma=sigma, axis=0))
-    #vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
-
-    #vdispflux = []
-    #for sigma in vdisp / PIXKMS_BLU:
-    #    vdispflux.append(gaussian_filter1d(fluxnolines, sigma=sigma, axis=0))
-    #vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
-
     #K = np.where((vdispwave > 3500) * (vdispwave < 4300))[0]
     #plt.clf()
     #plt.plot(vdispwave[K], fluxnolines[I, 6][J])
@@ -378,24 +365,24 @@ def main(args):
     #pdb.set_trace()
 
     # Write out.
-    outdir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit', version)
+    outdir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit', args.version)
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
-    outfile = os.path.join(outdir, 'ftemplates-{}-{}.fits'.format(args.imf, version))
+    outfile = os.path.join(outdir, 'ftemplates-{}-{}.fits'.format(args.imf, args.version))
 
     hduflux1 = fits.PrimaryHDU(flux)
     hduflux1.header['EXTNAME'] = 'FLUX'
-    hduflux1.header['VERSION'] = version
+    hduflux1.header['VERSION'] = args.version
     hduflux1.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
     hduflux2 = fits.ImageHDU(lineflux)
     hduflux2.header['EXTNAME'] = 'LINEFLUX'
-    hduflux2.header['VERSION'] = version
+    hduflux2.header['VERSION'] = args.version
     hduflux2.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
     hduflux3 = fits.ImageHDU(vdispflux)
     hduflux3.header['EXTNAME'] = 'VDISPFLUX'
-    hduflux3.header['VERSION'] = version
+    hduflux3.header['VERSION'] = args.version
     hduflux3.header['VDISPMIN'] = (vdispmin, 'minimum velocity dispersion [km/s]')
     hduflux3.header['VDISPMAX'] = (vdispmax, 'maximum velocity dispersion [km/s]')
     hduflux3.header['VDISPRES'] = (dvdisp, 'velocity dispersion spacing [km/s]')
@@ -424,7 +411,7 @@ def main(args):
     # emission lines
     hduflux4 = fits.ImageHDU(linefluxes)
     hduflux4.header['EXTNAME'] = 'LINEFLUXES'
-    hduflux4.header['VERSION'] = version
+    hduflux4.header['VERSION'] = args.version
     hduflux4.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
     hduwave3 = fits.ImageHDU(linewaves)
@@ -440,7 +427,11 @@ def main(args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'])
+    parser.add_argument('--version', required=True, help='Version number (e.g., 1.3.0)')
+    parser.add_argument('--sfh-ssp', action='store_true', help='Use a SSP star formation history (SFH); otherwise a tabular SFH.')
+    parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
+                        help='Initial mass function')
+    parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
     args = parser.parse_args()
 
     main(args)

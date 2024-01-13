@@ -2,10 +2,19 @@
 Change Log
 ==========
 
-2.4.4 (not released yet)
+2.5.1 (not released yet)
 ------------------------
 
 * 
+
+2.5.0 (2024-01-13)
+------------------
+
+* Address stellar mass bias; more constrained broad+narrow fitting; and max
+  velocity dispersion increased to 475 km/s (bump template version to 1.3.0)
+  [`PR #166`_]. 
+
+.. _`PR #166`: https://github.com/desihub/fastspecfit/pull/166
 
 2.4.3 (2023-12-03)
 ------------------

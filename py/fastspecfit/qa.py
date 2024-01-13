@@ -1169,7 +1169,8 @@ def parse(options=None):
 
     """
     import sys, argparse
-
+    from fastspecfit.io import DEFAULT_TEMPLATEVERSION, DEFAULT_IMF
+    
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--healpix', default=None, type=str, nargs='*', help="""Generate QA for all objects
@@ -1201,8 +1202,8 @@ def parse(options=None):
     parser.add_argument('--stackfit', action='store_true', help='Generate QA for stacked spectra.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
 
-    parser.add_argument('--imf', type=str, default='chabrier', help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default='1.2.0', help='Template version number.')
+    parser.add_argument('--imf', type=str, default=DEFAULT_IMF, help='Initial mass function.')
+    parser.add_argument('--templateversion', type=str, default=DEFAULT_TEMPLATEVERSION, help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
 
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')

@@ -97,14 +97,14 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
         nsig = 3
 
         # select just strong lines
-        zlinewaves = linetable['restwave'] * (1 + redshift)
+        zlinewaves = linetable['restwave'] * (1. + redshift)
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
         if np.sum(inrange) > 0:
             linetable = linetable[inrange]
             linetable = linetable[linetable['amp'] >= 1]
             if len(linetable) > 0:
                 for oneline in linetable:
-                    zlinewave = oneline['restwave'] * (1 + redshift)
+                    zlinewave = oneline['restwave'] * (1. + redshift)
                     if oneline['isbroad']:
                         if oneline['isbalmer']:
                             sigma = maskkms_balmer
@@ -119,7 +119,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
                         linemask[I] = True
 
         # Special: mask Ly-a (1215 A)
-        zlinewave = 1215.0 * (1 + redshift)
+        zlinewave = 1215. * (1. + redshift)
         if (zlinewave > np.min(wave)) * (zlinewave < np.max(wave)):
             sigma = maskkms_uv * zlinewave / C_LIGHT # [km/s --> Angstrom]
             I = (wave >= (zlinewave - nsig*sigma)) * (wave <= (zlinewave + nsig*sigma))
@@ -266,10 +266,10 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
         #    #xx.set_xlim(3800, 4300)
         #    #xx.set_xlim(5200, 6050)
         #    #xx.set_xlim(7000, 9000)
-        #    xx.set_xlim(7000, 7800)
+        #    xx.set_xlim(8250, 8400)
         #for xx in ax:
         #    xx.set_ylim(-0.2, 1.5)
-        zlinewaves = linetable['restwave'] * (1 + redshift)
+        zlinewaves = linetable['restwave'] * (1. + redshift)
         linenames = linetable['name']
         inrange = np.where((zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave)))[0]
         if len(inrange) > 0:
@@ -411,7 +411,7 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
         ax = [None] * 3
         
     # [OII] doublet, [OIII] 4959,5007
-    zlinewaves = np.array([3728.483, 4960.295, 5008.239]) * (1 + redshift)
+    zlinewaves = np.array([3728.483, 4960.295, 5008.239]) * (1. + redshift)
     linesigma_narrow, linesigma_narrow_snr = _get_linesigma(zlinewaves, init_linesigma_narrow, 
                                                             label='Forbidden', #label='[OII]+[OIII]',
                                                             ax=ax[0])
@@ -429,7 +429,7 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
         linesigma_narrow = init_linesigma_narrow
 
     # Hbeta, Halpha
-    zlinewaves = np.array([4862.683, 6564.613]) * (1 + redshift)
+    zlinewaves = np.array([4862.683, 6564.613]) * (1. + redshift)
     linesigma_balmer, linesigma_balmer_snr = _get_linesigma(zlinewaves, init_linesigma_balmer, 
                                                             label='Balmer', #label=r'H$\alpha$+H$\beta$',
                                                             ax=ax[1])
@@ -449,8 +449,8 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
         #linesigma_balmer = init_linesigma_narrow 
 
     # Lya, SiIV doublet, CIV doublet, CIII], MgII doublet
-    zlinewaves = np.array([1215.670, 1549.4795, 2799.942]) * (1 + redshift)
-    #zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.942]) * (1 + redshift)
+    zlinewaves = np.array([1215.670, 1549.4795, 2799.942]) * (1. + redshift)
+    #zlinewaves = np.array([1215.670, 1398.2625, 1549.4795, 1908.734, 2799.942]) * (1. + redshift)
     linesigma_uv, linesigma_uv_snr = _get_linesigma(zlinewaves, init_linesigma_uv, 
                                                     label='UV/Broad', ax=ax[2])
 
@@ -581,7 +581,7 @@ def restframe_photometry(redshift, zmodelflux, zmodelwave, maggies, ivarmaggies,
         nout = len(filters_out)
 
         # note the factor of 1+band_shift
-        lambda_out = filters_out.effective_wavelengths.value / (1 + band_shift)
+        lambda_out = filters_out.effective_wavelengths.value / (1. + band_shift)
 
         # Multiply by (1+z) to convert the best-fitting model to the "rest
         # frame" and then divide by 1+band_shift to shift it and the wavelength
@@ -954,8 +954,8 @@ class Filters(object):
         dn4000, dn4000_ivar = 0.0, 0.0
 
         if rest is False or redshift is not None:
-            restwave = wave / (1 + redshift) # [Angstrom]
-            flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
+            restwave = wave / (1. + redshift) # [Angstrom]
+            flam2fnu = (1. + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
         else:
             restwave = wave
             flam2fnu =  restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
@@ -1256,7 +1256,7 @@ class ContinuumTools(Filters, Inoue14):
         super(ContinuumTools, self).__init__(ignore_photometry=ignore_photometry, fphoto=fphoto)
 
         from fastspecfit.emlines import read_emlines
-        
+
         self.massnorm = 1e10 # stellar mass normalization factor [Msun]
         self.linetable = read_emlines(emlinesfile=emlinesfile)
 
@@ -1320,7 +1320,7 @@ class ContinuumTools(Filters, Inoue14):
         # Initially, mask aggressively, especially the Balmer lines.
         png = None
         #png = 'smooth.png'
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
+        #png = '/global/cfs/cdirs/desi/users/ioannis/tmp/smooth.png'
         smooth, smoothsigma = _smooth_continuum(wave, flux, ivar, redshift, maskkms_uv=5000.0,
                                                 maskkms_balmer=5000.0, maskkms_narrow=500.0,
                                                 linetable=linetable, emlinesfile=emlinesfile,
@@ -1329,7 +1329,7 @@ class ContinuumTools(Filters, Inoue14):
         # Get a better estimate of the Balmer, forbidden, and UV/QSO line-widths.
         png = None
         #png = 'linesigma.png'
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
+        #png = '/global/cfs/cdirs/desi/users/ioannis/tmp/linesigma.png'
         linesigma_narrow, linesigma_balmer, linesigma_uv, linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr = \
           _estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png, log=log)
 
@@ -1338,14 +1338,14 @@ class ContinuumTools(Filters, Inoue14):
         linemask_strong = np.zeros_like(linemask) # True = affected by strong emission lines.
 
         linenames = linetable['name']
-        zlinewaves = linetable['restwave'] * (1 + redshift)
+        zlinewaves = linetable['restwave'] * (1. + redshift)
         lineamps = linetable['amp']
         isbroads = linetable['isbroad'] * (linetable['isbalmer'] == False)
         isbalmers = linetable['isbalmer'] * (linetable['isbroad'] == False)
     
         png = None
         #png = 'linemask.png'
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linemask.png'
+        #png = '/global/cfs/cdirs/desi/users/ioannis/tmp/linemask.png'
         snr_strong = 1.5#3.0
     
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
@@ -1610,7 +1610,7 @@ class ContinuumTools(Filters, Inoue14):
         if redshift > 0:
             ztemplatewave = templatewave * (1. + redshift)
             T = self.full_IGM(redshift, ztemplatewave)
-            T *= FLUXNORM * self.massnorm * (10.0 / (1e6 * dluminosity))**2 / (1.0 + redshift)
+            T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
             ztemplateflux = templateflux * T[:, np.newaxis]
         else:
             errmsg = 'Input redshift not defined, zero, or negative!'
@@ -1809,34 +1809,6 @@ class ContinuumTools(Filters, Inoue14):
     
         return chi2min, xbest, xivar, bestcoeff
 
-    @staticmethod
-    def get_mean_property(templateinfo, physical_property, coeff, agekeep,
-                          normalization=None, log10=False, log=None):
-        """Compute the mean physical properties, given a set of coefficients.
-
-        """
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-        
-        values = templateinfo[physical_property][agekeep] # account for age of the universe trimming
-
-        if np.count_nonzero(coeff > 0) == 0:
-            log.warning('Coefficients are all zero!')
-            meanvalue = 0.0
-            #raise ValueError
-        else:
-            meanvalue = values.dot(coeff)
-            # the coefficients include the stellar mass normalization
-            if physical_property != 'mstar' and physical_property != 'sfr':
-                meanvalue /= np.sum(coeff) 
-            if normalization:
-                meanvalue /= normalization
-            if log10 and meanvalue > 0:
-                meanvalue = np.log10(meanvalue)
-        
-        return meanvalue
-
 
     def continuum_fluxes(self, data, templatewave, continuum, log=None):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
@@ -1863,7 +1835,7 @@ class ContinuumTools(Filters, Inoue14):
         # luminosity-based SFRs) and at the positions of strong nebular emission
         # lines [OII], Hbeta, [OIII], and Halpha
         
-        dfactor = (1 + redshift) * 4.0 * np.pi * (3.08567758e24 * dlum)**2 / FLUXNORM
+        dfactor = (1. + redshift) * 4. * np.pi * (3.08567758e24 * dlum)**2 / FLUXNORM
                 
         lums = {}
         cwaves = [1500.0, 2800.0, 1450., 1700., 3000., 5100.]
@@ -1933,7 +1905,7 @@ class ContinuumTools(Filters, Inoue14):
 
         # distance modulus, luminosity distance, and redshifted wavelength array
         dmod = data['dmodulus']
-        ztemplatewave = templatewave * (1 + redshift)
+        ztemplatewave = templatewave * (1. + redshift)
         
         filters_in = self.filters[data['photsys']]
 
@@ -1947,6 +1919,7 @@ class ContinuumTools(Filters, Inoue14):
             snrmin=snrmin, log=log)
 
         return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
+
 
 def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None,
                       constrain_age=False, no_smooth_continuum=False, ignore_photometry=False,
@@ -2014,7 +1987,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         agekeep = np.arange(nsed)
     nage = len(agekeep)
 
-    ztemplatewave = templatecache['templatewave'] * (1 + redshift)
+    ztemplatewave = templatecache['templatewave'] * (1. + redshift)
 
     # Photometry-only fitting.
     vdisp_nominal = templatecache['vdisp_nominal']
@@ -2204,9 +2177,9 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
 
         data['apercorr'] = apercorr # needed for the line-fitting
 
-        # Performing the final fit using the line-free templates in the
-        # spectrum (since we mask those pixels) but the photometry
-        # synthesized from the templates with lines.
+        # Perform the final fit using the line-free templates in the spectrum
+        # (since we mask those pixels) but the photometry synthesized from the
+        # templates with lines.
         desitemplates_nolines, _ = CTools.templates2data(
             input_templateflux_nolines, templatecache['templatewave'], redshift=redshift,
             dluminosity=data['dluminosity'],
@@ -2261,7 +2234,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                 dn4000, dn4000_model))
 
         png = None
-        #png = 'desi-users/ioannis/tmp/junk.png'
+        #png = '/global/cfs/cdirs/desi/users/ioannis/tmp/junk.png'        
         linemask = np.hstack(data['linemask'])
         if np.all(coeff == 0):
             log.warning('Continuum coefficients are all zero.')
@@ -2306,27 +2279,44 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         lums, cfluxes = {}, {}
 
         AV, age, zzsun, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0
-        #AV, age, zzsun, fagn, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     else:
         kcorr, absmag, ivarabsmag, _, synth_bestmaggies = CTools.kcorr_and_absmag(
             data, templatecache['templatewave'], sedmodel, log=log)
         lums, cfluxes = CTools.continuum_fluxes(data, templatecache['templatewave'], sedmodel, log=log)
 
-        AV = CTools.get_mean_property(templatecache['templateinfo'], 'av', coeff, agekeep, log=log)                      # [mag]
-        age = CTools.get_mean_property(templatecache['templateinfo'], 'age', coeff, agekeep, normalization=1e9, log=log) # [Gyr]
-        zzsun = CTools.get_mean_property(templatecache['templateinfo'], 'zzsun', coeff, agekeep, log10=False, log=log)   # [log Zsun]
-        #fagn = CTools.get_mean_property(templatecache['templateinfo'], 'fagn', coeff, agekeep, log=log)
-        logmstar = CTools.get_mean_property(templatecache['templateinfo'], 'mstar', coeff, agekeep,
-                                            normalization=1.0/CTools.massnorm, log10=True, log=log) # [Msun]
-        sfr = CTools.get_mean_property(templatecache['templateinfo'], 'sfr', coeff, agekeep,
-                                       normalization=1.0/CTools.massnorm, log10=False, log=log)       # [Msun/yr]
+        # get the SPS properties
+        mstars = templatecache['templateinfo']['mstar'][agekeep] # [current mass in stars, Msun]
+        masstot = coeff.dot(mstars)
+        coefftot = np.sum(coeff)
+        logmstar = np.log10(CTools.massnorm * masstot)
+        zzsun = np.log10(coeff.dot(mstars * 10.**templatecache['templateinfo']['zzsun'][agekeep]) / masstot) # mass-weighted
+        AV = coeff.dot(templatecache['templateinfo']['av'][agekeep]) / coefftot                  # luminosity-weighted [mag]
+        age = coeff.dot(templatecache['templateinfo']['age'][agekeep]) / coefftot / 1e9          # luminosity-weighted [Gyr]
+        #age = coeff.dot(mstars * templatecache['templateinfo']['age'][agekeep]) / masstot / 1e9 # mass-weighted [Gyr]
+        sfr = CTools.massnorm * coeff.dot(templatecache['templateinfo']['sfr'][agekeep])                           # [Msun/yr]
 
     rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 5600))
-    log.info('Mstar={:.4g} Msun, {}={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}'.format(
-        logmstar, 'M{}'.format(CTools.absmag_bands[rindx]), absmag[rindx], AV, age, sfr, zzsun))
-    #log.info('Mstar={:.4g} Msun, Mr={:.2f} mag, A(V)={:.3f}, Age={:.3f} Gyr, SFR={:.3f} Msun/yr, Z/Zsun={:.3f}, fagn={:.3f}'.format(
-    #    logmstar, absmag[np.isin(CTools.absmag_bands, 'sdss_r')][0], AV, age, sfr, zzsun, fagn))
+    log.info(f'log(M/Msun)={logmstar:.2f}, M{CTools.absmag_bands[rindx]}={absmag[rindx]:.2f} mag, A(V)={AV:.3f}, Age={age:.3f} Gyr, SFR={sfr:.3f} Msun/yr, Z/Zsun={zzsun:.3f}')
 
+    #import matplotlib.pyplot as plt
+    #W = np.where(coeff > 0)[0]
+    #info = templatecache['templateinfo']
+    #sedwave = templatecache['templatewave'] * (1. + redshift)
+    #I = np.where((sedwave > 3000) * (sedwave < 40000))[0]
+    #plt.plot(sedwave[I], sedmodel[I])
+    #for ww in W:
+    #    plt.plot(sedwave[I], coeff[ww] * sedtemplates[I, ww],
+    #             label=f'{info["age"][ww]/1e9:.2f} Gyr, A(V)={info["av"][ww]:.2f} mag')
+    #plt.legend(fontsize=10)
+    #plt.scatter(sedphot['lambda_eff'][:4], objflam[:4], color='k', s=100, zorder=10)
+    #plt.scatter(sedphot['lambda_eff'][:4], sedflam.dot(coeff)[:4], color='gray', s=100, marker='x', zorder=11)
+    #plt.xscale('log')
+    #plt.yscale('log')
+    #plt.savefig('/global/cfs/cdirs/desi/users/ioannis/tmp/foo.png')
+    #
+    #print(info[W])
+    #print(coeff[W])
+    
     # Pack it in and return.
     result['COEFF'][agekeep] = coeff
     result['RCHI2_PHOT'] = rchi2_phot
@@ -2336,7 +2326,6 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
     result['ZZSUN'] = zzsun
     result['LOGMSTAR'] = logmstar
     result['SFR'] = sfr
-    #result['FAGN'] = fagn
     result['DN4000_MODEL'] = dn4000_model
 
     for iband, (band, shift) in enumerate(zip(CTools.absmag_bands, CTools.band_shift)):
