@@ -266,7 +266,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
         #    #xx.set_xlim(3800, 4300)
         #    #xx.set_xlim(5200, 6050)
         #    #xx.set_xlim(7000, 9000)
-        #    xx.set_xlim(7000, 7800)
+        #    xx.set_xlim(8250, 8400)
         #for xx in ax:
         #    xx.set_ylim(-0.2, 1.5)
         zlinewaves = linetable['restwave'] * (1. + redshift)
@@ -1320,7 +1320,7 @@ class ContinuumTools(Filters, Inoue14):
         # Initially, mask aggressively, especially the Balmer lines.
         png = None
         #png = 'smooth.png'
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/smooth.png'
+        #png = '/global/cfs/cdirs/desi/users/ioannis/tmp/smooth.png'
         smooth, smoothsigma = _smooth_continuum(wave, flux, ivar, redshift, maskkms_uv=5000.0,
                                                 maskkms_balmer=5000.0, maskkms_narrow=500.0,
                                                 linetable=linetable, emlinesfile=emlinesfile,
@@ -1329,7 +1329,7 @@ class ContinuumTools(Filters, Inoue14):
         # Get a better estimate of the Balmer, forbidden, and UV/QSO line-widths.
         png = None
         #png = 'linesigma.png'
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linesigma.png'
+        #png = '/global/cfs/cdirs/desi/users/ioannis/tmp/linesigma.png'
         linesigma_narrow, linesigma_balmer, linesigma_uv, linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr = \
           _estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png, log=log)
 
@@ -1345,7 +1345,7 @@ class ContinuumTools(Filters, Inoue14):
     
         png = None
         #png = 'linemask.png'
-        #png = '/global/homes/i/ioannis/desi-users/ioannis/tmp/linemask.png'
+        #png = '/global/cfs/cdirs/desi/users/ioannis/tmp/linemask.png'
         snr_strong = 1.5#3.0
     
         inrange = (zlinewaves > np.min(wave)) * (zlinewaves < np.max(wave))
@@ -2234,7 +2234,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                 dn4000, dn4000_model))
 
         png = None
-        #png = 'desi-users/ioannis/tmp/junk.png'
+        #png = '/global/cfs/cdirs/desi/users/ioannis/tmp/junk.png'        
         linemask = np.hstack(data['linemask'])
         if np.all(coeff == 0):
             log.warning('Continuum coefficients are all zero.')
