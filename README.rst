@@ -9,8 +9,8 @@
     :target: https://github.com/desihub/fastspecfit/actions
     :alt: GitHub Actions CI Status
 
-.. |Coveralls Status| image:: https://coveralls.io/repos/desihub/fastspecfit/badge.svg
-    :target: https://coveralls.io/github/desihub/fastspecfit
+.. |Coveralls Status| image:: https://coveralls.io/repos/desihub/fastspecfit/badge.svg?branch=main
+    :target: https://coveralls.io/github/desihub/fastspecfit?branch=main
     :alt: Test Coverage Status
 
 .. |Documentation Status| image:: https://readthedocs.org/projects/fastspecfit/badge/?version=latest
