@@ -756,8 +756,8 @@ class EMFitTools(Filters):
 
     @staticmethod
     def populate_linemodel(linemodel, initial_guesses, param_bounds, log):
-        """Population an input linemodel with initial guesses and parameter bounds,
-        taking into account fixed parameters.
+        """Populate an input linemodel with initial guesses and parameter bounds, taking
+        into account fixed parameters.
 
         """
         # Set initial values and bounds.
@@ -766,7 +766,15 @@ class EMFitTools(Filters):
                 if linemodel['fixed'][iparam]:
                     linemodel['initial'][iparam] = 0.0 # always set fixed parameter to zero
                 else:
-                    linemodel['initial'][iparam] = initial_guesses[param]
+                    # Make sure the initial guess for the narrow Balmer+helium
+                    # line is smaller than the guess for the broad-line model.
+                    if linemodel[iparam]['isbalmer'] and 'sigma' in param:
+                        if linemodel[iparam]['isbroad']:
+                            linemodel['initial'][iparam] = 1.1 * initial_guesses[param]
+                        else:
+                            linemodel['initial'][iparam] = initial_guesses[param]
+                    else:
+                        linemodel['initial'][iparam] = initial_guesses[param]
                     if param in param_bounds.keys():
                         linemodel['bounds'][iparam] = param_bounds[param]
                         # set the lower boundary on broad lines to be XX times the local noise
@@ -976,9 +984,6 @@ class EMFitTools(Filters):
         out_linemodel['value'] = parameters
         out_linemodel.meta['nfev'] = fit_info['nfev']
         out_linemodel.meta['status'] = fit_info['status']
-
-        #if debug:
-        #    pdb.set_trace()
 
         # Get the final line-amplitudes, after resampling and convolution (see
         # https://github.com/desihub/fastspecfit/issues/139). Some repeated code
@@ -2488,8 +2493,8 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
     initial_guesses, param_bounds = EMFit.initial_guesses_and_bounds(
         data, emlinewave, emlineflux, log)
 
-    for linemodel in [linemodel_broad, linemodel_nobroad]:
-        EMFit.populate_linemodel(linemodel, initial_guesses, param_bounds, log)
+    EMFit.populate_linemodel(linemodel_nobroad, initial_guesses, param_bounds, log)
+    EMFit.populate_linemodel(linemodel_broad, initial_guesses, param_bounds, log)
 
     # Initial fit - initial_linemodel_nobroad
     t0 = time.time()
@@ -2530,7 +2535,6 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
             chi2_broad, ndof_broad, nfree_broad = EMFit.chi2(fit_broad, emlinewave, emlineflux, emlineivar, model_broad, return_dof=True)
             log.info('Line-fitting with broad lines and {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
                 nfree_broad, time.time()-t0, fit_broad.meta['nfev'], chi2_broad))
-            pdb.set_trace()
 
             # compute delta-chi2 around just the Balmer lines
             balmer_pix = np.hstack(balmer_pix)
