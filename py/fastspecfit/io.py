@@ -2124,8 +2124,11 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
         vdispflux, vdisphdr = fitsio.read(templates, ext='VDISPFLUX', header=True) # [nvdisppix,nvdispsed,nvdisp]
 
         # see bin/build-fsps-templates
-        nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
-        vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
+        if vdisphdr['VDISPRES'] > 0.:
+            nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
+            vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
+        else:
+            vdisp = np.atleast_1d(vdisphdr['VDISPMIN'])
     
         if not vdisp_nominal in vdisp:
             errmsg = 'Nominal velocity dispersion is not in velocity dispersion vector.'

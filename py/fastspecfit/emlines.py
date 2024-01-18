@@ -853,7 +853,7 @@ class EMFitTools(Filters):
         initial_guesses = parameters[Ifree]
 
         if len(Ifree) == 0:
-            fit_info = {'nfev': 0}
+            fit_info = {'nfev': 0, 'status': 0}
         else:
             try:
                 fit_info = least_squares(_objective_function, initial_guesses, args=farg, max_nfev=5000, 
@@ -979,7 +979,7 @@ class EMFitTools(Filters):
         #      --> Deprecated! main-dark-32303-39628176678192981 is an example
         #          of an object where there's a broad H-alpha line but no other
         #          forbidden lines!
-        
+
         out_linemodel = linemodel.copy()
         out_linemodel['value'] = parameters
         out_linemodel.meta['nfev'] = fit_info['nfev']
