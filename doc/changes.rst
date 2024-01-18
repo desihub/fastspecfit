@@ -2,10 +2,10 @@
 Change Log
 ==========
 
-2.5.1 (not released yet)
-------------------------
+2.5.1 (2024-01-18)
+------------------
 
-* 
+* Bug fix: handle Lya falling in a masked camera (only for objects at z>5ish).
 
 2.5.0 (2024-01-13)
 ------------------
