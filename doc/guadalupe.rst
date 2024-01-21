@@ -26,10 +26,10 @@ Data Content & Access
 
 Data from the ``Guadalupe`` VAC can be accessed at any of the following links:
 
-============================ =================================================================
-Data url                     https://data.desi.lbl.gov/desi/spectro/fastspecfit/guadalupe/v3.0
-`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/spectro/fastspecfit/guadalupe/v3.0``
-============================ =================================================================
+============================ ========================================================================
+Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/guadalupe/v3.1
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/guadalupe/v3.1``
+============================ ========================================================================
 
 For more information regarding the content and organization of the VAC, please
 click on the following links:
@@ -55,11 +55,11 @@ catalog.
 ====================================== ========= =================
 File Name                              File Size Number of Targets
 ====================================== ========= =================
-fastspec-guadalupe-special-dark.fits   17.4 MB   3,848
-fastspec-guadalupe-special-bright.fits 43.1 MB   9,598
-fastspec-guadalupe-main-bright.fits    4.77 GB   1,092,041
-fastspec-guadalupe-main-dark.fits      4.94 GB   1,131,858
-fastspec-guadalupe.fits                9.79 GB   2,237,345
+fastspec-guadalupe-special-dark.fits   15.1 MB   3,848
+fastspec-guadalupe-special-bright.fits 37.5 MB   9,598
+fastspec-guadalupe-main-bright.fits    4.15 GB   1,092,041
+fastspec-guadalupe-main-dark.fits      4.3 GB    1,131,858
+fastspec-guadalupe.fits                8.52 GB   2,237,345
 ====================================== ========= =================
 
 The following table summarizes the number of QSO targets whose redshift has been
@@ -105,12 +105,12 @@ astropy          5.2.1
 yaml             6.0
 matplotlib       3.6.2
 fitsio           1.1.8
-desiutil         3.3.1
-desispec         0.59.2
-desitarget       2.6.0
-desimodel        0.18.0
-speclite         0.16
-fastspecfit      2.4.1, 2.4.2
+desiutil         3.4.2
+desispec         0.60.2
+desitarget       2.7.0
+desimodel        0.19.0
+speclite         0.17
+fastspecfit      2.5.0
 ================ ==========
 
 .. rst-class:: columns
@@ -122,9 +122,9 @@ DESI_ROOT            /dvs_ro/cfs/cdirs/desi
 DUST_DIR             /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
 FPHOTO_DIR           /dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
 FTEMPLATES_DIR       /dvs_ro/cfs/cdirs/desi/science/gqp/templates/fastspecfit
-FTEMPLATES_FILE      ftemplates-chabrier-1.1.0.fits (see `README.txt`_)
-FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.1/lib/python3.10/site-packages/fastspecfit/data/legacysurvey-dr9.yaml
-EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.1/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
+FTEMPLATES_FILE      ftemplates-chabrier-1.3.0.fits (see `README.txt`_)
+FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.5.0/lib/python3.10/site-packages/fastspecfit/data/legacysurvey-dr9.yaml
+EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.5.0/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
 ==================== =====
 
 .. _previous versions - guadalupe:
@@ -140,8 +140,34 @@ Please see the `change log`_ for a record of what code and data model changes
 have occurred since these versions were released and to report additional
 problems or to request new features please `open a ticket`_.
 
-v3.0 (latest release)
+v3.1 (latest release)
 ~~~~~~~~~~~~~~~~~~~~~
+
+* Release date: January 2024
+* ``FastSpecFit`` version: ``2.5.0``
+* Templates: ``ftemplates-chabrier-1.3.0.fits``  (see `README.txt`_).
+* Notes:
+
+  * Several updates to the spectrophotometric templates aimed at addressing the
+    stellar mass bias identified in `issue/#159`_ (see `PR/#166`_):
+    
+    * Templates are now just solar metallicity (previously 0.1, 1, and 1.6 times
+      solar).
+    * Five age bins now (vs 8 previously).
+    * Expanded velocity dispersion grid (new measurable maximum value is now 475
+      km/s).
+  * Correction to how the light-weighted ages, dust attenuations, and SFRs were
+    being computed.
+  * When fitting the broad+narrow emission-line model, [OIII] 4959,5007 is now
+    fitted separately and the narrow Balmer+helium+forbidden line-widths and
+    velocity shifts are all tied together.
+  * All known bugs fixed.
+* Known issues:
+  
+  * None at this time.
+
+v3.0
+~~~~
 
 * Release date: August 2023
 * ``FastSpecFit`` versions: ``2.4.1``, ``2.4.2``
@@ -208,3 +234,4 @@ v1.0
 .. _`PR/#151`: https://github.com/desihub/fastspecfit/pull/151
 .. _`PR/#157`: https://github.com/desihub/fastspecfit/pull/157
 .. _`PR/#158`: https://github.com/desihub/fastspecfit/pull/158
+.. _`PR/#166`: https://github.com/desihub/fastspecfit/pull/166

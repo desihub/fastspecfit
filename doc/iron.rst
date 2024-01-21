@@ -27,8 +27,8 @@ Data Content & Access
 Data from the ``Iron`` VAC can be accessed at any of the following links:
 
 ============================ ============================================================
-Data url                     https://data.desi.lbl.gov/desi/spectro/fastspecfit/iron/v2.0
-`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/spectro/fastspecfit/iron/v2.0``
+Data url                     https://data.desi.lbl.gov/desi/spectro/fastspecfit/iron/v2.1
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/spectro/fastspecfit/iron/v2.1``
 ============================ ============================================================
 
 For more information regarding the content and organization of the VAC, please
@@ -122,12 +122,12 @@ astropy          5.2.1
 yaml             6.0
 matplotlib       3.6.2
 fitsio           1.1.8
-desiutil         3.3.1
-desispec         0.59.2
-desitarget       2.6.0
-desimodel        0.18.0
-speclite         0.16
-fastspecfit      2.4.1, 2.4.2
+desiutil         3.4.2
+desispec         0.60.2
+desitarget       2.7.0
+desimodel        0.19.0
+speclite         0.17
+fastspecfit      2.5.0, 2.5.1
 ================ ==========
 
 .. rst-class:: columns
@@ -139,9 +139,9 @@ DESI_ROOT            /dvs_ro/cfs/cdirs/desi
 DUST_DIR             /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
 FPHOTO_DIR           /dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
 FTEMPLATES_DIR       /dvs_ro/cfs/cdirs/desi/science/gqp/templates/fastspecfit
-FTEMPLATES_FILE      ftemplates-chabrier-1.1.0.fits (see `README.txt`_)
-FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.1/lib/python3.10/site-packages/fastspecfit/data/legacysurvey-dr9.yaml
-EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.4.1/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
+FTEMPLATES_FILE      ftemplates-chabrier-1.3.0.fits (see `README.txt`_)
+FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.5.1/lib/python3.10/site-packages/fastspecfit/data/legacysurvey-dr9.yaml
+EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.5.1/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
 ==================== =====
 
 .. _previous versions - iron:
@@ -149,8 +149,34 @@ EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-
 Notes & Known Issues
 --------------------
 
-v2.0 (latest release)
+v2.1 (latest release)
 ~~~~~~~~~~~~~~~~~~~~~
+
+* Release date: January 2024
+* ``FastSpecFit`` version: ``2.5.0``, ``2.5.1``
+* Templates: ``ftemplates-chabrier-1.3.0.fits``  (see `README.txt`_).
+* Notes:
+
+  * Several updates to the spectrophotometric templates aimed at addressing the
+    stellar mass bias identified in `issue/#159`_ (see `PR/#166`_):
+    
+    * Templates are now just solar metallicity (previously 0.1, 1, and 1.6 times
+      solar).
+    * Five age bins now (vs 8 previously).
+    * Expanded velocity dispersion grid (new measurable maximum value is now 475
+      km/s).
+  * Correction to how the light-weighted ages, dust attenuations, and SFRs were
+    being computed.
+  * When fitting the broad+narrow emission-line model, [OIII] 4959,5007 is now
+    fitted separately and the narrow Balmer+helium+forbidden line-widths and
+    velocity shifts are all tied together.
+  * All known bugs fixed.
+* Known issues:
+  
+  * None at this time.
+
+v2.0
+~~~~
 
 * Release date: August 2023
 * ``FastSpecFit`` versions: ``2.4.1``, ``2.4.2``
@@ -203,3 +229,4 @@ v1.0
 .. _`PR/#151`: https://github.com/desihub/fastspecfit/pull/151
 .. _`PR/#157`: https://github.com/desihub/fastspecfit/pull/157
 .. _`PR/#158`: https://github.com/desihub/fastspecfit/pull/158
+.. _`PR/#166`: https://github.com/desihub/fastspecfit/pull/166
