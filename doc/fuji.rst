@@ -75,23 +75,23 @@ updated using the procedure documented :ref:`here<qso redshifts>`.
 
 .. rst-class:: columns
 
-================================= ================= ===============================
-Catalog                           Number of Objects Number with Corrected Redshifts
-================================= ================= ===============================
-{fastspec}-fuji-cmx-other.fits    2,771             56
-{fastspec}-fuji-special-dark.fits 35,649            313
-{fastspec}-fuji-sv1-backup.fits   3,683             100
-{fastspec}-fuji-sv1-bright.fits   126,678           65
-{fastspec}-fuji-sv1-dark.fits     235,942           3,810
-{fastspec}-fuji-sv1-other.fits    34,152            170
-{fastspec}-fuji-sv2-backup.fits   107               0
-{fastspec}-fuji-sv2-bright.fits   46,510            8
-{fastspec}-fuji-sv2-dark.fits     52,781            1,029
-{fastspec}-fuji-sv3-backup.fits   1,564             0
-{fastspec}-fuji-sv3-bright.fits   265,325           133
-{fastspec}-fuji-sv3-dark.fits     592,441           3,444
-{fastspec}-fuji.fits              1,397,603         9,128
-================================= ================= ===============================
+=============================== ================= ===============================
+Catalog                         Number of Objects Number with Corrected Redshifts
+=============================== ================= ===============================
+fastspec-fuji-cmx-other.fits    2,771             56
+fastspec-fuji-special-dark.fits 35,649            313
+fastspec-fuji-sv1-backup.fits   3,683             100
+fastspec-fuji-sv1-bright.fits   126,678           65
+fastspec-fuji-sv1-dark.fits     235,942           3,810
+fastspec-fuji-sv1-other.fits    34,152            170
+fastspec-fuji-sv2-backup.fits   107               0
+fastspec-fuji-sv2-bright.fits   46,510            8
+fastspec-fuji-sv2-dark.fits     52,781            1,029
+fastspec-fuji-sv3-backup.fits   1,564             0
+fastspec-fuji-sv3-bright.fits   265,325           133
+fastspec-fuji-sv3-dark.fits     592,441           3,444
+fastspec-fuji.fits              1,397,603         9,128
+=============================== ================= ===============================
 
 Code & Template Versions
 ------------------------

@@ -26,10 +26,10 @@ Data Content & Access
 
 Data from the ``Iron`` VAC can be accessed at any of the following links:
 
-============================ ============================================================
-Data url                     https://data.desi.lbl.gov/desi/spectro/fastspecfit/iron/v2.1
-`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/spectro/fastspecfit/iron/v2.1``
-============================ ============================================================
+============================ ==================================================================
+Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/iron/v2.1
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/iron/v2.1``
+============================ ==================================================================
 
 For more information regarding the content and organization of the VAC, please
 click on the following links:
@@ -50,25 +50,27 @@ second table combines all the individual programs into separate ``main``,
 .. rst-class:: columns
 
 ================================= ========= =================
-fastspec-iron-cmx-other.fits      11.5 MB   2,761
-fastspec-iron-main-backup.fits    61.3 MB   15,163
-fastspec-iron-main-bright.fits    25.5 GB   6,445,915
-fastspec-iron-main-dark.fits      39.9 GB   10,074,406
-fastspec-iron-special-backup.fits 2.38 MB   552
-fastspec-iron-special-bright.fits 175 MB    43,261
-fastspec-iron-special-dark.fits   60.5 MB   14,953
-fastspec-iron-special-other.fits  172 MB    42,064
-fastspec-iron-sv1-backup.fits     14 MB     3,331
-fastspec-iron-sv1-bright.fits     524 MB    126,649
-fastspec-iron-sv1-dark.fits       965 MB    233,158
-fastspec-iron-sv1-other.fits      141 MB    34,112
+File Name                         File Size Number of Targets
+================================= ========= =================
+fastspec-iron-cmx-other.fits      11.2 MB   2,762
+fastspec-iron-main-backup.fits    59.1 MB   15,163
+fastspec-iron-main-bright.fits    24.6 GB   6,445,926
+fastspec-iron-main-dark.fits      38.5 GB   10,075,557
+fastspec-iron-special-backup.fits 2.31 MB   552
+fastspec-iron-special-bright.fits 169 MB    43,261
+fastspec-iron-special-dark.fits   58.3 MB   14,954
+fastspec-iron-special-other.fits  166 MB    42,064
+fastspec-iron-sv1-backup.fits     13.6 MB   3,331
+fastspec-iron-sv1-bright.fits     506 MB    126,650
+fastspec-iron-sv1-dark.fits       931 MB    233,201
+fastspec-iron-sv1-other.fits      136 MB    34,112
 fastspec-iron-sv2-backup.fits     593 KB    105
-fastspec-iron-sv2-bright.fits     193 MB    46,486
-fastspec-iron-sv2-dark.fits       218 MB    52,682
-fastspec-iron-sv3-backup.fits     6.45 MB   1,524
-fastspec-iron-sv3-bright.fits     1.08 GB   265,291
-fastspec-iron-sv3-dark.fits       2.4 GB    592,165
-fastspec-iron.fits                73.4 GB   17,994,578
+fastspec-iron-sv2-bright.fits     186 MB    46,486
+fastspec-iron-sv2-dark.fits       211 MB    52,690
+fastspec-iron-sv3-backup.fits     6.25 MB   1,524
+fastspec-iron-sv3-bright.fits     1.04 GB   265,292
+fastspec-iron-sv3-dark.fits       2.32 GB   592,190
+fastspec-iron.fits                70.9 GB   17,995,820
 ================================= ========= =================
 
 The following table summarizes the number of QSO targets whose redshift has been
@@ -76,23 +78,29 @@ updated using the procedure documented :ref:`here<qso redshifts>`.
 
 .. rst-class:: columns
 
-=============================== ================= ===============================
-Catalog                         Number of Targets Number with Corrected Redshifts
-=============================== ================= ===============================
-fastspec-iron-cmx-other.fits    2,771             63
-fastspec-iron-special-dark.fits 35,647            389
-fastspec-iron-sv1-backup.fits   3,683             119
-fastspec-iron-sv1-bright.fits   126,677           402
-fastspec-iron-sv1-dark.fits     235,881           4,656
-fastspec-iron-sv1-other.fits    34,150            372
-fastspec-iron-sv2-backup.fits   107               0
-fastspec-iron-sv2-bright.fits   46,510            151
-fastspec-iron-sv2-dark.fits     52,771            1,185
-fastspec-iron-sv3-backup.fits   1,564             32
-fastspec-iron-sv3-bright.fits   265,324           649
-fastspec-iron-sv3-dark.fits     592,394           5,973
-fastspec-iron.fits              1,397,479         13,991
-=============================== ================= ===============================
+================================= ================= ===============================
+Catalog                           Number of Objects Number with Corrected Redshifts
+================================= ================= ===============================
+fastspec-iron-cmx-other.fits      2,762             34
+fastspec-iron-main-backup.fits    15,163            0
+fastspec-iron-main-bright.fits    6,445,926         348
+fastspec-iron-main-dark.fits      10,075,557        59,907
+fastspec-iron-special-backup.fits 552               0
+fastspec-iron-special-bright.fits 43,261            2
+fastspec-iron-special-dark.fits   14,954            137
+fastspec-iron-special-other.fits  42,064            0
+fastspec-iron-sv1-backup.fits     3,331             40
+fastspec-iron-sv1-bright.fits     126,650           27
+fastspec-iron-sv1-dark.fits       233,201           2,199
+fastspec-iron-sv1-other.fits      34,112            67
+fastspec-iron-sv2-backup.fits     105               0
+fastspec-iron-sv2-bright.fits     46,486            1
+fastspec-iron-sv2-dark.fits       52,690            485
+fastspec-iron-sv3-backup.fits     1,524             0
+fastspec-iron-sv3-bright.fits     265,292           28
+fastspec-iron-sv3-dark.fits       592,190           1,668
+fastspec-iron.fits                17,995,820        64,943
+================================= ================= ===============================
 
 Code & Template Versions
 ------------------------

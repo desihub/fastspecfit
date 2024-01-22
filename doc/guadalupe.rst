@@ -67,15 +67,15 @@ updated using the procedure documented :ref:`here<qso redshifts>`.
 
 .. rst-class:: columns
 
-======================================== ================= ===============================
-Catalog                                  Number of Objects Number with Corrected Redshifts
-======================================== ================= ===============================
-{fastspec}-guadalupe-main-bright.fits    1,092,041         156
-{fastspec}-guadalupe-main-dark.fits      1,131,858         22,445
-{fastspec}-guadalupe-special-bright.fits 9,598             0
-{fastspec}-guadalupe-special-dark.fits   3,848             111
-{fastspec}-guadalupe.fits                2,237,345         22,712
-======================================== ================= ===============================
+====================================== ================= ===============================
+Catalog                                Number of Objects Number with Corrected Redshifts
+====================================== ================= ===============================
+fastspec-guadalupe-main-bright.fits    1,092,041         156
+fastspec-guadalupe-main-dark.fits      1,131,858         22,445
+fastspec-guadalupe-special-bright.fits 9,598             0
+fastspec-guadalupe-special-dark.fits   3,848             111
+fastspec-guadalupe.fits                2,237,345         22,712
+====================================== ================= ===============================
 
 Code & Template Versions
 ------------------------
