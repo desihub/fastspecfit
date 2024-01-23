@@ -34,18 +34,21 @@ python manage.py dbshell
 select count(*) from fastmodel_fastmodel;
 \dt # list all tables
 DELETE from fastmodel_fastmodel; # delete all rows from a table
+
+# To totally delete the table you would do:
 DROP TABLE fastmodel_fastmodel;  # delete the table itself
+
+# Then do 
+find . -path "*/migrations/*.py" -not -name "__init__.py" -delete
+find . -path "*/migrations/*.pyc"  -delete
+python manage.py sqlmigrate fastmodel 0001_initial
+
+# And then put the printed SQL into the dbshell to create an empty table which
+# can then get loaded.
 
 # Then load the new table with:
 
 time python load.py
 chgrp -R desi *
 touch wsgi.py
-
-# Finally, if you need to delete the database and start over do:
-
-python manage.py shell
-from fastspecfit.webapp.fastmodel.models import FastModel
-FastModel.objects.all().delete()
-exit()
 
