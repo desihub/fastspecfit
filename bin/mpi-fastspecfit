@@ -25,7 +25,7 @@ from desiutil.log import get_logger
 log = get_logger()
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
-                    outdir_data='.', templates=None, templateversion=None):
+                    samplefile=None, outdir_data='.', templates=None, templateversion=None):
 
     import sys
     from desispec.parallel import stdouterr_redirected
@@ -130,7 +130,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite):
                     fast(args=cmdargs.split())
             dt1 = time.time() - t1
-            log.info('  rank {} done in {:.2f} sec'.format(rank, dt1))
+            log.info(f'  rank {rank} done in {dt1:.2f} sec')
             if not os.path.exists(outfiles[ii]):
                 log.warning(f'  rank {rank} missing {outfiles[ii]}')
                 raise IOError
@@ -172,6 +172,7 @@ def main():
     parser.add_argument('--program', type=str, default='bright,dark,other,backup', help='Program to process.') # backup not supported
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
+    parser.add_argument('--samplefile', default=None, type=str, help='Full path to sample (FITS) file with {survey,program,healpix,targetid}.')
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
@@ -223,7 +224,7 @@ def main():
         import multiprocessing
         multiprocessing.set_start_method('spawn')
 
-    if args.coadd_type == 'healpix':
+    if args.samplefile is None and args.coadd_type == 'healpix':
         args.survey = args.survey.split(',')
         args.program = args.program.split(',')
 
@@ -301,15 +302,37 @@ def main():
         else:
             rank = comm.rank
         if rank == 0:
-            plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
-                 coadd_type=args.coadd_type, survey=args.survey, program=args.program,
-                 healpix=args.healpix, tile=args.tile, night=args.night,
-                 makeqa=args.makeqa, mp=args.mp, fastphot=args.fastphot,
-                 outdir_data=outdir_data, overwrite=args.overwrite)
+            if args.samplefile is not None:
+                import fitsio
+                from astropy.table import Table                
+                if not os.path.isfile(args.samplefile):
+                    log.warning(f'{args.samplefile} does not exist.')
+                    return
+                try:
+                    sample = Table(fitsio.read(args.samplefile, columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']))
+                except:
+                    errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
+                    self.log.critical(errmsg)
+                    raise ValueError(errmsg)
+                
+                plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
+                     sample=sample, coadd_type='healpix', makeqa=args.makeqa,
+                     mp=args.mp, fastphot=args.fastphot,
+                     outdir_data=outdir_data, overwrite=args.overwrite)
+            else:
+                plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
+                     coadd_type=args.coadd_type, survey=args.survey, program=args.program,
+                     healpix=args.healpix, tile=args.tile, night=args.night,
+                     makeqa=args.makeqa, mp=args.mp, fastphot=args.fastphot,
+                     outdir_data=outdir_data, overwrite=args.overwrite)
     else:
+        if args.samplefile is not None and not os.path.isfile(args.samplefile):
+            log.warning(f'{args.samplefile} does not exist.')
+            return
+        
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=outdir_data, templates=args.templates,
-                        templateversion=args.templateversion)
+                        makeqa=args.makeqa, outdir_data=outdir_data,
+                        templates=args.templates, templateversion=args.templateversion)
 
 if __name__ == '__main__':
     main()
