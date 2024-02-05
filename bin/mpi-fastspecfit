@@ -38,14 +38,35 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
 
     t0 = time.time()
     if rank == 0:
-        _, zbestfiles, outfiles, groups, ntargets = plan(
-            comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
-            coadd_type=args.coadd_type, survey=args.survey, program=args.program,
-            healpix=args.healpix, tile=args.tile, night=args.night,
-            makeqa=args.makeqa, mp=args.mp, fastphot=fastphot, outdir_data=outdir_data, 
-            overwrite=args.overwrite)
+        if args.samplefile is not None:
+            import fitsio
+            from astropy.table import Table                
+            if not os.path.isfile(args.samplefile):
+                log.warning(f'{args.samplefile} does not exist.')
+                return
+            try:
+                sample = Table(fitsio.read(args.samplefile, columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']))
+            except:
+                errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
+                self.log.critical(errmsg)
+                raise ValueError(errmsg)
+
+            _, zbestfiles, outfiles, groups, ntargets = plan(
+                comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
+                sample=sample, coadd_type='healpix', makeqa=args.makeqa,
+                mp=args.mp, fastphot=args.fastphot,
+                outdir_data=outdir_data, overwrite=args.overwrite)
+        else:
+            sample = None
+            _, zbestfiles, outfiles, groups, ntargets = plan(
+                comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
+                coadd_type=args.coadd_type, survey=args.survey, program=args.program,
+                healpix=args.healpix, tile=args.tile, night=args.night,
+                makeqa=args.makeqa, mp=args.mp, fastphot=fastphot, outdir_data=outdir_data, 
+                overwrite=args.overwrite)
         log.info('Planning took {:.2f} sec'.format(time.time() - t0))
     else:
+        sample = None
         zbestfiles, outfiles, groups, ntargets = [], [], [], []
 
     if comm:
@@ -53,6 +74,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         outfiles = comm.bcast(outfiles, root=0)
         groups = comm.bcast(groups, root=0)
         ntargets = comm.bcast(ntargets, root=0)
+        sample = comm.bcast(sample, root=0)
 
     sys.stdout.flush()
     
@@ -95,9 +117,17 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 
         if args.firsttarget is not None:
             cmdargs += f' --firsttarget {args.firsttarget}'
-                
-        if args.targetids is not None:
-            cmdargs += f' --targetids {args.targetids}'
+
+        if sample is not None:
+            # assume healpix coadds; find the targetids to process
+            _, survey, program, healpix = os.path.basename(zbestfiles[ii]).split('-')
+            healpix = int(healpix.split('.')[0])
+            targetids = ','.join(sample[(sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) *
+                                        (sample['HEALPIX'] == healpix)]['TARGETID'].astype(str))
+            cmdargs += f' --targetids {targetids}'
+        else:
+            if args.targetids is not None:
+                cmdargs += f' --targetids {args.targetids}'
                 
         if args.makeqa:
             logfile = os.path.join(zbestfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
@@ -331,7 +361,7 @@ def main():
             return
         
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=outdir_data,
+                        makeqa=args.makeqa, outdir_data=outdir_data, samplefile=args.samplefile,
                         templates=args.templates, templateversion=args.templateversion)
 
 if __name__ == '__main__':

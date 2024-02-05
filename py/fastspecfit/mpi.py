@@ -217,6 +217,14 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         if np.count_nonzero(todo) > 0:
             redrockfiles = redrockfiles[todo]
             outfiles = outfiles[todo]
+            if sample is not None:
+                ntargets = ntargets[todo]
+        else: # all done!
+            redrockfiles = []
+            outfiles = []
+            if sample is not None:
+                ntargets = np.array([])
+                
         log.info(f'Found {len(redrockfiles)}/{nfile} redrockfiles (left) to do.')
 
         # we already counted ntargets
