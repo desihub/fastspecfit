@@ -5,7 +5,9 @@ Change Log
 2.5.2 (not released yet)
 ------------------------
 
-* 
+* Add support for processing a custom sample with full MPI [`PR #168`_]. 
+
+.. _`PR #168`: https://github.com/desihub/fastspecfit/pull/168
 
 2.5.1 (2024-01-18)
 ------------------
