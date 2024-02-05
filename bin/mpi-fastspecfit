@@ -249,10 +249,29 @@ def main():
         except ImportError:
             comm = None
 
+    if comm is None:
+        rank = 0
+    else:
+        rank = comm.rank
+            
     # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
     if args.mp > 1 and 'NERSC_HOST' in os.environ:
         import multiprocessing
         multiprocessing.set_start_method('spawn')
+
+    # check the input samplefile
+    if rank == 0 and args.samplefile is not None:
+        import fitsio
+        from astropy.table import Table                
+        if not os.path.isfile(args.samplefile):
+            log.warning(f'{args.samplefile} does not exist.')
+            return
+        try:
+            sample = Table(fitsio.read(args.samplefile, columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']))
+        except:
+            errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
+            self.log.critical(errmsg)
+            raise ValueError(errmsg)
 
     if args.samplefile is None and args.coadd_type == 'healpix':
         args.survey = args.survey.split(',')
@@ -318,33 +337,24 @@ def main():
         else:
             fastfiles_to_merge = None
 
-        merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
-                          survey=args.survey, program=args.program, healpix=args.healpix,
-                          tile=args.tile, night=args.night, outdir_data=outdir_data,
-                          fastfiles_to_merge=fastfiles_to_merge,
-                          outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
-                          fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
+        if args.samplefile is not None:
+            merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type='healpix',
+                              sample=sample, merge_suffix=args.merge_suffix,
+                              outdir_data=outdir_data, fastfiles_to_merge=fastfiles_to_merge,
+                              outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
+                              fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
+        else:
+            merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
+                              survey=args.survey, program=args.program, healpix=args.healpix,
+                              tile=args.tile, night=args.night, outdir_data=outdir_data,
+                              fastfiles_to_merge=fastfiles_to_merge,
+                              outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
+                              fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
         return
 
     if args.plan and args.makeqa is False:
-        if comm is None:
-            rank = 0
-        else:
-            rank = comm.rank
         if rank == 0:
             if args.samplefile is not None:
-                import fitsio
-                from astropy.table import Table                
-                if not os.path.isfile(args.samplefile):
-                    log.warning(f'{args.samplefile} does not exist.')
-                    return
-                try:
-                    sample = Table(fitsio.read(args.samplefile, columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']))
-                except:
-                    errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
-                    self.log.critical(errmsg)
-                    raise ValueError(errmsg)
-                
                 plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
                      sample=sample, coadd_type='healpix', makeqa=args.makeqa,
                      mp=args.mp, fastphot=args.fastphot,
@@ -356,10 +366,6 @@ def main():
                      makeqa=args.makeqa, mp=args.mp, fastphot=args.fastphot,
                      outdir_data=outdir_data, overwrite=args.overwrite)
     else:
-        if args.samplefile is not None and not os.path.isfile(args.samplefile):
-            log.warning(f'{args.samplefile} does not exist.')
-            return
-        
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
                         makeqa=args.makeqa, outdir_data=outdir_data, samplefile=args.samplefile,
                         templates=args.templates, templateversion=args.templateversion)

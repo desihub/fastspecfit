@@ -188,7 +188,10 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
 
     if merge:
         redrockfiles = None
-        outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
+        if sample is not None: # special case of an input catalog
+            outfiles, _ = _findfiles(outdir, prefix=outprefix, sample=sample)
+        else:
+            outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
         log.info(f'Found {len(outfiles)} {outprefix} files to be merged.')
     elif makeqa:
         redrockfiles = None
@@ -386,9 +389,9 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
                       no_smooth_continuum=deps['NOSCORR'])
 
 def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
-                      healpix=None, tile=None, night=None, outsuffix=None,
+                      healpix=None, tile=None, night=None, sample=None, outsuffix=None,
                       fastphot=False, specprod_dir=None, outdir_data='.',
-                      fastfiles_to_merge=None, 
+                      fastfiles_to_merge=None, merge_suffix=None,
                       mergedir=None, supermerge=False, overwrite=False, mp=1):
     """Merge all the individual catalogs into a single large catalog. Runs only on
     rank 0.
@@ -434,7 +437,22 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
             log.info(f'No catalogs found: {_outfiles}')
         return
 
-    if coadd_type == 'healpix':
+    if sample is not None:
+        if merge_suffix is None:
+            merge_suffix = 'sample'
+        mergefile = os.path.join(mergedir, f'{outprefix}-{specprod}-{merge_suffix}.fits')
+        if os.path.isfile(mergefile) and not overwrite:
+            log.info(f'Merged output file {mergefile} exists!')
+            return
+        
+        _, _, outfiles, _, _ = plan(specprod=specprod, sample=sample, merge=True,
+                                    fastphot=fastphot, specprod_dir=specprod_dir,
+                                    outdir_data=outdir_data, overwrite=overwrite)
+        if len(outfiles) > 0:
+            _domerge(outfiles, extname=extname, mergefile=mergefile, outprefix=outprefix,
+                     specprod=specprod, coadd_type=coadd_type, fastphot=fastphot, mp=mp)
+
+    elif coadd_type == 'healpix' and sample is None:
         if survey is None or program is None:
             log.warning(f'coadd_type={coadd_type} requires survey and program inputs.')
             return
