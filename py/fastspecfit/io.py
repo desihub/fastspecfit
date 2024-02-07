@@ -829,7 +829,7 @@ class DESISpectra(TabulatedDESI):
                 fitindx = np.where(np.isin(alltargetids, targetids))[0]
 
             if len(fitindx) == 0:
-                log.info('No requested targets found in redrockfile {}'.format(redrockfile))
+                log.info(f'No requested targets found in redrockfile {redrockfile}')
                 continue
 
             # Do we want just a subset of the available objects?
@@ -838,8 +838,7 @@ class DESISpectra(TabulatedDESI):
             else:
                 _ntargets = ntargets
             if _ntargets > len(fitindx):
-                log.warning('Number of requested ntargets exceeds the number of targets on {}; reading all of them.'.format(
-                    redrockfile))
+                log.warning(f'Number of requested ntargets exceeds the number of targets on {redrockfile}; reading all of them.')
 
             __ntargets = len(fitindx)
             fitindx = fitindx[firsttarget:firsttarget+_ntargets]
@@ -856,7 +855,7 @@ class DESISpectra(TabulatedDESI):
                 zb = Table(fitsio.read(redrockfile, 'REDSHIFTS', rows=fitindx, columns=REDSHIFTCOLS))
                 meta = Table(fitsio.read(specfile, 'FIBERMAP', rows=fitindx, columns=READFMCOLS))
                 if input_redshifts is not None:
-                    log.info('Applying {} input_redshifts.'.format(len(input_redshifts)))
+                    log.info(f'Applying {len(input_redshifts)} input_redshifts.')
                     # fitsio doesn't preserve order, so make sure targetids and
                     # input_redshifts are matched
                     srt = np.hstack([np.where(targetids == tid)[0] for tid in zb['TARGETID']])
@@ -2084,6 +2083,7 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
     templateflux = fitsio.read(templates, ext='FLUX')  # [npix,nsed]
     templatelineflux = fitsio.read(templates, ext='LINEFLUX')  # [npix,nsed]
     templateinfo, templatehdr = fitsio.read(templates, ext='METADATA', header=True)
+    vdisphdr = fitsio.read_header(templates, ext='VDISPFLUX')
 
     # Trim the wavelengths and select the number/ages of the templates.
     # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
@@ -2098,6 +2098,9 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
     
     # Cache a copy of the line-free templates at the nominal velocity
     # dispersion (needed for fastphot as well).
+    if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
+        vdisp_nominal = vdisphdr['VDISPNOM'] # [km/s]
+    
     I = np.where(templatewave < PIXKMS_WAVESPLIT)[0]
     templateflux_nolines_nomvdisp = templateflux_nolines.copy()
     templateflux_nolines_nomvdisp[I, :] = _convolve_vdisp(templateflux_nolines_nomvdisp[I, :], vdisp_nominal,
@@ -2121,7 +2124,7 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
         
     if not fastphot:
         vdispwave = fitsio.read(templates, ext='VDISPWAVE')
-        vdispflux, vdisphdr = fitsio.read(templates, ext='VDISPFLUX', header=True) # [nvdisppix,nvdispsed,nvdisp]
+        vdispflux = fitsio.read(templates, ext='VDISPFLUX') # [nvdisppix,nvdispsed,nvdisp]
 
         # see bin/build-fsps-templates
         if vdisphdr['VDISPRES'] > 0.:

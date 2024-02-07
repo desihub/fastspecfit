@@ -246,6 +246,7 @@ def build_templates(models, logages, agebins=None, imf='chabrier',
 def main(args):
 
     # velocity dispersion grid
+    vdisp_nominal = 125.
     vdispmin = 50.
     vdispmax = 500.
     dvdisp = 25.
@@ -386,6 +387,7 @@ def main(args):
     hduflux3.header['VDISPMIN'] = (vdispmin, 'minimum velocity dispersion [km/s]')
     hduflux3.header['VDISPMAX'] = (vdispmax, 'maximum velocity dispersion [km/s]')
     hduflux3.header['VDISPRES'] = (dvdisp, 'velocity dispersion spacing [km/s]')
+    hduflux3.header['VDISPNOM'] = (vdisp_nominal, 'nominal (default) velocity dispersion [km/s]')
     hduflux3.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
     isplit = np.argmin(np.abs(wave-PIXKMS_WAVESPLIT)) + 1
