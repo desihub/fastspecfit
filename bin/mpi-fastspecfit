@@ -1,19 +1,6 @@
 #!/usr/bin/env python
-
 """
 MPI wrapper for fastphot and fastspec.
-
-mpi-fastspecfit --mp 32 --coadd-type cumulative --tile 80608 --night 20201220 --plan --nompi
-mpi-fastspecfit --fastphot --mp 32 --tile 80608
-
-mpi-fastspecfit --specprod fuji
-mpi-fastspecfit --specprod fuji --fastphot
-
-mpi-fastspecfit --merge --specprod fuji
-mpi-fastspecfit --merge --specprod fuji --fastphot
-
-mpi-fastspecfit --mp 32 --makeqa --specprod fuji --dry-run
-mpi-fastspecfit --mp 32 --makeqa --specprod fuji --fastphot --dry-run
 
 """
 import pdb # for debugging
@@ -25,7 +12,8 @@ from desiutil.log import get_logger
 log = get_logger()
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
-                    samplefile=None, outdir_data='.', templates=None, templateversion=None):
+                    samplefile=None, input_redshifts=False, outdir_data='.', templates=None,
+                    templateversion=None):
 
     import sys
     from desispec.parallel import stdouterr_redirected
@@ -45,9 +33,15 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 log.warning(f'{args.samplefile} does not exist.')
                 return
             try:
-                sample = Table(fitsio.read(args.samplefile, columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']))
+                readcols = ['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']
+                if input_redshifts:
+                    readcols += ['Z']
+                sample = Table(fitsio.read(args.samplefile, columns=readcols))
             except:
-                errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
+                if input_redshifts:
+                    errmsg = f'Sample file {args.samplefile} with --input-redshifts set missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID,Z}'
+                else:
+                    errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
                 self.log.critical(errmsg)
                 raise ValueError(errmsg)
 
@@ -122,9 +116,12 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             # assume healpix coadds; find the targetids to process
             _, survey, program, healpix = os.path.basename(zbestfiles[ii]).split('-')
             healpix = int(healpix.split('.')[0])
-            targetids = ','.join(sample[(sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) *
-                                        (sample['HEALPIX'] == healpix)]['TARGETID'].astype(str))
+            I = (sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) * (sample['HEALPIX'] == healpix)
+            targetids = ','.join(sample[I]['TARGETID'].astype(str))
             cmdargs += f' --targetids {targetids}'
+            if input_redshifts:
+                inputz = ','.join(sample[I]['Z'].astype(str))
+                cmdargs += f' --input-redshifts {inputz}'
         else:
             if args.targetids is not None:
                 cmdargs += f' --targetids {args.targetids}'
@@ -202,7 +199,9 @@ def main():
     parser.add_argument('--program', type=str, default='bright,dark,other,backup', help='Program to process.') # backup not supported
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
+
     parser.add_argument('--samplefile', default=None, type=str, help='Full path to sample (FITS) file with {survey,program,healpix,targetid}.')
+    parser.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
     
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
@@ -368,7 +367,8 @@ def main():
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
                         makeqa=args.makeqa, outdir_data=outdir_data, samplefile=args.samplefile,
-                        templates=args.templates, templateversion=args.templateversion)
+                        input_redshifts=args.input_redshifts, templates=args.templates,
+                        templateversion=args.templateversion)
 
 if __name__ == '__main__':
     main()
