@@ -100,6 +100,9 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             if args.ignore_quasarnet:
                 cmdargs += ' --ignore-quasarnet'
                 
+            if args.no_smooth_continuum:
+                cmdargs += ' --no-smooth-continuum'
+                
             if args.templates:
                 cmdargs += f' --templates {args.templates}'
                 
@@ -224,6 +227,7 @@ def main():
     parser.add_argument('--ntest', type=int, default=None, help='Select ntest healpixels as a test sample drawn randomly from the full specprod (only for coadd-type==healpix).')
     
     parser.add_argument('--ignore-quasarnet', default=False, action='store_true', help='Do not use QuasarNet to improve QSO redshifts.')
+    parser.add_argument('--no-smooth-continuum', default=False, action='store_true', help='Do not fit the smooth continuum.')
     
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
