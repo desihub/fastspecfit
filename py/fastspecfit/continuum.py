@@ -1332,6 +1332,7 @@ class ContinuumTools(Filters, Inoue14):
         #png = '/global/cfs/cdirs/desi/users/ioannis/tmp/linesigma.png'
         linesigma_narrow, linesigma_balmer, linesigma_uv, linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr = \
           _estimate_linesigmas(wave, flux-smooth, ivar, redshift, png=png, log=log)
+        #linesigma_balmer = 3000.
 
         # Next, build the emission-line mask.
         linemask = np.zeros_like(wave, bool)      # True = affected by possible emission line.

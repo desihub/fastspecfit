@@ -183,7 +183,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                 ivar[mask != 0] = 0
 
                 if np.all(ivar == 0):
-                    log.warning('Dropping fully masked camera {}.'.format(camera))                    
+                    log.warning(f'Dropping fully masked camera {camera}.')
                 else:
                     cameras.append(camera)
                     npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
@@ -581,7 +581,7 @@ class DESISpectra(TabulatedDESI):
 
         return newphotsys
 
-    def select(self, redrockfiles, zmin=0.001, zmax=None, zwarnmax=None,
+    def select(self, redrockfiles, zmin=None, zmax=None, zwarnmax=None,
                targetids=None, firsttarget=0, ntargets=None,
                input_redshifts=None, specprod_dir=None, use_quasarnet=True,
                redrockfile_prefix='redrock-', specfile_prefix='coadd-',
@@ -652,6 +652,9 @@ class DESISpectra(TabulatedDESI):
         from desiutil.depend import getdep
         from desitarget import geomask
         from desitarget.targets import main_cmx_or_sv
+
+        if zmin is None:
+            zmin = 1e-3
 
         if zmin <= 0.0:
             errmsg = 'zmin should generally be >= 0; proceed with caution!'
@@ -1085,16 +1088,24 @@ class DESISpectra(TabulatedDESI):
         for ispec, (specfile, meta) in enumerate(zip(self.specfiles, self.meta)):
             nobj = len(meta)
             if nobj == 1:
-                log.info('Reading {} spectrum from {}'.format(nobj, specfile))
+                log.info(f'Reading {nobj} spectrum from {specfile}')
             else:
-                log.info('Reading {} spectra from {}'.format(nobj, specfile))
+                log.info(f'Reading {nobj} spectra from {specfile}')
 
             ebv = SFD.ebv(meta['RA'], meta['DEC'])
 
-            # Age, luminosity, and distance modulus.
-            dlum = self.luminosity_distance(meta['Z'])
-            dmod = self.distance_modulus(meta['Z'])
-            tuniv = self.universe_age(meta['Z'])
+            # Pre-compute the luminosity distance, distance modulus, and age of
+            # the universe.
+            zobj = meta['Z']
+            neg = zobj <= 0.
+            if np.any(neg):
+                errmsg = f'{np.sum(neg)}/{len(zobj)} input redshifts are zero or negative!'
+                log.warning(errmsg)
+                zobj[neg] = 1e-8
+
+            dlum = self.luminosity_distance(zobj)
+            dmod = self.distance_modulus(zobj)
+            tuniv = self.universe_age(zobj)
 
             if 'PHOTSYS' in meta.colnames:
                 photsys = meta['PHOTSYS']

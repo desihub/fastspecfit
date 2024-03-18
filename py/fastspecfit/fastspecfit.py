@@ -91,6 +91,7 @@ def parse(options=None, log=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
+    parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
     parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
@@ -190,7 +191,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     else:
         Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
                     input_redshifts=input_redshifts, ntargets=args.ntargets,
-                    redrockfile_prefix=args.redrockfile_prefix,
+                    redrockfile_prefix=args.redrockfile_prefix, zmin=args.zmin,
                     specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
                     use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
 
