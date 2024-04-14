@@ -397,7 +397,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         desiresiduals = []
         for icam in np.arange(len(data['cameras'])):
             resid = data['flux'][icam] - desicontinuum[icam]
-            I = (data['flux'][icam] == 0.0) * (data['flux'][icam] == 0.0)
+            I = (data['flux'][icam] == 0.0) * (data['ivar'][icam] == 0.0)
             if np.any(I):
                 resid[I] = 0.0
             desiresiduals.append(resid)

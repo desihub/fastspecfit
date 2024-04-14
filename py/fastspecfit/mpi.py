@@ -22,6 +22,7 @@ log = get_logger()
 def _get_ntargets_one(args):
     return get_ntargets_one(*args)
 
+
 def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
                      makeqa=False, overwrite=False, fastphot=False):
     if makeqa:
@@ -43,6 +44,95 @@ def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
         J = ((zb['Z'] > 0.001) * (fm['OBJTYPE'] == 'TGT') * (zb['ZWARN'] & ZWarningMask.NODATA == 0))
         ntargets = np.sum(J)
     return ntargets
+
+
+def _findfiles(filedir, prefix='redrock', survey=None, program=None, healpix=None,
+               tile=None, night=None, gzip=False, sample=None):
+    if gzip:
+        fitssuffix = 'fits.gz'
+    else:
+        fitssuffix = 'fits'
+        
+    if sample is not None: # special case of an input catalog
+        thesefiles, ntargets = [], []
+        for onesurvey in sorted(set(sample['SURVEY'].data)):
+            S = np.where(onesurvey == sample['SURVEY'])[0]
+            for oneprogram in sorted(set(sample['PROGRAM'][S].data)):
+                log.info(f'Building file list for survey={onesurvey} and program={oneprogram}')
+                P = np.where(oneprogram == sample['PROGRAM'][S])[0]
+                uhealpix, _ntargets = np.unique(sample['HEALPIX'][S][P].astype(str), return_counts=True)
+                ntargets.append(_ntargets)
+                for onepix in uhealpix:
+                    #ntargets.append(np.sum(onepix == sample['HEALPIX'][S][P].astype(str)))
+                    thesefiles.append(os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
+                                                   f'{prefix}-{onesurvey}-{oneprogram}-{onepix}.{fitssuffix}'))
+        if len(thesefiles) > 0:
+            #thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
+            thesefiles = np.hstack(thesefiles)
+            ntargets = np.hstack(ntargets)
+        return thesefiles, ntargets
+    elif coadd_type == 'healpix':
+        thesefiles = []
+        for onesurvey in np.atleast_1d(survey):
+            for oneprogram in np.atleast_1d(program):
+                log.info(f'Building file list for survey={onesurvey} and program={oneprogram}')
+                if healpix is not None:
+                    for onepix in healpixels:
+                        _thesefiles = glob(os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
+                                                        f'{prefix}-{onesurvey}-{oneprogram}-{onepix}.{fitssuffix}'))
+                        thesefiles.append(_thesefiles)
+                else:
+                    allpix = glob(os.path.join(filedir, onesurvey, oneprogram, '*'))
+                    for onepix in allpix:
+                        _thesefiles = glob(os.path.join(onepix, '*', f'{prefix}-{onesurvey}-{oneprogram}-*.{fitssuffix}'))
+                        thesefiles.append(_thesefiles)
+        if len(thesefiles) > 0:
+            thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
+    elif coadd_type == 'cumulative':
+        # Scrape the disk to get the tiles, but since we read the csv file I don't think this ever happens.
+        if tile is None:
+            tiledirs = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', '?????')))))
+            if len(tiledirs) > 0:
+                tile = [int(os.path.basename(tiledir)) for tiledir in tiledirs]
+        if tile is not None:
+            thesefiles = []
+            for onetile in tile:
+                nightdirs = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', str(onetile), '????????')))))
+                if len(nightdirs) > 0:
+                    # for a given tile, take just the most recent night
+                    thisnightdir = nightdirs[-1]
+                    thesefiles.append(glob(os.path.join(thisnightdir, f'{prefix}-[0-9]-{onetile}-thru????????.{fitssuffix}')))
+            if len(thesefiles) > 0:
+                thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
+    elif coadd_type == 'pernight':
+        if tile is not None and night is not None:
+            thesefiles = []
+            for onetile in tile:
+                for onenight in night:
+                    thesefiles.append(glob(os.path.join(
+                        filedir, 'pernight', str(onetile), str(onenight), f'{prefix}-[0-9]-{onetile}-{onenight}.{fitssuffix}')))
+            if len(thesefiles) > 0:
+                thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
+        elif tile is not None and night is None:
+            thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                filedir, 'pernight', str(onetile), '????????', f'{prefix}-[0-9]-{onetile}-????????.{fitssuffix}')) for onetile in tile]))))
+        elif tile is None and night is not None:
+            thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                filedir, 'pernight', '?????', str(onenight), f'{prefix}-[0-9]-?????-{onenight}.{fitssuffix}')) for onenight in night]))))
+        else:
+            thesefiles = np.array(sorted(set(glob(os.path.join(
+                filedir, '?????', '????????', f'{prefix}-[0-9]-?????-????????.{fitssuffix}')))))
+    elif coadd_type == 'perexp':
+        if tile is not None:
+            thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
+                filedir, 'perexp', str(onetile), '????????', f'{prefix}-[0-9]-{onetile}-exp????????.{fitssuffix}')) for onetile in tile]))))
+        else:
+            thesefiles = np.array(sorted(set(glob(os.path.join(
+                filedir, 'perexp', '?????', '????????', f'{prefix}-[0-9]-?????-exp????????.{fitssuffix}')))))
+    else:
+        pass
+    return thesefiles
+
 
 def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None,
@@ -98,93 +188,6 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
 
     outdir = os.path.join(outdir_data, specprod, subdir)
     htmldir = os.path.join(outdir_data, specprod, 'html', subdir)
-
-    def _findfiles(filedir, prefix='redrock', survey=None, program=None, healpix=None,
-                   tile=None, night=None, gzip=False, sample=None):
-        if gzip:
-            fitssuffix = 'fits.gz'
-        else:
-            fitssuffix = 'fits'
-            
-        if sample is not None: # special case of an input catalog
-            thesefiles, ntargets = [], []
-            for onesurvey in sorted(set(sample['SURVEY'].data)):
-                S = np.where(onesurvey == sample['SURVEY'])[0]
-                for oneprogram in sorted(set(sample['PROGRAM'][S].data)):
-                    log.info(f'Building file list for survey={onesurvey} and program={oneprogram}')
-                    P = np.where(oneprogram == sample['PROGRAM'][S])[0]
-                    uhealpix, _ntargets = np.unique(sample['HEALPIX'][S][P].astype(str), return_counts=True)
-                    ntargets.append(_ntargets)
-                    for onepix in uhealpix:
-                        #ntargets.append(np.sum(onepix == sample['HEALPIX'][S][P].astype(str)))
-                        thesefiles.append(os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
-                                                       f'{prefix}-{onesurvey}-{oneprogram}-{onepix}.{fitssuffix}'))
-            if len(thesefiles) > 0:
-                #thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
-                thesefiles = np.hstack(thesefiles)
-                ntargets = np.hstack(ntargets)
-            return thesefiles, ntargets
-        elif coadd_type == 'healpix':
-            thesefiles = []
-            for onesurvey in np.atleast_1d(survey):
-                for oneprogram in np.atleast_1d(program):
-                    log.info(f'Building file list for survey={onesurvey} and program={oneprogram}')
-                    if healpix is not None:
-                        for onepix in healpixels:
-                            _thesefiles = glob(os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
-                                                            f'{prefix}-{onesurvey}-{oneprogram}-{onepix}.{fitssuffix}'))
-                            thesefiles.append(_thesefiles)
-                    else:
-                        allpix = glob(os.path.join(filedir, onesurvey, oneprogram, '*'))
-                        for onepix in allpix:
-                            _thesefiles = glob(os.path.join(onepix, '*', f'{prefix}-{onesurvey}-{oneprogram}-*.{fitssuffix}'))
-                            thesefiles.append(_thesefiles)
-            if len(thesefiles) > 0:
-                thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
-        elif coadd_type == 'cumulative':
-            # Scrape the disk to get the tiles, but since we read the csv file I don't think this ever happens.
-            if tile is None:
-                tiledirs = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', '?????')))))
-                if len(tiledirs) > 0:
-                    tile = [int(os.path.basename(tiledir)) for tiledir in tiledirs]
-            if tile is not None:
-                thesefiles = []
-                for onetile in tile:
-                    nightdirs = np.array(sorted(set(glob(os.path.join(filedir, 'cumulative', str(onetile), '????????')))))
-                    if len(nightdirs) > 0:
-                        # for a given tile, take just the most recent night
-                        thisnightdir = nightdirs[-1]
-                        thesefiles.append(glob(os.path.join(thisnightdir, f'{prefix}-[0-9]-{onetile}-thru????????.{fitssuffix}')))
-                if len(thesefiles) > 0:
-                    thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
-        elif coadd_type == 'pernight':
-            if tile is not None and night is not None:
-                thesefiles = []
-                for onetile in tile:
-                    for onenight in night:
-                        thesefiles.append(glob(os.path.join(
-                            filedir, 'pernight', str(onetile), str(onenight), f'{prefix}-[0-9]-{onetile}-{onenight}.{fitssuffix}')))
-                if len(thesefiles) > 0:
-                    thesefiles = np.array(sorted(set(np.hstack(thesefiles))))
-            elif tile is not None and night is None:
-                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                    filedir, 'pernight', str(onetile), '????????', f'{prefix}-[0-9]-{onetile}-????????.{fitssuffix}')) for onetile in tile]))))
-            elif tile is None and night is not None:
-                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                    filedir, 'pernight', '?????', str(onenight), f'{prefix}-[0-9]-?????-{onenight}.{fitssuffix}')) for onenight in night]))))
-            else:
-                thesefiles = np.array(sorted(set(glob(os.path.join(
-                    filedir, '?????', '????????', f'{prefix}-[0-9]-?????-????????.{fitssuffix}')))))
-        elif coadd_type == 'perexp':
-            if tile is not None:
-                thesefiles = np.array(sorted(set(np.hstack([glob(os.path.join(
-                    filedir, 'perexp', str(onetile), '????????', f'{prefix}-[0-9]-{onetile}-exp????????.{fitssuffix}')) for onetile in tile]))))
-            else:
-                thesefiles = np.array(sorted(set(glob(os.path.join(
-                    filedir, 'perexp', '?????', '????????', f'{prefix}-[0-9]-?????-exp????????.{fitssuffix}')))))
-        else:
-            pass
-        return thesefiles
 
     if merge:
         redrockfiles = None
