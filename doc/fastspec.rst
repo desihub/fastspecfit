@@ -162,8 +162,8 @@ Name                         Type         Units                         Descript
             ABSMAG01_W1 [4]_      float32                           mag Absolute magnitude in WISE W1-band band-shifted to z=0.0 assuming h=1.0.
             ABSMAG01_IVAR_W1      float32                      1 / mag2 Inverse variance corresponding to ABSMAG_W1.
                   KCORR01_W1      float32                           mag K-correction used to derive ABSMAG_W1 band-shifted to z=0.0.
-                 LOGLNU_1500      float32            1e-28 erg / (s Hz) Monochromatic luminosity at 1500 A in the rest-frame.
-                 LOGLNU_2800      float32            1e-28 erg / (s Hz) Monochromatic luminosity at 2800 A in the rest-frame.
+                 LOGLNU_1500      float32            1e+28 erg / (s Hz) Monochromatic luminosity at 1500 A in the rest-frame.
+                 LOGLNU_2800      float32            1e+28 erg / (s Hz) Monochromatic luminosity at 2800 A in the rest-frame.
                    LOGL_1450      float32                    1e+10 Lsun Integrated luminosity at 1450 A in the rest-frame.
                    LOGL_1700      float32                    1e+10 Lsun Integrated luminosity at 1700 A in the rest-frame.
                    LOGL_3000      float32                    1e+10 Lsun Integrated luminosity at 3000 A in the rest-frame.
