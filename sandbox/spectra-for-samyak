@@ -21,7 +21,7 @@ def main():
         fast = Table(fitsio.read(fastfile, 'FASTSPEC', columns=['TARGETID', 'Z', 'HALPHA_EW', 'HALPHA_EW_IVAR']))
 
         I = np.where((fast['HALPHA_EW'] > 5.) * (fast['HALPHA_EW'] * np.sqrt(fast['HALPHA_EW_IVAR']) > 5.))[0]
-        I = I[:5]
+        I = I[:100]
         nobj = len(I)
 
         meta = Table(fitsio.read(fastfile, 'METADATA', rows=I))
