@@ -683,6 +683,8 @@ class Filters(object):
             self.photounits = fphoto['photounits']
             if 'readcols' in keys:
                 self.readcols = np.array(fphoto['readcols'])
+            if 'dropcols' in keys:
+                self.dropcols = np.array(fphoto['dropcols'])
             if 'outcols' in keys:
                 self.outcols = np.array(fphoto['outcols'])
             self.bands = np.array(fphoto['bands'])
