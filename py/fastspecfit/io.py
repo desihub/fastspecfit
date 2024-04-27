@@ -107,7 +107,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
     
     RV = 3.1
     meta['EBV'] = ebv
-    
+
     filters = CTools.filters[specdata['photsys']]
     synth_filters = CTools.synth_filters[specdata['photsys']]
     if hasattr(CTools, 'fiber_filters'):
@@ -1110,7 +1110,7 @@ class DESISpectra(TabulatedDESI):
             if 'PHOTSYS' in meta.colnames:
                 photsys = meta['PHOTSYS']
             else:
-                photsys = [None] * len(meta)
+                photsys = [''] * len(meta)
             
             if fastphot:
                 unpackargs = []
@@ -1438,13 +1438,14 @@ class DESISpectra(TabulatedDESI):
 
         """
         from astropy.table import vstack
+        from desitarget import geomask
         from desispec.io.photo import gather_tractorphot, gather_targetphot
         from fastspecfit.continuum import Filters
     
         input_meta = vstack(self.meta).copy()
 
         F = Filters(fphoto=self.fphoto, load_filters=False)
-        PHOTCOLS = np.hstack((F.readcols, F.fluxcols, F.fluxivarcols))
+        PHOTCOLS = np.unique(np.hstack((F.readcols, F.fluxcols, F.fluxivarcols)))
 
         # DR9 or DR10
         if hasattr(F, 'legacysurveydr'):
@@ -1459,7 +1460,7 @@ class DESISpectra(TabulatedDESI):
             if legacysurveydr.lower() == 'dr9' or legacysurveydr.lower() == 'dr10':
                 metas = []
                 for meta in self.meta:
-                    srt = np.hstack([np.where(tid == tractor[F.uniqueid])[0] for tid in meta[F.uniqueid]])
+                    srt = geomask.match_to(tractor[F.uniqueid], meta[F.uniqueid])
                     assert(np.all(meta[F.uniqueid] == tractor[F.uniqueid][srt]))
                     
                     # The fibermaps in fuji and guadalupe (plus earlier productions) had a
@@ -1477,7 +1478,7 @@ class DESISpectra(TabulatedDESI):
                                     log.warning('Updating column {} in metadata table: {}-->{}.'.format(
                                         col, meta[col][0], targets[col][0]))
                                     meta[col][diffcol] = targets[col][diffcol]
-                    srt = np.hstack([np.where(tid == tractor[F.uniqueid])[0] for tid in meta[F.uniqueid]])
+                    srt = geomask.match_to(tractor[F.uniqueid], meta[F.uniqueid])
                     assert(np.all(meta[F.uniqueid] == tractor[F.uniqueid][srt]))
                     
                     # Add the tractor catalog quantities (overwriting columns if necessary).
@@ -1517,11 +1518,12 @@ class DESISpectra(TabulatedDESI):
 
             metas = []
             for meta in self.meta:
-                srt = np.hstack([np.where(tid == phot[F.uniqueid])[0] for tid in meta[F.uniqueid]])
+                srt = geomask.match_to(phot[F.uniqueid], meta[F.uniqueid])
                 assert(np.all(meta[F.uniqueid] == phot[F.uniqueid][srt]))
+                if hasattr(F, 'dropcols'):
+                    meta.remove_columns(F.dropcols)
                 for col in phot.colnames:
                     meta[col] = phot[col][srt]
-                
                 # placeholders (to be added in DESISpectra.read_and_unpack)
                 meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
                 for band in F.bands:
