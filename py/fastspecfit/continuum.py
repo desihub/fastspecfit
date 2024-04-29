@@ -19,6 +19,23 @@ PIXKMS_BLU = 25.  # [km/s]
 PIXKMS_RED = 100. # [km/s]
 PIXKMS_WAVESPLIT = 1e4 # [Angstrom]
 
+
+def build_qso_continuum_model(obswave, redshift):
+
+    fe = Table(fitsio.read('/pscratch/sd/i/ioannis/fastspecfit/qso-modeling/fetemplates.fits', 'DEFAULT'))
+    fe2 = Table(fitsio.read('/pscratch/sd/i/ioannis/fastspecfit/qso-modeling/fetemplates.fits', 'S07'))
+    fe3 = Table(fitsio.read('/pscratch/sd/i/ioannis/fastspecfit/qso-modeling/fetemplates.fits', 'T06'))
+
+    import matplotlib.pyplot as plt
+    plt.clf()
+    plt.plot(fe['WAVE'], fe['FLUX']/np.median(fe['FLUX']), label='VW01', alpha=0.5)
+    plt.plot(fe2['WAVE'], fe2['FLUX']/np.median(fe2['FLUX']), label='S07', alpha=0.5)
+    plt.plot(fe3['WAVE'], fe3['FLUX']/np.median(fe3['FLUX']), label='T06', alpha=0.5)
+    plt.legend()
+    plt.savefig('/global/cfs/cdirs/desicollab/users/ioannis/tmp/qso-modeling.png')
+    plt.close()
+
+
 def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175, 
                       smooth_window=75, smooth_step=25, maskkms_uv=3000.0, 
                       maskkms_balmer=1000.0, maskkms_narrow=200.0,
