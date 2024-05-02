@@ -13,7 +13,7 @@ log = get_logger()
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
                     samplefile=None, input_redshifts=False, outdir_data='.', templates=None,
-                    templateversion=None):
+                    templateversion=None, fphotodir=None, fphotofile=None):
 
     import sys
     from desispec.parallel import stdouterr_redirected
@@ -87,7 +87,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         if args.makeqa:
             from fastspecfit.qa import fastqa as fast
             cmd = 'fastqa'
-            cmdargs = f'{outfiles[ii]} -o {zbestfiles[ii]} --mp {args.mp}'
+            cmdargs = f'{outfiles[ii]} -o={zbestfiles[ii]} --mp={args.mp}'
         else:
             if fastphot:
                 from fastspecfit.fastspecfit import fastphot as fast
@@ -95,7 +95,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             else:
                 from fastspecfit.fastspecfit import fastspec as fast
                 cmd = 'fastspec'
-            cmdargs = f'{zbestfiles[ii]} -o {outfiles[ii]} --mp {args.mp}'
+            cmdargs = f'{zbestfiles[ii]} -o={outfiles[ii]} --mp={args.mp}'
                     
             if args.ignore_quasarnet:
                 cmdargs += ' --ignore-quasarnet'
@@ -104,16 +104,22 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 cmdargs += ' --no-smooth-continuum'
                 
             if args.templates:
-                cmdargs += f' --templates {args.templates}'
+                cmdargs += f' --templates={args.templates}'
                 
             if args.templateversion:
-                cmdargs += f' --templateversion {args.templateversion}'
+                cmdargs += f' --templateversion={args.templateversion}'
+                
+            if args.fphotodir:
+                cmdargs += f' --fphotodir={args.fphotodir}'
+
+            if args.fphotofile:
+                cmdargs += f' --fphotofile={args.fphotofile}'
                 
         if args.ntargets is not None:
-            cmdargs += f' --ntargets {args.ntargets}'
+            cmdargs += f' --ntargets={args.ntargets}'
                 
         if args.firsttarget is not None:
-            cmdargs += f' --firsttarget {args.firsttarget}'
+            cmdargs += f' --firsttarget={args.firsttarget}'
 
         if sample is not None:
             # assume healpix coadds; find the targetids to process
@@ -121,13 +127,13 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             healpix = int(healpix.split('.')[0])
             I = (sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) * (sample['HEALPIX'] == healpix)
             targetids = ','.join(sample[I]['TARGETID'].astype(str))
-            cmdargs += f' --targetids {targetids}'
+            cmdargs += f' --targetids={targetids}'
             if input_redshifts:
                 inputz = ','.join(sample[I]['Z'].astype(str))
-                cmdargs += f' --input-redshifts {inputz}'
+                cmdargs += f' --input-redshifts={inputz}'
         else:
             if args.targetids is not None:
-                cmdargs += f' --targetids {args.targetids}'
+                cmdargs += f' --targetids={args.targetids}'
                 
         if args.makeqa:
             logfile = os.path.join(zbestfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
@@ -215,6 +221,8 @@ def main():
 
     parser.add_argument('--templateversion', type=str, default=None, help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
+    parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
+    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     
     parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
     parser.add_argument('--mergedir', type=str, help='Output directory for merged catalogs.')
@@ -372,7 +380,8 @@ def main():
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
                         makeqa=args.makeqa, outdir_data=outdir_data, samplefile=args.samplefile,
                         input_redshifts=args.input_redshifts, templates=args.templates,
-                        templateversion=args.templateversion)
+                        templateversion=args.templateversion, fphotodir=args.fphotodir,
+                        fphotofile=args.fphotofile)
 
 if __name__ == '__main__':
     main()

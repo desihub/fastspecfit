@@ -2,10 +2,20 @@
 Change Log
 ==========
 
-2.5.2 (not released yet)
+2.6.0 (not released yet)
 ------------------------
 
-* Add support for processing a custom sample with full MPI [`PR #168`_]. 
+* 
+
+2.5.2 (2024-04-28)
+------------------
+
+* Add support for processing a custom sample with full MPI [`PR #168`_].
+* New optional inputs to ``mpi-fastspecfit``: ``--no-smooth-continuum``,
+  ``--fphotodir``, and ``--fphotofile``.
+* Documentation bug in ``LOGLNU`` definitions (reported by R. Hada).
+* Add ``--zmin`` optional argument to ``fastspecfit``.
+* Other miscellaneous changes committed directly to `main`.
 
 .. _`PR #168`: https://github.com/desihub/fastspecfit/pull/168
 
