@@ -380,7 +380,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         # Rebuild the best-fitting spectroscopic model; prefix "desi" means
         # "per-camera" and prefix "full" has the cameras h-stacked.
         fullwave = np.hstack(data['wave'])
-    
+        log10wave = np.arange(np.log10(np.min(fullwave)-EMFit.wavepad),
+                              np.log10(np.max(fullwave)+EMFit.wavepad),
+                              EMFit.dlog10wave)
+        
         desicontinuum, _ = CTools.templates2data(templatecache['templateflux_nolines'], templatecache['templatewave'],
                                                  redshift=redshift, dluminosity=dlum, synthphot=False,
                                                  specwave=data['wave'], specres=data['res'],
@@ -907,7 +910,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                             ampsnr = fastspec['{}_AMP'.format(thisline)] * np.sqrt(fastspec['{}_AMP_IVAR'.format(thisline)])
                             if ampsnr > emline_snrmin:
                                 emlinemodel_oneline1 = build_emline_model(
-                                    EMFit.dlog10wave, redshift,
+                                    log10wave, redshift,
                                     np.array([fastspec['{}_MODELAMP'.format(thisline)]]),
                                     np.array([fastspec['{}_VSHIFT'.format(thisline)]]),
                                     np.array([fastspec['{}_SIGMA'.format(thisline)]]),

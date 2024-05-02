@@ -34,58 +34,39 @@ def read_emlines(emlinesfile=None):
     
     return linetable    
 
+
 #import numba
 #@numba.jit(nopython=True)
-def build_emline_model(dlog10wave, redshift, lineamps, linevshifts, linesigmas, 
+def build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas, 
                        linewaves, emlinewave, resolution_matrix, camerapix=None,
                        debug=False):
     """Given parameters, build the model emission-line spectrum.
 
-    ToDo: can this be optimized using numba?
-
     """
     from fastspecfit.util import trapz_rebin
 
-    #log10model = np.zeros_like(log10wave) # [erg/s/cm2/A, observed frame]
-    log10wave = [] # initialize
+    npix = len(log10wave)
+    
+    I = np.where(linesigmas != 0)[0]
+    nline = len(I)
+    if nline == 0:
+        pdb.set_trace()
+        #if camerapix is None:
+        #    return 
+    
 
-    # Cut to lines with non-zero amplitudes.
-    #I = linesigmas > 0
-    I = lineamps > 0
-    if np.count_nonzero(I) > 0:
-        linevshifts = linevshifts[I]
-        linesigmas = linesigmas[I]
-        lineamps = lineamps[I]
-        linewaves = linewaves[I]
+    #line-width and redshifted wavelength
+    log10sigmas = linesigmas[I] / C_LIGHT / np.log(10)
+    linezwaves = np.log10(linewaves[I] * (1.0 + redshift + linevshifts[I] / C_LIGHT))
 
-        # demand at least 20 km/s for rendering the model
-        if np.any(linesigmas) < 20.:
-            linesigmas[linesigmas<20.] = 20.
+    # creates a 2D array with nline copies of log10wave
+    X = np.broadcast_to(log10wave, (nline, npix))
 
-        # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
-        log10sigmas = linesigmas / C_LIGHT / np.log(10) 
-        linezwaves = np.log10(linewaves * (1.0 + redshift + linevshifts / C_LIGHT))
+    # contributions of each peak at each point
+    Y = lineamps[I] * np.exp(-0.5 * (X.T - linezwaves)**2 / log10sigmas**2)
 
-        # Build the wavelength vector on-the-fly.
-        if camerapix is None:
-            minwave = emlinewave[0][0]-2.
-            maxwave = emlinewave[-1][-1]+2.
-        else:
-            minwave = emlinewave[0]-2.
-            maxwave = emlinewave[-1]+2.
-        
-        log10wave = []
-        for linezwave, log10sigma in zip(linezwaves, log10sigmas):
-            log10wave.append(np.arange(linezwave - (5 * log10sigma), linezwave + (5 * log10sigma), dlog10wave))
-        log10wave = np.hstack([np.log10(minwave), np.log10(maxwave), ] + log10wave)
-        S = np.argsort(log10wave)
-        log10wave = log10wave[S]
-        log10model = np.zeros_like(log10wave)
-        
-        for lineamp, linezwave, log10sigma in zip(lineamps, linezwaves, log10sigmas):
-            J = np.abs(log10wave - linezwave) < (5 * log10sigma)
-            #print(lineamp, 10**linezwave, 10**log10wave[J].min(), 10**log10wave[J].max())
-            log10model[J] += lineamp * np.exp(-0.5 * (log10wave[J]-linezwave)**2 / log10sigma**2)
+    # sum over peaks
+    log10model = np.sum(Y, axis=1)
 
     # Optionally split into cameras, resample, and convolve with the resolution
     # matrix.
@@ -112,8 +93,9 @@ def build_emline_model(dlog10wave, redshift, lineamps, linevshifts, linesigmas,
             emlinemodel.append(_emlinemodel)
         return np.hstack(emlinemodel)
 
-def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshift, 
-                        dlog10wave, resolution_matrix, camerapix, parameters, Ifree, 
+
+def _objective_function(free_parameters, emlinewave, emlineflux, weights, log10wave,
+                        redshift, resolution_matrix, camerapix, parameters, Ifree, 
                         Itied, tiedtoparam, tiedfactor, doubletindx, doubletpair, 
                         linewaves):
     """The parameters array should only contain free (not tied or fixed) parameters."""
@@ -142,16 +124,17 @@ def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshi
     lineamps[doubletindx] *= lineamps[doubletpair]
 
     # Build the emission-line model.
-    emlinemodel = build_emline_model(dlog10wave, redshift, lineamps, linevshifts, 
+    emlinemodel = build_emline_model(log10wave, redshift, lineamps, linevshifts, 
                                      linesigmas, linewaves, emlinewave, 
                                      resolution_matrix, camerapix)
 
     if weights is None:
-        residuals = emlinemodel - emlineflux
+        residuals = emlineflux - emlinemodel
     else:
-        residuals = weights * (emlinemodel - emlineflux)
+        residuals = weights * (emlineflux - emlinemodel)
 
     return residuals
+
 
 class EMFitTools(Filters):
     def __init__(self, fphoto=None, emlinesfile=None, uniqueid=None,
@@ -192,7 +175,7 @@ class EMFitTools(Filters):
 
         self.linetable = read_emlines(emlinesfile=emlinesfile)
 
-        self.emwave_pixkms = 5.                                   # pixel size for internal wavelength array [km/s]
+        self.emwave_pixkms = 5.                                     # pixel size for internal wavelength array [km/s]
         self.dlog10wave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
 
         # default line-sigma for computing upper limits
@@ -822,7 +805,7 @@ class EMFitTools(Filters):
 
         linemodel['value'] = linemodel['initial'] # copy
 
-    def optimize(self, linemodel, emlinewave, emlineflux, weights, redshift,
+    def optimize(self, linemodel, emlinewave, emlineflux, weights, log10wave, redshift,
                  resolution_matrix, camerapix, log=None, get_finalamp=False,
                  verbose=False, debug=False):
         """Wrapper to call the least-squares minimization given a linemodel.
@@ -840,9 +823,9 @@ class EMFitTools(Filters):
 
         parameters, (Ifree, Itied, tiedtoparam, tiedfactor, bounds, doubletindx, doubletpair, \
                      linewaves) = self._linemodel_to_parameters(linemodel, self.fit_linetable)
-        log.debug('Optimizing {} free parameters'.format(len(Ifree)))
+        log.debug(f'Optimizing {len(Ifree)} free parameters')
 
-        farg = (emlinewave, emlineflux, weights, redshift, self.dlog10wave, 
+        farg = (emlinewave, emlineflux, weights, log10wave, redshift, 
                 resolution_matrix, camerapix, parameters, ) + \
                 (Ifree, Itied, tiedtoparam, tiedfactor, doubletindx, 
                  doubletpair, linewaves)
@@ -1069,8 +1052,6 @@ class EMFitTools(Filters):
     def bestfit(self, linemodel, redshift, emlinewave, resolution_matrix, camerapix):
         """Construct the best-fitting emission-line spectrum from a linemodel."""
 
-        from fastspecfit.emlines import build_emline_model
-
         parameters, (Ifree, Itied, tiedtoparam, tiedfactor, bounds, doubletindx, \
                      doubletpair, linewaves) = self._linemodel_to_parameters(linemodel, self.fit_linetable)
 
@@ -1079,7 +1060,11 @@ class EMFitTools(Filters):
         # doublets
         lineamps[doubletindx] *= lineamps[doubletpair]
 
-        emlinemodel = build_emline_model(self.dlog10wave, redshift, lineamps, linevshifts, linesigmas,
+        log10wave = np.arange(np.log10(np.min(emlinewave)-self.wavepad),
+                              np.log10(np.max(emlinewave)+self.wavepad),
+                              self.dlog10wave)
+
+        emlinemodel = build_emline_model(log10wave, redshift, lineamps, linevshifts, linesigmas,
                                          linewaves, emlinewave, resolution_matrix, camerapix)
 
         return emlinemodel
@@ -1090,8 +1075,6 @@ class EMFitTools(Filters):
         from an fastspecfit table (used for QA and elsewhere).
 
         """
-        from fastspecfit.emlines import build_emline_model
-
         if redshift is None:
             redshift = fastspecfit_table['Z']
         
@@ -1113,15 +1096,25 @@ class EMFitTools(Filters):
         if snrcut is not None:
             lineamps_ivar = [fastspecfit_table[param.upper()+'_AMP_IVAR'] for param in self.linetable['name']]
             lineamps[lineamps * np.sqrt(lineamps_ivar) < snrcut] = 0.
-            
-        emlinemodel = build_emline_model(self.dlog10wave, redshift, lineamps, 
+
+        print('FRAGILE!')
+        if type(specwave) == list:
+            log10wave = np.arange(np.log10(np.min(specwave[0])-self.wavepad),
+                                  np.log10(np.max(specwave[-1])+self.wavepad),
+                                  self.dlog10wave)
+        else:
+            log10wave = np.arange(np.log10(np.min(specwave)-self.wavepad),
+                                  np.log10(np.max(specwave)+self.wavepad),
+                                  self.dlog10wave)
+    
+        emlinemodel = build_emline_model(log10wave, redshift, lineamps, 
                                          linevshifts, linesigmas, linewaves, 
                                          specwave, specres, None)
 
         return emlinemodel
 
     def populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
-                         emlineivar, oemlineivar, specflux_nolines, redshift,
+                         emlineivar, oemlineivar, specflux_nolines, log10wave, redshift, 
                          resolution_matrix, camerapix, log, nminpix=7, nsigma=3.):
         """Populate the output table with the emission-line measurements.
 
@@ -1253,8 +1246,8 @@ class EMFitTools(Filters):
                     if result['{}_MODELAMP'.format(linename)] > 0:
     
                         result['{}_CHI2'.format(linename)] = np.sum(emlineivar[lineindx] * (emlineflux[lineindx] - finalmodel[lineindx])**2)
-                        
-                        lineprofile = build_emline_model(self.dlog10wave, redshift,
+
+                        lineprofile = build_emline_model(log10wave, redshift,
                                                          np.array([result['{}_MODELAMP'.format(linename)]]),
                                                          np.array([result['{}_VSHIFT'.format(linename)]]),
                                                          np.array([result['{}_SIGMA'.format(linename)]]),
@@ -1488,7 +1481,6 @@ class EMFitTools(Filters):
         from PIL import Image, ImageDraw
 
         from fastspecfit.util import ivar2var
-        from fastspecfit.emlines import build_emline_model
         
         Image.MAX_IMAGE_PIXELS = None
 
@@ -1801,13 +1793,15 @@ class EMFitTools(Filters):
         desiemlines_oneline = []
         inrange = ( (self.linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
                     (self.linetable['restwave'] * (1+redshift) < np.max(fullwave)) )
+
+        log10wave = np.arange(np.log10(np.min(fullwave)), np.log10(np.max(fullwave)), self.dlog10wave)
          
         for oneline in self.linetable[inrange]: # for all lines in range
             linename = oneline['name'].upper()
             amp = fastspec['{}_AMP'.format(linename)]
             if amp != 0:
                 desiemlines_oneline1 = build_emline_model(
-                    self.dlog10wave, redshift, np.array([amp]),
+                    log10wave, redshift, np.array([amp]),
                     np.array([fastspec['{}_VSHIFT'.format(linename)]]),
                     np.array([fastspec['{}_SIGMA'.format(linename)]]),
                     np.array([oneline['restwave']]), data['wave'], data['res'])
@@ -2421,9 +2415,8 @@ class EMFitTools(Filters):
         plt.close()
 
 def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum,
-                   minsnr_balmer_broad=3., 
-                   fphoto=None, emlinesfile=None, synthphot=True, broadlinefit=True,
-                   percamera_models=False, log=None, verbose=False):
+                   minsnr_balmer_broad=3., fphoto=None, emlinesfile=None, synthphot=True,
+                   broadlinefit=True, percamera_models=False, log=None, verbose=False):
     """Perform the fit minimization / chi2 minimization.
 
     Parameters
@@ -2480,6 +2473,11 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
 
     weights = np.sqrt(emlineivar)
 
+    # oversampled model wavelength vector
+    log10wave = np.arange(np.log10(np.min(emlinewave)-EMFit.wavepad),
+                          np.log10(np.max(emlinewave)+EMFit.wavepad),
+                          EMFit.dlog10wave)
+
     # Build all the emission-line models for this object.
     linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(
         redshift, wavelims=(np.min(emlinewave)+5, np.max(emlinewave)-5),
@@ -2498,7 +2496,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
 
     # Initial fit - initial_linemodel_nobroad
     t0 = time.time()
-    fit_nobroad = EMFit.optimize(linemodel_nobroad, emlinewave, emlineflux, weights, redshift,
+    fit_nobroad = EMFit.optimize(linemodel_nobroad, emlinewave, emlineflux, weights, log10wave, redshift,
                                  resolution_matrix, camerapix, log=log, debug=False, get_finalamp=True)
     model_nobroad = EMFit.bestfit(fit_nobroad, redshift, emlinewave, resolution_matrix, camerapix)
     chi2_nobroad, ndof_nobroad, nfree_nobroad = EMFit.chi2(fit_nobroad, emlinewave, emlineflux, emlineivar, model_nobroad, return_dof=True)
@@ -2528,7 +2526,7 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
                         
         if len(balmer_pix) > 0:
             t0 = time.time()
-            fit_broad = EMFit.optimize(linemodel_broad, emlinewave, emlineflux, weights, 
+            fit_broad = EMFit.optimize(linemodel_broad, emlinewave, emlineflux, weights, log10wave,
                                        redshift, resolution_matrix, camerapix, log=log,
                                        debug=False, get_finalamp=True)
             model_broad = EMFit.bestfit(fit_broad, redshift, emlinewave, resolution_matrix, camerapix)
@@ -2612,8 +2610,8 @@ def emline_specfit(data, templatecache, result, continuummodel, smooth_continuum
 
     # Now fill the output table.
     EMFit.populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
-                           emlineivar, oemlineivar, specflux_nolines, redshift,
-                           resolution_matrix, camerapix, log)
+                           emlineivar, oemlineivar, specflux_nolines, log10wave,
+                           redshift, resolution_matrix, camerapix, log)
 
     # Build the model spectra.
     emmodel = np.hstack(EMFit.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
