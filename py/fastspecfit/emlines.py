@@ -305,11 +305,12 @@ class EMFitTools(Filters):
                     for param in ['amp', 'vshift', 'sigma']:
                         param_name = linename+'_'+param
                         I = np.where(linemodel['param_name'] == param_name)[0]
-                        if I in utied:
-                            if verbose:
-                                print('Not fixing out-of-range parameter {}'.format(param_name))
-                        else:
-                            linemodel['fixed'][I] |= True
+                        if len(I) > 0:
+                            if I in utied:
+                                if verbose:
+                                    print('Not fixing out-of-range parameter {}'.format(param_name))
+                            else:
+                                linemodel['fixed'][I] |= True
                 if verbose:
                     print('Number of fixed parameters = {}'.format(np.sum(linemodel['fixed'])))
                     print('Number of free parameters = {}'.format(np.sum(np.logical_and(linemodel['fixed'] == False, linemodel['tiedtoparam'] == -1))))
