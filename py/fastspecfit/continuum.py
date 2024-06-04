@@ -223,8 +223,9 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
     else:
         #smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
         #smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
-        srt = np.argsort(smooth_wave)
-        bspl_flux = make_interp_spline(smooth_wave[srt], smooth_flux[srt], k=1)
+        _, uindx = np.unique(smooth_wave, return_index=True)
+        srt = np.argsort(smooth_wave[uindx])
+        bspl_flux = make_interp_spline(smooth_wave[uindx][srt], smooth_flux[uindx][srt], k=1)
         smooth_flux = bspl_flux(wave)
 
         # check for extrapolation
