@@ -1295,7 +1295,7 @@ def fastqa(args=None, comm=None):
         I = np.array([not os.path.isfile(_pngfile) for _pngfile in pngfile])
         J = ~I
         if np.sum(J) > 0:
-            log.info('Skipping {} existing QA files.'.format(np.sum(J)))
+            log.info(f'Skipping {np.sum(J)} existing QA files.')
             fastfit = fastfit[I]
             metadata = metadata[I]
 
@@ -1303,13 +1303,17 @@ def fastqa(args=None, comm=None):
             log.info('Done making all QA files!')
             return
 
-    log.info('Building QA for {} objects.'.format(len(metadata)))
+    log.info(f'Building QA for {len(metadata)} objects.')
 
     # Initialize the I/O class.
     Spec = DESISpectra(stackfit=args.stackfit, redux_dir=args.redux_dir, fphotodir=args.fphotodir, 
                        fphotofile=args.fphotofile, mapdir=args.mapdir)
 
-    templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
+    if args.templates is None:
+        from fastspecfit.io import get_templates_filename
+        templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
+    else:
+        templates = args.templates
 
     def _wrap_qa(redrockfile, indx=None, stackfit=False):
         if indx is None:
