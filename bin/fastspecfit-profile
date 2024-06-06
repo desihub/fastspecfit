@@ -1,0 +1,22 @@
+#!/usr/bin/env python
+
+"""Profile different parts of the code.
+
+python -m cProfile -o f-io.prof ~/code/desihub/fastspecfit/bin/fastspecfit-profile
+
+"""
+import os, time
+from fastspecfit.io import DESISpectra#, write_fastspecfit, init_fastspec_output
+
+if True:
+    specprod, coadd_type = 'iron', 'healpix'
+    survey, program, healpix = 'sv1', 'bright', 5060
+        
+    redrockfile = os.path.join(os.getenv('DESI_ROOT'), 'spectro', 'redux', specprod, coadd_type, survey, program,
+                               str(healpix//100), str(healpix), f'redrock-{survey}-{program}-{healpix}.fits')
+    
+    t0 = time.time()
+    Spec = DESISpectra()
+    Spec.select(redrockfile)#, ntargets=100)
+    data = Spec.read_and_unpack()
+    print(f'Reading and unpacking {Spec.ntargets} spectra to be fitted took {time.time()-t0:.2f} seconds.')
