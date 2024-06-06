@@ -206,6 +206,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                     specdata['wave'].append(specdata['wave0'][icam])
                     specdata['mask'].append(specdata['mask0'][icam])
                     specdata['res'].append(specdata['res0'][icam])
+                    specdata['res_fast'].append(specdata['res_fast0'][icam])
                     
         if len(cameras) == 0:
             errmsg = 'No good data, which should never happen.'
@@ -213,7 +214,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
             raise ValueError(errmsg)
 
         # clean up the data dictionary
-        for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0']:
+        for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0', 'res_fast0']:
             del specdata[key]
 
         # Pre-compute some convenience variables for "un-hstacking"

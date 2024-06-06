@@ -64,7 +64,6 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                                                          fastphot=fastphot, debug_plots=debug_plots,
                                                          log=log)
 
-    pdb.set_trace()
     # Optionally fit the emission-line spectrum.
     if fastphot:
         emmodel = None
