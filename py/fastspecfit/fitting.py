@@ -41,37 +41,31 @@ class ParamsMapping(object):
 
         self._precomputeJacobian()
 
-        
 
     # return Boolean mask with "True" for each fixed parameter
     def fixedMask(self):
         return self.isFixed
 
     
-    #
-    # mapFreeToFull()
-    # Given a vector of free parameters, return the corresponding
-    # list of full parameters, accounting for fixed, tied, and
-    # doublet features.
-    #
     def mapFreeToFull(self, freeParms):
+        """Given a vector of free parameters, return the corresponding list of full
+        parameters, accounting for fixed, tied, and # doublet features.
 
+        """
         return self._mapFreeToFull(freeParms,
                                    self.nParms,
                                    self.sources,
                                    self.factors,
                                    self.doubletPatches)
 
-    #
-    # _mapFreeToFull()
-    # Given a vector of free parameters, return the corresponding
-    # list of full parameters, accounting for fixed, tied, and
-    # doublet features.
-    #
+
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True)
     def _mapFreeToFull(freeParms, nParms, sources, factors, doubletPatches):
-        
+        """Given a vector of free parameters, return the corresponding list of full
+        parameters, accounting for fixed, tied, and doublet features.
+
+        """
         for j, src_j_free in doubletPatches:
             factors[j] = freeParms[src_j_free]
 
@@ -83,29 +77,27 @@ class ParamsMapping(object):
                 fullParms[j] *= freeParms[src_j_free]
         
         return fullParms
-        
-    
-    #
-    # getJacobian()
-    # Given a vector v of free parameters, return the Jacobian
-    # of the transformation from free to full at v.  The Jacobian
-    # is a sparse matrix represented as an array of nonzero entries
-    # (jacElts) and their values (jacFactors)
-    #
+
+
     def getJacobian(self, freeParms):
+        """Given a vector v of free parameters, return the Jacobian of the
+        transformation from free to full at v. The Jacobian is a sparse matrix
+        represented as an array of nonzero entries (jacElts) and their values
+        (jacFactors).
+
+        """
         for j, src_j_free in self.jacDoubletPatches:
             self.jacFactors[j] = freeParms[src_j_free]
 
         return ((self.nParms, self.nFreeParms), self.jacElts, self.jacFactors)
     
 
-    #
-    # Multiply parameter Jacobian J_S * v, writing result to w.
-    #
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True)
     def _matvec(J_S, v, w):
+        """Multiply parameter Jacobian J_S * v, writing result to w.
 
+        """
         shape, elts, factors = J_S
         
         for j in range(shape[0]): # total params
@@ -113,34 +105,28 @@ class ParamsMapping(object):
         
         for i, (dst, src) in enumerate(elts):
             w[dst] += factors[i] * v[src]
+
             
-
-
-    #
-    # Multiply parameter Jacobian v * J_S^T, *adding* result to w.
-    #
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True)
     def _add_rmatvec(J_S, v, w):
+        """Multiply parameter Jacobian v * J_S^T, *adding* result to w.
 
+        """
         _, elts, factors = J_S
         
         for i, (dst, src) in enumerate(elts):
             w[src] += factors[i] * v[dst]
 
     
-    ###########################################################
-    
-    #
-    # Precompute all the transformations from free parameters
-    # to full parameters that do not require knowledge of the
-    # free parameter values.
-    #
     def _precomputeMapping(self, fixedParameters, freeParms,
                            tiedParms, tiedSources, tiedFactors,
                            doubletRatios, doubletSources,
                            p):
-        
+        """Precompute all the transformations from free parameters to full parameters
+        that do not require knowledge of the free parameter values.
+
+        """
         # by default, assume parameters are fixed and that
         # they take on the values in fixedParameters
         sources = np.full(self.nParms, -1, dtype=np.int32)
@@ -184,24 +170,22 @@ class ParamsMapping(object):
         self.isFixed = (self.sources == -1)
 
         
-    #
-    # Precompute as much of the Jacobian of the transformation
-    # from free parameters to full parameters as does not require
-    # knowledge of the free parameter values.  We rely on the
-    # precomputation for the mapping to avoid recalculating all
-    # the source/factor information.
-    #
     def _precomputeJacobian(self):
-        
+        """Precompute as much of the Jacobian of the transformation from free
+        parameters to full parameters as does not require knowledge of the free
+        parameter values.  We rely on the precomputation for the mapping to
+        avoid recalculating all the source/factor information.
+
+        """
         isLive  = np.logical_not(self.isFixed)
         liveIdx = np.where(isLive)[0]
         nLive = len(liveIdx)
         
-        # jacElts compresses the source/factor arrays to a sparse array
-        # of coefficients for just the live (non-fixed)
-        # parameters, plus second coeffs for each ratio param of a
-        # doublet pair.  We need not create entries for fixed parametesr
-        # because their derivatives w/r to the free parameters are zero.
+        # jacElts compresses the source/factor arrays to a sparse array of
+        # coefficients for just the live (non-fixed) parameters, plus second
+        # coeffs for each ratio param of a doublet pair.  We need not create
+        # entries for fixed parametesr because their derivatives w/r to the free
+        # parameters are zero.
         nDoublets = len(self.doubletPatches)
         nElts = nLive + nDoublets
         jacElts = np.empty((nElts,2), dtype=np.int32)
@@ -212,7 +196,7 @@ class ParamsMapping(object):
         jacFactors[:nLive] = self.factors[liveIdx]  # makes a copy
         
         # Create doublet patches for Jacobian w/r to compressed array,
-        # and record new patch locations
+        # and record new patch locations.
         
         # offsets of orig parms in live array
         liveOffsets = np.cumsum(isLive) - isLive
@@ -247,15 +231,20 @@ class ResMatrix(object):
 
       M[i,j] = A[i, j - (i - diag//2)]
 
+    Written by Jeremy Buhler (https://github.com/jdbuhler) - June 2024.
+    
     """
     def __init__(self, D):
         self.data = self._from_dia_matrix(D)
 
+
     def ndiag(self):
         return self.data.shape[1]
+
     
     def matvec(self, v, w):
         self._matvec(self.data, v, w)
+
         
     # for compatibility
     def dot(self, v):
@@ -263,19 +252,22 @@ class ResMatrix(object):
         self.matvec(v, w)
         return w
 
-    # _from_dia_matrix()
-    # Convert a diagonally sparse matrix M in the form
-    # stored by DESI into a sparse row rerpesentation.
-    #
-    # Input M is represented as a 2D array D of size ndiag x nrow,
-    # whose rows are M's diagonals:
-    #            M[i,j] = D[ndiag//2 - (j - i), j]
-    # ndiag is assumed to be odd, and entries in D that would be
-    # outside the bounds of M are ignored.
 
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True)
     def _from_dia_matrix(D):
+        """Convert a diagonally sparse matrix M in the form stored by DESI into a
+        sparse row rerpesentation.
+    
+        Input M is represented as a 2D array D of size ndiag x nrow, whose rows
+        are M's diagonals:
+        
+                   M[i,j] = D[ndiag//2 - (j - i), j]
+        
+        ndiag is assumed to be odd, and entries in D that would be outside the
+        bounds of M are ignored.
+
+        """
         ndiag, nrow = D.shape
         hdiag = ndiag//2
 
@@ -290,19 +282,17 @@ class ResMatrix(object):
                 A[i, j - i + hdiag] = D[hdiag + i - j, j]
                 
         return A
+
     
-    #
-    # _matvec()
-    # Compute the matrix-vector product M * v, where
-    # M is a row-sparse matrix with a limited
-    # number of diagonals created by
-    # dia_to_row_matrix().
-    #
-    # w is an output parameter
-    #
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True)
     def _matvec(M, v, w):
+        """Compute the matrix-vector product M * v, where M is a row-sparse matrix
+        with a limited number of diagonals created by dia_to_row_matrix().
+
+        w is an output parameter
+
+        """
         nrow, ndiag = M.shape
         hdiag = ndiag//2
         
@@ -317,41 +307,36 @@ class ResMatrix(object):
             w[i] = acc
 
 
-#################################################################
-
-#
-# Sparse Jacobian of objective function.  For
-# each camera's pixel range, the Jacobian
-# is a matrix product
-#
-#    W * M * J_I * J_S
-#
-# where
-#  J_S is the Jacobian of the parameter expansion
-#  J_I is the ideal Jacobian
-#  M is the camera's resolution matrix
-#  w is a diagonal matrix of per-observation weights
-#
-# Note that we precompute W*M*J_I for each camera 
-# with the external mulWMJ() function.  This product
-# has one contiguous run of nonzero entries per column,
-# while J_S has either one or two nonzero entries
-# per row.
-#
 class EMLineJacobian(LinearOperator):
+    """Sparse Jacobian of objective function.  For each camera's pixel range, the
+    Jacobian is a matrix product.
     
-    #
-    # CONSTRUCTOR ARGS:
-    #   shape of Jacobian
-    #   number of parameters in full set
-    #   array of start and end obs bin indices
-    #     for each camera
-    #   partial Jacobian jac = (W * M  J_I)
-    #     for each camera
-    #   parameter expansion Jacobian J_S
-    #
+       W * M * J_I * J_S
+    
+    where
+     J_S is the Jacobian of the parameter expansion
+     J_I is the ideal Jacobian
+     M is the camera's resolution matrix
+     w is a diagonal matrix of per-observation weights
+    
+    Note that we precompute W*M*J_I for each camera with the external
+    mulWMJ() function.  This product has one contiguous run of nonzero
+    entries per column, while J_S has either one or two nonzero entries per
+    row.
+
+    CONSTRUCTOR ARGS:
+      shape of Jacobian
+      number of parameters in full set
+      array of start and end obs bin indices
+        for each camera
+      partial Jacobian jac = (W * M  J_I)
+        for each camera
+      parameter expansion Jacobian J_S
+
+    Written by Jeremy Buhler (https://github.com/jdbuhler) - June 2024.
+
+    """
     def __init__(self, shape, nParms, camerapix, jacs, J_S):
-        
         self.camerapix = camerapix
         self.jacs      = tuple(jacs)
         self.J_S       = J_S
@@ -363,12 +348,12 @@ class EMLineJacobian(LinearOperator):
         super().__init__(dtype, shape)
 
 
-    #
-    # Compute left matrix-vector product J * v
-    # |v| = number of free parameters
-    #
     def _matvec(self, v):
-        
+        """Compute left matrix-vector product J * v
+
+        |v| = number of free parameters
+
+        """
         nBins = self.shape[0]
         w = np.empty(nBins, dtype=v.dtype)
         
@@ -384,13 +369,13 @@ class EMLineJacobian(LinearOperator):
         return w
 
 
-    #
-    # Compute left matrix-matrix product J * M
-    # We do this just to avoid needing to ravel
-    # v in the more commonly used _matvec()
-    #
     def _matmat(self, M):
+        """Compute left matrix-matrix product J * M.
 
+        We do this just to avoid needing to ravel v in the more commonly used
+        _matvec().
+
+        """
         nBins = self.shape[0]
         nVecs = M.shape[1]
         R = np.empty((nVecs, nBins), dtype=M.dtype) # transpose of result
@@ -410,12 +395,13 @@ class EMLineJacobian(LinearOperator):
         return R.T
     
         
-    #
-    # Compute right matrix product product v * J^T
-    # |v| = number of observable bins
-    #
     def _rmatvec(self, v):
 
+        """Compute right matrix product product v * J^T
+
+        |v| = number of observable bins
+
+        """
         nFreeParms = self.shape[1]
         w = np.zeros(nFreeParms, dtype=v.dtype)
         
@@ -430,13 +416,13 @@ class EMLineJacobian(LinearOperator):
             
         return w
 
-    #
-    # Multiply ideal Jacobian J * v, writing result to w.
-    #
+
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True)
     def _matvec_J(J, v, w):
-    
+        """Multiply ideal Jacobian J * v, writing result to w.
+
+        """
         endpts, values = J
         nvars = endpts.shape[0]
         nbins = len(w)
@@ -450,14 +436,14 @@ class EMLineJacobian(LinearOperator):
             
             for j in range(e - s):
                 w[j + s] += vals[j] * v[i]  
-    
-    #
-    # Multiply ideal Jacobian v * J^T, writing result to w.
-    #
+
+                
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True)
     def _rmatvec_J(J, v, w):
-    
+        """Multiply ideal Jacobian v * J^T, writing result to w.
+
+        """
         endpts, values = J
         nvars = endpts.shape[0]
     

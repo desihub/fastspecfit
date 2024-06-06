@@ -41,6 +41,7 @@ def read_emlines(emlinesfile=None):
     
     return linetable    
 
+
 @jit(nopython=True, fastmath=False, nogil=True)
 def norm_pdf(a):
     """PDF of standard normal distribution at a point a.
@@ -49,6 +50,7 @@ def norm_pdf(a):
     SQRT_2PI = np.sqrt(2 * np.pi)
     
     return 1/SQRT_2PI * np.exp(-0.5 * a**2)
+
 
 @jit(nopython=True, fastmath=False, nogil=True)
 def norm_cdf(a):
@@ -85,15 +87,16 @@ def max_buffer_width(log_obs_bin_edges, line_sigmas, padding=0):
     to allow future expansion to left and right.
 
     """
-    # Find the largest width sigma for any line, and
-    # allocate enough space for twice that much width
-    # in bins, given the smallest observed bin width.
-    # Add padding and a little fudge factor to be safe.
+
+    # Find the largest width sigma for any line, and allocate enough space for
+    # twice that much width in bins, given the smallest observed bin width.  Add
+    # padding and a little fudge factor to be safe.
     max_width = \
         int(2*MAX_SDEV*np.max(line_sigmas/C_LIGHT) / \
             np.min(np.diff(log_obs_bin_edges))) + \
             2*padding + 4
     return max_width
+
 
 def objective(free_parameters,
               bin_data,
@@ -168,23 +171,22 @@ def emline_model(line_wavelengths,
       vector of average fluxes in each observed wavelength bin
 
     """
-    # temporary buffer for per-line calculations, sized large
-    # enough for whatever we may need to compute ( [s..e) )
+    # Temporary buffer for per-line calculations, sized large enough for
+    # whatever we may need to compute ( [s..e) ).
     max_width = max_buffer_width(log_obs_bin_edges, line_sigmas)
     bin_vals = np.empty(max_width, dtype=line_amplitudes.dtype)
     
     # output per-bin fluxes
-    # entry i corresponds bin i-1
-    # entry 0 is a dummy in case s == -1
-    # last entry is a dummy in case e == nbins + 1
+    #   entry i corresponds bin i-1
+    #   entry 0 is a dummy in case s == -1
+    #   last entry is a dummy in case e == nbins + 1
     nbins = len(log_obs_bin_edges) - 1
     model_fluxes = np.zeros(nbins + 2, dtype=line_amplitudes.dtype)
     
-    # compute total area of all Gaussians inside each bin.
-    # For each Gaussian, we only compute area contributions
-    # for bins where it is non-negligible.
+    # Compute total area of all Gaussians inside each bin.  For each Gaussian,
+    # we only compute area contributions for bins where it is non-negligible.
     for j in range(len(line_wavelengths)):
-        
+
         if line_amplitudes[j] == 0.:
             continue
         
@@ -197,13 +199,12 @@ def emline_model(line_wavelengths,
                                  ibin_widths,
                                  bin_vals)
         
-        # add bin avgs for this peak to bins [s, e)
-        # (fluxes are offset by 1 to allow for s == -1
-        # and extended to allow for e = nbins + 1;
-        # these bin values may be ignored)
+        # Add bin avgs for this peak to bins [s, e). Fluxes are offset by 1 to
+        # allow for s == -1 and extended to allow for e = nbins + 1; these bin
+        # values may be ignored.
         model_fluxes[s+1:e+1] += bin_vals[:e-s]
         
-    # trim off left and right dummy values before returning
+    # Trim off left and right dummy values before returning.
     return model_fluxes[1:-1]
 
 
@@ -311,7 +312,7 @@ def build_model(redshift,
     """
     log_obs_bin_edges, ibin_widths = prepare_bins(obs_bin_centers, camerapix)
 
-    # below here is common code with objective()
+    # Below here is common code with objective().
     model_fluxes = np.empty_like(obs_bin_centers, dtype=obs_bin_centers.dtype)
     
     for icam, campix in enumerate(camerapix):
@@ -319,9 +320,8 @@ def build_model(redshift,
         # start and end for obs fluxes of camera icam
         s, e = campix
         
-        # Actual bin widths are in ibw[1..e-s].
-        # Setup guarantees that ibw[0] and
-        # ibw[e-s+1] are dummy values
+        # Actual bin widths are in ibw[1..e-s].  Setup guarantees that ibw[0]
+        # and ibw[e-s+1] are dummy values.
         ibw = ibin_widths[s:e+2]
         
         mf = emline_model(line_wavelengths,
@@ -330,8 +330,8 @@ def build_model(redshift,
                           redshift,
                           ibw)
         
-        # convolve model with resolution matrix and store in
-        # this camera's subrange of model_fluxes
+        # Convolve model with resolution matrix and store in this camera's
+        # subrange of model_fluxes.
         resolution_matrices[icam].matvec(mf, model_fluxes[s:e])
         
     return model_fluxes
@@ -373,12 +373,11 @@ def find_peak_amplitudes(parameters,
         # start and end for obs fluxes of camera icam
         s, e = campix
         
-        # Actual bin widths are in ibw[1..e-s].
-        # Setup guarantees that ibw[0] and
+        # Actual bin widths are in ibw[1..e-s]. Setup guarantees that ibw[0] and
         # ibw[e-s+1] are not out of bounds.
         ibw = ibin_widths[s:e+1]
 
-        # compute model waveform for each spectral line
+        # Compute model waveform for each spectral line.
         line_models = emline_perline_models(line_wavelengths,
                                             lineamps, linevshifts, linesigmas,
                                             log_obs_bin_edges[s+icam:e+icam+1],
@@ -386,14 +385,13 @@ def find_peak_amplitudes(parameters,
                                             ibw,
                                             resolution_matrices[icam].ndiag())
         
-        # convolve each line's waveform with resolution matrix
+        # Convolve each line's waveform with resolution matrix.
         line_models = mulWMJ(np.ones(e - s),
                              resolution_matrices[icam].data,
                              line_models)
         
-        # find highest flux for each line; if it's
-        # bigger than any seen for that line so far,
-        # update the line's global max
+        # Find highest flux for each line; if it's bigger than any seen for that
+        # line so far, update the line's global max.
         update_line_maxima(max_amps, line_models)
         
     return max_amps
@@ -408,13 +406,12 @@ def update_line_maxima(max_amps, line_models):
     """
     endpts, vals = line_models
     
-    # find the highest flux for each peak; if it's
-    # bigger than any seen so far, update global max
+    # Find the highest flux for each peak; if it's bigger than any seen so far,
+    # update global max.
     for i in range(vals.shape[0]):
         ps, pe = endpts[i]
         if pe > ps:
-            max_amps[i] = np.maximum(max_amps[i],
-                                    np.max(vals[i,:pe-ps]))
+            max_amps[i] = np.maximum(max_amps[i], np.max(vals[i,:pe-ps]))
             
 
 @jit(nopython=True, fastmath=False, nogil=True)
@@ -434,17 +431,16 @@ def emline_perline_models(line_wavelengths,
     """
     nbins = len(log_obs_bin_edges) - 1
     
-    # buffers for per-line calculations, sized large
-    # enough for max possible range [s .. e)
+    # Buffers for per-line calculations, sized large enough for max possible
+    # range [s .. e).
     max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, padding)
     
     nlines = len(line_wavelengths)
     line_profiles = np.empty((nlines, max_width), dtype=line_amplitudes.dtype)
     endpts        = np.zeros((nlines, 2), dtype=np.int32)
     
-    # compute total area of all Gaussians inside each bin.
-    # For each Gaussian, we only compute area contributions
-    # for bins where it is non-negligible.
+    # Compute total area of all Gaussians inside each bin.  For each Gaussian,
+    # we only compute area contributions for bins where it is non-negligible.
     for j in range(nlines):
 
         if line_amplitudes[j] == 0.:
@@ -462,8 +458,8 @@ def emline_perline_models(line_wavelengths,
                                  bin_vals)
         
         if s == -1: 
-            # bin s is before start of requested bins,
-            # and its true left endpt value is unknown
+            # Bin s is before start of requested bins, and its true left endpt
+            # value is unknown.
             s = 0
             
             # discard bin lo - 1 in bin_vals
@@ -510,9 +506,8 @@ def jacobian(free_parameters,
     for icam, campix in enumerate(camerapix):
         s, e = campix
 
-        # Actual bin widths are in ibw[1..e-s].
-        # Setup guarantees that ibw[0] and
-        # ibw[e-s+1] are not out of bounds.
+        # Actual bin widths are in ibw[1..e-s].  Setup guarantees that ibw[0]
+        # and ibw[e-s+1] are not out of bounds.
         ibw = ibin_widths[s:e+1]
 
         idealJac = \
@@ -523,7 +518,7 @@ def jacobian(free_parameters,
                                   line_wavelengths,
                                   resolution_matrices[icam].ndiag())
         
-        # ignore any columns corresponding to fixed parameters
+        # Ignore any columns corresponding to fixed parameters.
         endpts = idealJac[0]
         endpts[params_mapping.fixedMask(), :] = (0,0)
         
@@ -561,8 +556,8 @@ def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
 
     nbins = len(log_obs_bin_edges) - 1
 
-    # buffers for per-parameter calculations, sized large
-    # enough for line's max possible range [s .. e)
+    # Buffers for per-parameter calculations, sized large enough for line's max
+    # possible range [s .. e).
     max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, padding)
     
     nlines = len(line_wavelengths)
@@ -572,9 +567,9 @@ def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
     starts = endpts[:,0]
     ends   = endpts[:,1]
     
-    # compute partial derivatives for avg values of all Gaussians
-    # inside each bin. For each Gaussian, we only compute
-    # contributions for bins where it is non-negligible.
+    # Compute partial derivatives for avg values of all Gaussians inside each
+    # bin. For each Gaussian, we only compute contributions for bins where it is
+    # non-negligible.
     for j in range(len(line_wavelengths)):
         
         # line width
@@ -686,15 +681,18 @@ def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
     return (all_endpts, dd)    
 
 
-# horizontally tile a 2D array n times
-# replaces np.tile, which is not supported by Numba,
 @jit(nopython=True, fastmath=False, nogil=True)
 def tile_2d(a, n):
+    """Horizontally tile a 2D array n times # replaces np.tile, which is supported
+    by Numba.
+
+    """
     sz = a.shape[0]
     r = np.empty((n * sz, a.shape[1]), dtype=a.dtype)
     for i in range(n):
         r[i*sz:(i+1)*sz,:] = a
     return r
+
 
 @jit(nopython=True, fastmath=False, nogil=True)
 def mulWMJ(w, M, jac):
@@ -869,14 +867,7 @@ def _drop_params(parameters, emfit, linemodel, Ifree, log):
         log.debug(f'  Dropping {len(Idrop)} unique parameters.')
         parameters[Idrop] = 0.0
 
-    # Now loop back through and drop Broad balmer lines that:
-    #   (1) are narrower than their narrow-line counterparts;
-    #   (2) have a narrow line whose amplitude is smaller than that of the broad line
-    #      --> Deprecated! main-dark-32303-39628176678192981 is an example
-    #          of an object where there's a broad H-alpha line but no other
-    #          forbidden lines!
 
-    
 def emfit_bestfit(emfit, linemodel, redshift, emlinewave, resolution_matrix, camerapix, fast=False):
     """Construct the best-fitting emission-line spectrum from a linemodel."""
     
@@ -962,13 +953,13 @@ def optimize(emfit, linemodel,
                 log.critical(errmsg)
                 raise RuntimeError(errmsg)
 
-    # drop (zero out) any dubious free parameters
+    # Drop (zero out) any dubious free parameters.
     _drop_params(parameters, emfit, linemodel, Ifree, log)
     
-    # at this point, parameters contains correct *free* and *fixed* values,
-    # but we need to update *tied* values to reflect any changes to free
-    # params.  We do *not* apply doublet rules, as other code expects
-    # us to return a params array with doublet ratios as ratios, not amplitudes.
+    # At this point, parameters contains correct *free* and *fixed* values, but
+    # we need to update *tied* values to reflect any changes to free params.  We
+    # do *not* apply doublet rules, as other code expects us to return a params
+    # array with doublet ratios as ratios, not amplitudes.
     for I, indx, factor in zip(Itied, tiedtoparam, tiedfactor):
         parameters[I] = parameters[indx] * factor
     
