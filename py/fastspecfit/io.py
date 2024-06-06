@@ -160,16 +160,24 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
     if not fastphot:
         from desiutil.dust import dust_transmission
     
-        specdata.update({'linemask': [], 'linemask_all': [], 'linename': [],
-                         'linepix': [], 'contpix': [],
-                         'wave': [], 'flux': [], 'ivar': [], 'mask': [], 'res': [], 
+        specdata.update({'linemask': [], 
+                         'linemask_all': [], 
+                         'linename': [],
+                         'linepix': [], 
+                         'contpix': [],
+                         'wave': [], 
+                         'flux': [], 
+                         'ivar': [], 
+                         'mask': [],
+                         'res': [], 
+                         'res_fast': [], 
                          'snr': np.zeros(3, 'f4')})
     
         cameras, npixpercamera = [], []
         for icam, camera in enumerate(specdata['cameras']):
             # Check whether the camera is fully masked.
             if np.sum(specdata['ivar0'][icam]) == 0:
-                log.warning('Dropping fully masked camera {}.'.format(camera))
+                log.warning(f'Dropping fully masked camera {camera}.')
             else:
                 ivar = specdata['ivar0'][icam]
                 mask = specdata['mask0'][icam]
@@ -370,7 +378,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
     specdata['camerapix'] = npixpercam.reshape(ncam, 2)
 
     # clean up the data dictionary
-    for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0']:
+    for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0', 'res_fast0']:
         del specdata[key]
 
     # coadded spectrum
@@ -1124,6 +1132,7 @@ class DESISpectra(TabulatedDESI):
                                        True, False, ignore_photometry, log))
             else:
                 from desispec.resolution import Resolution
+                from fastspecfit.fitting import ResMatrix
 
                 # Don't use .select since meta and spec can be sorted
                 # differently if a non-sorted targetids was passed. Do the
@@ -1153,6 +1162,7 @@ class DESISpectra(TabulatedDESI):
                         # Also track the mask---see https://github.com/desihub/desispec/issues/1389 
                         'mask0': [spec.mask[cam][iobj, :] for cam in cameras],
                         'res0': [Resolution(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
+                        'res_fast0': [ResMatrix(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
                         'coadd_wave': coadd_spec.wave[coadd_cameras],
                         'coadd_flux': coadd_spec.flux[coadd_cameras][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
