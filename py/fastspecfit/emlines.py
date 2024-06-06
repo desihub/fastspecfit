@@ -3468,13 +3468,11 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     t0 = time.time()
     fit_nobroad = optimize(EMFit, linemodel_nobroad, emlinewave, emlineflux, weights, redshift,
                            resolution_matrix, camerapix, log=log, debug=False, get_finalamp=True)
-    model_nobroad = bestfit(fit_nobroad, redshift, emlinewave, resolution_matrix, camerapix)
+    model_nobroad = emfit_bestfit(EMFit, fit_nobroad, redshift, emlinewave, resolution_matrix, camerapix)
     chi2_nobroad, ndof_nobroad, nfree_nobroad = EMFit.chi2(fit_nobroad, emlinewave, emlineflux, emlineivar, model_nobroad, return_dof=True)
-    log.info('Line-fitting with no broad lines and {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
+    log.info('Line-fitting with no broad lines and {} free parameters took {:.4f} seconds [niter={}, rchi2={:.4f}].'.format(
         nfree_nobroad, time.time()-t0, fit_nobroad.meta['nfev'], chi2_nobroad))
     
-    pdb.set_trace()
-
     # Now try adding broad Balmer and helium lines and see if we improve the
     # chi2.
     if broadlinefit:
@@ -3498,12 +3496,16 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                         
         if len(balmer_pix) > 0:
             t0 = time.time()
-            fit_broad = EMFit.optimize(linemodel_broad, emlinewave, emlineflux, weights, 
-                                       redshift, resolution_matrix, camerapix, log=log,
-                                       debug=False, get_finalamp=True)
-            model_broad = EMFit.bestfit(fit_broad, redshift, emlinewave, resolution_matrix, camerapix)
+            fit_broad = optimize(EMFit, linemodel_broad, emlinewave, emlineflux, weights, 
+                                 redshift, resolution_matrix, camerapix, log=log,
+                                 debug=False, get_finalamp=True)
+            model_broad = emfit_bestfit(EMFit, fit_broad, redshift, emlinewave, resolution_matrix, camerapix)
+            #fit_broad = EMFit.optimize(linemodel_broad, emlinewave, emlineflux, weights, 
+            #                           redshift, resolution_matrix, camerapix, log=log,
+            #                           debug=False, get_finalamp=True)
+            #model_broad = EMFit.bestfit(fit_broad, redshift, emlinewave, resolution_matrix, camerapix)
             chi2_broad, ndof_broad, nfree_broad = EMFit.chi2(fit_broad, emlinewave, emlineflux, emlineivar, model_broad, return_dof=True)
-            log.info('Line-fitting with broad lines and {} free parameters took {:.2f} seconds [niter={}, rchi2={:.4f}].'.format(
+            log.info('Line-fitting with broad lines and {} free parameters took {:.4f} seconds [niter={}, rchi2={:.4f}].'.format(
                 nfree_broad, time.time()-t0, fit_broad.meta['nfev'], chi2_broad))
 
             # compute delta-chi2 around just the Balmer lines
