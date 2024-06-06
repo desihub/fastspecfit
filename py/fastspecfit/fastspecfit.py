@@ -64,12 +64,14 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                                                          fastphot=fastphot, debug_plots=debug_plots,
                                                          log=log)
 
+    pdb.set_trace()
     # Optionally fit the emission-line spectrum.
     if fastphot:
         emmodel = None
     else:
-        emmodel = emline_specfit(data, templatecache, out, continuummodel, smooth_continuum,
-                                 fphoto=fphoto, emlinesfile=emlinesfile, broadlinefit=broadlinefit,
+        emmodel = emline_specfit(data, out, continuummodel, smooth_continuum,
+                                 fphoto=fphoto, emlinesfile=emlinesfile,
+                                 broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
                                  percamera_models=percamera_models, log=log)
         
