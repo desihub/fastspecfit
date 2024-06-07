@@ -1133,7 +1133,7 @@ class DESISpectra(TabulatedDESI):
                                        True, False, ignore_photometry, log))
             else:
                 from desispec.resolution import Resolution
-                from fastspecfit.fitting import ResMatrix
+                from fastspecfit.emline_fit import EMLine_Resolution
 
                 # Don't use .select since meta and spec can be sorted
                 # differently if a non-sorted targetids was passed. Do the
@@ -1163,7 +1163,7 @@ class DESISpectra(TabulatedDESI):
                         # Also track the mask---see https://github.com/desihub/desispec/issues/1389 
                         'mask0': [spec.mask[cam][iobj, :] for cam in cameras],
                         'res0': [Resolution(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
-                        'res_fast0': [ResMatrix(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
+                        'res_fast0': [EMLine_Resolution(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
                         'coadd_wave': coadd_spec.wave[coadd_cameras],
                         'coadd_flux': coadd_spec.flux[coadd_cameras][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
