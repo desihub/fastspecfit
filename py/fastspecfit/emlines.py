@@ -20,7 +20,6 @@ from fastspecfit.util import C_LIGHT
 # Do not bother computing normal PDF/CDF if more than this many 
 # standard deviations from mean.
 MAX_SDEV = 5.
-SQRT_2PI = np.sqrt(2 * np.pi)
 
 
 def read_emlines(emlinesfile=None):
@@ -48,6 +47,7 @@ def norm_pdf(a):
     """PDF of standard normal distribution at a point a.
 
     """
+    SQRT_2PI = np.sqrt(2 * np.pi)
     return 1. / SQRT_2PI * np.exp(-0.5 * a**2)
 
 
@@ -197,6 +197,8 @@ def emline_model_core(line_wavelength,
     handle these edge cases,
 
     """    
+    SQRT_2PI = np.sqrt(2 * np.pi)
+
     # line width
     sigma = line_sigma / C_LIGHT
     c = SQRT_2PI * sigma * np.exp(0.5 * sigma**2)
@@ -342,6 +344,8 @@ def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
      which are stored in dd[j].
 
     """
+    SQRT_2PI = np.sqrt(2 * np.pi)
+
     nbins = len(log_obs_bin_edges) - 1
 
     # Buffers for per-parameter calculations, sized large enough for line's max
