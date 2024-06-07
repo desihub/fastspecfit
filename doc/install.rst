@@ -80,13 +80,13 @@ These environment variables can be set with the following commands::
 
   export DESI_ROOT=/path/to/desi/data
   export DUST_DIR=/path/to/dustmaps
-  export DR9_DIR=/path/to/dr9/data
+  export FPHOTO_DIR=/path/to/dr9/data
   export FTEMPLATES_DIR=/path/to/templates/fastspecfit
 
   wget -r -np -nH --cut-dirs 5 -A fits -P $DUST_DIR \
     https://portal.nersc.gov/project/cosmo/data/dust/v0_1/maps
-  wget -O $FTEMPLATES_DIR/ftemplates-chabrier-1.2.0.fits \
-    https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.2.0/ftemplates-chabrier-1.2.0.fits
+  wget -O $FTEMPLATES_DIR/ftemplates-chabrier-1.3.0.fits \
+    https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.3.0/ftemplates-chabrier-1.3.0.fits
     
 .. note::
    
