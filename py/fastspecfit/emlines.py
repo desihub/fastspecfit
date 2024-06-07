@@ -1797,7 +1797,7 @@ class EMFitTools(Filters):
     
 
     def emlinemodel_bestfit(self, specwave, specres, fastspecfit_table, redshift=None, 
-                            snrcut=None, camerapix=None):
+                            camerapix=None, snrcut=None):
         """Wrapper function to get the best-fitting emission-line model
         from an fastspecfit table (used for QA and elsewhere).
 
@@ -1825,7 +1825,9 @@ class EMFitTools(Filters):
             lineamps[lineamps * np.sqrt(lineamps_ivar) < snrcut] = 0.
 
         emlinemodel = self.build_model(redshift, lineamps, linevshifts, linesigmas,
-                                       linewaves, specwave, specres, camerapix)
+                                       linewaves, np.hstack(specwave), specres, camerapix)
+        #emlinemodel = self.build_model(redshift, lineamps, linevshifts, linesigmas,
+        #                               linewaves, specwave, specres, camerapix)
 
         #emlinemodel = build_emline_model(self.dlog10wave, redshift, lineamps, 
         #                                 linevshifts, linesigmas, linewaves, 
@@ -1967,7 +1969,7 @@ class EMFitTools(Filters):
     
                         result['{}_CHI2'.format(linename)] = np.sum(emlineivar[lineindx] * (emlineflux[lineindx] - finalmodel[lineindx])**2)
 
-                        print('FIXME!!!!!!!!!')
+                        print('ToDo: need the per-line model here.')
                         lineprofile = np.ones_like(emlinewave)
                         #lineprofile = build_emline_model(self.dlog10wave, redshift,
                         #                                 np.array([result['{}_MODELAMP'.format(linename)]]),
@@ -2378,7 +2380,8 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                            resolution_matrix, camerapix, log)
 
     # Build the model spectra.
-    emmodel = np.hstack(EMFit.emlinemodel_bestfit(data['wave'], data['res'], result, redshift=redshift))
+    emmodel = np.hstack(EMFit.emlinemodel_bestfit(data['wave'], data['res_fast'], result, 
+                                                  camerapix=camerapix, redshift=redshift))
 
     result['RCHI2_LINE'] = finalchi2
     #result['NDOF_LINE'] = finalndof

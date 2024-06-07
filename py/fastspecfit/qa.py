@@ -73,7 +73,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     from fastspecfit.util import ivar2var, C_LIGHT
     from fastspecfit.io import FLUXNORM, get_qa_filename
     from fastspecfit.continuum import ContinuumTools
-    from fastspecfit.emlines import build_emline_model, EMFitTools
+    from fastspecfit.emlines import EMFitTools
+    #from fastspecfit.emlines import build_emline_model, EMFitTools
 
     if log is None:
         from desiutil.log import get_logger
@@ -175,7 +176,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         'age': r'Age$={:.3f}$ Gyr'.format(fastspec['AGE']),
         'AV': r'$A_{V}=$'+r'${:.3f}$ mag'.format(fastspec['AV']),
         'mstar': r'$\log_{10}(M/M_{\odot})=$'+r'${:.3f}$'.format(fastspec['LOGMSTAR']),
-        'sfr': r'$\mathrm{SFR}=$'+'${:.1f}$'.format(fastspec['SFR'])+' $M_{\odot}/\mathrm{yr}$',
+        'sfr': r'$\mathrm{SFR}=$'+'${:.1f}$'.format(fastspec['SFR'])+r' $M_{\odot}/\mathrm{yr}$',
         'zzsun': r'$Z/Z_{\odot}=$'+r'${:.3f}$'.format(fastspec['ZZSUN']),
     }
 
@@ -220,7 +221,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
     if not stackfit:
         if redshift != metadata['Z_RR']:
-            leg['zredrock'] = '$z_{\mathrm{Redrock}}=$'+r'${:.7f}$'.format(metadata['Z_RR'])
+            leg['zredrock'] = r'$z_{\mathrm{Redrock}}=$'+r'${:.7f}$'.format(metadata['Z_RR'])
 
     if fastphot:
         fontsize1 = 16
@@ -415,7 +416,12 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
     
         # full model spectrum
-        desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res'], fastspec, snrcut=emline_snrmin)
+        print('FixMe: Need to split into cameras')
+        _desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res_fast'], fastspec, 
+                                                 camerapix=data['camerapix'], snrcut=emline_snrmin)
+        desiemlines = []
+        for icam in np.arange(len(data['cameras'])):
+            desiemlines.append(_desiemlines[data['camerapix'][icam][0]:data['camerapix'][icam][1]])
     
     # Grab the viewer cutout.
     if not stackfit:
@@ -905,7 +911,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                         for oneline in linetable[linetable['nicename'] == _linename]:
                             thisline = oneline['name'].upper()
                             ampsnr = fastspec['{}_AMP'.format(thisline)] * np.sqrt(fastspec['{}_AMP_IVAR'.format(thisline)])
-                            if ampsnr > emline_snrmin:
+                            print('ToDo: need the per-line model here.')
+                            if False and ampsnr > emline_snrmin:
                                 emlinemodel_oneline1 = build_emline_model(
                                     EMFit.dlog10wave, redshift,
                                     np.array([fastspec['{}_MODELAMP'.format(thisline)]]),
