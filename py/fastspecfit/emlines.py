@@ -20,6 +20,7 @@ from fastspecfit.util import C_LIGHT
 # Do not bother computing normal PDF/CDF if more than this many 
 # standard deviations from mean.
 MAX_SDEV = 5.
+SQRT_2PI = np.sqrt(2 * np.pi)
 
 
 def read_emlines(emlinesfile=None):
@@ -47,9 +48,7 @@ def norm_pdf(a):
     """PDF of standard normal distribution at a point a.
 
     """
-    SQRT_2PI = np.sqrt(2 * np.pi)
-    
-    return 1/SQRT_2PI * np.exp(-0.5 * a**2)
+    return 1. / SQRT_2PI * np.exp(-0.5 * a**2)
 
 
 @jit(nopython=True, fastmath=False, nogil=True)
@@ -60,7 +59,7 @@ def norm_cdf(a):
     MAX_SDEV, treat the value as extreme and return 0 or 1 as appropriate.
 
     """
-    SQRT1_2 = 1.0 / np.sqrt(2)
+    SQRT1_2 = 1. / np.sqrt(2)
     
     z = np.abs(a)
 
@@ -96,54 +95,6 @@ def max_buffer_width(log_obs_bin_edges, line_sigmas, padding=0):
             np.min(np.diff(log_obs_bin_edges))) + \
             2*padding + 4
     return max_width
-
-
-def objective(free_parameters,
-              bin_data,
-              obs_fluxes,
-              obs_weights,
-              redshift,
-              line_wavelengths,
-              resolution_matrices,
-              camerapix,
-              params_mapping):
-    """Objective function for least-squares optimization
-    
-    Build the emline model as described above and compute the weighted vector of
-    residuals between the modeled fluxes and the observations.
-
-    """
-
-    # Expand free paramters into complete parameter array, handling tied params
-    # and doublets.
-    parameters = params_mapping.mapFreeToFull(free_parameters)
-    lineamps, linevshifts, linesigmas = np.array_split(parameters, 3)
-    
-    log_obs_bin_edges, ibin_widths = bin_data
-    
-    model_fluxes = np.empty_like(obs_fluxes, dtype=obs_fluxes.dtype)
-    
-    for icam, campix in enumerate(camerapix):
-        
-        # start and end for obs fluxes of camera icam
-        s, e = campix
-
-        # Actual bin widths are in ibw[1..e-s].
-        # Setup guarantees that ibw[0] and
-        # ibw[e-s+1] are dummy values
-        ibw = ibin_widths[s:e+2]
-        
-        mf = emline_model(line_wavelengths,
-                          lineamps, linevshifts, linesigmas,
-                          log_obs_bin_edges[s+icam:e+icam+1],
-                          redshift,
-                          ibw)
-        
-        # convolve model with resolution matrix and store in
-        # this camera's subrange of model_fluxes
-        resolution_matrices[icam].matvec(mf, model_fluxes[s:e])
-        
-    return obs_weights * (model_fluxes - obs_fluxes) # residuals
 
 
 @jit(nopython=True, fastmath=False, nogil=True)
@@ -246,8 +197,6 @@ def emline_model_core(line_wavelength,
     handle these edge cases,
 
     """    
-    SQRT_2PI = np.sqrt(2 * np.pi)
-    
     # line width
     sigma = line_sigma / C_LIGHT
     c = SQRT_2PI * sigma * np.exp(0.5 * sigma**2)
@@ -296,105 +245,6 @@ def emline_model_core(line_wavelength,
         vals[i] = (vals[i+1] - vals[i]) * ibin_widths[i+lo]
     
     return (lo - 1, hi)
-
-
-def build_model(redshift,
-                line_amplitudes,
-                line_vshifts,
-                line_sigmas,
-                line_wavelengths,
-                obs_bin_centers,
-                resolution_matrices,
-                camerapix):
-    """Compatibility entry point to compute modeled fluxes.  (FIXME: we should
-    merge most of this code with the copy in objective())
-
-    """
-    log_obs_bin_edges, ibin_widths = prepare_bins(obs_bin_centers, camerapix)
-
-    # Below here is common code with objective().
-    model_fluxes = np.empty_like(obs_bin_centers, dtype=obs_bin_centers.dtype)
-    
-    for icam, campix in enumerate(camerapix):
-        
-        # start and end for obs fluxes of camera icam
-        s, e = campix
-        
-        # Actual bin widths are in ibw[1..e-s].  Setup guarantees that ibw[0]
-        # and ibw[e-s+1] are dummy values.
-        ibw = ibin_widths[s:e+2]
-        
-        mf = emline_model(line_wavelengths,
-                          line_amplitudes, line_vshifts, line_sigmas,
-                          log_obs_bin_edges[s+icam:e+icam+1],
-                          redshift,
-                          ibw)
-        
-        # Convolve model with resolution matrix and store in this camera's
-        # subrange of model_fluxes.
-        resolution_matrices[icam].matvec(mf, model_fluxes[s:e])
-        
-    return model_fluxes
-
-
-def find_peak_amplitudes(parameters,
-                         bin_data,
-                         redshift,
-                         line_wavelengths,
-                         resolution_matrices,
-                         camerapix):
-    """Given fitted parameters for all emission lines, report for each line the
-    largest flux that it contributes to any observed bin.
-    
-    INPUTS:
-     parameters -- full array of fitted line parameters
-     bin_data   -- preprocessed bin data in the same form
-                   taken by the optimizer objective
-     redshift   -- object redshift
-     line_wavelengths -- wavelengths of all fitted lines
-     resolution_matrices -- list of sparse resolution matrices
-                            in same form taken by objective
-     camerapix  -- wavelength ranges for each camera
-    
-    RETURNS:
-      an array of maximum amplitudes for each line
-
-    """    
-    # Expand free paramters into complete parameter array, handling tied params
-    # and doublets.
-    lineamps, linevshifts, linesigmas = np.array_split(parameters, 3)
-    
-    log_obs_bin_edges, ibin_widths = bin_data
-    
-    max_amps = np.zeros_like(line_wavelengths, dtype=lineamps.dtype)
-    
-    for icam, campix in enumerate(camerapix):
-        
-        # start and end for obs fluxes of camera icam
-        s, e = campix
-        
-        # Actual bin widths are in ibw[1..e-s]. Setup guarantees that ibw[0] and
-        # ibw[e-s+1] are not out of bounds.
-        ibw = ibin_widths[s:e+1]
-
-        # Compute model waveform for each spectral line.
-        line_models = emline_perline_models(line_wavelengths,
-                                            lineamps, linevshifts, linesigmas,
-                                            log_obs_bin_edges[s+icam:e+icam+1],
-                                            redshift,
-                                            ibw,
-                                            resolution_matrices[icam].ndiag())
-        
-        # Convolve each line's waveform with resolution matrix.
-        line_models = mulWMJ(np.ones(e - s),
-                             resolution_matrices[icam].data,
-                             line_models)
-        
-        # Find highest flux for each line; if it's bigger than any seen for that
-        # line so far, update the line's global max.
-        update_line_maxima(max_amps, line_models)
-        
-    return max_amps
 
 
 @jit(nopython=True, fastmath=False, nogil=True)
@@ -475,66 +325,6 @@ def emline_perline_models(line_wavelengths,
     return (endpts, line_profiles)
 
 
-def jacobian(free_parameters,
-             bin_data,
-             obs_fluxes, # not used, but must match objective
-             obs_weights,
-             redshift,
-             line_wavelengths,
-             resolution_matrices,
-             camerapix,
-             params_mapping):
-    """
-    Jacobian of objective function for least-squares EMLine
-    optimization. The result of the detailed calculation is converted
-    to a sparse matrix, since it is extremely sparse, to speed up
-    subsequent matrix-vector multiplies in the optimizer.
-
-    """
-    from fastspecfit.fitting import EMLineJacobian
-    
-    # Expand free paramters into complete parameter array, handling tied params
-    # and doublets.
-    parameters = params_mapping.mapFreeToFull(free_parameters)
-    lineamps, linevshifts, linesigmas = np.array_split(parameters, 3)
-
-    log_obs_bin_edges, ibin_widths = bin_data
-    
-    J_S = params_mapping.getJacobian(free_parameters)
-
-    jacs = []
-    for icam, campix in enumerate(camerapix):
-        s, e = campix
-
-        # Actual bin widths are in ibw[1..e-s].  Setup guarantees that ibw[0]
-        # and ibw[e-s+1] are not out of bounds.
-        ibw = ibin_widths[s:e+1]
-
-        idealJac = \
-            emline_model_jacobian(lineamps, linevshifts, linesigmas,
-                                  log_obs_bin_edges[s+icam:e+icam+1],
-                                  ibw,
-                                  redshift,
-                                  line_wavelengths,
-                                  resolution_matrices[icam].ndiag())
-        
-        # Ignore any columns corresponding to fixed parameters.
-        endpts = idealJac[0]
-        endpts[params_mapping.fixedMask(), :] = (0,0)
-        
-        jacs.append( mulWMJ(obs_weights[s:e],
-                            resolution_matrices[icam].data,
-                            idealJac) )
-    
-    nBins = np.sum(np.diff(camerapix))
-    nFreeParms = len(free_parameters)
-    nParms = len(parameters)
-    J =  EMLineJacobian((nBins, nFreeParms), nParms,
-                        camerapix, jacs, J_S)
-
-    return J
-
-
 @jit(nopython=True, fastmath=False, nogil=True)
 def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
                           log_obs_bin_edges,
@@ -552,8 +342,6 @@ def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
      which are stored in dd[j].
 
     """
-    SQRT_2PI = np.sqrt(2*np.pi)
-
     nbins = len(log_obs_bin_edges) - 1
 
     # Buffers for per-parameter calculations, sized large enough for line's max
@@ -796,125 +584,125 @@ def prepare_bins(centers, camerapix):
     return (np.log(edges), ibin_widths)
 
 
-#import numba
-#@numba.jit(nopython=True)
-def build_emline_model(dlog10wave, redshift, lineamps, linevshifts, linesigmas, 
-                       linewaves, emlinewave, resolution_matrix, camerapix=None,
-                       debug=False):
+#def build_emline_model(dlog10wave, redshift, lineamps, linevshifts, linesigmas, 
+#                       linewaves, emlinewave, resolution_matrix, camerapix=None,
+#                       debug=False):
+#
+#    """Given parameters, build the model emission-line spectrum.
+#
+#    ToDo: can this be optimized using numba?
+#
+#    """
+#    from fastspecfit.util import trapz_rebin
+#
+#    #log10model = np.zeros_like(log10wave) # [erg/s/cm2/A, observed frame]
+#    log10wave = [] # initialize
+#
+#    # Cut to lines with non-zero amplitudes.
+#    #I = linesigmas > 0
+#    I = lineamps > 0
+#    if np.count_nonzero(I) > 0:
+#        linevshifts = linevshifts[I]
+#        linesigmas = linesigmas[I]
+#        lineamps = lineamps[I]
+#        linewaves = linewaves[I]
+#
+#        # demand at least 20 km/s for rendering the model
+#        if np.any(linesigmas) < 20.:
+#            linesigmas[linesigmas<20.] = 20.
+#
+#        # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
+#        log10sigmas = linesigmas / C_LIGHT / np.log(10) 
+#        linezwaves = np.log10(linewaves * (1.0 + redshift + linevshifts / C_LIGHT))
+#
+#        # Build the wavelength vector on-the-fly.
+#        if camerapix is None:
+#            minwave = emlinewave[0][0]-2.
+#            maxwave = emlinewave[-1][-1]+2.
+#        else:
+#            minwave = emlinewave[0]-2.
+#            maxwave = emlinewave[-1]+2.
+#        
+#        log10wave = []
+#        for linezwave, log10sigma in zip(linezwaves, log10sigmas):
+#            log10wave.append(np.arange(linezwave - (5 * log10sigma), linezwave + (5 * log10sigma), dlog10wave))
+#        log10wave = np.hstack([np.log10(minwave), np.log10(maxwave), ] + log10wave)
+#        S = np.argsort(log10wave)
+#        log10wave = log10wave[S]
+#        log10model = np.zeros_like(log10wave)
+#        
+#        for lineamp, linezwave, log10sigma in zip(lineamps, linezwaves, log10sigmas):
+#            J = np.abs(log10wave - linezwave) < (5 * log10sigma)
+#            #print(lineamp, 10**linezwave, 10**log10wave[J].min(), 10**log10wave[J].max())
+#            log10model[J] += lineamp * np.exp(-0.5 * (log10wave[J]-linezwave)**2 / log10sigma**2)
+#
+#    # Optionally split into cameras, resample, and convolve with the resolution
+#    # matrix.
+#    emlinemodel = []
+#    if camerapix is None:
+#        for icam, specwave in enumerate(emlinewave):
+#            if len(log10wave) > 0:
+#                _emlinemodel = trapz_rebin(10**log10wave, log10model, specwave)
+#                _emlinemodel = resolution_matrix[icam].dot(_emlinemodel)
+#                _emlinemodel[_emlinemodel < 0] = 0. # resolution matrix is occasionally negative
+#            else:
+#                _emlinemodel = specwave * 0
+#            emlinemodel.append(_emlinemodel)
+#        return emlinemodel
+#    else:
+#        for icam, campix in enumerate(camerapix):
+#            # can be zero-length if all lines are dropped
+#            if len(log10wave) > 0:
+#                _emlinemodel = trapz_rebin(10**log10wave, log10model, emlinewave[campix[0]:campix[1]])
+#                _emlinemodel = resolution_matrix[icam].dot(_emlinemodel)
+#                _emlinemodel[_emlinemodel < 0] = 0. # resolution matrix is occasionally negative
+#            else:
+#                _emlinemodel = emlinewave[campix[0]:campix[1]] * 0
+#            emlinemodel.append(_emlinemodel)
+#        return np.hstack(emlinemodel)
 
-    """Given parameters, build the model emission-line spectrum.
 
-    ToDo: can this be optimized using numba?
+#def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshift, 
+#                        dlog10wave, resolution_matrix, camerapix, parameters, Ifree, 
+#                        Itied, tiedtoparam, tiedfactor, doubletindx, doubletpair, 
+#                        linewaves):
+#    """The parameters array should only contain free (not tied or fixed) parameters."""
+#
+#    # Parameters have to be allowed to exceed their bounds in the optimization
+#    # function, otherwise they get stuck at the boundary.
+#
+#    # Handle tied parameters and bounds. Only check bounds on the free
+#    # parameters.
+#    #for I, (value, bnd) in enumerate(zip(free_parameters, bounds)):
+#    #    if value < bnd[0]:
+#    #        free_parameters[I] = bnd[0]
+#    #    if value > bnd[1]:
+#    #        free_parameters[I] = bnd[1]
+#
+#    #print(free_parameters)
+#    parameters[Ifree] = free_parameters
+#
+#    if len(Itied) > 0:
+#        for I, indx, factor in zip(Itied, tiedtoparam, tiedfactor):
+#            parameters[I] = parameters[indx] * factor
+#
+#    lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
+#
+#    # doublets
+#    lineamps[doubletindx] *= lineamps[doubletpair]
+#
+#    # Build the emission-line model.
+#    emlinemodel = build_emline_model(dlog10wave, redshift, lineamps, linevshifts, 
+#                                     linesigmas, linewaves, emlinewave, 
+#                                     resolution_matrix, camerapix)
+#
+#    if weights is None:
+#        residuals = emlinemodel - emlineflux
+#    else:
+#        residuals = weights * (emlinemodel - emlineflux)
+#
+#    return residuals
 
-    """
-    from fastspecfit.util import trapz_rebin
-
-    #log10model = np.zeros_like(log10wave) # [erg/s/cm2/A, observed frame]
-    log10wave = [] # initialize
-
-    # Cut to lines with non-zero amplitudes.
-    #I = linesigmas > 0
-    I = lineamps > 0
-    if np.count_nonzero(I) > 0:
-        linevshifts = linevshifts[I]
-        linesigmas = linesigmas[I]
-        lineamps = lineamps[I]
-        linewaves = linewaves[I]
-
-        # demand at least 20 km/s for rendering the model
-        if np.any(linesigmas) < 20.:
-            linesigmas[linesigmas<20.] = 20.
-
-        # line-width [log-10 Angstrom] and redshifted wavelength [log-10 Angstrom]
-        log10sigmas = linesigmas / C_LIGHT / np.log(10) 
-        linezwaves = np.log10(linewaves * (1.0 + redshift + linevshifts / C_LIGHT))
-
-        # Build the wavelength vector on-the-fly.
-        if camerapix is None:
-            minwave = emlinewave[0][0]-2.
-            maxwave = emlinewave[-1][-1]+2.
-        else:
-            minwave = emlinewave[0]-2.
-            maxwave = emlinewave[-1]+2.
-        
-        log10wave = []
-        for linezwave, log10sigma in zip(linezwaves, log10sigmas):
-            log10wave.append(np.arange(linezwave - (5 * log10sigma), linezwave + (5 * log10sigma), dlog10wave))
-        log10wave = np.hstack([np.log10(minwave), np.log10(maxwave), ] + log10wave)
-        S = np.argsort(log10wave)
-        log10wave = log10wave[S]
-        log10model = np.zeros_like(log10wave)
-        
-        for lineamp, linezwave, log10sigma in zip(lineamps, linezwaves, log10sigmas):
-            J = np.abs(log10wave - linezwave) < (5 * log10sigma)
-            #print(lineamp, 10**linezwave, 10**log10wave[J].min(), 10**log10wave[J].max())
-            log10model[J] += lineamp * np.exp(-0.5 * (log10wave[J]-linezwave)**2 / log10sigma**2)
-
-    # Optionally split into cameras, resample, and convolve with the resolution
-    # matrix.
-    emlinemodel = []
-    if camerapix is None:
-        for icam, specwave in enumerate(emlinewave):
-            if len(log10wave) > 0:
-                _emlinemodel = trapz_rebin(10**log10wave, log10model, specwave)
-                _emlinemodel = resolution_matrix[icam].dot(_emlinemodel)
-                _emlinemodel[_emlinemodel < 0] = 0. # resolution matrix is occasionally negative
-            else:
-                _emlinemodel = specwave * 0
-            emlinemodel.append(_emlinemodel)
-        return emlinemodel
-    else:
-        for icam, campix in enumerate(camerapix):
-            # can be zero-length if all lines are dropped
-            if len(log10wave) > 0:
-                _emlinemodel = trapz_rebin(10**log10wave, log10model, emlinewave[campix[0]:campix[1]])
-                _emlinemodel = resolution_matrix[icam].dot(_emlinemodel)
-                _emlinemodel[_emlinemodel < 0] = 0. # resolution matrix is occasionally negative
-            else:
-                _emlinemodel = emlinewave[campix[0]:campix[1]] * 0
-            emlinemodel.append(_emlinemodel)
-        return np.hstack(emlinemodel)
-
-def _objective_function(free_parameters, emlinewave, emlineflux, weights, redshift, 
-                        dlog10wave, resolution_matrix, camerapix, parameters, Ifree, 
-                        Itied, tiedtoparam, tiedfactor, doubletindx, doubletpair, 
-                        linewaves):
-    """The parameters array should only contain free (not tied or fixed) parameters."""
-
-    # Parameters have to be allowed to exceed their bounds in the optimization
-    # function, otherwise they get stuck at the boundary.
-
-    # Handle tied parameters and bounds. Only check bounds on the free
-    # parameters.
-    #for I, (value, bnd) in enumerate(zip(free_parameters, bounds)):
-    #    if value < bnd[0]:
-    #        free_parameters[I] = bnd[0]
-    #    if value > bnd[1]:
-    #        free_parameters[I] = bnd[1]
-
-    #print(free_parameters)
-    parameters[Ifree] = free_parameters
-
-    if len(Itied) > 0:
-        for I, indx, factor in zip(Itied, tiedtoparam, tiedfactor):
-            parameters[I] = parameters[indx] * factor
-
-    lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
-
-    # doublets
-    lineamps[doubletindx] *= lineamps[doubletpair]
-
-    # Build the emission-line model.
-    emlinemodel = build_emline_model(dlog10wave, redshift, lineamps, linevshifts, 
-                                     linesigmas, linewaves, emlinewave, 
-                                     resolution_matrix, camerapix)
-
-    if weights is None:
-        residuals = emlinemodel - emlineflux
-    else:
-        residuals = weights * (emlinemodel - emlineflux)
-
-    return residuals
 
 class EMFitTools(Filters):
     def __init__(self, fphoto=None, emlinesfile=None, uniqueid=None,
@@ -1658,6 +1446,175 @@ class EMFitTools(Filters):
             log.debug(f'  Dropping {len(Idrop)} unique parameters.')
             parameters[Idrop] = 0.0
     
+    @staticmethod
+    def find_peak_amplitudes(parameters,
+                             bin_data,
+                             redshift,
+                             line_wavelengths,
+                             resolution_matrices,
+                             camerapix):
+        """Given fitted parameters for all emission lines, report for each line the
+        largest flux that it contributes to any observed bin.
+        
+        INPUTS:
+         parameters -- full array of fitted line parameters
+         bin_data   -- preprocessed bin data in the same form
+                       taken by the optimizer objective
+         redshift   -- object redshift
+         line_wavelengths -- wavelengths of all fitted lines
+         resolution_matrices -- list of sparse resolution matrices
+                                in same form taken by objective
+         camerapix  -- wavelength ranges for each camera
+        
+        RETURNS:
+          an array of maximum amplitudes for each line
+    
+        """    
+        # Expand free paramters into complete parameter array, handling tied params
+        # and doublets.
+        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3)
+        
+        log_obs_bin_edges, ibin_widths = bin_data
+        
+        max_amps = np.zeros_like(line_wavelengths, dtype=lineamps.dtype)
+        
+        for icam, campix in enumerate(camerapix):
+            
+            # start and end for obs fluxes of camera icam
+            s, e = campix
+            
+            # Actual bin widths are in ibw[1..e-s]. Setup guarantees that ibw[0] and
+            # ibw[e-s+1] are not out of bounds.
+            ibw = ibin_widths[s:e+1]
+    
+            # Compute model waveform for each spectral line.
+            line_models = emline_perline_models(line_wavelengths,
+                                                lineamps, linevshifts, linesigmas,
+                                                log_obs_bin_edges[s+icam:e+icam+1],
+                                                redshift,
+                                                ibw,
+                                                resolution_matrices[icam].ndiag())
+            
+            # Convolve each line's waveform with resolution matrix.
+            line_models = mulWMJ(np.ones(e - s),
+                                 resolution_matrices[icam].data,
+                                 line_models)
+            
+            # Find highest flux for each line; if it's bigger than any seen for that
+            # line so far, update the line's global max.
+            update_line_maxima(max_amps, line_models)
+            
+        return max_amps
+    
+    
+    @staticmethod
+    def jacobian(free_parameters,
+                 bin_data,
+                 obs_fluxes, # not used, but must match objective
+                 obs_weights,
+                 redshift,
+                 line_wavelengths,
+                 resolution_matrices,
+                 camerapix,
+                 params_mapping):
+        """
+        Jacobian of objective function for least-squares EMLine
+        optimization. The result of the detailed calculation is converted
+        to a sparse matrix, since it is extremely sparse, to speed up
+        subsequent matrix-vector multiplies in the optimizer.
+    
+        """
+        from fastspecfit.fitting import EMLineJacobian
+        
+        # Expand free paramters into complete parameter array, handling tied params
+        # and doublets.
+        parameters = params_mapping.mapFreeToFull(free_parameters)
+        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3)
+    
+        log_obs_bin_edges, ibin_widths = bin_data
+        
+        J_S = params_mapping.getJacobian(free_parameters)
+    
+        jacs = []
+        for icam, campix in enumerate(camerapix):
+            s, e = campix
+    
+            # Actual bin widths are in ibw[1..e-s].  Setup guarantees that ibw[0]
+            # and ibw[e-s+1] are not out of bounds.
+            ibw = ibin_widths[s:e+1]
+    
+            idealJac = \
+                emline_model_jacobian(lineamps, linevshifts, linesigmas,
+                                      log_obs_bin_edges[s+icam:e+icam+1],
+                                      ibw,
+                                      redshift,
+                                      line_wavelengths,
+                                      resolution_matrices[icam].ndiag())
+            
+            # Ignore any columns corresponding to fixed parameters.
+            endpts = idealJac[0]
+            endpts[params_mapping.fixedMask(), :] = (0,0)
+            
+            jacs.append( mulWMJ(obs_weights[s:e],
+                                resolution_matrices[icam].data,
+                                idealJac) )
+        
+        nBins = np.sum(np.diff(camerapix))
+        nFreeParms = len(free_parameters)
+        nParms = len(parameters)
+        J =  EMLineJacobian((nBins, nFreeParms), nParms,
+                            camerapix, jacs, J_S)
+    
+        return J
+
+    
+    def objective(self, free_parameters,
+                  bin_data,
+                  obs_fluxes,
+                  obs_weights,
+                  redshift,
+                  line_wavelengths,
+                  resolution_matrices,
+                  camerapix,
+                  params_mapping):
+        """Objective function for least-squares optimization
+        
+        Build the emline model as described above and compute the weighted vector of
+        residuals between the modeled fluxes and the observations.
+    
+        """
+    
+        # Expand free paramters into complete parameter array, handling tied params
+        # and doublets.
+        parameters = params_mapping.mapFreeToFull(free_parameters)
+        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3)
+        
+        log_obs_bin_edges, ibin_widths = bin_data
+        
+        model_fluxes = np.empty_like(obs_fluxes, dtype=obs_fluxes.dtype)
+        
+        for icam, campix in enumerate(camerapix):
+            
+            # start and end for obs fluxes of camera icam
+            s, e = campix
+    
+            # Actual bin widths are in ibw[1..e-s].
+            # Setup guarantees that ibw[0] and
+            # ibw[e-s+1] are dummy values
+            ibw = ibin_widths[s:e+2]
+            
+            mf = emline_model(line_wavelengths,
+                              lineamps, linevshifts, linesigmas,
+                              log_obs_bin_edges[s+icam:e+icam+1],
+                              redshift,
+                              ibw)
+            
+            # convolve model with resolution matrix and store in
+            # this camera's subrange of model_fluxes
+            resolution_matrices[icam].matvec(mf, model_fluxes[s:e])
+            
+        return obs_weights * (model_fluxes - obs_fluxes) # residuals
+
 
     def optimize(self, linemodel,
                  obs_bin_centers,
@@ -1707,8 +1664,8 @@ class EMFitTools(Filters):
             fit_info = {'nfev': 0, 'status': 0}
         else:
             try:
-                fit_info = least_squares(objective, initial_guesses, jac=jacobian, args=farg, max_nfev=5000, 
-                                         xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
+                fit_info = least_squares(self.objective, initial_guesses, jac=self.jacobian, args=farg, 
+                                         max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
                                          tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': True},
                                          method='trf', bounds=tuple(zip(*bounds)),) # verbose=2)
                 parameters[Ifree] = fit_info.x
@@ -1745,12 +1702,12 @@ class EMFitTools(Filters):
             # calculate the observed maximum amplitude for each
             # fitted spectral line after convolution with the resolution
             # matrix.
-            peaks = find_peak_amplitudes(parameters,
-                                         bin_data,
-                                         redshift,
-                                         line_wavelengths,
-                                         resolution_matrices,
-                                         camerapix)
+            peaks = self.find_peak_amplitudes(parameters,
+                                              bin_data,
+                                              redshift,
+                                              line_wavelengths,
+                                              resolution_matrices,
+                                              camerapix)
     
             # FIXME: is len(lineamps) == # lines obtainable from line table?
             out_linemodel['obsvalue'][:len(lineamps)] = peaks
@@ -1758,6 +1715,46 @@ class EMFitTools(Filters):
         return out_linemodel
 
 
+    @staticmethod
+    def build_model(redshift,
+                    line_amplitudes,
+                    line_vshifts,
+                    line_sigmas,
+                    line_wavelengths,
+                    obs_bin_centers,
+                    resolution_matrices,
+                    camerapix):
+        """Compatibility entry point to compute modeled fluxes.  (FIXME: we should
+        merge most of this code with the copy in objective())
+    
+        """
+        log_obs_bin_edges, ibin_widths = prepare_bins(obs_bin_centers, camerapix)
+    
+        # Below here is common code with objective().
+        model_fluxes = np.empty_like(obs_bin_centers, dtype=obs_bin_centers.dtype)
+        
+        for icam, campix in enumerate(camerapix):
+            
+            # start and end for obs fluxes of camera icam
+            s, e = campix
+            
+            # Actual bin widths are in ibw[1..e-s].  Setup guarantees that ibw[0]
+            # and ibw[e-s+1] are dummy values.
+            ibw = ibin_widths[s:e+2]
+            
+            mf = emline_model(line_wavelengths,
+                              line_amplitudes, line_vshifts, line_sigmas,
+                              log_obs_bin_edges[s+icam:e+icam+1],
+                              redshift,
+                              ibw)
+            
+            # Convolve model with resolution matrix and store in this camera's
+            # subrange of model_fluxes.
+            resolution_matrices[icam].matvec(mf, model_fluxes[s:e])
+            
+        return model_fluxes
+    
+    
     @staticmethod
     def chi2(linemodel, emlinewave, emlineflux, emlineivar, emlinemodel,
              continuum_model=None, return_dof=False):
@@ -1792,21 +1789,19 @@ class EMFitTools(Filters):
         # doublets
         lineamps[doubletindx] *= lineamps[doubletpair]
     
-        emlinemodel = build_model(redshift, lineamps, linevshifts, linesigmas,
-                                  linewaves, emlinewave, resolution_matrix, camerapix)
+        emlinemodel = self.build_model(redshift, lineamps, linevshifts, linesigmas,
+                                       linewaves, emlinewave, resolution_matrix, camerapix)
     
     
         return emlinemodel
     
 
     def emlinemodel_bestfit(self, specwave, specres, fastspecfit_table, redshift=None, 
-                            snrcut=None):
+                            snrcut=None, camerapix=None):
         """Wrapper function to get the best-fitting emission-line model
         from an fastspecfit table (used for QA and elsewhere).
 
         """
-        from fastspecfit.emlines import build_emline_model
-
         if redshift is None:
             redshift = fastspecfit_table['Z']
         
@@ -1828,10 +1823,13 @@ class EMFitTools(Filters):
         if snrcut is not None:
             lineamps_ivar = [fastspecfit_table[param.upper()+'_AMP_IVAR'] for param in self.linetable['name']]
             lineamps[lineamps * np.sqrt(lineamps_ivar) < snrcut] = 0.
-            
-        emlinemodel = build_emline_model(self.dlog10wave, redshift, lineamps, 
-                                         linevshifts, linesigmas, linewaves, 
-                                         specwave, specres, None)
+
+        emlinemodel = self.build_model(redshift, lineamps, linevshifts, linesigmas,
+                                       linewaves, specwave, specres, camerapix)
+
+        #emlinemodel = build_emline_model(self.dlog10wave, redshift, lineamps, 
+        #                                 linevshifts, linesigmas, linewaves, 
+        #                                 specwave, specres, None)
 
         return emlinemodel
 
@@ -1968,13 +1966,15 @@ class EMFitTools(Filters):
                     if result['{}_MODELAMP'.format(linename)] > 0:
     
                         result['{}_CHI2'.format(linename)] = np.sum(emlineivar[lineindx] * (emlineflux[lineindx] - finalmodel[lineindx])**2)
-                        
-                        lineprofile = build_emline_model(self.dlog10wave, redshift,
-                                                         np.array([result['{}_MODELAMP'.format(linename)]]),
-                                                         np.array([result['{}_VSHIFT'.format(linename)]]),
-                                                         np.array([result['{}_SIGMA'.format(linename)]]),
-                                                         np.array([oneline['restwave']]), emlinewave,
-                                                         resolution_matrix, camerapix, debug=False)
+
+                        print('FIXME!!!!!!!!!')
+                        lineprofile = np.ones_like(emlinewave)
+                        #lineprofile = build_emline_model(self.dlog10wave, redshift,
+                        #                                 np.array([result['{}_MODELAMP'.format(linename)]]),
+                        #                                 np.array([result['{}_VSHIFT'.format(linename)]]),
+                        #                                 np.array([result['{}_SIGMA'.format(linename)]]),
+                        #                                 np.array([oneline['restwave']]), emlinewave,
+                        #                                 resolution_matrix, camerapix, debug=False)
                         
                         if np.sum(lineprofile) == 0. or np.any(lineprofile) < 0.:
                             errmsg = 'Line-profile should never be zero or negative!'
@@ -3214,9 +3214,9 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
 
     # Initial fit - initial_linemodel_nobroad
     t0 = time.time()
-    fit_nobroad = optimize(EMFit, linemodel_nobroad, emlinewave, emlineflux, weights, redshift,
-                           resolution_matrix, camerapix, log=log, debug=False, get_finalamp=True)
-    model_nobroad = emfit_bestfit(EMFit, fit_nobroad, redshift, emlinewave, resolution_matrix, camerapix)
+    fit_nobroad = EMFit.optimize(linemodel_nobroad, emlinewave, emlineflux, weights, redshift,
+                                 resolution_matrix, camerapix, log=log, debug=False, get_finalamp=True)
+    model_nobroad = EMFit.bestfit(fit_nobroad, redshift, emlinewave, resolution_matrix, camerapix)
     chi2_nobroad, ndof_nobroad, nfree_nobroad = EMFit.chi2(fit_nobroad, emlinewave, emlineflux, emlineivar, model_nobroad, return_dof=True)
     log.info('Line-fitting with no broad lines and {} free parameters took {:.4f} seconds [niter={}, rchi2={:.4f}].'.format(
         nfree_nobroad, time.time()-t0, fit_nobroad.meta['nfev'], chi2_nobroad))
@@ -3244,14 +3244,10 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                         
         if len(balmer_pix) > 0:
             t0 = time.time()
-            fit_broad = optimize(EMFit, linemodel_broad, emlinewave, emlineflux, weights, 
-                                 redshift, resolution_matrix, camerapix, log=log,
-                                 debug=False, get_finalamp=True)
-            model_broad = emfit_bestfit(EMFit, fit_broad, redshift, emlinewave, resolution_matrix, camerapix)
-            #fit_broad = EMFit.optimize(linemodel_broad, emlinewave, emlineflux, weights, 
-            #                           redshift, resolution_matrix, camerapix, log=log,
-            #                           debug=False, get_finalamp=True)
-            #model_broad = EMFit.bestfit(fit_broad, redshift, emlinewave, resolution_matrix, camerapix)
+            fit_broad = EMFit.optimize(linemodel_broad, emlinewave, emlineflux, weights, 
+                                       redshift, resolution_matrix, camerapix, log=log,
+                                       debug=False, get_finalamp=True)
+            model_broad = EMFit.bestfit(fit_broad, redshift, emlinewave, resolution_matrix, camerapix)
             chi2_broad, ndof_broad, nfree_broad = EMFit.chi2(fit_broad, emlinewave, emlineflux, emlineivar, model_broad, return_dof=True)
             log.info('Line-fitting with broad lines and {} free parameters took {:.4f} seconds [niter={}, rchi2={:.4f}].'.format(
                 nfree_broad, time.time()-t0, fit_broad.meta['nfev'], chi2_broad))
