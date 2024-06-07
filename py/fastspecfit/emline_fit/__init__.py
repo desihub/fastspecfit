@@ -1,8 +1,6 @@
 from .emlines_objective import (
-    objective            as EMLine_objective,
-    jacobian             as EMLine_jacobian,
+    EMLine_Objective,
     find_peak_amplitudes as EMLine_find_peak_amplitudes,
-    prepare_bins         as EMLine_prepare_bins,
     build_model          as EMLine_build_model,
 )
 
