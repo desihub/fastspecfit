@@ -1678,8 +1678,8 @@ class EMFitTools(Filters):
                     errmsg = f'Problem in scipy.optimize.least_squares for {self.uniqueid}.'
                 else:
                     errmsg = 'Problem in scipy.optimize.least_squares.'
-                    log.critical(errmsg)
-                    raise RuntimeError(errmsg)
+                log.critical(errmsg)
+                raise RuntimeError(errmsg)
     
         # Drop (zero out) any dubious free parameters.
         self._drop_params(parameters, linemodel, Ifree, log)
