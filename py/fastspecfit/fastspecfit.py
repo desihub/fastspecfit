@@ -39,7 +39,7 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                  emlinesfile=None, broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
                  ignore_photometry=False, percamera_models=False,
-                 debug_plots=False, minsnr_balmer_broad=3.):
+                 debug_plots=False, minsnr_balmer_broad=3., test_continuum=False):
     """Multiprocessing wrapper to run :func:`fastspec` on a single object.
 
     """
@@ -62,7 +62,7 @@ def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
                                                          no_smooth_continuum=no_smooth_continuum,
                                                          ignore_photometry=ignore_photometry,
                                                          fastphot=fastphot, debug_plots=debug_plots,
-                                                         log=log)
+                                                         log=log, test_continuum=test_continuum)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -113,6 +113,7 @@ def parse(options=None, log=None):
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
     parser.add_argument('--minsnr-balmer-broad', type=float, default=3., help='Minimum broad Balmer S/N to force broad+narrow-line model.') 
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
+    parser.add_argument('--test-continuum', action='store_true', help='Test the new continuum-fitting code.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
     if log is None:
@@ -222,7 +223,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], Spec.fphoto, templates, log,
                 emlinesfile, args.broadlinefit, fastphot, args.constrain_age,
                 args.no_smooth_continuum, args.ignore_photometry, args.percamera_models,
-                args.debug_plots, args.minsnr_balmer_broad)
+                args.debug_plots, args.minsnr_balmer_broad, args.test_continuum)
                 for iobj in np.arange(Spec.ntargets)]
     if args.mp > 1:
         import multiprocessing

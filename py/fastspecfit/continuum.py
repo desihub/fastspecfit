@@ -1927,7 +1927,8 @@ class ContinuumTools(Filters, Inoue14):
 
 def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None,
                       constrain_age=False, no_smooth_continuum=False, ignore_photometry=False,
-                      fastphot=False, log=None, debug_plots=False, verbose=False):
+                      fastphot=False, log=None, debug_plots=False, verbose=False, 
+                      test_continuum=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -2076,18 +2077,28 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
 
         if compute_vdisp:
             t0 = time.time()
-            ztemplateflux_vdisp, _ = CTools.templates2data(
-                templatecache['vdispflux'], templatecache['vdispwave'], # [npix,vdispnsed,nvdisp]
-                redshift=redshift, dluminosity=data['dluminosity'],
-                specwave=data['wave'], specres=data['res'],
-                cameras=data['cameras'], synthphot=False, stack_cameras=True)
-            
-            vdispchi2min, vdispbest, vdispivar, _ = CTools.call_nnls(
-                ztemplateflux_vdisp[Ivdisp, :, :], 
-                specflux[Ivdisp], specivar[Ivdisp],
-                xparam=templatecache['vdisp'], xlabel=r'$\sigma$ (km/s)', log=log,
-                debug=debug_plots, png='deltachi2-vdisp.png')
-            log.info('Fitting for the velocity dispersion took {:.2f} seconds.'.format(time.time()-t0))
+            if test_continuum:
+                from fastspecfit.sandbox import fit_continuum
+                I = np.where(templatecache['templateinfo']['av'] == 0.)[0]
+                fit_continuum(templatecache['templateflux'][:, I])
+
+                pdb.set_trace()
+
+                
+
+            else:
+                ztemplateflux_vdisp, _ = CTools.templates2data(
+                    templatecache['vdispflux'], templatecache['vdispwave'], # [npix,vdispnsed,nvdisp]
+                    redshift=redshift, dluminosity=data['dluminosity'],
+                    specwave=data['wave'], specres=data['res'],
+                    cameras=data['cameras'], synthphot=False, stack_cameras=True)
+
+                vdispchi2min, vdispbest, vdispivar, _ = CTools.call_nnls(
+                    ztemplateflux_vdisp[Ivdisp, :, :], 
+                    specflux[Ivdisp], specivar[Ivdisp],
+                    xparam=templatecache['vdisp'], xlabel=r'$\sigma$ (km/s)', log=log,
+                    debug=debug_plots, png='deltachi2-vdisp.png')
+                log.info('Fitting for the velocity dispersion took {:.2f} seconds.'.format(time.time()-t0))
             
             if vdispivar > 0:
                 # Require vdisp to be measured with S/N>1, which protects
