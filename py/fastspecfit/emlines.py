@@ -833,7 +833,7 @@ class EMFitTools(Filters):
                                    redshift,
                                    line_wavelengths,
                                    resolution_matrices,
-                                   camerapix,
+                                   tuple(camerapix), # for more efficient iteration
                                    params_mapping)
         
             try:
