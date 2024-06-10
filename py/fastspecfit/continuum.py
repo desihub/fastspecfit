@@ -1035,7 +1035,7 @@ class Inoue14(object):
         scale_tau : float
             Parameter multiplied to the IGM :math:`\tau` values (exponential 
             in the linear absorption fraction).  
-            I.e., :math:`f_\mathrm{igm} = e^{-\mathrm{scale\_tau} \tau}`.
+            I.e., :math:r`f_\mathrm{igm} = e^{-\mathrm{scale\_tau} \tau}`.
 
         Copyright (c) 2016-2022 Gabriel Brammer
 
@@ -2079,12 +2079,19 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             t0 = time.time()
             if test_continuum:
                 from fastspecfit.sandbox import fit_continuum
+                # temporary hack - we fit for A(V) in fit_continuum
                 I = np.where(templatecache['templateinfo']['av'] == 0.)[0]
-                fit_continuum(templatecache['templateflux'][:, I])
+
+                ztemplateflux, _ = CTools.templates2data(
+                    templatecache['templateflux'][:, I], templatecache['templatewave'], # [npix,nsed]
+                    redshift=redshift, dluminosity=data['dluminosity'],
+                    specwave=data['wave'], specres=data['res'],
+                    cameras=data['cameras'], synthphot=False, stack_cameras=True)
+
+                continuum = fit_continuum(ztemplateflux, specwave, specflux, specivar, redshift=redshift,
+                                          vdisp_guess=vdisp_nominal)
 
                 pdb.set_trace()
-
-                
 
             else:
                 ztemplateflux_vdisp, _ = CTools.templates2data(
