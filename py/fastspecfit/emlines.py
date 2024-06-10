@@ -18,9 +18,8 @@ from fastspecfit.continuum import Filters
 from fastspecfit.util import C_LIGHT
 
 from fastspecfit.emline_fit import (
-    EMLine_prepare_bins,
-    EMLine_objective,
-    EMLine_jacobian,
+    EMLine_Objective,
+    EMLine_MultiLines,
     EMLine_find_peak_amplitudes,
     EMLine_build_model,
     EMLine_ParamsMapping,
@@ -814,29 +813,32 @@ class EMFitTools(Filters):
                 
         parameters, (Ifree, Itied, tiedtoparam, tiedfactor, bounds, doubletindx, doubletpair, \
                      line_wavelengths) = self._linemodel_to_parameters(linemodel, self.fit_linetable)
-        
-        log.debug(f"Optimizing {len(Ifree)} free parameters")
-        
-        # corner case where all lines are out of the wavelength range, which can
-        # happen at high redshift and with the red camera masked, e.g.,
-        # iron/main/dark/6642/39633239580608311).
-        initial_guesses = parameters[Ifree]
-    
+
         params_mapping = EMLine_ParamsMapping(parameters, Ifree,
                                               Itied, tiedtoparam, tiedfactor,
                                               doubletindx, doubletpair)
         
-        bin_data = EMLine_prepare_bins(obs_bin_centers, camerapix)
-        
-        farg = (bin_data, obs_bin_fluxes, obs_weights, redshift,
-                line_wavelengths, tuple(resolution_matrices), camerapix,
-                params_mapping)
-        
+        log.debug(f"Optimizing {len(Ifree)} free parameters")
+
         if len(Ifree) == 0:
             fit_info = {'nfev': 0, 'status': 0}
         else:
+            # corner case where all lines are out of the wavelength range, which can
+            # happen at high redshift and with the red camera masked, e.g.,
+            # iron/main/dark/6642/39633239580608311).
+            initial_guesses = parameters[Ifree]
+    
+            obj = EMLine_Objective(obs_bin_centers,
+                                   obs_bin_fluxes,
+                                   obs_weights,
+                                   redshift,
+                                   line_wavelengths,
+                                   tuple(resolution_matrices),
+                                   camerapix, # for more efficient iteration
+                                   params_mapping)
+        
             try:
-                fit_info = least_squares(EMLine_objective, initial_guesses, jac=EMLine_jacobian, args=farg, 
+                fit_info = least_squares(obj.objective, initial_guesses, jac=obj.jacobian, args=(),
                                          max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
                                          tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': True},
                                          method='trf', bounds=tuple(zip(*bounds)),) # verbose=2)
@@ -849,15 +851,15 @@ class EMFitTools(Filters):
                 log.critical(errmsg)
                 raise RuntimeError(errmsg)
     
-        # Drop (zero out) any dubious free parameters.
-        self._drop_params(parameters, linemodel, Ifree, log)
+            # Drop (zero out) any dubious free parameters.
+            self._drop_params(parameters, linemodel, Ifree, log)
         
-        # At this point, parameters contains correct *free* and *fixed* values, but
-        # we need to update *tied* values to reflect any changes to free params.  We
-        # do *not* apply doublet rules, as other code expects us to return a params
-        # array with doublet ratios as ratios, not amplitudes.
-        for I, indx, factor in zip(Itied, tiedtoparam, tiedfactor):
-            parameters[I] = parameters[indx] * factor
+            # At this point, parameters contains correct *free* and *fixed* values, but
+            # we need to update *tied* values to reflect any changes to free params.  We
+            # do *not* apply doublet rules, as other code expects us to return a params
+            # array with doublet ratios as ratios, not amplitudes.
+            for I, indx, factor in zip(Itied, tiedtoparam, tiedfactor):
+                parameters[I] = parameters[indx] * factor
         
         out_linemodel = linemodel.copy()
         out_linemodel['value'] = parameters.copy() # so we don't munge it below
@@ -875,12 +877,12 @@ class EMFitTools(Filters):
             # fitted spectral line after convolution with the resolution
             # matrix.
             peaks = EMLine_find_peak_amplitudes(parameters,
-                                                bin_data,
+                                                obs_bin_centers,
                                                 redshift,
                                                 line_wavelengths,
                                                 resolution_matrices,
                                                 camerapix)
-    
+            
             # FIXME: is len(lineamps) == # lines obtainable from line table?
             out_linemodel['obsvalue'][:len(lineamps)] = peaks
             

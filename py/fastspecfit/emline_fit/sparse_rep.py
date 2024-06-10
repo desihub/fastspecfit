@@ -265,3 +265,25 @@ class EMLineJacobian(LinearOperator):
             for j in range(e - s):
                 acc += vals[j] * v[j + s]
             w[i] = acc
+
+        
+    #
+    # for debugging -- compute singular values of Jacobian
+    # and estimate its condition number.
+    #
+    def estimateConditionNumber(self):
+
+        from scipi.sparse.linalg import svds
+
+        try:
+            svs = svds(self, return_singular_vectors=False,
+                       k=nFreeParms - 1, which="LM")
+            sv0 = svds(self, return_singular_vectors=False,
+                   k=1, which="SM")[0]
+            cond = svs[-1] / sv0
+            print(np.hstack((sv0, svs)))       
+            print(f"cond(J) = {cond:.3e}")
+        
+        except:
+            print("Failed to compute Jacobian condition number")
+
