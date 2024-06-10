@@ -1,4 +1,4 @@
-from .emlines_objective import (
+from .emline_objective import (
     EMLine_Objective,
     find_peak_amplitudes as EMLine_find_peak_amplitudes,
     build_model          as EMLine_build_model,

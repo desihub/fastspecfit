@@ -45,7 +45,7 @@ class EMLine_Objective(object):
         self.obs_weights = obs_weights
         self.redshift = redshift
         self.line_wavelengths = line_wavelengths
-        self.resolution_matrices = tuple(resolution_matrices)
+        self.resolution_matrices = resolution_matrices
         self.camerapix = camerapix
         self.params_mapping = params_mapping
         
@@ -189,7 +189,6 @@ def build_model(redshift,
     return model_fluxes
 
 
-    
 #
 # find_peak_amplitudes()
 # Given fitted parameters for all emission lines, report for

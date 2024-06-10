@@ -832,8 +832,8 @@ class EMFitTools(Filters):
                                    obs_weights,
                                    redshift,
                                    line_wavelengths,
-                                   resolution_matrices,
-                                   tuple(camerapix), # for more efficient iteration
+                                   tuple(resolution_matrices),
+                                   camerapix, # for more efficient iteration
                                    params_mapping)
         
             try:
