@@ -19,6 +19,7 @@ from fastspecfit.util import C_LIGHT
 
 from fastspecfit.emline_fit import (
     EMLine_Objective,
+    EMLine_MultiLines,
     EMLine_find_peak_amplitudes,
     EMLine_build_model,
     EMLine_ParamsMapping,
@@ -881,7 +882,7 @@ class EMFitTools(Filters):
                                                 line_wavelengths,
                                                 resolution_matrices,
                                                 camerapix)
-    
+            
             # FIXME: is len(lineamps) == # lines obtainable from line table?
             out_linemodel['obsvalue'][:len(lineamps)] = peaks
             
