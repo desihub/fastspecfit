@@ -719,7 +719,7 @@ class EMFitTools(Filters):
     @staticmethod
     def _linemodel_to_parameters(linemodel, fit_linetable):
         """Convert a linemodel model to a list of emission-line parameters."""
-
+        
         linesplit = np.array_split(linemodel['index'], 3) # 3 parameters per line
         #linesplit = (np.arange(3) + 1) * len(linemodel) // 3 # 3 parameters per line
         lineamps = linemodel['value'][linesplit[0]].data
@@ -960,8 +960,7 @@ class EMFitTools(Filters):
     
         emlinemodel = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas,
                                          linewaves, emlinewave, resolution_matrix, camerapix)
-    
-    
+        
         return emlinemodel
     
 
@@ -981,8 +980,7 @@ class EMFitTools(Filters):
             if '_amp' in param:
                 param = param.replace('_amp', '_modelamp')
             parameters.append(fastspecfit_table[param.upper()])
-        #parameters = [fastspecfit_table[param.upper()] for param in self.param_names]
-
+            
         lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line    
 
         # Handle the doublets. Note we are implicitly assuming that the
@@ -998,6 +996,7 @@ class EMFitTools(Filters):
         
         return emlinemodel
 
+    
     def populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
                          emlineivar, oemlineivar, specflux_nolines, redshift,
                          resolution_matrix, camerapix, log, nminpix=7, nsigma=3.):
@@ -1325,6 +1324,7 @@ class EMFitTools(Filters):
                 log.debug('{}_Z: {:.9f}+/-{:.9f}'.format(line, result[f'{line}_Z'], resultf['{line}_ZRMS']))
                 log.debug('{}_SIGMA: {:.3f}+/-{:.3f}'.format(line, result[f'{line}_SIGMA'], result[f'{line}_SIGMARMS']))
 
+                
     def synthphot_spectrum(self, data, result, modelwave, modelflux):
         """Synthesize photometry from the best-fitting model (continuum+emission lines).
 
@@ -1340,10 +1340,10 @@ class EMFitTools(Filters):
                                                 lambda_eff=filters.effective_wavelengths.value)
 
         for iband, band in enumerate(self.synth_bands):
-            result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband] # * 'nanomaggies'
-            #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
+            result[f'FLUX_SYNTH_{band.upper()}'] = data['synthphot']['nanomaggies'][iband] # * 'nanomaggies'
+            #result[f'FLUX_SYNTH_IVAR_{band.upper()}'] = data['synthphot']['nanomaggies_ivar'][iband]
         for iband, band in enumerate(self.synth_bands):
-            result['FLUX_SYNTH_SPECMODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] # * 'nanomaggies'
+            result[f'FLUX_SYNTH_SPECMODEL_{band.upper()}'] = model_synthphot['nanomaggies'][iband] # * 'nanomaggies'
 
 
 
