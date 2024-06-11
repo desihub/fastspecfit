@@ -2082,13 +2082,17 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                 # temporary hack - we fit for A(V) in fit_continuum
                 I = np.where(templatecache['templateinfo']['av'] == 0.)[0]
 
-                ztemplateflux, _ = CTools.templates2data(
-                    templatecache['templateflux'][:, I], templatecache['templatewave'], # [npix,nsed]
-                    redshift=redshift, dluminosity=data['dluminosity'],
-                    specwave=data['wave'], specres=data['res'],
-                    cameras=data['cameras'], synthphot=False, stack_cameras=True)
+                #ztemplateflux, _ = CTools.templates2data(
+                #    templatecache['templateflux_nolines'][:, I], templatecache['templatewave'], # [npix,nsed]
+                #    redshift=redshift, dluminosity=data['dluminosity'],
+                #    specwave=data['wave'], specres=data['res'],
+                #    cameras=data['cameras'], synthphot=False, stack_cameras=True)
 
-                continuum = fit_continuum(ztemplateflux, specwave, specflux, specivar, redshift=redshift,
+                continuum = fit_continuum(templatecache['templatewave'], 
+                                          templatecache['templateflux_nolines'][:, I], # [npix,nsed]
+                                          specwave, specflux, specivar, 
+                                          specres=data['res'], camerapix=data['camerapix'],
+                                          redshift=redshift, dluminosity=data['dluminosity'],
                                           vdisp_guess=vdisp_nominal)
 
                 pdb.set_trace()
