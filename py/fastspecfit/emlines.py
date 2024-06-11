@@ -49,7 +49,7 @@ class EMFitTools(Filters):
     def __init__(self, fphoto=None, emlinesfile=None, uniqueid=None,
                  minsnr_balmer_broad=3.):
         """Class to model a galaxy stellar continuum.
-
+        
         Parameters
         ----------
         templates : :class:`str`, optional
@@ -81,9 +81,7 @@ class EMFitTools(Filters):
         super(EMFitTools, self).__init__(fphoto=fphoto)
 
         self.uniqueid = uniqueid
-
-        self.linetable = read_emlines(emlinesfile=emlinesfile)
-
+        
         #self.emwave_pixkms = 5.                                   # pixel size for internal wavelength array [km/s]
         #self.dlog10wave = self.emwave_pixkms / C_LIGHT / np.log(10) # pixel size [log-lambda]
 
@@ -92,93 +90,149 @@ class EMFitTools(Filters):
         self.limitsigma_broad = 1200.0 
         self.wavepad = 2.5 # Angstrom
 
+        self.minsigma_balmer_broad = 250. # minimum broad-line sigma [km/s]
+        self.minsnr_balmer_broad = minsnr_balmer_broad # minimum broad-line S/N
+        
         # Establish the names of the parameters and doublets here, at
         # initialization, because we use them when instantiating the best-fit
         # model not just when fitting.
-        doublet_names = ['mgii_doublet_ratio', 'oii_doublet_ratio', 'sii_doublet_ratio']
-        doublet_pairs = ['mgii_2803_amp', 'oii_3729_amp', 'sii_6716_amp']
+        doublet_names = {
+            'mgii_2796' : 'mgii_doublet_ratio' , 
+            'oii_3726'  : 'oii_doublet_ratio'  , 
+            'sii_6731'  : 'sii_doublet_ratio'  ,
+        }
 
-        param_names = []
-        for param in ['amp', 'vshift', 'sigma']:
-            for linename in self.linetable['name'].data:
-                param_name = linename+'_'+param
-                # Use doublet-ratio parameters for close or physical
-                # doublets. Note that any changes here need to be propagated to
-                # the XX method, which needs to "know" about these doublets.
-                if param_name == 'mgii_2796_amp':
-                    param_name = 'mgii_doublet_ratio' # MgII 2796/2803
-                if param_name == 'oii_3726_amp':
-                    param_name = 'oii_doublet_ratio'  # [OII] 3726/3729
-                if param_name == 'sii_6731_amp':
-                    param_name = 'sii_doublet_ratio'  # [SII] 6731/6716
-                param_names.append(param_name)
-        self.param_names = np.hstack(param_names)
-        self.amp_param_bool = np.array(['_amp' in pp for pp in self.param_names])
-        self.amp_balmer_bool = np.array(['_amp' in pp and 'hei_' not in pp and 'heii_' not in pp for pp in self.param_names]) # no helium lines
-        self.sigma_param_bool = np.array(['_sigma' in pp for pp in self.param_names])
-        self.vshift_param_bool = np.array(['_vshift' in pp for pp in self.param_names])
+        doublet_pairs = {
+            'mgii_doublet_ratio' : 'mgii_2803' ,
+            'oii_doublet_ratio'  : 'oii_3729',
+            'sii_doublet_ratio'  : 'sii_6716'
+        }
 
-        self.doubletindx = np.hstack([np.where(self.param_names == doublet)[0] for doublet in doublet_names])
-        self.doubletpair = np.hstack([np.where(self.param_names == pair)[0] for pair in doublet_pairs])
+        self.linetable = read_emlines(emlinesfile=emlinesfile)
+        self.linetable.add_index('name')
+        
+        #
+        # build parameter names for every line in the line table,
+        # in the order we want them to appear in the line model table.
+        #
+        nlines = len(self.linetable)
+        
+        amp_param_bool    = np.full(3*nlines, False, dtype=bool)
+        vshift_param_bool = np.full(3*nlines, False, dtype=bool)
+        sigma_param_bool  = np.full(3*nlines, False, dtype=bool)
+        balmer_bool       = np.full(3*nlines, False, dtype=bool)
+        
+        amp_names    = []
+        vshift_names = []
+        sigma_names  = []
+        
+        doubletindx = []
+        doubletpair = []
+        
+        for i, line in enumerate(self.linetable):
+            
+            line_name = line['name']
+            
+            if line_name in doublet_names:
+                # rename doublet lines to their ratios
+                amp_param = doublet_names[line_name]
+                doubletindx.append(i)
 
-        self.minsigma_balmer_broad = 250. # minimum broad-line sigma [km/s]
-        self.minsnr_balmer_broad = minsnr_balmer_broad # minimum broad-line S/N
+                # get the index of the other line in the pair
+                i_other = self.linetable.loc_indices['name', doublet_pairs[amp_param]]
+                doubletpair.append(i_other)
+            else:
+                amp_param = f"{line_name}_amp"
+                amp_param_bool[i] = True
 
+                # identify balmer lines (no helium lines)
+                balmer_bool[i] = \
+                    'hei_' not in line_name and \
+                    'heii_' not in line_name
+                
+            amp_names.append(amp_param)
+            
+            vshift_param = f"{line_name}_vshift"
+            vshift_param_bool[i+nlines] = True
+            vshift_names.append(vshift_param)
+            
+            sigma_param  = f"{line_name}_sigma"
+            sigma_param_bool[i+2*nlines] = True
+            sigma_names.append(sigma_param)
+
+        self.param_names       = np.hstack((amp_names, vshift_names, sigma_names))
+        self.amp_param_bool    = amp_param_bool
+        self.vshift_param_bool = vshift_param_bool 
+        self.sigma_param_bool  = sigma_param_bool
+        self.amp_balmer_bool   = balmer_bool 
+        
+        self.doubletindx = np.array(doubletindx, dtype=np.int32)
+        self.doubletpair = np.array(doubletpair, dtype=np.int32)
+
+        
     def summarize_linemodel(self, linemodel):
-        """Simple function to summarize an input linemodel."""
-        def _print(linenames):
-            for linename in linenames:
-                for param in ['amp', 'sigma', 'vshift']:
-                    I = np.where(self.param_names == linename+'_'+param)[0]
-                    if len(I) == 1:
-                        I = I[0]
-                        if linemodel['tiedtoparam'][I] == -1:
-                            if linemodel['fixed'][I]:
-                                print('{:25s} is NOT FITTED'.format(linename+'_'+param))
-                            else:
-                                print('{:25s} untied'.format(linename+'_'+param))
-                        else:
-                            if linemodel['fixed'][I]:
-                                print('{:25s} tied to {:25s} with factor {:.4f} and FIXED'.format(
-                                    linename+'_'+param, self.param_names[linemodel['tiedtoparam'][I]], linemodel['tiedfactor'][I]))
-                            else:
-                                print('{:25s} tied to {:25s} with factor {:.4f}'.format(
-                                    linename+'_'+param, self.param_names[linemodel['tiedtoparam'][I]], linemodel['tiedfactor'][I]))
-                                
-        linenames = self.fit_linetable['name'].data
 
+        """Simple function to summarize an input linemodel."""
+        def _print(line_mask):
+            for line in self.fit_linetable[line_mask]:
+                line_name = line['name']
+                
+                for param in line['params']:
+                    param_name = linemodel['param_name'][param]
+                    param_isfixed = linemodel['fixed'][param]
+                    tiedtoparam = linemodel['tiedtoparam'][param]
+                    
+                    if tiedtoparam == -1: # not tied
+                        if param_isfixed:
+                            print(f'{param_name:25s} FIXED')
+                        else:
+                            print(f'{param_name:25s} free')
+                    else:
+                        source_name = linemodel['param_name'][tiedtoparam]
+                        tiedfactor = linemodel['tiedfactor'][param]
+                        print(f'{param_name:25s} tied to {source_name:25s} '
+                              f'with factor {tiedfactor:.4f}', end='')
+                        print(' and FIXED' if param_isfixed else '')
+
+                    
+        line_isbroad  = self.fit_linetable['isbroad']
+        line_isbalmer = self.fit_linetable['isbalmer']
+        
         print('---------------------')
         print('UV/QSO (broad) lines:')
         print('---------------------')
-        _print(linenames[(self.fit_linetable['isbroad'] == True) * (self.fit_linetable['isbalmer'] == False)])
+        _print(line_isbroad & ~line_isbalmer)
         print()
         print('--------------------------')
         print('Broad Balmer+helium lines:')
         print('--------------------------')
-        _print(linenames[(self.fit_linetable['isbroad'] == True) * (self.fit_linetable['isbalmer'] == True)])
+        _print(line_isbroad & line_isbalmer)
         print()
         print('---------------------------')
         print('Narrow Balmer+helium lines:')
         print('---------------------------')
-        _print(linenames[(self.fit_linetable['isbroad'] == False) * (self.fit_linetable['isbalmer'] == True)])
+        _print(~line_isbroad & line_isbalmer)
         print()
         print('----------------')
         print('Forbidden lines:')
         print('----------------')
-        _print(linenames[(self.fit_linetable['isbroad'] == False) * (self.fit_linetable['isbalmer'] == False)])
+        _print(~line_isbroad & ~line_isbalmer)
 
     
     def build_linemodels(self, redshift, wavelims=(3000, 10000), verbose=False, strict_broadmodel=True):
         ### Build all the multi-parameter emission-line models we will use.
-        
+
         def _fix_parameters(linemodel, verbose=False):
+
+            isfixed = linemodel['fixed']
             
-            n_params  = len(linemodel['index'])
-            tied_mask = linemodel['tiedtoparam'] != -1
-            source    = linemodel['tiedtoparam'][tied_mask]
+            n_params    = len(linemodel['index'])
+            tiedtoparam = linemodel['tiedtoparam']
+            tied_mask   = tiedtoparam != -1
+            source      = tiedtoparam[tied_mask]
             
             # propagate fixed status from each param to all params tied to it
-            linemodel['fixed'][tied_mask] = linemodel['fixed'][source]
+            isfixed[tied_mask] = isfixed[source]
             
             # identify all params of out-of-range lines
             out_of_range = ~fit_linetable[linemodel['line']]['inrange']
@@ -188,24 +242,23 @@ class EMFitTools(Filters):
 
             # fix any parameters for an out-of-range line that are not the source of another
             # tied parameter
-            linemodel['fixed'][np.logical_and(out_of_range, n_tied == 0)] = True
+            isfixed[np.logical_and(out_of_range, n_tied == 0)] = True
 
             # for each param, count # of *fixed* params tied to it
-            n_tied_fixed = np.bincount(source, weights=linemodel['fixed'][tied_mask], minlength=n_params)
+            n_tied_fixed = np.bincount(source, weights=isfixed[tied_mask], minlength=n_params)
             
             # Fix any parameter for an out-of-range line for which all its tied params
             # (if any) are fixed.
             fixable = np.logical_and(out_of_range, n_tied == n_tied_fixed)
-            linemodel['fixed'][fixable] = True
+            isfixed[fixable] = True
+
+            # finally, fix any doublet ratio whose source is fixed
+            doubletpair  = linemodel['doubletpair']
+            doublet_mask = doubletpair != -1
+            source       = doubletpair[doublet_mask]
+            isfixed[doublet_mask] = isfixed[source]
+
             
-            # Also handle the doublets.
-            I = np.where(linemodel['doubletpair'] != -1)[0]
-            if len(I) > 0:
-                for doublet in linemodel[I]['doubletpair']:
-                    J = doublet == linemodel['doubletpair']
-                    if linemodel[doublet]['fixed']:
-                        linemodel['fixed'][J] = True
-        
         initvshift = 1.0
         vmaxshift_narrow = 500.0
         vmaxshift_broad = 2500.0 # 3000.0
@@ -307,85 +360,89 @@ class EMFitTools(Filters):
         # their velocity shifts and line-widths always tied. In addition, set fixed
         # doublet-ratios here. Note that these constraints must be set on *all*
         # lines, not just those in range.
+
+        initials = linemodel_broad['initial']
+        bounds   = linemodel_broad['bounds']
         
-        for line in fit_linetable:
+        for line_name, line_isbalmer, line_isbroad, line_params in \
+                fit_linetable.iterrows('name', 'isbalmer', 'isbroad', 'params'):
 
-            line_name     = line['name']
-            line_isbalmer = line['isbalmer']
-            line_isbroad  = line['isbroad']
-
-            amp, vshift, sigma = line['params']
+            amp, vshift, sigma = line_params
 
             # initial values and bounds for line's parameters
-            linemodel_broad['initial'][amp] = initamp
-            linemodel_broad['initial'][vshift] = initvshift
+            initials[amp] = initamp
+            initials[vshift] = initvshift
             
             if line_isbroad:
-                linemodel_broad['initial'][sigma] = initsigma_broad
+                initials[sigma] = initsigma_broad
                 
                 if line_isbalmer: # broad He+Balmer lines
-                    linemodel_broad['bounds'][amp] = (minamp_balmer_broad, maxamp_balmer_broad) 
-                    linemodel_broad['bounds'][vshift] = (-vmaxshift_balmer_broad, +vmaxshift_balmer_broad)
-                    linemodel_broad['bounds'][sigma] = (minsigma_balmer_broad, maxsigma_balmer_broad)
+                    bounds[amp] = (minamp_balmer_broad, maxamp_balmer_broad) 
+                    bounds[vshift] = (-vmaxshift_balmer_broad, +vmaxshift_balmer_broad)
+                    bounds[sigma] = (minsigma_balmer_broad, maxsigma_balmer_broad)
                 else: # broad UV/QSO lines (non-Balmer)
-                    linemodel_broad['bounds'][amp] = (minamp, maxamp)
-                    linemodel_broad['bounds'][vshift] = (-vmaxshift_broad, +vmaxshift_broad)
-                    linemodel_broad['bounds'][sigma] = (minsigma_broad, maxsigma_broad)
+                    bounds[amp] = (minamp, maxamp)
+                    bounds[vshift] = (-vmaxshift_broad, +vmaxshift_broad)
+                    bounds[sigma] = (minsigma_broad, maxsigma_broad)
             else: # narrow He+Balmer lines, and forbidden lines
-                linemodel_broad['bounds'][amp] = (minamp, maxamp)
-                linemodel_broad['bounds'][vshift] = (-vmaxshift_narrow, +vmaxshift_narrow)
-                linemodel_broad['initial'][sigma] = initsigma_narrow
-                linemodel_broad['bounds'][sigma] = (minsigma_narrow, maxsigma_narrow)
+                bounds[amp] = (minamp, maxamp)
+                bounds[vshift] = (-vmaxshift_narrow, +vmaxshift_narrow)
+                initials[sigma] = initsigma_narrow
+                bounds[sigma] = (minsigma_narrow, maxsigma_narrow)
             
             # tie parameters of given line to source line.  We don't
             # tie the amplitude unless a tying factor is given for it
-            def tie_line(model, line, source_linename, amp_factor=None):
+            def tie_line(model, line_params, source_linename, amp_factor=None):
                 source_line = fit_linetable.loc['name', source_linename]
                 
-                amp, vshift, sigma = line['params']
+                amp, vshift, sigma = line_params
                 src_amp, src_vshift, src_sigma = source_line['params']
 
+                tiedfactor  = model['tiedfactor']
+                tiedtoparam = model['tiedtoparam']
+                
                 if amp_factor != None:
-                    model['tiedfactor'][amp] = amp_factor
-                    model['tiedtoparam'][amp] = src_amp
+                    tiedfactor[amp] = amp_factor
+                    tiedtoparam[amp] = src_amp
+                    
+                tiedfactor[vshift] = 1.0
+                tiedtoparam[vshift] = src_vshift
+                
+                tiedfactor[sigma] = 1.0
+                tiedtoparam[sigma] = src_sigma
 
-                model['tiedfactor'][vshift] = 1.0
-                model['tiedtoparam'][vshift] = src_vshift
-
-                model['tiedfactor'][sigma] = 1.0
-                model['tiedtoparam'][sigma] = src_sigma
-            
+                
             # broad He + Balmer
             if line_isbalmer and line_isbroad and line_name != 'halpha_broad':
-                tie_line(linemodel_broad, line, 'halpha_broad')
+                tie_line(linemodel_broad, line_params, 'halpha_broad')
             # narrow He + Balmer
             elif line_isbalmer and not line_isbroad and line_name != 'halpha':
-                tie_line(linemodel_broad, line, 'halpha')
+                tie_line(linemodel_broad, line_params, 'halpha')
             else:
                 match line_name:
                     case 'mgii_2796':
-                        tie_line(linemodel_broad, line, 'mgii_2803')                        
+                        tie_line(linemodel_broad, line_params, 'mgii_2803')                        
                     case 'nev_3346' | 'nev_3426': # should [NeIII] 3869 be tied to [NeV]???
-                        tie_line(linemodel_broad, line, 'neiii_3869')
+                        tie_line(linemodel_broad, line_params, 'neiii_3869')
                     case 'oii_3726':
-                        tie_line(linemodel_broad, line, 'oii_3729')
+                        tie_line(linemodel_broad, line_params, 'oii_3729')
                     case 'nii_5755' | 'oi_6300' | 'siii_6312':                        
                         # Tentative! Tie auroral lines to [OIII] 4363 but maybe we shouldn't tie [OI] 6300 here...
-                        tie_line(linemodel_broad, line, 'oiii_4363')
+                        tie_line(linemodel_broad, line_params, 'oiii_4363')
                     case 'oiii_4959':
                         """
                         [O3] (4-->2): airwave: 4958.9097 vacwave: 4960.2937 emissivity: 1.172e-21
                         [O3] (4-->3): airwave: 5006.8417 vacwave: 5008.2383 emissivity: 3.497e-21
                         """
-                        tie_line(linemodel_broad, line, 'oiii_5007', amp_factor = 1.0 / 2.9839)
+                        tie_line(linemodel_broad, line_params, 'oiii_5007', amp_factor = 1.0 / 2.9839)
                     case 'nii_6548':
                         """
                         [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.02198e-21
                         [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.94901e-21
                         """
-                        tie_line(linemodel_broad, line, 'nii_6584', amp_factor = 1.0 / 2.9421)
+                        tie_line(linemodel_broad, line_params, 'nii_6584', amp_factor = 1.0 / 2.9421)
                     case 'sii_6731':
-                        tie_line(linemodel_broad, line, 'sii_6716')
+                        tie_line(linemodel_broad, line_params, 'sii_6716')
                     case 'oii_7330':
                         """
                         [O2] (5-->2): airwave: 7318.9185 vacwave: 7320.9350 emissivity: 8.18137e-24
@@ -393,12 +450,12 @@ class EMFitTools(Filters):
                         [O2] (5-->3): airwave: 7329.6613 vacwave: 7331.6807 emissivity: 1.35614e-23
                         [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.27488e-23
                         """
-                        tie_line(linemodel_broad, line, 'oii_7320', amp_factor = 1.0 / 1.2251)
+                        tie_line(linemodel_broad, line_params, 'oii_7320', amp_factor = 1.0 / 1.2251)
                     case 'siii_9069':
-                        tie_line(linemodel_broad, line, 'siii_9532')
+                        tie_line(linemodel_broad, line_params, 'siii_9532')
                     case 'siliii_1892':
                         # Tentative! Tie SiIII] 1892 to CIII] 1908 because they're so close in wavelength.
-                        tie_line(linemodel_broad, line, 'ciii_1908')
+                        tie_line(linemodel_broad, line_params, 'ciii_1908')
                     
             # Tie all the forbidden and narrow Balmer+helium lines *except
             # [OIII] 4959,5007* to [NII] 6584 when we have broad lines. The
@@ -407,8 +464,8 @@ class EMFitTools(Filters):
             # https://github.com/desihub/fastspecfit/issues/160
             if strict_broadmodel:
                 if not line_isbroad and not line_name in { 'nii_6584', 'oiii_4959', 'oiii_5007' }:
-                    tie_line(linemodel_broad, line, 'nii_6584')
-
+                    tie_line(linemodel_broad, line_params, 'nii_6584')
+                    
                 #if not line_isbroad and line_name != 'oiii_5007':
                 #    tie_line(linemodel_broad, line, 'oiii_5007')
                 
@@ -422,17 +479,18 @@ class EMFitTools(Filters):
         for param, bounds, default in zip(('mgii_doublet_ratio', 'oii_doublet_ratio', 'sii_doublet_ratio'),
                                           (bounds_mgii_doublet,  bounds_oii_doublet,   bounds_sii_doublet),
                                           (init_mgii_doublet,    init_oii_doublet,     init_sii_doublet)):
+            
             p = linemodel_broad.loc['param_name', param]
             p['bounds']  = bounds
             p['initial'] = default
-        
+
         # Assign fixed=True to parameters which are outside the wavelength range
         # except those that are tied to other lines.
         _fix_parameters(linemodel_broad, verbose=False)
         
         # debug check
-        params_with_nonzero_factors = linemodel_broad['tiedfactor'] != 0.
-        assert(np.all(linemodel_broad['tiedtoparam'][params_with_nonzero_factors]!= -1))
+        #params_with_nonzero_factors = (linemodel_broad['tiedfactor'] != 0.)
+        #assert(np.all(linemodel_broad['tiedtoparam'][params_with_nonzero_factors]!= -1))
         
         # It's OK for the doublet ratios to be bounded at zero.
         #assert(len(linemodel_broad[np.sum(linemodel_broad['bounds'] == (0.0, 0.0), axis=1) > 0]) == 0)
@@ -441,42 +499,46 @@ class EMFitTools(Filters):
         linemodel_nobroad = linemodel_broad.copy()
         linemodel_nobroad['fixed'] = False # reset
 
-        for line in fit_linetable:
-            
-            line_name     = line['name']
-            line_isbalmer = line['isbalmer']
-            line_isbroad  = line['isbroad']
-            
+        line_isfixed = linemodel_nobroad['fixed']
+        tiedfactor   = linemodel_nobroad['tiedfactor']
+        tiedtoparam  = linemodel_nobroad['tiedtoparam']
+        
+        for line_name, line_isbalmer, line_isbroad, line_params in \
+                fit_linetable.iterrows('name', 'isbalmer', 'isbroad', 'params'):
+
             if line_name == 'halpha_broad':
-                for p in line['params']:  # all of amp, vshift, sigma
-                    linemodel_nobroad['fixed'][p] = True
+                for p in line_params:  # all of amp, vshift, sigma
+                    line_isfixed[p] = True
             
             if line_isbalmer and line_isbroad and line_name != 'halpha_broad':
-                tie_line(linemodel_nobroad, line, 'halpha_broad', amp_factor = 1.0)
+                tie_line(linemodel_nobroad, line_params, 'halpha_broad', amp_factor = 1.0)
                 
             if strict_broadmodel:
                 # Tie the forbidden lines to [OIII] 5007.
                 if not line_isbalmer and not line_isbroad and line_name != 'oiii_5007':
-                    tie_line(linemodel_nobroad, line, 'oiii_5007')
+                    tie_line(linemodel_nobroad, line_params, 'oiii_5007')
                 
                 # Tie narrow Balmer and helium lines together.
                 if line_isbalmer and not line_isbroad:
                     if line_name == 'halpha':
-                        _, vshift, sigma = line['params']
+                        _, vshift, sigma = line_params
                         for p in (vshift, sigma):
                             # untie the params of this line
-                            linemodel_nobroad['tiedfactor'][p]  =  0.
-                            linemodel_nobroad['tiedtoparam'][p] = -1                            
+                            tiedfactor[p]  =  0.
+                            tiedtoparam[p] = -1    
                     else:
-                        tie_line(linemodel_nobroad, line, 'halpha')
-                        
+                        tie_line(linemodel_nobroad, line_params, 'halpha')
+
+        # Assign fixed=True to parameters which are outside the wavelength range
+        # except those that are tied to other lines.
         _fix_parameters(linemodel_nobroad, verbose=False)
-        
-        params_with_nonzero_factors = linemodel_nobroad['tiedfactor'] != 0.
-        assert(np.all(linemodel_nobroad['tiedtoparam'][params_with_nonzero_factors] != -1))
+
+        # debug check
+        #params_with_nonzero_factors = (linemodel_nobroad['tiedfactor'] != 0.)
+        #assert(np.all(linemodel_nobroad['tiedtoparam'][params_with_nonzero_factors] != -1))
         
         return linemodel_broad, linemodel_nobroad
-    
+
     
     def initial_guesses_and_bounds(self, data, emlinewave, emlineflux, log):
         """For all lines in the wavelength range of the data, get a good initial guess
@@ -485,48 +547,43 @@ class EMFitTools(Filters):
         lines.
 
         """
-        initial_guesses, param_bounds = {}, {}
-        #init_amplitudes, init_sigmas = {}, {}
-
+        initial_guesses, param_bounds, civars = {}, {}, {}
+        
         coadd_sigma = data['smoothsigma'] # robust estimate of the variance in the spectrum
         coadd_emlineflux = np.interp(data['coadd_wave'], emlinewave, emlineflux)
     
         for linename, linepix, contpix in zip(data['coadd_linename'], data['coadd_linepix'], data['coadd_contpix']):
             ## skip the physical doublets
-            #if not hasattr(self.EMLineModel, '{}_amp'.format(linename)):
+            #if not hasattr(self.EMLineModel, f'{linename}_amp'):
             #    continue
-
+            
             npix = len(linepix)
             if npix > 5:
                 mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
-                if mnpx < 0:
-                    mnpx = 0
-                if mxpx > linepix[-1]:
-                    mxpx = linepix[-1]
+                mnpx = np.maximum(mnpx, 0)
+                mxpx = np.minimum(mxpx, linepix[-1])
                 amp = np.max(coadd_emlineflux[mnpx:mxpx])
             else:
                 amp = np.percentile(coadd_emlineflux[linepix], 97.5)
-            if amp < 0:
-                amp = np.abs(amp)
-
+            amp = np.abs(amp)
+            
             noise = np.mean(coadd_sigma[linepix])
             if noise == 0.:
                 civar = 0.
-                errmsg = 'Noise estimate for line {} is zero!'.format(linename)
+                errmsg = f'Noise estimate for line {linename} is zero!'
                 log.warning(errmsg)
                 #raise ValueError(errmsg)
             else:
                 civar = 1. / noise**2
-
+            
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_emlineflux[linepix])), 3*np.max(coadd_emlineflux[linepix])]
             mx = 5*np.max(coadd_emlineflux[linepix])
             if mx < 0: # ???
                 mx = 5*np.max(np.abs(coadd_emlineflux[linepix]))
             
-            iline = self.linetable[self.linetable['name'] == linename]
             bounds = [-1.5*np.min(np.abs(coadd_emlineflux[linepix])), mx]
-
+            
             # In extremely rare cases many of the pixels are zero, in which case
             # bounds[0] becomes zero, which is bad (e.g.,
             # iron/main/dark/27054/39627811564029314). Fix that here.
@@ -538,42 +595,131 @@ class EMFitTools(Filters):
                     bounds[0] = -1e-3 # ??
             
             if (bounds[0] > bounds[1]) or (amp < bounds[0]) or (amp > bounds[1]):
-                log.warning('Initial amplitude is outside its bound for line {}.'.format(linename))
+                log.warning(f'Initial amplitude is outside its bound for line {linename}.')
                 amp = np.diff(bounds)/2 + bounds[0]
                 # Should never happen.
                 if (bounds[0] > bounds[1]) or (amp < bounds[0]) or (amp > bounds[1]):
-                    errmsg = 'Initial amplitude is outside its bound for line {}.'.format(linename)
+                    errmsg = f'Initial amplitude is outside its bound for line {linename}.'
                     self.log.critical(errmsg)
                     raise ValueError(errmsg)
 
-            initial_guesses[linename+'_amp'] = amp
-            param_bounds[linename+'_amp'] = bounds
-            initial_guesses[linename+'_civar'] = civar
+            #
+            # record our initial gueses and bounds for amplitude
+            # and a guess at civar for the line
+            
+            line_idx = self.fit_linetable.loc_indices['name', linename]
+            
+            line = self.fit_linetable[line_idx]
+            amp_idx = line['params'][0]
+            initial_guesses[amp_idx] = amp
+            param_bounds[amp_idx] = bounds
+            
+            civars[line_idx] = civar
 
         # Now update the linewidth but here we need to loop over *all* lines
         # (not just those in range). E.g., if H-alpha is out of range we need to
         # set its initial value correctly since other lines are tied to it
         # (e.g., main-bright-32406-39628257196245904).
-        for iline in self.linetable:
-            linename = iline['name']
-            if iline['isbroad']:
-                if iline['isbalmer']: # broad Balmer lines
+
+        for isbroad, isbalmer, params in \
+                self.fit_linetable.iterrows('isbroad', 'isbalmer', 'params'):
+            
+            sigma_idx = params[2]
+            
+            # record initial guesses at sigma
+            
+            if isbroad:
+                if isbalmer: # broad Balmer lines
                     if data['linesigma_balmer'] > data['linesigma_narrow']:
-                        initial_guesses[linename+'_sigma'] = data['linesigma_balmer']
+                        initial_guesses[sigma_idx] = data['linesigma_balmer']
                     else:
-                        initial_guesses[linename+'_sigma'] = data['linesigma_narrow']
+                        initial_guesses[sigma_idx] = data['linesigma_narrow']
                 else: # broad UV/QSO lines
-                    initial_guesses[linename+'_sigma'] = data['linesigma_uv']
+                    initial_guesses[sigma_idx] = data['linesigma_uv']
             else:
                 # prefer narrow over Balmer
-                initial_guesses[linename+'_sigma'] = data['linesigma_narrow']
+                initial_guesses[sigma_idx] = data['linesigma_narrow']
     
-        return initial_guesses, param_bounds
+        return initial_guesses, param_bounds, civars
 
+
+    def populate_linemodel(self, linemodel, initial_guesses, param_bounds, line_civars, log):
+        """Populate an input linemodel with initial guesses and parameter bounds, taking
+        into account fixed parameters.       
+        """
+        
+        initials = linemodel['initial']
+        bounds   = linemodel['bounds']
+        civar    = linemodel['civar']
+
+        # Set initial values and bounds.
+        for iparam, name, isfixed, isbalmer, isbroad, doubletpair, line, tiedtoparam in \
+                linemodel.iterrows('index', 'param_name', 'fixed', 'isbalmer', 'isbroad', 'doubletpair', 'line', 'tiedtoparam'):
+       
+            # don't use amp initial values for doublet ratios
+            if iparam in initial_guesses and doubletpair == -1:
+                if isfixed:
+                    initials[iparam] = 0.0 # always set fixed parameter to zero
+                else:
+                    # Make sure the initial guess for the narrow Balmer+helium
+                    # line is smaller than the guess for the broad-line model.
+                    if isbalmer and self.sigma_param_bool[iparam]:
+                        if isbroad:
+                            initials[iparam] = 1.1 * initial_guesses[iparam]
+                        else:
+                            initials[iparam] = initial_guesses[iparam]
+                    else:
+                        initials[iparam] = initial_guesses[iparam]
+                        
+                    if iparam in param_bounds:
+                        bounds[iparam] = param_bounds[iparam]
+                        # set the lower boundary on broad lines to be XX times the local noise
+                        if linemodel['isbalmer'][iparam] and linemodel['isbroad'][iparam]:
+                            civar[iparam] = line_civars[line]
+                            
+            else:
+                initials[iparam] = 0.0 if isfixed else 1.0
+            
+            # Check bounds for free parameters but do not crash.
+            if not isfixed and tiedtoparam == -1:
+                toosml = initials[iparam] < bounds[iparam, 0]
+                toobig = initials[iparam] > bounds[iparam, 1]
+                if toosml:
+                    errmsg = \
+                        f'Initial parameter {name} is outside its bound, ' + \
+                        f'{initials[iparam]:.2f} < {bounds[iparam, 0]:.2f}.'
+                    log.warning(errmsg)
+                    
+                    initials[iparam] = bounds[iparam,0]
+                if toobig:
+                    errmsg = \
+                        f'Initial parameter {name} is outside its bound, ' + \
+                        f'{initials[iparam]:.2f} > {bounds[iparam, 1]:.2f}.'
+                    log.warning(errmsg)
+                    
+                    initials[iparam] = bounds[iparam, 1]
+                    
+        # Now loop back through and ensure that tied relationships are enforced.
+        # FIXME: do we really have to do this?  We need vals for the fixed parameters 
+        # on entry to the optimizer, but not non-fixed tied parameters, which will
+        # be updated from the free parameters as soon as the optimizer begins.
+        
+        tiedMask = (linemodel['tiedtoparam'] != -1) & ~linemodel['fixed']
+        tiedIdx = np.where(tiedMask)[0]
+        for i in tiedIdx:
+            tieindx   = linemodel['tiedtoparam'][i]
+            tiefactor = linemodel['tiedfactor'][i]
+            #log.info(f'{param["param_name"]} tied to {linemodel["param_name"][tieindx]} with factor {tiefactor:.4f}')
+            
+            initials[i] = initials[tieindx] * tiefactor
+            
+        linemodel['value'] = initials # copy
+
+        
     @staticmethod
     def _linemodel_to_parameters(linemodel, fit_linetable):
         """Convert a linemodel model to a list of emission-line parameters."""
-
+        
         linesplit = np.array_split(linemodel['index'], 3) # 3 parameters per line
         #linesplit = (np.arange(3) + 1) * len(linemodel) // 3 # 3 parameters per line
         lineamps = linemodel['value'][linesplit[0]].data
@@ -605,75 +751,7 @@ class EMFitTools(Filters):
 
         return parameters, parameter_extras
 
-    @staticmethod
-    def populate_linemodel(linemodel, initial_guesses, param_bounds, log):
-        """Populate an input linemodel with initial guesses and parameter bounds, taking
-        into account fixed parameters.
-
-        """
-        # Set initial values and bounds.
-        for iparam, param in enumerate(linemodel['param_name']):
-            if param in initial_guesses.keys():
-                if linemodel['fixed'][iparam]:
-                    linemodel['initial'][iparam] = 0.0 # always set fixed parameter to zero
-                else:
-                    # Make sure the initial guess for the narrow Balmer+helium
-                    # line is smaller than the guess for the broad-line model.
-                    if linemodel[iparam]['isbalmer'] and 'sigma' in param:
-                        if linemodel[iparam]['isbroad']:
-                            linemodel['initial'][iparam] = 1.1 * initial_guesses[param]
-                        else:
-                            linemodel['initial'][iparam] = initial_guesses[param]
-                    else:
-                        linemodel['initial'][iparam] = initial_guesses[param]
-                    if param in param_bounds.keys():
-                        linemodel['bounds'][iparam] = param_bounds[param]
-                        # set the lower boundary on broad lines to be XX times the local noise
-                        if linemodel['isbalmer'][iparam] and linemodel['isbroad'][iparam]:
-                            civarkey = linemodel['linename'][iparam]+'_civar'
-                            linemodel['civar'][iparam] = initial_guesses[civarkey]
-
-                            #broadbalmer_snrmin = 3.
-                            #linemodel['bounds'][iparam][0] = broadbalmer_snrmin * initial_guesses[noisekey]
-                            #if linemodel['initial'][iparam] < linemodel['bounds'][iparam][0]:
-                            #    linemodel['initial'][iparam] = linemodel['bounds'][iparam][0]
-                            #if linemodel['initial'][iparam] > linemodel['bounds'][iparam][1]:
-                            #    linemodel['initial'][iparam] = linemodel['bounds'][iparam][1]
-            else:
-                if linemodel['fixed'][iparam]:
-                    linemodel['initial'][iparam] = 0.0
-                else:
-                    linemodel['initial'][iparam] = 1.0
-
-            # Check bounds for free parameters but do not crash.
-            if linemodel['fixed'][iparam] == False and linemodel['tiedtoparam'][iparam] == -1:
-                toosml = linemodel['initial'][iparam] < linemodel['bounds'][iparam, 0]
-                toobig = linemodel['initial'][iparam] > linemodel['bounds'][iparam, 1]
-                if toosml:
-                    errmsg = 'Initial parameter {} is outside its bound, {:.2f} < {:.2f}.'.format(
-                        param, linemodel['initial'][iparam], linemodel['bounds'][iparam, 0])
-                    log.warning(errmsg)
-                    #raise ValueError(errmsg)
-                    linemodel['initial'][iparam] = linemodel['bounds'][iparam, 0]
-                if toobig:
-                    errmsg = 'Initial parameter {} is outside its bound, {:.2f} > {:.2f}.'.format(
-                        param, linemodel['initial'][iparam], linemodel['bounds'][iparam, 1])
-                    log.warning(errmsg)
-                    #raise ValueError(errmsg)
-                    linemodel['initial'][iparam] = linemodel['bounds'][iparam, 1]
-
-        # Now loop back through and ensure that tied relationships are enforced.
-        Itied = np.where((linemodel['tiedtoparam'] != -1) * (linemodel['fixed'] == False))[0]
-        if len(Itied) > 0:
-            for iparam, param in enumerate(linemodel['param_name'][Itied]):
-                tieindx = linemodel['tiedtoparam'][Itied[iparam]]
-                tiefactor = linemodel['tiedfactor'][Itied[iparam]]
-                #log.info('{} tied to {} with factor {:.4f}'.format(param, linemodel[tieindx]['param_name'], tiefactor))
-                linemodel['initial'][Itied[iparam]] = linemodel[tieindx]['initial'] * tiefactor
-
-        linemodel['value'] = linemodel['initial'] # copy
-
-        
+    
     def _drop_params(self, parameters, linemodel, Ifree, log):
         """Drop dubious free parameters after fitting.
     
@@ -882,8 +960,7 @@ class EMFitTools(Filters):
     
         emlinemodel = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas,
                                          linewaves, emlinewave, resolution_matrix, camerapix)
-    
-    
+        
         return emlinemodel
     
 
@@ -903,8 +980,7 @@ class EMFitTools(Filters):
             if '_amp' in param:
                 param = param.replace('_amp', '_modelamp')
             parameters.append(fastspecfit_table[param.upper()])
-        #parameters = [fastspecfit_table[param.upper()] for param in self.param_names]
-
+            
         lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line    
 
         # Handle the doublets. Note we are implicitly assuming that the
@@ -920,6 +996,7 @@ class EMFitTools(Filters):
         
         return emlinemodel
 
+    
     def populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
                          emlineivar, oemlineivar, specflux_nolines, redshift,
                          resolution_matrix, camerapix, log, nminpix=7, nsigma=3.):
@@ -1271,6 +1348,7 @@ class EMFitTools(Filters):
                 log.debug('{}_Z: {:.9f}+/-{:.9f}'.format(line, result[f'{line}_Z'], resultf['{line}_ZRMS']))
                 log.debug('{}_SIGMA: {:.3f}+/-{:.3f}'.format(line, result[f'{line}_SIGMA'], result[f'{line}_SIGMARMS']))
 
+                
     def synthphot_spectrum(self, data, result, modelwave, modelflux):
         """Synthesize photometry from the best-fitting model (continuum+emission lines).
 
@@ -1286,12 +1364,14 @@ class EMFitTools(Filters):
                                                 lambda_eff=filters.effective_wavelengths.value)
 
         for iband, band in enumerate(self.synth_bands):
-            result['FLUX_SYNTH_{}'.format(band.upper())] = data['synthphot']['nanomaggies'][iband] # * 'nanomaggies'
-            #result['FLUX_SYNTH_IVAR_{}'.format(band.upper())] = data['synthphot']['nanomaggies_ivar'][iband]
+            result[f'FLUX_SYNTH_{band.upper()}'] = data['synthphot']['nanomaggies'][iband] # * 'nanomaggies'
+            #result[f'FLUX_SYNTH_IVAR_{band.upper()}'] = data['synthphot']['nanomaggies_ivar'][iband]
         for iband, band in enumerate(self.synth_bands):
-            result['FLUX_SYNTH_SPECMODEL_{}'.format(band.upper())] = model_synthphot['nanomaggies'][iband] # * 'nanomaggies'
+            result[f'FLUX_SYNTH_SPECMODEL_{band.upper()}'] = model_synthphot['nanomaggies'][iband] # * 'nanomaggies'
 
 
+
+        
 def emline_specfit(data, result, continuummodel, smooth_continuum,
                    minsnr_balmer_broad=3., fphoto=None, emlinesfile=None,
                    synthphot=True, broadlinefit=True,
@@ -1327,15 +1407,15 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
 
     EMFit = EMFitTools(emlinesfile=emlinesfile, fphoto=fphoto, uniqueid=data['uniqueid'],
                        minsnr_balmer_broad=minsnr_balmer_broad)
-
+    
     # Combine all three cameras; we will unpack them to build the
     # best-fitting model (per-camera) below.
-    redshift = data['zredrock']
-    emlinewave = np.hstack(data['wave'])
+    redshift    = data['zredrock']
+    emlinewave  = np.hstack(data['wave'])
     oemlineivar = np.hstack(data['ivar'])
-    specflux = np.hstack(data['flux'])
+    specflux    = np.hstack(data['flux'])
     resolution_matrix = data['res_fast']
-    camerapix = data['camerapix']
+    camerapix   = data['camerapix']
 
     continuummodelflux = np.hstack(continuummodel)
     smoothcontinuummodelflux = np.hstack(smooth_continuum)
@@ -1346,29 +1426,26 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     emlinebad = np.logical_not(emlinegood)
 
     # This is a (dangerous???) hack.
-    if np.sum(emlinebad) > 0:
+    if np.any(emlinebad):
         emlineivar[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineivar[emlinegood])
         emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
-
+    
     weights = np.sqrt(emlineivar)
-
+    
     # Build all the emission-line models for this object.
     linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(
         redshift, wavelims=(np.min(emlinewave)+5, np.max(emlinewave)-5),
         verbose=False, strict_broadmodel=True)
-    
-    #EMFit.summarize_linemodel(linemodel_broad)
-    #EMFit.summarize_linemodel(linemodel_nobroad)
 
     # Get initial guesses on the parameters and populate the two "initial"
     # linemodels; the "final" linemodels will be initialized with the
     # best-fitting parameters from the initial round of fitting.
-    initial_guesses, param_bounds = EMFit.initial_guesses_and_bounds(
+    initial_guesses, param_bounds, civars = EMFit.initial_guesses_and_bounds(
         data, emlinewave, emlineflux, log)
-
-    EMFit.populate_linemodel(linemodel_nobroad, initial_guesses, param_bounds, log)
-    EMFit.populate_linemodel(linemodel_broad, initial_guesses, param_bounds, log)
-
+    
+    EMFit.populate_linemodel(linemodel_nobroad, initial_guesses, param_bounds, civars, log)
+    EMFit.populate_linemodel(linemodel_broad, initial_guesses, param_bounds, civars, log)
+    
     # Initial fit - initial_linemodel_nobroad
     t0 = time.time()
     fit_nobroad = EMFit.optimize(linemodel_nobroad, emlinewave, emlineflux, weights, redshift,
@@ -1600,4 +1677,3 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         raise NotImplementedError(errmsg)
 
     return modelspectra
-
