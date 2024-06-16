@@ -11,11 +11,11 @@ from numba import jit
 
 class ParamsMapping(object):
 
-    def __init__(self, fixedParameters, freeParms,
+    def __init__(self, nParms, freeParms,
                  tiedParms, tiedSources, tiedFactors,
                  doubletRatios, doubletSources):
         
-        self.nParms     = len(fixedParameters)
+        self.nParms     = nParms
         self.nFreeParms = len(freeParms)
         
         # permutation mapping each free parameter in full list
@@ -23,7 +23,7 @@ class ParamsMapping(object):
         pFree = np.empty(self.nParms, dtype=np.int32)
         pFree[freeParms] = np.arange(self.nFreeParms, dtype=np.int32)
         
-        self._precomputeMapping(fixedParameters, freeParms,
+        self._precomputeMapping(freeParms,
                                 tiedParms, tiedSources, tiedFactors,
                                 doubletRatios, doubletSources,
                                 pFree)
@@ -43,31 +43,34 @@ class ParamsMapping(object):
     # list of full parameters, accounting for fixed, tied, and
     # doublet features.
     #
-    def mapFreeToFull(self, freeParms):
+    def mapFreeToFull(self, freeParms, patchDoublets=True):
 
         return self._mapFreeToFull(freeParms,
                                    self.nParms,
                                    self.sources,
                                    self.factors,
-                                   self.doubletPatches)
-
+                                   self.doubletPatches,
+                                   patchDoublets)
+    
     #
     # _mapFreeToFull()
     # Given a vector of free parameters, return the corresponding
     # list of full parameters, accounting for fixed, tied, and
-    # doublet features.
+    # (if patchDoublets is true) doublet features.
     #
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True)
-    def _mapFreeToFull(freeParms, nParms, sources, factors, doubletPatches):
-        
-        for j, src_j_free in doubletPatches:
-            factors[j] = freeParms[src_j_free]
+    def _mapFreeToFull(freeParms, nParms, sources, factors,
+                       doubletPatches, patchDoublets):
+
+        if patchDoublets:
+            for j, src_j_free in doubletPatches:
+                factors[j] = freeParms[src_j_free]
         
         fullParms = np.empty(nParms, dtype=freeParms.dtype)
         
         for j, src_j_free in enumerate(sources):
-            fullParms[j] = factors[j] # copy fixed value
+            fullParms[j] = factors[j] # copy fixed zeros
             if src_j_free != -1:
                 fullParms[j] *= freeParms[src_j_free]
         
@@ -125,32 +128,29 @@ class ParamsMapping(object):
     # to full parameters that do not require knowledge of the
     # free parameter values.
     #
-    def _precomputeMapping(self, fixedParameters, freeParms,
-                           tiedParms, tiedSources, tiedFactors,
-                           doubletRatios, doubletSources,
-                           p):
+    def _precomputeMapping(self, freeParms, tiedParms, tiedSources,
+                           tiedFactors, doubletRatios, doubletSources,
+                           pFree):
         
-        # by default, assume parameters are fixed and that
-        # they take on the values in fixedParameters
+        # by default, assume parameters are fixed 
         sources = np.full(self.nParms, -1, dtype=np.int32)
-        factors = fixedParameters.copy()
+        factors = np.zeros(self.nParms, dtype=np.float64)
         
-        for j in freeParms:
-            sources[j] = p[j]
-            factors[j] = 1.
-        
+        sources[freeParms] = pFree[freeParms]
+        factors[freeParms] = 1.
+
         for j, src_j, factor in zip(tiedParms, tiedSources, tiedFactors):
             if src_j not in freeParms:
                 #print(f"SOURCE {src_j} tied to {j} is not free!")
-                # if source is fixed, so is target, and it's in fixedParameters
+                # if source is fixed, so is target
                 pass
             else:
-                sources[j] = p[src_j]
+                sources[j] = pFree[src_j]
                 factors[j] = factor
 
         doubletPatches = []
         for i, (j, src_j) in enumerate(zip(doubletRatios, doubletSources)):
-            #if j not in freeParms:
+            #if j not in fre1eParms:
             #    print(f"ratio {j} in doublet with {src_j} is not free!")
             #if src_j not in freeParms:
             #    print(f"amplitude {src_j} in doublet with {j} is not free!")
@@ -162,8 +162,8 @@ class ParamsMapping(object):
             # becomes v[ p[j] ] * v[ p[src_j] ]. We will patch it
             # dynamically at mapping time.
             
-            sources[j] = p[src_j]
-            doubletPatches.append((j, p[j])) # record where to grab factor
+            sources[j] = pFree[src_j]
+            doubletPatches.append((j, pFree[j])) # record where to grab factor
         
         self.sources = sources
         self.factors = factors
