@@ -1543,6 +1543,27 @@ class DESISpectra(TabulatedDESI):
 
         return metas
 
+
+def read_emlines(emlinesfile=None):
+    """Read the set of emission lines of interest.
+
+    """
+    if emlinesfile is None:
+        from importlib import resources
+        emlinesfile = resources.files('fastspecfit').joinpath('data/emlines.ecsv')
+
+    try:
+        linetable = Table.read(emlinesfile, format='ascii.ecsv', guess=False)
+    except: 
+        from desiutil.log import get_logger
+        log = get_logger()
+        errmsg = f'Problem reading emission lines parameter file {emlinesfile}.'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
+    
+    return linetable    
+
+
 def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None, 
                          ncoeff=None, data=None, log=None, fastphot=False, 
                          emlinesfile=None, stackfit=False):

@@ -85,7 +85,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
             log = get_logger()
 
     if linetable is None:
-        from fastspecfit.emlines import read_emlines        
+        from fastspecfit.io import read_emlines        
         linetable = read_emlines(emlinesfile=emlinesfile)
         
     npix = len(wave)
@@ -1258,7 +1258,7 @@ class ContinuumTools(Filters, Inoue14):
 
         super(ContinuumTools, self).__init__(ignore_photometry=ignore_photometry, fphoto=fphoto)
 
-        from fastspecfit.emlines import read_emlines
+        from fastspecfit.io import read_emlines
 
         self.massnorm = 1e10 # stellar mass normalization factor [Msun]
         self.linetable = read_emlines(emlinesfile=emlinesfile)
@@ -1317,7 +1317,7 @@ class ContinuumTools(Filters, Inoue14):
                 log = get_logger()
 
         if linetable is None:
-            from fastspecfit.emlines import read_emlines        
+            from fastspecfit.io import read_emlines        
             linetable = read_emlines(emlinesfile=emlinesfile)
 
         # Initially, mask aggressively, especially the Balmer lines.
