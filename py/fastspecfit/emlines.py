@@ -944,8 +944,9 @@ class EMFitTools(Filters):
 
         # Where the cameras overlap, we have to account for the variable pixel
         # size by sorting in wavelength.
-        Wsrt = np.argsort(emlinewave)
-        dwaves = np.diff(centers2edges(emlinewave[Wsrt]))
+        print('Faster / existing centers2edges?')
+        #Wsrt = np.argsort(emlinewave)
+        #dwaves = np.diff(centers2edges(emlinewave[Wsrt]))
 
         # zero out all out-of-range lines
         for oneline in self.linetable[~self.linetable['inrange']]:
@@ -992,18 +993,29 @@ class EMFitTools(Filters):
                                 (emlinewave <= (linezwave + nsigma*linesigma_ang_window)))[0]
             
             if len(lineindx) > 0 and np.sum(oemlineivar[lineindx] == 0) / len(lineindx) > 0.3: # use original ivar
-                result[f'{linename}_AMP'] = 0.0
-                result[f'{linename}_MODELAMP'] = 0.0
-                result[f'{linename}_VSHIFT'] = 0.0
-                result[f'{linename}_SIGMA'] = 0.0
+                result[f'{linename}_AMP'] = 0.
+                result[f'{linename}_MODELAMP'] = 0.
+                result[f'{linename}_VSHIFT'] = 0.
+                result[f'{linename}_SIGMA'] = 0.
             else:
+                # build the model line-profile
+                parameters = [result[f'{linename.upper()}_{param}'] for param in ['MODELAMP', 'VSHIFT', 'SIGMA']]
+                ml = EMLine_MultiLines(parameters, emlinewave, redshift, [oneline['restwave']], 
+                                       resolution_matrix, camerapix)
+                (s, e), lineprofile = ml.getLine(0)
+
                 # number of pixels, chi2, and boxcar integration
+                #if e != s:
+                pdb.set_trace()
+
                 lineindx = np.where((emlinewave >= (linezwave - nsigma*linesigma_ang_window)) *
                                     (emlinewave <= (linezwave + nsigma*linesigma_ang_window)) *
                                     (emlineivar > 0))[0]
 
                 npix = len(lineindx)
                 result[f'{linename}_NPIX'] = npix
+
+                pdb.set_trace()
     
                 if npix >= nminpix: # magic number: required at least XX unmasked pixels centered on the line
                     
@@ -1038,8 +1050,20 @@ class EMFitTools(Filters):
     
                         result[f'{linename}_CHI2'] = np.sum(emlineivar[lineindx] * (emlineflux[lineindx] - finalmodel[lineindx])**2)
 
-                        print('ToDo: need the per-line model here.')
-                        lineprofile = np.ones_like(emlinewave)
+                        # build the model line-profile
+                        parameters = [result[f'{linename.upper()}_{param}'] for param in ['MODELAMP', 'VSHIFT', 'SIGMA']]
+                        ml = EMLine_MultiLines(parameters, emlinewave, redshift, [oneline['restwave']], 
+                                               resolution_matrix, camerapix)
+                        (s, e), lineprofile = ml.getLine(0)
+
+                        #import matplotlib.pyplot as plt
+                        #plt.clf()
+                        #plt.plot(emlinewave[s:e], emlineflux[s:e])
+                        #plt.plot(emlinewave[s:e], lineprofile, color='red')
+                        #plt.savefig('junk.png')
+                        #pdb.set_trace()
+
+                        #lineprofile = np.ones_like(emlinewave)
                         #lineprofile = build_emline_model(self.dlog10wave, redshift,
                         #                                 np.array([result['{}_MODELAMP'.format(linename)]]),
                         #                                 np.array([result['{}_VSHIFT'.format(linename)]]),
