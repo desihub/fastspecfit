@@ -419,7 +419,7 @@ class EMFitTools(Filters):
         # a priori initial guesses and bounds
         #
         
-        initvshift = 1.0
+        initvshift = 0.0
         vmaxshift_narrow = 500.0
         vmaxshift_broad = 2500.0 # 3000.0
         vmaxshift_balmer_broad = 2500.
@@ -578,24 +578,21 @@ class EMFitTools(Filters):
         # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
         # self.doublet_names and also note that any change in the order of
         # these lines has to be handled in _emline_spectrum!
-        doublet_initvals = {       # ival,    bounds
-            'mgii_doublet_ratio' : (  0.5, (0.0, 10.0) ), # MgII 2796/2803
-            'oii_doublet_ratio'  : ( 0.74, (0.0,  2.0) ), # [OII] 3726/3729 # (0.5, 1.5) # (0.66, 1.4)
-            'sii_doublet_ratio'  : ( 0.74, (0.0,  2.0) ), # [SII] 6731/6716 # (0.5, 1.5) # (0.67, 1.2)
+        doublet_bounds = {
+            'mgii_doublet_ratio' : (0.0, 10.0), # MgII 2796/2803
+            'oii_doublet_ratio'  : (0.0,  2.0), # [OII] 3726/3729 # (0.5, 1.5) # (0.66, 1.4)
+            'sii_doublet_ratio'  : (0.0,  2.0), # [SII] 6731/6716 # (0.5, 1.5) # (0.67, 1.2)
         }
 
         
         for iparam, param_name in enumerate(self.param_table['name'].value):
 
-            d_info = doublet_initvals.get(param_name)
-            if d_info is not None:
-                ival, ibounds    = d_info
-                bounds[iparam]   = ibounds
-                initials[iparam] = ival
-
-                # FIXME: current code overrides per-doublet a priori initial vals
+            ibounds = doublet_bounds.get(param_name)
+            if ibounds is not None:
+                # special case doublets
                 initials[iparam] = 1.
-            
+                bounds[iparam]   = ibounds
+                
             # make sure each parameter lies within its bounds
             iv = initials[iparam]
             lb, ub = bounds[iparam]
@@ -867,8 +864,8 @@ class EMFitTools(Filters):
         if redshift is None:
             redshift = fastspecfit_table['Z']
 
-        # FIXME: do we need to adjust last 3 params below?  build_model is expecting a tuple
-        # for each param
+        # FIXME: do we need to adjust last 3 params below?
+        # build_model is expecting a tuple for each param
         model_fluxes = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas, linewaves,
                                           np.hstack(specwave), specres, camerapix)
         
@@ -1550,7 +1547,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     if result['DN4000_IVAR'] > 0:
         fluxnolines = data['coadd_flux'] - modelemspectrum
         
-        # FIXME: only continuum tools has get_dn4000, so this will crash
         dn4000_nolines, _ = EMFit.get_dn4000(modelwave, fluxnolines, redshift=redshift, log=log, rest=False)
         log.info(f'Dn(4000)={dn4000_nolines:.3f} in the emission-line subtracted spectrum.')
         result['DN4000'] = dn4000_nolines
