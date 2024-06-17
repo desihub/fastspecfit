@@ -13,7 +13,7 @@ class ParamsMapping(object):
 
     def __init__(self, nParms, freeParms,
                  tiedParms, tiedSources, tiedFactors,
-                 doubletRatios, doubletSources):
+                 doubletMask, doubletSources):
         
         self.nParms     = nParms
         self.nFreeParms = len(freeParms)
@@ -25,7 +25,7 @@ class ParamsMapping(object):
         
         self._precomputeMapping(freeParms,
                                 tiedParms, tiedSources, tiedFactors,
-                                doubletRatios, doubletSources,
+                                doubletMask, doubletSources,
                                 pFree)
 
         self._precomputeJacobian()
@@ -129,7 +129,7 @@ class ParamsMapping(object):
     # free parameter values.
     #
     def _precomputeMapping(self, freeParms, tiedParms, tiedSources,
-                           tiedFactors, doubletRatios, doubletSources,
+                           tiedFactors, doubletMask, doubletSources,
                            pFree):
         
         # by default, assume parameters are fixed 
@@ -148,6 +148,7 @@ class ParamsMapping(object):
                 sources[j] = pFree[src_j]
                 factors[j] = factor
 
+        doubletRatios = np.where(doubletMask)[0]
         doubletPatches = []
         for i, (j, src_j) in enumerate(zip(doubletRatios, doubletSources)):
             #if j not in fre1eParms:
