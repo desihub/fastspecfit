@@ -872,16 +872,33 @@ class EMFitTools(Filters):
         return model_fluxes
 
 
+    
     def populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
                          emlineivar, oemlineivar, specflux_nolines, redshift,
-                         resolution_matrix, camerapix, log, nminpix=7, nsigma=3.):
+                         resolution_matrices, camerapix, log, nminpix=7, nsigma=3.):
         """Populate the output table with the emission-line measurements.
 
         """
         from scipy.stats import sigmaclip
         from fastspecfit.util import centers2edges
         from scipy.special import erf
+
+        line_wavelengths = self.line_table['restwave'].value
         
+        parameters = finalfit['value'].value.copy()
+        
+        # convert doublet ratios to amplitudes
+        doublet_mask   = (self.param_table['doubletpair'] != -1)
+        doublet_source = self.param_table['doubletpair'][doublet_mask] 
+        parameters[doublet_mask] *= parameters[doublet_source]
+        
+        line_fluxes = EMLine_MultiLines(parameters,
+                                        emlinewave,
+                                        redshift,
+                                        line_wavelengths,
+                                        resolution_matrices,
+                                        camerapix)
+
         param_names = self.param_table['name'].value
         param_types = self.param_table['type'].value
         doubletpair = self.param_table['doubletpair'].value
@@ -891,9 +908,12 @@ class EMFitTools(Filters):
             'SII_DOUBLET_RATIO':  'SII_6731',
             'MGII_DOUBLET_RATIO': 'MGII_2796',
         }
+
+        values    = finalfit['value'].value
+        obsvalues = finalfit['obsvalue'].value
         
         for iparam, (val, obsval) in \
-                enumerate(finalfit.iterrows(('value', 'obsvalue'))):
+                enumerate(finalfit.iterrows('value', 'obsvalue')):
 
             pname = param_names[iparam].upper()
             
@@ -901,7 +921,7 @@ class EMFitTools(Filters):
             src_name = doublet_info.get(pname)
             if src_name is not None:
                 dblp = doubletpair[iparam]
-                result[pname] = value
+                result[pname] = val
                 result[src_name + "_MODELAMP"] = val * values[dblp]
                 result[src_name + "_AMP"]      = val * obsvalues[dblp] 
             else:
@@ -910,48 +930,45 @@ class EMFitTools(Filters):
                     result[pname] = obsval
                 else:
                     result[pname] = val
-        
+            
         gausscorr = erf(nsigma / np.sqrt(2))      # correct for the flux outside of +/-nsigma
         dpixwave = np.median(np.diff(emlinewave)) # median pixel size [Angstrom]
-
+        
         # Where the cameras overlap, we have to account for the variable pixel
         # size by sorting in wavelength.
-        print('Faster / existing centers2edges?')
-        #Wsrt = np.argsort(emlinewave)
-        #dwaves = np.diff(centers2edges(emlinewave[Wsrt]))
-
-        # zero out all out-of-range lines
-        out_of_range_lines = ~self.line_in_range
-        for line_name in self.line_table['name'][out_of_range_lines]:
-            oname = line_name.upper()
-            result[f'{oname}_AMP']      = 0.0
-            result[f'{oname}_MODELAMP'] = 0.0
-            result[f'{oname}_VSHIFT']   = 0.0
-            result[f'{oname}_SIGMA']    = 0.0
-
-        # default line-sigma for computing upper limits
-        limitsigma_narrow = 75.0
-        limitsigma_broad = 1200.0
+        Wsrt = np.argsort(emlinewave)
+        dwaves = np.diff(centers2edges(emlinewave[Wsrt]))
         
         # get continuum fluxes, EWs, and upper limits
         narrow_sigmas, broad_sigmas, uv_sigmas = [], [], []
         narrow_redshifts, broad_redshifts, uv_redshifts = [], [], []
-        for oneline in self.line_table[self.line_in_range]:
-
+        for ioneline, oneline in enumerate(self.line_table):
             linename = oneline['name'].upper()
+            
+            # zero out out-of-range lines
+            if not self.line_in_range[ioneline]:
+                result[f'{linename}_AMP']      = 0.0
+                result[f'{linename}_MODELAMP'] = 0.0
+                result[f'{linename}_VSHIFT']   = 0.0
+                result[f'{linename}_SIGMA']    = 0.0
+                continue
+            
             linez = redshift + result[f'{linename}_VSHIFT'] / C_LIGHT
             linezwave = oneline['restwave'] * (1 + linez)
             linesigma = result[f'{linename}_SIGMA'] # [km/s]
-
+            
             # if the line was dropped, use a default sigma value
             if linesigma == 0:
+                limitsigma_narrow = 75.0
+                limitsigma_broad = 1200.0
+                
                 if oneline['isbroad'] and oneline['isbalmer']:
                     linesigma = limitsigma_narrow
                 else:
                     linesigma = limitsigma_broad
-
+                    
             linesigma_ang = linesigma * linezwave / C_LIGHT    # [observed-frame Angstrom]
-
+            
             # require at least 2 pixels
             if linesigma_ang < 2 * dpixwave:
                 linesigma_ang_window = 2 * dpixwave
@@ -959,185 +976,152 @@ class EMFitTools(Filters):
             else:
                 linesigma_ang_window = linesigma_ang
                 _gausscorr = gausscorr
-
+                
             # Are the pixels based on the original inverse spectrum fully
             # masked? If so, set everything to zero and move onto the next line.
             lineindx = np.where((emlinewave >= (linezwave - nsigma*linesigma_ang_window)) *
                                 (emlinewave <= (linezwave + nsigma*linesigma_ang_window)))[0]
             
             if len(lineindx) > 0 and np.sum(oemlineivar[lineindx] == 0) / len(lineindx) > 0.3: # use original ivar
-                result[f'{linename}_AMP'] = 0.
-                result[f'{linename}_MODELAMP'] = 0.
-                result[f'{linename}_VSHIFT'] = 0.
-                result[f'{linename}_SIGMA'] = 0.
-            else:
-                # build the model line-profile
-                parameters = [result[f'{linename}_{param}'] for param in ['MODELAMP', 'VSHIFT', 'SIGMA']]
-                ml = EMLine_MultiLines(parameters, emlinewave, redshift, [oneline['restwave']], 
-                                       resolution_matrix, camerapix)
-                (s, e), lineprofile = ml.getLine(0)
-
-                # number of pixels, chi2, and boxcar integration
-                #if e != s:
-                #pdb.set_trace()
-
-                lineindx = np.where((emlinewave >= (linezwave - nsigma*linesigma_ang_window)) *
-                                    (emlinewave <= (linezwave + nsigma*linesigma_ang_window)) *
-                                    (emlineivar > 0))[0]
-                
-                npix = len(lineindx)
-                result[f'{linename}_NPIX'] = npix
-
-                #pdb.set_trace()
+                result[f'{linename}_AMP']      = 0.0
+                result[f'{linename}_MODELAMP'] = 0.0
+                result[f'{linename}_VSHIFT']   = 0.0
+                result[f'{linename}_SIGMA']    = 0.0
+                continue
+            
+            # number of pixels, chi2, and boxcar integration
+            lineindx = np.where((emlinewave >= (linezwave - nsigma*linesigma_ang_window)) *
+                                (emlinewave <= (linezwave + nsigma*linesigma_ang_window)) *
+                                (emlineivar > 0))[0]
+            
+            npix = len(lineindx)
+            result[f'{linename}_NPIX'] = npix
     
-                if npix >= nminpix: # magic number: required at least XX unmasked pixels centered on the line
+            if npix >= nminpix: # magic number: required at least XX unmasked pixels centered on the line
                     
-                    if np.any(emlineivar[lineindx] == 0):
-                        errmsg = 'Ivar should never be zero within an emission line!'
+                if np.any(emlineivar[lineindx] == 0):
+                    errmsg = 'Ivar should never be zero within an emission line!'
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
+                
+                lineindx_Wsrt = np.where((emlinewave[Wsrt] >= (linezwave - nsigma*linesigma_ang_window)) *
+                                         (emlinewave[Wsrt] <= (linezwave + nsigma*linesigma_ang_window)) *
+                                         (emlineivar[Wsrt] > 0))[0]
+                
+                # boxcar integration of the flux
+                boxflux = np.sum(emlineflux[Wsrt][lineindx_Wsrt] * dwaves[lineindx_Wsrt])
+                boxflux_ivar = 1 / np.sum((1 / emlineivar[Wsrt][lineindx_Wsrt]) * dwaves[lineindx_Wsrt]**2)
+
+                result[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
+                result[f'{linename}_BOXFLUX_IVAR'] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
+                    
+                # Get the uncertainty in the line-amplitude based on the scatter
+                # in the pixel values from the emission-line subtracted
+                # spectrum.
+                amp_sigma = np.diff(np.percentile(specflux_nolines[lineindx], [25, 75]))[0] / 1.349 # robust sigma
+                if amp_sigma > 0:
+                    result[f'{linename}_AMP_IVAR'] = 1 / amp_sigma**2 # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                    
+                # require amp > 0 (line not dropped) to compute the flux and chi2
+                if result[f'{linename}_MODELAMP'] > 0:
+                    result[f'{linename}_CHI2'] = np.sum(emlineivar[lineindx] * (emlineflux[lineindx] - finalmodel[lineindx])**2)
+                    
+                    (s, e), flux = line_fluxes.getLine(ioneline)
+                    lineprofile = np.zeros_like(emlinewave)
+                    lineprofile[s:e] = flux
+                    
+                    if np.sum(lineprofile) == 0. or np.any(lineprofile < 0.):
+                        errmsg = 'Line-profile should never be zero or negative!'
                         log.critical(errmsg)
                         raise ValueError(errmsg)
-
-                    lineindx_Wsrt = np.where((emlinewave[Wsrt] >= (linezwave - nsigma*linesigma_ang_window)) *
-                                             (emlinewave[Wsrt] <= (linezwave + nsigma*linesigma_ang_window)) *
-                                             (emlineivar[Wsrt] > 0))[0]
-
-                    # boxcar integration of the flux
-                    #dwave = np.median(np.abs(np.diff(emlinewave_edges[lineindx])))
-                    boxflux = np.sum(emlineflux[Wsrt][lineindx_Wsrt] * dwaves[lineindx_Wsrt])
-                    boxflux_ivar = 1 / np.sum((1 / emlineivar[Wsrt][lineindx_Wsrt]) * dwaves[lineindx_Wsrt]**2)
-
-                    result[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
-                    result[f'{linename}_BOXFLUX_IVAR'] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
                     
-                    # Get the uncertainty in the line-amplitude based on the scatter
-                    # in the pixel values from the emission-line subtracted
-                    # spectrum.
-                    amp_sigma = np.diff(np.percentile(specflux_nolines[lineindx], [25, 75]))[0] / 1.349 # robust sigma
-                    #clipflux, _, _ = sigmaclip(specflux_nolines[lineindx], low=3, high=3)
-                    #amp_sigma = np.std(clipflux)
-                    if amp_sigma > 0:
-                        result[f'{linename}_AMP_IVAR'] = 1 / amp_sigma**2 # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
-    
-                    # require amp > 0 (line not dropped) to compute the flux and chi2
-                    if result[f'{linename}_MODELAMP'] > 0.:
-    
-                        result[f'{linename}_CHI2'] = np.sum(emlineivar[lineindx] * (emlineflux[lineindx] - finalmodel[lineindx])**2)
-
-                        # build the model line-profile
-                        parameters = [result[f'{linename.upper()}_{param}'] for param in ['MODELAMP', 'VSHIFT', 'SIGMA']]
-                        ml = EMLine_MultiLines(parameters, emlinewave, redshift, [oneline['restwave']], 
-                                               resolution_matrix, camerapix)
-                        (s, e), lineprofile = ml.getLine(0)
-
-                        #import matplotlib.pyplot as plt
-                        #plt.clf()
-                        #plt.plot(emlinewave[s:e], emlineflux[s:e])
-                        #plt.plot(emlinewave[s:e], lineprofile, color='red')
-                        #plt.savefig('junk.png')
-                        #pdb.set_trace()
-
-                        #lineprofile = np.ones_like(emlinewave)
-                        #lineprofile = build_emline_model(self.dlog10wave, redshift,
-                        #                                 np.array([result['{}_MODELAMP'.format(linename)]]),
-                        #                                 np.array([result['{}_VSHIFT'.format(linename)]]),
-                        #                                 np.array([result['{}_SIGMA'.format(linename)]]),
-                        #                                 np.array([oneline['restwave']]), emlinewave,
-                        #                                 resolution_matrix, camerapix, debug=False)
-                        
-                        if np.sum(lineprofile) == 0. or np.any(lineprofile) < 0.:
-                            errmsg = 'Line-profile should never be zero or negative!'
-                            log.critical(errmsg)
-                            raise ValueError(errmsg)
-                        
-                        # theoretical Gaussian line-flux and the (wrong) weighted flux_ivar
-                        #flux = result['{}_MODELAMP'.format(linename)] * np.sqrt(2.0 * np.pi) * linesigma_ang # * u.Angstrom
-                        #flux_ivar = np.sum(lineprofile[lineindx])**2 / np.sum(lineprofile[lineindx]**2 / emlineivar[lineindx])
-
-                        # matched-filter (maximum-likelihood) Gaussian flux
-                        pro_j = lineprofile[Wsrt][lineindx_Wsrt] / np.sum(lineprofile[Wsrt][lineindx_Wsrt])
-                        I = pro_j > 0. # very narrow lines can have a profile that goes to zero
-                        weight_j = (pro_j[I]**2 / dwaves[lineindx_Wsrt][I]**2) * emlineivar[Wsrt][lineindx_Wsrt][I]
-                        flux = np.sum(weight_j * dwaves[lineindx_Wsrt][I] * lineprofile[Wsrt][lineindx_Wsrt][I] / pro_j[I]) / np.sum(weight_j)
-                        flux_ivar = np.sum(weight_j)
-
-                        # correction for missing flux
-                        flux /= _gausscorr
-                        flux_ivar *= _gausscorr**2
-
-                        result[f'{linename}_FLUX'] = flux
-                        result[f'{linename}_FLUX_IVAR'] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
-    
-                        # keep track of sigma and z but only using XX-sigma lines
-                        linesnr = result[f'{linename}_AMP'] * np.sqrt(result[f'{linename}_AMP_IVAR'])
-                        #print(linename, result['{}_AMP'.format(linename)], amp_sigma, linesnr)
-                        if linesnr > 1.5:
-                            if oneline['isbroad']: # includes UV and broad Balmer lines
-                                if oneline['isbalmer']:
-                                    broad_sigmas.append(linesigma)
-                                    broad_redshifts.append(linez)
-                                else:
-                                    uv_sigmas.append(linesigma)
-                                    uv_redshifts.append(linez)
+                    # matched-filter (maximum-likelihood) Gaussian flux
+                    pro_j = lineprofile[Wsrt][lineindx_Wsrt] / np.sum(lineprofile[Wsrt][lineindx_Wsrt])
+                    
+                    I = pro_j > 0. # very narrow lines can have a profile that goes to zero
+                    weight_j = (pro_j[I]**2 / dwaves[lineindx_Wsrt][I]**2) * emlineivar[Wsrt][lineindx_Wsrt][I]
+                    flux = np.sum(weight_j * dwaves[lineindx_Wsrt][I] * lineprofile[Wsrt][lineindx_Wsrt][I] / pro_j[I]) / np.sum(weight_j)
+                    flux_ivar = np.sum(weight_j)
+                    
+                    # correction for missing flux
+                    flux /= _gausscorr
+                    flux_ivar *= _gausscorr**2
+                    
+                    result[f'{linename}_FLUX'] = flux
+                    result[f'{linename}_FLUX_IVAR'] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
+                    
+                    # keep track of sigma and z but only using XX-sigma lines
+                    linesnr = result[f'{linename}_AMP'] * np.sqrt(result[f'{linename}_AMP_IVAR'])
+                    
+                    if linesnr > 1.5:
+                        if oneline['isbroad']: # includes UV and broad Balmer lines
+                            if oneline['isbalmer']:
+                                broad_sigmas.append(linesigma)
+                                broad_redshifts.append(linez)
                             else:
-                                narrow_sigmas.append(linesigma)
-                                narrow_redshifts.append(linez)
-    
-                # next, get the continuum, the inverse variance in the line-amplitude, and the EW
-                indxlo = np.where((emlinewave > (linezwave - 10*linesigma_ang_window)) *
-                                  (emlinewave < (linezwave - 3.*linesigma_ang_window)) *
-                                  (oemlineivar > 0))[0]
-                                  #(finalmodel == 0))[0]
-                indxhi = np.where((emlinewave < (linezwave + 10*linesigma_ang_window)) *
-                                  (emlinewave > (linezwave + 3.*linesigma_ang_window)) *
-                                  (oemlineivar > 0))[0]
-                                  #(finalmodel == 0))[0]
-                indx = np.hstack((indxlo, indxhi))
-
-                if len(indx) >= nminpix: # require at least XX pixels to get the continuum level
-                    #_, cmed, csig = sigma_clipped_stats(specflux_nolines[indx], sigma=3.0)
-                    clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
-                    # corner case: if a portion of a camera is masked
-                    if len(clipflux) > 0:
-                        #cmed, csig = np.mean(clipflux), np.std(clipflux)
-                        cmed = np.median(clipflux)
-                        csig = np.diff(np.percentile(clipflux, [25, 75])) / 1.349 # robust sigma
-                        if csig > 0:
-                            civar = (np.sqrt(len(indx)) / csig)**2
+                                uv_sigmas.append(linesigma)
+                                uv_redshifts.append(linez)
                         else:
-                            civar = 0.0
+                            narrow_sigmas.append(linesigma)
+                            narrow_redshifts.append(linez)
+                            
+            # next, get the continuum, the inverse variance in the line-amplitude, and the EW
+            indxlo = np.where((emlinewave > (linezwave - 10*linesigma_ang_window)) *
+                              (emlinewave < (linezwave - 3.*linesigma_ang_window)) *
+                              (oemlineivar > 0))[0]
+            #(finalmodel == 0))[0]
+            indxhi = np.where((emlinewave < (linezwave + 10*linesigma_ang_window)) *
+                              (emlinewave > (linezwave + 3.*linesigma_ang_window)) *
+                              (oemlineivar > 0))[0]
+            #(finalmodel == 0))[0]
+            indx = np.hstack((indxlo, indxhi))
+
+            if len(indx) >= nminpix: # require at least XX pixels to get the continuum level
+                #_, cmed, csig = sigma_clipped_stats(specflux_nolines[indx], sigma=3.0)
+                clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
+                # corner case: if a portion of a camera is masked
+                if len(clipflux) > 0:
+                    #cmed, csig = np.mean(clipflux), np.std(clipflux)
+                    cmed = np.median(clipflux)
+                    csig = np.diff(np.percentile(clipflux, [25, 75])) / 1.349 # robust sigma
+                    if csig > 0:
+                        civar = (np.sqrt(len(indx)) / csig)**2
                     else:
-                        cmed, civar = 0.0, 0.0
+                        civar = 0.0
+                else:
+                    cmed, civar = 0.0, 0.0
     
-                    result[f'{linename}_CONT'] = cmed # * u.erg/(u.second*u.cm**2*u.Angstrom)
-                    result[f'{linename}_CONT_IVAR'] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                result[f'{linename}_CONT'] = cmed # * u.erg/(u.second*u.cm**2*u.Angstrom)
+                result[f'{linename}_CONT_IVAR'] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
     
-                if result[f'{linename}_CONT'] != 0.0 and result[f'{linename}_CONT_IVAR'] != 0.0:
-                    lineflux = result[f'{linename}_FLUX']
-                    #linefluxivar = result[f'{linename}_BOXFLUX_IVAR']
-                    linefluxivar = result[f'{linename}_FLUX_IVAR']
-                    if lineflux > 0 and linefluxivar > 0:
-                        # add the uncertainties in flux and the continuum in quadrature
-                        ew = lineflux / cmed / (1 + redshift) # rest frame [A]
-                        ewivar = (1+redshift)**2 / (1 / (cmed**2 * linefluxivar) + lineflux**2 / (cmed**4 * civar))
-                    else:
-                        ew, ewivar = 0.0, 0.0
+            if result[f'{linename}_CONT'] != 0.0 and result[f'{linename}_CONT_IVAR'] != 0.0:
+                lineflux = result[f'{linename}_FLUX']
+                #linefluxivar = result['{}_BOXFLUX_IVAR'.format(linename)]
+                linefluxivar = result[f'{linename}_FLUX_IVAR']
+                if lineflux > 0 and linefluxivar > 0:
+                    # add the uncertainties in flux and the continuum in quadrature
+                    ew = lineflux / cmed / (1 + redshift) # rest frame [A]
+                    ewivar = (1+redshift)**2 / (1 / (cmed**2 * linefluxivar) + lineflux**2 / (cmed**4 * civar))
+                else:
+                    ew, ewivar = 0.0, 0.0
                         
-                    # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
-                    fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) # * u.erg/(u.second*u.cm**2)
-                    ewlimit = fluxlimit * cmed / (1+redshift)
+                # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
+                fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) # * u.erg/(u.second*u.cm**2)
+                ewlimit = fluxlimit * cmed / (1+redshift)
     
-                    result[f'{linename}_EW'] = ew
-                    result[f'{linename}_EW_IVAR'] = ewivar
-                    result[f'{linename}_FLUX_LIMIT'] = fluxlimit 
-                    result[f'{linename}_EW_LIMIT'] = ewlimit
-                    
+                result[f'{linename}_EW'] = ew
+                result[f'{linename}_EW_IVAR'] = ewivar
+                result[f'{linename}_FLUX_LIMIT'] = fluxlimit 
+                result[f'{linename}_EW_LIMIT'] = ewlimit
+
             if 'debug' in log.name:
                 for col in ('VSHIFT', 'SIGMA', 'MODELAMP', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
                     log.debug('{} {}: {:.4f}'.format(linename, col, result[f'{linename}_{col}']))
                 for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
                     log.debug('{} {}: {:.4f}'.format(linename, col, result[f'{linename}_{col}']))
                 print()
-                #log.debug(' ')
+            
+            #log.debug(' ')
     
             ## simple QA
             #if linename == 'OIII_5007':
@@ -1165,7 +1149,7 @@ class EMFitTools(Filters):
             #    plt.axhline(y=3*amp_sigma, color='k', ls='--')
             #    plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
             #    plt.savefig('desi-users/ioannis/tmp/junk2.png')
-
+            
         # Clean up the doublets whose amplitudes were tied in the fitting since
         # they may have been zeroed out in the clean-up, above. This should be
         # smarter.
@@ -1468,9 +1452,9 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     specflux_nolines = specflux - finalmodel
 
     # Now fill the output table.
-    #EMFit.populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
-    #                       emlineivar, oemlineivar, specflux_nolines, redshift,
-    #                       resolution_matrix, camerapix, log)
+    EMFit.populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
+                           emlineivar, oemlineivar, specflux_nolines, redshift,
+                           resolution_matrix, camerapix, log)
     
     # Build the model spectrum
     emmodel = np.hstack(EMFit.emlinemodel_bestfit(result,
