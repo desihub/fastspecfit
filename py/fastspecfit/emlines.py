@@ -8,11 +8,11 @@ Methods and tools for fitting emission lines.
 import pdb # for debugging
 
 from enum import IntEnum
+from itertools import chain
 
 import os, time
 import numpy as np
 from numba import jit
-from math import erf, erfc
 
 from astropy.table import Table
 
@@ -45,8 +45,8 @@ class EMFitTools(Filters):
     # line_table, line_map, and param_table, which are fixed once we
     # read the file.
     
-    def __init__(self, fphoto=None, emlinesfile=None,
-                 uniqueid=None):
+    def __init__(self, uniqueid=None, fphoto=None,
+                 emlinesfile=None):
         
         super(EMFitTools, self).__init__(fphoto=fphoto)
         
@@ -71,7 +71,7 @@ class EMFitTools(Filters):
             'sii_6731'  : ( 'sii_6716'  , 'sii_doublet_ratio'  ) , 
         }
         
-        amp_names   = []
+        amp_names = []
         doubletindx = []
         doubletpair = []
         for i, line_name in enumerate(line_names):
@@ -94,30 +94,48 @@ class EMFitTools(Filters):
         
         vshift_names = [ f"{line_name}_vshift" for line_name in line_names ]
         sigma_names  = [ f"{line_name}_sigma"  for line_name in line_names ]
-        
-        nlines = len(self.line_table)
 
-        # these properties of parameters are all independent of the line model
-        param_names = np.hstack((amp_names, vshift_names, sigma_names))
+        param_names = list(chain(amp_names, vshift_names, sigma_names))
+            
+        nlines = len(self.line_table)
+        param_types = np.empty(3*nlines, dtype=ParamType)
+        for t in ParamType:
+            param_types[t*nlines:(t+1)*nlines] = t
+        
         self.param_table = Table({
             'name' : param_names,
-            'type' : np.hstack((np.full(nlines, ParamType.AMPLITUDE),
-                                np.full(nlines, ParamType.VSHIFT),
-                                np.full(nlines, ParamType.SIGMA))),
+            'type' : param_types,
             'line' : np.tile(np.arange(nlines, dtype=np.int32), 3), # param's line in line_table
-            'doubletpair':  np.full(3*nlines, -1, np.int32),
-        })
+            'doubletpair': np.full(3*nlines, -1, np.int32),
+        }, copy=False)
         self.param_table['doubletpair'][doubletindx] = doubletpair
 
         # assign each line in line_table the indices of its 3 params in the name list
-        c0 = np.arange(nlines, dtype=np.int32)
-        self.line_table['params'] = np.column_stack((c0, c0 + nlines, c0 + 2*nlines))
+        param_idx = np.empty((nlines, 3), dtype=np.int32)
+        c = np.arange(nlines, dtype=np.int32)
+        param_idx[:,ParamType.AMPLITUDE] = c
+        param_idx[:,ParamType.VSHIFT]    = c + nlines
+        param_idx[:,ParamType.SIGMA]     = c + 2*nlines
+        self.line_table['params'] = param_idx
         
         # needed by emlinemodel_bestfit()
         self.param_table['modelname'] = \
             np.array([ s.replace('_amp', '_modelamp').upper() for s in param_names ])
         
 
+    #
+    #  Record which lines are within the limits of the cameras
+    # 
+    def compute_inrange_lines(self, redshift, wavelims=(3000, 10000)):
+
+        restwave = self.line_table['restwave'].value
+        wavepad = 2.5 # Angstrom
+        
+        self.line_in_range = \
+            (restwave > (wavelims[0] + wavepad)/(1 + redshift)) & \
+            (restwave < (wavelims[1] - wavepad)/(1 + redshift))
+        
+    
     #
     # Build emission line model tables, with and without suppression of broad lines.
     # Establish fixed (i.e., forced to zero) params, tying relationships between
@@ -127,44 +145,26 @@ class EMFitTools(Filters):
     # Parameter fixing needs to know which lines are within the observed wavelength
     # ranges of the cameras, so we first add this information to the line table.
     #
-    def build_linemodels(self, redshift, wavelims=(3000, 10000),
-                         verbose=False, strict_broadmodel=True):
+    def build_linemodels(self, strict_broadmodel=True):
+        
+        #
+        # create_model()
+        #
+        # Given the tying info for the model and the list of in-range
+        # lines, determine which parameters of the model are fixed and
+        # free, and create the model's table.
+        #
+        # We fix all parameters for out-of-range lines to zero, unless
+        # the parameter is tied to a parameter for an in-range line.
+        # We also allow the caller to specify parameters that should
+        # be fixed regardless.
+        #
+        def create_model(tying_info, forceFixed=[]):
 
-        # Create a new line-fitting table which shows which lines are
-        # within the limits of the cameras
-        
-        wavepad = 2.5 # Angstrom
-        
-        self.line_in_range = \
-            (self.line_table['restwave'] > (wavelims[0]+wavepad)/(1 + redshift)) & \
-            (self.line_table['restwave'] < (wavelims[1]-wavepad)/(1 + redshift))
-        
-        #
-        # Broad+narrow line model -- here, parameters are minimally
-        # tied together for the final fit, and only lines outside the
-        # wavelength range are fixed. Includes broad lines.
-        #
+            n_params = len(self.param_table)
+            isfixed = np.full(n_params, False, dtype=bool)
 
-        nparam = len(self.param_table)
-        linemodel_broad = Table({
-            'tiedtoparam' : np.full(nparam, -1, np.int32),
-            'tiedfactor'  : np.zeros(nparam, np.float64),
-        })
-        
-        #linemodel_broad['fixed']        is set in build_linemodels
-        #linemodel_broad['free']         is set in build_linemodels
-                
-        #
-        # compute fixed parameters for a line model.  We consider
-        # whether eac line is in range and also let the caller
-        # specify parameters that should be fixed explicitly.
-        #
-        def _fix_parameters(linemodel, forceFixed=[]):
-
-            n_params    = len(linemodel)
-            
-            isfixed     = np.full(n_params, False, dtype=bool)
-            tiedtoparam = linemodel['tiedtoparam']
+            tiedtoparam, tiedfactor = tying_info
             tied_mask   = (tiedtoparam != -1)
             tied_source = tiedtoparam[tied_mask]
             
@@ -176,45 +176,54 @@ class EMFitTools(Filters):
             
             # identify all params of out-of-range lines
             out_of_range_lines = ~self.line_in_range
-            out_of_range = out_of_range_lines[self.param_table['line']]
+            out_of_range_params = out_of_range_lines[self.param_table['line']]
             
             # for each param, count num of other params tied to it
             n_tied = np.bincount(tied_source, weights=np.ones_like(tied_source), minlength=n_params)
-
+            
             # fix any parameters for an out-of-range line that are not the source of another
             # tied parameter
-            isfixed[np.logical_and(out_of_range, n_tied == 0)] = True
+            isfixed[out_of_range_params & (n_tied == 0)] = True
             # for each param, count # of *fixed* params tied to it
             n_tied_fixed = np.bincount(tied_source, weights=isfixed[tied_mask], minlength=n_params)
             
             # Fix any parameter for an out-of-range line for which all its tied params
             # (if any) are fixed.
-            isfixed[np.logical_and(out_of_range, n_tied == n_tied_fixed)] = True
+            isfixed[out_of_range_params & (n_tied == n_tied_fixed)] = True
             
             # finally, fix any doublet ratio whose source is fixed
             doublet_mask   = (self.param_table['doubletpair'] != -1)
             doublet_source = self.param_table['doubletpair'][doublet_mask]
             isfixed[doublet_mask] = isfixed[doublet_source]
-
-            # save the fixed info to the linemodel
-            linemodel['fixed'] = isfixed
-
-            # delete tying relationships for fixed parameters
-            linemodel['tiedtoparam'][isfixed] = -1
-
             
+            # delete tying relationships for fixed parameters
+            tiedtoparam[isfixed] = -1
+
+            istied = (tiedtoparam != -1)
+            tiedfactor[~istied] = 0. # cosmetic cleanup
+
+            # construct the final linemodel
+            linemodel = Table({
+                'free': ~isfixed & ~istied,
+                'fixed': isfixed,
+                'tiedtoparam': tiedtoparam.copy(), # we reuse these later
+                'tiedfactor':  tiedfactor.copy(),
+            }, copy=False)
+
+            return linemodel
+
+        
         # tie parameters of given line to source line.  We don't
         # tie the amplitude unless a tying factor is given for it
-        def tie_line(model, line_params, source_linename, amp_factor=None):
+        def tie_line(tying_info, line_params, source_linename, amp_factor=None):
+
+            tiedtoparam, tiedfactor = tying_info
             
             amp, vshift, sigma = line_params
             
             source_line = self.line_map[source_linename]
             src_amp, src_vshift, src_sigma = self.line_table['params'][source_line]
-            
-            tiedfactor  = model['tiedfactor'].value
-            tiedtoparam = model['tiedtoparam'].value
-            
+                        
             if amp_factor != None:
                 tiedfactor[amp] = amp_factor
                 tiedtoparam[amp] = src_amp
@@ -225,49 +234,56 @@ class EMFitTools(Filters):
             tiedfactor[sigma] = 1.0
             tiedtoparam[sigma] = src_sigma
         
+
         # Build the relationship of "tied" parameters. In the 'tied' array, the
         # non-zero value is the multiplicative factor by which the parameter
         # represented in the 'tiedtoparam' index should be multiplied.
-    
+
+        n_params = len(self.param_table)
+        tying_info = (
+            np.full(n_params, -1, np.int32), # source parameter for tying
+            np.empty(n_params, np.float64),  # multiplier between source and tied value 
+        )
+
         # Physical doublets and lines in the same ionization species should have
         # their velocity shifts and line-widths always tied. In addition, set fixed
         # doublet-ratios here. Note that these constraints must be set on *all*
         # lines, not just those in range.
-
+        
         for line_name, line_isbalmer, line_isbroad, line_params in \
                 self.line_table.iterrows('name', 'isbalmer', 'isbroad', 'params'):
             
             # broad He + Balmer
             if line_isbalmer and line_isbroad and line_name != 'halpha_broad':
-                tie_line(linemodel_broad, line_params, 'halpha_broad')
+                tie_line(tying_info, line_params, 'halpha_broad')
             # narrow He + Balmer
             elif line_isbalmer and not line_isbroad and line_name != 'halpha':
-                tie_line(linemodel_broad, line_params, 'halpha')
+                tie_line(tying_info, line_params, 'halpha')
             else:
                 match line_name:
                     case 'mgii_2796':
-                        tie_line(linemodel_broad, line_params, 'mgii_2803')                        
+                        tie_line(tying_info, line_params, 'mgii_2803')                        
                     case 'nev_3346' | 'nev_3426': # should [NeIII] 3869 be tied to [NeV]???
-                        tie_line(linemodel_broad, line_params, 'neiii_3869')
+                        tie_line(tying_info, line_params, 'neiii_3869')
                     case 'oii_3726':
-                        tie_line(linemodel_broad, line_params, 'oii_3729')
+                        tie_line(tying_info, line_params, 'oii_3729')
                     case 'nii_5755' | 'oi_6300' | 'siii_6312':                        
                         # Tentative! Tie auroral lines to [OIII] 4363 but maybe we shouldn't tie [OI] 6300 here...
-                        tie_line(linemodel_broad, line_params, 'oiii_4363')
+                        tie_line(tying_info, line_params, 'oiii_4363')
                     case 'oiii_4959':
                         """
                         [O3] (4-->2): airwave: 4958.9097 vacwave: 4960.2937 emissivity: 1.172e-21
                         [O3] (4-->3): airwave: 5006.8417 vacwave: 5008.2383 emissivity: 3.497e-21
                         """
-                        tie_line(linemodel_broad, line_params, 'oiii_5007', amp_factor = 1.0 / 2.9839)
+                        tie_line(tying_info, line_params, 'oiii_5007', amp_factor = 1.0 / 2.9839)
                     case 'nii_6548':
                         """
                         [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.02198e-21
                         [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.94901e-21
                         """
-                        tie_line(linemodel_broad, line_params, 'nii_6584', amp_factor = 1.0 / 2.9421)
+                        tie_line(tying_info, line_params, 'nii_6584', amp_factor = 1.0 / 2.9421)
                     case 'sii_6731':
-                        tie_line(linemodel_broad, line_params, 'sii_6716')
+                        tie_line(tying_info, line_params, 'sii_6716')
                     case 'oii_7330':
                         """
                         [O2] (5-->2): airwave: 7318.9185 vacwave: 7320.9350 emissivity: 8.18137e-24
@@ -275,12 +291,12 @@ class EMFitTools(Filters):
                         [O2] (5-->3): airwave: 7329.6613 vacwave: 7331.6807 emissivity: 1.35614e-23
                         [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.27488e-23
                         """
-                        tie_line(linemodel_broad, line_params, 'oii_7320', amp_factor = 1.0 / 1.2251)
+                        tie_line(tying_info, line_params, 'oii_7320', amp_factor = 1.0 / 1.2251)
                     case 'siii_9069':
-                        tie_line(linemodel_broad, line_params, 'siii_9532')
+                        tie_line(tying_info, line_params, 'siii_9532')
                     case 'siliii_1892':
                         # Tentative! Tie SiIII] 1892 to CIII] 1908 because they're so close in wavelength.
-                        tie_line(linemodel_broad, line_params, 'ciii_1908')
+                        tie_line(tying_info, line_params, 'ciii_1908')
                     
             # Tie all the forbidden and narrow Balmer+helium lines *except
             # [OIII] 4959,5007* to [NII] 6584 when we have broad lines. The
@@ -289,35 +305,24 @@ class EMFitTools(Filters):
             # https://github.com/desihub/fastspecfit/issues/160
             if strict_broadmodel:
                 if not line_isbroad and not line_name in { 'nii_6584', 'oiii_4959', 'oiii_5007' }:
-                    tie_line(linemodel_broad, line_params, 'nii_6584')
+                    tie_line(tying_info, line_params, 'nii_6584')
                     
                 #if not line_isbroad and line_name != 'oiii_5007':
-                #    tie_line(linemodel_broad, line, 'oiii_5007')
+                #    tie_line(tying_info, line_params, 'oiii_5007')
                 
                 ## Tie all forbidden lines to [OIII] 5007; the narrow Balmer and
                 ## helium lines are separately tied together.
                 #if not line_isbroad and not line_isbalmer and line_name != 'oiii_5007'):
-                #    tie_line(linemodel_broad, line, 'oiii_5007')
-        
+                #    tie_line(tying_info, line_params, 'oiii_5007')
 
-        # Assign fixed=True to parameters which are outside the wavelength range
-        # except those that are tied to other lines.
-        _fix_parameters(linemodel_broad)
         
-        # debug check
-        #params_with_nonzero_factors = (linemodel_broad['tiedfactor'] != 0.)
-        #assert(np.all(linemodel_broad['tiedtoparam'][params_with_nonzero_factors]!= -1))
-        
-        # It's OK for the doublet ratios to be bounded at zero.
-        #assert(len(linemodel_broad[np.sum(linemodel_broad['bounds'] == (0.0, 0.0), axis=1) > 0]) == 0)
-        
-        
-        # Model 2 - like linemodel, but broad lines have been fixed at zero.
-        linemodel_nobroad = linemodel_broad.copy()
-       
-        tiedfactor   = linemodel_nobroad['tiedfactor'].value
-        tiedtoparam  = linemodel_nobroad['tiedtoparam'].value
+        linemodel_broad = create_model(tying_info)
 
+        
+        # Model 2 - like Model 1, but additionally fix params of all
+        # broad lines.  we inherit tying info from Model 1, which we
+        # will modify below.
+        
         forceFixed = []
         for line_name, line_isbalmer, line_isbroad, line_params in \
                 self.line_table.iterrows('name', 'isbalmer', 'isbroad', 'params'):
@@ -327,34 +332,26 @@ class EMFitTools(Filters):
                     forceFixed.append(p) # fix all of these
             
             if line_isbalmer and line_isbroad and line_name != 'halpha_broad':
-                tie_line(linemodel_nobroad, line_params, 'halpha_broad', amp_factor = 1.0)
+                tie_line(tying_info, line_params, 'halpha_broad', amp_factor = 1.0)
                 
             if strict_broadmodel:
                 # Tie the forbidden lines to [OIII] 5007.
                 if not line_isbalmer and not line_isbroad and line_name != 'oiii_5007':
-                    tie_line(linemodel_nobroad, line_params, 'oiii_5007')
+                    tie_line(tying_info, line_params, 'oiii_5007')
                 
                 # Tie narrow Balmer and helium lines together.
                 if line_isbalmer and not line_isbroad:
                     if line_name == 'halpha':
+                        tiedtoparam, _ = tying_info
+                        
                         _, vshift, sigma = line_params
                         for p in (vshift, sigma):
                             # untie the params of this line
-                            tiedfactor[p]  =  0.
                             tiedtoparam[p] = -1    
                     else:
-                        tie_line(linemodel_nobroad, line_params, 'halpha')
+                        tie_line(tying_info, line_params, 'halpha')
         
-        # Assign fixed=True to parameters which are outside the wavelength range
-        # except those that are tied to other lines.
-        _fix_parameters(linemodel_nobroad, forceFixed)
-
-        # debug check
-        #params_with_nonzero_factors = (linemodel_nobroad['tiedfactor'] != 0.)
-        #assert(np.all(linemodel_nobroad['tiedtoparam'][params_with_nonzero_factors] != -1))
-        
-        linemodel_broad['free']   = (linemodel_broad['tiedtoparam']   == -1) & ~linemodel_broad['fixed']
-        linemodel_nobroad['free'] = (linemodel_nobroad['tiedtoparam'] == -1) & ~linemodel_nobroad['fixed']
+        linemodel_nobroad = create_model(tying_info, forceFixed)
         
         return linemodel_broad, linemodel_nobroad
     
@@ -690,7 +687,7 @@ class EMFitTools(Filters):
             
             # Drop (zero out) any dubious free parameters.
             self._drop_params(linemodel, isFree, free_params, bounds, log)
-        
+
             # translate free parame to full param array, but do NOT turn doublet
             # ratios into amplitudes yet, as out_linemodel needs them to be ratios
             parameters = params_mapping.mapFreeToFull(free_params, patchDoublets=False)
@@ -712,16 +709,21 @@ class EMFitTools(Filters):
             
             # calculate the observed maximum amplitude for each
             # fitted spectral line after convolution with the resolution
-            # matrix.
-            peaks = EMLine_find_peak_amplitudes(parameters,
-                                                obs_bin_centers,
-                                                redshift,
-                                                line_wavelengths,
-                                                resolution_matrices,
-                                                camerapix)
+            # matrix.  Add amplitudes as start of a column in linemodel
+            # that is padded with zeros
+            
+            obs_values = np.empty(len(linemodel))
+            
+            nlines = len(self.line_table)
+            obs_values[:nlines] = EMLine_find_peak_amplitudes(parameters,
+                                                              obs_bin_centers,
+                                                              redshift,
+                                                              line_wavelengths,
+                                                              resolution_matrices,
+                                                              camerapix)
+            obs_values[nlines:] = 0.
             
             # we only store observed values for the amplitudes
-            obs_values = np.hstack((peaks, np.zeros(2*len(self.line_table)))) 
             out_linemodel['obsvalue'] = obs_values
             
         return out_linemodel
@@ -778,7 +780,7 @@ class EMFitTools(Filters):
         
         # This should not happen if our optimizer enforces its bounds
         drop3 = ((free_params < free_bounds[0]) | (free_params > free_bounds[1]))
-                
+        
         drop = np.logical_or.reduce((drop1, drop2, drop3))
         
         log.debug(f'Dropping {np.sum(drop1)} impossible line amplitudes/widths.')
@@ -790,7 +792,7 @@ class EMFitTools(Filters):
             log.debug(f'  Dropping {ntotal} unique parameters.')
         
         free_params[drop] = 0.
-                
+        
         
     @staticmethod
     def chi2(linemodel, emlinewave, emlineflux, emlineivar, emlinemodel,
@@ -861,24 +863,27 @@ class EMFitTools(Filters):
         if redshift is None:
             redshift = fastspecfit_table['Z']
 
-        # FIXME: do we need to adjust last 3 params below?
-        # build_model is expecting a tuple for each param
         model_fluxes = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas, linewaves,
                                           np.hstack(specwave), specres, camerapix)
         
         return model_fluxes
 
-
-    
+        
     def populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
                          emlineivar, oemlineivar, specflux_nolines, redshift,
                          resolution_matrices, camerapix, log, nminpix=7, nsigma=3.):
         """Populate the output table with the emission-line measurements.
 
         """
+        
+        # return range (lo, hi) s.t. all pixels of A in range [v_lo,
+        # v_hi] lie in half-open interval [lo, hi)
+        def get_boundaries(A, v_lo, v_hi):
+            return np.searchsorted(A, (v_lo, v_hi), side='right')
+        
+        from math import erf
         from scipy.stats import sigmaclip
         from fastspecfit.util import centers2edges
-        from scipy.special import erf
         
         line_wavelengths = self.line_table['restwave'].value
         
@@ -896,65 +901,47 @@ class EMFitTools(Filters):
                                         resolution_matrices,
                                         camerapix)
 
-        param_names = self.param_table['name'].value
-        param_types = self.param_table['type'].value
-        doubletpair = self.param_table['doubletpair'].value
         
-        doublet_info = {
-            'OII_DOUBLET_RATIO':  'OII_3726',
-            'SII_DOUBLET_RATIO':  'SII_6731',
-            'MGII_DOUBLET_RATIO': 'MGII_2796',
-        }
-
         values    = finalfit['value'].value
         obsvalues = finalfit['obsvalue'].value
-        
-        for iparam in range(len(finalfit)):
-            pname = param_names[iparam].upper()
-            val = values[iparam]
-            obsval = obsvalues[iparam]
-            
-            # special case the tied doublets
-            src_name = doublet_info.get(pname)
-            if src_name is not None:
-                dblp = doubletpair[iparam]
-                result[pname] = val
-                result[src_name + "_MODELAMP"] = val * values[dblp]
-                result[src_name + "_AMP"]      = val * obsvalues[dblp] 
-            else:
-                if param_types[iparam] == ParamType.AMPLITUDE:
-                    result[pname.replace('_AMP', '_MODELAMP')] = val
-                    result[pname] = obsval
-                else:
-                    result[pname] = val
         
         gausscorr = erf(nsigma / np.sqrt(2))      # correct for the flux outside of +/-nsigma
         dpixwave = np.median(np.diff(emlinewave)) # median pixel size [Angstrom]
         
-        # Where the cameras overlap, we have to account for the variable pixel
-        # size by sorting in wavelength.
+        # Where the cameras overlap, we have to account for the
+        # variable pixel size by sorting in wavelength.
         Wsrt = np.argsort(emlinewave)
-        dwaves = np.diff(centers2edges(emlinewave[Wsrt]))
+        
+        emlinewave_s  = emlinewave[Wsrt]
+        emlineflux_s  = emlineflux[Wsrt]
+        emlineivar_s  = emlineivar[Wsrt]
+        oemlineivar_s = oemlineivar[Wsrt]
+        finalmodel_s  = finalmodel[Wsrt]
+        specflux_nolines_s = specflux_nolines[Wsrt]
+        
+        dwaves = np.diff(centers2edges(emlinewave_s))
         
         # get continuum fluxes, EWs, and upper limits
-        narrow_sigmas, broad_sigmas, uv_sigmas = [], [], []
-        narrow_redshifts, broad_redshifts, uv_redshifts = [], [], []
-        for ioneline, (name, restwave, isbroad, isbalmer) in \
+        narrow_stats, broad_stats, uv_stats = [], [], []
+        for iline, (name, restwave, isbroad, isbalmer) in \
                 enumerate(self.line_table.iterrows('name', 'restwave', 'isbroad', 'isbalmer')):
             
             linename = name.upper()
+
+            line_amp, line_vshift, line_sigma = \
+                self.line_table['params'][iline]
             
             # zero out out-of-range lines
-            if not self.line_in_range[ioneline]:
-                result[f'{linename}_AMP']      = 0.0
-                result[f'{linename}_MODELAMP'] = 0.0
-                result[f'{linename}_VSHIFT']   = 0.0
-                result[f'{linename}_SIGMA']    = 0.0
+            if not self.line_in_range[iline]:
+                obsvalues[line_amp] = 0.
+                values[line_amp]    = 0.
+                values[line_vshift] = 0.
+                values[line_sigma]  = 0.
                 continue
-            
-            linez = redshift + result[f'{linename}_VSHIFT'] / C_LIGHT
+
+            linez = redshift + values[line_vshift] / C_LIGHT
             linezwave = restwave * (1 + linez)
-            linesigma = result[f'{linename}_SIGMA'] # [km/s]
+            linesigma = values[line_sigma] # [km/s]
             
             # if the line was dropped, use a default sigma value
             if linesigma == 0:
@@ -975,142 +962,142 @@ class EMFitTools(Filters):
             else:
                 linesigma_ang_window = linesigma_ang
                 _gausscorr = gausscorr
-                
+            
+            # emlinewave is NOT sorted because it mixes cameras, so we must check all elts
+            # to find pixels near line
+            line_s, line_e = get_boundaries(emlinewave_s,
+                                            linezwave - nsigma*linesigma_ang_window,
+                                            linezwave + nsigma*linesigma_ang_window)
+            
             # Are the pixels based on the original inverse spectrum fully
             # masked? If so, set everything to zero and move onto the next line.
-            lineindx = np.where((emlinewave >= (linezwave - nsigma*linesigma_ang_window)) *
-                                (emlinewave <= (linezwave + nsigma*linesigma_ang_window)))[0]
-            
-            if np.sum(oemlineivar[lineindx] == 0.) > 0.3 * len(lineindx): # use original ivar
-                result[f'{linename}_AMP']      = 0.0
-                result[f'{linename}_MODELAMP'] = 0.0
-                result[f'{linename}_VSHIFT']   = 0.0
-                result[f'{linename}_SIGMA']    = 0.0
+            if np.sum(oemlineivar_s[line_s:line_e] == 0.) > 0.3 * (line_e - line_s): # use original ivar
+                obsvalues[line_amp] = 0.
+                values[line_amp]    = 0.
+                values[line_vshift] = 0.
+                values[line_sigma]  = 0.
                 continue
             
             # number of pixels, chi2, and boxcar integration
-            lineindx = np.where((emlinewave >= (linezwave - nsigma*linesigma_ang_window)) *
-                                (emlinewave <= (linezwave + nsigma*linesigma_ang_window)) *
-                                (emlineivar > 0.))[0]
-            
-            npix = len(lineindx)
+            patchindx = line_s + np.where( emlineivar_s[line_s:line_e] > 0. )[0]
+            npix = len(patchindx)
             result[f'{linename}_NPIX'] = npix
-    
+            
             if npix >= nminpix: # magic number: required at least XX unmasked pixels centered on the line
-                    
-                if np.any(emlineivar[lineindx] == 0):
+                
+                emlineflux_patch = emlineflux_s[patchindx]
+                emlineivar_patch = emlineivar_s[patchindx]
+                dwaves_patch     = dwaves[patchindx]
+                
+                if np.any(emlineivar_patch == 0.):
                     errmsg = 'Ivar should never be zero within an emission line!'
                     log.critical(errmsg)
                     raise ValueError(errmsg)
                 
-                lineindx_Wsrt = np.where((emlinewave[Wsrt] >= (linezwave - nsigma*linesigma_ang_window)) *
-                                         (emlinewave[Wsrt] <= (linezwave + nsigma*linesigma_ang_window)) *
-                                         (emlineivar[Wsrt] > 0.))[0]
-                
                 # boxcar integration of the flux
-                boxflux = np.sum(emlineflux[Wsrt][lineindx_Wsrt] * dwaves[lineindx_Wsrt])
-                boxflux_ivar = 1 / np.sum((1 / emlineivar[Wsrt][lineindx_Wsrt]) * dwaves[lineindx_Wsrt]**2)
-
+                boxflux = np.sum(emlineflux_patch * dwaves_patch)
+                boxflux_ivar = 1 / np.sum(dwaves_patch**2 / emlineivar_patch)
                 result[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
                 result[f'{linename}_BOXFLUX_IVAR'] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
-                    
+            
                 # Get the uncertainty in the line-amplitude based on the scatter
                 # in the pixel values from the emission-line subtracted
                 # spectrum.
-                amp_sigma = np.diff(np.percentile(specflux_nolines[lineindx], [25, 75]))[0] / 1.349 # robust sigma
-                if amp_sigma > 0.:
-                    result[f'{linename}_AMP_IVAR'] = 1 / amp_sigma**2 # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                n_lo, n_hi = np.percentile(specflux_nolines_s[patchindx], (25, 75))
+                amp_sigma = (n_hi - n_lo) / 1.349 # robust sigma
+                
+                amp_ivar = 1/amp_sigma**2 if amp_sigma > 0. else 0.
+                if amp_ivar > 0.:
+                    result[f'{linename}_AMP_IVAR'] = amp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
                 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
-                if result[f'{linename}_MODELAMP'] > 0.:
-                    result[f'{linename}_CHI2'] = np.sum(emlineivar[lineindx] * (emlineflux[lineindx] - finalmodel[lineindx])**2)
+                flux, flux_ivar = 0., 0.
+                if values[line_amp] > 0.:
+                    finalmodel_patch = finalmodel_s[patchindx]
+                    chi2 = np.sum(emlineivar_patch * (emlineflux_patch - finalmodel_patch)**2)
+                    result[f'{linename}_CHI2'] = chi2
                     
-                    (s, e), flux = line_fluxes.getLine(ioneline)
+                    (s, e), flux = line_fluxes.getLine(iline)
+                    
+                    # we could do this sparsely, but it's slower than allocating
+                    # and permuting a big, mostly empty array
                     lineprofile = np.zeros_like(emlinewave)
                     lineprofile[s:e] = flux
-                    
-                    if np.sum(lineprofile) == 0. or np.any(lineprofile < 0.):
+                    lineprofile_patch = lineprofile[Wsrt][patchindx]
+
+                    patch_sum = np.sum(lineprofile_patch)
+                    if patch_sum == 0. or np.any(lineprofile_patch < 0.):
                         errmsg = 'Line-profile should never be zero or negative!'
                         log.critical(errmsg)
                         raise ValueError(errmsg)
                     
                     # matched-filter (maximum-likelihood) Gaussian flux
-                    pro_j = lineprofile[Wsrt][lineindx_Wsrt] / np.sum(lineprofile[Wsrt][lineindx_Wsrt])
+                    pro_j = lineprofile_patch / patch_sum
                     I = pro_j > 0. # very narrow lines can have a profile that goes to zero
-                    weight_j = (pro_j[I]**2 / dwaves[lineindx_Wsrt][I]**2) * emlineivar[Wsrt][lineindx_Wsrt][I]
-                    flux = np.sum(weight_j * dwaves[lineindx_Wsrt][I] * lineprofile[Wsrt][lineindx_Wsrt][I] / pro_j[I]) / np.sum(weight_j)
-                    flux_ivar = np.sum(weight_j)
-                    
+
+                    r = pro_j[I] / dwaves_patch[I]
+                    weight_j = r * emlineivar_patch[I]
+                    flux_ivar = np.sum(r * weight_j)                    
+                    flux = np.sum(weight_j * lineprofile_patch[I]) / flux_ivar
+
                     # correction for missing flux
-                    flux /= _gausscorr
+                    flux      /= _gausscorr
                     flux_ivar *= _gausscorr**2
-                    
                     result[f'{linename}_FLUX'] = flux
                     result[f'{linename}_FLUX_IVAR'] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
                     
                     # keep track of sigma and z but only using XX-sigma lines
-                    linesnr = result[f'{linename}_AMP'] * np.sqrt(result[f'{linename}_AMP_IVAR'])
-                    
+                    linesnr = obsvalues[line_amp] * np.sqrt(amp_ivar)
                     if linesnr > 1.5:
                         if isbroad: # includes UV and broad Balmer lines
                             if isbalmer:
-                                broad_sigmas.append(linesigma)
-                                broad_redshifts.append(linez)
+                                stats = broad_stats
                             else:
-                                uv_sigmas.append(linesigma)
-                                uv_redshifts.append(linez)
+                                stats = uv_stats
                         else:
-                            narrow_sigmas.append(linesigma)
-                            narrow_redshifts.append(linez)
-                            
+                            stats = narrow_stats
+                        stats.append((linesigma, linez))
+
+            
             # next, get the continuum, the inverse variance in the line-amplitude, and the EW
-            indxlo = np.where((emlinewave > (linezwave - 10*linesigma_ang_window)) *
-                              (emlinewave < (linezwave - 3.*linesigma_ang_window)) *
-                              (oemlineivar > 0))[0]
-            #(finalmodel == 0))[0]
-            indxhi = np.where((emlinewave < (linezwave + 10*linesigma_ang_window)) *
-                              (emlinewave > (linezwave + 3.*linesigma_ang_window)) *
-                              (oemlineivar > 0))[0]
-            #(finalmodel == 0))[0]
-            indx = np.hstack((indxlo, indxhi))
-
-            if len(indx) >= nminpix: # require at least XX pixels to get the continuum level
-                clipflux, _, _ = sigmaclip(specflux_nolines[indx], low=3, high=3)
-                # corner case: if a portion of a camera is masked
+            slo, elo = get_boundaries(emlinewave_s,
+                                      linezwave - 10 * linesigma_ang_window,
+                                      linezwave -  3 * linesigma_ang_window)
+            shi, ehi = get_boundaries(emlinewave_s,
+                                      linezwave +  3 * linesigma_ang_window,
+                                      linezwave + 10 * linesigma_ang_window)
+            
+            borderindx = np.hstack((slo + np.where(oemlineivar_s[slo:elo] > 0.)[0],
+                                    shi + np.where(oemlineivar_s[shi:ehi] > 0.)[0]))
+            
+            cmed, civar = 0., 0.
+            if len(borderindx) >= nminpix: # require at least XX pixels to get the continuum level
+                clipflux, _, _ = sigmaclip(specflux_nolines_s[borderindx], low=3, high=3)
+                
                 if len(clipflux) > 0:
-                    cmed = np.median(clipflux)
-                    csig = np.diff(np.percentile(clipflux, [25, 75])) / 1.349 # robust sigma
-                    if csig > 0:
-                        civar = (np.sqrt(len(indx)) / csig)**2
-                    else:
-                        civar = 0.0
-                else:
-                    cmed, civar = 0.0, 0.0
-
+                    clo, cmed, chi = np.percentile(clipflux, [25, 50, 75])
+                    csig = (chi - clo) / 1.349  # robust sigma
+                    civar = (np.sqrt(len(borderindx)) / csig)**2 if csig > 0. else 0.
+                    
                 result[f'{linename}_CONT'] = cmed # * u.erg/(u.second*u.cm**2*u.Angstrom)
                 result[f'{linename}_CONT_IVAR'] = civar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
-            else:
-                cmed, civar = 0.0, 0.0
-                
-            if cmed != 0.0 and civar != 0.0:
-                lineflux = result[f'{linename}_FLUX']
-                linefluxivar = result[f'{linename}_FLUX_IVAR']
-                if lineflux > 0 and linefluxivar > 0:
+            
+            ew, ewivar = 0., 0.
+            if cmed != 0. and civar != 0.:
+                if flux > 0. and flux_ivar > 0.:
                     # add the uncertainties in flux and the continuum in quadrature
-                    ew = lineflux / cmed / (1 + redshift) # rest frame [A]
-                    ewivar = (1+redshift)**2 / (1 / (cmed**2 * linefluxivar) + lineflux**2 / (cmed**4 * civar))
-                else:
-                    ew, ewivar = 0.0, 0.0
-                        
+                    ew = flux / cmed / (1 + redshift) # rest frame [A]
+                    ewivar = (1+redshift)**2 / (1 / (cmed**2 * flux_ivar) + flux**2 / (cmed**4 * civar))
+                
                 # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
                 fluxlimit = np.sqrt(2 * np.pi) * linesigma_ang / np.sqrt(civar) # * u.erg/(u.second*u.cm**2)
                 ewlimit = fluxlimit * cmed / (1+redshift)
-    
+                
                 result[f'{linename}_EW'] = ew
                 result[f'{linename}_EW_IVAR'] = ewivar
-                result[f'{linename}_FLUX_LIMIT'] = fluxlimit 
+                result[f'{linename}_FLUX_LIMIT'] = fluxlimit
                 result[f'{linename}_EW_LIMIT'] = ewlimit
-
+                
             ########################################################
             
             if 'debug' in log.name:
@@ -1121,36 +1108,65 @@ class EMFitTools(Filters):
                     val = result[f'{linename}_{col}']
                     log.debug(f'{linename} {col}: {val:.4f}')
                 print()
-            
-            #log.debug(' ')
+
+        # get the per-group average emission-line redshifts and velocity widths
+        for stats, groupname in zip((narrow_stats, broad_stats, uv_stats),
+                                    ('NARROW', 'BROAD', 'UV')):
+            if len(stats) > 0:
+                stats = np.array(stats)
+                sigmas    = stats[:,0]
+                redshifts = stats[:,1]
+
+                stat_sigma    = np.median(sigmas)  # * u.kilometer / u.second
+                stat_sigmarms = np.std(sigmas)
+
+                stat_z    = np.median(redshifts)
+                stat_zrms = np.std(redshifts)
+
+                if 'debug' in log.name:
+                    log.debug(f'{groupname}_SIGMA: {stat_sigma:.3f}+/-{stat_sigmarms:.3f}')
+                    log.debug(f'{groupname}_Z:     {stat_z:.9f}+/-{stat_zrms:.9f}')
+                    
+                result[f'{groupname}_SIGMA']    = stat_sigma
+                result[f'{groupname}_SIGMARMS'] = stat_sigmarms
+
+                result[f'{groupname}_Z']        = stat_z 
+                result[f'{groupname}_ZRMS']     = stat_zrms                    
+            else:
+                result[f'{groupname}_Z'] = redshift
     
-            ## simple QA
-            #if linename == 'OIII_5007':
-            #    import matplotlib.pyplot as plt
-            #    _indx = np.arange(indx[-1]-indx[0])+indx[0]
-            #    # continuum bandpasses and statistics
-            #    plt.clf()
-            #    plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='gray')
-            #    plt.scatter(emlinewave[indx], specflux_nolines[indx], color='red')
-            #    plt.axhline(y=cmed, color='k')
-            #    plt.axhline(y=cmed+1/np.sqrt(civar), color='k', ls='--')
-            #    plt.axhline(y=cmed-1/np.sqrt(civar), color='k', ls='--')
-            #    plt.savefig('desi-users/ioannis/tmp/junk.png')
-            #
-            #    # emission-line integration
-            #    plt.clf()
-            #    plt.plot(emlinewave[_indx], emlineflux[_indx], color='gray')
-            #    plt.plot(emlinewave[_indx], finalmodel[_indx], color='red')
-            #    #plt.plot(emlinewave[_indx], specflux_nolines[_indx], color='orange', alpha=0.5)
-            #    plt.axvline(x=emlinewave[lineindx[0]], color='blue')
-            #    plt.axvline(x=emlinewave[lineindx[-1]], color='blue')
-            #    plt.axhline(y=0, color='k', ls='--')
-            #    plt.axhline(y=amp_sigma, color='k', ls='--')
-            #    plt.axhline(y=2*amp_sigma, color='k', ls='--')
-            #    plt.axhline(y=3*amp_sigma, color='k', ls='--')
-            #    plt.axhline(y=result['{}_AMP'.format(linename)], color='k', ls='-')
-            #    plt.savefig('desi-users/ioannis/tmp/junk2.png')
+                    
+                
+        # write values of final parameters (after any changes above) to result
+        param_names = self.param_table['name'].value
+        param_types = self.param_table['type'].value
+        doubletpair = self.param_table['doubletpair'].value
+        
+        doublet_info = {
+            'OII_DOUBLET_RATIO':  'OII_3726',
+            'SII_DOUBLET_RATIO':  'SII_6731',
+            'MGII_DOUBLET_RATIO': 'MGII_2796',
+        }
+        
+        for iparam in range(len(finalfit)):
+            pname = param_names[iparam].upper()
+            val = values[iparam]
+            obsval = obsvalues[iparam]
             
+            # special case the tied doublets
+            src_line = doublet_info.get(pname)
+            if src_line is not None:
+                dblp = doubletpair[iparam]
+                result[pname] = val
+                result[src_line + "_MODELAMP"] = val * values[dblp]
+                result[src_line + "_AMP"]      = val * obsvalues[dblp] 
+            else:
+                if param_types[iparam] == ParamType.AMPLITUDE:
+                    result[pname.replace('_AMP', '_MODELAMP')] = val
+                    result[pname] = obsval
+                else:
+                    result[pname] = val
+        
         # Clean up the doublets whose amplitudes were tied in the fitting since
         # they may have been zeroed out in the clean-up, above. This should be
         # smarter.
@@ -1181,39 +1197,7 @@ class EMFitTools(Filters):
                 log.debug(f'{col}: {result[col]:.4f}')
             #log.debug(' ')
             print()
-
-        # get the average emission-line redshifts and velocity widths
-        if len(narrow_redshifts) > 0:
-            result['NARROW_Z'] = np.median(narrow_redshifts)
-            result['NARROW_SIGMA'] = np.median(narrow_sigmas) # * u.kilometer / u.second
-            result['NARROW_ZRMS'] = np.std(narrow_redshifts)
-            result['NARROW_SIGMARMS'] = np.std(narrow_sigmas)
-        else:
-            result['NARROW_Z'] = redshift
-            
-        if len(broad_redshifts) > 0:
-            result['BROAD_Z'] = np.median(broad_redshifts)
-            result['BROAD_SIGMA'] = np.median(broad_sigmas) # * u.kilometer / u.second
-            result['BROAD_ZRMS'] = np.std(broad_redshifts)
-            result['BROAD_SIGMARMS'] = np.std(broad_sigmas)
-        else:
-            result['BROAD_Z'] = redshift
-
-        if len(uv_redshifts) > 0:
-            result['UV_Z'] = np.median(uv_redshifts)
-            result['UV_SIGMA'] = np.median(uv_sigmas) # * u.kilometer / u.second
-            result['UV_ZRMS'] = np.std(uv_redshifts)
-            result['UV_SIGMARMS'] = np.std(uv_sigmas)
-        else:
-            result['UV_Z'] = redshift
-
-        # fragile
-        if 'debug' in log.name:
-            for line in ('NARROW', 'BROAD', 'UV'):
-                log.debug('{}_Z: {:.9f}+/-{:.9f}'.format(line, result[f'{line}_Z'], result[f'{line}_ZRMS']))
-                log.debug('{}_SIGMA: {:.3f}+/-{:.3f}'.format(line, result[f'{line}_SIGMA'], result[f'{line}_SIGMARMS']))
-
-                
+        
     def synthphot_spectrum(self, data, result, modelwave, modelflux):
         """Synthesize photometry from the best-fitting model (continuum+emission lines).
 
@@ -1255,7 +1239,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     modelflux
  
     """
-    from astropy.table import Column #, vstack
+    from astropy.table import Column
     from fastspecfit.util import ivar2var
 
     tall = time.time()
@@ -1272,22 +1256,22 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     
     EMFit = EMFitTools(emlinesfile=emlinesfile, fphoto=fphoto, uniqueid=data['uniqueid'])
     
-    # Combine all three cameras; we will unpack them to build the
-    # best-fitting model (per-camera) below.
     redshift    = data['zredrock']
+    camerapix    = data['camerapix']
+    resolution_matrix = data['res_fast']
+
+    # Combine pixels across all cameras
     emlinewave  = np.hstack(data['wave'])
     oemlineivar = np.hstack(data['ivar'])
     specflux    = np.hstack(data['flux'])
-    resolution_matrix = data['res_fast']
-    camerapix   = data['camerapix']
     
-    continuummodelflux = np.hstack(continuummodel)
+    continuummodelflux       = np.hstack(continuummodel)
     smoothcontinuummodelflux = np.hstack(smooth_continuum)
     emlineflux = specflux - continuummodelflux - smoothcontinuummodelflux
 
     emlineivar = np.copy(oemlineivar)
-    emlinevar, emlinegood = ivar2var(emlineivar, clip=1e-3)
-    emlinebad = np.logical_not(emlinegood)
+    _, emlinegood = ivar2var(emlineivar, clip=1e-3)
+    emlinebad = ~emlinegood
 
     # This is a (dangerous???) hack.
     if np.any(emlinebad):
@@ -1295,17 +1279,21 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
     
     weights = np.sqrt(emlineivar)
+
+    # determine which lines are in range of the camera
+    EMFit.compute_inrange_lines(redshift,
+                                wavelims=(np.min(emlinewave)+5,
+                                          np.max(emlinewave)-5))
     
     # Build all the emission-line models for this object.
-    linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(
-        redshift, wavelims=(np.min(emlinewave)+5, np.max(emlinewave)-5),
-        verbose=False, strict_broadmodel=True)
+    linemodel_broad, linemodel_nobroad = \
+        EMFit.build_linemodels(strict_broadmodel=True)
     
     # Get initial guesses on the parameters and populate the two "initial"
     # linemodels; the "final" linemodels will be initialized with the
     # best-fitting parameters from the initial round of fitting.
-    initial_guesses, param_bounds, civars = EMFit.initial_guesses_and_bounds(
-        data, emlinewave, emlineflux, log)
+    initial_guesses, param_bounds, civars = \
+        EMFit.initial_guesses_and_bounds(data, emlinewave, emlineflux, log)
     
     # fit spectrum *without* any broad lines
     t0 = time.time()
@@ -1457,12 +1445,12 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                            resolution_matrix, camerapix, log)
     
     # Build the model spectrum
-    emmodel = np.hstack(EMFit.emlinemodel_bestfit(result,
-                                                  data['wave'],
-                                                  data['res_fast'],
-                                                  camerapix,
-                                                  redshift=redshift))
-
+    emmodel = EMFit.emlinemodel_bestfit(result,
+                                        data['wave'],
+                                        data['res_fast'],
+                                        camerapix,
+                                        redshift=redshift)
+    
     result['RCHI2_LINE'] = finalchi2
     #result['NDOF_LINE'] = finalndof
     result['DELTA_LINECHI2'] = delta_linechi2_balmer # chi2_nobroad - chi2_broad
@@ -1472,13 +1460,13 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     rchi2 = np.sum(oemlineivar * (specflux - (continuummodelflux + smoothcontinuummodelflux + emmodel))**2)
     rchi2 /= np.sum(oemlineivar > 0) # dof??
     result['RCHI2'] = rchi2
-
+    
     # I believe that all the elements of the coadd_wave vector are contained
     # within one or more of the per-camera wavelength vectors, and so we
     # should be able to simply map our model spectra with no
     # interpolation. However, because of round-off, etc., it's probably
     # easiest to use np.interp.
-
+    
     # package together the final output models for writing; assume constant
     # dispersion in wavelength!
     coadd_waves = data['coadd_wave']
@@ -1492,21 +1480,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     
     npix = int(np.round((maxwave-minwave)/dwave)) + 1
     modelwave = minwave + dwave * np.arange(npix)
-    
-    modelspectra = Table()
-    # all these header cards need to be 2-element tuples (value, comment),
-    # otherwise io.write_fastspecfit will crash
-    modelspectra.meta['NAXIS1'] = (npix, 'number of pixels')
-    modelspectra.meta['NAXIS2'] = (npix, 'number of models')
-    modelspectra.meta['NAXIS3'] = (npix, 'number of objects')
-    modelspectra.meta['BUNIT'] = ('10**-17 erg/(s cm2 Angstrom)', 'flux unit')
-    modelspectra.meta['CUNIT1'] = ('Angstrom', 'wavelength unit')
-    modelspectra.meta['CTYPE1'] = ('WAVE', 'type of axis')
-    modelspectra.meta['CRVAL1'] = (minwave, 'wavelength of pixel CRPIX1 (Angstrom)')
-    modelspectra.meta['CRPIX1'] = (0, '0-indexed pixel number corresponding to CRVAL1')
-    modelspectra.meta['CDELT1'] = (dwave, 'pixel size (Angstrom)')
-    modelspectra.meta['DC-FLAG'] = (0, '0 = linear wavelength vector')
-    modelspectra.meta['AIRORVAC'] = ('vac', 'wavelengths in vacuum (vac)')
 
     wavesrt = np.argsort(emlinewave)
     sorted_waves = emlinewave[wavesrt]
@@ -1514,13 +1487,36 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     modelsmoothcontinuum = np.interp(modelwave, sorted_waves, smoothcontinuummodelflux[wavesrt])
     modelemspectrum      = np.interp(modelwave, sorted_waves, emmodel[wavesrt])
     
-    modelspectra.add_column(Column(name='CONTINUUM', dtype='f4',
-                                   data=modelcontinuum.reshape(1, npix)))
-    modelspectra.add_column(Column(name='SMOOTHCONTINUUM', dtype='f4',
-                                   data=modelsmoothcontinuum.reshape(1, npix)))
-    modelspectra.add_column(Column(name='EMLINEMODEL', dtype='f4',
-                                   data=modelemspectrum.reshape(1, npix)))
-
+    modelspectra = Table(
+        # ensure that these columns will stack as rows when
+        # we vstack the Tables for different spectra, rather
+        # than being concatenated into one long row.
+        data=(
+            Column(name='CONTINUUM', dtype='f4',
+                   data=modelcontinuum.reshape(1, npix)),
+            Column(name='SMOOTHCONTINUUM', dtype='f4',
+                   data=modelsmoothcontinuum.reshape(1, npix)),
+            Column(name='EMLINEMODEL', dtype='f4',
+                   data=modelemspectrum.reshape(1, npix))
+        ),
+        # all these header cards need to be 2-element tuples (value, comment),
+        # otherwise io.write_fastspecfit will crash
+        meta = {
+            'NAXIS1':   (npix, 'number of pixels'),
+            'NAXIS2':   (npix, 'number of models'),
+            'NAXIS3':   (npix, 'number of objects'),
+            'BUNIT':    ('10**-17 erg/(s cm2 Angstrom)', 'flux unit'),
+            'CUNIT1':   ('Angstrom', 'wavelength unit'),
+            'CTYPE1':   ('WAVE', 'type of axis'),
+            'CRVAL1':   (minwave, 'wavelength of pixel CRPIX1 (Angstrom)'),
+            'CRPIX1':   (0, '0-indexed pixel number corresponding to CRVAL1'),
+            'CDELT1':   (dwave, 'pixel size (Angstrom)'),
+            'DC-FLAG':  (0, '0 = linear wavelength vector'),
+            'AIRORVAC': ('vac', 'wavelengths in vacuum (vac)')
+        },
+        copy=False
+    )
+    
     # Finally, optionally synthesize photometry (excluding the
     # smoothcontinuum!) and measure Dn(4000) from the line-free spectrum.
     if synthphot:
