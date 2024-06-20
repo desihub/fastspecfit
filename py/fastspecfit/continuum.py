@@ -12,7 +12,7 @@ import numpy as np
 from astropy.table import Table
 
 from fastspecfit.io import FLUXNORM
-from fastspecfit.util import C_LIGHT
+from fastspecfit.util import C_LIGHT, quantile
 
 # SPS template constants (used by build-fsps-templates)
 PIXKMS_BLU = 25.  # [km/s]
@@ -322,7 +322,7 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
     
                 if (np.sum(I) > 3) and np.max(flux[I]*ivar[I]) > 1:
                     stackdvel.append((wave[I] - zlinewave) / zlinewave * C_LIGHT)
-                    norm = np.quantile(flux[I], 0.99)
+                    norm = quantile(flux[I], 0.99)
                     if norm <= 0:
                         norm = 1.0
                     stackflux.append(flux[I] / norm)
@@ -356,7 +356,7 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
                         popt[1] = np.abs(popt[1])
                         if popt[0] > 0 and popt[1] > 0:
                             linesigma = popt[1]
-                            robust_std = np.diff(np.quantile(contflux, [0.25, 0.75]))[0] / 1.349 # robust sigma
+                            robust_std = np.diff(quantile(contflux, [0.25, 0.75]))[0] / 1.349 # robust sigma
                             #robust_std = np.std(contflux)
                             if robust_std > 0:
                                 linesigma_snr = popt[0] / robust_std
@@ -377,8 +377,8 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
                         else:
                             linemodel = stackflux * 0
     
-                        #_min, _max = np.quantile(stackflux, [0.05, 0.95])
-                        _max = np.max([np.max(linemodel), 1.05*np.quantile(stackflux, 0.99)])
+                        #_min, _max = quantile(stackflux, [0.05, 0.95])
+                        _max = np.max([np.max(linemodel), 1.05*quantile(stackflux, 0.99)])
     
                         ax.set_ylim(-2*np.median(contflux), _max)
                         if linesigma > 0:
@@ -1394,9 +1394,9 @@ class ContinuumTools(Filters, Inoue14):
                     if np.sum(J) > 0:
                         snr = (flux[J] - smooth[J]) / smoothsigma[J]
                         # require peak S/N>3 and at least 5 pixels with S/N>3
-                        #print(_linename, zlinewave, np.quantile(snr, 0.98), np.sum(snr > snr_strong))
+                        #print(_linename, zlinewave, quantile(snr, 0.98), np.sum(snr > snr_strong))
                         if len(snr) > 5:
-                            if np.quantile(snr, 0.98) > snr_strong and np.sum(snr > snr_strong) > 5:
+                            if quantile(snr, 0.98) > snr_strong and np.sum(snr > snr_strong) > 5:
                                 linemask_strong[I] = True
                         else:
                             # Very narrow, strong lines can have fewer than 5

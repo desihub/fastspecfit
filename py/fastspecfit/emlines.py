@@ -493,7 +493,7 @@ class EMFitTools(Filters):
                 mxpx = np.minimum(mxpx, linepix[-1])
                 amp = np.max(coadd_emlineflux[mnpx:mxpx])
             else:
-                amp = np.quantile(coadd_emlineflux[linepix], 0.975)
+                amp = quantile(coadd_emlineflux[linepix], 0.975)
             amp = np.abs(amp)
             
             noise = np.mean(coadd_sigma[linepix])
@@ -860,7 +860,7 @@ class EMFitTools(Filters):
             return np.searchsorted(A, (v_lo, v_hi), side='right')
         
         from math import erf
-        from fastspecfit.util import centers2edges, sigmaclip
+        from fastspecfit.util import centers2edges, sigmaclip, quantile
         
         line_wavelengths = self.line_table['restwave'].value
         
@@ -977,7 +977,7 @@ class EMFitTools(Filters):
                 # Get the uncertainty in the line-amplitude based on the scatter
                 # in the pixel values from the emission-line subtracted
                 # spectrum.
-                n_lo, n_hi = np.quantile(specflux_nolines_s[patchindx], (0.25, 0.75))
+                n_lo, n_hi = quantile(specflux_nolines_s[patchindx], (0.25, 0.75))
                 amp_sigma = (n_hi - n_lo) / 1.349 # robust sigma
                 
                 amp_ivar = 1/amp_sigma**2 if amp_sigma > 0. else 0.
@@ -1049,7 +1049,7 @@ class EMFitTools(Filters):
                 clipflux, _, _ = sigmaclip(specflux_nolines_s[borderindx], low=3, high=3)
                 
                 if len(clipflux) > 0:
-                    clo, cmed, chi = np.quantile(clipflux, [0.25, 0.50, 0.75])
+                    clo, cmed, chi = quantile(clipflux, [0.25, 0.50, 0.75])
                     csig = (chi - clo) / 1.349  # robust sigma
                     civar = (np.sqrt(len(borderindx)) / csig)**2 if csig > 0. else 0.
                     
