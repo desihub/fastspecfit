@@ -356,7 +356,7 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
                         popt[1] = np.abs(popt[1])
                         if popt[0] > 0 and popt[1] > 0:
                             linesigma = popt[1]
-                            robust_std = np.diff(quantile(contflux, [0.25, 0.75]))[0] / 1.349 # robust sigma
+                            robust_std = np.diff(quantile(contflux, (0.25, 0.75)))[0] / 1.349 # robust sigma
                             #robust_std = np.std(contflux)
                             if robust_std > 0:
                                 linesigma_snr = popt[0] / robust_std

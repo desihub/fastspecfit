@@ -1049,7 +1049,7 @@ class EMFitTools(Filters):
                 clipflux, _, _ = sigmaclip(specflux_nolines_s[borderindx], low=3, high=3)
                 
                 if len(clipflux) > 0:
-                    clo, cmed, chi = quantile(clipflux, [0.25, 0.50, 0.75])
+                    clo, cmed, chi = quantile(clipflux, (0.25, 0.50, 0.75))
                     csig = (chi - clo) / 1.349  # robust sigma
                     civar = (np.sqrt(len(borderindx)) / csig)**2 if csig > 0. else 0.
                     
