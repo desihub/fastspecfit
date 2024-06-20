@@ -14,7 +14,7 @@ class ParamsMapping(object):
     def __init__(self, nParms,
                  isFree,
                  tiedSources, tiedFactors,
-                 doubletSources):
+                 doubletTargets, doubletSources):
         
         self.nParms     = nParms
         self.nFreeParms = np.sum(isFree)
@@ -26,7 +26,7 @@ class ParamsMapping(object):
         
         self._precomputeMapping(isFree, pFree,
                                 tiedSources, tiedFactors,
-                                doubletSources)
+                                doubletTargets, doubletSources)
         
         self._precomputeJacobian()
 
@@ -130,7 +130,7 @@ class ParamsMapping(object):
     #
     def _precomputeMapping(self, isFree, pFree,
                            tiedSources, tiedFactors,
-                           doubletSources):
+                           doubletTargets, doubletSources):
     
         # by default, assume parameters are fixed 
         sources = np.full(self.nParms, -1, dtype=np.int32)
@@ -147,8 +147,8 @@ class ParamsMapping(object):
                 factors[j] = tiedFactors[j]
         
         doubletPatches = []
-        for j, src_j in enumerate(doubletSources):
-            if src_j != -1 and isFree[j] and isFree[src_j]:
+        for j, src_j in zip(doubletTargets, doubletSources):
+            if isFree[j] and isFree[src_j]:
                 # j's factor should be v[ p[j] ], so that its value
                 # becomes v[ p[j] ] * v[ p[src_j] ]. We will patch it
                 # dynamically at mapping time.
