@@ -417,8 +417,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     
         # full model spectrum
         print('FixMe: Need to split into cameras')
-        _desiemlines = EMFit.emlinemodel_bestfit(data['wave'], data['res_fast'], fastspec, 
-                                                 camerapix=data['camerapix'], snrcut=emline_snrmin)
+        _desiemlines = EMFit.emlinemodel_bestfit(fastspec, data['wave'], data['res_fast'], data['camerapix'],
+                                                 snrcut=emline_snrmin)
         desiemlines = []
         for icam in np.arange(len(data['cameras'])):
             desiemlines.append(_desiemlines[data['camerapix'][icam][0]:data['camerapix'][icam][1]])

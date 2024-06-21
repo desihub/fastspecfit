@@ -114,7 +114,7 @@ def emline_perline_models(line_wavelengths,
             continue
         
         bin_vals = line_profiles[j]
-        
+
         s, e = emline_model_core(line_wavelengths[j],
                                  line_amplitudes[j],
                                  line_vshifts[j],
@@ -136,8 +136,8 @@ def emline_perline_models(line_wavelengths,
             # bin e-1 is one past end of requested bins,
             # and its true right endpt value is unknown
             e -= 1
-
-        endpts[j] = np.array([s,e])
+        
+        endpts[j] = np.array((s,e))
 
     return (endpts, line_profiles)
 
@@ -204,7 +204,7 @@ def emline_model_core(line_wavelength,
     hi = np.searchsorted(log_obs_bin_edges,
                          log_shifted_line + MAX_SDEV * sigma,
                          side="right")
-    
+        
     if hi == lo:  # entire Gaussian is outside bounds of log_obs_bin_edges
         return (0,0)
     

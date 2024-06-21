@@ -164,7 +164,10 @@ def build_model(redshift,
                       resolution_matrices,
                       camerapix,
                       model_fluxes)
-        
+
+    # suppress negative pixels arising from resolution matrix
+    model_fluxes[model_fluxes < 0.] = 0.
+    
     return model_fluxes
 
 
@@ -208,8 +211,19 @@ class MultiLines(object):
                                lambda m: self.line_models.append(m))
 
         self.line_models = tuple(self.line_models)
-            
 
+        # suppress negative fluxes arising from resolution matrix
+        for endpts, M in self.line_models:
+            self._suppress_negative_fluxes(endpts, M)
+
+    @staticmethod
+    @jit(nopython=True, fastmath=False, nogil=True)
+    def _suppress_negative_fluxes(endpts, M):
+        for i in range(M.shape[0]):
+            s, e = endpts[i]
+            for j in range(e-s):
+                M[i,j] = np.maximum(M[i,j], 0.)
+    
     #
     # getLine():
     # Return a model for one emission line
@@ -242,7 +256,7 @@ class MultiLines(object):
                 s = np.minimum(s, ls)
                 e = np.maximum(e, le)
                 live_models.append(i)
-
+        
         if len(live_models) == 0:
             # line has no nonzero flux bins
             return (0, 0), np.empty((0), dtype=np.float64)
@@ -263,7 +277,7 @@ class MultiLines(object):
                 ldata  = self.line_models[i][1][line]
 
                 data[ls-s:le-s] = ldata[:le-ls]
-
+    
             return (s, e), data
 
         
@@ -438,11 +452,14 @@ def _build_multimodel_core(parameters,
                                             resolution_matrices[icam].ndiag())
         
         # convolve each line's waveform with resolution matrix
-        line_models = mulWMJ(np.ones(e - s),
+        endpts, M = mulWMJ(np.ones(e - s),
                              resolution_matrices[icam].data,
                              line_models)
         
-        consumer_fun(line_models)
+        # adjust endpoints to reflect camera range
+        endpts += s
+        
+        consumer_fun((endpts, M))
 
 
 ###################################################################

@@ -154,7 +154,7 @@ def centers2edges(centers):
 # of this code have already been tested and shown to perform no better
 # than numba on Intel haswell and KNL architectures.
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, nogil=True)
 def _trapz_rebin(x, y, edges, results):
     '''
     Numba-friendly version of trapezoidal rebinning
@@ -438,3 +438,43 @@ class TabulatedDESI(object):
                 integ, _ =  quad(_agefunc, _z, self._z[-1])
                 age.append(integ * self.hubble_time)
             return np.array(age)
+
+#
+# sigma clipping in Numba
+# Rewrite basic sigma clipping to avoid
+# array copies and redundant summation
+# on each iteration
+#
+@numba.jit(nopython=True, nogil=True)
+def sigmaclip(c, low=3., high=3.):
+
+    n  = len(c)
+    mask = np.full(n, True, dtype=np.bool_)
+    
+    s  = np.sum(c)
+    s2 = np.sum(c*c)
+    
+    delta = 1
+    while delta > 0:
+        mean = s/n
+        std  = np.sqrt(s2/n - mean*mean)
+        clo = mean - std * low
+        chi = mean + std * high
+        
+        n0 = n
+        for j, cval in enumerate(c):
+            if mask[j] and (cval < clo or cval > chi):
+                mask[j] = False
+                n  -= 1
+                s  -= cval
+                s2 -= cval * cval
+
+        delta = n0-n
+        
+    return c[mask], clo, chi
+
+# Numba's quantile impl is much faster
+# than Numpy's standard version
+@numba.jit(nopython=True, nogil=True)
+def quantile(A, q):
+    return np.quantile(A, q)
