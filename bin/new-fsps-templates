@@ -1,0 +1,309 @@
+#!/usr/bin/env python
+
+'''Build a set of FSPS templates for use with FastSpecFit.
+
+* Chabrier IMF
+* MIST isochrones
+* C3K_a stellar library
+* 7 variable-width age bins between 30 Myr and 13.7 Gyr with constant star
+  formation within each age bin
+* 3 stellar metallicity values between -1 and 0.3 (relative to solar)
+
+Note that Figure 3 in Leja et al. 2017 nicely shows the effect of various
+free parameters on the resulting SED.
+
+conda activate fastspecfit
+time python $HOME/code/desihub/fastspecfit/bin/new-fsps-templates --imf chabrier --version 2.0.0
+
+Note: to use different stellar libraries (e.g., MILES vs C3K), in a clean
+terminal make sure you've git-updated a local checkout of the python-fsps and
+that $SPS_HOME/src/sps_vars.f90 has been edited correctly and then:
+
+% echo SPS_HOME
+  /Users/ioannis/code/python-fsps/src/fsps/libfsps
+% python -m pip install . --no-cache-dir --force-reinstall
+% python -c "import fsps; sp = fsps.StellarPopulation(); print(sp.libraries)"
+
+'''
+import os, time, pdb
+import numpy as np
+import fitsio, fsps
+from scipy.ndimage import gaussian_filter1d
+import argparse
+
+from astropy.io import fits
+from astropy.table import Table
+import matplotlib.pyplot as plt
+
+from desispec.interpolation import resample_flux
+from fastspecfit.util import C_LIGHT
+from fastspecfit.continuum import PIXKMS_BLU, PIXKMS_RED, PIXKMS_WAVESPLIT
+
+irfactor = int(PIXKMS_RED / PIXKMS_BLU)
+
+
+def build_templates(models, logages, agebins=None, imf='chabrier',
+                    include_nebular=True):
+
+    nsed = len(models)
+
+    meta = Table()
+    meta['age'] = 10**models['logage']
+    meta['zzsun'] = models['logmet']
+    meta['mstar'] = np.zeros(nsed, 'f4')
+    meta['sfr'] = np.zeros(nsed, 'f4')
+
+    # https://dfm.io/python-fsps/current/stellarpop_api/
+    imfdict = {'salpeter': 0, 'chabrier': 1, 'kroupa': 2}
+
+    print('Instantiating the StellarPopulation object...', end='')
+    t0 = time.time()
+    # tabular SFH
+    sp = fsps.StellarPopulation(
+        compute_vega_mags=False, 
+        add_dust_emission=False, # note!
+        add_neb_emission=True,
+        nebemlineinspec=include_nebular,
+        imf_type=imfdict[imf],
+        #dust_type=0,
+        #dust_index=-0.7,
+        sfh=3,  # tabular SFH parameters
+        zcontinuous=1,
+    )
+    print('...took {:.3f} sec'.format((time.time()-t0)))
+    print(sp.libraries)
+
+    if include_nebular:
+        print('Creating {} model spectra with nebular emission...'.format(nsed), end='')
+    else:
+        print('Creating {} model spectra without nebular emission...'.format(nsed), end='')
+
+    t0 = time.time()
+    for imodel, model in enumerate(models):
+        sp.params['logzsol'] = model['logmet']
+
+        # lookback time of constant SFR
+        agebin_indx = np.where(model['logage'] == np.float32(logages))[0]
+        agebin = agebins[agebin_indx, :][0] # Gyr
+        fspstime = agebin - agebin[0]       # Gyr
+        tage = agebin[1] # time of observation [Gyr] 
+        #print(tage, model['logage'])
+
+        dt = np.diff(agebin) * 1e9          # [yr]
+        sfh = np.zeros_like(fspstime) + 1. / dt #/ 2 # [Msun/yr]
+
+        # force the SFR to go to zero at the edge
+        fspstime = np.hstack((fspstime, fspstime[-1]+1e-8))
+        sfh = np.hstack((sfh, 0.))
+
+        sp.set_tabular_sfh(fspstime, sfh)
+        #print(tage, sp.sfr)
+
+        wave, flux = sp.get_spectrum(tage=tage, peraa=True) # tage in Gyr
+
+        #plt.clf()
+        #I = (wave > 3500) * (wave < 9000)
+        #plt.plot(wave[I], flux[I])
+        #plt.savefig('junk2.png')
+        #pdb.set_trace()
+
+        lodot = 3.828e33 # [erg/s]
+        tenpc2 = (10. * 3.085678e18)**2 # [cm^2]
+    
+        flux = flux * lodot / (4. * np.pi * tenpc2) # [erg/s/cm2/A/Msun at 10pc]
+
+        # Resample to constant log-lambda / velocity. In the IR (starting at ~1
+        # micron), take every fourth sampling, to save space.
+        if imodel == 0:
+            dlogwave = PIXKMS_BLU / C_LIGHT / np.log(10) # pixel size [log-lambda]
+            newwave = 10**np.arange(np.log10(np.min(wave)), np.log10(np.max(wave)), dlogwave)
+    
+            isplit = np.argmin(np.abs(newwave-PIXKMS_WAVESPLIT)) + 1
+            newwave = np.hstack((newwave[:isplit], newwave[isplit:][::irfactor]))
+            npix = len(newwave)
+    
+            fluxes = np.zeros((npix, nsed), dtype=np.float32)
+
+            # emission lines
+            linewaves = sp.emline_wavelengths
+            linefluxes = np.zeros((len(sp.emline_wavelengths), nsed), dtype=np.float32)
+
+        newflux = resample_flux(newwave, wave, flux)
+    
+        fluxes[:, imodel] = newflux
+        linefluxes[:, imodel] = sp.emline_luminosity * lodot / (4.0 * np.pi * tenpc2)
+
+        meta['mstar'][imodel] = sp.stellar_mass
+        meta['sfr'][imodel] = sp.sfr
+        #print(tage, sp.formed_mass, sp.stellar_mass)
+        if sp.stellar_mass < 0:
+            raise ValueError('Stellar mass is negative!')
+
+        #plt.clf()
+        #I = np.where((wave > 3500) * (wave < 5600))[0]
+        #J = np.where((newwave > 3500) * (newwave < 3600))[0]
+        #plt.plot(wave[I], flux[I])
+        #plt.plot(newwave[J], fluxes[J, imodel])
+        #plt.savefig('junk.png')
+        #pdb.set_trace()
+
+    print('...took {:.3f} min'.format((time.time()-t0)/60))
+
+    return meta, newwave, fluxes, linewaves, linefluxes
+
+def main(args):
+
+    # Choose lookback time bins. 
+
+    # from prospect.templates.adjust_continuity_agebins
+    nbins = 5
+    tuniv = 13.7
+    tbinmax = (tuniv * 0.85) * 1e9
+    lim1, lim2 = 7.4772, 8.0
+    agelims = np.array([0, lim1] + np.linspace(lim2, np.log10(tbinmax), nbins-2).tolist() + [np.log10(tuniv*1e9)]) # log10(yr)
+    agelims = 10.**agelims / 1e9 # [Gyr]
+
+    agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
+    logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [log10(yr)] in each bin
+    print('<Ages>: '+' '.join(['{:.4f} Gyr'.format(10.**logage/1e9) for logage in logages]))
+
+    nages = len(logages)
+
+    logmets = np.array([0.0]) # [-1.0, -0.3, 0.0, 0.3]
+    #logmets = np.array([-1.0, 0.0, 0.3]) # [-1.0, -0.3, 0.0, 0.3]
+    nmets = len(logmets)
+    zsolar = 0.019
+
+    # for testing
+    if args.test:
+        logmets = [0.0]
+        nmets = 1
+    
+    dims = (nages, nmets)
+
+    models_dtype = np.dtype(
+        [('logmet', np.float32),
+         ('logage', np.float32)])
+
+    # Let's be pedantic about the procedure so we don't mess up the indexing...
+    models = np.zeros(dims, dtype=models_dtype)
+
+    for iage, logage in enumerate(logages):
+        for imet, logmet in enumerate(logmets):
+            models[iage, imet]['logmet'] = logmet
+            models[iage, imet]['logage'] = logage
+
+    models = models.flatten()
+
+    # Build models with and without line-emission.
+    meta, wave, flux, linewaves, linefluxes = build_templates(
+        models, logages, agebins=agebins, include_nebular=True, 
+        imf=args.imf)
+
+    pdb.set_trace()
+
+    _, _, fluxnolines, _, _ = build_templates(
+        models, logages, agebins=agebins, include_nebular=False, 
+        imf=args.imf)
+
+    lineflux = flux - fluxnolines
+
+    #I = (wave > 3500) * (wave < 9000)
+    #plt.clf()
+    #plt.plot(wave[I], flux[I, 0])
+    #plt.plot(wave[I], fluxnolines[I, 0])
+    #plt.ylim(0, 0.1e-7)
+    #plt.savefig('junk2.png')
+    #pdb.set_trace()
+
+    # Build the velocity dispersion templates.
+
+    # Select just the line-free models trimmed to the 1200-10000 A wavelength
+    # range.
+    I = np.where((wave > 1200) * (wave < PIXKMS_WAVESPLIT))[0]
+    vdispwave = wave[I]
+    #nvdispmodel = len(J)
+
+    vdispflux = []
+    for sigma in vdisp / PIXKMS_BLU:
+        vdispflux.append(gaussian_filter1d(fluxnolines[I, :], sigma=sigma, axis=0))
+    vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
+
+    #K = np.where((vdispwave > 3500) * (vdispwave < 4300))[0]
+    #plt.clf()
+    #plt.plot(vdispwave[K], fluxnolines[I, 6][J])
+    #plt.plot(vdispwave[K], vdispflux[J, 6, nvdisp-1])
+    #plt.savefig('junk.png')
+    #pdb.set_trace()
+
+    # Write out.
+    outdir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit', args.version)
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+    outfile = os.path.join(outdir, 'ftemplates-{}-{}.fits'.format(args.imf, args.version))
+
+    hduflux1 = fits.PrimaryHDU(flux)
+    hduflux1.header['EXTNAME'] = 'FLUX'
+    hduflux1.header['VERSION'] = args.version
+    hduflux1.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+
+    hduflux2 = fits.ImageHDU(lineflux)
+    hduflux2.header['EXTNAME'] = 'LINEFLUX'
+    hduflux2.header['VERSION'] = args.version
+    hduflux2.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+
+    hduflux3 = fits.ImageHDU(vdispflux)
+    hduflux3.header['EXTNAME'] = 'VDISPFLUX'
+    hduflux3.header['VERSION'] = args.version
+    hduflux3.header['VDISPMIN'] = (vdispmin, 'minimum velocity dispersion [km/s]')
+    hduflux3.header['VDISPMAX'] = (vdispmax, 'maximum velocity dispersion [km/s]')
+    hduflux3.header['VDISPRES'] = (dvdisp, 'velocity dispersion spacing [km/s]')
+    hduflux3.header['VDISPNOM'] = (vdisp_nominal, 'nominal (default) velocity dispersion [km/s]')
+    hduflux3.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+
+    isplit = np.argmin(np.abs(wave-PIXKMS_WAVESPLIT)) + 1
+
+    hduwave1 = fits.ImageHDU(wave)
+    hduwave1.header['EXTNAME'] = 'WAVE'
+    hduwave1.header['BUNIT'] = 'Angstrom'
+    hduwave1.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+    hduwave1.header['PIXSZBLU'] = (PIXKMS_BLU, 'pixel size blueward of PIXSZSPT [km/s]')
+    hduwave1.header['PIXSZRED'] = (PIXKMS_RED, 'pixel size redward of PIXSZSPT [km/s]')
+    hduwave1.header['PIXSZSPT'] = (wave[isplit], 'wavelength where pixel size changes [Angstrom]')
+
+    hduwave2 = fits.ImageHDU(vdispwave)
+    hduwave2.header['EXTNAME'] = 'VDISPWAVE'
+    hduwave2.header['BUNIT'] = 'Angstrom'
+    hduwave2.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+    hduwave2.header['PIXSZ'] = (PIXKMS_BLU, 'pixel size [km/s]')
+
+    hdutable = fits.convenience.table_to_hdu(meta)
+    hdutable.header['EXTNAME'] = 'METADATA'
+    hdutable.header['imf'] = args.imf
+
+    # emission lines
+    hduflux4 = fits.ImageHDU(linefluxes)
+    hduflux4.header['EXTNAME'] = 'LINEFLUXES'
+    hduflux4.header['VERSION'] = args.version
+    hduflux4.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+
+    hduwave3 = fits.ImageHDU(linewaves)
+    hduwave3.header['EXTNAME'] = 'LINEWAVES'
+    hduwave3.header['BUNIT'] = 'Angstrom'
+    hduwave3.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+
+    hx = fits.HDUList([hduflux1, hduflux2, hduwave1, hduflux3, hduwave2, hdutable, hduflux4, hduwave3])
+
+    print('Writing {} model spectra to {}'.format(len(models), outfile))
+    hx.writeto(outfile, overwrite=True)
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--version', required=True, help='Version number (e.g., 1.3.0)')
+    parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
+                        help='Initial mass function')
+    parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
+    args = parser.parse_args()
+
+    main(args)
