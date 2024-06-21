@@ -45,8 +45,7 @@ class EMFitTools(Filters):
     # line_table, line_map, and param_table, which are fixed once we
     # read the file.
     
-    def __init__(self, uniqueid=None, fphoto=None,
-                 emlinesfile=None):
+    def __init__(self, uniqueid=None, fphoto=None, emlinesfile=None, stronglines=False):
         
         super(EMFitTools, self).__init__(fphoto=fphoto)
         
@@ -61,6 +60,15 @@ class EMFitTools(Filters):
         }
 
         self.line_table = read_emlines(emlinesfile=emlinesfile)
+
+        # restrict to just strong lines
+        if stronglines:
+            I = np.where(np.isin(self.line_table['name'], 
+                                 ['lyalpha', 'civ_1549', 'ciii_1908', 'mgii_2796', 'mgii_2803', 
+                                  'oii_3726', 'oii_3729', 'hdelta', 'hdelta_broad', 'hgamma', 'hgamma_broad',
+                                  'hbeta', 'hbeta_broad', 'oiii_4959', 'oiii_5007', 'nii_6548', 'halpha', 
+                                  'halpha_broad', 'nii_6584', 'sii_6716', 'sii_6731']))[0]
+            self.line_table = self.line_table[I]
 
         line_names = self.line_table['name'].value
 

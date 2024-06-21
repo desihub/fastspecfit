@@ -229,9 +229,14 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
             specdata['camerapix'][icam, :] = [np.sum(npixpercam[:icam+1]), np.sum(npixpercam[:icam+2])]
                                 
         # coadded spectrum
-        coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                    specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                    linetable=CTools.linetable, log=log)
+        coadd_linemask_dict = CTools.build_linemask_new(specdata['coadd_wave'], specdata['coadd_flux'],
+                                                        specdata['coadd_ivar'], specdata['coadd_res_fast'], 
+                                                        uniqueid=specdata['uniqueid'],
+                                                        redshift=specdata['zredrock'],
+                                                        linetable=CTools.linetable, log=log)
+        #coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
+        #                                            specdata['coadd_ivar'], redshift=specdata['zredrock'],
+        #                                            linetable=CTools.linetable, log=log)
         specdata['coadd_linename'] = coadd_linemask_dict['linename']
         specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
         specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -382,7 +387,6 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
     for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0', 'res_fast0']:
         del specdata[key]
 
-    # coadded spectrum
     coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
                                                 specdata['coadd_ivar'], redshift=specdata['zredrock'],
                                                 linetable=CTools.linetable, log=log)
@@ -1168,6 +1172,7 @@ class DESISpectra(TabulatedDESI):
                         'coadd_flux': coadd_spec.flux[coadd_cameras][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
                         'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :]),
+                        'coadd_res_fast': EMLine_Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :]),
                         }
                     unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, fastphot,
                                        synthphot, ignore_photometry, log))

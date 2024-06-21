@@ -1271,6 +1271,169 @@ class ContinuumTools(Filters, Inoue14):
     def estimate_linesigmas(*args, **kwargs):
         return _estimate_linesigmas(*args, **kwargs)
 
+
+    @staticmethod
+    def build_linemask_new(wave, flux, ivar, resolution_matrix, redshift=0.0, nsig=7.0, uniqueid=0, 
+                           linetable=None, emlinesfile=None, log=None, verbose=False):
+        """Generate a mask which identifies pixels impacted by emission lines.
+
+        Parameters
+        ----------
+        wave : :class:`numpy.ndarray` [npix]
+            Observed-frame wavelength array.
+        flux : :class:`numpy.ndarray` [npix]
+            Spectrum corresponding to `wave`.
+        ivar : :class:`numpy.ndarray` [npix]
+            Inverse variance spectrum corresponding to `flux`.
+        redshift : :class:`float`, optional, defaults to 0.0
+            Object redshift.
+        nsig : :class:`float`, optional, defaults to 5.0
+            Mask pixels which are within +/-`nsig`-sigma of each emission line,
+            where `sigma` is the line-width in km/s.
+
+        Returns
+        -------
+        smooth :class:`numpy.ndarray` [npix]
+            Smooth continuum spectrum which can be subtracted from `flux` in
+            order to create a pure emission-line spectrum.
+
+        
+        :class:`dict` with the following keys:
+            linemask : :class:`list`
+            linemask_all : :class:`list`
+            linename : :class:`list`
+            linepix : :class:`list`
+            contpix : :class:`list`
+
+        Notes
+        -----
+        Code exists to generate some QA but the code is not exposed.
+
+        """
+        from fastspecfit.emlines import EMFitTools
+
+        if log is None:
+            from desiutil.log import get_logger, DEBUG
+            if verbose:
+                log = get_logger(DEBUG)
+            else:
+                log = get_logger()
+
+        if linetable is None:
+            from fastspecfit.io import read_emlines        
+            linetable = read_emlines(emlinesfile=emlinesfile)
+
+        camerapix = [[0, len(wave)]] # one camera
+        weights = np.sqrt(ivar)
+
+        # just strong lines
+        EMFit = EMFitTools(emlinesfile=emlinesfile, uniqueid=uniqueid, stronglines=True)
+
+        # determine which lines are in range of the camera
+        EMFit.compute_inrange_lines(redshift, wavelims=(np.min(wave)+5, np.max(wave)-5))
+    
+        # Build all the emission-line models for this object.
+        linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(strict_broadmodel=True)
+
+        # Get initial guesses on the parameters and populate the two "initial"
+        # linemodels; the "final" linemodels will be initialized with the
+        # best-fitting parameters from the initial round of fitting.
+        
+        # hack a 'data' dictionary so we can (re)use initial_guesses_and_bounds
+        from scipy.ndimage import median_filter
+        from fastspecfit.util import ivar2var
+        var, _ = ivar2var(ivar, clip=1e-3)
+
+        data = {}
+
+        smoothsigma = median_filter(np.sqrt(var), 150)
+        linesigma_balmer = 1000. # ???
+        linesigma_narrow = 200.
+        linesigma_uv = 2000.
+
+        data['smoothsigma'] = smoothsigma
+        data['linesigma_balmer'] = linesigma_balmer
+        data['linesigma_narrow'] = linesigma_narrow
+        data['linesigma_uv'] = linesigma_uv
+
+        # ##########
+        # largely repeated code from build_linemask --
+        linemask = np.zeros_like(wave, bool)      # True = affected by possible emission line.
+
+        linetable = EMFit.line_table[EMFit.line_in_range]
+        zlinewaves = linetable['restwave'] * (1. + redshift)
+        isbroads = linetable['isbroad'] * (linetable['isbalmer'] == False)
+        isbalmers = linetable['isbalmer'] * (linetable['isbroad'] == False)
+
+        # Initial set of pixels that may contain emission lines.
+        for linename, zlinewave, isbroad, isbalmer in zip(linetable['name'], zlinewaves, isbroads, isbalmers):
+            if isbroad:
+                linesigma = linesigma_uv
+            elif isbalmer or 'broad' in linename:
+                linesigma = linesigma_balmer
+            else:
+                linesigma = linesigma_narrow
+                
+            sigma = linesigma * zlinewave / C_LIGHT # [km/s --> Angstrom]
+            I = (wave >= (zlinewave - nsig*sigma)) * (wave <= (zlinewave + nsig*sigma))
+            if np.sum(I) > 0:
+                linemask[I] = True
+
+        # Now get the corresponding continuum pixels. Note that we have to loop
+        # a second time because we need a complete 'linemask' vector.
+        linepix, contpix, linenames = [], [], []
+        for linename, zlinewave, isbroad, isbalmer in zip(linetable['name'], zlinewaves, isbroads, isbalmers):
+            if isbroad:
+                sigma = linesigma_uv
+            elif isbalmer or 'broad' in linename:
+                sigma = linesigma_balmer
+            else:
+                sigma = linesigma_narrow
+
+            sigma *= zlinewave / C_LIGHT # [km/s --> Angstrom]
+            I = (wave >= (zlinewave - nsig*sigma)) * (wave <= (zlinewave + nsig*sigma))
+
+            # get the pixels of the local continuum
+            Jblu = (wave > (zlinewave - 2*nsig*sigma)) * (wave < (zlinewave - nsig*sigma)) * (linemask == False)
+            Jred = (wave < (zlinewave + 2*nsig*sigma)) * (wave > (zlinewave + nsig*sigma)) * (linemask == False)
+            J = np.logical_or(Jblu, Jred)
+
+            if np.sum(J) < 10: # go further out
+                Jblu = (wave > (zlinewave - 3*nsig*sigma)) * (wave < (zlinewave - nsig*sigma)) * (linemask == False)
+                Jred = (wave < (zlinewave + 3*nsig*sigma)) * (wave > (zlinewave + nsig*sigma)) * (linemask == False)
+                J = np.logical_or(Jblu, Jred)
+            
+            if np.sum(J) < 10: # drop the linemask_ condition; dangerous??
+                Jblu = (wave > (zlinewave - 2*nsig*sigma)) * (wave < (zlinewave - nsig*sigma))
+                Jred = (wave < (zlinewave + 2*nsig*sigma)) * (wave > (zlinewave + nsig*sigma))
+                J = np.logical_or(Jblu, Jred)
+
+            if np.sum(I) > 0 and np.sum(J) > 0:
+                linenames.append(linename)
+                linepix.append(I)
+                contpix.append(J)
+
+        data['coadd_linename'] = linenames
+        data['coadd_linepix'] = [np.where(lpix)[0] for lpix in linepix]
+        data['coadd_contpix'] = [np.where(cpix)[0] for cpix in contpix]
+        data['coadd_wave'] = wave
+
+        initial_guesses, param_bounds, civars = EMFit.initial_guesses_and_bounds(data, wave, flux, log)
+        
+        # fit spectrum *without* any broad lines
+        t0 = time.time()
+        fit_nobroad = EMFit.optimize(linemodel_nobroad, initial_guesses, param_bounds,
+                                     wave, flux, weights, redshift, resolution_matrix, 
+                                     camerapix, log=log, debug=False)
+        model_nobroad = EMFit.bestfit(fit_nobroad, redshift, wave, resolution_matrix, camerapix)
+        chi2_nobroad, ndof_nobroad, nfree_nobroad = EMFit.chi2(fit_nobroad, wave, flux, ivar, model_nobroad, return_dof=True)
+        log.info('Line-fitting {} with no broad lines and {} free parameters took {:.4f} seconds [niter={}, rchi2={:.4f}].'.format(
+            uniqueid, nfree_nobroad, time.time()-t0, fit_nobroad.meta['nfev'], chi2_nobroad))
+
+
+
+
+
     @staticmethod
     def build_linemask(wave, flux, ivar, redshift=0.0, nsig=7.0, linetable=None,
                        emlinesfile=None, log=None, verbose=False):
