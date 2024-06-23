@@ -473,8 +473,19 @@ def sigmaclip(c, low=3., high=3.):
         
     return c[mask], clo, chi
 
+def quantile(A, q):
+    return _quantile(A, q)
+
+def median(A):
+    return _median(A)
+
 # Numba's quantile impl is much faster
 # than Numpy's standard version
 @numba.jit(nopython=True, nogil=True)
-def quantile(A, q):
+def _quantile(A, q):
     return np.quantile(A, q)
+
+# Numba's median impl is also faster
+@numba.jit(nopython=True, nogil=True)
+def _median(A):
+    return np.median(A)
