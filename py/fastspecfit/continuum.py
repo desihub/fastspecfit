@@ -75,7 +75,6 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
     from numpy.lib.stride_tricks import sliding_window_view
     from scipy.ndimage import median_filter
     from fastspecfit.util import sigmaclip
-    #from astropy.stats import sigma_clip
     from scipy.interpolate import make_interp_spline
         
     if log is None:
@@ -151,7 +150,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
 
     nminpix = 15
 
-    smooth_wave, smooth_flux, smooth_sigma, smooth_mask = [], [], [], []
+    smooth_wave, smooth_flux, smooth_sigma = [], [], []
     for swave, sflux, sivar, noline in zip(wave_win[::smooth_step],
                                            flux_win[::smooth_step],
                                            ivar_win[::smooth_step],
@@ -161,53 +160,31 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
         # line-mask, skip this window.
         sflux = sflux[noline]
         if len(sflux) < nminpix:
-            smooth_mask.append(True)
             continue
-        swave = swave[noline]
-        sivar = sivar[noline]
 
-        cflux, _, _ = sigmaclip(sflux, low=2.0, high=2.0)
+        cflux, clo, chi = sigmaclip(sflux, low=2.0, high=2.0)
         if len(cflux) < nminpix:
-            smooth_mask.append(True)
             continue
-
+        
+        sivar = sivar[noline]
         # Toss out regions with too little good data.
         if np.sum(sivar > 0) < nminpix:
-            smooth_mask.append(True)
             continue
-
-        I = np.isin(sflux, cflux) # fragile?
+        
         sig = np.std(cflux) # simple median and sigma
         mn = median(cflux)
 
         # One more check for crummy spectral regions.
         if mn == 0.0:
-            smooth_mask.append(True)
             continue
 
+        swave = swave[noline]
+        I = ((sflux >= clo) & (sflux <= chi))
         smooth_wave.append(np.mean(swave[I]))
-        smooth_mask.append(False)
-
-        ## astropy is too slow!!
-        #cflux = sigma_clip(sflux, sigma=2.0, cenfunc='median', stdfunc='std', masked=False, grow=1.5)
-        #if np.sum(np.isfinite(cflux)) < 10:
-        #    smooth_mask.append(True)
-        #    continue
-        #I = np.isfinite(cflux) # should never be fully masked!
-        #smooth_wave.append(np.mean(swave[I]))
-        #smooth_mask.append(False)
-        #sig = np.std(cflux[I])
-        #mn = median(cflux[I])
-
-        ## inverse-variance weighted mean and sigma
-        #norm = np.sum(sivar[I])
-        #mn = np.sum(sivar[I] * cflux[I]) / norm # weighted mean
-        #sig = np.sqrt(np.sum(sivar[I] * (cflux[I] - mn)**2) / norm) # weighted sigma
-
+        
         smooth_sigma.append(sig)
         smooth_flux.append(mn)
 
-    smooth_mask = np.array(smooth_mask)
     smooth_wave = np.array(smooth_wave)
     smooth_sigma = np.array(smooth_sigma)
     smooth_flux = np.array(smooth_flux)
@@ -610,7 +587,7 @@ def restframe_photometry(redshift, zmodelflux, zmodelwave, maggies, ivarmaggies,
         absmag = np.zeros(nout, dtype='f4')
         ivarabsmag = np.zeros(nout, dtype='f4')
         synth_absmag = np.zeros(nout, dtype='f4')
-        for jj in np.arange(nout):
+        for jj in range(nout):
             lambdadist = np.abs(lambda_in / (1. + redshift) - lambda_out[jj])
             # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
             #oband = np.argmin(lambdadist)
@@ -1444,7 +1421,7 @@ class ContinuumTools(Filters):
         # Are we returning per-camera spectra or a single model? Handle that here.
         if specwave is None and specres is None:
             datatemplateflux = []
-            for imodel in np.arange(nmodel):
+            for imodel in range(nmodel):
                 datatemplateflux.append(self.smooth_and_resample(ztemplateflux[:, imodel], ztemplatewave))
             datatemplateflux = np.vstack(datatemplateflux).T
 
@@ -1466,9 +1443,9 @@ class ContinuumTools(Filters):
             # loop over cameras
             datatemplateflux = []
             nwavepix = len(np.hstack(specwave))
-            for icamera in np.arange(len(cameras)): # iterate on cameras
+            for icamera in range(len(cameras)): # iterate on cameras
                 _datatemplateflux = []
-                for imodel in np.arange(nmodel):
+                for imodel in range(nmodel):
                     resampflux = self.smooth_and_resample(ztemplateflux[:, imodel], ztemplatewave, 
                                                           specwave=specwave[icamera],
                                                           specres=specres[icamera])
@@ -1532,7 +1509,7 @@ class ContinuumTools(Filters):
         # ...otherwise iterate over the xparam (e.g., AV or vdisp) dimension.
         Amatrix = modelflux * inverr[:, np.newaxis, np.newaxis] # reshape into [npix/nband,nage,nAV/nvdisp]
         coeff, chi2grid = [], []
-        for ii in np.arange(nn):
+        for ii in range(nn):
             _coeff, _ = nnls(A=Amatrix[:, :, ii], b=bvector)
             chi2 = np.sum(ivar * (flux - modelflux[:, :, ii].dot(_coeff))**2)
             coeff.append(_coeff)
@@ -1564,7 +1541,7 @@ class ContinuumTools(Filters):
             if xbest == xparam[0]:
                 bestcoeff = coeff[0, :]
             else:
-                xindx = np.arange(len(xparam))
+                xindx = range(len(xparam))
                 f = interp1d(xindx, coeff, axis=0)
                 bestcoeff = f(np.interp(xbest, xparam, xindx))
         else:
