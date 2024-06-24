@@ -1451,11 +1451,11 @@ class ContinuumTools(Filters, Inoue14):
         patch_intercept_initial = np.zeros(npatch) 
         patch_initial_guesses = np.hstack((patch_slope_initial, patch_intercept_initial))
 
-        # fit spectrum *without* any broad lines
-        fit_nobroad = EMFit.optimize_continuum_patches(linemodel_nobroad, initial_guesses, param_bounds, 
-                                                       continuum_patches, patch_initial_guesses, patch_param_bounds, 
-                                                       wave, flux, weights, redshift, resolution_matrix, 
-                                                       camerapix, log=log, debug=False)
+        ## fit spectrum *without* any broad lines
+        #fit_nobroad = EMFit.optimize_continuum_patches(linemodel_nobroad, initial_guesses, param_bounds, 
+        #                                               continuum_patches, patch_initial_guesses, patch_param_bounds, 
+        #                                               wave, flux, weights, redshift, resolution_matrix, 
+        #                                               camerapix, log=log, debug=False)
 
         fit_broad = EMFit.optimize_continuum_patches(linemodel_broad, initial_guesses, param_bounds, 
                                                      continuum_patches, patch_initial_guesses, patch_param_bounds, 
