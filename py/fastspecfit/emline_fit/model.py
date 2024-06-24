@@ -31,7 +31,6 @@ from .utils import (
 # RETURNS:
 #   vector of average fluxes in each observed wavelength bin
 #
-@jit(nopython=True, fastmath=False, nogil=True)
 def emline_model(line_wavelengths,
                  line_amplitudes, line_vshifts, line_sigmas,
                  log_obs_bin_edges,
@@ -114,7 +113,7 @@ def emline_perline_models(line_wavelengths,
             continue
         
         bin_vals = line_profiles[j]
-
+        
         s, e = emline_model_core(line_wavelengths[j],
                                  line_amplitudes[j],
                                  line_vshifts[j],
@@ -187,6 +186,7 @@ def emline_model_core(line_wavelength,
     
     # line width
     sigma = line_sigma / C_LIGHT
+    
     c = SQRT_2PI * sigma * np.exp(0.5 * sigma**2)
     
     # wavelength shift for spectral lines
@@ -204,14 +204,15 @@ def emline_model_core(line_wavelength,
     hi = np.searchsorted(log_obs_bin_edges,
                          log_shifted_line + MAX_SDEV * sigma,
                          side="right")
-        
-    if hi == lo:  # entire Gaussian is outside bounds of log_obs_bin_edges
+
+    # check if entire Gaussian is outside bounds of log_obs_bin_edges
+    if hi == 0 or lo == len(log_obs_bin_edges): 
         return (0,0)
     
     nedges = hi - lo + 2  # compute values at edges [lo - 1 ... hi]
     
     A = c * line_amplitude * shifted_line
-    offset = log_shifted_line / sigma + sigma
+    offset = (log_shifted_line / sigma + sigma)  if sigma > 0. else 0.
     
     # vals[i] --> edge i + lo - 1
     

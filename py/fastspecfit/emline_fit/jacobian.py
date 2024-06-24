@@ -52,6 +52,7 @@ def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
         
         # line width
         sigma = line_sigmas[j] / C_LIGHT
+        
         c0 = SQRT_2PI * np.exp(0.5 * sigma**2)
         
         # wavelength shift for spectral lines
@@ -68,10 +69,11 @@ def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
         hi = np.searchsorted(log_obs_bin_edges,
                              log_shifted_line + MAX_SDEV * sigma,
                              side="right")
-                    
-        if hi == lo:  # Gaussian is entirely outside bounds of log_obs_bin_edges
-            continue
 
+        # check if entire Gaussian is outside bounds of log_obs_bin_edges
+        if hi == 0 or lo == len(log_obs_bin_edges): 
+            continue
+        
         nedges = hi - lo + 2 # compute values at edges [lo - 1 ... hi]
         
         # Compute contribs of each line to each partial derivative in place.
@@ -80,8 +82,8 @@ def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
         dda_vals = dd[           j]
         ddv_vals = dd[nlines   + j]
         dds_vals = dd[2*nlines + j]
-        
-        offset = log_shifted_line / sigma + sigma
+
+        offset = (log_shifted_line / sigma + sigma) if sigma > 0. else 0.
         
         c = c0 * line_wavelengths[j]
         A = c / C_LIGHT * line_amplitudes[j]
@@ -109,7 +111,7 @@ def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
         dda_vals[nedges - 1] = c * line_shift * sigma     # edge hi
         ddv_vals[nedges - 1] = A * sigma
         dds_vals[nedges - 1] = A * line_shift * (1 + sigma**2)
-        
+
         # convert *_vals[i] to partial derivatives for bin i+lo-1
         # (last value in each array is garbage)
         # we get values for bins lo-1 to hi-1 inclusive

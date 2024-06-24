@@ -60,7 +60,7 @@ class EMLine_Objective(object):
     def objective(self, free_parameters):
             
         #
-        # expand free paramters into complete
+        # expand free parameters into complete
         # parameter array, handling tied params
         # and doublets
         #
@@ -106,11 +106,12 @@ class EMLine_Objective(object):
         for icam, campix in enumerate(self.camerapix):
             s, e = campix
 
-            # Actual bin widths are in ibw[1..e-s].
-            # Setup guarantees that ibw[0] and
-            # ibw[e-s+1] are not out of bounds.
-            ibw = self.ibin_widths[s:e+1]
-            
+            # Actual inverse bin widths are in ibin_widths[s+1:e+2].
+            # Setup guarantees that at least one more array entry
+            # exists to either side of this range, so we can pass
+            # those in as dummies.
+            ibw = self.ibin_widths[s:e+3]
+                        
             idealJac = \
                 emline_model_jacobian(lineamps, linevshifts, linesigmas,
                                       self.log_obs_bin_edges[s+icam:e+icam+1],
@@ -151,9 +152,9 @@ def build_model(redshift,
                 camerapix):
     
     log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers, camerapix)
-
+    
     model_fluxes = np.empty_like(obs_bin_centers, dtype=obs_bin_centers.dtype)
-
+    
     _build_model_core(line_amplitudes,
                       line_vshifts,
                       line_sigmas,
@@ -381,11 +382,12 @@ def _build_model_core(line_amplitudes,
         
         # start and end for obs fluxes of camera icam
         s, e = campix
-        
-        # Actual bin widths are in ibw[1..e-s].
-        # Setup guarantees that ibw[0] and
-        # ibw[e-s+1] are dummy values
-        ibw = ibin_widths[s:e+2]
+
+        # Actual inverse bin widths are in ibin_widths[s+1:e+2].
+        # Setup guarantees that at least one more array entry
+        # exists to either side of this range, so we can pass
+        # those in as dummies.
+        ibw = ibin_widths[s:e+3]
         
         mf = emline_model(line_wavelengths,
                           line_amplitudes, line_vshifts, line_sigmas,
@@ -437,11 +439,13 @@ def _build_multimodel_core(parameters,
         
         # start and end for obs fluxes of camera icam
         s, e = campix
+
         
-        # Actual bin widths are in ibw[1..e-s].
-        # Setup guarantees that ibw[0] and
-        # ibw[e-s+1] are not out of bounds.
-        ibw = ibin_widths[s:e+1]
+        # Actual inverse bin widths are in ibin_widths[s+1:e+2].
+        # Setup guarantees that at least one more array entry
+        # exists to either side of this range, so we can pass
+        # those in as dummies.
+        ibw = ibin_widths[s:e+3]
         
         # compute model waveform for each spectral line
         line_models = emline_perline_models(line_wavelengths,
@@ -542,6 +546,7 @@ def _prepare_bins(centers, camerapix):
         
     ncameras = camerapix.shape[0]
     edges = np.empty(len(centers) + ncameras, dtype=centers.dtype)
+    ibin_widths = np.empty(len(centers) + 2,  dtype=centers.dtype)
     
     for icam, campix in enumerate(camerapix):
         
@@ -558,13 +563,13 @@ def _prepare_bins(centers, camerapix):
         edges[s + icam]              = edge_l
         edges[s + icam + 1:e + icam] = int_edges
         edges[e + icam]              = edge_r
-            
+
+        # add 1 to indices i ibin_widths to skip dummy at 0
+        ibin_widths[s+1:e+1] = 1. / np.diff(edges[s+icam : e+icam+1])
+    
     # dummies before and after widths are needed
     # for corner cases in edge -> bin computation
-    ibin_widths = np.empty(len(centers) + 2, dtype=centers.dtype)
     ibin_widths[0]  = 0.
-    for i in range(len(centers)):
-        ibin_widths[i+1] = 1. / (edges[i+1] - edges[i])
     ibin_widths[-1] = 0.
     
     return (np.log(edges), ibin_widths)
