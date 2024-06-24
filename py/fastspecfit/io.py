@@ -229,11 +229,11 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
             specdata['camerapix'][icam, :] = [np.sum(npixpercam[:icam+1]), np.sum(npixpercam[:icam+2])]
                                 
         # coadded spectrum
-        coadd_linemask_dict = CTools.build_linemask_new(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                        specdata['coadd_ivar'], specdata['coadd_res_fast'], 
-                                                        uniqueid=specdata['uniqueid'],
-                                                        redshift=specdata['zredrock'],
-                                                        linetable=CTools.linetable, log=log)
+        coadd_linemask_dict = CTools.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
+                                                            specdata['coadd_ivar'], specdata['coadd_res_fast'], 
+                                                            uniqueid=specdata['uniqueid'],
+                                                            redshift=specdata['zredrock'],
+                                                            linetable=CTools.linetable, log=log)
         #coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
         #                                            specdata['coadd_ivar'], redshift=specdata['zredrock'],
         #                                            linetable=CTools.linetable, log=log)
