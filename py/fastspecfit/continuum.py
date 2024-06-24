@@ -469,7 +469,7 @@ def _convolve_vdisp(templateflux, vdisp, pixsize_kms):
 
     """
     from scipy.ndimage import gaussian_filter1d
-
+    
     if vdisp <= 0.0:
         return templateflux
     sigma = vdisp / pixsize_kms # [pixels]
@@ -1319,7 +1319,7 @@ class ContinuumTools(Filters):
     def convolve_vdisp(*args, **kwargs):
         return _convolve_vdisp(*args, **kwargs)
     
-    def templates2data(self, _templateflux, _templatewave, redshift=0.0, dluminosity=None,
+    def templates2data(self, templateflux, templatewave, redshift=0.0, dluminosity=None,
                        vdisp=None, cameras=['b', 'r', 'z'], specwave=None, specres=None, 
                        specmask=None, coeff=None, photsys=None, synthphot=True, 
                        stack_cameras=False, debug=False, log=None):
@@ -1364,9 +1364,6 @@ class ContinuumTools(Filters):
         
         # Are we dealing with a 2D grid [npix,nage] or a 3D grid
         # [npix,nage,nAV] or [npix,nage,nvdisp]?
-        templateflux = _templateflux.copy() # why?!?
-        templatewave = _templatewave.copy() # why?!?
-        
         ndim = templateflux.ndim
         if ndim == 2:
             npix, nsed = templateflux.shape
@@ -1376,28 +1373,31 @@ class ContinuumTools(Filters):
             nmodel = nsed*nprop
             templateflux = templateflux.reshape(npix, nmodel)
         else:
-            errmsg = 'Input templates have an unrecognized number of dimensions, {}'.format(ndim)
+            errmsg = f'Input templates have an unrecognized number of dimensions, {ndim}'
             log.critical(errmsg)
             raise ValueError(errmsg)
         
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
+            vd_templateflux = templateflux.copy() # avoid changing input templateflux
             I = np.where(templatewave < PIXKMS_WAVESPLIT)[0]
-            templateflux[I, :] = self.convolve_vdisp(templateflux[I, :], vdisp, PIXKMS_BLU)
-
+            vd_templateflux[I, :] = self.convolve_vdisp(vd_templateflux[I, :], vdisp, PIXKMS_BLU)
+        else:
+            vd_templateflux = templateflux
+            
         # Apply the redshift factor. The models are normalized to 10 pc, so
         # apply the luminosity distance factor here. Also normalize to a nominal
         # stellar mass.
-        if redshift > 0:
+        if redshift > 0.:
             ztemplatewave = templatewave * (1. + redshift) # FIXME: why not do the shift inside full_igm?
             T = self.igm.full_IGM(redshift, ztemplatewave) 
             T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
-            ztemplateflux = templateflux * T[:, np.newaxis]
+            ztemplateflux = vd_templateflux * T[:, np.newaxis]
         else:
             errmsg = 'Input redshift not defined, zero, or negative!'
             log.warning(errmsg)
-            ztemplatewave = templatewave.copy() # ???
-            ztemplateflux = FLUXNORM * self.massnorm * templateflux
+            ztemplatewave = templatewave
+            ztemplateflux = FLUXNORM * self.massnorm * vd_templateflux
 
         # Optionally synthesize photometry.
         templatephot_flam = None
