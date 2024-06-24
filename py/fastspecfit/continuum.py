@@ -453,146 +453,6 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
             linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr)
 
 
-def restframe_photometry(redshift, zmodelflux, zmodelwave, maggies, ivarmaggies,
-                         filters_in, absmag_filters, band_shift=None, snrmin=2.,
-                         dmod=None, cosmo=None, log=None):
-    """Compute K-corrections and rest-frame photometry for a single object.
-
-    Parameters
-    ----------
-    redshift : :class:`float`
-        Galaxy or QSO redshift.
-    zmodelwave : `numpy.ndarray`
-        Observed-frame (redshifted) model wavelength array.
-    zmodelflux : `numpy.ndarray`
-        Observed-frame model spectrum.
-    maggies : `numpy.ndarray`
-        Input photometric fluxes in the `filters_in` bandpasses.
-    ivarmaggies : `numpy.ndarray`
-        Inverse variance photometry corresponding to `maggies`.
-    filters_in : `speclite.filters.FilterSequence`
-        Input filter curves.
-    absmag_filters : `speclite.filters.FilterSequence`
-        Filter curves corresponding to desired bandpasses.
-    band_shift : `numpy.ndarray` or `None`
-        Band-shift each bandpass in `absmag_filters` by this amount.
-    snrmin : :class:`float`, defaults to 2.
-        Minimum signal-to-noise ratio in the input photometry (`maggies`) in
-        order for that bandpass to be used to compute a K-correction.
-    dmod : :class:`float` or `None`
-        Distance modulus corresponding to `redshift`. Not needed if `cosmo` is
-        provided.
-    cosmo : `fastspecfit.util.TabulatedDESI` or `None`
-        Cosmological model class needed to compute the distance modulus.
-    log : `desiutil.log`
-        Logging object.
-    
-    Returns
-    -------
-    kcorr : `numpy.ndarray`
-        K-corrections for each bandpass in `absmag_filters`.
-    absmag : `numpy.ndarray`
-        Absolute magnitudes, band-shifted according to `band_shift` (if
-        provided) for each bandpass in `absmag_filters`. 
-    ivarabsmag : `numpy.ndarray`
-        Inverse variance corresponding to `absmag`.
-    synth_absmag : `numpy.ndarray`
-        Like `absmag`, but entirely based on synthesized photometry.
-    synth_maggies_in : `numpy.ndarray`
-        Synthesized input photometry (should closely match `maggies` if the
-        model fit is good).
-
-    Notes
-    -----
-    By default, the K-correction is computed by finding the observed-frame
-    bandpass closest in wavelength (and with a minimum signal-to-noise ratio) to
-    the desired band-shifted absolute magnitude bandpass. In other words, by
-    default we endeavor to minimize the K-correction. The inverse variance,
-    `ivarabsmag`, is derived from the inverse variance of the K-corrected
-    photometry. If no bandpass is available then `ivarabsmag` is set to zero and
-    `absmag` is derived from the synthesized rest-frame photometry.
-
-    """
-    from speclite import filters
-
-    def cvt_to_array(tbl):
-        return np.fromiter(tbl.values(), np.float64)
-            
-    if log is None:
-        from desiutil.log import get_logger
-        log = get_logger()
-
-    nabs = len(absmag_filters)
-
-    if redshift <= 0.0:
-        errmsg = 'Input redshift not defined, zero, or negative!'
-        log.warning(errmsg)
-        kcorr        = np.zeros(nabs, dtype='f8')
-        absmag       = np.zeros(nabs, dtype='f8')
-        ivarabsmag   = np.zeros(nabs, dtype='f8')
-        synth_absmag = np.zeros(nabs, dtype='f8')
-        synth_maggies_in = np.zeros(len(maggies))
-        return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
-
-    if cosmo is None:
-        from fastspecfit.util import TabulatedDESI
-        cosmo = TabulatedDESI()
-
-    if dmod is None:
-        dmod = cosmo.distance_modulus(redshift)
-    
-    modelwave = zmodelwave / (1. + redshift)
-    lambda_in = filters_in.effective_wavelengths.value
-
-    if band_shift is None:
-        band_shift = np.zeros_like(lambda_in)
-    
-    # input bandpasses, observed frame; maggies and synth_maggies_in should be
-    # very close.
-    try:
-        synth_maggies_in = filters_in.get_ab_maggies(zmodelflux / FLUXNORM, zmodelwave)
-    except:
-        # pad in the case of an object at very high redshift (z>5.5).
-        log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
-        padflux, padwave = filters_in.pad_spectrum(zmodelflux / FLUXNORM, zmodelwave, axis=0, method='edge')
-        synth_maggies_in = filters_in.get_ab_maggies(padflux, padwave)
-    synth_maggies_in = cvt_to_array(synth_maggies_in)
-
-    filters_out = filters.FilterSequence( [ f.create_shifted(band_shift=bs) for f, bs in zip(absmag_filters, band_shift) ])
-    lambda_out = filters_out.effective_wavelengths.value
-        
-    # Multiply by (1+z) to convert the best-fitting model to the "rest
-    # frame".
-    synth_outmaggies_rest = filters_out.get_ab_maggies(
-        zmodelflux * (1. + redshift) / FLUXNORM, modelwave)
-    synth_outmaggies_rest = cvt_to_array(synth_outmaggies_rest)
-    
-    synth_absmag = -2.5 * np.log10(synth_outmaggies_rest) - dmod
-
-    # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
-    oband = np.empty(nabs, dtype=np.int32)
-    for jj in range(nabs):
-        lambdadist = np.abs(lambda_in / (1. + redshift) - lambda_out[jj])
-        oband[jj] = np.argmin(lambdadist + (maggies * np.sqrt(ivarmaggies) < snrmin) * 1e10)
-
-    kcorr = + 2.5 * np.log10(synth_outmaggies_rest / synth_maggies_in[oband])
-        
-    # m_R = M_Q + DM(z) + K_QR(z) or
-    # M_Q = m_R - DM(z) - K_QR(z)
-    absmag = -2.5 * np.log10(maggies[oband]) - dmod - kcorr
-
-    C = 0.8483036976765437 # (0.4 * np.log(10.))**2
-    ivarabsmag = maggies[oband]**2 * ivarmaggies[oband] * C
-    
-    # if we use synthesized photometry then ivarabsmag is zero
-    # (which should never happen?)
-    I = (maggies[oband] * np.sqrt(ivarmaggies[oband]) <= snrmin)
-    absmag[I] = synth_absmag[I]
-    ivarabsmag[I] = 0.
-    
-    return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
-
-
 def _convolve_vdisp(templateflux, vdisp, pixsize_kms):
     """Convolve by the velocity dispersion.
 
@@ -616,6 +476,9 @@ def _convolve_vdisp(templateflux, vdisp, pixsize_kms):
     smoothflux = gaussian_filter1d(templateflux, sigma=sigma, axis=0)
 
     return smoothflux
+
+#############################################################################################
+
 
 class Filters(object):
     def __init__(self, ignore_photometry=False, fphoto=None, load_filters=True):
@@ -737,6 +600,186 @@ class Filters(object):
         if ignore_photometry:
             self.bands_to_fit *= [False]
 
+    def restframe_photometry(self, redshift, zmodelflux, zmodelwave, maggies, ivarmaggies,
+                             filters_in, absmag_filters, band_shift=None, snrmin=2.,
+                             dmod=None, cosmo=None, log=None):
+        """Compute K-corrections and rest-frame photometry for a single object.
+        
+        Parameters
+        ----------
+        redshift : :class:`float`
+           Galaxy or QSO redshift.
+        zmodelwave : `numpy.ndarray`
+           Observed-frame (redshifted) model wavelength array.
+        zmodelflux : `numpy.ndarray`
+           Observed-frame model spectrum.
+        maggies : `numpy.ndarray`
+           Input photometric fluxes in the `filters_in` bandpasses.
+        ivarmaggies : `numpy.ndarray`
+           Inverse variance photometry corresponding to `maggies`.
+        filters_in : `speclite.filters.FilterSequence`
+           Input filter curves.
+        absmag_filters : `speclite.filters.FilterSequence`
+           Filter curves corresponding to desired bandpasses.
+        band_shift : `numpy.ndarray` or `None`
+           Band-shift each bandpass in `absmag_filters` by this amount.
+        snrmin : :class:`float`, defaults to 2.
+           Minimum signal-to-noise ratio in the input photometry (`maggies`) in
+           order for that bandpass to be used to compute a K-correction.
+        dmod : :class:`float` or `None`
+           Distance modulus corresponding to `redshift`. Not needed if `cosmo` is
+           provided.
+        cosmo : `fastspecfit.util.TabulatedDESI` or `None`
+           Cosmological model class needed to compute the distance modulus.
+        log : `desiutil.log`
+           Logging object.
+    
+        Returns
+        -------
+        kcorr : `numpy.ndarray`
+           K-corrections for each bandpass in `absmag_filters`.
+        absmag : `numpy.ndarray`
+           Absolute magnitudes, band-shifted according to `band_shift` (if
+           provided) for each bandpass in `absmag_filters`. 
+        ivarabsmag : `numpy.ndarray`
+           Inverse variance corresponding to `absmag`.
+        synth_absmag : `numpy.ndarray`
+           Like `absmag`, but entirely based on synthesized photometry.
+        synth_maggies_in : `numpy.ndarray`
+           Synthesized input photometry (should closely match `maggies` if the
+           model fit is good).
+        
+        Notes
+        -----
+        By default, the K-correction is computed by finding the observed-frame
+        bandpass closest in wavelength (and with a minimum signal-to-noise ratio) to
+        the desired band-shifted absolute magnitude bandpass. In other words, by
+        default we endeavor to minimize the K-correction. The inverse variance,
+        `ivarabsmag`, is derived from the inverse variance of the K-corrected
+        photometry. If no bandpass is available then `ivarabsmag` is set to zero and
+        `absmag` is derived from the synthesized rest-frame photometry.
+        
+        """
+        from speclite import filters
+        
+        if log is None:
+            from desiutil.log import get_logger
+            log = get_logger()
+
+        nabs = len(absmag_filters)
+            
+        if redshift <= 0.0:
+            errmsg = 'Input redshift not defined, zero, or negative!'
+            log.warning(errmsg)
+            kcorr        = np.zeros(nabs, dtype='f8')
+            absmag       = np.zeros(nabs, dtype='f8')
+            ivarabsmag   = np.zeros(nabs, dtype='f8')
+            synth_absmag = np.zeros(nabs, dtype='f8')
+            synth_maggies_in = np.zeros(len(maggies))
+            return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
+
+        if cosmo is None:
+            from fastspecfit.util import TabulatedDESI
+            cosmo = TabulatedDESI()
+
+        if dmod is None:
+            dmod = cosmo.distance_modulus(redshift)
+    
+        modelwave = zmodelwave / (1. + redshift)
+        lambda_in = filters_in.effective_wavelengths.value
+
+        if band_shift is None:
+            band_shift = np.zeros_like(lambda_in)
+
+        # input bandpasses, observed frame; maggies and synth_maggies_in should be
+        # very close.
+        synth_maggies_in = self.get_ab_maggies(filters_in,
+                                               zmodelflux / FLUXNORM,
+                                               zmodelwave,
+                                               log=log)
+        filters_out = \
+            filters.FilterSequence( [ f.create_shifted(band_shift=bs) for f, bs in zip(absmag_filters, band_shift) ])
+        lambda_out = filters_out.effective_wavelengths.value
+        
+        # Multiply by (1+z) to convert the best-fitting model to the "rest
+        # frame".
+        synth_outmaggies_rest = self.get_ab_maggies(filters_out,
+                                                    zmodelflux * (1. + redshift) / FLUXNORM,
+                                                    modelwave,
+                                                    log=log)
+        
+        synth_absmag = -2.5 * np.log10(synth_outmaggies_rest) - dmod
+
+        # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
+        oband = np.empty(nabs, dtype=np.int32)
+        for jj in range(nabs):
+            lambdadist = np.abs(lambda_in / (1. + redshift) - lambda_out[jj])
+            oband[jj] = np.argmin(lambdadist + (maggies * np.sqrt(ivarmaggies) < snrmin) * 1e10)
+
+        kcorr = + 2.5 * np.log10(synth_outmaggies_rest / synth_maggies_in[oband])
+        
+        # m_R = M_Q + DM(z) + K_QR(z) or
+        # M_Q = m_R - DM(z) - K_QR(z)
+        absmag = -2.5 * np.log10(maggies[oband]) - dmod - kcorr
+
+        C = 0.8483036976765437 # (0.4 * np.log(10.))**2
+        ivarabsmag = maggies[oband]**2 * ivarmaggies[oband] * C
+    
+        # if we use synthesized photometry then ivarabsmag is zero
+        # (which should never happen?)
+        I = (maggies[oband] * np.sqrt(ivarmaggies[oband]) <= snrmin)
+        absmag[I] = synth_absmag[I]
+        ivarabsmag[I] = 0.
+    
+        return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
+
+
+    @staticmethod
+    def get_ab_maggies(filters, flux, wave, log=None):
+        try:
+            maggies0 = filters_get_ab_maggie(flux, wave)
+        except:
+            # pad in case of an object at very high redshift (z > 5.5)
+            if log is not None:
+                log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.') 
+            padflux, padwave = filters.pad_spectrum(flux, wave, axis=0, method='edge')
+            maggies0 = filters.get_ab_maggies(padflux, padwave)
+        
+        if len(maggies0) == 1:
+            maggies = np.fromiter(maggies0.values(), np.float64)
+        else:
+            maggies = np.empty((len(maggies0.colnames), len(maggies0)), dtype=np.float64)
+            for i, col in enumerate(maggies0.values()):
+                maggies[i, :] = col.value
+        
+        return maggies
+
+    
+    @staticmethod
+    def to_nanomaggies(maggies):
+        return maggies * 1e9
+
+    
+    @staticmethod
+    def get_photflam(maggies, lambda_eff, nanomaggies=True):
+        
+        shp = maggies.shape
+        if maggies.ndim == 1:
+            ngal = 1
+        else:
+            ngal = shp[1]
+        
+        if nanomaggies:
+            nanofactor = 1e-9 # [nanomaggies-->maggies]
+        else:
+            nanofactor = 1.0
+
+        factor = nanofactor * 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
+        if ngal > 1:
+            factor = factor[:, None] # broadcast for the models
+        return maggies * factor
+
+        
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
                          nanomaggies=True, nsigma=2.0, min_uncertainty=None,
@@ -791,7 +834,7 @@ class Filters(object):
 
         if ivarmaggies is None:
             ivarmaggies = np.zeros_like(maggies)
-
+            
         # Gaia-only targets can sometimes have grz=-99.
         if np.any(ivarmaggies < 0) or np.any(maggies == -99.0):
             errmsg = 'All ivarmaggies must be zero or positive!'
@@ -849,7 +892,7 @@ class Filters(object):
         phot['abmag_brighterr'] = abmag_brighterr.reshape(dims)
         phot['abmag_fainterr'] = abmag_fainterr.reshape(dims)
         phot['abmag_ivar'] = abmag_ivar.reshape(dims)
-            
+        
         # Add a minimum uncertainty in quadrature **but only for flam**, which
         # is used in the fitting.
         if min_uncertainty is not None:
@@ -869,6 +912,7 @@ class Filters(object):
         phot['flam_ivar'] = (ivarmaggies / factor**2)
 
         return phot
+
     
     @staticmethod
     def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True, log=None):
@@ -1366,7 +1410,7 @@ class ContinuumTools(Filters):
             ztemplateflux = FLUXNORM * self.massnorm * templateflux
 
         # Optionally synthesize photometry.
-        templatephot = None
+        templatephot_flam = None
         if synthphot:
             if photsys is not None:
                 filters = self.filters[photsys]
@@ -1376,18 +1420,15 @@ class ContinuumTools(Filters):
 
             if ((specwave is None and specres is None and coeff is None) or
                (specwave is not None and specres is not None)):
-                try:
-                    maggies = filters.get_ab_maggies(ztemplateflux.T, ztemplatewave) # speclite.filters wants an [nmodel,npix] array
-                except:
-                    # pad in the case of an object at very high redshift (z>5.5).
-                    log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
-                    padflux, padwave = filters.pad_spectrum(ztemplateflux.T, ztemplatewave, axis=0, method='edge')
-                    maggies = filters.get_ab_maggies(padflux.T, padwave, axis=0)
-                    
-                maggies = np.vstack(maggies.as_array().tolist()).T
-                maggies /= FLUXNORM * self.massnorm
-                templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, verbose=debug, log=log)
-
+        
+                maggies = self.get_ab_maggies(filters,
+                                              ztemplateflux.T,
+                                              ztemplatewave,
+                                              log=log) / \
+                                              (FLUXNORM * self.massnorm)
+                
+                templatephot_flam = self.get_photflam(maggies, effwave, nanomaggies=False)
+                
         # Are we returning per-camera spectra or a single model? Handle that here.
         if specwave is None and specres is None:
             datatemplateflux = []
@@ -1399,16 +1440,13 @@ class ContinuumTools(Filters):
             if coeff is not None:
                 datatemplateflux = datatemplateflux.dot(coeff)
                 if synthphot:
-                    try:
-                        maggies = filters.get_ab_maggies(datatemplateflux, ztemplatewave, axis=0)
-                    except:
-                        # pad in the case of an object at very high redshift (z>5.5).
-                        log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
-                        padflux, padwave = filters.pad_spectrum(datatemplateflux, ztemplatewave, axis=0, method='edge')
-                        maggies = filters.get_ab_maggies(padflux, padwave)
-                    maggies = np.array(maggies.as_array().tolist()[0])
-                    maggies /= FLUXNORM * self.massnorm
-                    templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, log=log)
+                    maggies = self.get_ab_maggies(filters,
+                                                  datatemplateflux,
+                                                  ztemplatewave,
+                                                  log=log) / \
+                                                  (FLUXNORM * self.massnorm)
+                    
+                    templatephot_flam = self.get_photflam(maggies, effwave, nanomaggies=False)
         else:
             # loop over cameras
             datatemplateflux = []
@@ -1435,7 +1473,7 @@ class ContinuumTools(Filters):
                 if ndim == 3:
                     datatemplateflux = datatemplateflux.reshape(nwavepix, nsed, nprop) # [npix,nsed,nprop]
                 
-        return datatemplateflux, templatephot # vector or 3-element list of [npix,nmodel] spectra
+        return datatemplateflux, templatephot_flam # vector or 3-element list of [npix,nmodel] spectra
 
     @staticmethod
     def call_nnls(modelflux, flux, ivar, xparam=None, debug=False,
@@ -1649,7 +1687,7 @@ class ContinuumTools(Filters):
         maggies = data['phot']['nanomaggies'].data * 1e-9
         ivarmaggies = (data['phot']['nanomaggies_ivar'].data / 1e-9**2) * self.bands_to_fit
 
-        kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in = restframe_photometry(
+        kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in = self.restframe_photometry(
             redshift, continuum, ztemplatewave, maggies, ivarmaggies,
             filters_in=filters_in, absmag_filters=self.absmag_filters,
             band_shift=self.band_shift, dmod=data['dmodulus'],
@@ -1694,17 +1732,20 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                             ignore_photometry=ignore_photometry)
 
     redshift = result['Z']
-    objflam = data['phot']['flam'].data * FLUXNORM
-    objflamivar = (data['phot']['flam_ivar'].data / FLUXNORM**2) * CTools.bands_to_fit
-    assert(np.all(objflamivar >= 0))
+
+    photometry = data['phot']
+    objflam = photometry['flam'].data * FLUXNORM
+    objflamivar = (photometry['flam_ivar'].data / FLUXNORM**2) * CTools.bands_to_fit
+    assert(np.all(objflamivar >= 0.))
 
     if np.any(CTools.bands_to_fit):
         # Require at least one photometric optical band; do not just fit the IR
         # because we will not be able to compute the aperture correction, below.
-        opt = (data['phot']['lambda_eff'] > 3e3) * (data['phot']['lambda_eff'] < 1e4)
+        lambda_eff = photometry['lambda_eff']
+        opt = ((lambda_eff > 3e3) * (lambda_eff < 1e4))
         if np.all(objflamivar[opt] == 0.0):
             log.warning('All optical bands are masked; masking all photometry.')
-            objflamivar *= 0.0
+            objflamivar[:] = 0.0
 
     # Optionally ignore templates which are older than the age of the
     # universe at the redshift of the object.
@@ -1742,12 +1783,12 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         else:
            # Get the coefficients and chi2 at the nominal velocity dispersion. 
            t0 = time.time()
-           sedtemplates, sedphot = CTools.templates2data(
+           sedtemplates, sedphot_flam = CTools.templates2data(
                templatecache['templateflux_nomvdisp'][:, agekeep],
                templatecache['templatewave'],
                redshift=redshift, dluminosity=data['dluminosity'],
                vdisp=None, synthphot=True, photsys=data['photsys'])
-           sedflam = sedphot['flam'].data * CTools.massnorm * FLUXNORM
+           sedflam = sedphot_flam * CTools.massnorm * FLUXNORM
 
            coeff, rchi2_phot = CTools.call_nnls(sedflam, objflam, objflamivar)
            rchi2_phot /= np.sum(objflamivar > 0) # dof???
@@ -1856,16 +1897,16 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             input_templateflux = templatecache['templateflux'][:, agekeep]
             input_templateflux_nolines = templatecache['templateflux_nolines'][:, agekeep]
 
-        desitemplates, desitemplatephot = CTools.templates2data(
+        desitemplates, desitemplatephot_flam = CTools.templates2data(
             input_templateflux, templatecache['templatewave'],
             redshift=redshift, dluminosity=data['dluminosity'],
             specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
             vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
             synthphot=True, photsys=data['photsys'])
-        desitemplateflam = desitemplatephot['flam'].data * CTools.massnorm * FLUXNORM
+        desitemplateflam = desitemplatephot_flam * CTools.massnorm * FLUXNORM
 
         apercorrs, apercorr = np.zeros(len(CTools.synth_bands), 'f4'), 0.0
-
+        
         sedtemplates, _ = CTools.templates2data(input_templateflux, templatecache['templatewave'],
                                                 vdisp=use_vdisp, redshift=redshift,
                                                 dluminosity=data['dluminosity'], synthphot=False)
@@ -1880,22 +1921,17 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             else:
                 # Synthesize grz photometry from the full-wavelength SED to make
                 # sure we get the z-band correct.
-                quicksedflux = sedtemplates.dot(quickcoeff)
-                try:
-                    quickmaggies = np.array(filters_in.get_ab_maggies(quicksedflux / FLUXNORM, ztemplatewave).as_array().tolist()[0])
-                except:
-                    # pad in the case of an object at very high redshift (z>5.5).
-                    log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
-                    padflux, padwave = filters_in.pad_spectrum(quicksedflux / FLUXNORM, ztemplatewave, axis=0, method='edge')
-                    quickmaggies = np.array(filters_in.get_ab_maggies(padflux, padwave, axis=0).as_array().tolist()[0])
-             
-                quickphot = CTools.parse_photometry(CTools.synth_bands, quickmaggies, 
-                                                    filters_in.effective_wavelengths.value,
-                                                    nanomaggies=False, log=log)
+                nanomaggies = photometry['nanomaggies'].value
+                numer = np.hstack([nanomaggies[photometry['band'] == band] for band in CTools.synth_bands])
 
-                numer = np.hstack([data['phot']['nanomaggies'][data['phot']['band'] == band]
-                                   for band in CTools.synth_bands])
-                denom = quickphot['nanomaggies'].data
+                quicksedflux = sedtemplates.dot(quickcoeff)
+                quickmaggies = CTools.get_ab_maggies(filters_in,
+                                                     quicksedflux / FLUXNORM,
+                                                     ztemplatewave,
+                                                     log=log)
+                
+                denom = CTools.to_nanomaggies(quickmaggies)
+                
                 I = (numer > 0.0) * (denom > 0.0)
                 if np.any(I):
                     apercorrs[I] = numer[I] / denom[I]
