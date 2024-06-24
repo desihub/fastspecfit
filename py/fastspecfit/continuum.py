@@ -1284,7 +1284,7 @@ class ContinuumTools(Filters):
 
 
     @staticmethod
-    def smooth_and_resample(templateflux, templatewave, specwave=None, specres=None):
+    def smooth_and_resample(templateflux, templatewave, specwave, specres):
         """Given a single template, apply the resolution matrix and resample in
         wavelength.
 
@@ -1294,9 +1294,9 @@ class ContinuumTools(Filters):
             Input (model) spectrum.
         templatewave : :class:`numpy.ndarray` [npix]
             Wavelength array corresponding to `templateflux`.
-        specwave : :class:`numpy.ndarray` [noutpix], optional, defaults to None
+        specwave : :class:`numpy.ndarray` [noutpix]
             Desired output wavelength array, usually that of the object being fitted.
-        specres : :class:`desispec.resolution.Resolution`, optional, defaults to None 
+        specres : :class:`desispec.resolution.Resolution`
             Resolution matrix.
 
         Returns
@@ -1304,24 +1304,14 @@ class ContinuumTools(Filters):
         :class:`numpy.ndarray` [noutpix]
             Smoothed and resampled flux at the new resolution and wavelength sampling.
 
-        Notes
-        -----
-        This function stands by itself rather than being in a class because we call
-        it with multiprocessing, below.
-
         """
         from fastspecfit.util import trapz_rebin
 
-        if specwave is None:
-            resampflux = templateflux 
-        else:
-            trim = (templatewave > (specwave.min()-10.0)) * (templatewave < (specwave.max()+10.0))
-            resampflux = trapz_rebin(templatewave[trim], templateflux[trim], specwave)
-
-        if specres is None:
-            smoothflux = resampflux
-        else:
-            smoothflux = specres.dot(resampflux)
+        # find lo, hi s.t. templatewave[lo:hi] is strictly within given bounds
+        lo = np.searchsorted(templatewave, specwave[0]  - 10., 'right')
+        hi = np.searchsorted(templatewave, specwave[-1] + 10., 'left')
+        resampflux = trapz_rebin(templatewave[lo:hi], templateflux[lo:hi], specwave)
+        smoothflux = specres.dot(resampflux)
 
         return smoothflux
 
@@ -1376,6 +1366,7 @@ class ContinuumTools(Filters):
         # [npix,nage,nAV] or [npix,nage,nvdisp]?
         templateflux = _templateflux.copy() # why?!?
         templatewave = _templatewave.copy() # why?!?
+        
         ndim = templateflux.ndim
         if ndim == 2:
             npix, nsed = templateflux.shape
@@ -1391,7 +1382,6 @@ class ContinuumTools(Filters):
         
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
-            #templateflux = convolve_vdisp(templateflux, vdisp)
             I = np.where(templatewave < PIXKMS_WAVESPLIT)[0]
             templateflux[I, :] = self.convolve_vdisp(templateflux[I, :], vdisp, PIXKMS_BLU)
 
@@ -1399,8 +1389,8 @@ class ContinuumTools(Filters):
         # apply the luminosity distance factor here. Also normalize to a nominal
         # stellar mass.
         if redshift > 0:
-            ztemplatewave = templatewave * (1. + redshift)
-            T = self.igm.full_IGM(redshift, ztemplatewave)
+            ztemplatewave = templatewave * (1. + redshift) # FIXME: why not do the shift inside full_igm?
+            T = self.igm.full_IGM(redshift, ztemplatewave) 
             T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
             ztemplateflux = templateflux * T[:, np.newaxis]
         else:
@@ -1420,7 +1410,7 @@ class ContinuumTools(Filters):
 
             if ((specwave is None and specres is None and coeff is None) or
                (specwave is not None and specres is not None)):
-        
+            
                 maggies = self.get_ab_maggies(filters,
                                               ztemplateflux.T,
                                               ztemplatewave,
@@ -1431,17 +1421,15 @@ class ContinuumTools(Filters):
                 
         # Are we returning per-camera spectra or a single model? Handle that here.
         if specwave is None and specres is None:
-            datatemplateflux = []
-            for imodel in range(nmodel):
-                datatemplateflux.append(self.smooth_and_resample(ztemplateflux[:, imodel], ztemplatewave))
-            datatemplateflux = np.vstack(datatemplateflux).T
-
+            # cannot smooth/resample
+            datatemplateflux = ztemplateflux
+            
             # optionally compute the best-fitting model
             if coeff is not None:
                 datatemplateflux = datatemplateflux.dot(coeff)
                 if synthphot:
                     maggies = self.get_ab_maggies(filters,
-                                                  datatemplateflux,
+                                                  datatemplateflux.T,
                                                   ztemplatewave,
                                                   log=log) / \
                                                   (FLUXNORM * self.massnorm)
@@ -1450,27 +1438,37 @@ class ContinuumTools(Filters):
         else:
             # loop over cameras
             datatemplateflux = []
-            nwavepix = len(np.hstack(specwave))
             for icamera in range(len(cameras)): # iterate on cameras
-                _datatemplateflux = []
+                # interpolate over pixels where the resolution matrix is masked
+                if specmask is not None and np.any(specmask[icamera] != 0):
+                    sw_mask = binary_dilation(specmask[icamera] != 0, iterations=2)
+                else:
+                    sw_mask = None
+                
+                _datatemplateflux = np.empty((len(specwave[icamera]), nmodel),
+                                             dtype=ztemplateflux.dtype)
                 for imodel in range(nmodel):
-                    resampflux = self.smooth_and_resample(ztemplateflux[:, imodel], ztemplatewave, 
+                    resampflux = self.smooth_and_resample(ztemplateflux[:, imodel],
+                                                          ztemplatewave, 
                                                           specwave=specwave[icamera],
                                                           specres=specres[icamera])
+
                     # interpolate over pixels where the resolution matrix is masked
-                    if specmask is not None and np.any(specmask[icamera] != 0):
-                        I = binary_dilation(specmask[icamera] != 0, iterations=2)
-                        resampflux[I] = np.interp(specwave[icamera][I], ztemplatewave, ztemplateflux[:, imodel])
-                    _datatemplateflux.append(resampflux)
-                _datatemplateflux = np.vstack(_datatemplateflux).T
+                    if sw_mask is not None:
+                        resampflux[sw_mask] = np.interp(specwave[icamera][sw_mask], ztemplatewave, ztemplateflux[:, imodel])
+                        
+                    _datatemplateflux[:,imodel] = resampflux
+                
+                #_datatemplateflux = np.vstack(_datatemplateflux).T
                 if coeff is not None:
                     _datatemplateflux = _datatemplateflux.dot(coeff)
                 datatemplateflux.append(_datatemplateflux)
-
+                
             # Optionally stack and reshape (used in fitting).
             if stack_cameras:
                 datatemplateflux = np.concatenate(datatemplateflux, axis=0)  # [npix,nsed*nprop] or [npix,nsed]
                 if ndim == 3:
+                    nwavepix = np.sum([ len(sw) for sw in specwave ])
                     datatemplateflux = datatemplateflux.reshape(nwavepix, nsed, nprop) # [npix,nsed,nprop]
                 
         return datatemplateflux, templatephot_flam # vector or 3-element list of [npix,nmodel] spectra
@@ -2042,7 +2040,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         if 'SMOOTHCORR_B' in result.columns and 'SMOOTHCORR_R' in result.columns and 'SMOOTHCORR_Z' in result.columns:
             log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
                 result['SMOOTHCORR_B'], result['SMOOTHCORR_R'], result['SMOOTHCORR_Z']))
-
+    
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if np.all(coeff == 0):
         kcorr = np.zeros(len(CTools.absmag_bands))
