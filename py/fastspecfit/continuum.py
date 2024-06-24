@@ -1597,8 +1597,21 @@ class ContinuumTools(Filters):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
-        from scipy.stats import sigmaclip
         from scipy.ndimage import median_filter
+        from scipy.stats import sigmaclip
+        
+        def get_cflux(cwave):
+            lo = np.searchsorted(templatewave, cwave - 20., 'right')
+            hi = np.searchsorted(templatewave, cwave + 20., 'left')
+            
+            ksize = 200
+            lo2 = np.maximum(0,              lo - ksize//2)
+            hi2 = np.minimum(len(continuum), hi + ksize//2)
+            smooth = median_filter(continuum[lo2:hi2], ksize)
+            
+            clipflux, _, _ = sigmaclip(smooth[lo-lo2:hi-lo2], low=1.5, high=3)
+            return median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
+
         
         if log is None:
             from desiutil.log import get_logger
@@ -1608,10 +1621,8 @@ class ContinuumTools(Filters):
         if redshift <= 0.0:
             errmsg = 'Input redshift not defined, zero, or negative!'
             log.warning(errmsg)
-            
-            lums, cfluxes = {}, {}
-            return lums, cfluxes
-            
+            return {}, {}
+        
         dlum = data['dluminosity']
 
         # compute the model continuum flux at 1500 and 2800 A (to facilitate UV
@@ -1619,17 +1630,13 @@ class ContinuumTools(Filters):
         # lines [OII], Hbeta, [OIII], and Halpha
         
         dfactor = (1. + redshift) * 4. * np.pi * (3.08567758e24 * dlum)**2 / FLUXNORM
-                
+        
         lums = {}
-        cwaves = [1500.0, 2800.0, 1450., 1700., 3000., 5100.]
-        labels = ['LOGLNU_1500', 'LOGLNU_2800', 'LOGL_1450', 'LOGL_1700', 'LOGL_3000', 'LOGL_5100']
+        cwaves = (1500.0, 2800.0, 1450., 1700., 3000., 5100.)
+        labels = ('LOGLNU_1500', 'LOGLNU_2800', 'LOGL_1450', 'LOGL_1700', 'LOGL_3000', 'LOGL_5100')
         for cwave, label in zip(cwaves, labels):
-            J = (templatewave > cwave-500) * (templatewave < cwave+500)
-            I = (templatewave[J] > cwave-20) * (templatewave[J] < cwave+20)
-            smooth = median_filter(continuum[J], 200)
-            clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
-            cflux = median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
-            cflux *= dfactor # [monochromatic luminosity in erg/s/A]
+            cflux = get_cflux(cwave) * dfactor # [monochromatic luminosity in erg/s/A]
+            
             if 'LOGL_' in label:
                 norm = 1e10
                 cflux *= cwave / 3.846e33 / norm # [luminosity in 10**10 L_sun]
@@ -1639,30 +1646,15 @@ class ContinuumTools(Filters):
                 # SFR=1.4e-28 * L_UV
                 norm = 1e28
                 cflux *= cwave**2 / (C_LIGHT * 1e13) / norm # [monochromatic luminosity in 10**(-28) erg/s/Hz]
-            if cflux > 0:
-                lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
+            if cflux > 0.:
+                lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
+        
         cfluxes = {}
-        cwaves = [1215.67, 3728.483, 4862.683, 5008.239, 6564.613]
-        labels = ['FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']
+        cwaves = (1215.67, 3728.483, 4862.683, 5008.239, 6564.613)
+        labels = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT')
         for cwave, label in zip(cwaves, labels):
-            J = (templatewave > cwave-500) * (templatewave < cwave+500)
-            I = (templatewave[J] > cwave-20) * (templatewave[J] < cwave+20)
-            smooth = median_filter(continuum[J], 200)
-            clipflux, _, _ = sigmaclip(smooth[I], low=1.5, high=3)
-            cflux = median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
-            cfluxes[label] = cflux # * u.erg/(u.second*u.cm**2*u.Angstrom)
-            
-            #import matplotlib.pyplot as plt
-            #print(cwave, cflux)
-            #plt.clf()
-            #plt.plot(self.templatewave[J], continuum[J])
-            #plt.plot(self.templatewave[J], smooth, color='k')
-            #plt.axhline(y=cflux, color='red')
-            #plt.axvline(x=cwave, color='red')
-            #plt.xlim(cwave - 50, cwave + 50)
-            #plt.savefig('junk.png')
-            ##plt.savefig('desi-users/ioannis/tmp/junk.png')
+            cfluxes[label] = get_cflux(cwave) # * u.erg/(u.second*u.cm**2*u.Angstrom)
 
         return lums, cfluxes
 
