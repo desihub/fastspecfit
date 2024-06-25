@@ -733,7 +733,7 @@ class Filters(object):
     @staticmethod
     def get_ab_maggies(filters, flux, wave, log=None):
         try:
-            maggies0 = filters_get_ab_maggie(flux, wave)
+            maggies0 = filters.get_ab_maggies(flux, wave)
         except:
             # pad in case of an object at very high redshift (z > 5.5)
             if log is not None:
