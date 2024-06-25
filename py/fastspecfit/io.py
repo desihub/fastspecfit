@@ -2131,11 +2131,13 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
     # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
     if mintemplatewave is None:
         mintemplatewave = np.min(wave)
-    wavekeep = np.where((wave >= mintemplatewave) * (wave <= maxtemplatewave))[0]
-
-    templatewave = wave[wavekeep]
-    templateflux = templateflux[wavekeep, :]
-    templateflux_nolines = templateflux - templatelineflux[wavekeep, :]
+    
+    keeplo = np.searchsorted(wave, mintemplatewave, 'left')
+    keephi = np.searchsorted(wave, maxtemplatewave, 'right')
+    
+    templatewave = wave[keeplo:keephi]
+    templateflux = templateflux[keeplo:keephi, :]
+    templateflux_nolines = templateflux - templatelineflux[keeplo:keephi, :]
     del wave, templatelineflux
     
     # Cache a copy of the line-free templates at the nominal velocity
@@ -2143,15 +2145,16 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
     if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
         vdisp_nominal = vdisphdr['VDISPNOM'] # [km/s]
     
-    I = np.where(templatewave < PIXKMS_WAVESPLIT)[0]
-    templateflux_nolines_nomvdisp = templateflux_nolines.copy()
-    templateflux_nolines_nomvdisp[I, :] = _convolve_vdisp(templateflux_nolines_nomvdisp[I, :], vdisp_nominal,
-                                                          pixsize_kms=PIXKMS_BLU)
+    hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
 
-    templateflux_nomvdisp = templateflux.copy()
-    templateflux_nomvdisp[I, :] = _convolve_vdisp(templateflux_nomvdisp[I, :], vdisp_nominal,
-                                                  pixsize_kms=PIXKMS_BLU)
-
+    templateflux_nolines_nomvdisp = \
+        _convolve_vdisp(templateflux_nolines, hi,
+                        vdisp_nominal, pixsize_kms=PIXKMS_BLU)
+    
+    templateflux_nomvdisp = \
+        _convolve_vdisp(templateflux, hi,
+                        vdisp_nominal, pixsize_kms=PIXKMS_BLU)
+    
     # pack into a dictionary
     templatecache = {'imf': templatehdr['IMF'],
                      #'nsed': len(templateinfo), 'npix': len(wavekeep),

@@ -215,9 +215,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
             smooth_flux[red[0]:] = smooth_flux[red[0]]
 
     smooth = median_filter(smooth_flux, medbin, mode='nearest')
-    #smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
-    #smoothsigma = median_filter(smooth_sigma, medbin, mode='nearest')
-
+    
     I = ivar > 0
     if np.sum(I) > 0:
         smoothsigma = np.zeros_like(wave) + median(1. / np.sqrt(ivar[I]))
@@ -453,29 +451,27 @@ def _estimate_linesigmas(wave, flux, ivar, redshift=0.0, png=None,
             linesigma_narrow_snr, linesigma_balmer_snr, linesigma_uv_snr)
 
 
-def _convolve_vdisp(templateflux, vdisp, pixsize_kms):
-    """Convolve by the velocity dispersion.
+#
+# convolve templateflux with a velocity dispersion.
+# Only wavelengths up to limit are convolved; the rest
+# are left unchanged.
+#
+def _convolve_vdisp(templateflux, limit,
+                    vdisp, pixsize_kms):
 
-    Parameters
-    ----------
-    templateflux
-    vdisp
-
-    Returns
-    -------
-
-    Notes
-    -----
-
-    """
     from scipy.ndimage import gaussian_filter1d
-    
+        
+    # Convolve by the velocity dispersion.
     if vdisp <= 0.0:
-        return templateflux
-    sigma = vdisp / pixsize_kms # [pixels]
-    smoothflux = gaussian_filter1d(templateflux, sigma=sigma, axis=0)
-
-    return smoothflux
+        output = templateflux.copy()
+    else:
+        output = np.empty_like(templateflux)
+        sigma = vdisp / pixsize_kms # [pixels]
+        gaussian_filter1d(templateflux[:limit, :], sigma=sigma, axis=0,
+                          output=output[:limit, :])
+        output[limit:, :] = templateflux[limit:, :]
+    
+    return output
 
 #############################################################################################
 
@@ -1315,10 +1311,11 @@ class ContinuumTools(Filters):
 
         return smoothflux
 
-    @staticmethod
-    def convolve_vdisp(*args, **kwargs):
-        return _convolve_vdisp(*args, **kwargs)
     
+    @staticmethod
+    def convolve_vdisp(templateflux, limit, vdisp, pixsize_kms):
+        return _convolve_vdisp(templateflux, limit, vdisp, pixsize_kms)
+
     def templates2data(self, templateflux, templatewave, redshift=0.0, dluminosity=None,
                        vdisp=None, cameras=['b', 'r', 'z'], specwave=None, specres=None, 
                        specmask=None, coeff=None, photsys=None, synthphot=True, 
@@ -1379,9 +1376,10 @@ class ContinuumTools(Filters):
         
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
-            vd_templateflux = templateflux.copy() # avoid changing input templateflux
-            I = np.where(templatewave < PIXKMS_WAVESPLIT)[0]
-            vd_templateflux[I, :] = self.convolve_vdisp(vd_templateflux[I, :], vdisp, PIXKMS_BLU)
+            hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
+
+            vd_templateflux = self.convolve_vdisp(templateflux, hi,
+                                                  vdisp, PIXKMS_BLU)
         else:
             vd_templateflux = templateflux
             
@@ -1389,7 +1387,8 @@ class ContinuumTools(Filters):
         # apply the luminosity distance factor here. Also normalize to a nominal
         # stellar mass.
         if redshift > 0.:
-            ztemplatewave = templatewave * (1. + redshift) # FIXME: why not do the shift inside full_igm?
+            # FIXME: try accelerating this whole thing in Numba
+            ztemplatewave = templatewave * (1. + redshift)
             T = self.igm.full_IGM(redshift, ztemplatewave) 
             T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
             ztemplateflux = vd_templateflux * T[:, np.newaxis]
@@ -1397,8 +1396,9 @@ class ContinuumTools(Filters):
             errmsg = 'Input redshift not defined, zero, or negative!'
             log.warning(errmsg)
             ztemplatewave = templatewave
-            ztemplateflux = FLUXNORM * self.massnorm * vd_templateflux
-
+            T = FLUXNORM * self.massnorm
+            ztemplateflux = vd_templateflux * T
+        
         # Optionally synthesize photometry.
         templatephot_flam = None
         if synthphot:
@@ -1410,7 +1410,7 @@ class ContinuumTools(Filters):
 
             if ((specwave is None and specres is None and coeff is None) or
                (specwave is not None and specres is not None)):
-            
+                
                 maggies = self.get_ab_maggies(filters,
                                               ztemplateflux.T,
                                               ztemplatewave,
@@ -1455,7 +1455,9 @@ class ContinuumTools(Filters):
 
                     # interpolate over pixels where the resolution matrix is masked
                     if sw_mask is not None:
-                        resampflux[sw_mask] = np.interp(specwave[icamera][sw_mask], ztemplatewave, ztemplateflux[:, imodel])
+                        resampflux[sw_mask] = np.interp(specwave[icamera][sw_mask],
+                                                        ztemplatewave,
+                                                        ztemplateflux[:, imodel])
                         
                     _datatemplateflux[:,imodel] = resampflux
                 
@@ -1464,12 +1466,12 @@ class ContinuumTools(Filters):
                     _datatemplateflux = _datatemplateflux.dot(coeff)
                 datatemplateflux.append(_datatemplateflux)
                 
-            # Optionally stack and reshape (used in fitting).
-            if stack_cameras:
-                datatemplateflux = np.concatenate(datatemplateflux, axis=0)  # [npix,nsed*nprop] or [npix,nsed]
-                if ndim == 3:
-                    nwavepix = np.sum([ len(sw) for sw in specwave ])
-                    datatemplateflux = datatemplateflux.reshape(nwavepix, nsed, nprop) # [npix,nsed,nprop]
+        # Optionally stack and reshape (used in fitting).
+        if stack_cameras:
+            datatemplateflux = np.concatenate(datatemplateflux, axis=0)  # [npix,nsed*nprop] or [npix,nsed]
+            if ndim == 3:
+                nwavepix = np.sum([ len(sw) for sw in specwave ])
+                datatemplateflux = datatemplateflux.reshape(nwavepix, nsed, nprop) # [npix,nsed,nprop]
                 
         return datatemplateflux, templatephot_flam # vector or 3-element list of [npix,nmodel] spectra
 
