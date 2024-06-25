@@ -812,18 +812,17 @@ class EMFitTools(Filters):
     
     
     def optimize_continuum_patches(self, linemodel, 
-                               initials, param_bounds,
-                               continuum_patches, 
-                               patch_initials, patch_param_bounds,
-                               obs_bin_centers,
-                               obs_bin_fluxes,
-                               obs_weights,
-                               redshift,
-                               resolution_matrices,
-                               camerapix,
-                               log=None,
-                               verbose=False,
-                               debug=False):
+                                   initials, param_bounds,
+                                   continuum_patches, 
+                                   patch_initials, patch_param_bounds,
+                                   obs_bin_centers,
+                                   obs_bin_fluxes,
+                                   obs_weights,
+                                   redshift,
+                                   resolution_matrices,
+                                   camerapix,
+                                   log=None,
+                                   verbose=False):
         """Optimization routine which includes the underlying continuum.
     
         """
@@ -849,9 +848,9 @@ class EMFitTools(Filters):
         isFree_patch = continuum_patches['free'].value
         nFree_patch = 2 * np.sum(isFree_patch) # slope + intercept
 
-        #params_mapping = EMLine_ParamsMapping(len(linemodel), isFree,
-        #                                      tiedtoparam, tiedfactor,
-        #                                      self.doublet_idx, self.doublet_src)
+        params_mapping = EMLine_ParamsMapping(len(linemodel), isFree,
+                                              tiedtoparam, tiedfactor,
+                                              self.doublet_idx, self.doublet_src)
         
         log.debug(f"Optimizing {nFree} free parameters")
 

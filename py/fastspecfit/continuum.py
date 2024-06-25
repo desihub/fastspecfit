@@ -1266,6 +1266,7 @@ class ContinuumTools(Filters, Inoue14):
     @staticmethod
     def smooth_continuum(*args, **kwargs):
         return _smooth_continuum(*args, **kwargs)
+
     
     @staticmethod    
     def estimate_linesigmas(*args, **kwargs):
@@ -1273,9 +1274,9 @@ class ContinuumTools(Filters, Inoue14):
 
 
     @staticmethod
-    def build_linemask_patches(wave, flux, ivar, resolution_matrix, redshift=0.0, nsig=3., 
-                               uniqueid=0, linetable=None, emlinesfile=None, log=None, 
-                               verbose=False):
+    def build_linemask_patches(wave, flux, ivar, resolution_matrix, redshift=0.0, 
+                               uniqueid=0, initsigma_narrow=150., initsigma_broad=3000.,
+                               initsigma_balmer_broad=1000., emlinesfile=None, log=None):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -1288,9 +1289,6 @@ class ContinuumTools(Filters, Inoue14):
             Inverse variance spectrum corresponding to `flux`.
         redshift : :class:`float`, optional, defaults to 0.0
             Object redshift.
-        nsig : :class:`float`, optional, defaults to 5.0
-            Mask pixels which are within +/-`nsig`-sigma of each emission line,
-            where `sigma` is the line-width in km/s.
 
         Returns
         -------
@@ -1308,10 +1306,10 @@ class ContinuumTools(Filters, Inoue14):
 
         Notes
         -----
-        Code exists to generate some QA but the code is not exposed.
 
         """
         from fastspecfit.emlines import EMFitTools
+        from fastspecfit.emline_fit import EMLine_MultiLines#, EMLine_build_model
 
         if log is None:
             from desiutil.log import get_logger, DEBUG
@@ -1320,26 +1318,91 @@ class ContinuumTools(Filters, Inoue14):
             else:
                 log = get_logger()
 
-        if linetable is None:
-            from fastspecfit.io import read_emlines        
-            linetable = read_emlines(emlinesfile=emlinesfile)
-
         camerapix = np.array([[0, len(wave)]]) # one camera
         weights = np.sqrt(ivar)
 
-        # just strong lines
+        # Read just the strong lines and determine which lines are in range of the camera.
         EMFit = EMFitTools(emlinesfile=emlinesfile, uniqueid=uniqueid, stronglines=True)
-
-        # determine which lines are in range of the camera
-        EMFit.compute_inrange_lines(redshift, wavelims=(np.min(wave)+5, np.max(wave)-5))
+        EMFit.compute_inrange_lines(redshift, wavelims=(np.min(wave), np.max(wave)))
     
-        # Build all the emission-line models for this object.
+        # Build the narrow and narrow+broad emission-line models.
         linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(strict_broadmodel=True)
 
-        # Get initial guesses on the parameters and populate the two "initial"
-        # linemodels; the "final" linemodels will be initialized with the
-        # best-fitting parameters from the initial round of fitting.
-        
+        linetable = EMFit.line_table[EMFit.line_in_range]
+        line_wavelengths = linetable['restwave'].value
+        isBroad = linetable['isbroad'] * ~linetable['isbalmer']
+        isBalmerBroad = linetable['isbroad'] * ~linetable['isbalmer']
+        nline = len(linetable)
+
+
+        # initialize the continuum_patches table for all patches in range
+        patchids = np.unique(linetable['continuum_patch'])
+        npatch = len(patchids)
+
+        continuum_patches = Table()
+        continuum_patches['patchid'] = patchids
+        continuum_patches['s'] = np.zeros(npatch, int) # starting index relative to coadd_wave
+        continuum_patches['e'] = np.zeros(npatch, int) # ending index
+        continuum_patches['pivotwave'] = np.zeros(npatch)
+        continuum_patches['slope'] = np.zeros(npatch)
+        continuum_patches['intercept'] = np.zeros(npatch)
+        continuum_patches['slope_bounds'] = np.broadcast_to([-1e2, +1e2], (npatch, 2))
+        continuum_patches['intercept_bounds'] = np.broadcast_to([-np.inf, +np.inf], (npatch, 2))
+
+        # Get the mapping between patchid and the set of lines belonging to each
+        # patch, and pivotwave.
+        patchLines = []
+        for ipatch, patchid in enumerate(patchids):
+            I = np.where(linetable['continuum_patch'] == patchid)[0]
+            patchLines.append(I)
+            linewaves = linetable['restwave'][I] * (1. + redshift)
+            pivotwave = np.ptp(linewaves) / 2. + np.min(linewaves) # midpoint
+            continuum_patches['pivotwave'][ipatch] = pivotwave
+
+        # iterate on each linemodel and then to convergence
+        for linemodel, testBalmerBroad in zip([linemodel_nobroad, linemodel_broad], [False, True]):
+
+            linesigmas = np.zeros(nline) + initsigma_narrow # default
+            linesigmas[isBroad] = initsigma_broad
+            if testBalmerBroad: # include broad Balmer lines
+                linesigmas[isBalmerBroad] = initsigma_broad
+
+            lineamps = np.ones_like(linesigmas)
+            linevshifts = np.zeros_like(linesigmas)
+
+            # Within each patch, get the pixels of the line (+/-5-sigma) and the
+            # adjacent continuum (+/-7.5-sigma).
+            lines = EMLine_MultiLines(np.hstack((lineamps, linevshifts, linesigmas)), 
+                                      wave, redshift, line_wavelengths, 
+                                      resolution_matrix, camerapix)
+            Clines = EMLine_MultiLines(np.hstack((lineamps, linevshifts, 1.5*linesigmas)), 
+                                       wave, redshift, line_wavelengths, 
+                                       resolution_matrix, camerapix)
+
+            for ipatch in range(npatch):
+                contindx = []
+                for iline in patchLines[ipatch]:
+                    (s, e), _ = lines.getLine(iline)
+                    (sC, eC), _ = Clines.getLine(iline)
+
+                    # what happens on the edges??
+                    nL = s - sC
+                    nR = eC - e
+                    if nL == 0:
+                        nL = 1 # ???
+                    if nR == 0:
+                        nR = 1 # ???
+
+                    contindx.append(np.hstack((np.arange(nL)+sC, np.arange(nR)+e)))
+
+                contindx = np.sort(np.unique(np.hstack(contindx)))
+                continuum_patches['s'][ipatch] = contindx[0]
+                continuum_patches['e'][ipatch] = contindx[-1]
+                continuum_patches['intercept'][ipatch] = np.median(flux[contindx])
+
+            pdb.set_trace()
+
+
         # not sure we will need the 'smoothsigma' anymore...
         from scipy.ndimage import median_filter
         from fastspecfit.util import ivar2var
@@ -1365,14 +1428,29 @@ class ContinuumTools(Filters, Inoue14):
         # of pixels that *may* be affected by emission lines and the adjacent
         # continuum pixels, which we use to build good initial guesses
 
-        linemask = np.zeros_like(wave, bool) # True = affected by possible emission line.
-
-        linetable = EMFit.line_table[EMFit.line_in_range]
-        zlinewaves = linetable['restwave'] * (1. + redshift)
-
         linesigmas = np.repeat(linesigma_narrow, len(linetable)) # default
         linesigmas[linetable['isbroad'] * ~linetable['isbalmer']] = linesigma_uv
         linesigmas[linetable['isbroad'] * linetable['isbalmer']] = linesigma_balmer
+
+        lineamps = np.ones_like(linesigmas)
+        linevshifts = np.zeros_like(linesigmas)
+
+        # True = potentially impacted by possible emission line(s)
+        linemask = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas,
+                                      linetable['restwave'].value, wave, resolution_matrix,
+                                      camerapix) > 0. 
+
+        import matplotlib.pyplot as plt
+        plt.clf()
+        plt.plot(wave, linemask)
+        plt.savefig('junk.png')
+
+        pdb.set_trace()
+
+
+        linemask = np.zeros_like(wave, bool) # True = affected by possible emission line.
+        zlinewaves = linetable['restwave'] * (1. + redshift)
+
         linesigmas_ang = linesigmas * zlinewaves / C_LIGHT # [km/s --> Angstrom]
 
         # Initial set of pixels that may contain emission lines.
@@ -1423,7 +1501,6 @@ class ContinuumTools(Filters, Inoue14):
         continuum_patches['patchid'] = patchids
         continuum_patches['s'] = np.zeros(npatch, int) + 999999 # starting index relative to wave
         continuum_patches['e'] = np.zeros(npatch, int) - 999999 # ending index
-        continuum_patches['pivotwave'] = np.zeros(npatch, 'f4')
         continuum_patches['pivotwave'] = np.zeros(npatch, 'f4')
         continuum_patches['free'] = np.ones(npatch, bool)
 

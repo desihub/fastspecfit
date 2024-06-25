@@ -233,7 +233,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                                                             specdata['coadd_ivar'], specdata['coadd_res_fast'], 
                                                             uniqueid=specdata['uniqueid'],
                                                             redshift=specdata['zredrock'],
-                                                            linetable=CTools.linetable, log=log)
+                                                            log=log)
         #coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
         #                                            specdata['coadd_ivar'], redshift=specdata['zredrock'],
         #                                            linetable=CTools.linetable, log=log)
@@ -439,6 +439,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
 
     return specdata, meta
 
+
 class DESISpectra(TabulatedDESI):
     def __init__(self, stackfit=False, redux_dir=None, fiberassign_dir=None,
                  fphotodir=None, fphotofile=None, mapdir=None):
@@ -511,6 +512,7 @@ class DESISpectra(TabulatedDESI):
         else:
             self.mapdir = mapdir
 
+            
     @staticmethod
     def resolve(targets):
         """Resolve which targets are primary in imaging overlap regions.
@@ -594,6 +596,7 @@ class DESISpectra(TabulatedDESI):
 
         return newphotsys
 
+    
     def select(self, redrockfiles, zmin=None, zmax=None, zwarnmax=None,
                targetids=None, firsttarget=0, ntargets=None,
                input_redshifts=None, specprod_dir=None, use_quasarnet=True,
@@ -1171,8 +1174,8 @@ class DESISpectra(TabulatedDESI):
                         'coadd_wave': coadd_spec.wave[coadd_cameras],
                         'coadd_flux': coadd_spec.flux[coadd_cameras][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
-                        'coadd_res': Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :]),
-                        'coadd_res_fast': EMLine_Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :]),
+                        'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
+                        'coadd_res_fast': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
                         }
                     unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, fastphot,
                                        synthphot, ignore_photometry, log))
@@ -1565,7 +1568,9 @@ def read_emlines(emlinesfile=None):
         errmsg = f'Problem reading emission lines parameter file {emlinesfile}.'
         log.critical(errmsg)
         raise ValueError(errmsg)
-    
+
+    linetable = linetable[np.argsort(linetable['restwave'])]
+
     return linetable    
 
 
