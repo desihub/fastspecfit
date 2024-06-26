@@ -38,18 +38,6 @@ class ParamType(IntEnum):
     SIGMA = 2
 
 
-#def emline_patch_model(redshift, lineamps, linevshifts, linesigmas,
-#                       linewaves, emlinewave, resolution_matrix, camerapix):
-#    """Given parameters, build the model emission-line spectrum + continuum patches.
-#
-#    """
-#
-#    emlinemodel = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas,
-#                                     linewaves, emlinewave, resolution_matrix, camerapix)
-#
-#    return emlinemodel
-    
-    
 def emline_patch_objective(free_parameters, 
                            obs_bin_centers,
                            obs_bin_fluxes, 
@@ -157,9 +145,10 @@ class EMFitTools(Filters):
                 'lyalpha': '0', 'civ_1549': '1', 'ciii_1908': '2', 
                 'mgii_2796': '3', 'mgii_2803': '3', 
                 'oii_3726': '4', 'oii_3729': '4',  
-                'hdelta': '5', 'hdelta_broad': '5', 'hgamma': '5', 'hgamma_broad': '5', 
-                'hbeta': '6', 'hbeta_broad': '6', 'oiii_4959': '6', 'oiii_5007': '6', 
-                'nii_6548': '7', 'halpha': '7', 'halpha_broad': '7', 'nii_6584': '7', 'sii_6716': '7', 'sii_6731': '7'}
+                'hdelta': '5', 'hdelta_broad': '5', 
+                'hgamma': '6', 'hgamma_broad': '6', 
+                'hbeta': '7', 'hbeta_broad': '7', 'oiii_4959': '7', 'oiii_5007': '7', 
+                'nii_6548': '8', 'halpha': '8', 'halpha_broad': '8', 'nii_6584': '8', 'sii_6716': '9', 'sii_6731': '9'}
             self.line_table['continuum_patch'] = [continuum_patches[linename] for linename in self.line_table['name']]
 
         line_names = self.line_table['name'].value
@@ -222,14 +211,13 @@ class EMFitTools(Filters):
     #
     #  Record which lines are within the limits of the cameras
     # 
-    def compute_inrange_lines(self, redshift, wavelims=(3000, 10000)):
+    def compute_inrange_lines(self, redshift, wavelims=(3600., 9900.), wavepad=3.*0.8):
 
         restwave = self.line_table['restwave'].value
-        wavepad = 2.5 # Angstrom
         
         self.line_in_range = \
-            (restwave > (wavelims[0] + wavepad)/(1 + redshift)) & \
-            (restwave < (wavelims[1] - wavepad)/(1 + redshift))
+            (restwave > (wavelims[0] + wavepad)/(1. + redshift)) & \
+            (restwave < (wavelims[1] - wavepad)/(1. + redshift))
         
     
     #
@@ -913,6 +901,7 @@ class EMFitTools(Filters):
                  redshift,
                  resolution_matrices,
                  camerapix,
+                 continuum_patches=None,
                  log=None,
                  verbose=False,
                  debug=False):
@@ -938,18 +927,24 @@ class EMFitTools(Filters):
                                               tiedtoparam, tiedfactor,
                                               self.doublet_idx, self.doublet_src)
         nFree = np.sum(isFree)
-        
-        log.debug(f"Optimizing {nFree} free parameters")
+
+        if continuum_patches is None:
+            log.debug(f"Optimizing {nFree} emission-line parameters")
+        else:
+            npatch = len(continuum_patches)
+            log.debug(f"Optimizing {nFree} emission-line and {2*npatch} continuum patch parameters")
         
         if nFree == 0:
             # corner case where all lines are out of the wavelength range, which can
             # happen at high redshift and with the red camera masked, e.g.,
             # iron/main/dark/6642/39633239580608311).
-            fit_info = {'nfev': 0, 'status': 0}
+            linemodel.meta['nfev'] = 0
+            linemodel.meta['status'] = 0
+            return linemodel
         else:
             initial_guesses = initials[isFree]
             bound_pairs = param_bounds[isFree, :]
-            bounds = (bound_pairs[:,0], bound_pairs[:,1])
+            bounds = [bound_pairs[:, 0], bound_pairs[:, 1]]
             
             obj = EMLine_Objective(obs_bin_centers,
                                    obs_bin_fluxes,
@@ -958,10 +953,28 @@ class EMFitTools(Filters):
                                    line_wavelengths,
                                    tuple(resolution_matrices),
                                    camerapix, # for more efficient iteration
-                                   params_mapping)
-        
+                                   params_mapping,
+                                   continuum_patches=continuum_patches)
+
+            if continuum_patches is None:
+                objective = obj.objective
+                jac = obj.jacobian
+            else:
+                objective = obj.objective_continuum_patches
+                jac = '2-point' # maybe Jeremy can write a new one!
+
+                initial_guesses = np.hstack((initial_guesses, continuum_patches['slope'].value, 
+                                             continuum_patches['intercept'].value))
+
+                line_bounds = bounds.copy() # needed for _drop_params, below
+
+                bounds[0] = np.hstack((bounds[0], continuum_patches['slope_bounds'][:, 0].value,
+                                       continuum_patches['intercept_bounds'][:, 0].value))
+                bounds[1] = np.hstack((bounds[1], continuum_patches['slope_bounds'][:, 1].value,
+                                       continuum_patches['intercept_bounds'][:, 1].value))
+
             try:
-                fit_info = least_squares(obj.objective, initial_guesses, jac=obj.jacobian, args=(),
+                fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
                                          max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
                                          tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': True},
                                          method='trf', bounds=bounds,) # verbose=2)
@@ -974,36 +987,47 @@ class EMFitTools(Filters):
                 log.critical(errmsg)
                 raise RuntimeError(errmsg)
             
+            if continuum_patches is None:
+                line_bounds = bounds
+                line_free_params = free_params
+            else:
+                line_free_params = free_params[:-2*npatch]
+                continuum_free_params = free_params[-2*npatch:].reshape(2, npatch)
+                continuum_patches['slope'] = continuum_free_params[0, :]
+                continuum_patches['intercept'] = continuum_free_params[1, :]
+
             # Drop (zero out) any dubious free parameters.
-            self._drop_params(linemodel, isFree, free_params, bounds, log)
+            self._drop_params(linemodel, isFree, line_free_params, line_bounds, log)
 
             # translate free parame to full param array, but do NOT turn doublet
             # ratios into amplitudes yet, as out_linemodel needs them to be ratios
-            parameters = params_mapping.mapFreeToFull(free_params, patchDoublets=False)
+            parameters = params_mapping.mapFreeToFull(line_free_params, patchDoublets=False)
             
-        linemodel['value'] = parameters.copy() # protect from changes below
-        linemodel.meta['nfev'] = fit_info['nfev']
-        linemodel.meta['status'] = fit_info['status']
-
-        # convert doublet ratios to amplitudes
-        parameters[self.doublet_idx] *= parameters[self.doublet_src]
-        
-        # calculate the observed maximum amplitude for each
-        # fitted spectral line after convolution with the resolution
-        # matrix.
-        obsvalues = EMLine_find_peak_amplitudes(parameters,
-                                                obs_bin_centers,
-                                                redshift,
-                                                line_wavelengths,
-                                                resolution_matrices,
-                                                camerapix)
-        
-        # add observed values as metadata, since they are only
-        # relevant to amplitudes, not all parameters
-        linemodel.meta['obsvalue'] = obsvalues
-        
-        return linemodel
+            linemodel['value'] = parameters.copy() # protect from changes below
+            linemodel.meta['nfev'] = fit_info['nfev']
+            linemodel.meta['status'] = fit_info['status']
     
+            # convert doublet ratios to amplitudes
+            parameters[self.doublet_idx] *= parameters[self.doublet_src]
+            
+            if continuum_patches is None:
+                # calculate the observed maximum amplitude for each
+                # fitted spectral line after convolution with the resolution
+                # matrix.
+                obsvalues = EMLine_find_peak_amplitudes(parameters,
+                                                        obs_bin_centers,
+                                                        redshift,
+                                                        line_wavelengths,
+                                                        resolution_matrices,
+                                                        camerapix)
+                
+                # add observed values as metadata, since they are only
+                # relevant to amplitudes, not all parameters
+                linemodel.meta['obsvalue'] = obsvalues
+                return linemodel
+            else:
+                return linemodel, continuum_patches
+        
     
     def optimize_continuum_patches(self, linemodel, 
                                    initials, param_bounds,
@@ -1033,6 +1057,11 @@ class EMFitTools(Filters):
         isFree      = linemodel['free'].value
         tiedtoparam = linemodel['tiedtoparam'].value
         tiedfactor  = linemodel['tiedfactor'].value
+
+        params_mapping = EMLine_ParamsMapping(len(linemodel), isFree,
+                                              tiedtoparam, tiedfactor,
+                                              self.doublet_idx, self.doublet_src)
+        
         isTied      = ~isFree * (tiedtoparam != -1)
         nFree = np.sum(isFree)
 
@@ -1041,10 +1070,6 @@ class EMFitTools(Filters):
         isFree_patch = continuum_patches['free'].value
         nFree_patch = 2 * np.sum(isFree_patch) # slope + intercept
 
-        params_mapping = EMLine_ParamsMapping(len(linemodel), isFree,
-                                              tiedtoparam, tiedfactor,
-                                              self.doublet_idx, self.doublet_src)
-        
         log.debug(f"Optimizing {nFree} free parameters")
 
         if nFree + nFree_patch == 0:
@@ -1230,7 +1255,8 @@ class EMFitTools(Filters):
             return chi2
 
 
-    def bestfit(self, linemodel, redshift, emlinewave, resolution_matrix, camerapix):
+    def bestfit(self, linemodel, redshift, emlinewave, resolution_matrix, 
+                camerapix, continuum_patches=None):
         """Construct the best-fitting emission-line spectrum from a linemodel."""
 
         linewaves = self.line_table['restwave'].value
@@ -1243,7 +1269,8 @@ class EMFitTools(Filters):
         lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
         
         emlinemodel = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas,
-                                         linewaves, emlinewave, resolution_matrix, camerapix)
+                                         linewaves, emlinewave, resolution_matrix, camerapix,
+                                         continuum_patches=continuum_patches)
         
         return emlinemodel
     

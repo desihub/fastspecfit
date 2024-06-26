@@ -36,7 +36,8 @@ class EMLine_Objective(object):
                  line_wavelengths,
                  resolution_matrices,
                  camerapix,
-                 params_mapping):
+                 params_mapping,
+                 continuum_patches=None):
 
         self.dtype = obs_fluxes.dtype
         
@@ -47,6 +48,8 @@ class EMLine_Objective(object):
         self.resolution_matrices = resolution_matrices
         self.camerapix = camerapix
         self.params_mapping = params_mapping
+        self.obs_bin_centers = obs_bin_centers
+        self.continuum_patches = continuum_patches
         
         self.log_obs_bin_edges, self.ibin_widths = \
             _prepare_bins(obs_bin_centers, camerapix)
@@ -79,6 +82,39 @@ class EMLine_Objective(object):
                           self.resolution_matrices,
                           self.camerapix,
                           model_fluxes)
+        
+        return self.obs_weights * (model_fluxes - self.obs_fluxes) # residuals
+
+
+    def objective_continuum_patches(self, free_parameters):
+        """Like `objective`, but including continuum patches under each emission line.
+
+        """
+        parameters = self.params_mapping.mapFreeToFull(free_parameters)
+        line_amplitudes, line_vshifts, line_sigmas = np.array_split(parameters, 3)
+        
+        model_fluxes = np.empty_like(self.obs_fluxes, dtype=self.dtype)
+        
+        _build_model_core(line_amplitudes,
+                          line_vshifts,
+                          line_sigmas,
+                          self.line_wavelengths,
+                          self.redshift,
+                          self.log_obs_bin_edges,
+                          self.ibin_widths,
+                          self.resolution_matrices,
+                          self.camerapix,
+                          model_fluxes)
+
+        npatch = len(self.continuum_patches)
+        free_patch_parameters = free_parameters[-2*npatch:].reshape(2, npatch)
+
+        model_continuum = np.zeros_like(model_fluxes)
+        for ipatch, (s, e, pivotwave) in enumerate(self.continuum_patches.iterrows('s', 'e', 'pivotwave')):
+            slope, intercept = free_patch_parameters[:, ipatch] # [slope, intercept]
+            patchmodel = slope * (self.obs_bin_centers[s:e] - pivotwave) + intercept
+            model_continuum[s:e] += patchmodel
+        model_fluxes += model_continuum
         
         return self.obs_weights * (model_fluxes - self.obs_fluxes) # residuals
 
@@ -149,7 +185,8 @@ def build_model(redshift,
                 line_wavelengths,
                 obs_bin_centers,
                 resolution_matrices,
-                camerapix):
+                camerapix,
+                continuum_patches=None):
     
     log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers, camerapix)
     
@@ -168,6 +205,13 @@ def build_model(redshift,
 
     # suppress negative pixels arising from resolution matrix
     model_fluxes[model_fluxes < 0.] = 0.
+    
+    if continuum_patches is not None:
+        model_continuum = np.zeros_like(model_fluxes)
+        for s, e, pivotwave, slope, intercept in continuum_patches.iterrows('s', 'e', 'pivotwave', 'slope', 'intercept'):
+            print(s, e, pivotwave, slope, intercept)
+            model_continuum[s:e] += slope * (obs_bin_centers[s:e] - pivotwave) + intercept
+        model_fluxes += model_continuum
     
     return model_fluxes
 

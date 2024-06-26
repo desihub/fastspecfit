@@ -1200,12 +1200,12 @@ class ContinuumTools(Filters):
             continuum_patches['pivotwave'][ipatch] = pivotwave
 
         # iterate on each linemodel and then to convergence
-        for linemodel, testBalmerBroad in zip([linemodel_nobroad, linemodel_broad], [False, True]):
+        #for linemodel in [linemodel_nobroad, linemodel_broad]:
+        for linemodel in [linemodel_broad, linemodel_nobroad]:
 
             linesigmas = np.zeros(nline) + initsigma_narrow # default
             linesigmas[isBroad] = initsigma_uv
-            if testBalmerBroad: # make the Balmer lines broad
-                linesigmas[isBalmerBroad] = initsigma_balmer_broad
+            linesigmas[isBalmerBroad] = initsigma_balmer_broad
 
             pix = _linepix_and_contpix(wave, linetable['name'].value,
                                        line_wavelengths, linesigmas,
@@ -1231,13 +1231,27 @@ class ContinuumTools(Filters):
                 linesigma_balmer_broad=initsigma_balmer_broad, log=log)
 
             # fit!
-            fit = EMFit.optimize_continuum_patches(linemodel, initial_guesses,
-                                                   param_bounds,
-                                                   continuum_patches, wave,
-                                                   flux, weights, redshift,
-                                                   resolution_matrix, camerapix,
-                                                   log=log, debug=False)
+            linefit, contfit = EMFit.optimize(linemodel, initial_guesses,
+                                              param_bounds, wave,
+                                              flux, weights, redshift,
+                                              resolution_matrix, camerapix,
+                                              continuum_patches=continuum_patches, 
+                                              log=log, debug=False)
 
+            bestfit = EMFit.bestfit(linefit, redshift, wave, resolution_matrix, camerapix, 
+                                    continuum_patches=contfit)
+
+            import matplotlib.pyplot as plt
+            ncols = 3
+            nrows = int(np.ceil(npatch / ncols))
+
+            fig, ax = plt.subplots(nrows, ncols, figsize=(2.5*ncols, 2.5*nrows))
+            for (s, e, slope, intercept, pivotwave), xx in zip(contfit.iterrows('s', 'e', 'slope', 'intercept', 'pivotwave'), ax.flat):
+                xx.plot(wave[s:e]/1e4, flux[s:e])
+                xx.plot(wave[s:e]/1e4, bestfit[s:e], color='red', alpha=0.75)
+                xx.plot(wave[s:e]/1e4, slope * (wave[s:e]-pivotwave) + intercept, color='k', lw=2, ls='-')
+            fig.tight_layout()
+            fig.savefig('junk.png')
 
             pdb.set_trace()
 
