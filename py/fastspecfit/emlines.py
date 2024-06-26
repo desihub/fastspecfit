@@ -489,13 +489,15 @@ class EMFitTools(Filters):
     
     def _initial_guesses_and_bounds(self, data, coadd_flux, linesigma_uv=3000.,
                                     linesigma_narrow=150., linesigma_balmer_broad=1000.,
-                                    log=None):
+                                    subtract_local_continuum=False, log=None):
         """For all lines in the wavelength range of the data, get a good initial guess
         on the amplitudes and line-widths. This step is critical for cases like,
         e.g., 39633354915582193 (tile 80613, petal 05), which has strong narrow
         lines.
 
         """
+        from fastspecfit.util import quantile, median
+
         assert(np.all(np.isin(list(data.keys()), ['coadd_linename', 'coadd_linepix', 'coadd_contpix'])))
 
         if log is None:
@@ -529,11 +531,10 @@ class EMFitTools(Filters):
         initsigma_narrow = 75. # 260.0 # 75.0
         initsigma_broad = 3000.  
     
-        initamp = 0.
-        #minamp = 0.0
-        minamp = -1e2
+        initamp = 1.
+        minamp = 0.
         maxamp = +1e5
-        minamp_balmer_broad = minamp # 0.0
+        minamp_balmer_broad = 0.
         maxamp_balmer_broad = maxamp
         
         for line_isbalmer, line_isbroad, line_params in \
@@ -577,28 +578,34 @@ class EMFitTools(Filters):
                 mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
                 mnpx = np.maximum(mnpx, 0)
                 mxpx = np.minimum(mxpx, linepix[-1])
-                amp = np.max(coadd_flux[mnpx:mxpx])
+                if subtract_local_continuum:
+                    amp = np.max(coadd_flux[mnpx:mxpx] - median(coadd_flux[contpix]))
+                else:
+                    amp = np.max(coadd_flux[mnpx:mxpx])
             else:
-                amp = quantile(coadd_flux[linepix], 0.975)
+                if subtract_local_continuum:
+                    amp = quantile(coadd_flux[linepix], 0.975) - median(coadd_flux[contpix])
+                else:
+                    amp = quantile(coadd_flux[linepix], 0.975)
             amp = np.abs(amp)
             
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_flux[linepix])), 3*np.max(coadd_flux[linepix])]
-            mx = 5*np.max(coadd_flux[linepix])
+            mx = 5. * np.max(coadd_flux[linepix])
             if mx < 0: # ???
-                mx = 5*np.max(np.abs(coadd_flux[linepix]))
+                mx = 5. * np.max(np.abs(coadd_flux[linepix]))
             
-            bds = np.array(( -1.5*np.min(np.abs(coadd_flux[linepix])), mx ))
+            bds = np.array([0., mx])
             
-            # In extremely rare cases many of the pixels are zero, in which case
-            # bounds[0] becomes zero, which is bad (e.g.,
-            # iron/main/dark/27054/39627811564029314). Fix that here.
-            if np.abs(bds[0]) == 0.0:
-                N = coadd_flux[linepix] != 0
-                if np.sum(N) > 0:
-                    bds[0] = -1.5*np.min(np.abs(coadd_flux[linepix][N]))
-                if np.abs(bds[0]) == 0.0:
-                    bds[0] = -1e-3 # ??
+            ## In extremely rare cases many of the pixels are zero, in which case
+            ## bounds[0] becomes zero, which is bad (e.g.,
+            ## iron/main/dark/27054/39627811564029314). Fix that here.
+            #if np.abs(bds[0]) == 0.0:
+            #    N = coadd_flux[linepix] != 0
+            #    if np.sum(N) > 0:
+            #        bds[0] = -1.5*np.min(np.abs(coadd_flux[linepix][N]))
+            #    if np.abs(bds[0]) == 0.0:
+            #        bds[0] = -1e-3 # ??
 
             if (bds[0] > bds[1]) or (amp < bds[0]) or (amp > bds[1]):
                 log.warning(f'Initial amplitude is outside its bound for line {linename}.')

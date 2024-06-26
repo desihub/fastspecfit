@@ -1093,7 +1093,7 @@ class ContinuumTools(Filters):
 
         """
         from fastspecfit.emlines import EMFitTools
-        from fastspecfit.emline_fit import EMLine_MultiLines#, EMLine_build_model
+        from fastspecfit.emline_fit import EMLine_MultiLines
 
         if log is None:
             from desiutil.log import get_logger, DEBUG
@@ -1170,14 +1170,14 @@ class ContinuumTools(Filters):
         #EMFit.summarize_linemodel(linemodel_nobroad)
         #EMFit.summarize_linemodel(linemodel_broad)
 
-        linetable = EMFit.line_table[EMFit.line_in_range]
+        linetable = EMFit.line_table#[EMFit.line_in_range]
         line_wavelengths = linetable['restwave'].value
         isBroad = linetable['isbroad'] * ~linetable['isbalmer']
         isBalmerBroad = linetable['isbroad'] * ~linetable['isbalmer']
         nline = len(linetable)
 
         # initialize the continuum_patches table for all patches in range
-        patchids = np.unique(linetable['continuum_patch'])
+        patchids = np.unique(linetable['continuum_patch'][EMFit.line_in_range])
         npatch = len(patchids)
 
         continuum_patches = Table()
@@ -1188,14 +1188,16 @@ class ContinuumTools(Filters):
         continuum_patches['slope'] = np.zeros(npatch)
         continuum_patches['intercept'] = np.zeros(npatch)
         continuum_patches['slope_bounds'] = np.broadcast_to([-1e2, +1e2], (npatch, 2))
-        continuum_patches['intercept_bounds'] = np.broadcast_to([-np.inf, +np.inf], (npatch, 2))
+        continuum_patches['intercept_bounds'] = np.broadcast_to([0., +np.inf], (npatch, 2))
+        #continuum_patches['intercept_bounds'] = np.broadcast_to([-np.inf, +np.inf], (npatch, 2))
 
         # Get the mapping between patchid and the set of lines belonging to each
         # patch, and pivotwave.
-        patchLines = []
+        patchLines, patchLinesIndex = [], []
         for ipatch, patchid in enumerate(patchids):
             I = np.where(linetable['continuum_patch'] == patchid)[0]
-            patchLines.append(I)
+            patchLinesIndex.append(I)
+            patchLines.append(linetable['name'][I].value)
             linewaves = linetable['restwave'][I] * (1. + redshift)
             pivotwave = np.ptp(linewaves) / 2. + np.min(linewaves) # midpoint
             continuum_patches['pivotwave'][ipatch] = pivotwave
@@ -1215,12 +1217,12 @@ class ContinuumTools(Filters):
             # Raise an exception if 'pix' doesn't have all the lines, which it
             # should since we've already trimmed to lines in range, otherwise
             # the patchLines array will be incorrect.
-            assert(np.all(np.isin(linetable['name'], pix['coadd_linename'])))
+            #assert(np.all(np.isin(linetable['name'], pix['coadd_linename'])))
 
             # Determine the edges of each patch based on the continuum
             # (line-free) pixels of all the lines on that patch.
             for ipatch in range(npatch):
-                contindx = [pix['coadd_contpix'][iline] for iline in patchLines[ipatch]]
+                contindx = [pix['coadd_contpix'][np.where(pix['coadd_linename'] == line)[0][0]] for line in patchLines[ipatch]]
                 contindx = np.unique(np.hstack(contindx))
                 continuum_patches['s'][ipatch] = contindx[0]
                 continuum_patches['e'][ipatch] = contindx[-1]
@@ -1229,7 +1231,8 @@ class ContinuumTools(Filters):
             # get initial guesses on the line-emission
             initial_guesses, param_bounds = EMFit._initial_guesses_and_bounds(
                 pix, flux, linesigma_uv=initsigma_uv, linesigma_narrow=initsigma_narrow, 
-                linesigma_balmer_broad=initsigma_balmer_broad, log=log)
+                linesigma_balmer_broad=initsigma_balmer_broad, log=log,
+                subtract_local_continuum=True)
 
             # fit!
             linefit, contfit = EMFit.optimize(linemodel, initial_guesses,
@@ -1242,15 +1245,27 @@ class ContinuumTools(Filters):
             bestfit = EMFit.bestfit(linefit, redshift, wave, resolution_matrix, camerapix, 
                                     continuum_patches=contfit)
 
+            parameters = linefit['value'].value.copy()
+            parameters[EMFit.doublet_idx] *= parameters[EMFit.doublet_src]
+            lines = EMLine_MultiLines(parameters, wave, redshift,
+                                      line_wavelengths,
+                                      resolution_matrix, camerapix)
+
+
+            #########################
             import matplotlib.pyplot as plt
             ncols = 3
             nrows = int(np.ceil(npatch / ncols))
 
             fig, ax = plt.subplots(nrows, ncols, figsize=(2.5*ncols, 2.5*nrows))
-            for (s, e, slope, intercept, pivotwave), xx in zip(contfit.iterrows('s', 'e', 'slope', 'intercept', 'pivotwave'), ax.flat):
-                xx.plot(wave[s:e]/1e4, flux[s:e])
+            for ipatch, ((s, e, slope, intercept, pivotwave), xx) in enumerate(
+                    zip(contfit.iterrows('s', 'e', 'slope', 'intercept', 'pivotwave'), ax.flat)):
+                xx.plot(wave[s:e]/1e4, flux[s:e], color='gray')
                 xx.plot(wave[s:e]/1e4, bestfit[s:e], color='red', alpha=0.75)
                 xx.plot(wave[s:e]/1e4, slope * (wave[s:e]-pivotwave) + intercept, color='k', lw=2, ls='-')
+                for iline in patchLinesIndex[ipatch]:
+                    (ls, le), profile = lines.getLine(iline)
+                    xx.plot(wave[ls:le]/1e4, profile, color='blue', alpha=0.75)
             fig.tight_layout()
             fig.savefig('junk.png')
 
