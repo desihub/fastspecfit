@@ -229,7 +229,7 @@ class EMFitTools(Filters):
     # Parameter fixing needs to know which lines are within the observed wavelength
     # ranges of the cameras, so we first add this information to the line table.
     #
-    def build_linemodels(self, strict_broadmodel=True):
+    def build_linemodels(self, separate_oiii_fit=True):
         
         #
         # create_model()
@@ -386,12 +386,12 @@ class EMFitTools(Filters):
             # [OIII] doublet frequently has an outflow component, so fit it
             # separately. See the discussion at
             # https://github.com/desihub/fastspecfit/issues/160
-            if strict_broadmodel:
+            if separate_oiii_fit:
                 if not line_isbroad and not line_name in { 'nii_6584', 'oiii_4959', 'oiii_5007' }:
                     tie_line(tying_info, line_params, 'nii_6584')
-                    
-                #if not line_isbroad and line_name != 'oiii_5007':
-                #    tie_line(tying_info, line_params, 'oiii_5007')
+            else:
+                if not line_isbroad and line_name != 'oiii_5007':
+                    tie_line(tying_info, line_params, 'oiii_5007')
                 
                 ## Tie all forbidden lines to [OIII] 5007; the narrow Balmer and
                 ## helium lines are separately tied together.
@@ -401,7 +401,6 @@ class EMFitTools(Filters):
         
         linemodel_broad = create_model(tying_info)
 
-        
         # Model 2 - like Model 1, but additionally fix params of all
         # broad lines.  we inherit tying info from Model 1, which we
         # will modify below.
@@ -417,7 +416,7 @@ class EMFitTools(Filters):
             if line_isbalmer and line_isbroad and line_name != 'halpha_broad':
                 tie_line(tying_info, line_params, 'halpha_broad', amp_factor = 1.0)
                 
-            if strict_broadmodel:
+            if separate_oiii_fit:
                 # Tie the forbidden lines to [OIII] 5007.
                 if not line_isbalmer and not line_isbroad and line_name != 'oiii_5007':
                     tie_line(tying_info, line_params, 'oiii_5007')
@@ -443,13 +442,14 @@ class EMFitTools(Filters):
     def summarize_linemodel(self, linemodel):
 
         """Simple function to summarize an input linemodel."""
+
         def _print(line_mask):
             for line in np.where(line_mask)[0]:
                 line_name   = self.line_table['name'][line]
                 line_params = self.line_table['params'][line]
                 
                 for param in line_params:
-                    param_name    = linemodel['param_name'][param]
+                    param_name    = self.param_table['name'][param]
                     param_isfixed = linemodel['fixed'][param]
                     tiedtoparam   = linemodel['tiedtoparam'][param]
                     
@@ -457,7 +457,7 @@ class EMFitTools(Filters):
                         print(f'{param_name:25s} ', end='')
                         print('FIXED' if param_isfixed else 'free')
                     else:
-                        source_name = linemodel['param_name'][tiedtoparam]
+                        source_name = self.param_table['name'][tiedtoparam]
                         tiedfactor  = linemodel['tiedfactor'][param]
                         print(f'{param_name:25s} tied to {source_name:25s} '
                               f'with factor {tiedfactor:.4f}', end='')
@@ -1719,7 +1719,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     
     # Build all the emission-line models for this object.
     linemodel_broad, linemodel_nobroad = \
-        EMFit.build_linemodels(strict_broadmodel=True)
+        EMFit.build_linemodels(separate_oiii_fit=True)
     
     # Get initial guesses on the parameters and populate the two "initial"
     # linemodels; the "final" linemodels will be initialized with the

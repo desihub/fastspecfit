@@ -1166,7 +1166,9 @@ class ContinuumTools(Filters):
         EMFit.compute_inrange_lines(redshift, wavelims=(np.min(wave), np.max(wave)))
     
         # Build the narrow and narrow+broad emission-line models.
-        linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(strict_broadmodel=True)
+        linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(separate_oiii_fit=False)
+        #EMFit.summarize_linemodel(linemodel_nobroad)
+        #EMFit.summarize_linemodel(linemodel_broad)
 
         linetable = EMFit.line_table[EMFit.line_in_range]
         line_wavelengths = linetable['restwave'].value
