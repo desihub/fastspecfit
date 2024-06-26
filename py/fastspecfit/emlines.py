@@ -499,7 +499,201 @@ class EMFitTools(Filters):
         _print(~line_isbroad & ~line_isbalmer)
         
     
-    def initial_guesses_and_bounds(self, data, emlinewave, emlineflux, log):
+    def _initial_guesses_and_bounds(self, data, coadd_flux, linesigma_uv=3000.,
+                                    linesigma_narrow=150., linesigma_balmer_broad=1000.,
+                                    log=None):
+        """For all lines in the wavelength range of the data, get a good initial guess
+        on the amplitudes and line-widths. This step is critical for cases like,
+        e.g., 39633354915582193 (tile 80613, petal 05), which has strong narrow
+        lines.
+
+        """
+        assert(np.all(np.isin(list(data.keys()), ['coadd_linename', 'coadd_linepix', 'coadd_contpix'])))
+
+        if log is None:
+            from desiutil.log import get_logger
+            log = get_logger()
+
+        initials = np.empty(len(self.param_table), dtype=np.float64)
+        bounds   = np.empty((len(self.param_table), 2), dtype=np.float64)
+        
+        # a priori initial guesses and bounds
+        initvshift = 0.
+        vmaxshift_narrow = 500.
+        vmaxshift_broad = 2500. # 3000.0
+        vmaxshift_balmer_broad = 2500.
+    
+        minsigma_narrow = 1.
+        maxsigma_narrow = 750. # 500.0
+
+        minsigma_broad = 1. # 100.
+        maxsigma_broad = 1e4
+
+        minsigma_balmer_broad = 1. # 100.0 # minsigma_narrow
+        maxsigma_balmer_broad = maxsigma_broad
+    
+        # Be very careful about changing the default broad line-sigma. Smaller
+        # values like 1500 km/s (which is arguably more sensible) can lead to
+        # low-amplitude broad lines in a bunch of normal star-forming galaxy
+        # spectra. (They act to "suck up" local continuum variations.) Also
+        # recall that if it's well-measured, we use the initial line-sigma in
+        # estimate_linesigma, which is a better initial guess.
+        initsigma_narrow = 75. # 260.0 # 75.0
+        initsigma_broad = 3000.  
+    
+        initamp = 0.
+        #minamp = 0.0
+        minamp = -1e2
+        maxamp = +1e5
+        minamp_balmer_broad = minamp # 0.0
+        maxamp_balmer_broad = maxamp
+        
+        for line_isbalmer, line_isbroad, line_params in \
+                self.line_table.iterrows('isbalmer', 'isbroad', 'params'):
+            
+            amp, vshift, sigma = line_params
+
+            # initial values and bounds for line's parameters
+            initials[amp]    = initamp
+            initials[vshift] = initvshift
+            
+            if line_isbroad:
+                initials[sigma] = initsigma_broad
+                
+                if line_isbalmer: # broad He+Balmer lines
+                    bounds[amp] = (minamp_balmer_broad, maxamp_balmer_broad) 
+                    bounds[vshift] = (-vmaxshift_balmer_broad, +vmaxshift_balmer_broad)
+                    bounds[sigma] = (minsigma_balmer_broad, maxsigma_balmer_broad)
+                else: # broad UV/QSO lines (non-Balmer)
+                    bounds[amp] = (minamp, maxamp)
+                    bounds[vshift] = (-vmaxshift_broad, +vmaxshift_broad)
+                    bounds[sigma] = (minsigma_broad, maxsigma_broad)
+            else: # narrow He+Balmer lines, and forbidden lines
+                initials[sigma] = initsigma_narrow
+                
+                bounds[amp] = (minamp, maxamp)
+                bounds[vshift] = (-vmaxshift_narrow, +vmaxshift_narrow)
+                bounds[sigma] = (minsigma_narrow, maxsigma_narrow)        
+        
+        # Replace a priori initial values with those estimated by initial peak removal,
+        # if available.
+        for linename, linepix, contpix in zip(data['coadd_linename'],
+                                              data['coadd_linepix'],
+                                              data['coadd_contpix']):
+            ## skip the physical doublets
+            #if not hasattr(self.EMLineModel, f'{linename}_amp'):
+            #    continue
+            
+            npix = len(linepix)
+            if npix > 5:
+                mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
+                mnpx = np.maximum(mnpx, 0)
+                mxpx = np.minimum(mxpx, linepix[-1])
+                amp = np.max(coadd_flux[mnpx:mxpx])
+            else:
+                amp = quantile(coadd_flux[linepix], 0.975)
+            amp = np.abs(amp)
+            
+            # update the bounds on the line-amplitude
+            #bounds = [-np.min(np.abs(coadd_flux[linepix])), 3*np.max(coadd_flux[linepix])]
+            mx = 5*np.max(coadd_flux[linepix])
+            if mx < 0: # ???
+                mx = 5*np.max(np.abs(coadd_flux[linepix]))
+            
+            bds = np.array(( -1.5*np.min(np.abs(coadd_flux[linepix])), mx ))
+            
+            # In extremely rare cases many of the pixels are zero, in which case
+            # bounds[0] becomes zero, which is bad (e.g.,
+            # iron/main/dark/27054/39627811564029314). Fix that here.
+            if np.abs(bds[0]) == 0.0:
+                N = coadd_flux[linepix] != 0
+                if np.sum(N) > 0:
+                    bds[0] = -1.5*np.min(np.abs(coadd_flux[linepix][N]))
+                if np.abs(bds[0]) == 0.0:
+                    bds[0] = -1e-3 # ??
+
+            if (bds[0] > bds[1]) or (amp < bds[0]) or (amp > bds[1]):
+                log.warning(f'Initial amplitude is outside its bound for line {linename}.')
+                amp = np.diff(bds)/2 + bds[0]
+                # Should never happen.
+                if (bds[0] > bds[1]) or (amp < bds[0]) or (amp > bds[1]):
+                    errmsg = f'Initial amplitude is outside its bound for line {linename}.'
+                    self.log.critical(errmsg)
+                    raise ValueError(errmsg)
+            
+            # record our initial gueses and bounds for the amplitude
+            
+            line = self.line_map[linename]
+            amp_idx = self.line_table['params'][line, ParamType.AMPLITUDE]
+            initials[amp_idx] = amp
+            bounds[amp_idx] = bds
+
+        # Now update the linewidth but here we need to loop over *all* lines
+        # (not just those in range). E.g., if H-alpha is out of range we need to
+        # set its initial value correctly since other lines are tied to it
+        # (e.g., main-bright-32406-39628257196245904).
+
+        for isbroad, isbalmer, params in \
+                self.line_table.iterrows('isbroad', 'isbalmer', 'params'):
+            
+            if isbroad:
+                if isbalmer: # broad Balmer lines
+                    isigma = linesigma_balmer_broad
+                else:
+                    isigma = linesigma_uv
+            else:
+                isigma = linesigma_narrow
+
+            # Make sure the initial guess for the narrow Balmer+helium
+            # line is smaller than the guess for the broad-line model.
+            if isbroad and isbalmer:
+                isigma *= 1.1
+            
+            sigma_idx = params[ParamType.SIGMA]
+            initials[sigma_idx] = isigma
+
+        # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
+        # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
+        # self.doublet_names and also note that any change in the order of
+        # these lines has to be handled in _emline_spectrum!
+        doublet_bounds = {
+            'mgii_doublet_ratio' : (0.0, 10.0), # MgII 2796/2803
+            'oii_doublet_ratio'  : (0.0,  2.0), # [OII] 3726/3729 # (0.5, 1.5) # (0.66, 1.4)
+            'sii_doublet_ratio'  : (0.0,  2.0), # [SII] 6731/6716 # (0.5, 1.5) # (0.67, 1.2)
+        }
+
+        param_names = self.param_table['name'].value
+
+        # assign special bounds to each tied doublet parameter
+        for iparam in self.doublet_idx:
+            param_name = param_names[iparam]
+            bounds[iparam] = doublet_bounds[param_name]
+            initials[iparam] = 1.
+
+        for iparam, param_name in enumerate(self.param_table['name'].value):
+            
+            # make sure each parameter lies within its bounds
+            iv = initials[iparam]
+            lb, ub = bounds[iparam]
+            if iv < lb:
+                errmsg = \
+                    f'Initial parameter {param_name} is outside its bound, ' + \
+                    f'{iv:.2f} < {lb:.2f}.'
+                log.warning(errmsg)
+                
+                initials[iparam] = lb
+            if iv > ub:
+                errmsg = \
+                    f'Initial parameter {param_name} is outside its bound, ' + \
+                    f'{iv:.2f} > {ub:.2f}.'
+                log.warning(errmsg)
+                
+                initials[iparam] = ub
+                
+        return initials, bounds
+
+        
+    def old_initial_guesses_and_bounds(self, data, emlinewave, emlineflux, log):
         """For all lines in the wavelength range of the data, get a good initial guess
         on the amplitudes and line-widths. This step is critical for cases like,
         e.g., 39633354915582193 (tile 80613, petal 05), which has strong narrow
@@ -814,7 +1008,6 @@ class EMFitTools(Filters):
     def optimize_continuum_patches(self, linemodel, 
                                    initials, param_bounds,
                                    continuum_patches, 
-                                   patch_initials, patch_param_bounds,
                                    obs_bin_centers,
                                    obs_bin_fluxes,
                                    obs_weights,
