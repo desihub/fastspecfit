@@ -1334,7 +1334,6 @@ class ContinuumTools(Filters, Inoue14):
         isBalmerBroad = linetable['isbroad'] * ~linetable['isbalmer']
         nline = len(linetable)
 
-
         # initialize the continuum_patches table for all patches in range
         patchids = np.unique(linetable['continuum_patch'])
         npatch = len(patchids)
@@ -1359,16 +1358,21 @@ class ContinuumTools(Filters, Inoue14):
             pivotwave = np.ptp(linewaves) / 2. + np.min(linewaves) # midpoint
             continuum_patches['pivotwave'][ipatch] = pivotwave
 
+        # hack a 'data' dictionary so we can (re)use initial_guesses_and_bounds        
+        data = {}
+
         # iterate on each linemodel and then to convergence
         for linemodel, testBalmerBroad in zip([linemodel_nobroad, linemodel_broad], [False, True]):
 
             linesigmas = np.zeros(nline) + initsigma_narrow # default
             linesigmas[isBroad] = initsigma_broad
             if testBalmerBroad: # include broad Balmer lines
-                linesigmas[isBalmerBroad] = initsigma_broad
+                linesigmas[isBalmerBroad] = initsigma_balmer_broad
 
             lineamps = np.ones_like(linesigmas)
             linevshifts = np.zeros_like(linesigmas)
+
+            pdb.set_trace()            
 
             # Within each patch, get the pixels of the line (+/-5-sigma) and the
             # adjacent continuum (+/-7.5-sigma).
@@ -1388,12 +1392,13 @@ class ContinuumTools(Filters, Inoue14):
                     # what happens on the edges??
                     nL = s - sC
                     nR = eC - e
-                    if nL == 0:
-                        nL = 1 # ???
-                    if nR == 0:
-                        nR = 1 # ???
+                    #if nL == 0:
+                    #    nL = 1 # ???
+                    #if nR == 0:
+                    #    nR = 1 # ???
 
-                    contindx.append(np.hstack((np.arange(nL)+sC, np.arange(nR)+e)))
+                    cindx = np.hstack((np.arange(nL)+sC, np.arange(nR)+e))
+                    contindx.append(cindx)
 
                 contindx = np.sort(np.unique(np.hstack(contindx)))
                 continuum_patches['s'][ipatch] = contindx[0]

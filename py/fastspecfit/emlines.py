@@ -514,18 +514,18 @@ class EMFitTools(Filters):
         # a priori initial guesses and bounds
         #
         
-        initvshift = 0.0
-        vmaxshift_narrow = 500.0
-        vmaxshift_broad = 2500.0 # 3000.0
+        initvshift = 0.
+        vmaxshift_narrow = 500.
+        vmaxshift_broad = 2500. # 3000.0
         vmaxshift_balmer_broad = 2500.
     
-        minsigma_narrow = 1.0
-        maxsigma_narrow = 750.0 # 500.0
+        minsigma_narrow = 1.
+        maxsigma_narrow = 750. # 500.0
 
-        minsigma_broad = 1.0 # 100.
+        minsigma_broad = 1. # 100.
         maxsigma_broad = 1e4
 
-        minsigma_balmer_broad = 1.0 # 100.0 # minsigma_narrow
+        minsigma_balmer_broad = 1. # 100.0 # minsigma_narrow
         maxsigma_balmer_broad = maxsigma_broad
     
         # Be very careful about changing the default broad line-sigma. Smaller
@@ -534,10 +534,10 @@ class EMFitTools(Filters):
         # spectra. (They act to "suck up" local continuum variations.) Also
         # recall that if it's well-measured, we use the initial line-sigma in
         # estimate_linesigma, which is a better initial guess.
-        initsigma_narrow = 75.0 # 260.0 # 75.0
-        initsigma_broad = 3000.0  
+        initsigma_narrow = 75. # 260.0 # 75.0
+        initsigma_broad = 3000.  
     
-        initamp = 0.0
+        initamp = 0.
         #minamp = 0.0
         minamp = -1e2
         maxamp = +1e5
