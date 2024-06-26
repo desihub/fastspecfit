@@ -284,15 +284,14 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
     
         # Optionally synthesize photometry from the coadded spectrum.
         if synthphot and synth_filters is not None:
-            padflux, padwave = synth_filters.pad_spectrum(specdata['coadd_flux'], specdata['coadd_wave'], method='edge')
-            synthmaggies = synth_filters.get_ab_maggies(padflux / FLUXNORM, padwave)
-            synthmaggies = synthmaggies.as_array().view('f8')
-    
+            synthmaggies = CTools.get_ab_maggies(synth_filters,
+                                                 specdata['coadd_flux'] / FLUXNORM,
+                                                 specdata['coadd_wave'])
+            
             # code to synthesize uncertainties from the variance spectrum
             #var, mask = _ivar2var(specdata['coadd_ivar'])
-            #padvar, padwave = filters.pad_spectrum(var[mask], specdata['coadd_wave'][mask], method='edge')
-            #synthvarmaggies = filters.get_ab_maggies(1e-17**2 * padvar, padwave)
-            #synthivarmaggies = 1 / synthvarmaggies.as_array().view('f8')[:3] # keep just grz
+            #r = CTools.get_ab_maggies(filters, 1e-17**2 * var[mask], specdata['coadd_wave'][mask])
+            #synthivarmaggies = 1 / r[:3] # keep just grz
     
             #specdata['synthphot'] = CTools.parse_photometry(CTools.bands,
             #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
@@ -429,10 +428,8 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
 
     # Optionally synthesize photometry from the coadded spectrum.
     if synthphot:
-        padflux, padwave = synth_filters.pad_spectrum(specdata['coadd_flux'], specdata['coadd_wave'], method='edge')
-        synthmaggies = synth_filters.get_ab_maggies(padflux / FLUXNORM, padwave)
-        synthmaggies = synthmaggies.as_array().view('f8')
-
+        synthmaggies = CTools.get_ab_maggies(synth_filters, specdata['coadd_flux'] / FLUXNORM, specdata['coadd_wave'])
+        
         specdata['synthphot'] = CTools.parse_photometry(CTools.synth_bands,
             maggies=synthmaggies, nanomaggies=False,
             lambda_eff=synth_filters.effective_wavelengths.value, log=log)
@@ -2144,11 +2141,13 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
     # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
     if mintemplatewave is None:
         mintemplatewave = np.min(wave)
-    wavekeep = np.where((wave >= mintemplatewave) * (wave <= maxtemplatewave))[0]
-
-    templatewave = wave[wavekeep]
-    templateflux = templateflux[wavekeep, :]
-    templateflux_nolines = templateflux - templatelineflux[wavekeep, :]
+    
+    keeplo = np.searchsorted(wave, mintemplatewave, 'left')
+    keephi = np.searchsorted(wave, maxtemplatewave, 'right')
+    
+    templatewave = wave[keeplo:keephi]
+    templateflux = templateflux[keeplo:keephi, :]
+    templateflux_nolines = templateflux - templatelineflux[keeplo:keephi, :]
     del wave, templatelineflux
     
     # Cache a copy of the line-free templates at the nominal velocity
@@ -2156,15 +2155,16 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
     if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
         vdisp_nominal = vdisphdr['VDISPNOM'] # [km/s]
     
-    I = np.where(templatewave < PIXKMS_WAVESPLIT)[0]
-    templateflux_nolines_nomvdisp = templateflux_nolines.copy()
-    templateflux_nolines_nomvdisp[I, :] = _convolve_vdisp(templateflux_nolines_nomvdisp[I, :], vdisp_nominal,
-                                                          pixsize_kms=PIXKMS_BLU)
+    hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
 
-    templateflux_nomvdisp = templateflux.copy()
-    templateflux_nomvdisp[I, :] = _convolve_vdisp(templateflux_nomvdisp[I, :], vdisp_nominal,
-                                                  pixsize_kms=PIXKMS_BLU)
-
+    templateflux_nolines_nomvdisp = \
+        _convolve_vdisp(templateflux_nolines, hi,
+                        vdisp_nominal, pixsize_kms=PIXKMS_BLU)
+    
+    templateflux_nomvdisp = \
+        _convolve_vdisp(templateflux, hi,
+                        vdisp_nominal, pixsize_kms=PIXKMS_BLU)
+    
     # pack into a dictionary
     templatecache = {'imf': templatehdr['IMF'],
                      #'nsed': len(templateinfo), 'npix': len(wavekeep),

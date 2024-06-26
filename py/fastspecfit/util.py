@@ -128,6 +128,8 @@ def air2vac(airwave):
     nn = 1 + 0.00008336624212083 + 0.02408926869968 / (130.1065924522 - ss**2) + 0.0001599740894897 / (38.92568793293 - ss**2)
     return airwave * nn
 
+
+@numba.jit(nopython=True, nogil=True)
 def centers2edges(centers):
     """Convert bin centers to bin edges, guessing at what you probably meant
 
@@ -138,15 +140,18 @@ def centers2edges(centers):
         array: bin edges, lenth = len(centers) + 1
 
     """
-    centers = np.asarray(centers)
-    edges = np.zeros(len(centers)+1)
+    
+    edges = np.empty(len(centers) + 1, dtype=np.float64)
+    
     #- Interior edges are just points half way between bin centers
-    edges[1:-1] = (centers[0:-1] + centers[1:]) / 2.0
+    edges[1:-1] = 0.5 * (centers[:-1] + centers[1:])
+    
     #- edge edges are extrapolation of interior bin sizes
-    edges[0] = centers[0] - (centers[1]-edges[1])
-    edges[-1] = centers[-1] + (centers[-1]-edges[-2])
+    edges[0]  = centers[0]  - (centers[1]  - edges[1])
+    edges[-1] = centers[-1] + (centers[-1] - edges[-2])
 
     return edges
+
 
 # This code is purposely written in a very "C-like" way.  The logic
 # being that it may help numba optimization and also makes it easier
@@ -154,59 +159,55 @@ def centers2edges(centers):
 # of this code have already been tested and shown to perform no better
 # than numba on Intel haswell and KNL architectures.
 
-@numba.jit(nopython=True, nogil=True)
-def _trapz_rebin(x, y, edges, results):
+@numba.jit(nopython=True, fastmath=True, nogil=True)
+def _trapz_rebin(x, y, edges):
     '''
     Numba-friendly version of trapezoidal rebinning
 
     See redrock.rebin.trapz_rebin() for input descriptions.
     `results` is pre-allocated array of length len(edges)-1 to keep results
     '''
-    nbin = len(edges) - 1
-    i = 0  #- index counter for output
+    nbins = len(edges) - 1
+        
+    results = np.empty(nbins, dtype=np.float64)
+    
     j = 0  #- index counter for inputs
-    yedge = 0.0
-    area = 0.0
-
-    while i < nbin:
-        #- Seek next sample beyond bin edge
+    for i in range(nbins):
+        
+        results[i] = 0.
+        
+        # seek least j s.t. edges[i] < x[j]
         while x[j] <= edges[i]:
             j += 1
-
+            
         #- What is the y value where the interpolation crossed the edge?
-        yedge = y[j-1] + (edges[i]-x[j-1]) * (y[j]-y[j-1]) / (x[j]-x[j-1])
-
+        yedge = y[j-1] + (edges[i] - x[j-1]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
+        
         #- Is this sample inside this bin?
         if x[j] < edges[i+1]:
-            area = 0.5 * (y[j] + yedge) * (x[j] - edges[i])
-            results[i] += area
-
+            results[i] += (y[j] + yedge) * (x[j] - edges[i]) # 2*area
+            
             #- Continue with interior bins
             while x[j+1] < edges[i+1]:
                 j += 1
-                area = 0.5 * (y[j] + y[j-1]) * (x[j] - x[j-1])
-                results[i] += area
+                results[i] += (y[j] + y[j-1]) * (x[j] - x[j-1]) # 2*area
 
             #- Next sample will be outside this bin; handle upper edge
-            yedge = y[j] + (edges[i+1]-x[j]) * (y[j+1]-y[j]) / (x[j+1]-x[j])
-            area = 0.5 * (yedge + y[j]) * (edges[i+1] - x[j])
-            results[i] += area
-
+            yedge = y[j] + (edges[i+1] - x[j]) * (y[j+1] - y[j]) / (x[j+1] - x[j])
+            results[i] += (yedge + y[j]) * (edges[i+1] - x[j]) # 2*area
+            
         #- Otherwise the samples span over this bin
         else:
-            ylo = y[j] + (edges[i]-x[j]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
-            yhi = y[j] + (edges[i+1]-x[j]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
-            area = 0.5 * (ylo+yhi) * (edges[i+1]-edges[i])
-            results[i] += area
+            ylo = y[j] + (edges[i]   - x[j]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
+            yhi = y[j] + (edges[i+1] - x[j]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
+            results[i] += (ylo + yhi) * (edges[i+1] - edges[i]) # 2*area
+    
+        results[i] /= 2 * (edges[i+1] - edges[i])
+        
+    return results
 
-        i += 1
 
-    for i in range(nbin):
-        results[i] /= edges[i+1] - edges[i]
-
-    return
-
-def trapz_rebin(x, y, xnew=None, edges=None):
+def trapz_rebin(x, y, xnew, edges=None):
     """Rebin y(x) flux density using trapezoidal integration between bin edges
 
     Notes:
@@ -231,17 +232,14 @@ def trapz_rebin(x, y, xnew=None, edges=None):
     """
     if edges is None:
         edges = centers2edges(xnew)
-    else:
-        edges = np.asarray(edges)
-
+#    else:
+#        edges = np.asarray(edges)
+    
     if edges[0] < x[0] or x[-1] < edges[-1]:
         raise ValueError('edges must be within input x range')
 
-    result = np.zeros(len(edges)-1, dtype=np.float64)
+    return _trapz_rebin(x, y, edges)
 
-    _trapz_rebin(x, y, edges, result)
-
-    return result
 
 class ZWarningMask(object):
     """
@@ -473,8 +471,19 @@ def sigmaclip(c, low=3., high=3.):
         
     return c[mask], clo, chi
 
+def quantile(A, q):
+    return _quantile(A, q)
+
+def median(A):
+    return _median(A)
+
 # Numba's quantile impl is much faster
 # than Numpy's standard version
 @numba.jit(nopython=True, nogil=True)
-def quantile(A, q):
+def _quantile(A, q):
     return np.quantile(A, q)
+
+# Numba's median impl is also faster
+@numba.jit(nopython=True, nogil=True)
+def _median(A):
+    return np.median(A)

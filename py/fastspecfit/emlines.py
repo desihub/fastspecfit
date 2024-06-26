@@ -1415,10 +1415,9 @@ class EMFitTools(Filters):
         """
         filters = self.synth_filters[data['photsys']]
 
-        # Pad (simply) in wavelength...
-        padflux, padwave = filters.pad_spectrum(modelflux, modelwave, method='edge')
-        synthmaggies = filters.get_ab_maggies(padflux / FLUXNORM, padwave)
-        synthmaggies = synthmaggies.as_array().view('f8')
+        synthmaggies = self.get_ab_maggies(filters, modelflux / FLUXNORM, modelwave)
+        model_synthmag = self.to_nanomaggies(synthmaggies) # units of nanomaggies
+        
         model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
                                                 nanomaggies=False,
                                                 lambda_eff=filters.effective_wavelengths.value)
