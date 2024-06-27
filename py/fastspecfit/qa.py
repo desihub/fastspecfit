@@ -786,7 +786,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     
     # zoom in on individual emission lines - use linetable!
     if not fastphot:
-        linetable = EMFit.linetable
+        linetable = EMFit.line_table
         inrange = ((linetable['restwave'] * (1+redshift) > np.min(fullwave)) *
             (linetable['restwave'] * (1+redshift) < np.max(fullwave)))
         linetable = linetable[inrange]
