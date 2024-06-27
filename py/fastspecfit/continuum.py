@@ -1060,7 +1060,8 @@ class ContinuumTools(Filters):
     @staticmethod
     def build_linemask_patches(wave, flux, ivar, resolution_matrix, redshift=0.0, 
                                uniqueid=0, initsigma_uv=3000., initsigma_narrow=150., 
-                               initsigma_balmer_broad=1000., emlinesfile=None, log=None):
+                               initsigma_balmer_broad=1000., emlinesfile=None, 
+                               fix_continuum_slope=False, log=None):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -1092,8 +1093,8 @@ class ContinuumTools(Filters):
         -----
 
         """
+        from fastspecfit.util import median, quantile
         from fastspecfit.emlines import EMFitTools
-        from fastspecfit.emline_fit import EMLine_MultiLines
 
         if log is None:
             from desiutil.log import get_logger, DEBUG
@@ -1188,7 +1189,7 @@ class ContinuumTools(Filters):
         continuum_patches['slope'] = np.zeros(npatch)
         continuum_patches['intercept'] = np.zeros(npatch)
         continuum_patches['slope_bounds'] = np.broadcast_to([-1e2, +1e2], (npatch, 2))
-        continuum_patches['intercept_bounds'] = np.broadcast_to([0., +np.inf], (npatch, 2))
+        continuum_patches['intercept_bounds'] = np.broadcast_to([-1e5, +1e5], (npatch, 2))
         #continuum_patches['intercept_bounds'] = np.broadcast_to([-np.inf, +np.inf], (npatch, 2))
 
         # Get the mapping between patchid and the set of lines belonging to each
@@ -1203,8 +1204,8 @@ class ContinuumTools(Filters):
             continuum_patches['pivotwave'][ipatch] = pivotwave
 
         # iterate on each linemodel and then to convergence
-        #for linemodel in [linemodel_nobroad, linemodel_broad]:
-        for linemodel in [linemodel_broad, linemodel_nobroad]:
+        for linemodel in [linemodel_nobroad, linemodel_broad]:
+        #for linemodel in [linemodel_broad, linemodel_nobroad]:
 
             linesigmas = np.zeros(nline) + initsigma_narrow # default
             linesigmas[isBroad] = initsigma_uv
@@ -1226,13 +1227,18 @@ class ContinuumTools(Filters):
                 contindx = np.unique(np.hstack(contindx))
                 continuum_patches['s'][ipatch] = contindx[0]
                 continuum_patches['e'][ipatch] = contindx[-1]
-                continuum_patches['intercept'][ipatch] = np.median(flux[contindx])
+                continuum_patches['intercept'][ipatch] = quantile(flux[contindx], 0.5)
+                continuum_patches['intercept_bounds'][ipatch] = quantile(flux[contindx], [0.05, 0.95])
 
-            # get initial guesses on the line-emission
+            # Get initial guesses on the line-emission; do not allow the
+            # broad-line width to be larger than the continuum patch.
             initial_guesses, param_bounds = EMFit._initial_guesses_and_bounds(
                 pix, flux, linesigma_uv=initsigma_uv, linesigma_narrow=initsigma_narrow, 
-                linesigma_balmer_broad=initsigma_balmer_broad, log=log,
-                subtract_local_continuum=True)
+                linesigma_balmer_broad=initsigma_balmer_broad, 
+                #maxsigma_narrow=2.*initsigma_narrow, maxsigma_broad=2*initsigma_uv, 
+                #maxsigma_balmer_broad=2.*initsigma_balmer_broad, 
+                #vmaxshift_narrow=100., vmaxshift_broad=100., vmaxshift_balmer_broad=100.,
+                subtract_local_continuum=True, log=log)
 
             # fit!
             linefit, contfit = EMFit.optimize(linemodel, initial_guesses,
@@ -1240,10 +1246,17 @@ class ContinuumTools(Filters):
                                               flux, weights, redshift,
                                               resolution_matrix, camerapix,
                                               continuum_patches=continuum_patches, 
+                                              fix_continuum_slope=fix_continuum_slope,
                                               log=log, debug=False)
-
             bestfit = EMFit.bestfit(linefit, redshift, wave, resolution_matrix, camerapix, 
                                     continuum_patches=contfit)
+
+            #########################
+            import matplotlib.pyplot as plt
+            from fastspecfit.emline_fit import EMLine_MultiLines
+
+            ncols = 3
+            nrows = int(np.ceil(npatch / ncols))
 
             parameters = linefit['value'].value.copy()
             parameters[EMFit.doublet_idx] *= parameters[EMFit.doublet_src]
@@ -1251,27 +1264,29 @@ class ContinuumTools(Filters):
                                       line_wavelengths,
                                       resolution_matrix, camerapix)
 
+            print('amp', np.array_split(parameters, 3)[0])
+            print('vshift', np.array_split(parameters, 3)[1])
+            print('sigma', np.array_split(parameters, 3)[2])
 
-            #########################
-            import matplotlib.pyplot as plt
-            ncols = 3
-            nrows = int(np.ceil(npatch / ncols))
 
-            fig, ax = plt.subplots(nrows, ncols, figsize=(2.5*ncols, 2.5*nrows))
+            fig, ax = plt.subplots(nrows, ncols, figsize=(3*ncols, 3*nrows))
             for ipatch, ((s, e, slope, intercept, pivotwave), xx) in enumerate(
                     zip(contfit.iterrows('s', 'e', 'slope', 'intercept', 'pivotwave'), ax.flat)):
                 xx.plot(wave[s:e]/1e4, flux[s:e], color='gray')
-                xx.plot(wave[s:e]/1e4, bestfit[s:e], color='red', alpha=0.75)
-                xx.plot(wave[s:e]/1e4, slope * (wave[s:e]-pivotwave) + intercept, color='k', lw=2, ls='-')
-                for iline in patchLinesIndex[ipatch]:
+                xx.plot(wave[s:e]/1e4, bestfit[s:e], color='k', ls='-', alpha=0.75)
+                xx.plot(wave[s:e]/1e4, slope * (wave[s:e]-pivotwave) + intercept, color='k', lw=2, ls='--')
+                xx.set_xlim(wave[s]/1e4, wave[e]/1e4)
+                for ii, iline in enumerate(patchLinesIndex[ipatch]):
                     (ls, le), profile = lines.getLine(iline)
-                    xx.plot(wave[ls:le]/1e4, profile, color='blue', alpha=0.75)
+                    xx.plot(wave[ls:le]/1e4, profile, alpha=0.75, label=patchLines[ipatch][ii])
+                xx.legend(loc='upper left', fontsize=7, ncols=2)
+            for rem in np.arange(ncols*nrows-ipatch-1)+ipatch+1:
+                ax.flat[rem].axis('off')
+                
             fig.tight_layout()
-            fig.savefig('junk.png')
+            fig.savefig(f'contfit-{uniqueid}.png')
 
             pdb.set_trace()
-
-        pdb.set_trace()
 
 
     @staticmethod
