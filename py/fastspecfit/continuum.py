@@ -1319,7 +1319,7 @@ class ContinuumTools(Filters):
     def templates2data(self, templateflux, templatewave, redshift=0.0, dluminosity=None,
                        vdisp=None, cameras=['b', 'r', 'z'], specwave=None, specres=None, 
                        specmask=None, coeff=None, photsys=None, synthphot=True, 
-                       stack_cameras=False, debug=False, log=None):
+                       stack_cameras=False, flamphot=False, debug=False, log=None):
         """Work-horse routine to turn input templates into spectra that can be compared
         to real data.
 
@@ -1400,7 +1400,7 @@ class ContinuumTools(Filters):
             ztemplateflux = vd_templateflux * T
         
         # Optionally synthesize photometry.
-        templatephot_flam = None
+        templatephot = None
         if synthphot:
             if photsys is not None:
                 filters = self.filters[photsys]
@@ -1416,8 +1416,11 @@ class ContinuumTools(Filters):
                                               ztemplatewave,
                                               log=log) / \
                                               (FLUXNORM * self.massnorm)
-                
-                templatephot_flam = self.get_photflam(maggies, effwave, nanomaggies=False)
+                if flamphot:                
+                    templatephot = self.get_photflam(maggies, effwave, nanomaggies=False)
+                else:
+                    templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, 
+                                                         verbose=debug, log=log)
                 
         # Are we returning per-camera spectra or a single model? Handle that here.
         if specwave is None and specres is None:
@@ -1434,7 +1437,12 @@ class ContinuumTools(Filters):
                                                   log=log) / \
                                                   (FLUXNORM * self.massnorm)
                     
-                    templatephot_flam = self.get_photflam(maggies, effwave, nanomaggies=False)
+                    if flamphot:
+                        templatephot = self.get_photflam(maggies, effwave, nanomaggies=False)
+                    else:
+                        templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, 
+                                                             verbose=debug, log=log)
+
         else:
             # loop over cameras
             datatemplateflux = []
@@ -1473,7 +1481,7 @@ class ContinuumTools(Filters):
                 nwavepix = np.sum([ len(sw) for sw in specwave ])
                 datatemplateflux = datatemplateflux.reshape(nwavepix, nsed, nprop) # [npix,nsed,nprop]
                 
-        return datatemplateflux, templatephot_flam # vector or 3-element list of [npix,nmodel] spectra
+        return datatemplateflux, templatephot # vector or 3-element list of [npix,nmodel] spectra
 
     @staticmethod
     def call_nnls(modelflux, flux, ivar, xparam=None, debug=False,
@@ -1777,7 +1785,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
            t0 = time.time()
            sedtemplates, sedphot_flam = CTools.templates2data(
                templatecache['templateflux_nomvdisp'][:, agekeep],
-               templatecache['templatewave'],
+               templatecache['templatewave'], flamphot=True,
                redshift=redshift, dluminosity=data['dluminosity'],
                vdisp=None, synthphot=True, photsys=data['photsys'])
            sedflam = sedphot_flam * CTools.massnorm * FLUXNORM
@@ -1894,7 +1902,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             redshift=redshift, dluminosity=data['dluminosity'],
             specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
             vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
-            synthphot=True, photsys=data['photsys'])
+            synthphot=True, flamphot=True, photsys=data['photsys'])
         desitemplateflam = desitemplatephot_flam * CTools.massnorm * FLUXNORM
 
         apercorrs, apercorr = np.zeros(len(CTools.synth_bands), 'f4'), 0.0
