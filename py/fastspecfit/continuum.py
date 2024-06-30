@@ -1160,7 +1160,6 @@ class ContinuumTools(Filters):
             return pix
     
         camerapix = np.array([[0, len(wave)]]) # one camera
-        weights = np.sqrt(ivar)
 
         # Read just the strong lines and determine which lines are in range of the camera.
         EMFit = EMFitTools(emlinesfile=emlinesfile, uniqueid=uniqueid, stronglines=True)
@@ -1220,6 +1219,8 @@ class ContinuumTools(Filters):
             # the patchLines array will be incorrect.
             #assert(np.all(np.isin(linetable['name'], pix['coadd_linename'])))
 
+            mask = np.zeros(len(wave), int) # 0=masked
+
             # Determine the edges of each patch based on the continuum
             # (line-free) pixels of all the lines on that patch.
             for ipatch in range(npatch):
@@ -1230,15 +1231,22 @@ class ContinuumTools(Filters):
                 continuum_patches['intercept'][ipatch] = quantile(flux[contindx], 0.5)
                 continuum_patches['intercept_bounds'][ipatch] = quantile(flux[contindx], [0.05, 0.95])
 
+                mask[contindx[0]:contindx[-1]] = 1 # 1=unmasked
+
+            # set the inverse variance weight outside each patch to zero
+            weights = np.sqrt(ivar * mask)
+
             # Get initial guesses on the line-emission; do not allow the
             # broad-line width to be larger than the continuum patch.
             initial_guesses, param_bounds = EMFit._initial_guesses_and_bounds(
-                pix, flux, linesigma_uv=initsigma_uv, linesigma_narrow=initsigma_narrow, 
+                pix, flux, log=log,
+                linesigma_uv=initsigma_uv, 
+                linesigma_narrow=initsigma_narrow, 
                 linesigma_balmer_broad=initsigma_balmer_broad, 
                 #maxsigma_narrow=2.*initsigma_narrow, maxsigma_broad=2*initsigma_uv, 
                 #maxsigma_balmer_broad=2.*initsigma_balmer_broad, 
                 #vmaxshift_narrow=100., vmaxshift_broad=100., vmaxshift_balmer_broad=100.,
-                subtract_local_continuum=True, log=log)
+                subtract_local_continuum=True)
 
             # fit!
             linefit, contfit = EMFit.optimize(linemodel, initial_guesses,
@@ -1250,6 +1258,8 @@ class ContinuumTools(Filters):
                                               log=log, debug=False)
             bestfit = EMFit.bestfit(linefit, redshift, wave, resolution_matrix, camerapix, 
                                     continuum_patches=contfit)
+            print(np.sum(ivar * mask * (flux - bestfit)**2))
+
 
             #########################
             import matplotlib.pyplot as plt

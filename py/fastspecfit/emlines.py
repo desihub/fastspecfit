@@ -730,7 +730,6 @@ class EMFitTools(Filters):
 
             # translate free parame to full param array, but do NOT turn doublet
             # ratios into amplitudes yet, as out_linemodel needs them to be ratios
-            pdb.set_trace()
             parameters = params_mapping.mapFreeToFull(free_params_lines, patchDoublets=False)
             
             linemodel['value'] = parameters.copy() # protect from changes below
