@@ -434,8 +434,6 @@ class EMFitTools(Filters):
         """
         from fastspecfit.util import quantile, median
 
-        assert(np.all(np.isin(list(data.keys()), ['coadd_linename', 'coadd_linepix', 'coadd_contpix'])))
-
         if log is None:
             from desiutil.log import get_logger
             log = get_logger()
@@ -493,9 +491,10 @@ class EMFitTools(Filters):
         
         # Replace a priori initial values with those estimated by initial peak removal,
         # if available.
-        for linename, linepix, contpix in zip(data['coadd_linename'],
-                                              data['coadd_linepix'],
-                                              data['coadd_contpix']):
+        for linename in data['linepix'].keys():
+            linepix = data['linepix'][linename]
+            contpix = data['contpix'][linename]
+
             ## skip the physical doublets
             #if not hasattr(self.EMLineModel, f'{linename}_amp'):
             #    continue
