@@ -144,7 +144,7 @@ class EMFitTools(Filters):
     #
     #  Record which lines are within the limits of the cameras
     # 
-    def compute_inrange_lines(self, redshift, wavelims=(3600., 9900.), wavepad=3.*0.8):
+    def compute_inrange_lines(self, redshift, wavelims=(3600., 9900.), wavepad=5*0.8):
 
         restwave = self.line_table['restwave'].value
         
