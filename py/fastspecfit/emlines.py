@@ -72,16 +72,17 @@ class EMFitTools(Filters):
                                   'halpha_broad', 'nii_6584', 'sii_6716', 'sii_6731']))[0]
             self.line_table = self.line_table[I]
 
-            # assign continuum patches (should be in emlines.ecsv)
-            continuum_patches = {
-                'lyalpha': '0', 'civ_1549': '1', 'ciii_1908': '2', 
-                'mgii_2796': '3', 'mgii_2803': '3', 
-                'oii_3726': '4', 'oii_3729': '4',  
-                'hdelta': '5', 'hdelta_broad': '5', 
-                'hgamma': '6', 'hgamma_broad': '6', 
-                'hbeta': '7', 'hbeta_broad': '7', 'oiii_4959': '7', 'oiii_5007': '7', 
-                'nii_6548': '8', 'halpha': '8', 'halpha_broad': '8', 'nii_6584': '8', 'sii_6716': '9', 'sii_6731': '9'}
-            self.line_table['continuum_patch'] = [continuum_patches[linename] for linename in self.line_table['name']]
+            ## assign continuum patches (should be in emlines.ecsv)
+            #continuum_patches = {
+            #    'lyalpha': '0', 'civ_1549': '1', 'ciii_1908': '2', 
+            #    'mgii_2796': '3', 'mgii_2803': '3', 
+            #    'oii_3726': '4', 'oii_3729': '4',  
+            #    'hdelta': '5', 'hdelta_broad': '5', 
+            #    'hgamma': '6', 'hgamma_broad': '6', 
+            #    'hbeta': '7', 'hbeta_broad': '7', 'oiii_4959': '7', 'oiii_5007': '7', 
+            #    'nii_6548': '8', 'halpha': '8', 'halpha_broad': '8', 'nii_6584': '8', 
+            #    'sii_6716': '9', 'sii_6731': '9'}
+            #self.line_table['continuum_patch'] = [continuum_patches[linename] for linename in self.line_table['name']]
 
         line_names = self.line_table['name'].value
 

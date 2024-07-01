@@ -1105,7 +1105,7 @@ class ContinuumTools(Filters):
 
 
         def _linepix_and_contpix(wave, linenames, restwaves, linesigmas, 
-                                 redshift=0., nsigma=3., mincontpix=10):
+                                 patchMap, redshift=0., nsigma=3., mincontpix=10):
             """Support routine to determine the pixels potentially containing emission lines
             and the corresponding (adjacent) continuum.
 
@@ -1193,7 +1193,7 @@ class ContinuumTools(Filters):
         nline = len(linetable)
 
         # initialize the continuum_patches table for all patches in range
-        patchids = np.unique(linetable['continuum_patch'][EMFit.line_in_range])
+        patchids = np.unique(linetable['patch'][EMFit.line_in_range])
         npatch = len(patchids)
 
         continuum_patches = Table()
@@ -1209,11 +1209,10 @@ class ContinuumTools(Filters):
 
         # Get the mapping between patchid and the set of lines belonging to each
         # patch, and pivotwave.
-        patchLines, patchLinesIndex = [], []
+        patchMap = {}
         for ipatch, patchid in enumerate(patchids):
-            I = np.where(linetable['continuum_patch'] == patchid)[0]
-            patchLinesIndex.append(I)
-            patchLines.append(linetable['name'][I].value)
+            I = np.where(linetable['patch'] == patchid)[0]
+            patchMap[patchid] = (I, linetable['name'][I].value)
             linewaves = linetable['restwave'][I] * (1. + redshift)
             pivotwave = np.ptp(linewaves) / 2. + np.min(linewaves) # midpoint
             continuum_patches['pivotwave'][ipatch] = pivotwave
@@ -1232,7 +1231,6 @@ class ContinuumTools(Filters):
 
             initial_guesses = None
 
-            niter = 2
             for iiter in range(niter):
                 
                 # handle zero line-sigma in _linepix_and_contpix
@@ -1244,7 +1242,8 @@ class ContinuumTools(Filters):
                 # build the line and continuum masks
                 pix = _linepix_and_contpix(wave, linetable['name'].value,
                                            line_wavelengths, linesigmas,
-                                           redshift=redshift)
+                                           patchMap, redshift=redshift)
+                pdb.set_trace()
     
                 # Raise an exception if 'pix' doesn't have all the lines, which it
                 # should since we've already trimmed to lines in range, otherwise
