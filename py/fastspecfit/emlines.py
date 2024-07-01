@@ -125,7 +125,7 @@ class EMFitTools(Filters):
     def compute_inrange_lines(self, redshift, wavelims=(3000, 10000)):
 
         restwave = self.line_table['restwave'].value
-        wavepad = 2.5 # Angstrom
+        wavepad = 5 * 0.8 # Angstrom; 5 x observed bin width
         
         self.line_in_range = \
             (restwave > (wavelims[0] + wavepad)/(1 + redshift)) & \
