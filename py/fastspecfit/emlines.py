@@ -552,7 +552,6 @@ class EMFitTools(Filters):
         # (not just those in range). E.g., if H-alpha is out of range we need to
         # set its initial value correctly since other lines are tied to it
         # (e.g., main-bright-32406-39628257196245904).
-
         for isbroad, isbalmer, params in \
                 self.line_table.iterrows('isbroad', 'isbalmer', 'params'):
             
