@@ -23,7 +23,7 @@ class ParamsMapping(object):
         # to its location in free list
         pFree = np.empty(self.nParms, dtype=np.int32)
         pFree[isFree] = np.arange(self.nFreeParms, dtype=np.int32)
-        
+
         self._precomputeMapping(isFree, pFree,
                                 tiedSources, tiedFactors,
                                 doubletTargets, doubletSources)
@@ -63,9 +63,8 @@ class ParamsMapping(object):
     def _mapFreeToFull(freeParms, nParms, sources, factors,
                        doubletPatches, patchDoublets):
 
-        if patchDoublets:
-            for j, src_j_free in doubletPatches:
-                factors[j] = freeParms[src_j_free]
+        for j, src_j_free in doubletPatches:
+            factors[j] = freeParms[src_j_free] if patchDoublets else 1.
         
         fullParms = np.empty(nParms, dtype=freeParms.dtype)
         
@@ -131,11 +130,11 @@ class ParamsMapping(object):
     def _precomputeMapping(self, isFree, pFree,
                            tiedSources, tiedFactors,
                            doubletTargets, doubletSources):
-    
+        
         # by default, assume parameters are fixed 
         sources = np.full(self.nParms, -1, dtype=np.int32)
         factors = np.zeros(self.nParms, dtype=np.float64)
-
+        
         # record all free parameters
         sources[isFree] = pFree[isFree]
         factors[isFree] = 1.
@@ -149,16 +148,15 @@ class ParamsMapping(object):
         doubletPatches = []
         for j, src_j in zip(doubletTargets, doubletSources):
             if isFree[j] and isFree[src_j]:
-                # j's factor should be v[ p[j] ], so that its value
+                # j's factor should be v[ p[src_j] ], so that its value
                 # becomes v[ p[j] ] * v[ p[src_j] ]. We will patch it
                 # dynamically at mapping time.
                 
-                sources[j] = pFree[src_j]
-                doubletPatches.append((j, pFree[j])) # record where to grab factor
-        
+                doubletPatches.append((j, pFree[src_j]))
+                
         self.sources = sources
         self.factors = factors
-
+        
         # if there are no patches, we need to create a null array of
         # the right type and shape to appease Numba
         if len(doubletPatches) == 0:
@@ -205,18 +203,18 @@ class ParamsMapping(object):
         
         jacDoubletPatches = np.empty((2*len(self.doubletPatches), 2), dtype=np.int32)
         
-        for i, (j, p_j) in enumerate(self.doubletPatches):
+        for i, (j, p_src_j) in enumerate(self.doubletPatches):
             
-            p_src_j = self.sources[j]
+            p_j = self.sources[j]
             
-            # jacElts already has coefficient (j, p[src_j]).
-            # its factor should be patched from v[ p[j] ]
-            jacDoubletPatches[2*i,  :] = (liveOffsets[j], p_j)
-            
-            # add a second coefficient (j, p[j]).
+            # jacElts already has coefficient (j, p[j]).
             # its factor should be patched from v[ p[src_j] ]
-            jacElts[nLive + i,:] = (j, p_j)
-            jacDoubletPatches[2*i+1,:] = (nLive + i, p_src_j)
+            jacDoubletPatches[2*i,  :] = (liveOffsets[j], p_src_j)
+            
+            # add a second coefficient (j, p[src_j]).
+            # its factor should be patched from v[ p[j] ]
+            jacElts[nLive + i,:] = (j, p_src_j)
+            jacDoubletPatches[2*i+1,:] = (nLive + i, p_j)
         
         self.jacElts = jacElts
         self.jacFactors = jacFactors
