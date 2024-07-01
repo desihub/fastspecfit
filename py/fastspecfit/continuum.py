@@ -1260,8 +1260,8 @@ class ContinuumTools(Filters):
 
         # iterate on each linemodel and then to convergence
         #for linemodel in [linemodel_nobroad, linemodel_broad]:
-        for linemodel, testBalmerBroad in zip([linemodel_nobroad, linemodel_broad], [False, True]):
-        #for linemodel, testBalmerBroad in zip([linemodel_broad, linemodel_nobroad], [True, False]):
+        #for linemodel, testBalmerBroad in zip([linemodel_nobroad, linemodel_broad], [False, True]):
+        for linemodel, testBalmerBroad in zip([linemodel_broad, linemodel_nobroad], [True, False]):
 
             # Iterate the fit so we can update the masks via better line-width
             # measurements.
@@ -1325,7 +1325,7 @@ class ContinuumTools(Filters):
                                                   fix_continuum_slope=fix_continuum_slope,
                                                   log=log, debug=False)
 
-                if iiter < niter-1:
+                if iiter < niter:
                     # Update the initial guesses and, specifically, linesigmas.
                     initial_guesses = linefit['value'].value
                     linesigmas = initial_guesses[EMFit.param_table['type'] == ParamType.SIGMA]
@@ -1341,13 +1341,15 @@ class ContinuumTools(Filters):
                             log.critical(errmsg)
                             raise ValueError(errmsg)
 
+                pdb.set_trace()
+
             bestfit = EMFit.bestfit(linefit, redshift, wave, resolution_matrix, camerapix, 
                                     continuum_patches=contfit)
             print(np.sum(ivar * mask * (flux - bestfit)**2))
 
             parameters = linefit['value'].value.copy()
             parameters[EMFit.doublet_idx] *= parameters[EMFit.doublet_src]
-            lineamps, linevshifts, _linesigmas = np.array_split(parameters, 3)
+            lineamps, linevshifts, linesigmas = np.array_split(parameters, 3)
 
             #########################
             import matplotlib.pyplot as plt
