@@ -1093,6 +1093,7 @@ class ContinuumTools(Filters):
         -----
 
         """
+        from astropy.table import vstack
         from fastspecfit.util import median, quantile
         from fastspecfit.emlines import EMFitTools, ParamType
 
@@ -1105,11 +1106,13 @@ class ContinuumTools(Filters):
 
 
         def _linepix_and_contpix(wave, linetable, linesigmas, patchMap, 
-                                 redshift=0., nsigma=3., mincontpix=10):
+                                 redshift=0., nsigma=4., minlinesigma=50., 
+                                 mincontpix=11):
             """Support routine to determine the pixels potentially containing emission lines
             and the corresponding (adjacent) continuum.
 
             linesigmas in km/s
+            minlinesigma in kms - minimum line-sigma for the purposes of masking
             mincontpix - minimum number of continuum pixels per line
 
             """
@@ -1130,6 +1133,7 @@ class ContinuumTools(Filters):
             linemask = np.zeros_like(wave, bool) # True - affected by possible emission line
             linenames = linetable['name'].value
             zlinewaves = linetable['restwave'].value * (1. + redshift)
+            linesigmas[(linesigmas > 0.) * (linesigmas < minlinesigma)] = minlinesigma
             linesigmas_ang = linesigmas * zlinewaves / C_LIGHT # [km/s --> Angstrom]
 
             pix = {'linepix': {}, 'contpix': {}, 'patch_contpix': {}}
@@ -1173,20 +1177,22 @@ class ContinuumTools(Filters):
                 #sigma_blu = sigmas_patch[0]
                 #sigma_red = sigmas_patch[-1]
 
-                J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2., linemask=linemask)
+                J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=1.5, linemask=linemask)
                 #if patchid == 't':
                 #    pdb.set_trace()
                 # go further out
                 if np.count_nonzero(J) < mincontpix: 
-                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=3., linemask=linemask)
+                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.5, linemask=linemask)
                 # drop the linemask_ condition; dangerous??
                 if np.count_nonzero(J) < mincontpix: 
-                    print(f'Dropping linemask condition for {linename} with width {nsigma*sigma:.3f}-{3*nsigma*sigma:.3f} Angstrom')
+                    print(f'Dropping linemask condition for {linename} with width ' + \
+                          f'{nsigma*sigma:.3f}-{3*nsigma*sigma:.3f} Angstrom')
                     # note using nsigma_factor=2, not 3 (to stay closer to the line)
-                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2., linemask=None)
+                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=1.5, linemask=None)
 
                 if np.count_nonzero(J) == 0:
-                    errmsg = f'Unable to determine continuum pixels for patch {patchid} (lines: {",".join(linenames[patchMap[patchid][0]])})'
+                    errmsg = f'Unable to determine continuum pixels for patch ' + \
+                        f'{patchid} (lines: {",".join(linenames[patchMap[patchid][0]])})'
                     log.critical(errmsg)
                     raise ValueError(errmsg)
                         
@@ -1207,23 +1213,39 @@ class ContinuumTools(Filters):
                 for patchline in patchlines:
                     pix['contpix'][patchline] = J
 
-            # Loop back through and make sure contpix assigned to different
-            # patches don't overlap. Note that since python 3.6, dictionary keys
-            # are guaranteed to be in order.
+            # Loop back through and merge patches that overlap by at least
+            # mincontpix.
             for ipatch, patchid in enumerate(patchids[:npatch-1]):
                 left = pix['patch_contpix'][patchid]
                 rght = pix['patch_contpix'][patchids[ipatch+1]]
-                incommon = np.intersect1d(left, rght)
-                if len(incommon) > 0:
-                    # If this is the penultimate patch, remove the in-common
-                    # values from this patch; otherwise, remove in-common values
-                    # from the *next* patch.
-                    if ipatch == npatch - 2:
-                        pix['patch_contpix'][patchid] = np.delete(left, np.isin(left, incommon))
-                    else:
-                        pix['patch_contpix'][patchid+1] = np.delete(rght, np.isin(rght, incommon))
-                #if patchid == 't':
-                #    pdb.set_trace()
+                incommon = np.intersect1d(left, rght, assume_unique=True)
+                if len(incommon) > mincontpix:
+                    newcontpix = np.union1d(left, rght)
+                    newpatchid = patchids[ipatch] + patchids[ipatch+1]
+                    del pix['patch_contpix'][patchids[ipatch]]
+                    del pix['patch_contpix'][patchids[ipatch+1]]
+                    pix['patch_contpix'][newpatchid] = newcontpix
+                    #pdb.set_trace()
+
+            ## Loop back through and make sure contpix assigned to different
+            ## patches don't overlap. Note that since python 3.6, dictionary keys
+            ## are guaranteed to be in order.
+            #for ipatch, patchid in enumerate(patchids[:npatch-1]):
+            #    left = pix['patch_contpix'][patchid]
+            #    rght = pix['patch_contpix'][patchids[ipatch+1]]
+            #    _, leftindx, rghtindx = np.intersect1d(left, rght, assume_unique=True, return_indices=True)
+            #    if len(leftindx) > 0:
+            #        # If this is the penultimate patch, remove the in-common
+            #        # values from this patch; otherwise, remove in-common values
+            #        # from the *next* patch.
+            #        if ipatch == npatch - 2:
+            #            pix['patch_contpix'][patchids[ipatch]] = left[:leftindx[0]]
+            #            #pix['patch_contpix'][patchids[ipatch]] = np.delete(left, np.isin(left, incommon))
+            #        else:
+            #            pix['patch_contpix'][patchids[ipatch+1]] = rght[:rghtindx[-1]]
+            #            #pix['patch_contpix'][patchids[ipatch+1]] = np.delete(rght, np.isin(rght, incommon))
+            #    #if patchid == 't':
+            #    #    pdb.set_trace()
 
             # make sure we haven't mucked up our indexing.
             if not pix['linepix'].keys() == pix['contpix'].keys():
@@ -1232,6 +1254,22 @@ class ContinuumTools(Filters):
                 raise ValueError(errmsg)
 
             return pix
+
+        def _make_patchTable(patchids):
+            patchids = np.atleast_1d(patchids)
+            npatch = len(patchids)
+            continuum_patches = Table()
+            continuum_patches['patchid'] = patchids
+            continuum_patches['s'] = np.zeros(npatch, int) # starting index relative to coadd_wave
+            continuum_patches['e'] = np.zeros(npatch, int) # ending index
+            continuum_patches['pivotwave'] = np.zeros(npatch)
+            continuum_patches['slope'] = np.zeros(npatch)
+            continuum_patches['intercept'] = np.zeros(npatch)
+            continuum_patches['slope_bounds'] = np.broadcast_to([-1e2, +1e2], (npatch, 2))
+            continuum_patches['intercept_bounds'] = np.broadcast_to([-1e5, +1e5], (npatch, 2))
+            #continuum_patches['intercept_bounds'] = np.broadcast_to([-np.inf, +np.inf], (npatch, 2))
+            return continuum_patches
+
     
         camerapix = np.array([[0, len(wave)]]) # one camera
 
@@ -1254,17 +1292,7 @@ class ContinuumTools(Filters):
         # initialize the continuum_patches table for all patches in range
         patchids = np.unique(linetable_inrange['patch'])
         npatch = len(patchids)
-
-        continuum_patches = Table()
-        continuum_patches['patchid'] = patchids
-        continuum_patches['s'] = np.zeros(npatch, int) # starting index relative to coadd_wave
-        continuum_patches['e'] = np.zeros(npatch, int) # ending index
-        continuum_patches['pivotwave'] = np.zeros(npatch)
-        continuum_patches['slope'] = np.zeros(npatch)
-        continuum_patches['intercept'] = np.zeros(npatch)
-        continuum_patches['slope_bounds'] = np.broadcast_to([-1e2, +1e2], (npatch, 2))
-        continuum_patches['intercept_bounds'] = np.broadcast_to([-1e5, +1e5], (npatch, 2))
-        #continuum_patches['intercept_bounds'] = np.broadcast_to([-np.inf, +np.inf], (npatch, 2))
+        continuum_patches = _make_patchTable(patchids)
 
         # Get the mapping between patchid and the set of lines belonging to each
         # patch, and pivotwave.
@@ -1276,6 +1304,7 @@ class ContinuumTools(Filters):
             linewaves = linetable_inrange['restwave'][I] * (1. + redshift)
             pivotwave = np.ptp(linewaves) / 2. + np.min(linewaves) # midpoint
             continuum_patches['pivotwave'][ipatch] = pivotwave
+        #print(continuum_patches)
 
         # iterate on each linemodel and then to convergence
         #for linemodel, testBalmerBroad in zip([linemodel_nobroad, linemodel_broad], [False, True]):
@@ -1291,14 +1320,39 @@ class ContinuumTools(Filters):
 
             initial_guesses = None
 
-            niter = 2
             for iiter in range(niter):
 
                 # Build the line and continuum masks (only for lines in range).
+                #print(linesigmas[EMFit.line_in_range])
                 pix = _linepix_and_contpix(wave, linetable_inrange, 
                                            linesigmas[EMFit.line_in_range], 
                                            patchMap, redshift=redshift)
-    
+
+                # in the case that patches have been merged, update the
+                # continuum_patches table and patchMap dictionary.
+                N = np.where(~np.isin(list(pix['patch_contpix'].keys()), continuum_patches['patchid'].value))[0]
+                if len(N) > 0:
+                    for new in N:
+                        newpatchid = np.array(list(pix['patch_contpix'].keys()))[new]
+                        oldpatchids = list(newpatchid)
+                        O = np.where(np.isin(continuum_patches['patchid'].value, oldpatchids))[0]
+
+                        # update continuum_patches
+                        new_continuum_patch = _make_patchTable(newpatchid)
+                        new_continuum_patch['pivotwave'] = np.mean(continuum_patches[O]['pivotwave'])
+                        continuum_patches.remove_rows(O)
+                        continuum_patches = vstack((continuum_patches, new_continuum_patch))
+
+                        # update patchMap
+                        newlines, newI, newJ = [], [], []
+                        for oldpatchid in oldpatchids:
+                            newlines.append(patchMap[oldpatchid][0])
+                            newI.append(patchMap[oldpatchid][1])
+                            newJ.append(patchMap[oldpatchid][2])
+                            del patchMap[oldpatchid]
+                        patchMap[newpatchid] = (np.hstack(newlines), np.hstack(newI), np.hstack(newJ))
+
+
                 mask = np.zeros(len(wave), bool) # False=masked
     
                 # Determine the edges of each patch based on the continuum
@@ -1310,6 +1364,7 @@ class ContinuumTools(Filters):
                     # initial guesses and bounds
                     continuum_patches['intercept'][ipatch] = quantile(flux[contindx], 0.5)
                     continuum_patches['intercept_bounds'][ipatch] = quantile(flux[contindx], [0.05, 0.95])
+                    #print(continuum_patches)
                     #if patchid == 't':
                     #    pdb.set_trace()
     
@@ -1334,8 +1389,9 @@ class ContinuumTools(Filters):
                         #maxsigma_balmer_broad=2.*initsigma_balmer_broad, 
                         #vmaxshift_narrow=100., vmaxshift_broad=100., vmaxshift_balmer_broad=100.,
                         subtract_local_continuum=True)
-    
+
                 # fit!
+                #pdb.set_trace()
                 linefit, contfit = EMFit.optimize(linemodel, initial_guesses,
                                                   param_bounds, wave,
                                                   flux, weights, redshift,
@@ -1348,14 +1404,12 @@ class ContinuumTools(Filters):
                     # Update the initial guesses and, specifically, linesigmas.
                     initial_guesses = linefit['value'].value
                     linesigmas = initial_guesses[EMFit.param_table['type'] == ParamType.SIGMA]
-                    print('Need to update initsigma!')
     
                     # check the bounds
                     for iparam, (guess, bds) in enumerate(zip(initial_guesses, param_bounds)):
                         if linefit[iparam]['fixed']:
                             continue
                         if (bds[0] > bds[1]) or (guess < bds[0]) or (guess > bds[1]):
-                            #pdb.set_trace()
                             errmsg = f'Initial parameter {EMFit.param_table[iparam]} is outside its bound.'
                             log.critical(errmsg)
                             raise ValueError(errmsg)
@@ -1390,6 +1444,7 @@ class ContinuumTools(Filters):
                 # get the starting and ending pixels first
                 s = sc
                 e = ec
+                #pdb.set_trace()
                 for iline in patchMap[patchid][2]:
                     (ls, le), _ = lines.getLine(iline)
                     if ls != le: # fixed / dropped lines
@@ -1399,11 +1454,11 @@ class ContinuumTools(Filters):
                 xx.plot(wave[s:e] / 1e4, flux[s:e], color='gray')
                 #xx.scatter(wave[sc:ec] / 1e4, flux[sc:ec], marker='s', color='blue', alpha=0.7)
                 xx.plot(wave[s:e] / 1e4, bestfit[s:e], color='k', ls='-', alpha=0.75)
-                xx.plot(wave[sc:ec] / 1e4, slope * (wave[sc:ec]-pivotwave) + intercept, color='k', lw=2, ls='--')
+                xx.plot(wave[sc:ec] / 1e4, slope * (wave[sc:ec]-pivotwave) + intercept, color='k', lw=2, ls='-')
                 for line, iline in zip(patchMap[patchid][0], patchMap[patchid][2]):
                     (ls, le), profile = lines.getLine(iline)
                     if ls != le:
-                        xx.plot(wave[ls:le]/1e4, profile, alpha=0.75, label=line)
+                        xx.plot(wave[ls:le] / 1e4, profile, alpha=0.75, label=line)
                 #ymin = 0.9*quantile(flux[s:e], 0.01)
                 ymin = 0.
                 ymax = 1.1*np.max((quantile(flux[s:e], 0.99), np.max(bestfit[s:e])))

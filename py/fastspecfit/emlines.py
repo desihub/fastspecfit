@@ -67,7 +67,7 @@ class EMFitTools(Filters):
         if stronglines:
             I = np.where(np.isin(self.line_table['name'], 
                                  ['lyalpha', 'civ_1549', 'ciii_1908', 'mgii_2796', 'mgii_2803', 
-                                  'oii_3726', 'oii_3729', 'hdelta', 'hdelta_broad', 'hgamma', 'hgamma_broad',
+                                  'oii_3726', 'oii_3729', 'hgamma', 'hgamma_broad',
                                   'hbeta', 'hbeta_broad', 'oiii_4959', 'oiii_5007', 'nii_6548', 'halpha', 
                                   'halpha_broad', 'nii_6584', 'sii_6716', 'sii_6731']))[0]
             self.line_table = self.line_table[I]
@@ -516,9 +516,9 @@ class EMFitTools(Filters):
             
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_flux[linepix])), 3*np.max(coadd_flux[linepix])]
-            mx = 2. * np.max(coadd_flux[linepix] - local)
+            mx = 5. * np.max(coadd_flux[linepix] - local)
             if mx < 0: # ???
-                mx = 2. * np.max(np.abs(coadd_flux[linepix] - local))
+                mx = 5. * np.max(np.abs(coadd_flux[linepix] - local))
             
             bds = np.array([0., mx])
             
