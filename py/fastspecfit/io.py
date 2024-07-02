@@ -93,7 +93,7 @@ def _unpack_one_spectrum(args):
     return unpack_one_spectrum(*args)
 
 def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
-                        synthphot, ignore_photometry, log):
+                        synthphot, ignore_photometry, verbose, log):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
@@ -233,7 +233,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                                                             specdata['coadd_ivar'], specdata['coadd_res_fast'], 
                                                             uniqueid=specdata['uniqueid'],
                                                             redshift=specdata['zredrock'],
-                                                            log=log)
+                                                            verbose=verbose, log=log)
         #coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
         #                                            specdata['coadd_ivar'], redshift=specdata['zredrock'],
         #                                            linetable=CTools.linetable, log=log)
@@ -1175,7 +1175,7 @@ class DESISpectra(TabulatedDESI):
                         'coadd_res_fast': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
                         }
                     unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, fastphot,
-                                       synthphot, ignore_photometry, log))
+                                       synthphot, ignore_photometry, verbose, log))
                     
             if mp > 1:
                 import multiprocessing
