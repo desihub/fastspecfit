@@ -962,11 +962,14 @@ class EMFitTools(Filters):
         
     @staticmethod
     def chi2(linemodel, emlinewave, emlineflux, emlineivar, emlinemodel,
-             continuum_model=None, return_dof=False):
+             continuum_model=None, nfree_patches=None, return_dof=False):
         """Compute the reduced chi^2."""
 
         nfree = np.sum(linemodel['free'])
-        dof   = np.sum(emlineivar > 0) - nfree
+        if nfree_patches is not None:
+            nfree += nfree_patches
+
+        dof = np.sum(emlineivar > 0) - nfree
         
         if dof > 0:
             if continuum_model is None:

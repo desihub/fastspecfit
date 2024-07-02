@@ -234,9 +234,6 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                                                             uniqueid=specdata['uniqueid'],
                                                             redshift=specdata['zredrock'],
                                                             verbose=verbose, log=log)
-        #coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
-        #                                            specdata['coadd_ivar'], redshift=specdata['zredrock'],
-        #                                            linetable=CTools.linetable, log=log)
         specdata['coadd_linename'] = coadd_linemask_dict['linename']
         specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
         specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -386,9 +383,9 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
     for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0', 'res_fast0']:
         del specdata[key]
 
-    coadd_linemask_dict = CTools.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                linetable=CTools.linetable, log=log)
+    coadd_linemask_dict = CTools.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
+                                                        specdata['coadd_ivar'], redshift=specdata['zredrock'],
+                                                        linetable=CTools.linetable, log=log)
     specdata['coadd_linename'] = coadd_linemask_dict['linename']
     specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
     specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
