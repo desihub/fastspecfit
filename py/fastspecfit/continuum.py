@@ -20,6 +20,27 @@ PIXKMS_BLU = 25.  # [km/s]
 PIXKMS_RED = 100. # [km/s]
 PIXKMS_WAVESPLIT = 1e4 # [Angstrom]
 
+
+def _convolve_vdisp(templateflux, limit, vdisp, pixsize_kms):
+    """Convolve templateflux with a velocity dispersion.  Only wavelengths up to
+    limit are convolved; the rest are left unchanged.
+
+    """
+    from scipy.ndimage import gaussian_filter1d
+    
+    # Convolve by the velocity dispersion.
+    if vdisp <= 0.0:
+        output = templateflux.copy()
+    else:
+        output = np.empty_like(templateflux)
+        sigma = vdisp / pixsize_kms # [pixels]
+        gaussian_filter1d(templateflux[:limit, :], sigma=sigma, axis=0,
+                          output=output[:limit, :])
+        output[limit:, :] = templateflux[limit:, :]
+
+    return output
+
+
 def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175, 
                       smooth_window=75, smooth_step=25, maskkms_uv=3000.0, 
                       maskkms_balmer=1000.0, maskkms_narrow=200.0,
@@ -1498,9 +1519,6 @@ class ContinuumTools(Filters):
             #fig.tight_layout()
             fig.savefig(png)
 
-
-        pdb.set_trace()
-
         return pix
 
 
@@ -1539,23 +1557,7 @@ class ContinuumTools(Filters):
     
     @staticmethod
     def convolve_vdisp(templateflux, limit, vdisp, pixsize_kms):
-        """Convolve templateflux with a velocity dispersion.  Only wavelengths up to
-        limit are convolved; the rest are left unchanged.
-
-        """
-        from scipy.ndimage import gaussian_filter1d
-        
-        # Convolve by the velocity dispersion.
-        if vdisp <= 0.0:
-            output = templateflux.copy()
-        else:
-            output = np.empty_like(templateflux)
-            sigma = vdisp / pixsize_kms # [pixels]
-            gaussian_filter1d(templateflux[:limit, :], sigma=sigma, axis=0,
-                              output=output[:limit, :])
-            output[limit:, :] = templateflux[limit:, :]
-    
-        return output
+        return _convolve_vdisp(templateflux, limit, vdisp, pixsize_kms)
 
 
     def templates2data(self, templateflux, templatewave, redshift=0.0, dluminosity=None,

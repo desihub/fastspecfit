@@ -228,56 +228,71 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
         for icam in np.arange(ncam):
             specdata['camerapix'][icam, :] = [np.sum(npixpercam[:icam+1]), np.sum(npixpercam[:icam+2])]
                                 
-        # coadded spectrum
-        coadd_linemask_dict = CTools.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                            specdata['coadd_ivar'], specdata['coadd_res_fast'], 
-                                                            uniqueid=specdata['uniqueid'],
-                                                            redshift=specdata['zredrock'],
-                                                            verbose=verbose, log=log)
-        specdata['coadd_linename'] = coadd_linemask_dict['linename']
-        specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
-        specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
-    
-        specdata['linesigma_narrow'] = coadd_linemask_dict['linesigma_narrow']
-        specdata['linesigma_balmer'] = coadd_linemask_dict['linesigma_balmer']
-        specdata['linesigma_uv'] = coadd_linemask_dict['linesigma_uv']
-    
-        specdata['linesigma_narrow_snr'] = coadd_linemask_dict['linesigma_narrow_snr']
-        specdata['linesigma_balmer_snr'] = coadd_linemask_dict['linesigma_balmer_snr']
-        specdata['linesigma_uv_snr'] = coadd_linemask_dict['linesigma_uv_snr']
+        # use the coadded spectrum to build a robust emission-line mask
+        pix = CTools.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
+                                            specdata['coadd_ivar'], specdata['coadd_res_fast'], 
+                                            uniqueid=specdata['uniqueid'],
+                                            redshift=specdata['zredrock'],
+                                            verbose=verbose, log=log)
 
-        specdata['smoothsigma'] = coadd_linemask_dict['smoothsigma']
-        
-        # Map the pixels belonging to individual emission lines and
-        # their local continuum back onto the original per-camera
-        # spectra. These lists of arrays are used in
-        # continuum.ContinnuumTools.smooth_continuum.
-        for icam in np.arange(len(specdata['cameras'])):
-            #specdata['smoothflux'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['smoothflux']))
-            specdata['linemask'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask']*1) > 0)
-            specdata['linemask_all'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask_all']*1) > 0)
-            _linename, _linenpix, _contpix = [], [], []
-            for ipix in np.arange(len(coadd_linemask_dict['linepix'])):
-                I = np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linepix'][ipix]*1) > 0
-                J = np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['contpix'][ipix]*1) > 0
-                if np.sum(I) > 3 and np.sum(J) > 3:
-                    _linename.append(coadd_linemask_dict['linename'][ipix])
-                    _linenpix.append(np.where(I)[0])
-                    _contpix.append(np.where(J)[0])
-            specdata['linename'].append(_linename)
-            specdata['linepix'].append(_linenpix)
-            specdata['contpix'].append(_contpix)
+        # Map the pixels belonging to individual emission lines onto the
+        # original per-camera spectra. This works, but maybe there's a better
+        # way to do it?
+        pix['linemask'] = []
+        for icam in np.arange(ncam):
+            camlinemask = np.zeros(npixpercamera[icam], bool)
+            for line in pix['linepix'].keys():
+                linepix = pix['linepix'][line]
+                # if the line is entirely off this camera, skip it
+                oncam = np.where((specdata["coadd_wave"][linepix] >= np.min(specdata['wave'][icam])) *
+                                 (specdata["coadd_wave"][linepix] <= np.max(specdata['wave'][icam])))[0]
+                if len(oncam) == 0:
+                    continue
+                I = np.searchsorted(specdata['wave'][icam], specdata['coadd_wave'][linepix[oncam]])
+                #print(f'Line {line:20}: adding {len(I):02d} pixels to camera {icam}')
+                camlinemask[I] = True
+            #print()
+            pix['linemask'].append(camlinemask)
 
-        #import matplotlib.pyplot as plt
-        #plt.clf()
-        #for ii in np.arange(3):
-        #    plt.plot(specdata['wave'][ii], specdata['flux'][ii])
-        #plt.plot(specdata['coadd_wave'], coadd_flux-2, alpha=0.6, color='k')
-        #plt.xlim(5500, 6000)
-        #plt.savefig('test.png')
-    
-        specdata.update({'coadd_linemask': coadd_linemask_dict['linemask'],
-                         'coadd_linemask_all': coadd_linemask_dict['linemask_all']})
+        #specdata['linemask'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask']*1) > 0)
+        specdata.update(pix)
+        del pix
+
+        #specdata['coadd_linename'] = coadd_linemask_dict['linename']
+        #specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
+        #specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
+        #
+        #specdata['linesigma_narrow'] = coadd_linemask_dict['linesigma_narrow']
+        #specdata['linesigma_balmer'] = coadd_linemask_dict['linesigma_balmer']
+        #specdata['linesigma_uv'] = coadd_linemask_dict['linesigma_uv']
+        #
+        #specdata['linesigma_narrow_snr'] = coadd_linemask_dict['linesigma_narrow_snr']
+        #specdata['linesigma_balmer_snr'] = coadd_linemask_dict['linesigma_balmer_snr']
+        #specdata['linesigma_uv_snr'] = coadd_linemask_dict['linesigma_uv_snr']
+        #
+        #specdata['smoothsigma'] = coadd_linemask_dict['smoothsigma']
+        #
+        ## Map the pixels belonging to individual emission lines and
+        ## their local continuum back onto the original per-camera
+        ## spectra. These lists of arrays are used in
+        ## continuum.ContinnuumTools.smooth_continuum.
+        #for icam in np.arange(len(specdata['cameras'])):
+        #    #specdata['smoothflux'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['smoothflux']))
+        #    specdata['linemask'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask']*1) > 0)
+        #    specdata['linemask_all'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask_all']*1) > 0)
+        #    _linename, _linenpix, _contpix = [], [], []
+        #    for ipix in np.arange(len(coadd_linemask_dict['linepix'])):
+        #        I = np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linepix'][ipix]*1) > 0
+        #        J = np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['contpix'][ipix]*1) > 0
+        #        if np.sum(I) > 3 and np.sum(J) > 3:
+        #            _linename.append(coadd_linemask_dict['linename'][ipix])
+        #            _linenpix.append(np.where(I)[0])
+        #            _contpix.append(np.where(J)[0])
+        #    specdata['linename'].append(_linename)
+        #    specdata['linepix'].append(_linenpix)
+        #    specdata['contpix'].append(_contpix)
+        #specdata.update({'coadd_linemask': coadd_linemask_dict['linemask'],
+        #                 'coadd_linemask_all': coadd_linemask_dict['linemask_all']})
     
         # Optionally synthesize photometry from the coadded spectrum.
         if synthphot and synth_filters is not None:
