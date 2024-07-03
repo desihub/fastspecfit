@@ -420,7 +420,7 @@ class EMFitTools(Filters):
         _print(~line_isbroad & ~line_isbalmer)
         
     
-    def _initial_guesses_and_bounds(self, data, coadd_flux, linesigma_uv=3000.,
+    def _initial_guesses_and_bounds(self, data, coadd_flux, linesigma_broad=3000.,
                                     linesigma_narrow=150., linesigma_balmer_broad=1000.,
                                     maxsigma_broad=1e4, maxsigma_balmer_broad=1e4,
                                     maxsigma_narrow=750., vmaxshift_narrow=500.,
@@ -559,7 +559,7 @@ class EMFitTools(Filters):
                 if isbalmer: # broad Balmer lines
                     isigma = linesigma_balmer_broad
                 else:
-                    isigma = linesigma_uv
+                    isigma = linesigma_broad
             else:
                 isigma = linesigma_narrow
 
@@ -649,10 +649,10 @@ class EMFitTools(Filters):
         nFree = np.sum(isFree)
 
         if continuum_patches is None:
-            log.debug(f"Optimizing {nFree} emission-line parameters")
+            log.debug(f"Optimizing {nFree} emission-line parameters.")
         else:
             npatch = len(continuum_patches)
-            log.debug(f"Optimizing {nFree} emission-line and {2*npatch} continuum patch parameters")
+            log.debug(f"Optimizing {nFree} emission-line and {2*npatch} continuum patch parameters.")
         
         if nFree == 0:
             # corner case where all lines are out of the wavelength range, which can
@@ -724,8 +724,8 @@ class EMFitTools(Filters):
                     continuum_patches['slope'] = continuum_free_params[0, :]
                     continuum_patches['intercept'] = continuum_free_params[1, :]
 
-            # Drop (zero out) any dubious free parameters.
-            self._drop_params(linemodel, isFree, free_params_lines, bounds_lines, log)
+            # Drop (zero out) any dubious free parameters. - deprecated
+            #self._drop_params(linemodel, isFree, free_params_lines, bounds_lines, log)
 
             # translate free parame to full param array, but do NOT turn doublet
             # ratios into amplitudes yet, as out_linemodel needs them to be ratios
@@ -1444,13 +1444,11 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     weights = np.sqrt(emlineivar)
 
     # determine which lines are in range of the camera
-    EMFit.compute_inrange_lines(redshift,
-                                wavelims=(np.min(emlinewave)+5,
-                                          np.max(emlinewave)-5))
+    EMFit.compute_inrange_lines(redshift, wavelims=(np.min(emlinewave), 
+                                                    np.max(emlinewave)))
     
     # Build all the emission-line models for this object.
-    linemodel_broad, linemodel_nobroad = \
-        EMFit.build_linemodels(separate_oiii_fit=True)
+    linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(separate_oiii_fit=True)
     
     # Get initial guesses on the parameters and populate the two "initial"
     # linemodels; the "final" linemodels will be initialized with the
@@ -1464,9 +1462,10 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                                  emlinewave, emlineflux, weights, redshift,
                                  resolution_matrix, camerapix, log=log, debug=False)
     model_nobroad = EMFit.bestfit(fit_nobroad, redshift, emlinewave, resolution_matrix, camerapix)
-    chi2_nobroad, ndof_nobroad, nfree_nobroad = EMFit.chi2(fit_nobroad, emlinewave, emlineflux, emlineivar, model_nobroad, return_dof=True)
-    log.info('Line-fitting {} with no broad lines and {} free parameters took {:.4f} seconds [niter={}, rchi2={:.4f}].'.format(
-        data['uniqueid'], nfree_nobroad, time.time()-t0, fit_nobroad.meta['nfev'], chi2_nobroad))
+    chi2_nobroad, ndof_nobroad, nfree_nobroad = EMFit.chi2(fit_nobroad, emlinewave, emlineflux, 
+                                                           emlineivar, model_nobroad, return_dof=True)
+    log.info(f'Line-fitting {data["uniqueid"]} with no broad lines and {nfree_nobroad} free parameters took ' + \
+             f'{time.time()-t0:.4f} seconds [niter={fit_nobroad.meta["nfev"]}, rchi2={chi2_nobroad:.4f}].')
     
     # Now try adding broad Balmer and helium lines and see if we improve the
     # chi2.
@@ -1483,7 +1482,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         # Gather the pixels around the broad Balmer lines, and count
         # the number of free parameters associated with these lines
         # in each of the two models
-
         line_params = EMFit.line_table['params'].value
         
         balmer_pix = []
@@ -1509,8 +1507,8 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                                        debug=False)
             model_broad = EMFit.bestfit(fit_broad, redshift, emlinewave, resolution_matrix, camerapix)
             chi2_broad, ndof_broad, nfree_broad = EMFit.chi2(fit_broad, emlinewave, emlineflux, emlineivar, model_broad, return_dof=True)
-            log.info('Line-fitting {} with broad lines and {} free parameters took {:.4f} seconds [niter={}, rchi2={:.4f}].'.format(
-                data['uniqueid'], nfree_broad, time.time()-t0, fit_broad.meta['nfev'], chi2_broad))
+            log.info(f'Line-fitting {data["uniqueid"]} with broad lines and {nfree_broad} free parameters took ' + \
+                     f'{time.time()-t0:.4f} seconds [niter={fit_broad.meta["nfev"]}, rchi2={chi2_broad:.4f}].')
             
             # compute delta-chi2 around just the broad, non-helium Balmer lines
             balmer_pix = np.hstack(balmer_pix)
