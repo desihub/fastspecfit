@@ -160,18 +160,15 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
     if not fastphot:
         from desiutil.dust import dust_transmission
     
-        specdata.update({'linemask': [], 
-                         'linemask_all': [], 
-                         'linename': [],
-                         'linepix': [], 
-                         'contpix': [],
-                         'wave': [], 
+        specdata.update({'wave': [], 
                          'flux': [], 
                          'ivar': [], 
                          'mask': [],
                          'res': [], 
                          'res_fast': [], 
-                         'snr': np.zeros(3, 'f4')})
+                         'snr': np.zeros(3, 'f4'),
+                         'linemask': [],
+                         })
     
         cameras, npixpercamera = [], []
         for icam, camera in enumerate(specdata['cameras']):
@@ -234,15 +231,16 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                                             uniqueid=specdata['uniqueid'],
                                             redshift=specdata['zredrock'],
                                             verbose=verbose, log=log)
+        specdata.update(pix)
+        del pix
 
         # Map the pixels belonging to individual emission lines onto the
         # original per-camera spectra. This works, but maybe there's a better
         # way to do it?
-        pix['linemask'] = []
         for icam in np.arange(ncam):
             camlinemask = np.zeros(npixpercamera[icam], bool)
-            for line in pix['linepix'].keys():
-                linepix = pix['linepix'][line]
+            for line in specdata['linepix'].keys():
+                linepix = specdata['linepix'][line]
                 # if the line is entirely off this camera, skip it
                 oncam = np.where((specdata["coadd_wave"][linepix] >= np.min(specdata['wave'][icam])) *
                                  (specdata["coadd_wave"][linepix] <= np.max(specdata['wave'][icam])))[0]
@@ -252,11 +250,9 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                 #print(f'Line {line:20}: adding {len(I):02d} pixels to camera {icam}')
                 camlinemask[I] = True
             #print()
-            pix['linemask'].append(camlinemask)
+            specdata['linemask'].append(camlinemask)
 
         #specdata['linemask'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask']*1) > 0)
-        specdata.update(pix)
-        del pix
 
         #specdata['coadd_linename'] = coadd_linemask_dict['linename']
         #specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]

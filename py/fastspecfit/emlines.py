@@ -1449,12 +1449,17 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     
     # Build all the emission-line models for this object.
     linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(separate_oiii_fit=True)
-    
+    #EMFit.summarize_linemodel(linemodel_nobroad)
+    #EMFit.summarize_linemodel(linemodel_broad)
+
     # Get initial guesses on the parameters and populate the two "initial"
     # linemodels; the "final" linemodels will be initialized with the
     # best-fitting parameters from the initial round of fitting.
-    initial_guesses, param_bounds, civars = \
-        EMFit.initial_guesses_and_bounds(data, emlinewave, emlineflux, log)
+    initial_guesses, param_bounds = EMFit._initial_guesses_and_bounds(
+        data, emlineflux, log=log, 
+        linesigma_broad=data['linesigma_broad'], 
+        linesigma_narrow=data['linesigma_narrow'], 
+        linesigma_balmer_broad=data['linesigma_balmer_broad'])
     
     # fit spectrum *without* any broad lines
     t0 = time.time()
@@ -1470,6 +1475,8 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # Now try adding broad Balmer and helium lines and see if we improve the
     # chi2.
     if broadlinefit:
+
+        pdb.set_trace()
 
         pixoffset = np.cumsum(data['npixpercamera']) - data['npixpercamera']
         
