@@ -420,16 +420,26 @@ class EMFitTools(Filters):
         _print(~line_isbroad & ~line_isbalmer)
         
     
-    def _initial_guesses_and_bounds(self, data, coadd_flux, linesigma_broad=3000.,
-                                    linesigma_narrow=150., linesigma_balmer_broad=1000.,
-                                    maxsigma_broad=1e4, maxsigma_balmer_broad=1e4,
-                                    maxsigma_narrow=750., vmaxshift_narrow=500.,
-                                    vmaxshift_broad=2500., vmaxshift_balmer_broad=2500.,
+    def _initial_guesses_and_bounds(self, linepix, contpix=None, coadd_flux=None, 
+                                    linesigma_broad=3000.,linesigma_narrow=150., 
+                                    linesigma_balmer_broad=1000., maxsigma_broad=1e4, 
+                                    maxsigma_balmer_broad=1e4, maxsigma_narrow=750., 
+                                    vmaxshift_narrow=500., vmaxshift_broad=2500., 
+                                    vmaxshift_balmer_broad=2500., coadd_wave=None, 
+                                    hstack_flux=None, hstack_wave=None, 
                                     subtract_local_continuum=False, log=None):
         """For all lines in the wavelength range of the data, get a good initial guess
         on the amplitudes and line-widths. This step is critical for cases like,
         e.g., 39633354915582193 (tile 80613, petal 05), which has strong narrow
         lines.
+
+        linepix - dictionary of indices *defined on the coadded spectrum* for
+          all lines in range
+
+        If coadd_flux is None, then coadd_wave, hstack_flux, and hstack_wave are
+          all required.
+
+        If subtract_local_continuum=True, then contpix is mandatory.
 
         """
         from fastspecfit.util import quantile, median
@@ -437,6 +447,9 @@ class EMFitTools(Filters):
         if log is None:
             from desiutil.log import get_logger
             log = get_logger()
+
+        if coadd_flux is None:
+            coadd_flux = np.interp(coadd_wave, hstack_wave, hstack_flux)
 
         initials = np.empty(len(self.param_table), dtype=np.float64)
         bounds   = np.empty((len(self.param_table), 2), dtype=np.float64)
@@ -489,36 +502,34 @@ class EMFitTools(Filters):
                 bounds[vshift] = (-vmaxshift_narrow, +vmaxshift_narrow)
                 bounds[sigma] = (minsigma_narrow, maxsigma_narrow)        
         
-        # Replace a priori initial values with those estimated by initial peak removal,
-        # if available.
-        for linename in data['linepix'].keys():
-            linepix = data['linepix'][linename]
-            contpix = data['contpix'][linename]
+        # Replace a priori initial values based on the data, with optional local
+        # continuum subtraction.
+        for linename in linepix.keys():
 
-            ## skip the physical doublets
-            #if not hasattr(self.EMLineModel, f'{linename}_amp'):
-            #    continue
+            onelinepix = linepix[linename]
+            if contpix is not None:
+                onecontpix = contpix[linename]
 
             if subtract_local_continuum:
-                local = median(coadd_flux[contpix])
+                local = median(coadd_flux[onecontpix])
             else:
                 local = 0.
 
-            npix = len(linepix)
+            npix = len(onelinepix)
             if npix > 5:
-                mnpx, mxpx = linepix[npix//2]-3, linepix[npix//2]+3
+                mnpx, mxpx = onelinepix[npix//2]-3, onelinepix[npix//2]+3
                 mnpx = np.maximum(mnpx, 0)
-                mxpx = np.minimum(mxpx, linepix[-1])
+                mxpx = np.minimum(mxpx, onelinepix[-1])
                 amp = np.max(coadd_flux[mnpx:mxpx] - local)
             else:
-                amp = quantile(coadd_flux[linepix], 0.975) - local
+                amp = quantile(coadd_flux[onelinepix], 0.975) - local
             amp = np.abs(amp)
             
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_flux[linepix])), 3*np.max(coadd_flux[linepix])]
-            mx = 5. * np.max(coadd_flux[linepix] - local)
-            if mx < 0: # ???
-                mx = 5. * np.max(np.abs(coadd_flux[linepix] - local))
+            mx = 5. * np.max(coadd_flux[onelinepix] - local)
+            if mx < 0.: # ???
+                mx = 5. * np.max(np.abs(coadd_flux[onelinepix] - local))
             
             bds = np.array([0., mx])
             
@@ -1318,11 +1329,12 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # linemodels; the "final" linemodels will be initialized with the
     # best-fitting parameters from the initial round of fitting.
     initial_guesses, param_bounds = EMFit._initial_guesses_and_bounds(
-        data, emlineflux, log=log, 
+        data['coadd_linepix'], coadd_wave=data['coadd_wave'], 
+        hstack_wave=emlinewave, hstack_flux=emlineflux, log=log, 
         linesigma_broad=data['linesigma_broad'], 
         linesigma_narrow=data['linesigma_narrow'], 
         linesigma_balmer_broad=data['linesigma_balmer_broad'])
-    
+
     # fit spectrum *without* any broad lines
     t0 = time.time()
     fit_nobroad = EMFit.optimize(linemodel_nobroad, initial_guesses, param_bounds,

@@ -168,6 +168,8 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                          'res_fast': [], 
                          'snr': np.zeros(3, 'f4'),
                          'linemask': [],
+                         #'linepix': [],
+                         #'contpix': [],
                          })
     
         cameras, npixpercamera = [], []
@@ -239,8 +241,11 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
         # way to do it?
         for icam in np.arange(ncam):
             camlinemask = np.zeros(npixpercamera[icam], bool)
-            for line in specdata['linepix'].keys():
-                linepix = specdata['linepix'][line]
+            camlinepix = {}
+            camcontpix = {}
+            for line in specdata['coadd_linepix'].keys():
+                linepix = specdata['coadd_linepix'][line]
+                contpix = specdata['coadd_contpix'][line]
                 # if the line is entirely off this camera, skip it
                 oncam = np.where((specdata["coadd_wave"][linepix] >= np.min(specdata['wave'][icam])) *
                                  (specdata["coadd_wave"][linepix] <= np.max(specdata['wave'][icam])))[0]

@@ -1131,11 +1131,11 @@ class ContinuumTools(Filters):
                 # Get initial guesses on the line-emission on the first iteration.
                 if initial_guesses is None:
                     initial_guesses, param_bounds = EMFit._initial_guesses_and_bounds(
-                        pix, flux, log=log,
+                        pix['linepix'], contpix=pix['contpix'], coadd_flux=flux,
+                        subtract_local_continuum=True, log=log,
                         linesigma_broad=initsigma_broad, 
                         linesigma_narrow=initsigma_narrow, 
-                        linesigma_balmer_broad=initsigma_balmer_broad, 
-                        subtract_local_continuum=True)
+                        linesigma_balmer_broad=initsigma_balmer_broad)
 
                 # fit!
                 linefit, contfit = EMFit.optimize(linemodel, initial_guesses,
@@ -1518,6 +1518,10 @@ class ContinuumTools(Filters):
             fig.subplots_adjust(left=0.06, right=0.97, bottom=0.07, top=0.95, wspace=0.23, hspace=0.3)
             #fig.tight_layout()
             fig.savefig(png)
+
+        # rename the keys so they are more obvious to downstream code
+        pix['coadd_linepix'] = pix.pop('linepix')
+        pix['coadd_contpix'] = pix.pop('contpix')
 
         return pix
 
