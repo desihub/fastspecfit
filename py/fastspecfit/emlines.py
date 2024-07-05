@@ -1286,7 +1286,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
  
     """
     from astropy.table import Column
-    from fastspecfit.util import ivar2var
+    from fastspecfit.util import ivar2var, quantile
 
     tall = time.time()
 
@@ -1369,7 +1369,21 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         log.info(f'Line-fitting {data["uniqueid"]} with broad lines and {nfree_broad} free parameters took ' + \
                  f'{time.time()-t0:.4f} seconds [niter={fit_broad.meta["nfev"]}, rchi2={chi2_broad:.4f}].')
 
-        pdb.set_trace()
+        residuals = emlineflux - model_broad
+
+        # get the pixels of the broad Balmer lines
+        line_params = EMFit.line_table['params'].value
+
+        IBalmer = np.where(EMFit.test_BalmerBroad)[0]
+        balmer_linesigmas = fit_broad[line_params[IBalmer][:, ParamType.SIGMA]]['value'].value
+        balmer_linevshifts = fit_broad[line_params[IBalmer][:, ParamType.VSHIFT]]['value'].value
+
+        balmerpix = EMFit._linepix_and_contpix(emlinewave, EMFit.line_table[IBalmer],
+                                               balmer_linesigmas, get_contpix=False, 
+                                               redshift=redshift)
+        balmerlines = list(balmerpix['linepix'].keys())
+        balmerpixels = [balmerpix['linepix'][balmerline] for balmerline in balmerlines]
+        del balmerpix
 
         # Determine how many lines (free parameters) are in wavelengths in and
         # around the Balmer lines, with and without broad lines.
@@ -1377,11 +1391,9 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         balmer_nfree_nobroad = 0
 
         restwaves = EMFit.line_table['restwave']
-        line_params = EMFit.line_table['params'].value
+        balmer_linesnrs = np.zeros(len(balmerpixels))
 
-        balmerlines = data['linename_balmer_broad']
-        balmerpixels = data['linepix_balmer_broad']
-        for balmerpix in balmerpixels:
+        for iline, (balmerpix, balmerline) in enumerate(zip(balmerpixels, balmerlines)):
             balmerpixwave = emlinewave[balmerpix]
             line_in_balmerpix = ( (restwaves > np.min(balmerpixwave)/(1. + redshift)) * 
                                   (restwaves < (np.max(balmerpixwave)/(1. + redshift))) )
@@ -1391,18 +1403,14 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                 balmer_nfree_nobroad += np.sum(linemodel_nobroad['free'][params])
                 balmer_nfree_broad   += np.sum(linemodel_broad['free'][params])
 
-        # get the S/N of the broad Balmer lines
-        IBalmer = np.array([EMFit.line_map[balmerline] for balmerline in balmerlines])
-        balmer_linesigmas = fit_broad[line_params[IBalmer][:, ParamType.SIGMA]]['value'].value
-
-        pix = _linepix_and_contpix(emlinewave, EMFit.line_table[IBalmer],
-                                   balmer_linesigmas, redshift=redshift)
-        
-        pdb.set_trace()
-
+            # get the S/N of the broad Balmer line
+            balmernoise = np.ptp(quantile(residuals[balmerpix], (0.25, 0.75))) / 1.349 # robust sigma
+            balmerindx = line_params[EMFit.line_map[balmerline], ParamType.AMPLITUDE]
+            if balmernoise > 0.:
+                balmer_linesnrs[iline] = fit_broad.meta['obsvalue'][balmerindx] / balmernoise
 
         # compute delta-chi2 around just the broad, non-helium Balmer lines
-        balmerpixels = np.hstack(balmerpixels)
+        balmerpixels = np.unique(np.hstack(balmerpixels))
         
         bivar = emlineivar[balmerpixels]
         bflux = emlineflux[balmerpixels]
@@ -1427,33 +1435,34 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
 
         Habroad_idx  = line_params[EMFit.line_map['halpha_broad'], ParamType.SIGMA]
         Habroad = fit_broad['value'][Habroad_idx]
-        
-        # Bbroad_amps enumerates param indices of all non-fixed amplitudes
-        # of lines that are broad, Balmer, and not Helium
-        Bbroad_all_amps   = line_params[EMFit.isBalmerBroad_noHelium, ParamType.AMPLITUDE]
-        Bbroad_all_stds   = np.sqrt(civars[EMFit.isBalmerBroad_noHelium])
-        Bbroad_all_lnames = EMFit.line_table['name'][EMFit.isBalmerBroad_noHelium]
-        
-        Bbroad_nonFixed  = ~fit_broad['fixed'][Bbroad_all_amps]
-        Bbroad_amps   = Bbroad_all_amps[Bbroad_nonFixed]
-        Bbroad_stds   = Bbroad_all_stds[Bbroad_nonFixed]
-        Bbroad_lnames = Bbroad_all_lnames[Bbroad_nonFixed]
-        
-        broadsnr = fit_broad.meta['obsvalue'][Bbroad_amps] * Bbroad_stds
+
+        ## Bbroad_amps enumerates param indices of all non-fixed amplitudes
+        ## of lines that are broad, Balmer, and not Helium
+        #Bbroad_all_amps   = line_params[EMFit.isBalmerBroad_noHelium, ParamType.AMPLITUDE]
+        #Bbroad_all_stds   = np.sqrt(civars[EMFit.isBalmerBroad_noHelium])
+        #Bbroad_all_lnames = EMFit.line_table['name'][EMFit.isBalmerBroad_noHelium]
+        #
+        #Bbroad_nonFixed  = ~fit_broad['fixed'][Bbroad_all_amps]
+        #Bbroad_amps   = Bbroad_all_amps[Bbroad_nonFixed]
+        #Bbroad_stds   = Bbroad_all_stds[Bbroad_nonFixed]
+        #Bbroad_lnames = Bbroad_all_lnames[Bbroad_nonFixed]
+        #
+        #broadsnr = fit_broad.meta['obsvalue'][Bbroad_amps] * Bbroad_stds
         
         sigtest1 = Habroad > minsigma_balmer_broad
         sigtest2 = Habroad > Hanarrow
-        if len(broadsnr) == 0:
-            broadsnrtest = False
-            _broadsnr = '0.'
-        elif len(broadsnr) == 1:
-            broadsnrtest = (broadsnr[-1] > minsnr_balmer_broad)
-            _broadsnr = f'S/N ({Bbroad_lnames[-1]}) = {broadsnr[-1]:.1f}'
+
+        #if len(broadsnr) == 0: 
+        #    broadsnrtest = False
+        #    _broadsnr = '0.'
+        if len(balmer_linesnrs) == 1:
+            broadsnrtest = (balmer_linesnrs[-1] > minsnr_balmer_broad)
+            _broadsnr = f'S/N ({balmerlines[-1]}) = {balmer_linesnrs[-1]:.1f}'
         else:
-            broadsnrtest = np.any(broadsnr[-2:] > minsnr_balmer_broad)
+            broadsnrtest = np.any(balmer_linesnrs[-2:] > minsnr_balmer_broad)
             _broadsnr = \
-                f'S/N ({Bbroad_lnames[-2]}) = {broadsnr[-2]:.1f}, ' \
-                f'S/N ({Bbroad_lnames[-1]}) = {broadsnr[-1]:.1f}'
+                f'S/N ({balmerlines[-2]}) = {balmer_linesnrs[-2]:.1f}, ' \
+                f'S/N ({balmerlines[-1]}) = {balmer_linesnrs[-1]:.1f}'
             
         if dchi2test and sigtest1 and sigtest2 and broadsnrtest:
             log.info('Adopting broad-line model:')

@@ -819,6 +819,143 @@ class Tools(object):
     
         return dn4000, dn4000_ivar
 
+    @staticmethod
+    def _linepix_and_contpix(wave, linetable, linesigmas, patchMap=None, 
+                             redshift=0., nsigma=4., minlinesigma=50., 
+                             mincontpix=11, get_contpix=True):
+        """Support routine to determine the pixels potentially containing emission lines
+        and the corresponding (adjacent) continuum.
+
+        linesigmas in km/s
+        minlinesigma in kms - minimum line-sigma for the purposes of masking
+        mincontpix - minimum number of continuum pixels per line
+
+        """
+        def _get_linepix(zlinewave, sigma):
+            # line-emission
+            I = (wave > (zlinewave - nsigma * sigma)) * (wave < (zlinewave + nsigma * sigma))
+            return np.where(I)[0]
+
+        def _get_contpix(zlinewaves, sigmas, nsigma_factor=2., linemask=None):
+            minwave = np.min(zlinewaves - nsigma_factor * nsigma * sigmas)
+            maxwave = np.max(zlinewaves + nsigma_factor * nsigma * sigmas)
+            # continuum; ToDo: need to special-case Lyman-alpha
+            if linemask is None:
+                J = (wave > minwave) * (wave < maxwave)
+            else:
+                J = (wave > minwave) * (wave < maxwave) * ~linemask
+            return np.where(J)[0]
+
+        linemask = np.zeros_like(wave, bool) # True - affected by possible emission line
+        linenames = linetable['name'].value
+        zlinewaves = linetable['restwave'].value * (1. + redshift)
+        linesigmas[(linesigmas > 0.) * (linesigmas < minlinesigma)] = minlinesigma
+        linesigmas_ang = linesigmas * zlinewaves / C_LIGHT # [km/s --> Angstrom]
+
+        pix = {'linepix': {}, 'contpix': {}}
+        if patchMap is not None:
+            pix.update({'patch_contpix': {}})
+            patchids = list(patchMap.keys())
+            npatch = len(patchids)
+
+        # Initial set of pixels that may contain emission lines.
+        for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
+            # skip fixed (e.g., hbeta_broad) lines
+            if sigma <= 0.:
+                continue 
+            I = _get_linepix(zlinewave, sigma)
+            if len(I) > 0:
+                linemask[I] = True
+                pix['linepix'][linename] = I
+            else:
+                errmsg = f'Unable to determine line pixels for line {linename}.'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+
+        # skip contpix
+        if not get_contpix:
+            return pix
+
+        if patchMap is None:
+            for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
+                # skip fixed (e.g., hbeta_broad) lines
+                if sigma <= 0.:
+                    continue 
+                J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=linemask)
+                # go further out
+                if len(J) < mincontpix:
+                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2.5, linemask=linemask)
+                # drop the linemask_ condition; dangerous??
+                if len(J) < mincontpix: 
+                    #log.debug(f'Dropping linemask condition for {linename} with width ' + \
+                    #          f'{nsigma*sigma:.3f}-{3*nsigma*sigma:.3f} Angstrom')
+
+                    # Note the smaller nsigma_factor (to stay closer to the
+                    # line); remove the pixels already assigned to this
+                    # line.
+                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=None)
+                    J = np.delete(J, np.isin(J, pix['linepix'][linename]))
+
+                if len(J) == 0:
+                    errmsg = f'Unable to determine continuum pixels for patch ' + \
+                        f'{patchid} (lines: {",".join(linenames[patchMap[patchid][0]])})'
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
+                        
+                pix['contpix'][linename] = J
+        else:
+            # Now get the corresponding continuum pixels in "patches."
+            for patchid in patchids:
+                # Not all patchlines will be in the 'linepix' dictionary
+                # because, e.g., the broad Balmer lines have linesigma=0. when
+                # fitting the narrow-only linemodel.
+                patchlines = patchMap[patchid][0]
+                keep = np.isin(patchlines, list(pix['linepix'].keys()))
+                patchlines = patchlines[keep]
+                I = patchMap[patchid][1][keep]
+
+                zlinewaves_patch = zlinewaves[I]
+                sigmas_patch = linesigmas_ang[I]
+
+                J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2., linemask=linemask)
+                # go further out
+                if len(J) < mincontpix: 
+                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.5, linemask=linemask)
+
+                # dropping the linemask condition in a patch should never happen; raise an exception
+                if len(J) == 0:
+                    errmsg = f'Unable to determine continuum pixels for patch ' + \
+                        f'{patchid} (lines: {",".join(linenames[patchMap[patchid][0]])})'
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
+                        
+                pix['patch_contpix'][patchid] = J
+
+                # all lines in this patch get the same continuum indices
+                for patchline in patchlines:
+                    pix['contpix'][patchline] = J
+
+            # Loop back through and merge patches that overlap by at least
+            # mincontpix.
+            for ipatch, patchid in enumerate(patchids[:npatch-1]):
+                left = pix['patch_contpix'][patchid]
+                rght = pix['patch_contpix'][patchids[ipatch+1]]
+                incommon = np.intersect1d(left, rght, assume_unique=True)
+                if len(incommon) > mincontpix:
+                    newcontpix = np.union1d(left, rght)
+                    newpatchid = patchids[ipatch] + patchids[ipatch+1]
+                    del pix['patch_contpix'][patchids[ipatch]]
+                    del pix['patch_contpix'][patchids[ipatch+1]]
+                    pix['patch_contpix'][newpatchid] = newcontpix
+
+        # make sure we haven't mucked up our indexing.
+        if not pix['linepix'].keys() == pix['contpix'].keys():
+            errmsg = 'Mismatch in linepix and contpix!'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+        return pix
+
 
 class ContinuumTools(Tools):
     """Tools for dealing with stellar continua.
@@ -858,8 +995,7 @@ class ContinuumTools(Tools):
         return _smooth_continuum(*args, **kwargs)
 
     
-    @staticmethod
-    def build_linemask_patches(wave, flux, ivar, resolution_matrix, redshift=0.0, 
+    def build_linemask_patches(self, wave, flux, ivar, resolution_matrix, redshift=0.0, 
                                uniqueid=0, initsigma_broad=3000., initsigma_narrow=150., 
                                initsigma_balmer_broad=1000., minsnr_balmer_broad=1.5, 
                                niter=2, emlinesfile=None, fix_continuum_slope=False, 
@@ -907,138 +1043,6 @@ class ContinuumTools(Tools):
                 log = get_logger()
 
 
-        def _linepix_and_contpix(wave, linetable, linesigmas, patchMap=None, 
-                                 redshift=0., nsigma=4., minlinesigma=50., 
-                                 mincontpix=11):
-            """Support routine to determine the pixels potentially containing emission lines
-            and the corresponding (adjacent) continuum.
-
-            linesigmas in km/s
-            minlinesigma in kms - minimum line-sigma for the purposes of masking
-            mincontpix - minimum number of continuum pixels per line
-
-            """
-            def _get_linepix(zlinewave, sigma):
-                # line-emission
-                I = (wave > (zlinewave - nsigma * sigma)) * (wave < (zlinewave + nsigma * sigma))
-                return np.where(I)[0]
-
-            def _get_contpix(zlinewaves, sigmas, nsigma_factor=2., linemask=None):
-                minwave = np.min(zlinewaves - nsigma_factor * nsigma * sigmas)
-                maxwave = np.max(zlinewaves + nsigma_factor * nsigma * sigmas)
-                # continuum; ToDo: need to special-case Lyman-alpha
-                if linemask is None:
-                    J = (wave > minwave) * (wave < maxwave)
-                else:
-                    J = (wave > minwave) * (wave < maxwave) * ~linemask
-                return np.where(J)[0]
-
-            linemask = np.zeros_like(wave, bool) # True - affected by possible emission line
-            linenames = linetable['name'].value
-            zlinewaves = linetable['restwave'].value * (1. + redshift)
-            linesigmas[(linesigmas > 0.) * (linesigmas < minlinesigma)] = minlinesigma
-            linesigmas_ang = linesigmas * zlinewaves / C_LIGHT # [km/s --> Angstrom]
-
-            pix = {'linepix': {}, 'contpix': {}}
-            if patchMap is not None:
-                pix.update({'patch_contpix': {}})
-                patchids = list(patchMap.keys())
-                npatch = len(patchids)
-
-            # Initial set of pixels that may contain emission lines.
-            for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
-                # skip fixed (e.g., hbeta_broad) lines
-                if sigma <= 0.:
-                    continue 
-                I = _get_linepix(zlinewave, sigma)
-                if len(I) > 0:
-                    linemask[I] = True
-                    pix['linepix'][linename] = I
-                else:
-                    errmsg = f'Unable to determine line pixels for line {linename}.'
-                    log.critical(errmsg)
-                    raise ValueError(errmsg)
-
-            if patchMap is None:
-                for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
-                    # skip fixed (e.g., hbeta_broad) lines
-                    if sigma <= 0.:
-                        continue 
-                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=linemask)
-                    # go further out
-                    if len(J) < mincontpix:
-                        J = _get_contpix(zlinewave, sigma, nsigma_factor=2.5, linemask=linemask)
-                    # drop the linemask_ condition; dangerous??
-                    if len(J) < mincontpix: 
-                        #log.debug(f'Dropping linemask condition for {linename} with width ' + \
-                        #          f'{nsigma*sigma:.3f}-{3*nsigma*sigma:.3f} Angstrom')
-
-                        # Note the smaller nsigma_factor (to stay closer to the
-                        # line); remove the pixels already assigned to this
-                        # line.
-                        J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=None)
-                        J = np.delete(J, np.isin(J, pix['linepix'][linename]))
-    
-                    if len(J) == 0:
-                        errmsg = f'Unable to determine continuum pixels for patch ' + \
-                            f'{patchid} (lines: {",".join(linenames[patchMap[patchid][0]])})'
-                        log.critical(errmsg)
-                        raise ValueError(errmsg)
-                            
-                    pix['contpix'][linename] = J
-            else:
-                # Now get the corresponding continuum pixels in "patches."
-                for patchid in patchids:
-                    # Not all patchlines will be in the 'linepix' dictionary
-                    # because, e.g., the broad Balmer lines have linesigma=0. when
-                    # fitting the narrow-only linemodel.
-                    patchlines = patchMap[patchid][0]
-                    keep = np.isin(patchlines, list(pix['linepix'].keys()))
-                    patchlines = patchlines[keep]
-                    I = patchMap[patchid][1][keep]
-    
-                    zlinewaves_patch = zlinewaves[I]
-                    sigmas_patch = linesigmas_ang[I]
-    
-                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2., linemask=linemask)
-                    # go further out
-                    if len(J) < mincontpix: 
-                        J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.5, linemask=linemask)
-
-                    # dropping the linemask condition in a patch should never happen; raise an exception
-                    if len(J) == 0:
-                        errmsg = f'Unable to determine continuum pixels for patch ' + \
-                            f'{patchid} (lines: {",".join(linenames[patchMap[patchid][0]])})'
-                        log.critical(errmsg)
-                        raise ValueError(errmsg)
-                            
-                    pix['patch_contpix'][patchid] = J
-    
-                    # all lines in this patch get the same continuum indices
-                    for patchline in patchlines:
-                        pix['contpix'][patchline] = J
-    
-                # Loop back through and merge patches that overlap by at least
-                # mincontpix.
-                for ipatch, patchid in enumerate(patchids[:npatch-1]):
-                    left = pix['patch_contpix'][patchid]
-                    rght = pix['patch_contpix'][patchids[ipatch+1]]
-                    incommon = np.intersect1d(left, rght, assume_unique=True)
-                    if len(incommon) > mincontpix:
-                        newcontpix = np.union1d(left, rght)
-                        newpatchid = patchids[ipatch] + patchids[ipatch+1]
-                        del pix['patch_contpix'][patchids[ipatch]]
-                        del pix['patch_contpix'][patchids[ipatch+1]]
-                        pix['patch_contpix'][newpatchid] = newcontpix
-
-            # make sure we haven't mucked up our indexing.
-            if not pix['linepix'].keys() == pix['contpix'].keys():
-                errmsg = 'Mismatch in linepix and contpix!'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
-
-            return pix
-
         def _make_patchTable(patchids):
             patchids = np.atleast_1d(patchids)
             npatch = len(patchids)
@@ -1077,9 +1081,9 @@ class ContinuumTools(Tools):
 
                 # Build the line and continuum masks (only for lines in range).
                 #print(linesigmas[EMFit.line_in_range])
-                pix = _linepix_and_contpix(wave, linetable_inrange, 
-                                           linesigmas[EMFit.line_in_range], 
-                                           patchMap=patchMap, redshift=redshift)
+                pix = self._linepix_and_contpix(wave, linetable_inrange, 
+                                                linesigmas[EMFit.line_in_range], 
+                                                patchMap=patchMap, redshift=redshift)
 
                 # In the case that patches have been merged, update the
                 # continuum_patches table and patchMap dictionary.
@@ -1449,9 +1453,9 @@ class ContinuumTools(Tools):
         linesigmas[EMFit.isNarrow] = finalsigma_narrow
         linesigmas[EMFit.isBalmerBroad] = finalsigma_balmer_broad
 
-        pix = _linepix_and_contpix(wave, EMFit.line_table[EMFit.line_in_range], 
-                                   linesigmas[EMFit.line_in_range], 
-                                   patchMap=None, redshift=redshift)
+        pix = self._linepix_and_contpix(wave, EMFit.line_table[EMFit.line_in_range], 
+                                        linesigmas[EMFit.line_in_range], 
+                                        patchMap=None, redshift=redshift)
 
         # Build another QA figure
         if verbose:
@@ -1521,9 +1525,9 @@ class ContinuumTools(Tools):
         if finalsigma_balmer_broad < initsigma_balmer_broad:
             finalsigma_balmer_broad = initsigma_balmer_broad
             linesigmas[EMFit.isBalmerBroad] = finalsigma_balmer_broad
-            newpix = _linepix_and_contpix(wave, EMFit.line_table[EMFit.line_in_range], 
-                                          linesigmas[EMFit.line_in_range], 
-                                          patchMap=None, redshift=redshift)
+            newpix = self._linepix_and_contpix(wave, EMFit.line_table[EMFit.line_in_range], 
+                                               linesigmas[EMFit.line_in_range], 
+                                               patchMap=None, redshift=redshift)
             linepix = newpix['linepix']
         else:
             linepix = pix['linepix']
