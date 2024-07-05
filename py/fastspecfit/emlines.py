@@ -21,7 +21,7 @@ from fastspecfit.io import (
     FLUXNORM,
 )
 
-from fastspecfit.continuum import Filters
+from fastspecfit.continuum import Tools
 from fastspecfit.util import C_LIGHT
 
 from fastspecfit.emline_fit import (
@@ -38,7 +38,7 @@ class ParamType(IntEnum):
     SIGMA = 2
 
 
-class EMFitTools(Filters):
+class EMFitTools(Tools):
     
     # FIXME: all the work in this function except possibly the super
     # init depends only on the contents of emlinesfile.  We should

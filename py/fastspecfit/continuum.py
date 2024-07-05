@@ -280,13 +280,13 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
     return smooth, smoothsigma
     
 
-class Filters(object):
+class Tools(object):
     def __init__(self, ignore_photometry=False, fphoto=None, load_filters=True):
 
         """Class to load filters, dust, and filter- and dust-related methods.
 
         """
-        super(Filters, self).__init__()
+        super(Tools, self).__init__()
         
         from speclite import filters
         
@@ -820,7 +820,7 @@ class Filters(object):
         return dn4000, dn4000_ivar
 
 
-class ContinuumTools(Filters):
+class ContinuumTools(Tools):
     """Tools for dealing with stellar continua.
 
     Parameters

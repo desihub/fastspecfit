@@ -1456,11 +1456,11 @@ class DESISpectra(TabulatedDESI):
         from astropy.table import vstack
         from desitarget import geomask
         from desispec.io.photo import gather_tractorphot, gather_targetphot
-        from fastspecfit.continuum import Filters
+        from fastspecfit.continuum import Tools
     
         input_meta = vstack(self.meta).copy()
 
-        F = Filters(fphoto=self.fphoto, load_filters=False)
+        F = Tools(fphoto=self.fphoto, load_filters=False)
         PHOTCOLS = np.unique(np.hstack((F.readcols, F.fluxcols, F.fluxivarcols)))
 
         # DR9 or DR10
@@ -1600,7 +1600,7 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
     import astropy.units as u
     from astropy.table import hstack, Column
     from fastspecfit.emlines import read_emlines        
-    from fastspecfit.continuum import Filters
+    from fastspecfit.continuum import Tools
 
     if log is None:
         from desiutil.log import get_logger
@@ -1609,7 +1609,7 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
     linetable = read_emlines(emlinesfile=emlinesfile)
 
     if fphoto is None:
-        Filt = Filters(load_filters=False)
+        Filt = Tools(load_filters=False)
         fphoto = Filt.__dict__
 
     nobj = len(input_meta)
