@@ -72,23 +72,33 @@ class EMFitTools(Filters):
                                   'halpha_broad', 'nii_6584', 'sii_6716', 'sii_6731']))[0]
             self.line_table = self.line_table[I]
 
-            ## assign continuum patches (should be in emlines.ecsv)
-            #continuum_patches = {
-            #    'lyalpha': '0', 'civ_1549': '1', 'ciii_1908': '2', 
-            #    'mgii_2796': '3', 'mgii_2803': '3', 
-            #    'oii_3726': '4', 'oii_3729': '4',  
-            #    'hdelta': '5', 'hdelta_broad': '5', 
-            #    'hgamma': '6', 'hgamma_broad': '6', 
-            #    'hbeta': '7', 'hbeta_broad': '7', 'oiii_4959': '7', 'oiii_5007': '7', 
-            #    'nii_6548': '8', 'halpha': '8', 'halpha_broad': '8', 'nii_6584': '8', 
-            #    'sii_6716': '9', 'sii_6731': '9'}
-            #self.line_table['continuum_patch'] = [continuum_patches[linename] for linename in self.line_table['name']]
+        # Build some convenience (Boolean) arrays that we'll use in many places:
+
+        # broad UV/QSO lines but *not* broad Balmer or helium lines
+        self.isBroad = np.logical_and(self.line_table['isbroad'].value, 
+                                      np.logical_not(self.line_table['isbalmer'].value))
+
+        # narrow lines (forbidden + Balmer + helium)
+        self.isNarrow = np.logical_not(self.line_table['isbroad'].value)
+
+        # broad Balmer *and* helium lines
+        self.isBalmerBroad = np.logical_and(self.line_table['isbroad'], 
+                                            self.line_table['isbalmer'])
+
+        # broad Balmer *excluding* helium lines
+        self.isBalmerBroad_noHelium = np.logical_and.reduce((
+            self.line_table['isbalmer'].value,
+            self.line_table['isbroad'].value,
+            np.logical_not(self.line_table['ishelium'].value)))
 
         line_names = self.line_table['name'].value
 
         # mapping to enable fast lookup of line number by name
         self.line_map = { line_name : line_idx for line_idx, line_name in enumerate(line_names) }
-        
+
+        # broad Balmer lines used to test the narrow+broad model
+        self.test_BalmerBroad = np.isin(self.line_table['name'], ['halpha_broad', 'hbeta_broad', 'hgamma_broad'])
+
         # mapping from target -> source for all tied doublets
         doublet_src = np.full(len(self.line_table), -1, dtype=np.int32)
         for doublet_tgt in doublet_lines:
@@ -1348,7 +1358,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     
     # Now try adding broad Balmer and helium lines and see if we improve the
     # chi2.
-    if broadlinefit:
+    if broadlinefit and data['balmerbroad']:
 
         pdb.set_trace()
 
@@ -1372,7 +1382,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         for icam in range(len(data['cameras'])):
             for line_name, pix in zip(data['linename'][icam], data['linepix'][icam]):
                 line = EMFit.line_map[line_name]
-                if (line_isBbroad[line]):
+                if EMFit.isBalmerBroad_noHelium[line]:
                     params = line_params[line]
                     balmer_pix.append(pix + pixoffset[icam])
                     balmer_nfree_nobroad += np.sum(linemodel_nobroad['free'][params])
@@ -1420,9 +1430,9 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
             
             # Bbroad_amps enumerates param indices of all non-fixed amplitudes
             # of lines that are broad, Balmer, and not Helium
-            Bbroad_all_amps   = line_params[line_isBbroad, ParamType.AMPLITUDE]
-            Bbroad_all_stds   = np.sqrt(civars[line_isBbroad])
-            Bbroad_all_lnames = EMFit.line_table['name'][line_isBbroad]
+            Bbroad_all_amps   = line_params[EMFit.isBalmerBroad_noHelium, ParamType.AMPLITUDE]
+            Bbroad_all_stds   = np.sqrt(civars[EMFit.isBalmerBroad_noHelium])
+            Bbroad_all_lnames = EMFit.line_table['name'][EMFit.isBalmerBroad_noHelium]
             
             Bbroad_nonFixed  = ~fit_broad['fixed'][Bbroad_all_amps]
             Bbroad_amps   = Bbroad_all_amps[Bbroad_nonFixed]

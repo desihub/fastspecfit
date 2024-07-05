@@ -168,8 +168,8 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                          'res_fast': [], 
                          'snr': np.zeros(3, 'f4'),
                          'linemask': [],
-                         #'linepix': [],
-                         #'contpix': [],
+                         'linepix': [],
+                         'linepix_balmer_broad': [],
                          })
     
         cameras, npixpercamera = [], []
@@ -233,67 +233,44 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                                             uniqueid=specdata['uniqueid'],
                                             redshift=specdata['zredrock'],
                                             verbose=verbose, log=log)
-        specdata.update(pix)
-        del pix
-
         # Map the pixels belonging to individual emission lines onto the
         # original per-camera spectra. This works, but maybe there's a better
         # way to do it?
         for icam in np.arange(ncam):
-            camlinemask = np.zeros(npixpercamera[icam], bool)
             camlinepix = {}
-            camcontpix = {}
-            for line in specdata['coadd_linepix'].keys():
-                linepix = specdata['coadd_linepix'][line]
-                contpix = specdata['coadd_contpix'][line]
+            camlinemask = np.zeros(npixpercamera[icam], bool)
+            for linename in pix['coadd_linepix'].keys():
+                linepix = pix['coadd_linepix'][linename]
                 # if the line is entirely off this camera, skip it
                 oncam = np.where((specdata["coadd_wave"][linepix] >= np.min(specdata['wave'][icam])) *
                                  (specdata["coadd_wave"][linepix] <= np.max(specdata['wave'][icam])))[0]
                 if len(oncam) == 0:
                     continue
                 I = np.searchsorted(specdata['wave'][icam], specdata['coadd_wave'][linepix[oncam]])
-                #print(f'Line {line:20}: adding {len(I):02d} pixels to camera {icam}')
+                #print(f'Line {linename:20}: adding {len(I):02d} pixels to camera {icam}')
                 camlinemask[I] = True
+                camlinepix[linename] = I
+
+            camlinepix_balmer_broad = {}
+            if bool(pix['coadd_linepix_balmer_broad']):
+                for linename in pix['coadd_linepix_balmer_broad'].keys():
+                    linepix_balmer_broad = pix['coadd_linepix_balmer_broad'][linename]
+                    # if the line is entirely off this camera, skip it
+                    oncam = np.where((specdata["coadd_wave"][linepix_balmer_broad] >= np.min(specdata['wave'][icam])) *
+                                     (specdata["coadd_wave"][linepix_balmer_broad] <= np.max(specdata['wave'][icam])))[0]
+                    if len(oncam) == 0:
+                        continue
+                    I = np.searchsorted(specdata['wave'][icam], specdata['coadd_wave'][linepix_balmer_broad[oncam]])
+                    camlinepix_balmer_broad[linename] = I
             #print()
             specdata['linemask'].append(camlinemask)
+            specdata['linepix'].append(camlinepix)
+            specdata['linepix_balmer_broad'].append(camlinepix_balmer_broad)
 
-        #specdata['linemask'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask']*1) > 0)
-
-        #specdata['coadd_linename'] = coadd_linemask_dict['linename']
-        #specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
-        #specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
-        #
-        #specdata['linesigma_narrow'] = coadd_linemask_dict['linesigma_narrow']
-        #specdata['linesigma_balmer'] = coadd_linemask_dict['linesigma_balmer']
-        #specdata['linesigma_uv'] = coadd_linemask_dict['linesigma_uv']
-        #
-        #specdata['linesigma_narrow_snr'] = coadd_linemask_dict['linesigma_narrow_snr']
-        #specdata['linesigma_balmer_snr'] = coadd_linemask_dict['linesigma_balmer_snr']
-        #specdata['linesigma_uv_snr'] = coadd_linemask_dict['linesigma_uv_snr']
-        #
-        #specdata['smoothsigma'] = coadd_linemask_dict['smoothsigma']
-        #
-        ## Map the pixels belonging to individual emission lines and
-        ## their local continuum back onto the original per-camera
-        ## spectra. These lists of arrays are used in
-        ## continuum.ContinnuumTools.smooth_continuum.
-        #for icam in np.arange(len(specdata['cameras'])):
-        #    #specdata['smoothflux'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['smoothflux']))
-        #    specdata['linemask'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask']*1) > 0)
-        #    specdata['linemask_all'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask_all']*1) > 0)
-        #    _linename, _linenpix, _contpix = [], [], []
-        #    for ipix in np.arange(len(coadd_linemask_dict['linepix'])):
-        #        I = np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linepix'][ipix]*1) > 0
-        #        J = np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['contpix'][ipix]*1) > 0
-        #        if np.sum(I) > 3 and np.sum(J) > 3:
-        #            _linename.append(coadd_linemask_dict['linename'][ipix])
-        #            _linenpix.append(np.where(I)[0])
-        #            _contpix.append(np.where(J)[0])
-        #    specdata['linename'].append(_linename)
-        #    specdata['linepix'].append(_linenpix)
-        #    specdata['contpix'].append(_contpix)
-        #specdata.update({'coadd_linemask': coadd_linemask_dict['linemask'],
-        #                 'coadd_linemask_all': coadd_linemask_dict['linemask_all']})
+        #pix.pop('coadd_linepix')
+        pix.pop('coadd_linepix_balmer_broad')
+        specdata.update(pix)
+        del pix
     
         # Optionally synthesize photometry from the coadded spectrum.
         if synthphot and synth_filters is not None:
