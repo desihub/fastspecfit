@@ -169,7 +169,8 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                          'snr': np.zeros(3, 'f4'),
                          'linemask': [],
                          'linepix': [],
-                         'linepix_balmer_broad': [],
+                         #'linename_balmer_broad': [],
+                         #'linepix_balmer_broad': [],
                          })
     
         cameras, npixpercamera = [], []
@@ -233,6 +234,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                                             uniqueid=specdata['uniqueid'],
                                             redshift=specdata['zredrock'],
                                             verbose=verbose, log=log)
+
         # Map the pixels belonging to individual emission lines onto the
         # original per-camera spectra. This works, but maybe there's a better
         # way to do it?
@@ -250,25 +252,33 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                 #print(f'Line {linename:20}: adding {len(I):02d} pixels to camera {icam}')
                 camlinemask[I] = True
                 camlinepix[linename] = I
-
-            camlinepix_balmer_broad = {}
-            if bool(pix['coadd_linepix_balmer_broad']):
-                for linename in pix['coadd_linepix_balmer_broad'].keys():
-                    linepix_balmer_broad = pix['coadd_linepix_balmer_broad'][linename]
-                    # if the line is entirely off this camera, skip it
-                    oncam = np.where((specdata["coadd_wave"][linepix_balmer_broad] >= np.min(specdata['wave'][icam])) *
-                                     (specdata["coadd_wave"][linepix_balmer_broad] <= np.max(specdata['wave'][icam])))[0]
-                    if len(oncam) == 0:
-                        continue
-                    I = np.searchsorted(specdata['wave'][icam], specdata['coadd_wave'][linepix_balmer_broad[oncam]])
-                    camlinepix_balmer_broad[linename] = I
             #print()
             specdata['linemask'].append(camlinemask)
             specdata['linepix'].append(camlinepix)
-            specdata['linepix_balmer_broad'].append(camlinepix_balmer_broad)
+
+        ## For the broad Balmer lines, if any, generate a list of pixels
+        ## corresponding to the hstacked per-camera spectrum, because that's
+        ## what we fit in emlines.emline_specfit.
+        #if bool(pix['coadd_linepix_balmer_broad']):
+        #    offset = np.cumsum(npixpercamera) - npixpercamera
+        #    linename_balmer_broad = []
+        #    for icam in np.arange(ncam):
+        #        #camlinepix_balmer_broad = []
+        #        for linename in pix['coadd_linepix_balmer_broad'].keys():
+        #            linepix = pix['coadd_linepix_balmer_broad'][linename]
+        #            # if the line is entirely off this camera, skip it
+        #            oncam = np.where((specdata["coadd_wave"][linepix] >= np.min(specdata['wave'][icam])) *
+        #                             (specdata["coadd_wave"][linepix] <= np.max(specdata['wave'][icam])))[0]
+        #            if len(oncam) == 0:
+        #                continue
+        #            I = np.searchsorted(specdata['wave'][icam], specdata['coadd_wave'][linepix[oncam]])
+        #            specdata['linepix_balmer_broad'].append(offset[icam] + I)
+        #            linename_balmer_broad.append(linename)
+        #    # should never be empty
+        #    specdata['linename_balmer_broad'] = np.unique(np.hstack(linename_balmer_broad))
 
         #pix.pop('coadd_linepix')
-        pix.pop('coadd_linepix_balmer_broad')
+        #pix.pop('coadd_linepix_balmer_broad')
         specdata.update(pix)
         del pix
     
