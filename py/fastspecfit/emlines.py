@@ -1378,7 +1378,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         balmer_linesigmas = fit_broad[line_params[IBalmer][:, ParamType.SIGMA]]['value'].value
         balmer_linevshifts = fit_broad[line_params[IBalmer][:, ParamType.VSHIFT]]['value'].value
 
-        balmerpix = EMFit._linepix_and_contpix(emlinewave, EMFit.line_table[IBalmer],
+        balmerpix = EMFit._linepix_and_contpix(emlinewave, emlineivar, EMFit.line_table[IBalmer],
                                                balmer_linesigmas, get_contpix=False, 
                                                redshift=redshift)
         balmerlines = list(balmerpix['linepix'].keys())
