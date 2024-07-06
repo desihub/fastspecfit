@@ -275,7 +275,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
                 for xx in ax:
                     xx.axvline(x=zlinewave, color='gray')
 
-        fig.savefig(png)
+        fig.savefig(png, bbox_inches='tight')
 
     return smooth, smoothsigma
     
@@ -837,10 +837,13 @@ class Tools(object):
             I = (wave > (zlinewave - nsigma * sigma)) * (wave < (zlinewave + nsigma * sigma)) * (ivar > 0.)
             return np.where(I)[0]
 
-        def _get_contpix(zlinewaves, sigmas, nsigma_factor=2., linemask=None):
-            minwave = np.min(zlinewaves - nsigma_factor * nsigma * sigmas)
+        def _get_contpix(zlinewaves, sigmas, nsigma_factor=2., linemask=None, lya=False):
+            # never use continuum pixels blueward of Lyman-alpha
+            if lya:
+                minwave = np.min(zlinewaves)
+            else:
+                minwave = np.min(zlinewaves - nsigma_factor * nsigma * sigmas)
             maxwave = np.max(zlinewaves + nsigma_factor * nsigma * sigmas)
-            # continuum; ToDo: need to special-case Lyman-alpha
             if linemask is None:
                 J = (wave > minwave) * (wave < maxwave) * (ivar > 0.)
             else:
@@ -891,11 +894,12 @@ class Tools(object):
             for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
                 # skip fixed (e.g., hbeta_broad) or fully masked lines
                 if sigma <= 0. or not linename in pix['linepix'].keys():
-                    continue 
-                J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=linemask)
+                    continue
+                lya = linename == 'lyalpha'
+                J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=linemask, lya=lya)
                 # go further out
                 if len(J) < mincontpix:
-                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2.5, linemask=linemask)
+                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2.5, linemask=linemask, lya=lya)
                 # drop the linemask_ condition; dangerous??
                 if len(J) < mincontpix: 
                     #log.debug(f'Dropping linemask condition for {linename} with width ' + \
@@ -904,7 +908,7 @@ class Tools(object):
                     # Note the smaller nsigma_factor (to stay closer to the
                     # line); remove the pixels already assigned to this
                     # line.
-                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=None)
+                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=None, lya=lya)
                     J = np.delete(J, np.isin(J, pix['linepix'][linename]))
 
                 if len(J) > 0:
@@ -929,19 +933,29 @@ class Tools(object):
 
                 zlinewaves_patch = zlinewaves[I]
                 sigmas_patch = linesigmas_ang[I]
+                lya = 'lyalpha' in patchlines
 
-                J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2., linemask=linemask)
+                J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.,
+                                 linemask=linemask, lya=lya)
 
                 # go further out
                 if len(J) < mincontpix: 
-                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.5, linemask=linemask)
+                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.5,
+                                     linemask=linemask, lya=lya)
 
                 if len(J) > 0:
-                    pix['patch_contpix'][patchid] = J
-
                     # all lines in this patch get the same continuum indices
+                    mn, mx = np.min(J), np.max(J)
                     for patchline in patchlines:
                         pix['contpix'][patchline] = J
+                        
+                        # Make sure the left/right edges of the patch include all
+                        # the emission lines on this patch.
+                        mn = np.min((mn, np.min(pix['linepix'][patchline])))
+                        mx = np.max((mx, np.max(pix['linepix'][patchline])))
+                    J = np.unique(np.hstack((mn, J, mx)))
+
+                    pix['patch_contpix'][patchid] = J # updated vector
 
             # Loop back through and merge patches that overlap by at least
             # mincontpix.
@@ -952,6 +966,7 @@ class Tools(object):
                     rght = pix['patch_contpix'][patchids[ipatch+1]]
                     incommon = np.intersect1d(left, rght, assume_unique=True)
                     if len(incommon) > mincontpix:
+                        log.debug(f'Merging patches {patchid} and {patchids[ipatch+1]}')
                         newcontpix = np.union1d(left, rght)
                         newpatchid = patchids[ipatch] + patchids[ipatch+1]
                         del pix['patch_contpix'][patchids[ipatch]]
@@ -1157,7 +1172,7 @@ class ContinuumTools(Tools):
                     if lo < med and lo < hi:
                         continuum_patches['intercept'][ipatch] = med
                         continuum_patches['intercept_bounds'][ipatch] = [lo, hi]
-    
+
                     # unmask the continuum patches
                     linemask[contindx] = True # True=unmasked
 
@@ -1341,7 +1356,7 @@ class ContinuumTools(Tools):
                             return r'S/N([SII]$\lambda6731$)='
 
 
-                fig, ax = plt.subplots(nrows, ncols, figsize=(5*ncols, 5*nrows))
+                fig, ax = plt.subplots(nrows, ncols, figsize=(5.5*ncols, 5.5*nrows))
                 for ipatch, ((patchid, sc, ec, slope, intercept, pivotwave), xx) in enumerate(
                         zip(contfit.iterrows('patchid', 's', 'e', 'slope', 'intercept', 'pivotwave'), ax.flat)):
                     # get the starting and ending pixels first
@@ -1367,7 +1382,7 @@ class ContinuumTools(Tools):
                             label = _niceline(line)+f'{linesnrs[iline]:.1f}; '+r'$\sigma$='+f'{linesigmas[iline]:.0f}'+' km/s'
                             xx.plot(wave[ls:le] / 1e4, profile, alpha=0.75, label=label)
                     if len(patchMap[patchid][0]) > 4:
-                        nlegcol = 2
+                        nlegcol = 1
                         yfactor = 1.4
                     else:
                         nlegcol = 1
@@ -1375,17 +1390,26 @@ class ContinuumTools(Tools):
                     ymin = -1.2 * noises[ipatch] # 0.
                     ymax = yfactor * np.max((quantile(flux[s:e], 0.99), np.max(bestfit[s:e])))
                     xx.set_ylim(ymin, ymax)
-                    xx.legend(loc='upper left', fontsize=10, ncols=nlegcol)
+                    xx.legend(loc='upper left', fontsize=8, ncols=nlegcol)
                     xx.set_title(f'Patch {patchid}')
                 for rem in np.arange(ncols*nrows-ipatch-1)+ipatch+1:
                     ax.flat[rem].axis('off')
 
-                ulpos = ax[0, 0].get_position()
-                llpos = ax[-1, 0].get_position()
-                lrpos = ax[-1, -1].get_position()
+                if ax.ndim == 1:
+                    ulpos = ax[0].get_position()
+                    llpos = ax[0].get_position()
+                    lrpos = ax[-1].get_position()
+                    dxlabel = 0.08
+                    bottom = 0.14
+                else:
+                    ulpos = ax[0, 0].get_position()
+                    llpos = ax[-1, 0].get_position()
+                    lrpos = ax[-1, -1].get_position()
+                    dxlabel = 0.07
+                    bottom = 0.11
 
                 xpos = (lrpos.x1 - llpos.x0) / 2. + llpos.x0
-                ypos = llpos.y0 - 0.07
+                ypos = llpos.y0 - dxlabel
                 fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
                          ha='center', va='center')#, fontsize=fontsize2)
     
@@ -1394,10 +1418,10 @@ class ContinuumTools(Tools):
                 fig.text(xpos, ypos, r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
                          ha='center', va='center', rotation=90)#, fontsize=fontsize2)
 
-                fig.subplots_adjust(left=0.08, right=0.97, bottom=0.11, top=0.92, wspace=0.23, hspace=0.3)
+                fig.subplots_adjust(left=0.08, right=0.97, bottom=bottom, top=0.92, wspace=0.23, hspace=0.3)
                 #fig.tight_layout()
                 if png:
-                    fig.savefig(png)
+                    fig.savefig(png, bbox_inches='tight')
 
             return linefit, contfit, final_linesigmas, final_linevshifts, maxsnrs
 
@@ -1532,13 +1556,27 @@ class ContinuumTools(Tools):
             for rem in np.arange(ncols*nrows-iline-1)+iline+1:
                 ax.flat[rem].axis('off')
 
-            ulpos = ax[0, 0].get_position()
-            urpos = ax[0, -1].get_position()
-            llpos = ax[-1, 0].get_position()
-            lrpos = ax[-1, -1].get_position()
+            if ax.ndim == 1:
+                ulpos = ax[0].get_position()
+                urpos = ax[-1].get_position()
+                llpos = ax[0].get_position()
+                lrpos = ax[-1].get_position()
+                top = 0.92
+                bottom = 0.14
+                dytitle = 0.13
+                dyxlabel = 0.15
+            else:
+                ulpos = ax[0, 0].get_position()
+                urpos = ax[0, -1].get_position()
+                llpos = ax[-1, 0].get_position()
+                lrpos = ax[-1, -1].get_position()
+                top = 0.95
+                bottom = 0.07
+                dytitle = 0.09
+                dyxlabel = 0.08
 
             xpos = (lrpos.x1 - llpos.x0) / 2. + llpos.x0
-            ypos = llpos.y0 - 0.08
+            ypos = llpos.y0 - dyxlabel
             fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
                      ha='center', va='center')
 
@@ -1548,13 +1586,14 @@ class ContinuumTools(Tools):
                      ha='center', va='center', rotation=90)
 
             xpos = (urpos.x1 - ulpos.x0) / 2. + ulpos.x0
-            ypos = ulpos.y1 + 0.09
+            ypos = ulpos.y1 + dytitle
             fig.text(xpos, ypos, f'LinePix/ContPix: {uniqueid}', ha='center', va='center')
 
-            fig.subplots_adjust(left=0.06, right=0.97, bottom=0.07, top=0.95, wspace=0.23, hspace=0.3)
+            fig.subplots_adjust(left=0.06, right=0.97, bottom=bottom, top=top, wspace=0.23, hspace=0.3)
             #fig.tight_layout()
-            fig.savefig(png)
+            fig.savefig(png, bbox_inches='tight')
 
+        #pdb.set_trace()
 
         # (comment continued from above) ...but reset the broad Balmer
         # line-width to a minimum value and make another linepix mask. We need

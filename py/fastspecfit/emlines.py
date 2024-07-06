@@ -1232,7 +1232,7 @@ class EMFitTools(Tools):
 
         
 def emline_specfit(data, result, continuummodel, smooth_continuum,
-                   minsnr_balmer_broad=3., fphoto=None, emlinesfile=None,
+                   minsnr_balmer_broad=2.5, fphoto=None, emlinesfile=None,
                    synthphot=True, broadlinefit=True,
                    percamera_models=False, log=None, verbose=False):
     """Perform the fit minimization / chi2 minimization.
@@ -1448,8 +1448,11 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         #    finalfit, finalmodel, finalchi2 = fit_nobroad, model_nobroad, chi2_nobroad
         #    delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
     else:
-        log.info('Skipping broad-line fitting (broadlinefit=False).')
-
+        if not broadlinefit:
+            log.info('Skipping broad-line fitting (broadlinefit=False).')
+        elif not data['balmerbroad']:
+            log.info('Skipping broad-line fitting (no broad Balmer lines in the spectral range).')
+ 
         finalfit, finalmodel, finalchi2 = fit_nobroad, model_nobroad, chi2_nobroad
         delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
     
