@@ -819,6 +819,7 @@ class Tools(object):
     
         return dn4000, dn4000_ivar
 
+    
     @staticmethod
     def _linepix_and_contpix(wave, ivar, linetable, linesigmas, patchMap=None, 
                              redshift=0., nsigma=4., minlinesigma=50., 
@@ -859,7 +860,7 @@ class Tools(object):
 
         pix = {'linepix': {}, 'contpix': {}}
         if patchMap is not None:
-            pix.update({'patch_contpix': {}})
+            pix.update({'patch_contpix': {}, 'dropped': [], 'merged': []})
             patchids = list(patchMap.keys())
             npatch = len(patchids)
 
@@ -872,10 +873,6 @@ class Tools(object):
             if len(I) > 0:
                 linemask[I] = True
                 pix['linepix'][linename] = I
-            #else:
-            #    errmsg = f'Unable to determine line pixels for line {linename}.'
-            #    log.critical(errmsg)
-            #    raise ValueError(errmsg)
 
         # skip contpix
         if not get_contpix:
@@ -901,26 +898,21 @@ class Tools(object):
                     J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=None)
                     J = np.delete(J, np.isin(J, pix['linepix'][linename]))
 
-                #if len(J) == 0:
-                #    errmsg = f'Unable to determine continuum pixels for patch ' + \
-                #        f'{patchid} (lines: {",".join(linenames[patchMap[patchid][0]])})'
-                #    log.critical(errmsg)
-                #    raise ValueError(errmsg)
-                
                 if len(J) > 0:
                     pix['contpix'][linename] = J
         else:
             # Now get the corresponding continuum pixels in "patches."
             for patchid in patchids:
                 # Not all patchlines will be in the 'linepix' dictionary
-                # because, e.g., the broad Balmer lines have linesigma=0. when
+                # because, e.g., the broad Balmer lines have linesigma=0 when
                 # fitting the narrow-only linemodel. An entire patch can also
                 # get dropped if a large portion of the spectrum is fully masked
                 # (ivar==0).
                 patchlines = patchMap[patchid][0]
                 keep = np.isin(patchlines, list(pix['linepix'].keys()))
                 if np.count_nonzero(keep) == 0:
-                    log.info(f'Dropping all {len(patchlines)} lines on patch {patchid}')
+                    pix['dropped'].append(patchid)
+                    log.info(f'Dropping patch {patchid} ({len(patchlines)} lines fully masked).')
                     continue
 
                 patchlines = patchlines[keep]
@@ -935,13 +927,6 @@ class Tools(object):
                 if len(J) < mincontpix: 
                     J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.5, linemask=linemask)
 
-                ## dropping the linemask condition in a patch should never happen; raise an exception
-                #if len(J) == 0:
-                #    errmsg = f'Unable to determine continuum pixels for patch ' + \
-                #        f'{patchid} (lines: {",".join(linenames[patchMap[patchid][0]])})'
-                #    log.critical(errmsg)
-                #    raise ValueError(errmsg)
-                 
                 if len(J) > 0:
                     pix['patch_contpix'][patchid] = J
 
@@ -963,6 +948,13 @@ class Tools(object):
                         del pix['patch_contpix'][patchids[ipatch]]
                         del pix['patch_contpix'][patchids[ipatch+1]]
                         pix['patch_contpix'][newpatchid] = newcontpix
+                        pix['merged'].append(newpatchid)
+
+        if patchMap is not None:
+            if len(pix['dropped']) > 0:
+                pix['dropped'] = np.hstack(pix['dropped'])
+            if len(pix['merged']) > 0:
+                pix['merged'] = np.hstack(pix['merged'])
 
         # make sure we haven't mucked up our indexing.
         if not pix['linepix'].keys() == pix['contpix'].keys():
@@ -1104,19 +1096,16 @@ class ContinuumTools(Tools):
 
                 # Check for fully dropped patches, which can happen if large
                 # parts of a spectrum is masked.
-                patchids = list(patchMap.keys())
-                drop = np.where(np.logical_not(np.isin(patchids, list(pix['patch_contpix'].keys()))))[0]
-                if len(drop) > 0:
-                    for idrop in np.atleast_1d(drop):
-                        continuum_patches.remove_row(idrop)
-                        patchMap.pop(patchids[idrop])
+                if len(pix['dropped']) > 0:
+                    for patchid in np.atleast_1d(pix['dropped']):
+                        drop = np.where(continuum_patches['patchid'] == patchid)[0][0]
+                        continuum_patches.remove_row(drop)
+                        patchMap.pop(patchid)
 
                 # In the case that patches have been merged, update the
                 # continuum_patches table and patchMap dictionary.
-                N = np.where(~np.isin(list(pix['patch_contpix'].keys()), continuum_patches['patchid'].value))[0]
-                if len(N) > 0:
-                    for new in N:
-                        newpatchid = np.array(list(pix['patch_contpix'].keys()))[new]
+                if len(pix['merged']) > 0:
+                    for newpatchid in np.atleast_1d(pix['merged']):
                         oldpatchids = list(newpatchid)
                         O = np.where(np.isin(continuum_patches['patchid'].value, oldpatchids))[0]
 
@@ -1343,7 +1332,7 @@ class ContinuumTools(Tools):
                     else:
                         nlegcol = 1
                         yfactor = 1.3
-                    ymin = 0.
+                    ymin = -1.2 * noises[ipatch] # 0.
                     ymax = yfactor * np.max((quantile(flux[s:e], 0.99), np.max(bestfit[s:e])))
                     xx.set_ylim(ymin, ymax)
                     xx.legend(loc='upper left', fontsize=10, ncols=nlegcol)
