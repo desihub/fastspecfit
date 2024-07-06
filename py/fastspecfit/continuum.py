@@ -821,8 +821,8 @@ class Tools(object):
 
     
     @staticmethod
-    def _linepix_and_contpix(wave, ivar, linetable, linesigmas, patchMap=None, 
-                             redshift=0., nsigma=4., minlinesigma=50., 
+    def _linepix_and_contpix(wave, ivar, linetable, linesigmas, linevshifts=None, 
+                             patchMap=None, redshift=0., nsigma=4., minlinesigma=50., 
                              mincontpix=11, get_contpix=True, log=None):
         """Support routine to determine the pixels potentially containing emission lines
         and the corresponding (adjacent) continuum.
@@ -849,12 +849,21 @@ class Tools(object):
 
 
         if log is None:
-            from desiutil.log import get_logger, DEBUG
+            from desiutil.log import get_logger
             log = get_logger()
+
+        if linevshifts is None:
+            linevshifts = np.zeros_like(linesigmas)
+
+        if len(linevshifts) != len(linesigmas):
+            errmsg = 'Mismatch in linevshifts and linesigmas dimensions.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
         linemask = np.zeros_like(wave, bool) # True - affected by possible emission line
         linenames = linetable['name'].value
-        zlinewaves = linetable['restwave'].value * (1. + redshift)
+
+        zlinewaves = linetable['restwave'].value * (1. + redshift + linevshifts / C_LIGHT)
         linesigmas[(linesigmas > 0.) * (linesigmas < minlinesigma)] = minlinesigma
         linesigmas_ang = linesigmas * zlinewaves / C_LIGHT # [km/s --> Angstrom]
 
@@ -1005,9 +1014,10 @@ class ContinuumTools(Tools):
     
     def build_linemask_patches(self, wave, flux, ivar, resolution_matrix, redshift=0.0, 
                                uniqueid=0, initsigma_broad=3000., initsigma_narrow=150., 
-                               initsigma_balmer_broad=1000., minsnr_balmer_broad=1.5, 
-                               niter=2, emlinesfile=None, fix_continuum_slope=False, 
-                               verbose=False, log=None):
+                               initsigma_balmer_broad=1000., initvshift_broad=0., 
+                               initvshift_narrow=0., initvshift_balmer_broad=0.,
+                               minsnr_balmer_broad=1.5, niter=2, emlinesfile=None, 
+                               fix_continuum_slope=False, verbose=False, log=None):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -1069,7 +1079,8 @@ class ContinuumTools(Tools):
 
         
         def _fit_patches(continuum_patches, patchMap, linemodel, verbose=False, 
-                         testBalmerBroad=False, minsnr=1.5, png=None):
+                         testBalmerBroad=False, minsnr=1.5, modelname='', 
+                         png=None):
 
             # Initialize the linewidths and then iterate to convergence.
             #isBroad = linetable['isbroad'] * ~linetable['isbalmer']
@@ -1082,20 +1093,27 @@ class ContinuumTools(Tools):
             if testBalmerBroad:
                 linesigmas[EMFit.isBalmerBroad] = initsigma_balmer_broad
 
+            linevshifts = np.zeros_like(linesigmas)
+            linevshifts[EMFit.isBroad] = initvshift_broad
+            linevshifts[EMFit.isNarrow] = initvshift_narrow
+            if testBalmerBroad:
+                linevshifts[EMFit.isBalmerBroad] = initvshift_balmer_broad
+
             initial_guesses = None
 
             t0 = time.time()
             for iiter in range(niter):
 
                 # Build the line and continuum masks (only for lines in range).
-                #print(linesigmas[EMFit.line_in_range])
+                #print(linesigmas[EMFit.line_in_range], linevshifts[EMFit.line_in_range])
                 pix = self._linepix_and_contpix(wave, ivar, linetable_inrange, 
                                                 linesigmas[EMFit.line_in_range], 
+                                                linevshifts=linevshifts[EMFit.line_in_range], 
                                                 patchMap=patchMap, redshift=redshift,
                                                 log=log)
 
                 # Check for fully dropped patches, which can happen if large
-                # parts of a spectrum is masked.
+                # parts of the spectrum are masked.
                 if len(pix['dropped']) > 0:
                     for patchid in np.atleast_1d(pix['dropped']):
                         drop = np.where(continuum_patches['patchid'] == patchid)[0][0]
@@ -1132,11 +1150,13 @@ class ContinuumTools(Tools):
                 # (line-free) pixels of all the lines on that patch.
                 for ipatch, patchid in enumerate(pix['patch_contpix'].keys()):
                     contindx = pix['patch_contpix'][patchid]
-                    continuum_patches['s'][ipatch] = contindx[0]
-                    continuum_patches['e'][ipatch] = contindx[-1]
-                    # initial guesses and bounds
-                    continuum_patches['intercept'][ipatch] = quantile(flux[contindx], 0.5)
-                    continuum_patches['intercept_bounds'][ipatch] = quantile(flux[contindx], [0.05, 0.95])
+                    continuum_patches['s'][ipatch] = np.min(contindx) # contindx[0] # should be sorted...
+                    continuum_patches['e'][ipatch] = np.max(contindx) # contindx[-1]
+                    # initial guesses and bounds, but check for pathological distributions
+                    lo, med, hi = quantile(flux[contindx], [0.05, 0.5, 0.95])
+                    if lo < med and lo < hi:
+                        continuum_patches['intercept'][ipatch] = med
+                        continuum_patches['intercept_bounds'][ipatch] = [lo, hi]
     
                     # unmask the continuum patches
                     linemask[contindx] = True # True=unmasked
@@ -1145,7 +1165,7 @@ class ContinuumTools(Tools):
                 for line in pix['linepix'].keys():
                     linemask[pix['linepix'][line]] = True
 
-                # set the inverse variance weight outside each patch to zero
+                # only fit the pixels in the patches
                 weights = np.sqrt(ivar * linemask)
     
                 # Get initial guesses on the line-emission on the first iteration.
@@ -1153,9 +1173,12 @@ class ContinuumTools(Tools):
                     initial_guesses, param_bounds = EMFit._initial_guesses_and_bounds(
                         pix['linepix'], contpix=pix['contpix'], coadd_flux=flux,
                         subtract_local_continuum=True, log=log,
-                        linesigma_broad=initsigma_broad, 
-                        linesigma_narrow=initsigma_narrow, 
-                        linesigma_balmer_broad=initsigma_balmer_broad)
+                        initial_linesigma_broad=initsigma_broad, 
+                        initial_linesigma_narrow=initsigma_narrow, 
+                        initial_linesigma_balmer_broad=initsigma_balmer_broad,
+                        initial_linevshift_broad=0.,
+                        initial_linevshift_narrow=0.,
+                        initial_linevshift_balmer_broad=0.)
 
                 # fit!
                 linefit, contfit = EMFit.optimize(linemodel, initial_guesses,
@@ -1166,9 +1189,14 @@ class ContinuumTools(Tools):
                                                   fix_continuum_slope=fix_continuum_slope,
                                                   log=log)
 
-                # Update the initial guesses and, specifically, linesigmas.
+                # Update the initial guesses as well as linesigmas and
+                # linevshifts (for _linepix_and_contpix, at the top of the
+                # iteration loop).
                 if iiter < niter-1:
                     initial_guesses = linefit['value'].value.copy()
+                    linevshifts = initial_guesses[EMFit.line_table['params'][:, ParamType.VSHIFT]]
+                    linesigmas = initial_guesses[EMFit.line_table['params'][:, ParamType.SIGMA]]
+
 
             # Build the best-fitting model and estimate the S/N of each line.
             parameters = linefit['value'].value.copy()
@@ -1187,11 +1215,13 @@ class ContinuumTools(Tools):
             for ipatch, (patchid, s, e) in enumerate(contfit.iterrows('patchid', 's', 'e')):
                 noise = np.ptp(quantile(residuals[s:e], (0.25, 0.75))) / 1.349 # robust sigma                
                 noises[ipatch] = noise
-                lineindx = patchMap[patchid][2] # index back to full array
-                linesnrs[lineindx] = lineamps[lineindx] / noise
+                lineindx = patchMap[patchid][2] # index back to full line_table
+                if noise != 0:
+                    linesnrs[lineindx] = lineamps[lineindx] / noise
 
-            # Derive the final linesigmas and the maximum S/N of each type of
-            # line. If the line isn't well-measured, drop the S/N condition. 
+            # Derive the final linesigmas and linevshifts, and the maximum S/N
+            # of each type of line. If the line isn't well-measured, drop the
+            # S/N condition.
             strong = linesnrs > minsnr
             Ifree = linefit[EMFit.line_table['params'][:, ParamType.SIGMA]]['free']
             isBroad = EMFit.isBroad * Ifree * strong
@@ -1200,48 +1230,58 @@ class ContinuumTools(Tools):
 
             if np.any(isBroad):
                 linesigma_broad = np.atleast_1d(linesigmas[isBroad])[0] # all values should be the same
+                linevshift_broad = np.atleast_1d(linevshifts[isBroad])[0]
                 maxsnr_broad = np.max(linesnrs[isBroad])
             else:
                 isBroad = EMFit.isBroad * Ifree
                 if np.any(isBroad):
                     linesigma_broad = np.atleast_1d(linesigmas[isBroad])[0]
+                    linevshift_broad = np.atleast_1d(linevshifts[isBroad])[0]
                     maxsnr_broad = np.max(linesnrs[isBroad])
                 else:
                     linesigma_broad = initsigma_broad # 0.
+                    linevshift_broad = initvshift_broad
                     maxsnr_broad = 0.
 
             if np.any(isNarrow):
                 linesigma_narrow = np.atleast_1d(linesigmas[isNarrow])[0]
+                linevshift_narrow = np.atleast_1d(linevshifts[isNarrow])[0]
                 maxsnr_narrow = np.max(linesnrs[isNarrow])
             else:
                 isNarrow = EMFit.isNarrow * Ifree
                 if np.any(isNarrow):
                     linesigma_narrow = np.atleast_1d(linesigmas[isNarrow])[0] 
+                    linevshift_narrow = np.atleast_1d(linevshifts[isNarrow])[0]
                     maxsnr_narrow = np.max(linesnrs[isNarrow])
                 else:
                     linesigma_narrow = initsigma_narrow
+                    linevshift_narrow = initvshift_narrow
                     maxsnr_narrow = 0.
 
             if np.any(isBalmerBroad):
                 linesigma_balmer_broad = np.atleast_1d(linesigmas[isBalmerBroad])[0]
+                linevshift_balmer_broad = np.atleast_1d(linevshifts[isBalmerBroad])[0]
                 maxsnr_balmer_broad = np.max(linesnrs[isBalmerBroad])
             else:
                 isBalmerBroad = EMFit.isBalmerBroad * Ifree
                 if np.any(isBalmerBroad):
                     linesigma_balmer_broad = np.atleast_1d(linesigmas[isBalmerBroad])[0]
+                    linevshift_balmer_broad = np.atleast_1d(linevshifts[isBalmerBroad])[0]
                     maxsnr_balmer_broad = np.max(linesnrs[isBalmerBroad])
                 else:
+                    # we do not want to overmask if a broad Balmer line isn't detected 
                     linesigma_balmer_broad = 0. # initsigma_balmer_broad
-                    #linesigma_balmer_broad = linesigma_narrow # null hypothesis: no broad lines
+                    linevshift_balmer_broad = initvshift_balmer_broad
                     maxsnr_balmer_broad = 0.
 
             final_linesigmas = (linesigma_broad, linesigma_narrow, linesigma_balmer_broad)
+            final_linevshifts = (linevshift_broad, linevshift_narrow, linevshift_balmer_broad)
             maxsnrs = (maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad)
 
-            log.info(f'Broad: S/N={maxsnr_broad:.1f}, {linesigma_broad:.0f} km/s; ' + \
-                     f'Narrow: S/N={maxsnr_narrow:.1f}, {linesigma_narrow:.0f} km/s; '+ \
-                     f'Balmer Broad: S/N={maxsnr_balmer_broad:.1f}, {linesigma_balmer_broad:.0f} km/s')
-            log.info(f'Line-fitting with patches ({niter} iterations) took {time.time()-t0:.4f} seconds.')
+            log.info(f'Broad: S/N={maxsnr_broad:.1f}, (sigma,dv)=({linesigma_broad:.0f},{linevshift_broad:.0f}) km/s; ' + \
+                     f'Narrow: S/N={maxsnr_narrow:.1f}, ({linesigma_narrow:.0f},{linevshift_narrow:.0f}) km/s; '+ \
+                     f'Balmer Broad: S/N={maxsnr_balmer_broad:.1f}, ({linesigma_balmer_broad:.0f},{linevshift_balmer_broad:.0f}) km/s.')
+            log.info(f'Fitting {modelname} with patches ({niter} iterations) took {time.time()-t0:.4f} seconds.')
 
             # optionally build a QA figure
             if verbose:
@@ -1359,7 +1399,7 @@ class ContinuumTools(Tools):
                 if png:
                     fig.savefig(png)
 
-            return linefit, contfit, final_linesigmas, maxsnrs
+            return linefit, contfit, final_linesigmas, final_linevshifts, maxsnrs
 
 
         # main function begins here
@@ -1399,20 +1439,20 @@ class ContinuumTools(Tools):
             
         # Need to pass copies of continuum_patches and patchMap because they can
         # get modified dynamically by _fit_patches.
-        linefit_nobroad, contfit_nobroad, linesigmas_nobroad, maxsnrs_nobroad = \
+        linefit_nobroad, contfit_nobroad, linesigmas_nobroad, linevshifts_nobroad, maxsnrs_nobroad = \
             _fit_patches(continuum_patches.copy(), patchMap.copy(), 
                          linemodel_nobroad, testBalmerBroad=False, 
-                         verbose=verbose, 
+                         verbose=verbose, modelname='narrow lines only',
                          png=f'qa-patches-nobroad-{uniqueid}.png')
 
         # Only fit with broad Balmer lines if at least one patch contains a
         # broad line.
         B = contfit_nobroad['balmerbroad']
         if np.any(B):
-            linefit_broad, contfit_broad, linesigmas_broad, maxsnrs_broad = \
+            linefit_broad, contfit_broad, linesigmas_broad, linevshifts_broad, maxsnrs_broad = \
                 _fit_patches(continuum_patches.copy(), patchMap.copy(), 
                              linemodel_broad, testBalmerBroad=True, 
-                             verbose=verbose, 
+                             verbose=verbose, modelname='narrow+broad lines',
                              png=f'qa-patches-broad-{uniqueid}.png')
 
             # if a broad Balmer line is well-detected, take its linewidth
@@ -1420,15 +1460,18 @@ class ContinuumTools(Tools):
                 log.info(f'Adopting broad Balmer-line masking: S/N(broad Balmer) ' + \
                          f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}.')
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_broad
+                finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_broad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_broad
             else:
                 log.info(f'Adopting narrow Balmer-line masking: S/N(broad Balmer) ' + \
                          f'{maxsnrs_broad[2]:.1f} < {minsnr_balmer_broad:.1f}.')
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
+                finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
         else:
             log.info(f'Adopting narrow Balmer-line masking: no Balmer lines in wavelength range.')
             finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
+            finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
             maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
 
         # Build the final pixel mask for *all* lines using our current best
@@ -1441,8 +1484,15 @@ class ContinuumTools(Tools):
         linesigmas[EMFit.isNarrow] = finalsigma_narrow
         linesigmas[EMFit.isBalmerBroad] = finalsigma_balmer_broad
 
-        pix = self._linepix_and_contpix(wave, ivar, EMFit.line_table[EMFit.line_in_range], 
+        linevshifts = np.zeros_like(linesigmas)
+        linevshifts[EMFit.isBroad] = finalvshift_broad
+        linevshifts[EMFit.isNarrow] = finalvshift_narrow
+        linevshifts[EMFit.isBalmerBroad] = finalvshift_balmer_broad
+
+        pix = self._linepix_and_contpix(wave, ivar, 
+                                        EMFit.line_table[EMFit.line_in_range], 
                                         linesigmas[EMFit.line_in_range], 
+                                        linevshifts=linevshifts[EMFit.line_in_range],
                                         patchMap=None, redshift=redshift)
 
         # Build another QA figure
@@ -1513,29 +1563,23 @@ class ContinuumTools(Tools):
         if finalsigma_balmer_broad < initsigma_balmer_broad:
             finalsigma_balmer_broad = initsigma_balmer_broad
             linesigmas[EMFit.isBalmerBroad] = finalsigma_balmer_broad
-            newpix = self._linepix_and_contpix(wave, ivar, EMFit.line_table[EMFit.line_in_range], 
+            linevshifts[EMFit.isBalmerBroad] = finalvshift_balmer_broad
+            newpix = self._linepix_and_contpix(wave, ivar, 
+                                               EMFit.line_table[EMFit.line_in_range], 
                                                linesigmas[EMFit.line_in_range], 
+                                               linevshifts=linevshifts[EMFit.line_in_range],
                                                patchMap=None, redshift=redshift)
             linepix = newpix['linepix']
         else:
             linepix = pix['linepix']
            
-        ## Build a dedicated 'linepix' dictionary with the broad Balmer lines
-        ## we're going to use in emlines.emline_specfit to compare the broad vs
-        ## narrow+broad linemodel.
-        #linenames = np.array(list(linepix.keys()))
-        #linepix_balmer_broad = {}
-        #
-        #I = np.where(EMFit.test_BalmerBroad[EMFit.line_in_range])[0]
-        #if len(I) > 0:
-        #    assert(np.any(contfit_nobroad['balmerbroad']))
-        #    for iline in I:
-        #        linepix_balmer_broad[linenames[iline]] = linepix[linenames[iline]]
-
         out = {
             'linesigma_broad': finalsigma_broad, 
             'linesigma_narrow': finalsigma_narrow, 
             'linesigma_balmer_broad': finalsigma_balmer_broad, # updated value
+            'linevshift_broad': finalvshift_broad, 
+            'linevshift_narrow': finalvshift_narrow, 
+            'linevshift_balmer_broad': finalvshift_balmer_broad, # updated value
             'maxsnr_broad': maxsnr_broad,
             'maxsnr_narrow': maxsnr_narrow,
             'maxsnr_balmer_broad': maxsnr_balmer_broad,

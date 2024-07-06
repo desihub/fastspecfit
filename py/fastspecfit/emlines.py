@@ -431,11 +431,14 @@ class EMFitTools(Tools):
         
     
     def _initial_guesses_and_bounds(self, linepix, contpix=None, coadd_flux=None, 
-                                    linesigma_broad=3000.,linesigma_narrow=150., 
-                                    linesigma_balmer_broad=1000., maxsigma_broad=1e4, 
-                                    maxsigma_balmer_broad=1e4, maxsigma_narrow=750., 
-                                    vmaxshift_narrow=500., vmaxshift_broad=2500., 
-                                    vmaxshift_balmer_broad=2500., coadd_wave=None, 
+                                    initial_linesigma_broad=3000., 
+                                    initial_linesigma_narrow=150., 
+                                    initial_linesigma_balmer_broad=1000., 
+                                    initial_linevshift_broad=0.,
+                                    initial_linevshift_narrow=0., 
+                                    initial_linevshift_balmer_broad=0.,
+                                    initial_lineamps=0.,
+                                    coadd_wave=None, 
                                     hstack_flux=None, hstack_wave=None, 
                                     subtract_local_continuum=False, log=None):
         """For all lines in the wavelength range of the data, get a good initial guess
@@ -463,55 +466,58 @@ class EMFitTools(Tools):
 
         initials = np.empty(len(self.param_table), dtype=np.float64)
         bounds   = np.empty((len(self.param_table), 2), dtype=np.float64)
-        
+
+        # initial amplitudes should not be zero because that's the lower bound
+        if np.isscalar(initial_lineamps):
+            initial_lineamps = np.ones(self.line_table['params'][:, ParamType.AMPLITUDE].size)
+        else:
+            if len(initial_lineamps) != self.line_table['params'][:, ParamType.AMPLITUDE].size:
+                errmsg = 'Mismatching dimensions in initial_lineamps array!'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+
         # a priori initial guesses and bounds
-        initvshift = 0.
-        minsigma_narrow = 1.
         minsigma_broad = 1. # 100.
+        minsigma_narrow = 1.
         minsigma_balmer_broad = 1. # 100.0 # minsigma_narrow
     
-        # Be very careful about changing the default broad line-sigma. Smaller
-        # values like 1500 km/s (which is arguably more sensible) can lead to
-        # low-amplitude broad lines in a bunch of normal star-forming galaxy
-        # spectra. (They act to "suck up" local continuum variations.) Also
-        # recall that if it's well-measured, we use the initial line-sigma in
-        # estimate_linesigma, which is a better initial guess.
-        initsigma_narrow = 75. # 260.0 # 75.0
-        initsigma_broad = 3000.  
-    
-        initamp = 1.
+        maxsigma_broad = 1e4
+        maxsigma_narrow = 750.
+        maxsigma_balmer_broad = 1e4
+
+        maxvshift_broad = 2500.
+        maxvshift_narrow = 500.
+        maxvshift_balmer_broad = 2500.
+
         minamp = 0.
         maxamp = +1e5
-        minamp_balmer_broad = 0.
-        maxamp_balmer_broad = maxamp
         
-        for line_isbalmer, line_isbroad, line_params in \
-                self.line_table.iterrows('isbalmer', 'isbroad', 'params'):
+        for iline, (line_isbalmer, line_isbroad, line_params) in \
+            enumerate(self.line_table.iterrows('isbalmer', 'isbroad', 'params')):
             
             amp, vshift, sigma = line_params
 
             # initial values and bounds for line's parameters
-            initials[amp]    = initamp
-            initials[vshift] = initvshift
-            
+            initials[amp] = initial_lineamps[iline]
+            bounds[amp] = (minamp, maxamp)
+
             if line_isbroad:
-                initials[sigma] = initsigma_broad
-                
                 if line_isbalmer: # broad He+Balmer lines
-                    bounds[amp] = (minamp_balmer_broad, maxamp_balmer_broad) 
-                    bounds[vshift] = (-vmaxshift_balmer_broad, +vmaxshift_balmer_broad)
+                    initials[vshift] = initial_linevshift_balmer_broad
+                    initials[sigma] = initial_linesigma_balmer_broad
+                    bounds[vshift] = (-maxvshift_balmer_broad, +maxvshift_balmer_broad)
                     bounds[sigma] = (minsigma_balmer_broad, maxsigma_balmer_broad)
                 else: # broad UV/QSO lines (non-Balmer)
-                    bounds[amp] = (minamp, maxamp)
-                    bounds[vshift] = (-vmaxshift_broad, +vmaxshift_broad)
+                    initials[vshift] = initial_linevshift_broad
+                    initials[sigma] = initial_linesigma_broad
+                    bounds[vshift] = (-maxvshift_broad, +maxvshift_broad)
                     bounds[sigma] = (minsigma_broad, maxsigma_broad)
             else: # narrow He+Balmer lines, and forbidden lines
-                initials[sigma] = initsigma_narrow
-                
-                bounds[amp] = (minamp, maxamp)
-                bounds[vshift] = (-vmaxshift_narrow, +vmaxshift_narrow)
+                initials[vshift] = initial_linevshift_narrow
+                initials[sigma] = initial_linesigma_narrow
+                bounds[vshift] = (-maxvshift_narrow, +maxvshift_narrow)
                 bounds[sigma] = (minsigma_narrow, maxsigma_narrow)        
-        
+
         # Replace a priori initial values based on the data, with optional local
         # continuum subtraction.
         for linename in linepix.keys():
@@ -527,9 +533,8 @@ class EMFitTools(Tools):
 
             npix = len(onelinepix)
             if npix > 5:
-                mnpx, mxpx = onelinepix[npix//2]-3, onelinepix[npix//2]+3
-                mnpx = np.maximum(mnpx, 0)
-                mxpx = np.minimum(mxpx, onelinepix[-1])
+                mnpx = np.maximum(onelinepix[npix//2]-3, 0)
+                mxpx = np.minimum(onelinepix[npix//2]+3, onelinepix[-1])
                 amp = np.max(coadd_flux[mnpx:mxpx] - local)
             else:
                 amp = quantile(coadd_flux[onelinepix], 0.975) - local
@@ -553,49 +558,14 @@ class EMFitTools(Tools):
             #    if np.abs(bds[0]) == 0.0:
             #        bds[0] = -1e-3 # ??
 
-            if (bds[0] > bds[1]) or (amp < bds[0]) or (amp > bds[1]):
-                log.warning(f'Initial amplitude is outside its bound for line {linename}.')
-                amp = np.diff(bds)/2 + bds[0]
-                # Should never happen.
-                if (bds[0] > bds[1]) or (amp < bds[0]) or (amp > bds[1]):
-                    errmsg = f'Initial amplitude is outside its bound for line {linename}.'
-                    self.log.critical(errmsg)
-                    raise ValueError(errmsg)
-            
             # record our initial gueses and bounds for the amplitude
-            
             line = self.line_map[linename]
             amp_idx = self.line_table['params'][line, ParamType.AMPLITUDE]
             initials[amp_idx] = amp
             bounds[amp_idx] = bds
 
-        # Now update the linewidth but here we need to loop over *all* lines
-        # (not just those in range). E.g., if H-alpha is out of range we need to
-        # set its initial value correctly since other lines are tied to it
-        # (e.g., main-bright-32406-39628257196245904).
-        for isbroad, isbalmer, params in \
-                self.line_table.iterrows('isbroad', 'isbalmer', 'params'):
-            
-            if isbroad:
-                if isbalmer: # broad Balmer lines
-                    isigma = linesigma_balmer_broad
-                else:
-                    isigma = linesigma_broad
-            else:
-                isigma = linesigma_narrow
-
-            # Make sure the initial guess for the narrow Balmer+helium
-            # line is smaller than the guess for the broad-line model.
-            if isbroad and isbalmer:
-                isigma *= 1.1
-            
-            sigma_idx = params[ParamType.SIGMA]
-            initials[sigma_idx] = isigma
-
         # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
-        # https://github.com/desihub/fastspecfit/issues/39. Be sure to set
-        # self.doublet_names and also note that any change in the order of
-        # these lines has to be handled in _emline_spectrum!
+        # https://github.com/desihub/fastspecfit/issues/39.
         doublet_bounds = {
             'mgii_doublet_ratio' : (0.0, 10.0), # MgII 2796/2803
             'oii_doublet_ratio'  : (0.0,  2.0), # [OII] 3726/3729 # (0.5, 1.5) # (0.66, 1.4)
@@ -604,31 +574,28 @@ class EMFitTools(Tools):
 
         param_names = self.param_table['name'].value
 
-        # assign special bounds to each tied doublet parameter
         for iparam in self.doublet_idx:
             param_name = param_names[iparam]
             bounds[iparam] = doublet_bounds[param_name]
             initials[iparam] = 1.
 
+        # Make sure all parameters lie within their respective bounds.
         for iparam, param_name in enumerate(self.param_table['name'].value):
-            
-            # make sure each parameter lies within its bounds
             iv = initials[iparam]
             lb, ub = bounds[iparam]
             if iv < lb:
                 errmsg = \
                     f'Initial parameter {param_name} is outside its bound, ' + \
                     f'{iv:.2f} < {lb:.2f}.'
-                log.warning(errmsg)
-                
-                initials[iparam] = lb
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+
             if iv > ub:
                 errmsg = \
                     f'Initial parameter {param_name} is outside its bound, ' + \
                     f'{iv:.2f} > {ub:.2f}.'
-                log.warning(errmsg)
-                
-                initials[iparam] = ub
+                log.critical(errmsg)
+                raise ValueError(errmsg)
                 
         return initials, bounds
 
@@ -1341,9 +1308,12 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     initial_guesses, param_bounds = EMFit._initial_guesses_and_bounds(
         data['coadd_linepix'], coadd_wave=data['coadd_wave'], 
         hstack_wave=emlinewave, hstack_flux=emlineflux, log=log, 
-        linesigma_broad=data['linesigma_broad'], 
-        linesigma_narrow=data['linesigma_narrow'], 
-        linesigma_balmer_broad=data['linesigma_balmer_broad'])
+        initial_linesigma_broad=data['linesigma_broad'], 
+        initial_linesigma_narrow=data['linesigma_narrow'], 
+        initial_linesigma_balmer_broad=data['linesigma_balmer_broad'],
+        initial_linevshift_broad=data['linevshift_broad'], 
+        initial_linevshift_narrow=data['linevshift_narrow'], 
+        initial_linevshift_balmer_broad=data['linevshift_balmer_broad'])
 
     # fit spectrum *without* any broad lines
     t0 = time.time()
@@ -1436,19 +1406,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         Habroad_idx  = line_params[EMFit.line_map['halpha_broad'], ParamType.SIGMA]
         Habroad = fit_broad['value'][Habroad_idx]
 
-        ## Bbroad_amps enumerates param indices of all non-fixed amplitudes
-        ## of lines that are broad, Balmer, and not Helium
-        #Bbroad_all_amps   = line_params[EMFit.isBalmerBroad_noHelium, ParamType.AMPLITUDE]
-        #Bbroad_all_stds   = np.sqrt(civars[EMFit.isBalmerBroad_noHelium])
-        #Bbroad_all_lnames = EMFit.line_table['name'][EMFit.isBalmerBroad_noHelium]
-        #
-        #Bbroad_nonFixed  = ~fit_broad['fixed'][Bbroad_all_amps]
-        #Bbroad_amps   = Bbroad_all_amps[Bbroad_nonFixed]
-        #Bbroad_stds   = Bbroad_all_stds[Bbroad_nonFixed]
-        #Bbroad_lnames = Bbroad_all_lnames[Bbroad_nonFixed]
-        #
-        #broadsnr = fit_broad.meta['obsvalue'][Bbroad_amps] * Bbroad_stds
-        
         sigtest1 = Habroad > minsigma_balmer_broad
         sigtest2 = Habroad > Hanarrow
 
