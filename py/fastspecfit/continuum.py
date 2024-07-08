@@ -1032,7 +1032,7 @@ class ContinuumTools(Tools):
                                initsigma_balmer_broad=1000., initvshift_broad=0., 
                                initvshift_narrow=0., initvshift_balmer_broad=0.,
                                minsnr_balmer_broad=1.5, niter=2, emlinesfile=None, 
-                               fix_continuum_slope=False, verbose=False, log=None):
+                               verbose=False, log=None):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -1201,7 +1201,6 @@ class ContinuumTools(Tools):
                                                   flux, weights, redshift,
                                                   resolution_matrix, camerapix,
                                                   continuum_patches=continuum_patches, 
-                                                  fix_continuum_slope=fix_continuum_slope,
                                                   log=log)
 
                 # Update the initial guesses as well as linesigmas and

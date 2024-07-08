@@ -538,32 +538,19 @@ class EMFitTools(Tools):
                 amp = np.max(coadd_flux[mnpx:mxpx] - local)
             else:
                 amp = quantile(coadd_flux[onelinepix], 0.975) - local
-            amp = np.abs(amp)
             
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_flux[linepix])), 3*np.max(coadd_flux[linepix])]
             mx = 5. * np.max(coadd_flux[onelinepix] - local)
-            if mx < 0.: # ???
-                mx = 5. * np.max(np.abs(coadd_flux[onelinepix] - local))
             
-            bds = np.array([0., mx])
-            
-            ## In extremely rare cases many of the pixels are zero, in which case
-            ## bounds[0] becomes zero, which is bad (e.g.,
-            ## iron/main/dark/27054/39627811564029314). Fix that here.
-            #if np.abs(bds[0]) == 0.0:
-            #    N = coadd_flux[linepix] != 0
-            #    if np.sum(N) > 0:
-            #        bds[0] = -1.5*np.min(np.abs(coadd_flux[linepix][N]))
-            #    if np.abs(bds[0]) == 0.0:
-            #        bds[0] = -1e-3 # ??
-
-            # record our initial gueses and bounds for the amplitude
-            line = self.line_map[linename]
-            amp_idx = self.line_table['params'][line, ParamType.AMPLITUDE]
-            initials[amp_idx] = amp
-            bounds[amp_idx] = bds
-
+            # record our initial gueses and bounds for the amplitude, unless
+            # they are nonsensical
+            if mx >= 0. and amp >= 0.:
+                line = self.line_map[linename]
+                amp_idx = self.line_table['params'][line, ParamType.AMPLITUDE]
+                initials[amp_idx] = amp
+                bounds[amp_idx] = np.array([0., mx])
+                
         # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
         # https://github.com/desihub/fastspecfit/issues/39.
         doublet_bounds = {
@@ -609,7 +596,6 @@ class EMFitTools(Tools):
                  resolution_matrices,
                  camerapix,
                  continuum_patches=None,
-                 fix_continuum_slope=True,
                  log=None,
                  verbose=False,
                  debug=False):
@@ -662,9 +648,8 @@ class EMFitTools(Tools):
                                    tuple(resolution_matrices),
                                    camerapix, # for more efficient iteration
                                    params_mapping,
-                                   continuum_patches=continuum_patches,
-                                   fix_continuum_slope=fix_continuum_slope)
-
+                                   continuum_patches=continuum_patches)
+                
             if continuum_patches is None:
                 objective = obj.objective
                 jac = obj.jacobian
@@ -673,17 +658,12 @@ class EMFitTools(Tools):
                 jac = '2-point' # maybe Jeremy can write a new one!
 
                 bounds_lines = bounds.copy() # needed for _drop_params, below
-                if fix_continuum_slope:
-                    initial_guesses = np.hstack((initial_guesses, continuum_patches['intercept'].value))
-                    bounds[0] = np.hstack((bounds[0], continuum_patches['intercept_bounds'][:, 0].value))
-                    bounds[1] = np.hstack((bounds[1], continuum_patches['intercept_bounds'][:, 1].value))
-                else:
-                    initial_guesses = np.hstack((initial_guesses, continuum_patches['slope'].value, 
-                                                 continuum_patches['intercept'].value))
-                    bounds[0] = np.hstack((bounds[0], continuum_patches['slope_bounds'][:, 0].value,
-                                           continuum_patches['intercept_bounds'][:, 0].value))
-                    bounds[1] = np.hstack((bounds[1], continuum_patches['slope_bounds'][:, 1].value,
-                                           continuum_patches['intercept_bounds'][:, 1].value))
+                initial_guesses = np.hstack((initial_guesses, continuum_patches['slope'].value, 
+                                             continuum_patches['intercept'].value))
+                bounds[0] = np.hstack((bounds[0], continuum_patches['slope_bounds'][:, 0].value,
+                                       continuum_patches['intercept_bounds'][:, 0].value))
+                bounds[1] = np.hstack((bounds[1], continuum_patches['slope_bounds'][:, 1].value,
+                                       continuum_patches['intercept_bounds'][:, 1].value))
 
             try:
                 fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
@@ -691,6 +671,20 @@ class EMFitTools(Tools):
                                          tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': True},
                                          method='trf', bounds=bounds,) # verbose=2)
                 free_params = fit_info.x
+
+                if not fit_info.success:
+                    errmsg = 'least_squares optimizer failed!'
+                    log.critical(errmsg)
+                    raise RuntimeError(errmsg)
+                elif fit_info.status == 0:
+                    log.warning('optimizer failed to converge')
+
+                # This should never happen if our optimizer enforces its bounds
+                if np.any((free_params < bounds[0]) | (free_params > bounds[1])):
+                    errmsg = "ERROR: final parameters are not within requested bounds"
+                    log.critical(errmsg)
+                    raise RunTimeError(errmsg)
+                
             except:
                 if self.uniqueid:
                     errmsg = f'Problem in scipy.optimize.least_squares for {self.uniqueid}.'
@@ -703,17 +697,10 @@ class EMFitTools(Tools):
                 bounds_lines = bounds
                 free_params_lines = free_params
             else:
-                if fix_continuum_slope:
-                    free_params_lines = free_params[:-npatch]
-                    continuum_patches['intercept'] = free_params[-npatch:]
-                else:
-                    free_params_lines = free_params[:-2*npatch]
-                    continuum_free_params = free_params[-2*npatch:].reshape(2, npatch)
-                    continuum_patches['slope'] = continuum_free_params[0, :]
-                    continuum_patches['intercept'] = continuum_free_params[1, :]
-
-            # Drop (zero out) any dubious free parameters. - deprecated
-            #self._drop_params(linemodel, isFree, free_params_lines, bounds_lines, log)
+                free_params_lines = free_params[:-2*npatch]
+                continuum_free_params = free_params[-2*npatch:].reshape(2, npatch)
+                continuum_patches['slope'] = continuum_free_params[0, :]
+                continuum_patches['intercept'] = continuum_free_params[1, :]
 
             # translate free parame to full param array, but do NOT turn doublet
             # ratios into amplitudes yet, as out_linemodel needs them to be ratios
@@ -743,73 +730,7 @@ class EMFitTools(Tools):
                 return linemodel
             else:
                 return linemodel, continuum_patches
-        
-    
-    def _drop_params(self, linemodel, isFree, free_params, free_bounds, log):
-        """Drop dubious free parameters after fitting.
-    
-        """
-        
-        param_type = self.param_table['type'][isFree]
-        
-        # Drop any negative amplitude or nonposiive sigma.  These
-        # happen because we do not enforce these conditions in our
-        # bounds, for allegedly improved convergence (?).
-        drop1 = \
-            (((param_type == ParamType.AMPLITUDE) & (free_params <  0.)) | \
-             ((param_type == ParamType.SIGMA)     & (free_params <= 0.)))
-        
-        # Require equality, not np.isclose, because the optimization can be very
-        # small (<1e-6) but still significant, especially for the doublet
-        # ratios. If linesigma is dropped this way, make sure the corresponding
-        # line-amplitude is dropped, too (see MgII 2796 on
-        # sv1-bright-17680-39627622543528153).
-
-        drop2 = np.full(len(linemodel), False, bool)
-        Ifree = np.where(isFree)[0]
-        
-        param_line = self.param_table['line']
-        line_params = self.line_table['params']
-        
-        # if any amplitude is zero, drop the corresponding sigma and vshift
-        isZeroAmp = \
-            (param_type == ParamType.AMPLITUDE) & (free_params == 0.)
-        for param in Ifree[isZeroAmp]:
-            line = param_line[param]
-            vshiftdropped = line_params[line, ParamType.VSHIFT]
-            drop2[vshiftdropped] = True
-            sigmadropped  = line_params[line, ParamType.SIGMA]
-            drop2[sigmadropped] = True
-        
-        tiedtoparam = linemodel['tiedtoparam']
-        
-        # drop amplitude for any line tied to a line with a dropped sigma/vshift
-        isDroppedSV = (((param_type == ParamType.SIGMA) |
-                        (param_type == ParamType.VSHIFT)) &
-                       drop2[isFree])
-        for param in Ifree[isDroppedSV]:
-            line = param_line[tiedtoparam == param]
-            ampdropped = line_params[line, ParamType.AMPLITUDE]
-            drop2[ampdropped] = True
-
-        drop2 = drop2[isFree]
-        
-        # This should not happen if our optimizer enforces its bounds
-        drop3 = ((free_params < free_bounds[0]) | (free_params > free_bounds[1]))
-        
-        drop = np.logical_or.reduce((drop1, drop2, drop3))
-        
-        log.debug(f'Dropping {np.sum(drop1)} impossible line amplitudes/widths.')
-        log.debug(f'Dropping {np.sum(drop2)} parameters of or tied to zero-amplitude lines.')
-        log.debug(f'Dropping {np.sum(drop3)} parameters which are out-of-bounds.')
-
-        ntotal = np.sum(drop)
-        if ntotal > 0:
-            log.debug(f'  Dropping {ntotal} unique parameters.')
-        
-        free_params[drop] = 0.
-        
-        
+            
     @staticmethod
     def chi2(linemodel, emlinewave, emlineflux, emlineivar, emlinemodel,
              continuum_model=None, nfree_patches=None, return_dof=False):

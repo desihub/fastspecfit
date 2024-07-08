@@ -37,9 +37,8 @@ class EMLine_Objective(object):
                  resolution_matrices,
                  camerapix,
                  params_mapping,
-                 continuum_patches=None,
-                 fix_continuum_slope=True):
-
+                 continuum_patches=None):
+        
         self.dtype = obs_fluxes.dtype
         
         self.obs_fluxes = obs_fluxes
@@ -51,7 +50,6 @@ class EMLine_Objective(object):
         self.params_mapping = params_mapping
         self.obs_bin_centers = obs_bin_centers
         self.continuum_patches = continuum_patches
-        self.fix_continuum_slope = fix_continuum_slope
         
         self.log_obs_bin_edges, self.ibin_widths = \
             _prepare_bins(obs_bin_centers, camerapix)
@@ -109,18 +107,12 @@ class EMLine_Objective(object):
                           model_fluxes)
 
         npatch = len(self.continuum_patches)
-        if self.fix_continuum_slope:
-            free_patch_parameters = free_parameters[-npatch:]
-        else:
-            free_patch_parameters = free_parameters[-2*npatch:].reshape(2, npatch)
+        free_patch_parameters = free_parameters[-2*npatch:].reshape(2, npatch)
 
         model_continuum = np.zeros_like(model_fluxes)
         for ipatch, (s, e, pivotwave) in enumerate(self.continuum_patches.iterrows('s', 'e', 'pivotwave')):
-            if self.fix_continuum_slope:
-                patchmodel = np.zeros(e-s) + free_patch_parameters[ipatch] # [intercept]
-            else:
-                slope, intercept = free_patch_parameters[:, ipatch] # [slope, intercept]
-                patchmodel = slope * (self.obs_bin_centers[s:e] - pivotwave) + intercept
+            slope, intercept = free_patch_parameters[:, ipatch] # [slope, intercept]
+            patchmodel = slope * (self.obs_bin_centers[s:e] - pivotwave) + intercept
             model_continuum[s:e] += patchmodel
         model_fluxes += model_continuum
         
