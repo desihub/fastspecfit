@@ -276,6 +276,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
                     xx.axvline(x=zlinewave, color='gray')
 
         fig.savefig(png, bbox_inches='tight')
+        plt.close()
 
     return smooth, smoothsigma
     
@@ -1422,6 +1423,7 @@ class ContinuumTools(Tools):
                 #fig.tight_layout()
                 if png:
                     fig.savefig(png, bbox_inches='tight')
+                    plt.close()
 
             return linefit, contfit, final_linesigmas, final_linevshifts, maxsnrs
 
@@ -1592,6 +1594,7 @@ class ContinuumTools(Tools):
             fig.subplots_adjust(left=0.06, right=0.97, bottom=bottom, top=top, wspace=0.23, hspace=0.3)
             #fig.tight_layout()
             fig.savefig(png, bbox_inches='tight')
+            plt.close()
 
         #pdb.set_trace()
 
@@ -1952,7 +1955,8 @@ class ContinuumTools(Tools):
             if png:
                 log.info(f'Writing {png}')
                 fig.savefig(png)
-    
+                plt.close()
+
         return chi2min, xbest, xivar, bestcoeff
 
 
@@ -2447,25 +2451,6 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
     rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 5600))
     log.info(f'log(M/Msun)={logmstar:.2f}, M{CTools.absmag_bands[rindx]}={absmag[rindx]:.2f} mag, A(V)={AV:.3f}, Age={age:.3f} Gyr, SFR={sfr:.3f} Msun/yr, Z/Zsun={zzsun:.3f}')
 
-    #import matplotlib.pyplot as plt
-    #W = np.where(coeff > 0)[0]
-    #info = templatecache['templateinfo']
-    #sedwave = templatecache['templatewave'] * (1. + redshift)
-    #I = np.where((sedwave > 3000) * (sedwave < 40000))[0]
-    #plt.plot(sedwave[I], sedmodel[I])
-    #for ww in W:
-    #    plt.plot(sedwave[I], coeff[ww] * sedtemplates[I, ww],
-    #             label=f'{info["age"][ww]/1e9:.2f} Gyr, A(V)={info["av"][ww]:.2f} mag')
-    #plt.legend(fontsize=10)
-    #plt.scatter(sedphot['lambda_eff'][:4], objflam[:4], color='k', s=100, zorder=10)
-    #plt.scatter(sedphot['lambda_eff'][:4], sedflam.dot(coeff)[:4], color='gray', s=100, marker='x', zorder=11)
-    #plt.xscale('log')
-    #plt.yscale('log')
-    #plt.savefig('/global/cfs/cdirs/desi/users/ioannis/tmp/foo.png')
-    #
-    #print(info[W])
-    #print(coeff[W])
-    
     # Pack it in and return.
     result['COEFF'][agekeep] = coeff
     result['RCHI2_PHOT'] = rchi2_phot
