@@ -657,7 +657,6 @@ class EMFitTools(Tools):
                 objective = obj.objective_continuum_patches
                 jac = '2-point' # maybe Jeremy can write a new one!
 
-                bounds_lines = bounds.copy() # needed for _drop_params, below
                 initial_guesses = np.hstack((initial_guesses, continuum_patches['slope'].value, 
                                              continuum_patches['intercept'].value))
                 bounds[0] = np.hstack((bounds[0], continuum_patches['slope_bounds'][:, 0].value,
@@ -694,12 +693,11 @@ class EMFitTools(Tools):
                 raise RuntimeError(errmsg)
             
             if continuum_patches is None:
-                bounds_lines = bounds
                 free_params_lines = free_params
             else:
                 free_params_lines = free_params[:-2*npatch]
                 continuum_free_params = free_params[-2*npatch:].reshape(2, npatch)
-                continuum_patches['slope'] = continuum_free_params[0, :]
+                continuum_patches['slope']     = continuum_free_params[0, :]
                 continuum_patches['intercept'] = continuum_free_params[1, :]
 
             # translate free parame to full param array, but do NOT turn doublet
