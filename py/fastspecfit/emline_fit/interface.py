@@ -15,15 +15,18 @@ from .utils import (
     MAX_SDEV,
     norm_pdf,
     norm_cdf,
-    max_buffer_width
+    max_buffer_width,
 )
 
 from .model import (
     emline_model,
-    emline_perline_models
+    emline_perline_models,
 )
 
-from .jacobian import emline_model_jacobian
+from .jacobian import (
+    emline_model_jacobian,
+    patch_jacobian,
+)
 
 
 class EMLine_Objective(object):
@@ -52,16 +55,25 @@ class EMLine_Objective(object):
 
         if continuum_patches is not None:
             self.nPatches = len(continuum_patches)
+
             self.patch_endpts = \
                 np.column_stack((continuum_patches['s'].value,
                                  continuum_patches['e'].value))
+
             self.patch_pivotwave = continuum_patches['pivotwave'].value
+
+            self.J_P = patch_jacobian(obs_bin_centers,
+                                      obs_weights,
+                                      self.patch_endpts,
+                                      self.patch_pivotwave)
         else:
             self.nPatches = 0
+            self.J_P = None
             
         self.log_obs_bin_edges, self.ibin_widths = \
             _prepare_bins(obs_bin_centers, camerapix)
-                
+
+
     #
     # Objective function for least-squares optimization
     #
@@ -119,16 +131,19 @@ class EMLine_Objective(object):
     #
     def jacobian(self, free_parameters):
         
+        line_free_parameters = \
+            free_parameters[:len(free_parameters) - 2*self.nPatches]
+        
         #
         # expand free paramters into complete
         # parameter array, handling tied params
         # and doublets
         #
         
-        parameters = self.params_mapping.mapFreeToFull(free_parameters)
-        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3)
+        line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters)
+        lineamps, linevshifts, linesigmas = np.array_split(line_parameters, 3)
 
-        J_S = self.params_mapping.getJacobian(free_parameters)
+        J_S = self.params_mapping.getJacobian(line_free_parameters)
 
         jacs = []
         for icam, campix in enumerate(self.camerapix):
@@ -158,9 +173,10 @@ class EMLine_Objective(object):
             
         nBins = np.sum(np.diff(self.camerapix))
         nFreeParms = len(free_parameters)
-        nParms = len(parameters)
-        J =  EMLineJacobian((nBins, nFreeParms), nParms,
-                            self.camerapix, jacs, J_S)
+        nLineFreeParms = len(line_free_parameters)
+        J =  EMLineJacobian((nBins, nFreeParms), nLineFreeParms,
+                            self.camerapix, jacs, J_S,
+                            self.J_P)
 
         return J
     

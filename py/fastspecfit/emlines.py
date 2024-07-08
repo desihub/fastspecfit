@@ -649,19 +649,37 @@ class EMFitTools(Tools):
                                    camerapix, # for more efficient iteration
                                    params_mapping,
                                    continuum_patches=continuum_patches)
-
+            
             objective = obj.objective
-            if continuum_patches is None:
-                jac = obj.jacobian
-            else:
-                jac = '2-point' # maybe Jeremy can write a new one!
-
+            jac       = obj.jacobian
+            
+            if continuum_patches is not None:
                 initial_guesses = np.hstack((initial_guesses, continuum_patches['slope'].value, 
                                              continuum_patches['intercept'].value))
                 bounds[0] = np.hstack((bounds[0], continuum_patches['slope_bounds'][:, 0].value,
                                        continuum_patches['intercept_bounds'][:, 0].value))
                 bounds[1] = np.hstack((bounds[1], continuum_patches['slope_bounds'][:, 1].value,
                                        continuum_patches['intercept_bounds'][:, 1].value))
+
+            """
+            ########################
+            # SANITY CHECK
+            ########################
+            if continuum_patches is not None:
+                J = jac(initial_guesses)
+                delta = 1e-5
+
+                v = np.zeros(len(initial_guesses))
+                for p in range(len(v)):
+                    v[p] = 1.
+                    ddp  = (objective(initial_guesses + delta*v) - objective(initial_guesses - delta*v))/(2*delta)
+                    ddpj = J.dot(v)
+                    v[p] = 0.
+
+                    d = np.abs(ddpj - ddp)
+                    if d > 1e-5:
+                        print("JAC ", p, d)
+            """
 
             try:
                 fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
@@ -1110,7 +1128,6 @@ class EMFitTools(Tools):
         if result['SII_6716_MODELAMP'] == 0.0 and result['SII_6731_MODELAMP'] == 0.0:
             result['SII_DOUBLET_RATIO'] = 0.0
 
-        log.name = 'debug'
         if 'debug' in log.name:
             for ln in self.line_table['name'].value:
                 linename = ln.upper()
