@@ -1088,7 +1088,6 @@ class ContinuumTools(Tools):
             continuum_patches['intercept'] = np.zeros(npatch)
             continuum_patches['slope_bounds'] = np.broadcast_to([-1e2, +1e2], (npatch, 2))
             continuum_patches['intercept_bounds'] = np.broadcast_to([-1e5, +1e5], (npatch, 2))
-            #continuum_patches['intercept_bounds'] = np.broadcast_to([-np.inf, +np.inf], (npatch, 2))
             continuum_patches['balmerbroad'] = np.zeros(npatch, bool) # does this patch have a broad Balmer line?
             return continuum_patches
 
@@ -1098,10 +1097,7 @@ class ContinuumTools(Tools):
                          png=None):
 
             # Initialize the linewidths and then iterate to convergence.
-            #isBroad = linetable['isbroad'] * ~linetable['isbalmer']
-            #isNarrow = ~linetable['isbroad']
-            #isBalmerBroad = linetable['isbroad'] * linetable['isbalmer']
-
+            
             linesigmas = np.zeros(nline)
             linesigmas[EMFit.isBroad] = initsigma_broad
             linesigmas[EMFit.isNarrow] = initsigma_narrow
@@ -1120,7 +1116,6 @@ class ContinuumTools(Tools):
             for iiter in range(niter):
 
                 # Build the line and continuum masks (only for lines in range).
-                #print(linesigmas[EMFit.line_in_range], linevshifts[EMFit.line_in_range])
                 pix = self._linepix_and_contpix(wave, ivar, linetable_inrange, 
                                                 linesigmas[EMFit.line_in_range], 
                                                 linevshifts=linevshifts[EMFit.line_in_range], 
@@ -1368,9 +1363,7 @@ class ContinuumTools(Tools):
                             e = np.max((e, le))
                     
                     xx.plot(wave[s:e] / 1e4, flux[s:e], color='gray')
-                    #xx.scatter(wave[sc:ec] / 1e4, flux[sc:ec], marker='s', color='blue', alpha=0.7)
                     xx.plot(wave[s:e] / 1e4, bestfit[s:e], color='k', ls='-', alpha=0.75)
-                    #xx.plot(wave[s:e] / 1e4, residuals[s:e], color='gray', alpha=0.2)
                     cmodel = slope * (wave[sc:ec]-pivotwave) + intercept
                     xx.plot(wave[sc:ec] / 1e4, cmodel+noises[ipatch], color='gray', lw=1, ls='-')
                     xx.plot(wave[sc:ec] / 1e4, cmodel, color='k', lw=2, ls='--')
@@ -1386,7 +1379,7 @@ class ContinuumTools(Tools):
                     else:
                         nlegcol = 1
                         yfactor = 1.3
-                    ymin = -1.2 * noises[ipatch] # 0.
+                    ymin = -1.2 * noises[ipatch] 
                     ymax = yfactor * np.max((quantile(flux[s:e], 0.99), np.max(bestfit[s:e])))
                     xx.set_ylim(ymin, ymax)
                     xx.legend(loc='upper left', fontsize=8, ncols=nlegcol)
@@ -1410,15 +1403,15 @@ class ContinuumTools(Tools):
                 xpos = (lrpos.x1 - llpos.x0) / 2. + llpos.x0
                 ypos = llpos.y0 - dxlabel
                 fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
-                         ha='center', va='center')#, fontsize=fontsize2)
+                         ha='center', va='center')
     
                 xpos = ulpos.x0 - 0.09
-                ypos = (ulpos.y1 - llpos.y0) / 2. + llpos.y0# + 0.03
+                ypos = (ulpos.y1 - llpos.y0) / 2. + llpos.y0
                 fig.text(xpos, ypos, r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
-                         ha='center', va='center', rotation=90)#, fontsize=fontsize2)
+                         ha='center', va='center', rotation=90)
 
                 fig.subplots_adjust(left=0.08, right=0.97, bottom=bottom, top=0.92, wspace=0.23, hspace=0.3)
-                #fig.tight_layout()
+                
                 if png:
                     fig.savefig(png, bbox_inches='tight')
 
@@ -1434,9 +1427,7 @@ class ContinuumTools(Tools):
     
         # Build the narrow and narrow+broad emission-line models.
         linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(separate_oiii_fit=False)
-        #EMFit.summarize_linemodel(linemodel_nobroad)
-        #EMFit.summarize_linemodel(linemodel_broad)
-
+        
         # ToDo: are there ever *no* "strong" lines in range?
         linetable = EMFit.line_table
         linetable_inrange = linetable[EMFit.line_in_range]
@@ -1455,7 +1446,7 @@ class ContinuumTools(Tools):
             patchlines = linetable_inrange['name'][I].value
             patchMap[patchid] = (patchlines, I, J)
             linewaves = linetable_inrange['restwave'][I] * (1. + redshift)
-            pivotwave = np.ptp(linewaves) / 2. + np.min(linewaves) # midpoint
+            pivotwave = 0.5 * (np.min(linewaves) + np.max(linewaves)) # midpoint
             continuum_patches['pivotwave'][ipatch] = pivotwave
             # is there a broad Balmer line on this patch?
             continuum_patches['balmerbroad'][ipatch] = np.any(EMFit.test_BalmerBroad[EMFit.line_in_range][I])
@@ -1589,10 +1580,7 @@ class ContinuumTools(Tools):
             fig.text(xpos, ypos, f'LinePix/ContPix: {uniqueid}', ha='center', va='center')
 
             fig.subplots_adjust(left=0.06, right=0.97, bottom=bottom, top=top, wspace=0.23, hspace=0.3)
-            #fig.tight_layout()
             fig.savefig(png, bbox_inches='tight')
-
-        #pdb.set_trace()
 
         # (comment continued from above) ...but reset the broad Balmer
         # line-width to a minimum value and make another linepix mask. We need
@@ -1623,7 +1611,6 @@ class ContinuumTools(Tools):
             'maxsnr_balmer_broad': maxsnr_balmer_broad,
             'balmerbroad': np.any(contfit_nobroad['balmerbroad']), # True = one or more broad Balmer line in range
             'coadd_linepix': linepix,
-            #'coadd_linepix_balmer_broad': linepix_balmer_broad,
         }
 
         return out
