@@ -649,12 +649,11 @@ class EMFitTools(Tools):
                                    camerapix, # for more efficient iteration
                                    params_mapping,
                                    continuum_patches=continuum_patches)
-                
+
+            objective = obj.objective
             if continuum_patches is None:
-                objective = obj.objective
                 jac = obj.jacobian
             else:
-                objective = obj.objective_continuum_patches
                 jac = '2-point' # maybe Jeremy can write a new one!
 
                 initial_guesses = np.hstack((initial_guesses, continuum_patches['slope'].value, 
@@ -1029,17 +1028,6 @@ class EMFitTools(Tools):
                 result[f'{linename}_EW_IVAR'] = ewivar
                 result[f'{linename}_FLUX_LIMIT'] = fluxlimit
                 result[f'{linename}_EW_LIMIT'] = ewlimit
-                
-            ########################################################
-            
-            if 'debug' in log.name:
-                for col in ('VSHIFT', 'SIGMA', 'MODELAMP', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
-                    val = result[f'{linename}_{col}']
-                    log.debug(f'{linename} {col}: {val:.4f}')
-                for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
-                    val = result[f'{linename}_{col}']
-                    log.debug(f'{linename} {col}: {val:.4f}')
-                print()
         
         # get the per-group average emission-line redshifts and velocity widths
         for stats, groupname in zip((narrow_stats, broad_stats, uv_stats),
@@ -1066,8 +1054,7 @@ class EMFitTools(Tools):
                 result[f'{groupname}_ZRMS']     = stat_zrms                    
             else:
                 result[f'{groupname}_Z'] = redshift
-    
-                    
+                        
                 
         # write values of final parameters (after any changes above) to result
         param_names      = self.param_table['name'].value
@@ -1123,10 +1110,20 @@ class EMFitTools(Tools):
         if result['SII_6716_MODELAMP'] == 0.0 and result['SII_6731_MODELAMP'] == 0.0:
             result['SII_DOUBLET_RATIO'] = 0.0
 
+        log.name = 'debug'
         if 'debug' in log.name:
+            for ln in self.line_table['name'].value:
+                linename = ln.upper()
+                for col in ('VSHIFT', 'SIGMA', 'MODELAMP', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
+                    val = result[f'{linename}_{col}']
+                    log.debug(f'{linename} {col}: {val:.4f}')
+                for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT', 'EW_LIMIT'):
+                    val = result[f'{linename}_{col}']
+                    log.debug(f'{linename} {col}: {val:.4f}')
+                print()
+
             for col in ('MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'):
                 log.debug(f'{col}: {result[col]:.4f}')
-            #log.debug(' ')
             print()
         
     def synthphot_spectrum(self, data, result, modelwave, modelflux):

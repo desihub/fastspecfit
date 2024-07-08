@@ -51,10 +51,13 @@ class EMLine_Objective(object):
         self.obs_bin_centers = obs_bin_centers
 
         if continuum_patches is not None:
+            self.nPatches = len(continuum_patches)
             self.patch_endpts = \
                 np.column_stack((continuum_patches['s'].value,
                                  continuum_patches['e'].value))
             self.patch_pivotwave = continuum_patches['pivotwave'].value
+        else:
+            self.nPatches = 0
             
         self.log_obs_bin_edges, self.ibin_widths = \
             _prepare_bins(obs_bin_centers, camerapix)
@@ -66,42 +69,18 @@ class EMLine_Objective(object):
     # vector of residuals between the modeled fluxes and the observations.
     #
     def objective(self, free_parameters):
-            
-        #
-        # expand free parameters into complete
-        # parameter array, handling tied params
-        # and doublets
-        #
-        parameters = self.params_mapping.mapFreeToFull(free_parameters)
-        line_amplitudes, line_vshifts, line_sigmas = np.array_split(parameters, 3)
-        
-        model_fluxes = np.empty_like(self.obs_fluxes, dtype=self.dtype)
-        
-        _build_model_core(line_amplitudes,
-                          line_vshifts,
-                          line_sigmas,
-                          self.line_wavelengths,
-                          self.redshift,
-                          self.log_obs_bin_edges,
-                          self.ibin_widths,
-                          self.resolution_matrices,
-                          self.camerapix,
-                          model_fluxes)
-        
-        return self.obs_weights * (model_fluxes - self.obs_fluxes) # residuals
-
-
-    def objective_continuum_patches(self, free_parameters):
-        """Like `objective`, but including continuum patches under each emission line.
-
-        """
-        npatches = self.patch_endpts.shape[0]
         
         line_free_parameters, patch_free_parameters = \
-            np.split(free_parameters, (-2*npatches,))
-        
-        parameters = self.params_mapping.mapFreeToFull(line_free_parameters)
-        line_amplitudes, line_vshifts, line_sigmas = np.array_split(parameters, 3)
+            np.split(free_parameters,
+                     (len(free_parameters) - 2*self.nPatches,))
+
+        #
+        # expand line free parameters into complete
+        # line parameter array, handling tied params
+        # and doublets
+        #
+        line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters)
+        line_amplitudes, line_vshifts, line_sigmas = np.array_split(line_parameters, 3)
         
         model_fluxes = np.empty_like(self.obs_fluxes, dtype=self.dtype)
         
@@ -115,17 +94,19 @@ class EMLine_Objective(object):
                           self.resolution_matrices,
                           self.camerapix,
                           model_fluxes)
+
+        if self.nPatches > 0:
+            # obtain patch params as npatch slope/intercept pairs
+            patch_free_parameters = \
+                patch_free_parameters.reshape(2, self.nPatches).T
         
-        # obtain patch params as npatch slope/intercept pairs
-        patch_free_parameters = patch_free_parameters.reshape(2, npatches).T
-        
-        # add patch pedestals to line model
-        for ipatch, (slope, intercept) in enumerate(patch_free_parameters):
-            s, e      = self.patch_endpts[ipatch]
-            pivotwave = self.patch_pivotwave[ipatch]
-            
-            model_fluxes[s:e] += \
-                slope * (self.obs_bin_centers[s:e] - pivotwave) + intercept
+            # add patch pedestals to line model
+            for ipatch, (slope, intercept) in enumerate(patch_free_parameters):
+                s, e      = self.patch_endpts[ipatch]
+                pivotwave = self.patch_pivotwave[ipatch]
+                
+                model_fluxes[s:e] += \
+                    slope * (self.obs_bin_centers[s:e] - pivotwave) + intercept
         
         return self.obs_weights * (model_fluxes - self.obs_fluxes) # residuals
 
