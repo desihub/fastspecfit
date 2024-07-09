@@ -1181,14 +1181,16 @@ class ContinuumTools(Tools):
                 # Get initial guesses on the line-emission on the first iteration.
                 if initial_guesses is None:
                     initial_guesses, param_bounds = EMFit._initial_guesses_and_bounds(
-                        pix['linepix'], contpix=pix['contpix'], coadd_flux=flux,
-                        subtract_local_continuum=True, log=log,
+                        pix['linepix'], flux, contpix=pix['contpix'],
+                        subtract_local_continuum=True,
                         initial_linesigma_broad=initsigma_broad, 
                         initial_linesigma_narrow=initsigma_narrow, 
                         initial_linesigma_balmer_broad=initsigma_balmer_broad,
                         initial_linevshift_broad=0.,
                         initial_linevshift_narrow=0.,
-                        initial_linevshift_balmer_broad=0.)
+                        initial_linevshift_balmer_broad=0.,
+                        log=log,
+                    )
 
                 # fit!
                 linefit, contfit = EMFit.optimize(linemodel, initial_guesses,
@@ -1449,7 +1451,7 @@ class ContinuumTools(Tools):
             pivotwave = 0.5 * (np.min(linewaves) + np.max(linewaves)) # midpoint
             continuum_patches['pivotwave'][ipatch] = pivotwave
             # is there a broad Balmer line on this patch?
-            continuum_patches['balmerbroad'][ipatch] = np.any(EMFit.test_BalmerBroad[EMFit.line_in_range][I])
+            continuum_patches['balmerbroad'][ipatch] = np.any(EMFit.isBalmerBroad_noHelium_Strong[EMFit.line_in_range][I])
             
         # Need to pass copies of continuum_patches and patchMap because they can
         # get modified dynamically by _fit_patches.
