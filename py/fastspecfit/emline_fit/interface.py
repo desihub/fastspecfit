@@ -115,19 +115,6 @@ class EMLine_Objective(object):
                          self.patch_endpts,
                          self.patch_pivotwave,
                          self.obs_bin_centers)
-
-            """
-            
-            for ipatch in range(self.nPatches):
-                s, e      = self.patch_endpts[ipatch]
-                pivotwave = self.patch_pivotwave[ipatch]
-
-                slope     = slopes[ipatch]
-                intercept = intercepts[ipatch]
-                
-                model_fluxes[s:e] += \
-                   slope * (self.obs_bin_centers[s:e] - pivotwave) + intercept
-            """
             
         return self.obs_weights * (model_fluxes - self.obs_fluxes) # residuals
 
@@ -231,13 +218,7 @@ def build_model(redshift,
                      continuum_patches['endpts'].value,
                      continuum_patches['pivotwave'].value,
                      obs_bin_centers)
-        """
-        for endpts pivotwave, slope, intercept in continuum_patches.iterrows('endpts', 'pivotwave', 'slope', 'intercept'):
-            s, e = endpts
-            model_fluxes[s:e] += \
-                slope * (obs_bin_centers[s:e] - pivotwave) + intercept
-        """
-            
+                    
     return model_fluxes
 
 
