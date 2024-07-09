@@ -1086,8 +1086,7 @@ class ContinuumTools(Tools):
             npatch = len(patchids)
             continuum_patches = Table()
             continuum_patches['patchid'] = patchids
-            continuum_patches['s'] = np.zeros(npatch, int) # starting index relative to coadd_wave
-            continuum_patches['e'] = np.zeros(npatch, int) # ending index
+            continuum_patches['endpts'] = np.zeros((npatch,2), int) # starting index relative to coadd_wave
             continuum_patches['pivotwave'] = np.zeros(npatch)
             continuum_patches['slope'] = np.zeros(npatch)
             continuum_patches['intercept'] = np.zeros(npatch)
@@ -1165,8 +1164,7 @@ class ContinuumTools(Tools):
                 # (line-free) pixels of all the lines on that patch.
                 for ipatch, patchid in enumerate(pix['patch_contpix'].keys()):
                     contindx = pix['patch_contpix'][patchid]
-                    continuum_patches['s'][ipatch] = np.min(contindx) # contindx[0] # should be sorted...
-                    continuum_patches['e'][ipatch] = np.max(contindx) # contindx[-1]
+                    continuum_patches['endpts'][ipatch] = (np.min(contindx), np.max(contindx)) # should be sorted...
                     # initial guesses and bounds, but check for pathological distributions
                     lo, med, hi = quantile(flux[contindx], [0.05, 0.5, 0.95])
                     if lo < med and lo < hi:
@@ -1228,7 +1226,8 @@ class ContinuumTools(Tools):
 
             linesnrs = np.zeros_like(lineamps)
             noises = np.zeros(len(contfit))
-            for ipatch, (patchid, s, e) in enumerate(contfit.iterrows('patchid', 's', 'e')):
+            for ipatch, (patchid, endpts) in enumerate(contfit.iterrows('patchid', 'endpts')):
+                s, e = endpts
                 noise = np.ptp(quantile(residuals[s:e], (0.25, 0.75))) / 1.349 # robust sigma                
                 noises[ipatch] = noise
                 lineindx = patchMap[patchid][2] # index back to full line_table
@@ -1358,11 +1357,11 @@ class ContinuumTools(Tools):
 
 
                 fig, ax = plt.subplots(nrows, ncols, figsize=(5.5*ncols, 5.5*nrows))
-                for ipatch, ((patchid, sc, ec, slope, intercept, pivotwave), xx) in enumerate(
-                        zip(contfit.iterrows('patchid', 's', 'e', 'slope', 'intercept', 'pivotwave'), ax.flat)):
+                for ipatch, ((patchid, endpts, slope, intercept, pivotwave), xx) in enumerate(
+                        zip(contfit.iterrows('patchid', 'endpts', 'slope', 'intercept', 'pivotwave'), ax.flat)):
                     # get the starting and ending pixels first
-                    s = sc
-                    e = ec
+                    s, e = endpts
+
                     for iline in patchMap[patchid][2]:
                         (ls, le), _ = lines.getLine(iline)
                         if ls != le: # fixed / dropped lines
