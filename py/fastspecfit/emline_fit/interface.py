@@ -15,15 +15,18 @@ from .utils import (
     MAX_SDEV,
     norm_pdf,
     norm_cdf,
-    max_buffer_width
+    max_buffer_width,
 )
 
 from .model import (
     emline_model,
-    emline_perline_models
+    emline_perline_models,
 )
 
-from .jacobian import emline_model_jacobian
+from .jacobian import (
+    emline_model_jacobian,
+    patch_jacobian,
+)
 
 
 class EMLine_Objective(object):
@@ -37,9 +40,8 @@ class EMLine_Objective(object):
                  resolution_matrices,
                  camerapix,
                  params_mapping,
-                 continuum_patches=None,
-                 fix_continuum_slope=True):
-
+                 continuum_patches=None):
+        
         self.dtype = obs_fluxes.dtype
         
         self.obs_fluxes = obs_fluxes
@@ -50,12 +52,25 @@ class EMLine_Objective(object):
         self.camerapix = camerapix
         self.params_mapping = params_mapping
         self.obs_bin_centers = obs_bin_centers
-        self.continuum_patches = continuum_patches
-        self.fix_continuum_slope = fix_continuum_slope
-        
+
+        if continuum_patches is not None:
+            self.nPatches = len(continuum_patches)
+
+            self.patch_endpts = continuum_patches['endpts'].value
+            self.patch_pivotwave = continuum_patches['pivotwave'].value
+            
+            self.J_P = patch_jacobian(obs_bin_centers,
+                                      obs_weights,
+                                      self.patch_endpts,
+                                      self.patch_pivotwave)
+        else:
+            self.nPatches = 0
+            self.J_P = None
+            
         self.log_obs_bin_edges, self.ibin_widths = \
             _prepare_bins(obs_bin_centers, camerapix)
-                
+
+
     #
     # Objective function for least-squares optimization
     #
@@ -63,37 +78,18 @@ class EMLine_Objective(object):
     # vector of residuals between the modeled fluxes and the observations.
     #
     def objective(self, free_parameters):
-            
+        
+        line_free_parameters, patch_free_parameters = \
+            np.split(free_parameters,
+                     (len(free_parameters) - 2*self.nPatches,))
+
         #
-        # expand free parameters into complete
-        # parameter array, handling tied params
+        # expand line free parameters into complete
+        # line parameter array, handling tied params
         # and doublets
         #
-        parameters = self.params_mapping.mapFreeToFull(free_parameters)
-        line_amplitudes, line_vshifts, line_sigmas = np.array_split(parameters, 3)
-        
-        model_fluxes = np.empty_like(self.obs_fluxes, dtype=self.dtype)
-        
-        _build_model_core(line_amplitudes,
-                          line_vshifts,
-                          line_sigmas,
-                          self.line_wavelengths,
-                          self.redshift,
-                          self.log_obs_bin_edges,
-                          self.ibin_widths,
-                          self.resolution_matrices,
-                          self.camerapix,
-                          model_fluxes)
-        
-        return self.obs_weights * (model_fluxes - self.obs_fluxes) # residuals
-
-
-    def objective_continuum_patches(self, free_parameters):
-        """Like `objective`, but including continuum patches under each emission line.
-
-        """
-        parameters = self.params_mapping.mapFreeToFull(free_parameters)
-        line_amplitudes, line_vshifts, line_sigmas = np.array_split(parameters, 3)
+        line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters)
+        line_amplitudes, line_vshifts, line_sigmas = np.array_split(line_parameters, 3)
         
         model_fluxes = np.empty_like(self.obs_fluxes, dtype=self.dtype)
         
@@ -108,22 +104,18 @@ class EMLine_Objective(object):
                           self.camerapix,
                           model_fluxes)
 
-        npatch = len(self.continuum_patches)
-        if self.fix_continuum_slope:
-            free_patch_parameters = free_parameters[-npatch:]
-        else:
-            free_patch_parameters = free_parameters[-2*npatch:].reshape(2, npatch)
+        if self.nPatches > 0:
+            slopes     = patch_free_parameters[:self.nPatches]
+            intercepts = patch_free_parameters[self.nPatches:]
 
-        model_continuum = np.zeros_like(model_fluxes)
-        for ipatch, (s, e, pivotwave) in enumerate(self.continuum_patches.iterrows('s', 'e', 'pivotwave')):
-            if self.fix_continuum_slope:
-                patchmodel = np.zeros(e-s) + free_patch_parameters[ipatch] # [intercept]
-            else:
-                slope, intercept = free_patch_parameters[:, ipatch] # [slope, intercept]
-                patchmodel = slope * (self.obs_bin_centers[s:e] - pivotwave) + intercept
-            model_continuum[s:e] += patchmodel
-        model_fluxes += model_continuum
-        
+            # add patch pedestals to line model
+            _add_patches(model_fluxes,
+                         slopes,
+                         intercepts,
+                         self.patch_endpts,
+                         self.patch_pivotwave,
+                         self.obs_bin_centers)
+            
         return self.obs_weights * (model_fluxes - self.obs_fluxes) # residuals
 
 
@@ -135,16 +127,19 @@ class EMLine_Objective(object):
     #
     def jacobian(self, free_parameters):
         
+        line_free_parameters = \
+            free_parameters[:len(free_parameters) - 2*self.nPatches]
+        
         #
         # expand free paramters into complete
         # parameter array, handling tied params
         # and doublets
         #
         
-        parameters = self.params_mapping.mapFreeToFull(free_parameters)
-        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3)
+        line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters)
+        lineamps, linevshifts, linesigmas = np.array_split(line_parameters, 3)
 
-        J_S = self.params_mapping.getJacobian(free_parameters)
+        J_S = self.params_mapping.getJacobian(line_free_parameters)
 
         jacs = []
         for icam, campix in enumerate(self.camerapix):
@@ -174,9 +169,10 @@ class EMLine_Objective(object):
             
         nBins = np.sum(np.diff(self.camerapix))
         nFreeParms = len(free_parameters)
-        nParms = len(parameters)
-        J =  EMLineJacobian((nBins, nFreeParms), nParms,
-                            self.camerapix, jacs, J_S)
+        nLineFreeParms = len(line_free_parameters)
+        J =  EMLineJacobian((nBins, nFreeParms), nLineFreeParms,
+                            self.camerapix, jacs, J_S,
+                            self.J_P)
 
         return J
     
@@ -215,12 +211,14 @@ def build_model(redshift,
     model_fluxes[model_fluxes < 0.] = 0.
     
     if continuum_patches is not None:
-        model_continuum = np.zeros_like(model_fluxes)
-        for s, e, pivotwave, slope, intercept in continuum_patches.iterrows('s', 'e', 'pivotwave', 'slope', 'intercept'):
-            #print(s, e, pivotwave, slope, intercept)
-            model_continuum[s:e] += slope * (obs_bin_centers[s:e] - pivotwave) + intercept
-        model_fluxes += model_continuum
-    
+        # add patch pedestals to model fluxes
+        _add_patches(model_fluxes,
+                     continuum_patches['slope'].value,
+                     continuum_patches['intercept'].value,
+                     continuum_patches['endpts'].value,
+                     continuum_patches['pivotwave'].value,
+                     obs_bin_centers)
+                    
     return model_fluxes
 
 
@@ -517,6 +515,35 @@ def _build_multimodel_core(parameters,
         
         consumer_fun((endpts, M))
 
+
+#
+# _add_patches()
+# Add patch pedestals for patches with given
+# endpts, slopes, intercepts, and pivots to
+# an array of model fluxes
+#
+@jit(nopython=True, fastmath=False, nogil=True)
+def _add_patches(model_fluxes,
+                 slopes,
+                 intercepts,
+                 patch_endpts,
+                 patch_pivotwaves,
+                 obs_bin_centers):
+    
+    # add patch pedestals to line model
+    nPatches = len(slopes)
+    
+    for ipatch in range(nPatches):
+        s, e      = patch_endpts[ipatch]
+        pivotwave = patch_pivotwaves[ipatch]
+        
+        slope     = slopes[ipatch]
+        intercept = intercepts[ipatch]
+        
+        for j in range(s,e):
+            model_fluxes[j] += \
+                slope * (obs_bin_centers[j] - pivotwave) + intercept
+        
 
 ###################################################################
 

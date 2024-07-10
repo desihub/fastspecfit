@@ -363,7 +363,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                                        maggies=np.array([metadata['FLUX_{}'.format(band.upper())] for band in CTools.bands]),
                                        ivarmaggies=np.array([metadata['FLUX_IVAR_{}'.format(band.upper())] for band in CTools.bands]),
                                        lambda_eff=allfilters.effective_wavelengths.value,
-                                       min_uncertainty=CTools.min_uncertainty)
+                                       min_uncertainty=CTools.min_uncertainty, qa=True)
         #if hasattr(CTools, 'fiber_bands'):
         #    fiberphot = CTools.parse_photometry(CTools.fiber_bands,
         #                                        maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())]

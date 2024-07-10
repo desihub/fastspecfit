@@ -1566,7 +1566,7 @@ def read_emlines(emlinesfile=None):
         log.critical(errmsg)
         raise ValueError(errmsg)
 
-    linetable = linetable[np.argsort(linetable['restwave'])]
+    linetable.sort('restwave')
 
     return linetable    
 

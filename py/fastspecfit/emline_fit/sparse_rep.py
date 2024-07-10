@@ -119,21 +119,27 @@ class EMLineJacobian(LinearOperator):
     #
     # CONSTRUCTOR ARGS:
     #   shape of Jacobian
-    #   number of parameters in full set
+    #   number of *line*-related free parameters in set
     #   array of start and end obs bin indices
     #     for each camera
     #   partial Jacobian jac = (W * M  J_I)
     #     for each camera
     #   parameter expansion Jacobian J_S
     #
-    def __init__(self, shape, nParms, camerapix, jacs, J_S):
+    def __init__(self, shape, nLineFreeParms, camerapix, jacs, J_S,
+                 J_P = None):
         
         self.camerapix = camerapix
         self.jacs      = tuple(jacs)
         self.J_S       = J_S
+        self.J_P       = J_P
+        self.nLineFreeParms = nLineFreeParms
+        
+        if J_P is not None:
+            nPatchParms = J_P[0].shape[0]
         
         dtype = jacs[0][1].dtype
-
+        nParms = jacs[0][1].shape[0] # num line params in full set
         self.vFull = np.empty(nParms, dtype=dtype)
         
         super().__init__(dtype, shape)
@@ -147,15 +153,22 @@ class EMLineJacobian(LinearOperator):
         
         nBins = self.shape[0]
         w = np.empty(nBins, dtype=v.dtype)
+
+        vLines = v[:self.nLineFreeParms]
         
         # return result in self.vFull
-        ParamsMapping._matvec(self.J_S, v, self.vFull)
+        ParamsMapping._matvec(self.J_S, vLines, self.vFull)
         
         for campix, jac in zip(self.camerapix, self.jacs):
             s, e = campix
             
             # write result to w[s:e]
             self._matvec_J(jac, self.vFull, w[s:e])
+
+        # add contribution of patch pedestals, if any
+        if self.J_P is not None:
+            vPatches = v[self.nLineFreeParms:]
+            _matvec_J_add(self.J_P, vPatches, w)
         
         return w
 
@@ -173,16 +186,24 @@ class EMLineJacobian(LinearOperator):
 
         for i in range(nVecs):
             w = R[i,:]
+
+            v = M[:,i].ravel()
             
             # return result in self.vFull
-            ParamsMapping._matvec(self.J_S, M[:,i].ravel(), self.vFull)
+            vLines = v[:self.nLineFreeParms]
+            ParamsMapping._matvec(self.J_S, vLines, self.vFull)
 
             for campix, jac in zip(self.camerapix, self.jacs):
                 s, e = campix
 
                 # write result to w[s:e]
                 self._matvec_J(jac, self.vFull, w[s:e])
-                
+            
+            # add contribution of patch pedestals, if any
+            if self.J_P is not None:
+                vPatches = v[self.nLineFreeParms:]
+                _matvec_J_add(self.J_P, vPatches, w)
+            
         return R.T
     
         
@@ -195,6 +216,7 @@ class EMLineJacobian(LinearOperator):
         nFreeParms = self.shape[1]
         w = np.zeros(nFreeParms, dtype=v.dtype)
         
+        wLines = w[:self.nLineFreeParms]
         for campix, jac in zip(self.camerapix, self.jacs):
             s, e = campix
             
@@ -202,7 +224,11 @@ class EMLineJacobian(LinearOperator):
             self._rmatvec_J(jac, v[s:e], self.vFull)
             
             # add result to w
-            ParamsMapping._add_rmatvec(self.J_S, self.vFull, w)
+            ParamsMapping._add_rmatvec(self.J_S, self.vFull, wLines)
+        
+        if self.J_P is not None:
+            wPatches = w[self.nLineFreeParms:]
+            self._rmatvec_J(self.J_P, v, wPatches)
             
         return w
 
@@ -226,27 +252,20 @@ class EMLineJacobian(LinearOperator):
             
         return norms
     
+
     #
     # Multiply ideal Jacobian J * v, writing result to w.
     #
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True)
     def _matvec_J(J, v, w):
-    
-        endpts, values = J
-        nvars = endpts.shape[0]
+
         nbins = len(w)
-        
         for j in range(nbins):
             w[j] = 0.
-        
-        for i in range(nvars):
-            s, e = endpts[i]
-            vals = values[i]    # column i
             
-            for j in range(e - s):
-                w[j + s] += vals[j] * v[i]  
-    
+        _matvec_J_add(J, v, w)
+        
     #
     # Multiply ideal Jacobian v * J^T, writing result to w.
     #
@@ -287,3 +306,22 @@ class EMLineJacobian(LinearOperator):
         except:
             print("Failed to compute Jacobian condition number")
 
+
+#
+# Multiply ideal Jacobian J * v, *adding* result to w.  We have to
+# make this a standalone function, rather than a static method of the
+# EMLine_Jacobian class, because Numba cannot handle calling a static
+# class method from JIT'd code.
+#
+@jit(nopython=True, fastmath=False, nogil=True)
+def _matvec_J_add(J, v, w):
+    
+    endpts, values = J
+    nvars = endpts.shape[0]
+    
+    for i in range(nvars):
+        s, e = endpts[i]
+        vals = values[i]    # column i
+        
+        for j in range(e - s):
+            w[j + s] += vals[j] * v[i]  

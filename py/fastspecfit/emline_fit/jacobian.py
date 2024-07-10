@@ -170,3 +170,57 @@ def tile_2d(a, n):
     for i in range(n):
         r[i*sz:(i+1)*sz,:] = a
     return r
+
+
+# compute partial Jacobian associated with just the patch parameters
+# in the sparse column form used in sparse_rep.py.  This Jacobian
+# is independent of both the line model and the particular choices
+# of slope/intercept for each patch, so can be computed once when
+# we set up the optimization.
+#
+# FIXME: do we need to do this for each camera and apply resolution?
+@staticmethod
+@jit(nopython=True, fastmath=False, nogil=True)
+def patch_jacobian(obs_bin_centers,
+                   obs_weights,
+                   patch_endpts,
+                   patch_pivotwave):
+    
+    nPatches = patch_endpts.shape[0]
+
+    #
+    # make two copies of the endpts array (one each
+    # for slopes and intercepts) and compute the
+    # maximum width of any patch.
+    #
+    
+    endpts = np.empty((2*nPatches, 2), dtype=np.int32)
+    maxPatchWidth = 0
+
+    for i in range(nPatches):
+        s, e = patch_endpts[i]
+        
+        endpts[i]          = (s, e)
+        endpts[i+nPatches] = (s, e)
+        
+        maxPatchWidth = np.maximum(maxPatchWidth, e - s)
+
+    #
+    # Compute weighted partial derivatives of
+    # flux w/r to slope and intercept of each
+    # patch.  These derivatives are nonzero only
+    # within the boundaries of the patch.
+    #
+    M = np.empty((2*nPatches, maxPatchWidth))
+    for i in range(nPatches):
+        s, e = endpts[i]
+
+        # dobj/dslope for patch
+        M[i,:e-s] = \
+            (obs_bin_centers[s:e] - patch_pivotwave[i]) * \
+            obs_weights[s:e]
+        
+        # dobj/dintercept for patch
+        M[i + nPatches, :e-s] = obs_weights[s:e] # 1. x obs_weights
+        
+    return (endpts, M)
