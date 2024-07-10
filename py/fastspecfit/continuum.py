@@ -580,12 +580,11 @@ class Tools(object):
         if ngal > 1:
             factor = factor[:, None] # broadcast for the models
         return maggies * factor
-
-        
+    
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
                          nanomaggies=True, nsigma=2.0, min_uncertainty=None,
-                         log=None, verbose=False):
+                         log=None, verbose=False, qa=False):
         """Parse input (nano)maggies to various outputs and pack into a table.
 
         Parameters
@@ -597,6 +596,9 @@ class Tools(object):
 
         nsigma - magnitude limit 
 
+        qa - true iff table will be used by fastqa (which needs
+        columns that fastspec does not)
+        
         Returns
         -------
         phot - photometric table
@@ -605,114 +607,117 @@ class Tools(object):
         -----
 
         """
-        from astropy.table import Column
-
         if log is None:
             from desiutil.log import get_logger, DEBUG
             if verbose:
                 log = get_logger(DEBUG)
             else:
                 log = get_logger()
-
-        shp = maggies.shape
-        if maggies.ndim == 1:
-            nband, ngal = shp[0], 1
-        else:
-            nband, ngal = shp[0], shp[1]
-
-        phot = Table()
-        phot.add_column(Column(name='band', data=bands))
-        phot.add_column(Column(name='lambda_eff', length=nband, dtype='f4'))
-        phot.add_column(Column(name='nanomaggies', length=nband, shape=(ngal, ), dtype='f4'))
-        phot.add_column(Column(name='nanomaggies_ivar', length=nband, shape=(ngal, ), dtype='f4'))
-        phot.add_column(Column(name='flam', length=nband, shape=(ngal, ), dtype='f8')) # note f8!
-        phot.add_column(Column(name='flam_ivar', length=nband, shape=(ngal, ), dtype='f8'))
-        phot.add_column(Column(name='abmag', length=nband, shape=(ngal, ), dtype='f4'))
-        phot.add_column(Column(name='abmag_ivar', length=nband, shape=(ngal, ), dtype='f4'))
-        #phot.add_column(Column(name='abmag_err', length=nband, shape=(ngal, ), dtype='f4'))
-        phot.add_column(Column(name='abmag_brighterr', length=nband, shape=(ngal, ), dtype='f4'))
-        phot.add_column(Column(name='abmag_fainterr', length=nband, shape=(ngal, ), dtype='f4'))
-        phot.add_column(Column(name='abmag_limit', length=nband, shape=(ngal, ), dtype='f4'))
-
+        
         if ivarmaggies is None:
             ivarmaggies = np.zeros_like(maggies)
             
         # Gaia-only targets can sometimes have grz=-99.
-        if np.any(ivarmaggies < 0) or np.any(maggies == -99.0):
+        if np.any(ivarmaggies < 0.) or np.any(maggies == -99.0):
             errmsg = 'All ivarmaggies must be zero or positive!'
             log.critical(errmsg)
             raise ValueError(errmsg)
 
-        phot['lambda_eff'] = lambda_eff#.astype('f4')
-        if nanomaggies:
-            phot['nanomaggies'] = maggies#.astype('f4')
-            phot['nanomaggies_ivar'] = ivarmaggies#.astype('f4')
-        else:
-            phot['nanomaggies'] = (maggies * 1e9)#.astype('f4')
-            phot['nanomaggies_ivar'] = (ivarmaggies * 1e-18)#.astype('f4')
-
         if nanomaggies:
             nanofactor = 1e-9 # [nanomaggies-->maggies]
+            nmg = maggies
+            nmg_ivar = ivarmaggies.copy()
         else:
             nanofactor = 1.0
+            nmg = maggies * 1e9
+            nmg_ivar = ivarmaggies * 1e-18
 
-        #print('Hack!!')
-        #if debug:
-        #    maggies[3:5, 4:7] = 0.0
-
-        dims = maggies.shape
-        flatmaggies = maggies.flatten()
-        flativarmaggies = ivarmaggies.flatten()
-
-        abmag = np.zeros_like(flatmaggies)
-        abmag_limit = np.zeros_like(flatmaggies)
-        abmag_brighterr = np.zeros_like(flatmaggies)
-        abmag_fainterr = np.zeros_like(flatmaggies)
-        abmag_ivar = np.zeros_like(flatmaggies)
-        
-        # deal with measurements
-        good = np.where(flatmaggies > 0)[0]
-        if len(good) > 0:
-            abmag[good] = -2.5 * np.log10(nanofactor * flatmaggies[good])
-
-        # deal with upper limits
-        snr = flatmaggies * np.sqrt(flativarmaggies)
-        upper = np.where((flativarmaggies > 0) * (snr <= nsigma))[0]
-        if len(upper) > 0:
-            abmag_limit[upper] = - 2.5 * np.log10(nanofactor * nsigma / np.sqrt(flativarmaggies[upper]))
-
-        # significant detections
-        good = np.where(snr > nsigma)[0]
-        if len(good) > 0:
-            errmaggies = 1 / np.sqrt(flativarmaggies[good])
-            abmag_brighterr[good] = errmaggies / (0.4 * np.log(10) * (flatmaggies[good]+errmaggies))#.astype('f4') # bright end (flux upper limit)
-            abmag_fainterr[good] = errmaggies / (0.4 * np.log(10) * (flatmaggies[good]-errmaggies))#.astype('f4') # faint end (flux lower limit)
-            abmag_ivar[good] = (flativarmaggies[good] * (flatmaggies[good] * 0.4 * np.log(10))**2)#.astype('f4')
-
-        phot['abmag'] = abmag.reshape(dims)
-        phot['abmag_limit'] = abmag_limit.reshape(dims)
-        phot['abmag_brighterr'] = abmag_brighterr.reshape(dims)
-        phot['abmag_fainterr'] = abmag_fainterr.reshape(dims)
-        phot['abmag_ivar'] = abmag_ivar.reshape(dims)
-        
+        if qa:
+            # compute columns used only by fastqa
+            abmag           = np.zeros_like(maggies)
+            abmag_limit     = np.zeros_like(maggies)
+            abmag_brighterr = np.zeros_like(maggies)
+            abmag_fainterr  = np.zeros_like(maggies)
+            abmag_ivar      = np.zeros_like(maggies)
+            
+            # deal with measurements
+            good = (maggies > 0.)
+            abmag[good] = -2.5 * np.log10(nanofactor * maggies[good])
+            
+            # deal with upper limits
+            snr = maggies * np.sqrt(ivarmaggies)
+            upper = ((ivarmaggies > 0.) & (snr <= nsigma))
+            abmag_limit[upper] = - 2.5 * np.log10(nanofactor * nsigma / np.sqrt(ivarmaggies[upper]))
+            
+            # significant detections
+            C = 0.4 * np.log(10)
+            good = (snr > nsigma)
+            maggies_good = maggies[good]
+            ivarmaggies_good = ivarmaggies[good]
+            errmaggies = 1. / np.sqrt(ivarmaggies_good)
+            abmag_brighterr[good] = errmaggies / (C * (maggies_good + errmaggies)) # bright end (flux upper limit)
+            abmag_fainterr[good]  = errmaggies / (C * (maggies_good - errmaggies)) # faint end (flux lower limit)
+            abmag_ivar[good]      = ivarmaggies_good * (C * maggies_good)**2
+            
         # Add a minimum uncertainty in quadrature **but only for flam**, which
         # is used in the fitting.
         if min_uncertainty is not None:
             log.debug('Propagating minimum photometric uncertainties (mag): [{}]'.format(
                 ' '.join(min_uncertainty.astype(str))))
-            good = np.where((maggies != 0) * (ivarmaggies > 0))[0]
-            if len(good) > 0:
-                factor = 2.5 / np.log(10.)
-                magerr = factor / (np.sqrt(ivarmaggies[good]) * maggies[good])
-                magerr2 = magerr**2 + min_uncertainty[good]**2
-                ivarmaggies[good] = factor**2 / (maggies[good]**2 * magerr2)
+            good = ((maggies != 0.) & (ivarmaggies > 0.))
+            maggies_good = maggies[good]
+            factor = 2.5 / np.log(10.)
+            magerr = factor / (np.sqrt(ivarmaggies[good]) * maggies_good)
+            magerr2 = magerr**2 + min_uncertainty[good]**2
+            ivarmaggies[good] = factor**2 / (maggies_good**2 * magerr2)
 
         factor = nanofactor * 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
+        
+        ngal = 1 if maggies.ndim == 1 else maggies.shape[1]
         if ngal > 1:
             factor = factor[:, None] # broadcast for the models
-        phot['flam'] = (maggies * factor)
-        phot['flam_ivar'] = (ivarmaggies / factor**2)
+        flam = maggies * factor
+        flam_ivar = ivarmaggies / factor**2
 
+        data = {
+            'band':             bands,
+            'lambda_eff':       lambda_eff, 
+            'nanomaggies':      nmg,
+            'nanomaggies_ivar': nmg_ivar,
+            'flam':             flam,
+            'flam_ivar':        flam_ivar,
+        }
+        dtypes = [
+            bands.dtype,
+            'f4',
+            'f4',
+            'f4',
+            'f8', # flam
+            'f8', # flam_ivar
+        ]
+        
+        if qa:
+            # add columns used only by fastqa
+            data_qa = {
+                'abmag':            abmag,
+                'abmag_ivar':       abmag_ivar,
+                'abmag_brighterr':  abmag_brighterr,
+                'abmag_fainterr':   abmag_fainterr,
+                'abmag_limit':      abmag_limit,
+            }
+            data |= data_qa
+
+            dtypes_qa = [
+                'f4',
+                'f4',
+                'f4',
+                'f4',
+                'f4',
+            ]
+            dtypes.extend(dtypes_qa)            
+            
+        phot = Table(data=data, dtype=dtypes)
+        
         return phot
 
     
@@ -1081,8 +1086,7 @@ class ContinuumTools(Tools):
             npatch = len(patchids)
             continuum_patches = Table()
             continuum_patches['patchid'] = patchids
-            continuum_patches['s'] = np.zeros(npatch, int) # starting index relative to coadd_wave
-            continuum_patches['e'] = np.zeros(npatch, int) # ending index
+            continuum_patches['endpts'] = np.zeros((npatch,2), int) # starting index relative to coadd_wave
             continuum_patches['pivotwave'] = np.zeros(npatch)
             continuum_patches['slope'] = np.zeros(npatch)
             continuum_patches['intercept'] = np.zeros(npatch)
@@ -1160,8 +1164,7 @@ class ContinuumTools(Tools):
                 # (line-free) pixels of all the lines on that patch.
                 for ipatch, patchid in enumerate(pix['patch_contpix'].keys()):
                     contindx = pix['patch_contpix'][patchid]
-                    continuum_patches['s'][ipatch] = np.min(contindx) # contindx[0] # should be sorted...
-                    continuum_patches['e'][ipatch] = np.max(contindx) # contindx[-1]
+                    continuum_patches['endpts'][ipatch] = (np.min(contindx), np.max(contindx)) # should be sorted...
                     # initial guesses and bounds, but check for pathological distributions
                     lo, med, hi = quantile(flux[contindx], [0.05, 0.5, 0.95])
                     if lo < med and lo < hi:
@@ -1181,14 +1184,16 @@ class ContinuumTools(Tools):
                 # Get initial guesses on the line-emission on the first iteration.
                 if initial_guesses is None:
                     initial_guesses, param_bounds = EMFit._initial_guesses_and_bounds(
-                        pix['linepix'], contpix=pix['contpix'], coadd_flux=flux,
-                        subtract_local_continuum=True, log=log,
+                        pix['linepix'], flux, contpix=pix['contpix'],
+                        subtract_local_continuum=True,
                         initial_linesigma_broad=initsigma_broad, 
                         initial_linesigma_narrow=initsigma_narrow, 
                         initial_linesigma_balmer_broad=initsigma_balmer_broad,
                         initial_linevshift_broad=0.,
                         initial_linevshift_narrow=0.,
-                        initial_linevshift_balmer_broad=0.)
+                        initial_linevshift_balmer_broad=0.,
+                        log=log,
+                    )
 
                 # fit!
                 linefit, contfit = EMFit.optimize(linemodel, initial_guesses,
@@ -1221,7 +1226,8 @@ class ContinuumTools(Tools):
 
             linesnrs = np.zeros_like(lineamps)
             noises = np.zeros(len(contfit))
-            for ipatch, (patchid, s, e) in enumerate(contfit.iterrows('patchid', 's', 'e')):
+            for ipatch, (patchid, endpts) in enumerate(contfit.iterrows('patchid', 'endpts')):
+                s, e = endpts
                 noise = np.ptp(quantile(residuals[s:e], (0.25, 0.75))) / 1.349 # robust sigma                
                 noises[ipatch] = noise
                 lineindx = patchMap[patchid][2] # index back to full line_table
@@ -1351,11 +1357,11 @@ class ContinuumTools(Tools):
 
 
                 fig, ax = plt.subplots(nrows, ncols, figsize=(5.5*ncols, 5.5*nrows))
-                for ipatch, ((patchid, sc, ec, slope, intercept, pivotwave), xx) in enumerate(
-                        zip(contfit.iterrows('patchid', 's', 'e', 'slope', 'intercept', 'pivotwave'), ax.flat)):
+                for ipatch, ((patchid, endpts, slope, intercept, pivotwave), xx) in enumerate(
+                        zip(contfit.iterrows('patchid', 'endpts', 'slope', 'intercept', 'pivotwave'), ax.flat)):
                     # get the starting and ending pixels first
-                    s = sc
-                    e = ec
+                    s, e = endpts
+
                     for iline in patchMap[patchid][2]:
                         (ls, le), _ = lines.getLine(iline)
                         if ls != le: # fixed / dropped lines
@@ -1449,7 +1455,7 @@ class ContinuumTools(Tools):
             pivotwave = 0.5 * (np.min(linewaves) + np.max(linewaves)) # midpoint
             continuum_patches['pivotwave'][ipatch] = pivotwave
             # is there a broad Balmer line on this patch?
-            continuum_patches['balmerbroad'][ipatch] = np.any(EMFit.test_BalmerBroad[EMFit.line_in_range][I])
+            continuum_patches['balmerbroad'][ipatch] = np.any(EMFit.isBalmerBroad_noHelium_Strong[EMFit.line_in_range][I])
             
         # Need to pass copies of continuum_patches and patchMap because they can
         # get modified dynamically by _fit_patches.

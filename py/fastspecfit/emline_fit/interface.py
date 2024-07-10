@@ -56,12 +56,9 @@ class EMLine_Objective(object):
         if continuum_patches is not None:
             self.nPatches = len(continuum_patches)
 
-            self.patch_endpts = \
-                np.column_stack((continuum_patches['s'].value,
-                                 continuum_patches['e'].value))
-
+            self.patch_endpts = continuum_patches['endpts'].value
             self.patch_pivotwave = continuum_patches['pivotwave'].value
-
+            
             self.J_P = patch_jacobian(obs_bin_centers,
                                       obs_weights,
                                       self.patch_endpts,
@@ -108,18 +105,17 @@ class EMLine_Objective(object):
                           model_fluxes)
 
         if self.nPatches > 0:
-            # obtain patch params as npatch slope/intercept pairs
-            patch_free_parameters = \
-                patch_free_parameters.reshape(2, self.nPatches).T
-        
+            slopes     = patch_free_parameters[:self.nPatches]
+            intercepts = patch_free_parameters[self.nPatches:]
+
             # add patch pedestals to line model
-            for ipatch, (slope, intercept) in enumerate(patch_free_parameters):
-                s, e      = self.patch_endpts[ipatch]
-                pivotwave = self.patch_pivotwave[ipatch]
-                
-                model_fluxes[s:e] += \
-                    slope * (self.obs_bin_centers[s:e] - pivotwave) + intercept
-        
+            _add_patches(model_fluxes,
+                         slopes,
+                         intercepts,
+                         self.patch_endpts,
+                         self.patch_pivotwave,
+                         self.obs_bin_centers)
+            
         return self.obs_weights * (model_fluxes - self.obs_fluxes) # residuals
 
 
@@ -215,10 +211,14 @@ def build_model(redshift,
     model_fluxes[model_fluxes < 0.] = 0.
     
     if continuum_patches is not None:
-        for s, e, pivotwave, slope, intercept in continuum_patches.iterrows('s', 'e', 'pivotwave', 'slope', 'intercept'):
-            model_fluxes[s:e] += \
-                slope * (obs_bin_centers[s:e] - pivotwave) + intercept
-    
+        # add patch pedestals to model fluxes
+        _add_patches(model_fluxes,
+                     continuum_patches['slope'].value,
+                     continuum_patches['intercept'].value,
+                     continuum_patches['endpts'].value,
+                     continuum_patches['pivotwave'].value,
+                     obs_bin_centers)
+                    
     return model_fluxes
 
 
@@ -515,6 +515,35 @@ def _build_multimodel_core(parameters,
         
         consumer_fun((endpts, M))
 
+
+#
+# _add_patches()
+# Add patch pedestals for patches with given
+# endpts, slopes, intercepts, and pivots to
+# an array of model fluxes
+#
+@jit(nopython=True, fastmath=False, nogil=True)
+def _add_patches(model_fluxes,
+                 slopes,
+                 intercepts,
+                 patch_endpts,
+                 patch_pivotwaves,
+                 obs_bin_centers):
+    
+    # add patch pedestals to line model
+    nPatches = len(slopes)
+    
+    for ipatch in range(nPatches):
+        s, e      = patch_endpts[ipatch]
+        pivotwave = patch_pivotwaves[ipatch]
+        
+        slope     = slopes[ipatch]
+        intercept = intercepts[ipatch]
+        
+        for j in range(s,e):
+            model_fluxes[j] += \
+                slope * (obs_bin_centers[j] - pivotwave) + intercept
+        
 
 ###################################################################
 
