@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-'''Build a set of FSPS templates for use with FastSpecFit.
+'''Build a set of templates for use with FastSpecFit.
 
 * Chabrier IMF
 * MIST isochrones
@@ -27,9 +27,10 @@ that $SPS_HOME/src/sps_vars.f90 has been edited correctly and then:
 '''
 import os, time, pdb
 import numpy as np
+import argparse
 import fitsio, fsps
 from scipy.ndimage import gaussian_filter1d
-import argparse
+from scipy.integrate import simpson
 
 from astropy.io import fits
 from astropy.table import Table
@@ -41,9 +42,86 @@ from fastspecfit.continuum import PIXKMS_BLU, PIXKMS_RED, PIXKMS_WAVESPLIT
 
 irfactor = int(PIXKMS_RED / PIXKMS_BLU)
 
+templatedir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit')
 
-def build_templates(models, logages, agebins=None, imf='chabrier',
-                    include_nebular=True):
+
+def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
+    """Build the DL07 dust emission templates.
+
+    """
+    from scipy.interpolate import RegularGridInterpolator
+
+    # Umin and qpah parameter grids
+    umin_grid = np.array([0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.70, 0.80,
+                          1.00, 1.20, 1.50, 2.00, 2.50, 3.00, 4.00, 5.00, 
+                          7.00, 8.00, 12.0, 15.0, 20.0, 25.0])
+    numin = len(umin_grid)
+
+    # from Table 3 in https://arxiv.org/pdf/astro-ph/0608003
+    d_qpah = {
+        'MW3.1_00': 0.47,
+        'MW3.1_10': 1.12,
+        'MW3.1_20': 1.77,
+        'MW3.1_30': 2.50,
+        'MW3.1_40': 3.19,
+        'MW3.1_50': 3.90,
+        'MW3.1_60': 4.58,
+        }
+    models = list(d_qpah.keys())
+    qpah_grid = np.array([d_qpah[model] for model in models])
+    nqpah = len(qpah_grid)
+
+    nwave = 1001 # fixed number of wavelengths
+    dustem = np.zeros((nqpah, numin*2, nwave))
+
+    for imodel, model in enumerate(models):
+        dustfile = os.path.join(templatedir, 'original', f'DL07_{model}.dat')
+        dustem1 = np.loadtxt(dustfile, skiprows=2)
+        if imodel == 0:
+            wave = dustem1[:, 0]
+        dustem[imodel, :, :] = dustem1[:, 1:].T
+    wave *= 1e4 # [mu --> Angstrom]
+
+    # set up the interpolation objects
+    umin_interp = RegularGridInterpolator((qpah_grid, umin_grid), dustem[:, :22, :])
+    umax_interp = RegularGridInterpolator((qpah_grid, umin_grid), dustem[:, 22:, :])
+
+    dumin = umin_interp((qpah, umin))
+    dumax = umax_interp((qpah, umin))
+    dustem = (1. - gamma) * dumin + gamma * dumax
+
+    # convert to per A (from per Hz) and normalize to unity
+    dustem /= wave**2
+    dustem /= simpson(dustem, x=wave)
+
+    if png:
+        fig, ax = plt.subplots()
+        #I = np.where(wave/1e4 < 10.)[0]
+        I = np.arange(len(wave))
+        ax.plot(wave[I], dustem, label='umin={umin:.1f} qpah={qpah:.2f} gamma={gamma:.2f}')
+        #ax.plot(wave[I], dustem[4, 8, I], label='model: qpah=3.19')
+        #ax.plot(wave[I], dustem[5, 8, I], label='model: qpah=3.90')
+        #ax.plot(wave[I], dumin[I], label='interp: qpah=3.5')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(png)
+
+    return wave, dustem
+
+
+def build_agn_templates(agntau=10.):
+    """Build the AGN templates.
+
+    """
+
+    pdb.set_trace()
+    
+    
+
+def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
+                         include_nebular=True):
 
     nsed = len(models)
 
@@ -151,7 +229,17 @@ def build_templates(models, logages, agebins=None, imf='chabrier',
 
     return meta, newwave, fluxes, linewaves, linefluxes
 
-def main(args):
+
+def fsps(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, 
+         agntau=10., test=False, version='1.0.0'):
+    """Build all the templates.
+
+
+    """
+    # dust emission templates
+    dustwave, dustem = build_dustem_templates(qpah=qpah, umin=umin, gamma=gamma, png='junk.png')
+
+    pdb.set_trace()
 
     # Choose lookback time bins. 
 
@@ -175,7 +263,7 @@ def main(args):
     zsolar = 0.019
 
     # for testing
-    if args.test:
+    if test:
         logmets = [0.0]
         nmets = 1
     
@@ -196,15 +284,15 @@ def main(args):
     models = models.flatten()
 
     # Build models with and without line-emission.
-    meta, wave, flux, linewaves, linefluxes = build_templates(
+    meta, wave, flux, linewaves, linefluxes = build_fsps_templates(
         models, logages, agebins=agebins, include_nebular=True, 
-        imf=args.imf)
+        imf=imf)
 
     pdb.set_trace()
 
-    _, _, fluxnolines, _, _ = build_templates(
+    _, _, fluxnolines, _, _ = build_fsps_templates(
         models, logages, agebins=agebins, include_nebular=False, 
-        imf=args.imf)
+        imf=imf)
 
     lineflux = flux - fluxnolines
 
@@ -237,24 +325,24 @@ def main(args):
     #pdb.set_trace()
 
     # Write out.
-    outdir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit', args.version)
+    outdir = os.path.join(templatedir, version)
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
-    outfile = os.path.join(outdir, 'ftemplates-{}-{}.fits'.format(args.imf, args.version))
+    outfile = os.path.join(outdir, f'ftemplates-{imf}-{version}.fits')
 
     hduflux1 = fits.PrimaryHDU(flux)
     hduflux1.header['EXTNAME'] = 'FLUX'
-    hduflux1.header['VERSION'] = args.version
+    hduflux1.header['VERSION'] = version
     hduflux1.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
     hduflux2 = fits.ImageHDU(lineflux)
     hduflux2.header['EXTNAME'] = 'LINEFLUX'
-    hduflux2.header['VERSION'] = args.version
+    hduflux2.header['VERSION'] = version
     hduflux2.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
     hduflux3 = fits.ImageHDU(vdispflux)
     hduflux3.header['EXTNAME'] = 'VDISPFLUX'
-    hduflux3.header['VERSION'] = args.version
+    hduflux3.header['VERSION'] = version
     hduflux3.header['VDISPMIN'] = (vdispmin, 'minimum velocity dispersion [km/s]')
     hduflux3.header['VDISPMAX'] = (vdispmax, 'maximum velocity dispersion [km/s]')
     hduflux3.header['VDISPRES'] = (dvdisp, 'velocity dispersion spacing [km/s]')
@@ -279,12 +367,12 @@ def main(args):
 
     hdutable = fits.convenience.table_to_hdu(meta)
     hdutable.header['EXTNAME'] = 'METADATA'
-    hdutable.header['imf'] = args.imf
+    hdutable.header['imf'] = imf
 
     # emission lines
     hduflux4 = fits.ImageHDU(linefluxes)
     hduflux4.header['EXTNAME'] = 'LINEFLUXES'
-    hduflux4.header['VERSION'] = args.version
+    hduflux4.header['VERSION'] = version
     hduflux4.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
     hduwave3 = fits.ImageHDU(linewaves)
@@ -294,16 +382,30 @@ def main(args):
 
     hx = fits.HDUList([hduflux1, hduflux2, hduwave1, hduflux3, hduwave2, hdutable, hduflux4, hduwave3])
 
-    print('Writing {} model spectra to {}'.format(len(models), outfile))
+    print(f'Writing {len(models)} model spectra to {outfile}')
     hx.writeto(outfile, overwrite=True)
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--version', required=True, help='Version number (e.g., 1.3.0)')
+    parser.add_argument('--version', required=True, help='Version number (e.g., 2.0.0)')
+
+    # DL07 parameters
+    # https://python-fsps.readthedocs.io/en/latest/stellarpop_api
+    parser.add_argument('--qpah', type=float, default=3.5, help='DL07 parameter')
+    parser.add_argument('--umin', type=float, default=1., help='DL07 parameter')
+    parser.add_argument('--gamma', type=float, default=0.01, help='DL07 parameter')
+
+    # Nenkova+08 parameters
+    # https://python-fsps.readthedocs.io/en/latest/stellarpop_api
+    parser.add_argument('--agntau', type=float, default=10., help='Nenkova+08 parameter')
+
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function')
     parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
     args = parser.parse_args()
 
-    main(args)
+    fsps(imf=args.imf, qpah=args.qpah, umin=args.umin, gamma=args.gamma, 
+         agntau=args.agntau, test=args.test, version=args.version)
+
+
