@@ -1549,25 +1549,33 @@ class DESISpectra(TabulatedDESI):
         return metas
 
 
+_cached_linetable = None
+
 def read_emlines(emlinesfile=None):
     """Read the set of emission lines of interest.
 
     """
-    if emlinesfile is None:
-        from importlib import resources
-        emlinesfile = resources.files('fastspecfit').joinpath('data/emlines.ecsv')
+    global _cached_linetable
+    
+    if _cached_linetable is not None:
+        linetable = _cached_linetable
+    else:
+        if emlinesfile is None:
+            from importlib import resources
+            emlinesfile = resources.files('fastspecfit').joinpath('data/emlines.ecsv')
 
-    try:
-        linetable = Table.read(emlinesfile, format='ascii.ecsv', guess=False)
-    except: 
-        from desiutil.log import get_logger
-        log = get_logger()
-        errmsg = f'Problem reading emission lines parameter file {emlinesfile}.'
-        log.critical(errmsg)
-        raise ValueError(errmsg)
+        try:
+            linetable = Table.read(emlinesfile, format='ascii.ecsv', guess=False)
+        except: 
+            from desiutil.log import get_logger
+            log = get_logger()
+            errmsg = f'Problem reading emission lines parameter file {emlinesfile}.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
-    linetable.sort('restwave')
-
+        linetable.sort('restwave')
+        _cached_linetable = linetable
+        
     return linetable    
 
 

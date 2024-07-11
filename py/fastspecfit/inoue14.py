@@ -2,45 +2,50 @@ import numpy as np
 from numba import jit
 
 class Inoue14(object):
+    """
+    IGM absorption from Inoue et al. (2014)
+        
+    Parameters
+    ----------
+    scale_tau : float
+        Parameter multiplied to the IGM :math:`\tau` values (exponential 
+        in the linear absorption fraction).  
+        I.e., :math:`f_\mathrm{igm} = e^{-\mathrm{scale\_tau} \tau}`.
+
+    Copyright (c) 2016-2022 Gabriel Brammer
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+    
+    """
+
+    igm_params = None
+    
     def __init__(self, scale_tau=1.):
-        """
-        IGM absorption from Inoue et al. (2014)
-        
-        Parameters
-        ----------
-        scale_tau : float
-            Parameter multiplied to the IGM :math:`\tau` values (exponential 
-            in the linear absorption fraction).  
-            I.e., :math:`f_\mathrm{igm} = e^{-\mathrm{scale\_tau} \tau}`.
-
-        Copyright (c) 2016-2022 Gabriel Brammer
-
-        Permission is hereby granted, free of charge, to any person obtaining a copy
-        of this software and associated documentation files (the "Software"), to deal
-        in the Software without restriction, including without limitation the rights
-        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-        copies of the Software, and to permit persons to whom the Software is
-        furnished to do so, subject to the following conditions:
-
-        The above copyright notice and this permission notice shall be included in all
-        copies or substantial portions of the Software.
-
-        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-        SOFTWARE.
-        
-        """
         super(Inoue14, self).__init__()
 
         self.scale_tau = scale_tau
-        self.igm_params = self._load_data()
-       
         
-    def _load_data(self):
+        if Inoue14.igm_params == None:
+            Inoue14.igm_params = self._load_data()
+        
+    @staticmethod
+    def _load_data():
         from importlib import resources
         LAF_file = resources.files('fastspecfit').joinpath('data/LAFcoeff.txt')
         DLA_file = resources.files('fastspecfit').joinpath('data/DLAcoeff.txt')
@@ -84,7 +89,7 @@ class Inoue14(object):
         
         return self._full_IGM(z, lobs,
                               self.scale_tau,
-                              self.igm_params)
+                              Inoue14.igm_params)
     
     
     @staticmethod
