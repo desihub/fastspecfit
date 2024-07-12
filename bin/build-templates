@@ -78,27 +78,131 @@ def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
         dustfile = os.path.join(templatedir, 'original', f'DL07_{model}.dat')
         dustem1 = np.loadtxt(dustfile, skiprows=2)
         if imodel == 0:
-            wave = dustem1[:, 0]
+            dustwave = dustem1[:, 0]
         dustem[imodel, :, :] = dustem1[:, 1:].T
-    wave *= 1e4 # [mu --> Angstrom]
+    dustwave *= 1e4 # [mu --> Angstrom]
 
-    # set up the interpolation objects
+    # set up the linear interpolation objects over Umin and qpah
     umin_interp = RegularGridInterpolator((qpah_grid, umin_grid), dustem[:, :22, :])
     umax_interp = RegularGridInterpolator((qpah_grid, umin_grid), dustem[:, 22:, :])
 
     dumin = umin_interp((qpah, umin))
     dumax = umax_interp((qpah, umin))
-    dustem = (1. - gamma) * dumin + gamma * dumax
 
-    # convert to per A (from per Hz) and normalize to unity
-    dustem /= wave**2
-    dustem /= simpson(dustem, x=wave)
+    # construct P(U)dU as a weighted average of dumin and dumax
+    mduste = (1. - gamma) * dumin + gamma * dumax
+
+    # convert to F_lambda (from F_nu) and normalize the spectrum to unity
+    mduste /= dustwave**2
+    mduste /= simpson(mduste, x=dustwave)
 
     if png:
+        # check against FSPS using a simple (age-independent) Charlot & Fall
+        # dust model
+        import fsps
+        import seaborn as sns
+
+        def attenuation(tauv, wave, alpha=-0.7):
+            return np.exp(-tauv * (wave / 5500.)**alpha)
+
+        tauv = 1.
+
+        sp = fsps.StellarPopulation(imf_type=1, dust_type=0,
+                                    dust_index=-0.7, sfh=0, # SSP parameters
+                                    zcontinuous=1)
+
+        # intrinsic (dust-free) spectrum with no dust emission
+        sp.params["dust2"] = 0
+        sp.params["add_dust_emission"] = False
+        wave, flux = sp.get_spectrum(tage=0.01, peraa=True)
+
+        # build the attenuated spectrum + dust emission using FSPS; take this
+        # spectrum as "truth"
+        sp.params["dust2"] = tauv
+        sp.params["add_dust_emission"] = True
+        _, fsps_dflux = sp.get_spectrum(tage=0.01, peraa=True)
+
+        # For the purposes of the QA, interpolate the dust emission spectrum
+        # onto the FSPS wavelength grid.
+        mduste = np.interp(wave, dustwave, mduste, left=0.)
+
+        # now do the dust emission calculation ourselves
+        atten = attenuation(tauv, wave)
+        dflux = flux * atten
+
+        # normalize the dust emission to the luminosity absorbed by dust, i.e.,
+        # keeping Lbol constant
+        lbold = simpson(dflux, x=wave) # attenuated energy
+        lboln = simpson(flux, x=wave)  # intrinsic energy
+
+        labs = lboln - lbold
+        norm = simpson(mduste, x=wave) # should already be 1.0
+        duste = mduste * labs / norm
+
+        # handle dust self-absorption
+        iiter = 0
+        tduste = 0.
+        while (lboln - lbold) > 1e-2 or iiter < 3:
+            oduste = duste
+            duste *= atten # attenuate
+            tduste += duste
+
+            lbold = simpson(duste, x=wave)  # after self-absorption
+            lboln = simpson(oduste, x=wave) # before self-absorption
+            duste = mduste * (lboln - lbold) / norm
+            print(lboln - lbold)
+
+            iiter += 1
+
+        pdb.set_trace()
+
+        #dustem = duste
+        
+        #sp.params["dust2"] = reftauv
+        #sp.params["add_dust_emission"] = False
+        #_, flux_reddened = sp.get_spectrum(tage=0.01, peraa=True)
+        #        
+        ## reference normalization factor
+        #refnorm = simpson(flux_nodust * (1. - get_taulambda(reftauv, wave)), x=wave)
+        #
+        #####################
+        ## In fitting, we have an nodust spectrum with no dust emission. Get the dust
+        ## normalization factor, attenuate the nodust spectrum, and then add the two
+        ## pieces.
+        #
+        #tauv = 0.5
+        #norm = simpson(flux_nodust * (1. - get_taulambda(tauv, wave)), x=wave)
+        #myflux_reddened = flux_nodust * get_taulambda(tauv, wave) + duste * norm / refnorm
+        #
+        ## check against FSPS
+        #
+        #sp.params["dust2"] = tauv
+        #sp.params["add_dust_emission"] = True
+        #_, flux_veryreddened_with_duste = sp.get_spectrum(tage=0.01, peraa=True)
+
+        plotwave = wave / 1e4
+        
+        xlim = (0.1, 100.)
+        I = (plotwave > xlim[0]) * (plotwave < xlim[1])
+        
+        fig, ax = plt.subplots()        
+        ax.plot(plotwave[I], flux[I], label='Unattenuated spectrum')
+        ax.plot(plotwave[I], (dflux + tduste)[I], alpha=0.7, label='My spectrum')
+        ax.plot(plotwave[I], fsps_dflux[I], alpha=0.7, label='FSPS spectrum')
+
+        ax.plot(plotwave[I], (dflux + tduste)[I]/fsps_dflux[I]-1, alpha=0.7, label='FSPS spectrum')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.legend(fontsize=10)
+        fig.tight_layout()
+        fig.savefig(png)
+
+        pdb.set_trace()
+
         fig, ax = plt.subplots()
-        #I = np.where(wave/1e4 < 10.)[0]
-        I = np.arange(len(wave))
-        ax.plot(wave[I], dustem, label='umin={umin:.1f} qpah={qpah:.2f} gamma={gamma:.2f}')
+        I = np.where(wave/1e4 < 30.)[0]
+        #I = np.arange(len(wave))
+        ax.plot(wave[I], dustem[I], label=f'umin={umin:.1f} qpah={qpah:.2f} gamma={gamma:.2f}')
         #ax.plot(wave[I], dustem[4, 8, I], label='model: qpah=3.19')
         #ax.plot(wave[I], dustem[5, 8, I], label='model: qpah=3.90')
         #ax.plot(wave[I], dumin[I], label='interp: qpah=3.5')
@@ -108,7 +212,8 @@ def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
         fig.tight_layout()
         fig.savefig(png)
 
-    return wave, dustem
+
+    return dustwave, dustem
 
 
 def build_agn_templates(agntau=10.):
