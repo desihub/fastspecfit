@@ -31,6 +31,7 @@ import argparse
 import fitsio, fsps
 from scipy.ndimage import gaussian_filter1d
 from scipy.integrate import simpson
+from scipy.interpolate import interpn
 
 from astropy.io import fits
 from astropy.table import Table
@@ -45,12 +46,95 @@ irfactor = int(PIXKMS_RED / PIXKMS_BLU)
 templatedir = os.path.join(os.environ.get('DESI_ROOT'), 'science', 'gqp', 'templates', 'fastspecfit')
 
 
+def _qa_dustem_templates(dustwave, mduste, qpah, umin, gamma, png):
+
+    # check against FSPS using a simple (age-independent) Charlot & Fall
+    # dust model
+
+    import fsps
+    import seaborn as sns
+
+    def attenuation(tauv, wave, alpha=-0.7):
+        return np.exp(-tauv * (wave / 5500.)**alpha)
+
+    tauv = 3.
+
+    sp = fsps.StellarPopulation(imf_type=1, dust_type=0,
+                                dust_index=-0.7, sfh=0, # SSP parameters
+                                zcontinuous=1)
+
+    # intrinsic (dust-free) spectrum with no dust emission
+    sp.params["dust2"] = 0
+    sp.params["add_dust_emission"] = False
+    wave, flux = sp.get_spectrum(tage=0.01, peraa=True)
+
+    # build the attenuated spectrum + dust emission using FSPS; take this
+    # spectrum as "truth"
+    sp.params["dust2"] = tauv
+    sp.params["add_dust_emission"] = True
+    _, fsps_dflux = sp.get_spectrum(tage=0.01, peraa=True)
+
+    # For the purposes of the QA, interpolate the dust emission spectrum
+    # onto the FSPS wavelength grid.
+    mduste = np.interp(wave, dustwave, mduste, left=0.)
+
+    # now do the dust emission calculation ourselves
+    atten = attenuation(tauv, wave)
+    dflux = flux * atten
+
+    # normalize the dust emission to the luminosity absorbed by dust, i.e.,
+    # keeping Lbol constant
+    lbold = simpson(dflux, x=wave) # attenuated energy
+    lboln = simpson(flux, x=wave)  # intrinsic energy
+
+    labs = lboln - lbold
+    norm = simpson(mduste, x=wave) # should already be 1.0
+    duste = mduste * labs / norm
+
+    orig_duste = duste.copy()
+
+    # handle dust self-absorption (algorithm taken from fsps.add_dust)
+    iiter = 0
+    tduste = 0.
+    while (lboln - lbold) > 1e-2 or iiter < 5:
+        oduste = duste.copy()
+        duste *= atten # attenuate
+        tduste += duste
+
+        lbold = simpson(duste, x=wave)  # after self-absorption
+        lboln = simpson(oduste, x=wave) # before self-absorption
+        duste = mduste * (lboln - lbold) / norm
+        #print(lboln - lbold)
+
+        iiter += 1
+
+    plotwave = wave / 1e4
+    
+    xlim = (0.1, 500.)
+    I = (plotwave > xlim[0]) * (plotwave < xlim[1])
+    
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+
+    ax1.plot(plotwave[I], flux[I], label='Unattenuated spectrum')
+    ax1.plot(plotwave[I], (dflux + tduste)[I], alpha=0.7, label='With self-absorption')
+    ax1.plot(plotwave[I], (dflux + orig_duste)[I], alpha=0.7, label='No self-absorption')
+    ax1.plot(plotwave[I], fsps_dflux[I], alpha=0.7, label='FSPS')
+    ax1.set_xscale('log')
+    ax1.set_yscale('log')
+    ax1.legend(fontsize=10)
+
+    ax2.plot(plotwave[I], (dflux + tduste)[I]/fsps_dflux[I]-1, alpha=0.7, label='No self-absorption')
+    ax2.plot(plotwave[I], (dflux + orig_duste)[I]/fsps_dflux[I]-1, alpha=0.7, label='With self-absorption')
+    ax2.set_xscale('log')
+    ax2.legend(fontsize=10)
+    fig.tight_layout()
+    fig.savefig(png)
+
+
 def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
     """Build the DL07 dust emission templates.
 
     """
-    from scipy.interpolate import RegularGridInterpolator
-
     # Umin and qpah parameter grids
     umin_grid = np.array([0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.70, 0.80,
                           1.00, 1.20, 1.50, 2.00, 2.50, 3.00, 4.00, 5.00, 
@@ -83,150 +167,79 @@ def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
     dustwave *= 1e4 # [mu --> Angstrom]
 
     # set up the linear interpolation objects over Umin and qpah
-    umin_interp = RegularGridInterpolator((qpah_grid, umin_grid), dustem[:, :22, :])
-    umax_interp = RegularGridInterpolator((qpah_grid, umin_grid), dustem[:, 22:, :])
-
-    dumin = umin_interp((qpah, umin))
-    dumax = umax_interp((qpah, umin))
+    #umin_interp = RegularGridInterpolator((qpah_grid, umin_grid), dustem[:, :22, :], method='linear')
+    #umax_interp = RegularGridInterpolator((qpah_grid, umin_grid), dustem[:, 22:, :], method='linear')
+    #dumin = umin_interp((qpah, umin))
+    #dumax = umax_interp((qpah, umin))
+    dumin = interpn((qpah_grid, umin_grid, dustwave), dustem[:, :22, :], (qpah, umin, dustwave))
+    dumax = interpn((qpah_grid, umin_grid, dustwave), dustem[:, 22:, :], (qpah, umin, dustwave))
 
     # construct P(U)dU as a weighted average of dumin and dumax
     mduste = (1. - gamma) * dumin + gamma * dumax
 
     # convert to F_lambda (from F_nu) and normalize the spectrum to unity
     mduste /= dustwave**2
-    mduste /= simpson(mduste, x=dustwave)
+    norm = simpson(mduste, x=dustwave)
+    if norm > 0.:
+        mduste /= norm
 
     if png:
-        # check against FSPS using a simple (age-independent) Charlot & Fall
-        # dust model
-        import fsps
-        import seaborn as sns
+        _qa_dustem_templates(dustwave, mduste, qpah, umin, gamma, png)
 
-        def attenuation(tauv, wave, alpha=-0.7):
-            return np.exp(-tauv * (wave / 5500.)**alpha)
+    return dustwave, mduste
 
-        tauv = 1.
 
-        sp = fsps.StellarPopulation(imf_type=1, dust_type=0,
-                                    dust_index=-0.7, sfh=0, # SSP parameters
-                                    zcontinuous=1)
+def build_agn_templates(agntau=10., png=None):
+    """Build the AGN templates.
 
-        # intrinsic (dust-free) spectrum with no dust emission
-        sp.params["dust2"] = 0
-        sp.params["add_dust_emission"] = False
-        wave, flux = sp.get_spectrum(tage=0.01, peraa=True)
-
-        # build the attenuated spectrum + dust emission using FSPS; take this
-        # spectrum as "truth"
-        sp.params["dust2"] = tauv
-        sp.params["add_dust_emission"] = True
-        _, fsps_dflux = sp.get_spectrum(tage=0.01, peraa=True)
-
-        # For the purposes of the QA, interpolate the dust emission spectrum
-        # onto the FSPS wavelength grid.
-        mduste = np.interp(wave, dustwave, mduste, left=0.)
-
-        # now do the dust emission calculation ourselves
-        atten = attenuation(tauv, wave)
-        dflux = flux * atten
-
-        # normalize the dust emission to the luminosity absorbed by dust, i.e.,
-        # keeping Lbol constant
-        lbold = simpson(dflux, x=wave) # attenuated energy
-        lboln = simpson(flux, x=wave)  # intrinsic energy
-
-        labs = lboln - lbold
-        norm = simpson(mduste, x=wave) # should already be 1.0
-        duste = mduste * labs / norm
-
-        # handle dust self-absorption
-        iiter = 0
-        tduste = 0.
-        while (lboln - lbold) > 1e-2 or iiter < 3:
-            oduste = duste
-            duste *= atten # attenuate
-            tduste += duste
-
-            lbold = simpson(duste, x=wave)  # after self-absorption
-            lboln = simpson(oduste, x=wave) # before self-absorption
-            duste = mduste * (lboln - lbold) / norm
-            print(lboln - lbold)
-
-            iiter += 1
-
-        pdb.set_trace()
-
-        #dustem = duste
-        
-        #sp.params["dust2"] = reftauv
-        #sp.params["add_dust_emission"] = False
-        #_, flux_reddened = sp.get_spectrum(tage=0.01, peraa=True)
-        #        
-        ## reference normalization factor
-        #refnorm = simpson(flux_nodust * (1. - get_taulambda(reftauv, wave)), x=wave)
-        #
-        #####################
-        ## In fitting, we have an nodust spectrum with no dust emission. Get the dust
-        ## normalization factor, attenuate the nodust spectrum, and then add the two
-        ## pieces.
-        #
-        #tauv = 0.5
-        #norm = simpson(flux_nodust * (1. - get_taulambda(tauv, wave)), x=wave)
-        #myflux_reddened = flux_nodust * get_taulambda(tauv, wave) + duste * norm / refnorm
-        #
-        ## check against FSPS
-        #
-        #sp.params["dust2"] = tauv
-        #sp.params["add_dust_emission"] = True
-        #_, flux_veryreddened_with_duste = sp.get_spectrum(tage=0.01, peraa=True)
-
-        plotwave = wave / 1e4
-        
+    """
+    def _qa_agn_templates(agnwave, agnflux, agntau, agngrid=None, taugrid=None):
+        plotwave = agnwave / 1e4
         xlim = (0.1, 100.)
         I = (plotwave > xlim[0]) * (plotwave < xlim[1])
-        
-        fig, ax = plt.subplots()        
-        ax.plot(plotwave[I], flux[I], label='Unattenuated spectrum')
-        ax.plot(plotwave[I], (dflux + tduste)[I], alpha=0.7, label='My spectrum')
-        ax.plot(plotwave[I], fsps_dflux[I], alpha=0.7, label='FSPS spectrum')
-
-        ax.plot(plotwave[I], (dflux + tduste)[I]/fsps_dflux[I]-1, alpha=0.7, label='FSPS spectrum')
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-        ax.legend(fontsize=10)
-        fig.tight_layout()
-        fig.savefig(png)
-
-        pdb.set_trace()
 
         fig, ax = plt.subplots()
-        I = np.where(wave/1e4 < 30.)[0]
-        #I = np.arange(len(wave))
-        ax.plot(wave[I], dustem[I], label=f'umin={umin:.1f} qpah={qpah:.2f} gamma={gamma:.2f}')
-        #ax.plot(wave[I], dustem[4, 8, I], label='model: qpah=3.19')
-        #ax.plot(wave[I], dustem[5, 8, I], label='model: qpah=3.90')
-        #ax.plot(wave[I], dumin[I], label='interp: qpah=3.5')
+        ax.plot(plotwave[I], agnflux[I], label=f'tau={agntau:.1f}', lw=2)
+        if agngrid is not None:
+            for ii in range(agngrid.shape[0]):
+                ax.plot(plotwave[I], agngrid[ii, I] / simpson(agngrid[ii, :], x=agnwave), 
+                        label=f'{taugrid[ii]:.1f}', lw=0.5)
+        ax.set_xlabel('Wavelength (micron)')
+        ax.set_ylabel('Flux (arbitrary units)')
         ax.set_xscale('log')
         ax.set_yscale('log')
+        ax.set_xlim(xlim)
         ax.legend()
         fig.tight_layout()
         fig.savefig(png)
 
+    templatefile = os.path.join(templatedir, 'original', 'Nenkova08_y010_torusg_n10_q2.0.dat')
+    data = np.loadtxt(templatefile, skiprows=4)
+    agnwave = data[:, 0]    # [nwave, Angstrom]
+    agngrid = data[:, 1:].T # [nagn, nwave]
+    agngrid /= agnwave[np.newaxis, :]**2 # [F_nu --> F_lam]
+    nwave = len(agnwave)
 
-    return dustwave, dustem
+    tau_grid = np.array([5, 10, 20, 30, 40, 60, 80, 100, 150]).astype('f4')
+    ntau = len(tau_grid)
 
+    agnflux = interpn((tau_grid, agnwave), agngrid, (agntau, agnwave))
+    #I = agnflux > 0.
+    #agnflux = agnflux[I]
+    #agnwave = agnwave[I]
 
-def build_agn_templates(agntau=10.):
-    """Build the AGN templates.
+    norm = simpson(agnflux, x=agnwave)
+    if norm > 0.:
+        agnflux /= norm
 
-    """
+    if png:
+        _qa_agn_templates(agnwave, agnflux, agntau, agngrid=agngrid, taugrid=tau_grid)
 
-    pdb.set_trace()
-    
+    return agnwave, agnflux
     
 
 def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
-                         include_nebular=True):
+                         include_nebular=True, add_dust_emission=False):
 
     nsed = len(models)
 
@@ -244,7 +257,7 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
     # tabular SFH
     sp = fsps.StellarPopulation(
         compute_vega_mags=False, 
-        add_dust_emission=False, # note!
+        add_dust_emission=add_dust_emission, # note!
         add_neb_emission=True,
         nebemlineinspec=include_nebular,
         imf_type=imfdict[imf],
@@ -335,16 +348,18 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
     return meta, newwave, fluxes, linewaves, linefluxes
 
 
-def fsps(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, 
-         agntau=10., test=False, version='1.0.0'):
+def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10., 
+         vdisp_nominal=125., test=False, version='1.0.0'):
     """Build all the templates.
 
 
     """
-    # dust emission templates
-    dustwave, dustem = build_dustem_templates(qpah=qpah, umin=umin, gamma=gamma, png='junk.png')
+    # AGN template(s)
+    agnwave, agnflux = build_agn_templates(agntau=agntau)#, png=os.path.join(templatedir, 'original', 'qa-agn.png'))
 
-    pdb.set_trace()
+    # dust emission template(s)
+    dustwave, dustflux = build_dustem_templates(qpah=qpah, umin=umin, gamma=gamma)#, 
+                                              #png=os.path.join(templatedir, 'original', 'qa-dustem.png'))
 
     # Choose lookback time bins. 
 
@@ -391,49 +406,34 @@ def fsps(imf='chabrier', qpah=3.5, umin=1., gamma=0.01,
     # Build models with and without line-emission.
     meta, wave, flux, linewaves, linefluxes = build_fsps_templates(
         models, logages, agebins=agebins, include_nebular=True, 
-        imf=imf)
-
-    pdb.set_trace()
+        add_dust_emission=False, imf=imf)
 
     _, _, fluxnolines, _, _ = build_fsps_templates(
         models, logages, agebins=agebins, include_nebular=False, 
-        imf=imf)
+        add_dust_emission=False, imf=imf)
 
     lineflux = flux - fluxnolines
 
-    #I = (wave > 3500) * (wave < 9000)
-    #plt.clf()
-    #plt.plot(wave[I], flux[I, 0])
-    #plt.plot(wave[I], fluxnolines[I, 0])
-    #plt.ylim(0, 0.1e-7)
-    #plt.savefig('junk2.png')
-    #pdb.set_trace()
-
-    # Build the velocity dispersion templates.
-
-    # Select just the line-free models trimmed to the 1200-10000 A wavelength
-    # range.
-    I = np.where((wave > 1200) * (wave < PIXKMS_WAVESPLIT))[0]
+    # Convolve the line-free models (trimmed to the 1200-10000 A wavelength
+    # range) to the nominal velocity dispersion
+    I = np.where(wave < PIXKMS_WAVESPLIT)[0]
+    #I = np.where((wave > 1200) * (wave < PIXKMS_WAVESPLIT))[0]
     vdispwave = wave[I]
-    #nvdispmodel = len(J)
+    vdispflux = gaussian_filter1d(fluxnolines[I, :], sigma=vdisp_nominal / PIXKMS_BLU, axis=1) # [npix,nmodel]
 
-    vdispflux = []
-    for sigma in vdisp / PIXKMS_BLU:
-        vdispflux.append(gaussian_filter1d(fluxnolines[I, :], sigma=sigma, axis=0))
-    vdispflux = np.stack(vdispflux, axis=-1) # [npix,nvdispmodel,nvdisp]
-
-    #K = np.where((vdispwave > 3500) * (vdispwave < 4300))[0]
-    #plt.clf()
-    #plt.plot(vdispwave[K], fluxnolines[I, 6][J])
-    #plt.plot(vdispwave[K], vdispflux[J, 6, nvdisp-1])
-    #plt.savefig('junk.png')
-    #pdb.set_trace()
+    # Interpolate the dust emission and AGN models to the nominal wavelength array.
+    dustflux = np.interp(wave, dustwave, dustflux, left=0.)
+    agnflux = 10.**np.interp(np.log10(wave), np.log10(agnwave), np.log10(agnflux+1e-30))-1e-30
+    I = wave <= agnwave[0] # do not extrapolate blueward
+    agnflux[I] = 0.
 
     # Write out.
     outdir = os.path.join(templatedir, version)
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
     outfile = os.path.join(outdir, f'ftemplates-{imf}-{version}.fits')
+
+    isplit = np.argmin(np.abs(wave-PIXKMS_WAVESPLIT)) + 1
 
     hduflux1 = fits.PrimaryHDU(flux)
     hduflux1.header['EXTNAME'] = 'FLUX'
@@ -442,19 +442,20 @@ def fsps(imf='chabrier', qpah=3.5, umin=1., gamma=0.01,
 
     hduflux2 = fits.ImageHDU(lineflux)
     hduflux2.header['EXTNAME'] = 'LINEFLUX'
-    hduflux2.header['VERSION'] = version
     hduflux2.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
-    hduflux3 = fits.ImageHDU(vdispflux)
-    hduflux3.header['EXTNAME'] = 'VDISPFLUX'
-    hduflux3.header['VERSION'] = version
-    hduflux3.header['VDISPMIN'] = (vdispmin, 'minimum velocity dispersion [km/s]')
-    hduflux3.header['VDISPMAX'] = (vdispmax, 'maximum velocity dispersion [km/s]')
-    hduflux3.header['VDISPRES'] = (dvdisp, 'velocity dispersion spacing [km/s]')
-    hduflux3.header['VDISPNOM'] = (vdisp_nominal, 'nominal (default) velocity dispersion [km/s]')
+    # dust emission and AGN spectra
+    hduflux3 = fits.ImageHDU(dustflux)
+    hduflux3.header['EXTNAME'] = 'DUSTFLUX'
+    hduflux3.header['QPAH'] = (qpah, 'PAH fraction')
+    hduflux3.header['UMIN'] = (umin, 'minimum radiation field strength')
+    hduflux3.header['GAMMA'] = (gamma, 'gamma parameter')
     hduflux3.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
-    isplit = np.argmin(np.abs(wave-PIXKMS_WAVESPLIT)) + 1
+    hduflux4 = fits.ImageHDU(agnflux)
+    hduflux4.header['EXTNAME'] = 'AGNFLUX'
+    hduflux4.header['AGNTAU'] = (agntau, 'AGN optical depth')
+    hduflux4.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
     hduwave1 = fits.ImageHDU(wave)
     hduwave1.header['EXTNAME'] = 'WAVE'
@@ -464,31 +465,40 @@ def fsps(imf='chabrier', qpah=3.5, umin=1., gamma=0.01,
     hduwave1.header['PIXSZRED'] = (PIXKMS_RED, 'pixel size redward of PIXSZSPT [km/s]')
     hduwave1.header['PIXSZSPT'] = (wave[isplit], 'wavelength where pixel size changes [Angstrom]')
 
+    hdutable = fits.convenience.table_to_hdu(meta)
+    hdutable.header['EXTNAME'] = 'METADATA'
+    hdutable.header['imf'] = imf
+
+    # velocity dispersion
+    hduflux5 = fits.ImageHDU(vdispflux)
+    hduflux5.header['EXTNAME'] = 'VDISPFLUX'
+    hduflux5.header['VDISPNOM'] = (vdisp_nominal, 'nominal (default) velocity dispersion [km/s]')
+    hduflux5.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+
     hduwave2 = fits.ImageHDU(vdispwave)
     hduwave2.header['EXTNAME'] = 'VDISPWAVE'
     hduwave2.header['BUNIT'] = 'Angstrom'
     hduwave2.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
     hduwave2.header['PIXSZ'] = (PIXKMS_BLU, 'pixel size [km/s]')
 
-    hdutable = fits.convenience.table_to_hdu(meta)
-    hdutable.header['EXTNAME'] = 'METADATA'
-    hdutable.header['imf'] = imf
-
     # emission lines
-    hduflux4 = fits.ImageHDU(linefluxes)
-    hduflux4.header['EXTNAME'] = 'LINEFLUXES'
-    hduflux4.header['VERSION'] = version
-    hduflux4.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+    hduflux6 = fits.ImageHDU(linefluxes)
+    hduflux6.header['EXTNAME'] = 'LINEFLUXES'
+    hduflux6.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
     hduwave3 = fits.ImageHDU(linewaves)
     hduwave3.header['EXTNAME'] = 'LINEWAVES'
     hduwave3.header['BUNIT'] = 'Angstrom'
     hduwave3.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
 
-    hx = fits.HDUList([hduflux1, hduflux2, hduwave1, hduflux3, hduwave2, hdutable, hduflux4, hduwave3])
+    # metadata table
+
+    hx = fits.HDUList([hduflux1, hduflux2, hduflux3, hduflux4, hduwave1, hdutable,
+                       hduflux5, hduwave2, hduflux6, hduwave3])
 
     print(f'Writing {len(models)} model spectra to {outfile}')
     hx.writeto(outfile, overwrite=True)
+
 
 if __name__ == '__main__':
 
@@ -500,17 +510,18 @@ if __name__ == '__main__':
     parser.add_argument('--qpah', type=float, default=3.5, help='DL07 parameter')
     parser.add_argument('--umin', type=float, default=1., help='DL07 parameter')
     parser.add_argument('--gamma', type=float, default=0.01, help='DL07 parameter')
-
     # Nenkova+08 parameters
     # https://python-fsps.readthedocs.io/en/latest/stellarpop_api
     parser.add_argument('--agntau', type=float, default=10., help='Nenkova+08 parameter')
-
+    # FSPS parameters
+    parser.add_argument('--vdisp-nominal', type=float, default=125., help='Default velocity dispersion.')
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function')
     parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
     args = parser.parse_args()
 
-    fsps(imf=args.imf, qpah=args.qpah, umin=args.umin, gamma=args.gamma, 
-         agntau=args.agntau, test=args.test, version=args.version)
+    main(imf=args.imf, qpah=args.qpah, umin=args.umin, gamma=args.gamma, 
+         agntau=args.agntau, vdisp_nominal=args.vdisp_nominal, test=args.test, 
+         version=args.version)
 
 
