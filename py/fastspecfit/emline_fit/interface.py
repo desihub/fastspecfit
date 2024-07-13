@@ -161,7 +161,7 @@ class EMLine_Objective(object):
             
             # ignore any columns corresponding to fixed parameters
             endpts = idealJac[0]
-            endpts[self.params_mapping.fixedMask(), :] = (0,0)
+            endpts[self.params_mapping.fixedMask(), :] = 0
         
             jacs.append( mulWMJ(self.obs_weights[s:e],
                                 self.resolution_matrices[icam].data,
