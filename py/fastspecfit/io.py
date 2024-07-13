@@ -124,9 +124,8 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
         fibertotmaggies = np.zeros(len(CTools.fiber_bands))
         #ivarfibermaggies = np.zeros(len(CTools.fiber_bands))
         for iband, band in enumerate(CTools.fiber_bands):
-            fibermaggies[iband] = meta['FIBERFLUX_{}'.format(band.upper())] / mw_transmission_fiberflux[iband]
-            fibertotmaggies[iband] = meta['FIBERTOTFLUX_{}'.format(band.upper())] / mw_transmission_fiberflux[iband]
-            #ivarfibermaggies[iband] = meta['FIBERTOTFLUX_IVAR_{}'.format(band.upper())] * mw_transmission_fiberflux[iband]**2
+            fibermaggies[iband] = meta[f'FIBERFLUX_{band.upper()}'] / mw_transmission_fiberflux[iband]
+            fibertotmaggies[iband] = meta[f'FIBERTOTFLUX_{band.upper()}'] / mw_transmission_fiberflux[iband]
         
         specdata['fiberphot'] = CTools.parse_photometry(CTools.fiber_bands,
             maggies=fibermaggies, nanomaggies=True,
@@ -139,13 +138,13 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
     mw_transmission_flux = np.array([mwdust_transmission(ebv, filtername) for filtername in 
                                      CTools.filters[specdata['photsys']].names])
     for band, mwdust in zip(CTools.bands, mw_transmission_flux):
-        meta['MW_TRANSMISSION_{}'.format(band.upper())] = mwdust
+        meta[f'MW_TRANSMISSION_{band.upper()}'] = mwdust
             
     maggies = np.zeros(len(CTools.bands))
     ivarmaggies = np.zeros(len(CTools.bands))
     for iband, (fluxcol, ivarcol) in enumerate(zip(CTools.fluxcols, CTools.fluxivarcols)):
-        maggies[iband] = meta['{}'.format(fluxcol.upper())] / mw_transmission_flux[iband]
-        ivarmaggies[iband] = meta['{}'.format(ivarcol.upper())] * mw_transmission_flux[iband]**2
+        maggies[iband] = meta[fluxcol.upper()] / mw_transmission_flux[iband]
+        ivarmaggies[iband] = meta[ivarcol.upper()] * mw_transmission_flux[iband]**2
         
     if not np.all(ivarmaggies >= 0):
         errmsg = 'Some ivarmaggies are negative!'
@@ -316,8 +315,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
     
     CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
     
-    log.info('Pre-processing object {} [stackid {} z={:.6f}].'.format(
-        iobj, meta[CTools.uniqueid], meta['Z']))
+    log.info(f'Pre-processing object {iobj} [stackid {meta[CTools.uniqueid]} z={meta["Z"]:.6f}].')
 
     filters = CTools.filters[specdata['photsys']]
     synth_filters = CTools.synth_filters[specdata['photsys']]
@@ -341,7 +339,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
     for icam, camera in enumerate(specdata['cameras']):
         # Check whether the camera is fully masked.
         if np.sum(specdata['ivar0'][icam]) == 0:
-            log.warning('Dropping fully masked camera {}.'.format(camera))
+            log.warning(f'Dropping fully masked camera {camera}.')
         else:
             ivar = specdata['ivar0'][icam]
             mask = specdata['mask0'][icam]
@@ -355,7 +353,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
             ivar[mask != 0] = 0
 
             if np.all(ivar == 0):
-                log.warning('Dropping fully masked camera {}.'.format(camera))                    
+                log.warning(f'Dropping fully masked camera {camera}.')
             else:
                 cameras.append(camera)
                 npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
@@ -697,25 +695,25 @@ class DESISpectra(TabulatedDESI):
         # Should we not sort...?
         #redrockfiles = np.array(set(np.atleast_1d(redrockfiles)))
         redrockfiles = np.array(sorted(set(np.atleast_1d(redrockfiles))))
-        log.info('Reading and parsing {} unique redrockfile(s).'.format(len(redrockfiles)))
+        log.info(f'Reading and parsing {len(redrockfiles)} unique redrockfile(s).')
 
         alltiles = []
         self.redrockfiles, self.specfiles, self.meta, self.surveys = [], [], [], []
 
         for ired, redrockfile in enumerate(np.atleast_1d(redrockfiles)):
             if not os.path.isfile(redrockfile):
-                log.warning('File {} not found!'.format(redrockfile))
+                log.warning(f'File {redrockfile} not found!')
                 continue
 
             if not redrockfile_prefix in redrockfile:
-                errmsg = 'Redrockfile {} missing standard prefix {}; please specify redrockfile_prefix argument.'.format(
-                    redrockfile, redrockfile_prefix)
+                errmsg = f'Redrockfile {redrockfile} missing standard prefix {redrockfile_prefix}; ' + \
+                    'please specify redrockfile_prefix argument.'
                 log.critical(errmsg)
                 raise ValueError(errmsg)
             
             specfile = os.path.join(os.path.dirname(redrockfile), os.path.basename(redrockfile).replace(redrockfile_prefix, specfile_prefix))
             if not os.path.isfile(specfile):
-                log.warning('File {} not found!'.format(specfile))
+                log.warning(f'File {specfile} not found!')
                 continue
             
             # Can we use the quasarnet afterburner file to improve QSO redshifts?
@@ -732,7 +730,7 @@ class DESISpectra(TabulatedDESI):
             specprod = getdep(hdr, 'SPECPROD')
             if hasattr(self, 'specprod'):
                 if self.specprod != specprod:
-                    errmsg = 'specprod must be the same for all input redrock files! {}!={}'.format(specprod, self.specprod)
+                    errmsg = f'specprod must be the same for all input redrock files! {specprod}!={self.specprod}'
                     log.critical(errmsg)
                     raise ValueError(errmsg)
             
@@ -741,7 +739,7 @@ class DESISpectra(TabulatedDESI):
             if 'SPGRP' in hdr:
                 self.coadd_type = hdr['SPGRP']
             else:
-                errmsg = 'SPGRP header card missing from spectral file {}'.format(specfile)
+                errmsg = f'SPGRP header card missing from spectral file {specfile}'
                 log.warning(errmsg)
                 self.coadd_type = 'custom'
 
@@ -1007,7 +1005,7 @@ class DESISpectra(TabulatedDESI):
         log.info('Gathered photometric metadata in {:.2f} sec'.format(time.time()-t0))
 
     def read_and_unpack(self, fastphot=False, synthphot=True, ignore_photometry=False,
-                        verbose=False, mp=1):
+                        constrain_age=False, verbose=False, mp=1):
         """Read and unpack selected spectra or broadband photometry.
         
         Parameters
@@ -1118,7 +1116,10 @@ class DESISpectra(TabulatedDESI):
 
             dlum = self.luminosity_distance(zobj)
             dmod = self.distance_modulus(zobj)
-            tuniv = self.universe_age(zobj)
+            if constrain_age:
+                tuniv = self.universe_age(zobj)
+            else:
+                tuniv = np.zeros_like(zobj) + 100.
 
             if 'PHOTSYS' in meta.colnames:
                 photsys = meta['PHOTSYS']
@@ -2187,11 +2188,16 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
                      'templateflux_nolines': templateflux_nolines,
                      'templateflux_nolines_nomvdisp': templateflux_nolines_nomvdisp,
                      }
-        
-    if not fastphot:
-        # maintain backwards compatibility with older templates (versions <2.0.0)
-        if 'VDISPMIN' in vdisphdr:
 
+    # maintain backwards compatibility with older templates (versions <2.0.0)
+    if 'VDISPMIN' in vdisphdr:
+        templatecache['oldtemplates'] = True
+    else:
+        templatecache['oldtemplates'] = False
+
+    if not fastphot:
+        
+        if templatecache['oldtemplates']:
             vdispwave = T['VDISPWAVE'].read()
             vdispflux = T['VDISPFLUX'].read() # [nvdisppix,nvdispsed,nvdisp]
 
@@ -2213,7 +2219,6 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
                 'vdisp': vdisp, 
                 'vdisp_nominal_indx': np.where(vdisp == vdisp_nominal)[0]
             })
-
         else:
             if 'DUSTFLUX' in T and 'AGNFLUX' in T:
                 dustflux = T['DUSTFLUX'].read()
@@ -2243,6 +2248,7 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
         })
 
     return templatecache
+
 
 def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
                       outdir='.', overwrite=False):

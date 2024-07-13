@@ -1027,6 +1027,10 @@ class ContinuumTools(Tools):
         
         self.igm = Inoue14()
 
+        self.dust_power = -0.7     # power-law slope
+        self.dust_normwave = 5500. # pivot wavelength
+        self.dust_klambda = None   # will be cached once we have the template wavelength vector
+
         
     @staticmethod
     def smooth_continuum(*args, **kwargs):
@@ -1951,6 +1955,129 @@ class ContinuumTools(Tools):
 
         return chi2min, xbest, xivar, bestcoeff
 
+    
+    def _cache_klambda(self, wave):
+        """Cache k(lambda).
+
+        """
+        if self.dust_klambda is None:
+            self.dust_klambda = (wave / self.dust_normwave)**self.dust_power
+
+
+    def build_continuum_model(self, ebv, vdisp, templatecoeff, 
+                              templatewave, templateflux, 
+                              wave, flux, weights, 
+                              resolution_matrix, 
+                              camerapix, redshift, dluminosity):
+        """Build the continuum model, given free parameters.
+    
+        """
+        from scipy.ndimage import gaussian_filter1d
+        from fastspecfit.io import FLUXNORM
+    
+        npix, ntemplate = templateflux.shape
+
+        # [1] Convolve to the input velocity dispersion. Note, 'hi' never
+        # changes, so we shouldn't compute it every time.
+        hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
+        vd_templateflux = self.convolve_vdisp(templateflux, hi, vdisp, PIXKMS_BLU)
+
+        # [2] - Apply dust attenuation; future feature: age-dependent
+        # attenuation
+        atten = 10.**(-0.4 * ebv * self.dust_klambda)
+        vd_templateflux *= atten[:, np.newaxis]
+
+        # [3] - Redshift, IGM, and luminosity distance factors.
+        if redshift > 0:
+            ztemplatewave = templatewave * (1. + redshift)
+            T = self.igm.full_IGM(redshift, ztemplatewave) 
+            T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
+            ztemplateflux = vd_templateflux * T[:, np.newaxis]
+        else:
+            # we already issued a warning
+            ztemplatewave = templatewave
+            ztemplateflux = FLUXNORM * self.massnorm * templateflux
+    
+        # [4] - Build the model as a non-negative sum.
+        continuum = ztemplateflux.dot(templatecoeff)
+
+        # [5] - ToDo: synthesize photometry
+
+
+        # [6] - For each camera, resample, multiply by the instrumental
+        # resolution, h-stack the results, and return.
+        model = np.empty(len(wave))
+        for icam, pix in enumerate(camerapix):
+            model[pix[0]:pix[1]] = self.smooth_and_resample(continuum, ztemplatewave, 
+                                                            wave[pix[0]:pix[1]], 
+                                                            resolution_matrix[icam])
+
+        return np.hstack(model)
+
+    
+    def objective(self, params, templatewave, templateflux, wave, flux, weights, 
+                  resolution_matrix, camerapix, redshift, dluminosity):
+        """Objective function.
+    
+        """
+        ebv  = params[0]
+        vdisp = params[1]
+        templatecoeff = params[2:]
+    
+        modelflux = self.build_continuum_model(ebv, vdisp, templatecoeff, 
+                                               templatewave, templateflux, 
+                                               wave, flux, weights, 
+                                               resolution_matrix, 
+                                               camerapix, redshift, dluminosity)
+
+        return weights * (flux - modelflux)
+    
+    
+    def fit_continuum(self, templatewave, templateflux, specwave, 
+                      specflux, specivar, specres, 
+                      camerapix=None, redshift=0., dluminosity=0.,
+                      ebv_guess=0.05, vdisp_guess=125., log=None):
+        """Fit the stellar continuum using bounded non-linear least-squares.
+    
+        templateflux - 
+        
+        """
+        from scipy.optimize import least_squares
+    
+        if log is None:
+            from desiutil.log import get_logger
+            log = get_logger()
+    
+        npix, ntemplate = templateflux.shape
+        weights = np.sqrt(specivar)
+
+        farg = (templatewave, templateflux, specwave, specflux, weights, 
+                specres, camerapix, redshift, dluminosity)
+        initial_guesses = np.hstack(([ebv_guess, vdisp_guess], 1e-3 * np.ones(ntemplate)))
+        bounds = [(0., 3.), (50., 500.), ] + [(0., 1e4)] * ntemplate
+    
+        fit_info = least_squares(self.objective, initial_guesses, args=farg, 
+                                 bounds=tuple(zip(*bounds)), method='trf',
+                                 tr_solver='lsmr', tr_options={'regularize': True}, 
+                                 max_nfev=5000, xtol=1e-10, verbose=2)
+        bestparams = fit_info.x
+    
+        ebv, vdisp = bestparams[:2]
+        coeff = bestparams[2:]
+        print(ebv, vdisp, coeff)
+    
+        continuum = self.build_continuum_model(ebv, vdisp, coeff, *farg)
+    
+        import matplotlib.pyplot as plt
+        plt.clf()
+        plt.plot(specwave, specflux)
+        plt.plot(specwave, continuum, color='red')
+        plt.ylim(0, 3.5)
+        plt.xlim(6100, 6300)
+        plt.savefig('junk.png')
+ 
+        pdb.set_trace()
+
 
     def continuum_fluxes(self, data, templatewave, continuum, log=None):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
@@ -2083,6 +2210,8 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                             ignore_photometry=ignore_photometry)
 
     redshift = result['Z']
+    if redshift <= 0.:
+        log.warning('Input redshift not defined, zero, or negative!')
 
     photometry = data['phot']
     objflam = photometry['flam'].data * FLUXNORM
@@ -2116,6 +2245,8 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         agekeep = np.arange(nsed)
     nage = len(agekeep)
 
+    # cache k(lambda)
+    CTools._cache_klambda(templatecache['templatewave'])
     ztemplatewave = templatecache['templatewave'] * (1. + redshift)
 
     # Photometry-only fitting.
@@ -2201,27 +2332,9 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
 
         if compute_vdisp:
             t0 = time.time()
-            if test_continuum:
-                from fastspecfit.sandbox import fit_continuum
-                # temporary hack - we fit for A(V) in fit_continuum
-                I = np.where(templatecache['templateinfo']['av'] == 0.)[0]
 
-                #ztemplateflux, _ = CTools.templates2data(
-                #    templatecache['templateflux_nolines'][:, I], templatecache['templatewave'], # [npix,nsed]
-                #    redshift=redshift, dluminosity=data['dluminosity'],
-                #    specwave=data['wave'], specres=data['res'],
-                #    cameras=data['cameras'], synthphot=False, stack_cameras=True)
-
-                continuum = fit_continuum(templatecache['templatewave'], 
-                                          templatecache['templateflux_nolines'][:, I], # [npix,nsed]
-                                          specwave, specflux, specivar, 
-                                          specres=data['res'], camerapix=data['camerapix'],
-                                          redshift=redshift, dluminosity=data['dluminosity'],
-                                          vdisp_guess=vdisp_nominal)
-
-                pdb.set_trace()
-
-            else:
+            # maintain backwards-compatibility??
+            if templatecache['oldtemplates']:            
                 ztemplateflux_vdisp, _ = CTools.templates2data(
                     templatecache['vdispflux'], templatecache['vdispwave'], # [npix,vdispnsed,nvdisp]
                     redshift=redshift, dluminosity=data['dluminosity'],
@@ -2234,6 +2347,16 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                     xparam=templatecache['vdisp'], xlabel=r'$\sigma$ (km/s)', log=log,
                     debug=debug_plots, png='deltachi2-vdisp.png')
                 log.info('Fitting for the velocity dispersion took {:.2f} seconds.'.format(time.time()-t0))
+            else:
+                continuum = CTools.fit_continuum(templatecache['templatewave'], 
+                                                 templatecache['templateflux_nolines'], # [npix,nsed]
+                                                 specwave, specflux, specivar,
+                                                 specres=data['res'], camerapix=data['camerapix'],
+                                                 redshift=redshift, dluminosity=data['dluminosity'],
+                                                 vdisp_guess=vdisp_nominal, log=log)
+
+
+            pdb.set_trace()
             
             if vdispivar > 0:
                 # Require vdisp to be measured with S/N>1, which protects
