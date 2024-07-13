@@ -69,7 +69,7 @@ QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
 QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 
 FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
-DEFAULT_TEMPLATEVERSION = '1.3.0'
+DEFAULT_TEMPLATEVERSION = '2.0.0'
 DEFAULT_IMF = 'chabrier'
 
 # Taken from Redrock/0.15.4
@@ -2117,6 +2117,7 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
     
     return pngfile
 
+
 def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf=DEFAULT_IMF,
                     mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.,
                     read_linefluxes=False, fastphot=False, log=None):
@@ -2138,15 +2139,17 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
         log.critical(errmsg)
         raise IOError(errmsg)
 
-    #log.info('Reading {}'.format(templates))
-    wave, wavehdr = fitsio.read(templates, ext='WAVE', header=True) # [npix]
-    templateflux = fitsio.read(templates, ext='FLUX')  # [npix,nsed]
-    templatelineflux = fitsio.read(templates, ext='LINEFLUX')  # [npix,nsed]
-    templateinfo, templatehdr = fitsio.read(templates, ext='METADATA', header=True)
-    vdisphdr = fitsio.read_header(templates, ext='VDISPFLUX')
+    T = fitsio.FITS(templates)
 
-    # Trim the wavelengths and select the number/ages of the templates.
-    # https://www.sdss.org/dr14/spectro/galaxy_mpajhu
+    #log.info('Reading {}'.format(templates))
+    wave = T['WAVE'].read() # [npix]
+    wavehdr = T['WAVE'].read_header() # [npix]
+    templateflux = T['FLUX'].read()  # [npix,nsed]
+    templatelineflux = T['LINEFLUX'].read()  # [npix,nsed]
+    templateinfo = T['METADATA'].read()
+    templatehdr = T['METADATA'].read_header()
+    vdisphdr = T['VDISPFLUX'].read_header()
+
     if mintemplatewave is None:
         mintemplatewave = np.min(wave)
     
@@ -2186,33 +2189,58 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
                      }
         
     if not fastphot:
-        vdispwave = fitsio.read(templates, ext='VDISPWAVE')
-        vdispflux = fitsio.read(templates, ext='VDISPFLUX') # [nvdisppix,nvdispsed,nvdisp]
+        # maintain backwards compatibility with older templates (versions <2.0.0)
+        if 'VDISPMIN' in vdisphdr:
 
-        # see bin/build-fsps-templates
-        if vdisphdr['VDISPRES'] > 0.:
-            nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
-            vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
-        else:
-            vdisp = np.atleast_1d(vdisphdr['VDISPMIN'])
-    
-        if not vdisp_nominal in vdisp:
-            errmsg = 'Nominal velocity dispersion is not in velocity dispersion vector.'
-            log.critical(errmsg)
-            raise ValueError(errmsg)
-    
-        templatecache.update({
-            'vdispflux': vdispflux,
-            'vdispwave': vdispwave,
-            'vdisp': vdisp,
-            'vdisp_nominal_indx': np.where(vdisp == vdisp_nominal)[0],
+            vdispwave = T['VDISPWAVE'].read()
+            vdispflux = T['VDISPFLUX'].read() # [nvdisppix,nvdispsed,nvdisp]
+
+            # see bin/build-fsps-templates
+            if vdisphdr['VDISPRES'] > 0.:
+                nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
+                vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
+            else:
+                vdisp = np.atleast_1d(vdisphdr['VDISPMIN'])
+        
+            if not vdisp_nominal in vdisp:
+                errmsg = 'Nominal velocity dispersion is not in velocity dispersion vector.'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+
+            templatecache.update({
+                'vdispflux': vdispflux, 
+                'vdispwave': vdispwave,
+                'vdisp': vdisp, 
+                'vdisp_nominal_indx': np.where(vdisp == vdisp_nominal)[0]
             })
 
-    # read the model emission-line fluxes (only present for templateversion>=1.1.1)
+        else:
+            if 'DUSTFLUX' in T and 'AGNFLUX' in T:
+                dustflux = T['DUSTFLUX'].read()
+                dusthdr = T['DUSTFLUX'].read_header()
+
+                agnflux = T['AGNFLUX'].read()
+                agnhdr = T['AGNFLUX'].read_header()
+
+                templatecache.update({'dustflux': dustflux, 
+                                      'qpah': dusthdr['QPAH'],
+                                      'umin': dusthdr['umin'],
+                                      'gamma': dusthdr['GAMMA'],
+                                      'agnflux': agnflux, 
+                                      'agntau': agnhdr['AGNTAU'],
+                                      })
+            else:
+                errmsg = f'Templates file {templates} missing mandatory extensions DUSTFLUX and AGNFLUX.'
+                log.critical(errmsg)
+                raise IOError(errmsg)
+
+    # Read the model emission-line fluxes; only present for
+    # templateversion>=1.1.1 and generally only useful to a power-user.
     if read_linefluxes:
         templatecache.update({
-            'linefluxes': fitsio.read(templates, ext='LINEFLUXES'),
-            'linewaves': fitsio.read(templates, ext='LINEWAVES')})
+            'linefluxes': T['LINEFLUXES'].read(),
+            'linewaves':  T['LINEWAVES'].read()
+        })
 
     return templatecache
 

@@ -1371,10 +1371,10 @@ class ContinuumTools(Tools):
                     
                     xx.plot(wave[s:e] / 1e4, flux[s:e], color='gray')
                     xx.plot(wave[s:e] / 1e4, bestfit[s:e], color='k', ls='-', alpha=0.75)
-                    cmodel = slope * (wave[sc:ec]-pivotwave) + intercept
-                    xx.plot(wave[sc:ec] / 1e4, cmodel+noises[ipatch], color='gray', lw=1, ls='-')
-                    xx.plot(wave[sc:ec] / 1e4, cmodel, color='k', lw=2, ls='--')
-                    xx.plot(wave[sc:ec] / 1e4, cmodel-noises[ipatch], color='gray', lw=1, ls='-')
+                    cmodel = slope * (wave[s:e]-pivotwave) + intercept
+                    xx.plot(wave[s:e] / 1e4, cmodel+noises[ipatch], color='gray', lw=1, ls='-')
+                    xx.plot(wave[s:e] / 1e4, cmodel, color='k', lw=2, ls='--')
+                    xx.plot(wave[s:e] / 1e4, cmodel-noises[ipatch], color='gray', lw=1, ls='-')
                     for line, iline in zip(patchMap[patchid][0], patchMap[patchid][2]):
                         (ls, le), profile = lines.getLine(iline)
                         if ls != le: # skip fixed lines
