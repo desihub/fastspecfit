@@ -115,8 +115,10 @@ class EMLine_Objective(object):
                          self.patch_endpts,
                          self.patch_pivotwave,
                          self.obs_bin_centers)
-            
-        return self.obs_weights * (model_fluxes - self.obs_fluxes) # residuals
+        
+        residuals = model_fluxes - self.obs_fluxes # residuals (new array)
+        residuals *= self.obs_weights              # weight in place
+        return residuals
 
 
     #
