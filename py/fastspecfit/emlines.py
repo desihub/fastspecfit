@@ -752,17 +752,15 @@ class EMFitTools(Tools):
                 camerapix, continuum_patches=None):
         """Construct the best-fitting emission-line spectrum from a linemodel."""
 
+        line_parameters = linemodel['value'].copy()
+        
+        # convert doublet ratios to amplitudes
+        line_parameters[self.doublet_idx] *= line_parameters[self.doublet_src]
+        
         linewaves = self.line_table['restwave'].value
         
-        parameters = linemodel['value'].copy()
-
-        # convert doublet ratios to amplitudes
-        parameters[self.doublet_idx] *= parameters[self.doublet_src]
-        
-        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
-        
-        emlinemodel = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas,
-                                         linewaves, emlinewave, resolution_matrix, camerapix,
+        emlinemodel = EMLine_build_model(redshift, line_parameters, linewaves,
+                                         emlinewave, resolution_matrix, camerapix,
                                          continuum_patches=continuum_patches)
         
         return emlinemodel
@@ -772,22 +770,21 @@ class EMFitTools(Tools):
                             camerapix, snrcut=None):
         """Construct the best-fitting emission-line model
         from a fitted result structure (used below and in QA)"""
-        
-        linewaves = self.line_table['restwave'].value
-        
-        parameters = np.array([ result[param] for param in self.param_table['modelname'] ])
+                
+        line_parameters = np.array([ result[param] for param in self.param_table['modelname'] ])
         
         # convert doublet ratios to amplitudes
-        parameters[self.doublet_idx] *= parameters[self.doublet_src]
-        
-        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line    
-        
+        line_parameters[self.doublet_idx] *= line_parameters[self.doublet_src]
+                
         if snrcut is not None:
+            lineamps = line_parameters[:len(self.line_table)] # amplitude parameters
             line_names = self.line_table['name'].value
             lineamps_ivar = [result[line_name.upper()+'_AMP_IVAR'] for line_name in line_names]
             lineamps[lineamps * np.sqrt(lineamps_ivar) < snrcut] = 0.
 
-        model_fluxes = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas, linewaves,
+        linewaves = self.line_table['restwave'].value
+        
+        model_fluxes = EMLine_build_model(redshift, line_parameters, linewaves,
                                           emlinewave, resolution_matrix, camerapix)
         
         return model_fluxes

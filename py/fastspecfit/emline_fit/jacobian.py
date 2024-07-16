@@ -23,17 +23,21 @@ from .utils import (
 #  which are stored in dd[j].
 #
 @jit(nopython=True, fastmath=False, nogil=True)
-def emline_model_jacobian(line_amplitudes, line_vshifts, line_sigmas,
+def emline_model_jacobian(line_parameters,
                           log_obs_bin_edges,
                           ibin_widths,
                           redshift,
                           line_wavelengths,
                           padding):
 
+
     SQRT_2PI = np.sqrt(2*np.pi)
 
     nbins = len(log_obs_bin_edges) - 1
 
+    line_amplitudes, line_vshifts, line_sigmas = \
+        np.split(line_parameters, 3)
+    
     # buffers for per-parameter calculations, sized large
     # enough for line's max possible range [s .. e)
     max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, padding)

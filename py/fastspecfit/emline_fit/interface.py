@@ -78,24 +78,20 @@ class EMLine_Objective(object):
     # vector of residuals between the modeled fluxes and the observations.
     #
     def objective(self, free_parameters):
-        
-        line_free_parameters, patch_free_parameters = \
-            np.split(free_parameters,
-                     (len(free_parameters) - 2*self.nPatches,))
 
+        nLineParameters = len(free_parameters) - 2 * self.nPatches
+        line_free_parameters = free_parameters[:nLineParameters]
+        
         #
         # expand line free parameters into complete
         # line parameter array, handling tied params
         # and doublets
         #
         line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters)
-        line_amplitudes, line_vshifts, line_sigmas = np.array_split(line_parameters, 3)
         
         model_fluxes = np.empty_like(self.obs_fluxes, dtype=self.dtype)
         
-        _build_model_core(line_amplitudes,
-                          line_vshifts,
-                          line_sigmas,
+        _build_model_core(line_parameters,
                           self.line_wavelengths,
                           self.redshift,
                           self.log_obs_bin_edges,
@@ -105,8 +101,8 @@ class EMLine_Objective(object):
                           model_fluxes)
 
         if self.nPatches > 0:
-            slopes     = patch_free_parameters[:self.nPatches]
-            intercepts = patch_free_parameters[self.nPatches:]
+            slopes     = free_parameters[nLineParameters:nLineParameters + self.nPatches]
+            intercepts = free_parameters[nLineParameters+self.nPatches:]
 
             # add patch pedestals to line model
             _add_patches(model_fluxes,
@@ -115,9 +111,13 @@ class EMLine_Objective(object):
                          self.patch_endpts,
                          self.patch_pivotwave,
                          self.obs_bin_centers)
+
+        # turn model fluxes into residuals in-place to avoid
+        # unwanted memory allocation
+        residuals  = model_fluxes
+        residuals -= self.obs_fluxes
+        residuals *= self.obs_weights
         
-        residuals = model_fluxes - self.obs_fluxes # residuals (new array)
-        residuals *= self.obs_weights              # weight in place
         return residuals
 
 
@@ -128,9 +128,9 @@ class EMLine_Objective(object):
     # subsequent matrix-vector multiplies in the optimizer.
     #
     def jacobian(self, free_parameters):
-        
-        line_free_parameters = \
-            free_parameters[:len(free_parameters) - 2*self.nPatches]
+
+        nLineFreeParms = len(free_parameters) - 2 * self.nPatches
+        line_free_parameters = free_parameters[:nLineFreeParms]
         
         #
         # expand free paramters into complete
@@ -139,7 +139,6 @@ class EMLine_Objective(object):
         #
         
         line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters)
-        lineamps, linevshifts, linesigmas = np.array_split(line_parameters, 3)
 
         J_S = self.params_mapping.getJacobian(line_free_parameters)
 
@@ -154,7 +153,7 @@ class EMLine_Objective(object):
             ibw = self.ibin_widths[s:e+3]
                         
             idealJac = \
-                emline_model_jacobian(lineamps, linevshifts, linesigmas,
+                emline_model_jacobian(line_parameters,
                                       self.log_obs_bin_edges[s+icam:e+icam+1],
                                       ibw,
                                       self.redshift,
@@ -171,7 +170,6 @@ class EMLine_Objective(object):
             
         nBins = np.sum(np.diff(self.camerapix))
         nFreeParms = len(free_parameters)
-        nLineFreeParms = len(line_free_parameters)
         J =  EMLineJacobian((nBins, nFreeParms), nLineFreeParms,
                             self.camerapix, jacs, J_S,
                             self.J_P)
@@ -185,9 +183,7 @@ class EMLine_Objective(object):
 # compatibility entry point to compute modeled fluxes
 #
 def build_model(redshift,
-                line_amplitudes,
-                line_vshifts,
-                line_sigmas,
+                line_parameters,
                 line_wavelengths,
                 obs_bin_centers,
                 resolution_matrices,
@@ -198,9 +194,7 @@ def build_model(redshift,
     
     model_fluxes = np.empty_like(obs_bin_centers, dtype=obs_bin_centers.dtype)
     
-    _build_model_core(line_amplitudes,
-                      line_vshifts,
-                      line_sigmas,
+    _build_model_core(line_parameters,
                       line_wavelengths,
                       redshift,
                       log_obs_bin_edges,
@@ -247,7 +241,7 @@ class MultiLines(object):
     #  camerapix  -- wavelength ranges for each camera
     #
     def __init__(self,
-                 parameters,
+                 line_parameters,
                  obs_bin_centers,
                  redshift,
                  line_wavelengths,
@@ -255,7 +249,7 @@ class MultiLines(object):
                  camerapix):
 
         self.line_models = []
-        _build_multimodel_core(parameters,
+        _build_multimodel_core(line_parameters,
                                obs_bin_centers,
                                redshift,
                                line_wavelengths,
@@ -352,16 +346,16 @@ class MultiLines(object):
 # RETURNS:
 #   an array of maximum amplitudes for each line
 #
-def find_peak_amplitudes(parameters,
+def find_peak_amplitudes(line_parameters,
                          obs_bin_centers,
                          redshift,
                          line_wavelengths,
                          resolution_matrices,
                          camerapix):
 
-    max_amps = np.zeros_like(line_wavelengths, dtype=parameters.dtype)
+    max_amps = np.zeros_like(line_wavelengths, dtype=line_parameters.dtype)
 
-    _build_multimodel_core(parameters,
+    _build_multimodel_core(line_parameters,
                            obs_bin_centers,
                            redshift,
                            line_wavelengths,
@@ -401,9 +395,7 @@ def _update_line_maxima(max_amps, line_models):
 # from a set of spectral emission lines
 #
 # INPUTS:
-#  line_amplitudes - amplitude of each line
-#  line_vshifts    - velocity shift of each line
-#  line_sigmas     - width of each line
+#  line_parameters - parameters of each line
 #  line_wavelengths - wavelength of each line
 #  redshift        - object redshift
 #  log_obs_bin_edges - log-wavelengths of edges
@@ -419,9 +411,7 @@ def _update_line_maxima(max_amps, line_models):
 #
 # RETURNS: combined flux model in model_fluxes
 #
-def _build_model_core(line_amplitudes,
-                      line_vshifts,
-                      line_sigmas,
+def _build_model_core(line_parameters,
                       line_wavelengths,
                       redshift,
                       log_obs_bin_edges,
@@ -442,7 +432,7 @@ def _build_model_core(line_amplitudes,
         ibw = ibin_widths[s:e+3]
         
         mf = emline_model(line_wavelengths,
-                          line_amplitudes, line_vshifts, line_sigmas,
+                          line_parameters,
                           log_obs_bin_edges[s+icam:e+icam+1],
                           redshift,
                           ibw)
@@ -469,20 +459,13 @@ def _build_model_core(line_amplitudes,
 #                   computed array of line models
 #                   for each camera
 #
-def _build_multimodel_core(parameters,
+def _build_multimodel_core(line_parameters,
                            obs_bin_centers,
                            redshift,
                            line_wavelengths,
                            resolution_matrices,
                            camerapix,
                            consumer_fun):
-        
-    #
-    # expand free paramters into complete
-    # parameter array, handling tied params
-    # and doublets
-    #
-    lineamps, linevshifts, linesigmas = np.array_split(parameters, 3)
     
     log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers,
                                                    camerapix)
@@ -501,7 +484,7 @@ def _build_multimodel_core(parameters,
         
         # compute model waveform for each spectral line
         line_models = emline_perline_models(line_wavelengths,
-                                            lineamps, linevshifts, linesigmas,
+                                            line_parameters,
                                             log_obs_bin_edges[s+icam:e+icam+1],
                                             redshift,
                                             ibw,
@@ -509,8 +492,8 @@ def _build_multimodel_core(parameters,
         
         # convolve each line's waveform with resolution matrix
         endpts, M = mulWMJ(np.ones(e - s),
-                             resolution_matrices[icam].data,
-                             line_models)
+                           resolution_matrices[icam].data,
+                           line_models)
         
         # adjust endpoints to reflect camera range
         endpts += s

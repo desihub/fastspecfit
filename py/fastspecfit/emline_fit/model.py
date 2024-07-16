@@ -20,9 +20,7 @@ from .utils import (
 #
 # INPUTS:
 #   line_wavelengths -- array of nominal wavelengths for all fitted lines
-#   line_amplitudes  -- amplitude for each fitted line
-#   line_vshifts     -- additional velocity shift for each fitted lines
-#   line_sigmas      -- width of Gaussian profile for each fitted lines
+#   line_parameters  -- parameters of each fitted line
 #
 #   log_obs_bin_edges -- natural logs of observed wavelength bin edges
 #   redshift          -- red shift of observed spectrum
@@ -33,10 +31,13 @@ from .utils import (
 #
 @jit(nopython=True, fastmath=False, nogil=True)
 def emline_model(line_wavelengths,
-                 line_amplitudes, line_vshifts, line_sigmas,
+                 line_parameters,
                  log_obs_bin_edges,
                  redshift,
                  ibin_widths):
+
+    line_amplitudes, line_vshifts, line_sigmas = \
+        np.split(line_parameters, 3)
     
     # temporary buffer for per-line calculations, sized large
     # enough for whatever we may need to compute ( [s..e) )
@@ -89,11 +90,14 @@ def emline_model(line_wavelengths,
 #
 @jit(nopython=True, fastmath=False, nogil=True)
 def emline_perline_models(line_wavelengths,
-                          line_amplitudes, line_vshifts, line_sigmas,
+                          line_parameters,
                           log_obs_bin_edges,
                           redshift,
                           ibin_widths,
                           padding):
+    
+    line_amplitudes, line_vshifts, line_sigmas = \
+        np.split(line_parameters, 3)
     
     nbins = len(log_obs_bin_edges) - 1
     
@@ -233,5 +237,7 @@ def emline_model_core(line_wavelength,
     # we get values for bins lo-1 to hi-1 inclusive
     for i in range(nedges-1):
         vals[i] = (vals[i+1] - vals[i]) * ibin_widths[i+lo]
+
+    # FIXME: make sure lo -1 >= 0 and hi <= nbins
     
     return (lo - 1, hi)
