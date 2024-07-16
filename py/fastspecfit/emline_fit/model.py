@@ -31,6 +31,7 @@ from .utils import (
 # RETURNS:
 #   vector of average fluxes in each observed wavelength bin
 #
+@jit(nopython=True, fastmath=False, nogil=True)
 def emline_model(line_wavelengths,
                  line_amplitudes, line_vshifts, line_sigmas,
                  log_obs_bin_edges,
