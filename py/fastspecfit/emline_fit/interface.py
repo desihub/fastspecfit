@@ -69,8 +69,12 @@ class EMLine_Objective(object):
             
         self.log_obs_bin_edges, self.ibin_widths = \
             _prepare_bins(obs_bin_centers, camerapix)
-
-
+        
+        # temporary storage to prevent allocation in params_mapping
+        # on every call to objective/jacobian
+        self.line_parameters = \
+            np.empty(self.params_mapping.nParms, dtype=self.dtype)
+        
     #
     # Objective function for least-squares optimization
     #
@@ -87,7 +91,8 @@ class EMLine_Objective(object):
         # line parameter array, handling tied params
         # and doublets
         #
-        line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters)
+        line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters,
+                                                            out=self.line_parameters)
         
         model_fluxes = np.empty_like(self.obs_fluxes, dtype=self.dtype)
         
@@ -138,7 +143,8 @@ class EMLine_Objective(object):
         # and doublets
         #
         
-        line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters)
+        line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters,
+                                                            out=self.line_parameters)
 
         J_S = self.params_mapping.getJacobian(line_free_parameters)
 
