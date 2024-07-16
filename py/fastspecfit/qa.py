@@ -416,7 +416,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
     
         # full model spectrum
-        _desiemlines = EMFit.emlinemodel_bestfit(fastspec, data['wave'], data['res_fast'],
+        _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res_fast'],
                                                  data['camerapix'], snrcut=emline_snrmin)
         desiemlines = []
         for icam in np.arange(len(data['cameras'])):
