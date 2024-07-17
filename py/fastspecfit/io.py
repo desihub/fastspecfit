@@ -1135,7 +1135,7 @@ class DESISpectra(TabulatedDESI):
                         'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
                     unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto,
-                                       True, False, ignore_photometry, log))
+                                       True, False, ignore_photometry, verbose, log))
             else:
                 from desispec.resolution import Resolution
                 from fastspecfit.emline_fit import EMLine_Resolution
@@ -1151,7 +1151,7 @@ class DESISpectra(TabulatedDESI):
                 # Coadd across cameras.
                 t0 = time.time()                
                 coadd_spec = coadd_cameras(spec)
-                log.info('Coadding across cameras took {:.2f} seconds.'.format(time.time()-t0))
+                log.info(f'Coadding across cameras took {time.time()-t0:.2f} seconds.')
 
                 # unpack the desispec.spectra.Spectra objects into simple arrays
                 cameras = spec.bands
@@ -2160,13 +2160,12 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
     templatewave = wave[keeplo:keephi]
     templateflux = templateflux[keeplo:keephi, :]
     templateflux_nolines = templateflux - templatelineflux[keeplo:keephi, :]
-    del wave, templatelineflux
     
     # Cache a copy of the line-free templates at the nominal velocity
     # dispersion (needed for fastphot as well).
     if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
         vdisp_nominal = vdisphdr['VDISPNOM'] # [km/s]
-    
+
     hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
 
     templateflux_nolines_nomvdisp = \
@@ -2219,25 +2218,31 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
                 'vdisp': vdisp, 
                 'vdisp_nominal_indx': np.where(vdisp == vdisp_nominal)[0]
             })
+
+    if not templatecache['oldtemplates']:
+        if 'DUSTFLUX' in T and 'AGNFLUX' in T:
+            dustflux = T['DUSTFLUX'].read()
+            dusthdr = T['DUSTFLUX'].read_header()
+
+            agnflux = T['AGNFLUX'].read()
+            agnhdr = T['AGNFLUX'].read_header()
+
+            # make sure both dustflux and agnflux are normalized to unity
+            from scipy.integrate import simpson
+            dustflux /= simpson(dustflux, x=wave) # should already be 1.0
+            agnflux /= simpson(agnflux, x=wave) # should already be 1.0
+
+            templatecache.update({'dustflux': dustflux[keeplo:keephi], 
+                                  'qpah': dusthdr['QPAH'],
+                                  'umin': dusthdr['umin'],
+                                  'gamma': dusthdr['GAMMA'],
+                                  'agnflux': agnflux[keeplo:keephi], 
+                                  'agntau': agnhdr['AGNTAU'],
+                                  })
         else:
-            if 'DUSTFLUX' in T and 'AGNFLUX' in T:
-                dustflux = T['DUSTFLUX'].read()
-                dusthdr = T['DUSTFLUX'].read_header()
-
-                agnflux = T['AGNFLUX'].read()
-                agnhdr = T['AGNFLUX'].read_header()
-
-                templatecache.update({'dustflux': dustflux, 
-                                      'qpah': dusthdr['QPAH'],
-                                      'umin': dusthdr['umin'],
-                                      'gamma': dusthdr['GAMMA'],
-                                      'agnflux': agnflux, 
-                                      'agntau': agnhdr['AGNTAU'],
-                                      })
-            else:
-                errmsg = f'Templates file {templates} missing mandatory extensions DUSTFLUX and AGNFLUX.'
-                log.critical(errmsg)
-                raise IOError(errmsg)
+            errmsg = f'Templates file {templates} missing mandatory extensions DUSTFLUX and AGNFLUX.'
+            log.critical(errmsg)
+            raise IOError(errmsg)
 
     # Read the model emission-line fluxes; only present for
     # templateversion>=1.1.1 and generally only useful to a power-user.
