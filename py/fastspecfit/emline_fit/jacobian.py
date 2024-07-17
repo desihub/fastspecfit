@@ -32,14 +32,15 @@ def emline_model_jacobian(line_parameters,
 
 
     SQRT_2PI = np.sqrt(2*np.pi)
-
+    
     nbins = len(log_obs_bin_edges) - 1
-
+    
     line_amplitudes, line_vshifts, line_sigmas = \
         np.split(line_parameters, 3)
     
     # buffers for per-parameter calculations, sized large
-    # enough for line's max possible range [s .. e)
+    # enough for max possible range [s .. e), plus extra
+    # padding as directed by caller.
     max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, padding)
     
     nlines = len(line_wavelengths)
@@ -115,38 +116,32 @@ def emline_model_jacobian(line_parameters,
         dda_vals[nedges - 1] = c * line_shift * sigma     # edge hi
         ddv_vals[nedges - 1] = A * sigma
         dds_vals[nedges - 1] = A * line_shift * (1 + sigma**2)
-
-        # convert *_vals[i] to partial derivatives for bin i+lo-1
-        # (last value in each array is garbage)
-        # we get values for bins lo-1 to hi-1 inclusive
-        for i in range(nedges - 1):
-            dda_vals[i] = (dda_vals[i+1] - dda_vals[i]) * ibin_widths[i+lo]
-            ddv_vals[i] = (ddv_vals[i+1] - ddv_vals[i]) * ibin_widths[i+lo]
-            dds_vals[i] = (dds_vals[i+1] - dds_vals[i]) * ibin_widths[i+lo]
         
-        # starts[j] is set to first valid bin
-        if lo == 0:
-            # bin low - 1 is before start of requested bins,
-            # and its true left endpt value is unknown
-            starts[j] = lo
+        # Compute partial derivs for bin i+lo-1 for 0 <= i < nedges - 1.
+        # But:
+        #  * if lo == 0, bin lo - 1 is not defined, so skip it
+        #  * if hi == |log_obs_bin_edges|, bin hi - 1 is not defined,
+        #      so skip it
+        # Implement skips by modifying range of computation loop.
+        #
+        # After loop, vals contains weighted partial derives of bins
+        # lo - 1 + dlo .. hi - dhi, plus up to two cells of
+        # trailing garbage.
 
-            # discard bin lo - 1 in dd*_vals
-            dda_vals[0:nedges - 1] = dda_vals[1:nedges]
-            ddv_vals[0:nedges - 1] = ddv_vals[1:nedges]
-            dds_vals[0:nedges - 1] = dds_vals[1:nedges]
-        else:
-            # bin lo - 1 is valid
-            starts[j] = lo - 1
+        dlo = 1 if lo == 0                      else 0
+        dhi = 1 if hi == len(log_obs_bin_edges) else 0
+        
+        for i in range(dlo, nedges - 1 - dhi):
+            dda_vals[i-dlo] = (dda_vals[i+1] - dda_vals[i]) * ibin_widths[i+lo]
+            ddv_vals[i-dlo] = (ddv_vals[i+1] - ddv_vals[i]) * ibin_widths[i+lo]
+            dds_vals[i-dlo] = (dds_vals[i+1] - dds_vals[i]) * ibin_widths[i+lo]
+
+        # starts[j] is set to first valid bin
+        starts[j] = lo - 1 + dlo
         
         # ends[j] is set one past last valid bin
-        if hi == nbins + 1:
-            # bin hi - 1 is one past end of requested bins,
-            # and its true right endpt value is unknown
-            ends[j] = hi - 1
-        else:
-            # bin hi - 1 is valid
-            ends[j] = hi
-
+        ends[j]   = hi - dhi
+        
     # replicate first third of endpts (which is what we
     # set above) twice more, since same endpts apply to
     # all three params of each line
@@ -176,7 +171,7 @@ def emline_model_jacobian(line_parameters,
 # of slope/intercept for each patch, so can be computed once when
 # we set up the optimization.
 #
-# FIXME: do we need to do this for each camera and apply resolution?
+# FIXME: should we do this for each camera and apply resolution?
 @staticmethod
 @jit(nopython=True, fastmath=False, nogil=True)
 def patch_jacobian(obs_bin_centers,

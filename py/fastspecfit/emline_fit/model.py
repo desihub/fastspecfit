@@ -38,19 +38,15 @@ def emline_model(line_wavelengths,
 
     line_amplitudes, line_vshifts, line_sigmas = \
         np.split(line_parameters, 3)
-    
+        
+    # output per-bin fluxes
+    nbins = len(log_obs_bin_edges) - 1
+    model_fluxes = np.zeros(nbins, dtype=line_amplitudes.dtype)
+
     # temporary buffer for per-line calculations, sized large
     # enough for whatever we may need to compute ( [s..e) )
-    max_width = max_buffer_width(log_obs_bin_edges, line_sigmas)
-    bin_vals = np.empty(max_width, dtype=line_amplitudes.dtype)
-    
-    # output per-bin fluxes
-    # entry i corresponds bin i-1
-    # entry 0 is a dummy in case s == -1
-    # last entry is a dummy in case e == nbins + 1
-    nbins = len(log_obs_bin_edges) - 1
-    model_fluxes = np.zeros(nbins + 2, dtype=line_amplitudes.dtype)
-    
+    bin_vals = np.empty(nbins + 2, dtype=line_amplitudes.dtype)
+
     # compute total area of all Gaussians inside each bin.
     # For each Gaussian, we only compute area contributions
     # for bins where it is non-negligible.
@@ -69,14 +65,10 @@ def emline_model(line_wavelengths,
                                  bin_vals)
         
         # add bin avgs for this peak to bins [s, e)
-        # (fluxes are offset by 1 to allow for s == -1
-        # and extended to allow for e = nbins + 1;
-        # these bin values may be ignored)
-        model_fluxes[s+1:e+1] += bin_vals[:e-s]
-        
-    # trim off left and right dummy values before returning
-    return model_fluxes[1:-1]
-
+        model_fluxes[s:e] += bin_vals[:e-s]
+    
+    return model_fluxes
+    
 
 #
 # emline_perline_models()
@@ -102,7 +94,8 @@ def emline_perline_models(line_wavelengths,
     nbins = len(log_obs_bin_edges) - 1
     
     # buffers for per-line calculations, sized large
-    # enough for max possible range [s .. e)
+    # enough for max possible range [s .. e), plus extra
+    # padding as directed by caller.
     max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, padding)
     
     nlines = len(line_wavelengths)
@@ -127,22 +120,10 @@ def emline_perline_models(line_wavelengths,
                                  redshift,
                                  ibin_widths,
                                  bin_vals)
-        
-        if s == -1: 
-            # bin s is before start of requested bins,
-            # and its true left endpt value is unknown
-            s = 0
-            
-            # discard bin lo - 1 in bin_vals
-            bin_vals[0:e-s-1] = bin_vals[1:e-s]
-            
-        if e == nbins + 1:
-            # bin e-1 is one past end of requested bins,
-            # and its true right endpt value is unknown
-            e -= 1
-        
-        endpts[j] = np.array((s,e))
 
+        endpts[j,0] = s
+        endpts[j,1] = e
+        
     return (endpts, line_profiles)
 
 
@@ -151,7 +132,7 @@ def emline_perline_models(line_wavelengths,
 # Compute the flux contribution of one spectral line to a model
 # spectrum.  We compute the range of bins where the line
 # contributes flux, then write those contributions to the 
-# output array edge_vals and return half-open range of bins
+# output array vals and return half-open range of bins
 # [s, e) to which it contributes.
 #
 # INPUTS:
@@ -172,11 +153,10 @@ def emline_perline_models(line_wavelengths,
 #    (if s == e, no nonzero fluxes were computed)
 #   vals[0:e-s] contains these fluxes
 #
-# NB: s can be as low as -1, while e can be as high as nbins + 1.
-# In these cases, the first (resp last) returned fluxes in
-# vals are invalid and may be discarded. The caller should
-# handle these edge cases,
-# 
+# NB: vals MUST have length at least two more than the largest number
+# of bins that could be computed.  Entries in vals after the returned 
+# range may be set to arbitrary values.
+#
 @jit(nopython=True, fastmath=False, nogil=True)
 def emline_model_core(line_wavelength,
                       line_amplitude,
@@ -233,11 +213,25 @@ def emline_model_core(line_wavelength,
         
     vals[nedges-1] = A  # edge hi
     
-    # convert vals[i] to avg of bin i+lo-1 (last value is garbage)
-    # we get values for bins lo-1 to hi-1 inclusive
-    for i in range(nedges-1):
-        vals[i] = (vals[i+1] - vals[i]) * ibin_widths[i+lo]
-
-    # FIXME: make sure lo -1 >= 0 and hi <= nbins
+    # Compute avg of bin i+lo-1 for 0 <= i < nedges - 1.
+    # But:
+    #  * if lo == 0, bin lo - 1 is not defined, so skip it
+    #  * if hi == |log_obs_bin_edges|, bin hi - 1 is not defined,
+    #      so skip it
+    # Implement skips by modifying range of computation loop.
+    #
+    # After loop, vals contains weighted area of bins
+    # lo - 1 + dlo .. hi - dhi, plus up to two cells of
+    # trailing garbage.
+    #
+    # We ensure that values for all valid bins are written
+    # starting at vals[0], and return the range of indices
+    # of the computed bins w/r to the input bin array.
     
-    return (lo - 1, hi)
+    dlo = 1 if lo == 0                      else 0
+    dhi = 1 if hi == len(log_obs_bin_edges) else 0
+    
+    for i in range(dlo, nedges - 1 - dhi):
+        vals[i-dlo] = (vals[i+1] - vals[i]) * ibin_widths[i+lo]
+    
+    return (lo - 1 + dlo, hi - dhi)
