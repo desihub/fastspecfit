@@ -12,7 +12,7 @@ import numpy as np
 from astropy.table import Table
 
 from fastspecfit.io import FLUXNORM
-from fastspecfit.util import C_LIGHT, quantile, median
+from fastspecfit.util import TabulatedDESI, C_LIGHT, quantile, median
 from fastspecfit.inoue14 import Inoue14
 
 # SPS template constants (used by build-fsps-templates)
@@ -286,7 +286,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
     return smooth, smoothsigma
     
 
-class Tools(object):
+class Tools(TabulatedDESI):
     def __init__(self, ignore_photometry=False, fphoto=None, load_filters=True, 
                  log=None, verbose=False):
 
@@ -1684,12 +1684,14 @@ class ContinuumTools(Tools):
         return _convolve_vdisp(templateflux, limit, vdisp, pixsize_kms)
 
 
-    def deprecated_templates2data(self, templateflux, templatewave, redshift=0.0, dluminosity=None,
-                                  vdisp=None, cameras=['b', 'r', 'z'], specwave=None, specres=None, 
-                                  specmask=None, coeff=None, photsys=None, synthphot=True, 
-                                  stack_cameras=False, flamphot=False, debug=False):
+    def templates2data(self, templateflux, templatewave, redshift=0.0, dluminosity=None,
+                       vdisp=None, cameras=['b', 'r', 'z'], specwave=None, specres=None, 
+                       specmask=None, coeff=None, photsys=None, synthphot=True, 
+                       stack_cameras=False, flamphot=False, debug=False, qa=False):
         """Work-horse routine to turn input templates into spectra that can be compared
         to real data.
+
+        Deprecated!
 
         Redshift, apply the resolution matrix, and resample in wavelength.
 
@@ -1784,7 +1786,8 @@ class ContinuumTools(Tools):
                     templatephot = self.get_photflam(maggies, effwave, nanomaggies=False)
                 else:
                     templatephot = self.parse_photometry(self.bands, maggies, effwave, 
-                                                         nanomaggies=False, log=self.log)
+                                                         nanomaggies=False, qa=qa, 
+                                                         log=self.log)
                 
         # Are we returning per-camera spectra or a single model? Handle that here.
         if specwave is None and specres is None:
@@ -1805,7 +1808,8 @@ class ContinuumTools(Tools):
                         templatephot = self.get_photflam(maggies, effwave, nanomaggies=False)
                     else:
                         templatephot = self.parse_photometry(self.bands, maggies, effwave, 
-                                                             nanomaggies=False, log=self.log)
+                                                             nanomaggies=False, qa=qa, 
+                                                             log=self.log)
 
         else:
             # loop over cameras
@@ -2011,7 +2015,8 @@ class ContinuumTools(Tools):
     def build_continuum_model(self, templatewave, templateflux, templatecoeff,
                               dustflux=None, agnflux=None, specwave=None, 
                               specres=None, camerapix=None, photsys=None, 
-                              redshift=0., ebv=0., vdisp=None, synthphot=True):
+                              redshift=0., ebv=0., vdisp=None, synthphot=True, 
+                              flamphot=False, qa=False):
         """Build the continuum model, given free parameters.
     
         """
@@ -2032,7 +2037,7 @@ class ContinuumTools(Tools):
         # attenuation. Also compute the bolometric luminosity before and after
         # attenuation but only if we have dustflux.
         if self.dust_klambda is None:
-            CTools._cache_klambda(templatewave)
+            self._cache_klambda(templatewave)
 
         if dustflux is not None:
             lbol0 = simpson(fullmodel, x=templatewave)
@@ -2054,8 +2059,8 @@ class ContinuumTools(Tools):
         ztemplatewave = templatewave * (1. + redshift)
         if self.zfactors is None:
             dluminosity = self.luminosity_distance(redshift)
-            CTools._cache_zfactors(ztemplatewave, redshift=redshift, 
-                                   dluminosity=dluminosity)
+            self._cache_zfactors(ztemplatewave, redshift=redshift, 
+                                 dluminosity=dluminosity)
 
         fullmodel *= self.zfactors
 
@@ -2070,16 +2075,18 @@ class ContinuumTools(Tools):
 
             modelmaggies = self.get_ab_maggies(filters, fullmodel,
                                                ztemplatewave, log=self.log)
-            #modelmaggies /= FLUXNORM * self.massnorm
-            modelflam = self.get_photflam(modelmaggies, effwave, nanomaggies=False)
+            if flamphot:                
+                modelphot = self.get_photflam(modelmaggies, effwave, nanomaggies=False)
+            else:
+                modelmaggies /= FLUXNORM * self.massnorm
+                modelphot = self.parse_photometry(self.bands, modelmaggies, effwave, 
+                                                  nanomaggies=False, qa=qa, log=self.log)
         else:
-            modelflam = None
+            modelphot = None
 
         # [7] - Optionally handle the multi-camera spectroscopy. For each
         # camera, resample and multiply by the instrumental resolution.
-        if (specwave is not None and specres is not None and 
-            camerapix is not None):
-
+        if (specwave is not None and specres is not None and camerapix is not None):
             modelflux = np.empty(len(specwave))
             for icam, pix in enumerate(camerapix):
                 modelflux[pix[0]:pix[1]] = self.smooth_and_resample(
@@ -2089,7 +2096,7 @@ class ContinuumTools(Tools):
         else:
             modelflux = None
 
-        return fullmodel, modelflux, modelflam
+        return fullmodel, modelflux, modelphot
 
     
     def _objective(self, params, templatewave, templateflux, dustflux, 
@@ -2113,7 +2120,8 @@ class ContinuumTools(Tools):
             templatewave, templateflux, templatecoeff, 
             dustflux=dustflux, agnflux=agnflux, specwave=specwave, 
             specres=specres, camerapix=camerapix, photsys=photsys, 
-            redshift=redshift, ebv=ebv, vdisp=vdisp, synthphot=synthphot)
+            redshift=redshift, ebv=ebv, vdisp=vdisp, synthphot=synthphot,
+            flamphot=True)
 
         # Compute the residuals based on the information we have.
         if modelflux is None and modelflam is None:
@@ -2255,28 +2263,6 @@ class ContinuumTools(Tools):
             ebv = bestparams[0]
             templatecoeff = bestparams[1:]
             vdisp = vdisp_guess
-        print(ebv, vdisp, templatecoeff)
-
-        #fullmodel, continuum, modelflam = self.build_continuum_model(
-        #    templatewave, templateflux, templatecoeff, dustflux=dustflux,
-        #    agnflux=agnflux, specwave=specwave, specres=specres, 
-        #    camerapix=camerapix, photsys=photsys, redshift=redshift,
-        #    ebv=ebv, vdisp=vdisp, synthphot=True, log=log)
-        #
-        #pdb.set_trace()    
-        #
-        #import matplotlib.pyplot as plt
-        #plt.clf()
-        #plt.plot(specwave, specflux)
-        #plt.plot(specwave, continuum, color='red')
-        #plt.ylim(0, 3.5)
-        #plt.xlim(5000, 9000)
-        #plt.savefig('junk.png')
-        #
-        #plt.xscale('log')
-        #plt.plot(templatewave * (1. + redshift), continuum, color='red') 
-        #plt.yscale('log')
-        #plt.plot(specwave, continuum, color='red')
 
         return ebv, vdisp, templatecoeff
 
@@ -2299,7 +2285,7 @@ class ContinuumTools(Tools):
             templatewave, templateflux, templatecoeff, dustflux=dustflux,
             agnflux=agnflux, specwave=specwave, specres=specres, 
             camerapix=camerapix, photsys=photsys, redshift=redshift,
-            ebv=ebv, vdisp=vdisp, synthphot=synthphot)
+            ebv=ebv, vdisp=vdisp, synthphot=synthphot, flamphot=True)
 
         # ebv is always a free parameter
         nfree = len(templatecoeff) + 1 + 1 * fit_vdisp
@@ -2512,7 +2498,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             # Get the coefficients and chi2 at the nominal velocity dispersion. 
             t0 = time.time()
             if templatecache['oldtemplates']:
-                sedtemplates, sedphot_flam = CTools.deprecated_templates2data(
+                sedtemplates, sedphot_flam = CTools.templates2data(
                     templatecache['templateflux_nomvdisp'][:, agekeep],
                     templatecache['templatewave'], flamphot=True,
                     redshift=redshift, dluminosity=data['dluminosity'],
@@ -2548,7 +2534,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                 # Measure Dn(4000) from the line-free model.
                 if templatecache['oldtemplates']:
                     sedmodel = sedtemplates.dot(coeff)
-                    sedtemplates_nolines, _ = CTools.deprecated_templates2data(
+                    sedtemplates_nolines, _ = CTools.templates2data(
                         templatecache['templateflux_nolines_nomvdisp'][:, agekeep],
                         templatecache['templatewave'],
                         redshift=redshift, dluminosity=data['dluminosity'],
@@ -2559,7 +2545,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                         templatecache['templatewave'], 
                         templatecache['templateflux_nolines_nomvdisp'][:, agekeep],
                         coeff, dustflux=None, agnflux=None, photsys=data['photsys'], 
-                        redshift=redshift, ebv=ebv, vdisp=vdispbest, synthphot=True)
+                        redshift=redshift, ebv=ebv, vdisp=vdispbest, synthphot=False)
                     
                 dn4000_model, _ = CTools.get_dn4000(templatecache['templatewave'],
                                                     sedmodel_nolines, rest=True, 
@@ -2605,7 +2591,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
 
             # maintain backwards-compatibility??
             if templatecache['oldtemplates']:
-                ztemplateflux_vdisp, _ = CTools.deprecated_templates2data(
+                ztemplateflux_vdisp, _ = CTools.templates2data(
                     templatecache['vdispflux'], templatecache['vdispwave'], # [npix,vdispnsed,nvdisp]
                     redshift=redshift, dluminosity=data['dluminosity'],
                     specwave=data['wave'], specres=data['res'],
@@ -2667,7 +2653,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             input_templateflux = templatecache['templateflux'][:, agekeep]
             input_templateflux_nolines = templatecache['templateflux_nolines'][:, agekeep]
 
-        desitemplates, desitemplatephot_flam = CTools.deprecated_templates2data(
+        desitemplates, desitemplatephot_flam = CTools.templates2data(
             input_templateflux, templatecache['templatewave'],
             redshift=redshift, dluminosity=data['dluminosity'],
             specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
@@ -2677,7 +2663,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
 
         apercorrs, apercorr = np.zeros(len(CTools.synth_bands), 'f4'), 0.0
         
-        sedtemplates, _ = CTools.deprecated_templates2data(
+        sedtemplates, _ = CTools.templates2data(
             input_templateflux, templatecache['templatewave'],
             vdisp=use_vdisp, redshift=redshift,
             dluminosity=data['dluminosity'], synthphot=False)
@@ -2725,7 +2711,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         # Perform the final fit using the line-free templates in the spectrum
         # (since we mask those pixels) but the photometry synthesized from the
         # templates with lines.
-        desitemplates_nolines, _ = CTools.deprecated_templates2data(
+        desitemplates_nolines, _ = CTools.templates2data(
             input_templateflux_nolines, templatecache['templatewave'], redshift=redshift,
             dluminosity=data['dluminosity'],
             specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
@@ -2759,7 +2745,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             desimodel_nolines = desitemplates_nolines.dot(coeff)
 
             # Measure Dn(4000) from the line-free model.
-            sedtemplates_nolines, _ = CTools.deprecated_templates2data(
+            sedtemplates_nolines, _ = CTools.templates2data(
                 input_templateflux_nolines, templatecache['templatewave'], 
                 vdisp=use_vdisp, redshift=redshift, dluminosity=data['dluminosity'],
                 synthphot=False)

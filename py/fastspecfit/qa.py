@@ -102,7 +102,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         else:
             return f'{x:.0f}'
 
-    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
+    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry, log=log)
 
     if 'viewer_layer' in fphoto.keys():
         layer = fphoto['viewer_layer']
@@ -353,24 +353,30 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
     # rebuild the best-fitting broadband photometric model
     if not stackfit:
-        sedmodel, sedphot = CTools.templates2data(
+        if templatecache['oldtemplates']:
+            sedmodel, sedphot = CTools.templates2data(
                 templatecache['templateflux'], templatecache['templatewave'],
                 redshift=redshift, dluminosity=dlum, photsys=metadata['PHOTSYS'],
-                synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm)
+                synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm, qa=True)
+        else:
+            sedmodel, _, sedphot = CTools.build_continuum_model(                       
+                templatecache['templatewave'], templatecache['templateflux_nomvdisp'],
+                fastspec['COEFF'] * CTools.massnorm, dustflux=templatecache['dustflux'], 
+                agnflux=templatecache['agnflux'], photsys=metadata['PHOTSYS'],
+                redshift=redshift, ebv=fastspec['AV'] / CTools.klambda(5500.), 
+                vdisp=None, synthphot=True, flamphot=False, qa=True)
         sedwave = templatecache['templatewave'] * (1 + redshift)
-    
-        phot = CTools.parse_photometry(CTools.bands,
-                                       maggies=np.array([metadata['FLUX_{}'.format(band.upper())] for band in CTools.bands]),
-                                       ivarmaggies=np.array([metadata['FLUX_IVAR_{}'.format(band.upper())] for band in CTools.bands]),
+
+        nband = len(CTools.bands)
+        maggies = np.zeros(nband)
+        ivarmaggies = np.zeros(nband)
+        for iband, band in enumerate(CTools.bands):
+            maggies[iband] = metadata[f'FLUX_{band.upper()}']
+            ivarmaggies[iband] = metadata[f'FLUX_IVAR_{band.upper()}']
+
+        phot = CTools.parse_photometry(CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies,
                                        lambda_eff=allfilters.effective_wavelengths.value,
                                        min_uncertainty=CTools.min_uncertainty, qa=True)
-        #if hasattr(CTools, 'fiber_bands'):
-        #    fiberphot = CTools.parse_photometry(CTools.fiber_bands,
-        #                                        maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())]
-        #                                                          for band in CTools.fiber_bands]),
-        #                                        lambda_eff=filters.effective_wavelengths.value)
-        #else:
-        #    fiberphot = None
     
         indx_phot = np.where((sedmodel > 0) * (sedwave/1e4 > phot_wavelims[0]) * 
                              (sedwave/1e4 < phot_wavelims[1]))[0]
