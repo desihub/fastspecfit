@@ -232,7 +232,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                                             specdata['coadd_ivar'], specdata['coadd_res_fast'], 
                                             uniqueid=specdata['uniqueid'],
                                             redshift=specdata['zredrock'],
-                                            verbose=verbose, log=log)
+                                            verbose=verbose)
 
         # Map the pixels belonging to individual emission lines onto the
         # original per-camera spectra. This works, but maybe there's a better
@@ -386,7 +386,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
 
     coadd_linemask_dict = CTools.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
                                                         specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                        linetable=CTools.linetable, log=log)
+                                                        linetable=CTools.linetable)
     specdata['coadd_linename'] = coadd_linemask_dict['linename']
     specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
     specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
