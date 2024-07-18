@@ -209,13 +209,13 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     #leg['zwarn'] = '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN'])
 
     if fastphot:
-        leg['vdisp'] = r'$\sigma_{star}=$'+'{:g}'.format(fastspec['VDISP'])+' km/s'
+        leg['vdisp'] = r'$\sigma_{star}=$'+'{:.0f}'.format(fastspec['VDISP'])+' km/s'
     else:
         #if fastspec['VDISP_IVAR'] > 0:
         #    leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
         #else:
         #    leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
-        leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+        leg['vdisp'] = r'$\sigma_{{star}}={:.0f}$ km/s'.format(fastspec['VDISP'])
             
         leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(fastspec['RCHI2'])
         leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(fastspec['RCHI2_CONT'])
