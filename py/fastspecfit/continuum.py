@@ -1971,31 +1971,41 @@ class ContinuumTools(Tools):
         return chi2min, xbest, xivar, bestcoeff
 
     
-    def _cache_klambda(self, wave):
+    def klambda(self, wave):
+        """Return the total-to-selective attenuation curve, k(lambda).
+
+        ToDo: support more sophisticated dust models.
+
+        """
+        klambda = (wave / self.dust_normwave)**self.dust_power
+        return klambda
+
+
+    def _cache_klambda(self, templatewave):
         """Cache k(lambda).
 
         """
         if self.dust_klambda is None:
-            self.dust_klambda = (wave / self.dust_normwave)**self.dust_power
+            self.dust_klambda = self.klambda(templatewave)
 
 
-    def _cache_zfactors(self, zwave, redshift, dluminosity):
+    def _cache_zfactors(self, ztemplatewave, redshift, dluminosity):
         """Cache the factors that depend on redshift and the redshifted wavelength
         array, including the attenuation due to the IGM.
 
         """
         if self.zfactors is None:
-            T = self.igm.full_IGM(redshift, zwave)
+            T = self.igm.full_IGM(redshift, ztemplatewave)
             T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
             self.zfactors = T
 
 
-    def _cache_pixpos_wavesplit(self, wave):
+    def _cache_pixpos_wavesplit(self, templatewave):
         """Cache the pixel position in wave corresponding to PIXKMS_WAVESPLIT.
 
         """
         if self.pixpos_wavesplit is None:
-            self.pixpos_wavesplit = np.searchsorted(wave, PIXKMS_WAVESPLIT, 'left')
+            self.pixpos_wavesplit = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
 
 
     def build_continuum_model(self, templatewave, templateflux, templatecoeff,
@@ -2315,7 +2325,7 @@ class ContinuumTools(Tools):
             ndof_phot = np.sum(objflamivar > 0)
             rchi2_phot = _get_rchi2(chi2_phot, ndof_phot, nfree)
 
-        return rchi2_spec, rchi2_phot
+        return fullmodel, rchi2_spec, rchi2_phot
 
 
     def continuum_fluxes(self, data, templatewave, continuum):
@@ -2380,14 +2390,10 @@ class ContinuumTools(Tools):
         return lums, cfluxes
 
 
-    def kcorr_and_absmag(self, data, templatewave, continuum, snrmin=2.0, log=None):
+    def kcorr_and_absmag(self, data, templatewave, continuum, snrmin=2.0):
         """Compute K-corrections and absolute magnitudes.
 
         """
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-        
         redshift = data['zredrock']
         
         # distance modulus, luminosity distance, and redshifted wavelength array
@@ -2403,7 +2409,7 @@ class ContinuumTools(Tools):
             redshift, continuum, ztemplatewave, maggies, ivarmaggies,
             filters_in=filters_in, absmag_filters=self.absmag_filters,
             band_shift=self.band_shift, dmod=data['dmodulus'],
-            snrmin=snrmin, log=log)
+            snrmin=snrmin)
         
         return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
 
@@ -2505,7 +2511,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         else:
             # Get the coefficients and chi2 at the nominal velocity dispersion. 
             t0 = time.time()
-            if templatecache['oldtemplates']:            
+            if templatecache['oldtemplates']:
                 sedtemplates, sedphot_flam = CTools.deprecated_templates2data(
                     templatecache['templateflux_nomvdisp'][:, agekeep],
                     templatecache['templatewave'], flamphot=True,
@@ -2515,20 +2521,23 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                 coeff, rchi2_phot = CTools.call_nnls(sedflam, objflam, objflamivar)
                 rchi2_phot /= np.sum(objflamivar > 0) # dof???
             else:
-                ebv_phot, vdisp, coeff = CTools.fit_continuum(
-                    templatecache['templatewave'], templatecache['templateflux_nomvdisp'], # [npix,nsed]
-                    dustflux=templatecache['dustflux'], agnflux=templatecache['agnflux'],
-                    objflam=objflam, objflamivar=objflamivar, photsys=data['photsys'], 
-                    redshift=redshift, vdisp_guess=templatecache['vdisp_nominal'],
-                    fit_vdisp=False)
+                ebv, _, coeff = CTools.fit_continuum(
+                    templatecache['templatewave'], 
+                    templatecache['templateflux_nomvdisp'][:, agekeep], # [npix,nsed]
+                    dustflux=templatecache['dustflux'], 
+                    agnflux=templatecache['agnflux'],
+                    objflam=objflam, objflamivar=objflamivar, 
+                    photsys=data['photsys'], redshift=redshift, 
+                    vdisp_guess=vdispbest, fit_vdisp=False)
 
-                _, rchi2_phot = CTools.continuum_chi2(coeff, templatecache['templatewave'], 
-                                                      templatecache['templateflux_nomvdisp'],
-                                                      dustflux=templatecache['dustflux'], 
-                                                      agnflux=templatecache['agnflux'],
-                                                      objflam=objflam, objflamivar=objflamivar, 
-                                                      photsys=data['photsys'], redshift=redshift, 
-                                                      ebv=ebv_phot, vdisp=None, fit_vdisp=False)
+                sedmodel, _, rchi2_phot = CTools.continuum_chi2(
+                    coeff, templatecache['templatewave'], 
+                    templatecache['templateflux_nomvdisp'],
+                    dustflux=templatecache['dustflux'], 
+                    agnflux=templatecache['agnflux'],
+                    objflam=objflam, objflamivar=objflamivar, 
+                    photsys=data['photsys'], redshift=redshift, 
+                    ebv=ebv, vdisp=None, fit_vdisp=False)
             log.info(f'Fitting {nage} models took {time.time()-t0:.2f} seconds.')
             
             if np.all(coeff == 0):
@@ -2536,16 +2545,22 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                 sedmodel = np.zeros(len(templatecache['templatewave']))
                 dn4000_model = 0.0
             else:
-                sedmodel = sedtemplates.dot(coeff)
-            
                 # Measure Dn(4000) from the line-free model.
-                sedtemplates_nolines, _ = CTools.deprecated_templates2data(
-                    templatecache['templateflux_nolines_nomvdisp'][:, agekeep],
-                    templatecache['templatewave'],
-                    redshift=redshift, dluminosity=data['dluminosity'],
-                    vdisp=None, synthphot=False)
-                sedmodel_nolines = sedtemplates_nolines.dot(coeff)
-            
+                if templatecache['oldtemplates']:
+                    sedmodel = sedtemplates.dot(coeff)
+                    sedtemplates_nolines, _ = CTools.deprecated_templates2data(
+                        templatecache['templateflux_nolines_nomvdisp'][:, agekeep],
+                        templatecache['templatewave'],
+                        redshift=redshift, dluminosity=data['dluminosity'],
+                        vdisp=None, synthphot=False)
+                    sedmodel_nolines = sedtemplates_nolines.dot(coeff)
+                else:
+                    sedmodel_nolines, _, _ = CTools.build_continuum_model(                       
+                        templatecache['templatewave'], 
+                        templatecache['templateflux_nolines_nomvdisp'][:, agekeep],
+                        coeff, dustflux=None, agnflux=None, photsys=data['photsys'], 
+                        redshift=redshift, ebv=ebv, vdisp=vdispbest, synthphot=True)
+                    
                 dn4000_model, _ = CTools.get_dn4000(templatecache['templatewave'],
                                                     sedmodel_nolines, rest=True, 
                                                     log=log)
@@ -2589,7 +2604,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             t0 = time.time()
 
             # maintain backwards-compatibility??
-            if templatecache['oldtemplates']:            
+            if templatecache['oldtemplates']:
                 ztemplateflux_vdisp, _ = CTools.deprecated_templates2data(
                     templatecache['vdispflux'], templatecache['vdispwave'], # [npix,vdispnsed,nvdisp]
                     redshift=redshift, dluminosity=data['dluminosity'],
@@ -2811,8 +2826,8 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         AV, age, zzsun, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0
     else:
         kcorr, absmag, ivarabsmag, _, synth_bestmaggies = CTools.kcorr_and_absmag(
-            data, templatecache['templatewave'], sedmodel, log=log)
-        lums, cfluxes = CTools.continuum_fluxes(data, templatecache['templatewave'], sedmodel, log=log)
+            data, templatecache['templatewave'], sedmodel)
+        lums, cfluxes = CTools.continuum_fluxes(data, templatecache['templatewave'], sedmodel)
 
         # get the SPS properties
         mstars = templatecache['templateinfo']['mstar'][agekeep] # [current mass in stars, Msun]
@@ -2820,13 +2835,17 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         coefftot = np.sum(coeff)
         logmstar = np.log10(CTools.massnorm * masstot)
         zzsun = np.log10(coeff.dot(mstars * 10.**templatecache['templateinfo']['zzsun'][agekeep]) / masstot) # mass-weighted
-        AV = coeff.dot(templatecache['templateinfo']['av'][agekeep]) / coefftot                  # luminosity-weighted [mag]
         age = coeff.dot(templatecache['templateinfo']['age'][agekeep]) / coefftot / 1e9          # luminosity-weighted [Gyr]
         #age = coeff.dot(mstars * templatecache['templateinfo']['age'][agekeep]) / masstot / 1e9 # mass-weighted [Gyr]
         sfr = CTools.massnorm * coeff.dot(templatecache['templateinfo']['sfr'][agekeep])                           # [Msun/yr]
+        if templatecache['oldtemplates']:
+            AV = coeff.dot(templatecache['templateinfo']['av'][agekeep]) / coefftot # luminosity-weighted [mag]
+        else:
+            AV = ebv * CTools.klambda(5500.) # [mag]
 
     rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 5600))
-    log.info(f'log(M/Msun)={logmstar:.2f}, M{CTools.absmag_bands[rindx]}={absmag[rindx]:.2f} mag, A(V)={AV:.3f}, Age={age:.3f} Gyr, SFR={sfr:.3f} Msun/yr, Z/Zsun={zzsun:.3f}')
+    log.info(f'log(M/Msun)={logmstar:.2f}, M{CTools.absmag_bands[rindx]}={absmag[rindx]:.2f} mag, ' + \
+             f'A(V)={AV:.3f}, Age={age:.3f} Gyr, SFR={sfr:.3f} Msun/yr, Z/Zsun={zzsun:.3f}')
 
     # Pack it in and return.
     result['COEFF'][agekeep] = coeff
