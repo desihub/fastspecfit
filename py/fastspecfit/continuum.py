@@ -287,14 +287,29 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
     
 
 class Tools(object):
-    def __init__(self, ignore_photometry=False, fphoto=None, load_filters=True):
+    def __init__(self, ignore_photometry=False, fphoto=None, load_filters=True, 
+                 log=None, verbose=False):
 
         """Class to load filters, dust, and filter- and dust-related methods.
+
+        Parameters
+        ----------
+        log : :class:`desiutil.log.get_logger`
+            Logger object.
+
 
         """
         super(Tools, self).__init__()
         
         from speclite import filters
+
+        if log is None:
+            from desiutil.log import get_logger, DEBUG
+            if verbose:
+                log = get_logger(DEBUG)
+            else:
+                log = get_logger()
+        self.log = log
         
         if fphoto is not None:
             keys = fphoto.keys()
@@ -395,12 +410,12 @@ class Tools(object):
 
         if len(self.absmag_bands) != len(self.band_shift):
             errmsg = 'absmag_bands and band_shift must have the same number of elements.'
-            log.critical(errmsg)
+            self.log.critical(errmsg)
             raise ValueError(errmsg)
         
         if self.photounits != 'nanomaggies':
             errmsg = 'nanomaggies is the only currently supported photometric unit!'
-            log.critical(errmsg)
+            self.log.critical(errmsg)
             raise ValueError(errmsg)
 
         # Do not fit the photometry.
@@ -410,7 +425,7 @@ class Tools(object):
 
     def restframe_photometry(self, redshift, zmodelflux, zmodelwave, maggies, ivarmaggies,
                              filters_in, absmag_filters, band_shift=None, snrmin=2.,
-                             dmod=None, cosmo=None, log=None):
+                             dmod=None, cosmo=None):
         """Compute K-corrections and rest-frame photometry for a single object.
         
         Parameters
@@ -470,15 +485,11 @@ class Tools(object):
         """
         from speclite import filters
         
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-
         nabs = len(absmag_filters)
             
         if redshift <= 0.0:
             errmsg = 'Input redshift not defined, zero, or negative!'
-            log.warning(errmsg)
+            self.log.warning(errmsg)
             kcorr        = np.zeros(nabs, dtype='f8')
             absmag       = np.zeros(nabs, dtype='f8')
             ivarabsmag   = np.zeros(nabs, dtype='f8')
@@ -504,7 +515,7 @@ class Tools(object):
         synth_maggies_in = self.get_ab_maggies(filters_in,
                                                zmodelflux / FLUXNORM,
                                                zmodelwave,
-                                               log=log)
+                                               log=self.log)
         filters_out = \
             filters.FilterSequence( [ f.create_shifted(band_shift=bs) for f, bs in zip(absmag_filters, band_shift) ])
         lambda_out = filters_out.effective_wavelengths.value
@@ -514,7 +525,7 @@ class Tools(object):
         synth_outmaggies_rest = self.get_ab_maggies(filters_out,
                                                     zmodelflux * (1. + redshift) / FLUXNORM,
                                                     modelwave,
-                                                    log=log)
+                                                    log=self.log)
         
         synth_absmag = -2.5 * np.log10(synth_outmaggies_rest) - dmod
 
@@ -590,7 +601,7 @@ class Tools(object):
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
                          nanomaggies=True, nsigma=2.0, min_uncertainty=None,
-                         log=None, verbose=False, qa=False):
+                         log=None, qa=False):
         """Parse input (nano)maggies to various outputs and pack into a table.
 
         Parameters
@@ -614,11 +625,8 @@ class Tools(object):
 
         """
         if log is None:
-            from desiutil.log import get_logger, DEBUG
-            if verbose:
-                log = get_logger(DEBUG)
-            else:
-                log = get_logger()
+            from desiutil.log import get_logger
+            log = get_logger()
         
         if ivarmaggies is None:
             ivarmaggies = np.zeros_like(maggies)
@@ -668,7 +676,7 @@ class Tools(object):
         # Add a minimum uncertainty in quadrature **but only for flam**, which
         # is used in the fitting.
         if min_uncertainty is not None:
-            log.debug('Propagating minimum photometric uncertainties (mag): [{}]'.format(
+            log.info('Propagating minimum photometric uncertainties (mag): [{}]'.format(
                 ' '.join(min_uncertainty.astype(str))))
             good = ((maggies != 0.) & (ivarmaggies > 0.))
             maggies_good = maggies[good]
@@ -1021,9 +1029,10 @@ class ContinuumTools(Tools):
         Need to document all the attributes.
 
     """
-    def __init__(self, ignore_photometry=False, fphoto=None, emlinesfile=None):
+    def __init__(self, ignore_photometry=False, fphoto=None, emlinesfile=None, log=None):
 
-        super(ContinuumTools, self).__init__(ignore_photometry=ignore_photometry, fphoto=fphoto)
+        super(ContinuumTools, self).__init__(ignore_photometry=ignore_photometry, 
+                                             fphoto=fphoto, log=log)
 
         from fastspecfit.io import read_emlines
 
@@ -1058,7 +1067,7 @@ class ContinuumTools(Tools):
                                initsigma_balmer_broad=1000., initvshift_broad=0., 
                                initvshift_narrow=0., initvshift_balmer_broad=0.,
                                minsnr_balmer_broad=1.5, niter=2, emlinesfile=None, 
-                               verbose=False, log=None):
+                               verbose=False):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -1093,14 +1102,6 @@ class ContinuumTools(Tools):
         from astropy.table import vstack
         from fastspecfit.util import quantile
         from fastspecfit.emlines import EMFitTools, ParamType
-
-        if log is None:
-            from desiutil.log import get_logger, DEBUG
-            if verbose:
-                log = get_logger(DEBUG)
-            else:
-                log = get_logger()
-
 
         def _make_patchTable(patchids):
             patchids = np.atleast_1d(patchids)
@@ -1314,10 +1315,10 @@ class ContinuumTools(Tools):
             final_linevshifts = (linevshift_broad, linevshift_narrow, linevshift_balmer_broad)
             maxsnrs = (maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad)
 
-            log.info(f'Broad: S/N={maxsnr_broad:.1f}, (sigma,dv)=({linesigma_broad:.0f},{linevshift_broad:.0f}) km/s; ' + \
-                     f'Narrow: S/N={maxsnr_narrow:.1f}, ({linesigma_narrow:.0f},{linevshift_narrow:.0f}) km/s; '+ \
-                     f'Balmer Broad: S/N={maxsnr_balmer_broad:.1f}, ({linesigma_balmer_broad:.0f},{linevshift_balmer_broad:.0f}) km/s.')
-            log.info(f'Fitting {modelname} with patches ({niter} iterations) took {time.time()-t0:.4f} seconds.')
+            self.log.info(f'Broad: S/N={maxsnr_broad:.1f}, (sigma,dv)=({linesigma_broad:.0f},{linevshift_broad:.0f}) km/s; ' + \
+                          f'Narrow: S/N={maxsnr_narrow:.1f}, ({linesigma_narrow:.0f},{linevshift_narrow:.0f}) km/s; '+ \
+                          f'Balmer Broad: S/N={maxsnr_balmer_broad:.1f}, ({linesigma_balmer_broad:.0f},{linevshift_balmer_broad:.0f}) km/s.')
+            self.log.info(f'Fitting {modelname} with patches ({niter} iterations) took {time.time()-t0:.4f} seconds.')
 
             # optionally build a QA figure
             if verbose:
@@ -1499,19 +1500,19 @@ class ContinuumTools(Tools):
 
             # if a broad Balmer line is well-detected, take its linewidth
             if maxsnrs_broad[2] > minsnr_balmer_broad: 
-                log.info(f'Adopting broad Balmer-line masking: S/N(broad Balmer) ' + \
-                         f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}.')
+                self.log.info(f'Adopting broad Balmer-line masking: S/N(broad Balmer) ' + \
+                              f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}.')
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_broad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_broad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_broad
             else:
-                log.info(f'Adopting narrow Balmer-line masking: S/N(broad Balmer) ' + \
-                         f'{maxsnrs_broad[2]:.1f} < {minsnr_balmer_broad:.1f}.')
+                self.log.info(f'Adopting narrow Balmer-line masking: S/N(broad Balmer) ' + \
+                              f'{maxsnrs_broad[2]:.1f} < {minsnr_balmer_broad:.1f}.')
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
         else:
-            log.info(f'Adopting narrow Balmer-line masking: no Balmer lines in wavelength range.')
+            self.log.info(f'Adopting narrow Balmer-line masking: no Balmer lines in wavelength range.')
             finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
             finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
             maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
@@ -1686,7 +1687,7 @@ class ContinuumTools(Tools):
     def deprecated_templates2data(self, templateflux, templatewave, redshift=0.0, dluminosity=None,
                                   vdisp=None, cameras=['b', 'r', 'z'], specwave=None, specres=None, 
                                   specmask=None, coeff=None, photsys=None, synthphot=True, 
-                                  stack_cameras=False, flamphot=False, debug=False, log=None):
+                                  stack_cameras=False, flamphot=False, debug=False):
         """Work-horse routine to turn input templates into spectra that can be compared
         to real data.
 
@@ -1722,10 +1723,6 @@ class ContinuumTools(Tools):
         """
         from scipy.ndimage import binary_dilation
 
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-        
         # Are we dealing with a 2D grid [npix,nage] or a 3D grid
         # [npix,nage,nAV] or [npix,nage,nvdisp]?
         ndim = templateflux.ndim
@@ -1738,7 +1735,7 @@ class ContinuumTools(Tools):
             templateflux = templateflux.reshape(npix, nmodel)
         else:
             errmsg = f'Input templates have an unrecognized number of dimensions, {ndim}'
-            log.critical(errmsg)
+            self.log.critical(errmsg)
             raise ValueError(errmsg)
         
         # broaden for velocity dispersion but only out to ~1 micron
@@ -1761,7 +1758,7 @@ class ContinuumTools(Tools):
             ztemplateflux = vd_templateflux * T[:, np.newaxis]
         else:
             errmsg = 'Input redshift not defined, zero, or negative!'
-            log.warning(errmsg)
+            self.log.warning(errmsg)
             ztemplatewave = templatewave
             T = FLUXNORM * self.massnorm
             ztemplateflux = vd_templateflux * T
@@ -1781,13 +1778,13 @@ class ContinuumTools(Tools):
                 maggies = self.get_ab_maggies(filters,
                                               ztemplateflux.T,
                                               ztemplatewave,
-                                              log=log) / \
+                                              log=self.log) / \
                                               (FLUXNORM * self.massnorm)
                 if flamphot:                
                     templatephot = self.get_photflam(maggies, effwave, nanomaggies=False)
                 else:
-                    templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, 
-                                                         verbose=debug, log=log)
+                    templatephot = self.parse_photometry(self.bands, maggies, effwave, 
+                                                         nanomaggies=False, log=self.log)
                 
         # Are we returning per-camera spectra or a single model? Handle that here.
         if specwave is None and specres is None:
@@ -1801,170 +1798,14 @@ class ContinuumTools(Tools):
                     maggies = self.get_ab_maggies(filters,
                                                   datatemplateflux.T,
                                                   ztemplatewave,
-                                                  log=log) / \
+                                                  log=self.log) / \
                                                   (FLUXNORM * self.massnorm)
                     
                     if flamphot:
                         templatephot = self.get_photflam(maggies, effwave, nanomaggies=False)
                     else:
-                        templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, 
-                                                             verbose=debug, log=log)
-
-        else:
-            # loop over cameras
-            datatemplateflux = []
-            for icamera in range(len(cameras)): # iterate on cameras
-                # interpolate over pixels where the resolution matrix is masked
-                if specmask is not None and np.any(specmask[icamera] != 0):
-                    sw_mask = binary_dilation(specmask[icamera] != 0, iterations=2)
-                else:
-                    sw_mask = None
-                
-                _datatemplateflux = np.empty((len(specwave[icamera]), nmodel),
-                                             dtype=ztemplateflux.dtype)
-                for imodel in range(nmodel):
-                    resampflux = self.smooth_and_resample(ztemplateflux[:, imodel],
-                                                          ztemplatewave, 
-                                                          specwave=specwave[icamera],
-                                                          specres=specres[icamera])
-
-                    # interpolate over pixels where the resolution matrix is masked
-                    # FixMe -- move this to io.read_and_unpack
-                    if sw_mask is not None:
-                        resampflux[sw_mask] = np.interp(specwave[icamera][sw_mask],
-                                                        ztemplatewave,
-                                                        ztemplateflux[:, imodel])
-                        
-                    _datatemplateflux[:,imodel] = resampflux
-                
-                #_datatemplateflux = np.vstack(_datatemplateflux).T
-                if coeff is not None:
-                    _datatemplateflux = _datatemplateflux.dot(coeff)
-                datatemplateflux.append(_datatemplateflux)
-                
-        # Optionally stack and reshape (used in fitting).
-        if stack_cameras:
-            datatemplateflux = np.concatenate(datatemplateflux, axis=0)  # [npix,nsed*nprop] or [npix,nsed]
-            if ndim == 3:
-                nwavepix = np.sum([ len(sw) for sw in specwave ])
-                datatemplateflux = datatemplateflux.reshape(nwavepix, nsed, nprop) # [npix,nsed,nprop]
-                
-        return datatemplateflux, templatephot # vector or 3-element list of [npix,nmodel] spectra
-
-
-    def templates2data(self, templateflux, templatewave, redshift=0.0, dluminosity=None,
-                       vdisp=None, cameras=['b', 'r', 'z'], specwave=None, specres=None, 
-                       specmask=None, coeff=None, photsys=None, synthphot=True, 
-                       stack_cameras=False, flamphot=False, debug=False, log=None):
-        """Work-horse routine to turn input templates into spectra that can be compared
-        to real data.
-
-        Redshift, apply the resolution matrix, and resample in wavelength.
-
-        Parameters
-        ----------
-        redshift
-        specwave
-        specres
-        south
-        synthphot - synthesize photometry?
-
-        Returns
-        -------
-        Vector or 3-element list of [npix, nmodel] spectra.
-
-        Notes
-        -----
-        This method does none or more of the following:
-        - redshifting
-        - wavelength resampling
-        - apply velocity dispersion broadening
-        - apply the resolution matrix
-        - synthesize photometry
-
-        It also naturally handles templates which have been precomputed on a
-        grid of velocity dispersion (and therefore have an additional
-        dimension). However, if the input grid is 3D, it is reshaped to be 2D
-        but then it isn't reshaped back because of the way the photometry table
-        is organized (bug or feature?).
-
-        """
-        from scipy.ndimage import binary_dilation
-
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-        
-        npix, nsed = templateflux.shape
-
-        # broaden for velocity dispersion but only out to ~1 micron
-        if vdisp is not None:
-            hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
-
-            vd_templateflux = self.convolve_vdisp(templateflux, hi,
-                                                  vdisp, PIXKMS_BLU)
-        else:
-            vd_templateflux = templateflux
-            
-        # Apply the redshift factor. The models are normalized to 10 pc, so
-        # apply the luminosity distance factor here. Also normalize to a nominal
-        # stellar mass.
-        if redshift > 0.:
-            # FIXME: try accelerating this whole thing in Numba
-            ztemplatewave = templatewave * (1. + redshift)
-            T = self.igm.full_IGM(redshift, ztemplatewave) 
-            T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
-            ztemplateflux = vd_templateflux * T[:, np.newaxis]
-        else:
-            errmsg = 'Input redshift not defined, zero, or negative!'
-            log.warning(errmsg)
-            ztemplatewave = templatewave
-            T = FLUXNORM * self.massnorm
-            ztemplateflux = vd_templateflux * T
-        
-        # Optionally synthesize photometry.
-        templatephot = None
-        if synthphot:
-            if photsys is not None:
-                filters = self.filters[photsys]
-            else:
-                filters = self.filters
-            effwave = filters.effective_wavelengths.value
-
-            if ((specwave is None and specres is None and coeff is None) or
-               (specwave is not None and specres is not None)):
-                
-                maggies = self.get_ab_maggies(filters,
-                                              ztemplateflux.T,
-                                              ztemplatewave,
-                                              log=log) / \
-                                              (FLUXNORM * self.massnorm)
-                if flamphot:                
-                    templatephot = self.get_photflam(maggies, effwave, nanomaggies=False)
-                else:
-                    templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, 
-                                                         verbose=debug, log=log)
-                
-        # Are we returning per-camera spectra or a single model? Handle that here.
-        if specwave is None and specres is None:
-            # cannot smooth/resample
-            datatemplateflux = ztemplateflux
-            
-            # optionally compute the best-fitting model
-            if coeff is not None:
-                datatemplateflux = datatemplateflux.dot(coeff)
-                if synthphot:
-                    maggies = self.get_ab_maggies(filters,
-                                                  datatemplateflux.T,
-                                                  ztemplatewave,
-                                                  log=log) / \
-                                                  (FLUXNORM * self.massnorm)
-                    
-                    if flamphot:
-                        templatephot = self.get_photflam(maggies, effwave, nanomaggies=False)
-                    else:
-                        templatephot = self.parse_photometry(self.bands, maggies, effwave, nanomaggies=False, 
-                                                             verbose=debug, log=log)
+                        templatephot = self.parse_photometry(self.bands, maggies, effwave, 
+                                                             nanomaggies=False, log=self.log)
 
         else:
             # loop over cameras
@@ -2010,7 +1851,8 @@ class ContinuumTools(Tools):
 
     @staticmethod
     def call_nnls(modelflux, flux, ivar, xparam=None, debug=False,
-                  interpolate_coeff=False, xlabel=None, png=None, log=None):
+                  interpolate_coeff=False, xlabel=None, png=None, 
+                  log=None):
         """Wrapper on nnls.
     
         Works with both spectroscopic and photometric input and with both 2D and
@@ -2159,17 +2001,13 @@ class ContinuumTools(Tools):
     def build_continuum_model(self, templatewave, templateflux, templatecoeff,
                               dustflux=None, agnflux=None, specwave=None, 
                               specres=None, camerapix=None, photsys=None, 
-                              redshift=0., ebv=0., vdisp=None, synthphot=True, 
-                              log=None):
+                              redshift=0., ebv=0., vdisp=None, synthphot=True):
         """Build the continuum model, given free parameters.
     
         """
         from scipy.ndimage import gaussian_filter1d
         from scipy.integrate import simpson
         from fastspecfit.io import FLUXNORM
-
-        if log is None:
-            log = get_logger()
 
         npix, ntemplate = templateflux.shape
 
@@ -2221,7 +2059,7 @@ class ContinuumTools(Tools):
             effwave = filters.effective_wavelengths.value
 
             modelmaggies = self.get_ab_maggies(filters, fullmodel,
-                                               ztemplatewave, log=log)
+                                               ztemplatewave, log=self.log)
             #modelmaggies /= FLUXNORM * self.massnorm
             modelflam = self.get_photflam(modelmaggies, effwave, nanomaggies=False)
         else:
@@ -2247,7 +2085,7 @@ class ContinuumTools(Tools):
     def _objective(self, params, templatewave, templateflux, dustflux, 
                    agnflux, objflam, objflamivar, specwave, specflux, 
                    specivar, specres, camerapix, photsys, redshift, 
-                   fit_vdisp, synthphot, log):
+                   fit_vdisp, synthphot):
         """Objective function for continuum-fitting.
     
         """
@@ -2259,19 +2097,18 @@ class ContinuumTools(Tools):
             templatecoeff = params[1:]
             vdisp = None
 
-        print('##### ', ebv, vdisp, templatecoeff)
+        #print('##### ', ebv, vdisp, templatecoeff)
 
         fullmodel, modelflux, modelflam = self.build_continuum_model(
             templatewave, templateflux, templatecoeff, 
             dustflux=dustflux, agnflux=agnflux, specwave=specwave, 
             specres=specres, camerapix=camerapix, photsys=photsys, 
-            redshift=redshift, ebv=ebv, vdisp=vdisp, synthphot=synthphot, 
-            log=log)
+            redshift=redshift, ebv=ebv, vdisp=vdisp, synthphot=synthphot)
 
         # Compute the residuals based on the information we have.
         if modelflux is None and modelflam is None:
             errmsg = 'Catastrophic problem constructing the model!'
-            log.critical(errmsg)
+            self.log.critical(errmsg)
             raise ValueError(errmsg)
 
         if modelflux is not None and modelflam is not None:
@@ -2292,7 +2129,7 @@ class ContinuumTools(Tools):
                       specres=None, camerapix=None, photsys=None, 
                       redshift=0., ebv_guess=0.05, vdisp_guess=125., 
                       ebv_bounds=(0., 3.), vdisp_bounds=(50., 500.),
-                      fit_vdisp=True, log=None):
+                      fit_vdisp=True):
         """Fit the stellar continuum using bounded non-linear least-squares.
 
         Parameters
@@ -2340,8 +2177,6 @@ class ContinuumTools(Tools):
            `fit_vdisp=True`.
         fit_vdisp : :class:`bool`
             Optionally solve for the velocity dispersion. Defaults to `False`.
-        log : :class:`desiutil.log.get_logger`
-            Logger object.
 
         Returns
         -------
@@ -2373,10 +2208,6 @@ class ContinuumTools(Tools):
         """
         from scipy.optimize import least_squares
     
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-
         npix, ntemplate = templateflux.shape
 
         # Unpack the input data to infer the fitting "mode" and the objective
@@ -2399,8 +2230,7 @@ class ContinuumTools(Tools):
             synthphot = True
         else:
             synthphot = False
-
-        farg += [synthphot, log, ]
+        farg += [synthphot, ]
 
         fit_info = least_squares(self._objective, initial_guesses, args=farg, 
                                  bounds=tuple(zip(*bounds)), method='trf',
@@ -2417,7 +2247,7 @@ class ContinuumTools(Tools):
             vdisp = vdisp_guess
         print(ebv, vdisp, templatecoeff)
 
-        #fullmodel, continuum, modelphot = self.build_continuum_model(
+        #fullmodel, continuum, modelflam = self.build_continuum_model(
         #    templatewave, templateflux, templatecoeff, dustflux=dustflux,
         #    agnflux=agnflux, specwave=specwave, specres=specres, 
         #    camerapix=camerapix, photsys=photsys, redshift=redshift,
@@ -2445,22 +2275,50 @@ class ContinuumTools(Tools):
                        dustflux=None, agnflux=None, objflam=None, 
                        objflamivar=None, specwave=None, specflux=None, 
                        specivar=None, specres=None, camerapix=None, 
-                       photsys=None, redshift=0., ebv=0., vdisp=125., 
-                       log=None):
+                       photsys=None, redshift=0., ebv=0., vdisp=125.,
+                       fit_vdisp=True):
         """Compute the reduced spectroscopic and/or photometric chi2.
 
         """
-        fullmodel, modelflux, modelphot = self.build_continuum_model(
+        if objflam is not None and objflamivar is not None:
+            synthphot = True
+        else:
+            synthphot = False
+
+        fullmodel, modelflux, modelflam = self.build_continuum_model(
             templatewave, templateflux, templatecoeff, dustflux=dustflux,
             agnflux=agnflux, specwave=specwave, specres=specres, 
             camerapix=camerapix, photsys=photsys, redshift=redshift,
-            ebv=ebv, vdisp=vdisp, synthphot=True, log=log)
-        #
+            ebv=ebv, vdisp=vdisp, synthphot=synthphot)
+
+        # ebv is always a free parameter
+        nfree = len(templatecoeff) + 1 + 1 * fit_vdisp
+
+        def _get_rchi2(chi2, ndof, nfree):
+            """Guard against ndof=nfree."""
+            if ndof > nfree:
+                return chi2 / (ndof - nfree)
+            else:
+                return chi2 / ndof # ???
+            
+
+        # Compute chi2 based on the information we have.
+        rchi2_spec, rchi2_phot = None, None
+
+        if modelflux is not None:
+            chi2_spec = np.sum(specivar * (specflux - modelflux))
+            ndof_spec = np.sum(specivar > 0)
+            rchi2_spec = _get_rchi2(chi2_spec, ndof_spec, nfree)
+
+        if modelflam is not None:
+            chi2_phot = np.sum(objflamivar * (objflam - modelflam))
+            ndof_phot = np.sum(objflamivar > 0)
+            rchi2_phot = _get_rchi2(chi2_phot, ndof_phot, nfree)
+
+        return rchi2_spec, rchi2_phot
 
 
-
-
-    def continuum_fluxes(self, data, templatewave, continuum, log=None):
+    def continuum_fluxes(self, data, templatewave, continuum):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
@@ -2480,14 +2338,10 @@ class ContinuumTools(Tools):
             return median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
 
         
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-
         redshift = data['zredrock']
         if redshift <= 0.0:
             errmsg = 'Input redshift not defined, zero, or negative!'
-            log.warning(errmsg)
+            self.log.warning(errmsg)
             return {}, {}
         
         dlum = data['dluminosity']
@@ -2588,7 +2442,8 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
     tall = time.time()
 
     CTools = ContinuumTools(fphoto=fphoto, emlinesfile=emlinesfile,
-                            ignore_photometry=ignore_photometry)
+                            ignore_photometry=ignore_photometry, 
+                            log=log)
 
     redshift = result['Z']
     if redshift <= 0.:
@@ -2658,18 +2513,22 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                     vdisp=None, synthphot=True, photsys=data['photsys'])
                 sedflam = sedphot_flam * CTools.massnorm * FLUXNORM
                 coeff, rchi2_phot = CTools.call_nnls(sedflam, objflam, objflamivar)
+                rchi2_phot /= np.sum(objflamivar > 0) # dof???
             else:
                 ebv_phot, vdisp, coeff = CTools.fit_continuum(
                     templatecache['templatewave'], templatecache['templateflux_nomvdisp'], # [npix,nsed]
                     dustflux=templatecache['dustflux'], agnflux=templatecache['agnflux'],
-                    objflam=objflam, objflamivar=objflamivar, redshift=redshift, 
-                    photsys=data['photsys'], vdisp_guess=templatecache['vdisp_nominal'],
-                    fit_vdisp=False, log=log)
-                
+                    objflam=objflam, objflamivar=objflamivar, photsys=data['photsys'], 
+                    redshift=redshift, vdisp_guess=templatecache['vdisp_nominal'],
+                    fit_vdisp=False)
 
-                pdb.set_trace()
-
-            rchi2_phot /= np.sum(objflamivar > 0) # dof???
+                _, rchi2_phot = CTools.continuum_chi2(coeff, templatecache['templatewave'], 
+                                                      templatecache['templateflux_nomvdisp'],
+                                                      dustflux=templatecache['dustflux'], 
+                                                      agnflux=templatecache['agnflux'],
+                                                      objflam=objflam, objflamivar=objflamivar, 
+                                                      photsys=data['photsys'], redshift=redshift, 
+                                                      ebv=ebv_phot, vdisp=None, fit_vdisp=False)
             log.info(f'Fitting {nage} models took {time.time()-t0:.2f} seconds.')
             
             if np.all(coeff == 0):
@@ -2688,8 +2547,9 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                 sedmodel_nolines = sedtemplates_nolines.dot(coeff)
             
                 dn4000_model, _ = CTools.get_dn4000(templatecache['templatewave'],
-                                                    sedmodel_nolines, rest=True, log=log)
-                log.info('Model Dn(4000)={:.3f}.'.format(dn4000_model))
+                                                    sedmodel_nolines, rest=True, 
+                                                    log=log)
+                log.info(f'Model Dn(4000)={dn4000_model:.3f}.')
     else:
         # Combine all three cameras; we will unpack them to build the
         # best-fitting model (per-camera) below.
