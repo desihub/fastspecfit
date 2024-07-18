@@ -211,10 +211,11 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     if fastphot:
         leg['vdisp'] = r'$\sigma_{star}=$'+'{:g}'.format(fastspec['VDISP'])+' km/s'
     else:
-        if fastspec['VDISP_IVAR'] > 0:
-            leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
-        else:
-            leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+        #if fastspec['VDISP_IVAR'] > 0:
+        #    leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
+        #else:
+        #    leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+        leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
             
         leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(fastspec['RCHI2'])
         leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(fastspec['RCHI2_CONT'])
@@ -365,6 +366,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 agnflux=templatecache['agnflux'], photsys=metadata['PHOTSYS'],
                 redshift=redshift, ebv=fastspec['AV'] / CTools.klambda(5500.), 
                 vdisp=None, synthphot=True, flamphot=False, qa=True)
+
         sedwave = templatecache['templatewave'] * (1 + redshift)
 
         nband = len(CTools.bands)
@@ -388,19 +390,33 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         # "per-camera" and prefix "full" has the cameras h-stacked.
         fullwave = np.hstack(data['wave'])
     
-        desicontinuum, _ = CTools.templates2data(templatecache['templateflux_nolines'], templatecache['templatewave'],
-                                                 redshift=redshift, dluminosity=dlum, synthphot=False,
-                                                 specwave=data['wave'], specres=data['res'],
-                                                 specmask=data['mask'], cameras=data['cameras'],
-                                                 vdisp=fastspec['VDISP'],
-                                                 coeff=fastspec['COEFF'])
-    
-        # remove the aperture correction
-        desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
-        fullcontinuum = np.hstack(desicontinuum)
-    
-         # Need to be careful we don't pass a large negative residual where
-         # there are gaps in the data.
+        if templatecache['oldtemplates']:
+            desicontinuum, _ = CTools.templates2data(templatecache['templateflux_nolines'], 
+                                                     templatecache['templatewave'],
+                                                     redshift=redshift, dluminosity=dlum, synthphot=False,
+                                                     specwave=data['wave'], specres=data['res'],
+                                                     specmask=data['mask'], cameras=data['cameras'],
+                                                     vdisp=fastspec['VDISP'],
+                                                     coeff=fastspec['COEFF'])
+
+            # remove the aperture correction
+            desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
+            fullcontinuum = np.hstack(desicontinuum)
+        else:
+            _, _desicontinuum, _ = CTools.build_continuum_model(                       
+                templatecache['templatewave'], templatecache['templateflux_nolines'],
+                fastspec['COEFF'], dustflux=templatecache['dustflux'], 
+                agnflux=templatecache['agnflux'], photsys=metadata['PHOTSYS'],
+                specwave=np.hstack(data['wave']), specres=np.hstack(data['res']),
+                camerapix=data['camerapix'], redshift=redshift, vdisp=fastspec['VDISP'], 
+                ebv=fastspec['AV'] / CTools.klambda(5500.), synthphot=False)
+
+            # remove the aperture correction
+            desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]
+            fullcontinuum = np.hstack(desicontinuum)
+
+        # Need to be careful we don't pass a large negative residual where
+        # there are gaps in the data.
         desiresiduals = []
         for icam in np.arange(len(data['cameras'])):
             resid = data['flux'][icam] - desicontinuum[icam]
