@@ -1,8 +1,16 @@
+#!/usr/bin/env python
+"""
+fastspecfit.inoue14
+===================
+
+Tools for handling intergalactic medium (IGM) attenuation.
+
+"""
 import numpy as np
 from numba import jit
 
 class Inoue14(object):
-    """
+    r"""
     IGM absorption from Inoue et al. (2014)
         
     Parameters

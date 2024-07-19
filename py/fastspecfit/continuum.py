@@ -68,7 +68,7 @@ def convolve_vdisp(templateflux, vdisp, pixsize_kms=PIXKMS_BLU, limit=None):
 
 
 def _smooth_continuum(wave, flux, ivar, linemask, camerapix=None, medbin=175, 
-                      smooth_window=75, smooth_step=25, png=None, log=None):
+                      smooth_window=75, smooth_step=125, png=None, log=None):
     """Build a smooth, nonparametric continuum spectrum.
 
     Parameters
@@ -2970,8 +2970,6 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             _smoothcontinuum = CTools.smooth_continuum(
                 specwave, residuals, specivar / apercorr**2, linemask, 
                 camerapix=data['camerapix'], png=png, log=log)
-
-            pdb.set_trace()
 
         # Unpack the continuum into individual cameras.
         continuummodel, smoothcontinuum = [], []
