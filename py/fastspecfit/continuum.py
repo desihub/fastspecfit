@@ -1723,8 +1723,6 @@ class ContinuumTools(Tools):
         is organized (bug or feature?).
 
         """
-        from scipy.ndimage import binary_dilation
-
         # Are we dealing with a 2D grid [npix,nage] or a 3D grid
         # [npix,nage,nAV] or [npix,nage,nvdisp]?
         ndim = templateflux.ndim
@@ -1815,11 +1813,12 @@ class ContinuumTools(Tools):
             # loop over cameras
             datatemplateflux = []
             for icamera in range(len(cameras)): # iterate on cameras
-                # interpolate over pixels where the resolution matrix is masked
-                if specmask is not None and np.any(specmask[icamera] != 0):
-                    sw_mask = binary_dilation(specmask[icamera] != 0, iterations=2)
-                else:
-                    sw_mask = None
+                #from scipy.ndimage import binary_dilation
+                ## interpolate over pixels where the resolution matrix is masked
+                #if specmask is not None and np.any(specmask[icamera] != 0):
+                #    sw_mask = binary_dilation(specmask[icamera] != 0, iterations=2)
+                #else:
+                #    sw_mask = None
                 
                 _datatemplateflux = np.empty((len(specwave[icamera]), nmodel),
                                              dtype=ztemplateflux.dtype)
@@ -1829,12 +1828,12 @@ class ContinuumTools(Tools):
                                                           specwave=specwave[icamera],
                                                           specres=specres[icamera])
 
-                    # interpolate over pixels where the resolution matrix is masked
-                    # FixMe -- move this to io.read_and_unpack
-                    if sw_mask is not None:
-                        resampflux[sw_mask] = np.interp(specwave[icamera][sw_mask],
-                                                        ztemplatewave,
-                                                        ztemplateflux[:, imodel])
+                    ## interpolate over pixels where the resolution matrix is masked
+                    ## FixMe -- move this to io.read_and_unpack
+                    #if sw_mask is not None:
+                    #    resampflux[sw_mask] = np.interp(specwave[icamera][sw_mask],
+                    #                                    ztemplatewave,
+                    #                                    ztemplateflux[:, imodel])
                         
                     _datatemplateflux[:,imodel] = resampflux
                 

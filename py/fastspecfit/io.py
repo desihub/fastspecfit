@@ -88,9 +88,11 @@ class _ZWarningMask(object):
     POORDATA          = 2**11 #- Poor input data quality but try fitting anyway
 ZWarningMask = _ZWarningMask()
 
+
 def _unpack_one_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_spectrum(*args)
+
 
 def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                         synthphot, ignore_photometry, verbose, log):
@@ -98,6 +100,9 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
     flag pixels which may be affected by emission lines.
 
     """
+    from scipy.ndimage import binary_dilation
+    from desispec.resolution import Resolution
+    from fastspecfit.emline_fit import EMLine_Resolution
     from fastspecfit.util import mwdust_transmission
     from fastspecfit.continuum import ContinuumTools
 
@@ -146,7 +151,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
         maggies[iband] = meta[fluxcol.upper()] / mw_transmission_flux[iband]
         ivarmaggies[iband] = meta[ivarcol.upper()] * mw_transmission_flux[iband]**2
         
-    if not np.all(ivarmaggies >= 0):
+    if not np.all(ivarmaggies >= 0.):
         errmsg = 'Some ivarmaggies are negative!'
         log.critical(errmsg)
         raise ValueError(errmsg)
@@ -187,11 +192,21 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
 
                 # In the pipeline, if mask!=0 that does not mean ivar==0, but we
                 # want to be more aggressive about masking here.
-                ivar[mask != 0] = 0
+                ivar[mask != 0] = 0.
 
-                if np.all(ivar == 0):
+                if np.all(ivar == 0.):
                     log.warning(f'Dropping fully masked camera {camera}.')
                 else:
+                    # interpolate over pixels where the resolution matrix is masked
+                    I = mask != 0
+                    #I = binary_dilation(mask != 0, iterations=2)
+                    if np.any(I):
+                        J = np.where(np.logical_not(I))[0]
+                        I = np.where(I)[0]
+                        res = specdata['res0'][icam]
+                        for irow in range(res.shape[0]):
+                            res[irow, I] = np.interp(I, J, res[irow, J])
+
                     cameras.append(camera)
                     npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
 
@@ -204,8 +219,9 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                     specdata['ivar'].append(ivar * mw_transmission_spec**2)
                     specdata['wave'].append(specdata['wave0'][icam])
                     specdata['mask'].append(specdata['mask0'][icam])
-                    specdata['res'].append(specdata['res0'][icam])
-                    specdata['res_fast'].append(specdata['res_fast0'][icam])
+                    # do we need 'res' anymore??
+                    specdata['res'].append(Resolution(res))
+                    specdata['res_fast'].append(EMLine_Resolution(res))
                     
         if len(cameras) == 0:
             errmsg = 'No good data, which should never happen.'
@@ -213,7 +229,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
             raise ValueError(errmsg)
 
         # clean up the data dictionary
-        for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0', 'res_fast0']:
+        for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0']:
             del specdata[key]
 
         # Pre-compute some convenience variables for "un-hstacking"
@@ -228,11 +244,11 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
             specdata['camerapix'][icam, :] = [np.sum(npixpercam[:icam+1]), np.sum(npixpercam[:icam+2])]
                                 
         # use the coadded spectrum to build a robust emission-line mask
-        pix = CTools.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
-                                            specdata['coadd_ivar'], specdata['coadd_res_fast'], 
-                                            uniqueid=specdata['uniqueid'],
-                                            redshift=specdata['zredrock'],
-                                            verbose=verbose)
+        pix = CTools.build_linemask_patches(
+            specdata['coadd_wave'], specdata['coadd_flux'],
+            specdata['coadd_ivar'], specdata['coadd_res_fast'], 
+            uniqueid=specdata['uniqueid'], redshift=specdata['zredrock'],
+            verbose=verbose)
 
         # Map the pixels belonging to individual emission lines onto the
         # original per-camera spectra. This works, but maybe there's a better
@@ -255,29 +271,6 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
             specdata['linemask'].append(camlinemask)
             specdata['linepix'].append(camlinepix)
 
-        ## For the broad Balmer lines, if any, generate a list of pixels
-        ## corresponding to the hstacked per-camera spectrum, because that's
-        ## what we fit in emlines.emline_specfit.
-        #if bool(pix['coadd_linepix_balmer_broad']):
-        #    offset = np.cumsum(npixpercamera) - npixpercamera
-        #    linename_balmer_broad = []
-        #    for icam in np.arange(ncam):
-        #        #camlinepix_balmer_broad = []
-        #        for linename in pix['coadd_linepix_balmer_broad'].keys():
-        #            linepix = pix['coadd_linepix_balmer_broad'][linename]
-        #            # if the line is entirely off this camera, skip it
-        #            oncam = np.where((specdata["coadd_wave"][linepix] >= np.min(specdata['wave'][icam])) *
-        #                             (specdata["coadd_wave"][linepix] <= np.max(specdata['wave'][icam])))[0]
-        #            if len(oncam) == 0:
-        #                continue
-        #            I = np.searchsorted(specdata['wave'][icam], specdata['coadd_wave'][linepix[oncam]])
-        #            specdata['linepix_balmer_broad'].append(offset[icam] + I)
-        #            linename_balmer_broad.append(linename)
-        #    # should never be empty
-        #    specdata['linename_balmer_broad'] = np.unique(np.hstack(linename_balmer_broad))
-
-        #pix.pop('coadd_linepix')
-        #pix.pop('coadd_linepix_balmer_broad')
         specdata.update(pix)
         del pix
     
@@ -286,24 +279,18 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
             synthmaggies = CTools.get_ab_maggies(synth_filters,
                                                  specdata['coadd_flux'] / FLUXNORM,
                                                  specdata['coadd_wave'])
-            
-            # code to synthesize uncertainties from the variance spectrum
-            #var, mask = _ivar2var(specdata['coadd_ivar'])
-            #r = CTools.get_ab_maggies(filters, 1e-17**2 * var[mask], specdata['coadd_wave'][mask])
-            #synthivarmaggies = 1 / r[:3] # keep just grz
-    
-            #specdata['synthphot'] = CTools.parse_photometry(CTools.bands,
-            #    maggies=synthmaggies, lambda_eff=lambda_eff[:3],
-            #    ivarmaggies=synthivarmaggies, nanomaggies=False, log=log)
+
             specdata['synthphot'] = CTools.parse_photometry(
                 CTools.synth_bands, maggies=synthmaggies, nanomaggies=False,
                 lambda_eff=synth_filters.effective_wavelengths.value, log=log)
 
     return specdata, meta
 
+
 def _unpack_one_stacked_spectrum(args):
     """Multiprocessing wrapper."""
     return unpack_one_stacked_spectrum(*args)
+
 
 def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
                                 ignore_photometry, log):
@@ -381,7 +368,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
     specdata['camerapix'] = npixpercam.reshape(ncam, 2)
 
     # clean up the data dictionary
-    for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0', 'res_fast0']:
+    for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0']:
         del specdata[key]
 
     coadd_linemask_dict = CTools.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
@@ -1002,7 +989,8 @@ class DESISpectra(TabulatedDESI):
         t0 = time.time()  
         metas = self._gather_photometry(specprod=specprod, alltiles=alltiles)
         self.meta = metas # update
-        log.info('Gathered photometric metadata in {:.2f} sec'.format(time.time()-t0))
+        log.info(f'Gathered photometric metadata in {time.time()-t0:.2f} sec')
+
 
     def read_and_unpack(self, fastphot=False, synthphot=True, ignore_photometry=False,
                         constrain_age=False, verbose=False, mp=1):
@@ -1084,6 +1072,8 @@ class DESISpectra(TabulatedDESI):
         from desispec.io import read_spectra
         from desiutil.dust import SFDMap
         from desiutil.log import get_logger, DEBUG
+        from desispec.resolution import Resolution
+        from fastspecfit.emline_fit import EMLine_Resolution
         from fastspecfit.continuum import ContinuumTools
         
         if verbose:
@@ -1131,15 +1121,12 @@ class DESISpectra(TabulatedDESI):
                 for iobj in np.arange(len(meta)):
                     specdata = {
                         'uniqueid': meta[CTools.uniqueid][iobj], 'zredrock': meta['Z'][iobj],
-                        'photsys': photsys[iobj],
-                        'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
+                        'photsys': photsys[iobj], 'dluminosity': dlum[iobj], 
+                        'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
                     unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto,
                                        True, False, ignore_photometry, verbose, log))
             else:
-                from desispec.resolution import Resolution
-                from fastspecfit.emline_fit import EMLine_Resolution
-
                 # Don't use .select since meta and spec can be sorted
                 # differently if a non-sorted targetids was passed. Do the
                 # selection and sort ourselves.
@@ -1161,14 +1148,15 @@ class DESISpectra(TabulatedDESI):
                     specdata = {
                         'uniqueid': meta[CTools.uniqueid][iobj], 'zredrock': meta['Z'][iobj],
                         'photsys': photsys[iobj], 'cameras': cameras,
-                        'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],                        
+                        'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         'wave0': [spec.wave[cam] for cam in cameras],
                         'flux0': [spec.flux[cam][iobj, :] for cam in cameras],
                         'ivar0': [spec.ivar[cam][iobj, :] for cam in cameras],
                         # Also track the mask---see https://github.com/desihub/desispec/issues/1389 
                         'mask0': [spec.mask[cam][iobj, :] for cam in cameras],
-                        'res0': [Resolution(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
-                        'res_fast0': [EMLine_Resolution(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
+                        'res0': [spec.resolution_data[cam][iobj, :, :] for cam in cameras],
+                        #'res0': [Resolution(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
+                        #'res_fast0': [EMLine_Resolution(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
                         'coadd_wave': coadd_spec.wave[coadd_cameras],
                         'coadd_flux': coadd_spec.flux[coadd_cameras][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
@@ -1196,6 +1184,7 @@ class DESISpectra(TabulatedDESI):
 
         return alldata
 
+    
     def read_stacked(self, stackfiles, firsttarget=0, ntargets=None,
                      stackids=None, synthphot=True, ignore_photometry=False,
                      mp=1):
