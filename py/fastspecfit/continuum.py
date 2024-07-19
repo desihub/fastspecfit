@@ -50,7 +50,7 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
                       smooth_window=75, smooth_step=25, maskkms_uv=3000.0, 
                       maskkms_balmer=1000.0, maskkms_narrow=200.0,
                       linetable=None, emlinesfile=None, linemask=None, png=None,
-                      log=None, verbose=False):
+                      log=None):
     """Build a smooth, nonparametric continuum spectrum.
 
     Parameters
@@ -94,8 +94,6 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
     smooth :class:`numpy.ndarray` [npix]
         Smooth continuum spectrum which can be subtracted from `flux` in
         order to create a pure emission-line spectrum.
-    smoothsigma :class:`numpy.ndarray` [npix]
-        Smooth one-sigma uncertainty spectrum.
 
     """
     from numpy.lib.stride_tricks import sliding_window_view
@@ -104,11 +102,8 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
     from scipy.interpolate import make_interp_spline
         
     if log is None:
-        from desiutil.log import get_logger, DEBUG
-        if verbose:
-            log = get_logger(DEBUG)
-        else:
-            log = get_logger()
+        from desiutil.log import get_logger
+        log = get_logger()
 
     if linetable is None:
         from fastspecfit.io import read_emlines        
@@ -242,11 +237,6 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
 
     smooth = median_filter(smooth_flux, medbin, mode='nearest')
     
-    I = ivar > 0
-    if np.sum(I) > 0:
-        smoothsigma = np.zeros_like(wave) + median(1. / np.sqrt(ivar[I]))
-        smoothsigma[I] = 1. / np.sqrt(ivar[I])
-        
     # very important!
     Z = (flux == 0.0) * (ivar == 0.0)
     if np.sum(Z) > 0:
@@ -283,7 +273,9 @@ def _smooth_continuum(wave, flux, ivar, redshift, camerapix=None, medbin=175,
         fig.savefig(png, bbox_inches='tight')
         plt.close()
 
-    return smooth, smoothsigma
+    pdb.set_trace()
+
+    return smooth
     
 
 class Tools(TabulatedDESI):
@@ -2413,6 +2405,15 @@ class ContinuumTools(Tools):
         return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
 
 
+def _younger_than_universe(age, tuniv, agepad=0.5):
+    """Return the indices of the templates younger than the age of the universe
+    (plus an agepadding amount) at the given redshift. age in yr, agepad and
+    tuniv in Gyr
+
+    """
+    return np.where(age <= 1e9 * (agepad + tuniv))[0]
+
+
 def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None,
                       constrain_age=False, no_smooth_continuum=False, 
                       ignore_photometry=False, fastphot=False, log=None, 
@@ -2470,20 +2471,11 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
 
     # Optionally ignore templates which are older than the age of the
     # universe at the redshift of the object.
-    def _younger_than_universe(age, tuniv, agepad=0.5):
-        """Return the indices of the templates younger than the age of the universe
-        (plus an agepadding amount) at the given redshift. age in yr, agepad and
-        tuniv in Gyr
-
-        """
-        return np.where(age <= 1e9 * (agepad + tuniv))[0]
-
-    nsed = len(templatecache['templateinfo'])
-    
+    #nsed = len(templatecache['templateinfo'])
     if constrain_age:
         agekeep = _younger_than_universe(templatecache['templateinfo']['age'], data['tuniv'])
     else:
-        agekeep = np.arange(nsed)
+        agekeep = np.arange(len(templatecache['templateinfo']))
     nage = len(agekeep)
 
     ztemplatewave = templatecache['templatewave'] * (1. + redshift)
@@ -2603,7 +2595,6 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         # dispersion and aperture corrections are determined separately, so we
         # separate that code out from the new templates, where they are
         # determined simultatneously.
-
         if templatecache['oldtemplates']:
             if compute_vdisp:
                 t0 = time.time()
@@ -2888,26 +2879,25 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
         else:
             log.info(f'Spectroscopic DN(4000)={dn4000:.3f}, Model Dn(4000)={dn4000_model:.3f}')
 
-        png = None
-        #png = '/global/cfs/cdirs/desi/users/ioannis/tmp/junk.png'        
-        linemask = np.hstack(data['linemask'])
-        if np.all(coeff == 0):
-            log.warning('Continuum coefficients are all zero.')
+        if np.all(coeff == 0.) or no_smooth_continuum:
             _smoothcontinuum = np.zeros_like(specwave)
         else:
             # Need to be careful we don't pass a large negative residual
             # where there are gaps in the data.
-            residuals = apercorr*specflux - desimodel_nolines
+            residuals = apercorr * specflux - desimodel_nolines
             I = (specflux == 0.) * (specivar == 0.)
             if np.any(I):
                 residuals[I] = 0.
-            _smoothcontinuum, _ = CTools.smooth_continuum(
+
+            if debug_plots:
+                png = f'qa-smooth-continuum-{data["uniqueid"]}.png'
+            else:
+                png = None
+
+            _smoothcontinuum = CTools.smooth_continuum(
                 specwave, residuals, specivar / apercorr**2,
                 redshift, camerapix=data['camerapix'], emlinesfile=emlinesfile,
-                linemask=linemask, log=log, png=png)
-            if no_smooth_continuum:
-                log.info('Zeroing out the smooth continuum correction.')
-                _smoothcontinuum *= 0
+                linemask=np.hstack(data['linemask']), log=log, png=png)
 
         # Unpack the continuum into individual cameras.
         continuummodel, smoothcontinuum = [], []
