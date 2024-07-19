@@ -102,7 +102,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         else:
             return f'{x:.0f}'
 
-    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
+    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry, log=log)
 
     if 'viewer_layer' in fphoto.keys():
         layer = fphoto['viewer_layer']
@@ -209,12 +209,13 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     #leg['zwarn'] = '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN'])
 
     if fastphot:
-        leg['vdisp'] = r'$\sigma_{star}=$'+'{:g}'.format(fastspec['VDISP'])+' km/s'
+        leg['vdisp'] = r'$\sigma_{star}=$'+'{:.0f}'.format(fastspec['VDISP'])+' km/s'
     else:
-        if fastspec['VDISP_IVAR'] > 0:
-            leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
-        else:
-            leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+        #if fastspec['VDISP_IVAR'] > 0:
+        #    leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
+        #else:
+        #    leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+        leg['vdisp'] = r'$\sigma_{{star}}={:.0f}$ km/s'.format(fastspec['VDISP'])
             
         leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(fastspec['RCHI2'])
         leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(fastspec['RCHI2_CONT'])
@@ -353,24 +354,32 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
     # rebuild the best-fitting broadband photometric model
     if not stackfit:
-        sedmodel, sedphot = CTools.templates2data(
+        if templatecache['oldtemplates']:
+            sedmodel, sedphot = CTools.templates2data(
                 templatecache['templateflux'], templatecache['templatewave'],
                 redshift=redshift, dluminosity=dlum, photsys=metadata['PHOTSYS'],
-                synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm)
+                synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm, 
+                get_abmag=True)
+        else:
+            sedmodel, _, sedphot = CTools.build_stellar_continuum(                       
+                templatecache['templatewave'], templatecache['templateflux_nomvdisp'],
+                fastspec['COEFF'] * CTools.massnorm, dustflux=templatecache['dustflux'], 
+                photsys=metadata['PHOTSYS'], redshift=redshift, 
+                ebv=fastspec['AV'] / CTools.klambda(5500.), 
+                vdisp=None, synthphot=True, flamphot=False, get_abmag=True)
+
         sedwave = templatecache['templatewave'] * (1 + redshift)
-    
-        phot = CTools.parse_photometry(CTools.bands,
-                                       maggies=np.array([metadata['FLUX_{}'.format(band.upper())] for band in CTools.bands]),
-                                       ivarmaggies=np.array([metadata['FLUX_IVAR_{}'.format(band.upper())] for band in CTools.bands]),
+
+        nband = len(CTools.bands)
+        maggies = np.zeros(nband)
+        ivarmaggies = np.zeros(nband)
+        for iband, band in enumerate(CTools.bands):
+            maggies[iband] = metadata[f'FLUX_{band.upper()}']
+            ivarmaggies[iband] = metadata[f'FLUX_IVAR_{band.upper()}']
+
+        phot = CTools.parse_photometry(CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies,
                                        lambda_eff=allfilters.effective_wavelengths.value,
-                                       min_uncertainty=CTools.min_uncertainty, qa=True)
-        #if hasattr(CTools, 'fiber_bands'):
-        #    fiberphot = CTools.parse_photometry(CTools.fiber_bands,
-        #                                        maggies=np.array([metadata['FIBERTOTFLUX_{}'.format(band.upper())]
-        #                                                          for band in CTools.fiber_bands]),
-        #                                        lambda_eff=filters.effective_wavelengths.value)
-        #else:
-        #    fiberphot = None
+                                       min_uncertainty=CTools.min_uncertainty, get_abmag=True)
     
         indx_phot = np.where((sedmodel > 0) * (sedwave/1e4 > phot_wavelims[0]) * 
                              (sedwave/1e4 < phot_wavelims[1]))[0]
@@ -382,19 +391,33 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         # "per-camera" and prefix "full" has the cameras h-stacked.
         fullwave = np.hstack(data['wave'])
     
-        desicontinuum, _ = CTools.templates2data(templatecache['templateflux_nolines'], templatecache['templatewave'],
-                                                 redshift=redshift, dluminosity=dlum, synthphot=False,
-                                                 specwave=data['wave'], specres=data['res'],
-                                                 specmask=data['mask'], cameras=data['cameras'],
-                                                 vdisp=fastspec['VDISP'],
-                                                 coeff=fastspec['COEFF'])
-    
-        # remove the aperture correction
-        desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
-        fullcontinuum = np.hstack(desicontinuum)
-    
-         # Need to be careful we don't pass a large negative residual where
-         # there are gaps in the data.
+        if templatecache['oldtemplates']:
+            desicontinuum, _ = CTools.templates2data(templatecache['templateflux_nolines'], 
+                                                     templatecache['templatewave'],
+                                                     redshift=redshift, dluminosity=dlum, synthphot=False,
+                                                     specwave=data['wave'], specres=data['res'],
+                                                     specmask=data['mask'], cameras=data['cameras'],
+                                                     vdisp=fastspec['VDISP'],
+                                                     coeff=fastspec['COEFF'])
+
+            # remove the aperture correction
+            desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
+            fullcontinuum = np.hstack(desicontinuum)
+        else:
+            _, _desicontinuum, _ = CTools.build_stellar_continuum(                       
+                templatecache['templatewave'], templatecache['templateflux_nolines'],
+                fastspec['COEFF'], dustflux=templatecache['dustflux'], 
+                photsys=metadata['PHOTSYS'], specwave=np.hstack(data['wave']), 
+                specres=np.hstack(data['res']), camerapix=data['camerapix'], 
+                redshift=redshift, vdisp=fastspec['VDISP'], 
+                ebv=fastspec['AV'] / CTools.klambda(5500.), synthphot=False)
+
+            # remove the aperture correction
+            desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]
+            fullcontinuum = np.hstack(desicontinuum)
+
+        # Need to be careful we don't pass a large negative residual where
+        # there are gaps in the data.
         desiresiduals = []
         for icam in np.arange(len(data['cameras'])):
             resid = data['flux'][icam] - desicontinuum[icam]
@@ -403,13 +426,12 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 resid[I] = 0.0
             desiresiduals.append(resid)
         
-        if np.all(fastspec['COEFF'] == 0) or no_smooth_continuum:
+        if np.all(fastspec['COEFF'] == 0.) or no_smooth_continuum:
             fullsmoothcontinuum = np.zeros_like(fullwave)
         else:
-            fullsmoothcontinuum, _ = CTools.smooth_continuum(
+            fullsmoothcontinuum = CTools.smooth_continuum(
                 fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
-                redshift=redshift, linemask=np.hstack(data['linemask']),
-                camerapix=data['camerapix'])
+                np.hstack(data['linemask']), camerapix=data['camerapix'])
     
         desismoothcontinuum = []
         for campix in data['camerapix']:

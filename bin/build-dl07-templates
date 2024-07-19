@@ -60,8 +60,6 @@ def main():
         dustem[imodel, :, :] = dustem1[:, 1:].T
     #wave *= 1e4 # [mu --> Angstrom]
 
-
-
     my_umin = 1.0
     my_qpah = 3.5 # 1.5 # 1.12 # 3.5
     my_gamma = 0.01
