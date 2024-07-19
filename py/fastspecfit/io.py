@@ -207,6 +207,8 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
                         for irow in range(res.shape[0]):
                             res[irow, I] = np.interp(I, J, res[irow, J])
 
+                    # should we also interpolate over the coadded resolution matrix??
+
                     cameras.append(camera)
                     npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
 
@@ -394,12 +396,18 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
     # continuum.ContinnuumTools.smooth_continuum.
     for icam in np.arange(len(specdata['cameras'])):
         #specdata['smoothflux'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['smoothflux']))
-        specdata['linemask'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask']*1) > 0)
-        specdata['linemask_all'].append(np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linemask_all']*1) > 0)
+        specdata['linemask'].append(np.interp(specdata['wave'][icam], 
+                                              specdata['coadd_wave'], 
+                                              coadd_linemask_dict['linemask']*1) > 0)
+        specdata['linemask_all'].append(np.interp(specdata['wave'][icam], 
+                                                  specdata['coadd_wave'], 
+                                                  coadd_linemask_dict['linemask_all']*1) > 0)
         _linename, _linenpix, _contpix = [], [], []
         for ipix in np.arange(len(coadd_linemask_dict['linepix'])):
-            I = np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['linepix'][ipix]*1) > 0
-            J = np.interp(specdata['wave'][icam], specdata['coadd_wave'], coadd_linemask_dict['contpix'][ipix]*1) > 0
+            I = np.interp(specdata['wave'][icam], specdata['coadd_wave'], 
+                          coadd_linemask_dict['linepix'][ipix]*1) > 0
+            J = np.interp(specdata['wave'][icam], specdata['coadd_wave'], 
+                          coadd_linemask_dict['contpix'][ipix]*1) > 0
             if np.sum(I) > 3 and np.sum(J) > 3:
                 _linename.append(coadd_linemask_dict['linename'][ipix])
                 _linenpix.append(np.where(I)[0])

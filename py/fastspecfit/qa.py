@@ -358,14 +358,15 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             sedmodel, sedphot = CTools.templates2data(
                 templatecache['templateflux'], templatecache['templatewave'],
                 redshift=redshift, dluminosity=dlum, photsys=metadata['PHOTSYS'],
-                synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm, qa=True)
+                synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm, 
+                get_abmag=True)
         else:
-            sedmodel, _, sedphot = CTools.build_continuum_model(                       
+            sedmodel, _, sedphot = CTools.build_stellar_continuum(                       
                 templatecache['templatewave'], templatecache['templateflux_nomvdisp'],
                 fastspec['COEFF'] * CTools.massnorm, dustflux=templatecache['dustflux'], 
-                agnflux=templatecache['agnflux'], photsys=metadata['PHOTSYS'],
-                redshift=redshift, ebv=fastspec['AV'] / CTools.klambda(5500.), 
-                vdisp=None, synthphot=True, flamphot=False, qa=True)
+                photsys=metadata['PHOTSYS'], redshift=redshift, 
+                ebv=fastspec['AV'] / CTools.klambda(5500.), 
+                vdisp=None, synthphot=True, flamphot=False, get_abmag=True)
 
         sedwave = templatecache['templatewave'] * (1 + redshift)
 
@@ -378,7 +379,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
         phot = CTools.parse_photometry(CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies,
                                        lambda_eff=allfilters.effective_wavelengths.value,
-                                       min_uncertainty=CTools.min_uncertainty, qa=True)
+                                       min_uncertainty=CTools.min_uncertainty, get_abmag=True)
     
         indx_phot = np.where((sedmodel > 0) * (sedwave/1e4 > phot_wavelims[0]) * 
                              (sedwave/1e4 < phot_wavelims[1]))[0]
@@ -403,12 +404,12 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
             fullcontinuum = np.hstack(desicontinuum)
         else:
-            _, _desicontinuum, _ = CTools.build_continuum_model(                       
+            _, _desicontinuum, _ = CTools.build_stellar_continuum(                       
                 templatecache['templatewave'], templatecache['templateflux_nolines'],
                 fastspec['COEFF'], dustflux=templatecache['dustflux'], 
-                agnflux=templatecache['agnflux'], photsys=metadata['PHOTSYS'],
-                specwave=np.hstack(data['wave']), specres=np.hstack(data['res']),
-                camerapix=data['camerapix'], redshift=redshift, vdisp=fastspec['VDISP'], 
+                photsys=metadata['PHOTSYS'], specwave=np.hstack(data['wave']), 
+                specres=np.hstack(data['res']), camerapix=data['camerapix'], 
+                redshift=redshift, vdisp=fastspec['VDISP'], 
                 ebv=fastspec['AV'] / CTools.klambda(5500.), synthphot=False)
 
             # remove the aperture correction
