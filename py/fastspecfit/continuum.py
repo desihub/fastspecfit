@@ -21,24 +21,45 @@ PIXKMS_RED = 100. # [km/s]
 PIXKMS_WAVESPLIT = 1e4 # [Angstrom]
 
 
-def _convolve_vdisp(templateflux, limit, vdisp, pixsize_kms):
-    """Convolve templateflux with a velocity dispersion.  Only wavelengths up to
-    limit are convolved; the rest are left unchanged.
+def convolve_vdisp(templateflux, vdisp, pixsize_kms=PIXKMS_BLU, limit=None):
+    """Convolve an input spectrum to a desired velocity dispersion in km/s.
+
+    Parameters
+    ----------
+    templateflux : :class:`numpy.ndarray` [npix, nmodel]
+        One- or two-dimensional input model spectra.
+    vdisp : :class:`float`
+        Desired velocity dispersion.
+    pixsize_kms : :class:`float`
+        Pixel size of `templateflux` in km/s.
+    limit : :class:`int`
+        Only smooth up to the pixel position (in `templateflux`) specified by
+        this parameter.
+
+    Returns
+    -------
+    :class:`numpy.ndarray` [npix, nmodel]
+        Gaussian-smoothed model spectra.
 
     """
     from scipy.ndimage import gaussian_filter1d
     
     # Convolve by the velocity dispersion.
-    if vdisp <= 0.0:
+    if vdisp <= 0.:
         output = templateflux.copy()
     else:
         output = np.empty_like(templateflux)
         sigma = vdisp / pixsize_kms # [pixels]
 
+        if limit is None:
+            limit = templateflux.shape[0]
+
         if templateflux.ndim == 1:
             gaussian_filter1d(templateflux[:limit], sigma=sigma, output=output[:limit])
             output[limit:] = templateflux[limit:]
         else:
+            if limit is None:
+                limit = templateflux.shape[0]
             gaussian_filter1d(templateflux[:limit, :], sigma=sigma, axis=0,
                               output=output[:limit:, :])
             output[limit:, :] = templateflux[limit:, :]
@@ -1005,8 +1026,8 @@ class ContinuumTools(Tools):
         ivar : :class:`numpy.ndarray` [npix]
             Inverse variance spectrum corresponding to `flux`.
         resolution_matrix : :class:`list`
-            List of :class:`fastspecfit.emline_fit.sparse_rep.ResMatrix` objects
-            (one per camera).
+            List of :class:`fastspecfit.emline_fit.sparse_rep.ResMatrix`
+            objects, one per camera.
         redshift : :class:`float`
             Object redshift.
         uniqueid : :class:`int`
@@ -1456,7 +1477,7 @@ class ContinuumTools(Tools):
 
         # Build the final pixel mask for *all* lines using our current best
         # knowledge of the broad Balmer lines....(comment continued below)
-        EMFit = EMFitTools(emlinesfile=emlinesfile, uniqueid=uniqueid, stronglines=False)
+        EMFit = EMFitTools(emlinesfile=self.emlinesfile, uniqueid=uniqueid, stronglines=False)
         EMFit.compute_inrange_lines(redshift, wavelims=(np.min(wave), np.max(wave)))
 
         linesigmas = np.zeros(len(EMFit.line_table))
@@ -1584,9 +1605,9 @@ class ContinuumTools(Tools):
 
 
     @staticmethod
-    def smooth_and_resample(templateflux, templatewave, specwave, specres):
-        """Given a single template, apply the resolution matrix and resample in
-        wavelength.
+    def resample_and_smooth(templateflux, templatewave, specwave, specres):
+        """Match an input template spectrum to the DESI wavelength sampling and
+        instrumental resolution.
 
         Parameters
         ----------
@@ -1595,19 +1616,20 @@ class ContinuumTools(Tools):
         templatewave : :class:`numpy.ndarray` [npix]
             Wavelength array corresponding to `templateflux`.
         specwave : :class:`numpy.ndarray` [noutpix]
-            Desired output wavelength array, usually that of the object being fitted.
+            Desired output wavelength array.
         specres : :class:`desispec.resolution.Resolution`
             Resolution matrix.
 
         Returns
         -------
         :class:`numpy.ndarray` [noutpix]
-            Smoothed and resampled flux at the new resolution and wavelength sampling.
+            Resampled and smoothed model spectrum.
 
         """
         from fastspecfit.util import trapz_rebin
 
-        # find lo, hi s.t. templatewave[lo:hi] is strictly within given bounds
+        # Find lo, hi s.t. templatewave[lo:hi] is strictly within given
+        # bounds. Should these pixel positions be cached??
         lo = np.searchsorted(templatewave, specwave[0]-2., 'right')
         hi = np.searchsorted(templatewave, specwave[-1]+2., 'left')
         resampflux = trapz_rebin(templatewave[lo:hi], templateflux[lo:hi], specwave)
@@ -1617,20 +1639,16 @@ class ContinuumTools(Tools):
 
     
     @staticmethod
-    def convolve_vdisp(templateflux, limit, vdisp, pixsize_kms):
-        return _convolve_vdisp(templateflux, limit, vdisp, pixsize_kms)
+    def convolve_vdisp(templateflux, vdisp, pixsize_kms=PIXKMS_BLU, limit=None):
+        return convolve_vdisp(templateflux, vdisp, pixsize_kms=pixsize_kms, limit=limit)
 
 
     def templates2data(self, templateflux, templatewave, redshift=0.0, dluminosity=None,
                        vdisp=None, cameras=['b', 'r', 'z'], specwave=None, specres=None, 
                        specmask=None, coeff=None, photsys=None, synthphot=True, 
                        stack_cameras=False, flamphot=False, debug=False, get_abmag=False):
-        """Work-horse routine to turn input templates into spectra that can be compared
-        to real data.
-
-        Deprecated!
-
-        Redshift, apply the resolution matrix, and resample in wavelength.
+        """Deprecated. Work-horse method for turning input templates into data-like
+        spectra and photometry.
 
         Parameters
         ----------
@@ -1646,7 +1664,7 @@ class ContinuumTools(Tools):
 
         Notes
         -----
-        This method does none or more of the following:
+        This method does (n)one or more of the following:
         - redshifting
         - wavelength resampling
         - apply velocity dispersion broadening
@@ -1678,9 +1696,8 @@ class ContinuumTools(Tools):
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
             hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
-
-            vd_templateflux = self.convolve_vdisp(templateflux, hi,
-                                                  vdisp, PIXKMS_BLU)
+            vd_templateflux = self.convolve_vdisp(templateflux, vdisp, 
+                                                  pixsize_kms=PIXKMS_BLU, limit=hi)
         else:
             vd_templateflux = templateflux
             
@@ -1760,7 +1777,7 @@ class ContinuumTools(Tools):
                 _datatemplateflux = np.empty((len(specwave[icamera]), nmodel),
                                              dtype=ztemplateflux.dtype)
                 for imodel in range(nmodel):
-                    resampflux = self.smooth_and_resample(ztemplateflux[:, imodel],
+                    resampflux = self.resample_and_smooth(ztemplateflux[:, imodel],
                                                           ztemplatewave, 
                                                           specwave=specwave[icamera],
                                                           specres=specres[icamera])
@@ -1793,12 +1810,10 @@ class ContinuumTools(Tools):
     def call_nnls(modelflux, flux, ivar, xparam=None, debug=False,
                   interpolate_coeff=False, xlabel=None, png=None, 
                   log=None):
-        """Wrapper on nnls.
+        """Deprecated. Wrapper on `scipy.optimize.nnls`.
     
         Works with both spectroscopic and photometric input and with both 2D and
         3D model spectra.
-    
-        To be documented.
     
         interpolate_coeff - return the interpolated coefficients when exploring
           an array or grid of xparam
@@ -1912,36 +1927,63 @@ class ContinuumTools(Tools):
 
     
     def klambda(self, wave):
-        """Return the total-to-selective attenuation curve, k(lambda).
+        """Construct the total-to-selective attenuation curve, k(lambda).
 
+        Parameters
+        ----------
+        wave : :class:`numpy.ndarray` [npix]
+            Input rest-frame wavelength array in Angstrom.
+
+        Returns
+        -------
+        :class:`numpy.ndarray` [npix]
+            Total-to-selective attenuation curve, k(lambda).
+
+        Notes
+        -----
         ToDo: support more sophisticated dust models.
 
         """
-        klambda = (wave / self.dust_normwave)**self.dust_power
-        return klambda
+        return (wave / self.dust_normwave)**self.dust_power
 
 
-    def _cache_klambda(self, templatewave):
-        """Cache k(lambda).
+    def _cache_klambda(self, *args):
+        """Convenience method to cache the dust attenuation curve.
 
         """
         if self.dust_klambda is None:
-            self.dust_klambda = self.klambda(templatewave)
+            self.dust_klambda = self.klambda(*args)
 
 
-    def _cache_zfactors(self, ztemplatewave, redshift, dluminosity):
-        """Cache the factors that depend on redshift and the redshifted wavelength
-        array, including the attenuation due to the IGM.
+    def _cache_zfactors(self, ztemplatewave, redshift, dluminosity=None):
+        """Convenience method to cache the factors that depend on redshift and the
+        redshifted wavelength array, including the attenuation due to the IGM.
+
+        ztemplatewave : :class:`numpy.ndarray` [npix]
+            Redshifted wavelength array.
+        redshift : :class:`float`
+            Object redshift.
+        dluminosity : :class:`float`
+            Luminosity distance corresponding to `redshift`.
 
         """
         if self.zfactors is None:
+            if dluminosity is None:
+                dluminosity = self.luminosity_distance(redshift)
+
             T = self.igm.full_IGM(redshift, ztemplatewave)
             T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
+
             self.zfactors = T
 
 
     def _cache_pixpos_wavesplit(self, templatewave):
-        """Cache the pixel position in wave corresponding to PIXKMS_WAVESPLIT.
+        """Cache the pixel position in wave corresponding to `PIXKMS_WAVESPLIT`.
+
+        Parameters
+        ----------
+        templatewave : :class:`numpy.ndarray`
+            Input rest-frame wavelength array in Angstrom.
 
         """
         if self.pixpos_wavesplit is None:
@@ -1953,22 +1995,89 @@ class ContinuumTools(Tools):
                                 camerapix=None, photsys=None, redshift=0., 
                                 ebv=0., vdisp=None, synthphot=True, flamphot=False, 
                                 get_abmag=False, filters=None):
-        """Build the stellar continuum model, given free parameters.
-    
-        """
-        from scipy.ndimage import gaussian_filter1d
-        from scipy.integrate import simpson
-        from fastspecfit.io import FLUXNORM
+        """Build a stellar continuum model.
 
-        npix, ntemplate = templateflux.shape
+        Parameters
+        ----------
+        templatewave : :class:`numpy.ndarray` [npix]
+            Rest-frame template (model) wavelength array in Angstrom.
+        templateflux : :class:`numpy.ndarray` [npix, ntemplate]
+            Rest-frame, native-resolution template spectra corresponding to
+            `templatewave`.
+        templatecoeff : :class:`numpy.ndarray` [ntemplate]
+            Column vector of positive coefficients corresponding to each
+            template.
+        dustflux : :class:`numpy.ndarray` [npix]
+            Infrared dust emission spectrum. If provided, energy-balance is used
+            to compute the normalization of this spectrum.
+        specwave : :class:`numpy.ndarray` [nwave]
+            Output (DESI) observed-frame wavelength array in Angstrom.
+        specres : :class:`list` [ncamera]
+            List of :class:`desispec.resolution.Resolution` objects, one per
+            camera.
+        camerapix : :class:`list` [ncamera]
+            List of starting and ending :class:`int` pixel indices indicating
+            the range of each camera.
+        photsys : :class:`str`
+            Photometric system.
+        redshift : :class:`float`
+            Object redshift.
+        ebv : :class:`float`
+            Dust extinction parameter, E(B-V), in mag.
+        vdisp : :class:`float`
+            Velocity dispersion in km/s. If `None`, do not convolve to the
+            specified velocity dispersion (usually because `templateflux` has
+            already been smoothed to some nominal value).
+        synthphot : :class:`bool`
+            Synthesize photometry from the observed-frame spectrum.
+        flamphot : :class:`bool`
+            Return synthesized photometry in f_lambda (10^17 erg/s/cm2/A) units,
+            which are used in fitting. Otherwise, return an
+            :class:`astropy.table.Table` with additional bandpass information.
+        get_abmag : :class:`bool`
+            Add AB magnitudes to the synthesized photometry table (only
+            triggered if `synthphot=True` and `flamphot=False`. Usually only
+            used for QA.
+        filters : :class:`list` or :class:`speclite.filters.FilterSequence` [nfilt]
+            Optionally override the filter curves stored in the `filters`
+            attribute of this class.
+
+        Returns
+        -------
+        fullmodel : :class:`numpy.ndarray` [npix]
+            Full-wavelength, native-resolution, observed-frame model spectrum.
+        modelflux : :class:`numpy.ndarray` [nwave]
+            Observed-frame model spectrum at the instrumental resolution and
+            wavelength sampling given by `specwave` and `specres`.
+        modelphot : :class:`numpy.ndarray` or :class:`astropy.table.Table` [nfilt]
+            Synthesized model photometry as an array or a table, depending on
+            `flamphot`.
+
+        Notes
+        -----
+        This method will compute 1-3 quantities depending on the input
+        provided. 
+
+        * It will always return `fullmodel`.
+        * If `synthphot=True` it will synthesize observed-frame photometry from
+          `fullmodel` and return `modelphot`.
+        * If `specwave`, `specres`, and `camerapix` are all provided, it will
+          generate a DESI-like spectrum and return `modelflux`.
+
+        ToDo: `scipy.integrate.simpson` may not be the fastest integration
+        method, so its use here is a placeholder.
+
+        """
+        from scipy.integrate import simpson
 
         # [1] - Compute the non-negative sum of the templates.
         fullmodel = templateflux.dot(templatecoeff)
 
         # [2] - Optionally convolve to the desired velocity dispersion.
         if vdisp is not None:
-            fullmodel = self.convolve_vdisp(fullmodel, self.pixpos_wavesplit,
-                                            vdisp, PIXKMS_BLU)
+            fullmodel = self.convolve_vdisp(fullmodel, vdisp, 
+                                            pixsize_kms=PIXKMS_BLU, 
+                                            limit=self.pixpos_wavesplit)
 
         # [3] - Apply dust attenuation; ToDo: allow age-dependent
         # attenuation. Also compute the bolometric luminosity before and after
@@ -1987,8 +2096,8 @@ class ContinuumTools(Tools):
 
         # [4] - Optionally add the dust emission spectrum, conserving the total
         # (absorbed + re-emitted) energy. NB: (1) dustflux must be normalized to
-        # unity already (see io.cache_templates); and (2) we are ignoring the
-        # dust self-absorption, which should be mostly negligible.
+        # unity already (see io.cache_templates); and (2) we are ignoring dust
+        # self-absorption, which should be mostly negligible.
         if dustflux is not None:
             fullmodel += dustflux * (lbol0 - lbolabs)
 
@@ -1998,7 +2107,6 @@ class ContinuumTools(Tools):
             dluminosity = self.luminosity_distance(redshift)
             self._cache_zfactors(ztemplatewave, redshift=redshift, 
                                  dluminosity=dluminosity)
-
         fullmodel *= self.zfactors
 
         # [6] - Optionally synthesize photometry
@@ -2010,7 +2118,6 @@ class ContinuumTools(Tools):
                     filters = self.filters[photsys]
 
             effwave = filters.effective_wavelengths.value
-
             modelmaggies = self.get_ab_maggies(filters, fullmodel,
                                                ztemplatewave, log=self.log)
             if flamphot:                
@@ -2025,10 +2132,10 @@ class ContinuumTools(Tools):
 
         # [7] - Optionally handle the multi-camera spectroscopy. For each
         # camera, resample and multiply by the instrumental resolution.
-        if (specwave is not None and specres is not None and camerapix is not None):
+        if specwave is not None and specres is not None and camerapix is not None:
             modelflux = np.empty(len(specwave))
             for icam, pix in enumerate(camerapix):
-                modelflux[pix[0]:pix[1]] = self.smooth_and_resample(
+                modelflux[pix[0]:pix[1]] = self.resample_and_smooth(
                     fullmodel, ztemplatewave, specwave[pix[0]:pix[1]], 
                     specres[icam])
             modelflux = np.hstack(modelflux)

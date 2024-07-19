@@ -2140,7 +2140,7 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
 
     """
     import fitsio
-    from fastspecfit.continuum import _convolve_vdisp, PIXKMS_WAVESPLIT, PIXKMS_BLU
+    from fastspecfit.continuum import convolve_vdisp, PIXKMS_WAVESPLIT, PIXKMS_BLU
     
     if log is None:
         from desiutil.log import get_logger
@@ -2182,13 +2182,13 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
 
     hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
 
-    templateflux_nolines_nomvdisp = \
-        _convolve_vdisp(templateflux_nolines, hi,
-                        vdisp_nominal, pixsize_kms=PIXKMS_BLU)
+    templateflux_nolines_nomvdisp = convolve_vdisp(
+        templateflux_nolines, vdisp_nominal, limit=hi,
+        pixsize_kms=PIXKMS_BLU)
     
-    templateflux_nomvdisp = \
-        _convolve_vdisp(templateflux, hi,
-                        vdisp_nominal, pixsize_kms=PIXKMS_BLU)
+    templateflux_nomvdisp = convolve_vdisp(
+        templateflux, vdisp_nominal, limit=hi,
+        pixsize_kms=PIXKMS_BLU)
     
     # pack into a dictionary
     templatecache = {'imf': templatehdr['IMF'],
