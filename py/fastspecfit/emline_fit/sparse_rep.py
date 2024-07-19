@@ -246,7 +246,7 @@ class EMLineJacobian(LinearOperator):
             v[i] = 1.
             
             w = self._matvec(v)
-            norms[i] = np.sqrt(np.sum(w * w))
+            norms[i] = np.norm(w)
             
             v[i] = 0.
             

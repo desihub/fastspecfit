@@ -669,33 +669,25 @@ class EMFitTools(Tools):
                         print("JAC ", p, d)
             """
 
-            try:
-                fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
-                                         max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
-                                         tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': True},
-                                         method='trf', bounds=bounds,) # verbose=2)
-                free_params = fit_info.x
+            fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
+                                     max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
+                                     tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': True},
+                                     method='trf', bounds=bounds,) # verbose=2)
+            free_params = fit_info.x
 
-                if not fit_info.success:
-                    errmsg = 'least_squares optimizer failed!'
-                    log.critical(errmsg)
-                    raise RuntimeError(errmsg)
-                elif fit_info.status == 0:
-                    log.warning('optimizer failed to converge')
-
-                # This should never happen if our optimizer enforces its bounds
-                if np.any((free_params < bounds[0]) | (free_params > bounds[1])):
-                    errmsg = "ERROR: final parameters are not within requested bounds"
-                    log.critical(errmsg)
-                    raise RunTimeError(errmsg)
-                
-            except:
-                if self.uniqueid:
-                    errmsg = f'Problem in scipy.optimize.least_squares for {self.uniqueid}.'
-                else:
-                    errmsg = 'Problem in scipy.optimize.least_squares.'
+            if not fit_info.success:
+                errmsg = 'least_squares optimizer failed' + \
+                    (f' for {self.uniqueid}' if self.uniqueid is not None else '')
                 log.critical(errmsg)
                 raise RuntimeError(errmsg)
+            elif fit_info.status == 0:
+                log.warning('optimizer failed to converge')
+
+            # This should never happen if our optimizer enforces its bounds
+            if np.any((free_params < bounds[0]) | (free_params > bounds[1])):
+                errmsg = "ERROR: final parameters are not within requested bounds"
+                log.critical(errmsg)
+                raise RunTimeError(errmsg)
             
             if continuum_patches is not None:
                 continuum_patches['slope']     = free_params[nLineFree:nLineFree+nPatches]
@@ -760,48 +752,40 @@ class EMFitTools(Tools):
                 camerapix, continuum_patches=None):
         """Construct the best-fitting emission-line spectrum from a linemodel."""
 
+        line_parameters = linemodel['value'].copy()
+        
+        # convert doublet ratios to amplitudes
+        line_parameters[self.doublet_idx] *= line_parameters[self.doublet_src]
+        
         linewaves = self.line_table['restwave'].value
         
-        parameters = linemodel['value'].copy()
-
-        # convert doublet ratios to amplitudes
-        parameters[self.doublet_idx] *= parameters[self.doublet_src]
-        
-        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line
-        
-        emlinemodel = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas,
-                                         linewaves, emlinewave, resolution_matrix, camerapix,
+        emlinemodel = EMLine_build_model(redshift, line_parameters, linewaves,
+                                         emlinewave, resolution_matrix, camerapix,
                                          continuum_patches=continuum_patches)
         
         return emlinemodel
     
 
-    def emlinemodel_bestfit(self, fastspecfit_table, specwave, specres, camerapix,
-                            redshift=None, snrcut=None):
-        """Wrapper function to get the best-fitting emission-line model
-        from an fastspecfit table (used for QA and elsewhere).
-
-        """
-        
-        linewaves = self.line_table['restwave'].value
-        
-        parameters = np.array([ fastspecfit_table[param] for param in self.param_table['modelname'] ])
+    def emlinemodel_bestfit(self, result, redshift, emlinewave, resolution_matrix,
+                            camerapix, snrcut=None):
+        """Construct the best-fitting emission-line model
+        from a fitted result structure (used below and in QA)"""
+                
+        line_parameters = np.array([ result[param] for param in self.param_table['modelname'] ])
         
         # convert doublet ratios to amplitudes
-        parameters[self.doublet_idx] *= parameters[self.doublet_src]
-        
-        lineamps, linevshifts, linesigmas = np.array_split(parameters, 3) # 3 parameters per line    
-        
+        line_parameters[self.doublet_idx] *= line_parameters[self.doublet_src]
+                
         if snrcut is not None:
+            lineamps = line_parameters[:len(self.line_table)] # amplitude parameters
             line_names = self.line_table['name'].value
-            lineamps_ivar = [fastspecfit_table[line_name.upper()+'_AMP_IVAR'] for line_name in line_names]
+            lineamps_ivar = [result[line_name.upper()+'_AMP_IVAR'] for line_name in line_names]
             lineamps[lineamps * np.sqrt(lineamps_ivar) < snrcut] = 0.
 
-        if redshift is None:
-            redshift = fastspecfit_table['Z']
-
-        model_fluxes = EMLine_build_model(redshift, lineamps, linevshifts, linesigmas, linewaves,
-                                          np.hstack(specwave), specres, camerapix)
+        linewaves = self.line_table['restwave'].value
+        
+        model_fluxes = EMLine_build_model(redshift, line_parameters, linewaves,
+                                          emlinewave, resolution_matrix, camerapix)
         
         return model_fluxes
 
@@ -1186,8 +1170,8 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     
     EMFit = EMFitTools(emlinesfile=emlinesfile, fphoto=fphoto, uniqueid=data['uniqueid'])
     
-    redshift    = data['zredrock']
-    camerapix    = data['camerapix']
+    redshift          = data['zredrock']
+    camerapix         = data['camerapix']
     resolution_matrix = data['res_fast']
 
     # Combine pixels across all cameras
@@ -1373,7 +1357,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         finalfit, finalmodel, finalchi2 = fit_nobroad, model_nobroad, chi2_nobroad
         delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
     
-    # Residual spectrum with no emission lines.
+    # Residual spectrum with no emission lines
     specflux_nolines = specflux - finalmodel
 
     # Now fill the output table.
@@ -1381,12 +1365,12 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                            emlineivar, oemlineivar, specflux_nolines, redshift,
                            resolution_matrix, camerapix, log)
     
-    # Build the model spectrum
+    # Build the model spectrum from the final reported parameter values
     emmodel = EMFit.emlinemodel_bestfit(result,
-                                        data['wave'],
-                                        data['res_fast'],
-                                        camerapix,
-                                        redshift=redshift)
+                                        redshift,
+                                        emlinewave,
+                                        resolution_matrix,
+                                        camerapix)
     
     result['RCHI2_LINE'] = finalchi2
     #result['NDOF_LINE'] = finalndof

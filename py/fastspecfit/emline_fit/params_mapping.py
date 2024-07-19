@@ -43,13 +43,14 @@ class ParamsMapping(object):
     # list of full parameters, accounting for fixed, tied, and
     # doublet features.
     #
-    def mapFreeToFull(self, freeParms, patchDoublets=True):
+    def mapFreeToFull(self, freeParms, out=None, patchDoublets=True):
 
         return self._mapFreeToFull(freeParms,
                                    self.nParms,
                                    self.sources,
                                    self.factors,
                                    self.doubletPatches,
+                                   out,
                                    patchDoublets)
     
     #
@@ -61,12 +62,13 @@ class ParamsMapping(object):
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True)
     def _mapFreeToFull(freeParms, nParms, sources, factors,
-                       doubletPatches, patchDoublets):
+                       doubletPatches, fullParms, patchDoublets):
 
         for j, src_j_free in doubletPatches:
             factors[j] = freeParms[src_j_free] if patchDoublets else 1.
-        
-        fullParms = np.empty(nParms, dtype=freeParms.dtype)
+
+        if fullParms == None:
+            fullParms = np.empty(nParms, dtype=freeParms.dtype)
         
         for j, src_j_free in enumerate(sources):
             fullParms[j] = factors[j] # copy fixed zeros
