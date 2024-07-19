@@ -214,20 +214,36 @@ def _smooth_continuum(wave, flux, ivar, linemask, camerapix=None, medbin=175,
     # Optional QA.
     if png:
         import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(2, 1, figsize=(8, 10), sharex=True)
-        ax[0].plot(wave, flux)
-        ax[0].scatter(wave[linemask], flux[linemask], s=10, marker='s', 
-                      color='k', zorder=2, alpha=0.5)
-        ax[0].plot(wave, smooth, color='red')
-        ax[0].plot(_smooth_wave, _smooth_flux, color='orange')
-        ax[0].plot(wave, median_filter(flux, medbin, mode='nearest'), color='k', lw=2)
+        import seaborn as sns
+
+        resid = flux - smooth        
+        noise = np.ptp(quantile(resid[~linemask], (0.25, 0.75))) / 1.349 # robust sigma
+
+        sns.set(context='talk', style='ticks', font_scale=0.8)
+
+        fig, ax = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
+        ax[0].plot(wave / 1e4, flux, alpha=0.75, label='Data')
+        ax[0].scatter(wave[linemask] / 1e4, flux[linemask], s=10, marker='s', 
+                      color='k', zorder=2, alpha=0.5, label='Line-masked pixel')
+        ax[0].plot(wave / 1e4, smooth, color='red', label='Smooth continuum')
+        #ax[0].plot(_smooth_wave / 1e4, _smooth_flux, color='orange')
+        #ax[0].plot(wave, median_filter(flux, medbin, mode='nearest'), color='k', lw=2)
+        ax[0].set_ylim(np.min((-5. * noise, quantile(flux, 0.05))), 
+                       np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
+        ax[0].set_ylabel('Continuum-subtracted Spectrum')
         #ax[0].scatter(_smooth_wave, _smooth_flux, color='orange', marker='s', ls='-', s=20)
-        ax[1].plot(wave, flux - smooth)
+        ax[0].legend(fontsize=12)
+
+        ax[1].plot(wave / 1e4, resid, alpha=0.75)#, label='Residuals')
         ax[1].axhline(y=0, color='k')
-        for xx in ax:
-            xx.set_ylim(-3, 3)
+        ax[1].set_ylim(np.min((-5. * noise, quantile(resid, 0.05))), 
+                       np.max((5. * noise, 1.5 * quantile(resid, 0.975))))
+        ax[1].set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
+        ax[1].set_ylabel('Residual Spectrum')
+        #ax[1].legend(fontsize=10)
+
         fig.tight_layout()
-        fig.savefig(png, bbox_inches='tight')
+        fig.savefig(png)#, bbox_inches='tight')
         plt.close()
 
     return smooth
@@ -2149,8 +2165,8 @@ class ContinuumTools(Tools):
                            objflam, objflamivar, specwave, specflux, specivar, 
                            specres, camerapix, photsys, redshift, fit_vdisp, 
                            synthphot):
-        """Objective function for fitting the stellar continuum.
-    
+        """Objective function for fitting a stellar continuum.
+        
         """
         if fit_vdisp:
             ebv, vdisp  = params[:2]
@@ -2159,8 +2175,6 @@ class ContinuumTools(Tools):
             ebv = params[:1]
             templatecoeff = params[1:]
             vdisp = None
-
-        #print('##### ', ebv, vdisp, templatecoeff)
 
         fullmodel, modelflux, modelflam = self.build_stellar_continuum(
             templatewave, templateflux, templatecoeff, 
@@ -2193,7 +2207,7 @@ class ContinuumTools(Tools):
                               ebv_guess=0.05, vdisp_guess=125., 
                               coeff_guess=None, ebv_bounds=(0., 3.), 
                               vdisp_bounds=(75., 500.), fit_vdisp=True):
-        """Fit the stellar continuum using bounded non-linear least-squares.
+        """Fit a stellar continuum using bounded non-linear least-squares.
 
         Parameters
         ----------
@@ -2222,28 +2236,32 @@ class ContinuumTools(Tools):
             each camera. E.g., [[0, 1100], [1050, 2200]] would indicate two
             camera with 50 pixels of overlap between them.
         photsys : :class:`str`
-           Photometric system. Defaults to `None`.
+            Photometric system.
         redshift : :class:`float`
-           Input object redshift.
+            Input object redshift.
         ebv_guess : :class:`float`
-           Guess scalar value of the dust attenuation. Defaults to 0.05 mag.
+            Guess scalar value of the dust attenuation.
         vdisp_guess : :class:`float`
-           Guess scalar value of the velocity dispersion. Defaults to 125 km/s.
+            Guess scalar value of the velocity dispersion.
         coeff_guess : :class:`numpy.ndarray` [nfilt]
-           Guess of the template coefficients. Defaults to `None`.
+            Guess of the template coefficients.
         ebv_bounds : :class:`tuple`
-           Two-element array of minimum and maximum allowable values of the
-           reddening, E(B-V). Defaults to (0., 3.) mag.
+            Two-element array of minimum and maximum allowable values of the
+            reddening, E(B-V).
         vdisp_bounds : :class:`tuple`
-           Two-element array of minimum and maximum allowable values of the
-           velocity dispersion. Defaults to (50., 500.) km/s and only used if
-           `fit_vdisp=True`.
+            Two-element array of minimum and maximum allowable values of the
+            velocity dispersion; only used if `fit_vdisp=True`.
         fit_vdisp : :class:`bool`
-            Optionally solve for the velocity dispersion. Defaults to `False`.
+            Optionally solve for the velocity dispersion.
 
         Returns
         -------
-
+        ebv : :class:`float`
+            Maximum-likelihood dust extinction parameter in mag.
+        vdisp : :class:`float`
+            Maximum-likelihood velocity dispersion in km/s.
+        templatecoeff : :class:`numpy.ndarray` [ntemplate]
+            Column vector of maximum-likelihood template coefficients.
 
         Notes
         -----
@@ -2303,6 +2321,8 @@ class ContinuumTools(Tools):
             synthphot = False
         farg += [synthphot, ]
 
+        # NB: `x_scale` has been set to `jac` here to help with the numerical
+        # convergence. There may be faster ways, of course...
         fit_info = least_squares(self._stellar_objective, initial_guesses, args=farg, 
                                  bounds=tuple(zip(*bounds)), method='trf',
                                  tr_solver='lsmr', tr_options={'regularize': True}, 
