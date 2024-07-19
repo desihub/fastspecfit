@@ -200,8 +200,8 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
             return
 
         data = Spec.read_and_unpack(fastphot=fastphot, ignore_photometry=args.ignore_photometry,
-                                    constrain_age=args.constrain_age,
-                                    mp=args.mp, verbose=args.verbose)
+                                    constrain_age=args.constrain_age, mp=args.mp, 
+                                    verbose=args.verbose, debug_plots=args.debug_plots)
         
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
         Spec.ntargets, time.time()-t0))

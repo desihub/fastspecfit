@@ -431,8 +431,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         else:
             fullsmoothcontinuum = CTools.smooth_continuum(
                 fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
-                redshift=redshift, linemask=np.hstack(data['linemask']),
-                camerapix=data['camerapix'])
+                np.hstack(data['linemask']), camerapix=data['camerapix'])
     
         desismoothcontinuum = []
         for campix in data['camerapix']:

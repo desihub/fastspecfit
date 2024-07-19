@@ -95,7 +95,7 @@ def _unpack_one_spectrum(args):
 
 
 def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
-                        synthphot, ignore_photometry, verbose, log):
+                        synthphot, ignore_photometry, debug_plots, log):
     """Unpack the data for a single object and correct for Galactic extinction. Also
     flag pixels which may be affected by emission lines.
 
@@ -250,7 +250,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
             specdata['coadd_wave'], specdata['coadd_flux'],
             specdata['coadd_ivar'], specdata['coadd_res_fast'], 
             uniqueid=specdata['uniqueid'], redshift=specdata['zredrock'],
-            verbose=verbose)
+            debug_plots=debug_plots)
 
         # Map the pixels belonging to individual emission lines onto the
         # original per-camera spectra. This works, but maybe there's a better
@@ -444,6 +444,8 @@ class DESISpectra(TabulatedDESI):
         fiberassign_dir : str
             Full path to the location of the fiberassign files. Optional and
             defaults to `$DESI_ROOT/target/fiberassign/tiles/trunk`.
+        mapdir : :class:`str`, optional
+            Full path to the Milky Way dust maps.
 
         """
         import yaml
@@ -1001,7 +1003,7 @@ class DESISpectra(TabulatedDESI):
 
 
     def read_and_unpack(self, fastphot=False, synthphot=True, ignore_photometry=False,
-                        constrain_age=False, verbose=False, mp=1):
+                        constrain_age=False, debug_plots=False, verbose=False, mp=1):
         """Read and unpack selected spectra or broadband photometry.
         
         Parameters
@@ -1133,7 +1135,7 @@ class DESISpectra(TabulatedDESI):
                         'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
                     unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto,
-                                       True, False, ignore_photometry, verbose, log))
+                                       True, False, ignore_photometry, debug_plots, log))
             else:
                 # Don't use .select since meta and spec can be sorted
                 # differently if a non-sorted targetids was passed. Do the
@@ -1172,7 +1174,7 @@ class DESISpectra(TabulatedDESI):
                         'coadd_res_fast': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
                         }
                     unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, fastphot,
-                                       synthphot, ignore_photometry, verbose, log))
+                                       synthphot, ignore_photometry, debug_plots, log))
                     
             if mp > 1:
                 import multiprocessing
@@ -2120,6 +2122,21 @@ def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf
                     mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.,
                     read_linefluxes=False, fastphot=False, log=None):
     """"Read the templates into a dictionary.
+    
+    Parameters
+    ----------
+    templates : :class:`str`
+        Full path to the templates to read. Defaults to the output of
+        :class:`get_templates_filename`.
+    templateversion : :class:`str`
+        Version of the templates. Defaults to :class:`DEFAULT_TEMPLATEVERSION`.
+    mapdir : :class:`str`, optional
+        Full path to the Milky Way dust maps.
+    mintemplatewave : :class:`float`, optional, defaults to None
+        Minimum template wavelength to read into memory. If ``None``, the minimum
+        available wavelength is used (around 100 Angstrom).
+    maxtemplatewave : :class:`float`, optional, defaults to 6e4
+        Maximum template wavelength to read into memory.
 
     """
     import fitsio
