@@ -67,8 +67,8 @@ def convolve_vdisp(templateflux, vdisp, pixsize_kms=PIXKMS_BLU, limit=None):
     return output
 
 
-def _smooth_continuum(wave, flux, ivar, linemask, camerapix=None, medbin=175, 
-                      smooth_window=75, smooth_step=125, png=None, log=None):
+def _smooth_continuum(wave, flux, ivar, linemask, camerapix=None, 
+                      png=None, log=None):
     """Build a smooth, nonparametric continuum spectrum.
 
     Parameters
@@ -79,23 +79,13 @@ def _smooth_continuum(wave, flux, ivar, linemask, camerapix=None, medbin=175,
         Spectrum corresponding to `wave`.
     ivar : :class:`numpy.ndarray` [npix]
         Inverse variance spectrum corresponding to `flux`.
-    linemask : :class:`numpy.ndarray` of type :class:`bool`, optional, defaults to `None`
+    linemask : :class:`numpy.ndarray` of type :class:`bool`
         Boolean mask with the same number of pixels as `wave` where `True`
-        means a pixel is (possibly) affected by an emission line
-        (specifically a strong line which likely cannot be median-smoothed).
-    medbin : :class:`int`, optional, defaults to 150 pixels
-        Width of the median-smoothing kernel in pixels; a magic number.
-    smooth_window : :class:`int`, optional, defaults to 50 pixels
-        Width of the sliding window used to compute the iteratively clipped
-        statistics (mean, median, sigma); a magic number. Note: the nominal
-        extraction width (0.8 A) and observed-frame wavelength range
-        (3600-9800 A) corresponds to pixels that are 66-24 km/s. So
-        `smooth_window` of 50 corresponds to 3300-1200 km/s, which is
-        conservative for all but the broadest lines. A magic number. 
-    smooth_step : :class:`int`, optional, defaults to 10 pixels
-        Width of the step size when computing smoothed statistics; a magic
-        number.
-    png : :class:`str`, optional, defaults to `None`
+        means a pixel is affected by an emission line.
+    camerapix : :class:`list` [ncamera]
+        List of starting and ending :class:`int` pixel indices indicating
+         the range of each camera.
+    png : :class:`str`
         Generate a simple QA plot and write it out to this filename.
 
     Returns
@@ -105,111 +95,33 @@ def _smooth_continuum(wave, flux, ivar, linemask, camerapix=None, medbin=175,
         order to create a pure emission-line spectrum.
 
     """
-    from numpy.lib.stride_tricks import sliding_window_view
-    from scipy.ndimage import median_filter
-    from fastspecfit.util import sigmaclip
-    from scipy.interpolate import make_interp_spline
+    from scipy.interpolate import splev, splrep
         
     if log is None:
         from desiutil.log import get_logger
         log = get_logger()
 
-    npix = len(wave)
-
-    if len(linemask) != npix:
+    if len(linemask) != len(wave):
         errmsg = 'Linemask must have the same number of pixels as the input spectrum.'
         log.critical(errmsg)
         raise ValueError(errmsg)
 
-    # If camerapix is given, mask the 10 (presumably noisy) pixels from the edge
-    # of each per-camera spectrum.
-    if camerapix is not None:
-        for campix in camerapix:
-            ivar[campix[0]:campix[0]+10] = 0.
-            ivar[campix[1]-10:campix[1]] = 0.
+    srt = np.argsort(wave)
+    spl = splrep(wave[srt], flux[srt], w=np.sqrt(ivar[srt]), k=3)
+    smooth = splev(wave, spl)
 
-    # Build the smooth (line-free) continuum by computing statistics in a
-    # sliding window, accounting for masked pixels and trying to be smart
-    # about broad lines. See:
-    #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
-    #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
-    wave_win = sliding_window_view(wave, window_shape=smooth_window)
-    flux_win = sliding_window_view(flux, window_shape=smooth_window)
-    ivar_win = sliding_window_view(ivar, window_shape=smooth_window)
-    noline_win = sliding_window_view(np.logical_not(linemask), window_shape=smooth_window)
+    ## Treat each camera independently. Assume wavelengths are sorted!
+    #if camerapix is not None:
+    #    smooth = []
+    #    for pix in camerapix:
+    #        spl = splrep(wave[pix[0]:pix[1]], flux[pix[0]:pix[1]],
+    #                     w=np.sqrt(ivar[pix[0]:pix[1]]), k=3)
+    #        smooth.append(splev(wave[pix[0]:pix[1]], spl))
+    #    smooth = np.hstack(smooth)
+    #else:
+    #    spl = splrep(wave, flux, w=np.sqrt(ivar), k=3)
+    #    smooth = splev(wave, spl)
 
-    nminpix = 15
-
-    smooth_wave, smooth_flux, smooth_sigma = [], [], []
-    for swave, sflux, sivar, noline in zip(wave_win[::smooth_step],
-                                           flux_win[::smooth_step],
-                                           ivar_win[::smooth_step],
-                                           noline_win[::smooth_step]):
-
-        # if there are fewer than XX good pixels after accounting for the
-        # line-mask, skip this window.
-        sflux = sflux[noline]
-        if len(sflux) < nminpix:
-            continue
-
-        cflux, clo, chi = sigmaclip(sflux, low=2.0, high=2.0)
-        if len(cflux) < nminpix:
-            continue
-        
-        sivar = sivar[noline]
-        # Toss out regions with too little good data.
-        if np.sum(sivar > 0) < nminpix:
-            continue
-        
-        sig = np.std(cflux) # simple median and sigma
-        mn = median(cflux)
-
-        # One more check for crummy spectral regions.
-        if mn == 0.0:
-            continue
-
-        swave = swave[noline]
-        I = ((sflux >= clo) & (sflux <= chi))
-        smooth_wave.append(np.mean(swave[I]))
-        
-        smooth_sigma.append(sig)
-        smooth_flux.append(mn)
-
-    smooth_wave = np.array(smooth_wave)
-    smooth_sigma = np.array(smooth_sigma)
-    smooth_flux = np.array(smooth_flux)
-
-    # For debugging.
-    if png:
-        _smooth_wave = smooth_wave.copy()
-        _smooth_flux = smooth_flux.copy()
-
-    # corner case for very wacky spectra
-    if len(smooth_flux) == 0:
-        smooth_flux = flux
-        #smooth_sigma = flux * 0 + np.std(flux)
-    else:
-        #smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
-        #smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
-        _, uindx = np.unique(smooth_wave, return_index=True)
-        srt = np.argsort(smooth_wave[uindx])
-        bspl_flux = make_interp_spline(smooth_wave[uindx][srt], smooth_flux[uindx][srt], k=1)
-        smooth_flux = bspl_flux(wave)
-
-        # check for extrapolation
-        blu = np.where(wave < np.min(smooth_wave[srt]))[0]
-        red = np.where(wave > np.max(smooth_wave[srt]))[0]
-        if len(blu) > 0:
-            smooth_flux[:blu[-1]] = smooth_flux[blu[-1]]
-        if len(red) > 0:
-            smooth_flux[red[0]:] = smooth_flux[red[0]]
-
-    smooth = median_filter(smooth_flux, medbin, mode='nearest')
-    
-    # very important!
-    Z = (flux == 0.0) * (ivar == 0.0)
-    if np.sum(Z) > 0:
-        smooth[Z] = 0.0
 
     # Optional QA.
     if png:
@@ -226,12 +138,9 @@ def _smooth_continuum(wave, flux, ivar, linemask, camerapix=None, medbin=175,
         ax[0].scatter(wave[linemask] / 1e4, flux[linemask], s=10, marker='s', 
                       color='k', zorder=2, alpha=0.5, label='Line-masked pixel')
         ax[0].plot(wave / 1e4, smooth, color='red', label='Smooth continuum')
-        #ax[0].plot(_smooth_wave / 1e4, _smooth_flux, color='orange')
-        #ax[0].plot(wave, median_filter(flux, medbin, mode='nearest'), color='k', lw=2)
         ax[0].set_ylim(np.min((-5. * noise, quantile(flux, 0.05))), 
                        np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
         ax[0].set_ylabel('Continuum-subtracted Spectrum')
-        #ax[0].scatter(_smooth_wave, _smooth_flux, color='orange', marker='s', ls='-', s=20)
         ax[0].legend(fontsize=12)
 
         ax[1].plot(wave / 1e4, resid, alpha=0.75)#, label='Residuals')
@@ -527,7 +436,33 @@ class Tools(TabulatedDESI):
 
 
     @staticmethod
+    def get_ab_maggies_fast(filters, flux, wave, log=None):
+        """Like `self.get_ab_maggies()`, but by-passing the units and error-checking
+        used by `speclite`. Specifically, we assume that the filter response
+        function always lies within the wavelength range of the input spectrum.
+
+        flux and wave are assumed to be in erg/s/cm2/A and A, respectively. 
+
+        """
+        # AB reference spctrum in erg/s/cm2/Hz times the speed of light in A/s
+        # and converted to erg/s/cm2/A.
+        abflam = 3.631e-20 * C_LIGHT * 1e13 / wave**2
+
+        maggies = np.zeros(len(filters))
+        for ifilt, filt in enumerate(filters):
+            lo = np.searchsorted(wave, filt.wavelength[0]-2., 'right')
+            hi = np.searchsorted(wave, filt.wavelength[-1]+2., 'left')
+            resp = np.interp(wave[lo:hi], filt.wavelength, filt.response, left=0., right=0.)
+            numer = np.trapz(resp * flux[lo:hi] * wave[lo:hi], x=wave[lo:hi])
+            denom = np.trapz(resp * abflam[lo:hi] * wave[lo:hi], x=wave[lo:hi])
+            maggies[ifilt] = numer / denom
+
+        return maggies
+
+
+    @staticmethod
     def get_ab_maggies(filters, flux, wave, log=None):
+        
         try:
             maggies0 = filters.get_ab_maggies(flux, wave)
         except:
@@ -2134,8 +2069,8 @@ class ContinuumTools(Tools):
                     filters = self.filters[photsys]
 
             effwave = filters.effective_wavelengths.value
-            modelmaggies = self.get_ab_maggies(filters, fullmodel,
-                                               ztemplatewave, log=self.log)
+            modelmaggies = self.get_ab_maggies_fast(filters, fullmodel,
+                                                    ztemplatewave, log=self.log)
             if flamphot:                
                 modelphot = self.get_photflam(modelmaggies, effwave, nanomaggies=False)
             else:
