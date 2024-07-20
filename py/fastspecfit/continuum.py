@@ -2089,7 +2089,6 @@ class ContinuumTools(Tools):
                 modelflux[pix[0]:pix[1]] = self.resample_and_smooth(
                     fullmodel, ztemplatewave, specwave[pix[0]:pix[1]], 
                     specres[icam])
-            modelflux = np.hstack(modelflux)
         else:
             modelflux = None
 
