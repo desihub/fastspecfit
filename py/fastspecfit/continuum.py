@@ -11,9 +11,11 @@ import os, time
 import numpy as np
 from astropy.table import Table
 
+from fastspecfit.inoue14 import Inoue14
+from fastspecfit.cosmo import TabulatedDESI
 from fastspecfit.photometry import Photometry
 from fastspecfit.util import C_LIGHT, FLUXNORM, quantile, median
-from fastspecfit.inoue14 import Inoue14
+
 
 # SPS template constants (used by build-templates)
 PIXKMS_BLU = 25.  # [km/s]
@@ -443,7 +445,9 @@ class ContinuumTools(object):
         
         self.emlinesfile = emlinesfile
         self.linetable = read_emlines(emlinesfile=emlinesfile)
+        self.cosmo = TabulatedDESI()
         self.igm = Inoue14()
+        
         self.phot = phot
         
         self.massnorm = 1e10       # stellar mass normalization factor [Msun]
@@ -1427,7 +1431,7 @@ class ContinuumTools(object):
         """
         if self.zfactors is None:
             if dluminosity is None:
-                dluminosity = self.phot.luminosity_distance(redshift)
+                dluminosity = self.cosmo.luminosity_distance(redshift)
 
             T = self.igm.full_IGM(redshift, ztemplatewave)
             T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
@@ -1560,7 +1564,7 @@ class ContinuumTools(object):
         # [5] - Redshift factors.
         ztemplatewave = templatewave * (1. + redshift)
         if self.zfactors is None:
-            dluminosity = self.phot.luminosity_distance(redshift)
+            dluminosity = self.cosmo.luminosity_distance(redshift)
             self._cache_zfactors(ztemplatewave, redshift=redshift, 
                                  dluminosity=dluminosity)
         fullmodel *= self.zfactors

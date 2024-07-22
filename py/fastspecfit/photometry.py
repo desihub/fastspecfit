@@ -1,9 +1,10 @@
 import numpy as np
 from astropy.table import Table
 
-from fastspecfit.util import TabulatedDESI, C_LIGHT, FLUXNORM
+from fastspecfit.cosmo import TabulatedDESI
+from fastspecfit.util import C_LIGHT, FLUXNORM
 
-class Photometry(TabulatedDESI):
+class Photometry(object):
     """Class to load filters and containing filter- and dust-related methods.
 
     """
@@ -26,8 +27,6 @@ class Photometry(TabulatedDESI):
             Logger object.
 
         """
-        super(Photometry, self).__init__()
-        
         from speclite import filters
 
         if log is None:
@@ -176,7 +175,6 @@ class Photometry(TabulatedDESI):
             return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
 
         if cosmo is None:
-            from fastspecfit.util import TabulatedDESI
             cosmo = TabulatedDESI()
 
         if dmod is None:

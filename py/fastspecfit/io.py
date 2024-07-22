@@ -13,8 +13,9 @@ import numpy as np
 import fitsio
 from astropy.table import Table
 
+from fastspecfit.cosmo import TabulatedDESI
 from fastspecfit.photometry import Photometry
-from fastspecfit.util import TabulatedDESI, FLUXNORM, ZWarningMask
+from fastspecfit.util import FLUXNORM, ZWarningMask
 
 from desiutil.log import get_logger
 log = get_logger()
@@ -416,7 +417,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
     return specdata, meta
 
 
-class DESISpectra(TabulatedDESI):
+class DESISpectra(object):
     def __init__(self, stackfit=False, redux_dir=None, fiberassign_dir=None,
                  fphotodir=None, fphotofile=None, mapdir=None):
         """Class to read in DESI spectra and associated metadata.
@@ -435,8 +436,8 @@ class DESISpectra(TabulatedDESI):
 
         """
         import yaml
-        
-        super(DESISpectra, self).__init__()
+
+        self.cosmo = TabulatedDESI()
         
         desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
 
@@ -1099,8 +1100,8 @@ class DESISpectra(TabulatedDESI):
                 log.warning(errmsg)
                 zobj[neg] = 1e-8
 
-            dlum = self.luminosity_distance(zobj)
-            dmod = self.distance_modulus(zobj)
+            dlum = self.cosmo.luminosity_distance(zobj)
+            dmod = self.cosmo.distance_modulus(zobj)
             if constrain_age:
                 tuniv = self.universe_age(zobj)
             else:
@@ -1368,8 +1369,8 @@ class DESISpectra(TabulatedDESI):
             # Age of the universe.
             dlum = np.zeros(len(meta['Z']))
             dmod = np.zeros(len(meta['Z']))
-            dlum[meta['Z'] > 0.] = self.luminosity_distance(meta['Z'][meta['Z'] > 0.])
-            dmod[meta['Z'] > 0.] = self.distance_modulus(meta['Z'][meta['Z'] > 0.])
+            dlum[meta['Z'] > 0.] = self.cosmo.luminosity_distance(meta['Z'][meta['Z'] > 0.])
+            dmod[meta['Z'] > 0.] = self.cosmo.distance_modulus(meta['Z'][meta['Z'] > 0.])
             tuniv = self.universe_age(meta['Z'])
 
             wave = fitsio.read(stackfile, 'WAVE')

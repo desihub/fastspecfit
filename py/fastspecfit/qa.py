@@ -30,7 +30,7 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
                                     maxtemplatewave=40e4, fastphot=fastphot)
 
     if inputz:
-        from fastspecfit.util import TabulatedDESI
+        from fastspecfit.cosmo import TabulatedDESI
         cosmo = TabulatedDESI()
     else:
         cosmo = None
