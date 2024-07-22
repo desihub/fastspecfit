@@ -17,6 +17,8 @@ try: # this fails when building the documentation
 except:
     C_LIGHT = 299792.458 # [km/s]
 
+FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
+
 def mwdust_transmission(ebv, filtername):
     """Convert SFD E(B-V) value to dust transmission 0-1 given the bandpass.
 
@@ -244,7 +246,7 @@ def trapz_rebin(x, y, xnew, edges=None):
 class ZWarningMask(object):
     """
     Mask bit definitions for zwarning.
-    
+    Taken from Redrock/0.15.4    
     WARNING on the warnings: not all of these are implemented yet.
     
     #- TODO: Consider using something like desispec.maskbits to provide a more

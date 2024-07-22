@@ -18,11 +18,11 @@ from astropy.table import Table
 
 from fastspecfit.io import (
     read_emlines,
-    FLUXNORM,
 )
 
-from fastspecfit.continuum import Tools
-from fastspecfit.util import C_LIGHT
+from fastspecfit.photometry import Photometry
+from fastspecfit.continuum import _linepix_and_contpix
+from fastspecfit.util import C_LIGHT, FLUXNORM
 
 from fastspecfit.emline_fit import (
     EMLine_Objective,
@@ -38,7 +38,7 @@ class ParamType(IntEnum):
     SIGMA = 2
 
 
-class EMFitTools(Tools):
+class EMFitTools(object):
     
     # FIXME: all the work in this function except possibly the super
     # init depends only on the contents of emlinesfile.  We should
@@ -46,9 +46,7 @@ class EMFitTools(Tools):
     # line_table, line_map, and param_table, which are fixed once we
     # read the file.
     
-    def __init__(self, uniqueid=None, fphoto=None, emlinesfile=None, stronglines=False):
-        
-        super(EMFitTools, self).__init__(fphoto=fphoto)
+    def __init__(self, uniqueid=None, emlinesfile=None, stronglines=False):
         
         self.uniqueid = uniqueid
 
@@ -1111,25 +1109,6 @@ class EMFitTools(Tools):
                 log.debug(f'{col}: {result[col]:.4f}')
             print()
         
-    def synthphot_spectrum(self, data, result, modelwave, modelflux):
-        """Synthesize photometry from the best-fitting model (continuum+emission lines).
-
-        """
-        filters = self.synth_filters[data['photsys']]
-
-        synthmaggies = self.get_ab_maggies(filters, modelflux / FLUXNORM, modelwave)
-        model_synthmag = self.to_nanomaggies(synthmaggies) # units of nanomaggies
-        
-        model_synthphot = self.parse_photometry(self.synth_bands, maggies=synthmaggies,
-                                                nanomaggies=False,
-                                                lambda_eff=filters.effective_wavelengths.value)
-
-        synthmag = data['synthphot']['nanomaggies'].value
-        model_synthmag = model_synthphot['nanomaggies'].value
-        for iband, band in enumerate(self.synth_bands):
-            bname =  band.upper()
-            result[f'FLUX_SYNTH_{bname}'] = synthmag[iband] # * 'nanomaggies'
-            result[f'FLUX_SYNTH_SPECMODEL_{bname}'] = model_synthmag[iband] # * 'nanomaggies'
 
         
 def emline_specfit(data, result, continuummodel, smooth_continuum,
@@ -1167,8 +1146,8 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
 
             
     minsigma_balmer_broad = 250. # minimum broad-line sigma [km/s]
-    
-    EMFit = EMFitTools(emlinesfile=emlinesfile, fphoto=fphoto, uniqueid=data['uniqueid'])
+
+    EMFit = EMFitTools(emlinesfile=emlinesfile, uniqueid=data['uniqueid'])
     
     redshift          = data['zredrock']
     camerapix         = data['camerapix']
@@ -1257,9 +1236,9 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         balmer_linesigmas =  broad_values[line_params[IBalmer, ParamType.SIGMA ] ]
         balmer_linevshifts = broad_values[line_params[IBalmer, ParamType.VSHIFT] ]
 
-        balmerpix = EMFit._linepix_and_contpix(emlinewave, emlineivar, EMFit.line_table[IBalmer],
-                                               balmer_linesigmas, get_contpix=False, 
-                                               redshift=redshift)
+        balmerpix = _linepix_and_contpix(emlinewave, emlineivar, EMFit.line_table[IBalmer],
+                                         balmer_linesigmas, get_contpix=False, 
+                                         redshift=redshift)
         balmerlines =  [ EMFit.line_map[ln] for ln in balmerpix['linepix'] ]
         balmerpixels = [ px for px in balmerpix['linepix'].values() ]
         
@@ -1442,13 +1421,14 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # smoothcontinuum!) and measure Dn(4000) from the line-free spectrum.
     if synthphot:
         modelflux = modelcontinuum + modelemspectrum
-        EMFit.synthphot_spectrum(data, result, modelwave, modelflux)
+        phot = Photometry(fphoto=fphoto)
+        synthphot_spectrum(phot, data, result, modelwave, modelflux)
 
     # measure DN(4000) without the emission lines
     if result['DN4000_IVAR'] > 0:
         fluxnolines = data['coadd_flux'] - modelemspectrum
         
-        dn4000_nolines, _ = EMFit.get_dn4000(modelwave, fluxnolines, redshift=redshift, log=log, rest=False)
+        dn4000_nolines, _ = Photometry.get_dn4000(modelwave, fluxnolines, redshift=redshift, log=log, rest=False)
         log.info(f'Dn(4000)={dn4000_nolines:.3f} in the emission-line subtracted spectrum.')
         result['DN4000'] = dn4000_nolines
 
@@ -1499,3 +1479,24 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         raise NotImplementedError(errmsg)
     
     return modelspectra
+
+
+def synthphot_spectrum(phot, data, result, modelwave, modelflux):
+    """Synthesize photometry from the best-fitting model (continuum+emission lines).
+
+    """
+    filters = phot.synth_filters[data['photsys']]
+
+    synthmaggies = Photometry.get_ab_maggies(filters, modelflux / FLUXNORM, modelwave)
+    model_synthmag = Photometry.to_nanomaggies(synthmaggies) # units of nanomaggies
+        
+    model_synthphot = Photometry.parse_photometry(phot.synth_bands, maggies=synthmaggies,
+                                                  nanomaggies=False,
+                                                  lambda_eff=filters.effective_wavelengths.value)
+
+    synthmag = data['synthphot']['nanomaggies'].value
+    model_synthmag = model_synthphot['nanomaggies'].value
+    for iband, band in enumerate(phot.synth_bands):
+        bname =  band.upper()
+        result[f'FLUX_SYNTH_{bname}'] = synthmag[iband] # * 'nanomaggies'
+        result[f'FLUX_SYNTH_SPECMODEL_{bname}'] = model_synthmag[iband] # * 'nanomaggies'

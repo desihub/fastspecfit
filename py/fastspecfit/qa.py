@@ -70,8 +70,9 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     import seaborn as sns
     from PIL import Image, ImageDraw
 
-    from fastspecfit.util import ivar2var, C_LIGHT
-    from fastspecfit.io import FLUXNORM, get_qa_filename
+    from fastspecfit.util import ivar2var, C_LIGHT, FLUXNORM
+    from fastspecfit.io import get_qa_filename
+    from fastspecfit.photometry import Photometry
     from fastspecfit.continuum import ContinuumTools
     from fastspecfit.emlines import EMFitTools
     from fastspecfit.emline_fit import EMLine_MultiLines
@@ -102,16 +103,17 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         else:
             return f'{x:.0f}'
 
-    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry, log=log)
+    phot = Photometry(fphoto=fphoto, ignore_photometry=ignore_photometry, log=log)
+    CTools = ContinuumTools(phot=phot, log=log)
 
-    if 'viewer_layer' in fphoto.keys():
+    if 'viewer_layer' in fphoto:
         layer = fphoto['viewer_layer']
-    elif 'legacysurveydr' in fphoto.keys():
+    elif 'legacysurveydr' in fphoto:
         layer = 'ls-{}'.format(fphoto['legacysurveydr'])
     else:
         layer = 'ls-dr9'
 
-    if 'viewer_pixscale' in fphoto.keys():
+    if 'viewer_pixscale' in fphoto:
         pixscale = fphoto['viewer_pixscale']
     else:
         pixscale = 0.262 # [arcsec/pixel]
@@ -119,8 +121,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     if not fastphot:
         EMFit = EMFitTools()
         
-    filters = CTools.synth_filters[metadata['PHOTSYS']]
-    allfilters = CTools.filters[metadata['PHOTSYS']]
+    filters = phot.synth_filters[metadata['PHOTSYS']]
+    allfilters = phot.filters[metadata['PHOTSYS']]
     redshift = fastspec['Z']
 
     # cosmo will be provided if input_redshifts are used
@@ -181,15 +183,15 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     }
 
     # try to figure out which absmags to display - default should be SDSS ^{0.1}grz
-    gindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 4300))
-    rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 5600))
-    zindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 8100))
-    absmag_gband = CTools.absmag_bands[gindx]
-    absmag_rband = CTools.absmag_bands[rindx]
-    absmag_zband = CTools.absmag_bands[zindx]
-    shift_gband = CTools.band_shift[gindx]
-    shift_rband = CTools.band_shift[rindx]
-    shift_zband = CTools.band_shift[zindx]
+    gindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 4300))
+    rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600))
+    zindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 8100))
+    absmag_gband = phot.absmag_bands[gindx]
+    absmag_rband = phot.absmag_bands[rindx]
+    absmag_zband = phot.absmag_bands[zindx]
+    shift_gband = phot.band_shift[gindx]
+    shift_rband = phot.band_shift[rindx]
+    shift_zband = phot.band_shift[zindx]
 
     leg.update({'absmag_r': '$M_{{{}}}={:.2f}$'.format(
         absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
@@ -370,16 +372,16 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
         sedwave = templatecache['templatewave'] * (1 + redshift)
 
-        nband = len(CTools.bands)
+        nband = len(phot.bands)
         maggies = np.zeros(nband)
         ivarmaggies = np.zeros(nband)
-        for iband, band in enumerate(CTools.bands):
+        for iband, band in enumerate(phot.bands):
             maggies[iband] = metadata[f'FLUX_{band.upper()}']
             ivarmaggies[iband] = metadata[f'FLUX_IVAR_{band.upper()}']
 
-        phot = CTools.parse_photometry(CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies,
-                                       lambda_eff=allfilters.effective_wavelengths.value,
-                                       min_uncertainty=CTools.min_uncertainty, get_abmag=True)
+        phot_tbl = Photometry.parse_photometry(phot.bands, maggies=maggies, ivarmaggies=ivarmaggies,
+                                               lambda_eff=allfilters.effective_wavelengths.value,
+                                               min_uncertainty=phot.min_uncertainty, get_abmag=True)
     
         indx_phot = np.where((sedmodel > 0) * (sedwave/1e4 > phot_wavelims[0]) * 
                              (sedwave/1e4 < phot_wavelims[1]))[0]
@@ -638,15 +640,15 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
     # photometric SED
     if not stackfit:    
-        abmag_good = phot['abmag_ivar'] > 0
-        abmag_goodlim = phot['abmag_limit'] > 0
+        abmag_good = phot_tbl['abmag_ivar'] > 0
+        abmag_goodlim = phot_tbl['abmag_limit'] > 0
         
         if len(sedmodel) == 0:
             log.warning('Best-fitting photometric continuum is all zeros or negative!')
             if np.sum(abmag_good) > 0:
-                medmag = np.median(phot['abmag'][abmag_good])
+                medmag = np.median(phot_tbl['abmag'][abmag_good])
             elif np.sum(abmag_goodlim) > 0:
-                medmag = np.median(phot['abmag_limit'][abmag_goodlim])
+                medmag = np.median(phot_tbl['abmag_limit'][abmag_goodlim])
             else:
                 medmag = 0.0
             sedmodel_abmag = np.zeros_like(templatecache['templatewave']) + medmag
@@ -674,26 +676,26 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         sed_ymin = np.nanmax(sedmodel_abmag) + dm
         sed_ymax = np.nanmin(sedmodel_abmag) - dm
         if np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) > 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(phot['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(phot['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
+            sed_ymin = np.max((np.nanmax(phot_tbl['abmag'][abmag_good]), np.nanmax(phot_tbl['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot_tbl['abmag'][abmag_good]), np.nanmin(phot_tbl['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
         elif np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) == 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(sedmodel_abmag))) - dm
+            sed_ymin = np.max((np.nanmax(phot_tbl['abmag'][abmag_good]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot_tbl['abmag'][abmag_good]), np.nanmin(sedmodel_abmag))) - dm
         elif np.sum(abmag_good) == 0 and np.sum(abmag_goodlim) > 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
+            sed_ymin = np.max((np.nanmax(phot_tbl['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot_tbl['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
         else:
-            abmag_good = phot['abmag'] > 0
-            abmag_goodlim = phot['abmag_limit'] > 0
+            abmag_good = phot_tbl['abmag'] > 0
+            abmag_goodlim = phot_tbl['abmag_limit'] > 0
             if np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) > 0:
-                sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(phot['abmag_limit'][abmag_goodlim]))) + dm
-                sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(phot['abmag_limit'][abmag_goodlim]))) - dm
+                sed_ymin = np.max((np.nanmax(phot_tbl['abmag'][abmag_good]), np.nanmax(phot_tbl['abmag_limit'][abmag_goodlim]))) + dm
+                sed_ymax = np.min((np.nanmin(phot_tbl['abmag'][abmag_good]), np.nanmin(phot_tbl['abmag_limit'][abmag_goodlim]))) - dm
             elif np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) == 0:                
-                sed_ymin = np.nanmax(phot['abmag'][abmag_good]) + dm
-                sed_ymax = np.nanmin(phot['abmag'][abmag_good]) - dm
+                sed_ymin = np.nanmax(phot_tbl['abmag'][abmag_good]) + dm
+                sed_ymax = np.nanmin(phot_tbl['abmag'][abmag_good]) - dm
             elif np.sum(abmag_good) == 0 and np.sum(abmag_goodlim) > 0:
-                sed_ymin = np.nanmax(phot['abmag_limit'][abmag_goodlim]) + dm
-                sed_ymax = np.nanmin(phot['abmag_limit'][abmag_goodlim]) - dm
+                sed_ymin = np.nanmax(phot_tbl['abmag_limit'][abmag_goodlim]) + dm
+                sed_ymax = np.nanmin(phot_tbl['abmag_limit'][abmag_goodlim]) - dm
             #else:
             #    sed_ymin, sed_ymax = [30, 20]
             
@@ -729,41 +731,41 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         sedax_twin.set_xticks(restticks)
     
         # integrated flux / photometry
-        abmag = np.squeeze(phot['abmag'])
-        abmag_limit = np.squeeze(phot['abmag_limit'])
-        abmag_fainterr = np.squeeze(phot['abmag_fainterr'])
-        abmag_brighterr = np.squeeze(phot['abmag_brighterr'])
+        abmag = np.squeeze(phot_tbl['abmag'])
+        abmag_limit = np.squeeze(phot_tbl['abmag_limit'])
+        abmag_fainterr = np.squeeze(phot_tbl['abmag_fainterr'])
+        abmag_brighterr = np.squeeze(phot_tbl['abmag_brighterr'])
         yerr = np.squeeze([abmag_brighterr, abmag_fainterr])
     
         markersize = 14
     
-        dofit = np.where(CTools.bands_to_fit)[0]
+        dofit = np.where(phot.bands_to_fit)[0]
         if len(dofit) > 0:
             good = np.where((abmag[dofit] > 0) * (abmag_limit[dofit] == 0))[0]
             upper = np.where(abmag_limit[dofit] > 0)[0]
             if len(good) > 0:
-                sedax.errorbar(phot['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
+                sedax.errorbar(phot_tbl['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
                                yerr=yerr[:, dofit[good]],
                                fmt='o', markersize=markersize, markeredgewidth=1, markeredgecolor='k',
                                markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4,
                                label=r'$grz\,W_{1}W_{2}W_{3}W_{4}$', zorder=2, alpha=1.0)
             if len(upper) > 0:
-                sedax.errorbar(phot['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
+                sedax.errorbar(phot_tbl['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
                                lolims=True, yerr=0.75,
                                fmt='o', markersize=markersize, markeredgewidth=3, markeredgecolor='k',
                                markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4, alpha=0.7)
     
-        ignorefit = np.where(CTools.bands_to_fit == False)[0]
+        ignorefit = np.where(phot.bands_to_fit == False)[0]
         if len(ignorefit) > 0:
             good = np.where((abmag[ignorefit] > 0) * (abmag_limit[ignorefit] == 0))[0]
             upper = np.where(abmag_limit[ignorefit] > 0)[0]
             if len(good) > 0:
-                sedax.errorbar(phot['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
+                sedax.errorbar(phot_tbl['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
                                yerr=yerr[:, ignorefit[good]],
                                fmt='o', markersize=markersize, markeredgewidth=3, markeredgecolor='k',
                                markerfacecolor='none', elinewidth=3, ecolor=photcol1, capsize=4, alpha=0.7)
             if len(upper) > 0:
-                sedax.errorbar(phot['lambda_eff'][ignorefit][upper]/1e4, abmag_limit[ignorefit][upper],
+                sedax.errorbar(phot_tbl['lambda_eff'][ignorefit][upper]/1e4, abmag_limit[ignorefit][upper],
                                lolims=True, yerr=0.75, fmt='o', markersize=markersize, markeredgewidth=3,
                                markeredgecolor='k', markerfacecolor='none', elinewidth=3,
                                ecolor=photcol1, capsize=5, alpha=0.7)

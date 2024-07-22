@@ -13,7 +13,8 @@ import numpy as np
 import fitsio
 from astropy.table import Table
 
-from fastspecfit.util import TabulatedDESI
+from fastspecfit.photometry import Photometry
+from fastspecfit.util import TabulatedDESI, FLUXNORM, ZWarningMask
 
 from desiutil.log import get_logger
 log = get_logger()
@@ -68,25 +69,8 @@ QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
           'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 
-FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
 DEFAULT_TEMPLATEVERSION = '2.0.0'
 DEFAULT_IMF = 'chabrier'
-
-# Taken from Redrock/0.15.4
-class _ZWarningMask(object):
-    SKY               = 2**0  #- sky fiber
-    LITTLE_COVERAGE   = 2**1  #- too little wavelength coverage
-    SMALL_DELTA_CHI2  = 2**2  #- chi-squared of best fit is too close to that of second best
-    NEGATIVE_MODEL    = 2**3  #- synthetic spectrum is negative
-    MANY_OUTLIERS     = 2**4  #- fraction of points more than 5 sigma away from best model is too large (>0.05)
-    Z_FITLIMIT        = 2**5  #- chi-squared minimum at edge of the redshift fitting range
-    NEGATIVE_EMISSION = 2**6  #- a QSO line exhibits negative emission, triggered only in QSO spectra, if  C_IV, C_III, Mg_II, H_beta, or H_alpha has LINEAREA + 3 * LINEAREA_ERR < 0
-    UNPLUGGED         = 2**7  #- the fiber was unplugged/broken, so no spectrum obtained
-    BAD_TARGET        = 2**8  #- catastrophically bad targeting data
-    NODATA            = 2**9  #- No data for this fiber, e.g. because spectrograph was broken during this exposure (ivar=0 for all pixels)
-    BAD_MINFIT        = 2**10 #- Bad parabola fit to the chi2 minimum
-    POORDATA          = 2**11 #- Poor input data quality but try fitting anyway
-ZWarningMask = _ZWarningMask()
 
 
 def _unpack_one_spectrum(args):
@@ -106,17 +90,18 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
     from fastspecfit.util import mwdust_transmission
     from fastspecfit.continuum import ContinuumTools
 
-    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
+    phot = Photometry(fphoto=fphoto, ignore_photometry=ignore_photometry)
+    CTools = ContinuumTools(phot=phot)
     
-    log.info(f'Pre-processing object {iobj} [targetid {meta[CTools.uniqueid]} z={meta["Z"]:.6f}].')
+    log.info(f'Pre-processing object {iobj} [targetid {meta[phot.uniqueid]} z={meta["Z"]:.6f}].')
     
     RV = 3.1
     meta['EBV'] = ebv
 
-    filters = CTools.filters[specdata['photsys']]
-    synth_filters = CTools.synth_filters[specdata['photsys']]
-    if hasattr(CTools, 'fiber_filters'):
-        fiber_filters = CTools.fiber_filters[specdata['photsys']]
+    filters = phot.filters[specdata['photsys']]
+    synth_filters = phot.synth_filters[specdata['photsys']]
+    if hasattr(phot, 'fiber_filters'):
+        fiber_filters = phot.fiber_filters[specdata['photsys']]
     else:
         fiber_filters = None
         
@@ -124,30 +109,30 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
     if fiber_filters is not None:
         # fiber fluxes
         mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, filtername) for filtername in
-                                                                  CTools.fiber_filters[specdata['photsys']].names])
-        fibermaggies = np.zeros(len(CTools.fiber_bands))
-        fibertotmaggies = np.zeros(len(CTools.fiber_bands))
-        #ivarfibermaggies = np.zeros(len(CTools.fiber_bands))
-        for iband, band in enumerate(CTools.fiber_bands):
+                                                                  phot.fiber_filters[specdata['photsys']].names])
+        fibermaggies = np.zeros(len(phot.fiber_bands))
+        fibertotmaggies = np.zeros(len(phot.fiber_bands))
+        #ivarfibermaggies = np.zeros(len(phot.fiber_bands))
+        for iband, band in enumerate(phot.fiber_bands):
             fibermaggies[iband] = meta[f'FIBERFLUX_{band.upper()}'] / mw_transmission_fiberflux[iband]
             fibertotmaggies[iband] = meta[f'FIBERTOTFLUX_{band.upper()}'] / mw_transmission_fiberflux[iband]
         
-        specdata['fiberphot'] = CTools.parse_photometry(CTools.fiber_bands,
+        specdata['fiberphot'] = Photometry.parse_photometry(phot.fiber_bands,
             maggies=fibermaggies, nanomaggies=True,
             lambda_eff=fiber_filters.effective_wavelengths.value, log=log)
-        specdata['fibertotphot'] = CTools.parse_photometry(CTools.fiber_bands,
+        specdata['fibertotphot'] = Photometry.parse_photometry(phot.fiber_bands,
             maggies=fibertotmaggies, nanomaggies=True,
             lambda_eff=fiber_filters.effective_wavelengths.value, log=log)
 
     # total fluxes
     mw_transmission_flux = np.array([mwdust_transmission(ebv, filtername) for filtername in 
-                                     CTools.filters[specdata['photsys']].names])
-    for band, mwdust in zip(CTools.bands, mw_transmission_flux):
+                                     phot.filters[specdata['photsys']].names])
+    for band, mwdust in zip(phot.bands, mw_transmission_flux):
         meta[f'MW_TRANSMISSION_{band.upper()}'] = mwdust
             
-    maggies = np.zeros(len(CTools.bands))
-    ivarmaggies = np.zeros(len(CTools.bands))
-    for iband, (fluxcol, ivarcol) in enumerate(zip(CTools.fluxcols, CTools.fluxivarcols)):
+    maggies = np.zeros(len(phot.bands))
+    ivarmaggies = np.zeros(len(phot.bands))
+    for iband, (fluxcol, ivarcol) in enumerate(zip(phot.fluxcols, phot.fluxivarcols)):
         maggies[iband] = meta[fluxcol.upper()] / mw_transmission_flux[iband]
         ivarmaggies[iband] = meta[ivarcol.upper()] * mw_transmission_flux[iband]**2
         
@@ -156,10 +141,10 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
         log.critical(errmsg)
         raise ValueError(errmsg)
     
-    specdata['phot'] = CTools.parse_photometry(
-        CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
+    specdata['phot'] = Photometry.parse_photometry(
+        phot.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
         lambda_eff=filters.effective_wavelengths.value,
-        min_uncertainty=CTools.min_uncertainty, log=log)
+        min_uncertainty=phot.min_uncertainty, log=log)
         
     if not fastphot:
         from desiutil.dust import dust_transmission
@@ -278,12 +263,12 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
     
         # Optionally synthesize photometry from the coadded spectrum.
         if synthphot and synth_filters is not None:
-            synthmaggies = CTools.get_ab_maggies(synth_filters,
-                                                 specdata['coadd_flux'] / FLUXNORM,
-                                                 specdata['coadd_wave'])
-
-            specdata['synthphot'] = CTools.parse_photometry(
-                CTools.synth_bands, maggies=synthmaggies, nanomaggies=False,
+            synthmaggies = Photometry.get_ab_maggies(synth_filters,
+                                                     specdata['coadd_flux'] / FLUXNORM,
+                                                     specdata['coadd_wave'])
+            
+            specdata['synthphot'] = Photometry.parse_photometry(
+                phot.synth_bands, maggies=synthmaggies, nanomaggies=False,
                 lambda_eff=synth_filters.effective_wavelengths.value, log=log)
 
     return specdata, meta
@@ -301,22 +286,23 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
 
     """
     from fastspecfit.continuum import ContinuumTools
-    
-    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry)
-    
-    log.info(f'Pre-processing object {iobj} [stackid {meta[CTools.uniqueid]} z={meta["Z"]:.6f}].')
 
-    filters = CTools.filters[specdata['photsys']]
-    synth_filters = CTools.synth_filters[specdata['photsys']]
+    phot = Photometry(fphoto=fphoto, ignore_photometry=ignore_photometry)
+    CTools = ContinuumTools(phot)
+    
+    log.info(f'Pre-processing object {iobj} [stackid {meta[phot.uniqueid]} z={meta["Z"]:.6f}].')
+
+    filters = phot.filters[specdata['photsys']]
+    synth_filters = phot.synth_filters[specdata['photsys']]
 
     # Dummy imaging photometry.
-    maggies = np.zeros(len(CTools.bands))
-    ivarmaggies = np.zeros(len(CTools.bands))
+    maggies = np.zeros(len(phot.bands))
+    ivarmaggies = np.zeros(len(phot.bands))
     
-    specdata['phot'] = CTools.parse_photometry(
-        CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
+    specdata['phot'] = Photometry.parse_photometry(
+        phot.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
         lambda_eff=filters.effective_wavelengths.value,
-        min_uncertainty=CTools.min_uncertainty, log=log)
+        min_uncertainty=phot.min_uncertainty, log=log)
     
     specdata.update({'linemask': [], 'linemask_all': [], 'linename': [],
                      'linepix': [], 'contpix': [],
@@ -421,9 +407,9 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
 
     # Optionally synthesize photometry from the coadded spectrum.
     if synthphot:
-        synthmaggies = CTools.get_ab_maggies(synth_filters, specdata['coadd_flux'] / FLUXNORM, specdata['coadd_wave'])
+        synthmaggies = Photometry.get_ab_maggies(synth_filters, specdata['coadd_flux'] / FLUXNORM, specdata['coadd_wave'])
         
-        specdata['synthphot'] = CTools.parse_photometry(CTools.synth_bands,
+        specdata['synthphot'] = Photometry.parse_photometry(phot.synth_bands,
             maggies=synthmaggies, nanomaggies=False,
             lambda_eff=synth_filters.effective_wavelengths.value, log=log)
 
@@ -1084,15 +1070,14 @@ class DESISpectra(TabulatedDESI):
         from desiutil.log import get_logger, DEBUG
         from desispec.resolution import Resolution
         from fastspecfit.emline_fit import EMLine_Resolution
-        from fastspecfit.continuum import ContinuumTools
         
         if verbose:
             log = get_logger(DEBUG)
         else:
             log = get_logger()
 
-        CTools = ContinuumTools(fphoto=self.fphoto, ignore_photometry=ignore_photometry)
-
+        phot = Photometry(fphoto=self.fphoto, ignore_photometry=ignore_photometry)
+        
         SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
         alldata = []
@@ -1130,7 +1115,7 @@ class DESISpectra(TabulatedDESI):
                 unpackargs = []
                 for iobj in np.arange(len(meta)):
                     specdata = {
-                        'uniqueid': meta[CTools.uniqueid][iobj], 'zredrock': meta['Z'][iobj],
+                        'uniqueid': meta[phot.uniqueid][iobj], 'zredrock': meta['Z'][iobj],
                         'photsys': photsys[iobj], 'dluminosity': dlum[iobj], 
                         'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         }
@@ -1140,10 +1125,10 @@ class DESISpectra(TabulatedDESI):
                 # Don't use .select since meta and spec can be sorted
                 # differently if a non-sorted targetids was passed. Do the
                 # selection and sort ourselves.
-                spec = read_spectra(specfile)#.select(targets=meta[CTools.uniqueid])
-                srt = geomask.match_to(spec.fibermap[CTools.uniqueid], meta['TARGETID'])
+                spec = read_spectra(specfile)#.select(targets=meta[phot.uniqueid])
+                srt = geomask.match_to(spec.fibermap[phot.uniqueid], meta['TARGETID'])
                 spec = spec[srt]
-                assert(np.all(spec.fibermap[CTools.uniqueid] == meta[CTools.uniqueid]))
+                assert(np.all(spec.fibermap[phot.uniqueid] == meta[phot.uniqueid]))
 
                 # Coadd across cameras.
                 t0 = time.time()                
@@ -1156,7 +1141,7 @@ class DESISpectra(TabulatedDESI):
                 unpackargs = []
                 for iobj in np.arange(len(meta)):
                     specdata = {
-                        'uniqueid': meta[CTools.uniqueid][iobj], 'zredrock': meta['Z'][iobj],
+                        'uniqueid': meta[phot.uniqueid][iobj], 'zredrock': meta['Z'][iobj],
                         'photsys': photsys[iobj], 'cameras': cameras,
                         'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
                         'wave0': [spec.wave[cam] for cam in cameras],
@@ -1279,9 +1264,8 @@ class DESISpectra(TabulatedDESI):
         from astropy.table import vstack
         from scipy.sparse import identity
         from desispec.resolution import Resolution
-        from fastspecfit.continuum import ContinuumTools
 
-        CTools = ContinuumTools(fphoto=self.fphoto, ignore_photometry=ignore_photometry)
+        phot = Photometry(fphoto=self.fphoto, ignore_photometry=ignore_photometry)
         
         if stackfiles is None:
             errmsg = 'At least one stackfiles file is required.'
@@ -1409,7 +1393,7 @@ class DESISpectra(TabulatedDESI):
             unpackargs = []
             for iobj in np.arange(len(meta)):
                 specdata = {
-                    'uniqueid': meta[CTools.uniqueid][iobj],
+                    'uniqueid': meta[phot.uniqueid][iobj],
                     'zredrock': meta['Z'][iobj],
                     'photsys': meta['PHOTSYS'][iobj],
                     'cameras': ['brz'],
@@ -1456,11 +1440,10 @@ class DESISpectra(TabulatedDESI):
         from astropy.table import vstack
         from desitarget import geomask
         from desispec.io.photo import gather_tractorphot, gather_targetphot
-        from fastspecfit.continuum import Tools
     
         input_meta = vstack(self.meta).copy()
 
-        F = Tools(fphoto=self.fphoto, load_filters=False)
+        F = Photometry(fphoto=self.fphoto, load_filters=False)
         PHOTCOLS = np.unique(np.hstack((F.readcols, F.fluxcols, F.fluxivarcols)))
 
         # DR9 or DR10
@@ -1608,17 +1591,12 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
     import astropy.units as u
     from astropy.table import hstack, Column
     from fastspecfit.emlines import read_emlines        
-    from fastspecfit.continuum import Tools
 
     if log is None:
         from desiutil.log import get_logger
         log = get_logger()
 
     linetable = read_emlines(emlinesfile=emlinesfile)
-
-    if fphoto is None:
-        Filt = Tools(load_filters=False)
-        fphoto = Filt.__dict__
 
     nobj = len(input_meta)
 
