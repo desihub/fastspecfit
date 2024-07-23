@@ -92,7 +92,6 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
     from fastspecfit.continuum import ContinuumTools
 
     phot = Photometry(fphoto=fphoto, ignore_photometry=ignore_photometry)
-    CTools = ContinuumTools(phot=phot)
     
     log.info(f'Pre-processing object {iobj} [targetid {meta[phot.uniqueid]} z={meta["Z"]:.6f}].')
     
@@ -232,6 +231,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv, fphoto, fastphot,
             specdata['camerapix'][icam, :] = [np.sum(npixpercam[:icam+1]), np.sum(npixpercam[:icam+2])]
                                 
         # use the coadded spectrum to build a robust emission-line mask
+        CTools = ContinuumTools(phot=phot)
         pix = CTools.build_linemask_patches(
             specdata['coadd_wave'], specdata['coadd_flux'],
             specdata['coadd_ivar'], specdata['coadd_res_fast'], 
@@ -289,7 +289,6 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
     from fastspecfit.continuum import ContinuumTools
 
     phot = Photometry(fphoto=fphoto, ignore_photometry=ignore_photometry)
-    CTools = ContinuumTools(phot)
     
     log.info(f'Pre-processing object {iobj} [stackid {meta[phot.uniqueid]} z={meta["Z"]:.6f}].')
 
@@ -360,6 +359,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, fphoto, synthphot,
     for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0']:
         del specdata[key]
 
+    CTools = ContinuumTools(phot)
     coadd_linemask_dict = CTools.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
                                                         specdata['coadd_ivar'], redshift=specdata['zredrock'],
                                                         linetable=CTools.linetable)
@@ -474,16 +474,16 @@ class DESISpectra(object):
                 fphotofile = resources.files('fastspecfit').joinpath('data/stacked-phot.yaml')
             else:
                 fphotofile = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
-
+        self.fphotofile = fphotofile
+        
         try:
             with open(fphotofile, 'r') as F:
                 fphoto = yaml.safe_load(F)
-            self.fphotofile = fphotofile
         except:
             errmsg = f'Unable to read parameter file {fphotofile}'
             log.critical(errmsg)
             raise ValueError(errmsg)
-
+        
         self.fphoto = fphoto
 
         if mapdir is None:
@@ -990,7 +990,7 @@ class DESISpectra(object):
 
 
     def read_and_unpack(self, fastphot=False, synthphot=True, ignore_photometry=False,
-                        constrain_age=False, debug_plots=False, verbose=False, mp=1):
+                        constrain_age=False, debug_plots=False, verbose=False, mp_pool=None):
         """Read and unpack selected spectra or broadband photometry.
         
         Parameters
@@ -1162,10 +1162,8 @@ class DESISpectra(object):
                     unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj], self.fphoto, fastphot,
                                        synthphot, ignore_photometry, debug_plots, log))
                     
-            if mp > 1:
-                import multiprocessing
-                with multiprocessing.Pool(mp) as P:
-                    out = P.map(_unpack_one_spectrum, unpackargs)
+            if mp_pool is not None:
+                out = mp_pool.map(_unpack_one_spectrum, unpackargs)
             else:
                 out = [unpack_one_spectrum(*_unpackargs) for _unpackargs in unpackargs]
                 
@@ -1183,7 +1181,7 @@ class DESISpectra(object):
     
     def read_stacked(self, stackfiles, firsttarget=0, ntargets=None,
                      stackids=None, synthphot=True, ignore_photometry=False,
-                     mp=1):
+                     mp_pool=None):
         """Read one or more stacked spectra.
         
         Parameters
@@ -1415,10 +1413,8 @@ class DESISpectra(object):
                 unpackargs.append((iobj, specdata, meta[iobj], self.fphoto, synthphot,
                                    ignore_photometry, log))
                     
-            if mp > 1:
-                import multiprocessing
-                with multiprocessing.Pool(mp) as P:
-                    out = P.map(_unpack_one_stacked_spectrum, unpackargs)
+            if mp_pool is not None:
+                out = mp_pool.map(_unpack_one_stacked_spectrum, unpackargs)
             else:
                 out = [unpack_one_stacked_spectrum(*_unpackargs) for _unpackargs in unpackargs]
                 
@@ -1513,17 +1509,17 @@ class DESISpectra(object):
                         
                     metas.append(meta)
         else:
-            phot = Table(fitsio.read(self.fphotodir, ext=self.fphotoext, columns=PHOTCOLS))
-            log.info('Read {:,d} objects from {}'.format(len(phot), self.fphotodir))
+            phot_tbl = Table(fitsio.read(self.fphotodir, ext=self.fphotoext, columns=PHOTCOLS))
+            log.info('Read {:,d} objects from {}'.format(len(phot_tbl), self.fphotodir))
 
             metas = []
             for meta in self.meta:
-                srt = geomask.match_to(phot[F.uniqueid], meta[F.uniqueid])
-                assert(np.all(meta[F.uniqueid] == phot[F.uniqueid][srt]))
+                srt = geomask.match_to(phot_tbl[F.uniqueid], meta[F.uniqueid])
+                assert(np.all(meta[F.uniqueid] == phot_tbl[F.uniqueid][srt]))
                 if hasattr(F, 'dropcols'):
                     meta.remove_columns(F.dropcols)
                 for col in phot.colnames:
-                    meta[col] = phot[col][srt]
+                    meta[col] = phot_tbl[col][srt]
                 # placeholders (to be added in DESISpectra.read_and_unpack)
                 meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
                 for band in F.bands:
@@ -1604,7 +1600,7 @@ def init_fastspec_output(input_meta, specprod, fphoto=None, templates=None,
     # get the number of templates
     if ncoeff is None:
         if not os.path.isfile(templates):
-            errmsg = 'Templates file not found {}'.format(templates)
+            errmsg = f'Templates file not found {templates}'
             log.critical(errmsg)
             raise IOError(errmsg)
         

@@ -179,6 +179,13 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     else:
         targetids = args.targetids
 
+    # if multiprocessing, establish a pool of worker processes
+    if args.mp > 1:
+        import multiprocessing
+        mp_pool = multiprocessing.Pool(args.mp)
+    else:
+        mp_pool = None
+    
     # Read the data.
     t0 = time.time()
     Spec = DESISpectra(stackfit=stackfit, fphotodir=args.fphotodir,
@@ -188,7 +195,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         args.ignore_photometry = True
         data = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
                                  stackids=targetids, ntargets=args.ntargets,
-                                 mp=args.mp, ignore_photometry=args.ignore_photometry)
+                                 mp_pool=mp_pool, ignore_photometry=args.ignore_photometry)
     else:
         Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
                     input_redshifts=input_redshifts, ntargets=args.ntargets,
@@ -200,7 +207,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
             return
 
         data = Spec.read_and_unpack(fastphot=fastphot, ignore_photometry=args.ignore_photometry,
-                                    constrain_age=args.constrain_age, mp=args.mp, 
+                                    constrain_age=args.constrain_age, mp_pool=mp_pool,
                                     verbose=args.verbose, debug_plots=args.debug_plots)
         
     log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
@@ -225,13 +232,12 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                 args.no_smooth_continuum, args.ignore_photometry, args.percamera_models,
                 args.debug_plots, args.minsnr_balmer_broad)
                 for iobj in np.arange(Spec.ntargets)]
-    if args.mp > 1:
-        import multiprocessing
-        with multiprocessing.Pool(args.mp) as P:
-            _out = P.map(_fastspec_one, fitargs)
+
+    if mp_pool is not None:
+        _out = mp_pool.map(_fastspec_one, fitargs)
     else:
         _out = [fastspec_one(*_fitargs) for _fitargs in fitargs]
-        
+    
     _out = list(zip(*_out))
     out = Table(np.hstack(_out[0]))
     meta = Table(np.hstack(_out[1]))
@@ -250,6 +256,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
        
     log.info('Fitting {} object(s) took {:.2f} seconds.'.format(Spec.ntargets, time.time()-t0))
 
+    # if multiprocessing, clean up workers
+    if mp_pool is not None:
+        mp_pool.close()
+    
     # Assign units and write out.
     _assign_units_to_columns(out, meta, Spec, templates, fastphot, stackfit, log)
 

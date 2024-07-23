@@ -466,12 +466,9 @@ class ContinuumTools(object):
         # will be cached once we have the wavelength vector.
         self.pixpos_wavesplit = None 
 
-        
-    @staticmethod
-    def smooth_continuum(*args, **kwargs):
-        return _smooth_continuum(*args, **kwargs)
 
-    
+    # FIXME: the ONLY dependence of this function on self, other than logging is
+    # getting the name of the emlinesfile to load a line table inside EMFit_tools
     def build_linemask_patches(self, wave, flux, ivar, resolution_matrix, redshift=0.0, 
                                uniqueid=0, initsigma_broad=3000., initsigma_narrow=150., 
                                initsigma_balmer_broad=1000., initvshift_broad=0., 
@@ -1064,6 +1061,10 @@ class ContinuumTools(object):
         }
 
         return out
+            
+    @staticmethod
+    def smooth_continuum(*args, **kwargs):
+        return _smooth_continuum(*args, **kwargs)
 
 
     @staticmethod
