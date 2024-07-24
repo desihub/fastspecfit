@@ -7,14 +7,13 @@ fastspecfit.qa
 import pdb # for debugging
 
 import os, time
+
+from itertools import starmap
+
 import numpy as np
 
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data, initialize_sc_data
-
-def _desiqa_one(args):
-    """Multiprocessing wrapper."""
-    return desiqa_one(*args)
 
 def desiqa_one(data, fastfit, metadata, templates, coadd_type,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
@@ -1355,7 +1354,7 @@ def fastqa(args=None, comm=None):
 
     # Initialize the I/O class.
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                       stackfit=args.stackfit, redux_dir=args.redux_dir,
+                       redux_dir=args.redux_dir,
                        fphotodir=args.fphotodir, mapdir=args.mapdir)
     
     if args.templates is None:
@@ -1398,10 +1397,12 @@ def fastqa(args=None, comm=None):
                    args.nsmoothspec, fastphot, stackfit, inputz, 
                    no_smooth_continuum, args.outdir, args.outprefix)
                    for igal in range(len(indx))]
+
+        # desiqa_one has no return value
         if mp_pool is not None:
-            mp_pool.map(_desiqa_one, qaargs)
+            mp_pool.starmap(desiqa_one, qaargs)
         else:
-            [desiqa_one(*_qaargs) for _qaargs in qaargs]
+            for _ in starmap(desiqa_one, qaargs): pass
 
     t0 = time.time()
     if coadd_type == 'healpix':

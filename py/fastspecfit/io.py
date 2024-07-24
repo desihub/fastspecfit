@@ -11,6 +11,8 @@ import pdb # for debugging
 import os, time
 import numpy as np
 
+from itertools import starmap
+
 import fitsio
 from astropy.table import Table
 
@@ -69,11 +71,6 @@ TSNR2COLS = ['TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA']
 QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
           'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
-
-
-def _unpack_one_spectrum(args):
-    """Multiprocessing wrapper."""
-    return unpack_one_spectrum(*args)
 
 
 def unpack_one_spectrum(iobj, specdata, meta, ebv,
@@ -275,11 +272,6 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
     return specdata, meta
 
 
-def _unpack_one_stacked_spectrum(args):
-    """Multiprocessing wrapper."""
-    return unpack_one_stacked_spectrum(*args)
-
-
 def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot):
     """Unpack the data for a single stacked spectrum. Also flag pixels which may be
     affected by emission lines.
@@ -420,7 +412,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot):
 
 
 class DESISpectra(object):
-    def __init__(self, phot, cosmo, stackfit=False,
+    def __init__(self, phot, cosmo,
                  redux_dir=None, fiberassign_dir=None,
                  fphotodir=None, mapdir=None):
         """Class to read in DESI spectra and associated metadata.
@@ -1075,7 +1067,7 @@ class DESISpectra(object):
                 errmsg = f'{np.sum(neg)}/{len(zobj)} input redshifts are zero or negative!'
                 log.warning(errmsg)
                 zobj[neg] = 1e-8
-
+            
             dlum = self.cosmo.luminosity_distance(zobj)
             dmod = self.cosmo.distance_modulus(zobj)
             if constrain_age:
@@ -1139,9 +1131,9 @@ class DESISpectra(object):
                                        fastphot, synthphot, debug_plots))
                     
             if mp_pool is not None:
-                out = mp_pool.map(_unpack_one_spectrum, unpackargs)
+                out = mp_pool.starmap(unpack_one_spectrum, unpackargs)
             else:
-                out = [unpack_one_spectrum(*_unpackargs) for _unpackargs in unpackargs]
+                out = starmap(unpack_one_spectrum, unpackargs)
                 
             out = list(zip(*out))
             self.meta[ispec] = Table(np.hstack(out[1]))
@@ -1385,15 +1377,15 @@ class DESISpectra(object):
                 unpackargs.append((iobj, specdata, meta[iobj], synthphot))
                             
             if mp_pool is not None:
-                out = mp_pool.map(_unpack_one_stacked_spectrum, unpackargs)
+                out = mp_pool.starmap(unpack_one_stacked_spectrum, unpackargs)
             else:
-                out = [unpack_one_stacked_spectrum(*_unpackargs) for _unpackargs in unpackargs]
+                out = starmap(unpack_one_stacked_spectrum, unpackargs)
                 
             out = list(zip(*out))
             self.meta[ispec] = Table(np.hstack(out[1]))
             alldata.append(out[0])
             del out
-    
+        
         alldata = np.concatenate(alldata)
         self.meta = vstack(self.meta)
         self.ntargets = len(self.meta)

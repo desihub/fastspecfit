@@ -9,14 +9,12 @@ See sandbox/running-fastspecfit for examples.
 import pdb # for debugging
 
 import time
+from itertools import starmap
+
 import numpy as np
 
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data, initialize_sc_data
-
-def _fastspec_one(args):
-    """Multiprocessing wrapper."""
-    return fastspec_one(*args)
 
 def fastspec_one(iobj, data, out, meta,
                  broadlinefit=True, fastphot=False,
@@ -177,8 +175,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     # Read the data.
     t0 = time.time()
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                       stackfit=stackfit, fphotodir=args.fphotodir,
-                       mapdir=args.mapdir)
+                       fphotodir=args.fphotodir, mapdir=args.mapdir)
 
     if stackfit:
         data = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
@@ -217,9 +214,9 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                 for iobj in range(Spec.ntargets)]
 
     if mp_pool is not None:
-        _out = mp_pool.map(_fastspec_one, fitargs)
+        _out = mp_pool.starmap(fastspec_one, fitargs)
     else:
-        _out = [fastspec_one(*_fitargs) for _fitargs in fitargs]
+        _out = starmap(fastspec_one, fitargs)
     
     _out = list(zip(*_out))
     out = Table(np.hstack(_out[0]))

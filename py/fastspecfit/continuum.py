@@ -37,8 +37,6 @@ class ContinuumTools(object):
         self.phot = phot
         
         self.massnorm = 1e10       # stellar mass normalization factor [Msun]
-        self.dust_power = -0.7     # power-law slope
-        self.dust_normwave = 5500. # pivot wavelength
 
         # The dust attenuation curve will be cached once we have the template
         # wavelength vector.
@@ -1301,17 +1299,31 @@ class ContinuumTools(object):
         ToDo: support more sophisticated dust models.
 
         """
-        return (wave / self.dust_normwave)**self.dust_power
+        dust_power = -0.7     # power-law slope
+        dust_normwave = 5500. # pivot wavelength
 
-
-    def _cache_klambda(self, *args):
+        return (wave / dust_normwave)**dust_power 
+    
+    def _cache_klambda(self, templatewave):
         """Convenience method to cache the dust attenuation curve.
 
         """
         if self.dust_klambda is None:
-            self.dust_klambda = self.klambda(*args)
+            self.dust_klambda = self.klambda(templatewave)
+            
+    def _cache_pixpos_wavesplit(self, templatewave):
+        """Cache the pixel position in wave corresponding to `PIXKMS_WAVESPLIT`.
 
+        Parameters
+        ----------
+        templatewave : :class:`numpy.ndarray`
+            Input rest-frame wavelength array in Angstrom.
 
+        """
+        if self.pixpos_wavesplit is None:
+            self.pixpos_wavesplit = np.searchsorted(templatewave, Templates.PIXKMS_WAVESPLIT, 'left')
+
+    
     def _cache_zfactors(self, ztemplatewave, redshift, dluminosity=None):
         """Convenience method to cache the factors that depend on redshift and the
         redshifted wavelength array, including the attenuation due to the IGM.
@@ -1327,24 +1339,11 @@ class ContinuumTools(object):
         if self.zfactors is None:
             if dluminosity is None:
                 dluminosity = self.cosmo.luminosity_distance(redshift)
-
+            
             T = self.igm.full_IGM(redshift, ztemplatewave)
             T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
 
             self.zfactors = T
-
-
-    def _cache_pixpos_wavesplit(self, templatewave):
-        """Cache the pixel position in wave corresponding to `PIXKMS_WAVESPLIT`.
-
-        Parameters
-        ----------
-        templatewave : :class:`numpy.ndarray`
-            Input rest-frame wavelength array in Angstrom.
-
-        """
-        if self.pixpos_wavesplit is None:
-            self.pixpos_wavesplit = np.searchsorted(templatewave, Templates.PIXKMS_WAVESPLIT, 'left')
 
 
     def build_stellar_continuum(self, templatewave, templateflux, templatecoeff,
@@ -1461,9 +1460,8 @@ class ContinuumTools(object):
         # [5] - Redshift factors.
         ztemplatewave = templatewave * (1. + redshift)
         if self.zfactors is None:
-            dluminosity = self.cosmo.luminosity_distance(redshift)
-            self._cache_zfactors(ztemplatewave, redshift=redshift, 
-                                 dluminosity=dluminosity)
+            self._cache_zfactors(ztemplatewave, redshift=redshift)
+        
         fullmodel *= self.zfactors
 
         # [6] - Optionally synthesize photometry
@@ -1986,7 +1984,7 @@ def continuum_specfit(data, result, templatecache,
         restwave = specwave / (1. + redshift)
         Ivdisp = np.where((specivar > 0) * (restwave > 3500.) * (restwave < 5500.))[0]
         compute_vdisp = (len(Ivdisp) > 0) and (np.ptp(restwave[Ivdisp]) > 500.)
-
+        
         # stacked spectra do not have all three cameras
         if 'SNR_B' in result.columns and 'SNR_R' in result.columns and 'SNR_Z' in result.columns:
             log.info('S/N_b={:.2f}, S/N_r={:.2f}, S/N_z={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
