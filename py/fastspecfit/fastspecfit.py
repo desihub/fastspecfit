@@ -16,7 +16,7 @@ import numpy as np
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data, initialize_sc_data
 
-def fastspec_one(iobj, data, out, meta,
+def fastspec_one(iobj, data, out,
                  broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
                  percamera_models=False,
@@ -51,7 +51,7 @@ def fastspec_one(iobj, data, out, meta,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
                                  percamera_models=percamera_models)
         
-    return out, meta, emmodel
+    return out, emmodel
 
 
 def parse(options=None):
@@ -207,7 +207,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj],
+    fitargs = [(iobj, data[iobj], out[iobj],
                 args.broadlinefit, fastphot, args.constrain_age,
                 args.no_smooth_continuum, args.percamera_models,
                 args.debug_plots, args.minsnr_balmer_broad)
@@ -220,7 +220,6 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     
     _out = list(zip(*_out))
     out = Table(np.hstack(_out[0]))
-    meta = Table(np.hstack(_out[1]))
     
     if fastphot:
         modelspectra = None
@@ -228,7 +227,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         from astropy.table import vstack
         try:
             # need to vstack to preserve the wavelength metadata 
-            modelspectra = vstack(_out[2], metadata_conflicts='error')
+            modelspectra = vstack(_out[1], metadata_conflicts='error')
         except:
             errmsg = 'Metadata conflict when stacking model spectra.'
             log.critical(errmsg)

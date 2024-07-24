@@ -1984,12 +1984,14 @@ def continuum_specfit(data, result, templatecache,
         restwave = specwave / (1. + redshift)
         Ivdisp = np.where((specivar > 0) * (restwave > 3500.) * (restwave < 5500.))[0]
         compute_vdisp = (len(Ivdisp) > 0) and (np.ptp(restwave[Ivdisp]) > 500.)
-        
-        # stacked spectra do not have all three cameras
-        if 'SNR_B' in result.columns and 'SNR_R' in result.columns and 'SNR_Z' in result.columns:
-            log.info('S/N_b={:.2f}, S/N_r={:.2f}, S/N_z={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
-                result['SNR_B'], result['SNR_R'], result['SNR_Z'], restwave[0], restwave[-1]))
 
+        if len(data['cameras']) == 3:
+            log.info('S/N_{}={:.2f}, S/N_{}={:.2f}, S/N_{}={:.2f}, rest wavelength coverage={:.0f}-{:.0f} A.'.format(
+                data['cameras'][0], data['snr'][0],
+                data['cameras'][1], data['snr'][1],
+                data['cameras'][2], data['snr'][2],
+                restwave[0], restwave[-1]))
+        
         # Maintain backwards compatibility. With the old templates, the velocity
         # dispersion and aperture corrections are determined separately, so we
         # separate that code out from the new templates, where they are
@@ -2307,12 +2309,12 @@ def continuum_specfit(data, result, templatecache,
             nonzero = continuummodel[icam] != 0
             if np.sum(nonzero) > 0:
                 corr = median(smoothcontinuum[icam][nonzero] / continuummodel[icam][nonzero])
-                result['SMOOTHCORR_{}'.format(cam.upper())] = corr * 100 # [%]
+                result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100 # [%]
 
-        if 'SMOOTHCORR_B' in result.columns and 'SMOOTHCORR_R' in result.columns and 'SMOOTHCORR_Z' in result.columns:
+        if len(data['cameras']) == 3:
             log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
                 result['SMOOTHCORR_B'], result['SMOOTHCORR_R'], result['SMOOTHCORR_Z']))
-    
+        
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if np.all(coeff == 0):
         kcorr = np.zeros(len(phot.absmag_bands))
@@ -2375,11 +2377,11 @@ def continuum_specfit(data, result, templatecache,
         
         result['APERCORR'] = apercorr
         for iband, band in enumerate(phot.synth_bands):
-            result['APERCORR_{}'.format(band.upper())] = apercorrs[iband]
+            result[f'APERCORR_{band.upper()}'] = apercorrs[iband]
         result['DN4000_OBS'] = dn4000
         result['DN4000_IVAR'] = dn4000_ivar
 
-    log.info('Continuum-fitting took {:.2f} seconds.'.format(time.time()-tall))
+    log.info(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
 
     if fastphot:
         return sedmodel, None

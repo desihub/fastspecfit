@@ -1636,9 +1636,9 @@ def init_fastspec_output(input_meta, specprod, fphoto, linetable,
     out.add_column(Column(name='RCHI2_PHOT', length=nobj, dtype='f4')) # rchi2 fitting just to the photometry
 
     if stackfit:
-        for cam in ['BRZ']:
+        for cam in ('BRZ'):
             out.add_column(Column(name=f'SNR_{cam}', length=nobj, dtype='f4')) # median S/N in each camera
-        for cam in ['BRZ']:
+        for cam in ('BRZ'):
             out.add_column(Column(name=f'SMOOTHCORR_{cam}', length=nobj, dtype='f4'))
     else:
         if not fastphot:
@@ -1648,9 +1648,9 @@ def init_fastspec_output(input_meta, specprod, fphoto, linetable,
             #        out.add_column(Column(name='SNR_{}'.format(cam.upper()), length=nobj, dtype='f4')) # median S/N in each camera
             #    for cam in data[0]['cameras']:
             #        out.add_column(Column(name='SMOOTHCORR_{}'.format(cam.upper()), length=nobj, dtype='f4'))
-            for cam in ['B', 'R', 'Z']:
+            for cam in ('B', 'R', 'Z'):
                 out.add_column(Column(name=f'SNR_{cam.upper()}', length=nobj, dtype='f4')) # median S/N in each camera
-            for cam in ['B', 'R', 'Z']:
+            for cam in ('B', 'R', 'Z'):
                 out.add_column(Column(name=f'SMOOTHCORR_{cam.upper()}', length=nobj, dtype='f4'))
             
     out.add_column(Column(name='VDISP', length=nobj, dtype='f4', unit=u.kilometer/u.second))
