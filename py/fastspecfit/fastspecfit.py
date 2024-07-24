@@ -18,7 +18,7 @@ def _fastspec_one(args):
     """Multiprocessing wrapper."""
     return fastspec_one(*args)
 
-def fastspec_one(iobj, data, out, meta, templates,
+def fastspec_one(iobj, data, out, meta,
                  broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
                  percamera_models=False,
@@ -26,7 +26,6 @@ def fastspec_one(iobj, data, out, meta, templates,
     """Run :func:`fastspec` on a single object.
 
     """
-    from fastspecfit.io import cache_templates
     from fastspecfit.emlines import emline_specfit
     from fastspecfit.continuum import continuum_specfit
     
@@ -34,16 +33,10 @@ def fastspec_one(iobj, data, out, meta, templates,
     igm = sc_data.igm
     phot = sc_data.photometry
     emline_table = sc_data.emline_table
+    templatecache = sc_data.templates.cache
     
     log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid.lower()} {data['uniqueid']}, z={data['zredrock']:.6f}].')
     
-    # Read the templates and then fit the continuum spectrum. Note that 450 A as
-    # the minimum wavelength will allow us to synthesize u-band photometry only
-    # up to z=5.53, even though some targets are at higher redshift. Handle this
-    # case in continuum.ContinuumTools.
-    templatecache = cache_templates(templates=templates, mintemplatewave=450.0,
-                                    maxtemplatewave=40e4, fastphot=fastphot)
-
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache,
                                                          cosmo, igm, phot, emline_table,
                                                          constrain_age=constrain_age,
@@ -68,7 +61,7 @@ def parse(options=None):
 
     """
     import argparse, sys
-    from fastspecfit.io import DEFAULT_TEMPLATEVERSION, DEFAULT_IMF
+    from fastspecfit.templates import Templates
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -87,8 +80,8 @@ def parse(options=None):
     parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
     parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
     parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
-    parser.add_argument('--imf', type=str, default=DEFAULT_IMF, help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default=DEFAULT_TEMPLATEVERSION, help='Template version number.')
+    parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
+    parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
@@ -131,8 +124,6 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     from astropy.table import Table, vstack
     from fastspecfit.io import DESISpectra, write_fastspecfit, init_fastspec_output
 
-    
-
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
@@ -150,9 +141,14 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     init_sc_args = (
         args.emlinesfile,
         args.fphotofile,
+        fastphot,
+        stackfit,
         args.ignore_photometry,
+        args.templates,
+        args.imf,
+        args.templateversion,
     )
-
+    
     initialize_sc_data(*init_sc_args)
         
     # if multiprocessing, create a pool of worker processes
@@ -204,22 +200,17 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                                     mp_pool=mp_pool)
         
     log.info(f'Reading and unpacking {Spec.ntargets} spectra to be fitted took {time.time()-t0:.2f} seconds.')
+
     
     # Initialize the output tables.
-    if args.templates is None:
-        from fastspecfit.io import get_templates_filename
-        templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
-    else:
-        templates = args.templates
-
     out, meta = init_fastspec_output(Spec.meta, Spec.specprod, sc_data.photometry.fphoto,
                                      linetable=sc_data.emline_table,
-                                     templates=templates, data=data,
+                                     templates=sc_data.templates.file, data=data,
                                      fastphot=fastphot, stackfit=stackfit)
     
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], templates,
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj],
                 args.broadlinefit, fastphot, args.constrain_age,
                 args.no_smooth_continuum, args.percamera_models,
                 args.debug_plots, args.minsnr_balmer_broad)
@@ -254,13 +245,14 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     
     # Assign units and write out.
     _assign_units_to_columns(out, meta, Spec, sc_data.photometry.fphoto, sc_data.emline_table,
-                             templates, fastphot, stackfit)
+                             sc_data.templates.file, fastphot, stackfit)
 
     # FIXME: do we need the true location of emlinesfile, rather than just the args?
     # we pass the true location of the templates file and the photometry file
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
-                      fphotofile=sc_data.photometry.fphotofile, templates=templates,
+                      fphotofile=sc_data.photometry.fphotofile,
+                      templates=sc_data.templates.file,
                       emlinesfile=args.emlinesfile, fastphot=fastphot,
                       inputz=input_redshifts is not None,
                       ignore_photometry=args.ignore_photometry,

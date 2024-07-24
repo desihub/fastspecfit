@@ -24,7 +24,7 @@ from fastspecfit.util import FLUXNORM, ZWarningMask
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
 DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
 FPHOTO_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
-FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/science/gqp/templates/fastspecfit'
+
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
@@ -69,9 +69,6 @@ TSNR2COLS = ['TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA']
 QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
           'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
 QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
-
-DEFAULT_TEMPLATEVERSION = '2.0.0'
-DEFAULT_IMF = 'chabrier'
 
 
 def _unpack_one_spectrum(args):
@@ -1937,162 +1934,6 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     if verbose:
         log.info('Writing out took {:.2f} seconds.'.format(time.time()-t0))
 
-
-def get_templates_filename(templateversion=DEFAULT_TEMPLATEVERSION, imf=DEFAULT_IMF):
-    """Get the templates filename. """
-    from fastspecfit.io import FTEMPLATES_DIR_NERSC
-    templates_dir = os.path.expandvars(os.environ.get('FTEMPLATES_DIR', FTEMPLATES_DIR_NERSC))
-    templates = os.path.join(templates_dir, templateversion, f'ftemplates-{imf}-{templateversion}.fits')
-    return templates
-
-
-def cache_templates(templates=None, templateversion=DEFAULT_TEMPLATEVERSION, imf=DEFAULT_IMF,
-                    mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.,
-                    read_linefluxes=False, fastphot=False):
-    """"Read the templates into a dictionary.
-    
-    Parameters
-    ----------
-    templates : :class:`str`
-        Full path to the templates to read. Defaults to the output of
-        :class:`get_templates_filename`.
-    templateversion : :class:`str`
-        Version of the templates. Defaults to :class:`DEFAULT_TEMPLATEVERSION`.
-    mapdir : :class:`str`, optional
-        Full path to the Milky Way dust maps.
-    mintemplatewave : :class:`float`, optional, defaults to None
-        Minimum template wavelength to read into memory. If ``None``, the minimum
-        available wavelength is used (around 100 Angstrom).
-    maxtemplatewave : :class:`float`, optional, defaults to 6e4
-        Maximum template wavelength to read into memory.
-
-    """
-    import fitsio
-    from fastspecfit.continuum import _convolve_vdisp, PIXKMS_WAVESPLIT, PIXKMS_BLU
-    
-    if templates is None:
-        templates = get_templates_filename(templateversion=templateversion, imf=imf)
-        
-    if not os.path.isfile(templates):
-        errmsg = f'Templates file {templates} not found.'
-        log.critical(errmsg)
-        raise IOError(errmsg)
-
-    T = fitsio.FITS(templates)
-
-    #log.info('Reading {}'.format(templates))
-    wave = T['WAVE'].read() # [npix]
-    wavehdr = T['WAVE'].read_header() # [npix]
-    templateflux = T['FLUX'].read()  # [npix,nsed]
-    templatelineflux = T['LINEFLUX'].read()  # [npix,nsed]
-    templateinfo = T['METADATA'].read()
-    templatehdr = T['METADATA'].read_header()
-    vdisphdr = T['VDISPFLUX'].read_header()
-
-    if mintemplatewave is None:
-        mintemplatewave = np.min(wave)
-    
-    keeplo = np.searchsorted(wave, mintemplatewave, 'left')
-    keephi = np.searchsorted(wave, maxtemplatewave, 'right')
-    
-    templatewave = wave[keeplo:keephi]
-    templateflux = templateflux[keeplo:keephi, :]
-    templateflux_nolines = templateflux - templatelineflux[keeplo:keephi, :]
-    
-    # Cache a copy of the line-free templates at the nominal velocity
-    # dispersion (needed for fastphot as well).
-    if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
-        vdisp_nominal = vdisphdr['VDISPNOM'] # [km/s]
-
-    hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
-
-    templateflux_nolines_nomvdisp = _convolve_vdisp(
-        templateflux_nolines, vdisp_nominal, limit=hi,
-        pixsize_kms=PIXKMS_BLU)
-    
-    templateflux_nomvdisp = _convolve_vdisp(
-        templateflux, vdisp_nominal, limit=hi,
-        pixsize_kms=PIXKMS_BLU)
-    
-    # pack into a dictionary
-    templatecache = {'imf': templatehdr['IMF'],
-                     #'nsed': len(templateinfo), 'npix': len(wavekeep),
-                     'vdisp_nominal': vdisp_nominal,
-                     'templateinfo': Table(templateinfo),
-                     'templatewave': templatewave,
-                     'templateflux': templateflux,
-                     'templateflux_nomvdisp': templateflux_nomvdisp,
-                     'templateflux_nolines': templateflux_nolines,
-                     'templateflux_nolines_nomvdisp': templateflux_nolines_nomvdisp,
-                     }
-
-    # maintain backwards compatibility with older templates (versions <2.0.0)
-    if 'VDISPMIN' in vdisphdr:
-        templatecache['oldtemplates'] = True
-    else:
-        templatecache['oldtemplates'] = False
-
-    if not fastphot:
-        
-        if templatecache['oldtemplates']:
-            vdispwave = T['VDISPWAVE'].read()
-            vdispflux = T['VDISPFLUX'].read() # [nvdisppix,nvdispsed,nvdisp]
-
-            # see bin/build-fsps-templates
-            if vdisphdr['VDISPRES'] > 0.:
-                nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
-                vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
-            else:
-                vdisp = np.atleast_1d(vdisphdr['VDISPMIN'])
-        
-            if not vdisp_nominal in vdisp:
-                errmsg = 'Nominal velocity dispersion is not in velocity dispersion vector.'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
-
-            templatecache.update({
-                'vdispflux': vdispflux, 
-                'vdispwave': vdispwave,
-                'vdisp': vdisp, 
-                'vdisp_nominal_indx': np.where(vdisp == vdisp_nominal)[0]
-            })
-
-    if not templatecache['oldtemplates']:
-        if 'DUSTFLUX' in T and 'AGNFLUX' in T:
-            dustflux = T['DUSTFLUX'].read()
-            dusthdr = T['DUSTFLUX'].read_header()
-
-            agnflux = T['AGNFLUX'].read()
-            agnhdr = T['AGNFLUX'].read_header()
-
-            # make sure both dustflux and agnflux are normalized to unity
-            from scipy.integrate import simpson
-            dustflux /= simpson(dustflux, x=wave) # should already be 1.0
-            agnflux /= simpson(agnflux, x=wave) # should already be 1.0
-
-            templatecache.update({'dustflux': dustflux[keeplo:keephi], 
-                                  'qpah': dusthdr['QPAH'],
-                                  'umin': dusthdr['umin'],
-                                  'gamma': dusthdr['GAMMA'],
-                                  'agnflux': agnflux[keeplo:keephi], 
-                                  'agntau': agnhdr['AGNTAU'],
-                                  })
-        else:
-            errmsg = f'Templates file {templates} missing mandatory extensions DUSTFLUX and AGNFLUX.'
-            log.critical(errmsg)
-            raise IOError(errmsg)
-
-    # Read the model emission-line fluxes; only present for
-    # templateversion>=1.1.1 and generally only useful to a power-user.
-    if read_linefluxes:
-        templatecache.update({
-            'linefluxes': T['LINEFLUXES'].read(),
-            'linewaves':  T['LINEWAVES'].read()
-        })
-
-    return templatecache
-
-
 ####################################################################################
 
 def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
@@ -2100,7 +1941,7 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
     """Build the QA filename.
 
     """
-    import astropy
+    import astropy.table.row as row
 
     if outdir is None:
         outdir = '.'
@@ -2139,7 +1980,7 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
             raise ValueError(errmsg)
         return pngfile
 
-    if type(metadata) is astropy.table.row.Row or type(metadata) is np.void:
+    if type(metadata) is row.Row or type(metadata) is np.void:
         pngfile = _one_filename(metadata)
     else:
         pngfile = [_one_filename(_metadata) for _metadata in metadata]

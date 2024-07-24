@@ -13,62 +13,8 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
+from fastspecfit.templates import Templates
 from fastspecfit.util import C_LIGHT, FLUXNORM, quantile, median
-
-
-# SPS template constants (used by build-templates)
-PIXKMS_BLU = 25.  # [km/s]
-PIXKMS_RED = 100. # [km/s]
-PIXKMS_WAVESPLIT = 1e4 # [Angstrom]
-
-# NB: this fcn has no deps except numpy and PIXKMS_*
-def _convolve_vdisp(templateflux, vdisp, pixsize_kms=PIXKMS_BLU, limit=None):
-    """Convolve an input spectrum to a desired velocity dispersion in km/s.
-
-    Parameters
-    ----------
-    templateflux : :class:`numpy.ndarray` [npix, nmodel]
-        One- or two-dimensional input model spectra.
-    vdisp : :class:`float`
-        Desired velocity dispersion.
-    pixsize_kms : :class:`float`
-        Pixel size of `templateflux` in km/s.
-    limit : :class:`int`
-        Only smooth up to the pixel position (in `templateflux`) specified by
-        this parameter.
-
-    Returns
-    -------
-    :class:`numpy.ndarray` [npix, nmodel]
-        Gaussian-smoothed model spectra.
-
-    """
-    from scipy.ndimage import gaussian_filter1d
-    
-    # Convolve by the velocity dispersion.
-    if vdisp <= 0.:
-        output = templateflux.copy()
-    else:
-        output = np.empty_like(templateflux)
-        sigma = vdisp / pixsize_kms # [pixels]
-
-        if limit is None:
-            limit = templateflux.shape[0]
-
-        if templateflux.ndim == 1:
-            gaussian_filter1d(templateflux[:limit], sigma=sigma, output=output[:limit])
-            output[limit:] = templateflux[limit:]
-        else:
-            if limit is None:
-                limit = templateflux.shape[0]
-            gaussian_filter1d(templateflux[:limit, :], sigma=sigma, axis=0,
-                              output=output[:limit:, :])
-            output[limit:, :] = templateflux[limit:, :]
-
-    return output
-    
-
-
 
 class ContinuumTools(object):
     """Tools for dealing with spectral continua.
@@ -1130,9 +1076,9 @@ class ContinuumTools(object):
         
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
-            hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
-            vd_templateflux = _convolve_vdisp(templateflux, vdisp, 
-                                              pixsize_kms=PIXKMS_BLU, limit=hi)
+            hi = np.searchsorted(templatewave, Templates.PIXKMS_WAVESPLIT, 'left')
+            vd_templateflux = Templates.convolve_vdisp(templateflux, vdisp, 
+                                                       pixsize_kms=Templates.PIXKMS_BLU, limit=hi)
         else:
             vd_templateflux = templateflux
             
@@ -1398,7 +1344,7 @@ class ContinuumTools(object):
 
         """
         if self.pixpos_wavesplit is None:
-            self.pixpos_wavesplit = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
+            self.pixpos_wavesplit = np.searchsorted(templatewave, Templates.PIXKMS_WAVESPLIT, 'left')
 
 
     def build_stellar_continuum(self, templatewave, templateflux, templatecoeff,
@@ -1486,9 +1432,9 @@ class ContinuumTools(object):
 
         # [2] - Optionally convolve to the desired velocity dispersion.
         if vdisp is not None:
-            fullmodel = _convolve_vdisp(fullmodel, vdisp, 
-                                        pixsize_kms=PIXKMS_BLU, 
-                                        limit=self.pixpos_wavesplit)
+            fullmodel = Templates.convolve_vdisp(fullmodel, vdisp, 
+                                                 pixsize_kms=Templates.PIXKMS_BLU, 
+                                                 limit=self.pixpos_wavesplit)
             
         # [3] - Apply dust attenuation; ToDo: allow age-dependent
         # attenuation. Also compute the bolometric luminosity before and after

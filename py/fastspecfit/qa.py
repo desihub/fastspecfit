@@ -25,11 +25,8 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type,
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
-    from fastspecfit.io import cache_templates    
-    templatecache = cache_templates(templates, mintemplatewave=450.0,
-                                    maxtemplatewave=40e4, fastphot=fastphot)
-
-    qa_fastspec(data, templatecache, fastfit, metadata, coadd_type=coadd_type,
+    qa_fastspec(data, sc_data.templates.cache, fastfit, metadata,
+                coadd_type=coadd_type,
                 spec_wavelims=(minspecwave, maxspecwave), 
                 phot_wavelims=(minphotwave, maxphotwave), 
                 no_smooth_continuum=no_smooth_continuum,
@@ -1191,7 +1188,7 @@ def parse(options=None):
 
     """
     import sys, argparse
-    from fastspecfit.io import DEFAULT_TEMPLATEVERSION, DEFAULT_IMF
+    from fastspecfit.templates import Templates
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -1225,8 +1222,8 @@ def parse(options=None):
     parser.add_argument('--stackfit', action='store_true', help='Generate QA for stacked spectra.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
 
-    parser.add_argument('--imf', type=str, default=DEFAULT_IMF, help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default=DEFAULT_TEMPLATEVERSION, help='Template version number.')
+    parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
+    parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
 
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
@@ -1249,12 +1246,76 @@ def fastqa(args=None, comm=None):
     """
     import fitsio
     from astropy.table import Table
-    from fastspecfit.io import (DESISpectra, get_templates_filename, get_qa_filename,
+    from fastspecfit.io import (DESISpectra, get_qa_filename,
                                 read_fastspecfit, DESI_ROOT_NERSC, select)
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
+    if args.redux_dir is None:
+        args.redux_dir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux')
+        if not os.path.isdir(args.redux_dir):
+            errmsg = f'Data reduction directory {args.redux_dir} not found.'
+            log.critical(errmsg)
+            raise IOError(errmsg)
+
+    # Read the fitting results.
+    if not os.path.isfile(args.fastfitfile[0]):
+        log.warning(f'File {args.fastfitfile[0]} not found.')
+        return
+    
+    # NB: read_fastspecfit does not use any of the single-copy structures
+    # allocated below.
+    fastfit, metadata, coadd_type, fastphot = \
+        read_fastspecfit(args.fastfitfile[0])
+    
+    if coadd_type == 'custom' and args.redrockfiles is None:
+        errmsg = 'redrockfiles input is required if coadd_type==custom'
+        log.critical(errmsg)
+        raise IOError(errmsg)
+    
+    # parse the targetids optional input
+    if args.targetids:
+        targetids = [int(x) for x in args.targetids.split(',')]
+        keep = np.isin(fastfit['TARGETID'], targetids)
+        if not np.any(keep):
+            log.warning('No matching targetids found!')
+            return
+        fastfit = fastfit[keep]
+        metadata = metadata[keep]
+        
+    if args.ntargets is not None:
+        keep = np.arange(args.firsttarget,
+                         args.firsttarget + args.ntargets)
+        log.info(f'Keeping {args.ntargets} targets.')
+        fastfit = fastfit[keep]
+        metadata = metadata[keep]
+    
+    fastfit, metadata = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
+                               tiles=args.tile, nights=args.night)
+
+    pngfile = get_qa_filename(metadata, coadd_type, outprefix=args.outprefix,
+                              outdir=args.outdir, fastphot=fastphot)
+    
+    if args.outdir:
+        if not os.path.isdir(args.outdir):
+            os.makedirs(args.outdir, exist_ok=True)
+    
+    # are we overwriting?
+    if args.overwrite is False:
+        I = np.array([not os.path.isfile(_pngfile) for _pngfile in pngfile])
+        J = ~I
+        if np.sum(J) > 0:
+            log.info(f'Skipping {np.sum(J)} existing QA files.')
+            fastfit = fastfit[I]
+            metadata = metadata[I]
+
+        if len(metadata) == 0:
+            log.info('Done making all QA files!')
+            return
+
+    log.info(f'Building QA for {len(metadata)} objects.')
+    
     # check for various header cards
     hdr = fitsio.read_header(args.fastfitfile[0])
     inputz = False
@@ -1272,7 +1333,12 @@ def fastqa(args=None, comm=None):
     init_sc_args = (
         args.emlinesfile,
         args.fphotofile,
+        fastphot,
+        args.stackfit,
         ignore_photometry,
+        args.templates,
+        args.imf,
+        args.templateversion,
     )
     
     initialize_sc_data(*init_sc_args)
@@ -1286,67 +1352,6 @@ def fastqa(args=None, comm=None):
                                        initargs=init_sc_args)
     else:
         mp_pool = None
-    
-    if args.redux_dir is None:
-        args.redux_dir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux')
-        if not os.path.isdir(args.redux_dir):
-            errmsg = 'Data reduction directory {} not found.'.format(args.redux_dir)
-            log.critical(errmsg)
-            raise IOError(errmsg)
-    
-    # Read the fitting results.
-    if not os.path.isfile(args.fastfitfile[0]):
-        log.warning('File {} not found.'.format(args.fastfitfile[0]))
-        return
-
-    fastfit, metadata, coadd_type, fastphot = read_fastspecfit(args.fastfitfile[0])
-    
-    # parse the targetids optional input
-    if args.targetids:
-        targetids = [int(x) for x in args.targetids.split(',')]
-        keep = np.where(np.isin(fastfit['TARGETID'], targetids))[0]
-        if len(keep) == 0:
-            log.warning('No matching targetids found!')
-            return
-        fastfit = fastfit[keep]
-        metadata = metadata[keep]
-        
-    if args.ntargets is not None:
-        keep = np.arange(args.ntargets) + args.firsttarget
-        log.info('Keeping {} targets.'.format(args.ntargets))
-        fastfit = fastfit[keep]
-        metadata = metadata[keep]
-
-    fastfit, metadata = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
-                               tiles=args.tile, nights=args.night)
-        
-    if coadd_type == 'custom' and args.redrockfiles is None:
-        errmsg = 'redrockfiles input is required if coadd_type==custom'
-        log.critical(errmsg)
-        raise IOError(errmsg)
-
-
-    if args.outdir:
-        if not os.path.isdir(args.outdir):
-            os.makedirs(args.outdir, exist_ok=True)
-    
-    pngfile = get_qa_filename(metadata, coadd_type, outprefix=args.outprefix,
-                              outdir=args.outdir, fastphot=fastphot)
-
-    # are we overwriting?
-    if args.overwrite is False:
-        I = np.array([not os.path.isfile(_pngfile) for _pngfile in pngfile])
-        J = ~I
-        if np.sum(J) > 0:
-            log.info(f'Skipping {np.sum(J)} existing QA files.')
-            fastfit = fastfit[I]
-            metadata = metadata[I]
-
-        if len(metadata) == 0:
-            log.info('Done making all QA files!')
-            return
-
-    log.info(f'Building QA for {len(metadata)} objects.')
 
     # Initialize the I/O class.
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
