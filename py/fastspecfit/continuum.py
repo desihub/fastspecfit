@@ -7,12 +7,11 @@ Methods and tools for continuum-fitting.
 """
 import pdb # for debugging
 
-import os, time
+import time
 import numpy as np
 from astropy.table import Table
 
-from fastspecfit.inoue14 import Inoue14
-from fastspecfit.cosmo import TabulatedDESI
+from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.util import C_LIGHT, FLUXNORM, quantile, median
 
@@ -22,7 +21,8 @@ PIXKMS_BLU = 25.  # [km/s]
 PIXKMS_RED = 100. # [km/s]
 PIXKMS_WAVESPLIT = 1e4 # [Angstrom]
 
-def convolve_vdisp(templateflux, vdisp, pixsize_kms=PIXKMS_BLU, limit=None):
+# NB: this fcn has no deps except numpy and PIXKMS_*
+def _convolve_vdisp(templateflux, vdisp, pixsize_kms=PIXKMS_BLU, limit=None):
     """Convolve an input spectrum to a desired velocity dispersion in km/s.
 
     Parameters
@@ -66,364 +66,15 @@ def convolve_vdisp(templateflux, vdisp, pixsize_kms=PIXKMS_BLU, limit=None):
             output[limit:, :] = templateflux[limit:, :]
 
     return output
-
-
-def _smooth_continuum(wave, flux, ivar, linemask, camerapix=None, medbin=175, 
-                      smooth_window=75, smooth_step=125, png=None, log=None):
-    """Build a smooth, nonparametric continuum spectrum.
-
-    Parameters
-    ----------
-    wave : :class:`numpy.ndarray` [npix]
-        Observed-frame wavelength array.
-    flux : :class:`numpy.ndarray` [npix]
-        Spectrum corresponding to `wave`.
-    ivar : :class:`numpy.ndarray` [npix]
-        Inverse variance spectrum corresponding to `flux`.
-    linemask : :class:`numpy.ndarray` of type :class:`bool`, optional, defaults to `None`
-        Boolean mask with the same number of pixels as `wave` where `True`
-        means a pixel is (possibly) affected by an emission line
-        (specifically a strong line which likely cannot be median-smoothed).
-    medbin : :class:`int`, optional, defaults to 150 pixels
-        Width of the median-smoothing kernel in pixels; a magic number.
-    smooth_window : :class:`int`, optional, defaults to 50 pixels
-        Width of the sliding window used to compute the iteratively clipped
-        statistics (mean, median, sigma); a magic number. Note: the nominal
-        extraction width (0.8 A) and observed-frame wavelength range
-        (3600-9800 A) corresponds to pixels that are 66-24 km/s. So
-        `smooth_window` of 50 corresponds to 3300-1200 km/s, which is
-        conservative for all but the broadest lines. A magic number. 
-    smooth_step : :class:`int`, optional, defaults to 10 pixels
-        Width of the step size when computing smoothed statistics; a magic
-        number.
-    png : :class:`str`, optional, defaults to `None`
-        Generate a simple QA plot and write it out to this filename.
-
-    Returns
-    -------
-    smooth :class:`numpy.ndarray` [npix]
-        Smooth continuum spectrum which can be subtracted from `flux` in
-        order to create a pure emission-line spectrum.
-
-    """
-    from numpy.lib.stride_tricks import sliding_window_view
-    from scipy.ndimage import median_filter
-    from fastspecfit.util import sigmaclip
-    from scipy.interpolate import make_interp_spline
-        
-    if log is None:
-        from desiutil.log import get_logger
-        log = get_logger()
-
-    npix = len(wave)
-
-    if len(linemask) != npix:
-        errmsg = 'Linemask must have the same number of pixels as the input spectrum.'
-        log.critical(errmsg)
-        raise ValueError(errmsg)
-
-    # If camerapix is given, mask the 10 (presumably noisy) pixels from the edge
-    # of each per-camera spectrum.
-    if camerapix is not None:
-        for campix in camerapix:
-            ivar[campix[0]:campix[0]+10] = 0.
-            ivar[campix[1]-10:campix[1]] = 0.
-
-    # Build the smooth (line-free) continuum by computing statistics in a
-    # sliding window, accounting for masked pixels and trying to be smart
-    # about broad lines. See:
-    #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
-    #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
-    wave_win = sliding_window_view(wave, window_shape=smooth_window)
-    flux_win = sliding_window_view(flux, window_shape=smooth_window)
-    ivar_win = sliding_window_view(ivar, window_shape=smooth_window)
-    noline_win = sliding_window_view(np.logical_not(linemask), window_shape=smooth_window)
-
-    nminpix = 15
-
-    smooth_wave, smooth_flux, smooth_sigma = [], [], []
-    for swave, sflux, sivar, noline in zip(wave_win[::smooth_step],
-                                           flux_win[::smooth_step],
-                                           ivar_win[::smooth_step],
-                                           noline_win[::smooth_step]):
-
-        # if there are fewer than XX good pixels after accounting for the
-        # line-mask, skip this window.
-        sflux = sflux[noline]
-        if len(sflux) < nminpix:
-            continue
-
-        cflux, clo, chi = sigmaclip(sflux, low=2.0, high=2.0)
-        if len(cflux) < nminpix:
-            continue
-        
-        sivar = sivar[noline]
-        # Toss out regions with too little good data.
-        if np.sum(sivar > 0) < nminpix:
-            continue
-        
-        sig = np.std(cflux) # simple median and sigma
-        mn = median(cflux)
-
-        # One more check for crummy spectral regions.
-        if mn == 0.0:
-            continue
-
-        swave = swave[noline]
-        I = ((sflux >= clo) & (sflux <= chi))
-        smooth_wave.append(np.mean(swave[I]))
-        
-        smooth_sigma.append(sig)
-        smooth_flux.append(mn)
-
-    smooth_wave = np.array(smooth_wave)
-    smooth_sigma = np.array(smooth_sigma)
-    smooth_flux = np.array(smooth_flux)
-
-    # For debugging.
-    if png:
-        _smooth_wave = smooth_wave.copy()
-        _smooth_flux = smooth_flux.copy()
-
-    # corner case for very wacky spectra
-    if len(smooth_flux) == 0:
-        smooth_flux = flux
-        #smooth_sigma = flux * 0 + np.std(flux)
-    else:
-        #smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
-        #smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
-        _, uindx = np.unique(smooth_wave, return_index=True)
-        srt = np.argsort(smooth_wave[uindx])
-        bspl_flux = make_interp_spline(smooth_wave[uindx][srt], smooth_flux[uindx][srt], k=1)
-        smooth_flux = bspl_flux(wave)
-
-        # check for extrapolation
-        blu = np.where(wave < np.min(smooth_wave[srt]))[0]
-        red = np.where(wave > np.max(smooth_wave[srt]))[0]
-        if len(blu) > 0:
-            smooth_flux[:blu[-1]] = smooth_flux[blu[-1]]
-        if len(red) > 0:
-            smooth_flux[red[0]:] = smooth_flux[red[0]]
-
-    smooth = median_filter(smooth_flux, medbin, mode='nearest')
-    
-    # very important!
-    Z = (flux == 0.0) * (ivar == 0.0)
-    if np.sum(Z) > 0:
-        smooth[Z] = 0.0
-
-    # Optional QA.
-    if png:
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-
-        resid = flux - smooth        
-        noise = np.ptp(quantile(resid[~linemask], (0.25, 0.75))) / 1.349 # robust sigma
-
-        sns.set(context='talk', style='ticks', font_scale=0.8)
-
-        fig, ax = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
-        ax[0].plot(wave / 1e4, flux, alpha=0.75, label='Data')
-        ax[0].scatter(wave[linemask] / 1e4, flux[linemask], s=10, marker='s', 
-                      color='k', zorder=2, alpha=0.5, label='Line-masked pixel')
-        ax[0].plot(wave / 1e4, smooth, color='red', label='Smooth continuum')
-        #ax[0].plot(_smooth_wave / 1e4, _smooth_flux, color='orange')
-        #ax[0].plot(wave, median_filter(flux, medbin, mode='nearest'), color='k', lw=2)
-        ax[0].set_ylim(np.min((-5. * noise, quantile(flux, 0.05))), 
-                       np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
-        ax[0].set_ylabel('Continuum-subtracted Spectrum')
-        #ax[0].scatter(_smooth_wave, _smooth_flux, color='orange', marker='s', ls='-', s=20)
-        ax[0].legend(fontsize=12)
-
-        ax[1].plot(wave / 1e4, resid, alpha=0.75)#, label='Residuals')
-        ax[1].axhline(y=0, color='k')
-        ax[1].set_ylim(np.min((-5. * noise, quantile(resid, 0.05))), 
-                       np.max((5. * noise, 1.5 * quantile(resid, 0.975))))
-        ax[1].set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
-        ax[1].set_ylabel('Residual Spectrum')
-        #ax[1].legend(fontsize=10)
-
-        fig.tight_layout()
-        fig.savefig(png)#, bbox_inches='tight')
-        plt.close()
-
-    return smooth
     
 
-def _linepix_and_contpix(wave, ivar, linetable, linesigmas, linevshifts=None, 
-                         patchMap=None, redshift=0., nsigma=4., minlinesigma=50., 
-                         mincontpix=11, get_contpix=True, log=None):
-    """Support routine to determine the pixels potentially containing emission lines
-    and the corresponding (adjacent) continuum.
-
-    linesigmas in km/s
-    minlinesigma in kms - minimum line-sigma for the purposes of masking
-    mincontpix - minimum number of continuum pixels per line
-
-    """
-    def _get_linepix(zlinewave, sigma):
-        # line-emission
-        I = (wave > (zlinewave - nsigma * sigma)) * (wave < (zlinewave + nsigma * sigma)) * (ivar > 0.)
-        return np.where(I)[0]
-
-    def _get_contpix(zlinewaves, sigmas, nsigma_factor=2., linemask=None, lya=False):
-        # never use continuum pixels blueward of Lyman-alpha
-        if lya:
-            minwave = np.min(zlinewaves)
-        else:
-            minwave = np.min(zlinewaves - nsigma_factor * nsigma * sigmas)
-        maxwave = np.max(zlinewaves + nsigma_factor * nsigma * sigmas)
-        if linemask is None:
-            J = (wave > minwave) * (wave < maxwave) * (ivar > 0.)
-        else:
-            J = (wave > minwave) * (wave < maxwave) * (ivar > 0.) * ~linemask
-        return np.where(J)[0]
-
-
-    if log is None:
-        from desiutil.log import get_logger
-        log = get_logger()
-
-    if linevshifts is None:
-        linevshifts = np.zeros_like(linesigmas)
-
-    if len(linevshifts) != len(linesigmas):
-        errmsg = 'Mismatch in linevshifts and linesigmas dimensions.'
-        log.critical(errmsg)
-        raise ValueError(errmsg)
-
-    linemask = np.zeros_like(wave, bool) # True - affected by possible emission line
-    linenames = linetable['name'].value
-
-    zlinewaves = linetable['restwave'].value * (1. + redshift + linevshifts / C_LIGHT)
-    linesigmas[(linesigmas > 0.) * (linesigmas < minlinesigma)] = minlinesigma
-    linesigmas_ang = linesigmas * zlinewaves / C_LIGHT # [km/s --> Angstrom]
-
-    pix = {'linepix': {}, 'contpix': {}}
-    if patchMap is not None:
-        pix.update({'patch_contpix': {}, 'dropped': [], 'merged': []})
-        patchids = list(patchMap.keys())
-        npatch = len(patchids)
-
-    # Initial set of pixels that may contain emission lines.
-    for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
-        # skip fixed (e.g., hbeta_broad) lines
-        if sigma <= 0.:
-            continue 
-        I = _get_linepix(zlinewave, sigma)
-        if len(I) > 0:
-            linemask[I] = True
-            pix['linepix'][linename] = I
-
-    # skip contpix
-    if not get_contpix:
-        return pix
-
-    if patchMap is None:
-        for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
-            # skip fixed (e.g., hbeta_broad) or fully masked lines
-            if sigma <= 0. or not linename in pix['linepix'].keys():
-                continue
-            lya = linename == 'lyalpha'
-            J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=linemask, lya=lya)
-            # go further out
-            if len(J) < mincontpix:
-                J = _get_contpix(zlinewave, sigma, nsigma_factor=2.5, linemask=linemask, lya=lya)
-            # drop the linemask_ condition; dangerous??
-            if len(J) < mincontpix: 
-                #log.debug(f'Dropping linemask condition for {linename} with width ' + \
-                #          f'{nsigma*sigma:.3f}-{3*nsigma*sigma:.3f} Angstrom')
-                
-                # Note the smaller nsigma_factor (to stay closer to the
-                # line); remove the pixels already assigned to this
-                # line.
-                J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=None, lya=lya)
-                J = np.delete(J, np.isin(J, pix['linepix'][linename]))
-
-            if len(J) > 0:
-                pix['contpix'][linename] = J
-    else:
-        # Now get the corresponding continuum pixels in "patches."
-        for patchid in patchids:
-            # Not all patchlines will be in the 'linepix' dictionary
-            # because, e.g., the broad Balmer lines have linesigma=0 when
-            # fitting the narrow-only linemodel. An entire patch can also
-            # get dropped if a large portion of the spectrum is fully masked
-            # (ivar==0).
-            patchlines = patchMap[patchid][0]
-            keep = np.isin(patchlines, list(pix['linepix'].keys()))
-            if np.count_nonzero(keep) == 0:
-                pix['dropped'].append(patchid)
-                log.info(f'Dropping patch {patchid} ({len(patchlines)} lines fully masked).')
-                continue
-
-            patchlines = patchlines[keep]
-            I = patchMap[patchid][1][keep]
-
-            zlinewaves_patch = zlinewaves[I]
-            sigmas_patch = linesigmas_ang[I]
-            lya = 'lyalpha' in patchlines
-
-            J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.,
-                             linemask=linemask, lya=lya)
-
-            # go further out
-            if len(J) < mincontpix: 
-                J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.5,
-                                 linemask=linemask, lya=lya)
-
-            if len(J) > 0:
-                # all lines in this patch get the same continuum indices
-                mn, mx = np.min(J), np.max(J)
-                for patchline in patchlines:
-                    pix['contpix'][patchline] = J
-                        
-                    # Make sure the left/right edges of the patch include all
-                    # the emission lines on this patch.
-                    mn = np.min((mn, np.min(pix['linepix'][patchline])))
-                    mx = np.max((mx, np.max(pix['linepix'][patchline])))
-                    J = np.unique(np.hstack((mn, J, mx)))
-
-            pix['patch_contpix'][patchid] = J # updated vector
-
-        # Loop back through and merge patches that overlap by at least
-        # mincontpix.
-        patchkeys = pix['patch_contpix'].keys()
-        for ipatch, patchid in enumerate(patchids[:npatch-1]):
-            if patchid in patchkeys and patchids[ipatch+1] in patchkeys:
-                left = pix['patch_contpix'][patchid]
-                rght = pix['patch_contpix'][patchids[ipatch+1]]
-                incommon = np.intersect1d(left, rght, assume_unique=True)
-                if len(incommon) > mincontpix:
-                    log.debug(f'Merging patches {patchid} and {patchids[ipatch+1]}')
-                    newcontpix = np.union1d(left, rght)
-                    newpatchid = patchids[ipatch] + patchids[ipatch+1]
-                    del pix['patch_contpix'][patchids[ipatch]]
-                    del pix['patch_contpix'][patchids[ipatch+1]]
-                    pix['patch_contpix'][newpatchid] = newcontpix
-                    pix['merged'].append(newpatchid)
-
-        if patchMap is not None:
-            if len(pix['dropped']) > 0:
-                pix['dropped'] = np.hstack(pix['dropped'])
-            if len(pix['merged']) > 0:
-                pix['merged'] = np.hstack(pix['merged'])
-
-    # make sure we haven't mucked up our indexing.
-    if not pix['linepix'].keys() == pix['contpix'].keys():
-        errmsg = 'Mismatch in linepix and contpix!'
-        log.critical(errmsg)
-        raise ValueError(errmsg)
-    
-    return pix
 
 
 class ContinuumTools(object):
     """Tools for dealing with spectral continua.
 
     """
-    def __init__(self, phot, emlinesfile=None,
-                 log=None, verbose=False):
+    def __init__(self, cosmo, igm, phot, emline_table):
         """
         Parameters
         ----------
@@ -433,21 +84,10 @@ class ContinuumTools(object):
             Optional keyword arguments passed to `Tools` :class:`class`.
     
         """
-        from fastspecfit.io import read_emlines
 
-        if log is None:
-            from desiutil.log import get_logger, DEBUG
-            if verbose:
-                log = get_logger(DEBUG)
-            else:
-                log = get_logger()
-        self.log = log
-        
-        self.emlinesfile = emlinesfile
-        self.linetable = read_emlines(emlinesfile=emlinesfile)
-        self.cosmo = TabulatedDESI()
-        self.igm = Inoue14()
-        
+        self.emline_table = emline_table
+        self.cosmo = cosmo
+        self.igm = igm
         self.phot = phot
         
         self.massnorm = 1e10       # stellar mass normalization factor [Msun]
@@ -466,6 +106,169 @@ class ContinuumTools(object):
         # will be cached once we have the wavelength vector.
         self.pixpos_wavesplit = None 
 
+
+    @staticmethod
+    def linepix_and_contpix(wave, ivar, linetable, linesigmas, linevshifts=None, 
+                            patchMap=None, redshift=0., nsigma=4., minlinesigma=50., 
+                            mincontpix=11, get_contpix=True):
+        """Support routine to determine the pixels potentially containing emission lines
+        and the corresponding (adjacent) continuum.
+        
+        linesigmas in km/s
+        minlinesigma in kms - minimum line-sigma for the purposes of masking
+        mincontpix - minimum number of continuum pixels per line
+        
+        """
+        def _get_linepix(zlinewave, sigma):
+            # line-emission
+            I = (wave > (zlinewave - nsigma * sigma)) * (wave < (zlinewave + nsigma * sigma)) * (ivar > 0.)
+            return np.where(I)[0]
+
+        def _get_contpix(zlinewaves, sigmas, nsigma_factor=2., linemask=None, lya=False):
+            # never use continuum pixels blueward of Lyman-alpha
+            if lya:
+                minwave = np.min(zlinewaves)
+            else:
+                minwave = np.min(zlinewaves - nsigma_factor * nsigma * sigmas)
+            maxwave = np.max(zlinewaves + nsigma_factor * nsigma * sigmas)
+            if linemask is None:
+                J = (wave > minwave) * (wave < maxwave) * (ivar > 0.)
+            else:
+                J = (wave > minwave) * (wave < maxwave) * (ivar > 0.) * ~linemask
+            return np.where(J)[0]
+
+        if linevshifts is None:
+            linevshifts = np.zeros_like(linesigmas)
+
+        if len(linevshifts) != len(linesigmas):
+            errmsg = 'Mismatch in linevshifts and linesigmas dimensions.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+        linemask = np.zeros_like(wave, bool) # True - affected by possible emission line
+        linenames = linetable['name'].value
+
+        zlinewaves = linetable['restwave'].value * (1. + redshift + linevshifts / C_LIGHT)
+        linesigmas[(linesigmas > 0.) * (linesigmas < minlinesigma)] = minlinesigma
+        linesigmas_ang = linesigmas * zlinewaves / C_LIGHT # [km/s --> Angstrom]
+
+        pix = {'linepix': {}, 'contpix': {}}
+        if patchMap is not None:
+            pix.update({'patch_contpix': {}, 'dropped': [], 'merged': []})
+            patchids = list(patchMap.keys())
+            npatch = len(patchids)
+
+        # Initial set of pixels that may contain emission lines.
+        for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
+            # skip fixed (e.g., hbeta_broad) lines
+            if sigma <= 0.:
+                continue 
+            I = _get_linepix(zlinewave, sigma)
+            if len(I) > 0:
+                linemask[I] = True
+                pix['linepix'][linename] = I
+
+        # skip contpix
+        if not get_contpix:
+            return pix
+
+        if patchMap is None:
+            for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
+                # skip fixed (e.g., hbeta_broad) or fully masked lines
+                if sigma <= 0. or not linename in pix['linepix'].keys():
+                    continue
+                lya = linename == 'lyalpha'
+                J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=linemask, lya=lya)
+                # go further out
+                if len(J) < mincontpix:
+                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2.5, linemask=linemask, lya=lya)
+                # drop the linemask_ condition; dangerous??
+                if len(J) < mincontpix: 
+                    #log.debug(f'Dropping linemask condition for {linename} with width ' + \
+                        #          f'{nsigma*sigma:.3f}-{3*nsigma*sigma:.3f} Angstrom')
+                
+                    # Note the smaller nsigma_factor (to stay closer to the
+                    # line); remove the pixels already assigned to this
+                    # line.
+                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=None, lya=lya)
+                    J = np.delete(J, np.isin(J, pix['linepix'][linename]))
+
+                if len(J) > 0:
+                    pix['contpix'][linename] = J
+        else:
+            # Now get the corresponding continuum pixels in "patches."
+            for patchid in patchids:
+                # Not all patchlines will be in the 'linepix' dictionary
+                # because, e.g., the broad Balmer lines have linesigma=0 when
+                # fitting the narrow-only linemodel. An entire patch can also
+                # get dropped if a large portion of the spectrum is fully masked
+                # (ivar==0).
+                patchlines = patchMap[patchid][0]
+                keep = np.isin(patchlines, list(pix['linepix'].keys()))
+                if np.count_nonzero(keep) == 0:
+                    pix['dropped'].append(patchid)
+                    log.info(f'Dropping patch {patchid} ({len(patchlines)} lines fully masked).')
+                    continue
+
+                patchlines = patchlines[keep]
+                I = patchMap[patchid][1][keep]
+
+                zlinewaves_patch = zlinewaves[I]
+                sigmas_patch = linesigmas_ang[I]
+                lya = 'lyalpha' in patchlines
+
+                J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.,
+                                 linemask=linemask, lya=lya)
+
+                # go further out
+                if len(J) < mincontpix: 
+                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.5,
+                                     linemask=linemask, lya=lya)
+
+                if len(J) > 0:
+                    # all lines in this patch get the same continuum indices
+                    mn, mx = np.min(J), np.max(J)
+                    for patchline in patchlines:
+                        pix['contpix'][patchline] = J
+                        
+                        # Make sure the left/right edges of the patch include all
+                        # the emission lines on this patch.
+                        mn = np.min((mn, np.min(pix['linepix'][patchline])))
+                        mx = np.max((mx, np.max(pix['linepix'][patchline])))
+                    J = np.unique(np.hstack((mn, J, mx)))
+
+                pix['patch_contpix'][patchid] = J # updated vector
+
+            # Loop back through and merge patches that overlap by at least
+            # mincontpix.
+            patchkeys = pix['patch_contpix'].keys()
+            for ipatch, patchid in enumerate(patchids[:npatch-1]):
+                if patchid in patchkeys and patchids[ipatch+1] in patchkeys:
+                    left = pix['patch_contpix'][patchid]
+                    rght = pix['patch_contpix'][patchids[ipatch+1]]
+                    incommon = np.intersect1d(left, rght, assume_unique=True)
+                    if len(incommon) > mincontpix:
+                        log.debug(f'Merging patches {patchid} and {patchids[ipatch+1]}')
+                        newcontpix = np.union1d(left, rght)
+                        newpatchid = patchids[ipatch] + patchids[ipatch+1]
+                        del pix['patch_contpix'][patchids[ipatch]]
+                        del pix['patch_contpix'][patchids[ipatch+1]]
+                        pix['patch_contpix'][newpatchid] = newcontpix
+                        pix['merged'].append(newpatchid)
+
+            if patchMap is not None:
+                if len(pix['dropped']) > 0:
+                    pix['dropped'] = np.hstack(pix['dropped'])
+                if len(pix['merged']) > 0:
+                    pix['merged'] = np.hstack(pix['merged'])
+
+        # make sure we haven't mucked up our indexing.
+        if not pix['linepix'].keys() == pix['contpix'].keys():
+            errmsg = 'Mismatch in linepix and contpix!'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+    
+        return pix
 
     # FIXME: the ONLY dependence of this function on self, other than logging is
     # getting the name of the emlinesfile to load a line table inside EMFit_tools
@@ -517,7 +320,6 @@ class ContinuumTools(object):
 
         """
         from astropy.table import vstack
-        from fastspecfit.util import quantile
         from fastspecfit.emlines import EMFitTools, ParamType
 
         def _make_patchTable(patchids):
@@ -559,11 +361,10 @@ class ContinuumTools(object):
             for iiter in range(niter):
 
                 # Build the line and continuum masks (only for lines in range).
-                pix = _linepix_and_contpix(wave, ivar, linetable_inrange, 
-                                           linesigmas[EMFit.line_in_range], 
-                                           linevshifts=linevshifts[EMFit.line_in_range], 
-                                           patchMap=patchMap, redshift=redshift,
-                                           log=self.log)
+                pix = self.linepix_and_contpix(wave, ivar, linetable_inrange, 
+                                               linesigmas[EMFit.line_in_range], 
+                                               linevshifts=linevshifts[EMFit.line_in_range], 
+                                               patchMap=patchMap, redshift=redshift)
 
                 # Check for fully dropped patches, which can happen if large
                 # parts of the spectrum are masked.
@@ -631,7 +432,6 @@ class ContinuumTools(object):
                         initial_linevshift_broad=0.,
                         initial_linevshift_narrow=0.,
                         initial_linevshift_balmer_broad=0.,
-                        log=self.log,
                     )
 
                 # fit!
@@ -639,11 +439,10 @@ class ContinuumTools(object):
                                                   param_bounds, wave,
                                                   flux, weights, redshift,
                                                   resolution_matrix, camerapix,
-                                                  continuum_patches=continuum_patches, 
-                                                  log=self.log)
+                                                  continuum_patches=continuum_patches)
 
                 # Update the initial guesses as well as linesigmas and
-                # linevshifts (for _linepix_and_contpix, at the top of the
+                # linevshifts (for linepix_and_contpix, at the top of the
                 # iteration loop).
                 if iiter < niter-1:
                     initial_guesses = linefit['value'].value.copy()
@@ -732,10 +531,10 @@ class ContinuumTools(object):
             final_linevshifts = (linevshift_broad, linevshift_narrow, linevshift_balmer_broad)
             maxsnrs = (maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad)
 
-            self.log.info(f'Broad: S/N={maxsnr_broad:.1f}, (sigma,dv)=({linesigma_broad:.0f},{linevshift_broad:.0f}) km/s; ' + \
-                          f'Narrow: S/N={maxsnr_narrow:.1f}, ({linesigma_narrow:.0f},{linevshift_narrow:.0f}) km/s; '+ \
-                          f'Balmer Broad: S/N={maxsnr_balmer_broad:.1f}, ({linesigma_balmer_broad:.0f},{linevshift_balmer_broad:.0f}) km/s.')
-            self.log.info(f'Fitting {modelname} with patches ({niter} iterations) took {time.time()-t0:.4f} seconds.')
+            log.info(f'Broad: S/N={maxsnr_broad:.1f}, (sigma,dv)=({linesigma_broad:.0f},{linevshift_broad:.0f}) km/s; ' + \
+                     f'Narrow: S/N={maxsnr_narrow:.1f}, ({linesigma_narrow:.0f},{linevshift_narrow:.0f}) km/s; '+ \
+                     f'Balmer Broad: S/N={maxsnr_balmer_broad:.1f}, ({linesigma_balmer_broad:.0f},{linevshift_balmer_broad:.0f}) km/s.')
+            log.info(f'Fitting {modelname} with patches ({niter} iterations) took {time.time()-t0:.4f} seconds.')
 
             # optionally build a QA figure
             if debug_plots:
@@ -829,7 +628,7 @@ class ContinuumTools(object):
                     xx.set_ylim(ymin, ymax)
                     xx.legend(loc='upper left', fontsize=8, ncols=nlegcol)
                     xx.set_title(f'Patch {patchid}')
-                for rem in np.arange(ncols*nrows-ipatch-1)+ipatch+1:
+                for rem in range(ipatch+1, ncols*nrowspatch):
                     ax.flat[rem].axis('off')
 
                 if ax.ndim == 1:
@@ -868,7 +667,7 @@ class ContinuumTools(object):
         camerapix = np.array([[0, len(wave)]]) # one camera
 
         # Read just the strong lines and determine which lines are in range of the camera.
-        EMFit = EMFitTools(emlinesfile=self.emlinesfile, uniqueid=uniqueid, stronglines=True)
+        EMFit = EMFitTools(emline_table=self.emline_table, uniqueid=uniqueid, stronglines=True)
         EMFit.compute_inrange_lines(redshift, wavelims=(np.min(wave), np.max(wave)))
     
         # Build the narrow and narrow+broad emission-line models.
@@ -917,26 +716,26 @@ class ContinuumTools(object):
 
             # if a broad Balmer line is well-detected, take its linewidth
             if maxsnrs_broad[2] > minsnr_balmer_broad: 
-                self.log.info(f'Adopting broad Balmer-line masking: S/N(broad Balmer) ' + \
-                              f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}.')
+                log.info(f'Adopting broad Balmer-line masking: S/N(broad Balmer) ' + \
+                         f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}.')
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_broad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_broad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_broad
             else:
-                self.log.info(f'Adopting narrow Balmer-line masking: S/N(broad Balmer) ' + \
-                              f'{maxsnrs_broad[2]:.1f} < {minsnr_balmer_broad:.1f}.')
+                log.info(f'Adopting narrow Balmer-line masking: S/N(broad Balmer) ' + \
+                         f'{maxsnrs_broad[2]:.1f} < {minsnr_balmer_broad:.1f}.')
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
         else:
-            self.log.info(f'Adopting narrow Balmer-line masking: no Balmer lines in wavelength range.')
+            log.info(f'Adopting narrow Balmer-line masking: no Balmer lines in wavelength range.')
             finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
             finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
             maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
 
         # Build the final pixel mask for *all* lines using our current best
         # knowledge of the broad Balmer lines....(comment continued below)
-        EMFit = EMFitTools(emlinesfile=self.emlinesfile, uniqueid=uniqueid, stronglines=False)
+        EMFit = EMFitTools(emline_table=self.emline_table, uniqueid=uniqueid, stronglines=False)
         EMFit.compute_inrange_lines(redshift, wavelims=(np.min(wave), np.max(wave)))
 
         linesigmas = np.zeros(len(EMFit.line_table))
@@ -949,11 +748,11 @@ class ContinuumTools(object):
         linevshifts[EMFit.isNarrow] = finalvshift_narrow
         linevshifts[EMFit.isBalmerBroad] = finalvshift_balmer_broad
 
-        pix = _linepix_and_contpix(wave, ivar, 
-                                   EMFit.line_table[EMFit.line_in_range], 
-                                   linesigmas[EMFit.line_in_range], 
-                                   linevshifts=linevshifts[EMFit.line_in_range],
-                                   patchMap=None, redshift=redshift)
+        pix = self.linepix_and_contpix(wave, ivar, 
+                                       EMFit.line_table[EMFit.line_in_range], 
+                                       linesigmas[EMFit.line_in_range], 
+                                       linevshifts=linevshifts[EMFit.line_in_range],
+                                       patchMap=None, redshift=redshift)
 
         # Build another QA figure
         if debug_plots:
@@ -989,7 +788,7 @@ class ContinuumTools(object):
                 xx.text(0.1, 0.9, linename, ha='left', va='center', transform=xx.transAxes, 
                         fontsize=8)
 
-            for rem in np.arange(ncols*nrows-iline-1)+iline+1:
+            for rem in range(iline+1, ncols*nrows):
                 ax.flat[rem].axis('off')
 
             if ax.ndim == 1:
@@ -1037,11 +836,12 @@ class ContinuumTools(object):
             finalsigma_balmer_broad = initsigma_balmer_broad
             linesigmas[EMFit.isBalmerBroad] = finalsigma_balmer_broad
             linevshifts[EMFit.isBalmerBroad] = finalvshift_balmer_broad
-            newpix = _linepix_and_contpix(wave, ivar, 
-                                          EMFit.line_table[EMFit.line_in_range], 
-                                          linesigmas[EMFit.line_in_range], 
-                                          linevshifts=linevshifts[EMFit.line_in_range],
-                                          patchMap=None, redshift=redshift)
+            newpix = self.linepix_and_contpix(wave, ivar, 
+                                              EMFit.line_table[EMFit.line_in_range], 
+                                              linesigmas[EMFit.line_in_range], 
+                                              linevshifts=linevshifts[EMFit.line_in_range],
+                                              patchMap=None, redshift=redshift)
+            
             linepix = newpix['linepix']
         else:
             linepix = pix['linepix']
@@ -1061,10 +861,187 @@ class ContinuumTools(object):
         }
 
         return out
-            
-    @staticmethod
-    def smooth_continuum(*args, **kwargs):
-        return _smooth_continuum(*args, **kwargs)
+
+    
+    ##########################################################################################
+
+    # FIXME: this should not have been made a method of the class - undo
+    def smooth_continuum(self, wave, flux, ivar, linemask, camerapix=None, medbin=175, 
+                         smooth_window=75, smooth_step=125, png=None):
+        """Build a smooth, nonparametric continuum spectrum.
+        
+        Parameters
+        ----------
+        wave : :class:`numpy.ndarray` [npix]
+           Observed-frame wavelength array.
+        flux : :class:`numpy.ndarray` [npix]
+           Spectrum corresponding to `wave`.
+        ivar : :class:`numpy.ndarray` [npix]
+           Inverse variance spectrum corresponding to `flux`.
+        linemask : :class:`numpy.ndarray` of type :class:`bool`, optional, defaults to `None`
+           Boolean mask with the same number of pixels as `wave` where `True`
+           means a pixel is (possibly) affected by an emission line
+           (specifically a strong line which likely cannot be median-smoothed).
+        medbin : :class:`int`, optional, defaults to 150 pixels
+           Width of the median-smoothing kernel in pixels; a magic number.
+        smooth_window : :class:`int`, optional, defaults to 50 pixels
+           Width of the sliding window used to compute the iteratively clipped
+           statistics (mean, median, sigma); a magic number. Note: the nominal
+           extraction width (0.8 A) and observed-frame wavelength range
+           (3600-9800 A) corresponds to pixels that are 66-24 km/s. So
+           `smooth_window` of 50 corresponds to 3300-1200 km/s, which is
+           conservative for all but the broadest lines. A magic number. 
+           smooth_step : :class:`int`, optional, defaults to 10 pixels
+           Width of the step size when computing smoothed statistics; a magic
+           number.
+        png : :class:`str`, optional, defaults to `None`
+           Generate a simple QA plot and write it out to this filename.
+        
+        Returns
+        -------
+        smooth :class:`numpy.ndarray` [npix]
+        Smooth continuum spectrum which can be subtracted from `flux` in
+        order to create a pure emission-line spectrum.
+        
+        """
+        from numpy.lib.stride_tricks import sliding_window_view
+        from scipy.ndimage import median_filter
+        from fastspecfit.util import sigmaclip
+        from scipy.interpolate import make_interp_spline
+        
+        npix = len(wave)
+        
+        if len(linemask) != npix:
+            errmsg = 'Linemask must have the same number of pixels as the input spectrum.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+        # If camerapix is given, mask the 10 (presumably noisy) pixels from the edge
+        # of each per-camera spectrum.
+        if camerapix is not None:
+            for campix in camerapix:
+                ivar[campix[0]:campix[0]+10] = 0.
+                ivar[campix[1]-10:campix[1]] = 0.
+
+        # Build the smooth (line-free) continuum by computing statistics in a
+        # sliding window, accounting for masked pixels and trying to be smart
+        # about broad lines. See:
+        #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
+        #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
+        wave_win = sliding_window_view(wave, window_shape=smooth_window)
+        flux_win = sliding_window_view(flux, window_shape=smooth_window)
+        ivar_win = sliding_window_view(ivar, window_shape=smooth_window)
+        noline_win = sliding_window_view(np.logical_not(linemask), window_shape=smooth_window)
+
+        nminpix = 15
+
+        smooth_wave, smooth_flux, smooth_sigma = [], [], []
+        for swave, sflux, sivar, noline in zip(wave_win[::smooth_step],
+                                               flux_win[::smooth_step],
+                                               ivar_win[::smooth_step],
+                                               noline_win[::smooth_step]):
+
+            # if there are fewer than XX good pixels after accounting for the
+            # line-mask, skip this window.
+            sflux = sflux[noline]
+            if len(sflux) < nminpix:
+                continue
+
+            cflux, clo, chi = sigmaclip(sflux, low=2.0, high=2.0)
+            if len(cflux) < nminpix:
+                continue
+        
+            sivar = sivar[noline]
+            # Toss out regions with too little good data.
+            if np.sum(sivar > 0) < nminpix:
+                continue
+        
+            sig = np.std(cflux) # simple median and sigma
+            mn = median(cflux)
+
+            # One more check for crummy spectral regions.
+            if mn == 0.0:
+                continue
+
+            swave = swave[noline]
+            I = ((sflux >= clo) & (sflux <= chi))
+            smooth_wave.append(np.mean(swave[I]))
+        
+            smooth_sigma.append(sig)
+            smooth_flux.append(mn)
+
+        smooth_wave = np.array(smooth_wave)
+        smooth_sigma = np.array(smooth_sigma)
+        smooth_flux = np.array(smooth_flux)
+
+        # For debugging.
+        if png:
+            _smooth_wave = smooth_wave.copy()
+            _smooth_flux = smooth_flux.copy()
+
+        # corner case for very wacky spectra
+        if len(smooth_flux) == 0:
+            smooth_flux = flux
+            #smooth_sigma = flux * 0 + np.std(flux)
+        else:
+            #smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
+            #smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
+            _, uindx = np.unique(smooth_wave, return_index=True)
+            srt = np.argsort(smooth_wave[uindx])
+            bspl_flux = make_interp_spline(smooth_wave[uindx][srt], smooth_flux[uindx][srt], k=1)
+            smooth_flux = bspl_flux(wave)
+
+            # check for extrapolation
+            blu = np.where(wave < np.min(smooth_wave[srt]))[0]
+            red = np.where(wave > np.max(smooth_wave[srt]))[0]
+            if len(blu) > 0:
+                smooth_flux[:blu[-1]] = smooth_flux[blu[-1]]
+            if len(red) > 0:
+                smooth_flux[red[0]:] = smooth_flux[red[0]]
+
+        smooth = median_filter(smooth_flux, medbin, mode='nearest')
+    
+        # very important!
+        Z = (flux == 0.0) * (ivar == 0.0)
+        if np.sum(Z) > 0:
+            smooth[Z] = 0.0
+
+        # Optional QA.
+        if png:
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+
+            resid = flux - smooth        
+            noise = np.ptp(quantile(resid[~linemask], (0.25, 0.75))) / 1.349 # robust sigma
+
+            sns.set(context='talk', style='ticks', font_scale=0.8)
+
+            fig, ax = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
+            ax[0].plot(wave / 1e4, flux, alpha=0.75, label='Data')
+            ax[0].scatter(wave[linemask] / 1e4, flux[linemask], s=10, marker='s', 
+                          color='k', zorder=2, alpha=0.5, label='Line-masked pixel')
+            ax[0].plot(wave / 1e4, smooth, color='red', label='Smooth continuum')
+            #ax[0].plot(_smooth_wave / 1e4, _smooth_flux, color='orange')
+            #ax[0].plot(wave, median_filter(flux, medbin, mode='nearest'), color='k', lw=2)
+            ax[0].set_ylim(np.min((-5. * noise, quantile(flux, 0.05))), 
+                           np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
+            ax[0].set_ylabel('Continuum-subtracted Spectrum')
+            #ax[0].scatter(_smooth_wave, _smooth_flux, color='orange', marker='s', ls='-', s=20)
+            ax[0].legend(fontsize=12)
+
+            ax[1].plot(wave / 1e4, resid, alpha=0.75)#, label='Residuals')
+            ax[1].axhline(y=0, color='k')
+            ax[1].set_ylim(np.min((-5. * noise, quantile(resid, 0.05))), 
+                           np.max((5. * noise, 1.5 * quantile(resid, 0.975))))
+            ax[1].set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
+            ax[1].set_ylabel('Residual Spectrum')
+            #ax[1].legend(fontsize=10)
+
+            fig.tight_layout()
+            fig.savefig(png)#, bbox_inches='tight')
+            plt.close()
+
+        return smooth
 
 
     @staticmethod
@@ -1101,11 +1078,6 @@ class ContinuumTools(object):
         return smoothflux
 
     
-    @staticmethod
-    def convolve_vdisp(templateflux, vdisp, pixsize_kms=PIXKMS_BLU, limit=None):
-        return convolve_vdisp(templateflux, vdisp, pixsize_kms=pixsize_kms, limit=limit)
-
-
     def templates2data(self, templateflux, templatewave, redshift=0.0, dluminosity=None,
                        vdisp=None, cameras=['b', 'r', 'z'], specwave=None, specres=None, 
                        specmask=None, coeff=None, photsys=None, synthphot=True, 
@@ -1159,8 +1131,8 @@ class ContinuumTools(object):
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
             hi = np.searchsorted(templatewave, PIXKMS_WAVESPLIT, 'left')
-            vd_templateflux = self.convolve_vdisp(templateflux, vdisp, 
-                                                  pixsize_kms=PIXKMS_BLU, limit=hi)
+            vd_templateflux = _convolve_vdisp(templateflux, vdisp, 
+                                              pixsize_kms=PIXKMS_BLU, limit=hi)
         else:
             vd_templateflux = templateflux
             
@@ -1168,7 +1140,6 @@ class ContinuumTools(object):
         # apply the luminosity distance factor here. Also normalize to a nominal
         # stellar mass.
         if redshift > 0.:
-            # FIXME: try accelerating this whole thing in Numba
             ztemplatewave = templatewave * (1. + redshift)
             T = self.igm.full_IGM(redshift, ztemplatewave) 
             T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
@@ -1194,15 +1165,14 @@ class ContinuumTools(object):
                 
                 maggies = Photometry.get_ab_maggies(filters,
                                                     ztemplateflux.T,
-                                              ztemplatewave,
-                                              log=self.log) / \
-                                              (FLUXNORM * self.massnorm)
+                                                    ztemplatewave) / \
+                                                    (FLUXNORM * self.massnorm)
                 if flamphot:                
                     templatephot = Photometry.get_photflam(maggies, effwave, nanomaggies=False)
                 else:
                     templatephot = Photometry.parse_photometry(self.phot.bands, maggies, effwave, 
-                                                               nanomaggies=False, get_abmag=get_abmag, 
-                                                               log=self.log)
+                                                               nanomaggies=False, get_abmag=get_abmag)
+                                                               
                 
         # Are we returning per-camera spectra or a single model? Handle that here.
         if specwave is None and specres is None:
@@ -1215,28 +1185,19 @@ class ContinuumTools(object):
                 if synthphot:
                     maggies = Photometry.get_ab_maggies(filters,
                                                         datatemplateflux.T,
-                                                        ztemplatewave,
-                                                        log=self.log) / \
+                                                        ztemplatewave) / \
                                                         (FLUXNORM * self.massnorm)
                     
                     if flamphot:
                         templatephot = Photometry.get_photflam(maggies, effwave, nanomaggies=False)
                     else:
                         templatephot = Photometry.parse_photometry(self.phot.bands, maggies, effwave, 
-                                                                   nanomaggies=False, get_abmag=get_abmag, 
-                                                                   log=self.log)
+                                                                   nanomaggies=False, get_abmag=get_abmag)
 
         else:
             # loop over cameras
             datatemplateflux = []
             for icamera in range(len(cameras)): # iterate on cameras
-                #from scipy.ndimage import binary_dilation
-                ## interpolate over pixels where the resolution matrix is masked
-                #if specmask is not None and np.any(specmask[icamera] != 0):
-                #    sw_mask = binary_dilation(specmask[icamera] != 0, iterations=2)
-                #else:
-                #    sw_mask = None
-                
                 _datatemplateflux = np.empty((len(specwave[icamera]), nmodel),
                                              dtype=ztemplateflux.dtype)
                 for imodel in range(nmodel):
@@ -1245,16 +1206,8 @@ class ContinuumTools(object):
                                                           specwave=specwave[icamera],
                                                           specres=specres[icamera])
 
-                    ## interpolate over pixels where the resolution matrix is masked
-                    ## FixMe -- move this to io.read_and_unpack
-                    #if sw_mask is not None:
-                    #    resampflux[sw_mask] = np.interp(specwave[icamera][sw_mask],
-                    #                                    ztemplatewave,
-                    #                                    ztemplateflux[:, imodel])
-                        
                     _datatemplateflux[:,imodel] = resampflux
                 
-                #_datatemplateflux = np.vstack(_datatemplateflux).T
                 if coeff is not None:
                     _datatemplateflux = _datatemplateflux.dot(coeff)
                 datatemplateflux.append(_datatemplateflux)
@@ -1271,8 +1224,7 @@ class ContinuumTools(object):
 
     @staticmethod
     def call_nnls(modelflux, flux, ivar, xparam=None, debug=False,
-                  interpolate_coeff=False, xlabel=None, png=None, 
-                  log=None):
+                  interpolate_coeff=False, xlabel=None, png=None):
         """Deprecated. Wrapper on `scipy.optimize.nnls`.
     
         Works with both spectroscopic and photometric input and with both 2D and
@@ -1285,10 +1237,6 @@ class ContinuumTools(object):
         from scipy.optimize import nnls
         from fastspecfit.util import find_minima, minfit
         
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-    
         if xparam is not None:
             nn = len(xparam)
     
@@ -1531,15 +1479,17 @@ class ContinuumTools(object):
         method, so its use here is a placeholder.
 
         """
+        from scipy.integrate import simpson
+        
         # [1] - Compute the non-negative sum of the templates.
         fullmodel = templateflux.dot(templatecoeff)
 
         # [2] - Optionally convolve to the desired velocity dispersion.
         if vdisp is not None:
-            fullmodel = self.convolve_vdisp(fullmodel, vdisp, 
-                                            pixsize_kms=PIXKMS_BLU, 
-                                            limit=self.pixpos_wavesplit)
-
+            fullmodel = _convolve_vdisp(fullmodel, vdisp, 
+                                        pixsize_kms=PIXKMS_BLU, 
+                                        limit=self.pixpos_wavesplit)
+            
         # [3] - Apply dust attenuation; ToDo: allow age-dependent
         # attenuation. Also compute the bolometric luminosity before and after
         # attenuation but only if we have dustflux.
@@ -1547,13 +1497,13 @@ class ContinuumTools(object):
             self._cache_klambda(templatewave)
 
         if dustflux is not None:
-            lbol0 = np.trapz(fullmodel, x=templatewave)
+            lbol0 = simpson(fullmodel, x=templatewave)
 
         if ebv > 0.:
             atten = 10.**(-0.4 * ebv * self.dust_klambda)
             fullmodel *= atten
             if dustflux is not None:
-                lbolabs = np.trapz(fullmodel, x=templatewave)
+                lbolabs = simpson(fullmodel, x=templatewave)
 
         # [4] - Optionally add the dust emission spectrum, conserving the total
         # (absorbed + re-emitted) energy. NB: (1) dustflux must be normalized to
@@ -1579,15 +1529,13 @@ class ContinuumTools(object):
                     filters = self.phot.filters[photsys]
 
             effwave = filters.effective_wavelengths.value
-            modelmaggies = Photometry.get_ab_maggies_fast(filters, fullmodel,
-                                                          ztemplatewave, log=self.log)
+            modelmaggies = Photometry.get_ab_maggies_fast(filters, fullmodel, ztemplatewave)
             if flamphot:                
                 modelphot = Photometry.get_photflam(modelmaggies, effwave, nanomaggies=False)
             else:
                 modelmaggies /= FLUXNORM * self.massnorm
                 modelphot = Photometry.parse_photometry(self.phot.bands, modelmaggies, effwave, 
-                                                        nanomaggies=False, get_abmag=get_abmag, 
-                                                        log=self.log)
+                                                        nanomaggies=False, get_abmag=get_abmag)
         else:
             modelphot = None
 
@@ -1629,7 +1577,7 @@ class ContinuumTools(object):
         # Compute the residuals based on the information we have.
         if modelflux is None and modelflam is None:
             errmsg = 'Catastrophic problem constructing the model!'
-            self.log.critical(errmsg)
+            log.critical(errmsg)
             raise ValueError(errmsg)
 
         if modelflux is not None and modelflam is not None:
@@ -1746,7 +1694,7 @@ class ContinuumTools(object):
         else:
             if len(coeff_guess) != ntemplate:
                 errmsg = 'Mismatching dimensions between coeff_guess and ntemplate!'
-                self.log.critical(errmsg)
+                log.critical(errmsg)
                 raise ValueError(errmsg)
         
         if fit_vdisp == True:
@@ -1770,7 +1718,7 @@ class ContinuumTools(object):
         fit_info = least_squares(self._stellar_objective, initial_guesses, args=farg, 
                                  bounds=tuple(zip(*bounds)), method='trf',
                                  tr_solver='lsmr', tr_options={'regularize': True}, 
-                                 x_scale='jac', max_nfev=5000, ftol=1e-5, xtol=1e-10)#, verbose=2)
+                                 x_scale='jac', max_nfev=5000, xtol=1e-10)#, verbose=2)
         bestparams = fit_info.x
 
         if fit_vdisp:
@@ -1858,7 +1806,7 @@ class ContinuumTools(object):
         redshift = data['zredrock']
         if redshift <= 0.0:
             errmsg = 'Input redshift not defined, zero, or negative!'
-            self.log.warning(errmsg)
+            log.warning(errmsg)
             return {}, {}
         
         dlum = data['dluminosity']
@@ -1930,10 +1878,10 @@ def _younger_than_universe(age, tuniv, agepad=0.5):
     return np.where(age <= 1e9 * (agepad + tuniv))[0]
 
 
-def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None,
+def continuum_specfit(data, result, templatecache,
+                      cosmo, igm, phot, emline_table,
                       constrain_age=False, no_smooth_continuum=False, 
-                      ignore_photometry=False, fastphot=False, log=None, 
-                      debug_plots=False, verbose=False):
+                      fastphot=False, debug_plots=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -1954,17 +1902,10 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
       - We solve for velocity dispersion if ...
 
     """
-    if log is None:
-        from desiutil.log import get_logger, DEBUG
-        if verbose:
-            log = get_logger(DEBUG)
-        else:
-            log = get_logger()
             
     tall = time.time()
 
-    phot = Photometry(fphoto=fphoto, ignore_photometry=ignore_photometry, log=log)
-    CTools = ContinuumTools(phot=phot, emlinesfile=emlinesfile, log=log)
+    CTools = ContinuumTools(cosmo, igm, phot, emline_table)
     
     redshift = data['zredrock']
     if redshift <= 0.:
@@ -2072,8 +2013,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                     log.info(f'Best-fitting E(B-V)={ebv:.3f} mag.')
                     
                 dn4000_model, _ = Photometry.get_dn4000(templatecache['templatewave'],
-                                                        sedmodel_nolines, rest=True, 
-                                                        log=log)
+                                                        sedmodel_nolines, rest=True)
                 log.info(f'Model Dn(4000)={dn4000_model:.3f}.')
     else:
         # Combine all three cameras; we will unpack them to build the
@@ -2121,7 +2061,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                 vdispchi2min, vdispbest, vdispivar, _ = CTools.call_nnls(
                     ztemplateflux_vdisp[Ivdisp, :, :], 
                     specflux[Ivdisp], specivar[Ivdisp],
-                    xparam=templatecache['vdisp'], xlabel=r'$\sigma$ (km/s)', log=log,
+                    xparam=templatecache['vdisp'], xlabel=r'$\sigma$ (km/s)',
                     debug=debug_plots, png='deltachi2-vdisp.png')
                 log.info(f'Fitting for the velocity dispersion took {time.time()-t0:.2f} seconds.')
 
@@ -2190,8 +2130,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                     quicksedflux = sedtemplates.dot(quickcoeff)
                     quickmaggies = Photometry.get_ab_maggies(filters_in,
                                                              quicksedflux / FLUXNORM,
-                                                             ztemplatewave,
-                                                             log=log)
+                                                             ztemplatewave)
                     
                     denom = Photometry.to_nanomaggies(quickmaggies)
                     
@@ -2223,7 +2162,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             coeff, rchi2_cont = CTools.call_nnls(np.vstack((desitemplateflam, desitemplates_nolines)),
                                                  np.hstack((objflam, specflux * apercorr)),
                                                  np.hstack((objflamivar, specivar / apercorr**2)))
-    
+            
             # full-continuum fitting rchi2
             rchi2_cont /= (np.sum(objflamivar > 0) + np.sum(specivar > 0)) # dof???
             log.info(f'Final fitting with {nage} models took {time.time()-t0:.2f} seconds.')
@@ -2253,7 +2192,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                 sedmodel_nolines = sedtemplates_nolines.dot(coeff)
                
                 dn4000_model, _ = Photometry.get_dn4000(templatecache['templatewave'], 
-                                                        sedmodel_nolines, rest=True, log=log)
+                                                        sedmodel_nolines, rest=True)
         else: # new templates start here
 
             # First, estimate the aperture correction from a (noiseless) *model*
@@ -2382,11 +2321,11 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
                     vdisp=vdisp, synthphot=False)
 
                 dn4000_model, _ = Photometry.get_dn4000(templatecache['templatewave'], 
-                                                        sedmodel_nolines, rest=True, log=log)
+                                                        sedmodel_nolines, rest=True)
 
         # Get DN(4000). Specivar is line-masked so we can't use it!
         dn4000, dn4000_ivar = Photometry.get_dn4000(specwave, specflux, flam_ivar=flamivar, 
-                                                    redshift=redshift, rest=False, log=log)
+                                                    redshift=redshift, rest=False)
         
         if dn4000_ivar > 0:
             log.info(f'Spectroscopic DN(4000)={dn4000:.3f}+/-{1./np.sqrt(dn4000_ivar):.3f}, ' + \
@@ -2412,7 +2351,7 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
             linemask = np.hstack(data['linemask'])
             _smoothcontinuum = CTools.smooth_continuum(
                 specwave, residuals, specivar / apercorr**2, linemask, 
-                camerapix=data['camerapix'], png=png, log=log)
+                camerapix=data['camerapix'], png=png)
 
         # Unpack the continuum into individual cameras.
         continuummodel, smoothcontinuum = [], []

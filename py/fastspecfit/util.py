@@ -8,8 +8,7 @@ General utilities.
 import numpy as np
 import numba
 
-from desiutil.log import get_logger
-log = get_logger()
+from fastspecfit.logger import log
 
 try: # this fails when building the documentation
     from scipy import constants

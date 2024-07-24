@@ -1,6 +1,8 @@
 import numpy as np
 from astropy.table import Table
 
+from fastspecfit.logger import log
+
 from fastspecfit.cosmo import TabulatedDESI
 from fastspecfit.util import C_LIGHT, FLUXNORM
 
@@ -8,91 +10,94 @@ class Photometry(object):
     """Class to load filters and containing filter- and dust-related methods.
 
     """
-    def __init__(self, fphoto, ignore_photometry=False, load_filters=True, 
-                 log=None, verbose=False):
+    def __init__(self, fphotofile=None, stackfit=False, ignore_photometry=False):
         """
         Parameters
         ----------
         ignore_photometry : :class:`bool`
             Boolean flag indicating whether or not to ignore the broadband
             photometry.
-        fphoto : :class:`dict`
-            Photometry dictionary containing information on bandpasses, filter
-            response curves, etc.
-        load_filters : :class:`bool`
-            Load the filters by reading them from disk.
-        verbose : :class:`bool`
-            Include more verbose (debugging) output.
         log : :class:`desiutil.log.logger`
             Logger object.
 
         """
         from speclite import filters
+        import yaml
 
-        if log is None:
-            from desiutil.log import get_logger, DEBUG
-            if verbose:
-                log = get_logger(DEBUG)
+        if fphotofile is None:
+            from importlib import resources
+            if stackfit:
+                fphotofile = resources.files('fastspecfit').joinpath('data/stacked-phot.yaml')
             else:
-                log = get_logger()
-        self.log = log
+                fphotofile = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
+        self.fphotofile = fphotofile
         
-        keys = fphoto.keys()
+        try:
+            with open(fphotofile, 'r') as F:
+                fphoto = yaml.safe_load(F)
+        except:
+            errmsg = f'Unable to read parameter file {fphotofile}'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+        self.fphoto = fphoto # save for init_fastspec_output
+        
         self.uniqueid = fphoto['uniqueid']
         self.photounits = fphoto['photounits']
-        if 'readcols' in keys:
+
+        if 'readcols' in fphoto:
             self.readcols = np.array(fphoto['readcols'])
-        if 'dropcols' in keys:
+        if 'dropcols' in fphoto:
             self.dropcols = np.array(fphoto['dropcols'])
-        if 'outcols' in keys:
+        if 'outcols' in fphoto:
             self.outcols = np.array(fphoto['outcols'])
+            
         self.bands = np.array(fphoto['bands'])
         self.bands_to_fit = np.array(fphoto['bands_to_fit'])
         self.fluxcols = np.array(fphoto['fluxcols'])
         self.fluxivarcols = np.array(fphoto['fluxivarcols'])
         self.min_uncertainty = np.array(fphoto['min_uncertainty'])
             
-        if 'legacysurveydr' in keys:
+        if 'legacysurveydr' in fphoto:
             self.legacysurveydr = fphoto['legacysurveydr']
-        if 'viewer_layer' in keys:
+        if 'viewer_layer' in fphoto:
             self.viewer_layer = fphoto['viewer_layer']
-        if 'viewer_pixscale' in keys:
+        if 'viewer_pixscale' in fphoto:
             self.viewer_pixscale = fphoto['viewer_pixscale']
-        if 'synth_bands' in keys:
+        if 'synth_bands' in fphoto:
             self.synth_bands = np.array(fphoto['synth_bands'])
-        if 'fiber_bands' in keys:
+        if 'fiber_bands' in fphoto:
             self.fiber_bands = np.array(fphoto['fiber_bands'])
 
         self.absmag_bands = np.array(fphoto['absmag_bands'])
         self.band_shift = np.array(fphoto['band_shift'])
 
-        if load_filters:
-            # If fphoto['filters'] is a dictionary, then assume that there
-            # are N/S filters (as indicated by photsys).
-            self.filters = {}
-            for key in fphoto['filters'].keys():
-                self.filters[key] = filters.FilterSequence([filters.load_filter(filtname)
-                                                            for filtname in fphoto['filters'][key]])
-            self.synth_filters = {}
-            for key in fphoto['synth_filters'].keys():
-                self.synth_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
-                                                                  for filtname in fphoto['synth_filters'][key]])
-            if hasattr(self, 'fiber_bands'):
-                self.fiber_filters = {}
-                for key in fphoto['fiber_filters'].keys():
-                    self.fiber_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
-                                                                      for filtname in fphoto['fiber_filters'][key]])
-            # Simple list of filters.
-            self.absmag_filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['absmag_filters']])
+        # If fphoto['filters'] is a dictionary, then assume that there
+        # are N/S filters (as indicated by photsys).
+        self.filters = {}
+        for key in fphoto['filters']:
+            self.filters[key] = filters.FilterSequence([filters.load_filter(filtname)
+                                                        for filtname in fphoto['filters'][key]])
+        self.synth_filters = {}
+        for key in fphoto['synth_filters']:
+            self.synth_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
+                                                              for filtname in fphoto['synth_filters'][key]])
+        if 'fiber_bands' in fphoto:
+            self.fiber_filters = {}
+            for key in fphoto['fiber_filters']:
+                self.fiber_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
+                                                                  for filtname in fphoto['fiber_filters'][key]])
+        # Simple list of filters.
+        self.absmag_filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['absmag_filters']])
 
         if len(self.absmag_bands) != len(self.band_shift):
             errmsg = 'absmag_bands and band_shift must have the same number of elements.'
-            self.log.critical(errmsg)
+            log.critical(errmsg)
             raise ValueError(errmsg)
         
         if self.photounits != 'nanomaggies':
             errmsg = 'nanomaggies is the only currently supported photometric unit!'
-            self.log.critical(errmsg)
+            log.critical(errmsg)
             raise ValueError(errmsg)
 
         # Do not fit the photometry.
@@ -166,7 +171,7 @@ class Photometry(object):
             
         if redshift <= 0.0:
             errmsg = 'Input redshift not defined, zero, or negative!'
-            self.log.warning(errmsg)
+            log.warning(errmsg)
             kcorr        = np.zeros(nabs, dtype='f8')
             absmag       = np.zeros(nabs, dtype='f8')
             ivarabsmag   = np.zeros(nabs, dtype='f8')
@@ -190,8 +195,7 @@ class Photometry(object):
         # very close.
         synth_maggies_in = self.get_ab_maggies(filters_in,
                                                zmodelflux / FLUXNORM,
-                                               zmodelwave,
-                                               log=self.log)
+                                               zmodelwave)
         filters_out = \
             filters.FilterSequence( [ f.create_shifted(band_shift=bs) for f, bs in zip(absmag_filters, band_shift) ])
         lambda_out = filters_out.effective_wavelengths.value
@@ -200,8 +204,7 @@ class Photometry(object):
         # frame".
         synth_outmaggies_rest = self.get_ab_maggies(filters_out,
                                                     zmodelflux * (1. + redshift) / FLUXNORM,
-                                                    modelwave,
-                                                    log=self.log)
+                                                    modelwave)
         
         synth_absmag = -2.5 * np.log10(synth_outmaggies_rest) - dmod
 
@@ -230,7 +233,7 @@ class Photometry(object):
 
 
     @staticmethod
-    def get_ab_maggies_fast(filters, flux, wave, log=None):
+    def get_ab_maggies_fast(filters, flux, wave):
         """Like `self.get_ab_maggies()`, but by-passing the units and error-checking
         used by `speclite`. Specifically, we assume that the filter response
         function always lies within the wavelength range of the input spectrum.
@@ -255,7 +258,7 @@ class Photometry(object):
 
 
     @staticmethod
-    def get_ab_maggies(filters, flux, wave, log=None):
+    def get_ab_maggies(filters, flux, wave):
         
         try:
             maggies0 = filters.get_ab_maggies(flux, wave)
@@ -304,7 +307,7 @@ class Photometry(object):
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
                          nanomaggies=True, nsigma=2.0, min_uncertainty=None,
-                         log=None, get_abmag=False):
+                         get_abmag=False):
         """Parse input (nano)maggies to various outputs and pack into a table.
 
         Parameters
@@ -327,9 +330,6 @@ class Photometry(object):
         -----
 
         """
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
         
         if ivarmaggies is None:
             ivarmaggies = np.zeros_like(maggies)
@@ -439,7 +439,7 @@ class Photometry(object):
 
     
     @staticmethod
-    def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True, log=None):
+    def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
         """Compute DN(4000) and, optionally, the inverse variance.
 
         Parameters
@@ -465,11 +465,7 @@ class Photometry(object):
 
         """
         from fastspecfit.util import ivar2var
-
-        if log is None:
-            from desiutil.log import get_logger
-            log = get_logger()
-    
+            
         dn4000, dn4000_ivar = 0.0, 0.0
 
         if rest is False or redshift is not None:

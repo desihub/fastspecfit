@@ -8,75 +8,62 @@ See sandbox/running-fastspecfit for examples.
 """
 import pdb # for debugging
 
-import os, time
+import time
 import numpy as np
+
+from fastspecfit.logger import log
+from fastspecfit.singlecopy import sc_data, initialize_sc_data
 
 def _fastspec_one(args):
     """Multiprocessing wrapper."""
     return fastspec_one(*args)
 
-def _assign_units_to_columns(fastfit, metadata, Spec, templates, fastphot, stackfit, log):
-    """Assign astropy units to output tables.
-
-    """
-    from fastspecfit.io import init_fastspec_output
-    
-    fastcols = fastfit.colnames
-    metacols = metadata.colnames
-
-    T, M = init_fastspec_output(Spec.meta, Spec.specprod, fphoto=Spec.fphoto, 
-                                templates=templates, log=log, fastphot=fastphot, 
-                                stackfit=stackfit)
-    
-    for col in T.colnames:
-        if col in fastcols:
-            fastfit[col].unit = T[col].unit
-    for col in M.colnames:
-        if col in metacols:
-            metadata[col].unit = M[col].unit
-
-def fastspec_one(iobj, data, out, meta, fphoto, templates, log=None,
-                 emlinesfile=None, broadlinefit=True, fastphot=False,
+def fastspec_one(iobj, data, out, meta, templates,
+                 broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
-                 ignore_photometry=False, percamera_models=False,
+                 percamera_models=False,
                  debug_plots=False, minsnr_balmer_broad=3.):
-    """Multiprocessing wrapper to run :func:`fastspec` on a single object.
+    """Run :func:`fastspec` on a single object.
 
     """
     from fastspecfit.io import cache_templates
     from fastspecfit.emlines import emline_specfit
     from fastspecfit.continuum import continuum_specfit
-
-    log.info('Continuum- and emission-line fitting object {} [{} {}, z={:.6f}].'.format(
-        iobj, fphoto['uniqueid'].lower(), data['uniqueid'], meta['Z']))
-
+    
+    cosmo = sc_data.cosmology
+    igm = sc_data.igm
+    phot = sc_data.photometry
+    emline_table = sc_data.emline_table
+    
+    log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid.lower()} {data['uniqueid']}, z={data['zredrock']:.6f}].')
+    
     # Read the templates and then fit the continuum spectrum. Note that 450 A as
     # the minimum wavelength will allow us to synthesize u-band photometry only
     # up to z=5.53, even though some targets are at higher redshift. Handle this
     # case in continuum.ContinuumTools.
-    templatecache = cache_templates(templates, log=log, mintemplatewave=450.0,
+    templatecache = cache_templates(templates=templates, mintemplatewave=450.0,
                                     maxtemplatewave=40e4, fastphot=fastphot)
 
-    continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache, fphoto=fphoto,
-                                                         emlinesfile=emlinesfile, constrain_age=constrain_age,
+    continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache,
+                                                         cosmo, igm, phot, emline_table,
+                                                         constrain_age=constrain_age,
                                                          no_smooth_continuum=no_smooth_continuum,
-                                                         ignore_photometry=ignore_photometry,
-                                                         fastphot=fastphot, debug_plots=debug_plots,
-                                                         log=log)
+                                                         fastphot=fastphot, debug_plots=debug_plots)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
         emmodel = None
     else:
         emmodel = emline_specfit(data, out, continuummodel, smooth_continuum,
-                                 fphoto=fphoto, emlinesfile=emlinesfile,
+                                 phot, emline_table,
                                  broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
-                                 percamera_models=percamera_models, log=log)
+                                 percamera_models=percamera_models)
         
     return out, meta, emmodel
 
-def parse(options=None, log=None):
+
+def parse(options=None):
     """Parse input arguments to fastspec and fastphot scripts.
 
     """
@@ -114,19 +101,16 @@ def parse(options=None, log=None):
     parser.add_argument('--minsnr-balmer-broad', type=float, default=3., help='Minimum broad Balmer S/N to force broad+narrow-line model.') 
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
-
-    if log is None:
-        from desiutil.log import get_logger
-        log = get_logger()
-            
+   
     if options is None:
-        args = parser.parse_args()
-        log.info(' '.join(sys.argv))
-    else:
-        args = parser.parse_args(options)
-        log.info('fastspec {}'.format(' '.join(options)))
+        options = sys.argv[1:]
+    
+    args = parser.parse_args(options)
+    
+    log.info(f'fastspec {" ".join(options)}')
 
     return args
+
 
 def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False):
     """Main fastspec script.
@@ -145,57 +129,65 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     """
     from astropy.table import Table, vstack
-    from desiutil.log import get_logger, DEBUG
     from fastspecfit.io import DESISpectra, write_fastspecfit, init_fastspec_output
+
+    
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
-    if args.verbose or verbose:
-        log = get_logger(DEBUG)
-    else:
-        log = get_logger()
+    if stackfit:
+        args.ignore_photometry=True
 
-    if args.emlinesfile is None:
-        from importlib import resources
-        emlinesfile = resources.files('fastspecfit').joinpath('data/emlines.ecsv')
-    else:
-        emlinesfile = args.emlinesfile
+    if verbose:
+        args.verbose=True
+
+    if args.verbose:
+        from fastspecfit.logger import DEBUG
+        log.setLevel(DEBUG)
+    
+    # initialize single-copy objects im main process
+    init_sc_args = (
+        args.emlinesfile,
+        args.fphotofile,
+        args.ignore_photometry,
+    )
+
+    initialize_sc_data(*init_sc_args)
         
-    if not os.path.isfile(emlinesfile):
-        errmsg = f'Emission lines parameter file {emlinesfile} does not exist.'
-        log.critical(errmsg)
-        raise ValueError(errmsg)
+    # if multiprocessing, create a pool of worker processes
+    # and initialize single-copy objects in each worker
+    if args.mp > 1:
+        import multiprocessing
+        mp_pool = multiprocessing.Pool(args.mp,
+                                       initializer=initialize_sc_data,
+                                       initargs=init_sc_args)
+    else:
+        mp_pool = None
 
+        
+    targetids = None
     input_redshifts = None
-    if args.targetids:
-        targetids = [int(x) for x in args.targetids.split(',')]
-        if args.input_redshifts:
-            input_redshifts = [float(x) for x in args.input_redshifts.split(',')]
+    
+    if args.targetids is not None:
+        targetids = [ int(x) for x in args.targetids.split(',') ]
+        if args.input_redshifts is not None:
+            input_redshifts = [ float(x) for x in args.input_redshifts.split(',') ]
             if len(input_redshifts) != len(targetids):
                 errmsg = 'targetids and input_redshifts must have the same number of elements.'
                 log.critical(errmsg)
                 raise ValueError(errmsg)
-    else:
-        targetids = args.targetids
-
-    # if multiprocessing, establish a pool of worker processes
-    if args.mp > 1:
-        import multiprocessing
-        mp_pool = multiprocessing.Pool(args.mp)
-    else:
-        mp_pool = None
     
     # Read the data.
     t0 = time.time()
-    Spec = DESISpectra(stackfit=stackfit, fphotodir=args.fphotodir,
-                       fphotofile=args.fphotofile, mapdir=args.mapdir)
+    Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
+                       stackfit=stackfit, fphotodir=args.fphotodir,
+                       mapdir=args.mapdir)
 
     if stackfit:
-        args.ignore_photometry = True
         data = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
                                  stackids=targetids, ntargets=args.ntargets,
-                                 mp_pool=mp_pool, ignore_photometry=args.ignore_photometry)
+                                 mp_pool=mp_pool)
     else:
         Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
                     input_redshifts=input_redshifts, ntargets=args.ntargets,
@@ -206,13 +198,13 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         if len(Spec.specfiles) == 0:
             return
 
-        data = Spec.read_and_unpack(fastphot=fastphot, ignore_photometry=args.ignore_photometry,
-                                    constrain_age=args.constrain_age, mp_pool=mp_pool,
-                                    verbose=args.verbose, debug_plots=args.debug_plots)
+        data = Spec.read_and_unpack(fastphot=fastphot,
+                                    constrain_age=args.constrain_age,
+                                    debug_plots=args.debug_plots,
+                                    mp_pool=mp_pool)
         
-    log.info('Reading and unpacking {} spectra to be fitted took {:.2f} seconds.'.format(
-        Spec.ntargets, time.time()-t0))
-
+    log.info(f'Reading and unpacking {Spec.ntargets} spectra to be fitted took {time.time()-t0:.2f} seconds.')
+    
     # Initialize the output tables.
     if args.templates is None:
         from fastspecfit.io import get_templates_filename
@@ -220,18 +212,18 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     else:
         templates = args.templates
 
-    out, meta = init_fastspec_output(Spec.meta, Spec.specprod, fphoto=Spec.fphoto, 
-                                     templates=templates, data=data, log=log,
-                                     emlinesfile=emlinesfile, fastphot=fastphot,
-                                     stackfit=stackfit)
-
+    out, meta = init_fastspec_output(Spec.meta, Spec.specprod, sc_data.photometry.fphoto,
+                                     linetable=sc_data.emline_table,
+                                     templates=templates, data=data,
+                                     fastphot=fastphot, stackfit=stackfit)
+    
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], Spec.fphoto, templates, log,
-                emlinesfile, args.broadlinefit, fastphot, args.constrain_age,
-                args.no_smooth_continuum, args.ignore_photometry, args.percamera_models,
+    fitargs = [(iobj, data[iobj], out[iobj], meta[iobj], templates,
+                args.broadlinefit, fastphot, args.constrain_age,
+                args.no_smooth_continuum, args.percamera_models,
                 args.debug_plots, args.minsnr_balmer_broad)
-                for iobj in np.arange(Spec.ntargets)]
+                for iobj in range(Spec.ntargets)]
 
     if mp_pool is not None:
         _out = mp_pool.map(_fastspec_one, fitargs)
@@ -241,7 +233,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     _out = list(zip(*_out))
     out = Table(np.hstack(_out[0]))
     meta = Table(np.hstack(_out[1]))
-
+    
     if fastphot:
         modelspectra = None
     else:
@@ -254,25 +246,51 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
             log.critical(errmsg)
             raise ValueError(errmsg)
        
-    log.info('Fitting {} object(s) took {:.2f} seconds.'.format(Spec.ntargets, time.time()-t0))
-
+    log.info(f'Fitting {Spec.ntargets} object(s) took {time.time()-t0:.2f} seconds.')
+    
     # if multiprocessing, clean up workers
     if mp_pool is not None:
         mp_pool.close()
     
     # Assign units and write out.
-    _assign_units_to_columns(out, meta, Spec, templates, fastphot, stackfit, log)
+    _assign_units_to_columns(out, meta, Spec, sc_data.photometry.fphoto, sc_data.emline_table,
+                             templates, fastphot, stackfit)
 
+    # FIXME: do we need the true location of emlinesfile, rather than just the args?
+    # we pass the true location of the templates file and the photometry file
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
-                      fphotofile=Spec.fphotofile, templates=templates,
-                      emlinesfile=emlinesfile, fastphot=fastphot,
+                      fphotofile=sc_data.photometry.fphotofile, templates=templates,
+                      emlinesfile=args.emlinesfile, fastphot=fastphot,
                       inputz=input_redshifts is not None,
                       ignore_photometry=args.ignore_photometry,
                       broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
                       use_quasarnet=args.use_quasarnet,
                       no_smooth_continuum=args.no_smooth_continuum)
 
+    
+def _assign_units_to_columns(fastfit, metadata, Spec, fphoto, linetable,
+                             templates, fastphot, stackfit):
+    """Assign astropy units to output tables.
+
+    """
+    from fastspecfit.io import init_fastspec_output
+    
+    fastcols = fastfit.colnames
+    metacols = metadata.colnames
+
+    T, M = init_fastspec_output(Spec.meta, Spec.specprod, fphoto, linetable,
+                                templates=templates, fastphot=fastphot, 
+                                stackfit=stackfit)
+    
+    for col in T.colnames:
+        if col in fastcols:
+            fastfit[col].unit = T[col].unit
+    for col in M.colnames:
+        if col in metacols:
+            metadata[col].unit = M[col].unit
+
+        
 def fastphot(args=None, comm=None):
     """Main fastphot script.
 

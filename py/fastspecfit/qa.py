@@ -9,47 +9,40 @@ import pdb # for debugging
 import os, time
 import numpy as np
 
-from desiutil.log import get_logger
-log = get_logger()
+from fastspecfit.logger import log
+from fastspecfit.singlecopy import sc_data, initialize_sc_data
 
 def _desiqa_one(args):
     """Multiprocessing wrapper."""
     return desiqa_one(*args)
 
-def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
+def desiqa_one(data, fastfit, metadata, templates, coadd_type,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
                maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1, 
-               fastphot=False, ignore_photometry=False, stackfit=False,
+               fastphot=False, stackfit=False,
                inputz=False, no_smooth_continuum=False, outdir=None,
-               outprefix=None, log=None):
+               outprefix=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
     from fastspecfit.io import cache_templates    
-    templatecache = cache_templates(templates, log=log, mintemplatewave=450.0,
+    templatecache = cache_templates(templates, mintemplatewave=450.0,
                                     maxtemplatewave=40e4, fastphot=fastphot)
-
-    if inputz:
-        from fastspecfit.cosmo import TabulatedDESI
-        cosmo = TabulatedDESI()
-    else:
-        cosmo = None
 
     qa_fastspec(data, templatecache, fastfit, metadata, coadd_type=coadd_type,
                 spec_wavelims=(minspecwave, maxspecwave), 
                 phot_wavelims=(minphotwave, maxphotwave), 
                 no_smooth_continuum=no_smooth_continuum,
-                ignore_photometry=ignore_photometry,
                 emline_snrmin=emline_snrmin, nsmoothspec=nsmoothspec,
-                fastphot=fastphot, fphoto=fphoto, stackfit=stackfit, 
-                outprefix=outprefix, outdir=outdir, log=log, cosmo=cosmo)
+                fastphot=fastphot, stackfit=stackfit, 
+                outprefix=outprefix, outdir=outdir, inputz=inputz)
 
 def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
-                fastphot=False, fphoto=None, stackfit=False, outprefix=None,
-                no_smooth_continuum=False, ignore_photometry=False,
-                emline_snrmin=0.0, nsmoothspec=1, outdir=None, log=None,
-                cosmo=None):
+                fastphot=False, stackfit=False, outprefix=None,
+                no_smooth_continuum=False,
+                emline_snrmin=0.0, nsmoothspec=1, outdir=None,
+                inputz=None):
     """QA plot the emission-line spectrum and best-fitting model.
 
     """
@@ -76,10 +69,6 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     from fastspecfit.continuum import ContinuumTools
     from fastspecfit.emlines import EMFitTools
     from fastspecfit.emline_fit import EMLine_MultiLines
-
-    if log is None:
-        from desiutil.log import get_logger
-        log = get_logger()
     
     Image.MAX_IMAGE_PIXELS = None
 
@@ -103,36 +92,39 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         else:
             return f'{x:.0f}'
 
-    phot = Photometry(fphoto=fphoto, ignore_photometry=ignore_photometry, log=log)
-    CTools = ContinuumTools(phot=phot, log=log)
+    phot = sc_data.photometry
+    cosmo = sc_data.cosmology
+    CTools = ContinuumTools(cosmo=cosmo,
+                            igm=sc_data.igm,
+                            phot=phot,
+                            emline_table=sc_data.emline_table)
 
-    if 'viewer_layer' in fphoto:
-        layer = fphoto['viewer_layer']
-    elif 'legacysurveydr' in fphoto:
-        layer = 'ls-{}'.format(fphoto['legacysurveydr'])
+    if hasattr(phot, 'viewer_layer'):
+        layer = phot.viewer_layer
+    elif hasattr(phot, 'legacysurveydr'):
+        layer = f'ls-{phot.legaysurveydr}'
     else:
         layer = 'ls-dr9'
 
-    if 'viewer_pixscale' in fphoto:
-        pixscale = fphoto['viewer_pixscale']
+    if hasattr(phot, 'viewer_pixscale'):
+        pixscale = phot.viewer_pixscale
     else:
         pixscale = 0.262 # [arcsec/pixel]
 
     if not fastphot:
-        EMFit = EMFitTools()
+        EMFit = EMFitTools(emline_table=sc_data.emline_table)
         
     filters = phot.synth_filters[metadata['PHOTSYS']]
     allfilters = phot.filters[metadata['PHOTSYS']]
     redshift = fastspec['Z']
 
-    # cosmo will be provided if input_redshifts are used
-    if cosmo is not None:
+    if inputz is not None:
         dlum = cosmo.luminosity_distance(redshift)
     else:
         dlum = data['dluminosity']
 
     pngfile = get_qa_filename(metadata, coadd_type, outprefix=outprefix,
-                              outdir=outdir, fastphot=fastphot, log=log)
+                              outdir=outdir, fastphot=fastphot)
 
     # some arrays to use for the legend
     if coadd_type == 'healpix':
@@ -421,11 +413,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         # Need to be careful we don't pass a large negative residual where
         # there are gaps in the data.
         desiresiduals = []
-        for icam in np.arange(len(data['cameras'])):
+        for icam in range(len(data['cameras'])):
             resid = data['flux'][icam] - desicontinuum[icam]
             I = (data['flux'][icam] == 0.) * (data['ivar'][icam] == 0.)
-            if np.any(I):
-                resid[I] = 0.
+            resid[I] = 0.
             desiresiduals.append(resid)
         
         if np.all(fastspec['COEFF'] == 0.) or no_smooth_continuum:
@@ -443,7 +434,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res_fast'],
                                                  data['camerapix'], snrcut=emline_snrmin)
         desiemlines = []
-        for icam in np.arange(len(data['cameras'])):
+        for icam in range(len(data['cameras'])):
             desiemlines.append(_desiemlines[data['camerapix'][icam][0]:data['camerapix'][icam][1]])
     
     # Grab the viewer cutout.
@@ -582,7 +573,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         spec_ymin, spec_ymax = 1e6, -1e6
     
         desimodelspec = []
-        for icam in np.arange(len(data['cameras'])): # iterate over cameras
+        for icam in range(len(data['cameras'])): # iterate over cameras
             wave = data['wave'][icam]
             flux = data['flux'][icam]
             modelflux = desiemlines[icam] + desicontinuum[icam] + desismoothcontinuum[icam]
@@ -664,7 +655,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             #factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
             #good = fullmodelspec > 0
             #sedax.plot(fullwave[good]/1e4, -2.5*np.log10(fullmodelspec[good]*factor[good]), color='purple', alpha=0.8)
-            for icam in np.arange(len(data['cameras'])):
+            for icam in range(len(data['cameras'])):
                 factor = 10**(0.4 * 48.6) * data['wave'][icam]**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
                 good = desimodelspec[icam] > 0
                 _wave = data['wave'][icam][good]/1e4
@@ -916,7 +907,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 wmax = (maxwave + deltawave) * (1+redshift) + 5 * sig * maxwave * (1.+redshift) / C_LIGHT
 
                 # iterate over cameras
-                for icam in np.arange(len(data['cameras'])): # iterate over cameras
+                for icam in range(len(data['cameras'])): # iterate over cameras
                     emlinewave = data['wave'][icam]
                     emlineflux = data['flux'][icam] - desicontinuum[icam] - desismoothcontinuum[icam]
                     emlinemodel = desiemlines[icam]
@@ -1217,7 +1208,8 @@ def parse(options=None):
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')    
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
-
+    
+    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--emline-snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
     parser.add_argument('--nsmoothspec', type=int, default=0, help='Smoothing pixel value.')
 
@@ -1263,6 +1255,38 @@ def fastqa(args=None, comm=None):
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
+    # check for various header cards
+    hdr = fitsio.read_header(args.fastfitfile[0])
+    inputz = False
+    no_smooth_continuum = False
+    ignore_photometry = False
+    
+    if 'INPUTZ' in hdr and hdr['INPUTZ']:
+        inputz = True
+    if 'NOSCORR' in hdr and hdr['NOSCORR']:
+        no_smooth_continuum = True
+    if 'NOPHOTO' in hdr and hdr['NOPHOTO']:
+        ignore_photometry = True
+
+    # initialize single-copy objects im main process
+    init_sc_args = (
+        args.emlinesfile,
+        args.fphotofile,
+        ignore_photometry,
+    )
+    
+    initialize_sc_data(*init_sc_args)
+
+    # if multiprocessing, create a pool of worker processes
+    # and initialize single-copy objects in each worker
+    if args.mp > 1:
+        import multiprocessing
+        mp_pool = multiprocessing.Pool(args.mp,
+                                       initializer=initialize_sc_data,
+                                       initargs=init_sc_args)
+    else:
+        mp_pool = None
+    
     if args.redux_dir is None:
         args.redux_dir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux')
         if not os.path.isdir(args.redux_dir):
@@ -1276,7 +1300,7 @@ def fastqa(args=None, comm=None):
         return
 
     fastfit, metadata, coadd_type, fastphot = read_fastspecfit(args.fastfitfile[0])
-
+    
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
@@ -1301,25 +1325,13 @@ def fastqa(args=None, comm=None):
         log.critical(errmsg)
         raise IOError(errmsg)
 
-    # check for various header cards
-    hdr = fitsio.read_header(args.fastfitfile[0])
-    inputz = False
-    no_smooth_continuum = False
-    ignore_photometry = False
-    
-    if 'INPUTZ' in hdr and hdr['INPUTZ']:
-        inputz = True
-    if 'NOSCORR' in hdr and hdr['NOSCORR']:
-        no_smooth_continuum = True
-    if 'NOPHOTO' in hdr and hdr['NOPHOTO']:
-        ignore_photometry = True
 
     if args.outdir:
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
-
+    
     pngfile = get_qa_filename(metadata, coadd_type, outprefix=args.outprefix,
-                              outdir=args.outdir, fastphot=fastphot, log=log)
+                              outdir=args.outdir, fastphot=fastphot)
 
     # are we overwriting?
     if args.overwrite is False:
@@ -1337,9 +1349,10 @@ def fastqa(args=None, comm=None):
     log.info(f'Building QA for {len(metadata)} objects.')
 
     # Initialize the I/O class.
-    Spec = DESISpectra(stackfit=args.stackfit, redux_dir=args.redux_dir, fphotodir=args.fphotodir, 
-                       fphotofile=args.fphotofile, mapdir=args.mapdir)
-
+    Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
+                       stackfit=args.stackfit, redux_dir=args.redux_dir,
+                       fphotodir=args.fphotodir, mapdir=args.mapdir)
+    
     if args.templates is None:
         from fastspecfit.io import get_templates_filename
         templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
@@ -1352,7 +1365,8 @@ def fastqa(args=None, comm=None):
 
         if stackfit:
             stackids = fastfit['STACKID'][indx]
-            data = Spec.read_stacked(redrockfile, stackids=stackids, mp=args.mp)
+            data = Spec.read_stacked(redrockfile, stackids=stackids,
+                                     mp_pool=mp_pool)
 
             minspecwave = np.min(data[0]['coadd_wave']) - 20
             maxspecwave = np.max(data[0]['coadd_wave']) + 20
@@ -1367,22 +1381,20 @@ def fastqa(args=None, comm=None):
                         redrockfile_prefix=args.redrockfile_prefix,
                         specfile_prefix=args.specfile_prefix,
                         qnfile_prefix=args.qnfile_prefix)
-            data = Spec.read_and_unpack(fastphot=fastphot, synthphot=True, mp=args.mp,
-                                        ignore_photometry=ignore_photometry)
-
+            data = Spec.read_and_unpack(fastphot=fastphot, synthphot=True,
+                                        mp_pool=mp_pool)
+            
             minspecwave = args.minspecwave
             maxspecwave = args.maxspecwave
 
         qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
-                   templates, coadd_type, Spec.fphoto, minspecwave, maxspecwave, 
+                   templates, coadd_type, minspecwave, maxspecwave, 
                    args.minphotwave, args.maxphotwave, args.emline_snrmin, 
-                   args.nsmoothspec, fastphot, ignore_photometry, stackfit, inputz, 
-                   no_smooth_continuum, args.outdir, args.outprefix, log)
-                   for igal in np.arange(len(indx))]
-        if args.mp > 1:
-            import multiprocessing
-            with multiprocessing.Pool(args.mp) as P:
-                P.map(_desiqa_one, qaargs)
+                   args.nsmoothspec, fastphot, stackfit, inputz, 
+                   no_smooth_continuum, args.outdir, args.outprefix)
+                   for igal in range(len(indx))]
+        if mp_pool is not None:
+            mp_pool.map(_desiqa_one, qaargs)
         else:
             [desiqa_one(*_qaargs) for _qaargs in qaargs]
 
@@ -1465,4 +1477,8 @@ def fastqa(args=None, comm=None):
                                     _wrap_qa(redrockfile, indx)
                                 
     log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
+
+    # if multiprocessing, clean up workers
+    if mp_pool is not None:
+        mp_pool.close()
 
