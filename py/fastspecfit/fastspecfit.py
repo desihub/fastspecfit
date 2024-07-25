@@ -200,14 +200,14 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     
     # Initialize the output tables.
-    out, meta = init_fastspec_output(Spec.meta, Spec.specprod, sc_data.photometry.fphoto,
-                                     linetable=sc_data.emline_table,
-                                     templates=sc_data.templates.file, data=data,
-                                     fastphot=fastphot, stackfit=stackfit)
+    out_orig, meta = init_fastspec_output(Spec.meta, Spec.specprod, sc_data.photometry.fphoto,
+                                          linetable=sc_data.emline_table,
+                                          templates=sc_data.templates.file, data=data,
+                                          fastphot=fastphot, stackfit=stackfit)
     
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out[iobj],
+    fitargs = [(iobj, data[iobj], out_orig[iobj],
                 args.broadlinefit, fastphot, args.constrain_age,
                 args.no_smooth_continuum, args.percamera_models,
                 args.debug_plots, args.minsnr_balmer_broad)
@@ -239,10 +239,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     if mp_pool is not None:
         mp_pool.close()
     
-    # Assign units and write out.
-    _assign_units_to_columns(out, meta, Spec, sc_data.photometry.fphoto, sc_data.emline_table,
-                             sc_data.templates.file, fastphot, stackfit)
-
+    # Copy units from original output table to reconstructed table
+    # (We don't need to do this for meta because it isn't reonstructed)
+    _copy_units(out, out_orig)
+    
     # FIXME: do we need the true location of emlinesfile, rather than just the args?
     # we pass the true location of the templates file and the photometry file
     write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
@@ -256,27 +256,15 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                       use_quasarnet=args.use_quasarnet,
                       no_smooth_continuum=args.no_smooth_continuum)
 
-    
-def _assign_units_to_columns(fastfit, metadata, Spec, fphoto, linetable,
-                             templates, fastphot, stackfit):
-    """Assign astropy units to output tables.
 
-    """
-    from fastspecfit.io import init_fastspec_output
-    
-    fastcols = set(fastfit.colnames)
-    metacols = set(metadata.colnames)
-    
-    T, M = init_fastspec_output(Spec.meta, Spec.specprod, fphoto, linetable,
-                                templates=templates, fastphot=fastphot, 
-                                stackfit=stackfit)
-    
-    for col in T.colnames:
-        if col in fastcols:
-            fastfit[col].unit = T[col].unit
-    for col in M.colnames:
-        if col in metacols:
-            metadata[col].unit = M[col].unit
+def _copy_units(tbl, tbl_orig):
+    # Copy units from one table to another
+
+    orig_cols = set(tbl_orig.colnames)
+
+    for col in tbl.colnames:
+        if col in orig_cols:
+            tbl[col].unit = tbl_orig[col].unit
 
         
 def fastphot(args=None, comm=None):
