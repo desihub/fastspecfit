@@ -1420,12 +1420,7 @@ class ContinuumTools(object):
         * If `specwave`, `specres`, and `camerapix` are all provided, it will
           generate a DESI-like spectrum and return `modelflux`.
 
-        ToDo: `scipy.integrate.simpson` may not be the fastest integration
-        method, so its use here is a placeholder.
-
         """
-        from scipy.integrate import simpson
-        
         # [1] - Compute the non-negative sum of the templates.
         fullmodel = templateflux.dot(templatecoeff)
 
@@ -1442,13 +1437,13 @@ class ContinuumTools(object):
             self._cache_klambda(templatewave)
 
         if dustflux is not None:
-            lbol0 = simpson(fullmodel, x=templatewave)
+            lbol0 = np.trapz(fullmodel, x=templatewave)
 
         if ebv > 0.:
             atten = 10.**(-0.4 * ebv * self.dust_klambda)
             fullmodel *= atten
             if dustflux is not None:
-                lbolabs = simpson(fullmodel, x=templatewave)
+                lbolabs = np.trapz(fullmodel, x=templatewave)
 
         # [4] - Optionally add the dust emission spectrum, conserving the total
         # (absorbed + re-emitted) energy. NB: (1) dustflux must be normalized to
@@ -1662,7 +1657,7 @@ class ContinuumTools(object):
         fit_info = least_squares(self._stellar_objective, initial_guesses, args=farg, 
                                  bounds=tuple(zip(*bounds)), method='trf',
                                  tr_solver='lsmr', tr_options={'regularize': True}, 
-                                 x_scale='jac', max_nfev=5000, xtol=1e-10)#, verbose=2)
+                                 x_scale='jac', max_nfev=5000, ftol=1e-5, xtol=1e-10)#, verbose=2)
         bestparams = fit_info.x
 
         if fit_vdisp:

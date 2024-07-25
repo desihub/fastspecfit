@@ -136,9 +136,8 @@ class Templates(object):
                 agnhdr = T['AGNFLUX'].read_header()
 
                 # make sure both dustflux and agnflux are normalized to unity
-                from scipy.integrate import simpson
-                dustflux /= simpson(dustflux, x=wave) # should already be 1.0
-                agnflux /= simpson(agnflux, x=wave) # should already be 1.0
+                dustflux /= np.trapz(dustflux, x=wave) # should already be 1.0
+                agnflux  /= np.trapz(agnflux, x=wave) # should already be 1.0
 
                 templates.update({'dustflux': dustflux[keeplo:keephi], 
                                   'qpah': dusthdr['QPAH'],
