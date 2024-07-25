@@ -264,9 +264,9 @@ def _assign_units_to_columns(fastfit, metadata, Spec, fphoto, linetable,
     """
     from fastspecfit.io import init_fastspec_output
     
-    fastcols = fastfit.colnames
-    metacols = metadata.colnames
-
+    fastcols = set(fastfit.colnames)
+    metacols = set(metadata.colnames)
+    
     T, M = init_fastspec_output(Spec.meta, Spec.specprod, fphoto, linetable,
                                 templates=templates, fastphot=fastphot, 
                                 stackfit=stackfit)
@@ -297,6 +297,7 @@ def fastphot(args=None, comm=None):
     """
     fastspec(fastphot=True, args=args, comm=comm)
 
+    
 def stackfit(args=None, comm=None):
     """Wrapper script to fit (model) generic stacked spectra.
 

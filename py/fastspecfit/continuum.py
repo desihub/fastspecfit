@@ -1888,6 +1888,7 @@ def continuum_specfit(data, result, templatecache,
     if fastphot:
         vdispbest, vdispivar = vdisp_nominal, 0.0
         log.info(f'Adopting nominal vdisp={vdisp_nominal:.0f} km/s.')
+        vdisp = vdisp_nominal
 
         if np.all(objflamivar == 0.):
             log.info('All photometry is masked.')
