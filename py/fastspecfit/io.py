@@ -30,47 +30,47 @@ FPHOTO_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
-    'all': ['CMX_TARGET', 'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET',
+    'all': ('CMX_TARGET', 'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET',
              'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
              'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
              'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
-             'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET'],
-    'fuji': ['CMX_TARGET', 'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET',
+             'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET'),
+    'fuji': ('CMX_TARGET', 'DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET',
              'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'SV1_MWS_TARGET',
              'SV2_DESI_TARGET', 'SV2_BGS_TARGET', 'SV2_MWS_TARGET',
              'SV3_DESI_TARGET', 'SV3_BGS_TARGET', 'SV3_MWS_TARGET',
-             'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET'],
-    'default': ['DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET'],
+             'SV1_SCND_TARGET', 'SV2_SCND_TARGET', 'SV3_SCND_TARGET'),
+    'default': ('DESI_TARGET', 'BGS_TARGET', 'MWS_TARGET', 'SCND_TARGET'),
     }
 
 # fibermap and exp_fibermap columns to read
-FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE',
+FMCOLS = ('TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE',
           'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID',
           #'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
           #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
           #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
           #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2'
-          ]
-#FMCOLS = ['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE']
+          )
+#FMCOLS = ('TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE')
 
 EXPFMCOLS = {
-    'perexp': ['TARGETID', 'TILEID', 'FIBER', 'EXPID'],
-    'pernight': ['TARGETID', 'TILEID', 'FIBER'],
-    'cumulative': ['TARGETID', 'TILEID', 'FIBER'],
-    'healpix': ['TARGETID', 'TILEID'], # tileid will be an array
-    'custom': ['TARGETID', 'TILEID'], # tileid will be an array
+    'perexp':     ('TARGETID', 'TILEID', 'FIBER', 'EXPID'),
+    'pernight':   ('TARGETID', 'TILEID', 'FIBER'),
+    'cumulative': ('TARGETID', 'TILEID', 'FIBER'),
+    'healpix':    ('TARGETID', 'TILEID'), # tileid will be an array
+    'custom':     ('TARGETID', 'TILEID'), # tileid will be an array
     }
 
 # redshift columns to read
-REDSHIFTCOLS = ['TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2']
+REDSHIFTCOLS = ('TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2')
 
 # tsnr columns to read
-TSNR2COLS = ['TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA']
+TSNR2COLS = ('TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
 
 # quasarnet afterburner columns to read
-QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
-          'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
-QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
+QNCOLS = ('TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
+          'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha')
+QNLINES = ('C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha')
 
 
 def unpack_one_spectrum(iobj, specdata, meta, ebv,
@@ -82,7 +82,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
     from scipy.ndimage import binary_dilation
     from desispec.resolution import Resolution
     from fastspecfit.emline_fit import EMLine_Resolution
-    from fastspecfit.util import mwdust_transmission
+    from fastspecfit.util import mwdust_transmission, median
     from fastspecfit.continuum import ContinuumTools
 
     cosmo = sc_data.cosmology
@@ -106,26 +106,31 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
     if fiber_filters is not None:
         # fiber fluxes
         mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, filtername) for filtername in
-                                                                  phot.fiber_filters[specdata['photsys']].names])
+                                              phot.fiber_filters[specdata['photsys']].names])
         fibermaggies = np.zeros(len(phot.fiber_bands))
         fibertotmaggies = np.zeros(len(phot.fiber_bands))
         #ivarfibermaggies = np.zeros(len(phot.fiber_bands))
         for iband, band in enumerate(phot.fiber_bands):
-            fibermaggies[iband] = meta[f'FIBERFLUX_{band.upper()}'] / mw_transmission_fiberflux[iband]
-            fibertotmaggies[iband] = meta[f'FIBERTOTFLUX_{band.upper()}'] / mw_transmission_fiberflux[iband]
-        
-        specdata['fiberphot'] = Photometry.parse_photometry(phot.fiber_bands,
-            maggies=fibermaggies, nanomaggies=True,
-            lambda_eff=fiber_filters.effective_wavelengths.value)
-        specdata['fibertotphot'] = Photometry.parse_photometry(phot.fiber_bands,
-            maggies=fibertotmaggies, nanomaggies=True,
-            lambda_eff=fiber_filters.effective_wavelengths.value)
+            band = band.upper()
+            fibermaggies[iband] = meta[f'FIBERFLUX_{band}'] / mw_transmission_fiberflux[iband]
+            fibertotmaggies[iband] = meta[f'FIBERTOTFLUX_{band}'] / mw_transmission_fiberflux[iband]
 
+        lambda_eff=fiber_filters.effective_wavelengths.value
+        specdata['fiberphot'] = Photometry.parse_photometry(phot.fiber_bands,
+                                                            maggies=fibermaggies,
+                                                            nanomaggies=True,
+                                                            lambda_eff=lambda_eff)
+        specdata['fibertotphot'] = Photometry.parse_photometry(phot.fiber_bands,
+                                                               maggies=fibertotmaggies,
+                                                               nanomaggies=True,
+                                                               lambda_eff=lambda_eff)
+        
     # total fluxes
     mw_transmission_flux = np.array([mwdust_transmission(ebv, filtername) for filtername in 
                                      phot.filters[specdata['photsys']].names])
     for band, mwdust in zip(phot.bands, mw_transmission_flux):
-        meta[f'MW_TRANSMISSION_{band.upper()}'] = mwdust
+        band = band.upper()
+        meta[f'MW_TRANSMISSION_{band}'] = mwdust
             
     maggies = np.zeros(len(phot.bands))
     ivarmaggies = np.zeros(len(phot.bands))
@@ -145,20 +150,21 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
         
     if not fastphot:
         from desiutil.dust import dust_transmission
-    
-        specdata.update({'wave': [], 
-                         'flux': [], 
-                         'ivar': [], 
-                         'mask': [],
-                         'res': [], 
-                         'res_fast': [], 
-                         'snr': np.zeros(3, 'f4'),
-                         'linemask': [],
-                         'linepix': [],
-                         #'linename_balmer_broad': [],
-                         #'linepix_balmer_broad': [],
-                         })
-    
+        
+        specdata.update({
+            'wave': [], 
+            'flux': [], 
+            'ivar': [], 
+            'mask': [],
+            'res': [], 
+            'res_fast': [], 
+            'snr': np.zeros(3, 'f4'),
+            'linemask': [],
+            'linepix': [],
+            #'linename_balmer_broad': [],
+            #'linepix_balmer_broad': [],
+        })
+        
         cameras, npixpercamera = [], []
         for icam, camera in enumerate(specdata['cameras']):
             # Check whether the camera is fully masked.
@@ -169,7 +175,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
                 mask = specdata['mask0'][icam]
 
                 # always mask the first and last pixels
-                mask[0] = 1
+                mask[ 0] = 1
                 mask[-1] = 1
 
                 # In the pipeline, if mask!=0 that does not mean ivar==0, but we
@@ -180,8 +186,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
                     log.warning(f'Dropping fully masked camera {camera}.')
                 else:
                     # interpolate over pixels where the resolution matrix is masked
-                    I = mask != 0
-                    #I = binary_dilation(mask != 0, iterations=2)
+                    I = (mask != 0)
                     if np.any(I):
                         J = np.where(np.logical_not(I))[0]
                         I = np.where(I)[0]
@@ -190,12 +195,12 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
                             res[irow, I] = np.interp(I, J, res[irow, J])
 
                     # should we also interpolate over the coadded resolution matrix??
-
+                    
                     cameras.append(camera)
                     npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
-
+                    
                     # Compute the SNR before we correct for dust.
-                    specdata['snr'][icam] = np.median(specdata['flux0'][icam] * np.sqrt(ivar))
+                    specdata['snr'][icam] = median(specdata['flux0'][icam] * np.sqrt(ivar))
                     
                     #mw_transmission_spec = 10**(-0.4 * ebv * RV * ext_odonnell(wave[camera], Rv=RV))
                     mw_transmission_spec = dust_transmission(specdata['wave0'][icam], ebv, Rv=RV)
@@ -203,7 +208,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
                     specdata['ivar'].append(ivar * mw_transmission_spec**2)
                     specdata['wave'].append(specdata['wave0'][icam])
                     specdata['mask'].append(specdata['mask0'][icam])
-                    # do we need 'res' anymore??
+                    
                     specdata['res'].append(Resolution(res))
                     specdata['res_fast'].append(EMLine_Resolution(res))
                     
@@ -211,9 +216,9 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
             errmsg = 'No good data, which should never happen.'
             log.critical(errmsg)
             raise ValueError(errmsg)
-
+        
         # clean up the data dictionary
-        for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0']:
+        for key in ('wave0', 'flux0', 'ivar0', 'mask0', 'res0'):
             del specdata[key]
 
         # Pre-compute some convenience variables for "un-hstacking"
@@ -222,11 +227,12 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
         specdata['npixpercamera'] = npixpercamera
         
         ncam = len(specdata['cameras'])
-        npixpercam = np.hstack([0, npixpercamera])
+        c_ends   = np.cumsum(npixpercamera)
+        c_starts = c_ends - npixpercamera
         specdata['camerapix'] = np.zeros((ncam, 2), np.int16)
-        for icam in range(ncam):
-            specdata['camerapix'][icam, :] = [np.sum(npixpercam[:icam+1]), np.sum(npixpercam[:icam+2])]
-                                
+        specdata['camerapix'][:, 0] = c_starts
+        specdata['camerapix'][:, 1] = c_ends
+        
         # use the coadded spectrum to build a robust emission-line mask
         CTools = ContinuumTools(cosmo, igm, phot, emline_table)
         pix = CTools.build_linemask_patches(
@@ -234,7 +240,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
             specdata['coadd_ivar'], specdata['coadd_res_fast'], 
             uniqueid=specdata['uniqueid'], redshift=specdata['zredrock'],
             debug_plots=debug_plots)
-
+        
         # Map the pixels belonging to individual emission lines onto the
         # original per-camera spectra. This works, but maybe there's a better
         # way to do it?
@@ -244,9 +250,9 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
             for linename in pix['coadd_linepix']:
                 linepix = pix['coadd_linepix'][linename]
                 # if the line is entirely off this camera, skip it
-                oncam = np.where((specdata["coadd_wave"][linepix] >= np.min(specdata['wave'][icam])) *
-                                 (specdata["coadd_wave"][linepix] <= np.max(specdata['wave'][icam])))[0]
-                if len(oncam) == 0:
+                oncam = ((specdata["coadd_wave"][linepix] >= np.min(specdata['wave'][icam])) &
+                         (specdata["coadd_wave"][linepix] <= np.max(specdata['wave'][icam])))
+                if not np.any(oncam):
                     continue
                 I = np.searchsorted(specdata['wave'][icam], specdata['coadd_wave'][linepix[oncam]])
                 #print(f'Line {linename:20}: adding {len(I):02d} pixels to camera {icam}')
@@ -255,10 +261,10 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
             #print()
             specdata['linemask'].append(camlinemask)
             specdata['linepix'].append(camlinepix)
-
+        
         specdata.update(pix)
         del pix
-    
+        
         # Optionally synthesize photometry from the coadded spectrum.
         if synthphot and synth_filters is not None:
             synthmaggies = Photometry.get_ab_maggies(synth_filters,
@@ -268,7 +274,7 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
             specdata['synthphot'] = Photometry.parse_photometry(
                 phot.synth_bands, maggies=synthmaggies, nanomaggies=False,
                 lambda_eff=synth_filters.effective_wavelengths.value)
-
+    
     return specdata, meta
 
 
@@ -278,7 +284,8 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot):
 
     """
     from fastspecfit.continuum import ContinuumTools
-
+    from fastspec.util import median
+    
     cosmo = sc_data.cosmology
     igm = sc_data.igm
     emline_table = sc_data.emline_table
@@ -298,12 +305,20 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot):
         lambda_eff=filters.effective_wavelengths.value,
         min_uncertainty=phot.min_uncertainty)
     
-    specdata.update({'linemask': [], 'linemask_all': [], 'linename': [],
-                     'linepix': [], 'contpix': [],
-                     'wave': [], 'flux': [], 'ivar': [], 'mask': [], 'res': [], 
-                     'snr': np.zeros(1, 'f4'),
-                     })
-
+    specdata.update({
+        'linemask': [],
+        'linemask_all': [],
+        'linename': [],
+        'linepix': [],
+        'contpix': [],
+        'wave': [],
+        'flux': [],
+        'ivar': [],
+        'mask': [],
+        'res': [], 
+        'snr': np.zeros(1, 'f4'),
+    })
+    
     cameras, npixpercamera = [], []
     for icam, camera in enumerate(specdata['cameras']):
         # Check whether the camera is fully masked.
@@ -314,27 +329,27 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot):
             mask = specdata['mask0'][icam]
 
             # always mask the first and last pixels
-            mask[0] = 1
+            mask[ 0] = 1
             mask[-1] = 1
 
             # In the pipeline, if mask!=0 that does not mean ivar==0, but we
             # want to be more aggressive about masking here.
             ivar[mask != 0] = 0
-
+            
             if np.all(ivar == 0):
                 log.warning(f'Dropping fully masked camera {camera}.')
             else:
                 cameras.append(camera)
                 npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
-
+                
                 # Compute the SNR before we correct for dust.
-                specdata['snr'][icam] = np.median(specdata['flux0'][icam] * np.sqrt(ivar))
+                specdata['snr'][icam] = median(specdata['flux0'][icam] * np.sqrt(ivar))
                 specdata['flux'].append(specdata['flux0'][icam])
                 specdata['ivar'].append(ivar)
                 specdata['wave'].append(specdata['wave0'][icam])
                 specdata['mask'].append(specdata['mask0'][icam])
                 specdata['res'].append(specdata['res0'][icam])
-
+                
     if len(cameras) == 0:
         errmsg = 'No good data, which should never happen.'
         log.critical(errmsg)
@@ -346,17 +361,20 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot):
     specdata['npixpercamera'] = npixpercamera
     
     ncam = len(specdata['cameras'])
-    npixpercam = np.hstack([0, npixpercamera])
-    specdata['camerapix'] = npixpercam.reshape(ncam, 2)
-
+    c_ends   = np.cumsum(npixpercamera)
+    c_starts = c_ends - npixpercamera
+    specdata['camerapix'] = np.zeros((ncam, 2), np.int16)
+    specdata['camerapix'][:, 0] = c_starts
+    specdata['camerapix'][:, 1] = c_ends
+    
     # clean up the data dictionary
-    for key in ['wave0', 'flux0', 'ivar0', 'mask0', 'res0']:
+    for key in ('wave0', 'flux0', 'ivar0', 'mask0', 'res0'):
         del specdata[key]
-
+    
     CTools = ContinuumTools(cosmo, igm, phot, emline_table)
     coadd_linemask_dict = CTools.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                        specdata['coadd_ivar'], redshift=specdata['zredrock'],
-                                                        linetable=CTools.linetable)
+                                                        specdata['coadd_ivar'], redshift=specdata['zredrock'])
+                                                        
     specdata['coadd_linename'] = coadd_linemask_dict['linename']
     specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
     specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]
@@ -368,7 +386,7 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot):
     specdata['linesigma_narrow_snr'] = coadd_linemask_dict['linesigma_narrow_snr']
     specdata['linesigma_balmer_snr'] = coadd_linemask_dict['linesigma_balmer_snr']
     specdata['linesigma_uv_snr'] = coadd_linemask_dict['linesigma_uv_snr']
-
+    
     specdata['smoothsigma'] = coadd_linemask_dict['smoothsigma']
     
     # Map the pixels belonging to individual emission lines and
@@ -396,18 +414,22 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot):
         specdata['linename'].append(_linename)
         specdata['linepix'].append(_linenpix)
         specdata['contpix'].append(_contpix)
-
-    specdata.update({'coadd_linemask': coadd_linemask_dict['linemask'],
-                     'coadd_linemask_all': coadd_linemask_dict['linemask_all']})
+        
+    specdata.update({
+        'coadd_linemask': coadd_linemask_dict['linemask'],
+        'coadd_linemask_all': coadd_linemask_dict['linemask_all']
+    })
 
     # Optionally synthesize photometry from the coadded spectrum.
     if synthphot:
-        synthmaggies = Photometry.get_ab_maggies(synth_filters, specdata['coadd_flux'] / FLUXNORM, specdata['coadd_wave'])
+        synthmaggies = Photometry.get_ab_maggies(synth_filters,
+                                                 specdata['coadd_flux'] / FLUXNORM,
+                                                 specdata['coadd_wave'])
         
         specdata['synthphot'] = Photometry.parse_photometry(phot.synth_bands,
-            maggies=synthmaggies, nanomaggies=False,
-            lambda_eff=synth_filters.effective_wavelengths.value)
-
+                                                            maggies=synthmaggies, nanomaggies=False,
+                                                            lambda_eff=synth_filters.effective_wavelengths.value)
+        
     return specdata, meta
 
 
@@ -459,15 +481,15 @@ class DESISpectra(object):
             self.fphotoext = fphotoext
             self.fphotodir = fphotodir
         
-        self.phot = phot
-        self.cosmo = cosmo
-                
         if mapdir is None:
             self.mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
         else:
             self.mapdir = mapdir
 
-            
+        self.phot = phot
+        self.cosmo = cosmo
+
+        
     @staticmethod
     def resolve(targets):
         """Resolve which targets are primary in imaging overlap regions.
@@ -538,8 +560,8 @@ class DESISpectra(object):
         galn = pixn[pixnum]
     
         # ADM which targets are in the northern imaging area.
-        arean = (targets["DEC"] >= split) & galn
-    
+        arean = ((targets["DEC"] >= split) & galn)
+        
         # ADM retain 'N' targets in 'N' area and 'S' in 'S' area.
         #keep = (photn & arean) | (~photn & ~arean)
         #return targets[keep]
@@ -547,7 +569,7 @@ class DESISpectra(object):
         inorth = (photn & arean)
         newphotsys = np.array(['S'] * len(targets))
         newphotsys[inorth] = 'N'
-
+        
         return newphotsys
 
     
@@ -650,20 +672,19 @@ class DESISpectra(object):
             errmsg = 'No redrockfiles found!'
             log.warning(errmsg)
             raise ValueError(errmsg)
-
+        
         # Should we not sort...?
-        #redrockfiles = np.array(set(np.atleast_1d(redrockfiles)))
-        redrockfiles = np.array(sorted(set(np.atleast_1d(redrockfiles))))
+        redrockfiles = sorted(set(redrockfiles))
         log.info(f'Reading and parsing {len(redrockfiles)} unique redrockfile(s).')
-
+        
         alltiles = []
         self.redrockfiles, self.specfiles, self.meta, self.surveys = [], [], [], []
 
-        for ired, redrockfile in enumerate(np.atleast_1d(redrockfiles)):
+        for ired, redrockfile in enumerate(redrockfiles):
             if not os.path.isfile(redrockfile):
                 log.warning(f'File {redrockfile} not found!')
                 continue
-
+            
             if not redrockfile_prefix in redrockfile:
                 errmsg = f'Redrockfile {redrockfile} missing standard prefix {redrockfile_prefix}; ' + \
                     'please specify redrockfile_prefix argument.'
@@ -685,7 +706,7 @@ class DESISpectra(object):
             # Gather some coadd information from the header. Note: this code is
             # only compatible with Fuji & Guadalupe headers and later.
             hdr = fitsio.read_header(specfile, ext=0)
-
+            
             specprod = getdep(hdr, 'SPECPROD')
             if hasattr(self, 'specprod'):
                 if self.specprod != specprod:
@@ -701,9 +722,9 @@ class DESISpectra(object):
                 errmsg = f'SPGRP header card missing from spectral file {specfile}'
                 log.warning(errmsg)
                 self.coadd_type = 'custom'
-
+            
             #log.info('specprod={}, coadd_type={}'.format(self.specprod, self.coadd_type))
-
+            
             if self.coadd_type == 'healpix':
                 survey = hdr['SURVEY']
                 program = hdr['PROGRAM']
@@ -736,7 +757,7 @@ class DESISpectra(object):
                     expid = None
                     log.info('specprod={}, coadd_type={}, tileid={}, petal={}, night={}'.format(
                         self.specprod, self.coadd_type, tileid, petal, night))
-
+                
                 # cache the tiles file so we can grab the survey and program name appropriate for this tile
                 if not hasattr(self, 'tileinfo'):
                     if specprod_dir is None:
@@ -758,9 +779,9 @@ class DESISpectra(object):
                 TARGETINGCOLS = TARGETINGBITS['all']
             
             # add targeting columns
-            allfmcols = np.array(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
-            READFMCOLS = FMCOLS + [col for col in TARGETINGCOLS if col in allfmcols]
-                    
+            allfmcols = set(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
+            READFMCOLS = list(FMCOLS) + [col for col in TARGETINGCOLS if col in allfmcols]
+            
             # If targetids is *not* given we have to choose "good" objects
             # before subselecting (e.g., we don't want sky spectra).
             if targetids is None:
@@ -781,12 +802,12 @@ class DESISpectra(object):
                     # therefore the object falls out of the sample before we
                     # have a chance to even read it. So apply the minimum
                     # redshift cut below after we correct the redshift.
-                    fitindx = np.where((zb['Z'] < zmax) *
-                                       (meta['OBJTYPE'] == 'TGT') * (zb['ZWARN'] <= zwarnmax) *
+                    fitindx = np.where((zb['Z'] < zmax) &
+                                       (meta['OBJTYPE'] == 'TGT') & (zb['ZWARN'] <= zwarnmax) &
                                        (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
                 else:
-                    fitindx = np.where((zb['Z'] > zmin) * (zb['Z'] < zmax) *
-                                       (meta['OBJTYPE'] == 'TGT') * (zb['ZWARN'] <= zwarnmax) *
+                    fitindx = np.where((zb['Z'] > zmin) & (zb['Z'] < zmax) &
+                                       (meta['OBJTYPE'] == 'TGT') & (zb['ZWARN'] <= zwarnmax) &
                                        (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
             else:
                 # We already know we like the input targetids, so no selection
@@ -819,7 +840,7 @@ class DESISpectra(object):
                 log.info('All {} targets in redrockfile {} have been dropped (firsttarget={}, ntargets={}).'.format(
                     __ntargets, redrockfile, firsttarget, _ntargets))
                 continue
-                
+            
             # If firsttarget is a large index then the set can become empty.
             if targetids is None:
                 zb = Table(zb[fitindx])
@@ -869,14 +890,14 @@ class DESISpectra(object):
                         zb['Z'][IQSO[qn['IS_QSO_QN_NEW_RR']]] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
                     del qn
                 # now apply zmin
-                keep = np.where(zb['Z'] > zmin)[0]
-                if len(keep) == 0:
-                    log.info('No requested targets found in redrockfile {}'.format(redrockfile))
+                keep = (zb['Z'] > zmin)
+                if not np.any(keep):
+                    log.info(f'No requested targets found in redrockfile {redrockfile}')
                     continue
                 zb = zb[keep]
                 meta = meta[keep]
                 fitindx = fitindx[keep]
-
+            
             tsnr2 = Table(fitsio.read(redrockfile, 'TSNR2', rows=fitindx, columns=TSNR2COLS))
             assert(np.all(zb['TARGETID'] == meta['TARGETID']))
 
@@ -896,37 +917,29 @@ class DESISpectra(object):
             # from EXP_FIBERMAP.
             expmeta = fitsio.read(specfile, 'EXP_FIBERMAP', columns=EXPFMCOLS[self.coadd_type])
             I = np.isin(expmeta['TARGETID'], meta['TARGETID'])
-            if np.count_nonzero(I) == 0:
+            if not np.any(I):
                 errmsg = 'No matching targets in exposure table.'
                 log.critical(errmsg)
                 raise ValueError(errmsg)
             expmeta = Table(expmeta[I])
-
+            
             # build the list of tiles that went into each unique target / coadd
             tileid_list = [] # variable length, so need to build the array first
             for tid in meta['TARGETID']:
-                I = tid == expmeta['TARGETID']
+                I = (tid == expmeta['TARGETID'])
                 tileid_list.append(' '.join(np.unique(expmeta['TILEID'][I]).astype(str)))
                 #meta['TILEID_LIST'][M] = ' '.join(np.unique(expmeta['TILEID'][I]).astype(str))
                 # store just the zeroth tile for gather_targetphot, below
-                if self.coadd_type == 'healpix':
-                    alltiles.append(expmeta['TILEID'][I][0]) 
-                elif self.coadd_type == 'custom':
+                if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
                     alltiles.append(expmeta['TILEID'][I][0])
                 else:
                     alltiles.append(tileid)
                     
-            if self.coadd_type == 'healpix':                    
+            if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
                 meta['TILEID_LIST'] = tileid_list
-            elif self.coadd_type == 'custom':
-                meta['TILEID_LIST'] = tileid_list
-
+            
             # Gather additional info about this pixel.
-            if self.coadd_type == 'healpix':
-                meta['SURVEY'] = survey
-                meta['PROGRAM'] = program
-                meta['HEALPIX'] = healpix
-            elif self.coadd_type == 'custom':
+            if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
                 meta['SURVEY'] = survey
                 meta['PROGRAM'] = program
                 meta['HEALPIX'] = healpix
@@ -943,9 +956,9 @@ class DESISpectra(object):
                 if 'FIBER' in expmeta.colnames:
                     meta['FIBER'] = np.zeros(len(meta), dtype=expmeta['FIBER'].dtype)
                     for iobj, tid in enumerate(meta['TARGETID']):
-                        iexp = np.where(expmeta['TARGETID'] == tid)[0][0] # zeroth
+                        iexp = (expmeta['TARGETID'] == tid) # zeroth
                         meta['FIBER'][iobj] = expmeta['FIBER'][iexp]
-
+            
             self.meta.append(Table(meta))
             self.redrockfiles.append(redrockfile)
             self.specfiles.append(specfile)
@@ -1056,7 +1069,7 @@ class DESISpectra(object):
                 log.info(f'Reading {nobj} spectrum from {specfile}')
             else:
                 log.info(f'Reading {nobj} spectra from {specfile}')
-
+            
             ebv = SFD.ebv(meta['RA'], meta['DEC'])
             
             # Pre-compute the luminosity distance, distance modulus, and age of
@@ -1079,14 +1092,19 @@ class DESISpectra(object):
                 photsys = meta['PHOTSYS']
             else:
                 photsys = [''] * len(meta)
+
+            uniqueid = self.phot.uniqueid
             
             if fastphot:
                 unpackargs = []
                 for iobj in range(len(meta)):
                     specdata = {
-                        'uniqueid': meta[self.phot.uniqueid][iobj], 'zredrock': meta['Z'][iobj],
-                        'photsys': photsys[iobj], 'dluminosity': dlum[iobj], 
-                        'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
+                        'uniqueid': meta[uniqueid][iobj],
+                        'zredrock': meta['Z'][iobj],
+                        'photsys': photsys[iobj],
+                        'dluminosity': dlum[iobj], 
+                        'dmodulus': dmod[iobj],
+                        'tuniv': tuniv[iobj],
                         }
                     unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj],
                                        True, False, debug_plots))
@@ -1095,32 +1113,34 @@ class DESISpectra(object):
                 # differently if a non-sorted targetids was passed. Do the
                 # selection and sort ourselves.
                 spec = read_spectra(specfile)#.select(targets=meta[phot.uniqueid])
-                srt = geomask.match_to(spec.fibermap[self.phot.uniqueid], meta['TARGETID'])
+                srt = geomask.match_to(spec.fibermap[uniqueid], meta['TARGETID'])
                 spec = spec[srt]
-                assert(np.all(spec.fibermap[self.phot.uniqueid] == meta[self.phot.uniqueid]))
-
+                assert(np.all(spec.fibermap[uniqueid] == meta[uniqueid]))
+                
                 # Coadd across cameras.
                 t0 = time.time()                
                 coadd_spec = coadd_cameras(spec)
                 log.info(f'Coadding across cameras took {time.time()-t0:.2f} seconds.')
-
+                
                 # unpack the desispec.spectra.Spectra objects into simple arrays
                 cameras = spec.bands
                 coadd_cameras = coadd_spec.bands[0]
                 unpackargs = []
                 for iobj in range(len(meta)):
                     specdata = {
-                        'uniqueid': meta[self.phot.uniqueid][iobj], 'zredrock': meta['Z'][iobj],
-                        'photsys': photsys[iobj], 'cameras': cameras,
-                        'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj], 'tuniv': tuniv[iobj],
+                        'uniqueid': meta[uniqueid][iobj],
+                        'zredrock': meta['Z'][iobj],
+                        'photsys': photsys[iobj],
+                        'cameras': cameras,
+                        'dluminosity': dlum[iobj],
+                        'dmodulus': dmod[iobj],
+                        'tuniv': tuniv[iobj],
                         'wave0': [spec.wave[cam] for cam in cameras],
                         'flux0': [spec.flux[cam][iobj, :] for cam in cameras],
                         'ivar0': [spec.ivar[cam][iobj, :] for cam in cameras],
                         # Also track the mask---see https://github.com/desihub/desispec/issues/1389 
                         'mask0': [spec.mask[cam][iobj, :] for cam in cameras],
                         'res0': [spec.resolution_data[cam][iobj, :, :] for cam in cameras],
-                        #'res0': [Resolution(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
-                        #'res_fast0': [EMLine_Resolution(spec.resolution_data[cam][iobj, :, :]) for cam in cameras],
                         'coadd_wave': coadd_spec.wave[coadd_cameras],
                         'coadd_flux': coadd_spec.flux[coadd_cameras][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
@@ -1134,18 +1154,18 @@ class DESISpectra(object):
                 out = mp_pool.starmap(unpack_one_spectrum, unpackargs)
             else:
                 out = starmap(unpack_one_spectrum, unpackargs)
-                
+            
             out = list(zip(*out))
             self.meta[ispec] = Table(np.hstack(out[1]))
             alldata.append(out[0])
             del out
-    
+            
         alldata = np.concatenate(alldata)
         self.meta = vstack(self.meta)
         self.ntargets = len(self.meta)
-
+        
         return alldata
-
+    
     
     def read_stacked(self, stackfiles, firsttarget=0, ntargets=None,
                      stackids=None, synthphot=True, mp_pool=None):
@@ -1236,25 +1256,25 @@ class DESISpectra(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
-        if len(np.atleast_1d(stackfiles)) == 0:
+        if len(stackfiles) == 0:
             errmsg = 'No stackfiles found!'
             log.warning(errmsg)
             raise ValueError(errmsg)
-
-        stackfiles = np.array(sorted(set(np.atleast_1d(stackfiles))))
+        
+        stackfiles = sorted(set(stackfiles))
         log.info(f'Reading and parsing {len(stackfiles)} unique stackfile(s).')
-
+        
         self.specprod = 'stacked'
         self.coadd_type = 'stacked'
         survey = 'stacked'
         program = 'stacked'
         healpix = np.int32(0)
         
-        READCOLS = ['STACKID', 'Z']
+        READCOLS = ('STACKID', 'Z')
         
         self.stackfiles, self.meta = [], []
         
-        for istack, stackfile in enumerate(np.atleast_1d(stackfiles)):
+        for istack, stackfile in enumerate(stackfiles):
             if not os.path.isfile(stackfile):
                 log.warning(f'File {stackfile} not found!')
                 continue
@@ -1274,7 +1294,7 @@ class DESISpectra(object):
                 # We already know we like the input stackids, so no selection
                 # needed.
                 allstackids = fitsio.read(stackfile, 'STACKINFO', columns='STACKID')
-                fitindx = np.where([tid in stackids for tid in allstackids])[0]                
+                fitindx = np.where([tid in stackids for tid in allstackids])[0]
 
             if len(fitindx) == 0:
                 log.info(f'No requested targets found in stackfile {stackfile}')
@@ -1327,7 +1347,7 @@ class DESISpectra(object):
                 log.info(f'Reading 1 spectrum from {stackfile}')
             else:
                 log.info(f'Reading {nobj} spectra from {stackfile}')
-                
+            
             # Age of the universe.
             dlum = np.zeros(len(meta['Z']))
             dmod = np.zeros(len(meta['Z']))
@@ -1337,7 +1357,7 @@ class DESISpectra(object):
 
             wave = fitsio.read(stackfile, 'WAVE')
             npix = len(wave)
-
+            
             flux = fitsio.read(stackfile, 'FLUX')
             flux = flux[fitindx, :]
             
@@ -1360,14 +1380,16 @@ class DESISpectra(object):
                     'zredrock': meta['Z'][iobj],
                     'photsys': meta['PHOTSYS'][iobj],
                     'cameras': ['brz'],
-                    'dluminosity': dlum[iobj], 'dmodulus': dmod[iobj],
+                    'dluminosity': dlum[iobj],
+                    'dmodulus': dmod[iobj],
                     'tuniv': tuniv[iobj],
                     'wave0': [wave],
                     'flux0': [flux[iobj, :]],
                     'ivar0': [ivar[iobj, :]],
                     'mask0': [np.zeros(npix, np.int16)],
                     'res0': [Resolution(res[iobj, :, :])]
-                    } 
+                }
+                
                 specdata.update({
                     'coadd_wave': specdata['wave0'][0],
                     'coadd_flux': specdata['flux0'][0],
@@ -1432,7 +1454,7 @@ class DESISpectra(object):
                         assert(np.all(input_meta[uniqueid] == targets[uniqueid]))
                         for col in meta.colnames:
                             if col in targets.colnames:
-                                diffcol = meta[col] != targets[col]
+                                diffcol = (meta[col] != targets[col])
                                 if np.any(diffcol):
                                     log.warning('Updating column {} in metadata table: {}-->{}.'.format(
                                         col, meta[col][0], targets[col][0]))
@@ -1443,24 +1465,23 @@ class DESISpectra(object):
                     # Add the tractor catalog quantities (overwriting columns if necessary).
                     for col in tractor.colnames:
                         meta[col] = tractor[col][srt]
-                        
+                    
                     # special case for some secondary and ToOs
-                    I = (meta['RA'] == 0) * (meta['DEC'] == 0) * (meta['TARGET_RA'] != 0) * (meta['TARGET_DEC'] != 0)
-                    if np.sum(I) > 0:
-                        meta['RA'][I] = meta['TARGET_RA'][I]
-                        meta['DEC'][I] = meta['TARGET_DEC'][I]
+                    I = ((meta['RA'] == 0)        & (meta['DEC'] == 0) &
+                         (meta['TARGET_RA'] != 0) & (meta['TARGET_DEC'] != 0))
+                    meta['RA'][I]  = meta['TARGET_RA'][I]
+                    meta['DEC'][I] = meta['TARGET_DEC'][I]
                     assert(np.all((meta['RA'] != 0) * (meta['DEC'] != 0)))
-                        
+                    
                     # try to repair PHOTSYS
                     # https://github.com/desihub/fastspecfit/issues/75
-                    I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S') * (meta['RELEASE'] >= 9000)
-                    if np.sum(I) > 0:
-                        meta['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE'][I]]
-                    I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S')
-                    if np.sum(I) > 0:
+                    I = ((meta['PHOTSYS'] != 'N') & (meta['PHOTSYS'] != 'S') & (meta['RELEASE'] >= 9000))
+                    meta['PHOTSYS'][I] = [releasedict[release] if release >= 9000 else '' for release in meta['RELEASE'][I]]
+                    I = ((meta['PHOTSYS'] != 'N') & (meta['PHOTSYS'] != 'S'))
+                    if np.any(I):
                         meta['PHOTSYS'][I] = self.resolve(meta[I])
-                    I = np.logical_and(meta['PHOTSYS'] != 'N', meta['PHOTSYS'] != 'S')
-                    if np.sum(I) > 0:
+                    I = ((meta['PHOTSYS'] != 'N') & (meta['PHOTSYS'] != 'S'))
+                    if np.any(I):
                         errmsg = 'Unsupported value of PHOTSYS.'
                         log.critical(errmsg)
                         raise ValueError(errmsg)
@@ -1468,13 +1489,13 @@ class DESISpectra(object):
                     # placeholders (to be added in DESISpectra.read_and_unpack)
                     meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
                     for band in self.phot.bands:
-                        meta['MW_TRANSMISSION_{}'.format(band.upper())] = np.ones(shape=(1,), dtype='f4')
+                        meta[f'MW_TRANSMISSION_{band.upper()}'] = np.ones(shape=(1,), dtype='f4')
                         
                     metas.append(meta)
         else:
             phot_tbl = Table(fitsio.read(self.fphotodir, ext=self.fphotoext, columns=PHOTCOLS))
             log.info(f'Read {len(phot_tbl):,d} objects from {self.photodir}')
-
+            
             metas = []
             for meta in self.meta:
                 srt = geomask.match_to(phot_tbl[uniqueid], meta[uniqueid])
@@ -1542,10 +1563,12 @@ def init_fastspec_output(input_meta, specprod, fphoto, linetable,
         if 'outcols' in fphoto:
             fluxcols = fphoto['outcols']
         if 'fiber_bands' in fphoto:
-            fluxcols = np.hstack((fluxcols, [f'FIBERFLUX_{band.upper()}' for band in fphoto['fiber_bands']]))
-            fluxcols = np.hstack((fluxcols, [f'FIBERTOTFLUX_{band.upper()}' for band in fphoto['fiber_bands']]))
-        fluxcols = np.hstack((fluxcols, fphoto['fluxcols'], fphoto['fluxivarcols'], ['EBV']))
-        fluxcols = np.hstack((fluxcols, [f'MW_TRANSMISSION_{band.upper()}' for band in fphoto['bands']]))
+            fluxcols.extend([f'FIBERFLUX_{band.upper()}' for band in fphoto['fiber_bands']])
+            fluxcols.extend([f'FIBERTOTFLUX_{band.upper()}' for band in fphoto['fiber_bands']])
+        fluxcols.extend(fphoto['fluxcols'])
+        fluxcols.extend(fphoto['fluxivarcols'])
+        fluxcols.append('EBV')
+        fluxcols.extend([f'MW_TRANSMISSION_{band.upper()}' for band in fphoto['bands']])
     
     colunit = {'RA': u.deg, 'DEC': u.deg, 'EBV': u.mag}
     for fcol, icol in zip(fphoto['fluxcols'], fphoto['fluxivarcols']):
@@ -1556,16 +1579,16 @@ def init_fastspec_output(input_meta, specprod, fphoto, linetable,
             colunit[f'FIBERFLUX_{band.upper()}'] = fphoto['photounits']
             colunit[f'FIBERTOTFLUX_{band.upper()}'] = fphoto['photounits']
 
-    skipcols = np.hstack((('OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE'), fluxcols))
-
+    skipcols = fluxcols + ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE']
+    
     if stackfit:
-        redrockcols = ['Z']
+        redrockcols = ('Z')
     else:
-        redrockcols = ['Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR', 'TSNR2_BGS',
-                       'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA']
+        redrockcols = ('Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR', 'TSNR2_BGS',
+                       'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
     
     meta = Table()
-    metacols = input_meta.colnames
+    metacols = set(input_meta.colnames)
 
     # All of this business is so we can get the columns in the order we want
     # (i.e., the order that matches the data model).
@@ -1619,11 +1642,11 @@ def init_fastspec_output(input_meta, specprod, fphoto, linetable,
     # fastspec table
     out = Table()
     if stackfit:
-        for col in ['STACKID', 'SURVEY', 'PROGRAM']:
+        for col in ('STACKID', 'SURVEY', 'PROGRAM'):
             if col in metacols:
                 out[col] = input_meta[col]
     else:
-        for col in ['TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID']:
+        for col in ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID'):
             if col in metacols:
                 out[col] = input_meta[col]
 
@@ -1680,7 +1703,7 @@ def init_fastspec_output(input_meta, specprod, fphoto, linetable,
     # observed-frame photometry synthesized the best-fitting continuum model
     for band in fphoto['bands']:
         out.add_column(Column(name=f'FLUX_SYNTH_PHOTMODEL_{band.upper()}', length=nobj, dtype='f4', unit='nanomaggies'))
-
+    
     for band, shift in zip(fphoto['absmag_bands'], fphoto['band_shift']):
         out.add_column(Column(name='ABSMAG{:02d}_{}'.format(int(10*shift), band.upper()), length=nobj, dtype='f4', unit=u.mag)) # absolute magnitudes
         out.add_column(Column(name='ABSMAG{:02d}_IVAR_{}'.format(int(10*shift), band.upper()), length=nobj, dtype='f4', unit=1/u.mag**2))
@@ -1693,9 +1716,9 @@ def init_fastspec_output(input_meta, specprod, fphoto, linetable,
     out.add_column(Column(name='LOGL_3000', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
     out.add_column(Column(name='LOGL_5100', length=nobj, dtype='f4', unit=10**(10)*u.solLum))
 
-    for cflux in ['FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT']:
+    for cflux in ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT'):
         out.add_column(Column(name=cflux, length=nobj, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom)))
-
+    
     if not fastphot:
         # Add chi2 metrics
         #out.add_column(Column(name='DOF', length=nobj, dtype='i8')) # full-spectrum dof
@@ -1785,6 +1808,7 @@ def init_fastspec_output(input_meta, specprod, fphoto, linetable,
                     meta[f'FLUX_IVAR_{band.upper()}'][iobj] = _data['phot']['nanomaggies_ivar'][iband]
 
     return out, meta
+
 
 def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
     """Read the fitting results.
@@ -1886,7 +1910,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
-                     envvar_names=['DESI_ROOT', 'DUST_DIR', 'FTEMPLATES_DIR', 'FPHOTO_DIR'])
+                     envvar_names=('DESI_ROOT', 'DUST_DIR', 'FTEMPLATES_DIR', 'FPHOTO_DIR'))
     if fphotofile:
         setdep(primhdr, 'FPHOTO_FILE', str(fphotofile))
     if templates:

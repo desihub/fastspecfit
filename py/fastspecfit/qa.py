@@ -1369,7 +1369,7 @@ def fastqa(args=None, comm=None):
 
         if stackfit:
             stackids = fastfit['STACKID'][indx]
-            data = Spec.read_stacked(redrockfile, stackids=stackids,
+            data = Spec.read_stacked((redrockfile,), stackids=stackids,
                                      mp_pool=mp_pool)
 
             minspecwave = np.min(data[0]['coadd_wave']) - 20
@@ -1380,7 +1380,7 @@ def fastqa(args=None, comm=None):
                 input_redshifts = fastfit['Z'][indx]
             else:
                 input_redshifts = None
-            Spec.select(redrockfiles=redrockfile, targetids=targetids, 
+            Spec.select(redrockfiles=(redrockfile,), targetids=targetids, 
                         input_redshifts=input_redshifts,
                         redrockfile_prefix=args.redrockfile_prefix,
                         specfile_prefix=args.specfile_prefix,
