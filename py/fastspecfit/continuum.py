@@ -9,6 +9,7 @@ import pdb # for debugging
 
 import time
 import numpy as np
+import numba
 
 from fastspecfit.logger import log
 
@@ -242,8 +243,7 @@ class ContinuumTools(object):
             Resampled and smoothed model spectrum.
 
         """
-        from fastspecfit.util import trapz_rebin
-
+        
         # Find lo, hi s.t. templatewave[lo:hi] is strictly within given
         # bounds. Should these pixel positions be cached??
         lo = np.searchsorted(templatewave, specwave[0]-2., 'right')
@@ -1621,3 +1621,91 @@ def continuum_specfit(data, result, templatecache,
         smoothcontinuum = [_smoothcontinuum / apercorr for _smoothcontinuum in smoothcontinuum]
         return continuummodel, smoothcontinuum
 
+
+
+# This code is purposely written in a very "C-like" way.  The logic
+# being that it may help numba optimization and also makes it easier
+# if it ever needs to be ported to Cython.  Actually Cython versions
+# of this code have already been tested and shown to perform no better
+# than numba on Intel haswell and KNL architectures.
+
+@numba.jit(nopython=True, fastmath=True, nogil=True)
+def _trapz_rebin(x, y, edges):
+    '''
+    Numba-friendly version of trapezoidal rebinning
+
+    See redrock.rebin.trapz_rebin() for input descriptions.
+    `results` is pre-allocated array of length len(edges)-1 to keep results
+    '''
+    nbins = len(edges) - 1
+        
+    results = np.empty(nbins, dtype=np.float64)
+    
+    j = 0  #- index counter for inputs
+    for i in range(nbins):
+        
+        results[i] = 0.
+        
+        # seek least j s.t. edges[i] < x[j]
+        while x[j] <= edges[i]:
+            j += 1
+            
+        #- What is the y value where the interpolation crossed the edge?
+        yedge = y[j-1] + (edges[i] - x[j-1]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
+        
+        #- Is this sample inside this bin?
+        if x[j] < edges[i+1]:
+            results[i] += (y[j] + yedge) * (x[j] - edges[i]) # 2*area
+            
+            #- Continue with interior bins
+            while x[j+1] < edges[i+1]:
+                j += 1
+                results[i] += (y[j] + y[j-1]) * (x[j] - x[j-1]) # 2*area
+
+            #- Next sample will be outside this bin; handle upper edge
+            yedge = y[j] + (edges[i+1] - x[j]) * (y[j+1] - y[j]) / (x[j+1] - x[j])
+            results[i] += (yedge + y[j]) * (edges[i+1] - x[j]) # 2*area
+            
+        #- Otherwise the samples span over this bin
+        else:
+            ylo = y[j] + (edges[i]   - x[j]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
+            yhi = y[j] + (edges[i+1] - x[j]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
+            results[i] += (ylo + yhi) * (edges[i+1] - edges[i]) # 2*area
+    
+        results[i] /= 2 * (edges[i+1] - edges[i])
+        
+    return results
+
+
+def trapz_rebin(x, y, xnew, edges=None):
+    """Rebin y(x) flux density using trapezoidal integration between bin edges
+
+    Notes:
+        y is interpreted as a density, as is the output, e.g.
+
+        >>> x = np.arange(10)
+        >>> y = np.ones(10)
+        >>> trapz_rebin(x, y, edges=[0,2,4,6,8])  #- density still 1, not 2
+        array([ 1.,  1.,  1.,  1.])
+
+    Args:
+        x (array): input x values.
+        y (array): input y values.
+        edges (array): (optional) new bin edges.
+
+    Returns:
+        array: integrated results with len(results) = len(edges)-1
+
+    Raises:
+        ValueError: if edges are outside the range of x or if len(x) != len(y)
+
+    """
+    from fastspecfit.util import centers2edges
+
+    if edges is None:
+        edges = centers2edges(xnew)
+    
+    if edges[0] < x[0] or x[-1] < edges[-1]:
+        raise ValueError('edges must be within input x range')
+
+    return _trapz_rebin(x, y, edges)
