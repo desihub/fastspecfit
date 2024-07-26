@@ -18,6 +18,25 @@ except:
 
 FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
 
+
+#
+# A BoxedScalar is an item of an Numpy
+# structured scalar type that is initialized
+# to all zeros and can then be passed
+# around by reference.  Access the .value
+# field to unbox the scalar.
+#
+class BoxedScalar(object):
+    def __init__(self, dtype):
+        self.value = np.zeros(1, dtype=dtype)[0]
+        
+    def __getitem__(self, key):
+        return self.value[key]
+
+    def __setitem__(self, key, v):
+        self.value[key] = v
+
+
 def mwdust_transmission(ebv, filtername):
     """Convert SFD E(B-V) value to dust transmission 0-1 given the bandpass.
 
