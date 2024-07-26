@@ -462,8 +462,6 @@ class Photometry(object):
         the "narrow" definition of Balogh et al. 1999.
 
         """
-        from fastspecfit.util import ivar2var
-            
         dn4000, dn4000_ivar = 0.0, 0.0
 
         if rest is False or redshift is not None:
