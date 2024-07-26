@@ -16,7 +16,25 @@ import numpy as np
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data, initialize_sc_data
 
-def fastspec_one(iobj, data, out,
+#
+# A BoxedScalar is an item of an Numpy
+# structured scalar type that is initialized
+# to all zeros and can then be passed
+# around by reference.  Access the .value
+# field to unbox the scalar.
+#
+class BoxedScalar(object):
+    def __init__(self, dtype):
+        self.value = np.zeros(1, dtype=dtype)[0]
+        
+    def __getitem__(self, key):
+        return self.value[key]
+
+    def __setitem__(self, key, v):
+        self.value[key] = v
+
+        
+def fastspec_one(iobj, data, out_dtype,
                  broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
                  percamera_models=False,
@@ -33,8 +51,16 @@ def fastspec_one(iobj, data, out,
     emline_table = sc_data.emline_table
     templatecache = sc_data.templates.cache
     
-    log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid.lower()} {data['uniqueid']}, z={data['zredrock']:.6f}].')
+    log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid.lower()} {data["uniqueid"]}, z={data["zredrock"]:.6f}].')
+
+    # output structure
+    out = BoxedScalar(out_dtype)
     
+    out['Z'] = data['zredrock']
+    if not fastphot:
+        for icam, cam in enumerate(data['cameras']):
+            out[f'SNR_{cam.upper()}'] = data['snr'][icam]
+ 
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache,
                                                          cosmo, igm, phot, emline_table,
                                                          constrain_age=constrain_age,
@@ -51,7 +77,7 @@ def fastspec_one(iobj, data, out,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
                                  percamera_models=percamera_models)
         
-    return out, emmodel
+    return out.value, emmodel
 
 
 def parse(options=None):
@@ -120,8 +146,13 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     """
     from astropy.table import Table, vstack
-    from fastspecfit.io import DESISpectra, write_fastspecfit, init_fastspec_output
-
+    from fastspecfit.io import (
+        DESISpectra,
+        get_fastspec_output_dtype,
+        create_fastspec_output_meta,
+        write_fastspecfit,
+    )
+    
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
@@ -134,6 +165,18 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     if args.verbose:
         from fastspecfit.logger import DEBUG
         log.setLevel(DEBUG)
+        
+    targetids = None
+    input_redshifts = None
+    
+    if args.targetids is not None:
+        targetids = [ int(x) for x in args.targetids.split(',') ]
+        if args.input_redshifts is not None:
+            input_redshifts = [ float(x) for x in args.input_redshifts.split(',') ]
+            if len(input_redshifts) != len(targetids):
+                errmsg = 'targetids and input_redshifts must have the same number of elements.'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
     
     # initialize single-copy objects im main process
     init_sc_args = (
@@ -158,19 +201,6 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                                        initargs=init_sc_args)
     else:
         mp_pool = None
-
-        
-    targetids = None
-    input_redshifts = None
-    
-    if args.targetids is not None:
-        targetids = [ int(x) for x in args.targetids.split(',') ]
-        if args.input_redshifts is not None:
-            input_redshifts = [ float(x) for x in args.input_redshifts.split(',') ]
-            if len(input_redshifts) != len(targetids):
-                errmsg = 'targetids and input_redshifts must have the same number of elements.'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
     
     # Read the data.
     t0 = time.time()
@@ -197,17 +227,16 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                                     mp_pool=mp_pool)
         
     log.info(f'Reading and unpacking {Spec.ntargets} spectra to be fitted took {time.time()-t0:.2f} seconds.')
-
     
-    # Initialize the output tables.
-    out_orig, meta = init_fastspec_output(Spec.meta, Spec.specprod, sc_data.photometry.fphoto,
-                                          linetable=sc_data.emline_table,
-                                          templates=sc_data.templates.file, data=data,
-                                          fastphot=fastphot, stackfit=stackfit)
+    out_dtype, out_units = get_fastspec_output_dtype(Spec.specprod,
+                                                     phot=sc_data.photometry,
+                                                     linetable=sc_data.emline_table,
+                                                     template_file=sc_data.templates.file, 
+                                                     fastphot=fastphot, stackfit=stackfit)
     
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out_orig[iobj],
+    fitargs = [(iobj, data[iobj], out_dtype,
                 args.broadlinefit, fastphot, args.constrain_age,
                 args.no_smooth_continuum, args.percamera_models,
                 args.debug_plots, args.minsnr_balmer_broad)
@@ -218,34 +247,30 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     else:
         _out = starmap(fastspec_one, fitargs)
     
-    _out = list(zip(*_out))
-    out = Table(np.hstack(_out[0]))
+    out = list(zip(*_out))
+
+    meta = create_fastspec_output_meta(Spec.meta, data,
+                                       phot=sc_data.photometry,
+                                       fastphot=fastphot, stackfit=stackfit)
+    
+    results = create_output_table(out[0], meta, out_units,
+                                  stackfit=stackfit)
     
     if fastphot:
         modelspectra = None
     else:
-        from astropy.table import vstack
-        try:
-            # need to vstack to preserve the wavelength metadata 
-            modelspectra = vstack(_out[1], metadata_conflicts='error')
-        except:
-            errmsg = 'Metadata conflict when stacking model spectra.'
-            log.critical(errmsg)
-            raise ValueError(errmsg)
-       
+        from astropy.table import vstack # preserves metadata
+        modelspectra = vstack(out[1], join_type='exact', metadata_conflicts='error')
+   
     log.info(f'Fitting {Spec.ntargets} object(s) took {time.time()-t0:.2f} seconds.')
     
     # if multiprocessing, clean up workers
     if mp_pool is not None:
         mp_pool.close()
     
-    # Copy units from original output table to reconstructed table
-    # (We don't need to do this for meta because it isn't reonstructed)
-    _copy_units(out, out_orig)
-    
     # FIXME: do we need the true location of emlinesfile, rather than just the args?
     # we pass the true location of the templates file and the photometry file
-    write_fastspecfit(out, meta, modelspectra=modelspectra, outfile=args.outfile,
+    write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
                       fphotofile=sc_data.photometry.fphotofile,
                       templates=sc_data.templates.file,
@@ -257,14 +282,32 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                       no_smooth_continuum=args.no_smooth_continuum)
 
 
-def _copy_units(tbl, tbl_orig):
-    # Copy units from one table to another
+def create_output_table(result_records, meta, units, stackfit=False):
 
-    orig_cols = set(tbl_orig.colnames)
+    from astropy.table import Table
+    
+    #
+    # Turn the list of result records into a structured array,
+    # and build the basic table from that.  Columns and their
+    # dtypes are inferred from the array's dtype.
+    #
+    results = Table(np.array(result_records), units=units)
+    
+    #
+    # add initial columns matching those in meta, at the
+    # beginning of the column list
+    #
+    if stackfit:
+        initcols = ('STACKID', 'SURVEY', 'PROGRAM')
+    else:
+        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID')
+    
+    metacols = set(meta.colnames)
+    initcols = [ col for col in initcols if col in metacols ]
+    cdata = [meta[col] for col in initcols]
+    results.add_columns(cdata, indexes=list(range(len(cdata))))
 
-    for col in tbl.colnames:
-        if col in orig_cols:
-            tbl[col].unit = tbl_orig[col].unit
+    return results
 
         
 def fastphot(args=None, comm=None):

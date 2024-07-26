@@ -40,8 +40,6 @@ class Photometry(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
-        self.fphoto = fphoto # save for init_fastspec_output
-        
         self.uniqueid = fphoto['uniqueid']
         self.photounits = fphoto['photounits']
 
@@ -68,7 +66,7 @@ class Photometry(object):
             self.synth_bands = np.array(fphoto['synth_bands'])
         if 'fiber_bands' in fphoto:
             self.fiber_bands = np.array(fphoto['fiber_bands'])
-
+        
         self.absmag_bands = np.array(fphoto['absmag_bands'])
         self.band_shift = np.array(fphoto['band_shift'])
 

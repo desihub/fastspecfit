@@ -2344,7 +2344,9 @@ def continuum_specfit(data, result, templatecache,
              f'A(V)={AV:.3f}, Age={age:.3f} Gyr, SFR={sfr:.3f} Msun/yr, Z/Zsun={zzsun:.3f}')
 
     # Pack it in and return.
+    ncoeff = len(templatecache['templateinfo'])
     result['COEFF'][agekeep] = coeff
+
     result['RCHI2_PHOT'] = rchi2_phot
     result['VDISP'] = vdisp # * u.kilometer/u.second
     result['AV'] = AV # * u.mag
@@ -2353,7 +2355,7 @@ def continuum_specfit(data, result, templatecache,
     result['LOGMSTAR'] = logmstar
     result['SFR'] = sfr
     result['DN4000_MODEL'] = dn4000_model
-
+    
     for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
         result['KCORR{:02d}_{}'.format(int(10*shift), band.upper())] = kcorr[iband] # * u.mag
         result['ABSMAG{:02d}_{}'.format(int(10*shift), band.upper())] = absmag[iband] # * u.mag
