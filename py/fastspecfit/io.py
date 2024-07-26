@@ -83,10 +83,8 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
     from desispec.resolution import Resolution
     from fastspecfit.emline_fit import EMLine_Resolution
     from fastspecfit.util import mwdust_transmission, median
-    from fastspecfit.continuum import ContinuumTools
+    from fastspecfit.linemasker import LineMasker
 
-    cosmo = sc_data.cosmology
-    igm = sc_data.igm
     emline_table = sc_data.emline_table
     phot = sc_data.photometry    
     
@@ -234,8 +232,8 @@ def unpack_one_spectrum(iobj, specdata, meta, ebv,
         specdata['camerapix'][:, 1] = c_ends
         
         # use the coadded spectrum to build a robust emission-line mask
-        CTools = ContinuumTools(cosmo, igm, phot, emline_table)
-        pix = CTools.build_linemask_patches(
+        LM = LineMasker(emline_table)
+        pix = LM.build_linemask_patches(
             specdata['coadd_wave'], specdata['coadd_flux'],
             specdata['coadd_ivar'], specdata['coadd_res_fast'], 
             uniqueid=specdata['uniqueid'], redshift=specdata['zredrock'],
@@ -286,8 +284,6 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot):
     from fastspecfit.continuum import ContinuumTools
     from fastspec.util import median
     
-    cosmo = sc_data.cosmology
-    igm = sc_data.igm
     emline_table = sc_data.emline_table
     phot = sc_data.photometry
     
@@ -371,10 +367,10 @@ def unpack_one_stacked_spectrum(iobj, specdata, meta, synthphot):
     for key in ('wave0', 'flux0', 'ivar0', 'mask0', 'res0'):
         del specdata[key]
     
-    CTools = ContinuumTools(cosmo, igm, phot, emline_table)
-    coadd_linemask_dict = CTools.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                        specdata['coadd_ivar'], redshift=specdata['zredrock'])
-                                                        
+    LM = LineMasker(phot, emline_table)
+    coadd_linemask_dict = LM.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
+                                                    specdata['coadd_ivar'], redshift=specdata['zredrock'])
+    
     specdata['coadd_linename'] = coadd_linemask_dict['linename']
     specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
     specdata['coadd_contpix'] = [np.where(cpix)[0] for cpix in coadd_linemask_dict['contpix']]

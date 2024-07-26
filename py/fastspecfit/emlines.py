@@ -1120,7 +1120,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     """
     from astropy.table import Column
     from fastspecfit.util import ivar2var, quantile
-    from fastspecfit.continuum import ContinuumTools
+    from fastspecfit.linemasker import LineMasker
 
     tall = time.time()
             
@@ -1214,9 +1214,9 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         balmer_linesigmas =  broad_values[line_params[IBalmer, ParamType.SIGMA ] ]
         balmer_linevshifts = broad_values[line_params[IBalmer, ParamType.VSHIFT] ]
 
-        balmerpix = ContinuumTools.linepix_and_contpix(emlinewave, emlineivar, EMFit.line_table[IBalmer],
-                                                       balmer_linesigmas, get_contpix=False, 
-                                                       redshift=redshift)
+        balmerpix = LineMasker.linepix_and_contpix(emlinewave, emlineivar, EMFit.line_table[IBalmer],
+                                                   balmer_linesigmas, get_contpix=False, 
+                                                   redshift=redshift)
         balmerlines =  [ EMFit.line_map[ln] for ln in balmerpix['linepix'] ]
         balmerpixels = [ px for px in balmerpix['linepix'].values() ]
         
