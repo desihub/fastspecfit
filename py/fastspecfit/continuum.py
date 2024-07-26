@@ -11,6 +11,7 @@ import time
 import numpy as np
 
 from fastspecfit.logger import log
+
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
 from fastspecfit.util import C_LIGHT, FLUXNORM, quantile, median
@@ -19,18 +20,8 @@ class ContinuumTools(object):
     """Tools for dealing with spectral continua.
 
     """
-    def __init__(self, cosmo, igm, phot, emline_table):
-        """
-        Parameters
-        ----------
-        emlinesfile : :class:`str`
-            Full path to the emission lines parameter file to read.
-        kwargs : :class:`dict`
-            Optional keyword arguments passed to `Tools` :class:`class`.
-    
-        """
-
-        self.emline_table = emline_table
+    def __init__(self, cosmo, igm, phot):
+ 
         self.cosmo = cosmo
         self.igm = igm
         self.phot = phot
@@ -1059,7 +1050,7 @@ def _younger_than_universe(age, tuniv, agepad=0.5):
 
 
 def continuum_specfit(data, result, templatecache,
-                      cosmo, igm, phot, emline_table,
+                      cosmo, igm, phot,
                       constrain_age=False, no_smooth_continuum=False, 
                       fastphot=False, debug_plots=False):
     """Fit the non-negative stellar continuum of a single spectrum.
@@ -1085,7 +1076,7 @@ def continuum_specfit(data, result, templatecache,
             
     tall = time.time()
 
-    CTools = ContinuumTools(cosmo, igm, phot, emline_table)
+    CTools = ContinuumTools(cosmo, igm, phot)
     
     redshift = data['zredrock']
     if redshift <= 0.:

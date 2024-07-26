@@ -92,9 +92,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     cosmo = sc_data.cosmology
     CTools = ContinuumTools(cosmo=cosmo,
                             igm=sc_data.igm,
-                            phot=phot,
-                            emline_table=sc_data.emline_table)
-
+                            phot=phot)
+    
     if hasattr(phot, 'viewer_layer'):
         layer = phot.viewer_layer
     elif hasattr(phot, 'legacysurveydr'):

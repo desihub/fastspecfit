@@ -46,7 +46,7 @@ def fastspec_one(iobj, data, out_dtype,
             out[f'SNR_{cam.upper()}'] = data['snr'][icam]
  
     continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache,
-                                                         cosmo, igm, phot, emline_table,
+                                                         cosmo, igm, phot,
                                                          constrain_age=constrain_age,
                                                          no_smooth_continuum=no_smooth_continuum,
                                                          fastphot=fastphot, debug_plots=debug_plots)
