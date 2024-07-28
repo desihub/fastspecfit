@@ -37,7 +37,7 @@ def fastspec_one(iobj, data, out_dtype,
     cosmo = sc_data.cosmology
     igm = sc_data.igm
     phot = sc_data.photometry
-    emline_table = sc_data.emline_table
+    emline_table = sc_data.emlines.table
     templatecache = sc_data.templates.cache
     
     log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} {data["uniqueid"]}, z={data["zredrock"]:.6f}].')
@@ -170,7 +170,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     ncoeff = len(sc_data.templates.cache['templateinfo'])
     out_dtype, out_units = get_output_dtype(Spec.specprod,
                                             phot=sc_data.photometry,
-                                            linetable=sc_data.emline_table,
+                                            linetable=sc_data.emlines.table,
                                             ncoeff=ncoeff,
                                             fastphot=fastphot, stackfit=stackfit)
     
@@ -208,13 +208,12 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     if mp_pool is not None:
         mp_pool.close()
     
-    # FIXME: do we need the true location of emlinesfile, rather than just the args?
-    # we pass the true location of the templates file and the photometry file
+
     write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
                       fphotofile=sc_data.photometry.fphotofile,
                       templates=sc_data.templates.file,
-                      emlinesfile=args.emlinesfile, fastphot=fastphot,
+                      emlinesfile=sc_data.emlines.file, fastphot=fastphot,
                       inputz=input_redshifts is not None,
                       ignore_photometry=args.ignore_photometry,
                       broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,

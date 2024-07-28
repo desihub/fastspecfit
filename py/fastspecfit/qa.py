@@ -107,7 +107,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         pixscale = 0.262 # [arcsec/pixel]
 
     if not fastphot:
-        EMFit = EMFitTools(emline_table=sc_data.emline_table)
+        EMFit = EMFitTools(emline_table=sc_data.emlines.table)
         
     filters = phot.synth_filters[metadata['PHOTSYS']]
     allfilters = phot.filters[metadata['PHOTSYS']]

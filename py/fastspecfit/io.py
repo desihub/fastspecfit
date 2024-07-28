@@ -820,7 +820,7 @@ class DESISpectra(object):
         from fastspecfit.util import mwdust_transmission, median
         from fastspecfit.linemasker import LineMasker
     
-        emline_table = sc_data.emline_table
+        emline_table = sc_data.emlines.table
         phot = sc_data.photometry    
     
         log.info(f'Pre-processing object {iobj} [targetid {specdata["uniqueid"]} z={specdata["zredrock"]:.6f}].')
@@ -1267,7 +1267,7 @@ class DESISpectra(object):
         from fastspecfit.linemasker import LineMasker
         from fastspec.util import median
     
-        emline_table = sc_data.emline_table
+        emline_table = sc_data.emlines.table
         phot = sc_data.photometry
     
         log.info(f'Pre-processing object {iobj} [stackid {specdata["uniqueid"]} z={specdata["zredrock"]:.6f}].')
@@ -1349,7 +1349,7 @@ class DESISpectra(object):
         # clean up the data dictionary
         for key in ('wave0', 'flux0', 'ivar0', 'mask0', 'res0'):
             del specdata[key]
-    
+        
         LM = LineMasker(phot, emline_table)
         coadd_linemask_dict = LM.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
                                                         specdata['coadd_ivar'], redshift=specdata['zredrock'])
