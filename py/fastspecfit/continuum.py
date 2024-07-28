@@ -15,7 +15,7 @@ from fastspecfit.logger import log
 
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
-from fastspecfit.util import C_LIGHT, FLUXNORM, quantile, median
+from fastspecfit.util import C_LIGHT, FLUXNORM, quantile, median, sigmaclip
 
 class ContinuumTools(object):
     """Tools for dealing with spectral continua.
@@ -83,7 +83,6 @@ class ContinuumTools(object):
         """
         from numpy.lib.stride_tricks import sliding_window_view
         from scipy.ndimage import median_filter
-        from fastspecfit.util import sigmaclip
         from scipy.interpolate import make_interp_spline
         
         npix = len(wave)
@@ -321,8 +320,7 @@ class ContinuumTools(object):
             T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
             ztemplateflux = vd_templateflux * T[:, np.newaxis]
         else:
-            errmsg = 'Input redshift not defined, zero, or negative!'
-            self.log.warning(errmsg)
+            log.warning('Input redshift not defined, zero, or negative!')
             ztemplatewave = templatewave
             T = FLUXNORM * self.massnorm
             ztemplateflux = vd_templateflux * T
@@ -449,8 +447,7 @@ class ContinuumTools(object):
             else:
                 xbest, xerr, chi2min, warn = minfit(xparam[imin-1:imin+2], chi2grid[imin-1:imin+2])
         except:
-            errmsg = 'A problem was encountered minimizing chi2.'
-            log.warning(errmsg)
+            log.warning('A problem was encountered minimizing chi2.')
             imin, xbest, xerr, chi2min, warn, (a, b, c) = 0, 0.0, 0.0, 0.0, 1, (0., 0., 0.)
     
         if warn == 0:
@@ -953,13 +950,12 @@ class ContinuumTools(object):
 
         return fullmodel, rchi2_spec, rchi2_phot, rchi2_tot
 
-
-    def continuum_fluxes(self, data, templatewave, continuum):
+    @staticmethod
+    def continuum_fluxes(data, templatewave, continuum):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
         from scipy.ndimage import median_filter
-        from scipy.stats import sigmaclip
         
         def get_cflux(cwave):
             lo = np.searchsorted(templatewave, cwave - 20., 'right')
@@ -976,8 +972,7 @@ class ContinuumTools(object):
         
         redshift = data['zredrock']
         if redshift <= 0.0:
-            errmsg = 'Input redshift not defined, zero, or negative!'
-            log.warning(errmsg)
+            log.warning('Input redshift not defined, zero, or negative!')
             return {}, {}
         
         dlum = data['dluminosity']
@@ -1014,30 +1009,6 @@ class ContinuumTools(object):
             cfluxes[label] = get_cflux(cwave) # * u.erg/(u.second*u.cm**2*u.Angstrom)
 
         return lums, cfluxes
-
-
-    def kcorr_and_absmag(self, data, templatewave, continuum, snrmin=2.0):
-        """Compute K-corrections and absolute magnitudes.
-
-        """
-        redshift = data['zredrock']
-        
-        # distance modulus, luminosity distance, and redshifted wavelength array
-        dmod = data['dmodulus']
-        ztemplatewave = templatewave * (1. + redshift)
-        
-        filters_in = self.phot.filters[data['photsys']]
-
-        maggies = data['phot']['nanomaggies'].data * 1e-9
-        ivarmaggies = (data['phot']['nanomaggies_ivar'].data / 1e-9**2) * self.phot.bands_to_fit
-
-        kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in = self.phot.restframe_photometry(
-            redshift, continuum, ztemplatewave, maggies, ivarmaggies,
-            filters_in=filters_in, absmag_filters=self.phot.absmag_filters,
-            band_shift=self.phot.band_shift, dmod=data['dmodulus'],
-            snrmin=snrmin)
-        
-        return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
 
 
 def _younger_than_universe(age, tuniv, agepad=0.5):
@@ -1553,8 +1524,10 @@ def continuum_specfit(data, result, templatecache,
 
         AV, age, zzsun, logmstar, sfr = 0.0, 0.0, 0.0, 0.0, 0.0
     else:
-        kcorr, absmag, ivarabsmag, _, synth_bestmaggies = CTools.kcorr_and_absmag(
-            data, templatecache['templatewave'], sedmodel)
+        kcorr, absmag, ivarabsmag, synth_bestmaggies = phot.kcorr_and_absmag(
+            data['phot']['nanomaggies'].value, data['phot']['nanomaggies_ivar'].value,
+            redshift, data['dmodulus'], data['photsys'],
+            templatecache['templatewave'] * (1. + redshift), sedmodel)
         lums, cfluxes = CTools.continuum_fluxes(data, templatecache['templatewave'], sedmodel)
 
         # get the SPS properties
@@ -1589,18 +1562,18 @@ def continuum_specfit(data, result, templatecache,
     result['DN4000_MODEL'] = dn4000_model
     
     for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
-        result['KCORR{:02d}_{}'.format(int(10*shift), band.upper())] = kcorr[iband] # * u.mag
-        result['ABSMAG{:02d}_{}'.format(int(10*shift), band.upper())] = absmag[iband] # * u.mag
-        result['ABSMAG{:02d}_IVAR_{}'.format(int(10*shift), band.upper())] = ivarabsmag[iband] # / (u.mag**2)
+        band = band.upper()
+        shift = int(10*shift)
+        result[f'KCORR{shift:02d}_{band}'] = kcorr[iband] # * u.mag
+        result[f'ABSMAG{shift:02d}_{band}'] = absmag[iband] # * u.mag
+        result[f'ABSMAG{shift:02d}_IVAR_{band}'] = ivarabsmag[iband] # / (u.mag**2)
     for iband, band in enumerate(phot.bands):
-        result['FLUX_SYNTH_PHOTMODEL_{}'.format(band.upper())] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
-    if bool(lums):
-        for lum in lums.keys():
-            result[lum] = lums[lum]
-    if bool(cfluxes):
-        for cflux in cfluxes.keys():
-            result[cflux] = cfluxes[cflux]
-
+        result[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
+    for lum in lums:
+        result[lum] = lums[lum]
+    for cflux in cfluxes:
+        result[cflux] = cfluxes[cflux]
+    
     if not fastphot:
         result['RCHI2_CONT'] = rchi2_cont
         result['VDISP_IVAR'] = vdispivar # * (u.second/u.kilometer)**2

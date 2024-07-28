@@ -3,7 +3,6 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 
-from fastspecfit.cosmo import TabulatedDESI
 from fastspecfit.util import C_LIGHT, FLUXNORM
 
 class Photometry(object):
@@ -11,6 +10,7 @@ class Photometry(object):
 
     """
     def __init__(self, fphotofile=None, stackfit=False, ignore_photometry=False):
+                 
         """
         Parameters
         ----------
@@ -23,7 +23,7 @@ class Photometry(object):
         """
         from speclite import filters
         import yaml
-
+        
         if fphotofile is None:
             from importlib import resources
             if stackfit:
@@ -40,7 +40,7 @@ class Photometry(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
-        self.uniqueid = fphoto['uniqueid']
+        self.uniqueid_col = fphoto['uniqueid']
         self.photounits = fphoto['photounits']
 
         if 'readcols' in fphoto:
@@ -103,10 +103,8 @@ class Photometry(object):
             self.bands_to_fit *= [False]
 
 
-    def restframe_photometry(self, redshift, zmodelflux, zmodelwave, maggies, ivarmaggies,
-                             filters_in, absmag_filters, band_shift=None, snrmin=2.,
-                             dmod=None, cosmo=None):
-        """Compute K-corrections and rest-frame photometry for a single object.
+    def kcorr_and_absmag(self, nanomaggies, ivar_nanomaggies, redshift, dmod, photsys, zmodelwave, zmodelflux, snrmin=2.0):
+        """Compute K-corrections and absolute magnitudes for a single object.
         
         Parameters
         ----------
@@ -115,27 +113,16 @@ class Photometry(object):
         zmodelwave : `numpy.ndarray`
            Observed-frame (redshifted) model wavelength array.
         zmodelflux : `numpy.ndarray`
-           Observed-frame model spectrum.
-        maggies : `numpy.ndarray`
+           Observed-frame (redshifted) model spectrum.
+        nanomaggies : `numpy.ndarray`
            Input photometric fluxes in the `filters_in` bandpasses.
-        ivarmaggies : `numpy.ndarray`
-           Inverse variance photometry corresponding to `maggies`.
-        filters_in : `speclite.filters.FilterSequence`
-           Input filter curves.
-        absmag_filters : `speclite.filters.FilterSequence`
-           Filter curves corresponding to desired bandpasses.
-        band_shift : `numpy.ndarray` or `None`
-           Band-shift each bandpass in `absmag_filters` by this amount.
+        ivar_nanomaggies : `numpy.ndarray`
+           Inverse variance photometry corresponding to `nanomaggies`.       
         snrmin : :class:`float`, defaults to 2.
            Minimum signal-to-noise ratio in the input photometry (`maggies`) in
            order for that bandpass to be used to compute a K-correction.
-        dmod : :class:`float` or `None`
-           Distance modulus corresponding to `redshift`. Not needed if `cosmo` is
-           provided.
-        cosmo : `fastspecfit.util.TabulatedDESI` or `None`
-           Cosmological model class needed to compute the distance modulus.
-        log : `desiutil.log`
-           Logging object.
+        dmod : :class:`float`
+           Distance modulus corresponding to `redshift`.
     
         Returns
         -------
@@ -163,6 +150,71 @@ class Photometry(object):
         `absmag` is derived from the synthesized rest-frame photometry.
         
         """
+        from speclite import filters
+        
+        nabs = len(self.absmag_filters)
+            
+        if redshift <= 0.0:
+            errmsg = 'Input redshift not defined, zero, or negative!'
+            log.warning(errmsg)
+            kcorr        = np.zeros(nabs, dtype='f8')
+            absmag       = np.zeros(nabs, dtype='f8')
+            ivarabsmag   = np.zeros(nabs, dtype='f8')
+            synth_absmag = np.zeros(nabs, dtype='f8')
+            synth_maggies_in = np.zeros(len(maggies))
+            return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
+
+        maggies     = nanomaggies * 1e-9
+        ivarmaggies = (ivar_nanomaggies / 1e-9**2) * self.bands_to_fit        
+        
+        filters_in = self.filters[photsys]
+
+        lambda_in = filters_in.effective_wavelengths.value
+
+        # input bandpasses, observed frame; maggies and synth_maggies_in should be
+        # very close.
+        synth_maggies_in = self.get_ab_maggies(filters_in,
+                                               zmodelflux / FLUXNORM,
+                                               zmodelwave)
+        filters_out = \
+            filters.FilterSequence( [ f.create_shifted(band_shift=bs) for f, bs in zip(self.absmag_filters, self.band_shift) ])
+        lambda_out = filters_out.effective_wavelengths.value
+        modelwave = zmodelwave / (1. + redshift)
+        
+        # Multiply by (1+z) to convert the best-fitting model to the "rest frame".
+        synth_outmaggies_rest = self.get_ab_maggies(filters_out,
+                                                    zmodelflux * (1. + redshift) / FLUXNORM,
+                                                    modelwave)
+        
+        synth_absmag = -2.5 * np.log10(synth_outmaggies_rest) - dmod
+
+        # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
+        oband = np.empty(nabs, dtype=np.int32)
+        for jj in range(nabs):
+            lambdadist = np.abs(lambda_in / (1. + redshift) - lambda_out[jj])
+            oband[jj] = np.argmin(lambdadist + (maggies * np.sqrt(ivarmaggies) < snrmin) * 1e10)
+
+        kcorr = + 2.5 * np.log10(synth_outmaggies_rest / synth_maggies_in[oband])
+        
+        # m_R = M_Q + DM(z) + K_QR(z) or
+        # M_Q = m_R - DM(z) - K_QR(z)
+        absmag = -2.5 * np.log10(maggies[oband]) - dmod - kcorr
+        
+        C = 0.8483036976765437 # (0.4 * np.log(10.))**2
+        ivarabsmag = maggies[oband]**2 * ivarmaggies[oband] * C
+        
+        # if we use synthesized photometry then ivarabsmag is zero
+        # (which should never happen?)
+        I = (maggies[oband] * np.sqrt(ivarmaggies[oband]) <= snrmin)
+        absmag[I] = synth_absmag[I]
+        ivarabsmag[I] = 0.
+    
+        return kcorr, absmag, ivarabsmag, synth_maggies_in
+
+    """
+    def restframe_photometry(self, redshift, zmodelflux, zmodelwave, maggies, ivarmaggies,
+                             filters_in, absmag_filters, band_shift=None, snrmin=2.,
+                             dmod=None, cosmo=None):
         from speclite import filters
         
         nabs = len(absmag_filters)
@@ -228,7 +280,7 @@ class Photometry(object):
         ivarabsmag[I] = 0.
     
         return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
-
+    """
 
     @staticmethod
     def get_ab_maggies_fast(filters, flux, wave):

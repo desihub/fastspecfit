@@ -40,8 +40,8 @@ def fastspec_one(iobj, data, out_dtype,
     emline_table = sc_data.emline_table
     templatecache = sc_data.templates.cache
     
-    log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid.lower()} {data["uniqueid"]}, z={data["zredrock"]:.6f}].')
-
+    log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} {data["uniqueid"]}, z={data["zredrock"]:.6f}].')
+    
     # output structure
     out = BoxedScalar(out_dtype)
     
