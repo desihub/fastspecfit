@@ -537,10 +537,10 @@ class Photometry(object):
             fnu_ivar = np.ones_like(flam) # uniform weights
 
         def _integrate(wave, flux, ivar, w1, w2):
-            from scipy import integrate, interpolate
+            from scipy import integrate
             # trim for speed
-            I = (wave > (w1-wpad)) * (wave < (w2+wpad))
-            J = np.logical_and(I, ivar > 0)
+            I = ((wave > w1-wpad) & (wave < w2+wpad))
+            J = np.logical_and(I, ivar > 0.)
             # Require no more than 20% of pixels are masked.
             if np.sum(J) / np.sum(I) < 0.8:
                 log.warning('More than 20% of pixels in Dn(4000) definition are masked.')
@@ -548,21 +548,18 @@ class Photometry(object):
             wave = wave[J]
             flux = flux[J]
             ivar = ivar[J]
+            srt = np.argsort(wave)
             # should never have to extrapolate
-            f = interpolate.interp1d(wave, flux, assume_sorted=False, bounds_error=True)
-            f1 = f(w1)
-            f2 = f(w2)
-            i = interpolate.interp1d(wave, ivar, assume_sorted=False, bounds_error=True)
-            i1 = i(w1)
-            i2 = i(w2)
+            f1, f2 = np.interp((w1, w2), wave[srt], flux[srt])
+            i1, i2 = np.interp((w1, w2), wave[srt], ivar[srt])
             # insert the boundary wavelengths then integrate
-            I = np.where((wave > w1) * (wave < w2))[0]
-            wave = np.insert(wave[I], [0, len(I)], [w1, w2])
-            flux = np.insert(flux[I], [0, len(I)], [f1, f2])
-            ivar = np.insert(ivar[I], [0, len(I)], [i1, i2])
-            weight = integrate.simps(x=wave, y=ivar)
-            index = integrate.simps(x=wave, y=flux*ivar) / weight
-            index_var = 1 / weight
+            I = ((wave > w1) & (wave < w2))
+            wave = np.hstack((w1, wave[I], w2))
+            flux = np.hstack((f1, flux[I], f2))
+            ivar = np.hstack((i1, ivar[I], i2))
+            # FIXME: can we use trapezoidal method here?
+            index_var = 1 / integrate.simpson(x=wave, y=ivar)
+            index = integrate.simpson(x=wave, y=flux*ivar) * index_var
             return index, index_var
 
         blufactor = 3950.0 - 3850.0
