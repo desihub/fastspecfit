@@ -316,6 +316,7 @@ def minfit(x, y, return_coeff=False):
 def sigmaclip(c, low=3., high=3.):
 
     n  = len(c)
+
     mask = np.full(n, True, dtype=np.bool_)
     
     s  = np.sum(c)
@@ -324,9 +325,15 @@ def sigmaclip(c, low=3., high=3.):
     delta = 1
     while delta > 0:
         mean = s/n
-        std  = np.sqrt(s2/n - mean*mean)
+
+        # differences very close to zero can end up negative
+        # due to limited floating-point precision
+        std = np.sqrt(np.maximum(s2/n - mean*mean, 0.))
         clo = mean - std * low
         chi = mean + std * high
+
+        if std == 0.: # don't mask everything
+            break
         
         n0 = n
         for j, cval in enumerate(c):
@@ -337,7 +344,7 @@ def sigmaclip(c, low=3., high=3.):
                 s2 -= cval * cval
 
         delta = n0-n
-        
+
     return c[mask], clo, chi
 
 
