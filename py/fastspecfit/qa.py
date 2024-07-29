@@ -13,7 +13,9 @@ from itertools import starmap
 import numpy as np
 
 from fastspecfit.logger import log
+from fastspecfit.templates import Templates
 from fastspecfit.singlecopy import sc_data, initialize_sc_data
+
 
 def desiqa_one(data, fastfit, metadata, coadd_type,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
@@ -94,8 +96,8 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
     templates = sc_data.templates
     
     CTools = ContinuumTools(cosmo, igm, phot,
-                            templates.pixpox_wavesplit,
-                            templates.dust_klambda))
+                            templates.pixpos_wavesplit,
+                            templates.dust_klambda)
     
     if hasattr(phot, 'viewer_layer'):
         layer = phot.viewer_layer

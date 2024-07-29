@@ -903,7 +903,7 @@ class ContinuumTools(object):
         return fullmodel, rchi2_spec, rchi2_phot, rchi2_tot
 
     @staticmethod
-    def continuum_fluxes(data, templatewave, continuum):
+    def continuum_fluxes(redshift, dlum, templatewave, continuum):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
@@ -922,13 +922,10 @@ class ContinuumTools(object):
             return median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
 
         
-        redshift = data['zredrock']
         if redshift <= 0.0:
             log.warning('Input redshift not defined, zero, or negative!')
             return {}, {}
         
-        dlum = data['dluminosity']
-
         # compute the model continuum flux at 1500 and 2800 A (to facilitate UV
         # luminosity-based SFRs) and at the positions of strong nebular emission
         # lines [OII], Hbeta, [OIII], and Halpha
@@ -1469,7 +1466,8 @@ def continuum_specfit(data, result, templates,
             data['phot']['nanomaggies'].value, data['phot']['nanomaggies_ivar'].value,
             redshift, data['dmodulus'], data['photsys'],
             templates.wave * (1. + redshift), sedmodel)
-        lums, cfluxes = CTools.continuum_fluxes(data, templates.wave, sedmodel)
+        lums, cfluxes = CTools.continuum_fluxes(redshift, data['dluminosity'],
+                                                templates.wave, sedmodel)
 
         # get the SPS properties
         tinfo = templates.info[agekeep]
