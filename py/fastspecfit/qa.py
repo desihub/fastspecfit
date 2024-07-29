@@ -357,7 +357,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                 templates.wave, templates.flux_nomvdisp,
                 fastspec['COEFF'] * CTools.massnorm, dustflux=templates.dustflux, 
                 photsys=metadata['PHOTSYS'], redshift=redshift, 
-                ebv=fastspec['AV'] / CTools.klambda(5500.), 
+                ebv=fastspec['AV'] / Templates.klambda(5500.), 
                 vdisp=None, synthphot=True, flamphot=False, get_abmag=True)
 
         sedwave = templates.wave * (1 + redshift)
@@ -402,7 +402,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                 photsys=metadata['PHOTSYS'], specwave=np.hstack(data['wave']), 
                 specres=np.hstack(data['res']), camerapix=data['camerapix'], 
                 redshift=redshift, vdisp=fastspec['VDISP'], 
-                ebv=fastspec['AV'] / CTools.klambda(5500.), synthphot=False)
+                ebv=fastspec['AV'] / Templates.klambda(5500.), synthphot=False)
 
             # remove the aperture correction
             desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]
