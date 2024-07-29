@@ -1284,6 +1284,7 @@ def continuum_specfit(data, result, templates,
                
                 dn4000_model, _ = Photometry.get_dn4000(templates.wave, 
                                                         sedmodel_nolines, rest=True)
+            vdisp = use_vdisp
         else: # new templates start here
 
             # First, estimate the aperture correction from a (noiseless) *model*
