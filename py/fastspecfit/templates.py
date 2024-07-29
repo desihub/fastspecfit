@@ -74,14 +74,15 @@ class Templates(object):
         self.wave = templatewave[keeplo:keephi]
         self.flux = templateflux[keeplo:keephi, :]
         self.flux_nolines = self.flux - templatelineflux[keeplo:keephi, :]
-        
+
         # Cache a copy of the line-free templates at the nominal velocity
         # dispersion (needed for fastphot as well).
         if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
             vdisp_nominal = vdisphdr['VDISPNOM'] # [km/s]
         self.vdisp_nominal = vdisp_nominal
-            
+
         hi = np.searchsorted(self.wave, Templates.PIXKMS_WAVESPLIT, 'left')
+        self.pixpos_wavesplit = hi
         
         self.flux_nomvdisp = self.convolve_vdisp(
             self.flux, vdisp_nominal, limit=hi,
@@ -92,7 +93,7 @@ class Templates(object):
             pixsize_kms=Templates.PIXKMS_BLU)
         
         self.info = Table(templateinfo)
-        
+
         # maintain backwards compatibility with older templates (versions <2.0.0)
         self.use_legacy_fitting = ('VDISPMIN' in vdisphdr)
         
@@ -125,6 +126,9 @@ class Templates(object):
                 self.linefluxes = T['LINEFLUXES'].read()
 
         else:
+            # dust attenuation curve
+            self.dust_klambda = Templates.klambda(self.wave)
+
             if 'DUSTFLUX' in T and 'AGNFLUX' in T:
                 dustflux = T['DUSTFLUX'].read()
                 
@@ -203,4 +207,27 @@ class Templates(object):
                 output[limit:, :] = templateflux[limit:, :]
 
         return output
-    
+
+    @staticmethod
+    def klambda(wave):
+        """Construct the total-to-selective attenuation curve, k(lambda).
+
+        Parameters
+        ----------
+        wave : :class:`numpy.ndarray` [npix]
+            Input rest-frame wavelength array in Angstrom.
+
+        Returns
+        -------
+        :class:`numpy.ndarray` [npix]
+            Total-to-selective attenuation curve, k(lambda).
+
+        Notes
+        -----
+        ToDo: support more sophisticated dust models.
+
+        """
+        dust_power = -0.7     # power-law slope
+        dust_normwave = 5500. # pivot wavelength
+
+        return (wave / dust_normwave)**dust_power 

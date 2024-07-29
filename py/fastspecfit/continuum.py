@@ -21,7 +21,9 @@ class ContinuumTools(object):
     """Tools for dealing with spectral continua.
 
     """
-    def __init__(self, cosmo, igm, phot):
+    def __init__(self, cosmo, igm, phot,
+                 pixpos_wavesplit,
+                 dust_klambda):
  
         self.cosmo = cosmo
         self.igm = igm
@@ -29,18 +31,13 @@ class ContinuumTools(object):
         
         self.massnorm = 1e10       # stellar mass normalization factor [Msun]
 
-        # The dust attenuation curve will be cached once we have the template
-        # wavelength vector.
-        self.dust_klambda = None   
+        self.pixpos_wavesplit = pixpos_wavesplit
+        self.dust_klambda     = dust_klambda
 
         # The redshift-dependent factors will be cached once we have the
         # redshift and the redshifted template wavelength vector.
         self.zfactors = None       
-
-        # The pixel position in templatewave corresponding to PIXKMS_WAVESPLIT
-        # will be cached once we have the wavelength vector.
-        self.pixpos_wavesplit = None 
-
+        
         
     @staticmethod
     def smooth_continuum(wave, flux, ivar, linemask, camerapix=None, medbin=175, 
@@ -305,9 +302,9 @@ class ContinuumTools(object):
         
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
-            hi = np.searchsorted(templatewave, Templates.PIXKMS_WAVESPLIT, 'left')
             vd_templateflux = Templates.convolve_vdisp(templateflux, vdisp, 
-                                                       pixsize_kms=Templates.PIXKMS_BLU, limit=hi)
+                                                       pixsize_kms=Templates.PIXKMS_BLU,
+                                                       limit=self.pixpos_wavesplit)
         else:
             vd_templateflux = templateflux
             
@@ -510,49 +507,6 @@ class ContinuumTools(object):
         return chi2min, xbest, xivar, bestcoeff
 
     
-    def klambda(self, wave):
-        """Construct the total-to-selective attenuation curve, k(lambda).
-
-        Parameters
-        ----------
-        wave : :class:`numpy.ndarray` [npix]
-            Input rest-frame wavelength array in Angstrom.
-
-        Returns
-        -------
-        :class:`numpy.ndarray` [npix]
-            Total-to-selective attenuation curve, k(lambda).
-
-        Notes
-        -----
-        ToDo: support more sophisticated dust models.
-
-        """
-        dust_power = -0.7     # power-law slope
-        dust_normwave = 5500. # pivot wavelength
-
-        return (wave / dust_normwave)**dust_power 
-    
-    def _cache_klambda(self, templatewave):
-        """Convenience method to cache the dust attenuation curve.
-
-        """
-        if self.dust_klambda is None:
-            self.dust_klambda = self.klambda(templatewave)
-            
-    def _cache_pixpos_wavesplit(self, templatewave):
-        """Cache the pixel position in wave corresponding to `PIXKMS_WAVESPLIT`.
-
-        Parameters
-        ----------
-        templatewave : :class:`numpy.ndarray`
-            Input rest-frame wavelength array in Angstrom.
-
-        """
-        if self.pixpos_wavesplit is None:
-            self.pixpos_wavesplit = np.searchsorted(templatewave, Templates.PIXKMS_WAVESPLIT, 'left')
-
-    
     def _cache_zfactors(self, ztemplatewave, redshift, dluminosity=None):
         """Convenience method to cache the factors that depend on redshift and the
         redshifted wavelength array, including the attenuation due to the IGM.
@@ -662,9 +616,6 @@ class ContinuumTools(object):
         # [3] - Apply dust attenuation; ToDo: allow age-dependent
         # attenuation. Also compute the bolometric luminosity before and after
         # attenuation but only if we have dustflux.
-        if self.dust_klambda is None:
-            self._cache_klambda(templatewave)
-
         if dustflux is not None:
             lbol0 = np.trapz(fullmodel, x=templatewave)
 
@@ -1048,7 +999,9 @@ def continuum_specfit(data, result, templates,
             
     tall = time.time()
 
-    CTools = ContinuumTools(cosmo, igm, phot)
+    CTools = ContinuumTools(cosmo, igm, phot,
+                            templates.pixpos_wavesplit,
+                            templates.dust_klambda)
     
     redshift = data['zredrock']
     if redshift <= 0.:
@@ -1080,13 +1033,10 @@ def continuum_specfit(data, result, templates,
     vdisp_nominal = templates.vdisp_nominal
     ebv_guess = 0.05
 
-    # Cache k(lambda), the redshift-dependent factors (incl. IGM attenuation),
-    # and a pixel position used when solving for velocity dispersion.
-    CTools._cache_klambda(templates.wave)
-    CTools._cache_pixpos_wavesplit(templates.wave)
+    # Cache the redshift-dependent factors (incl. IGM attenuation),
     CTools._cache_zfactors(ztemplatewave, redshift=redshift, 
                            dluminosity=data['dluminosity'])
-
+    
     # Photometry-only fitting.
     if fastphot:
         log.info(f'Adopting nominal vdisp={vdisp_nominal:.0f} km/s.')
@@ -1535,7 +1485,7 @@ def continuum_specfit(data, result, templates,
         if templates.use_legacy_fitting:
             AV = coeff.dot(tinfo['av']) / coefftot # luminosity-weighted [mag]
         else:
-            AV = ebv * CTools.klambda(5500.) # [mag]
+            AV = ebv * Templates.klambda(5500.) # [mag]
 
     rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600))
     log.info(f'log(M/Msun)={logmstar:.2f}, M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag, ' + \
