@@ -900,11 +900,12 @@ class ContinuumTools(object):
         return ebv, vdisp, templatecoeff
 
 
-    def stellar_continuum_chi2(self, templatecoeff, templatewave, templateflux, 
-                               dustflux=None, objflam=None, objflamivar=None, 
+    def stellar_continuum_chi2(self, templatewave, templateflux,
+                               templatecoeff, ebv, vdisp, vdisp_fitted,
+                               dustflux, redshift, 
+                               objflam=None, objflamivar=None, photsys=None,  
                                specwave=None, specflux=None, specivar=None, 
-                               specres=None, camerapix=None, photsys=None, 
-                               redshift=0., ebv=0., vdisp=125., fit_vdisp=True):
+                               specres=None, camerapix=None):
         """Compute the reduced spectroscopic and/or photometric chi2.
 
         """
@@ -920,7 +921,7 @@ class ContinuumTools(object):
             synthphot=synthphot, flamphot=True)
 
         # ebv is always a free parameter
-        nfree = len(templatecoeff) + 1 + 1 * fit_vdisp
+        nfree = len(templatecoeff) + 1 + int(vdisp_fitted)
 
         def _get_rchi2(chi2, ndof, nfree):
             """Guard against ndof=nfree."""
@@ -1089,7 +1090,6 @@ def continuum_specfit(data, result, templatecache,
 
     # Photometry-only fitting.
     if fastphot:
-        vdispbest, vdispivar = vdisp_nominal, 0.0
         log.info(f'Adopting nominal vdisp={vdisp_nominal:.0f} km/s.')
         vdisp = vdisp_nominal
 
@@ -1119,17 +1119,17 @@ def continuum_specfit(data, result, templatecache,
                     dustflux=templatecache['dustflux'], 
                     objflam=objflam, objflamivar=objflamivar, 
                     photsys=data['photsys'], redshift=redshift, 
-                    ebv_guess=ebv_guess, vdisp_guess=vdispbest, 
+                    ebv_guess=ebv_guess, vdisp_guess=vdisp_nominal, 
                     fit_vdisp=False)
 
                 sedmodel, _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
-                    coeff, templatecache['templatewave'], 
+                    templatecache['templatewave'], 
                     templatecache['templateflux_nomvdisp'][:, agekeep],
-                    dustflux=templatecache['dustflux'], 
+                    templatecoeff=coeff, ebv=ebv, vdisp=None, vdisp_fitted=False,
+                    redshift=redshift, dustflux=templatecache['dustflux'], 
                     objflam=objflam, objflamivar=objflamivar, 
-                    photsys=data['photsys'], redshift=redshift, 
-                    ebv=ebv, vdisp=None, fit_vdisp=False)
-
+                    photsys=data['photsys'])
+                
             log.info(f'Fitting {nage} models took {time.time()-t0:.2f} seconds.')
             
             if np.all(coeff == 0.):
@@ -1151,10 +1151,10 @@ def continuum_specfit(data, result, templatecache,
                         templatecache['templatewave'], 
                         templatecache['templateflux_nolines_nomvdisp'][:, agekeep],
                         coeff, dustflux=None, photsys=data['photsys'], 
-                        redshift=redshift, ebv=ebv, vdisp=vdispbest, synthphot=False)
+                        redshift=redshift, ebv=ebv, vdisp=vdisp_nominal, synthphot=False)
 
-                    log.info(f'Best-fitting E(B-V)={ebv:.3f} mag.')
-                    
+                    log.info(f'Best-fitting E(B-V)={ebv:.3f} mag.')                  
+
                 dn4000_model, _ = Photometry.get_dn4000(templatecache['templatewave'],
                                                         sedmodel_nolines, rest=True)
                 log.info(f'Model Dn(4000)={dn4000_model:.3f}.')
@@ -1359,7 +1359,7 @@ def continuum_specfit(data, result, templatecache,
                     log.warning('Unable to estimate aperture correction because continuum coefficients are all zero; adopting 1.0.')
                     coeff_guess = np.ones(nage)
                 else:
-                    sedmodel, _, sedflam = CTools.build_stellar_continuum(                       
+                    _, _, sedflam = CTools.build_stellar_continuum(                       
                         templatecache['templatewave'], 
                         templatecache['templateflux_nomvdisp'][:, agekeep], coeff, 
                         dustflux=None, 
@@ -1438,24 +1438,16 @@ def continuum_specfit(data, result, templatecache,
                     input_templateflux = templatecache['templateflux'][:, agekeep]
                     input_templateflux_nolines = templatecache['templateflux_nolines'][:, agekeep]
 
-                sedmodel, _, _ = CTools.build_stellar_continuum(                       
+                sedmodel, rchi2_spec, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
                     templatecache['templatewave'], 
-                    input_templateflux, coeff, 
-                    dustflux=templatecache['dustflux'], 
-                    redshift=redshift, ebv=ebv, 
-                    vdisp=use_vdisp, synthphot=False)
-
-                _, rchi2_spec, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
-                    coeff, templatecache['templatewave'], 
                     input_templateflux,
-                    dustflux=templatecache['dustflux'], 
+                    templatecoeff=coeff, ebv=ebv, vdisp=use_vdisp, vdisp_fitted=compute_vdisp,
+                    dustflux=templatecache['dustflux'], redshift=redshift,  
                     specwave=specwave, specflux=specflux*apercorr, 
                     specivar=specivar/apercorr**2,
                     specres=data['res'], camerapix=data['camerapix'],
-                    objflam=objflam, objflamivar=objflamivar, 
-                    photsys=data['photsys'], redshift=redshift, 
-                    ebv=ebv, vdisp=use_vdisp, fit_vdisp=compute_vdisp)
-
+                    objflam=objflam, objflamivar=objflamivar, photsys=data['photsys'])
+                
                 sedmodel_nolines, desimodel_nolines, _ = CTools.build_stellar_continuum(                       
                     templatecache['templatewave'], 
                     input_templateflux_nolines, coeff, 
