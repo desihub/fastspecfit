@@ -84,6 +84,9 @@ class Templates(object):
         hi = np.searchsorted(self.wave, Templates.PIXKMS_WAVESPLIT, 'left')
         self.pixpos_wavesplit = hi
         
+        # dust attenuation curve
+        self.dust_klambda = Templates.klambda(self.wave)
+        
         self.flux_nomvdisp = self.convolve_vdisp(
             self.flux, vdisp_nominal, limit=hi,
             pixsize_kms=Templates.PIXKMS_BLU)
@@ -126,9 +129,6 @@ class Templates(object):
                 self.linefluxes = T['LINEFLUXES'].read()
 
         else:
-            # dust attenuation curve
-            self.dust_klambda = Templates.klambda(self.wave)
-
             if 'DUSTFLUX' in T and 'AGNFLUX' in T:
                 dustflux = T['DUSTFLUX'].read()
                 
