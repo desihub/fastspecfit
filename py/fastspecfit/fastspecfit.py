@@ -38,7 +38,7 @@ def fastspec_one(iobj, data, out_dtype,
     igm = sc_data.igm
     phot = sc_data.photometry
     emline_table = sc_data.emlines.table
-    templatecache = sc_data.templates.cache
+    templates = sc_data.templates
     
     log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} {data["uniqueid"]}, z={data["zredrock"]:.6f}].')
     
@@ -50,7 +50,7 @@ def fastspec_one(iobj, data, out_dtype,
         for icam, cam in enumerate(data['cameras']):
             out[f'SNR_{cam.upper()}'] = data['snr'][icam]
  
-    continuummodel, smooth_continuum = continuum_specfit(data, out, templatecache,
+    continuummodel, smooth_continuum = continuum_specfit(data, out, templates,
                                                          cosmo, igm, phot,
                                                          constrain_age=constrain_age,
                                                          no_smooth_continuum=no_smooth_continuum,
@@ -166,8 +166,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         
     log.info(f'Reading and unpacking {Spec.ntargets} spectra to be fitted took {time.time()-t0:.2f} seconds.')
 
-    # number of flux templates
-    ncoeff = len(sc_data.templates.cache['templateinfo'])
+    ncoeff = sc_data.templates.ntemplates
     out_dtype, out_units = get_output_dtype(Spec.specprod,
                                             phot=sc_data.photometry,
                                             linetable=sc_data.emlines.table,
@@ -212,7 +211,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
                       fphotofile=sc_data.photometry.fphotofile,
-                      templates=sc_data.templates.file,
+                      template_file=sc_data.templates.file,
                       emlinesfile=sc_data.emlines.file, fastphot=fastphot,
                       inputz=input_redshifts is not None,
                       ignore_photometry=args.ignore_photometry,

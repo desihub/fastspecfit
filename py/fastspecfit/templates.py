@@ -20,7 +20,7 @@ class Templates(object):
 
     def __init__(self, template_file=None, template_version=None, imf=None,
                  mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.,
-                 read_linefluxes=False, fastphot=False):
+                 fastphot=False, read_linefluxes=False):
         """"
         Read the templates into a dictionary.
     
@@ -51,60 +51,53 @@ class Templates(object):
             errmsg = f'Templates file {template_file} not found.'
             log.critical(errmsg)
             raise IOError(errmsg)
+
+        self.file = template_file
         
         T = fitsio.FITS(template_file)
-
-        wave             = T['WAVE'].read()        # [npix]
+        templatewave     = T['WAVE'].read()        # [npix]
         wavehdr          = T['WAVE'].read_header() # [npix]
         templateflux     = T['FLUX'].read()        # [npix x nsed]
         templatelineflux = T['LINEFLUX'].read()    # [npix x nsed]
         templateinfo     = T['METADATA'].read()
         templatehdr      = T['METADATA'].read_header()
         vdisphdr         = T['VDISPFLUX'].read_header()
-    
+
+        self.imf = templatehdr['IMF']
+        self.ntemplates = len(templateinfo)
+        
         if mintemplatewave is None:
-            mintemplatewave = np.min(wave)
-    
-        keeplo = np.searchsorted(wave, mintemplatewave, 'left')
-        keephi = np.searchsorted(wave, maxtemplatewave, 'right')
-    
-        templatewave = wave[keeplo:keephi]
-        templateflux = templateflux[keeplo:keephi, :]
-        templateflux_nolines = templateflux - templatelineflux[keeplo:keephi, :]
-    
+            mintemplatewave = np.min(templatewave)
+        
+        keeplo = np.searchsorted(templatewave, mintemplatewave, 'left')
+        keephi = np.searchsorted(templatewave, maxtemplatewave, 'right')
+        self.wave = templatewave[keeplo:keephi]
+        self.flux = templateflux[keeplo:keephi, :]
+        self.flux_nolines = self.flux - templatelineflux[keeplo:keephi, :]
+        
         # Cache a copy of the line-free templates at the nominal velocity
         # dispersion (needed for fastphot as well).
         if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
             vdisp_nominal = vdisphdr['VDISPNOM'] # [km/s]
-    
-        hi = np.searchsorted(templatewave, Templates.PIXKMS_WAVESPLIT, 'left')
-
-        templateflux_nolines_nomvdisp = self.convolve_vdisp(
-            templateflux_nolines, vdisp_nominal, limit=hi,
+        self.vdisp_nominal = vdisp_nominal
+            
+        hi = np.searchsorted(self.wave, Templates.PIXKMS_WAVESPLIT, 'left')
+        
+        self.flux_nomvdisp = self.convolve_vdisp(
+            self.flux, vdisp_nominal, limit=hi,
             pixsize_kms=Templates.PIXKMS_BLU)
         
-        templateflux_nomvdisp = self.convolve_vdisp(
-            templateflux, vdisp_nominal, limit=hi,
+        self.flux_nolines_nomvdisp = self.convolve_vdisp(
+            self.flux_nolines, vdisp_nominal, limit=hi,
             pixsize_kms=Templates.PIXKMS_BLU)
         
-        # pack into a dictionary
-        templates = {'imf': templatehdr['IMF'],
-                     #'nsed': len(templateinfo), 'npix': len(wavekeep),
-                     'vdisp_nominal': vdisp_nominal,
-                     'templateinfo': Table(templateinfo),
-                     'templatewave': templatewave,
-                     'templateflux': templateflux,
-                     'templateflux_nomvdisp': templateflux_nomvdisp,
-                     'templateflux_nolines': templateflux_nolines,
-                     'templateflux_nolines_nomvdisp': templateflux_nolines_nomvdisp,
-                     }
+        self.info = Table(templateinfo)
         
         # maintain backwards compatibility with older templates (versions <2.0.0)
-        oldtemplates = ('VDISPMIN' in vdisphdr)
-        templates['oldtemplates'] = oldtemplates
-            
-        if not fastphot:
-            if oldtemplates:
+        self.use_legacy_fitting = ('VDISPMIN' in vdisphdr)
+        
+        if self.use_legacy_fitting:
+            if not fastphot:
                 vdispwave = T['VDISPWAVE'].read()
                 vdispflux = T['VDISPFLUX'].read() # [nvdisppix,nvdispsed,nvdisp]
 
@@ -120,47 +113,40 @@ class Templates(object):
                     log.critical(errmsg)
                     raise ValueError(errmsg)
 
-                templates.update({
-                    'vdispflux': vdispflux, 
-                    'vdispwave': vdispwave,
-                    'vdisp': vdisp, 
-                    'vdisp_nominal_indx': np.where(vdisp == vdisp_nominal)[0]
-                })
+                self.vdisp = vdisp
+                self.vdisp_nominal_index = np.where(vdisp == vdisp_nominal)[0] 
+                self.vdispflux = vdispflux
+                self.vdispwave = vdispwave
 
-        if not oldtemplates:
+            # Read the model emission-line fluxes; only present for
+            # template_version>=1.1.1 and generally only useful to a power-user.
+            if read_linefluxes:
+                self.linewaves  = T['LINEWAVES'].read()
+                self.linefluxes = T['LINEFLUXES'].read()
+
+        else:
             if 'DUSTFLUX' in T and 'AGNFLUX' in T:
                 dustflux = T['DUSTFLUX'].read()
-                dusthdr = T['DUSTFLUX'].read_header()
+                
+                # make sure fluxes are normalized to unity
+                dustflux /= np.trapz(dustflux, x=templatewave) # should already be 1.0
+                self.dustflux = dustflux[keeplo:keephi]
+                
+                #dusthdr = T['DUSTFLUX'].read_header()
+                #self.qpah     = dusthdr['QPAH']
+                #self.umin     = dusthdr['umin']
+                #self.gamma    = dusthdr['GAMMA']
 
-                agnflux = T['AGNFLUX'].read()
-                agnhdr = T['AGNFLUX'].read_header()
-
-                # make sure both dustflux and agnflux are normalized to unity
-                dustflux /= np.trapz(dustflux, x=wave) # should already be 1.0
-                agnflux  /= np.trapz(agnflux, x=wave) # should already be 1.0
-
-                templates.update({'dustflux': dustflux[keeplo:keephi], 
-                                  'qpah': dusthdr['QPAH'],
-                                  'umin': dusthdr['umin'],
-                                  'gamma': dusthdr['GAMMA'],
-                                  'agnflux': agnflux[keeplo:keephi], 
-                                  'agntau': agnhdr['AGNTAU'],
-                                  })
+                #agnflux = T['AGNFLUX'].read()
+                #agnflux  /= np.trapz(agnflux, x=templatewave) # should already be 1.0
+                #self.agnflux  = agnflux[keeplo:keephi]
+                
+                #agnhdr = T['AGNFLUX'].read_header()
+                #self.agntau   = agnhdr['AGNTAU']
             else:
-                errmsg = f'Templates file {templates} missing mandatory extensions DUSTFLUX and AGNFLUX.'
+                errmsg = f'Templates file {template_file} missing mandatory extensions DUSTFLUX and AGNFLUX.'
                 log.critical(errmsg)
                 raise IOError(errmsg)
-
-        # Read the model emission-line fluxes; only present for
-        # template_version>=1.1.1 and generally only useful to a power-user.
-        if read_linefluxes:
-            templates.update({
-                'linefluxes': T['LINEFLUXES'].read(),
-                'linewaves':  T['LINEWAVES'].read()
-            })
-
-        self.file  = template_file
-        self.cache = templates
     
     
     @staticmethod

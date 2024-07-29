@@ -1560,7 +1560,7 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
 
         
 def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
-                      coadd_type=None, fphotofile=None, templates=None,
+                      coadd_type=None, fphotofile=None, template_file=None,
                       emlinesfile=None, fastphot=False, inputz=False,
                       no_smooth_continuum=False, ignore_photometry=False, broadlinefit=True,
                       use_quasarnet=True, constrain_age=False, verbose=True):
@@ -1614,8 +1614,8 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
                      envvar_names=('DESI_ROOT', 'DUST_DIR', 'FTEMPLATES_DIR', 'FPHOTO_DIR'))
     if fphotofile:
         setdep(primhdr, 'FPHOTO_FILE', str(fphotofile))
-    if templates:
-        setdep(primhdr, 'FTEMPLATES_FILE', os.path.basename(templates))
+    if template_file:
+        setdep(primhdr, 'FTEMPLATES_FILE', os.path.basename(template_file))
     if emlinesfile:
         setdep(primhdr, 'EMLINES_FILE', str(emlinesfile))
 

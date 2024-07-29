@@ -1021,7 +1021,7 @@ def _younger_than_universe(age, tuniv, agepad=0.5):
     return np.where(age <= 1e9 * (agepad + tuniv))[0]
 
 
-def continuum_specfit(data, result, templatecache,
+def continuum_specfit(data, result, templates,
                       cosmo, igm, phot,
                       constrain_age=False, no_smooth_continuum=False, 
                       fastphot=False, debug_plots=False):
@@ -1070,21 +1070,20 @@ def continuum_specfit(data, result, templatecache,
 
     # Optionally ignore templates which are older than the age of the
     # universe at the redshift of the object.
-    #nsed = len(templatecache['templateinfo'])
     if constrain_age:
-        agekeep = _younger_than_universe(templatecache['templateinfo']['age'], data['tuniv'])
+        agekeep = _younger_than_universe(templates.info['age'], data['tuniv'])
     else:
-        agekeep = np.arange(len(templatecache['templateinfo']))
+        agekeep = np.arange(templates.ntemplates)
     nage = len(agekeep)
 
-    ztemplatewave = templatecache['templatewave'] * (1. + redshift)
-    vdisp_nominal = templatecache['vdisp_nominal']
+    ztemplatewave = templates.wave * (1. + redshift)
+    vdisp_nominal = templates.vdisp_nominal
     ebv_guess = 0.05
 
     # Cache k(lambda), the redshift-dependent factors (incl. IGM attenuation),
     # and a pixel position used when solving for velocity dispersion.
-    CTools._cache_klambda(templatecache['templatewave'])
-    CTools._cache_pixpos_wavesplit(templatecache['templatewave'])
+    CTools._cache_klambda(templates.wave)
+    CTools._cache_pixpos_wavesplit(templates.wave)
     CTools._cache_zfactors(ztemplatewave, redshift=redshift, 
                            dluminosity=data['dluminosity'])
 
@@ -1098,15 +1097,15 @@ def continuum_specfit(data, result, templatecache,
             coeff = np.zeros(nage, 'f4') # nage not nsed
             rchi2_cont, rchi2_phot = 0., 0.
             dn4000_model = 0.
-            sedmodel = np.zeros(len(templatecache['templatewave']))
+            sedmodel = np.zeros(len(templates.wave))
         else:
             # Get the coefficients and chi2 at the nominal velocity dispersion. 
             t0 = time.time()
             # maintain backwards-compatibility
-            if templatecache['oldtemplates']:
+            if templates.use_legacy_fitting:
                 sedtemplates, sedphot_flam = CTools.templates2data(
-                    templatecache['templateflux_nomvdisp'][:, agekeep],
-                    templatecache['templatewave'], flamphot=True,
+                    templates.flux_nomvdisp[:, agekeep],
+                    templates.wave, flamphot=True,
                     redshift=redshift, dluminosity=data['dluminosity'],
                     vdisp=None, synthphot=True, photsys=data['photsys'])
                 sedflam = sedphot_flam * CTools.massnorm * FLUXNORM
@@ -1114,19 +1113,19 @@ def continuum_specfit(data, result, templatecache,
                 rchi2_phot /= np.sum(objflamivar > 0) # dof???
             else:
                 ebv, _, coeff = CTools.fit_stellar_continuum(
-                    templatecache['templatewave'], 
-                    templatecache['templateflux_nomvdisp'][:, agekeep], # [npix,nsed]
-                    dustflux=templatecache['dustflux'], 
+                    templates.wave, 
+                    templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
+                    dustflux=templates.dustflux, 
                     objflam=objflam, objflamivar=objflamivar, 
                     photsys=data['photsys'], redshift=redshift, 
                     ebv_guess=ebv_guess, vdisp_guess=vdisp_nominal, 
                     fit_vdisp=False)
 
                 sedmodel, _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
-                    templatecache['templatewave'], 
-                    templatecache['templateflux_nomvdisp'][:, agekeep],
+                    templates.wave, 
+                    templates.flux_nomvdisp[:, agekeep],
                     templatecoeff=coeff, ebv=ebv, vdisp=None, vdisp_fitted=False,
-                    redshift=redshift, dustflux=templatecache['dustflux'], 
+                    redshift=redshift, dustflux=templates.dustflux, 
                     objflam=objflam, objflamivar=objflamivar, 
                     photsys=data['photsys'])
                 
@@ -1134,28 +1133,28 @@ def continuum_specfit(data, result, templatecache,
             
             if np.all(coeff == 0.):
                 log.warning('Continuum coefficients are all zero.')
-                sedmodel = np.zeros(len(templatecache['templatewave']))
+                sedmodel = np.zeros(len(templates.wave))
                 dn4000_model = 0.
             else:
                 # Measure Dn(4000) from the line-free model.
-                if templatecache['oldtemplates']:
+                if templates.use_legacy_fitting:
                     sedmodel = sedtemplates.dot(coeff)
                     sedtemplates_nolines, _ = CTools.templates2data(
-                        templatecache['templateflux_nolines_nomvdisp'][:, agekeep],
-                        templatecache['templatewave'],
+                        templates.flux_nolines_nomvdisp[:, agekeep],
+                        templates.wave,
                         redshift=redshift, dluminosity=data['dluminosity'],
                         vdisp=None, synthphot=False)
                     sedmodel_nolines = sedtemplates_nolines.dot(coeff)
                 else:
                     sedmodel_nolines, _, _ = CTools.build_stellar_continuum(                       
-                        templatecache['templatewave'], 
-                        templatecache['templateflux_nolines_nomvdisp'][:, agekeep],
+                        templates.wave, 
+                        templates.flux_nolines_nomvdisp[:, agekeep],
                         coeff, dustflux=None, photsys=data['photsys'], 
-                        redshift=redshift, ebv=ebv, vdisp=vdisp_nominal, synthphot=False)
+                        redshift=redshift, ebv=ebv, vdisp=None, synthphot=False)
 
                     log.info(f'Best-fitting E(B-V)={ebv:.3f} mag.')                  
 
-                dn4000_model, _ = Photometry.get_dn4000(templatecache['templatewave'],
+                dn4000_model, _ = Photometry.get_dn4000(templates.wave,
                                                         sedmodel_nolines, rest=True)
                 log.info(f'Model Dn(4000)={dn4000_model:.3f}.')
     else:
@@ -1195,18 +1194,18 @@ def continuum_specfit(data, result, templatecache,
         # dispersion and aperture corrections are determined separately, so we
         # separate that code out from the new templates, where they are
         # determined simultatneously.
-        if templatecache['oldtemplates']:
+        if templates.use_legacy_fitting:
             if compute_vdisp:
                 t0 = time.time()
                 ztemplateflux_vdisp, _ = CTools.templates2data(
-                    templatecache['vdispflux'], templatecache['vdispwave'], # [npix,vdispnsed,nvdisp]
+                    templates.vdispflux, templates.vdispwave, # [npix,vdispnsed,nvdisp]
                     redshift=redshift, dluminosity=data['dluminosity'],
                     specwave=data['wave'], specres=data['res'],
                     cameras=data['cameras'], synthphot=False, stack_cameras=True)
                 vdispchi2min, vdispbest, vdispivar, _ = CTools.call_nnls(
                     ztemplateflux_vdisp[Ivdisp, :, :], 
                     specflux[Ivdisp], specivar[Ivdisp],
-                    xparam=templatecache['vdisp'], xlabel=r'$\sigma$ (km/s)',
+                    xparam=templates.vdisp, xlabel=r'$\sigma$ (km/s)',
                     debug=debug_plots, png='deltachi2-vdisp.png')
                 log.info(f'Fitting for the velocity dispersion took {time.time()-t0:.2f} seconds.')
 
@@ -1236,15 +1235,15 @@ def continuum_specfit(data, result, templatecache,
             if vdispbest == vdisp_nominal:
                 # Use the cached templates.
                 use_vdisp = None
-                input_templateflux = templatecache['templateflux_nomvdisp'][:, agekeep]
-                input_templateflux_nolines = templatecache['templateflux_nolines_nomvdisp'][:, agekeep]
+                input_templateflux         = templates.flux_nomvdisp[:, agekeep]
+                input_templateflux_nolines = templates.flux_nolines_nomvdisp[:, agekeep]
             else:
                 use_vdisp = vdispbest
-                input_templateflux = templatecache['templateflux'][:, agekeep]
-                input_templateflux_nolines = templatecache['templateflux_nolines'][:, agekeep]
+                input_templateflux         = templates.flux[:, agekeep]
+                input_templateflux_nolines = templates.flux_nolines[:, agekeep]
     
             desitemplates, desitemplatephot_flam = CTools.templates2data(
-                input_templateflux, templatecache['templatewave'],
+                input_templateflux, templates.wave,
                 redshift=redshift, dluminosity=data['dluminosity'],
                 specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
                 vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
@@ -1254,7 +1253,7 @@ def continuum_specfit(data, result, templatecache,
             apercorrs, apercorr = np.zeros(len(phot.synth_bands), 'f4'), 0.
             
             sedtemplates, _ = CTools.templates2data(
-                input_templateflux, templatecache['templatewave'],
+                input_templateflux, templates.wave,
                 vdisp=use_vdisp, redshift=redshift,
                 dluminosity=data['dluminosity'], synthphot=False)
     
@@ -1298,7 +1297,7 @@ def continuum_specfit(data, result, templatecache,
             # (since we mask those pixels) but the photometry synthesized from the
             # templates with lines.
             desitemplates_nolines, _ = CTools.templates2data(
-                input_templateflux_nolines, templatecache['templatewave'], redshift=redshift,
+                input_templateflux_nolines, templates.wave, redshift=redshift,
                 dluminosity=data['dluminosity'],
                 specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
                 vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
@@ -1320,7 +1319,7 @@ def continuum_specfit(data, result, templatecache,
             # Compute the full-wavelength best-fitting model.
             if np.all(coeff == 0):
                 log.warning('Continuum coefficients are all zero.')
-                sedmodel = np.zeros(len(templatecache['templatewave']), 'f4')
+                sedmodel = np.zeros(len(templates.wave), 'f4')
                 desimodel = np.zeros_like(specflux)
                 desimodel_nolines = np.zeros_like(specflux)
                 dn4000_model = 0.0
@@ -1331,12 +1330,12 @@ def continuum_specfit(data, result, templatecache,
     
                 # Measure Dn(4000) from the line-free model.
                 sedtemplates_nolines, _ = CTools.templates2data(
-                    input_templateflux_nolines, templatecache['templatewave'], 
+                    input_templateflux_nolines, templates.wave, 
                     vdisp=use_vdisp, redshift=redshift, dluminosity=data['dluminosity'],
                     synthphot=False)
                 sedmodel_nolines = sedtemplates_nolines.dot(coeff)
                
-                dn4000_model, _ = Photometry.get_dn4000(templatecache['templatewave'], 
+                dn4000_model, _ = Photometry.get_dn4000(templates.wave, 
                                                         sedmodel_nolines, rest=True)
         else: # new templates start here
 
@@ -1347,8 +1346,8 @@ def continuum_specfit(data, result, templatecache,
             if np.any(phot.bands_to_fit):
                 t0 = time.time()
                 ebv, _, coeff = CTools.fit_stellar_continuum(
-                    templatecache['templatewave'], 
-                    templatecache['templateflux_nomvdisp'][:, agekeep], # [npix,nsed]
+                    templates.wave, 
+                    templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
                     dustflux=None, 
                     specwave=specwave, specflux=specflux, specivar=specivar,
                     specres=data['res'], camerapix=data['camerapix'],
@@ -1360,10 +1359,10 @@ def continuum_specfit(data, result, templatecache,
                     coeff_guess = np.ones(nage)
                 else:
                     _, _, sedflam = CTools.build_stellar_continuum(                       
-                        templatecache['templatewave'], 
-                        templatecache['templateflux_nomvdisp'][:, agekeep], coeff, 
+                        templates.wave, 
+                        templates.flux_nomvdisp[:, agekeep], coeff, 
                         dustflux=None, 
-                        redshift=redshift, ebv=ebv, vdisp=vdisp_nominal, 
+                        redshift=redshift, ebv=ebv, vdisp=None,
                         synthphot=True, flamphot=True, filters=filters_in)
     
                     objflam_aper = FLUXNORM * photometry[np.isin(photometry['band'], phot.synth_bands)]['flam'].value
@@ -1394,9 +1393,9 @@ def continuum_specfit(data, result, templatecache,
             # Now do the full spectrophotometric fit.
             t0 = time.time()
             ebv, vdisp, coeff = CTools.fit_stellar_continuum(
-                templatecache['templatewave'], 
-                templatecache['templateflux'][:, agekeep], # [npix,nsed]
-                dustflux=templatecache['dustflux'], 
+                templates.wave, 
+                templates.flux[:, agekeep], # [npix,nsed]
+                dustflux=templates.dustflux, 
                 specwave=specwave, specflux=specflux*apercorr, 
                 specivar=specivar/apercorr**2,
                 specres=data['res'], camerapix=data['camerapix'],
@@ -1410,7 +1409,7 @@ def continuum_specfit(data, result, templatecache,
 
             if np.all(coeff == 0.):
                 log.warning('Continuum coefficients are all zero.')
-                sedmodel = np.zeros(len(templatecache['templatewave']))
+                sedmodel = np.zeros(len(templates.wave))
                 dn4000_model = 0.
                 rchi2_phot, rchi2_cont = 0., 0.
             else:
@@ -1431,25 +1430,25 @@ def continuum_specfit(data, result, templatecache,
                 if vdisp == vdisp_nominal:
                     # Use the cached templates.
                     use_vdisp = None
-                    input_templateflux = templatecache['templateflux_nomvdisp'][:, agekeep]
-                    input_templateflux_nolines = templatecache['templateflux_nolines_nomvdisp'][:, agekeep]
+                    input_templateflux         = templates.flux_nomvdisp[:, agekeep]
+                    input_templateflux_nolines = templates.flux_nolines_nomvdisp[:, agekeep]
                 else:
                     use_vdisp = vdisp
-                    input_templateflux = templatecache['templateflux'][:, agekeep]
-                    input_templateflux_nolines = templatecache['templateflux_nolines'][:, agekeep]
+                    input_templateflux         = templates.flux[:, agekeep]
+                    input_templateflux_nolines = templates.flux_nolines[:, agekeep]
 
                 sedmodel, rchi2_spec, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
-                    templatecache['templatewave'], 
+                    templates.wave, 
                     input_templateflux,
                     templatecoeff=coeff, ebv=ebv, vdisp=use_vdisp, vdisp_fitted=compute_vdisp,
-                    dustflux=templatecache['dustflux'], redshift=redshift,  
+                    dustflux=templates.dustflux, redshift=redshift,  
                     specwave=specwave, specflux=specflux*apercorr, 
                     specivar=specivar/apercorr**2,
                     specres=data['res'], camerapix=data['camerapix'],
                     objflam=objflam, objflamivar=objflamivar, photsys=data['photsys'])
                 
                 sedmodel_nolines, desimodel_nolines, _ = CTools.build_stellar_continuum(                       
-                    templatecache['templatewave'], 
+                    templates.wave, 
                     input_templateflux_nolines, coeff, 
                     dustflux=None, 
                     specwave=specwave, specres=data['res'], 
@@ -1457,7 +1456,7 @@ def continuum_specfit(data, result, templatecache,
                     redshift=redshift, ebv=ebv, 
                     vdisp=vdisp, synthphot=False)
 
-                dn4000_model, _ = Photometry.get_dn4000(templatecache['templatewave'], 
+                dn4000_model, _ = Photometry.get_dn4000(templates.wave, 
                                                         sedmodel_nolines, rest=True)
 
         # Get DN(4000). Specivar is line-masked so we can't use it!
@@ -1519,20 +1518,22 @@ def continuum_specfit(data, result, templatecache,
         kcorr, absmag, ivarabsmag, synth_bestmaggies = phot.kcorr_and_absmag(
             data['phot']['nanomaggies'].value, data['phot']['nanomaggies_ivar'].value,
             redshift, data['dmodulus'], data['photsys'],
-            templatecache['templatewave'] * (1. + redshift), sedmodel)
-        lums, cfluxes = CTools.continuum_fluxes(data, templatecache['templatewave'], sedmodel)
+            templates.wave * (1. + redshift), sedmodel)
+        lums, cfluxes = CTools.continuum_fluxes(data, templates.wave, sedmodel)
 
         # get the SPS properties
-        mstars = templatecache['templateinfo']['mstar'][agekeep] # [current mass in stars, Msun]
+        tinfo = templates.info[agekeep]
+        
+        mstars = tinfo['mstar'] # [current mass in stars, Msun]
         masstot = coeff.dot(mstars)
         coefftot = np.sum(coeff)
         logmstar = np.log10(CTools.massnorm * masstot)
-        zzsun = np.log10(coeff.dot(mstars * 10.**templatecache['templateinfo']['zzsun'][agekeep]) / masstot) # mass-weighted
-        age = coeff.dot(templatecache['templateinfo']['age'][agekeep]) / coefftot / 1e9          # luminosity-weighted [Gyr]
-        #age = coeff.dot(mstars * templatecache['templateinfo']['age'][agekeep]) / masstot / 1e9 # mass-weighted [Gyr]
-        sfr = CTools.massnorm * coeff.dot(templatecache['templateinfo']['sfr'][agekeep])                           # [Msun/yr]
-        if templatecache['oldtemplates']:
-            AV = coeff.dot(templatecache['templateinfo']['av'][agekeep]) / coefftot # luminosity-weighted [mag]
+        zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
+        age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
+        #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9        # mass-weighted [Gyr]
+        sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])                          # [Msun/yr]
+        if templates.use_legacy_fitting:
+            AV = coeff.dot(tinfo['av']) / coefftot # luminosity-weighted [mag]
         else:
             AV = ebv * CTools.klambda(5500.) # [mag]
 
@@ -1541,7 +1542,7 @@ def continuum_specfit(data, result, templatecache,
              f'A(V)={AV:.3f}, Age={age:.3f} Gyr, SFR={sfr:.3f} Msun/yr, Z/Zsun={zzsun:.3f}')
 
     # Pack it in and return.
-    ncoeff = len(templatecache['templateinfo'])
+    ncoeff = templates.ntemplates
     result['COEFF'][agekeep] = coeff
 
     result['RCHI2_PHOT'] = rchi2_phot

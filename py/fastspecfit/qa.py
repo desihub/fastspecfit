@@ -15,7 +15,7 @@ import numpy as np
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data, initialize_sc_data
 
-def desiqa_one(data, fastfit, metadata, templates, coadd_type,
+def desiqa_one(data, fastfit, metadata, coadd_type,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
                maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1, 
                fastphot=False, stackfit=False,
@@ -24,7 +24,7 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type,
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
-    qa_fastspec(data, sc_data.templates.cache, fastfit, metadata,
+    qa_fastspec(data, sc_data.templates, fastfit, metadata,
                 coadd_type=coadd_type,
                 spec_wavelims=(minspecwave, maxspecwave), 
                 phot_wavelims=(minphotwave, maxphotwave), 
@@ -33,7 +33,7 @@ def desiqa_one(data, fastfit, metadata, templates, coadd_type,
                 fastphot=fastphot, stackfit=stackfit, 
                 outprefix=outprefix, outdir=outdir, inputz=inputz)
 
-def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
+def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
                 fastphot=False, stackfit=False, outprefix=None,
                 no_smooth_continuum=False,
@@ -343,21 +343,21 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
     # rebuild the best-fitting broadband photometric model
     if not stackfit:
-        if templatecache['oldtemplates']:
+        if templates.use_legacy_fitting:
             sedmodel, sedphot = CTools.templates2data(
-                templatecache['templateflux'], templatecache['templatewave'],
+                templates.flux, templates.wave,
                 redshift=redshift, dluminosity=dlum, photsys=metadata['PHOTSYS'],
                 synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm, 
                 get_abmag=True)
         else:
             sedmodel, _, sedphot = CTools.build_stellar_continuum(                       
-                templatecache['templatewave'], templatecache['templateflux_nomvdisp'],
-                fastspec['COEFF'] * CTools.massnorm, dustflux=templatecache['dustflux'], 
+                templates.wave, templates.flux_nomvdisp,
+                fastspec['COEFF'] * CTools.massnorm, dustflux=templates.dustflux, 
                 photsys=metadata['PHOTSYS'], redshift=redshift, 
                 ebv=fastspec['AV'] / CTools.klambda(5500.), 
                 vdisp=None, synthphot=True, flamphot=False, get_abmag=True)
 
-        sedwave = templatecache['templatewave'] * (1 + redshift)
+        sedwave = templates.wave * (1 + redshift)
 
         nband = len(phot.bands)
         maggies = np.zeros(nband)
@@ -380,9 +380,9 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         # "per-camera" and prefix "full" has the cameras h-stacked.
         fullwave = np.hstack(data['wave'])
     
-        if templatecache['oldtemplates']:
-            desicontinuum, _ = CTools.templates2data(templatecache['templateflux_nolines'], 
-                                                     templatecache['templatewave'],
+        if templates.use_legacy_fitting:
+            desicontinuum, _ = CTools.templates2data(templates.flux_nolines, 
+                                                     templates.wave,
                                                      redshift=redshift, dluminosity=dlum, synthphot=False,
                                                      specwave=data['wave'], specres=data['res'],
                                                      specmask=data['mask'], cameras=data['cameras'],
@@ -394,8 +394,8 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             fullcontinuum = np.hstack(desicontinuum)
         else:
             _, _desicontinuum, _ = CTools.build_stellar_continuum(                       
-                templatecache['templatewave'], templatecache['templateflux_nolines'],
-                fastspec['COEFF'], dustflux=templatecache['dustflux'], 
+                templates.wave, templates.flux_nolines,
+                fastspec['COEFF'], dustflux=templates.dustflux, 
                 photsys=metadata['PHOTSYS'], specwave=np.hstack(data['wave']), 
                 specres=np.hstack(data['res']), camerapix=data['camerapix'], 
                 redshift=redshift, vdisp=fastspec['VDISP'], 
@@ -637,7 +637,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 medmag = np.median(phot_tbl['abmag_limit'][abmag_goodlim])
             else:
                 medmag = 0.0
-            sedmodel_abmag = np.zeros_like(templatecache['templatewave']) + medmag
+            sedmodel_abmag = np.zeros_like(templates.wave) + medmag
         else:
             factor = 10**(0.4 * 48.6) * sedwave**2 / (C_LIGHT * 1e13) / FLUXNORM / CTools.massnorm # [erg/s/cm2/A --> maggies]
             sedmodel_abmag = -2.5*np.log10(sedmodel * factor)
@@ -1391,7 +1391,7 @@ def fastqa(args=None, comm=None):
             maxspecwave = args.maxspecwave
 
         qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
-                   templates, coadd_type, minspecwave, maxspecwave, 
+                   coadd_type, minspecwave, maxspecwave, 
                    args.minphotwave, args.maxphotwave, args.emline_snrmin, 
                    args.nsmoothspec, fastphot, stackfit, inputz, 
                    no_smooth_continuum, args.outdir, args.outprefix)
