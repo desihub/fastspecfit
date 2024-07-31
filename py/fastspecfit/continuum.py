@@ -776,6 +776,8 @@ class ContinuumTools(object):
             camerapix = self.data['camerapix']
             specwave = self.specwave
             specres = self.data['res']
+            
+            modelflux = np.empty(len(specwave))
             for icam, pix in enumerate(camerapix):
                 s, e = pix
                 resampflux = self.resample(ztemplatewave,
