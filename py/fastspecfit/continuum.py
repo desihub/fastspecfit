@@ -743,10 +743,10 @@ class ContinuumTools(object):
             if dustflux is not None:
                 lbolabs = np.trapz(fullmodel, x=templatewave)
                 fullmodel += dustflux * (lbol0 - lbolabs)
-      
+
         # [5] - Redshift factors.
         fullmodel *= self.zfactors
-                
+
         ztemplatewave = self.ztemplatewave
         
         # [6] - Optionally synthesize photometry
@@ -759,6 +759,7 @@ class ContinuumTools(object):
                     filters = self.phot.filters[photsys]
 
             effwave = filters.effective_wavelengths.value
+
             modelmaggies = Photometry.get_ab_maggies_fast(filters, fullmodel, ztemplatewave)
             if not phottable:
                 modelphot = Photometry.get_photflam(modelmaggies, effwave, nanomaggies=False)
@@ -775,8 +776,6 @@ class ContinuumTools(object):
             camerapix = self.data['camerapix']
             specwave = self.specwave
             specres = self.data['res']
-
-            modelflux = np.empty(len(specwave))
             for icam, pix in enumerate(camerapix):
                 s, e = pix
                 resampflux = self.resample(ztemplatewave,
@@ -798,13 +797,13 @@ class ContinuumTools(object):
         
         """
         if fit_vdisp:
-            ebv, vdisp  = params[:2]
+            ebv, vdisp    = params[:2]
             templatecoeff = params[2:]
         else:
-            ebv = params[:1]
+            ebv           = params[0]
+            vdisp         = None
             templatecoeff = params[1:]
-            vdisp = None
-
+        
         fullmodel, modelflux, modelflam = self.build_stellar_continuum(
             templateflux, templatecoeff, 
             dustflux=dustflux, ebv=ebv, vdisp=vdisp,
@@ -914,14 +913,14 @@ class ContinuumTools(object):
                 raise ValueError(errmsg)
         
         if fit_vdisp == True:
-            initial_guesses = np.hstack(([ebv_guess, vdisp_guess], coeff_guess))
+            initial_guesses = np.hstack((ebv_guess, vdisp_guess, coeff_guess))
             bounds = [ebv_bounds, vdisp_bounds, ] + [(0., 1e5)] * ntemplates
             #xscale = np.hstack(([0.1, 50.], np.ones(ntemplates) * 1e-1))
         else:
             initial_guesses = np.hstack((ebv_guess, coeff_guess))
             bounds = [ebv_bounds, ] + [(0., 1e5)] * ntemplates
             #xscale = np.hstack((0.1, np.ones(ntemplates) * 1e-1))
-
+        
         # NB: `x_scale` has been set to `jac` here to help with the numerical
         # convergence. There may be faster ways, of course...
         fit_info = least_squares(self._stellar_objective, initial_guesses, args=farg, 
@@ -1308,13 +1307,14 @@ def continuum_specfit(data, result, templates,
                                                         sedmodel_nolines, rest=True)
             vdisp = use_vdisp
         else: # new templates start here
-
+            
             # First, estimate the aperture correction from a (noiseless) *model*
             # of the spectrum (using the nominal velocity dispersion).
             apercorrs, apercorr = np.ones(len(phot.synth_bands)), 1.
             
             if np.any(phot.bands_to_fit):
                 t0 = time.time()
+                
                 ebv, _, coeff = CTools.fit_stellar_continuum(
                     templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
                     dustflux=None,  fit_vdisp=False,

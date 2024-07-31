@@ -77,6 +77,7 @@ class Templates(object):
         self.flux_nolines = self.flux - templatelineflux[keeplo:keephi, :]
 
         # convert to double precision, as that is how they are used later on
+        self.wave = self.wave.astype(np.float64)
         self.flux = self.flux.astype(np.float64)
         self.flux_nolines = self.flux_nolines.astype(np.float64)
         
@@ -136,6 +137,7 @@ class Templates(object):
         else:
             if 'DUSTFLUX' in T and 'AGNFLUX' in T:
                 dustflux = T['DUSTFLUX'].read()
+                dustflux = dustflux.astype(np.float64)
                 
                 # make sure fluxes are normalized to unity
                 dustflux /= np.trapz(dustflux, x=templatewave) # should already be 1.0
@@ -147,6 +149,7 @@ class Templates(object):
                 #self.gamma    = dusthdr['GAMMA']
 
                 #agnflux = T['AGNFLUX'].read()
+                #agnflux = agnflux.astype(np.float64)
                 #agnflux  /= np.trapz(agnflux, x=templatewave) # should already be 1.0
                 #self.agnflux  = agnflux[keeplo:keephi]
                 
