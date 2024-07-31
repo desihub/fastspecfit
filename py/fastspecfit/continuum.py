@@ -722,7 +722,7 @@ class ContinuumTools(object):
             fullmodel = Templates.convolve_vdisp(fullmodel, vdisp, 
                                                  pixsize_kms=Templates.PIXKMS_BLU, 
                                                  limit=self.pixpos_wavesplit)
-
+        
         # [3] - Apply dust attenuation; ToDo: allow age-dependent
         # attenuation. Also compute the bolometric luminosity before and after
         # attenuation but only if we have dustflux.
@@ -743,10 +743,10 @@ class ContinuumTools(object):
             if dustflux is not None:
                 lbolabs = np.trapz(fullmodel, x=templatewave)
                 fullmodel += dustflux * (lbol0 - lbolabs)
-        
+      
         # [5] - Redshift factors.
         fullmodel *= self.zfactors
-        
+                
         ztemplatewave = self.ztemplatewave
         
         # [6] - Optionally synthesize photometry
@@ -1061,7 +1061,7 @@ def continuum_specfit(data, result, templates,
 
         if np.all(objflamivar == 0.):
             log.info('All photometry is masked.')
-            coeff = np.zeros(nage, 'f4') # nage not nsed
+            coeff = np.zeros(nage) # nage not nsed
             rchi2_cont, rchi2_phot = 0., 0.
             dn4000_model = 0.
             sedmodel = np.zeros(len(templates.wave))
@@ -1217,7 +1217,7 @@ def continuum_specfit(data, result, templates,
                 synthphot=True, flamphot=True, photsys=data['photsys'])
             desitemplateflam = desitemplatephot_flam * CTools.massnorm * FLUXNORM
     
-            apercorrs, apercorr = np.zeros(len(phot.synth_bands), 'f4'), 0.
+            apercorrs, apercorr = np.zeros(len(phot.synth_bands)), 0.
             
             sedtemplates, _ = CTools.templates2data(
                 input_templateflux, templates.wave,
@@ -1226,7 +1226,7 @@ def continuum_specfit(data, result, templates,
     
             if not np.any(phot.bands_to_fit):
                 log.info('Skipping aperture correction since no bands were fit.')
-                apercorrs, apercorr = np.ones(len(phot.synth_bands), 'f4'), 1.
+                apercorrs, apercorr = np.ones(len(phot.synth_bands)), 1.
             else:
                 # Fit using the templates with line-emission.
                 quickcoeff, _ = CTools.call_nnls(desitemplates, specflux, specivar)
@@ -1288,7 +1288,7 @@ def continuum_specfit(data, result, templates,
             # Compute the full-wavelength best-fitting model.
             if np.all(coeff == 0):
                 log.warning('Continuum coefficients are all zero.')
-                sedmodel = np.zeros(len(templates.wave), 'f4')
+                sedmodel = np.zeros(len(templates.wave))
                 desimodel = np.zeros_like(specflux)
                 desimodel_nolines = np.zeros_like(specflux)
                 dn4000_model = 0.0
@@ -1311,7 +1311,7 @@ def continuum_specfit(data, result, templates,
 
             # First, estimate the aperture correction from a (noiseless) *model*
             # of the spectrum (using the nominal velocity dispersion).
-            apercorrs, apercorr = np.ones(len(phot.synth_bands), 'f4'), 1.
+            apercorrs, apercorr = np.ones(len(phot.synth_bands)), 1.
             
             if np.any(phot.bands_to_fit):
                 t0 = time.time()

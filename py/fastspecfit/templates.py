@@ -76,6 +76,10 @@ class Templates(object):
         self.flux = templateflux[keeplo:keephi, :]
         self.flux_nolines = self.flux - templatelineflux[keeplo:keephi, :]
 
+        # convert to double precision, as that is how they are used later on
+        self.flux = self.flux.astype(np.float64)
+        self.flux_nolines = self.flux_nolines.astype(np.float64)
+        
         # Cache a copy of the line-free templates at the nominal velocity
         # dispersion (needed for fastphot as well).
         if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
@@ -231,7 +235,7 @@ class Templates(object):
             truncate = 4.0
             radius = int(truncate * sigma + 0.5)
             kernel = Templates._gaussian_kernel1d(sigma, radius)
-
+            
             if templateflux.ndim == 1:
                 output[:limit] = oaconvolve(templateflux[:limit], kernel, mode='same')
                 output[limit:] = templateflux[limit:]
