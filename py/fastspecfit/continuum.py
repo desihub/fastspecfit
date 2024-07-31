@@ -986,15 +986,6 @@ class ContinuumTools(object):
         return fullmodel, rchi2_spec, rchi2_phot, rchi2_tot
 
 
-def _younger_than_universe(age, tuniv, agepad=0.5):
-    """Return the indices of the templates younger than the age of the universe
-    (plus an agepadding amount) at the given redshift. age in yr, agepad and
-    tuniv in Gyr
-
-    """
-    return np.where(age <= 1e9 * (agepad + tuniv))[0]
-
-
 def continuum_specfit(data, result, templates,
                       igm, phot,
                       constrain_age=False, no_smooth_continuum=False, 
@@ -1019,7 +1010,15 @@ def continuum_specfit(data, result, templates,
       - We solve for velocity dispersion if ...
 
     """
-            
+
+    def younger_than_universe(age, tuniv, agepad=0.5):
+        """Return the indices of the templates younger than the age of the universe
+        (plus an agepadding amount) at the given redshift. age in yr, agepad and
+        tuniv in Gyr
+        """
+        return np.where(age <= 1e9 * (agepad + tuniv))[0]
+
+    
     tall = time.time()
 
     CTools = ContinuumTools(igm, phot, templates, data)
@@ -1045,11 +1044,11 @@ def continuum_specfit(data, result, templates,
     # Optionally ignore templates which are older than the age of the
     # universe at the redshift of the object.
     if constrain_age:
-        agekeep = _younger_than_universe(templates.info['age'], data['tuniv'])
+        agekeep = younger_than_universe(templates.info['age'], data['tuniv'])
     else:
         agekeep = np.arange(templates.ntemplates)
     nage = len(agekeep)
-
+    
     vdisp_nominal = templates.vdisp_nominal
     ebv_guess = 0.05
     
