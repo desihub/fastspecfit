@@ -95,9 +95,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
     cosmo = sc_data.cosmology
     templates = sc_data.templates
     
-    CTools = ContinuumTools(cosmo, igm, phot,
-                            templates.pixpos_wavesplit,
-                            templates.dust_klambda)
+    CTools = ContinuumTools(igm, phot, templates, data)
     
     if hasattr(phot, 'viewer_layer'):
         layer = phot.viewer_layer
@@ -356,11 +354,12 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                 get_abmag=True)
         else:
             sedmodel, _, sedphot = CTools.build_stellar_continuum(                       
-                templates.wave, templates.flux_nomvdisp,
-                fastspec['COEFF'] * CTools.massnorm, dustflux=templates.dustflux, 
-                photsys=metadata['PHOTSYS'], redshift=redshift, 
+                templates.flux_nomvdisp,
+                fastspec['COEFF'] * CTools.massnorm,
+                dustflux=templates.dustflux, 
                 ebv=fastspec['AV'] / Templates.klambda(5500.), 
-                vdisp=None, synthphot=True, flamphot=False, get_abmag=True)
+                vdisp=None, phottable=True, get_abmag=True,
+                synthphot=True, synthspec=False)
 
         sedwave = templates.wave * (1 + redshift)
 
@@ -399,13 +398,12 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             fullcontinuum = np.hstack(desicontinuum)
         else:
             _, _desicontinuum, _ = CTools.build_stellar_continuum(                       
-                templates.wave, templates.flux_nolines,
-                fastspec['COEFF'], dustflux=templates.dustflux, 
-                photsys=metadata['PHOTSYS'], specwave=np.hstack(data['wave']), 
-                specres=np.hstack(data['res']), camerapix=data['camerapix'], 
-                redshift=redshift, vdisp=fastspec['VDISP'], 
-                ebv=fastspec['AV'] / Templates.klambda(5500.), synthphot=False)
-
+                templates.flux_nolines, fastspec['COEFF'],
+                dustflux=templates.dustflux, 
+                vdisp=fastspec['VDISP'], 
+                ebv=fastspec['AV'] / Templates.klambda(5500.),
+                synthphot=False, synthspec=True)
+                
             # remove the aperture correction
             desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]
             fullcontinuum = np.hstack(desicontinuum)

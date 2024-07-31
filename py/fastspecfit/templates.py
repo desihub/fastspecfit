@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import numba
 
 import fitsio
 from astropy.table import Table
@@ -86,7 +87,7 @@ class Templates(object):
         
         # dust attenuation curve
         self.dust_klambda = Templates.klambda(self.wave)
-        
+
         self.flux_nomvdisp = self.convolve_vdisp(
             self.flux, vdisp_nominal, limit=hi,
             pixsize_kms=Templates.PIXKMS_BLU)
@@ -127,7 +128,7 @@ class Templates(object):
             if read_linefluxes:
                 self.linewaves  = T['LINEWAVES'].read()
                 self.linefluxes = T['LINEFLUXES'].read()
-
+                
         else:
             if 'DUSTFLUX' in T and 'AGNFLUX' in T:
                 dustflux = T['DUSTFLUX'].read()
@@ -162,7 +163,7 @@ class Templates(object):
 
     
     @staticmethod
-    def convolve_vdisp(templateflux, vdisp, pixsize_kms=None, limit=None):
+    def convolve_vdisp_old(templateflux, vdisp, pixsize_kms=None, limit=None):
         """Convolve an input spectrum to a desired velocity dispersion in km/s.
         
         Parameters
@@ -197,7 +198,7 @@ class Templates(object):
             
             if limit is None:
                 limit = templateflux.shape[0]
-                
+            
             if templateflux.ndim == 1:
                 gaussian_filter1d(templateflux[:limit], sigma=sigma, output=output[:limit])
                 output[limit:] = templateflux[limit:]
@@ -207,6 +208,73 @@ class Templates(object):
                 output[limit:, :] = templateflux[limit:, :]
 
         return output
+
+    
+    @staticmethod
+    def convolve_vdisp(templateflux, vdisp, pixsize_kms=None, limit=None):
+
+        from scipy.signal import oaconvolve
+        
+        if pixsize_kms is None:
+            pixsize_kms = Templates.PIXKMS_BLUE
+            
+        # Convolve by the velocity dispersion.
+        if vdisp <= 0.:
+            output = templateflux.copy()
+        else:
+            output = np.empty_like(templateflux)
+            sigma = vdisp / pixsize_kms # [pixels]
+            
+            if limit is None:
+                limit = templateflux.shape[0]
+
+            truncate = 4.0
+            radius = int(truncate * sigma + 0.5)
+            kernel = Templates._gaussian_kernel1d(sigma, radius)
+
+            if templateflux.ndim == 1:
+                output[:limit] = oaconvolve(templateflux[:limit], kernel, mode='same')
+                output[limit:] = templateflux[limit:]
+            else:
+                n = templateflux.shape[1]
+                for i in range(n):
+                    output[:limit, i] = oaconvolve(templateflux[:limit, i], kernel, mode='same')
+                output[limit:, :] = templateflux[limit:, :]
+        
+        return output
+    
+    
+    # borrowed from scipy.ndimage
+    # order == k > 0 --> compute kth derivative of kernel
+    @staticmethod
+    def _gaussian_kernel1d(sigma, radius, order=0):
+        """
+        Computes a 1-D Gaussian convolution kernel.
+        """
+        
+        sigma2 = sigma * sigma
+        x = np.arange(-radius, radius+1)
+        phi_x = np.exp(-0.5 / sigma2 * x ** 2)
+        phi_x /= phi_x.sum()
+        
+        if order == 0:
+            return phi_x
+        else:
+            # f(x) = q(x) * phi(x) = q(x) * exp(p(x))
+            # f'(x) = (q'(x) + q(x) * p'(x)) * phi(x)
+            # p'(x) = -1 / sigma ** 2
+            # Implement q'(x) + q(x) * p'(x) as a matrix operator and apply to the
+            # coefficients of q(x)
+            exponent_range = np.arange(order + 1)
+            q = np.zeros(order + 1)
+            q[0] = 1
+            D = np.diag(exponent_range[1:], 1)  # D @ q(x) = q'(x)
+            P = np.diag(np.ones(order)/-sigma2, -1)  # P @ q(x) = q(x) * p'(x)
+            Q_deriv = D + P
+            for _ in range(order):
+                q = Q_deriv.dot(q)
+            q = (x[:, None] ** exponent_range).dot(q)
+            return q * phi_x
 
     @staticmethod
     def klambda(wave):
@@ -231,3 +299,4 @@ class Templates(object):
         dust_normwave = 5500. # pivot wavelength
 
         return (wave / dust_normwave)**dust_power 
+

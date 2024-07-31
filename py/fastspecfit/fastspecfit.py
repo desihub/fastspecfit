@@ -19,6 +19,10 @@ from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data, initialize_sc_data
 from fastspecfit.util import BoxedScalar
 
+import cProfile as profile
+import pstats
+pr = profile.Profile()
+shot = 0
 
 def fastspec_one(iobj, data, out_dtype,
                  broadlinefit=True,
@@ -34,7 +38,6 @@ def fastspec_one(iobj, data, out_dtype,
     from fastspecfit.emlines import emline_specfit
     from fastspecfit.continuum import continuum_specfit
     
-    cosmo = sc_data.cosmology
     igm = sc_data.igm
     phot = sc_data.photometry
     emline_table = sc_data.emlines.table
@@ -49,13 +52,20 @@ def fastspec_one(iobj, data, out_dtype,
     if not fastphot:
         for icam, cam in enumerate(data['cameras']):
             out[f'SNR_{cam.upper()}'] = data['snr'][icam]
- 
+
+    global shot
+    if shot > 0:
+        pr.enable()
     continuummodel, smooth_continuum = continuum_specfit(data, out, templates,
-                                                         cosmo, igm, phot,
+                                                         igm, phot,
                                                          constrain_age=constrain_age,
                                                          no_smooth_continuum=no_smooth_continuum,
                                                          fastphot=fastphot, debug_plots=debug_plots)
-
+    if shot > 0:
+        pr.disable()
+    else:
+        shot = 1
+        
     # Optionally fit the emission-line spectrum.
     if fastphot:
         emmodel = None
@@ -207,7 +217,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     if mp_pool is not None:
         mp_pool.close()
     
-
+    st = pstats.Stats(pr).strip_dirs().sort_stats("cumulative")
+    st.print_stats()
+    st.print_callees()
+    
     write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
                       fphotofile=sc_data.photometry.fphotofile,

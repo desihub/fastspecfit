@@ -316,7 +316,6 @@ def minfit(x, y, return_coeff=False):
 def sigmaclip(c, low=3., high=3.):
 
     n  = len(c)
-
     mask = np.full(n, True, dtype=np.bool_)
     
     s  = np.sum(c)
