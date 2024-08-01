@@ -944,7 +944,9 @@ class ContinuumTools(object):
             nominal velocity if it was not fitted.
         templatecoeff : :class:`numpy.ndarray` [ntemplate]
             Column vector of maximum-likelihood template coefficients.
-
+        resid: :class:`numpy.ndarray`
+            Vector of residuals at final parameter values
+        
         Notes
         -----
         This method supports several different fitting 'modes', depending on the
@@ -991,6 +993,7 @@ class ContinuumTools(object):
                                  tr_solver='lsmr', tr_options={'regularize': True}, 
                                  x_scale='jac', max_nfev=5000, ftol=1e-5, xtol=1e-10)#, verbose=2)
         bestparams = fit_info.x
+        resid = fit_info.fun
         
         if fit_vdisp:
             ebv, vdisp  = bestparams[:2]
@@ -1000,53 +1003,60 @@ class ContinuumTools(object):
             templatecoeff = bestparams[1:]
             vdisp = self.templates.vdisp_nominal
 
-        return ebv, vdisp, templatecoeff
+        return ebv, vdisp, templatecoeff, resid
 
-
-    def stellar_continuum_chi2(self, templateflux, templatecoeff,
-                               dustflux, ebv,
-                               vdisp, vdisp_fitted,
-                               objflam=None, objflamivar=None,
-                               specflux=None, specivar=None,
-                               synthphot=False, synthspec=False):
+    
+    def stellar_continuum_chi2(self, resid,
+                               ncoeff, vdisp_fitted,
+                               split = 0,
+                               ndof_spec = 0, ndof_phot = 0):
         
         """Compute the reduced spectroscopic and/or photometric chi2.
 
+        resid:
+           Vector of residuals from least-squares fitting
+        ncoeff:
+           Number of template coefficients fitted
+        vdisp_fitted:
+           True if the velocity dispersion was fitted
+        split:
+           Boundary between initial spectroscopy elements of
+           residual and final photometry elements
+        ndof_spec:
+           Number of spectroscopy degrees of freedom
+        ndof_phot:
+           Number of photometry degrees of freedom
+        
         """
-        fullmodel, modelflux, modelflam = self.build_stellar_continuum(
-            templateflux, templatecoeff,
-            dustflux=dustflux, ebv=ebv, vdisp=vdisp, 
-            synthphot=synthphot, synthspec=synthspec)
-
         # ebv is always a free parameter
-        nfree = len(templatecoeff) + 1 + int(vdisp_fitted)
-
+        nfree = ncoeff + 1 + int(vdisp_fitted)
+        
         def _get_rchi2(chi2, ndof, nfree):
             """Guard against ndof=nfree."""
             if ndof > nfree:
                 return chi2 / (ndof - nfree)
             else:
                 return chi2 / ndof # ???
-            
-        # Compute chi2 based on the information we have.
-        rchi2_spec, rchi2_phot, rchi2_tot = 0., 0., 0.
 
-        if synthspec:
-            chi2_spec = np.sum(specivar * (specflux - modelflux)**2)
-            ndof_spec = np.sum(specivar > 0)
+        if ndof_spec > 0:
+            resid_spec = resid[:split]
+            chi2_spec = resid_spec.dot(resid_spec)
             rchi2_spec = _get_rchi2(chi2_spec, ndof_spec, nfree)
-            rchi2_tot = rchi2_spec
+        else:
+            chi2_spec = 0.
+            rchi2_spec = 0.
         
-        if synthphot:
-            chi2_phot = np.sum(objflamivar * (objflam - modelflam)**2)
-            ndof_phot = np.sum(objflamivar > 0)
+        if ndof_phot > 0:
+            resid_phot = resid[split:]
+            chi2_phot = resid_phot.dot(resid_phot)
             rchi2_phot = _get_rchi2(chi2_phot, ndof_phot, nfree)
-            rchi2_tot = rchi2_phot
-
-        if modelflux is not None and modelflam is not None:
-            rchi2_tot = _get_rchi2(chi2_spec + chi2_phot, ndof_spec + ndof_phot, nfree)
+        else:
+            chi2_phot = 0.
+            rchi2_phot = 0.
         
-        return fullmodel, rchi2_spec, rchi2_phot, rchi2_tot
+        rchi2_tot = _get_rchi2(chi2_spec + chi2_phot, ndof_spec + ndof_phot, nfree)
+        
+        return rchi2_spec, rchi2_phot, rchi2_tot
 
 
 def continuum_specfit(data, result, templates,
@@ -1141,20 +1151,21 @@ def continuum_specfit(data, result, templates,
                 coeff, rchi2_phot = CTools.call_nnls(sedflam, objflam, objflamivar)
                 rchi2_phot /= np.sum(objflamivar > 0) # dof???
             else:
-                ebv, _, coeff = CTools.fit_stellar_continuum(
+                ebv, _, coeff, resid = CTools.fit_stellar_continuum(
                     templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
                     dustflux=templates.dustflux, fit_vdisp=False,
                     vdisp_guess=vdisp_nominal, ebv_guess=ebv_guess,
                     objflam=objflam, objflamivar=objflamivar,
-                    synthphot=True, synthspec=False)
+                    synthphot=True, synthspec=False
+                )
                 
-                sedmodel, _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
-                    templates.flux_nomvdisp[:, agekeep],
-                    templatecoeff=coeff,
-                    dustflux=templates.dustflux, ebv=ebv,
-                    vdisp=None, vdisp_fitted=False,
-                    objflam=objflam, objflamivar=objflamivar,
-                    synthphot=True, synthspec=False)
+                _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
+                    resid, ncoeff=len(coeff), vdisp_fitted=False,
+                    ndof_phot=np.sum(objflamivar > 0.)
+                )
+                
+                sedmodel = CTools.optimizer_saved_fullmodel
+                
                 
             log.info(f'Fitting {nage} models took {time.time()-t0:.2f} seconds.')
             
@@ -1376,7 +1387,7 @@ def continuum_specfit(data, result, templates,
             if np.any(phot.bands_to_fit):
                 t0 = time.time()
                 
-                ebv, _, coeff = CTools.fit_stellar_continuum(
+                ebv, _, coeff, _ = CTools.fit_stellar_continuum(
                     templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
                     dustflux=None,  fit_vdisp=False,
                     vdisp_guess=None, ebv_guess=ebv_guess,
@@ -1387,6 +1398,8 @@ def continuum_specfit(data, result, templates,
                     log.warning('Unable to estimate aperture correction because continuum coefficients are all zero; adopting 1.0.')
                     coeff_guess = np.ones(nage)
                 else:
+                    # FIXME: we could just compute the photometry here using
+                    # the saved fullmodel from the above fitting
                     _, _, sedflam = CTools.build_stellar_continuum(                       
                         templates.flux_nomvdisp[:, agekeep], coeff, 
                         dustflux=None, ebv=ebv, vdisp=None,
@@ -1420,8 +1433,18 @@ def continuum_specfit(data, result, templates,
             
             # Now do the full spectrophotometric fit.
             t0 = time.time()
-            ebv, vdisp, coeff = CTools.fit_stellar_continuum(
-                templates.flux[:, agekeep], # [npix,nsed]
+            
+            # rebuild the best-fitting model with and without line-emission
+            if not compute_vdisp:
+                # Use the cached templates with nominal velocity dispersion
+                input_templateflux         = templates.flux_nomvdisp[:, agekeep]
+                input_templateflux_nolines = templates.flux_nolines_nomvdisp[:, agekeep]
+            else:
+                input_templateflux         = templates.flux[:, agekeep]
+                input_templateflux_nolines = templates.flux_nolines[:, agekeep]
+
+            ebv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
+                input_templateflux, # [npix,nage]
                 dustflux=templates.dustflux, fit_vdisp=compute_vdisp,
                 ebv_guess=ebv, vdisp_guess=vdisp_nominal,
                 coeff_guess=coeff_guess,
@@ -1449,32 +1472,22 @@ def continuum_specfit(data, result, templates,
                     #log.info(f'Best-fitting vdisp={vdisp:.1f}+/-{1./np.sqrt(vdispivar):.1f} km/s.')
                     log.info(f'Best-fitting vdisp={vdisp:.1f} km/s.')
                 else:
-                    vdisp, vdispivar = vdisp_nominal, 0.
                     log.info(f'Insufficient wavelength covereage to compute vdisp; adopting nominal vdisp={vdisp:.1f} km/s')
-
-                # rebuild the best-fitting model with and without line-emission
-                if vdisp == vdisp_nominal:
-                    # Use the cached templates.
-                    use_vdisp = None
-                    input_templateflux         = templates.flux_nomvdisp[:, agekeep]
-                    input_templateflux_nolines = templates.flux_nolines_nomvdisp[:, agekeep]
-                else:
-                    use_vdisp = vdisp
-                    input_templateflux         = templates.flux[:, agekeep]
-                    input_templateflux_nolines = templates.flux_nolines[:, agekeep]
-
-                sedmodel, _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
-                    input_templateflux, templatecoeff=coeff, 
-                    dustflux=templates.dustflux, ebv=ebv,
-                    vdisp=use_vdisp, vdisp_fitted=compute_vdisp,
-                    objflam=objflam, objflamivar=objflamivar,
-                    specflux=specflux*apercorr, specivar=specivar/apercorr**2,
-                    synthspec=True, synthphot=True)
                 
-                sedmodel_nolines, desimodel_nolines, _ = CTools.build_stellar_continuum(                       
+                _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
+                    resid, ncoeff=len(coeff), vdisp_fitted=compute_vdisp,
+                    split=len(specflux),
+                    ndof_spec=np.sum(specivar > 0.),
+                    ndof_phot=np.sum(objflamivar > 0.)
+                )
+                
+                sedmodel = CTools.optimizer_saved_fullmodel
+                
+                sedmodel_nolines, desimodel_nolines, _ = CTools.build_stellar_continuum(
                     input_templateflux_nolines, coeff, 
                     dustflux=None, ebv=ebv, vdisp=vdisp, 
-                    synthphot=False, synthspec=True)
+                    synthphot=False, synthspec=True
+                )
                 
                 dn4000_model, _ = Photometry.get_dn4000(templates.wave, 
                                                         sedmodel_nolines, rest=True)
