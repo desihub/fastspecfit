@@ -40,17 +40,20 @@ class ContinuumTools(object):
                                           redshift=redshift,
                                           dluminosity=data['dluminosity'])
         
-        # get preprocessing data to accelerate get_ab_maggies_fast(),
-        # but ONLY when it is called with the same filters that are used
-        # in continuum_to_photometry()
+        # Get preprocessing data to accelerate continuum_to_photometry()
+        # but ONLY when it is called with the default filters=None
         photsys = self.data['photsys']
         if photsys is None:
             filters = self.phot.filters
         else:
             filters = self.phot.filters[photsys]
-        self.phot_pre = \
-            Photometry.get_ab_maggies_fast_pre(filters, self.ztemplatewave)
 
+        self.phot_pre = (
+            filters,
+            filters.effective_wavelengths.value,
+            Photometry.get_ab_maggies_fast_pre(filters, self.ztemplatewave)
+        )
+        
         if not fastphot:
             self.wavelen = np.sum([len(w) for w in self.data['wave']])
 
@@ -818,23 +821,17 @@ class ContinuumTools(object):
 
         """
         
-        # [6] - Optionally synthesize photometry
         if filters is None:
-            photsys = self.data['photsys']
-            if photsys is None:
-                filters = self.phot.filters
-            else:
-                filters = self.phot.filters[photsys]
-                phot_pre = self.phot_pre
+            filters, effwave, maggies_pre = self.phot_pre
         else:
-            phot_pre = None
-            
+            effwave = filters.effective_wavelengths.value
+            maggies_pre = None
+                    
         modelmaggies = Photometry.get_ab_maggies_fast(filters,
                                                       contmodel,
                                                       self.ztemplatewave,
-                                                      phot_pre)
-            
-        effwave = filters.effective_wavelengths.value
+                                                      maggies_pre)
+        
         if not phottable:
             modelphot = Photometry.get_photflam(modelmaggies, effwave, nanomaggies=False)
         else:
