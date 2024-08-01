@@ -353,14 +353,17 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                 synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm, 
                 get_abmag=True)
         else:
-            sedmodel, _, sedphot = CTools.build_stellar_continuum(                       
+            sedmodel = CTools.build_stellar_continuum(                       
                 templates.flux_nomvdisp,
                 fastspec['COEFF'] * CTools.massnorm,
                 dustflux=templates.dustflux, 
                 ebv=fastspec['AV'] / Templates.klambda(5500.), 
-                vdisp=None, phottable=True, get_abmag=True,
-                synthphot=True, synthspec=False)
-
+                vdisp=None
+            )
+            
+            sedphot = CTools.continuum_to_photometry(sedmodel,
+                                                     phottable=True,
+                                                     get_abmag=True)
         sedwave = templates.wave * (1 + redshift)
 
         nband = len(phot.bands)
@@ -397,13 +400,15 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
             fullcontinuum = np.hstack(desicontinuum)
         else:
-            _, _desicontinuum, _ = CTools.build_stellar_continuum(                       
+            contmodel = CTools.build_stellar_continuum(                       
                 templates.flux_nolines, fastspec['COEFF'],
                 dustflux=templates.dustflux, 
                 vdisp=fastspec['VDISP'], 
-                ebv=fastspec['AV'] / Templates.klambda(5500.),
-                synthphot=False, synthspec=True)
-                
+                ebv=fastspec['AV'] / Templates.klambda(5500.)
+            )
+            
+            _desicontinuum = CTools.continuum_to_spectroscopy(contmodel)
+            
             # remove the aperture correction
             desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]
             fullcontinuum = np.hstack(desicontinuum)

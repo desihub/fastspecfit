@@ -40,24 +40,25 @@ class ContinuumTools(object):
                                           redshift=redshift,
                                           dluminosity=data['dluminosity'])
         
-
         # get preprocessing data to accelerate get_ab_maggies_fast(),
         # but ONLY when it is called with the same filters that are used
-        # in build_stellar_continuum()
+        # in continuum_to_photometry()
         photsys = self.data['photsys']
         if photsys is None:
             filters = self.phot.filters
         else:
             filters = self.phot.filters[photsys]
-        self.maggies_pre = \
+        self.phot_pre = \
             Photometry.get_ab_maggies_fast_pre(filters, self.ztemplatewave)
 
         if not fastphot:
+            self.wavelen = np.sum([len(w) for w in self.data['wave']])
+
             # get preprocessing data to accelerate resample()
             rspre = []
             for wave in self.data['wave']:
                 rspre.append(self.resample_pre(wave))
-            self.rs_pre = tuple(rspre)
+            self.spec_pre = tuple(rspre)
                 
     
     def get_zfactors(self, igm, ztemplatewave, redshift, dluminosity):
@@ -557,7 +558,7 @@ class ContinuumTools(object):
                     resampflux = self.resample(ztemplatewave, 
                                                ztemplateflux[:, imodel],
                                                specwave=specwave[icam],
-                                               pre=self.rs_pre[icam])
+                                               pre=self.spec_pre[icam])
                     _datatemplateflux[:, imodel] = specres[icam].dot(resampflux)
                     
                 if coeff is not None:
@@ -689,10 +690,8 @@ class ContinuumTools(object):
     
     
     def build_stellar_continuum(self, templateflux, templatecoeff,
-                                dustflux=None, ebv=0., vdisp=None,
-                                synthphot=False, synthspec=False,
-                                filters=None,
-                                phottable=False, get_abmag=False):
+                                dustflux=None, ebv=0., vdisp=None):
+
         """Build a stellar continuum model.
 
         Parameters
@@ -712,51 +711,20 @@ class ContinuumTools(object):
             Velocity dispersion in km/s. If `None`, do not convolve to the
             specified velocity dispersion (usually because `templateflux` has
             already been smoothed to some nominal value).
-        synthphot : :class:`bool`
-            Synthesize photometry for the observed-frame spectrum.
-        synthpec : :class:`bool`
-            Synthesize observed spectra for each camera.
-        filters : :class:`list` or :class:`speclite.filters.FilterSequence` [nfilt]
-            Optionally override the filter curves stored in the `filters`
-            attribute of the global Photometry object.
-        phottable : :class:`bool`
-            Return an :class:`astropy.table.Table` with additional bandpass information.
-            Otherwise, return synthesized photometry in f_lambda (10^17 erg/s/cm2/A) units,
-            which are used in fitting  Only true for QA.
-        get_abmag : :class:`bool`
-            Add AB magnitudes to the synthesized photometry table (only
-            triggered if `synthphot=True` and `phottable=True`. Only used for QA.
-
+        
         Returns
         -------
-        fullmodel : :class:`numpy.ndarray` [npix]
+        contmodel : :class:`numpy.ndarray` [npix]
             Full-wavelength, native-resolution, observed-frame model spectrum.
-        modelflux : :class:`numpy.ndarray` [nwave]
-            Observed-frame model spectrum at the instrumental resolution and
-            wavelength sampling given by `specwave` and `specres`.
-        modelphot : :class:`numpy.ndarray` or :class:`astropy.table.Table` [nfilt]
-            Synthesized model photometry as an array or a table, depending on
-            `flamphot`.
-
-        Notes
-        -----
-        This method will compute 1-3 quantities depending on the input
-        provided. 
-
-        * It will always return `fullmodel`.
-        * If `synthphot=True` it will synthesize observed-frame photometry from
-          `fullmodel` and return `modelphot`.
-        * If `synthspec=True` it will  generate a DESI-like spectrum and
-           return `modelflux`.
-
+        
         """
         
         # [1] - Compute the weighted sum of the templates.
-        fullmodel = templateflux.dot(templatecoeff)
+        contmodel = templateflux.dot(templatecoeff)
         
         # [2] - Optionally convolve to the desired velocity dispersion.
         if vdisp is not None:
-            fullmodel = Templates.convolve_vdisp(fullmodel, vdisp, 
+            contmodel = Templates.convolve_vdisp(contmodel, vdisp, 
                                                  pixsize_kms=Templates.PIXKMS_BLU, 
                                                  limit=self.pixpos_wavesplit)
         
@@ -772,71 +740,114 @@ class ContinuumTools(object):
         if ebv > 0.: # if ebv == 0, this code is a no-op
             if dustflux is not None:
                 templatewave = self.templates.wave
-                lbol0 = np.trapz(fullmodel, x=templatewave)
+                lbol0 = np.trapz(contmodel, x=templatewave)
             
-            fullmodel *= self.atten ** ebv
+            contmodel *= self.atten ** ebv
             
             if dustflux is not None:
-                lbolabs = np.trapz(fullmodel, x=templatewave)
-                fullmodel += dustflux * (lbol0 - lbolabs)
+                lbolabs = np.trapz(contmodel, x=templatewave)
+                contmodel += dustflux * (lbol0 - lbolabs)
 
         # [5] - Redshift factors.
-        fullmodel *= self.zfactors
-                
-        # [6] - Optionally synthesize photometry
-        if synthphot:
-            if filters is None:
-                photsys = self.data['photsys']
-                if photsys is None:
-                    filters = self.phot.filters
-                else:
-                    filters = self.phot.filters[photsys]
-                maggies_pre = self.maggies_pre
-            else:
-                maggies_pre = None
-            
-            modelmaggies = Photometry.get_ab_maggies_fast(filters,
-                                                          fullmodel,
-                                                          self.ztemplatewave,
-                                                          maggies_pre)
-            
-            effwave = filters.effective_wavelengths.value
-            if not phottable:
-                modelphot = Photometry.get_photflam(modelmaggies, effwave, nanomaggies=False)
-            else:
-                modelmaggies /= FLUXNORM * self.massnorm
-                modelphot = Photometry.parse_photometry(self.phot.bands, modelmaggies, effwave, 
-                                                        nanomaggies=False, get_abmag=get_abmag)
-        else:
-            modelphot = None
-        
-        # [7] - Optionally synthesize multi-camera spectroscopy. For each
-        # camera, resample and multiply by instrumental resolution.
-        if synthspec:
-            camerapix = self.data['camerapix']
-            specwave  = self.data['wave']
-            specres   = self.data['res']
-            
-            wavelen = np.sum([len(w) for w in specwave])
-            modelflux = np.empty(wavelen)
+        contmodel *= self.zfactors
 
-            for icam, pix in enumerate(camerapix):
-                resampflux = self.resample(self.ztemplatewave,
-                                           fullmodel,
-                                           specwave[icam],
-                                           pre=self.rs_pre[icam])
-                s, e = pix
-                modelflux[s:e] = specres[icam].dot(resampflux)
+        return contmodel
+
+    
+    def continuum_to_spectroscopy(self, contmodel):
+        """
+        Synthesize spectroscopy from a continuum model.
+
+        Parameters
+        ----------
+        contmodel : :class:`numpy.ndarray` [npix] 
+            Full-wavelength, native-resolution, observed-frame model spectrum.
+
+        Returns
+        -------
+        modelflux : :class:`numpy.ndarray` [nwave]
+            Observed-frame model spectrum at the instrumental resolution and
+            wavelength sampling given by `specwave` and `specres`.
+
+        """
+        
+        camerapix = self.data['camerapix']
+        specwave  = self.data['wave']
+        specres   = self.data['res']
+        
+        modelflux = np.empty(self.wavelen)
+        
+        for icam, pix in enumerate(camerapix):
+            resampflux = self.resample(self.ztemplatewave,
+                                       contmodel,
+                                       specwave[icam],
+                                       pre=self.spec_pre[icam])
+            s, e = pix
+            modelflux[s:e] = specres[icam].dot(resampflux)
+
+        return modelflux
+
+    
+    def continuum_to_photometry(self, contmodel,
+                                filters=None,
+                                phottable=False,
+                                get_abmag=False):
+        """
+        Synthesize photometry from a continuum model.
+
+        Parameters
+        ----------
+        contmodel : :class:`numpy.ndarray` [npix] 
+            Full-wavelength, native-resolution, observed-frame model spectrum.
+        filters : :class:`list` or :class:`speclite.filters.FilterSequence` [nfilt]
+            Optionally override the filter curves stored in the `filters`
+            attribute of the global Photometry object.
+        phottable : :class:`bool`
+            Return an :class:`astropy.table.Table` with additional bandpass information.
+            Otherwise, return synthesized photometry in f_lambda (10^17 erg/s/cm2/A) units,
+            which are used in fitting  Only true for QA.
+        get_abmag : :class:`bool`
+            Add AB magnitudes to the synthesized photometry table (only
+            applies if `phottable=True`. Only used for QA.
+
+        Returns
+        -------
+        modelphot : :class:`numpy.ndarray` or :class:`astropy.table.Table` [nfilt]
+            Synthesized model photometry as an array or a table, depending on
+            `phottable`.
+
+        """
+        
+        # [6] - Optionally synthesize photometry
+        if filters is None:
+            photsys = self.data['photsys']
+            if photsys is None:
+                filters = self.phot.filters
+            else:
+                filters = self.phot.filters[photsys]
+                phot_pre = self.phot_pre
         else:
-            modelflux = None
-        
-        return fullmodel, modelflux, modelphot
-        
+            phot_pre = None
+            
+        modelmaggies = Photometry.get_ab_maggies_fast(filters,
+                                                      contmodel,
+                                                      self.ztemplatewave,
+                                                      phot_pre)
+            
+        effwave = filters.effective_wavelengths.value
+        if not phottable:
+            modelphot = Photometry.get_photflam(modelmaggies, effwave, nanomaggies=False)
+        else:
+            modelmaggies /= FLUXNORM * self.massnorm
+            modelphot = Photometry.parse_photometry(self.phot.bands, modelmaggies, effwave, 
+                                                    nanomaggies=False, get_abmag=get_abmag)
+        return modelphot
+
 
     def _stellar_objective(self, params, templateflux,
                            dustflux, fit_vdisp,
-                           objflam, objflamivar, 
-                           specflux, specivar, 
+                           objflam, objflamistd, 
+                           specflux, specistd, 
                            synthphot, synthspec):
         """Objective function for fitting a stellar continuum.
         
@@ -853,10 +864,9 @@ class ContinuumTools(object):
 
         # FIXME: write results directly into resid array instead of
         # allocating new
-        fullmodel, modelflux, modelflam = self.build_stellar_continuum(
+        fullmodel = self.build_stellar_continuum(
             templateflux, templatecoeff, 
-            dustflux=dustflux, ebv=ebv, vdisp=vdisp,
-            synthphot=synthphot, synthspec=synthspec)
+            dustflux=dustflux, ebv=ebv, vdisp=vdisp)
 
         # save the full model each time we compute the objective;
         # after optimization, the final full model will be
@@ -864,7 +874,7 @@ class ContinuumTools(object):
         # finite-differencing; the last computation of the
         # objective occurs after the last computation of the
         # Jacobian in least_squares().)
-        self.optimizer_saved_fullmodel = fullmodel
+        self.optimizer_saved_contmodel = fullmodel
         
         # Compute residuals versus provided spectroscopy
         # and/or photometry. Allocate a residual array
@@ -875,15 +885,18 @@ class ContinuumTools(object):
         resid_split = spec_reslen
  
         if synthspec:
+            modelflux = self.continuum_to_spectroscopy(fullmodel)
             spec_resid = resid[:resid_split]
             spec_resid[:]  = specflux
             spec_resid    -= modelflux
-            spec_resid    *= np.sqrt(specivar)
+            spec_resid    *= specistd
+            
         if synthphot:
+            modelflam = self.continuum_to_photometry(fullmodel)
             phot_resid = resid[resid_split:]
             phot_resid[:] = objflam
             phot_resid   -= modelflam
-            phot_resid   *= np.sqrt(objflamivar)
+            phot_resid   *= objflamistd
         
         return resid
     
@@ -893,8 +906,8 @@ class ContinuumTools(object):
                               vdisp_guess=125., ebv_guess=0.05,
                               coeff_guess=None,
                               vdisp_bounds=(75., 500.), ebv_bounds=(0., 3.),
-                              objflam=None, objflamivar=None,
-                              specflux=None, specivar=None,
+                              objflam=None, objflamistd=None,
+                              specflux=None, specistd=None,
                               synthphot=False, synthspec=False):
         """Fit a stellar continuum using bounded non-linear least-squares.
 
@@ -921,13 +934,13 @@ class ContinuumTools(object):
             reddening, E(B-V).
         objflam: :class: `numpy.ndarray`
             Measured object photometry (used if fitting photometry)
-        objflamivar: :class: `numpy.ndarray`
-            Inverse variance of objflam (used if fitting photometry)
+        objflamistd: :class: `numpy.ndarray`
+            Sqrt of inverse variance of objflam (used if fitting photometry)
         specflux : :class:`numpy.ndarray` [nwave]
             Observed-frame spectrum in 10**-17 erg/s/cm2/A corresponding to
             `specwave` (used if fitting spectroscopy)
-        specfluxivar : :class:`numpy.ndarray` [nwave]
-            Inverse variance of the observed-frame spectrum
+        specfluxistd : :class:`numpy.ndarray` [nwave]
+            Sqrt of inverse variance of the observed-frame spectrum
             (used if fitting spectroscopy)
         synthphot: :class:`bool`
             True iff fitting objective includes object photometry
@@ -958,32 +971,36 @@ class ContinuumTools(object):
         """
         from scipy.optimize import least_squares
     
-        npix, ntemplates = templateflux.shape
-
+        ntemplates = templateflux.shape[1]
+        
         # Unpack the input data to infer the fitting "mode" and the objective
         # function.
         farg = [templateflux,
                 dustflux, fit_vdisp,
-                objflam, objflamivar,
-                specflux, specivar,
+                objflam, objflamistd,
+                specflux, specistd,
                 synthphot, synthspec]
         
         if coeff_guess is None:
             coeff_guess = np.ones(ntemplates)
         else:
             if len(coeff_guess) != ntemplates:
-                errmsg = 'Mismatching dimensions between coeff_guess and ntemplate!'
+                errmsg = 'Mismatching dimensions between coeff_guess and ntemplates!'
                 log.critical(errmsg)
                 raise ValueError(errmsg)
+
+        coeff_bounds = (0., 1e5)
         
         if fit_vdisp == True:
-            initial_guesses = np.hstack((ebv_guess, vdisp_guess, coeff_guess))
-            bounds = [ebv_bounds, vdisp_bounds, ] + [(0., 1e5)] * ntemplates
-            #xscale = np.hstack(([0.1, 50.], np.ones(ntemplates) * 1e-1))
+            initial_guesses = np.array((ebv_guess, vdisp_guess))
+            bounds = [ebv_bounds, vdisp_bounds]
         else:
-            initial_guesses = np.hstack((ebv_guess, coeff_guess))
-            bounds = [ebv_bounds, ] + [(0., 1e5)] * ntemplates
-            #xscale = np.hstack((0.1, np.ones(ntemplates) * 1e-1))
+            initial_guesses = np.array((ebv_guess,))
+            bounds = [ebv_bounds]
+        
+        initial_guesses = np.concatenate((initial_guesses, coeff_guess))
+        bounds = bounds + [coeff_bounds] * ntemplates
+        #xscale = np.hstack(([0.1, 50.], np.ones(ntemplates) * 1e-1))
         
         # NB: `x_scale` has been set to `jac` here to help with the numerical
         # convergence. There may be faster ways, of course...
@@ -992,16 +1009,16 @@ class ContinuumTools(object):
                                  tr_solver='lsmr', tr_options={'regularize': True}, 
                                  x_scale='jac', max_nfev=5000, ftol=1e-5, xtol=1e-10)#, verbose=2)
         bestparams = fit_info.x
-        resid = fit_info.fun
+        resid      = fit_info.fun
         
         if fit_vdisp:
-            ebv, vdisp  = bestparams[:2]
+            ebv, vdisp    = bestparams[:2]
             templatecoeff = bestparams[2:]
         else:
-            ebv = bestparams[0]
+            ebv           = bestparams[0]
             templatecoeff = bestparams[1:]
             vdisp = self.templates.vdisp_nominal
-
+        
         return ebv, vdisp, templatecoeff, resid
 
     
@@ -1112,7 +1129,9 @@ def continuum_specfit(data, result, templates,
         if np.all(objflamivar[opt] == 0.):
             log.warning('All optical bands are masked; masking all photometry.')
             objflamivar[:] = 0.0
-        
+
+    objflamistd = np.sqrt(objflamivar)
+    
     # Optionally ignore templates which are older than the age of the
     # universe at the redshift of the object.
     if constrain_age:
@@ -1154,7 +1173,7 @@ def continuum_specfit(data, result, templates,
                     templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
                     dustflux=templates.dustflux, fit_vdisp=False,
                     vdisp_guess=vdisp_nominal, ebv_guess=ebv_guess,
-                    objflam=objflam, objflamivar=objflamivar,
+                    objflam=objflam, objflamistd=objflamistd,
                     synthphot=True, synthspec=False
                 )
                 
@@ -1163,7 +1182,7 @@ def continuum_specfit(data, result, templates,
                     ndof_phot=np.sum(objflamivar > 0.)
                 )
                 
-                sedmodel = CTools.optimizer_saved_fullmodel
+                sedmodel = CTools.optimizer_saved_contmodel
                 
                 
             log.info(f'Fitting {nage} models took {time.time()-t0:.2f} seconds.')
@@ -1183,11 +1202,10 @@ def continuum_specfit(data, result, templates,
                         vdisp=None, synthphot=False)
                     sedmodel_nolines = sedtemplates_nolines.dot(coeff)
                 else:
-                    sedmodel_nolines, _, _ = CTools.build_stellar_continuum(                       
+                    sedmodel_nolines = CTools.build_stellar_continuum(                       
                         templates.flux_nolines_nomvdisp[:, agekeep],
                         coeff, dustflux=None,
-                        ebv=ebv, vdisp=None,
-                        synthphot=False, synthspec=False)
+                        ebv=ebv, vdisp=None)
 
                     log.info(f'Best-fitting E(B-V)={ebv:.3f} mag.')                  
 
@@ -1201,14 +1219,16 @@ def continuum_specfit(data, result, templates,
         specflux = np.hstack(data['flux'])
         flamivar = np.hstack(data['ivar'])
         specivar = flamivar * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
-
+        
         if np.all(specivar == 0.) or np.any(specivar < 0.):
             specivar = flamivar # not great...
             if np.all(specivar == 0.) or np.any(specivar < 0.):
                 errmsg = 'All pixels are masked or some inverse variances are negative!'
                 log.critical(errmsg)
                 raise ValueError(errmsg)
-
+        
+        specistd = np.sqrt(specivar)
+        
         npix = len(specwave)
         
         # We'll need the filters for the aperture correction, below.
@@ -1390,21 +1410,17 @@ def continuum_specfit(data, result, templates,
                     templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
                     dustflux=None,  fit_vdisp=False,
                     vdisp_guess=None, ebv_guess=ebv_guess,
-                    specflux=specflux, specivar=specivar,
+                    specflux=specflux, specistd=specistd,
                     synthphot=False, synthspec=True)
 
                 if np.all(coeff == 0.):
                     log.warning('Unable to estimate aperture correction because continuum coefficients are all zero; adopting 1.0.')
                     coeff_guess = np.ones(nage)
                 else:
-                    # FIXME: we could just compute the photometry here using
-                    # the saved fullmodel from the above fitting
-                    _, _, sedflam = CTools.build_stellar_continuum(                       
-                        templates.flux_nomvdisp[:, agekeep], coeff, 
-                        dustflux=None, ebv=ebv, vdisp=None,
-                        filters=filters_in,
-                        synthphot=True, synthspec=False)
-                        
+                    sedflam = CTools.continuum_to_photometry(
+                        CTools.optimizer_saved_contmodel,
+                        filters=filters_in)
+                    
                     objflam_aper = FLUXNORM * photometry[np.isin(photometry['band'], phot.synth_bands)]['flam'].value
                     
                     I = (objflam_aper > 0.) * (sedflam > 0.)
@@ -1440,14 +1456,14 @@ def continuum_specfit(data, result, templates,
             else:
                 input_templateflux         = templates.flux[:, agekeep]
                 input_templateflux_nolines = templates.flux_nolines[:, agekeep]
-
+            
             ebv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
                 input_templateflux, # [npix,nage]
                 dustflux=templates.dustflux, fit_vdisp=compute_vdisp,
                 ebv_guess=ebv, vdisp_guess=vdisp_nominal,
                 coeff_guess=coeff_guess,
-                objflam=objflam, objflamivar=objflamivar,
-                specflux=specflux*apercorr, specivar=specivar/apercorr**2,
+                objflam=objflam, objflamistd=objflamistd,
+                specflux=specflux*apercorr, specistd=specistd/apercorr,
                 synthphot=True, synthspec=True)
                 
             log.info(f'Final spectrophotometric fitting with {nage} models took {time.time()-t0:.2f} seconds.')
@@ -1480,13 +1496,12 @@ def continuum_specfit(data, result, templates,
                 )
 
                 # get the best-fitting model with and without line-emission
-                sedmodel = CTools.optimizer_saved_fullmodel
+                sedmodel = CTools.optimizer_saved_contmodel
                 
-                sedmodel_nolines, desimodel_nolines, _ = CTools.build_stellar_continuum(
+                sedmodel_nolines = CTools.build_stellar_continuum(
                     input_templateflux_nolines, coeff, 
-                    dustflux=None, ebv=ebv, vdisp=vdisp, 
-                    synthphot=False, synthspec=True
-                )
+                    dustflux=None, ebv=ebv, vdisp=vdisp)
+                desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
                 
                 dn4000_model, _ = Photometry.get_dn4000(templates.wave, 
                                                         sedmodel_nolines, rest=True)
