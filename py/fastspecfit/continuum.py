@@ -1102,13 +1102,13 @@ def continuum_specfit(data, result, templates,
     
     photometry = data['phot']
     objflam = photometry['flam'].value * FLUXNORM
-    objflamivar = (photometry['flam_ivar'].data / FLUXNORM**2) * phot.bands_to_fit
+    objflamivar = (photometry['flam_ivar'].value / FLUXNORM**2) * phot.bands_to_fit
     assert(np.all(objflamivar >= 0.))
     
     if np.any(phot.bands_to_fit):
         # Require at least one photometric optical band; do not just fit the IR
         # because we will not be able to compute the aperture correction, below.
-        lambda_eff = photometry['lambda_eff']
+        lambda_eff = photometry['lambda_eff'].value
         opt = ((lambda_eff > 3e3) & (lambda_eff < 1e4))
         if np.all(objflamivar[opt] == 0.):
             log.warning('All optical bands are masked; masking all photometry.')
@@ -1117,7 +1117,7 @@ def continuum_specfit(data, result, templates,
     # Optionally ignore templates which are older than the age of the
     # universe at the redshift of the object.
     if constrain_age:
-        agekeep = younger_than_universe(templates.info['age'], data['tuniv'])
+        agekeep = younger_than_universe(templates.info['age'].value, data['tuniv'])
     else:
         agekeep = np.arange(templates.ntemplates)
     nage = len(agekeep)
@@ -1501,7 +1501,7 @@ def continuum_specfit(data, result, templates,
                      f'Model Dn(4000)={dn4000_model:.3f}')
         else:
             log.info(f'Spectroscopic DN(4000)={dn4000:.3f}, Model Dn(4000)={dn4000_model:.3f}')
-
+        
         if np.all(coeff == 0.) or no_smooth_continuum:
             _smoothcontinuum = np.zeros_like(specwave)
         else:
@@ -1523,9 +1523,10 @@ def continuum_specfit(data, result, templates,
 
         # Unpack the continuum into individual cameras.
         continuummodel, smoothcontinuum = [], []
-        for camerapix in data['camerapix']:
-            continuummodel.append(desimodel_nolines[camerapix[0]:camerapix[1]])
-            smoothcontinuum.append(_smoothcontinuum[camerapix[0]:camerapix[1]])
+        for campix in data['camerapix']:
+            s, e = campix 
+            continuummodel.append(desimodel_nolines[s:e])
+            smoothcontinuum.append(_smoothcontinuum[s:e])
 
         for icam, cam in enumerate(data['cameras']):
             nonzero = (continuummodel[icam] != 0)
@@ -1555,11 +1556,12 @@ def continuum_specfit(data, result, templates,
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if not np.all(coeff == 0):
         kcorr, absmag, ivarabsmag, synth_bestmaggies = phot.kcorr_and_absmag(
-            data['phot']['nanomaggies'].value, data['phot']['nanomaggies_ivar'].value,
+            photometry['nanomaggies'].value, photometry['nanomaggies_ivar'].value,
             redshift, data['dmodulus'], data['photsys'],
-            CTools.ztemplatewave, sedmodel)
+            CTools.ztemplatewave, sedmodel
+        )
         lums, cfluxes = CTools.continuum_fluxes(sedmodel)
-
+        
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
             band = band.upper()
             shift = int(10*shift)
@@ -1587,7 +1589,7 @@ def continuum_specfit(data, result, templates,
             AV = coeff.dot(tinfo['av']) / coefftot # luminosity-weighted [mag]
         else:
             AV = ebv * Templates.klambda(5500.) # [mag]
-
+        
         result['AV'] = AV # * u.mag
         result['AGE'] = age # * u.Gyr
         result['ZZSUN'] = zzsun
@@ -1597,7 +1599,7 @@ def continuum_specfit(data, result, templates,
         rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600))
         log.info(f'log(M/Msun)={logmstar:.2f}, M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag, ' + \
                  f'A(V)={AV:.3f}, Age={age:.3f} Gyr, SFR={sfr:.3f} Msun/yr, Z/Zsun={zzsun:.3f}')
-
+    
     log.info(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
 
     if fastphot:
