@@ -797,7 +797,7 @@ class DESISpectra(object):
                 out = starmap(DESISpectra.unpack_one_spectrum, unpackargs)
             
             out = list(zip(*out))
-            self.meta[ispecfile] = Table(np.hstack(out[1]))
+            self.meta[ispecfile] = Table(names=meta.columns, rows=out[1])
             alldata.append(out[0])
             del out
             
