@@ -103,26 +103,27 @@ class Photometry(object):
             self.bands_to_fit *= [False]
 
 
-    def kcorr_and_absmag(self, nanomaggies, ivar_nanomaggies, redshift, dmod, photsys, zmodelwave, zmodelflux, snrmin=2.0):
+    def kcorr_and_absmag(self, nanomaggies, ivar_nanomaggies, redshift, dmod,
+                         photsys, zmodelwave, zmodelflux, snrmin=2.0):
         """Compute K-corrections and absolute magnitudes for a single object.
         
         Parameters
         ----------
-        redshift : :class:`float`
-           Galaxy or QSO redshift.
-        zmodelwave : `numpy.ndarray`
-           Observed-frame (redshifted) model wavelength array.
-        zmodelflux : `numpy.ndarray`
-           Observed-frame (redshifted) model spectrum.
         nanomaggies : `numpy.ndarray`
            Input photometric fluxes in the `filters_in` bandpasses.
         ivar_nanomaggies : `numpy.ndarray`
            Inverse variance photometry corresponding to `nanomaggies`.       
+        redshift : :class:`float`
+           Galaxy or QSO redshift.
+        dmod : :class:`float`
+           Distance modulus corresponding to `redshift`.
+        zmodelwave : `numpy.ndarray`
+           Observed-frame (redshifted) model wavelength array.
+        zmodelflux : `numpy.ndarray`
+           Observed-frame (redshifted) model spectrum.
         snrmin : :class:`float`, defaults to 2.
            Minimum signal-to-noise ratio in the input photometry (`maggies`) in
            order for that bandpass to be used to compute a K-correction.
-        dmod : :class:`float`
-           Distance modulus corresponding to `redshift`.
     
         Returns
         -------
@@ -168,32 +169,31 @@ class Photometry(object):
         ivarmaggies = (ivar_nanomaggies / 1e-9**2) * self.bands_to_fit        
         
         filters_in = self.filters[photsys]
-
         lambda_in = filters_in.effective_wavelengths.value
-
+        
         # input bandpasses, observed frame; maggies and synth_maggies_in should be
         # very close.
-        synth_maggies_in = self.get_ab_maggies(filters_in,
-                                               zmodelflux / FLUXNORM,
-                                               zmodelwave)
+        synth_maggies_in = self.get_ab_maggies_fast(filters_in,
+                                                    zmodelflux / FLUXNORM,
+                                                    zmodelwave)
         filters_out = \
             filters.FilterSequence( [ f.create_shifted(band_shift=bs) for f, bs in zip(self.absmag_filters, self.band_shift) ])
         lambda_out = filters_out.effective_wavelengths.value
         modelwave = zmodelwave / (1. + redshift)
         
         # Multiply by (1+z) to convert the best-fitting model to the "rest frame".
-        synth_outmaggies_rest = self.get_ab_maggies(filters_out,
-                                                    zmodelflux * (1. + redshift) / FLUXNORM,
-                                                    modelwave)
+        synth_outmaggies_rest = self.get_ab_maggies_fast(filters_out,
+                                                         zmodelflux * (1. + redshift) / FLUXNORM,
+                                                         modelwave)
         
         synth_absmag = -2.5 * np.log10(synth_outmaggies_rest) - dmod
-
+        
         # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
         oband = np.empty(nabs, dtype=np.int32)
         for jj in range(nabs):
             lambdadist = np.abs(lambda_in / (1. + redshift) - lambda_out[jj])
             oband[jj] = np.argmin(lambdadist + (maggies * np.sqrt(ivarmaggies) < snrmin) * 1e10)
-
+        
         kcorr = + 2.5 * np.log10(synth_outmaggies_rest / synth_maggies_in[oband])
         
         # m_R = M_Q + DM(z) + K_QR(z) or
@@ -208,44 +208,85 @@ class Photometry(object):
         I = (maggies[oband] * np.sqrt(ivarmaggies[oband]) <= snrmin)
         absmag[I] = synth_absmag[I]
         ivarabsmag[I] = 0.
-    
+        
         return kcorr, absmag, ivarabsmag, synth_maggies_in
 
-
+    
     @staticmethod
-    def get_ab_maggies_fast(filters, flux, wave):
-        """Like `self.get_ab_maggies()`, but by-passing the units and error-checking
-        used by `speclite`. Specifically, we assume that the filter response
-        function always lies within the wavelength range of the input spectrum.
-
-        flux and wave are assumed to be in erg/s/cm2/A and A, respectively. 
-
+    def get_ab_maggies_fast_pre(filters, wave):
         """
+        Compute preprocessing data for get_ab_maggies_fast() for given filter list
+        and target wavelength.
+        
+        """
+        
         # AB reference spctrum in erg/s/cm2/Hz times the speed of light in A/s
         # and converted to erg/s/cm2/A.
         abflam = 3.631e-20 * C_LIGHT * 1e13 / wave**2
 
-        maggies = np.zeros(len(filters))
+        pre = []
         for ifilt, filt in enumerate(filters):
-            lo = np.searchsorted(wave, filt.wavelength[0]-2., 'right')
-            hi = np.searchsorted(wave, filt.wavelength[-1]+2., 'left')
-            resp = np.interp(wave[lo:hi], filt.wavelength, filt.response, left=0., right=0.)
-            numer = np.trapz(resp * flux[lo:hi] * wave[lo:hi], x=wave[lo:hi])
-            denom = np.trapz(resp * abflam[lo:hi] * wave[lo:hi], x=wave[lo:hi])
-            maggies[ifilt] = numer / denom
+            
+            assert wave[0] < filt.wavelength[0] and filt.wavelength[-1] < wave[-1]
+            
+            # NB: if we assume that no padding is needed, wave extends
+            # strictly past filt_wavelength, so this is safe
+            lo = np.searchsorted(wave, filt.wavelength[ 0], 'right')
+            hi = np.searchsorted(wave, filt.wavelength[-1], 'left') + 1
+            resp = np.interp(wave[lo:hi], filt.wavelength, filt.response, left=0., right=0.) * wave[lo:hi]
+            idenom = 1. / np.trapz(resp * abflam[lo:hi], x=wave[lo:hi])
+
+            pre.append((lo, hi, resp, idenom))
+
+        return tuple(pre)
+
+    
+    @staticmethod
+    def get_ab_maggies_fast(filters, flux, wave, pre=None):
+        """Like `get_ab_maggies()`, but by-passing the units and, more
+        importantly, the padding and interpolation of wave/flux that
+        speclite does.  We assume that the response function for each
+        filter lies strictly within the bounds of wave, and that the
+        response functions don't change so fast that we would need to
+        interpolate wave to get an accurate integral.
+
+        When wave comes from a stellar template, it has a very large
+        wavelength range, so these assumptions are reasonable.  When
+        wave comes from an actual camera, however, the filter
+        responses are known to exceed the cameras' range of observed
+        wavelengths.
+        
+        flux and wave are assumed to be in erg/s/cm2/A and A, respectively.
+
+        """
+
+        if pre == None:
+            pre = Photometry.get_ab_maggies_fast_pre(filters, wave)
+        
+        maggies = np.empty(len(pre))
+        
+        for ifilt, filtpre in enumerate(pre):
+            lo, hi, resp, idenom = filtpre
+            numer = np.trapz(resp * flux[lo:hi], x=wave[lo:hi])
+            maggies[ifilt] = numer * idenom
 
         return maggies
-
-
+    
+    
     @staticmethod
     def get_ab_maggies(filters, flux, wave):
+        """
+        The original get_ab_maggies() is robust to wavelength vectors that do not entirely cover one the
+        response range of one or more filters, and also will interpolate if the wavelength array is considered
+        too coarse to accurately evaluate the response integral.  It is, however, much slower than the _fast
+        version.
         
+        """
         try:
             maggies0 = filters.get_ab_maggies(flux, wave)
         except:
             # pad in case of an object at very high redshift (z > 5.5)
-            if log is not None:
-                log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.') 
+            log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.') 
             padflux, padwave = filters.pad_spectrum(flux, wave, axis=0, method='edge')
             maggies0 = filters.get_ab_maggies(padflux, padwave)
         
@@ -272,12 +313,10 @@ class Photometry(object):
             ngal = 1
         else:
             ngal = shp[1]
-        
-        if nanomaggies:
-            nanofactor = 1e-9 # [nanomaggies-->maggies]
-        else:
-            nanofactor = 1.0
 
+        # convert nanomaggies-->maggies if needed
+        nanofactor = 1e-9 if nanomaggies else 1.0
+        
         factor = nanofactor * 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
         if ngal > 1:
             factor = factor[:, None] # broadcast for the models
@@ -506,7 +545,7 @@ class Photometry(object):
             log.warning('DN(4000) is ill-defined or could not be computed.')
             return dn4000, dn4000_ivar
         
-        dn4000 =  (blufactor / redfactor) * numer / denom
+        dn4000 = (blufactor / redfactor) * numer / denom
         if flam_ivar is not None:
             dn4000_ivar = (1.0 / (dn4000**2)) / (denom_var / (denom**2) + numer_var / (numer**2))
     
