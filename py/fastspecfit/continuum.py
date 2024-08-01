@@ -30,7 +30,7 @@ class ContinuumTools(object):
         self.massnorm = 1e10       # stellar mass normalization factor [Msun]
         
         self.pixpos_wavesplit = templates.pixpos_wavesplit
-        self.dust_klambda     = templates.dust_klambda
+        self.atten            = 10.**(-0.4 * templates.dust_klambda)
         
         # Cache the redshift-dependent factors (incl. IGM attenuation),
         redshift = data['zredrock']
@@ -686,7 +686,7 @@ class ContinuumTools(object):
                 plt.close()
 
         return chi2min, xbest, xivar, bestcoeff
-
+    
     
     def build_stellar_continuum(self, templateflux, templatecoeff,
                                 dustflux=None, ebv=0., vdisp=None,
@@ -773,10 +773,9 @@ class ContinuumTools(object):
             if dustflux is not None:
                 templatewave = self.templates.wave
                 lbol0 = np.trapz(fullmodel, x=templatewave)
-
-            atten = 10.**(-0.4 * ebv * self.dust_klambda)
-            fullmodel *= atten
-
+            
+            fullmodel *= self.atten ** ebv
+            
             if dustflux is not None:
                 lbolabs = np.trapz(fullmodel, x=templatewave)
                 fullmodel += dustflux * (lbol0 - lbolabs)
@@ -1434,7 +1433,6 @@ def continuum_specfit(data, result, templates,
             # Now do the full spectrophotometric fit.
             t0 = time.time()
             
-            # rebuild the best-fitting model with and without line-emission
             if not compute_vdisp:
                 # Use the cached templates with nominal velocity dispersion
                 input_templateflux         = templates.flux_nomvdisp[:, agekeep]
@@ -1480,7 +1478,8 @@ def continuum_specfit(data, result, templates,
                     ndof_spec=np.sum(specivar > 0.),
                     ndof_phot=np.sum(objflamivar > 0.)
                 )
-                
+
+                # get the best-fitting model with and without line-emission
                 sedmodel = CTools.optimizer_saved_fullmodel
                 
                 sedmodel_nolines, desimodel_nolines, _ = CTools.build_stellar_continuum(
