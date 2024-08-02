@@ -85,8 +85,14 @@ class Photometry(object):
             for key in fphoto['fiber_filters']:
                 self.fiber_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
                                                                   for filtname in fphoto['fiber_filters'][key]])
-        # Simple list of filters.
+
+        # absmag filters
         self.absmag_filters = filters.FilterSequence([filters.load_filter(filtname) for filtname in fphoto['absmag_filters']])
+
+        # shifted absmag filters for use in kcorr_and_absmag
+        self.filters_out = \
+            filters.FilterSequence( [ f.create_shifted(band_shift=bs) for f, bs in zip(self.absmag_filters, self.band_shift) ])
+
 
         if len(self.absmag_bands) != len(self.band_shift):
             errmsg = 'absmag_bands and band_shift must have the same number of elements.'
@@ -176,13 +182,11 @@ class Photometry(object):
         synth_maggies_in = self.get_ab_maggies_unchecked(filters_in,
                                                          zmodelflux / FLUXNORM,
                                                          zmodelwave)
-        filters_out = \
-            filters.FilterSequence( [ f.create_shifted(band_shift=bs) for f, bs in zip(self.absmag_filters, self.band_shift) ])
-        lambda_out = filters_out.effective_wavelengths.value
+        lambda_out = self.filters_out.effective_wavelengths.value
         modelwave = zmodelwave / (1. + redshift)
         
         # Multiply by (1+z) to convert the best-fitting model to the "rest frame".
-        synth_outmaggies_rest = self.get_ab_maggies_unchecked(filters_out,
+        synth_outmaggies_rest = self.get_ab_maggies_unchecked(self.filters_out,
                                                               zmodelflux * (1. + redshift) / FLUXNORM,
                                                               modelwave)
         
@@ -219,6 +223,8 @@ class Photometry(object):
         and target wavelength.
         
         """
+        from fastspecfit.util import trapz
+        
         # AB reference spctrum in erg/s/cm2/Hz times the speed of light in A/s
         # and converted to erg/s/cm2/A.
         abflam = 3.631e-20 * C_LIGHT * 1e13 / wave**2
@@ -234,7 +240,7 @@ class Photometry(object):
             lo = np.searchsorted(wave, filt.wavelength[ 0], 'right')
             hi = np.searchsorted(wave, filt.wavelength[-1], 'left') + 1
             resp = np.interp(wave[lo:hi], filt.wavelength, filt.response, left=0., right=0.) * wave[lo:hi]
-            idenom = 1. / np.trapz(resp * abflam[lo:hi], x=wave[lo:hi])
+            idenom = 1. / trapz(resp * abflam[lo:hi], x=wave[lo:hi])
 
             pre.append((lo, hi, resp, idenom))
 
@@ -259,7 +265,8 @@ class Photometry(object):
         flux and wave are assumed to be in erg/s/cm2/A and A, respectively.
 
         """
-
+        from fastspecfit.util import trapz
+        
         if pre == None:
             pre = Photometry.get_ab_maggies_pre(filters, wave)
         
@@ -267,7 +274,7 @@ class Photometry(object):
         
         for ifilt, filtpre in enumerate(pre):
             lo, hi, resp, idenom = filtpre
-            numer = np.trapz(resp * flux[lo:hi], x=wave[lo:hi])
+            numer = trapz(resp * flux[lo:hi], x=wave[lo:hi])
             maggies[ifilt] = numer * idenom
 
         return maggies

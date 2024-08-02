@@ -357,3 +357,11 @@ def quantile(A, q):
 @numba.jit(nopython=True, nogil=True)
 def median(A):
     return np.median(A)
+
+# Open-coded Numba trapz is much faster than np.traz
+@numba.jit(nopython=True, fastmath=True, nogil=True)
+def trapz(y, x):
+    res = 0.
+    for i in range(len(x) - 1):
+        res += (x[i+1] - x[i]) * (y[i+1] + y[i])
+    return 0.5 * res

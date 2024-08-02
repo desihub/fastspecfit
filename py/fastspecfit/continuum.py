@@ -721,6 +721,7 @@ class ContinuumTools(object):
             Full-wavelength, native-resolution, observed-frame model spectrum.
         
         """
+        from fastspecfit.util import trapz
         
         # [1] - Compute the weighted sum of the templates.
         contmodel = templateflux.dot(templatecoeff)
@@ -743,12 +744,12 @@ class ContinuumTools(object):
         if ebv > 0.: # if ebv == 0, this code is a no-op
             if dustflux is not None:
                 templatewave = self.templates.wave
-                lbol0 = np.trapz(contmodel, x=templatewave)
-            
+                lbol0 = trapz(contmodel, x=templatewave)
+                                
             contmodel *= self.atten ** ebv
             
             if dustflux is not None:
-                lbolabs = np.trapz(contmodel, x=templatewave)
+                lbolabs = trapz(contmodel, x=templatewave)
                 contmodel += dustflux * (lbol0 - lbolabs)
 
         # [5] - Redshift factors.
@@ -787,7 +788,7 @@ class ContinuumTools(object):
                                        pre=self.spec_pre[icam])
             s, e = pix
             modelflux[s:e] = specres[icam].dot(resampflux)
-
+            
         return modelflux
 
     

@@ -136,11 +136,13 @@ class Templates(object):
                 
         else:
             if 'DUSTFLUX' in T and 'AGNFLUX' in T:
+                from fastspecfit.util import trapz
+        
                 dustflux = T['DUSTFLUX'].read()
                 dustflux = dustflux.astype(np.float64)
                 
                 # make sure fluxes are normalized to unity
-                dustflux /= np.trapz(dustflux, x=templatewave) # should already be 1.0
+                dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
                 self.dustflux = dustflux[keeplo:keephi]
                 
                 #dusthdr = T['DUSTFLUX'].read_header()
@@ -150,7 +152,7 @@ class Templates(object):
 
                 #agnflux = T['AGNFLUX'].read()
                 #agnflux = agnflux.astype(np.float64)
-                #agnflux  /= np.trapz(agnflux, x=templatewave) # should already be 1.0
+                #agnflux  /= trapz(agnflux, x=templatewave) # should already be 1.0
                 #self.agnflux  = agnflux[keeplo:keephi]
                 
                 #agnhdr = T['AGNFLUX'].read_header()
@@ -168,55 +170,7 @@ class Templates(object):
         template_file = os.path.join(template_dir, template_version, f'ftemplates-{imf}-{template_version}.fits')
         return template_file
 
-    
-    @staticmethod
-    def convolve_vdisp_old(templateflux, vdisp, pixsize_kms=None, limit=None):
-        """Convolve an input spectrum to a desired velocity dispersion in km/s.
         
-        Parameters
-        ----------
-        templateflux : :class:`numpy.ndarray` [npix, nmodel]
-            One- or two-dimensional input model spectra.
-        vdisp : :class:`float`
-            Desired velocity dispersion.
-        pixsize_kms : :class:`float`
-            Pixel size of `templateflux` in km/s.
-        limit : :class:`int`
-            Only smooth up to the pixel position (in `templateflux`) specified by
-            this parameter.
-
-        Returns
-        -------
-        :class:`numpy.ndarray` [npix, nmodel]
-            Gaussian-smoothed model spectra
-        """
-        
-        from scipy.ndimage import gaussian_filter1d
-
-        if pixsize_kms is None:
-            pixsize_kms = Templates.PIXKMS_BLUE
-            
-        # Convolve by the velocity dispersion.
-        if vdisp <= 0.:
-            output = templateflux.copy()
-        else:
-            output = np.empty_like(templateflux)
-            sigma = vdisp / pixsize_kms # [pixels]
-            
-            if limit is None:
-                limit = templateflux.shape[0]
-            
-            if templateflux.ndim == 1:
-                gaussian_filter1d(templateflux[:limit], sigma=sigma, output=output[:limit])
-                output[limit:] = templateflux[limit:]
-            else:
-                gaussian_filter1d(templateflux[:limit, :], sigma=sigma, axis=0,
-                                  output=output[:limit:, :])
-                output[limit:, :] = templateflux[limit:, :]
-
-        return output
-
-    
     @staticmethod
     def convolve_vdisp(templateflux, vdisp, pixsize_kms=None, limit=None):
 
