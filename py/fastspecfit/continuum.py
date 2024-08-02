@@ -51,7 +51,7 @@ class ContinuumTools(object):
         self.phot_pre = (
             filters,
             filters.effective_wavelengths.value,
-            Photometry.get_ab_maggies_fast_pre(filters, self.ztemplatewave)
+            Photometry.get_ab_maggies_pre(filters, self.ztemplatewave)
         )
         
         if not fastphot:
@@ -827,10 +827,10 @@ class ContinuumTools(object):
             effwave = filters.effective_wavelengths.value
             maggies_pre = None
                     
-        modelmaggies = Photometry.get_ab_maggies_fast(filters,
-                                                      contmodel,
-                                                      self.ztemplatewave,
-                                                      maggies_pre)
+        modelmaggies = Photometry.get_ab_maggies_unchecked(filters,
+                                                           contmodel,
+                                                           self.ztemplatewave,
+                                                           maggies_pre)
         
         if not phottable:
             modelphot = Photometry.get_photflam(modelmaggies, effwave, nanomaggies=False)
