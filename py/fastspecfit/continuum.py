@@ -67,8 +67,7 @@ def convolve_vdisp(templateflux, vdisp, pixsize_kms=PIXKMS_BLU, limit=None):
     return output
 
 
-def _smooth_continuum(wave, flux, ivar, linemask, camerapix=None, 
-                      png=None, log=None):
+def _smooth_continuum(wave, flux, ivar, linemask, redshift=0., png=None, log=None):
     """Build a smooth, nonparametric continuum spectrum.
 
     Parameters
@@ -106,8 +105,53 @@ def _smooth_continuum(wave, flux, ivar, linemask, camerapix=None,
         log.critical(errmsg)
         raise ValueError(errmsg)
 
+    mask = linemask
+    mask[wave < (1215. * (1. + redshift))] = True
+
     srt = np.argsort(wave)
-    spl = splrep(wave[srt], flux[srt], w=np.sqrt(ivar[srt]), k=3)
+
+    #import numpy.ma as ma
+    #mawave = ma.masked_array(wave)
+    #mawave[mask] = ma.masked
+    #clumps = ma.clump_unmasked(mawave)
+    #edges = ma.notmasked_edges(mawave)
+
+    good = np.logical_not(linemask[srt])
+    ww = np.sqrt(good * ivar[srt])
+
+    from scipy.interpolate import UnivariateSpline
+    spl = UnivariateSpline(wave[srt], flux[srt], w=ww, k=3, ext=1)
+
+    knots = spl.get_knots()
+    smooth = spl(wave[srt])
+
+    #linemask[wave < (1215. * (1. + 2.6916212))] = True
+    import matplotlib.pyplot as plt
+    plt.clf()
+    plt.plot(wave, flux, alpha=0.75)
+    plt.plot(wave, smooth, color='blue')
+    plt.scatter(knots, np.interp(knots, wave[srt], flux[srt]), marker='s', s=75, color='red')
+    plt.savefig('junk.png')
+
+    plt.scatter(wave[mask], flux[mask], color='k', marker='s', zorder=2)
+
+    #plt.xlim(4000, 5000) ; 
+    
+    pdb.set_trace()
+
+
+    mm = np.sum(good)
+    ss = mm - np.sqrt(2 * mm)
+
+    pdb.set_trace()
+
+    spl = splrep(wave[srt], flux[srt], w=w, k=3, s=ss)
+
+    if np.any(np.isnan(spl[1])):
+        errmsg = 'Spline-fitting has failed!'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
+
     smooth = splev(wave, spl)
 
     ## Treat each camera independently. Assume wavelengths are sorted!
@@ -1249,6 +1293,10 @@ class ContinuumTools(Tools):
                     match line:
                         case 'lyalpha':
                             return r'S/N(Ly$\alpha$)='
+                        case 'nv_1240':
+                            return r'S/N(NV$\lambda1240$)='
+                        case 'oi_1304':
+                            return r'S/N(OI$\lambda1304$)='
                         case 'civ_1549': 
                             return r'S/N(CIV$\lambda1549$)='
                         case 'ciii_1908': 
@@ -1285,6 +1333,9 @@ class ContinuumTools(Tools):
                             return r'S/N([SII]$\lambda6716$)='
                         case 'sii_6731':
                             return r'S/N([SII]$\lambda6731$)='
+                        case _:
+                            self.log.warning('New "niceline" needed.')
+                            return 'Line'
 
 
                 fig, ax = plt.subplots(nrows, ncols, figsize=(5.5*ncols, 5.5*nrows))
@@ -2903,8 +2954,8 @@ def continuum_specfit(data, result, templatecache, fphoto=None, emlinesfile=None
 
             linemask = np.hstack(data['linemask'])
             _smoothcontinuum = CTools.smooth_continuum(
-                specwave, residuals, specivar / apercorr**2, linemask, 
-                camerapix=data['camerapix'], png=png, log=log)
+                specwave, residuals, flamivar / apercorr**2, linemask=linemask, 
+                redshift=redshift, png=png, log=log)
 
         # Unpack the continuum into individual cameras.
         continuummodel, smoothcontinuum = [], []

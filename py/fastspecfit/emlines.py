@@ -54,8 +54,7 @@ class EMFitTools(Tools):
 
         self.line_table = read_emlines(emlinesfile=emlinesfile)
 
-        # restrict to just strong lines and assign to patches; should probably
-        # push this to the emlines.ecsv file
+        # restrict to just strong lines and assign to patches
         if stronglines:
             isstrong = self.line_table['isstrong'].value
             self.line_table = self.line_table[isstrong]
