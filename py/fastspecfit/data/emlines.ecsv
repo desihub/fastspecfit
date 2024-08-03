@@ -23,7 +23,8 @@
 #       vanden Berk et al. 2001, Table 2 - https://iopscience.iop.org/article/10.1086/321167/pdf'}
 # schema: astropy-2.0
 name restwave patch isbalmer ishelium isbroad isstrong nicename plotgroup
-        lyalpha   1215.67      a   False  False True   True  Ly$\alpha$                                                   lya
+        lyalpha   1215.67      a   False  False True   True  Ly$\alpha$+NV-$\lambda$1240                                  lya_nv
+        nv_1240   1240.14      a   False  False True   True  Ly$\alpha$+NV-$\lambda$1240                                  lya_nv
         oi_1304   1304.35      b   False  False True   False OI-$\lambda$1304                                             oi_1304
      siliv_1396   1396.76      c   False  False True   False SiIV-$\lambda$1396                                           siliv_1396
        civ_1549   1549.06      d   False  False True   True  CIV-$\lambda$1549+HeII-$\lambda$1640                         civ_1549_heii_1640
