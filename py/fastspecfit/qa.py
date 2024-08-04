@@ -356,7 +356,6 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             sedmodel = CTools.build_stellar_continuum(                       
                 templates.flux_nomvdisp,
                 fastspec['COEFF'] * CTools.massnorm,
-                dustflux=templates.dustflux, 
                 ebv=fastspec['AV'] / Templates.klambda(5500.), 
                 vdisp=None
             )
@@ -402,7 +401,6 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         else:
             contmodel = CTools.build_stellar_continuum(                       
                 templates.flux_nolines, fastspec['COEFF'],
-                dustflux=templates.dustflux, 
                 vdisp=fastspec['VDISP'], 
                 ebv=fastspec['AV'] / Templates.klambda(5500.)
             )

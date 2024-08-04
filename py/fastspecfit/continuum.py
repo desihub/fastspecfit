@@ -30,7 +30,7 @@ class ContinuumTools(object):
         self.massnorm = 1e10       # stellar mass normalization factor [Msun]
         
         self.pixpos_wavesplit = templates.pixpos_wavesplit
-        self.atten            = 10.**(-0.4 * templates.dust_klambda)
+        self.lg_atten         = np.log(10.) * (-0.4 * templates.dust_klambda)
         
         # Cache the redshift-dependent factors (incl. IGM attenuation),
         redshift = data['zredrock']
@@ -690,10 +690,58 @@ class ContinuumTools(object):
                 plt.close()
 
         return chi2min, xbest, xivar, bestcoeff
+
+
+    # compute attenuated version of a model spectrum,
+    # including contribution of dust emission
+    @staticmethod
+    @numba.jit(nopython=True, fastmath=True, nogil=True)
+    def attenuate(M, A, zfactors, wave, dustflux):
+
+        # Concurrently replace M by M * (atten ** ebv) and
+        # compute (by trapezoidal integration) integral of
+        # difference of bolometric luminosities before and after
+        # attenuation at each wavelength.
+        #
+        # The integration is equivalent to
+        # lbol0   = trapz(M, x=wave)
+        # lbolabs = trapz(M*(atten**ebv), x=wave)
+        # lbol_diff = lbol0 - lbolabs
+
+        ma = M[0] * A[0]
+        prev_d = M[0] - ma
+        M[0] = ma
+
+        lbol_diff = 0.
+        for i in range(len(M) - 1):
+            ma = M[i+1] * A[i+1]
+            d = M[i+1] - ma
+            M[i+1] = ma
+            
+            lbol_diff += (wave[i+1] - wave[i]) * (d + prev_d)
+
+            prev_d  = d
+        lbol_diff *= 0.5
+
+        # final result is
+        # (M * (atten ** ebv) + lbol_diff * dustflux) * zfactors
+        for i in range(len(M)):
+            M[i] = (M[i] + lbol_diff * dustflux[i]) * zfactors[i]
     
+            
+    # compute attenuated version of a model spectrum M,
+    # without dust emission
+    @staticmethod
+    @numba.jit(nopython=True, fastmath=True, nogil=True)
+    def attenuate_nodust(M, A, zfactors):
+        # final result is
+        # M * (atten ** ebv) * zfactors
+        for i in range(len(M)):
+            M[i] *= A[i] * zfactors[i]
+
     
     def build_stellar_continuum(self, templateflux, templatecoeff,
-                                dustflux=None, ebv=0., vdisp=None):
+                                ebv=0., vdisp=None, dust_emission=True):
 
         """Build a stellar continuum model.
 
@@ -705,15 +753,16 @@ class ContinuumTools(object):
         templatecoeff : :class:`numpy.ndarray` [ntemplates]
             Column vector of positive coefficients corresponding to each
             template.
-        dustflux : :class:`numpy.ndarray` [npix]
-            Infrared dust emission spectrum. If provided, energy-balance is used
-            to compute the normalization of this spectrum.
         ebv : :class:`float`
             Dust extinction parameter, E(B-V), in mag.
         vdisp : :class:`float`
             Velocity dispersion in km/s. If `None`, do not convolve to the
             specified velocity dispersion (usually because `templateflux` has
             already been smoothed to some nominal value).
+        dust_emission : :class:`bool`
+            Model impact of infrared dust emission spectrum. Energy-balance is used
+            to compute the normalization of this spectrum.
+
         
         Returns
         -------
@@ -721,8 +770,6 @@ class ContinuumTools(object):
             Full-wavelength, native-resolution, observed-frame model spectrum.
         
         """
-        from fastspecfit.util import trapz
-        
         # [1] - Compute the weighted sum of the templates.
         contmodel = templateflux.dot(templatecoeff)
         
@@ -740,23 +787,26 @@ class ContinuumTools(object):
         # (absorbed + re-emitted) energy. NB: (1) dustflux must be normalized to
         # unity already (see templates.py); and (2) we are ignoring dust
         # self-absorption, which should be mostly negligible.
-        
-        if ebv > 0.: # if ebv == 0, this code is a no-op
-            if dustflux is not None:
-                templatewave = self.templates.wave
-                lbol0 = trapz(contmodel, x=templatewave)
-                                
-            contmodel *= self.atten ** ebv
-            
-            if dustflux is not None:
-                lbolabs = trapz(contmodel, x=templatewave)
-                contmodel += dustflux * (lbol0 - lbolabs)
 
         # [5] - Redshift factors.
-        contmodel *= self.zfactors
 
+        # do this part in Numpy because it is very slow
+        # in Numba unless accelerated transcendentals are
+        # available via, e.g., Intel SVML.
+        A = self.lg_atten * ebv
+        np.exp(A, out=A)
+        
+        if dust_emission:
+            self.attenuate(contmodel, A,
+                           self.zfactors,
+                           self.templates.wave,
+                           self.templates.dustflux)
+        else:
+            self.attenuate_nodust(contmodel, A, 
+                                  self.zfactors)
+        
         return contmodel
-
+    
     
     def continuum_to_spectroscopy(self, contmodel):
         """
@@ -843,7 +893,7 @@ class ContinuumTools(object):
 
 
     def _stellar_objective(self, params, templateflux,
-                           dustflux, fit_vdisp,
+                           dust_emission, fit_vdisp, 
                            objflam, objflamistd, 
                            specflux, specistd, 
                            synthphot, synthspec):
@@ -864,7 +914,7 @@ class ContinuumTools(object):
         # allocating new
         fullmodel = self.build_stellar_continuum(
             templateflux, templatecoeff, 
-            dustflux=dustflux, ebv=ebv, vdisp=vdisp)
+            ebv=ebv, vdisp=vdisp, dust_emission=dust_emission)
 
         # save the full model each time we compute the objective;
         # after optimization, the final full model will be
@@ -899,11 +949,11 @@ class ContinuumTools(object):
         return resid
     
     
-    def fit_stellar_continuum(self, templateflux, 
-                              dustflux, fit_vdisp,
+    def fit_stellar_continuum(self, templateflux, fit_vdisp,
                               vdisp_guess=125., ebv_guess=0.05,
                               coeff_guess=None,
                               vdisp_bounds=(75., 500.), ebv_bounds=(0., 3.),
+                              dust_emission=True,
                               objflam=None, objflamistd=None,
                               specflux=None, specistd=None,
                               synthphot=False, synthspec=False):
@@ -913,8 +963,6 @@ class ContinuumTools(object):
         ----------
         templateflux : :class:`numpy.ndarray` [npix, ntemplate]
             Grid of input (model) spectra.
-        dustflux : :class:`numpy.ndarray` [npix]
-            Input (model) infrared dust spectrum.
         fit_vdisp : :class:`bool`
             If true, solve for the velocity dispersion;
             if false, use a nominal dispersion.
@@ -930,6 +978,9 @@ class ContinuumTools(object):
         ebv_bounds : :class:`tuple`
             Two-element list of minimum and maximum allowable values of the
             reddening, E(B-V).
+        dust_emission : :class:`bool`
+            Model impact of infrared dust emission spectrum. Energy-balance is used
+            to compute the normalization of this spectrum.
         objflam: :class: `numpy.ndarray`
             Measured object photometry (used if fitting photometry)
         objflamistd: :class: `numpy.ndarray`
@@ -974,7 +1025,7 @@ class ContinuumTools(object):
         # Unpack the input data to infer the fitting "mode" and the objective
         # function.
         farg = [templateflux,
-                dustflux, fit_vdisp,
+                dust_emission, fit_vdisp,
                 objflam, objflamistd,
                 specflux, specistd,
                 synthphot, synthspec]
@@ -1169,7 +1220,7 @@ def continuum_specfit(data, result, templates,
             else:
                 ebv, _, coeff, resid = CTools.fit_stellar_continuum(
                     templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
-                    dustflux=templates.dustflux, fit_vdisp=False,
+                    fit_vdisp=False,
                     vdisp_guess=vdisp_nominal, ebv_guess=ebv_guess,
                     objflam=objflam, objflamistd=objflamistd,
                     synthphot=True, synthspec=False
@@ -1201,9 +1252,10 @@ def continuum_specfit(data, result, templates,
                     sedmodel_nolines = sedtemplates_nolines.dot(coeff)
                 else:
                     sedmodel_nolines = CTools.build_stellar_continuum(                       
-                        templates.flux_nolines_nomvdisp[:, agekeep],
-                        coeff, dustflux=None,
-                        ebv=ebv, vdisp=None)
+                        templates.flux_nolines_nomvdisp[:, agekeep], coeff,
+                        ebv=ebv, vdisp=None,
+                        dust_emission=False,
+                    )
 
                     log.info(f'Best-fitting E(B-V)={ebv:.3f} mag.')                  
 
@@ -1406,10 +1458,11 @@ def continuum_specfit(data, result, templates,
                 
                 ebv, _, coeff, _ = CTools.fit_stellar_continuum(
                     templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
-                    dustflux=None,  fit_vdisp=False,
+                    dust_emission=False,  fit_vdisp=False,
                     vdisp_guess=None, ebv_guess=ebv_guess,
                     specflux=specflux, specistd=specistd,
-                    synthphot=False, synthspec=True)
+                    synthphot=False, synthspec=True
+                )
 
                 if np.all(coeff == 0.):
                     log.warning('Unable to estimate aperture correction because continuum coefficients are all zero; adopting 1.0.')
@@ -1457,7 +1510,7 @@ def continuum_specfit(data, result, templates,
             
             ebv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
                 input_templateflux, # [npix,nage]
-                dustflux=templates.dustflux, fit_vdisp=compute_vdisp,
+                fit_vdisp=compute_vdisp,
                 ebv_guess=ebv, vdisp_guess=vdisp_nominal,
                 coeff_guess=coeff_guess,
                 objflam=objflam, objflamistd=objflamistd,
@@ -1492,13 +1545,14 @@ def continuum_specfit(data, result, templates,
                     ndof_spec=np.sum(specivar > 0.),
                     ndof_phot=np.sum(objflamivar > 0.)
                 )
-
+                
                 # get the best-fitting model with and without line-emission
                 sedmodel = CTools.optimizer_saved_contmodel
                 
                 sedmodel_nolines = CTools.build_stellar_continuum(
-                    input_templateflux_nolines, coeff, 
-                    dustflux=None, ebv=ebv, vdisp=vdisp)
+                    input_templateflux_nolines, coeff,
+                    ebv=ebv, vdisp=vdisp, dust_emission=False 
+                )
                 desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
                 
                 dn4000_model, _ = Photometry.get_dn4000(templates.wave, 
