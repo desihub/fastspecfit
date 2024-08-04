@@ -38,7 +38,7 @@ def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
                 if not os.path.isfile(pngfile):
                     ntargets += 1
     else:
-        from fastspecfit.io import ZWarningMask
+        from fastspecfit.util import ZWarningMask
         zb = fitsio.read(specfile, 'REDSHIFTS', columns=['Z', 'ZWARN'])
         fm = fitsio.read(specfile, 'FIBERMAP', columns=['TARGETID', 'OBJTYPE'])
         J = ((zb['Z'] > 0.001) * (fm['OBJTYPE'] == 'TGT') * (zb['ZWARN'] & ZWarningMask.NODATA == 0))

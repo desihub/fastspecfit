@@ -7,49 +7,40 @@ fastspecfit.qa
 import pdb # for debugging
 
 import os, time
+
+from itertools import starmap
+
 import numpy as np
 
-from desiutil.log import get_logger
-log = get_logger()
+from fastspecfit.logger import log
+from fastspecfit.templates import Templates
+from fastspecfit.singlecopy import sc_data, initialize_sc_data
 
-def _desiqa_one(args):
-    """Multiprocessing wrapper."""
-    return desiqa_one(*args)
 
-def desiqa_one(data, fastfit, metadata, templates, coadd_type, fphoto,
+def desiqa_one(data, fastfit, metadata, coadd_type,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1, 
                maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1, 
-               fastphot=False, ignore_photometry=False, stackfit=False,
+               fastphot=False, stackfit=False,
                inputz=False, no_smooth_continuum=False, outdir=None,
-               outprefix=None, log=None):
+               outprefix=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
-    from fastspecfit.io import cache_templates    
-    templatecache = cache_templates(templates, log=log, mintemplatewave=450.0,
-                                    maxtemplatewave=40e4, fastphot=fastphot)
-
-    if inputz:
-        from fastspecfit.util import TabulatedDESI
-        cosmo = TabulatedDESI()
-    else:
-        cosmo = None
-
-    qa_fastspec(data, templatecache, fastfit, metadata, coadd_type=coadd_type,
+    qa_fastspec(data, sc_data.templates, fastfit, metadata,
+                coadd_type=coadd_type,
                 spec_wavelims=(minspecwave, maxspecwave), 
                 phot_wavelims=(minphotwave, maxphotwave), 
                 no_smooth_continuum=no_smooth_continuum,
-                ignore_photometry=ignore_photometry,
                 emline_snrmin=emline_snrmin, nsmoothspec=nsmoothspec,
-                fastphot=fastphot, fphoto=fphoto, stackfit=stackfit, 
-                outprefix=outprefix, outdir=outdir, log=log, cosmo=cosmo)
+                fastphot=fastphot, stackfit=stackfit, 
+                outprefix=outprefix, outdir=outdir, inputz=inputz)
 
-def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
+def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
-                fastphot=False, fphoto=None, stackfit=False, outprefix=None,
-                no_smooth_continuum=False, ignore_photometry=False,
-                emline_snrmin=0.0, nsmoothspec=1, outdir=None, log=None,
-                cosmo=None):
+                fastphot=False, stackfit=False, outprefix=None,
+                no_smooth_continuum=False,
+                emline_snrmin=0.0, nsmoothspec=1, outdir=None,
+                inputz=None):
     """QA plot the emission-line spectrum and best-fitting model.
 
     """
@@ -70,15 +61,12 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     import seaborn as sns
     from PIL import Image, ImageDraw
 
-    from fastspecfit.util import ivar2var, C_LIGHT
-    from fastspecfit.io import FLUXNORM, get_qa_filename
+    from fastspecfit.util import ivar2var, C_LIGHT, FLUXNORM
+    from fastspecfit.io import get_qa_filename
+    from fastspecfit.photometry import Photometry
     from fastspecfit.continuum import ContinuumTools
     from fastspecfit.emlines import EMFitTools
     from fastspecfit.emline_fit import EMLine_MultiLines
-
-    if log is None:
-        from desiutil.log import get_logger
-        log = get_logger()
     
     Image.MAX_IMAGE_PIXELS = None
 
@@ -102,35 +90,39 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         else:
             return f'{x:.0f}'
 
-    CTools = ContinuumTools(fphoto=fphoto, ignore_photometry=ignore_photometry, log=log)
-
-    if 'viewer_layer' in fphoto.keys():
-        layer = fphoto['viewer_layer']
-    elif 'legacysurveydr' in fphoto.keys():
-        layer = 'ls-{}'.format(fphoto['legacysurveydr'])
+    phot  = sc_data.photometry
+    igm   = sc_data.igm
+    cosmo = sc_data.cosmology
+    templates = sc_data.templates
+    
+    CTools = ContinuumTools(igm, phot, templates, data, fastphot)
+    
+    if hasattr(phot, 'viewer_layer'):
+        layer = phot.viewer_layer
+    elif hasattr(phot, 'legacysurveydr'):
+        layer = f'ls-{phot.legaysurveydr}'
     else:
         layer = 'ls-dr9'
 
-    if 'viewer_pixscale' in fphoto.keys():
-        pixscale = fphoto['viewer_pixscale']
+    if hasattr(phot, 'viewer_pixscale'):
+        pixscale = phot.viewer_pixscale
     else:
         pixscale = 0.262 # [arcsec/pixel]
 
     if not fastphot:
-        EMFit = EMFitTools()
+        EMFit = EMFitTools(emline_table=sc_data.emlines.table)
         
-    filters = CTools.synth_filters[metadata['PHOTSYS']]
-    allfilters = CTools.filters[metadata['PHOTSYS']]
+    filters = phot.synth_filters[metadata['PHOTSYS']]
+    allfilters = phot.filters[metadata['PHOTSYS']]
     redshift = fastspec['Z']
 
-    # cosmo will be provided if input_redshifts are used
-    if cosmo is not None:
+    if inputz is not None:
         dlum = cosmo.luminosity_distance(redshift)
     else:
         dlum = data['dluminosity']
 
     pngfile = get_qa_filename(metadata, coadd_type, outprefix=outprefix,
-                              outdir=outdir, fastphot=fastphot, log=log)
+                              outdir=outdir, fastphot=fastphot)
 
     # some arrays to use for the legend
     if coadd_type == 'healpix':
@@ -181,15 +173,15 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
     }
 
     # try to figure out which absmags to display - default should be SDSS ^{0.1}grz
-    gindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 4300))
-    rindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 5600))
-    zindx = np.argmin(np.abs(CTools.absmag_filters.effective_wavelengths.value / (1.+CTools.band_shift) - 8100))
-    absmag_gband = CTools.absmag_bands[gindx]
-    absmag_rband = CTools.absmag_bands[rindx]
-    absmag_zband = CTools.absmag_bands[zindx]
-    shift_gband = CTools.band_shift[gindx]
-    shift_rband = CTools.band_shift[rindx]
-    shift_zband = CTools.band_shift[zindx]
+    gindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 4300))
+    rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600))
+    zindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 8100))
+    absmag_gband = phot.absmag_bands[gindx]
+    absmag_rband = phot.absmag_bands[rindx]
+    absmag_zband = phot.absmag_bands[zindx]
+    shift_gband = phot.band_shift[gindx]
+    shift_rband = phot.band_shift[rindx]
+    shift_zband = phot.band_shift[zindx]
 
     leg.update({'absmag_r': '$M_{{{}}}={:.2f}$'.format(
         absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
@@ -354,32 +346,36 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
     # rebuild the best-fitting broadband photometric model
     if not stackfit:
-        if templatecache['oldtemplates']:
+        if templates.use_legacy_fitting:
             sedmodel, sedphot = CTools.templates2data(
-                templatecache['templateflux'], templatecache['templatewave'],
+                templates.flux, templates.wave,
                 redshift=redshift, dluminosity=dlum, photsys=metadata['PHOTSYS'],
                 synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm, 
                 get_abmag=True)
         else:
-            sedmodel, _, sedphot = CTools.build_stellar_continuum(                       
-                templatecache['templatewave'], templatecache['templateflux_nomvdisp'],
-                fastspec['COEFF'] * CTools.massnorm, dustflux=templatecache['dustflux'], 
-                photsys=metadata['PHOTSYS'], redshift=redshift, 
-                ebv=fastspec['AV'] / CTools.klambda(5500.), 
-                vdisp=None, synthphot=True, flamphot=False, get_abmag=True)
+            sedmodel = CTools.build_stellar_continuum(                       
+                templates.flux_nomvdisp,
+                fastspec['COEFF'] * CTools.massnorm,
+                dustflux=templates.dustflux, 
+                ebv=fastspec['AV'] / Templates.klambda(5500.), 
+                vdisp=None
+            )
+            
+            sedphot = CTools.continuum_to_photometry(sedmodel,
+                                                     phottable=True,
+                                                     get_abmag=True)
+        sedwave = templates.wave * (1 + redshift)
 
-        sedwave = templatecache['templatewave'] * (1 + redshift)
-
-        nband = len(CTools.bands)
+        nband = len(phot.bands)
         maggies = np.zeros(nband)
         ivarmaggies = np.zeros(nband)
-        for iband, band in enumerate(CTools.bands):
+        for iband, band in enumerate(phot.bands):
             maggies[iband] = metadata[f'FLUX_{band.upper()}']
             ivarmaggies[iband] = metadata[f'FLUX_IVAR_{band.upper()}']
 
-        phot = CTools.parse_photometry(CTools.bands, maggies=maggies, ivarmaggies=ivarmaggies,
-                                       lambda_eff=allfilters.effective_wavelengths.value,
-                                       min_uncertainty=CTools.min_uncertainty, get_abmag=True)
+        phot_tbl = Photometry.parse_photometry(phot.bands, maggies=maggies, ivarmaggies=ivarmaggies,
+                                               lambda_eff=allfilters.effective_wavelengths.value,
+                                               min_uncertainty=phot.min_uncertainty, get_abmag=True)
     
         indx_phot = np.where((sedmodel > 0) * (sedwave/1e4 > phot_wavelims[0]) * 
                              (sedwave/1e4 < phot_wavelims[1]))[0]
@@ -391,9 +387,9 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         # "per-camera" and prefix "full" has the cameras h-stacked.
         fullwave = np.hstack(data['wave'])
     
-        if templatecache['oldtemplates']:
-            desicontinuum, _ = CTools.templates2data(templatecache['templateflux_nolines'], 
-                                                     templatecache['templatewave'],
+        if templates.use_legacy_fitting:
+            desicontinuum, _ = CTools.templates2data(templates.flux_nolines, 
+                                                     templates.wave,
                                                      redshift=redshift, dluminosity=dlum, synthphot=False,
                                                      specwave=data['wave'], specres=data['res'],
                                                      specmask=data['mask'], cameras=data['cameras'],
@@ -404,14 +400,15 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
             fullcontinuum = np.hstack(desicontinuum)
         else:
-            _, _desicontinuum, _ = CTools.build_stellar_continuum(                       
-                templatecache['templatewave'], templatecache['templateflux_nolines'],
-                fastspec['COEFF'], dustflux=templatecache['dustflux'], 
-                photsys=metadata['PHOTSYS'], specwave=np.hstack(data['wave']), 
-                specres=np.hstack(data['res']), camerapix=data['camerapix'], 
-                redshift=redshift, vdisp=fastspec['VDISP'], 
-                ebv=fastspec['AV'] / CTools.klambda(5500.), synthphot=False)
-
+            contmodel = CTools.build_stellar_continuum(                       
+                templates.flux_nolines, fastspec['COEFF'],
+                dustflux=templates.dustflux, 
+                vdisp=fastspec['VDISP'], 
+                ebv=fastspec['AV'] / Templates.klambda(5500.)
+            )
+            
+            _desicontinuum = CTools.continuum_to_spectroscopy(contmodel)
+            
             # remove the aperture correction
             desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]
             fullcontinuum = np.hstack(desicontinuum)
@@ -419,11 +416,10 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         # Need to be careful we don't pass a large negative residual where
         # there are gaps in the data.
         desiresiduals = []
-        for icam in np.arange(len(data['cameras'])):
+        for icam in range(len(data['cameras'])):
             resid = data['flux'][icam] - desicontinuum[icam]
             I = (data['flux'][icam] == 0.) * (data['ivar'][icam] == 0.)
-            if np.any(I):
-                resid[I] = 0.
+            resid[I] = 0.
             desiresiduals.append(resid)
         
         if np.all(fastspec['COEFF'] == 0.) or no_smooth_continuum:
@@ -441,7 +437,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res_fast'],
                                                  data['camerapix'], snrcut=emline_snrmin)
         desiemlines = []
-        for icam in np.arange(len(data['cameras'])):
+        for icam in range(len(data['cameras'])):
             desiemlines.append(_desiemlines[data['camerapix'][icam][0]:data['camerapix'][icam][1]])
     
     # Grab the viewer cutout.
@@ -580,7 +576,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         spec_ymin, spec_ymax = 1e6, -1e6
     
         desimodelspec = []
-        for icam in np.arange(len(data['cameras'])): # iterate over cameras
+        for icam in range(len(data['cameras'])): # iterate over cameras
             wave = data['wave'][icam]
             flux = data['flux'][icam]
             modelflux = desiemlines[icam] + desicontinuum[icam] + desismoothcontinuum[icam]
@@ -638,18 +634,18 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
 
     # photometric SED
     if not stackfit:    
-        abmag_good = phot['abmag_ivar'] > 0
-        abmag_goodlim = phot['abmag_limit'] > 0
+        abmag_good = phot_tbl['abmag_ivar'] > 0
+        abmag_goodlim = phot_tbl['abmag_limit'] > 0
         
         if len(sedmodel) == 0:
             log.warning('Best-fitting photometric continuum is all zeros or negative!')
             if np.sum(abmag_good) > 0:
-                medmag = np.median(phot['abmag'][abmag_good])
+                medmag = np.median(phot_tbl['abmag'][abmag_good])
             elif np.sum(abmag_goodlim) > 0:
-                medmag = np.median(phot['abmag_limit'][abmag_goodlim])
+                medmag = np.median(phot_tbl['abmag_limit'][abmag_goodlim])
             else:
                 medmag = 0.0
-            sedmodel_abmag = np.zeros_like(templatecache['templatewave']) + medmag
+            sedmodel_abmag = np.zeros_like(templates.wave) + medmag
         else:
             factor = 10**(0.4 * 48.6) * sedwave**2 / (C_LIGHT * 1e13) / FLUXNORM / CTools.massnorm # [erg/s/cm2/A --> maggies]
             sedmodel_abmag = -2.5*np.log10(sedmodel * factor)
@@ -662,7 +658,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
             #factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
             #good = fullmodelspec > 0
             #sedax.plot(fullwave[good]/1e4, -2.5*np.log10(fullmodelspec[good]*factor[good]), color='purple', alpha=0.8)
-            for icam in np.arange(len(data['cameras'])):
+            for icam in range(len(data['cameras'])):
                 factor = 10**(0.4 * 48.6) * data['wave'][icam]**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
                 good = desimodelspec[icam] > 0
                 _wave = data['wave'][icam][good]/1e4
@@ -674,26 +670,26 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         sed_ymin = np.nanmax(sedmodel_abmag) + dm
         sed_ymax = np.nanmin(sedmodel_abmag) - dm
         if np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) > 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(phot['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(phot['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
+            sed_ymin = np.max((np.nanmax(phot_tbl['abmag'][abmag_good]), np.nanmax(phot_tbl['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot_tbl['abmag'][abmag_good]), np.nanmin(phot_tbl['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
         elif np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) == 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(sedmodel_abmag))) - dm
+            sed_ymin = np.max((np.nanmax(phot_tbl['abmag'][abmag_good]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot_tbl['abmag'][abmag_good]), np.nanmin(sedmodel_abmag))) - dm
         elif np.sum(abmag_good) == 0 and np.sum(abmag_goodlim) > 0:
-            sed_ymin = np.max((np.nanmax(phot['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
-            sed_ymax = np.min((np.nanmin(phot['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
+            sed_ymin = np.max((np.nanmax(phot_tbl['abmag_limit'][abmag_goodlim]), np.nanmax(sedmodel_abmag))) + dm
+            sed_ymax = np.min((np.nanmin(phot_tbl['abmag_limit'][abmag_goodlim]), np.nanmin(sedmodel_abmag))) - dm
         else:
-            abmag_good = phot['abmag'] > 0
-            abmag_goodlim = phot['abmag_limit'] > 0
+            abmag_good = phot_tbl['abmag'] > 0
+            abmag_goodlim = phot_tbl['abmag_limit'] > 0
             if np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) > 0:
-                sed_ymin = np.max((np.nanmax(phot['abmag'][abmag_good]), np.nanmax(phot['abmag_limit'][abmag_goodlim]))) + dm
-                sed_ymax = np.min((np.nanmin(phot['abmag'][abmag_good]), np.nanmin(phot['abmag_limit'][abmag_goodlim]))) - dm
+                sed_ymin = np.max((np.nanmax(phot_tbl['abmag'][abmag_good]), np.nanmax(phot_tbl['abmag_limit'][abmag_goodlim]))) + dm
+                sed_ymax = np.min((np.nanmin(phot_tbl['abmag'][abmag_good]), np.nanmin(phot_tbl['abmag_limit'][abmag_goodlim]))) - dm
             elif np.sum(abmag_good) > 0 and np.sum(abmag_goodlim) == 0:                
-                sed_ymin = np.nanmax(phot['abmag'][abmag_good]) + dm
-                sed_ymax = np.nanmin(phot['abmag'][abmag_good]) - dm
+                sed_ymin = np.nanmax(phot_tbl['abmag'][abmag_good]) + dm
+                sed_ymax = np.nanmin(phot_tbl['abmag'][abmag_good]) - dm
             elif np.sum(abmag_good) == 0 and np.sum(abmag_goodlim) > 0:
-                sed_ymin = np.nanmax(phot['abmag_limit'][abmag_goodlim]) + dm
-                sed_ymax = np.nanmin(phot['abmag_limit'][abmag_goodlim]) - dm
+                sed_ymin = np.nanmax(phot_tbl['abmag_limit'][abmag_goodlim]) + dm
+                sed_ymax = np.nanmin(phot_tbl['abmag_limit'][abmag_goodlim]) - dm
             #else:
             #    sed_ymin, sed_ymax = [30, 20]
             
@@ -729,41 +725,41 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
         sedax_twin.set_xticks(restticks)
     
         # integrated flux / photometry
-        abmag = np.squeeze(phot['abmag'])
-        abmag_limit = np.squeeze(phot['abmag_limit'])
-        abmag_fainterr = np.squeeze(phot['abmag_fainterr'])
-        abmag_brighterr = np.squeeze(phot['abmag_brighterr'])
+        abmag = np.squeeze(phot_tbl['abmag'])
+        abmag_limit = np.squeeze(phot_tbl['abmag_limit'])
+        abmag_fainterr = np.squeeze(phot_tbl['abmag_fainterr'])
+        abmag_brighterr = np.squeeze(phot_tbl['abmag_brighterr'])
         yerr = np.squeeze([abmag_brighterr, abmag_fainterr])
     
         markersize = 14
     
-        dofit = np.where(CTools.bands_to_fit)[0]
+        dofit = np.where(phot.bands_to_fit)[0]
         if len(dofit) > 0:
             good = np.where((abmag[dofit] > 0) * (abmag_limit[dofit] == 0))[0]
             upper = np.where(abmag_limit[dofit] > 0)[0]
             if len(good) > 0:
-                sedax.errorbar(phot['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
+                sedax.errorbar(phot_tbl['lambda_eff'][dofit][good]/1e4, abmag[dofit][good],
                                yerr=yerr[:, dofit[good]],
                                fmt='o', markersize=markersize, markeredgewidth=1, markeredgecolor='k',
                                markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4,
                                label=r'$grz\,W_{1}W_{2}W_{3}W_{4}$', zorder=2, alpha=1.0)
             if len(upper) > 0:
-                sedax.errorbar(phot['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
+                sedax.errorbar(phot_tbl['lambda_eff'][dofit][upper]/1e4, abmag_limit[dofit][upper],
                                lolims=True, yerr=0.75,
                                fmt='o', markersize=markersize, markeredgewidth=3, markeredgecolor='k',
                                markerfacecolor=photcol1, elinewidth=3, ecolor=photcol1, capsize=4, alpha=0.7)
     
-        ignorefit = np.where(CTools.bands_to_fit == False)[0]
+        ignorefit = np.where(phot.bands_to_fit == False)[0]
         if len(ignorefit) > 0:
             good = np.where((abmag[ignorefit] > 0) * (abmag_limit[ignorefit] == 0))[0]
             upper = np.where(abmag_limit[ignorefit] > 0)[0]
             if len(good) > 0:
-                sedax.errorbar(phot['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
+                sedax.errorbar(phot_tbl['lambda_eff'][ignorefit][good]/1e4, abmag[ignorefit][good],
                                yerr=yerr[:, ignorefit[good]],
                                fmt='o', markersize=markersize, markeredgewidth=3, markeredgecolor='k',
                                markerfacecolor='none', elinewidth=3, ecolor=photcol1, capsize=4, alpha=0.7)
             if len(upper) > 0:
-                sedax.errorbar(phot['lambda_eff'][ignorefit][upper]/1e4, abmag_limit[ignorefit][upper],
+                sedax.errorbar(phot_tbl['lambda_eff'][ignorefit][upper]/1e4, abmag_limit[ignorefit][upper],
                                lolims=True, yerr=0.75, fmt='o', markersize=markersize, markeredgewidth=3,
                                markeredgecolor='k', markerfacecolor='none', elinewidth=3,
                                ecolor=photcol1, capsize=5, alpha=0.7)
@@ -914,7 +910,7 @@ def qa_fastspec(data, templatecache, fastspec, metadata, coadd_type='healpix',
                 wmax = (maxwave + deltawave) * (1+redshift) + 5 * sig * maxwave * (1.+redshift) / C_LIGHT
 
                 # iterate over cameras
-                for icam in np.arange(len(data['cameras'])): # iterate over cameras
+                for icam in range(len(data['cameras'])): # iterate over cameras
                     emlinewave = data['wave'][icam]
                     emlineflux = data['flux'][icam] - desicontinuum[icam] - desismoothcontinuum[icam]
                     emlinemodel = desiemlines[icam]
@@ -1198,7 +1194,7 @@ def parse(options=None):
 
     """
     import sys, argparse
-    from fastspecfit.io import DEFAULT_TEMPLATEVERSION, DEFAULT_IMF
+    from fastspecfit.templates import Templates
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -1215,7 +1211,8 @@ def parse(options=None):
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')    
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
-
+    
+    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--emline-snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
     parser.add_argument('--nsmoothspec', type=int, default=0, help='Smoothing pixel value.')
 
@@ -1231,8 +1228,8 @@ def parse(options=None):
     parser.add_argument('--stackfit', action='store_true', help='Generate QA for stacked spectra.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
 
-    parser.add_argument('--imf', type=str, default=DEFAULT_IMF, help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default=DEFAULT_TEMPLATEVERSION, help='Template version number.')
+    parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
+    parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
 
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
@@ -1255,7 +1252,7 @@ def fastqa(args=None, comm=None):
     """
     import fitsio
     from astropy.table import Table
-    from fastspecfit.io import (DESISpectra, get_templates_filename, get_qa_filename,
+    from fastspecfit.io import (DESISpectra, get_qa_filename,
                                 read_fastspecfit, DESI_ROOT_NERSC, select)
 
     if isinstance(args, (list, tuple, type(None))):
@@ -1264,61 +1261,52 @@ def fastqa(args=None, comm=None):
     if args.redux_dir is None:
         args.redux_dir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux')
         if not os.path.isdir(args.redux_dir):
-            errmsg = 'Data reduction directory {} not found.'.format(args.redux_dir)
+            errmsg = f'Data reduction directory {args.redux_dir} not found.'
             log.critical(errmsg)
             raise IOError(errmsg)
-    
+
     # Read the fitting results.
     if not os.path.isfile(args.fastfitfile[0]):
-        log.warning('File {} not found.'.format(args.fastfitfile[0]))
+        log.warning(f'File {args.fastfitfile[0]} not found.')
         return
-
-    fastfit, metadata, coadd_type, fastphot = read_fastspecfit(args.fastfitfile[0])
-
+    
+    # NB: read_fastspecfit does not use any of the single-copy structures
+    # allocated below.
+    fastfit, metadata, coadd_type, fastphot = \
+        read_fastspecfit(args.fastfitfile[0])
+    
+    if coadd_type == 'custom' and args.redrockfiles is None:
+        errmsg = 'redrockfiles input is required if coadd_type==custom'
+        log.critical(errmsg)
+        raise IOError(errmsg)
+    
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
-        keep = np.where(np.isin(fastfit['TARGETID'], targetids))[0]
-        if len(keep) == 0:
+        keep = np.isin(fastfit['TARGETID'], targetids)
+        if not np.any(keep):
             log.warning('No matching targetids found!')
             return
         fastfit = fastfit[keep]
         metadata = metadata[keep]
         
     if args.ntargets is not None:
-        keep = np.arange(args.ntargets) + args.firsttarget
-        log.info('Keeping {} targets.'.format(args.ntargets))
+        keep = np.arange(args.firsttarget,
+                         args.firsttarget + args.ntargets)
+        log.info(f'Keeping {args.ntargets} targets.')
         fastfit = fastfit[keep]
         metadata = metadata[keep]
-
+    
     fastfit, metadata = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
                                tiles=args.tile, nights=args.night)
-        
-    if coadd_type == 'custom' and args.redrockfiles is None:
-        errmsg = 'redrockfiles input is required if coadd_type==custom'
-        log.critical(errmsg)
-        raise IOError(errmsg)
 
-    # check for various header cards
-    hdr = fitsio.read_header(args.fastfitfile[0])
-    inputz = False
-    no_smooth_continuum = False
-    ignore_photometry = False
+    pngfile = get_qa_filename(metadata, coadd_type, outprefix=args.outprefix,
+                              outdir=args.outdir, fastphot=fastphot)
     
-    if 'INPUTZ' in hdr and hdr['INPUTZ']:
-        inputz = True
-    if 'NOSCORR' in hdr and hdr['NOSCORR']:
-        no_smooth_continuum = True
-    if 'NOPHOTO' in hdr and hdr['NOPHOTO']:
-        ignore_photometry = True
-
     if args.outdir:
         if not os.path.isdir(args.outdir):
             os.makedirs(args.outdir, exist_ok=True)
-
-    pngfile = get_qa_filename(metadata, coadd_type, outprefix=args.outprefix,
-                              outdir=args.outdir, fastphot=fastphot, log=log)
-
+    
     # are we overwriting?
     if args.overwrite is False:
         I = np.array([not os.path.isfile(_pngfile) for _pngfile in pngfile])
@@ -1333,11 +1321,49 @@ def fastqa(args=None, comm=None):
             return
 
     log.info(f'Building QA for {len(metadata)} objects.')
+    
+    # check for various header cards
+    hdr = fitsio.read_header(args.fastfitfile[0])
+    inputz = False
+    no_smooth_continuum = False
+    ignore_photometry = False
+    
+    if 'INPUTZ' in hdr and hdr['INPUTZ']:
+        inputz = True
+    if 'NOSCORR' in hdr and hdr['NOSCORR']:
+        no_smooth_continuum = True
+    if 'NOPHOTO' in hdr and hdr['NOPHOTO']:
+        ignore_photometry = True
+
+    # initialize single-copy objects im main process
+    init_sc_args = (
+        args.emlinesfile,
+        args.fphotofile,
+        fastphot,
+        args.stackfit,
+        ignore_photometry,
+        args.templates,
+        args.imf,
+        args.templateversion,
+    )
+    
+    initialize_sc_data(*init_sc_args)
+
+    # if multiprocessing, create a pool of worker processes
+    # and initialize single-copy objects in each worker
+    if args.mp > 1:
+        import multiprocessing
+        mp_pool = multiprocessing.Pool(args.mp,
+                                       initializer=initialize_sc_data,
+                                       initargs=init_sc_args)
+    else:
+        mp_pool = None
 
     # Initialize the I/O class.
-    Spec = DESISpectra(stackfit=args.stackfit, redux_dir=args.redux_dir, fphotodir=args.fphotodir, 
-                       fphotofile=args.fphotofile, mapdir=args.mapdir)
-
+    Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
+                       redux_dir=args.redux_dir,
+                       fphotodir=args.fphotodir, mapdir=args.mapdir)
+    
     if args.templates is None:
         from fastspecfit.io import get_templates_filename
         templates = get_templates_filename(templateversion=args.templateversion, imf=args.imf)
@@ -1350,7 +1376,8 @@ def fastqa(args=None, comm=None):
 
         if stackfit:
             stackids = fastfit['STACKID'][indx]
-            data = Spec.read_stacked(redrockfile, stackids=stackids, mp=args.mp)
+            data = Spec.read_stacked((redrockfile,), stackids=stackids,
+                                     mp_pool=mp_pool)
 
             minspecwave = np.min(data[0]['coadd_wave']) - 20
             maxspecwave = np.max(data[0]['coadd_wave']) + 20
@@ -1360,29 +1387,29 @@ def fastqa(args=None, comm=None):
                 input_redshifts = fastfit['Z'][indx]
             else:
                 input_redshifts = None
-            Spec.select(redrockfiles=redrockfile, targetids=targetids, 
+            Spec.select(redrockfiles=(redrockfile,), targetids=targetids, 
                         input_redshifts=input_redshifts,
                         redrockfile_prefix=args.redrockfile_prefix,
                         specfile_prefix=args.specfile_prefix,
                         qnfile_prefix=args.qnfile_prefix)
-            data = Spec.read_and_unpack(fastphot=fastphot, synthphot=True, mp=args.mp,
-                                        ignore_photometry=ignore_photometry)
-
+            data = Spec.read_and_unpack(fastphot=fastphot, synthphot=True,
+                                        mp_pool=mp_pool)
+            
             minspecwave = args.minspecwave
             maxspecwave = args.maxspecwave
 
         qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
-                   templates, coadd_type, Spec.fphoto, minspecwave, maxspecwave, 
+                   coadd_type, minspecwave, maxspecwave, 
                    args.minphotwave, args.maxphotwave, args.emline_snrmin, 
-                   args.nsmoothspec, fastphot, ignore_photometry, stackfit, inputz, 
-                   no_smooth_continuum, args.outdir, args.outprefix, log)
-                   for igal in np.arange(len(indx))]
-        if args.mp > 1:
-            import multiprocessing
-            with multiprocessing.Pool(args.mp) as P:
-                P.map(_desiqa_one, qaargs)
+                   args.nsmoothspec, fastphot, stackfit, inputz, 
+                   no_smooth_continuum, args.outdir, args.outprefix)
+                   for igal in range(len(indx))]
+
+        # desiqa_one has no return value
+        if mp_pool is not None:
+            mp_pool.starmap(desiqa_one, qaargs)
         else:
-            [desiqa_one(*_qaargs) for _qaargs in qaargs]
+            for _ in starmap(desiqa_one, qaargs): pass
 
     t0 = time.time()
     if coadd_type == 'healpix':
@@ -1463,4 +1490,8 @@ def fastqa(args=None, comm=None):
                                     _wrap_qa(redrockfile, indx)
                                 
     log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
+
+    # if multiprocessing, clean up workers
+    if mp_pool is not None:
+        mp_pool.close()
 

@@ -8,8 +8,7 @@ General utilities.
 import numpy as np
 import numba
 
-from desiutil.log import get_logger
-log = get_logger()
+from fastspecfit.logger import log
 
 try: # this fails when building the documentation
     from scipy import constants
@@ -17,6 +16,74 @@ try: # this fails when building the documentation
 except:
     C_LIGHT = 299792.458 # [km/s]
 
+FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
+
+
+#
+# A BoxedScalar is an item of an Numpy
+# structured scalar type that is initialized
+# to all zeros and can then be passed
+# around by reference.  Access the .value
+# field to unbox the scalar.
+#
+class BoxedScalar(object):
+    def __init__(self, dtype):
+        self.value = np.zeros(1, dtype=dtype)[0]
+        
+    def __getitem__(self, key):
+        return self.value[key]
+
+    def __setitem__(self, key, v):
+        self.value[key] = v
+
+        
+class ZWarningMask(object):
+    """
+    Mask bit definitions for zwarning.
+    Taken from Redrock/0.15.4    
+    WARNING on the warnings: not all of these are implemented yet.
+    
+    #- TODO: Consider using something like desispec.maskbits to provide a more
+    #- convenient wrapper class (probably copy it here; don't make a dependency)
+    #- That class as-is would bring in a yaml dependency.
+    """
+    SKY               = 2**0  #- sky fiber
+    LITTLE_COVERAGE   = 2**1  #- too little wavelength coverage
+    SMALL_DELTA_CHI2  = 2**2  #- chi-squared of best fit is too close to that of second best
+    NEGATIVE_MODEL    = 2**3  #- synthetic spectrum is negative
+    MANY_OUTLIERS     = 2**4  #- fraction of points more than 5 sigma away from best model is too large (>0.05)
+    Z_FITLIMIT        = 2**5  #- chi-squared minimum at edge of the redshift fitting range
+    NEGATIVE_EMISSION = 2**6  #- a QSO line exhibits negative emission, triggered only in QSO spectra, if  C_IV, C_III, Mg_II, H_beta, or H_alpha has LINEAREA + 3 * LINEAREA_ERR < 0
+    UNPLUGGED         = 2**7  #- the fiber was unplugged/broken, so no spectrum obtained
+    BAD_TARGET        = 2**8  #- catastrophically bad targeting data
+    NODATA            = 2**9  #- No data for this fiber, e.g. because spectrograph was broken during this exposure (ivar=0 for all pixels)
+    BAD_MINFIT        = 2**10 #- Bad parabola fit to the chi2 minimum
+    POORDATA          = 2**11 #- Poor input data quality but try fitting anyway
+
+    #- The following bits are reserved for experiment-specific post-redrock
+    #- afterburner updates to ZWARN; redrock commits to *not* setting these bits
+    RESERVED16        = 2**16
+    RESERVED17        = 2**17
+    RESERVED18        = 2**18
+    RESERVED19        = 2**19
+    RESERVED20        = 2**20
+    RESERVED21        = 2**21
+    RESERVED22        = 2**22
+    RESERVED23        = 2**23
+
+    @classmethod
+    def flags(cls):
+        flagmask = list()
+        for key, value in cls.__dict__.items():
+            if not key.startswith('_') and key.isupper():
+                flagmask.append((key, value))
+
+        import numpy as np
+        isort = np.argsort([x[1] for x in flagmask])
+        flagmask = [flagmask[i] for i in isort]
+        return flagmask
+
+    
 def mwdust_transmission(ebv, filtername):
     """Convert SFD E(B-V) value to dust transmission 0-1 given the bandpass.
 
@@ -88,7 +155,7 @@ def mwdust_transmission(ebv, filtername):
         'wise2010-W4': 0.00910,
         }
 
-    if filtername not in k_X.keys():
+    if filtername not in k_X:
         errmsg = f'Filtername {filtername} is missing from dictionary of known bandpasses!'
         log.critical(errmsg)
         raise ValueError(errmsg)
@@ -98,6 +165,7 @@ def mwdust_transmission(ebv, filtername):
     transmission = 10**(-0.4 * A_X)
     
     return transmission
+
 
 def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
     """Safely convert an inverse variance to a variance. Note that we clip at 1e-3
@@ -120,6 +188,8 @@ def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
         var = np.sqrt(var) # return a sigma
     return var, goodmask
 
+
+# currently unused - JDB
 def air2vac(airwave):
     """http://www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion"""
     if airwave <= 0:
@@ -153,139 +223,7 @@ def centers2edges(centers):
     return edges
 
 
-# This code is purposely written in a very "C-like" way.  The logic
-# being that it may help numba optimization and also makes it easier
-# if it ever needs to be ported to Cython.  Actually Cython versions
-# of this code have already been tested and shown to perform no better
-# than numba on Intel haswell and KNL architectures.
-
-@numba.jit(nopython=True, fastmath=True, nogil=True)
-def _trapz_rebin(x, y, edges):
-    '''
-    Numba-friendly version of trapezoidal rebinning
-
-    See redrock.rebin.trapz_rebin() for input descriptions.
-    `results` is pre-allocated array of length len(edges)-1 to keep results
-    '''
-    nbins = len(edges) - 1
-        
-    results = np.empty(nbins, dtype=np.float64)
-    
-    j = 0  #- index counter for inputs
-    for i in range(nbins):
-        
-        results[i] = 0.
-        
-        # seek least j s.t. edges[i] < x[j]
-        while x[j] <= edges[i]:
-            j += 1
-            
-        #- What is the y value where the interpolation crossed the edge?
-        yedge = y[j-1] + (edges[i] - x[j-1]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
-        
-        #- Is this sample inside this bin?
-        if x[j] < edges[i+1]:
-            results[i] += (y[j] + yedge) * (x[j] - edges[i]) # 2*area
-            
-            #- Continue with interior bins
-            while x[j+1] < edges[i+1]:
-                j += 1
-                results[i] += (y[j] + y[j-1]) * (x[j] - x[j-1]) # 2*area
-
-            #- Next sample will be outside this bin; handle upper edge
-            yedge = y[j] + (edges[i+1] - x[j]) * (y[j+1] - y[j]) / (x[j+1] - x[j])
-            results[i] += (yedge + y[j]) * (edges[i+1] - x[j]) # 2*area
-            
-        #- Otherwise the samples span over this bin
-        else:
-            ylo = y[j] + (edges[i]   - x[j]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
-            yhi = y[j] + (edges[i+1] - x[j]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
-            results[i] += (ylo + yhi) * (edges[i+1] - edges[i]) # 2*area
-    
-        results[i] /= 2 * (edges[i+1] - edges[i])
-        
-    return results
-
-
-def trapz_rebin(x, y, xnew, edges=None):
-    """Rebin y(x) flux density using trapezoidal integration between bin edges
-
-    Notes:
-        y is interpreted as a density, as is the output, e.g.
-
-        >>> x = np.arange(10)
-        >>> y = np.ones(10)
-        >>> trapz_rebin(x, y, edges=[0,2,4,6,8])  #- density still 1, not 2
-        array([ 1.,  1.,  1.,  1.])
-
-    Args:
-        x (array): input x values.
-        y (array): input y values.
-        edges (array): (optional) new bin edges.
-
-    Returns:
-        array: integrated results with len(results) = len(edges)-1
-
-    Raises:
-        ValueError: if edges are outside the range of x or if len(x) != len(y)
-
-    """
-    if edges is None:
-        edges = centers2edges(xnew)
-#    else:
-#        edges = np.asarray(edges)
-    
-    if edges[0] < x[0] or x[-1] < edges[-1]:
-        raise ValueError('edges must be within input x range')
-
-    return _trapz_rebin(x, y, edges)
-
-
-class ZWarningMask(object):
-    """
-    Mask bit definitions for zwarning.
-    
-    WARNING on the warnings: not all of these are implemented yet.
-    
-    #- TODO: Consider using something like desispec.maskbits to provide a more
-    #- convenient wrapper class (probably copy it here; don't make a dependency)
-    #- That class as-is would bring in a yaml dependency.
-    """
-    SKY               = 2**0  #- sky fiber
-    LITTLE_COVERAGE   = 2**1  #- too little wavelength coverage
-    SMALL_DELTA_CHI2  = 2**2  #- chi-squared of best fit is too close to that of second best
-    NEGATIVE_MODEL    = 2**3  #- synthetic spectrum is negative
-    MANY_OUTLIERS     = 2**4  #- fraction of points more than 5 sigma away from best model is too large (>0.05)
-    Z_FITLIMIT        = 2**5  #- chi-squared minimum at edge of the redshift fitting range
-    NEGATIVE_EMISSION = 2**6  #- a QSO line exhibits negative emission, triggered only in QSO spectra, if  C_IV, C_III, Mg_II, H_beta, or H_alpha has LINEAREA + 3 * LINEAREA_ERR < 0
-    UNPLUGGED         = 2**7  #- the fiber was unplugged/broken, so no spectrum obtained
-    BAD_TARGET        = 2**8  #- catastrophically bad targeting data
-    NODATA            = 2**9  #- No data for this fiber, e.g. because spectrograph was broken during this exposure (ivar=0 for all pixels)
-    BAD_MINFIT        = 2**10 #- Bad parabola fit to the chi2 minimum
-    POORDATA          = 2**11 #- Poor input data quality but try fitting anyway
-
-    #- The following bits are reserved for experiment-specific post-redrock
-    #- afterburner updates to ZWARN; redrock commits to *not* setting these bits
-    RESERVED16        = 2**16
-    RESERVED17        = 2**17
-    RESERVED18        = 2**18
-    RESERVED19        = 2**19
-    RESERVED20        = 2**20
-    RESERVED21        = 2**21
-    RESERVED22        = 2**22
-    RESERVED23        = 2**23
-
-    @classmethod
-    def flags(cls):
-        flagmask = list()
-        for key, value in cls.__dict__.items():
-            if not key.startswith('_') and key.isupper():
-                flagmask.append((key, value))
-
-        import numpy as np
-        isort = np.argsort([x[1] for x in flagmask])
-        flagmask = [flagmask[i] for i in isort]
-        return flagmask
+####################################################################
 
 def find_minima(x):
     """Return indices of local minima of x, including edges.
@@ -305,7 +243,7 @@ def find_minima(x):
     """
     x = np.asarray(x)
     ii = np.where(np.r_[True, x[1:]<=x[:-1]] & np.r_[x[:-1]<=x[1:], True])[0]
-
+    
     jj = np.argsort(x[ii])
 
     return ii[jj]
@@ -367,75 +305,6 @@ def minfit(x, y, return_coeff=False):
     else:
         return (x0, xerr, y0, zwarn)
 
-class TabulatedDESI(object):
-    """
-    Class to load tabulated z->E(z) and z->comoving_radial_distance(z) relations within DESI fiducial cosmology
-    (in LSS/data/desi_fiducial_cosmology.dat) and perform the (linear) interpolations at any z.
-
-    >>> cosmo = TabulatedDESI()
-    >>> distance = cosmo.comoving_radial_distance([0.1, 0.2])
-    >>> efunc = cosmo.efunc(0.3)
-
-    The cosmology is defined in https://github.com/abacusorg/AbacusSummit/blob/master/Cosmologies/abacus_cosm000/CLASS.ini
-    and the tabulated file was obtained using https://github.com/adematti/cosmoprimo/blob/main/cosmoprimo/fiducial.py.
-
-    Note
-    ----
-    Redshift interpolation range is [0, 100].
-
-    """
-    def __init__(self):
-        from importlib import resources
-        cosmofile = resources.files('fastspecfit').joinpath('data/desi_fiducial_cosmology.dat')
-
-        self._z, self._efunc, self._comoving_radial_distance = np.loadtxt(cosmofile, comments='#', usecols=None, unpack=True)
-
-        self.H0 = 100.0
-        self.h = self.H0 / 100
-        self.hubble_time = 3.08567758e19 / 3.15576e16 / self.H0 # Hubble time [Gyr]
-
-    def efunc(self, z):
-        r"""Return :math:`E(z)`, where the Hubble parameter is defined as :math:`H(z) = H_{0} E(z)`, unitless."""
-        z = np.asarray(z)
-        mask = (z < self._z[0]) | (z > self._z[-1])
-        if mask.any():
-            raise ValueError('Input z outside of tabulated range.')
-        return np.interp(z, self._z, self._efunc, left=None, right=None)
-
-    def comoving_radial_distance(self, z):
-        r"""Return comoving radial distance, in :math:`\mathrm{Mpc}/h`."""
-        z = np.asarray(z)
-        mask = (z < self._z[0]) | (z > self._z[-1])
-        if mask.any():
-            raise ValueError('Input z outside of tabulated range.')
-        return np.interp(z, self._z, self._comoving_radial_distance, left=None, right=None)
-
-    def luminosity_distance(self, z):
-        r"""Return luminosity distance, in :math:`\mathrm{Mpc}/h`."""
-        return self.comoving_radial_distance(z) * (1.0+z)
-
-    def distance_modulus(self, z):
-        """Return the distance modulus at the given redshift (Hogg Eq. 24)."""
-        return 5. * np.log10(self.luminosity_distance(z)) + 25
-
-    def universe_age(self, z):
-        """Return the age of the universe at the given redshift.
-
-        """
-        from scipy.integrate import quad
-
-        def _agefunc(z):
-            return 1.0 / self.efunc(z) / (1.0 + z)
-        
-        if np.isscalar(z):
-            integ, _ =  quad(_agefunc, z, self._z[-1])
-            return integ * self.hubble_time
-        else:
-            age = []
-            for _z in z:
-                integ, _ =  quad(_agefunc, _z, self._z[-1])
-                age.append(integ * self.hubble_time)
-            return np.array(age)
 
 #
 # sigma clipping in Numba
@@ -464,7 +333,7 @@ def sigmaclip(c, low=3., high=3.):
 
         if std == 0.: # don't mask everything
             break
-                
+        
         n0 = n
         for j, cval in enumerate(c):
             if mask[j] and (cval < clo or cval > chi):
@@ -474,26 +343,25 @@ def sigmaclip(c, low=3., high=3.):
                 s2 -= cval * cval
 
         delta = n0-n
-        
+
     return c[mask], clo, chi
-
-
-def quantile(A, q):
-    return _quantile(A, q)
-
-
-def median(A):
-    return _median(A)
 
 
 # Numba's quantile impl is much faster
 # than Numpy's standard version
 @numba.jit(nopython=True, nogil=True)
-def _quantile(A, q):
+def quantile(A, q):
     return np.quantile(A, q)
-
 
 # Numba's median impl is also faster
 @numba.jit(nopython=True, nogil=True)
-def _median(A):
+def median(A):
     return np.median(A)
+
+# Open-coded Numba trapz is much faster than np.traz
+@numba.jit(nopython=True, fastmath=True, nogil=True)
+def trapz(y, x):
+    res = 0.
+    for i in range(len(x) - 1):
+        res += (x[i+1] - x[i]) * (y[i+1] + y[i])
+    return 0.5 * res

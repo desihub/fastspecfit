@@ -10,7 +10,7 @@ import numpy as np
 from numba import jit
 
 class Inoue14(object):
-    r"""
+    """
     IGM absorption from Inoue et al. (2014)
         
     Parameters
@@ -45,12 +45,9 @@ class Inoue14(object):
     igm_params = None
     
     def __init__(self, scale_tau=1.):
-        super(Inoue14, self).__init__()
-
-        self.scale_tau = scale_tau
         
-        if Inoue14.igm_params == None:
-            Inoue14.igm_params = self._load_data()
+        self.scale_tau = scale_tau
+        self.igm_params = self._load_data()
         
     @staticmethod
     def _load_data():
@@ -97,7 +94,7 @@ class Inoue14(object):
         
         return self._full_IGM(z, lobs,
                               self.scale_tau,
-                              Inoue14.igm_params)
+                              self.igm_params)
     
     
     @staticmethod
