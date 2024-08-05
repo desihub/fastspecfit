@@ -525,7 +525,7 @@ class ContinuumTools(object):
                                                     ztemplatewave) / \
                                                     (FLUXNORM * self.massnorm)
                 if flamphot:                
-                    templatephot = Photometry.get_photflam(maggies, effwave, nanomaggies=False)
+                    templatephot = Photometry.get_photflam(maggies, effwave)
                 else:
                     templatephot = Photometry.parse_photometry(self.phot.bands, maggies, effwave, 
                                                                nanomaggies=False, get_abmag=get_abmag)
@@ -546,7 +546,7 @@ class ContinuumTools(object):
                                                         (FLUXNORM * self.massnorm)
                     
                     if flamphot:
-                        templatephot = Photometry.get_photflam(maggies, effwave, nanomaggies=False)
+                        templatephot = Photometry.get_photflam(maggies, effwave)
                     else:
                         templatephot = Photometry.parse_photometry(self.phot.bands, maggies, effwave, 
                                                                    nanomaggies=False, get_abmag=get_abmag)
@@ -741,7 +741,7 @@ class ContinuumTools(object):
 
     
     def build_stellar_continuum(self, templateflux, templatecoeff,
-                                ebv=0., vdisp=None, dust_emission=True):
+                                ebv, vdisp=None, dust_emission=True):
 
         """Build a stellar continuum model.
 
@@ -881,10 +881,10 @@ class ContinuumTools(object):
         modelmaggies = Photometry.get_ab_maggies_unchecked(filters,
                                                            contmodel,
                                                            self.ztemplatewave,
-                                                           maggies_pre)
+                                                           pre=maggies_pre)
         
         if not phottable:
-            modelphot = Photometry.get_photflam(modelmaggies, effwave, nanomaggies=False)
+            modelphot = Photometry.get_photflam(modelmaggies, effwave)
         else:
             modelmaggies /= FLUXNORM * self.massnorm
             modelphot = Photometry.parse_photometry(self.phot.bands, modelmaggies, effwave, 
@@ -1216,7 +1216,7 @@ def continuum_specfit(data, result, templates,
                     vdisp=None, synthphot=True, photsys=data['photsys'])
                 sedflam = sedphot_flam * CTools.massnorm * FLUXNORM
                 coeff, rchi2_phot = CTools.call_nnls(sedflam, objflam, objflamivar)
-                rchi2_phot /= np.sum(objflamivar > 0) # dof???
+                rchi2_phot /= np.sum(objflamivar > 0.) # dof???
             else:
                 ebv, _, coeff, resid = CTools.fit_stellar_continuum(
                     templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
@@ -1268,7 +1268,7 @@ def continuum_specfit(data, result, templates,
         specwave = np.hstack(data['wave'])
         specflux = np.hstack(data['flux'])
         flamivar = np.hstack(data['ivar'])
-        specivar = flamivar * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
+        specivar = flamivar * ~np.hstack(data['linemask']) # mask emission lines
         
         if np.all(specivar == 0.) or np.any(specivar < 0.):
             specivar = flamivar # not great...
@@ -1287,7 +1287,7 @@ def continuum_specfit(data, result, templates,
         # Solve for the velocity dispersion if the wavelength coverage is
         # sufficient.
         restwave = specwave / (1. + redshift)
-        Ivdisp = np.where((specivar > 0) * (restwave > 3500.) * (restwave < 5500.))[0]
+        Ivdisp = np.where((specivar > 0) & (restwave > 3500.) & (restwave < 5500.))[0]
         compute_vdisp = (len(Ivdisp) > 0) and (np.ptp(restwave[Ivdisp]) > 500.)
 
         if len(data['cameras']) == 3:
@@ -1387,10 +1387,10 @@ def continuum_specfit(data, result, templates,
                     
                     denom = Photometry.to_nanomaggies(quickmaggies)
                     
-                    I = (numer > 0.) * (denom > 0.)
+                    I = ((numer > 0.) & (denom > 0.))
                     if np.any(I):
                         apercorrs[I] = numer[I] / denom[I]
-                    I = apercorrs > 0.
+                    I = (apercorrs > 0.)
                     if np.any(I):
                         apercorr = median(apercorrs[I])
                         
@@ -1474,7 +1474,7 @@ def continuum_specfit(data, result, templates,
                     
                     objflam_aper = FLUXNORM * photometry[np.isin(photometry['band'], phot.synth_bands)]['flam'].value
                     
-                    I = (objflam_aper > 0.) * (sedflam > 0.)
+                    I = ((objflam_aper > 0.) & (sedflam > 0.))
                     if np.any(I):
                         apercorrs[I] = objflam_aper[I] / sedflam[I]
                         
@@ -1596,7 +1596,7 @@ def continuum_specfit(data, result, templates,
 
         for icam, cam in enumerate(data['cameras']):
             nonzero = (continuummodel[icam] != 0)
-            if np.sum(nonzero) > 0:
+            if np.any(nonzero):
                 corr = median(smoothcontinuum[icam][nonzero] / continuummodel[icam][nonzero])
                 result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100 # [%]
 

@@ -304,20 +304,13 @@ class Photometry(object):
 
     
     @staticmethod
-    def get_photflam(maggies, lambda_eff, nanomaggies=True):
-        
-        shp = maggies.shape
-        if maggies.ndim == 1:
-            ngal = 1
-        else:
-            ngal = shp[1]
+    def get_photflam(maggies, lambda_eff):
 
-        # convert nanomaggies-->maggies if needed
-        nanofactor = 1e-9 if nanomaggies else 1.0
+        factor = 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
         
-        factor = nanofactor * 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
-        if ngal > 1:
+        if maggies.ndim > 1:
             factor = factor[:, None] # broadcast for the models
+        
         return maggies * factor
 
     
