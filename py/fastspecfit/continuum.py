@@ -643,13 +643,11 @@ class ContinuumTools(object):
     
         # optionally interpolate the coefficients
         if interpolate_coeff:
-            from scipy.interpolate import interp1d
             if xbest == xparam[0]:
                 bestcoeff = coeff[0, :]
             else:
-                xindx = range(len(xparam))
-                f = interp1d(xindx, coeff, axis=0)
-                bestcoeff = f(np.interp(xbest, xparam, xindx))
+                indxbest = np.interp(xbest, xparam, range(len(xparam)))
+                bestcoeff = np.interp(indxbest, xindx, coeff)
         else:
             bestcoeff = None
     
