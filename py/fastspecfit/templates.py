@@ -9,13 +9,12 @@ from fastspecfit.logger import log
 
 class Templates(object):
 
-    from fastspecfit.io import FTEMPLATES_DIR_NERSC
-
     # SPS template constants (used by build-templates)
     PIXKMS_BLU = 25.  # [km/s]
     PIXKMS_RED = 100. # [km/s]
     PIXKMS_WAVESPLIT = 1e4 # [Angstrom]
 
+    FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/external/templates/fastspecfit'
     DEFAULT_TEMPLATEVERSION = '2.0.0'
     DEFAULT_IMF = 'chabrier'
 
@@ -24,7 +23,7 @@ class Templates(object):
                  fastphot=False, read_linefluxes=False):
         """"
         Read the templates into a dictionary.
-    
+
         Parameters
         ----------
         template_file : :class:`str`
