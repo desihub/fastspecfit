@@ -10,14 +10,14 @@ import numpy as np
 from numba import jit
 
 class Inoue14(object):
-    """
+    r"""
     IGM absorption from Inoue et al. (2014)
-        
+
     Parameters
     ----------
     scale_tau : float
-        Parameter multiplied to the IGM :math:`\tau` values (exponential 
-        in the linear absorption fraction).  
+        Parameter multiplied to the IGM :math:`\tau` values (exponential
+        in the linear absorption fraction).
         I.e., :math:`f_\mathrm{igm} = e^{-\mathrm{scale\_tau} \tau}`.
 
     Copyright (c) 2016-2022 Gabriel Brammer
@@ -39,29 +39,29 @@ class Inoue14(object):
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
-    
-    """
 
+    """
     igm_params = None
-    
+
     def __init__(self, scale_tau=1.):
-        
+
         self.scale_tau = scale_tau
         self.igm_params = self._load_data()
-        
+
+
     @staticmethod
     def _load_data():
         from importlib import resources
         LAF_file = resources.files('fastspecfit').joinpath('data/LAFcoeff.txt')
         DLA_file = resources.files('fastspecfit').joinpath('data/DLAcoeff.txt')
-        
+
         data = np.loadtxt(LAF_file, unpack=True)
         _, lam, ALAF1, ALAF2, ALAF3 = data
-        
+
         cALAF1 = ALAF1 / lam**1.2
         cALAF2 = ALAF2 / lam**3.7
         cALAF3 = ALAF3 / lam**5.5
-        
+
         data = np.loadtxt(DLA_file, unpack=True)
         _, __, ADLA1, ADLA2 = data
         cADLA1 = ADLA1 / lam**2
@@ -72,68 +72,51 @@ class Inoue14(object):
             cALAF1, cALAF2, cALAF3,
             cADLA1, cADLA2
         )
-    
-    
+
+
     def full_IGM(self, z, lobs):
         """Get full Inoue IGM absorption
-            
+
         Parameters
         ----------
         z : float
         Redshift to evaluate IGM absorption
-        
+
         lobs : array
         Observed-frame wavelength(s) in Angstroms.
-        
+
         Returns
         -------
         abs : array
         IGM absorption
-        
+
         """
-        
         return self._full_IGM(z, lobs,
                               self.scale_tau,
                               self.igm_params)
-    
-    
+
+
     @staticmethod
     @jit(nopython=True, nogil=True)
     def _full_IGM(z, lobs, scale_tau, igm_params):
 
         lam, cALAF1, cALAF2, cALAF3, cADLA1, cADLA2 = igm_params
-        
+
         tau_LS = \
             _tLSLAF(z, lobs, lam, cALAF1, cALAF2, cALAF3) + \
             _tLSDLA(z, lobs, lam, cADLA1, cADLA2)
-        
+
         tau_LC = _tLCLAF(z, lobs) + _tLCDLA(z, lobs)
-        
+
         ### Upturn at short wavelengths, low-z
         ### (add to tau_LC + tau_LS below)
         #k = 1./100
         #l0 = 600-6/k
         #clip = lobs/(1+z) < 600.
         #tau_clip = 100*(1-1./(1+np.exp(-k*(lobs/(1+z)-l0))))
-        
+
         return np.exp(-scale_tau * (tau_LC + tau_LS))
 
-
-    """
-    def build_grid(self, zgrid, lrest):
-        # Build a spline interpolation object for fast IGM models
-        #
-        # Returns: self.interpolate
-    
-        from scipy.interpolate import CubicSpline
-        igm_grid = np.zeros((len(zgrid), len(lrest)))
-        for iz in range(len(zgrid)):
-            igm_grid[iz,:] = self.full_IGM(zgrid[iz], lrest*(1+zgrid[iz]))
-        
-        self.interpolate = CubicSpline(zgrid, igm_grid)
-    """
-
-    
 
 @jit(nopython=True, fastmath=True, nogil=True)
 def _tLSLAF(zS, lobs, lam,
@@ -144,7 +127,7 @@ def _tLSLAF(zS, lobs, lam,
     z1LAF = 1. + 1.2
     z2LAF = 1. + 4.7
     z = 1. + zS
-    
+
     r = np.empty_like(lobs)
 
     for i in range(len(lobs)):
@@ -158,10 +141,10 @@ def _tLSLAF(zS, lobs, lam,
                 else:
                     acc += cALAF3[j] * lobs[i]**5.5
         r[i] = acc
-        
+
     return r
 
-    
+
 @jit(nopython=True, fastmath=True, nogil=True)
 def _tLSDLA(zS, lobs, lam,
             cADLA1, cADLA2):
@@ -170,9 +153,9 @@ def _tLSDLA(zS, lobs, lam,
     """
     z1DLA = 1. + 2.
     z = 1. + zS
-    
+
     r = np.empty_like(lobs)
-    
+
     for i in range(len(lobs)):
         acc = 0.
         for j in range(len(lam)):
@@ -182,7 +165,7 @@ def _tLSDLA(zS, lobs, lam,
                 else:
                     acc += cADLA2[j] * lobs[i]**3
         r[i] = acc
-        
+
     return r
 
 
@@ -194,9 +177,9 @@ def _tLCDLA(zS, lobs):
     z1DLA = 1. + 2.
     lamL = 911.8
     z = 1. + zS
-    
+
     r = np.zeros_like(lobs)
-    
+
     if z < z1DLA:
         for i in range(len(lobs)):
             if lobs[i]/lamL < z:
@@ -219,7 +202,7 @@ def _tLCDLA(zS, lobs):
                         0.04696 * z**3 - \
                         0.01779 * z**3.3 * (lobs[i]/lamL) ** -0.3 - \
                         0.02916 * (lobs[i]/lamL) ** 3
-                
+
     return r
 
 
@@ -232,9 +215,9 @@ def _tLCLAF(zS, lobs):
     z2LAF = 1. + 4.7
     lamL = 911.8
     z = 1. + zS
-    
+
     r = np.zeros_like(lobs)
-    
+
     if z < z1LAF:
         for i in range(len(lobs)):
             if lobs[i]/lamL < z:
@@ -270,5 +253,5 @@ def _tLCLAF(zS, lobs):
                     r[i] = \
                         5.221e-4 * (z**3.4 * (lobs[i]/lamL) ** 2.1 - \
                                     (lobs[i]/lamL) ** 5.5)
-                    
+
     return r
