@@ -24,9 +24,9 @@ from fastspecfit.util import FLUXNORM, ZWarningMask
 
 # Default environment variables.
 DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
-DUST_DIR_NERSC = '/global/cfs/cdirs/cosmo/data/dust/v0_1'
+DUST_DIR_NERSC = '/global/cfs/cdirs/desi/external/dust/v0_1'
 FPHOTO_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
-
+FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/external/templates/fastspecfit'
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
