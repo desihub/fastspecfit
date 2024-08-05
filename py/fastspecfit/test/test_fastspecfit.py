@@ -19,17 +19,18 @@ import pdb
 import os, unittest, tempfile
 import numpy as np
 from urllib.request import urlretrieve
-from pkg_resources import resource_filename
+from importlib import resources
+
 
 class TestFastspec(unittest.TestCase):
     """Test fastspecfit.fastspecfit.fastspec"""
     @classmethod
     def setUpClass(cls):
-        os.environ['DESI_ROOT'] = resource_filename('fastspecfit.test', 'data')
-        cls.specproddir = resource_filename('fastspecfit.test', 'data')
-        cls.mapdir = resource_filename('fastspecfit.test', 'data')
-        cls.fphotodir = resource_filename('fastspecfit.test', 'data')
-        cls.redrockfile = resource_filename('fastspecfit.test', 'data/redrock-4-80613-thru20210324.fits')
+        os.environ['DESI_ROOT'] = resources.files('fastspecfit').joinpath('test/data')
+        cls.specproddir = resources.files('fastspecfit').joinpath('test/data')
+        cls.mapdir = resources.files('fastspecfit').joinpath('test/data')
+        cls.fphotodir = resources.files('fastspecfit').joinpath('test/data')
+        cls.redrockfile = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
 
         cls.outdir = tempfile.mkdtemp()
         cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-1.3.0.fits')
@@ -47,6 +48,7 @@ class TestFastspec(unittest.TestCase):
     def tearDownClass(cls):
         pass
 
+
     #def test_ContinuumTools(self):
     #    """Test the ContinuumTools class."""
     #    from fastspecfit.continuum import ContinuumTools
@@ -54,6 +56,7 @@ class TestFastspec(unittest.TestCase):
     #
     #    # expected attributes
     #    self.assertTrue(CTools.imf in ['salpeter', 'chabrier', 'kroupa'])
+
 
     def test_fastphot(self):
         """Test fastphot."""
@@ -71,6 +74,7 @@ class TestFastspec(unittest.TestCase):
         for hdu in fits:
             if hdu.has_data(): # skip zeroth extension
                 self.assertTrue(hdu.get_extname() in ['METADATA', 'FASTPHOT'])
+
 
     def test_fastspec(self):
         """Test fastspec."""

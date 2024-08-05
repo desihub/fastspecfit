@@ -12,7 +12,7 @@ class Singletons(object):
 
     def __init__(self):
         pass
-    
+
     def setup(self,
               emlines_file=None,
               fphotofile=None,
@@ -22,16 +22,16 @@ class Singletons(object):
               template_file=None,
               template_version=None,
               template_imf=None):
-        
+
         # IGM model
         self.igm = Inoue14()
 
         # fiducial cosmology
         self.cosmology = TabulatedDESI()
-        
+
         # emission line table
         self.emlines = LineTable(emlines_file)
-        
+
         # photometry
         self.photometry = Photometry(fphotofile,
                                      stackfit,
@@ -48,7 +48,8 @@ class Singletons(object):
                                    mintemplatewave=450.0,
                                    maxtemplatewave=40e4,
                                    fastphot=fastphot)
-        
+
+
 # global structure with single-copy data, initially empty
 sc_data = Singletons()
 
