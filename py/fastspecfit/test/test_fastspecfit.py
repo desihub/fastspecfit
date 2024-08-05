@@ -26,7 +26,7 @@ class TestFastspec(unittest.TestCase):
     """Test fastspecfit.fastspecfit.fastspec"""
     @classmethod
     def setUpClass(cls):
-        os.environ['DESI_ROOT'] = resources.files('fastspecfit').joinpath('test/data')
+        os.environ['DESI_ROOT'] = str(resources.files('fastspecfit').joinpath('test/data'))
         cls.specproddir = resources.files('fastspecfit').joinpath('test/data')
         cls.mapdir = resources.files('fastspecfit').joinpath('test/data')
         cls.fphotodir = resources.files('fastspecfit').joinpath('test/data')
