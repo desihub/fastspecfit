@@ -122,8 +122,8 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         stackfit,
         args.ignore_photometry,
         args.templates,
-        args.imf,
         args.templateversion,
+        args.imf,
     )
     
     initialize_sc_data(*init_sc_args)
