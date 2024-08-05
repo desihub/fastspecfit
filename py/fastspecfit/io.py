@@ -575,10 +575,10 @@ class DESISpectra(object):
                     alltiles.append(expmeta['TILEID'][I][0])
                 else:
                     alltiles.append(tileid)
-                    
+
             if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
                 meta['TILEID_LIST'] = tileid_list
-            
+
             # Gather additional info about this pixel.
             if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
                 meta['SURVEY'] = survey
@@ -593,13 +593,14 @@ class DESISpectra(object):
                 if expid:
                     meta['EXPID'] = expid
 
-                # get the correct fiber number
+                # Get the correct fiber number.
                 if 'FIBER' in expmeta.colnames:
                     meta['FIBER'] = np.zeros(len(meta), dtype=expmeta['FIBER'].dtype)
-                    for iobj, tid in enumerate(meta['TARGETID']):
-                        iexp = (expmeta['TARGETID'] == tid) # zeroth
-                        meta['FIBER'][iobj] = expmeta['FIBER'][iexp]
-            
+                    _, uindx = np.unique(expmeta['TARGETID'], return_index=True)
+                    I = geomask.match_to(expmeta[uindx]['TARGETID'], meta['TARGETID'])
+                    assert(np.all(expmeta[uindx][I]['TARGETID'] == meta['TARGETID']))
+                    meta['FIBER'] = expmeta[uindx[I]]['FIBER']
+
             self.meta.append(Table(meta))
             self.redrockfiles.append(redrockfile)
             self.specfiles.append(specfile)
@@ -612,7 +613,7 @@ class DESISpectra(object):
         # Use the metadata in the fibermap to retrieve the LS-DR9 source
         # photometry. Note that we have to make a copy of the input_meta table
         # because otherwise BRICKNAME gets "repaired!"
-        t0 = time.time()  
+        t0 = time.time()
         metas = self._gather_photometry(specprod=specprod, alltiles=alltiles)
         self.meta = metas # update
         log.info(f'Gathered photometric metadata in {time.time()-t0:.2f} sec')
@@ -622,7 +623,7 @@ class DESISpectra(object):
                         constrain_age=False, debug_plots=False,
                         mp_pool=None):
         """Read and unpack selected spectra or broadband photometry.
-        
+
         Parameters
         ----------
         fastphot : bool
