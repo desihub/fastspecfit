@@ -6,7 +6,7 @@ numba
 seaborn
 matplotlib
 fitsio
-git+https://github.com/desihub/desiutil.git@3.4.3#egg=desiutil
+git+https://github.com/desihub/desiutil.git@3.4.2#egg=desiutil
 git+https://github.com/desihub/desimodel.git@0.19.1#egg=desimodel
 git+https://github.com/desihub/desitarget.git@2.7.0#egg=desitarget
 git+https://github.com/desihub/desispec.git@0.64.0#egg=desispec
