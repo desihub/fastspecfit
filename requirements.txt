@@ -1,6 +1,6 @@
-numpy
+numpy<2.0
 scipy
-astropy
+astropy>=5.0
 healpy
 numba
 seaborn
