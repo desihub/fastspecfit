@@ -369,7 +369,7 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
         # observed-frame photometry synthesized from the spectra
         for band in phot.synth_bands:
             add_field(f'FLUX_SYNTH_{band.upper()}', dtype='f4', unit='nanomaggies') 
-            #add_field(f'FLUX_SYNTH_IVAR_{band.upper()}'), dtype='f4', unit='nanomaggies-2')
+            #add_field(f'FLUX_SYNTH_IVAR_{band.upper()}'), dtype='f4', unit='1/nanomaggies**2')
         # observed-frame photometry synthesized the best-fitting spectroscopic model
         for band in phot.synth_bands:
             add_field(f'FLUX_SYNTH_SPECMODEL_{band.upper()}', dtype='f4', unit='nanomaggies')
