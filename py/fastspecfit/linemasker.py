@@ -319,7 +319,7 @@ class LineMasker(object):
                     contindx = pix['patch_contpix'][patchid]
                     continuum_patches['endpts'][ipatch] = (np.min(contindx), np.max(contindx)) # should be sorted...
                     # initial guesses and bounds, but check for pathological distributions
-                    lo, med, hi = quantile(flux[contindx], [0.05, 0.5, 0.95])
+                    lo, med, hi = quantile(flux[contindx], (0.05, 0.5, 0.95))
                     if lo < med and lo < hi:
                         continuum_patches['intercept'][ipatch] = med
                         continuum_patches['intercept_bounds'][ipatch] = [lo, hi]
@@ -691,7 +691,7 @@ class LineMasker(object):
                 s = np.min((np.min(contpix), np.min(linepix)))
                 e = np.max((np.max(contpix), np.max(linepix)))
 
-                ylim = quantile(flux[s:e], [0.01, 0.99])
+                ylim = quantile(flux[s:e], (0.01, 0.99))
 
                 xx.plot(wave[s:e] / 1e4, flux[s:e], color='gray', alpha=0.5)
                 xx.scatter(wave[contpix] / 1e4, flux[contpix], color='blue', s=10, marker='s')
