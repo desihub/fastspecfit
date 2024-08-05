@@ -24,8 +24,10 @@ class ContinuumTools(object):
     def __init__(self, igm, phot, templates, data, fastphot=False):
         
         self.phot = phot
+        self.igm = igm  # only needed by legacy fitting
         self.templates = templates
         self.data = data
+       
         
         self.massnorm = 1e10       # stellar mass normalization factor [Msun]
         
@@ -76,7 +78,6 @@ class ContinuumTools(object):
             Luminosity distance corresponding to `redshift`.
 
         """
-            
         T = igm.full_IGM(redshift, ztemplatewave)
         T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
 
@@ -494,13 +495,14 @@ class ContinuumTools(object):
                                                        limit=self.pixpos_wavesplit)
         else:
             vd_templateflux = templateflux
-            
+        
         # Apply the redshift factor. The models are normalized to 10 pc, so
         # apply the luminosity distance factor here. Also normalize to a nominal
         # stellar mass.
         if redshift > 0.:
             ztemplatewave = templatewave * (1. + redshift)
-            T = self.zfactors
+            T = self.igm.full_IGM(redshift, ztemplatewave)
+            T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
             ztemplateflux = vd_templateflux * T[:, np.newaxis]
         else:
             log.warning('Input redshift not defined, zero, or negative!')
@@ -525,7 +527,7 @@ class ContinuumTools(object):
                                                     ztemplatewave) / \
                                                     (FLUXNORM * self.massnorm)
                 if flamphot:                
-                    templatephot = Photometry.get_photflam(maggies, effwave)
+                    templatephot = Photometry.get_photflam(maggies, effwave).T
                 else:
                     templatephot = Photometry.parse_photometry(self.phot.bands, maggies, effwave, 
                                                                nanomaggies=False, get_abmag=get_abmag)
@@ -546,7 +548,7 @@ class ContinuumTools(object):
                                                         (FLUXNORM * self.massnorm)
                     
                     if flamphot:
-                        templatephot = Photometry.get_photflam(maggies, effwave)
+                        templatephot = Photometry.get_photflam(maggies, effwave).T
                     else:
                         templatephot = Photometry.parse_photometry(self.phot.bands, maggies, effwave, 
                                                                    nanomaggies=False, get_abmag=get_abmag)
@@ -574,7 +576,7 @@ class ContinuumTools(object):
             if ndim == 3:
                 nwavepix = np.sum([ len(sw) for sw in specwave ])
                 datatemplateflux = datatemplateflux.reshape(nwavepix, nsed, nprop) # [npix,nsed,nprop]
-                
+        
         return datatemplateflux, templatephot # vector or 3-element list of [npix,nmodel] spectra
 
 
@@ -1335,7 +1337,7 @@ def continuum_specfit(data, result, templates,
     
             # Derive the aperture correction. 
             t0 = time.time()
-    
+            
             # First, do a quick fit of the DESI spectrum (including
             # line-emission templates) so we can synthesize photometry from a
             # noiseless model.
@@ -1348,7 +1350,7 @@ def continuum_specfit(data, result, templates,
                 use_vdisp = vdispbest
                 input_templateflux         = templates.flux[:, agekeep]
                 input_templateflux_nolines = templates.flux_nolines[:, agekeep]
-    
+                
             desitemplates, desitemplatephot_flam = CTools.templates2data(
                 input_templateflux, templates.wave,
                 redshift=redshift, dluminosity=data['dluminosity'],
@@ -1356,7 +1358,7 @@ def continuum_specfit(data, result, templates,
                 vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
                 synthphot=True, flamphot=True, photsys=data['photsys'])
             desitemplateflam = desitemplatephot_flam * CTools.massnorm * FLUXNORM
-    
+                        
             apercorrs, apercorr = np.zeros(len(phot.synth_bands)), 0.
             
             sedtemplates, _ = CTools.templates2data(
@@ -1411,7 +1413,7 @@ def continuum_specfit(data, result, templates,
                 specwave=data['wave'], specres=data['res'], specmask=data['mask'], 
                 vdisp=use_vdisp, cameras=data['cameras'], stack_cameras=True, 
                 synthphot=False)
-    
+            
             coeff, rchi2_cont = CTools.call_nnls(np.vstack((desitemplateflam, desitemplates_nolines)),
                                                  np.hstack((objflam, specflux * apercorr)),
                                                  np.hstack((objflamivar, specivar / apercorr**2)))
@@ -1446,7 +1448,12 @@ def continuum_specfit(data, result, templates,
                
                 dn4000_model, _ = Photometry.get_dn4000(templates.wave, 
                                                         sedmodel_nolines, rest=True)
-            vdisp = use_vdisp
+
+            if use_vdisp is None:
+                vdisp = vdisp_nominal
+            else:
+                vdisp = use_vdisp
+
         else: # new templates start here
             
             # First, estimate the aperture correction from a (noiseless) *model*

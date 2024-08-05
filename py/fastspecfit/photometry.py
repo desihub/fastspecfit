@@ -288,12 +288,27 @@ class Photometry(object):
         
         """
         try:
-            maggies = Photometry.get_ab_maggies_unchecked(filters, flux, wave)
+            if flux.ndim > 1:
+                nflux = flux.shape[0]
+                maggies = np.empty((nflux, len(filters)))
+                for i in range(nflux):
+                    maggies[i,:] = Photometry.get_ab_maggies_unchecked(filters, flux[i,:], wave)
+            else:
+                maggies = Photometry.get_ab_maggies_unchecked(filters, flux, wave)
         except:
+            
             # pad in case of an object at very high redshift (z > 5.5)
             log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.') 
             padflux, padwave = filters.pad_spectrum(flux, wave, axis=0, method='edge')
-            maggies = Photometry.get_ab_maggies_unchecked(filters, padflux, padwave)
+            
+            if flux.ndim > 1:
+                nflux = padflux.shape[0]
+                maggies = np.empty((nflux, len(filters)))
+
+                for i in range(nflux):
+                    maggies[i,:] = Photometry.get_ab_maggies_unchecked(filters, padflux[i,:], padwave)
+            else:
+                maggies = Photometry.get_ab_maggies_unchecked(filters, padflux, padwave)
         
         return maggies
 
@@ -307,10 +322,7 @@ class Photometry(object):
     def get_photflam(maggies, lambda_eff):
 
         factor = 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
-        
-        if maggies.ndim > 1:
-            factor = factor[:, None] # broadcast for the models
-        
+                
         return maggies * factor
 
     
