@@ -1,6 +1,6 @@
 """
-fastspecfit.test.test_continuum
-===============================
+fastspecfit.test.test_fastspecfit
+=================================
 
 Test fastspecfit.fastspecfit.fastspec
 
@@ -15,9 +15,10 @@ fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80856/202103
 
 """
 import pdb
-import unittest, os, shutil, tempfile, subprocess
+
+import os, unittest, tempfile
 import numpy as np
-from unittest.mock import patch, call
+from urllib.request import urlretrieve
 from pkg_resources import resource_filename
 
 class TestFastspec(unittest.TestCase):
@@ -32,10 +33,10 @@ class TestFastspec(unittest.TestCase):
 
         cls.outdir = tempfile.mkdtemp()
         cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-1.3.0.fits')
-        cmd = 'wget -O {} https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.3.0/ftemplates-chabrier-1.3.0.fits'.format(cls.templates)
+        url = "https://portal.nersc.gov/project/cosmo/temp/ioannis/tmp/ftemplates-chabrier-2.0.0.fits"
+        #url = "https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.3.0/ftemplates-chabrier-1.3.0.fits"
+        urlretrieve(url, cls.templates)
 
-        err = subprocess.call(cmd.split())
-        cls.cwd = os.getcwd()
         cls.fastspec_outfile = os.path.join(cls.outdir, 'fastspec.fits')
         cls.fastphot_outfile = os.path.join(cls.outdir, 'fastphot.fits')
 
@@ -75,18 +76,15 @@ class TestFastspec(unittest.TestCase):
         """Test fastspec."""
         import fitsio
         from fastspecfit.fastspecfit import fastspec, parse
-    
+
         cmd = 'fastspec {} -o {} --mapdir {} --fphotodir {} --specproddir {} --templates {}'.format(
             self.redrockfile, self.fastspec_outfile, self.mapdir, self.fphotodir, self.specproddir, self.templates)
         args = parse(options=cmd.split()[1:])
         fastspec(args=args)
-    
+
         self.assertTrue(os.path.exists(self.fastspec_outfile))
-    
+
         fits = fitsio.FITS(self.fastspec_outfile)
         for hdu in fits:
             if hdu.has_data(): # skip zeroth extension
                 self.assertTrue(hdu.get_extname() in ['METADATA', 'FASTSPEC', 'MODELS'])
-
-if __name__ == '__main__':
-    unittest.main()
