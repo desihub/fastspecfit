@@ -1024,11 +1024,17 @@ class ContinuumTools(object):
         
         # Unpack the input data to infer the fitting "mode" and the objective
         # function.
-        farg = [templateflux,
-                dust_emission, fit_vdisp,
-                objflam, objflamistd,
-                specflux, specistd,
-                synthphot, synthspec]
+        farg = {
+            'templateflux':  templateflux,
+            'dust_emission': dust_emission,
+            'fit_vdisp':     fit_vdisp,
+            'objflam':       objflam,
+            'objflamistd':   objflamistd,
+            'specflux':      specflux,
+            'specistd':      specistd,
+            'synthphot':     synthphot,
+            'synthspec':     synthspec,
+        }
         
         if coeff_guess is None:
             coeff_guess = np.ones(ntemplates)
@@ -1053,7 +1059,7 @@ class ContinuumTools(object):
         
         # NB: `x_scale` has been set to `jac` here to help with the numerical
         # convergence. There may be faster ways, of course...
-        fit_info = least_squares(self._stellar_objective, initial_guesses, args=farg, 
+        fit_info = least_squares(self._stellar_objective, initial_guesses, kwargs=farg, 
                                  bounds=tuple(zip(*bounds)), method='trf',
                                  tr_solver='lsmr', tr_options={'regularize': True}, 
                                  x_scale='jac', max_nfev=5000, ftol=1e-5, xtol=1e-10)#, verbose=2)
