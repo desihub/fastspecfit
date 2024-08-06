@@ -1,12 +1,13 @@
 numpy<2.0
-scipy
 astropy>=5.0
+scipy
 healpy
 numba
 seaborn
 matplotlib
 fitsio
+speclite>=0.20
+git+https://github.com/desihub/desiutil.git@3.4.2
 git+https://github.com/desihub/desimodel.git@0.19.1
 git+https://github.com/desihub/desitarget.git@2.7.0
 git+https://github.com/desihub/desispec.git@0.64.0
-git+https://github.com/desihub/speclite.git@v0.20
