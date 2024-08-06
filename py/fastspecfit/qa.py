@@ -432,7 +432,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
     
         # full model spectrum
-        _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res_fast'],
+        _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res_emline'],
                                                  data['camerapix'], snrcut=emline_snrmin)
         desiemlines = []
         for icam in range(len(data['cameras'])):
@@ -891,7 +891,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             parameters[EMFit.doublet_idx] *= parameters[EMFit.doublet_src]
             lineprofiles = EMLine_MultiLines(parameters, np.hstack(data['wave']), redshift,
                                              EMFit.line_table['restwave'].value,
-                                             data['res_fast'], data['camerapix'])
+                                             data['res_emline'], data['camerapix'])
             
             for iax, (minwave, maxwave, meanwave, deltawave, sig, linename, _linename) in enumerate(
                     zip(minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames, _linenames)):

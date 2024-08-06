@@ -786,7 +786,7 @@ class DESISpectra(object):
                         'coadd_flux': coadd_spec.flux[coadd_cameras][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
                         'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
-                        'coadd_res_fast': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
+                        'coadd_res_emline': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
                         }
                     unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj],
                                        fastphot, synthphot, debug_plots))
@@ -890,7 +890,7 @@ class DESISpectra(object):
                 'ivar': [], 
                 'mask': [],
                 'res': [], 
-                'res_fast': [], 
+                'res_emline': [], 
                 'snr': np.zeros(3, 'f4'),
                 'linemask': [],
                 'linepix': [],
@@ -943,7 +943,7 @@ class DESISpectra(object):
                         specdata['mask'].append(specdata['mask0'][icam])
                     
                         specdata['res'].append(Resolution(res))
-                        specdata['res_fast'].append(EMLine_Resolution(res))
+                        specdata['res_emline'].append(EMLine_Resolution(res))
                     
             if len(cameras) == 0:
                 errmsg = 'No good data, which should never happen.'
@@ -970,7 +970,7 @@ class DESISpectra(object):
             LM = LineMasker(emline_table)
             pix = LM.build_linemask_patches(
                 specdata['coadd_wave'], specdata['coadd_flux'],
-                specdata['coadd_ivar'], specdata['coadd_res_fast'], 
+                specdata['coadd_ivar'], specdata['coadd_res_emline'], 
                 uniqueid=specdata['uniqueid'], redshift=specdata['zredrock'],
                 debug_plots=debug_plots)
         

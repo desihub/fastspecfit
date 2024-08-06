@@ -837,7 +837,7 @@ class ContinuumTools(object):
                                        specwave[icam],
                                        pre=self.spec_pre[icam])
             s, e = pix
-            modelflux[s:e] = specres[icam].dot(resampflux)
+            modelflux[s:e] = specres[icam] @ resampflux
             
         return modelflux
 
