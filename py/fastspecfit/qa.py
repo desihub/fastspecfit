@@ -8,13 +8,12 @@ import pdb # for debugging
 
 import os, time
 
-from itertools import starmap
-
 import numpy as np
 
 from fastspecfit.logger import log
 from fastspecfit.templates import Templates
-from fastspecfit.singlecopy import sc_data, initialize_sc_data
+from fastspecfit.singlecopy import sc_data
+from fastspecfit.util import MPPool
 
 
 def desiqa_one(data, fastfit, metadata, coadd_type,
@@ -432,7 +431,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
     
         # full model spectrum
-        _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res_fast'],
+        _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res_emline'],
                                                  data['camerapix'], snrcut=emline_snrmin)
         desiemlines = []
         for icam in range(len(data['cameras'])):
@@ -891,7 +890,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             parameters[EMFit.doublet_idx] *= parameters[EMFit.doublet_src]
             lineprofiles = EMLine_MultiLines(parameters, np.hstack(data['wave']), redshift,
                                              EMFit.line_table['restwave'].value,
-                                             data['res_fast'], data['camerapix'])
+                                             data['res_emline'], data['camerapix'])
             
             for iax, (minwave, maxwave, meanwave, deltawave, sig, linename, _linename) in enumerate(
                     zip(minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames, _linenames)):
@@ -1334,29 +1333,25 @@ def fastqa(args=None, comm=None):
         ignore_photometry = True
 
     # initialize single-copy objects im main process
-    init_sc_args = (
-        args.emlinesfile,
-        args.fphotofile,
-        fastphot,
-        args.stackfit,
-        ignore_photometry,
-        args.templates,
-        args.imf,
-        args.templateversion,
-    )
-    
-    initialize_sc_data(*init_sc_args)
+    init_sc_args = {
+        'emlines_file':      args.emlinesfile,
+        'fphotofile':        args.fphotofile,
+        'fastphot':          fastphot,
+        'stackfit':          args.stackfit,
+        'ignore_photometry': ignore_photometry,
+        'template_file':     args.templates,
+        'template_version':  args.templateversion,
+        'template_imf':      args.imf,
+    }
 
+    sc_data.initialize(**init_sc_args)
+    
     # if multiprocessing, create a pool of worker processes
     # and initialize single-copy objects in each worker
-    if args.mp > 1:
-        import multiprocessing
-        mp_pool = multiprocessing.Pool(args.mp,
-                                       initializer=initialize_sc_data,
-                                       initargs=init_sc_args)
-    else:
-        mp_pool = None
-
+    mp_pool = MPPool(args.mp,
+                     initializer=sc_data.initialize,
+                     init_argdict=init_sc_args)
+    
     # Initialize the I/O class.
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
                        redux_dir=args.redux_dir,
@@ -1396,19 +1391,30 @@ def fastqa(args=None, comm=None):
             minspecwave = args.minspecwave
             maxspecwave = args.maxspecwave
 
-        qaargs = [(data[igal], fastfit[indx[igal]], metadata[indx[igal]],
-                   coadd_type, minspecwave, maxspecwave, 
-                   args.minphotwave, args.maxphotwave, args.emline_snrmin, 
-                   args.nsmoothspec, fastphot, stackfit, inputz, 
-                   no_smooth_continuum, args.outdir, args.outprefix)
-                   for igal in range(len(indx))]
-
-        # desiqa_one has no return value
-        if mp_pool is not None:
-            mp_pool.starmap(desiqa_one, qaargs)
-        else:
-            for _ in starmap(desiqa_one, qaargs): pass
-
+        qaargs = [{
+            'data':                data[igal],
+            'fastfit':             fastfit[indx[igal]],
+            'metadata':            metadata[indx[igal]],
+            'coadd_type':          coadd_type,
+            'minspecwave':         minspecwave,
+            'maxspecwave':         maxspecwave,
+            'minphotwave':         args.minphotwave,
+            'maxphotwave':         args.maxphotwave,
+            'emline_snrmin':       args.emline_snrmin,
+            'nsmoothspec':         args.nsmoothspec,
+            'fastphot':            fastphot,
+            'stackfit':            stackfit,
+            'inputz':              inputz,
+            'no_smooth_continuum': no_smooth_continuum,
+            'outdir':              args.outdir,
+            'outprefix': args.outprefix
+        } for igal in range(len(indx)) ]
+        
+        # desiqa_one has no return value, but we need
+        # to step through its output iterator so that
+        # the work for each input is actually done.
+        for _ in mp_pool.starmap(desiqa_one, qaargs): pass
+        
     t0 = time.time()
     if coadd_type == 'healpix':
         if args.redrockfiles is not None:
@@ -1490,6 +1496,5 @@ def fastqa(args=None, comm=None):
     log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
 
     # if multiprocessing, clean up workers
-    if mp_pool is not None:
-        mp_pool.close()
+    mp_pool.close()
 

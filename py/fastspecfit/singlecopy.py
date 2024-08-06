@@ -13,15 +13,15 @@ class Singletons(object):
     def __init__(self):
         pass
 
-    def setup(self,
-              emlines_file=None,
-              fphotofile=None,
-              fastphot=False,
-              stackfit=False,
-              ignore_photometry=False,
-              template_file=None,
-              template_version=None,
-              template_imf=None):
+    def initialize(self,
+                   emlines_file=None,
+                   fphotofile=None,
+                   fastphot=False,
+                   stackfit=False,
+                   ignore_photometry=False,
+                   template_file=None,
+                   template_version=None,
+                   template_imf=None):
 
         # IGM model
         self.igm = Inoue14()
@@ -52,7 +52,3 @@ class Singletons(object):
 
 # global structure with single-copy data, initially empty
 sc_data = Singletons()
-
-# initialization entry point
-def initialize_sc_data(*args):
-    sc_data.setup(*args)

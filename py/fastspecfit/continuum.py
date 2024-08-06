@@ -15,7 +15,15 @@ from fastspecfit.logger import log
 
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
-from fastspecfit.util import C_LIGHT, FLUXNORM, quantile, median, sigmaclip
+from fastspecfit.util import (
+    C_LIGHT,
+    FLUXNORM,
+    trapz_rebin,
+    trapz_rebin_pre,
+    quantile,
+    median,
+    sigmaclip,
+)
 
 class ContinuumTools(object):
     """Tools for dealing with spectral continua.
@@ -59,10 +67,10 @@ class ContinuumTools(object):
         if not fastphot:
             self.wavelen = np.sum([len(w) for w in self.data['wave']])
 
-            # get preprocessing data to accelerate resample()
+            # get preprocessing data to accelerate resampling
             rspre = []
             for wave in self.data['wave']:
-                rspre.append(self.resample_pre(wave))
+                rspre.append(trapz_rebin_pre(wave))
             self.spec_pre = tuple(rspre)
                 
     
@@ -260,115 +268,7 @@ class ContinuumTools(object):
             plt.close()
 
         return smooth
-
-
-    #
-    # preprocessing for resample()
-    #
-    @staticmethod
-    def resample_pre(specwave):
-        from fastspecfit.util import centers2edges
-        
-        edges = centers2edges(specwave)
-        ibw = 1. / np.diff(edges)
-
-        return (edges, ibw)
-
     
-    @staticmethod
-    def resample(templatewave, templateflux, specwave, pre=None):
-        """Resample an input template spectrum at the wavelengths of
-        a DESI camera, in a flux-conserving way.
-
-        Parameters
-        ----------
-        templateflux : :class:`numpy.ndarray` [npix]
-            Input (model) spectrum.
-        templatewave : :class:`numpy.ndarray` [npix]
-            Wavelength array corresponding to `templateflux`.
-        specwave : :class:`numpy.ndarray` [noutpix]
-            Desired output wavelength array.
-        pre :
-            preprocessing data computed by resample_pre(),
-            if available
-        Returns
-        -------
-        :class:`numpy.ndarray` [noutpix]
-            Resampled model spectrum.
-
-        """
-        if pre == None:
-            pre = self.resample_pre(specwave)
-
-        edges, ibw = pre
-            
-        return ContinuumTools.trapz_rebin(templatewave, templateflux, edges, ibw)
-
-
-    @staticmethod
-    @numba.jit(nopython=True, fastmath=True, nogil=True)
-    def trapz_rebin(x, y, edges, ibw):
-        """
-        Trapezoidal rebinning
-        This implementation agrees with the original fastspecfit version to within
-        around 1e-12 and is somewhat faster.  It also tolerates the first bin being
-        arbitrarily greater than the first x without performance loss. ibw is
-        the array of inverse bin widths.
-        
-        We assume that the values of x extend strictly beyond the edges in both
-        directions.
-
-        """
-        # interpolated value of y at edge_x, which lies between x[j] and x[j+1]
-        def y_at(edge_x, j): # j: largest j s.t. x[j] < edge_x
-            return y[j] + (edge_x - x[j]) * (y[j+1] - y[j]) / (x[j+1] - x[j])
-        
-        if edges[0] < x[0] or x[-1] < edges[-1]:
-            raise ValueError('edges must be within input x range')
-        
-        nbins = len(edges) - 1
-        
-        results = np.empty(nbins, dtype=y.dtype)
-        
-        # greatest j s.t. x[j] < edges[0]
-        j = np.searchsorted(x, edges[0], 'right')
-        
-        xlo = edges[0]
-        ylo = y_at(xlo, j)
-    
-        # loop invariant: on entry to iteration i,
-        #   x[j] is greatest x < edges[i]
-        #   xlo = edges[i]
-        #   ylo = y_at(edges[i], j)
-        for i in range(nbins):
-            
-            a = 0.
-            
-            while x[j+1] < edges[i+1]:
-                xhi = x[j+1]
-                yhi = y[j+1]
-                
-                # add area from prev boundary to x[j+1]
-                a += (xhi - xlo) * (yhi + ylo)
-                
-                xlo = xhi
-                ylo = yhi
-                
-                j += 1
-        
-            # partial area up to edge i+1
-            xhi = edges[i+1]
-            yhi = y_at(xhi, j)
-
-            a += (xhi - xlo) * (yhi + ylo)
-            
-            xlo = xhi
-            ylo = yhi
-            
-            results[i] = 0.5 * ibw[i] * a
-
-        return results
-
     
     def continuum_fluxes(self, continuum):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
@@ -560,10 +460,10 @@ class ContinuumTools(object):
                 _datatemplateflux = np.empty((len(specwave[icam]), nmodel),
                                              dtype=ztemplateflux.dtype)
                 for imodel in range(nmodel):
-                    resampflux = self.resample(ztemplatewave, 
-                                               ztemplateflux[:, imodel],
-                                               specwave=specwave[icam],
-                                               pre=self.spec_pre[icam])
+                    resampflux = trapz_rebin(ztemplatewave, 
+                                             ztemplateflux[:, imodel],
+                                             specwave=specwave[icam],
+                                             pre=self.spec_pre[icam])
                     _datatemplateflux[:, imodel] = specres[icam].dot(resampflux)
                     
                 if coeff is not None:
@@ -831,13 +731,12 @@ class ContinuumTools(object):
         
         modelflux = np.empty(self.wavelen)
         
-        for icam, pix in enumerate(camerapix):
-            resampflux = self.resample(self.ztemplatewave,
-                                       contmodel,
-                                       specwave[icam],
-                                       pre=self.spec_pre[icam])
-            s, e = pix
-            modelflux[s:e] = specres[icam].dot(resampflux)
+        for icam, (s, e) in enumerate(camerapix):
+            resampflux = trapz_rebin(self.ztemplatewave,
+                                     contmodel,
+                                     specwave[icam],
+                                     pre=self.spec_pre[icam])
+            modelflux[s:e] = specres[icam] @ resampflux
             
         return modelflux
 
@@ -1024,11 +923,17 @@ class ContinuumTools(object):
         
         # Unpack the input data to infer the fitting "mode" and the objective
         # function.
-        farg = [templateflux,
-                dust_emission, fit_vdisp,
-                objflam, objflamistd,
-                specflux, specistd,
-                synthphot, synthspec]
+        farg = {
+            'templateflux':  templateflux,
+            'dust_emission': dust_emission,
+            'fit_vdisp':     fit_vdisp,
+            'objflam':       objflam,
+            'objflamistd':   objflamistd,
+            'specflux':      specflux,
+            'specistd':      specistd,
+            'synthphot':     synthphot,
+            'synthspec':     synthspec,
+        }
         
         if coeff_guess is None:
             coeff_guess = np.ones(ntemplates)
@@ -1053,7 +958,7 @@ class ContinuumTools(object):
         
         # NB: `x_scale` has been set to `jac` here to help with the numerical
         # convergence. There may be faster ways, of course...
-        fit_info = least_squares(self._stellar_objective, initial_guesses, args=farg, 
+        fit_info = least_squares(self._stellar_objective, initial_guesses, kwargs=farg, 
                                  bounds=tuple(zip(*bounds)), method='trf',
                                  tr_solver='lsmr', tr_options={'regularize': True}, 
                                  x_scale='jac', max_nfev=5000, ftol=1e-5, xtol=1e-10)#, verbose=2)

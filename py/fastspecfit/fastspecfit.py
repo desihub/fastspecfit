@@ -9,15 +9,14 @@ See sandbox/running-fastspecfit for examples.
 import pdb # for debugging
 
 import os, time
-from itertools import starmap
 
 import numpy as np
 
 from astropy.table import Table
 
 from fastspecfit.logger import log
-from fastspecfit.singlecopy import sc_data, initialize_sc_data
-from fastspecfit.util import BoxedScalar
+from fastspecfit.singlecopy import sc_data
+from fastspecfit.util import BoxedScalar, MPPool
 
 def fastspec_one(iobj, data, out_dtype,
                  broadlinefit=True,
@@ -115,6 +114,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                 raise ValueError(errmsg)
     
     # initialize single-copy objects im main process
+<<<<<<< HEAD
     init_sc_args = (
         args.emlinesfile,
         args.fphotofile,
@@ -125,18 +125,26 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         args.templateversion,
         args.imf,
     )
+=======
+    init_sc_args = {
+        'emlines_file':      args.emlinesfile,
+        'fphotofile':        args.fphotofile,
+        'fastphot':          fastphot,
+        'stackfit':          stackfit,
+        'ignore_photometry': args.ignore_photometry,
+        'template_file':     args.templates,
+        'template_version':  args.templateversion,
+        'template_imf':      args.imf,
+    }
+
+    sc_data.initialize(**init_sc_args)
+>>>>>>> continuum-accel
     
-    initialize_sc_data(*init_sc_args)
-        
     # if multiprocessing, create a pool of worker processes
     # and initialize single-copy objects in each worker
-    if args.mp > 1:
-        import multiprocessing
-        mp_pool = multiprocessing.Pool(args.mp,
-                                       initializer=initialize_sc_data,
-                                       initargs=init_sc_args)
-    else:
-        mp_pool = None
+    mp_pool = MPPool(args.mp,
+                     initializer=sc_data.initialize,
+                     init_argdict=init_sc_args)
     
     # Read the data.
     t0 = time.time()
@@ -173,17 +181,21 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     
     # Fit in parallel
     t0 = time.time()
-    fitargs = [(iobj, data[iobj], out_dtype,
-                args.broadlinefit, fastphot, args.constrain_age,
-                args.no_smooth_continuum, args.percamera_models,
-                args.debug_plots, args.minsnr_balmer_broad)
-                for iobj in range(Spec.ntargets)]
-
-    if mp_pool is not None:
-        _out = mp_pool.starmap(fastspec_one, fitargs)
-    else:
-        _out = starmap(fastspec_one, fitargs)
+    fitargs = [{
+        'iobj':                iobj,
+        'data':                data[iobj],
+        'out_dtype':           out_dtype,
+        'broadlinefit':        args.broadlinefit,
+        'fastphot':            fastphot,
+        'constrain_age':       args.constrain_age,
+        'no_smooth_continuum': args.no_smooth_continuum,
+        'percamera_models':    args.percamera_models,
+        'debug_plots':         args.debug_plots,
+        'minsnr_balmer_broad': args.minsnr_balmer_broad,
+    } for iobj in range(Spec.ntargets)]
     
+    _out = mp_pool.starmap(fastspec_one, fitargs)
+        
     out = list(zip(*_out))
 
     meta = create_output_meta(Spec.meta, data,
@@ -202,8 +214,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     log.info(f'Fitting {Spec.ntargets} object(s) took {time.time()-t0:.2f} seconds.')
     
     # if multiprocessing, clean up workers
-    if mp_pool is not None:
-        mp_pool.close()
+    mp_pool.close()
     
     write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,

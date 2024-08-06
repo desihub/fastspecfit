@@ -11,8 +11,6 @@ import pdb # for debugging
 import os, time
 import numpy as np
 
-from itertools import starmap
-
 import fitsio
 from astropy.table import Table
 
@@ -618,9 +616,8 @@ class DESISpectra(object):
         log.info(f'Gathered photometric metadata in {time.time()-t0:.2f} sec')
 
 
-    def read_and_unpack(self, fastphot=False, synthphot=True,
-                        constrain_age=False, debug_plots=False,
-                        mp_pool=None):
+    def read_and_unpack(self, mp_pool, fastphot=False, synthphot=True,
+                        constrain_age=False, debug_plots=False):
         """Read and unpack selected spectra or broadband photometry.
 
         Parameters
@@ -786,15 +783,20 @@ class DESISpectra(object):
                         'coadd_flux': coadd_spec.flux[coadd_cameras][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
                         'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
-                        'coadd_res_fast': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
+                        'coadd_res_emline': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj],
-                                       fastphot, synthphot, debug_plots))
                     
-            if mp_pool is not None:
+                    unpackargs.append({
+                        'iobj':        iobj,
+                        'specdata':    specdata,
+                        'meta':        meta[iobj],
+                        'ebv':         ebv[iobj],
+                        'fastphot':    fastphot,
+                        'synthphot':   synthphot,
+                        'debug_plots': debug_plots,
+                    })
+                    
                 out = mp_pool.starmap(DESISpectra.unpack_one_spectrum, unpackargs)
-            else:
-                out = starmap(DESISpectra.unpack_one_spectrum, unpackargs)
             
             out = list(zip(*out))
             self.meta[ispecfile] = Table(names=meta.columns, rows=out[1])
@@ -890,7 +892,7 @@ class DESISpectra(object):
                 'ivar': [], 
                 'mask': [],
                 'res': [], 
-                'res_fast': [], 
+                'res_emline': [], 
                 'snr': np.zeros(3, 'f4'),
                 'linemask': [],
                 'linepix': [],
@@ -943,7 +945,7 @@ class DESISpectra(object):
                         specdata['mask'].append(specdata['mask0'][icam])
                     
                         specdata['res'].append(Resolution(res))
-                        specdata['res_fast'].append(EMLine_Resolution(res))
+                        specdata['res_emline'].append(EMLine_Resolution(res))
                     
             if len(cameras) == 0:
                 errmsg = 'No good data, which should never happen.'
@@ -970,7 +972,7 @@ class DESISpectra(object):
             LM = LineMasker(emline_table)
             pix = LM.build_linemask_patches(
                 specdata['coadd_wave'], specdata['coadd_flux'],
-                specdata['coadd_ivar'], specdata['coadd_res_fast'], 
+                specdata['coadd_ivar'], specdata['coadd_res_emline'], 
                 uniqueid=specdata['uniqueid'], redshift=specdata['zredrock'],
                 debug_plots=debug_plots)
         
@@ -1241,12 +1243,14 @@ class DESISpectra(object):
                     'coadd_ivar': specdata['ivar0'][0],
                     'coadd_res': specdata['res0'][0],
                     })
-                unpackargs.append((iobj, specdata, synthphot))
-                            
-            if mp_pool is not None:
-                out = mp_pool.starmap(DESISpectra.unpack_one_stacked_spectrum, unpackargs)
-            else:
-                out = starmap(DESISpectra.unpack_one_stacked_spectrum, unpackargs)
+                
+                unpackargs.append({
+                    'iobj':      iobj,
+                    'specdata':  specdata,
+                    'synthphot': synthphot,
+                })
+                  
+            out = mp_pool.starmap(DESISpectra.unpack_one_stacked_spectrum, unpackargs)
                 
             alldata.append(out)
             del out

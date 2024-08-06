@@ -36,7 +36,65 @@ class BoxedScalar(object):
     def __setitem__(self, key, v):
         self.value[key] = v
 
+
+#
+# A Pool encapsulates paaallel execution with a
+# multiprocessing.Pool, falling back to sequential 
+# execution in the current process if just one worker
+# is requested.
+#
+# Unlike multiprocessing.Pool, our starmap() function
+# takes a list of keyword argument dictionaries,
+# rather than a list of positional arguments.
+#
+class MPPool(object):
+
+    # create a pool with nworkers workers, using the current
+    # process if nworkers is 1.  If initiializer is not None,
+    # apply this function to the arguments in keyword dictionary
+    # init_argdict on startup in each each worker subprocess.
+    def __init__(self, nworkers, initializer=None, init_argdict=None):
+
+        initfunc = None if initializer is None else self.apply_to_dict
         
+        if nworkers > 1:
+            from multiprocessing import Pool
+            self.pool = Pool(nworkers,
+                             initializer=initfunc,
+                             initargs=(initializer, init_argdict,))
+        else:
+            self.pool = None
+
+
+    # apply function func to each of a list of inputs, represented
+    # as a list of keyword argument dictionaries.
+    def starmap(self, func, argdicts):
+
+        # we cannot pickle a local function, so we must pass
+        # both func and the argument dictionary to the subprocess
+        # worker and have it apply one to the other.
+        wrapped_args = [ ( func, a, ) for a in argdicts ]
+        
+        if self.pool is not None:
+            out = self.pool.starmap(self.apply_to_dict, wrapped_args)
+        else:
+            from itertools import starmap
+            out = starmap(self.apply_to_dict, wrapped_args)
+            
+        return out
+
+    
+    # close our multiprocess pool if we created one
+    def close(self):
+        if self.pool is not None:
+            self.pool.close()
+
+
+    @staticmethod
+    def apply_to_dict(f, argdict):
+        return f(**argdict)
+
+
 class ZWarningMask(object):
     """
     Mask bit definitions for zwarning.
@@ -199,30 +257,6 @@ def air2vac(airwave):
     return airwave * nn
 
 
-@numba.jit(nopython=True, nogil=True)
-def centers2edges(centers):
-    """Convert bin centers to bin edges, guessing at what you probably meant
-
-    Args:
-        centers (array): bin centers,
-
-    Returns:
-        array: bin edges, lenth = len(centers) + 1
-
-    """
-    
-    edges = np.empty(len(centers) + 1, dtype=np.float64)
-    
-    #- Interior edges are just points half way between bin centers
-    edges[1:-1] = 0.5 * (centers[:-1] + centers[1:])
-    
-    #- edge edges are extrapolation of interior bin sizes
-    edges[0]  = centers[0]  - (centers[1]  - edges[1])
-    edges[-1] = centers[-1] + (centers[-1] - edges[-2])
-
-    return edges
-
-
 ####################################################################
 
 def find_minima(x):
@@ -365,3 +399,158 @@ def trapz(y, x):
     for i in range(len(x) - 1):
         res += (x[i+1] - x[i]) * (y[i+1] + y[i])
     return 0.5 * res
+
+#################################################################
+
+def trapz_rebin(src_x, src_y, bin_centers, out=None, pre=None):
+    """
+    Resample an signal src_y sampled at points src_x into
+    into a series of x-axis bins, in an area-conserving way
+
+    Parameters
+    ----------
+    src_y : :class:`numpy.ndarray` [npix]
+        Input signal
+    src_x : :class:`numpy.ndarray` [npix]
+        array of x coordinates corresponing to src_y
+    bin_centers : :class:`numpy.ndarray` [noutpix]
+        center x coordinates of output bins
+    out:  :class:`numpy.ndarray` or None
+        if not None, an array of correct size and type
+        that will receive the result of the computation.
+        If None, a new array will be allocated. 
+    pre :
+        preprocessing data computed by trapz_rebin_pre(),
+        if available.  If not None, it must correspond
+        to the input bin_centers array.
+
+    Returns
+    -------
+    :class:`numpy.ndarray` [noutpix]
+        Resampled signal at centers of each bin
+
+    """
+    if pre == None:
+        pre = trapz_rebin_pre(bin_centers)
+        
+    edges, ibw = pre
+    
+    return _trapz_rebin(src_x, src_y, edges, ibw, out)
+
+
+def trapz_rebin_pre(bin_centers):
+    """
+    Perform preprocessing on the bin centers passed to trapz_rebin()
+    to avoid some computations each time it is called with these
+    same centers.
+
+    Parameters
+    ----------
+    bin_centers : :class:`numpy.ndarray` [npix]
+        array of bin centers for trapz_rebin()
+
+    Returns
+    -------
+    A preprocessing data structure that can be passed as the
+    'pre' argument of trapz_rebin whenever it is called with
+    the given bin_centers (for *any* src_x and src_y)
+
+    """
+    
+    edges = centers2edges(bin_centers)
+    ibw = 1. / np.diff(edges)
+    
+    return (edges, ibw)
+
+
+@numba.jit(nopython=True, fastmath=True, nogil=True)
+def _trapz_rebin(x, y, edges, ibw, out):
+    """
+    Trapezoidal rebinning
+    This implementation is optimized for compilation with Numba.  It
+    agrees with the earlier fastspecfit implementation to within around
+    1e-12 and is somewhat faster.  It also tolerates the first bin being
+    arbitrarily greater than the first x without performance loss. ibw is
+    the array of inverse bin widths.
+        
+    We require, as did the original version of the code, that the values of x
+    extend strictly beyond the edges array in both directions.
+
+    """
+    # interpolated value of y at edge_x, which lies between x[j] and x[j+1]
+    def y_at(edge_x, j): # j: largest j s.t. x[j] < edge_x
+        return y[j] + (edge_x - x[j]) * (y[j+1] - y[j]) / (x[j+1] - x[j])
+    
+    if edges[0] < x[0] or x[-1] < edges[-1]:
+        raise ValueError('edges must lie strictly within x range')
+    
+    nbins = len(edges) - 1
+
+    results = np.empty(nbins, dtype=y.dtype) if out is None else out
+    
+    # greatest j s.t. x[j] < edges[0]
+    j = np.searchsorted(x, edges[0], 'right')
+    
+    xlo = edges[0]
+    ylo = y_at(xlo, j)
+    
+    # loop invariant: on entry to iteration i,
+    #   x[j] is greatest x < edges[i]
+    #   xlo = edges[i]
+    #   ylo = y_at(edges[i], j)
+    for i in range(nbins):
+            
+        a = 0.
+        
+        while x[j+1] < edges[i+1]:
+            xhi = x[j+1]
+            yhi = y[j+1]
+            
+            # add area from prev boundary to x[j+1]
+            a += (xhi - xlo) * (yhi + ylo)
+            
+            xlo = xhi
+            ylo = yhi
+            
+            j += 1
+            
+        # partial area up to edge i+1
+        xhi = edges[i+1]
+        yhi = y_at(xhi, j)
+        
+        a += (xhi - xlo) * (yhi + ylo)
+        
+        xlo = xhi
+        ylo = yhi
+        
+        results[i] = 0.5 * ibw[i] * a
+        
+    return results
+
+
+@numba.jit(nopython=True, nogil=True)
+def centers2edges(centers):
+    """
+    Convert bin centers to bin edges, guessing at what you probably meant
+
+    Parameters
+    ----------
+    centers: :class:`numpy.ndarray`
+      bin centers
+
+    Returns
+    -------
+    array: bin edges, length = len(centers) + 1
+
+    """
+    
+    edges = np.empty(len(centers) + 1, dtype=centers.dtype)
+    
+    #- Interior edges are just points half way between bin centers
+    edges[1:-1] = 0.5 * (centers[:-1] + centers[1:])
+    
+    #- edge edges are extrapolation of interior bin sizes
+    edges[0]  = centers[0]  - (centers[1]  - edges[1])
+    edges[-1] = centers[-1] + (centers[-1] - edges[-2])
+
+    return edges
