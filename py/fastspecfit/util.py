@@ -36,7 +36,65 @@ class BoxedScalar(object):
     def __setitem__(self, key, v):
         self.value[key] = v
 
+
+#
+# A Pool encapsulates paaallel execution with a
+# multiprocessing.Pool, falling back to sequential 
+# execution in the current process if just one worker
+# is requested.
+#
+# Unlike multiprocessing.Pool, our starmap() function
+# takes a list of keyword argument dictionaries,
+# rather than a list of positional arguments.
+#
+class MPPool(object):
+
+    # create a pool with nworkers workers, using the current
+    # process if nworkers is 1.  If initiializer is not None,
+    # apply this function to the arguments in keyword dictionary
+    # init_argdict on startup in each each worker subprocess.
+    def __init__(self, nworkers, initializer=None, init_argdict=None):
+
+        initfunc = None if initializer is None else self.apply_to_dict
         
+        if nworkers > 1:
+            from multiprocessing import Pool
+            self.pool = Pool(nworkers,
+                             initializer=initfunc,
+                             initargs=(initializer, init_argdict,))
+        else:
+            self.pool = None
+
+
+    # apply function func to each of a list of inputs, represented
+    # as a list of keyword argument dictionaries.
+    def starmap(self, func, argdicts):
+
+        # we cannot pickle a local function, so we must pass
+        # both func and the argument dictionary to the subprocess
+        # worker and have it apply one to the other.
+        wrapped_args = [ ( func, a, ) for a in argdicts ]
+        
+        if self.pool is not None:
+            out = self.pool.starmap(self.apply_to_dict, wrapped_args)
+        else:
+            from itertools import starmap
+            out = starmap(self.apply_to_dict, wrapped_args)
+            
+        return out
+
+    
+    # close our multiprocess pool if we created one
+    def close(self):
+        if self.pool is not None:
+            self.pool.close()
+
+
+    @staticmethod
+    def apply_to_dict(f, argdict):
+        return f(**argdict)
+
+
 class ZWarningMask(object):
     """
     Mask bit definitions for zwarning.
