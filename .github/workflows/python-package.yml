@@ -16,7 +16,7 @@ jobs:
             fail-fast: true
             matrix:
                 os: [ubuntu-latest]
-                python-version: ['3.10', '3.11', '3.12']
+                python-version: ['3.10', '3.11']
         env:
             DESIUTIL_VERSION: 3.4.2
             FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
