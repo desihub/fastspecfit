@@ -1,6 +1,0 @@
-#!/usr/bin/env python
-
-if __name__ == '__main__':
-    from desiutil.log import get_logger
-    log = get_logger()
-    log.warning('fastspecfit-qa is deprecated; please use fastqa')
