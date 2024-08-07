@@ -1,6 +1,6 @@
 """
 fastspecfit.cosmo
-================
+=================
 
 Cosmology utilities.
 

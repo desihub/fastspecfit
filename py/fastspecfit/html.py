@@ -27,7 +27,7 @@ def build_htmlpage_one(htmlhome, survey, targetclass, zcolumn, meta, httpfile,
     """
     #log.info('  Building {}'.format(targiddatafile))
     targetid = meta['TARGETID']
-    
+
     with open(targiddatafile, 'w') as html:
         html.write('<html><body>\n')
         html.write('<style type="text/css">\n')
@@ -52,7 +52,7 @@ def build_htmlpage_one(htmlhome, survey, targetclass, zcolumn, meta, httpfile,
         html.write('<tr><td>{:.5f}</td></tr>\n'.format(meta[zcolumn]))
         html.write('</table>\n')
         html.write('<br />\n')
-        
+
         html.write('<table>\n')
         html.write('<tr width="90%">\n')
         html.write('<td width="50%">FastSpec QA</td><td width="50%">FastPhot QA</td>\n')
@@ -68,7 +68,7 @@ def build_htmlpage_one(htmlhome, survey, targetclass, zcolumn, meta, httpfile,
                 html.write('<td>Not Available</td>\n')
         html.write('</tr>\n')
         html.write('</table>\n')
-                
+
         #html.write('<br /><b><i>Last updated {}</b></i>\n'.format(js))
         html.write('<br /><br />\n')
         html.write('</html></body>\n')
@@ -90,7 +90,6 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
 
     tilesurveys = np.array([ss.upper() for ss in np.atleast_1d(tileinfo['SURVEY'])])
 
-    #pdb.set_trace()
     with open(htmlhomefile, 'w') as html:
         html.write('<html><body>\n')
         html.write('<style type="text/css">\n')
@@ -115,7 +114,7 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
         html.write('<th></th>\n')
         html.write('<th colspan="2">Effective Time (minutes)</th>\n')
         html.write('</tr>\n')
-        
+
         html.write('<tr>\n')
         html.write('<th>Tile</th>\n')
         html.write('<th>Survey</th>\n')
@@ -185,7 +184,7 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
             scndbit = 'SCND_TARGET'
         else:
             NotImplementedError
-        
+
         # need to account for the join suffix when we have both fastspec and
         # fastphot output
         if 'Z_SPEC' in metadata.colnames:
@@ -194,12 +193,12 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
             zcolumn = 'Z_PHOT'
         else:
             zcolumn = 'Z'
-        
+
         if 'DESI_TARGET_SPEC' in metadata.colnames:
             desibit = desibit+'_SPEC'
             bgsbit = bgsbit+'_SPEC'
             mwsbit = mwsbit+'_SPEC'
-                
+
         for tinfo in tileinfo[these]:
             tile = tinfo['TILEID']
             tiledatadir = os.path.join(htmldir, survey.lower(), 'tiles', coadd_type, str(tile))
@@ -257,7 +256,7 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
                     targintile = np.where((tile == metadata['TILEID']) *
                                           metadata[desibit] & desi_mask.mask(targetclass) != 0)[0]
                     nobj = len(targintile)
-                    
+
                     targhtmlfile = os.path.join(htmldir_https, survey.lower(), 'tiles', coadd_type, str(tile), '{}-{}-{}-{}.html'.format(
                         survey.lower(), targetclass.lower(), tile, coadd_type))
                     targdatafile = os.path.join(htmldir, survey.lower(), 'tiles', coadd_type, str(tile), '{}-{}-{}-{}.html'.format(
@@ -298,7 +297,7 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
                             targhtml.write('<td><a href="{}">{}</a></td>\n'.format(targidhtmlfile, targetid))
                             targhtml.write('<td>{:.5f}</td>\n'.format(meta[zcolumn]))
                             targhtml.write('</tr>\n')
-                            
+
                         targhtml.write('</table>\n')
                         targhtml.write('<br /><br />\n')
                         targhtml.write('</html></body>\n')
@@ -323,7 +322,7 @@ def build_htmlhome(htmldir, fastfit, metadata, tileinfo, coadd_type='cumulative'
 
                     zsrt = np.argsort(metadata[targintile][zcolumn])
                     targetids = metadata[targintile]['TARGETID'][zsrt].data
-                    
+
                     targidhtmlfiles, targiddatafiles, httpfiles, pngfiles = [], [], [], []
                     for targetid in targetids:
                         targidhtmlfiles.append(os.path.join(htmldir_https, survey.lower(), 'tiles', coadd_type, str(tile), targetclass.lower(),

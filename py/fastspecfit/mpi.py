@@ -14,10 +14,9 @@ import multiprocessing
 import fitsio
 from astropy.table import Table
 
+from fastspecfit.logger import log
 from fastspecfit.io import get_qa_filename
 
-from desiutil.log import get_logger
-log = get_logger()
 
 def _get_ntargets_one(args):
     return get_ntargets_one(*args)
@@ -52,7 +51,7 @@ def _findfiles(filedir, prefix='redrock', survey=None, program=None, healpix=Non
         fitssuffix = 'fits.gz'
     else:
         fitssuffix = 'fits'
-        
+
     if sample is not None: # special case of an input catalog
         thesefiles, ntargets = [], []
         for onesurvey in sorted(set(sample['SURVEY'].data)):
@@ -213,9 +212,9 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
             outfile = redrockfile.replace(specprod_dir, outdir).replace('redrock-', f'{outprefix}-')
             if gzip:
                 outfile = outfile.replace('.fits', '.fits.gz')
-            outfiles.append(outfile) 
+            outfiles.append(outfile)
         outfiles = np.array(outfiles)
-        
+
         todo = np.ones(len(redrockfiles), bool)
         for ii, outfile in enumerate(outfiles):
             if os.path.isfile(outfile) and not overwrite:
@@ -230,7 +229,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
             outfiles = []
             if sample is not None:
                 ntargets = np.array([])
-                
+
         log.info(f'Found {len(redrockfiles)}/{nfile} redrockfiles (left) to do.')
 
         # we already counted ntargets
@@ -259,12 +258,12 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         if len(itodo) > 0:
             ntargets = ntargets[itodo]
             log.info(f'Number of targets left to do: {np.sum(ntargets):,d}.')
-            
+
             if redrockfiles is not None:
                 redrockfiles = redrockfiles[itodo]
             if outfiles is not None:
                 outfiles = outfiles[itodo]
-                
+
             groups = weighted_partition(ntargets, size)
 
             ## Assign the sample to ranks to make the ntargets distribution per rank ~flat.
@@ -311,8 +310,10 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
 
     return outdir, redrockfiles, outfiles, groups, ntargets
 
+
 def _read_to_merge_one(args):
     return read_to_merge_one(*args)
+
 
 def read_to_merge_one(filename, extname):
     info = fitsio.FITS(filename)
@@ -327,6 +328,7 @@ def read_to_merge_one(filename, extname):
     meta = Table(info['METADATA'].read())
     return out, meta
 
+
 def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
              outprefix=None, specprod=None, coadd_type=None, mergefile=None,
              fastphot=False, mp=1):
@@ -336,7 +338,7 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
     from astropy.table import vstack
     from desiutil.depend import getdep, hasdep
     from fastspecfit.io import write_fastspecfit
-    
+
     t0 = time.time()
     out, meta = [], []
 
@@ -350,7 +352,7 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
     out = vstack(_out[0])
     meta = vstack(_out[1])
     del _out
-        
+
     # sort?
     srt = np.argsort(meta['TARGETID'])
     out = out[srt]
@@ -374,7 +376,7 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
     for key in deps.keys():
         if key in hdr:
             deps[key] = hdr[key]
-            
+
     deps2 = {}
     deps2['FPHOTO_FILE'] = None
     deps2['FTEMPLATES_FILE'] = None
@@ -390,6 +392,7 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
                       ignore_photometry=deps['NOPHOTO'], broadlinefit=deps['BRDLFIT'],
                       constrain_age=deps['CONSAGE'], use_quasarnet=deps['USEQNET'],
                       no_smooth_continuum=deps['NOSCORR'])
+
 
 def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                       healpix=None, tile=None, night=None, sample=None, outsuffix=None,
@@ -407,7 +410,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
     from astropy.io import fits
     from astropy.table import Table, vstack
     from fastspecfit.mpi import plan
-    
+
     if fastphot:
         outprefix = 'fastphot'
         extname = 'FASTPHOT'
@@ -447,7 +450,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
         if os.path.isfile(mergefile) and not overwrite:
             log.info(f'Merged output file {mergefile} exists!')
             return
-        
+
         _, _, outfiles, _, _ = plan(specprod=specprod, sample=sample, merge=True,
                                     fastphot=fastphot, specprod_dir=specprod_dir,
                                     outdir_data=outdir_data, overwrite=overwrite)
