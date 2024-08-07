@@ -1,12 +1,16 @@
-#
-# Single-copy (per process) data structures read from file
-#
+"""
+fastspecfit.singlecopy
+======================
 
-from fastspecfit.cosmo      import TabulatedDESI
-from fastspecfit.inoue14    import Inoue14
+Single-copy (per process) data structures read from files.
+
+"""
+from fastspecfit.cosmo import TabulatedDESI
+from fastspecfit.inoue14 import Inoue14
 from fastspecfit.photometry import Photometry
-from fastspecfit.linetable  import LineTable
-from fastspecfit.templates  import Templates
+from fastspecfit.linetable import LineTable
+from fastspecfit.templates import Templates
+
 
 class Singletons(object):
 
@@ -45,7 +49,7 @@ class Singletons(object):
         self.templates = Templates(template_file=template_file,
                                    template_version=template_version,
                                    imf=template_imf,
-                                   mintemplatewave=450.0,
+                                   mintemplatewave=450.,
                                    maxtemplatewave=40e4,
                                    fastphot=fastphot)
 

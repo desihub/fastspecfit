@@ -37,7 +37,8 @@ def fastspec_one(iobj, data, out_dtype,
     emline_table = sc_data.emlines.table
     templates = sc_data.templates
 
-    log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} {data["uniqueid"]}, z={data["zredrock"]:.6f}].')
+    log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
+             f'{data["uniqueid"]}, z={data["zredrock"]:.6f}].')
 
     # output structure
     out = BoxedScalar(out_dtype)
@@ -47,11 +48,10 @@ def fastspec_one(iobj, data, out_dtype,
         for icam, cam in enumerate(data['cameras']):
             out[f'SNR_{cam.upper()}'] = data['snr'][icam]
 
-    continuummodel, smooth_continuum = continuum_specfit(data, out, templates,
-                                                         igm, phot,
-                                                         constrain_age=constrain_age,
-                                                         no_smooth_continuum=no_smooth_continuum,
-                                                         fastphot=fastphot, debug_plots=debug_plots)
+    continuummodel, smooth_continuum = continuum_specfit(
+        data, out, templates, igm, phot, constrain_age=constrain_age,
+        no_smooth_continuum=no_smooth_continuum,
+        fastphot=fastphot, debug_plots=debug_plots)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -82,20 +82,16 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         Intracommunicator used with MPI parallelism.
 
     """
-    from astropy.table import vstack
-    from fastspecfit.io import (
-        DESISpectra,
-        write_fastspecfit,
-    )
+    from fastspecfit.io import DESISpectra, write_fastspecfit
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
     if stackfit:
-        args.ignore_photometry=True
+        args.ignore_photometry = True
 
     if verbose:
-        args.verbose=True
+        args.verbose = True
 
     if args.verbose:
         from fastspecfit.logger import DEBUG
@@ -577,11 +573,10 @@ def create_output_meta(input_meta, data, phot,
 
 def create_output_table(result_records, meta, units, stackfit=False):
 
-    #
     # Turn the list of result records into a structured array,
     # and build the basic table from that.  Columns and their
     # dtypes are inferred from the array's dtype.
-    #
+
     results = Table(np.array(result_records), units=units)
 
     # add initial columns matching those in meta, at the

@@ -29,7 +29,7 @@ FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
 class BoxedScalar(object):
     def __init__(self, dtype):
         self.value = np.zeros(1, dtype=dtype)[0]
-        
+
     def __getitem__(self, key):
         return self.value[key]
 
@@ -56,7 +56,7 @@ class MPPool(object):
     def __init__(self, nworkers, initializer=None, init_argdict=None):
 
         initfunc = None if initializer is None else self.apply_to_dict
-        
+
         if nworkers > 1:
             from multiprocessing import Pool
             self.pool = Pool(nworkers,
@@ -64,7 +64,6 @@ class MPPool(object):
                              initargs=(initializer, init_argdict,))
         else:
             self.pool = None
-
 
     # apply function func to each of a list of inputs, represented
     # as a list of keyword argument dictionaries.
@@ -74,16 +73,15 @@ class MPPool(object):
         # both func and the argument dictionary to the subprocess
         # worker and have it apply one to the other.
         wrapped_args = [ ( func, a, ) for a in argdicts ]
-        
+
         if self.pool is not None:
             out = self.pool.starmap(self.apply_to_dict, wrapped_args)
         else:
             from itertools import starmap
             out = starmap(self.apply_to_dict, wrapped_args)
-            
+
         return out
 
-    
     # close our multiprocess pool if we created one
     def close(self):
         if self.pool is not None:
@@ -98,9 +96,9 @@ class MPPool(object):
 class ZWarningMask(object):
     """
     Mask bit definitions for zwarning.
-    Taken from Redrock/0.15.4    
+    Taken from Redrock/0.15.4
     WARNING on the warnings: not all of these are implemented yet.
-    
+
     #- TODO: Consider using something like desispec.maskbits to provide a more
     #- convenient wrapper class (probably copy it here; don't make a dependency)
     #- That class as-is would bring in a yaml dependency.
@@ -118,17 +116,6 @@ class ZWarningMask(object):
     BAD_MINFIT        = 2**10 #- Bad parabola fit to the chi2 minimum
     POORDATA          = 2**11 #- Poor input data quality but try fitting anyway
 
-    #- The following bits are reserved for experiment-specific post-redrock
-    #- afterburner updates to ZWARN; redrock commits to *not* setting these bits
-    RESERVED16        = 2**16
-    RESERVED17        = 2**17
-    RESERVED18        = 2**18
-    RESERVED19        = 2**19
-    RESERVED20        = 2**20
-    RESERVED21        = 2**21
-    RESERVED22        = 2**22
-    RESERVED23        = 2**23
-
     @classmethod
     def flags(cls):
         flagmask = list()
@@ -141,7 +128,7 @@ class ZWarningMask(object):
         flagmask = [flagmask[i] for i in isort]
         return flagmask
 
-    
+
 def mwdust_transmission(ebv, filtername):
     """Convert SFD E(B-V) value to dust transmission 0-1 given the bandpass.
 
@@ -220,15 +207,15 @@ def mwdust_transmission(ebv, filtername):
 
     A_X = k_X[filtername] * ebv
 
-    transmission = 10**(-0.4 * A_X)
-    
+    transmission = 10.**(-0.4 * A_X)
+
     return transmission
 
 
 def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
     """Safely convert an inverse variance to a variance. Note that we clip at 1e-3
     by default, not zero.
-    
+
     """
     var = np.zeros_like(ivar)
     goodmask = ivar > clip # True is good
@@ -257,8 +244,6 @@ def air2vac(airwave):
     return airwave * nn
 
 
-####################################################################
-
 def find_minima(x):
     """Return indices of local minima of x, including edges.
 
@@ -277,7 +262,7 @@ def find_minima(x):
     """
     x = np.asarray(x)
     ii = np.where(np.r_[True, x[1:]<=x[:-1]] & np.r_[x[:-1]<=x[1:], True])[0]
-    
+
     jj = np.argsort(x[ii])
 
     return ii[jj]
@@ -351,10 +336,10 @@ def sigmaclip(c, low=3., high=3.):
 
     n  = len(c)
     mask = np.full(n, True, dtype=np.bool_)
-    
+
     s  = np.sum(c)
     s2 = np.sum(c*c)
-    
+
     delta = 1
     while delta > 0:
         mean = s/n
@@ -367,7 +352,7 @@ def sigmaclip(c, low=3., high=3.):
 
         if std == 0.: # don't mask everything
             break
-        
+
         n0 = n
         for j, cval in enumerate(c):
             if mask[j] and (cval < clo or cval > chi):
@@ -387,10 +372,12 @@ def sigmaclip(c, low=3., high=3.):
 def quantile(A, q):
     return np.quantile(A, q)
 
+
 # Numba's median impl is also faster
 @numba.jit(nopython=True, nogil=True)
 def median(A):
     return np.median(A)
+
 
 # Open-coded Numba trapz is much faster than np.traz
 @numba.jit(nopython=True, fastmath=True, nogil=True)
@@ -400,7 +387,6 @@ def trapz(y, x):
         res += (x[i+1] - x[i]) * (y[i+1] + y[i])
     return 0.5 * res
 
-#################################################################
 
 def trapz_rebin(src_x, src_y, bin_centers, out=None, pre=None):
     """
@@ -432,9 +418,9 @@ def trapz_rebin(src_x, src_y, bin_centers, out=None, pre=None):
     """
     if pre == None:
         pre = trapz_rebin_pre(bin_centers)
-        
+
     edges, ibw = pre
-    
+
     return _trapz_rebin(src_x, src_y, edges, ibw, out)
 
 
@@ -456,10 +442,10 @@ def trapz_rebin_pre(bin_centers):
     the given bin_centers (for *any* src_x and src_y)
 
     """
-    
+
     edges = centers2edges(bin_centers)
     ibw = 1. / np.diff(edges)
-    
+
     return (edges, ibw)
 
 
@@ -467,12 +453,13 @@ def trapz_rebin_pre(bin_centers):
 def _trapz_rebin(x, y, edges, ibw, out):
     """
     Trapezoidal rebinning
+
     This implementation is optimized for compilation with Numba.  It
     agrees with the earlier fastspecfit implementation to within around
     1e-12 and is somewhat faster.  It also tolerates the first bin being
     arbitrarily greater than the first x without performance loss. ibw is
     the array of inverse bin widths.
-        
+
     We require, as did the original version of the code, that the values of x
     extend strictly beyond the edges array in both directions.
 
@@ -480,58 +467,58 @@ def _trapz_rebin(x, y, edges, ibw, out):
     # interpolated value of y at edge_x, which lies between x[j] and x[j+1]
     def y_at(edge_x, j): # j: largest j s.t. x[j] < edge_x
         return y[j] + (edge_x - x[j]) * (y[j+1] - y[j]) / (x[j+1] - x[j])
-    
+
     if edges[0] < x[0] or x[-1] < edges[-1]:
         raise ValueError('edges must lie strictly within x range')
-    
+
     nbins = len(edges) - 1
 
     results = np.empty(nbins, dtype=y.dtype) if out is None else out
-    
+
     # greatest j s.t. x[j] < edges[0]
     j = np.searchsorted(x, edges[0], 'right')
-    
+
     xlo = edges[0]
     ylo = y_at(xlo, j)
-    
+
     # loop invariant: on entry to iteration i,
     #   x[j] is greatest x < edges[i]
     #   xlo = edges[i]
     #   ylo = y_at(edges[i], j)
     for i in range(nbins):
-            
+
         a = 0.
-        
+
         while x[j+1] < edges[i+1]:
             xhi = x[j+1]
             yhi = y[j+1]
-            
+
             # add area from prev boundary to x[j+1]
             a += (xhi - xlo) * (yhi + ylo)
-            
+
             xlo = xhi
             ylo = yhi
-            
+
             j += 1
-            
+
         # partial area up to edge i+1
         xhi = edges[i+1]
         yhi = y_at(xhi, j)
-        
+
         a += (xhi - xlo) * (yhi + ylo)
-        
+
         xlo = xhi
         ylo = yhi
-        
+
         results[i] = 0.5 * ibw[i] * a
-        
+
     return results
 
 
 @numba.jit(nopython=True, nogil=True)
 def centers2edges(centers):
     """
-    Convert bin centers to bin edges, guessing at what you probably meant
+    Convert bin centers to bin edges, guessing at what you probably meant.
 
     Parameters
     ----------
@@ -543,12 +530,12 @@ def centers2edges(centers):
     array: bin edges, length = len(centers) + 1
 
     """
-    
+
     edges = np.empty(len(centers) + 1, dtype=centers.dtype)
-    
+
     #- Interior edges are just points half way between bin centers
     edges[1:-1] = 0.5 * (centers[:-1] + centers[1:])
-    
+
     #- edge edges are extrapolation of interior bin sizes
     edges[0]  = centers[0]  - (centers[1]  - edges[1])
     edges[-1] = centers[-1] + (centers[-1] - edges[-2])

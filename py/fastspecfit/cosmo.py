@@ -1,3 +1,10 @@
+"""
+fastspecfit.cosmo
+================
+
+Cosmology utilities.
+
+"""
 import numpy as np
 
 class TabulatedDESI(object):
@@ -12,8 +19,8 @@ class TabulatedDESI(object):
     The cosmology is defined in https://github.com/abacusorg/AbacusSummit/blob/master/Cosmologies/abacus_cosm000/CLASS.ini
     and the tabulated file was obtained using https://github.com/adematti/cosmoprimo/blob/main/cosmoprimo/fiducial.py.
 
-    Note
-    ----
+    Notes
+    -----
     Redshift interpolation range is [0, 100].
 
     """
@@ -27,6 +34,7 @@ class TabulatedDESI(object):
         self.h = self.H0 / 100
         self.hubble_time = 3.08567758e19 / 3.15576e16 / self.H0 # Hubble time [Gyr]
 
+
     def efunc(self, z):
         r"""Return :math:`E(z)`, where the Hubble parameter is defined as :math:`H(z) = H_{0} E(z)`, unitless."""
         z = np.asarray(z)
@@ -34,6 +42,7 @@ class TabulatedDESI(object):
         if mask.any():
             raise ValueError('Input z outside of tabulated range.')
         return np.interp(z, self._z, self._efunc, left=None, right=None)
+
 
     def comoving_radial_distance(self, z):
         r"""Return comoving radial distance, in :math:`\mathrm{Mpc}/h`."""
@@ -43,17 +52,16 @@ class TabulatedDESI(object):
             raise ValueError('Input z outside of tabulated range.')
         return np.interp(z, self._z, self._comoving_radial_distance, left=None, right=None)
 
-    #
     # public interface
-    #
-    
     def luminosity_distance(self, z):
         r"""Return luminosity distance, in :math:`\mathrm{Mpc}/h`."""
         return self.comoving_radial_distance(z) * (1.0+z)
-    
+
+
     def distance_modulus(self, z):
         """Return the distance modulus at the given redshift (Hogg Eq. 24)."""
         return 5. * np.log10(self.luminosity_distance(z)) + 25
+
 
     def universe_age(self, z):
         """Return the age of the universe at the given redshift.
@@ -63,7 +71,8 @@ class TabulatedDESI(object):
 
         def _agefunc(z):
             return 1.0 / self.efunc(z) / (1.0 + z)
-        
+
+
         if np.isscalar(z):
             integ, _ =  quad(_agefunc, z, self._z[-1])
             return integ * self.hubble_time

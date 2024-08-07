@@ -1,29 +1,34 @@
+"""
+fastspecfit.photometry
+======================
+
+Tools for handling filters and photometry calculations.
+
+"""
 import numpy as np
 from astropy.table import Table
 
 from fastspecfit.logger import log
-
 from fastspecfit.util import C_LIGHT, FLUXNORM
+
 
 class Photometry(object):
     """Class to load filters and containing filter- and dust-related methods.
 
     """
     def __init__(self, fphotofile=None, stackfit=False, ignore_photometry=False):
-                 
+
         """
         Parameters
         ----------
         ignore_photometry : :class:`bool`
             Boolean flag indicating whether or not to ignore the broadband
             photometry.
-        log : :class:`desiutil.log.logger`
-            Logger object.
 
         """
         from speclite import filters
         import yaml
-        
+
         if fphotofile is None:
             from importlib import resources
             if stackfit:
@@ -31,7 +36,7 @@ class Photometry(object):
             else:
                 fphotofile = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')
         self.fphotofile = fphotofile
-        
+
         try:
             with open(fphotofile, 'r') as F:
                 fphoto = yaml.safe_load(F)
@@ -49,13 +54,13 @@ class Photometry(object):
             self.dropcols = np.array(fphoto['dropcols'])
         if 'outcols' in fphoto:
             self.outcols = np.array(fphoto['outcols'])
-            
+
         self.bands = np.array(fphoto['bands'])
         self.bands_to_fit = np.array(fphoto['bands_to_fit'])
         self.fluxcols = np.array(fphoto['fluxcols'])
         self.fluxivarcols = np.array(fphoto['fluxivarcols'])
         self.min_uncertainty = np.array(fphoto['min_uncertainty'])
-            
+
         if 'legacysurveydr' in fphoto:
             self.legacysurveydr = fphoto['legacysurveydr']
         if 'viewer_layer' in fphoto:
@@ -66,7 +71,7 @@ class Photometry(object):
             self.synth_bands = np.array(fphoto['synth_bands'])
         if 'fiber_bands' in fphoto:
             self.fiber_bands = np.array(fphoto['fiber_bands'])
-        
+
         self.absmag_bands = np.array(fphoto['absmag_bands'])
         self.band_shift = np.array(fphoto['band_shift'])
 
@@ -98,7 +103,7 @@ class Photometry(object):
             errmsg = 'absmag_bands and band_shift must have the same number of elements.'
             log.critical(errmsg)
             raise ValueError(errmsg)
-        
+
         if self.photounits != 'nanomaggies':
             errmsg = 'nanomaggies is the only currently supported photometric unit!'
             log.critical(errmsg)
@@ -112,13 +117,13 @@ class Photometry(object):
     def kcorr_and_absmag(self, nanomaggies, ivar_nanomaggies, redshift, dmod,
                          photsys, zmodelwave, zmodelflux, snrmin=2.0):
         """Compute K-corrections and absolute magnitudes for a single object.
-        
+
         Parameters
         ----------
         nanomaggies : `numpy.ndarray`
            Input photometric fluxes in the `filters_in` bandpasses.
         ivar_nanomaggies : `numpy.ndarray`
-           Inverse variance photometry corresponding to `nanomaggies`.       
+           Inverse variance photometry corresponding to `nanomaggies`.
         redshift : :class:`float`
            Galaxy or QSO redshift.
         dmod : :class:`float`
@@ -130,14 +135,14 @@ class Photometry(object):
         snrmin : :class:`float`, defaults to 2.
            Minimum signal-to-noise ratio in the input photometry (`maggies`) in
            order for that bandpass to be used to compute a K-correction.
-    
+
         Returns
         -------
         kcorr : `numpy.ndarray`
            K-corrections for each bandpass in `absmag_filters`.
         absmag : `numpy.ndarray`
            Absolute magnitudes, band-shifted according to `band_shift` (if
-           provided) for each bandpass in `absmag_filters`. 
+           provided) for each bandpass in `absmag_filters`.
         ivarabsmag : `numpy.ndarray`
            Inverse variance corresponding to `absmag`.
         synth_absmag : `numpy.ndarray`
@@ -145,7 +150,7 @@ class Photometry(object):
         synth_maggies_in : `numpy.ndarray`
            Synthesized input photometry (should closely match `maggies` if the
            model fit is good).
-        
+
         Notes
         -----
         By default, the K-correction is computed by finding the observed-frame
@@ -155,12 +160,12 @@ class Photometry(object):
         `ivarabsmag`, is derived from the inverse variance of the K-corrected
         photometry. If no bandpass is available then `ivarabsmag` is set to zero and
         `absmag` is derived from the synthesized rest-frame photometry.
-        
+
         """
         from speclite import filters
-        
+
         nabs = len(self.absmag_filters)
-            
+
         if redshift <= 0.0:
             errmsg = 'Input redshift not defined, zero, or negative!'
             log.warning(errmsg)
@@ -172,11 +177,11 @@ class Photometry(object):
             return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
 
         maggies     = nanomaggies * 1e-9
-        ivarmaggies = (ivar_nanomaggies / 1e-9**2) * self.bands_to_fit        
-        
+        ivarmaggies = (ivar_nanomaggies / 1e-9**2) * self.bands_to_fit
+
         filters_in = self.filters[photsys]
         lambda_in = filters_in.effective_wavelengths.value
-        
+
         # input bandpasses, observed frame; maggies and synth_maggies_in should be
         # very close.
         synth_maggies_in = self.get_ab_maggies_unchecked(filters_in,
@@ -184,57 +189,57 @@ class Photometry(object):
                                                          zmodelwave)
         lambda_out = self.filters_out.effective_wavelengths.value
         modelwave = zmodelwave / (1. + redshift)
-        
+
         # Multiply by (1+z) to convert the best-fitting model to the "rest frame".
         synth_outmaggies_rest = self.get_ab_maggies_unchecked(self.filters_out,
                                                               zmodelflux * (1. + redshift) / FLUXNORM,
                                                               modelwave)
-        
+
         synth_absmag = -2.5 * np.log10(synth_outmaggies_rest) - dmod
-        
+
         # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
         oband = np.empty(nabs, dtype=np.int32)
         for jj in range(nabs):
             lambdadist = np.abs(lambda_in / (1. + redshift) - lambda_out[jj])
             oband[jj] = np.argmin(lambdadist + (maggies * np.sqrt(ivarmaggies) < snrmin) * 1e10)
-        
+
         kcorr = + 2.5 * np.log10(synth_outmaggies_rest / synth_maggies_in[oband])
-        
+
         # m_R = M_Q + DM(z) + K_QR(z) or
         # M_Q = m_R - DM(z) - K_QR(z)
         absmag = -2.5 * np.log10(maggies[oband]) - dmod - kcorr
-        
+
         C = 0.8483036976765437 # (0.4 * np.log(10.))**2
         ivarabsmag = maggies[oband]**2 * ivarmaggies[oband] * C
-        
+
         # if we use synthesized photometry then ivarabsmag is zero
         # (which should never happen?)
         I = (maggies[oband] * np.sqrt(ivarmaggies[oband]) <= snrmin)
         absmag[I] = synth_absmag[I]
         ivarabsmag[I] = 0.
-        
+
         return kcorr, absmag, ivarabsmag, synth_maggies_in
 
-    
+
     @staticmethod
     def get_ab_maggies_pre(filters, wave):
         """
         Compute preprocessing data for get_ab_maggies_unchecked() for given filter list
         and target wavelength.
-        
+
         """
         from fastspecfit.util import trapz
-        
+
         # AB reference spctrum in erg/s/cm2/Hz times the speed of light in A/s
         # and converted to erg/s/cm2/A.
         abflam = 3.631e-20 * C_LIGHT * 1e13 / wave**2
 
         pre = []
         for ifilt, filt in enumerate(filters):
-            
+
             if wave[0] > filt.wavelength[0] or filt.wavelength[-1] > wave[-1]:
                 raise RuntimeError("filter boundaries exceed wavelength array")
-            
+
             # NB: if we assume that no padding is needed, wave extends
             # strictly past filt_wavelength, so this is safe
             lo = np.searchsorted(wave, filt.wavelength[ 0], 'right')
@@ -246,7 +251,7 @@ class Photometry(object):
 
         return tuple(pre)
 
-    
+
     @staticmethod
     def get_ab_maggies_unchecked(filters, flux, wave, pre=None):
         """Like `get_ab_maggies()`, but by-passing the units and, more
@@ -261,31 +266,31 @@ class Photometry(object):
         wave comes from an actual camera, however, the filter
         responses are known to exceed the cameras' range of observed
         wavelengths.
-        
+
         flux and wave are assumed to be in erg/s/cm2/A and A, respectively.
 
         """
         from fastspecfit.util import trapz
-        
+
         if pre == None:
             pre = Photometry.get_ab_maggies_pre(filters, wave)
-        
+
         maggies = np.empty(len(pre))
-        
+
         for ifilt, filtpre in enumerate(pre):
             lo, hi, resp, idenom = filtpre
             numer = trapz(resp * flux[lo:hi], x=wave[lo:hi])
             maggies[ifilt] = numer * idenom
 
         return maggies
-    
-    
+
+
     @staticmethod
     def get_ab_maggies(filters, flux, wave):
-        """
-        This version of get_ab_maggies() is robust to wavelength vectors that do not entirely cover one the
-        response range of one or more filters.
-        
+        """This version of get_ab_maggies() is robust to wavelength vectors
+        that do not entirely cover one the response range of one or more
+        filters.
+
         """
         try:
             if flux.ndim > 1:
@@ -296,11 +301,10 @@ class Photometry(object):
             else:
                 maggies = Photometry.get_ab_maggies_unchecked(filters, flux, wave)
         except:
-            
             # pad in case of an object at very high redshift (z > 5.5)
-            log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.') 
+            log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
             padflux, padwave = filters.pad_spectrum(flux, wave, axis=0, method='edge')
-            
+
             if flux.ndim > 1:
                 nflux = padflux.shape[0]
                 maggies = np.empty((nflux, len(filters)))
@@ -309,23 +313,21 @@ class Photometry(object):
                     maggies[i,:] = Photometry.get_ab_maggies_unchecked(filters, padflux[i,:], padwave)
             else:
                 maggies = Photometry.get_ab_maggies_unchecked(filters, padflux, padwave)
-        
+
         return maggies
 
-    
+
     @staticmethod
     def to_nanomaggies(maggies):
         return maggies * 1e9
 
-    
+
     @staticmethod
     def get_photflam(maggies, lambda_eff):
-
-        factor = 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
-                
+        factor = 10.**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
         return maggies * factor
 
-    
+
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
                          nanomaggies=True, nsigma=2.0, min_uncertainty=None,
@@ -339,11 +341,11 @@ class Photometry(object):
         abmag - AB mag
         nanomaggies - input maggies are actually 1e-9 maggies
 
-        nsigma - magnitude limit 
+        nsigma - magnitude limit
 
-        qa - true iff table will be used by fastqa (which needs
+        get_abmag - true iff table will be used by fastqa (which needs
         columns that fastspec does not)
-        
+
         Returns
         -------
         phot - photometric table
@@ -352,12 +354,11 @@ class Photometry(object):
         -----
 
         """
-        
         if ivarmaggies is None:
             ivarmaggies = np.zeros_like(maggies)
-            
+
         # Gaia-only targets can sometimes have grz=-99.
-        if np.any(ivarmaggies < 0.) or np.any(maggies == -99.0):
+        if np.any(ivarmaggies < 0.) or np.any(maggies == -99.):
             errmsg = 'All ivarmaggies must be zero or positive!'
             log.critical(errmsg)
             raise ValueError(errmsg)
@@ -367,7 +368,7 @@ class Photometry(object):
             nmg = maggies
             nmg_ivar = ivarmaggies.copy()
         else:
-            nanofactor = 1.0
+            nanofactor = 1.
             nmg = maggies * 1e9
             nmg_ivar = ivarmaggies * 1e-18
 
@@ -378,16 +379,16 @@ class Photometry(object):
             abmag_brighterr = np.zeros_like(maggies)
             abmag_fainterr  = np.zeros_like(maggies)
             abmag_ivar      = np.zeros_like(maggies)
-            
+
             # deal with measurements
             good = (maggies > 0.)
             abmag[good] = -2.5 * np.log10(nanofactor * maggies[good])
-            
+
             # deal with upper limits
             snr = maggies * np.sqrt(ivarmaggies)
             upper = ((ivarmaggies > 0.) & (snr <= nsigma))
             abmag_limit[upper] = - 2.5 * np.log10(nanofactor * nsigma / np.sqrt(ivarmaggies[upper]))
-            
+
             # significant detections
             C = 0.4 * np.log(10)
             good = (snr > nsigma)
@@ -397,11 +398,11 @@ class Photometry(object):
             abmag_brighterr[good] = errmaggies / (C * (maggies_good + errmaggies)) # bright end (flux upper limit)
             abmag_fainterr[good]  = errmaggies / (C * (maggies_good - errmaggies)) # faint end (flux lower limit)
             abmag_ivar[good]      = ivarmaggies_good * (C * maggies_good)**2
-            
+
         # Add a minimum uncertainty in quadrature **but only for flam**, which
         # is used in the fitting.
         if min_uncertainty is not None:
-            log.info('Propagating minimum photometric uncertainties (mag): [{}]'.format(
+            log.debug('Propagating minimum photometric uncertainties (mag): [{}]'.format(
                 ' '.join(min_uncertainty.astype(str))))
             good = ((maggies != 0.) & (ivarmaggies > 0.))
             maggies_good = maggies[good]
@@ -411,7 +412,7 @@ class Photometry(object):
             ivarmaggies[good] = factor**2 / (maggies_good**2 * magerr2)
 
         factor = nanofactor * 10**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
-        
+
         ngal = 1 if maggies.ndim == 1 else maggies.shape[1]
         if ngal > 1:
             factor = factor[:, None] # broadcast for the models
@@ -420,7 +421,7 @@ class Photometry(object):
 
         data = {
             'band':             bands,
-            'lambda_eff':       lambda_eff, 
+            'lambda_eff':       lambda_eff,
             'nanomaggies':      nmg,
             'nanomaggies_ivar': nmg_ivar,
             'flam':             flam,
@@ -434,7 +435,7 @@ class Photometry(object):
             'f8', # flam
             'f8', # flam_ivar
         ]
-        
+
         if get_abmag:
             # add columns used only by fastqa
             data_qa = {
@@ -453,13 +454,13 @@ class Photometry(object):
                 'f4',
                 'f4',
             ]
-            dtypes.extend(dtypes_qa)            
-            
+            dtypes.extend(dtypes_qa)
+
         phot = Table(data=data, dtype=dtypes)
-        
+
         return phot
 
-    
+
     @staticmethod
     def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
         """Compute DN(4000) and, optionally, the inverse variance.
@@ -534,8 +535,8 @@ class Photometry(object):
             index = integrate.simpson(x=wave, y=flux*ivar) * index_var
             return index, index_var
 
-        blufactor = 3950.0 - 3850.0
-        redfactor = 4100.0 - 4000.0
+        blufactor = 3950. - 3850.
+        redfactor = 4100. - 4000.
         try:
             # yes, blue wavelength go with red integral bounds
             numer, numer_var = _integrate(restwave, fnu, fnu_ivar, 4000, 4100)
@@ -544,12 +545,12 @@ class Photometry(object):
             log.warning('Integration failed when computing DN(4000).')
             return dn4000, dn4000_ivar
 
-        if denom == 0.0 or numer == 0.0:
+        if denom == 0. or numer == 0.:
             log.warning('DN(4000) is ill-defined or could not be computed.')
             return dn4000, dn4000_ivar
-        
+
         dn4000 = (blufactor / redfactor) * numer / denom
         if flam_ivar is not None:
-            dn4000_ivar = (1.0 / (dn4000**2)) / (denom_var / (denom**2) + numer_var / (numer**2))
-    
+            dn4000_ivar = (1. / (dn4000**2)) / (denom_var / (denom**2) + numer_var / (numer**2))
+
         return dn4000, dn4000_ivar

@@ -1,9 +1,13 @@
-#
-# Emission line table, read from file
-#
+"""
+fastspecfit.linetable
+=====================
 
+Emission line table, read from a file.
+
+"""
 import os
 from astropy.table import Table
+
 from fastspecfit.logger import log
 
 class LineTable(object):
@@ -27,7 +31,7 @@ class LineTable(object):
 
         try:
             linetable = Table.read(emlines_file, format='ascii.ecsv', guess=False)
-        except: 
+        except:
             errmsg = f'Problem reading emission lines parameter file {emlines_file}.'
             log.critical(errmsg)
             raise ValueError(errmsg)
