@@ -744,8 +744,16 @@ class DESISpectra(object):
                         'dmodulus': dmod[iobj],
                         'tuniv': tuniv[iobj],
                         }
-                    unpackargs.append((iobj, specdata, meta[iobj], ebv[iobj],
-                                       True, False, debug_plots))
+                    
+                    unpackargs.append({
+                        'iobj':        iobj,
+                        'specdata':    specdata,
+                        'meta':        meta[iobj],
+                        'ebv':         ebv[iobj],
+                        'fastphot':    True,
+                        'synthphot':   False,
+                        'debug_plots': debug_plots,
+                    })
             else:
                 # Don't use .select since meta and spec can be sorted
                 # differently if a non-sorted targetids was passed. Do the
@@ -796,7 +804,7 @@ class DESISpectra(object):
                         'debug_plots': debug_plots,
                     })
                     
-                out = mp_pool.starmap(DESISpectra.unpack_one_spectrum, unpackargs)
+            out = mp_pool.starmap(DESISpectra.unpack_one_spectrum, unpackargs)
             
             out = list(zip(*out))
             self.meta[ispecfile] = Table(names=meta.columns, rows=out[1])
