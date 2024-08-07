@@ -22,7 +22,7 @@ API
 .. automodule:: fastspecfit.html
    :members:
 
-.. automodule:: fastspecfit.inoue14
+.. automodule:: fastspecfit.igm
    :members:
 
 .. automodule:: fastspecfit.io

@@ -6,7 +6,7 @@ Single-copy (per process) data structures read from files.
 
 """
 from fastspecfit.cosmo import TabulatedDESI
-from fastspecfit.inoue14 import Inoue14
+from fastspecfit.igm import Inoue14
 from fastspecfit.photometry import Photometry
 from fastspecfit.linetable import LineTable
 from fastspecfit.templates import Templates
