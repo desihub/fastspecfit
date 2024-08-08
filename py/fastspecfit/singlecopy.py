@@ -42,14 +42,10 @@ class Singletons(object):
                                      ignore_photometry)
 
         # templates for continnuum fitting
-        # Note that 450 A as the minimum wavelength will allow us to
-        # synthesize u-band photometry only up to z=5.53, even though some
-        # targets are at higher redshift. Handle this case in
-        # continuum.ContinuumTools.
         self.templates = Templates(template_file=template_file,
                                    template_version=template_version,
                                    imf=template_imf,
-                                   mintemplatewave=450.,
+                                   mintemplatewave=None,
                                    maxtemplatewave=40e4,
                                    fastphot=fastphot)
 

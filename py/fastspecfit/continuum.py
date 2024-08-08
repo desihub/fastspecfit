@@ -18,6 +18,7 @@ from fastspecfit.util import (C_LIGHT, FLUXNORM,
     trapz_rebin, trapz_rebin_pre, quantile,
     median, sigmaclip)
 
+
 class ContinuumTools(object):
     """Tools for dealing with spectral continua.
 
@@ -31,8 +32,8 @@ class ContinuumTools(object):
 
         self.massnorm = 1e10       # stellar mass normalization factor [Msun]
 
-        self.pixpos_wavesplit = templates.pixpos_wavesplit
-        self.lg_atten         = np.log(10.) * (-0.4 * templates.dust_klambda)
+        self.pixkms_bounds = templates.pixkms_bounds
+        self.lg_atten = np.log(10.) * (-0.4 * templates.dust_klambda)
 
         # Cache the redshift-dependent factors (incl. IGM attenuation),
         redshift = data['zredrock']
@@ -383,8 +384,8 @@ class ContinuumTools(object):
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
             vd_templateflux = Templates.convolve_vdisp(templateflux, vdisp,
-                                                       pixsize_kms=Templates.PIXKMS_BLU,
-                                                       limit=self.pixpos_wavesplit)
+                                                       pixsize_kms=Templates.PIXKMS,
+                                                       pixkms_bounds=self.pixkms_bounds)
         else:
             vd_templateflux = templateflux
 
@@ -665,8 +666,8 @@ class ContinuumTools(object):
         # [2] - Optionally convolve to the desired velocity dispersion.
         if vdisp is not None:
             contmodel = Templates.convolve_vdisp(contmodel, vdisp,
-                                                 pixsize_kms=Templates.PIXKMS_BLU,
-                                                 limit=self.pixpos_wavesplit)
+                                                 pixsize_kms=Templates.PIXKMS,
+                                                 pixkms_bounds=self.pixkms_bounds)
 
         # [3] - Apply dust attenuation; ToDo: allow age-dependent
         # attenuation. Also compute the bolometric luminosity before and after

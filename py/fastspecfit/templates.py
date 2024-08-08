@@ -68,7 +68,9 @@ class Templates(object):
         templatelineflux = T['LINEFLUX'].read()    # [npix x nsed]
         templateinfo     = T['METADATA'].read()
         templatehdr      = T['METADATA'].read_header()
-        vdisphdr         = T['VDISPFLUX'].read_header()
+
+        # maintain backwards compatibility with older templates (versions <2.0.0)
+        self.use_legacy_fitting = ('VDISPFLUX' in T)
 
         self.imf = templatehdr['IMF']
         self.ntemplates = len(templateinfo)
@@ -82,35 +84,33 @@ class Templates(object):
         self.flux = templateflux[keeplo:keephi, :]
         self.flux_nolines = self.flux - templatelineflux[keeplo:keephi, :]
 
-        # convert to double precision, as that is how they are used later on
-        self.wave = self.wave.astype(np.float64)
-        self.flux = self.flux.astype(np.float64)
-        self.flux_nolines = self.flux_nolines.astype(np.float64)
-
-        # Cache a copy of the line-free templates at the nominal velocity
-        # dispersion (needed for fastphot as well).
-        if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
-            vdisp_nominal = vdisphdr['VDISPNOM'] # [km/s]
-        self.vdisp_nominal = vdisp_nominal
-
-        hi = np.searchsorted(self.wave, Templates.PIXKMS_WAVESPLIT, 'left')
-        self.pixpos_wavesplit = hi
-
         # dust attenuation curve
         self.dust_klambda = Templates.klambda(self.wave)
 
+        # Cache a copy of the line-free templates at the nominal velocity
+        # dispersion (needed for fastphot as well).
+        if self.use_legacy_fitting:
+            vdisphdr = T['VDISPFLUX'].read_header()
+            if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
+                if vdisp_nominal != vdisphdr['VDISPNOM']:
+                    errmsg = f'Nominal velocity dispersion in header ({vdisphdr["VDISPNOM"]:.0f} km/s) ' + \
+                        f'does not match requested value ({vdisp_nominal:.0f} km/s)'
+                    log.warning(errmsg)
+
+        self.vdisp_nominal = vdisp_nominal # [km/s]
+
+        pixkms_bounds = np.searchsorted(self.wave, Templates.PIXKMS_BOUNDS, 'left')
+        self.pixkms_bounds = pixkms_bounds
+
         self.flux_nomvdisp = self.convolve_vdisp(
-            self.flux, vdisp_nominal, limit=hi,
-            pixsize_kms=Templates.PIXKMS_BLU)
+            self.flux, vdisp_nominal, pixkms_bounds=pixkms_bounds,
+            pixsize_kms=Templates.PIXKMS)
 
         self.flux_nolines_nomvdisp = self.convolve_vdisp(
-            self.flux_nolines, vdisp_nominal, limit=hi,
-            pixsize_kms=Templates.PIXKMS_BLU)
+            self.flux_nolines, vdisp_nominal, pixkms_bounds=pixkms_bounds,
+            pixsize_kms=Templates.PIXKMS)
 
         self.info = Table(templateinfo)
-
-        # maintain backwards compatibility with older templates (versions <2.0.0)
-        self.use_legacy_fitting = ('VDISPMIN' in vdisphdr)
 
         if self.use_legacy_fitting:
             if not fastphot:
@@ -133,13 +133,6 @@ class Templates(object):
                 self.vdisp_nominal_index = np.where(vdisp == vdisp_nominal)[0] 
                 self.vdispflux = vdispflux
                 self.vdispwave = vdispwave
-
-            # Read the model emission-line fluxes; only present for
-            # template_version>=1.1.1 and generally only useful to a power-user.
-            if read_linefluxes:
-                self.linewaves  = T['LINEWAVES'].read()
-                self.linefluxes = T['LINEFLUXES'].read()
-
         else:
             if 'DUSTFLUX' in T and 'AGNFLUX' in T:
                 from fastspecfit.util import trapz
@@ -168,6 +161,12 @@ class Templates(object):
                 log.critical(errmsg)
                 raise IOError(errmsg)
 
+        # Read the model emission-line fluxes; only present for
+        # template_version>=1.1.1 and generally only useful to a power-user.
+        if read_linefluxes:
+            self.linewaves  = T['LINEWAVES'].read()
+            self.linefluxes = T['LINEFLUXES'].read()
+
 
     @staticmethod
     def get_templates_filename(template_version, imf):
@@ -180,12 +179,12 @@ class Templates(object):
 
 
     @staticmethod
-    def convolve_vdisp(templateflux, vdisp, pixsize_kms=None, limit=None):
+    def convolve_vdisp(templateflux, vdisp, pixsize_kms=None, pixkms_bounds=None):
 
         from scipy.signal import oaconvolve
 
         if pixsize_kms is None:
-            pixsize_kms = Templates.PIXKMS_BLUE
+            pixsize_kms = Templates.PIXKMS
 
         # Convolve by the velocity dispersion.
         if vdisp <= 0.:
@@ -194,33 +193,39 @@ class Templates(object):
             output = np.empty_like(templateflux)
             sigma = vdisp / pixsize_kms # [pixels]
 
-            if limit is None:
-                limit = templateflux.shape[0]
+            if pixkms_bounds is None:
+                pixkms_bounds = (0, templateflux.shape[0])
 
-            truncate = 4.0
+            truncate = 4.
             radius = int(truncate * sigma + 0.5)
             kernel = Templates._gaussian_kernel1d(sigma, radius)
 
             if templateflux.ndim == 1:
-                output[:limit] = oaconvolve(templateflux[:limit], kernel, mode='same')
-                output[limit:] = templateflux[limit:]
+                output[pixkms_bounds[0]:pixkms_bounds[1]] = oaconvolve(
+                    templateflux[pixkms_bounds[0]:pixkms_bounds[1]], kernel, mode='same')
+                output[pixkms_bounds[0]:] = templateflux[pixkms_bounds[0]:]
+                output[:pixkms_bounds[1]] = templateflux[:pixkms_bounds[1]]
             else:
                 n = templateflux.shape[1]
-                for i in range(n):
-                    output[:limit, i] = oaconvolve(templateflux[:limit, i], kernel, mode='same')
-                output[limit:, :] = templateflux[limit:, :]
+                for ii in range(n):
+                    output[pixkms_bounds[0]:pixkms_bounds[1], ii] = oaconvolve(
+                        templateflux[pixkms_bounds[0]:pixkms_bounds[1], ii], kernel, mode='same')
+                output[pixkms_bounds[0]:, :] = templateflux[pixkms_bounds[0]:, :]
+                output[:pixkms_bounds[1], :] = templateflux[:pixkms_bounds[1], :]
 
         return output
 
 
-    # borrowed from scipy.ndimage
-    # order == k > 0 --> compute kth derivative of kernel
     @staticmethod
     def _gaussian_kernel1d(sigma, radius, order=0):
         """
         Computes a 1-D Gaussian convolution kernel.
-        """
 
+        Borrowed from scipy.ndimage.
+
+        order == k > 0 --> compute kth derivative of kernel
+
+        """
         sigma2 = sigma * sigma
         x = np.arange(-radius, radius+1)
         phi_x = np.exp(-0.5 / sigma2 * x ** 2)
