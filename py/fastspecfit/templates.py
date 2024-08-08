@@ -17,9 +17,9 @@ from fastspecfit.logger import log
 class Templates(object):
 
     # SPS template constants (used by build-templates)
-    PIXKMS_BLU = 25.  # [km/s]
-    PIXKMS_RED = 100. # [km/s]
-    PIXKMS_WAVESPLIT = 1e4 # [Angstrom]
+    # https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
+    PIXKMS = 25.  # [km/s]
+    PIXKMS_BOUNDS = (2750., 9100.)
 
     FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/external/templates/fastspecfit'
     DEFAULT_TEMPLATEVERSION = '2.0.0'
