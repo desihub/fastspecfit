@@ -1430,7 +1430,7 @@ def continuum_specfit(data, result, templates, igm, phot,
                     #log.info(f'Best-fitting vdisp={vdisp:.1f}+/-{1./np.sqrt(vdispivar):.1f} km/s.')
                     log.info(f'Best-fitting vdisp={vdisp:.1f} km/s.')
                 else:
-                    log.info(f'Insufficient wavelength covereage to compute vdisp; adopting nominal vdisp={vdisp:.1f} km/s')
+                    log.info(f'Insufficient wavelength coverage to compute vdisp; adopting nominal vdisp={vdisp:.1f} km/s')
 
                 _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
                     resid, ncoeff=len(coeff), vdisp_fitted=compute_vdisp,
@@ -1444,8 +1444,8 @@ def continuum_specfit(data, result, templates, igm, phot,
 
                 sedmodel_nolines = CTools.build_stellar_continuum(
                     input_templateflux_nolines, coeff,
-                    ebv=ebv, vdisp=vdisp, dust_emission=False
-                )
+                    ebv=ebv, vdisp=vdisp, dust_emission=False)
+
                 desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
 
                 dn4000_model, _ = Photometry.get_dn4000(templates.wave,
