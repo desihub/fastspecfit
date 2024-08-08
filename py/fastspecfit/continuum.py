@@ -837,7 +837,7 @@ class ContinuumTools(object):
 
 
     def fit_stellar_continuum(self, templateflux, fit_vdisp,
-                              vdisp_guess=125., ebv_guess=0.05,
+                              vdisp_guess=250., ebv_guess=0.05,
                               coeff_guess=None,
                               vdisp_bounds=(75., 500.), ebv_bounds=(0., 3.),
                               dust_emission=True,
@@ -1405,8 +1405,8 @@ def continuum_specfit(data, result, templates, igm, phot,
             ebv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
                 input_templateflux, # [npix,nage]
                 fit_vdisp=compute_vdisp,
-                ebv_guess=ebv, vdisp_guess=vdisp_nominal,
-                coeff_guess=coeff_guess,
+                vdisp_guess=vdisp_nominal,
+                #ebv_guess=ebv, coeff_guess=coeff_guess, # don't bias the answer...
                 objflam=objflam, objflamistd=objflamistd,
                 specflux=specflux*apercorr, specistd=specistd/apercorr,
                 synthphot=True, synthspec=True)

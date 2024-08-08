@@ -26,7 +26,7 @@ class Templates(object):
     DEFAULT_IMF = 'chabrier'
 
     def __init__(self, template_file=None, template_version=None, imf=None,
-                 mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=125.,
+                 mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=250.,
                  fastphot=False, read_linefluxes=False):
         """"
         Read the templates into a dictionary.
@@ -60,6 +60,7 @@ class Templates(object):
             raise IOError(errmsg)
 
         self.file = template_file
+        log.info(f'Caching stellar templates {template_file}')
 
         T = fitsio.FITS(template_file)
         templatewave     = T['WAVE'].read()        # [npix]
@@ -203,15 +204,15 @@ class Templates(object):
             if templateflux.ndim == 1:
                 output[pixkms_bounds[0]:pixkms_bounds[1]] = oaconvolve(
                     templateflux[pixkms_bounds[0]:pixkms_bounds[1]], kernel, mode='same')
-                output[pixkms_bounds[0]:] = templateflux[pixkms_bounds[0]:]
-                output[:pixkms_bounds[1]] = templateflux[:pixkms_bounds[1]]
+                output[:pixkms_bounds[0]] = templateflux[:pixkms_bounds[0]]
+                output[pixkms_bounds[1]:] = templateflux[pixkms_bounds[1]:]
             else:
                 n = templateflux.shape[1]
                 for ii in range(n):
                     output[pixkms_bounds[0]:pixkms_bounds[1], ii] = oaconvolve(
                         templateflux[pixkms_bounds[0]:pixkms_bounds[1], ii], kernel, mode='same')
-                output[pixkms_bounds[0]:, :] = templateflux[pixkms_bounds[0]:, :]
-                output[:pixkms_bounds[1], :] = templateflux[:pixkms_bounds[1], :]
+                output[:pixkms_bounds[0], :] = templateflux[:pixkms_bounds[0], :]
+                output[pixkms_bounds[1]:, :] = templateflux[pixkms_bounds[1]:, :]
 
         return output
 
