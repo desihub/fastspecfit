@@ -249,7 +249,8 @@ def build_agn_templates(agntau=10., png=None):
     """
     def _qa_agn_templates(agnwave, agnflux, agntau, agngrid=None, taugrid=None):
         plotwave = agnwave / 1e4
-        xlim = (0.1, 100.)
+        #xlim = (0.1, 100.)
+        xlim = (np.min(plotwave), 100.)
         I = (plotwave > xlim[0]) * (plotwave < xlim[1])
 
         fig, ax = plt.subplots()
@@ -402,9 +403,9 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
 
     """
     # AGN + Fe template(s)
-    fewave, feflux = build_fe_templates(version='1.0', png=os.path.join(templatedir, 'original', 'qa-fe.png'))
-    agnwave, agnflux = build_agn_templates(agntau=agntau)#, png=os.path.join(templatedir, 'original', 'qa-agn.png'))
-
+    fewave, feflux = build_fe_templates(version='1.0')#, png=os.path.join(templatedir, 'original', 'qa-fe.png'))
+    agnwave, agnflux = build_agn_templates(agntau=agntau, png=os.path.join(templatedir, 'original', 'qa-agn.png'))
+    import pdb ; pdb.set_trace()
     # dust emission template(s)
     dustwave, dustflux = build_dustem_templates(qpah=qpah, umin=umin, gamma=gamma)#,
                                               #png=os.path.join(templatedir, 'original', 'qa-dustem.png'))

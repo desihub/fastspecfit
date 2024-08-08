@@ -148,13 +148,14 @@ class Templates(object):
 
                 #dusthdr = T['DUSTFLUX'].read_header()
                 #self.qpah     = dusthdr['QPAH']
-                #self.umin     = dusthdr['umin']
+                #self.umin     = dusthdr['UMIN']
                 #self.gamma    = dusthdr['GAMMA']
 
                 # construct the AGN wavelength vector
                 iragnflux = T['AGNFLUX'].read()
                 iragnwave = T['AGNWAVE'].read()
                 #iragnflux  /= trapz(iragnflux, x=iragnwave) # should already be 1.0
+
                 trim = np.searchsorted(iragnwave, 1e4, 'left') # hack...
                 iragnflux = iragnflux[trim:]
                 iragnwave = iragnwave[trim:]
@@ -168,9 +169,7 @@ class Templates(object):
                 agnwave = np.hstack((templatewave[:febounds[0]], fewave,
                                      templatewave[febounds[1]:irbounds],
                                      iragnwave))
-
-
-                import pdb ; pdb.set_trace()
+                #self.agnwave = agnwave
 
                 #agnhdr = T['AGNFLUX'].read_header()
                 #self.agntau   = agnhdr['AGNTAU']
