@@ -34,8 +34,9 @@ Notes
   https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
 
 '''
-import os, time, pdb
+import os, time
 import numpy as np
+import numpy.ma as ma
 import argparse
 import fitsio, fsps
 from scipy.ndimage import gaussian_filter1d
@@ -195,6 +196,53 @@ def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
     return dustwave, mduste
 
 
+def build_fe_templates(version='1.0', png=None):
+    """Build the Fe template.
+
+    """
+    from scipy.ndimage import gaussian_filter1d
+
+    def _qa_fe_templates(fewave, feflux, title):
+        fig, ax = plt.subplots()
+        ax.plot(fewave, feflux, color='k', lw=1.5, label='Original', alpha=0.5)
+        for vdisp in np.logspace(np.log10(150.), np.log10(1e4), 5):
+            sigma = vdisp / Templates.AGN_PIXKMS # [pixels]
+            sfeflux = gaussian_filter1d(feflux, sigma=sigma)
+            ax.plot(fewave, sfeflux, lw=2, label=r'$\sigma=$'+f'{vdisp:.0f} km/s', alpha=0.75)
+        ax.set_xlabel(r'Wavelength ($\AA$)')
+        ax.set_ylabel('Flux (arbitrary units)')
+        #ax.set_xscale('log')
+        #ax.set_yscale('log')
+        ax.legend(loc='upper left', ncol=2)
+        ax.set_title(title)
+        fig.tight_layout()
+        fig.savefig(png)
+
+    templatefile = os.path.join(templatedir, 'original', f'fetemplates-{version}.fits')
+    fe = fitsio.read(templatefile, 'VW01ALT')
+    fewave = fe['WAVE'].astype('f8')
+    feflux = fe['FLUX'].astype('f8')
+
+    #ma.clump_masked(ma.array(feflux, mask=(fewave > 2750.) * (fewave < 2850.) * (feflux == 0.)))
+
+    # rebin to constant log-lambda (i.e., constant velocity)
+    dlogwave = Templates.AGN_PIXKMS / C_LIGHT / np.log(10) # pixel size [log-lambda]
+    newwave = 10.**np.arange(np.log10(Templates.AGN_PIXKMS_BOUNDS[0]),
+                             np.log10(Templates.AGN_PIXKMS_BOUNDS[1]),
+                             dlogwave)
+    newflux = resample_flux(newwave, fewave, feflux)
+
+    #norm = trapz(newflux, x=newwave)
+    norm = np.median(newflux)
+    if norm > 0.:
+        newflux /= norm
+
+    if png:
+        _qa_fe_templates(newwave, newflux, f'Vestergaard & Wilkes (2001) - v{version}')
+
+    return newwave, newflux
+
+
 def build_agn_templates(agntau=10., png=None):
     """Build the AGN templates.
 
@@ -208,7 +256,7 @@ def build_agn_templates(agntau=10., png=None):
         ax.plot(plotwave[I], agnflux[I], label=f'tau={agntau:.1f}', lw=2)
         if agngrid is not None:
             for ii in range(agngrid.shape[0]):
-                ax.plot(plotwave[I], agngrid[ii, I] / trapz(agngrid[ii, :], x=agnwave), 
+                ax.plot(plotwave[I], agngrid[ii, I] / trapz(agngrid[ii, :], x=agnwave),
                         label=f'{taugrid[ii]:.1f}', lw=0.5)
         ax.set_xlabel('Wavelength (micron)')
         ax.set_ylabel('Flux (arbitrary units)')
@@ -349,11 +397,12 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
 
 
 def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
-         vdisp_nominal=125., test=False, version='1.0.0'):
+         test=False, version='1.0.0'):
     """Build all the templates.
 
     """
-    # AGN template(s)
+    # AGN + Fe template(s)
+    fewave, feflux = build_fe_templates(version='1.0', png=os.path.join(templatedir, 'original', 'qa-fe.png'))
     agnwave, agnflux = build_agn_templates(agntau=agntau)#, png=os.path.join(templatedir, 'original', 'qa-agn.png'))
 
     # dust emission template(s)
@@ -407,8 +456,7 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
         models, logages, agebins=agebins, include_nebular=True, imf=imf)
 
     _, _, fluxnolines, _, _ = build_fsps_templates(
-        models, logages, agebins=agebins, include_nebular=False,
-        imf=imf)
+        models, logages, agebins=agebins, include_nebular=False, imf=imf)
 
     lineflux = flux - fluxnolines
 
@@ -419,11 +467,12 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
     #vdispwave = wave[I]
     #vdispflux = gaussian_filter1d(fluxnolines[I, :], sigma=vdisp_nominal / PIXKMS_BLU, axis=1) # [npix,nmodel]
 
-    # Interpolate the dust emission and AGN models to the nominal wavelength array.
+    # Interpolate the dust emission model(s) to the nominal wavelength array.
     dustflux = np.interp(wave, dustwave, dustflux, left=0.)
-    agnflux = 10.**np.interp(np.log10(wave), np.log10(agnwave), np.log10(agnflux+1e-30))-1e-30
-    I = wave <= agnwave[0] # do not extrapolate blueward
-    agnflux[I] = 0.
+
+    #agnflux = 10.**np.interp(np.log10(wave), np.log10(agnwave), np.log10(agnflux+1e-30))-1e-30
+    #I = wave <= agnwave[0] # do not extrapolate blueward
+    #agnflux[I] = 0.
 
     # Write out.
     outdir = os.path.join(templatedir, version)
@@ -455,6 +504,11 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
     hduflux4.header['AGNTAU'] = (agntau, 'AGN optical depth')
     hduflux4.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
+    hduflux5 = fits.ImageHDU(feflux)
+    hduflux5.header['EXTNAME'] = 'FEFLUX'
+    hduflux5.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+
+
     hduwave1 = fits.ImageHDU(wave)
     hduwave1.header['EXTNAME'] = 'WAVE'
     hduwave1.header['BUNIT'] = 'Angstrom'
@@ -463,36 +517,37 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
     hduwave1.header['PIXWAVHI'] = (Templates.PIXKMS_BOUNDS[1], 'max(wave) where pixel size is PIXKMS [Angstrom]')
     hduwave1.header['PIXKMS'] = (Templates.PIXKMS, 'pixel size blueward of PIXSZSPT [km/s]')
 
+    hduwave2 = fits.ImageHDU(agnwave)
+    hduwave2.header['EXTNAME'] = 'AGNWAVE'
+    hduwave2.header['BUNIT'] = 'Angstrom'
+    hduwave2.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+
+    hduwave3 = fits.ImageHDU(fewave)
+    hduwave3.header['EXTNAME'] = 'FEWAVE'
+    hduwave3.header['BUNIT'] = 'Angstrom'
+    hduwave3.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+    hduwave3.header['PIXSZ'] = (Templates.AGN_PIXKMS, 'pixel size [km/s]')
+
+
     hdutable = fits.convenience.table_to_hdu(meta)
     hdutable.header['EXTNAME'] = 'METADATA'
     hdutable.header['imf'] = imf
-
-    ## velocity dispersion
-    #hduflux5 = fits.ImageHDU(vdispflux)
-    #hduflux5.header['EXTNAME'] = 'VDISPFLUX'
-    #hduflux5.header['VDISPNOM'] = (vdisp_nominal, 'nominal (default) velocity dispersion [km/s]')
-    #hduflux5.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
-    #
-    #hduwave2 = fits.ImageHDU(vdispwave)
-    #hduwave2.header['EXTNAME'] = 'VDISPWAVE'
-    #hduwave2.header['BUNIT'] = 'Angstrom'
-    #hduwave2.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
-    #hduwave2.header['PIXSZ'] = (PIXKMS_BLU, 'pixel size [km/s]')
 
     # emission lines
     hduflux6 = fits.ImageHDU(linefluxes)
     hduflux6.header['EXTNAME'] = 'LINEFLUXES'
     hduflux6.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
-    hduwave3 = fits.ImageHDU(linewaves)
-    hduwave3.header['EXTNAME'] = 'LINEWAVES'
-    hduwave3.header['BUNIT'] = 'Angstrom'
-    hduwave3.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+    hduwave4 = fits.ImageHDU(linewaves)
+    hduwave4.header['EXTNAME'] = 'LINEWAVES'
+    hduwave4.header['BUNIT'] = 'Angstrom'
+    hduwave4.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
 
     # metadata table
-    hx = fits.HDUList([hduflux1, hduflux2, hduflux3, hduflux4, hduwave1, hdutable,
-                       #hduflux5, hduwave2,
-                       hduflux6, hduwave3])
+    hx = fits.HDUList([hduflux1, hduflux2, hduflux3, hduwave1, hdutable,
+                       hduflux4, hduwave2,
+                       hduflux5, hduwave3,
+                       hduflux6, hduwave4])
 
     print(f'Writing {len(models)} model spectra to {outfile}')
     hx.writeto(outfile, overwrite=True)
@@ -512,14 +567,12 @@ if __name__ == '__main__':
     # https://python-fsps.readthedocs.io/en/latest/stellarpop_api
     parser.add_argument('--agntau', type=float, default=10., help='Nenkova+08 parameter')
     # FSPS parameters
-    parser.add_argument('--vdisp-nominal', type=float, default=125., help='Default velocity dispersion.')
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function')
     parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
     args = parser.parse_args()
 
     main(imf=args.imf, qpah=args.qpah, umin=args.umin, gamma=args.gamma,
-         agntau=args.agntau, vdisp_nominal=args.vdisp_nominal, test=args.test,
-         version=args.version)
+         agntau=args.agntau, test=args.test, version=args.version)
 
 

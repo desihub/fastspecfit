@@ -21,6 +21,9 @@ class Templates(object):
     PIXKMS = 25.  # [km/s]
     PIXKMS_BOUNDS = (2750., 9100.)
 
+    AGN_PIXKMS = 75.  # [km/s]
+    AGN_PIXKMS_BOUNDS = (1075., 3090.)
+
     FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/external/templates/fastspecfit'
     DEFAULT_TEMPLATEVERSION = '2.0.0'
     DEFAULT_IMF = 'chabrier'
@@ -138,11 +141,9 @@ class Templates(object):
             if 'DUSTFLUX' in T and 'AGNFLUX' in T:
                 from fastspecfit.util import trapz
 
-                dustflux = T['DUSTFLUX'].read()
-                dustflux = dustflux.astype(np.float64)
-
                 # make sure fluxes are normalized to unity
-                dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
+                dustflux = T['DUSTFLUX'].read()
+                #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
                 self.dustflux = dustflux[keeplo:keephi]
 
                 #dusthdr = T['DUSTFLUX'].read_header()
@@ -150,10 +151,26 @@ class Templates(object):
                 #self.umin     = dusthdr['umin']
                 #self.gamma    = dusthdr['GAMMA']
 
-                #agnflux = T['AGNFLUX'].read()
-                #agnflux = agnflux.astype(np.float64)
-                #agnflux  /= trapz(agnflux, x=templatewave) # should already be 1.0
-                #self.agnflux  = agnflux[keeplo:keephi]
+                # construct the AGN wavelength vector
+                iragnflux = T['AGNFLUX'].read()
+                iragnwave = T['AGNWAVE'].read()
+                #iragnflux  /= trapz(iragnflux, x=iragnwave) # should already be 1.0
+                trim = np.searchsorted(iragnwave, 1e4, 'left') # hack...
+                iragnflux = iragnflux[trim:]
+                iragnwave = iragnwave[trim:]
+
+                feflux = T['FEFLUX'].read()
+                fewave = T['FEWAVE'].read()
+
+                febounds = np.searchsorted(templatewave, Templates.AGN_PIXKMS_BOUNDS, 'left')
+                irbounds = np.searchsorted(templatewave, iragnwave[0], 'left')
+
+                agnwave = np.hstack((templatewave[:febounds[0]], fewave,
+                                     templatewave[febounds[1]:irbounds],
+                                     iragnwave))
+
+
+                import pdb ; pdb.set_trace()
 
                 #agnhdr = T['AGNFLUX'].read_header()
                 #self.agntau   = agnhdr['AGNTAU']
