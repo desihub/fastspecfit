@@ -8,12 +8,13 @@ import pdb # for debugging
 import os, time
 import numpy as np
 
-from desiutil.log import get_logger
-log = get_logger()
+from fastspecfit.logger import log
 
-def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
-                    samplefile=None, input_redshifts=False, outdir_data='.', templates=None,
-                    templateversion=None, fphotodir=None, fphotofile=None):
+
+def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
+                    makeqa=False, samplefile=None, input_redshifts=False,
+                    outdir_data='.', templates=None, templateversion=None,
+                    fphotodir=None, fphotofile=None):
 
     import sys
     from desispec.parallel import stdouterr_redirected
@@ -28,7 +29,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
     if rank == 0:
         if args.samplefile is not None:
             import fitsio
-            from astropy.table import Table                
+            from astropy.table import Table
             if not os.path.isfile(args.samplefile):
                 log.warning(f'{args.samplefile} does not exist.')
                 return
@@ -56,7 +57,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
                 coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                 healpix=args.healpix, tile=args.tile, night=args.night,
-                makeqa=args.makeqa, mp=args.mp, fastphot=fastphot, outdir_data=outdir_data, 
+                makeqa=args.makeqa, mp=args.mp, fastphot=fastphot, outdir_data=outdir_data,
                 overwrite=args.overwrite)
         log.info('Planning took {:.2f} sec'.format(time.time() - t0))
     else:
@@ -71,11 +72,11 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         sample = comm.bcast(sample, root=0)
 
     sys.stdout.flush()
-    
+
     # all done
     if len(zbestfiles) == 0:
         return
-        
+
     assert(len(groups) == size)
     assert(len(np.concatenate(groups)) == len(zbestfiles))
 
@@ -96,31 +97,31 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 from fastspecfit.fastspecfit import fastspec as fast
                 cmd = 'fastspec'
             cmdargs = f'{zbestfiles[ii]} -o={outfiles[ii]} --mp={args.mp}'
-                    
+
             if args.ignore_quasarnet:
                 cmdargs += ' --ignore-quasarnet'
-                
+
             if args.ignore_quasarnet:
                 cmdargs += ' --ignore-photometry'
-                
+
             if args.no_smooth_continuum:
                 cmdargs += ' --no-smooth-continuum'
-                
+
             if args.templates:
                 cmdargs += f' --templates={args.templates}'
-                
+
             if args.templateversion:
                 cmdargs += f' --templateversion={args.templateversion}'
-                
+
             if args.fphotodir:
                 cmdargs += f' --fphotodir={args.fphotodir}'
 
             if args.fphotofile:
                 cmdargs += f' --fphotofile={args.fphotofile}'
-                
+
         if args.ntargets is not None:
             cmdargs += f' --ntargets={args.ntargets}'
-                
+
         if args.firsttarget is not None:
             cmdargs += f' --firsttarget={args.firsttarget}'
 
@@ -137,12 +138,12 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         else:
             if args.targetids is not None:
                 cmdargs += f' --targetids={args.targetids}'
-                
+
         if args.makeqa:
             logfile = os.path.join(zbestfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
         else:
             logfile = outfiles[ii].replace('.gz', '').replace('.fits', '.log')
-            
+
         if logfile == outfiles[ii]:
             errmsg = f'Log file {logfile} cannot be the same as outfile!'
             self.log.critical(errmsg)
@@ -190,22 +191,23 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 log.warning(f'Missing {outfile}')
 
         log.info(f'All done at {time.asctime()}')
-        
+
+
 def main():
     """Main wrapper on fastphot and fastspec.
 
     Currently only knows about SV1 observations.
 
     """
-    import argparse    
+    import argparse
     from fastspecfit.mpi import plan
-    
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
     parser.add_argument('--specprod', type=str, default='iron', #choices=['fuji', 'guadalupe', 'iron'],
                         help='Spectroscopic production to process.')
-    
+
     parser.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpixels to process.')
     parser.add_argument('--survey', type=str, default='main,special,cmx,sv1,sv2,sv3', help='Survey to process.')
     parser.add_argument('--program', type=str, default='bright,dark,other,backup', help='Program to process.') # backup not supported
@@ -214,19 +216,19 @@ def main():
 
     parser.add_argument('--samplefile', default=None, type=str, help='Full path to sample (FITS) file with {survey,program,healpix,targetid}.')
     parser.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
-    
+
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
-    
+
     parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
 
     parser.add_argument('--templateversion', type=str, default=None, help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
-    
+
     parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
     parser.add_argument('--mergedir', type=str, help='Output directory for merged catalogs.')
     parser.add_argument('--merge-suffix', type=str, help='Filename suffix for merged catalogs.')
@@ -236,11 +238,11 @@ def main():
     parser.add_argument('--mergeall-special', action='store_true', help='Merge all the special catalogs.')
     parser.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
     parser.add_argument('--ntest', type=int, default=None, help='Select ntest healpixels as a test sample drawn randomly from the full specprod (only for coadd-type==healpix).')
-    
+
     parser.add_argument('--ignore-quasarnet', default=False, action='store_true', help='Do not use QuasarNet to improve QSO redshifts.')
     parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
     parser.add_argument('--no-smooth-continuum', default=False, action='store_true', help='Do not fit the smooth continuum.')
-    
+
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
@@ -248,7 +250,7 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
     parser.add_argument('--outdir-data', default='$PSCRATCH/fastspecfit/data', type=str, help='Base output data directory.')
-    
+
     specprod_dir = None
 
     args = parser.parse_args()
@@ -268,7 +270,7 @@ def main():
         rank = 0
     else:
         rank = comm.rank
-            
+
     # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
     if args.mp > 1 and 'NERSC_HOST' in os.environ:
         import multiprocessing
@@ -277,7 +279,7 @@ def main():
     # check the input samplefile
     if rank == 0 and args.samplefile is not None:
         import fitsio
-        from astropy.table import Table                
+        from astropy.table import Table
         if not os.path.isfile(args.samplefile):
             log.warning(f'{args.samplefile} does not exist.')
             return
@@ -291,23 +293,24 @@ def main():
     if args.samplefile is None and args.coadd_type == 'healpix':
         args.survey = args.survey.split(',')
         args.program = args.program.split(',')
+        args.healpix = args.healpix.split(',')
 
         # For a test sample, use a range of tiles 
         if args.ntest:
             from astropy.table import Table
             rand = np.random.RandomState(seed=1)
             tilepix = Table.read(f'$DESI_ROOT/spectro/redux/{args.specprod}/healpix/tilepix.fits')
-            
+
             # trim to survey/program
             tilepix = tilepix[np.unique(np.hstack([np.where(tilepix['SURVEY'] == survey)[0] for survey in args.survey]))]
             if len(tilepix) == 0:
                 log.warning('No matching surveys; nothing to do.')
-                return            
+                return
             tilepix = tilepix[np.unique(np.hstack([np.where(tilepix['PROGRAM'] == program)[0] for program in args.program]))]
             if len(tilepix) == 0:
                 log.warning('No matching programs; nothing to do.')
                 return
-            
+
             survprog = np.array([ss+pp for ss, pp in zip(tilepix['SURVEY'], tilepix['PROGRAM'])])
             I = rand.choice(len(tilepix), args.ntest, replace=False)
             args.healpix = ','.join(tilepix['HEALPIX'][I].astype(str))
@@ -325,14 +328,14 @@ def main():
             fastprefix = 'fastphot'
         else:
             fastprefix = 'fastspec'
-        
+
         if args.mergeall_main or args.mergeall_sv or args.mergeall_special:
             from glob import glob
             if args.mergedir is None:
                 mergedir = os.path.join(outdir_data, args.specprod, 'catalogs')
             else:
                 mergedir = args.mergedir
-                
+
             if args.mergeall_main:
                 args.merge_suffix = f'{args.specprod}-main'
                 fastfiles_to_merge = sorted(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main-*.fits')))
@@ -382,10 +385,10 @@ def main():
                      outdir_data=outdir_data, overwrite=args.overwrite)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=outdir_data, samplefile=args.samplefile,
-                        input_redshifts=args.input_redshifts, templates=args.templates,
-                        templateversion=args.templateversion, fphotodir=args.fphotodir,
-                        fphotofile=args.fphotofile)
+                        makeqa=args.makeqa, outdir_data=outdir_data,
+                        samplefile=args.samplefile, input_redshifts=args.input_redshifts,
+                        templates=args.templates, templateversion=args.templateversion,
+                        fphotodir=args.fphotodir, fphotofile=args.fphotofile)
 
 if __name__ == '__main__':
     main()

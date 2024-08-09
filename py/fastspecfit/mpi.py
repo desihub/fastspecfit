@@ -45,8 +45,9 @@ def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
     return ntargets
 
 
-def _findfiles(filedir, prefix='redrock', survey=None, program=None, healpix=None,
-               tile=None, night=None, gzip=False, sample=None):
+def _findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
+               program=None, healpix=None, tile=None, night=None,
+               gzip=False, sample=None):
     if gzip:
         fitssuffix = 'fits.gz'
     else:
@@ -76,7 +77,7 @@ def _findfiles(filedir, prefix='redrock', survey=None, program=None, healpix=Non
             for oneprogram in np.atleast_1d(program):
                 log.info(f'Building file list for survey={onesurvey} and program={oneprogram}')
                 if healpix is not None:
-                    for onepix in healpixels:
+                    for onepix in healpix:
                         _thesefiles = glob(os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
                                                         f'{prefix}-{onesurvey}-{oneprogram}-{onepix}.{fitssuffix}'))
                         thesefiles.append(_thesefiles)
@@ -161,8 +162,6 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
 
     if coadd_type == 'healpix':
         subdir = 'healpix'
-        if healpix is not None:
-            healpixels = healpix.split(',')
     else:
         subdir = 'tiles'
 
@@ -193,18 +192,23 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         if sample is not None: # special case of an input catalog
             outfiles, _ = _findfiles(outdir, prefix=outprefix, sample=sample)
         else:
-            outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
+            outfiles = _findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
+                                  survey=survey, program=program, healpix=healpix,
+                                  tile=tile, night=night, gzip=gzip)
         log.info(f'Found {len(outfiles)} {outprefix} files to be merged.')
     elif makeqa:
         redrockfiles = None
-        outfiles = _findfiles(outdir, prefix=outprefix, survey=survey, program=program, healpix=healpix, tile=tile, night=night, gzip=gzip)
+        outfiles = _findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
+                              survey=survey, program=program, healpix=healpix,
+                              tile=tile, night=night, gzip=gzip)
         log.info(f'Found {len(outfiles)} {outprefix} files for QA.')
         ntargs = [(outfile, htmldir, outdir, coadd_type, True, overwrite, fastphot) for outfile in outfiles]
     else:
         if sample is not None: # special case of an input catalog
             redrockfiles, ntargets = _findfiles(specprod_dir, prefix='redrock', sample=sample)
         else:
-            redrockfiles = _findfiles(specprod_dir, prefix='redrock', survey=survey, program=program,
+            redrockfiles = _findfiles(specprod_dir, prefix='redrock', coadd_type=coadd_type,
+                                      survey=survey, program=program,
                                       healpix=healpix, tile=tile, night=night)
         nfile = len(redrockfiles)
         outfiles = []
