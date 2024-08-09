@@ -882,7 +882,6 @@ class EMFitTools(object):
                     result[f'{linename}_AMP_IVAR'] = amp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
-                flux, flux_ivar = 0., 0.
                 if obsvalues[line_amp] > 0.:
                     finalmodel_patch = finalmodel_s[patchindx]
                     chi2 = np.sum(emlineivar_patch * (emlineflux_patch - finalmodel_patch)**2)
@@ -928,7 +927,8 @@ class EMFitTools(object):
                         else:
                             stats = narrow_stats
                         stats.append((linesigma, linez))
-
+            else:
+                flux, flux_ivar = 0., 0.
 
             # next, get the continuum, the inverse variance in the line-amplitude, and the EW
             slo, elo = get_boundaries(emlinewave_s,
