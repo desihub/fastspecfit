@@ -5,6 +5,7 @@ fastspecfit.util
 General utilities.
 
 """
+import os
 import numpy as np
 import numba
 
@@ -58,6 +59,10 @@ class MPPool(object):
         initfunc = None if initializer is None else self.apply_to_dict
 
         if nworkers > 1:
+            #try:
+            #    from mpi4py.futures import MPIPoolExecutor as Pool
+            #except:
+            #    from multiprocessing import Pool
             from multiprocessing import Pool
             self.pool = Pool(nworkers,
                              initializer=initfunc,
