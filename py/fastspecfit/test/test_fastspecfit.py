@@ -33,7 +33,9 @@ class TestFastspec(unittest.TestCase):
         cls.redrockfile = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
 
         cls.outdir = tempfile.mkdtemp()
-        cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-1.3.0.fits')
+        cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-2.0.0.fits')
+        if os.path.isfile(cls.templates):
+            os.remove(cls.templates)
         url = "https://portal.nersc.gov/project/cosmo/temp/ioannis/tmp/ftemplates-chabrier-2.0.0.fits"
         #url = "https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.3.0/ftemplates-chabrier-1.3.0.fits"
         urlretrieve(url, cls.templates)
