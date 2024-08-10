@@ -271,10 +271,10 @@ def main():
     else:
         rank = comm.rank
 
-    # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
-    if args.mp > 1 and 'NERSC_HOST' in os.environ:
-        import multiprocessing
-        multiprocessing.set_start_method('spawn')
+    ## https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
+    #if args.mp > 1 and 'NERSC_HOST' in os.environ:
+    #    import multiprocessing
+    #    multiprocessing.set_start_method('spawn')
 
     # check the input samplefile
     if rank == 0 and args.samplefile is not None:
