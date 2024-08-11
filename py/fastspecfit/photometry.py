@@ -9,7 +9,7 @@ import numpy as np
 from astropy.table import Table
 
 from fastspecfit.logger import log
-from fastspecfit.util import C_LIGHT, FLUXNORM
+from fastspecfit.util import trapz, C_LIGHT, FLUXNORM
 
 
 class Photometry(object):
@@ -228,7 +228,6 @@ class Photometry(object):
         and target wavelength.
 
         """
-        from fastspecfit.util import trapz
 
         # AB reference spctrum in erg/s/cm2/Hz times the speed of light in A/s
         # and converted to erg/s/cm2/A.
@@ -270,8 +269,6 @@ class Photometry(object):
         flux and wave are assumed to be in erg/s/cm2/A and A, respectively.
 
         """
-        from fastspecfit.util import trapz
-
         if pre == None:
             pre = Photometry.get_ab_maggies_pre(filters, wave)
 
@@ -487,7 +484,7 @@ class Photometry(object):
         the "narrow" definition of Balogh et al. 1999.
 
         """
-        dn4000, dn4000_ivar = 0.0, 0.0
+        dn4000, dn4000_ivar = 0., 0.
 
         if rest is False or redshift is not None:
             restwave = wave / (1. + redshift) # [Angstrom]
@@ -497,8 +494,8 @@ class Photometry(object):
             flam2fnu =  restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
 
         # Require a 2-Angstrom pad around the break definition.
-        wpad = 2.0
-        if np.min(restwave) > (3850-wpad) or np.max(restwave) < (4100+wpad):
+        wpad = 2.
+        if np.min(restwave) > (3850.-wpad) or np.max(restwave) < (4100.+wpad):
             log.warning('Too little wavelength coverage to compute Dn(4000)')
             return dn4000, dn4000_ivar
 
@@ -514,10 +511,11 @@ class Photometry(object):
             # trim for speed
             I = ((wave > w1-wpad) & (wave < w2+wpad))
             J = np.logical_and(I, ivar > 0.)
-            # Require no more than 20% of pixels are masked.
-            if np.sum(J) / np.sum(I) < 0.8:
-                log.warning('More than 20% of pixels in Dn(4000) definition are masked.')
-                return 0.0
+            if np.sum(I) == 0:
+                return 0., 0.
+            if np.sum(J) / np.sum(I) < 0.9:
+                log.warning('More than 10% of pixels in Dn(4000) definition are masked.')
+                return 0., 0.
             wave = wave[J]
             flux = flux[J]
             ivar = ivar[J]
@@ -530,18 +528,19 @@ class Photometry(object):
             wave = np.hstack((w1, wave[I], w2))
             flux = np.hstack((f1, flux[I], f2))
             ivar = np.hstack((i1, ivar[I], i2))
-            # FIXME: can we use trapezoidal method here?
-            index_var = 1 / integrate.simpson(x=wave, y=ivar)
-            index = integrate.simpson(x=wave, y=flux*ivar) * index_var
+            index_var = 1. / trapz(ivar, x=wave)
+            index = trapz(flux*ivar, x=wave) * index_var
             return index, index_var
 
         blufactor = 3950. - 3850.
         redfactor = 4100. - 4000.
+
         try:
             # yes, blue wavelength go with red integral bounds
-            numer, numer_var = _integrate(restwave, fnu, fnu_ivar, 4000, 4100)
-            denom, denom_var = _integrate(restwave, fnu, fnu_ivar, 3850, 3950)
+            numer, numer_var = _integrate(restwave, fnu, fnu_ivar, 4000., 4100.)
+            denom, denom_var = _integrate(restwave, fnu, fnu_ivar, 3850., 3950.)
         except:
+            import pdb ; pdb.set_trace()
             log.warning('Integration failed when computing DN(4000).')
             return dn4000, dn4000_ivar
 
