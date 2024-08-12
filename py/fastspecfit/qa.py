@@ -1248,13 +1248,13 @@ def fastqa(args=None, comm=None):
     import fitsio
     from astropy.table import Table
     from fastspecfit.io import (DESISpectra, get_qa_filename,
-                                read_fastspecfit, DESI_ROOT_NERSC, select)
+                                read_fastspecfit, select)
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
     if args.redux_dir is None:
-        args.redux_dir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux')
+        args.redux_dir = os.path.join(os.path.expandvars(os.environ.get('DESI_ROOT')), 'spectro', 'redux')
         if not os.path.isdir(args.redux_dir):
             errmsg = f'Data reduction directory {args.redux_dir} not found.'
             log.critical(errmsg)

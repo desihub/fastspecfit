@@ -140,7 +140,6 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
     import fitsio
     from astropy.table import Table, vstack
     from desispec.parallel import weighted_partition
-    from fastspecfit.io import DESI_ROOT_NERSC
 
     t0 = time.time()
     if comm is None:
@@ -155,9 +154,9 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         outprefix = 'fastspec'
         gzip = True
 
-    desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
-    # look for data in the standard location
+    desi_root = os.path.expandvars(os.environ.get('DESI_ROOT'))
 
+    # look for data in the standard location
     if coadd_type == 'healpix':
         subdir = 'healpix'
     else:

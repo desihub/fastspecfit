@@ -65,9 +65,7 @@ QNLINES = ('C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha')
 
 
 class DESISpectra(object):
-    def __init__(self, phot, cosmo,
-                 redux_dir=None, fiberassign_dir=None,
-                 fphotodir=None, mapdir=None):
+    def __init__(self, phot, cosmo, redux_dir=None, fphotodir=None, mapdir=None):
         """Class to read in DESI spectra and associated metadata.
 
         Parameters
@@ -75,9 +73,6 @@ class DESISpectra(object):
         redux_dir : str
             Full path to the location of the reduced DESI data. Optional and
             defaults to `$DESI_SPECTRO_REDUX`.
-        fiberassign_dir : str
-            Full path to the location of the fiberassign files. Optional and
-            defaults to `$DESI_ROOT/target/fiberassign/tiles/trunk`.
         mapdir : :class:`str`, optional
             Full path to the Milky Way dust maps.
 
@@ -88,11 +83,6 @@ class DESISpectra(object):
             self.redux_dir = os.path.join(desi_root, 'spectro', 'redux')
         else:
             self.redux_dir = redux_dir
-
-        if fiberassign_dir is None:
-            self.fiberassign_dir = os.path.join(desi_root, 'target', 'fiberassign', 'tiles', 'trunk')
-        else:
-            self.fiberassign_dir = fiberassign_dir
 
         if fphotodir is None:
             self.fphotoext = None
@@ -1452,7 +1442,7 @@ class DESISpectra(object):
                     if specprod == 'fuji' or specprod == 'guadalupe': # fragile...
                         input_meta = meta[uniqueid_col, 'TARGET_RA', 'TARGET_DEC']
                         input_meta['TILEID'] = alltiles
-                        targets = gather_targetphot(input_meta, fiberassign_dir=self.fiberassign_dir)
+                        targets = gather_targetphot(input_meta)
                         assert(np.all(input_meta[uniqueid_col] == targets[uniqueid_col]))
                         for col in meta.colnames:
                             if col in targets.colnames:
