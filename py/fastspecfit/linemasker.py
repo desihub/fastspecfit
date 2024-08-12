@@ -129,7 +129,7 @@ class LineMasker(object):
                 keep = np.isin(patchlines, list(pix['linepix'].keys()))
                 if np.count_nonzero(keep) == 0:
                     pix['dropped'].append(patchid)
-                    log.info(f'Dropping patch {patchid} ({len(patchlines)} lines fully masked).')
+                    log.debug(f'Dropping patch {patchid} ({len(patchlines)} lines fully masked).')
                     continue
 
                 patchlines = patchlines[keep]

@@ -75,12 +75,47 @@ class Photometry(object):
         self.absmag_bands = np.array(fphoto['absmag_bands'])
         self.band_shift = np.array(fphoto['band_shift'])
 
+        # Deprecated - trim excessive filter wavelengths where the response is
+        # effectively ~zero.
+        #trim = {
+        #    'decam2014-u': [None, 4100.],
+        #    'decam2014-g': [3850., 5700.],
+        #    'decam2014-r': [5500., 7300.],
+        #    'decam2014-i': [6750., 8750.],
+        #    'decam2014-z': [8200., 10200.],
+        #    'decam2014-Y': [9300., 10800.],
+        #    'BASS-g': [None, 5750.],
+        #    'BASS-r': [None, None],
+        #    'MzLS-z': [8200., 10300.],
+        #}
+        #
+        #def trim_filter(filt):
+        #    """Trim a filter."""
+        #    lo, hi = 0, filt.wavelength.size
+        #    if trim[filtname][0] is not None:
+        #        lo = np.searchsorted(filt.wavelength, trim[filtname][0], 'left')
+        #    if trim[filtname][1] is not None:
+        #        hi = np.searchsorted(filt.wavelength, trim[filtname][1], 'left')
+        #    filtwave = filt.wavelength[lo:hi]
+        #    filtresp = filt.response[lo:hi]
+        #    # response has to go to zero
+        #    filtwave = np.hstack((filtwave[0]-0.1, filtwave, filtwave[-1]+0.1))
+        #    filtresp = np.hstack((0., filtresp, 0.))
+        #    return filters.FilterResponse(filtwave, filtresp, filt.meta)
+
+
         # If fphoto['filters'] is a dictionary, then assume that there
         # are N/S filters (as indicated by photsys).
         self.filters = {}
         for key in fphoto['filters']:
-            self.filters[key] = filters.FilterSequence([filters.load_filter(filtname)
-                                                        for filtname in fphoto['filters'][key]])
+            filts = []
+            for filtname in fphoto['filters'][key]:
+                filt = filters.load_filter(filtname)
+                #if filtname in trim.keys():
+                #    filt = trim_filter(filt)
+                filts.append(filt)
+            self.filters[key] = filters.FilterSequence(filts)
+
         self.synth_filters = {}
         for key in fphoto['synth_filters']:
             self.synth_filters[key] = filters.FilterSequence([filters.load_filter(filtname)
@@ -228,16 +263,14 @@ class Photometry(object):
         and target wavelength.
 
         """
-
         # AB reference spctrum in erg/s/cm2/Hz times the speed of light in A/s
         # and converted to erg/s/cm2/A.
         abflam = 3.631e-20 * C_LIGHT * 1e13 / wave**2
 
         pre = []
         for ifilt, filt in enumerate(filters):
-
             if wave[0] > filt.wavelength[0] or filt.wavelength[-1] > wave[-1]:
-                raise RuntimeError("filter boundaries exceed wavelength array")
+                raise RuntimeError('Filter boundaries exceed wavelength array')
 
             # NB: if we assume that no padding is needed, wave extends
             # strictly past filt_wavelength, so this is safe
@@ -294,7 +327,7 @@ class Photometry(object):
                 nflux = flux.shape[0]
                 maggies = np.empty((nflux, len(filters)))
                 for i in range(nflux):
-                    maggies[i,:] = Photometry.get_ab_maggies_unchecked(filters, flux[i,:], wave)
+                    maggies[i, :] = Photometry.get_ab_maggies_unchecked(filters, flux[i, :], wave)
             else:
                 maggies = Photometry.get_ab_maggies_unchecked(filters, flux, wave)
         except:
@@ -307,7 +340,7 @@ class Photometry(object):
                 maggies = np.empty((nflux, len(filters)))
 
                 for i in range(nflux):
-                    maggies[i,:] = Photometry.get_ab_maggies_unchecked(filters, padflux[i,:], padwave)
+                    maggies[i, :] = Photometry.get_ab_maggies_unchecked(filters, padflux[i, :], padwave)
             else:
                 maggies = Photometry.get_ab_maggies_unchecked(filters, padflux, padwave)
 
@@ -528,8 +561,10 @@ class Photometry(object):
             wave = np.hstack((w1, wave[I], w2))
             flux = np.hstack((f1, flux[I], f2))
             ivar = np.hstack((i1, ivar[I], i2))
-            index_var = 1. / trapz(ivar, x=wave)
-            index = trapz(flux*ivar, x=wave) * index_var
+            #index_var = 1. / trapz(ivar, x=wave)
+            #index = trapz(flux*ivar, x=wave) * index_var
+            index_var = 1. / integrate.simpson(y=ivar, x=wave)
+            index = integrate.simpson(y=flux*ivar, x=wave) * index_var
             return index, index_var
 
         blufactor = 3950. - 3850.
