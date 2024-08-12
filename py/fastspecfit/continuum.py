@@ -5,8 +5,6 @@ fastspecfit.continuum
 Methods and tools for continuum-fitting.
 
 """
-import pdb # for debugging
-
 import time
 import numpy as np
 import numba

@@ -575,7 +575,6 @@ class Photometry(object):
             numer, numer_var = _integrate(restwave, fnu, fnu_ivar, 4000., 4100.)
             denom, denom_var = _integrate(restwave, fnu, fnu_ivar, 3850., 3950.)
         except:
-            import pdb ; pdb.set_trace()
             log.warning('Integration failed when computing DN(4000).')
             return dn4000, dn4000_ivar
 

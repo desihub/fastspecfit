@@ -27,11 +27,13 @@ class TabulatedDESI(object):
     def __init__(self):
         from importlib import resources
         cosmofile = resources.files('fastspecfit').joinpath('data/desi_fiducial_cosmology.dat')
+        self.file = cosmofile
 
-        self._z, self._efunc, self._comoving_radial_distance = np.loadtxt(cosmofile, comments='#', usecols=None, unpack=True)
+        self._z, self._efunc, self._comoving_radial_distance = np.loadtxt(
+            cosmofile, comments='#', usecols=None, unpack=True)
 
-        self.H0 = 100.0
-        self.h = self.H0 / 100
+        self.H0 = 100.
+        self.h = self.H0 / 100.
         self.hubble_time = 3.08567758e19 / 3.15576e16 / self.H0 # Hubble time [Gyr]
 
 
@@ -55,12 +57,12 @@ class TabulatedDESI(object):
     # public interface
     def luminosity_distance(self, z):
         r"""Return luminosity distance, in :math:`\mathrm{Mpc}/h`."""
-        return self.comoving_radial_distance(z) * (1.0+z)
+        return self.comoving_radial_distance(z) * (1. + z)
 
 
     def distance_modulus(self, z):
         """Return the distance modulus at the given redshift (Hogg Eq. 24)."""
-        return 5. * np.log10(self.luminosity_distance(z)) + 25
+        return 5. * np.log10(self.luminosity_distance(z)) + 25.
 
 
     def universe_age(self, z):
@@ -70,7 +72,7 @@ class TabulatedDESI(object):
         from scipy.integrate import quad
 
         def _agefunc(z):
-            return 1.0 / self.efunc(z) / (1.0 + z)
+            return 1. / self.efunc(z) / (1. + z)
 
 
         if np.isscalar(z):

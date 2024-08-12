@@ -5,12 +5,10 @@ fastspecfit.html
 Code to support building HTML visualizations.
 
 """
-import pdb # for debugging
 import os
 import numpy as np
 
-from desiutil.log import get_logger
-log = get_logger()
+from fastspecfit.logger import log
 
 cfsroot = '/global/cfs/cdirs/'
 httpsroot = 'https://data.desi.lbl.gov/'

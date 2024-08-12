@@ -6,8 +6,6 @@ fastspecfit.fastspecfit
 See sandbox/running-fastspecfit for examples.
 
 """
-import pdb # for debugging
-
 import os, time
 import numpy as np
 

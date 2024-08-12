@@ -63,7 +63,6 @@ class Templates(object):
             raise IOError(errmsg)
 
         self.file = template_file
-        log.info(f'Caching stellar templates {template_file}')
 
         T = fitsio.FITS(template_file)
         templatewave     = T['WAVE'].read()        # [npix]

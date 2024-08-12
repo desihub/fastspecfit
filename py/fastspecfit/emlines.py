@@ -5,8 +5,6 @@ fastspecfit.emlines
 Methods and tools for fitting emission lines.
 
 """
-import pdb # for debugging
-
 import time
 import numpy as np
 from enum import IntEnum

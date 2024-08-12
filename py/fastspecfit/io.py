@@ -6,8 +6,6 @@ fastspecfit.io
 Tools for reading DESI spectra and reading and writing fastspecfit files.
 
 """
-import pdb # for debugging
-
 import os, time
 import numpy as np
 

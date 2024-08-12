@@ -5,8 +5,6 @@ fastspecfit.mpi
 MPI tools.
 
 """
-import pdb # for debuggin
-
 import os, time
 import numpy as np
 from glob import glob

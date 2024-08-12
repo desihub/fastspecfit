@@ -4,10 +4,7 @@ fastspecfit.qa
 ==============
 
 """
-import pdb # for debugging
-
 import os, time
-
 import numpy as np
 
 from fastspecfit.logger import log
