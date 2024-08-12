@@ -35,8 +35,12 @@ def fastspec_one(iobj, data, out_dtype,
     emline_table = sc_data.emlines.table
     templates = sc_data.templates
 
-    log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
-             f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
+    if fastphot:
+        log.info(f'Continuum fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
+                 f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
+    else:
+        log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
+                 f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
 
     # output structure
     out = BoxedScalar(out_dtype)
@@ -159,8 +163,6 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         data = Spec.read(mp_pool, fastphot=fastphot, debug_plots=args.debug_plots,
                          constrain_age=args.constrain_age)
 
-    import pdb ; pdb.set_trace()
-
     ncoeff = sc_data.templates.ntemplates
     out_dtype, out_units = get_output_dtype(Spec.specprod,
                                             phot=sc_data.photometry,
@@ -184,8 +186,9 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     } for iobj in range(Spec.ntargets)]
 
     _out = mp_pool.starmap(fastspec_one, fitargs)
-
     out = list(zip(*_out))
+
+    import pdb ; pdb.set_trace()
 
     meta = create_output_meta(Spec.meta, data,
                               phot=sc_data.photometry,

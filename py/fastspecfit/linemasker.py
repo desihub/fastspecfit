@@ -193,11 +193,11 @@ class LineMasker(object):
         return pix
 
 
-    def build_linemask_patches(self, wave, flux, ivar, resolution_matrix, redshift=0.,
-                               uniqueid=0, initsigma_broad=3000., initsigma_narrow=150.,
-                               initsigma_balmer_broad=1000., initvshift_broad=0.,
-                               initvshift_narrow=0., initvshift_balmer_broad=0.,
-                               minsnr_balmer_broad=1.5, niter=2, debug_plots=False):
+    def build_linemask(self, wave, flux, ivar, resolution_matrix, redshift=0.,
+                       uniqueid=0, initsigma_broad=3000., initsigma_narrow=150.,
+                       initsigma_balmer_broad=1000., initvshift_broad=0.,
+                       initvshift_narrow=0., initvshift_balmer_broad=0.,
+                       minsnr_balmer_broad=1.5, niter=2, debug_plots=False):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -638,8 +638,7 @@ class LineMasker(object):
             # if a broad Balmer line is well-detected, take its linewidth
             if maxsnrs_broad[2] > minsnr_balmer_broad:
                 log.info(f'Adopting broad Balmer-line masking: S/N(broad Balmer) ' + \
-                         f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}, ' + \
-                         f'(sigma,dv)=({linesigma_balmer_broad:.0f},{linevshift_balmer_broad:.0f}) km/s.')
+                         f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}')
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_broad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_broad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_broad
@@ -654,6 +653,9 @@ class LineMasker(object):
             finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
             finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
             maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
+
+        log.info(f'Masking line-widths: broad {finalsigma_broad:.0f} km/s narrow {finalsigma_narrow:.0f} km/s ' + \
+                 f'broad Balmer {finalsigma_balmer_broad:.0f} km/s.')
 
         # Build the final pixel mask for *all* lines using our current best
         # knowledge of the broad Balmer lines....(comment continued below)

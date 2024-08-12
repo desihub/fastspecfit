@@ -808,7 +808,10 @@ class DESISpectra(object):
         self.meta = vstack(self.meta)
         self.ntargets = len(self.meta)
 
-        log.info(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
+        if self.ntargets > 1:
+            log.info(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
+        else:
+            log.info(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
 
         return alldata
 
@@ -828,7 +831,7 @@ class DESISpectra(object):
         emline_table = sc_data.emlines.table
         phot = sc_data.photometry
 
-        log.info(f'Pre-processing spectrum {iobj} [targetid {specdata["uniqueid"]} z={specdata["redshift"]:.6f}].')
+        log.info(f'Pre-processing spectrum {iobj} [uniqueid={specdata["uniqueid"]} z={specdata["redshift"]:.6f}].')
 
         RV = 3.1
         meta['EBV'] = ebv
@@ -973,7 +976,7 @@ class DESISpectra(object):
 
             # use the coadded spectrum to build a robust emission-line mask
             LM = LineMasker(emline_table)
-            pix = LM.build_linemask_patches(
+            pix = LM.build_linemask(
                 specdata['coadd_wave'], specdata['coadd_flux'],
                 specdata['coadd_ivar'], specdata['coadd_res_emline'],
                 uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
@@ -1264,7 +1267,10 @@ class DESISpectra(object):
         self.meta = vstack(self.meta)
         self.ntargets = len(self.meta)
 
-        log.info(f'Read {Spec.ntargets} spectra in {time.time()-t0:.2f} seconds.')
+        if self.ntargets > 1:
+            log.info(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
+        else:
+            log.info(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
 
         return alldata
 
@@ -1281,7 +1287,7 @@ class DESISpectra(object):
         emline_table = sc_data.emlines.table
         phot = sc_data.photometry
 
-        log.info(f'Pre-processing object {iobj} [stackid {specdata["uniqueid"]} z={specdata["redshift"]:.6f}].')
+        log.info(f'Pre-processing spectrum {iobj} [stackid={specdata["uniqueid"]} z={specdata["redshift"]:.6f}].')
 
         filters = phot.filters[specdata['photsys']]
         synth_filters = phot.synth_filters[specdata['photsys']]
@@ -1362,8 +1368,8 @@ class DESISpectra(object):
             del specdata[key]
 
         LM = LineMasker(phot, emline_table)
-        coadd_linemask_dict = LM.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                        specdata['coadd_ivar'], redshift=specdata['redshift'])
+        coadd_linemask_dict = LM.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
+                                                specdata['coadd_ivar'], redshift=specdata['redshift'])
 
         specdata['coadd_linename'] = coadd_linemask_dict['linename']
         specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]
