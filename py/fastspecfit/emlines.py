@@ -1098,7 +1098,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
 
     EMFit = EMFitTools(emline_table, uniqueid=data['uniqueid'])
 
-    redshift          = data['zredrock']
+    redshift          = data['redshift']
     camerapix         = data['camerapix']
     resolution_matrix = data['res_emline']
 

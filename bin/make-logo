@@ -8,13 +8,14 @@ make-logo
 """
 import os, argparse, pdb
 import numpy as np
-from fastspecfit.io import DESISpectra, read_fastspecfit, DESI_ROOT_NERSC
+from fastspecfit.io import DESISpectra, read_fastspecfit
 from fastspecfit.fastspecfit import FastFit
 from fastspecfit.util import C_LIGHT
 
+
 def makelogo(data, fastspec, metaspec, Fit, outdir=None):
     """QA plot the emission-line spectrum and best-fitting model."""
-    
+
     from astropy.table import Table, Column
     from scipy.ndimage import median_filter
     import matplotlib.pyplot as plt
@@ -34,7 +35,7 @@ def makelogo(data, fastspec, metaspec, Fit, outdir=None):
 
     if outdir is None:
         outdir = '.'
-        
+
     pngfile = 'desi-users/ioannis/tmp/fastspecfit-spectrum-logo.png'
 
     apercorr = fastspec['APERCORR']
@@ -115,7 +116,7 @@ def makelogo(data, fastspec, metaspec, Fit, outdir=None):
     specax.axis('off')
 
     fig.subplots_adjust(left=0.01, right=0.99, top=0.99, bottom=0.01)
-    
+
     print('Writing {}'.format(pngfile))
     fig.savefig(pngfile)
     plt.close()
@@ -123,7 +124,7 @@ def makelogo(data, fastspec, metaspec, Fit, outdir=None):
 if __name__ == '__main__':
 
     p = argparse.ArgumentParser()
-    p.add_argument('-o', '--outdir', type=str, default='.', help='output directory')    
+    p.add_argument('-o', '--outdir', type=str, default='.', help='output directory')
     args = p.parse_args()
 
     fastspec, metaspec, coadd_type, _ = read_fastspecfit('fastspec-example.fits')
@@ -131,8 +132,8 @@ if __name__ == '__main__':
 
     specprod = 'guadalupe'
     survey, program, healpix = fastspec['SURVEY'][0], fastspec['PROGRAM'][0], fastspec['HEALPIX'][0]
-    
-    redux_dir = os.path.join(os.environ.get('DESI_ROOT', DESI_ROOT_NERSC), 'spectro', 'redux')
+
+    redux_dir = os.path.join(os.environ.get('DESI_ROOT'), 'spectro', 'redux')
     redrockfile = os.path.join(redux_dir, specprod, 'healpix', str(survey), str(program), str(healpix // 100), 
                                str(healpix), 'redrock-{}-{}-{}.fits'.format(survey, program, healpix))
 
@@ -141,4 +142,4 @@ if __name__ == '__main__':
     Spec.select(redrockfile, targetids=[fastspec['TARGETID'][0]])
     data = Spec.read_and_unpack(FFit, fastphot=False, synthphot=False)
 
-    makelogo(data[0], fastspec[0], metaspec[0], FFit, outdir=args.outdir)    
+    makelogo(data[0], fastspec[0], metaspec[0], FFit, outdir=args.outdir)

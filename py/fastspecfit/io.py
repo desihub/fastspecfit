@@ -619,7 +619,7 @@ class DESISpectra(object):
         List of dictionaries (:class:`dict`, one per object) the following keys:
             targetid : numpy.int64
                 DESI target ID.
-            zredrock : numpy.float64
+            redshift : numpy.float64
                 Redrock redshift.
             cameras : :class:`list`
                 List of camera names present for this spectrum.
@@ -720,7 +720,7 @@ class DESISpectra(object):
                 for iobj in range(len(meta)):
                     specdata = {
                         'uniqueid': meta[uniqueid_col][iobj],
-                        'zredrock': redshift[iobj],
+                        'redshift': redshift[iobj],
                         'photsys': photsys[iobj],
                         'dluminosity': dlum[iobj],
                         'dmodulus': dmod[iobj],
@@ -757,7 +757,7 @@ class DESISpectra(object):
                 for iobj in range(len(meta)):
                     specdata = {
                         'uniqueid': meta[uniqueid_col][iobj],
-                        'zredrock': redshift[iobj],
+                        'redshift': redshift[iobj],
                         'photsys': photsys[iobj],
                         'cameras': cams,
                         'dluminosity': dlum[iobj],
@@ -815,7 +815,7 @@ class DESISpectra(object):
         emline_table = sc_data.emlines.table
         phot = sc_data.photometry
 
-        log.info(f'Pre-processing object {iobj} [targetid {specdata["uniqueid"]} z={specdata["zredrock"]:.6f}].')
+        log.info(f'Pre-processing object {iobj} [targetid {specdata["uniqueid"]} z={specdata["redshift"]:.6f}].')
 
         RV = 3.1
         meta['EBV'] = ebv
@@ -963,7 +963,7 @@ class DESISpectra(object):
             pix = LM.build_linemask_patches(
                 specdata['coadd_wave'], specdata['coadd_flux'],
                 specdata['coadd_ivar'], specdata['coadd_res_emline'],
-                uniqueid=specdata['uniqueid'], redshift=specdata['zredrock'],
+                uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
                 debug_plots=debug_plots)
 
             # Map the pixels belonging to individual emission lines onto the
@@ -1030,7 +1030,7 @@ class DESISpectra(object):
         List of dictionaries (:class:`dict`, one per object) the following keys:
             targetid : numpy.int64
                 DESI target ID.
-            zredrock : numpy.float64
+            redshift : numpy.float64
                 Redrock redshift.
             cameras : :class:`list`
                 List of camera names present for this spectrum.
@@ -1214,7 +1214,7 @@ class DESISpectra(object):
             for iobj in range(len(meta)):
                 specdata = {
                     'uniqueid': meta[uniqueid_col][iobj],
-                    'zredrock': redshift[iobj],
+                    'redshift': redshift[iobj],
                     'photsys': meta['PHOTSYS'][iobj],
                     'cameras': ['brz'],
                     'dluminosity': dlum[iobj],
@@ -1264,7 +1264,7 @@ class DESISpectra(object):
         emline_table = sc_data.emlines.table
         phot = sc_data.photometry
 
-        log.info(f'Pre-processing object {iobj} [stackid {specdata["uniqueid"]} z={specdata["zredrock"]:.6f}].')
+        log.info(f'Pre-processing object {iobj} [stackid {specdata["uniqueid"]} z={specdata["redshift"]:.6f}].')
 
         filters = phot.filters[specdata['photsys']]
         synth_filters = phot.synth_filters[specdata['photsys']]
@@ -1346,7 +1346,7 @@ class DESISpectra(object):
 
         LM = LineMasker(phot, emline_table)
         coadd_linemask_dict = LM.build_linemask_patches(specdata['coadd_wave'], specdata['coadd_flux'],
-                                                        specdata['coadd_ivar'], redshift=specdata['zredrock'])
+                                                        specdata['coadd_ivar'], redshift=specdata['redshift'])
 
         specdata['coadd_linename'] = coadd_linemask_dict['linename']
         specdata['coadd_linepix'] = [np.where(lpix)[0] for lpix in coadd_linemask_dict['linepix']]

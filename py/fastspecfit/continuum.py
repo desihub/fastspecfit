@@ -34,7 +34,7 @@ class ContinuumTools(object):
         self.lg_atten = np.log(10.) * (-0.4 * templates.dust_klambda)
 
         # Cache the redshift-dependent factors (incl. IGM attenuation),
-        redshift = data['zredrock']
+        redshift = data['redshift']
         self.ztemplatewave = templates.wave * (1. + redshift)
         self.zfactors = self.get_zfactors(igm,
                                           self.ztemplatewave,
@@ -280,7 +280,7 @@ class ContinuumTools(object):
             clipflux, _, _ = sigmaclip(smooth[lo-lo2:hi-lo2], low=1.5, high=3)
             return median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
 
-        redshift = self.data['zredrock']
+        redshift = self.data['redshift']
         if redshift <= 0.0:
             log.warning('Input redshift not defined, zero, or negative!')
             return {}, {}
@@ -1049,7 +1049,7 @@ def continuum_specfit(data, result, templates, igm, phot,
 
     CTools = ContinuumTools(igm, phot, templates, data, fastphot)
 
-    redshift = data['zredrock']
+    redshift = data['redshift']
     if redshift <= 0.:
         log.warning('Input redshift not defined, zero, or negative!')
 

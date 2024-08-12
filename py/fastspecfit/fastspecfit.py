@@ -36,12 +36,12 @@ def fastspec_one(iobj, data, out_dtype,
     templates = sc_data.templates
 
     log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
-             f'{data["uniqueid"]}, z={data["zredrock"]:.6f}].')
+             f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
 
     # output structure
     out = BoxedScalar(out_dtype)
 
-    out['Z'] = data['zredrock']
+    out['Z'] = data['redshift']
     if not fastphot:
         for icam, cam in enumerate(data['cameras']):
             out[f'SNR_{cam.upper()}'] = data['snr'][icam]
@@ -152,6 +152,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                     redrockfile_prefix=args.redrockfile_prefix, zmin=args.zmin,
                     specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
                     use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
+        import pdb ; pdb.set_trace()
 
         if len(Spec.specfiles) == 0:
             return

@@ -211,7 +211,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
     if not stackfit:
         if redshift != metadata['Z_RR']:
-            leg['zredrock'] = r'$z_{\mathrm{Redrock}}=$'+r'${:.7f}$'.format(metadata['Z_RR'])
+            leg['redshift'] = r'$z_{\mathrm{Redrock}}=$'+r'${:.7f}$'.format(metadata['Z_RR'])
 
     if fastphot:
         fontsize1 = 16
@@ -1044,8 +1044,8 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         txt = [
             r'{}'.format(leg['z']),
         ]
-        if 'zredrock' in legkeys:
-            txt += [r'{}'.format(leg['zredrock'])]
+        if 'redshift' in legkeys:
+            txt += [r'{}'.format(leg['redshift'])]
         txt += [
             #r'{}'.format(leg['zwarn']),
             #'',
@@ -1100,8 +1100,8 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         txt = [
             r'{}'.format(leg['z']),
         ]
-        if 'zredrock' in legkeys:
-            txt += [r'{}'.format(leg['zredrock'])]
+        if 'redshift' in legkeys:
+            txt += [r'{}'.format(leg['redshift'])]
 
         txt += [
             #r'{}'.format(leg['zwarn']),
