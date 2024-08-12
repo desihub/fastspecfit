@@ -751,29 +751,29 @@ class DESISpectra(object):
                 log.info(f'Coadding across cameras took {time.time()-t0:.2f} seconds.')
 
                 # unpack the desispec.spectra.Spectra objects into simple arrays
-                cameras = spec.bands
-                coadd_cameras = coadd_spec.bands[0]
+                cams = spec.bands
+                coadd_cams = coadd_spec.bands[0]
                 unpackargs = []
                 for iobj in range(len(meta)):
                     specdata = {
                         'uniqueid': meta[uniqueid_col][iobj],
                         'zredrock': redshift[iobj],
                         'photsys': photsys[iobj],
-                        'cameras': cameras,
+                        'cameras': cams,
                         'dluminosity': dlum[iobj],
                         'dmodulus': dmod[iobj],
                         'tuniv': tuniv[iobj],
-                        'wave0': [spec.wave[cam] for cam in cameras],
-                        'flux0': [spec.flux[cam][iobj, :] for cam in cameras],
-                        'ivar0': [spec.ivar[cam][iobj, :] for cam in cameras],
+                        'wave0': [spec.wave[cam] for cam in cams],
+                        'flux0': [spec.flux[cam][iobj, :] for cam in cams],
+                        'ivar0': [spec.ivar[cam][iobj, :] for cam in cams],
                         # Also track the mask---see https://github.com/desihub/desispec/issues/1389
-                        'mask0': [spec.mask[cam][iobj, :] for cam in cameras],
-                        'res0': [spec.resolution_data[cam][iobj, :, :] for cam in cameras],
-                        'coadd_wave': coadd_spec.wave[coadd_cameras],
-                        'coadd_flux': coadd_spec.flux[coadd_cameras][iobj, :],
-                        'coadd_ivar': coadd_spec.ivar[coadd_cameras][iobj, :],
-                        'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
-                        'coadd_res_emline': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cameras][iobj, :])],
+                        'mask0': [spec.mask[cam][iobj, :] for cam in cams],
+                        'res0': [spec.resolution_data[cam][iobj, :, :] for cam in cams],
+                        'coadd_wave': coadd_spec.wave[coadd_cams],
+                        'coadd_flux': coadd_spec.flux[coadd_cams][iobj, :],
+                        'coadd_ivar': coadd_spec.ivar[coadd_cams][iobj, :],
+                        'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
+                        'coadd_res_emline': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
                         }
 
                     unpackargs.append({
