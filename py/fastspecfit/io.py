@@ -193,11 +193,11 @@ class DESISpectra(object):
         return newphotsys
 
 
-    def select(self, redrockfiles, zmin=None, zmax=None, zwarnmax=None,
-               targetids=None, firsttarget=0, ntargets=None,
-               input_redshifts=None, specprod_dir=None, use_quasarnet=True,
-               redrockfile_prefix='redrock-', specfile_prefix='coadd-',
-               qnfile_prefix='qso_qn-'):
+    def gather_metadata(self, redrockfiles, zmin=None, zmax=None, zwarnmax=None,
+                        targetids=None, firsttarget=0, ntargets=None,
+                        input_redshifts=None, specprod_dir=None, use_quasarnet=True,
+                        redrockfile_prefix='redrock-', specfile_prefix='coadd-',
+                        qnfile_prefix='qso_qn-'):
         """Select targets for fitting and gather the necessary spectroscopic metadata.
 
         Parameters
@@ -293,13 +293,13 @@ class DESISpectra(object):
             log.warning(errmsg)
             raise ValueError(errmsg)
 
-        # Should we not sort...?
-        redrockfiles = sorted(set(redrockfiles))
-        log.info(f'Reading and parsing {len(redrockfiles)} unique redrockfile(s).')
+        redrockfiles = set(redrockfiles)
+        #log.info(f'Reading and parsing {len(redrockfiles)} unique redrockfile(s).')
 
         alltiles = []
         self.redrockfiles, self.specfiles, self.meta, self.surveys = [], [], [], []
 
+        t0 = time.time()
         for ired, redrockfile in enumerate(redrockfiles):
             if not os.path.isfile(redrockfile):
                 log.warning(f'File {redrockfile} not found!')
@@ -592,20 +592,26 @@ class DESISpectra(object):
         # Use the metadata in the fibermap to retrieve the LS-DR9 source
         # photometry. Note that we have to make a copy of the input_meta table
         # because otherwise BRICKNAME gets "repaired!"
-        t0 = time.time()
+        #t1 = time.time()
         metas = self._gather_photometry(specprod=specprod, alltiles=alltiles)
         self.meta = metas # update
-        log.info(f'Gathered photometric metadata in {time.time()-t0:.2f} sec')
+        #log.info(f'Gathered photometric metadata in {time.time()-t1:.2f} seconds.')
+        if len(redrockfiles) > 1:
+            log.info(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
+                     f'redrockfiles in {time.time()-t0:.2f} seconds.')
+        else:
+            log.info(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
+                     f'redrockfile in {time.time()-t0:.2f} seconds.')
 
 
-    def read_and_unpack(self, mp_pool, fastphot=False, synthphot=True,
-                        constrain_age=False, debug_plots=False):
-        """Read and unpack selected spectra or broadband photometry.
+    def read(self, mp_pool, fastphot=False, synthphot=True,
+             constrain_age=False, debug_plots=False):
+        """Read selected spectra and/or broadband photometry.
 
         Parameters
         ----------
         fastphot : bool
-            Read and unpack the broadband photometry; otherwise, handle the DESI
+            Read the broadband photometry; otherwise, handle the DESI
             three-camera spectroscopy. Optional; defaults to `False`.
         synthphot : bool
             Synthesize photometry from the coadded optical spectrum. Optional;
@@ -680,6 +686,8 @@ class DESISpectra(object):
         from desispec.resolution import Resolution
         from fastspecfit.emline_fit import EMLine_Resolution
 
+        t0 = time.time()
+
         SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
         alldata = []
@@ -716,7 +724,7 @@ class DESISpectra(object):
             uniqueid_col = self.phot.uniqueid_col
 
             if fastphot:
-                unpackargs = []
+                mpargs = []
                 for iobj in range(len(meta)):
                     specdata = {
                         'uniqueid': meta[uniqueid_col][iobj],
@@ -727,7 +735,7 @@ class DESISpectra(object):
                         'tuniv': tuniv[iobj],
                         }
 
-                    unpackargs.append({
+                    mpargs.append({
                         'iobj':        iobj,
                         'specdata':    specdata,
                         'meta':        meta[iobj],
@@ -740,20 +748,23 @@ class DESISpectra(object):
                 # Don't use .select since meta and spec can be sorted
                 # differently if a non-sorted targetids was passed. Do the
                 # selection and sort ourselves.
+                os.environ['DESI_LOGLEVEL'] = 'warning'
                 spec = read_spectra(specfile)#.select(targets=meta[uniqueid])
+
                 srt = geomask.match_to(spec.fibermap[uniqueid_col], meta['TARGETID'])
                 spec = spec[srt]
                 assert(np.all(spec.fibermap[uniqueid_col] == meta[uniqueid_col]))
 
                 # Coadd across cameras.
-                t0 = time.time()
+                #t0 = time.time()
                 coadd_spec = coadd_cameras(spec)
-                log.info(f'Coadding across cameras took {time.time()-t0:.2f} seconds.')
+                os.environ['DESI_LOGLEVEL'] = 'info'
+                #log.info(f'Coadding across cameras took {time.time()-t0:.2f} seconds.')
 
                 # unpack the desispec.spectra.Spectra objects into simple arrays
                 cams = spec.bands
                 coadd_cams = coadd_spec.bands[0]
-                unpackargs = []
+                mpargs = []
                 for iobj in range(len(meta)):
                     specdata = {
                         'uniqueid': meta[uniqueid_col][iobj],
@@ -776,7 +787,7 @@ class DESISpectra(object):
                         'coadd_res_emline': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
                         }
 
-                    unpackargs.append({
+                    mpargs.append({
                         'iobj':        iobj,
                         'specdata':    specdata,
                         'meta':        meta[iobj],
@@ -786,7 +797,7 @@ class DESISpectra(object):
                         'debug_plots': debug_plots,
                     })
 
-            out = mp_pool.starmap(DESISpectra.unpack_one_spectrum, unpackargs)
+            out = mp_pool.starmap(DESISpectra.one_spectrum, mpargs)
 
             out = list(zip(*out))
             self.meta[ispecfile] = Table(names=meta.columns, rows=out[1])
@@ -797,14 +808,16 @@ class DESISpectra(object):
         self.meta = vstack(self.meta)
         self.ntargets = len(self.meta)
 
+        log.info(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
+
         return alldata
 
 
     @staticmethod
-    def unpack_one_spectrum(iobj, specdata, meta, ebv,
-                            fastphot, synthphot, debug_plots):
-        """Unpack the data for a single object and correct for Galactic extinction. Also
-        flag pixels which may be affected by emission lines.
+    def one_spectrum(iobj, specdata, meta, ebv, fastphot,
+                     synthphot, debug_plots):
+        """Process the data for a single object and correct for Galactic
+        extinction. Also flag pixels which may be affected by emission lines.
 
         """
         from desispec.resolution import Resolution
@@ -815,7 +828,7 @@ class DESISpectra(object):
         emline_table = sc_data.emlines.table
         phot = sc_data.photometry
 
-        log.info(f'Pre-processing object {iobj} [targetid {specdata["uniqueid"]} z={specdata["redshift"]:.6f}].')
+        log.info(f'Pre-processing spectrum {iobj} [targetid {specdata["uniqueid"]} z={specdata["redshift"]:.6f}].')
 
         RV = 3.1
         meta['EBV'] = ebv
@@ -1096,8 +1109,10 @@ class DESISpectra(object):
             log.warning(errmsg)
             raise ValueError(errmsg)
 
+        t0 = time.time()
+
         stackfiles = sorted(set(stackfiles))
-        log.info(f'Reading and parsing {len(stackfiles)} unique stackfile(s).')
+        #log.info(f'Reading and parsing {len(stackfiles)} unique stackfile(s).')
 
         self.specprod = 'stacked'
         self.coadd_type = 'stacked'
@@ -1175,7 +1190,7 @@ class DESISpectra(object):
 
         uniqueid_col = self.phot.uniqueid_col
 
-        # Now read the data as in self.read_and_unpack (for unstacked spectra).
+        # Now read the data as in self.read (for unstacked spectra).
         alldata = []
         for (stackfile, meta) in zip(self.stackfiles, self.meta):
             nobj = len(meta)
@@ -1210,7 +1225,7 @@ class DESISpectra(object):
                 res = np.ones((nobj, 1, npix)) # Hack!
 
             # unpack the desispec.spectra.Spectra objects into simple arrays
-            unpackargs = []
+            mpargs = []
             for iobj in range(len(meta)):
                 specdata = {
                     'uniqueid': meta[uniqueid_col][iobj],
@@ -1234,13 +1249,13 @@ class DESISpectra(object):
                     'coadd_res': specdata['res0'][0],
                     })
 
-                unpackargs.append({
+                mpargs.append({
                     'iobj':      iobj,
                     'specdata':  specdata,
                     'synthphot': synthphot,
                 })
 
-            out = mp_pool.starmap(DESISpectra.unpack_one_stacked_spectrum, unpackargs)
+            out = mp_pool.starmap(DESISpectra.one_stacked_spectrum, mpargs)
 
             alldata.append(out)
             del out
@@ -1249,11 +1264,13 @@ class DESISpectra(object):
         self.meta = vstack(self.meta)
         self.ntargets = len(self.meta)
 
+        log.info(f'Read {Spec.ntargets} spectra in {time.time()-t0:.2f} seconds.')
+
         return alldata
 
 
     @staticmethod
-    def unpack_one_stacked_spectrum(iobj, specdata, synthphot):
+    def one_stacked_spectrum(iobj, specdata, synthphot):
         """Unpack the data for a single stacked spectrum. Also flag pixels which may be
         affected by emission lines.
 
@@ -1478,7 +1495,7 @@ class DESISpectra(object):
                         log.critical(errmsg)
                         raise ValueError(errmsg)
 
-                    # placeholders (to be added in DESISpectra.read_and_unpack)
+                    # placeholders (to be added in DESISpectra.read)
                     meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
                     for band in self.phot.bands:
                         meta[f'MW_TRANSMISSION_{band.upper()}'] = np.ones(shape=(1,), dtype='f4')
@@ -1496,7 +1513,7 @@ class DESISpectra(object):
                     meta.remove_columns(self.phot.dropcols)
                 for col in phot.colnames:
                     meta[col] = phot_tbl[col][srt]
-                # placeholders (to be added in DESISpectra.read_and_unpack)
+                # placeholders (to be added in DESISpectra.read)
                 meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
                 for band in self.phot.bands:
                     meta[f'MW_TRANSMISSION_{band.upper()}'] = np.ones(shape=(1,), dtype='f4')

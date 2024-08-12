@@ -1023,7 +1023,7 @@ def continuum_specfit(data, result, templates, igm, phot,
     ----------
     data : :class:`dict`
         Dictionary of input spectroscopy (plus ancillary data) populated by
-        :func:`fastspecfit.io.DESISpectra.read_and_unpack`.
+        :func:`fastspecfit.io.DESISpectra.read`.
 
     Returns
     -------

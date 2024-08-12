@@ -133,36 +133,33 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     # if multiprocessing, create a pool of worker processes
     # and initialize single-copy objects in each worker
+    #t0 = time.time()
     mp_pool = MPPool(args.mp,
                      initializer=sc_data.initialize,
                      init_argdict=init_sc_args)
+    #log.info(f'Caching took {time.time()-t0:.5f} seconds.')
 
     # Read the data.
-    t0 = time.time()
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
                        fphotodir=args.fphotodir, mapdir=args.mapdir)
 
     if stackfit:
-        data = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
-                                 stackids=targetids, ntargets=args.ntargets,
-                                 mp_pool=mp_pool)
+        data = Spec.read_stacked(mp_pool, args.redrockfiles, firsttarget=args.firsttarget,
+                                 stackids=targetids, ntargets=args.ntargets)
     else:
-        Spec.select(args.redrockfiles, firsttarget=args.firsttarget, targetids=targetids,
-                    input_redshifts=input_redshifts, ntargets=args.ntargets,
-                    redrockfile_prefix=args.redrockfile_prefix, zmin=args.zmin,
-                    specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
-                    use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
-        import pdb ; pdb.set_trace()
-
+        Spec.gather_metadata(args.redrockfiles, firsttarget=args.firsttarget,
+                             targetids=targetids, input_redshifts=input_redshifts,
+                             ntargets=args.ntargets, zmin=args.zmin,
+                             redrockfile_prefix=args.redrockfile_prefix,
+                             specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
+                             use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
         if len(Spec.specfiles) == 0:
             return
 
-        data = Spec.read_and_unpack(fastphot=fastphot,
-                                    constrain_age=args.constrain_age,
-                                    debug_plots=args.debug_plots,
-                                    mp_pool=mp_pool)
+        data = Spec.read(mp_pool, fastphot=fastphot, debug_plots=args.debug_plots,
+                         constrain_age=args.constrain_age)
 
-    log.info(f'Reading and unpacking {Spec.ntargets} spectra to be fitted took {time.time()-t0:.2f} seconds.')
+    import pdb ; pdb.set_trace()
 
     ncoeff = sc_data.templates.ntemplates
     out_dtype, out_units = get_output_dtype(Spec.specprod,

@@ -34,25 +34,25 @@ class Singletons(object):
                                    mintemplatewave=None,
                                    maxtemplatewave=40e4,
                                    fastphot=fastphot)
-        log.info(f'Cached stellar templates {self.templates.file}')
+        log.debug(f'Cached stellar templates {self.templates.file}')
 
         # emission line table
         self.emlines = LineTable(emlines_file)
-        log.info(f'Cached emission-line table {self.emlines.file}')
+        log.debug(f'Cached emission-line table {self.emlines.file}')
 
         # photometry
         self.photometry = Photometry(fphotofile,
                                      stackfit,
                                      ignore_photometry)
-        log.info(f'Cached photometric filters and parameters {self.photometry.fphotofile}')
+        log.debug(f'Cached photometric filters and parameters {self.photometry.fphotofile}')
 
         # fiducial cosmology
         self.cosmology = TabulatedDESI()
-        log.info(f'Cached cosmology table {self.cosmology.file}')
+        log.debug(f'Cached cosmology table {self.cosmology.file}')
 
         # IGM model
         self.igm = Inoue14()
-        log.info('Cached IGM attenuation parameters.')
+        log.debug('Cached Inoue+2014 IGM attenuation parameters.')
 
 
 # global structure with single-copy data, initially empty

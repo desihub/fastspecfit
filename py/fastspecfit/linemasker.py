@@ -320,7 +320,7 @@ class LineMasker(object):
 
 
                 linemask = np.zeros(len(wave), bool) # False=masked
-    
+
                 # Determine the edges of each patch based on the continuum
                 # (line-free) pixels of all the lines on that patch.
                 for ipatch, patchid in enumerate(pix['patch_contpix'].keys()):
@@ -452,10 +452,10 @@ class LineMasker(object):
             final_linevshifts = (linevshift_broad, linevshift_narrow, linevshift_balmer_broad)
             maxsnrs = (maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad)
 
-            log.info(f'Broad: S/N={maxsnr_broad:.1f}, (sigma,dv)=({linesigma_broad:.0f},{linevshift_broad:.0f}) km/s; ' + \
-                     f'Narrow: S/N={maxsnr_narrow:.1f}, ({linesigma_narrow:.0f},{linevshift_narrow:.0f}) km/s; '+ \
-                     f'Balmer Broad: S/N={maxsnr_balmer_broad:.1f}, ({linesigma_balmer_broad:.0f},{linevshift_balmer_broad:.0f}) km/s.')
-            log.info(f'Fitting {modelname} with patches ({niter} iterations) took {time.time()-t0:.4f} seconds.')
+            log.debug(f'Broad: S/N={maxsnr_broad:.1f}, (sigma,dv)=({linesigma_broad:.0f},{linevshift_broad:.0f}) km/s; ' + \
+                      f'Narrow: S/N={maxsnr_narrow:.1f}, ({linesigma_narrow:.0f},{linevshift_narrow:.0f}) km/s; '+ \
+                      f'Balmer Broad: S/N={maxsnr_balmer_broad:.1f}, ({linesigma_balmer_broad:.0f},{linevshift_balmer_broad:.0f}) km/s.')
+            log.debug(f'Fitting {modelname} with patches ({niter} iterations) took {time.time()-t0:.4f} seconds.')
 
             # optionally build a QA figure
             if debug_plots:
@@ -638,7 +638,8 @@ class LineMasker(object):
             # if a broad Balmer line is well-detected, take its linewidth
             if maxsnrs_broad[2] > minsnr_balmer_broad:
                 log.info(f'Adopting broad Balmer-line masking: S/N(broad Balmer) ' + \
-                         f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}.')
+                         f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}, ' + \
+                         f'(sigma,dv)=({linesigma_balmer_broad:.0f},{linevshift_balmer_broad:.0f}) km/s.')
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_broad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_broad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_broad
