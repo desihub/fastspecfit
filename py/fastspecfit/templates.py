@@ -24,7 +24,6 @@ class Templates(object):
     AGN_PIXKMS = 75.  # [km/s]
     AGN_PIXKMS_BOUNDS = (1075., 3090.)
 
-    FTEMPLATES_DIR_NERSC = '/global/cfs/cdirs/desi/external/templates/fastspecfit'
     DEFAULT_TEMPLATEVERSION = '2.0.0'
     DEFAULT_IMF = 'chabrier'
 
@@ -189,7 +188,7 @@ class Templates(object):
         """Get the templates filename.
 
         """
-        template_dir = os.path.expandvars(os.environ.get('FTEMPLATES_DIR', Templates.FTEMPLATES_DIR_NERSC))
+        template_dir = os.path.expandvars(os.environ.get('FTEMPLATES_DIR'))
         template_file = os.path.join(template_dir, template_version, f'ftemplates-{imf}-{template_version}.fits')
         return template_file
 

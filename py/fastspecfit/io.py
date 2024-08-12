@@ -17,10 +17,6 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.photometry import Photometry
 from fastspecfit.util import FLUXNORM, ZWarningMask
 
-# Default environment variables.
-DESI_ROOT_NERSC = '/global/cfs/cdirs/desi'
-DUST_DIR_NERSC = '/global/cfs/cdirs/desi/external/dust/v0_1'
-FPHOTO_DIR_NERSC = '/global/cfs/cdirs/desi/external/legacysurvey/dr9'
 
 # list of all possible targeting bit columns
 TARGETINGBITS = {
@@ -86,8 +82,7 @@ class DESISpectra(object):
             Full path to the Milky Way dust maps.
 
         """
-
-        desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
+        desi_root = os.path.expandvars(os.environ.get('DESI_ROOT'))
 
         if redux_dir is None:
             self.redux_dir = os.path.join(desi_root, 'spectro', 'redux')
@@ -101,7 +96,7 @@ class DESISpectra(object):
 
         if fphotodir is None:
             self.fphotoext = None
-            self.fphotodir = os.environ.get('FPHOTO_DIR', FPHOTO_DIR_NERSC)
+            self.fphotodir = os.path.expandvars(os.environ.get('FPHOTO_DIR'))
         else:
             # parse the extension name, if any
             fphotoext = None
@@ -117,7 +112,7 @@ class DESISpectra(object):
             self.fphotodir = fphotodir
 
         if mapdir is None:
-            self.mapdir = os.path.join(os.environ.get('DUST_DIR', DUST_DIR_NERSC), 'maps')
+            self.mapdir = os.path.join(os.path.expandvars(os.environ.get('DUST_DIR')), 'maps')
         else:
             self.mapdir = mapdir
 

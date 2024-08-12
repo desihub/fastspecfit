@@ -85,6 +85,16 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
+    # check for mandatory environment variables
+    envlist = ['DESI_ROOT', 'DUST_DIR', 'FPHOTO_DIR']
+    if args.templates is None:
+        envlist += ['FTEMPLATES_DIR']
+    for env in envlist:
+        if not env in os.environ:
+            errmsg = f'Mandatory environment variable {env} missing.'
+            log.critical(errmsg)
+            raise KeyError(errmsg)
+
     if stackfit:
         args.ignore_photometry = True
 
