@@ -1156,8 +1156,6 @@ def continuum_specfit(data, result, templates, igm, phot,
             log.warning('All optical bands are masked; masking all photometry.')
             objflamivar[:] = 0.
 
-    import pdb ; pdb.set_trace()
-
     # Photometry-only fitting.
     if fastphot:
         coeff, rchi2_cont, rchi2_phot, ebv, vdisp, dn4000_model, sedmodel = \
@@ -1461,11 +1459,11 @@ def continuum_specfit(data, result, templates, igm, phot,
 
                 # get the best-fitting model with and without line-emission
                 sedmodel = CTools.optimizer_saved_contmodel
-
+                
                 sedmodel_nolines = CTools.build_stellar_continuum(
                     input_templateflux_nolines, coeff,
-                    ebv=ebv, vdisp=vdisp, dust_emission=False)
-
+                    ebv=ebv, vdisp=(vdisp if compute_vdisp else None), dust_emission=False)
+                
                 desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
 
                 dn4000_model, _ = Photometry.get_dn4000(templates.wave,
