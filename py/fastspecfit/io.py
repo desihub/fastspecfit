@@ -882,7 +882,7 @@ class DESISpectra(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
-        specdata['phot'] = Photometry.parse_photometry(
+        specdata['photometry'] = Photometry.parse_photometry(
             phot.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
             lambda_eff=filters.effective_wavelengths.value,
             min_uncertainty=phot.min_uncertainty)
@@ -1294,7 +1294,7 @@ class DESISpectra(object):
         maggies = np.zeros(len(phot.bands))
         ivarmaggies = np.zeros(len(phot.bands))
 
-        specdata['phot'] = Photometry.parse_photometry(
+        specdata['photometry'] = Photometry.parse_photometry(
             phot.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
             lambda_eff=filters.effective_wavelengths.value,
             min_uncertainty=phot.min_uncertainty)
