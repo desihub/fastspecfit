@@ -1032,8 +1032,8 @@ def _compute_vdisp(redshift, specwave, specivar):
     return compute_vdisp, I
 
 
-def continuum_fastphot(redshift, templates, CTools, objflam, objflamivar,
-                       agekeep, ebv_guess=0.05, tuniv=None, debug_plots=False):
+def continuum_fastphot(redshift, data, templates, CTools, objflam, objflamivar,
+                       agekeep, ebv_guess=0.05, debug_plots=False):
     """Model the broadband photometry.
 
     """
@@ -1056,6 +1056,7 @@ def continuum_fastphot(redshift, templates, CTools, objflam, objflamivar,
 
         # maintain backwards-compatibility
         if templates.use_legacy_fitting:
+            ebv, ebvivar = None, None
             sedtemplates, sedphot_flam = CTools.templates2data(
                 templates.flux_nomvdisp[:, agekeep],
                 templates.wave, flamphot=True,
@@ -1099,11 +1100,13 @@ def continuum_fastphot(redshift, templates, CTools, objflam, objflamivar,
                     templates.flux_nolines_nomvdisp[:, agekeep], coeff,
                     ebv=ebv, vdisp=None, dust_emission=False)
 
+                ebvivar = 0. # ToDo
+
             dn4000_model, _ = Photometry.get_dn4000(
                 templates.wave, sedmodel_nolines, rest=True)
             log.info(f'Model Dn(4000)={dn4000_model:.3f}.')
 
-    return coeff, rchi2_phot, ebv, vdisp, dn4000_model, sedmodel
+    return coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel
 
 
 def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
@@ -1278,7 +1281,7 @@ def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
 
 
 def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
-                       objflamivar, agekeep, ebv_guess=0.05, tuniv=None,
+                       objflamivar, agekeep, ebv_guess=0.05, 
                        no_smooth_continuum=False, debug_plots=False):
     """Jointly model the spectroscopy and broadband photometry.
 
@@ -1509,16 +1512,17 @@ def continuum_specfit(data, result, templates, igm, phot,
     # Optionally ignore templates which are older than the age of the
     # universe at the redshift of the object.
     if constrain_age:
-        agekeep = _younger_than_universe(templates.info['age'].value, tuniv)
+        agekeep = _younger_than_universe(templates.info['age'].value, data['tuniv'])
     else:
         agekeep = np.arange(templates.ntemplates)
 
     if fastphot:
         # Photometry-only fitting.
-        fitresults = continuum_fastphot(redshift, templates, CTools, objflam,
-                                        objflamivar, agekeep, ebv_guess=ebv_guess,
-                                        tuniv=data['tuniv'], debug_plots=debug_plots)
-        coeff, rchi2_phot, ebv, vdisp, dn4000_model, sedmodel = fitresults
+        fitresults = continuum_fastphot(redshift, data, templates, CTools,
+                                        objflam, objflamivar, agekeep,
+                                        ebv_guess=ebv_guess,
+                                        debug_plots=debug_plots)
+        coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel = fitresults
     else:
         # Spectrophotometric (default) fitting.
         #if len(data['cameras']) == 3:
@@ -1530,7 +1534,7 @@ def continuum_specfit(data, result, templates, igm, phot,
 
         fitresults = continuum_fastspec(redshift, data, phot, CTools, templates,
                                         objflam, objflamivar, agekeep, ebv_guess=ebv_guess,
-                                        tuniv=data['tuniv'], debug_plots=debug_plots,
+                                        debug_plots=debug_plots,
                                         no_smooth_continuum=no_smooth_continuum)
 
         (coeff, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
@@ -1547,7 +1551,7 @@ def continuum_specfit(data, result, templates, igm, phot,
         #    log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
         #        result['SMOOTHCORR_B'], result['SMOOTHCORR_R'], result['SMOOTHCORR_Z']))
 
-    data['apercorr'] = median_apercorr # needed for the line-fitting
+        data['apercorr'] = median_apercorr # needed for the line-fitting
 
     result['COEFF'][agekeep] = coeff
     result['RCHI2_PHOT'] = rchi2_phot
