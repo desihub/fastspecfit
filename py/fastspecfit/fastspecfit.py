@@ -194,8 +194,6 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     _out = mp_pool.starmap(fastspec_one, fitargs)
     out = list(zip(*_out))
 
-    import pdb ; pdb.set_trace()
-
     meta = create_output_meta(Spec.meta, data,
                               phot=sc_data.photometry,
                               fastphot=fastphot, stackfit=stackfit)
@@ -577,8 +575,8 @@ def create_output_meta(input_meta, data, phot,
                         meta[f'FIBERTOTFLUX_{band.upper()}'][iobj] = fibertotflux[iband]
                         #result['FIBERTOTFLUX_IVAR_{band.upper()}'] = fibertotfluxivar[iband]
 
-            flux     = _data['phot']['nanomaggies']
-            fluxivar = _data['phot']['nanomaggies_ivar']
+            flux = _data['photometry']['nanomaggies']
+            fluxivar = _data['photometry']['nanomaggies_ivar']
             for iband, band in enumerate(phot.bands):
                 meta[f'FLUX_{band.upper()}'][iobj] = flux[iband]
                 meta[f'FLUX_IVAR_{band.upper()}'][iobj] = fluxivar[iband]

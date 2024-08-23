@@ -1031,25 +1031,19 @@ def _compute_vdisp(redshift, specwave, specivar):
 
 
 def continuum_fastphot(redshift, templates, CTools, objflam, objflamivar,
-                       ebv_guess=0.05, tuniv=None, constrain_age=False):
+                       agekeep, ebv_guess=0.05, tuniv=None, debug_plots=False):
     """Model the broadband photometry.
 
     """
+    nage = len(agekeep)
+
     vdisp = templates.vdisp_nominal
     #log.info(f'Adopting nominal vdisp={vdisp:.0f} km/s.')
-
-    # Optionally ignore templates which are older than the age of the
-    # universe at the redshift of the object.
-    if constrain_age:
-        agekeep = _younger_than_universe(templates.info['age'].value, tuniv)
-    else:
-        agekeep = np.arange(templates.ntemplates)
-    nage = len(agekeep)
 
     if np.all(objflamivar == 0.):
         log.info('All photometry is masked.')
         coeff = np.zeros(nage) # nage not nsed
-        rchi2_cont, rchi2_phot = 0., 0.
+        rchi2_phot = 0.
         dn4000_model = 0.
         sedmodel = np.zeros(len(templates.wave))
     else:
@@ -1076,7 +1070,7 @@ def continuum_fastphot(redshift, templates, CTools, objflam, objflamivar,
                 synthphot=True, synthspec=False)
             log.info(f'Best-fitting E(B-V)={ebv:.3f} mag.')
 
-            _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
+            _, rchi2_phot, _ = CTools.stellar_continuum_chi2(
                 resid, ncoeff=len(coeff), vdisp_fitted=False,
                 ndof_phot=np.sum(objflamivar > 0.))
 
@@ -1107,7 +1101,7 @@ def continuum_fastphot(redshift, templates, CTools, objflam, objflamivar,
                 templates.wave, sedmodel_nolines, rest=True)
             log.info(f'Model Dn(4000)={dn4000_model:.3f}.')
 
-    return coeff, rchi2_cont, rchi2_phot, ebv, vdisp, dn4000_model, sedmodel
+    return coeff, rchi2_phot, ebv, vdisp, dn4000_model, sedmodel
 
 
 def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
@@ -1121,6 +1115,8 @@ def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
     where they are determined simultaneously.
 
     """
+    nage = len(agekeep)
+
     vdisp_nominal = templates.vdisp_nominal
 
     if compute_vdisp:
@@ -1198,8 +1194,8 @@ def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
 
             # Synthesize grz photometry from the full-wavelength SED to make
             # sure we get the z-band correct.
-            nanomaggies = photometry['nanomaggies'].value
-            numer = np.hstack([nanomaggies[photometry['band'] == band] for band in phot.synth_bands])
+            nanomaggies = data['photometry']['nanomaggies'].value
+            numer = np.hstack([nanomaggies[data['photometry']['band'] == band] for band in phot.synth_bands])
 
             quicksedflux = sedtemplates.dot(quickcoeff)
             quickmaggies = Photometry.get_ab_maggies(filters_in,
@@ -1273,12 +1269,12 @@ def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
     else:
         vdisp = use_vdisp
 
-    return coeff, rchi2_cont, rchi2_phot, ebv, vdisp, dn4000_model, sedmodel
+    return coeff, rchi2_cont, rchi2_phot, ebv, vdisp, vdispivar, dn4000_model, sedmodel
 
 
 def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
-                       objflamivar, ebv_guess=0.05, tuniv=None,
-                       constrain_age=False):
+                       objflamivar, agekeep, ebv_guess=0.05, tuniv=None,
+                       no_smooth_continuum=False, debug_plots=False):
     """Jointly model the spectroscopy and broadband photometry.
 
     """
@@ -1300,12 +1296,6 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
 
     objflamistd = np.sqrt(objflamivar)
 
-    # Optionally ignore templates which are older than the age of the
-    # universe at the redshift of the object.
-    if constrain_age:
-        agekeep = _younger_than_universe(templates.info['age'].value, data['tuniv'])
-    else:
-        agekeep = np.arange(templates.ntemplates)
     nage = len(agekeep)
 
     vdisp_nominal = templates.vdisp_nominal
@@ -1325,18 +1315,17 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
     #        restwave[0], restwave[-1]))
 
     if templates.use_legacy_fitting:
-        _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
-                               agekeep, data, CTools, phot, templates,
-                               compute_vdisp=compute_vdisp)
+        coeff, rchi2_cont, rchi2_phot, ebv, vdisp, vdispivar, dn4000_model, sedmodel = \
+            _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
+                                       agekeep, data, CTools, phot, templates,
+                                       compute_vdisp=compute_vdisp)
     else:
-
         # First, estimate the aperture correction from a (noiseless) *model*
         # of the spectrum (using the nominal velocity dispersion).
-        apercorrs, apercorr = np.ones(len(phot.synth_bands)), 1.
+        apercorrs, median_apercorr = np.ones(len(phot.synth_bands)), 1.
 
         if np.any(phot.bands_to_fit):
             t0 = time.time()
-
             ebv, _, coeff, _ = CTools.fit_stellar_continuum(
                 templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
                 dust_emission=False,  fit_vdisp=False,
@@ -1353,7 +1342,7 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
                     CTools.optimizer_saved_contmodel,
                     filters=filters_in)
 
-                objflam_aper = FLUXNORM * photometry[np.isin(photometry['band'], phot.synth_bands)]['flam'].value
+                objflam_aper = FLUXNORM * data['photometry'][np.isin(data['photometry']['band'], phot.synth_bands)]['flam'].value
 
                 I = ((objflam_aper > 0.) & (sedflam > 0.))
                 if np.any(I):
@@ -1361,13 +1350,13 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
 
                 I = (apercorrs > 0.)
                 if np.any(I):
-                    apercorr = median(apercorrs[I])
+                    median_apercorr = median(apercorrs[I])
 
-                    log.info(f'Median aperture correction {apercorr:.3f} ' + \
+                    log.info(f'Median aperture correction {median_apercorr:.3f} ' + \
                              f'[{np.min(apercorrs):.3f}-{np.max(apercorrs):.3f}].')
-                    if apercorr <= 0.:
+                    if median_apercorr <= 0.:
                         log.warning('Aperture correction not well-defined; adopting 1.0.')
-                        apercorr = 1.
+                        median_apercorr = 1.
 
                 coeff_guess = coeff
 
@@ -1376,17 +1365,15 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
             log.info('Skipping aperture correction since no bands were fit.')
             coeff_guess = np.ones(nage)
 
-        data['apercorr'] = apercorr # needed for the line-fitting
-
         # Now do the full spectrophotometric fit.
         t0 = time.time()
 
         if not compute_vdisp:
             # Use the cached templates with nominal velocity dispersion
-            input_templateflux         = templates.flux_nomvdisp[:, agekeep]
+            input_templateflux = templates.flux_nomvdisp[:, agekeep]
             input_templateflux_nolines = templates.flux_nolines_nomvdisp[:, agekeep]
         else:
-            input_templateflux         = templates.flux[:, agekeep]
+            input_templateflux = templates.flux[:, agekeep]
             input_templateflux_nolines = templates.flux_nolines[:, agekeep]
 
         ebv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
@@ -1395,7 +1382,8 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
             vdisp_guess=vdisp_nominal,
             #ebv_guess=ebv, coeff_guess=coeff_guess, # don't bias the answer...
             objflam=objflam, objflamistd=objflamistd,
-            specflux=specflux*apercorr, specistd=specistd/apercorr,
+            specflux=specflux*median_apercorr,
+            specistd=specistd/median_apercorr,
             synthphot=True, synthspec=True)
 
         log.info(f'Final spectrophotometric fitting with {nage} models took {time.time()-t0:.2f} seconds.')
@@ -1406,9 +1394,9 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
             sedmodel = np.zeros(len(templates.wave))
             dn4000_model = 0.
             rchi2_phot, rchi2_cont = 0., 0.
+            vdispivar, ebvivar = 0., 0. # ToDo
         else:
-            vdispivar = 0. # ToDo
-            ebvivar = 0.   # ToDo
+            vdispivar, ebvivar = 0., 0. # ToDo
 
             #log.info(f'Best-fitting E(B-V)={ebv:.3f}+/-{1./np.sqrt(ebvivar):.3f} mag.')
             log.info(f'Best-fitting E(B-V)={ebv:.3f} mag.')
@@ -1417,33 +1405,33 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
                 #log.info(f'Best-fitting vdisp={vdisp:.1f}+/-{1./np.sqrt(vdispivar):.1f} km/s.')
                 log.info(f'Best-fitting vdisp={vdisp:.0f} km/s.')
             else:
-                log.info(f'Insufficient wavelength coverage to compute vdisp; adopting nominal vdisp={vdisp:.0f} km/s')
+                log.info('Insufficient wavelength coverage to compute vdisp; ' + \
+                         f'adopting nominal vdisp={vdisp:.0f} km/s')
 
             _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
                 resid, ncoeff=len(coeff), vdisp_fitted=compute_vdisp,
                 split=len(specflux),
                 ndof_spec=np.sum(specivar > 0.),
-                ndof_phot=np.sum(objflamivar > 0.)
-            )
+                ndof_phot=np.sum(objflamivar > 0.))
 
             # get the best-fitting model with and without line-emission
             sedmodel = CTools.optimizer_saved_contmodel
-            
+
             sedmodel_nolines = CTools.build_stellar_continuum(
                 input_templateflux_nolines, coeff,
                 ebv=ebv, vdisp=(vdisp if compute_vdisp else None), dust_emission=False)
-            
+
             desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
 
-            dn4000_model, _ = Photometry.get_dn4000(templates.wave,
-                                                    sedmodel_nolines, rest=True)
+            dn4000_model, _ = Photometry.get_dn4000(
+                templates.wave, sedmodel_nolines, rest=True)
 
     # Get DN(4000). Specivar is line-masked so we can't use it!
     dn4000, dn4000_ivar = Photometry.get_dn4000(specwave, specflux,
                                                 flam_ivar=specivar_nolinemask,
                                                 redshift=redshift, rest=False)
 
-    if dn4000_ivar > 0:
+    if dn4000_ivar > 0.:
         log.info(f'Spectroscopic DN(4000)={dn4000:.3f}+/-{1./np.sqrt(dn4000_ivar):.3f}, ' + \
                  f'Model Dn(4000)={dn4000_model:.3f}')
     else:
@@ -1454,7 +1442,7 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
     else:
         # Need to be careful we don't pass a large negative residual
         # where there are gaps in the data.
-        residuals = specflux*apercorr - desimodel_nolines
+        residuals = specflux*median_apercorr - desimodel_nolines
         I = ((specflux == 0.) & (specivar == 0.))
         residuals[I] = 0.
 
@@ -1465,7 +1453,7 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
 
         linemask = np.hstack(data['linemask'])
         _smoothcontinuum = CTools.smooth_continuum(
-            specwave, residuals, specivar / apercorr**2, linemask,
+            specwave, residuals, specivar / median_apercorr**2, linemask,
             camerapix=data['camerapix'], png=png)
 
     # Unpack the continuum into individual cameras.
@@ -1475,16 +1463,9 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
         continuummodel.append(desimodel_nolines[s:e])
         smoothcontinuum.append(_smoothcontinuum[s:e])
 
-    for icam, cam in enumerate(data['cameras']):
-        nonzero = (continuummodel[icam] != 0)
-        if np.any(nonzero):
-            corr = median(smoothcontinuum[icam][nonzero] / continuummodel[icam][nonzero])
-            result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100 # [%]
-
-    if len(data['cameras']) == 3:
-        log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
-            result['SMOOTHCORR_B'], result['SMOOTHCORR_R'], result['SMOOTHCORR_Z']))
-
+    return (coeff, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
+            ebv, ebvivar, vdisp, vdispivar, dn4000, dn4000_ivar, dn4000_model,
+            sedmodel, continuummodel, smoothcontinuum)
 
 
 def continuum_specfit(data, result, templates, igm, phot,
@@ -1523,28 +1504,49 @@ def continuum_specfit(data, result, templates, igm, phot,
     objflamivar = (data['photometry']['flam_ivar'].value / FLUXNORM**2) * phot.bands_to_fit
 
     if np.any(phot.bands_to_fit):
-        # Require at least one photometric optical band; do not just fit the IR
-        # because we will not be able to compute the aperture correction, below.
+        # Require at least one *optical* photometric band; do not just fit the
+        # IR because we will not be able to compute the aperture correction.
         lambda_eff = data['photometry']['lambda_eff'].value
         opt = ((lambda_eff > 3e3) & (lambda_eff < 1e4))
         if np.all(objflamivar[opt] == 0.):
             log.warning('All optical bands are masked; masking all photometry.')
             objflamivar[:] = 0.
 
+    # Optionally ignore templates which are older than the age of the
+    # universe at the redshift of the object.
+    if constrain_age:
+        agekeep = _younger_than_universe(templates.info['age'].value, tuniv)
+    else:
+        agekeep = np.arange(templates.ntemplates)
+
     if fastphot:
         # Photometry-only fitting.
-        coeff, rchi2_cont, rchi2_phot, ebv, vdisp, dn4000_model, sedmodel = \
+        coeff, rchi2_phot, ebv, vdisp, dn4000_model, sedmodel = \
             continuum_fastphot(redshift, templates, CTools, objflam, objflamivar,
-                               ebv_guess=ebv_guess, tuniv=data['tuniv'],
-                               constrain_age=constrain_age)
+                               agekeep, ebv_guess=ebv_guess, tuniv=data['tuniv'],
+                               debug_plots=debug_plots)
     else:
         # Spectrophotometric (default) fitting.
-        coeff, rchi2_cont, rchi2_phot, ebv, vdisp, dn4000_model, sedmodel = \
-            continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
-                               objflamivar, ebv_guess=ebv_guess, tuniv=data['tuniv'],
-                               constrain_age=constrain_age)
+        (coeff, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
+         ebv, ebvivar, vdisp, vdispivar, dn4000, dn4000_ivar, dn4000_model,
+         sedmodel, continuummodel, smoothcontinuum) = \
+             continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
+                                objflamivar, agekeep, ebv_guess=ebv_guess,
+                                tuniv=data['tuniv'], debug_plots=debug_plots,
+                                no_smooth_continuum=no_smooth_continuum)
 
-    import pdb ; pdb.set_trace()
+        data['apercorr'] = median_apercorr # needed for the line-fitting
+
+        for icam, cam in enumerate(data['cameras']):
+            nonzero = (continuummodel[icam] != 0)
+            if np.any(nonzero):
+                corr = median(smoothcontinuum[icam][nonzero] / continuummodel[icam][nonzero])
+                result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100 # [%]
+
+        print('FIX THIS LOGGING!')
+        if len(data['cameras']) == 3:
+            log.info('Smooth continuum correction: b={:.3f}%, r={:.3f}%, z={:.3f}%'.format(
+                result['SMOOTHCORR_B'], result['SMOOTHCORR_R'], result['SMOOTHCORR_Z']))
 
     result['COEFF'][agekeep] = coeff
     result['RCHI2_PHOT'] = rchi2_phot
@@ -1554,7 +1556,7 @@ def continuum_specfit(data, result, templates, igm, phot,
         result['RCHI2_CONT'] = rchi2_cont
         result['VDISP_IVAR'] = vdispivar # * (u.second/u.kilometer)**2
 
-        result['APERCORR'] = apercorr
+        result['APERCORR'] = median_apercorr
         for iband, band in enumerate(phot.synth_bands):
             result[f'APERCORR_{band.upper()}'] = apercorrs[iband]
         result['DN4000_OBS'] = dn4000
@@ -1564,10 +1566,11 @@ def continuum_specfit(data, result, templates, igm, phot,
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if not np.all(coeff == 0):
         kcorr, absmag, ivarabsmag, synth_bestmaggies = phot.kcorr_and_absmag(
-            photometry['nanomaggies'].value, photometry['nanomaggies_ivar'].value,
+            data['photometry']['nanomaggies'].value,
+            data['photometry']['nanomaggies_ivar'].value,
             redshift, data['dmodulus'], data['photsys'],
-            CTools.ztemplatewave, sedmodel
-        )
+            CTools.ztemplatewave, sedmodel)
+
         lums, cfluxes = CTools.continuum_fluxes(sedmodel)
 
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
@@ -1614,6 +1617,7 @@ def continuum_specfit(data, result, templates, igm, phot,
         return sedmodel, None
     else:
         # divide out the aperture correction
-        continuummodel  = [cm / apercorr for cm in continuummodel ]
-        smoothcontinuum = [sc / apercorr for sc in smoothcontinuum]
+        continuummodel  = [cm / median_apercorr for cm in continuummodel ]
+        smoothcontinuum = [sc / median_apercorr for sc in smoothcontinuum]
+
         return continuummodel, smoothcontinuum
