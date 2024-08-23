@@ -7,19 +7,17 @@ if [[ $1 == "shifter" ]]; then
     # Load the desigal Docker container using shifter
     #SHIFTER=docker:desihub/fastspecfit:latest
     SHIFTER=docker:desihub/fastspecfit:2.1.1
-    
+
     if [[ $NERSC_HOST == "perlmutter" ]]; then
         MPILIB=mpich
-    elif [[ $NERSC_HOST == "cori" ]]; then
-        MPILIB=mpich-cle6
     else
         MPILIB=
     fi
-    
+
     echo 'Updating and loading the shifter image '$SHIFTER
     echo 'Load the environment with: '
     echo '  source ./fastspecfit-setup.sh env'
-    
+
     shifterimg pull $SHIFTER
     shifter --module=$MPILIB --image $SHIFTER bash
 
@@ -30,7 +28,7 @@ elif [[ $1 == "env" ]]; then
     #    export PYTHONPATH=/global/homes/i/ioannis/code/desihub/$package/py:$PYTHONPATH
     #done
 
-    export DESI_ROOT='/global/cfs/cdirs/desi'
+    export DESI_SPECTRO_REDUX='/global/cfs/cdirs/desi/spectro/redux'
     export DUST_DIR='/global/cfs/cdirs/cosmo/data/dust/v0_1'
     export FPHOTO_DIR='/global/cfs/cdirs/desi/external/legacysurvey/dr9'
     export FTEMPLATES_DIR='/global/cfs/cdirs/desi/external/templates/fastspecfit'
@@ -64,5 +62,3 @@ else
     echo "  /path/to/setup/script/fastspecfit-setup.sh shifter"
     echo "  source /path/to/setup/script/fastspecfit-setup.sh env"
 fi
-
-

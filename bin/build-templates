@@ -2,7 +2,7 @@
 
 '''Build a set of templates for use with FastSpecFit.
 
-time python bin/build-templates --version 2.0.0
+time python bin/build-templates --version 2.0.0 --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
 
 * Chabrier IMF
 * MIST isochrones
@@ -50,8 +50,6 @@ from desispec.interpolation import resample_flux
 from fastspecfit.util import C_LIGHT, trapz
 from fastspecfit.templates import Templates
 
-
-templatedir = os.path.join(os.environ.get('DESI_ROOT'), 'users', 'ioannis', 'fastspecfit', 'templates')
 
 def _qa_dustem_templates(dustwave, mduste, qpah, umin, gamma, png):
 
@@ -398,14 +396,14 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
 
 
 def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
-         test=False, version='1.0.0'):
+         test=False, version='1.0.0', templatedir=None):
     """Build all the templates.
 
     """
     # AGN + Fe template(s)
     fewave, feflux = build_fe_templates(version='1.0')#, png=os.path.join(templatedir, 'original', 'qa-fe.png'))
     agnwave, agnflux = build_agn_templates(agntau=agntau, png=os.path.join(templatedir, 'original', 'qa-agn.png'))
-    import pdb ; pdb.set_trace()
+
     # dust emission template(s)
     dustwave, dustflux = build_dustem_templates(qpah=qpah, umin=umin, gamma=gamma)#,
                                               #png=os.path.join(templatedir, 'original', 'qa-dustem.png'))
@@ -557,6 +555,7 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--templatedir', required=True, help='Location of original and output templates')
     parser.add_argument('--version', required=True, help='Version number (e.g., 2.0.0)')
 
     # DL07 parameters
@@ -573,7 +572,11 @@ if __name__ == '__main__':
     parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
     args = parser.parse_args()
 
+    templatedir = os.path.expandvars(args.templatedir)
+    origdir = os.path.join(templatedir, 'original')
+    if not os.path.isdir(origdir):
+        raise IOError(f'Missing directory containing original templates {origdir}')
+
     main(imf=args.imf, qpah=args.qpah, umin=args.umin, gamma=args.gamma,
-         agntau=args.agntau, test=args.test, version=args.version)
-
-
+         agntau=args.agntau, test=args.test, version=args.version,
+         templatedir=templatedir)

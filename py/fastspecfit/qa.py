@@ -1254,7 +1254,7 @@ def fastqa(args=None, comm=None):
         args = parse(args)
 
     if args.redux_dir is None:
-        args.redux_dir = os.path.join(os.path.expandvars(os.environ.get('DESI_ROOT')), 'spectro', 'redux')
+        args.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
         if not os.path.isdir(args.redux_dir):
             errmsg = f'Data reduction directory {args.redux_dir} not found.'
             log.critical(errmsg)

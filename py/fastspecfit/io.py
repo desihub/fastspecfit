@@ -77,10 +77,8 @@ class DESISpectra(object):
             Full path to the Milky Way dust maps.
 
         """
-        desi_root = os.path.expandvars(os.environ.get('DESI_ROOT'))
-
         if redux_dir is None:
-            self.redux_dir = os.path.join(desi_root, 'spectro', 'redux')
+            self.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
         else:
             self.redux_dir = redux_dir
 
@@ -382,7 +380,7 @@ class DESISpectra(object):
                 if not hasattr(self, 'tileinfo'):
                     if specprod_dir is None:
                         specprod_dir = os.path.join(self.redux_dir, self.specprod)
-                    infofile = os.path.join(specprod_dir, 'tiles-{}.csv'.format(self.specprod))
+                    infofile = os.path.join(specprod_dir, f'tiles-{self.specprod}.csv')
                     if os.path.isfile(infofile):
                         self.tileinfo = Table.read(infofile)
 
@@ -1628,7 +1626,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
-                     envvar_names=('DESI_ROOT', 'DUST_DIR', 'FTEMPLATES_DIR', 'FPHOTO_DIR'))
+                     envvar_names=('DESI_SPECTRO_REDUX', 'DUST_DIR', 'FTEMPLATES_DIR', 'FPHOTO_DIR'))
     if fphotofile:
         setdep(primhdr, 'FPHOTO_FILE', str(fphotofile))
     if template_file:
@@ -1734,7 +1732,7 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
 
     os.environ['SPECPROD'] = specprod # needed to get write_spectra have the correct dependency
 
-    specdir = os.path.join(os.environ.get('DESI_ROOT'), 'spectro', 'redux', specprod, 'healpix',
+    specdir = os.path.join(os.environ.get('DESI_SPECTRO_REDUX'), specprod, 'healpix',
                            survey, program, str(healpix//100), str(healpix))
     coaddfile = os.path.join(specdir, f'coadd-{survey}-{program}-{healpix}.fits')
     redrockfile = os.path.join(specdir, f'redrock-{survey}-{program}-{healpix}.fits')

@@ -133,7 +133,7 @@ if __name__ == '__main__':
     specprod = 'guadalupe'
     survey, program, healpix = fastspec['SURVEY'][0], fastspec['PROGRAM'][0], fastspec['HEALPIX'][0]
 
-    redux_dir = os.path.join(os.environ.get('DESI_ROOT'), 'spectro', 'redux')
+    redux_dir = os.environ.get('DESI_SPECTRO_REDUX')
     redrockfile = os.path.join(redux_dir, specprod, 'healpix', str(survey), str(program), str(healpix // 100), 
                                str(healpix), 'redrock-{}-{}-{}.fits'.format(survey, program, healpix))
 

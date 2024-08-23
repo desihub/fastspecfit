@@ -14,8 +14,6 @@ fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80895/202104
 fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80856/20210318/redrock-9-80856-thru20210318.fits -o fastspec.fits --targetids 6432023904256,6448025174016
 
 """
-import pdb
-
 import os, unittest, tempfile
 import numpy as np
 from urllib.request import urlretrieve
@@ -26,7 +24,7 @@ class TestFastspec(unittest.TestCase):
     """Test fastspecfit.fastspecfit.fastspec"""
     @classmethod
     def setUpClass(cls):
-        os.environ['DESI_ROOT'] = str(resources.files('fastspecfit').joinpath('test/data'))
+        os.environ['DESI_SPECTRO_REDUX'] = str(resources.files('fastspecfit').joinpath('test/data'))
         cls.specproddir = resources.files('fastspecfit').joinpath('test/data')
         cls.mapdir = resources.files('fastspecfit').joinpath('test/data')
         cls.fphotodir = resources.files('fastspecfit').joinpath('test/data')

@@ -90,7 +90,13 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         args = parse(args)
 
     # check for mandatory environment variables
-    envlist = ['DESI_ROOT', 'DUST_DIR', 'FPHOTO_DIR']
+    envlist = []
+    if args.specproddir is None:
+        envlist += ['DESI_SPECTRO_REDUX']
+    if args.mapdir is None:
+        envlist += ['DUST_DIR']
+    if args.fphotodir is None:
+        envlist += ['FPHOTO_DIR']
     if args.templates is None:
         envlist += ['FTEMPLATES_DIR']
     for env in envlist:

@@ -3,8 +3,6 @@
 MPI wrapper for fastphot and fastspec.
 
 """
-import pdb # for debugging
-
 import os, time
 import numpy as np
 
@@ -299,7 +297,7 @@ def main():
         if args.ntest:
             from astropy.table import Table
             rand = np.random.RandomState(seed=1)
-            tilepix = Table.read(f'$DESI_ROOT/spectro/redux/{args.specprod}/healpix/tilepix.fits')
+            tilepix = Table.read(f'$DESI_SPECTRO_REDUX/{args.specprod}/healpix/tilepix.fits')
 
             # trim to survey/program
             tilepix = tilepix[np.unique(np.hstack([np.where(tilepix['SURVEY'] == survey)[0] for survey in args.survey]))]

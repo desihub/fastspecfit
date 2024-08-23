@@ -154,7 +154,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         outprefix = 'fastspec'
         gzip = True
 
-    desi_root = os.path.expandvars(os.environ.get('DESI_ROOT'))
+    redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
 
     # look for data in the standard location
     if coadd_type == 'healpix':
@@ -164,7 +164,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
 
         # figure out which tiles belong to the SV programs
         if tile is None:
-            tilefile = os.path.join(desi_root, 'spectro', 'redux', specprod, f'tiles-{specprod}.csv')
+            tilefile = os.path.join(redux_dir, specprod, f'tiles-{specprod}.csv')
             alltileinfo = Table.read(tilefile)
             tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
 
@@ -179,7 +179,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
             #print(tileinfo)
 
     if specprod_dir is None:
-        specprod_dir = os.path.join(desi_root, 'spectro', 'redux', specprod, subdir)
+        specprod_dir = os.path.join(redux_dir, specprod, subdir)
 
     outdir = os.path.join(outdir_data, specprod, subdir)
     htmldir = os.path.join(outdir_data, specprod, 'html', subdir)
