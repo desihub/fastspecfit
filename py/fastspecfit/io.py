@@ -1434,7 +1434,7 @@ class DESISpectra(object):
         """
         from astropy.table import vstack
         from desitarget import geomask
-        from desispec.io.photo import gather_tractorphot, gather_targetphot
+        from fastspecfit.photometry import gather_tractorphot
 
         input_meta = vstack(self.meta).copy()
 
@@ -1460,7 +1460,15 @@ class DESISpectra(object):
                     # The fibermaps in fuji and guadalupe (plus earlier productions) had a
                     # variety of errors. Fix those here using
                     # desispec.io.photo.gather_targetphot.
-                    if specprod == 'fuji' or specprod == 'guadalupe': # fragile...
+                    if specprod == 'fuji' or specprod == 'guadalupe':
+                        from desispec.io.photo import gather_targetphot
+
+                        for env in ['DESI_ROOT', 'DESI_TARGET', 'DESI_SURVEYOPS', 'FIBER_ASSIGN_DIR']:
+                            if not env in os.environ:
+                                errmsg = f'For fuji and guadalupe productions, missing mandatory environment variable {env}'
+                                log.critical(errmsg)
+                                raise KeyError(errmsg)
+
                         input_meta = meta[uniqueid_col, 'TARGET_RA', 'TARGET_DEC']
                         input_meta['TILEID'] = alltiles
                         targets = gather_targetphot(input_meta)
@@ -1480,7 +1488,7 @@ class DESISpectra(object):
                         meta[col] = tractor[col][srt]
 
                     # special case for some secondary and ToOs
-                    I = ((meta['RA'] == 0)        & (meta['DEC'] == 0) &
+                    I = ((meta['RA'] == 0) & (meta['DEC'] == 0) &
                          (meta['TARGET_RA'] != 0) & (meta['TARGET_DEC'] != 0))
                     meta['RA'][I]  = meta['TARGET_RA'][I]
                     meta['DEC'][I] = meta['TARGET_DEC'][I]

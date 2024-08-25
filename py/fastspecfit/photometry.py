@@ -5,8 +5,12 @@ fastspecfit.photometry
 Tools for handling filters and photometry calculations.
 
 """
+import os
 import numpy as np
+import fitsio
 from astropy.table import Table
+
+from desispec.io.meta import get_desi_root_readonly
 
 from fastspecfit.logger import log
 from fastspecfit.util import trapz, C_LIGHT, FLUXNORM
@@ -587,3 +591,267 @@ class Photometry(object):
             dn4000_ivar = (1. / (dn4000**2)) / (denom_var / (denom**2) + numer_var / (numer**2))
 
         return dn4000, dn4000_ivar
+
+
+def _gather_tractorphot_onebrick(input_cat, legacysurveydir, radius_match, racolumn, deccolumn,
+                                 datamodel, restrict_region):
+    """Support routine for gather_tractorphot.
+
+    """
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+    from desitarget import geomask
+    from desitarget.io import desitarget_resolve_dec
+
+    assert(np.all(input_cat['BRICKNAME'] == input_cat['BRICKNAME'][0]))
+    brick = input_cat['BRICKNAME'][0]
+
+    idr9 = np.where((input_cat['RELEASE'] > 0) * (input_cat['BRICKID'] > 0) *
+                    (input_cat['BRICK_OBJID'] > 0) * (input_cat['PHOTSYS'] != ''))[0]
+    ipos = np.delete(np.arange(len(input_cat)), idr9)
+
+    out = Table(np.hstack(np.repeat(datamodel, len(np.atleast_1d(input_cat)))))
+    out['TARGETID'] = input_cat['TARGETID']
+
+    # DR9 targeting photometry exists
+    if len(idr9) > 0:
+        assert(np.all(input_cat['PHOTSYS'][idr9] == input_cat['PHOTSYS'][idr9][0]))
+
+        # find the catalog
+        photsys = input_cat['PHOTSYS'][idr9][0]
+
+        if photsys == 'S':
+            region = 'south'
+        elif photsys == 'N':
+            region = 'north'
+
+        #raslice = np.array(['{:06d}'.format(int(ra*1000))[:3] for ra in input_cat['RA']])
+        tractorfile = os.path.join(legacysurveydir, region, 'tractor', brick[:3], f'tractor-{brick}.fits')
+
+        if not os.path.isfile(tractorfile):
+            errmsg = f'Unable to find Tractor catalog {tractorfile}'
+            log.critical(errmsg)
+            raise IOError(errmsg)
+
+        # Some commissioning and SV targets can have brick_primary==False, so don't require it here.
+        #<Table length=1>
+        #     TARGETID     BRICKNAME BRICKID BRICK_OBJID RELEASE CMX_TARGET DESI_TARGET   SV1_DESI_TARGET   SV2_DESI_TARGET SV3_DESI_TARGET SCND_TARGET
+        #      int64          str8    int32     int32     int16    int64       int64           int64             int64           int64         int64
+        #----------------- --------- ------- ----------- ------- ---------- ----------- ------------------- --------------- --------------- -----------
+        #39628509856927757  0352p315  503252        4109    9010          0           0 2305843009213693952               0               0           0
+        #<Table length=1>
+        #     TARGETID         TARGET_RA          TARGET_DEC     TILEID SURVEY PROGRAM
+        #      int64            float64            float64       int32   str7    str6
+        #----------------- ------------------ ------------------ ------ ------ -------
+        #39628509856927757 35.333944142134406 31.496490061792002  80611    sv1  bright
+
+        _tractor = fitsio.read(tractorfile, columns=['OBJID', 'BRICK_PRIMARY'], upper=True)
+        #I = np.where(_tractor['BRICK_PRIMARY'] * np.isin(_tractor['OBJID'], input_cat['BRICK_OBJID']))[0]
+        I = np.where(np.isin(_tractor['OBJID'], input_cat['BRICK_OBJID'][idr9]))[0]
+
+        ## Some secondary programs have BRICKNAME!='' and BRICK_OBJID==0 (i.e.,
+        ## not populated). However, there should always be a match here because
+        ## we "repair" brick_objid in the main function.
+        #if len(I) == 0:
+        #    return Table()
+
+        tractor_dr9 = Table(fitsio.read(tractorfile, rows=I, upper=True))
+
+        # sort explicitly in order to ensure order
+        srt = geomask.match_to(tractor_dr9['OBJID'], input_cat['BRICK_OBJID'][idr9])
+        tractor_dr9 = tractor_dr9[srt]
+        assert(np.all((tractor_dr9['BRICKID'] == input_cat['BRICKID'][idr9])*(tractor_dr9['OBJID'] == input_cat['BRICK_OBJID'][idr9])))
+
+        tractor_dr9['LS_ID'] = np.int64(0) # will be filled in at the end
+        tractor_dr9['TARGETID'] = input_cat['TARGETID'][idr9]
+
+        out[idr9] = tractor_dr9
+        del tractor_dr9
+
+    # use positional matching
+    if len(ipos) > 0:
+        rad = radius_match * u.arcsec
+
+        # resolve north/south unless restrict region is set
+        if restrict_region is not None:
+            tractorfile = os.path.join(legacysurveydir, restrict_region, 'tractor', brick[:3], f'tractor-{brick}.fits')
+            if not os.path.isfile(tractorfile):
+                return out
+        else:
+            tractorfile_north = os.path.join(legacysurveydir, 'north', 'tractor', brick[:3], f'tractor-{brick}.fits')
+            tractorfile_south = os.path.join(legacysurveydir, 'south', 'tractor', brick[:3], f'tractor-{brick}.fits')
+            if os.path.isfile(tractorfile_north) and not os.path.isfile(tractorfile_south):
+                tractorfile = tractorfile_north
+            elif not os.path.isfile(tractorfile_north) and os.path.isfile(tractorfile_south):
+                tractorfile = tractorfile_south
+            elif os.path.isfile(tractorfile_north) and os.path.isfile(tractorfile_south):
+                if np.median(input_cat[deccolumn][ipos]) < desitarget_resolve_dec():
+                    tractorfile = tractorfile_south
+                else:
+                    tractorfile = tractorfile_north
+            elif not os.path.isfile(tractorfile_north) and not os.path.isfile(tractorfile_south):
+                return out
+
+        _tractor = fitsio.read(tractorfile, columns=['RA', 'DEC', 'BRICK_PRIMARY'], upper=True)
+        iprimary = np.where(_tractor['BRICK_PRIMARY'])[0] # only primary targets
+        if len(iprimary) == 0:
+            log.warning(f'No primary photometric targets on brick {brick}.')
+        else:
+            _tractor = _tractor[iprimary]
+            coord_tractor = SkyCoord(ra=_tractor['RA']*u.deg, dec=_tractor['DEC']*u.deg)
+            # Some targets can appear twice (with different targetids), so
+            # to make sure we do it right, we have to loop. Example:
+            #
+            #     TARGETID    SURVEY PROGRAM     TARGET_RA          TARGET_DEC    OBJID BRICKID RELEASE  SKY  GAIADR    RA     DEC   GROUP BRICKNAME
+            #      int64       str7    str6       float64            float64      int64  int64   int64  int64 int64  float64 float64 int64    str8
+            # --------------- ------ ------- ------------------ ----------------- ----- ------- ------- ----- ------ ------- ------- ----- ---------
+            # 234545047666699    sv1   other 150.31145983340912 2.587887211205909    11  345369      53     0      0     0.0     0.0     0  1503p025
+            # 243341140688909    sv1   other 150.31145983340912 2.587887211205909    13  345369      55     0      0     0.0     0.0     0  1503p025
+
+            for indx_cat, (ra, dec, targetid) in enumerate(zip(input_cat[racolumn][ipos],
+                                                               input_cat[deccolumn][ipos],
+                                                               input_cat['TARGETID'][ipos])):
+                coord_cat = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+                indx_tractor, d2d, _ = coord_cat.match_to_catalog_sky(coord_tractor)
+                if d2d < rad:
+                    _tractor = Table(fitsio.read(tractorfile, rows=iprimary[indx_tractor], upper=True))
+                    _tractor['LS_ID'] = np.int64(0) # will be filled in at the end
+                    _tractor['TARGETID'] = targetid
+                    out[ipos[indx_cat]] = _tractor[0]
+
+    # Add a unique DR9 identifier.
+    out['LS_ID'] = (out['RELEASE'].astype(np.int64) << 40) | (out['BRICKID'].astype(np.int64) << 16) | (out['OBJID'].astype(np.int64))
+
+    assert(np.all(input_cat['TARGETID'] == out['TARGETID']))
+
+    return out
+
+
+def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
+                       legacysurveydir=None, dr9dir=None, radius_match=1.0,
+                       restrict_region=None, columns=None, verbose=False):
+    """Retrieve the Tractor catalog for all the objects in this catalog (one brick).
+
+    Args:
+        input_cat (astropy.table.Table): input table with the following
+          (required) columns: TARGETID, TARGET_RA, TARGET_DEC. Additional
+          optional columns that will ensure proper matching are BRICKNAME,
+          RELEASE, PHOTSYS, BRICKID, and BRICK_OBJID.
+        legacysurveydir (str): full path to the location of the Tractor catalogs
+        dr9dir (str): relegated keyword; please use `legacysurveydir`
+        radius_match (float, arcsec): matching radius (default, 1 arcsec)
+        restrict_region (str): when positional matching, restrict the region to
+          check for photometry, otherwise check both 'north' and 'south'
+          (default None)
+        columns (str array): return this subset of columns
+
+    Returns a table of Tractor photometry. Matches are identified either using
+    BRICKID and BRICK_OBJID or using positional matching (1 arcsec radius).
+
+    """
+    from desitarget.targets import decode_targetid
+    from desispec.io.photo import tractorphot_datamodel
+    from desiutil.brick import brickname
+    from desiutil.log import get_logger, DEBUG
+
+    if verbose:
+        log = get_logger(DEBUG)
+    else:
+        log = get_logger()
+
+    if len(input_cat) == 0:
+        log.warning('No objects in input catalog.')
+        return Table()
+
+    for col in ['TARGETID', racolumn, deccolumn]:
+        if col not in input_cat.colnames:
+            errmsg = f'Missing required input column {col}'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+    # If these columns don't exist, add them with blank entries:
+    COLS = [('RELEASE', (1,), '>i2'), ('BRICKID', (1,), '>i4'),
+            ('BRICKNAME', (1,), '<U8'), ('BRICK_OBJID', (1,), '>i4'),
+            ('PHOTSYS', (1,), '<U1')]
+    for col in COLS:
+        if col[0] not in input_cat.colnames:
+            input_cat[col[0]] = np.zeros(col[1], dtype=col[2])
+
+    if dr9dir is not None:
+        log.warning('Keyword dr9dir is relegated; please use legacysurveydir.')
+        legacysurveydir = dr9dir
+
+    if legacysurveydir is None:
+        desi_root = get_desi_root_readonly()
+        legacysurveydir = os.path.join(desi_root, 'external', 'legacysurvey', 'dr9')
+
+    if not os.path.isdir(legacysurveydir):
+        errmsg = f'Legacy Surveys directory {legacysurveydir} not found.'
+        log.critical(errmsg)
+        raise IOError(errmsg)
+
+    if 'dr9' in legacysurveydir:
+        datarelease = 'dr9'
+    elif 'dr10' in legacysurveydir:
+        datarelease = 'dr10'
+    else:
+        errmsg = f'Unable to determine data release from {legacysurveydir}; falling back to DR9.'
+        log.warning(errmsg)
+        datarelease = 'dr9'
+
+    if restrict_region is not None:
+        if restrict_region not in ['north', 'south']:
+            errmsg = f"Optional input restrict_region must be either 'north' or 'south'."
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+    ## Some secondary programs (e.g., 39632961435338613, 39632966921487347)
+    ## have BRICKNAME!='' & BRICKID!=0, but BRICK_OBJID==0. Unpack those here
+    ## using decode_targetid.
+    #idecode = np.where((input_cat['BRICKNAME'] != '') * (input_cat['BRICK_OBJID'] == 0))[0]
+    #if len(idecode) > 0:
+    #    log.debug('Inferring BRICK_OBJID for {} objects using decode_targetid'.format(len(idecode)))
+    #    new_objid, new_brickid, _, _, _, _ = decode_targetid(input_cat['TARGETID'][idecode])
+    #    assert(np.all(new_brickid == input_cat['BRICKID'][idecode]))
+    #    input_cat['BRICK_OBJID'][idecode] = new_objid
+
+    # BRICKNAME can sometimes be blank; fix that here. NB: this step has to come
+    # *after* the decode step, above!
+    inobrickname = np.where(input_cat['BRICKNAME'] == '')[0]
+    if len(inobrickname) > 0:
+        log.debug(f'Inferring brickname for {len(inobrickname):,d} objects')
+        input_cat['BRICKNAME'][inobrickname] = brickname(input_cat[racolumn][inobrickname],
+                                                         input_cat[deccolumn][inobrickname])
+
+    # Split into unique brickname(s) and initialize the data model.
+    bricknames = input_cat['BRICKNAME']
+    datamodel = tractorphot_datamodel(datarelease=datarelease)
+
+    out = Table(np.hstack(np.repeat(datamodel, len(np.atleast_1d(input_cat)))))
+    for onebrickname in set(bricknames):
+        I = np.where(onebrickname == bricknames)[0]
+        out[I] = _gather_tractorphot_onebrick(input_cat[I], legacysurveydir, radius_match, racolumn,
+                                              deccolumn, datamodel, restrict_region)
+
+    if 'RELEASE' in input_cat.colnames:
+        _, _, check_release, _, _, _ = decode_targetid(input_cat['TARGETID'])
+        bug = np.where(out['RELEASE'] != check_release)[0]
+        if len(bug) > 0:
+            input_cat['BRICKNAME'][bug] = brickname(input_cat[racolumn][bug], input_cat[deccolumn][bug])
+            input_cat['RELEASE'][bug] = 0
+            input_cat['BRICKID'][bug] = 0
+            input_cat['BRICK_OBJID'][bug] = 0
+            input_cat['PHOTSYS'][bug] = ''
+
+            bugout = Table(np.hstack(np.repeat(datamodel, len(bug))))
+            for onebrickname in set(input_cat['BRICKNAME'][bug]):
+                I = np.where(onebrickname == input_cat['BRICKNAME'][bug])[0]
+                bugout[I] = _gather_tractorphot_onebrick(input_cat[bug][I], legacysurveydir, radius_match, racolumn, deccolumn,
+                                                         datamodel, restrict_region)
+
+    if columns is not None:
+        if type(columns) is not list:
+            columns = columns.tolist()
+        out = out[columns]
+
+    return out
