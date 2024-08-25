@@ -9,4 +9,4 @@ fitsio
 speclite>=0.20
 git+https://github.com/desihub/desimodel.git@0.19.1
 git+https://github.com/desihub/desitarget.git@2.8.0
-git+https://github.com/desihub/desispec.git@0.65.0
+git+https://github.com/desihub/desispec.git@0.66.0

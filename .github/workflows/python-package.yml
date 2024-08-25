@@ -19,8 +19,6 @@ jobs:
                 python-version: ['3.10', '3.11']
         env:
             DESIUTIL_VERSION: 3.4.3
-            FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
-            DESI_SPECTRO_REDUX: ${FASTSPECFIT}/desi
 
         steps:
             - name: Checkout code
@@ -40,7 +38,7 @@ jobs:
             - name: Verify Installation
               run: pip list
             - name: Run the test
-              run: PYTHONPATH=${GITHUB_WORKSPACE}/py FASTSPECFIT=${GITHUB_WORKSPACE} DESI_SPECTRO_REDUX=${GITHUB_WORKSPACE}/desi pytest
+              run: pytest
 
     coverage:
         name: Test coverage
@@ -52,8 +50,6 @@ jobs:
                 python-version: ['3.10', '3.11']
         env:
             DESIUTIL_VERSION: 3.4.3
-            FASTSPECFIT: ${GITHUB_WORKSPACE}/fastspecfit
-            DESI_SPECTRO_REDUX: ${FASTSPECFIT}/desi
 
         steps:
             - name: Checkout code
