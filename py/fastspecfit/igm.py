@@ -49,7 +49,7 @@ class Inoue14(object):
 
         self.scale_tau = scale_tau
         self.igm_params = self._load_data()
-
+        self.reference = 'Inoue+2014'
 
     @staticmethod
     def _load_data():

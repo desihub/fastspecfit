@@ -145,6 +145,15 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                      init_argdict=init_sc_args)
     #log.info(f'Caching took {time.time()-t0:.5f} seconds.')
 
+    if sc_data.templates.use_legacy_fitting:
+        log.warning(f'Fitting with deprecated spectrophotometric templates (version={sc_data.templates.version})!')
+
+    log.info(f'Cached stellar templates {sc_data.templates.file}')
+    log.info(f'Cached emission-line table {sc_data.emlines.file}')
+    log.info(f'Cached photometric filters and parameters {sc_data.photometry.fphotofile}')
+    log.info(f'Cached cosmology table {sc_data.cosmology.file}')
+    log.info(f'Cached {sc_data.igm.reference} IGM attenuation parameters.')
+
     # Read the data.
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
                        fphotodir=args.fphotodir, mapdir=args.mapdir)
@@ -203,10 +212,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         from astropy.table import vstack # preserves metadata
         modelspectra = vstack(out[1], join_type='exact', metadata_conflicts='error')
 
-    log.info(f'Fitting {Spec.ntargets} object(s) took {time.time()-t0:.2f} seconds.')
-
     # if multiprocessing, clean up workers
     mp_pool.close()
+
+    log.info(f'Fitting {Spec.ntargets} object(s) took {time.time()-t0:.2f} seconds.')
 
     write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,

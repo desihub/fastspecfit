@@ -52,7 +52,7 @@ class Singletons(object):
 
         # IGM model
         self.igm = Inoue14()
-        log.debug('Cached Inoue+2014 IGM attenuation parameters.')
+        log.debug(f'Cached {self.igm.reference} IGM attenuation parameters.')
 
 
 # global structure with single-copy data, initially empty

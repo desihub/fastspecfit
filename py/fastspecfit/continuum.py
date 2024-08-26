@@ -1305,13 +1305,15 @@ def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
             vdisp, vdispivar, sedmodel, sedmodel_nolines)
 
 
-def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
-                       objflamivar, agekeep, ebv_guess=0.05,
+def continuum_fastspec(redshift, objflam, objflamivar, CTools,
                        no_smooth_continuum=False, debug_plots=False):
     """Jointly model the spectroscopy and broadband photometry.
 
     """
-    import pdb ; pdb.set_trace()
+    data = CTools.data
+    phot = CTools.phot
+    templates = CTools.templates
+    agekeep = CTools.agekeep
 
     # Combine all three cameras; we will unpack them to build the
     # best-fitting model (per-camera) below.
@@ -1321,16 +1323,18 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
     specivar = specivar_nolinemask * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
 
     if np.all(specivar == 0.) or np.any(specivar < 0.):
-        if np.all(specivar == 0.) or np.any(specivar < 0.):
-            errmsg = 'All pixels are masked or some inverse variances are negative!'
-            log.critical(errmsg)
-            raise ValueError(errmsg)
+        errmsg = 'All pixels are masked or some inverse variances are negative!'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
 
-    npix = len(specwave)
+    #npix = len(specwave)
     nage = len(agekeep)
 
+    import pdb ; pdb.set_trace()
+
     if templates.use_legacy_fitting:
-        ebv, ebvivar = None, None
+        ebv = 0.
+        ebvivar = 0.
         fitresults = _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
                                                 objflam, objflamivar, agekeep,
                                                 data, CTools, phot, templates,
@@ -1349,7 +1353,7 @@ def continuum_fastspec(redshift, data, phot, CTools, templates, objflam,
             ebv, _, coeff, _ = CTools.fit_stellar_continuum(
                 templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
                 dust_emission=False,  fit_vdisp=False,
-                vdisp_guess=None, ebv_guess=ebv_guess,
+                vdisp_guess=None, ebv_guess=CTools.ebv_guess,
                 specflux=specflux, specistd=specistd,
                 synthphot=False, synthspec=True)
 
@@ -1554,8 +1558,7 @@ def continuum_specfit(data, result, templates, igm, phot,
         (coeff, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
          ebv, ebvivar, vdisp, vdispivar, dn4000, dn4000_ivar, dn4000_model,
          sedmodel, continuummodel, smoothcontinuum) = \
-             continuum_fastspec(redshift, data, phot, CTools, templates,
-                                objflam, objflamivar, agekeep, ebv_guess=ebv_guess,
+             continuum_fastspec(redshift, objflam, objflamivar, CTools,
                                 debug_plots=debug_plots,
                                 no_smooth_continuum=no_smooth_continuum)
 
@@ -1573,7 +1576,7 @@ def continuum_specfit(data, result, templates, igm, phot,
 
         data['apercorr'] = median_apercorr # needed for the line-fitting
 
-    result['COEFF'][agekeep] = coeff
+    result['COEFF'][CTools.agekeep] = coeff
     result['RCHI2_PHOT'] = rchi2_phot
     result['VDISP'] = vdisp # * u.kilometer/u.second
 
@@ -1612,7 +1615,7 @@ def continuum_specfit(data, result, templates, igm, phot,
                 result[cflux] = cfluxes[cflux]
 
         # get the SPS properties
-        tinfo = templates.info[agekeep]
+        tinfo = templates.info[CTools.agekeep]
         mstars = tinfo['mstar'] # [current mass in stars, Msun]
         masstot = coeff.dot(mstars)
         coefftot = np.sum(coeff)

@@ -71,6 +71,8 @@ class Templates(object):
         templateinfo     = T['METADATA'].read()
         templatehdr      = T['METADATA'].read_header()
 
+        self.version = T[0].read_header()['VERSION']
+
         # maintain backwards compatibility with older templates (versions <2.0.0)
         self.use_legacy_fitting = ('VDISPFLUX' in T)
 
