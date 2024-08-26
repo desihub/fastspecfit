@@ -897,7 +897,7 @@ class DESISpectra(object):
                 'mask': [],
                 'res': [],
                 'res_emline': [],
-                'snr': np.zeros(3, 'f4'),
+                'snr': np.zeros(len(np.atleast_1d(specdata['cameras'])), 'f4'),
                 'linemask': [],
                 'linepix': [],
                 #'linename_balmer_broad': [],
