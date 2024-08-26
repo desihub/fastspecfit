@@ -328,8 +328,8 @@ class Photometry(object):
             if flux.ndim > 1:
                 nflux = flux.shape[0]
                 maggies = np.empty((nflux, len(filters)))
-                for i in range(nflux):
-                    maggies[i, :] = Photometry.get_ab_maggies_unchecked(filters, flux[i, :], wave)
+                for ii in range(nflux):
+                    maggies[ii, :] = Photometry.get_ab_maggies_unchecked(filters, flux[ii, :], wave)
             else:
                 maggies = Photometry.get_ab_maggies_unchecked(filters, flux, wave)
         except:
@@ -341,8 +341,8 @@ class Photometry(object):
                 nflux = padflux.shape[0]
                 maggies = np.empty((nflux, len(filters)))
 
-                for i in range(nflux):
-                    maggies[i, :] = Photometry.get_ab_maggies_unchecked(filters, padflux[i, :], padwave)
+                for ii in range(nflux):
+                    maggies[ii, :] = Photometry.get_ab_maggies_unchecked(filters, padflux[ii, :], padwave)
             else:
                 maggies = Photometry.get_ab_maggies_unchecked(filters, padflux, padwave)
 
@@ -362,7 +362,7 @@ class Photometry(object):
 
     @staticmethod
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
-                         nanomaggies=True, nsigma=2.0, min_uncertainty=None,
+                         nanomaggies=True, nsigma=2., min_uncertainty=None,
                          get_abmag=False):
         """Parse input (nano)maggies to various outputs and pack into a table.
 
@@ -422,7 +422,7 @@ class Photometry(object):
             abmag_limit[upper] = - 2.5 * np.log10(nanofactor * nsigma / np.sqrt(ivarmaggies[upper]))
 
             # significant detections
-            C = 0.4 * np.log(10)
+            C = 0.4 * np.log(10.)
             good = (snr > nsigma)
             maggies_good = maggies[good]
             ivarmaggies_good = ivarmaggies[good]
@@ -531,7 +531,7 @@ class Photometry(object):
         # Require a 2-Angstrom pad around the break definition.
         wpad = 2.
         if np.min(restwave) > (3850.-wpad) or np.max(restwave) < (4100.+wpad):
-            log.warning('Too little wavelength coverage to compute Dn(4000)')
+            log.warning('Too little wavelength coverage to compute Dn(4000).')
             return dn4000, dn4000_ivar
 
         fnu = flam * flam2fnu # [erg/s/cm2/Hz]
