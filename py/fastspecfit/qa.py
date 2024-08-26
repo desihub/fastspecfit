@@ -87,12 +87,12 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         else:
             return f'{x:.0f}'
 
-    phot  = sc_data.photometry
-    igm   = sc_data.igm
+    phot = sc_data.photometry
+    igm = sc_data.igm
     cosmo = sc_data.cosmology
     templates = sc_data.templates
 
-    CTools = ContinuumTools(igm, phot, templates, data, fastphot)
+    CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot)
 
     if hasattr(phot, 'viewer_layer'):
         layer = phot.viewer_layer

@@ -16,14 +16,10 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import BoxedScalar, MPPool
 
 
-def fastspec_one(iobj, data, out_dtype,
-                 broadlinefit=True,
-                 fastphot=False,
-                 constrain_age=False,
-                 no_smooth_continuum=False,
-                 percamera_models=False,
-                 debug_plots=False,
-                 minsnr_balmer_broad=3.):
+def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
+                 constrain_age=False, no_smooth_continuum=False,
+                 percamera_models=False, debug_plots=False,
+                 minsnr_balmer_broad=2.5):
     """Run :func:`fastspec` on a single object.
 
     """
