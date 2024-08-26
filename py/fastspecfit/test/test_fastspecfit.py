@@ -34,8 +34,8 @@ class TestFastspec(unittest.TestCase):
         cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-2.0.0.fits')
         if os.path.isfile(cls.templates):
             os.remove(cls.templates)
-        url = "https://portal.nersc.gov/project/cosmo/temp/ioannis/tmp/ftemplates-chabrier-2.0.0.fits"
-        #url = "https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.3.0/ftemplates-chabrier-1.3.0.fits"
+        #url = "https://portal.nersc.gov/project/cosmo/temp/ioannis/tmp/ftemplates-chabrier-2.0.0.fits"
+        url = "https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits"
         urlretrieve(url, cls.templates)
 
         cls.fastspec_outfile = os.path.join(cls.outdir, 'fastspec.fits')
