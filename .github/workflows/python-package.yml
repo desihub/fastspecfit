@@ -22,11 +22,11 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v2
+              uses: actions/checkout@v4
               with:
                 fetch-depth: 0
             - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v2
+              uses: actions/setup-python@v5
               with:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
@@ -53,11 +53,11 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v2
+              uses: actions/checkout@v4
               with:
                 fetch-depth: 0
             - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v2
+              uses: actions/setup-python@v5
               with:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
@@ -70,7 +70,6 @@ jobs:
               run: pytest --cov
             - name: Coveralls
               env:
-                COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
                 GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: coveralls --service=github
 
@@ -85,11 +84,11 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v2
+              uses: actions/checkout@v4
               with:
                 fetch-depth: 0
             - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v2
+              uses: actions/setup-python@v5
               with:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
@@ -108,12 +107,12 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v2
+              uses: actions/checkout@v4
               with:
                 fetch-depth: 0
 
             - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v2
+              uses: actions/setup-python@v5
               with:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
