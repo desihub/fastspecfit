@@ -71,7 +71,9 @@ jobs:
             - name: Coveralls
               env:
                 GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: coveralls --service=github
+                COVERALLS_SERVICE_NAME: github
+                COVERALLS_SERVICE_NUMBER: "${{ github.workflow }}-${{ github.run_number }}"
+              run: coveralls
 
     docs:
         name: Doc test
