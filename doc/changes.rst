@@ -7,7 +7,9 @@ Change Log
 
 * Near-total rewrite of both the continuum and emission-line fitting engines and
   major updates to the organizational infrastructure of the code, all with the
-  goal of maximizing speed and accuracy.
+  goal of maximizing speed and accuracy [`PR #177`_].
+
+.. _`PR #177`: https://github.com/desihub/fastspecfit/pull/177
 
 2.5.2 (2024-04-28)
 ------------------
