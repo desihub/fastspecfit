@@ -23,6 +23,3 @@ class TestTopLevel(unittest.TestCase):
 
         """
         self.assertRegex(theVersion,self.versionre)
-
-if __name__ == '__main__':
-    unittest.main()

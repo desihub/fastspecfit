@@ -8,4 +8,4 @@ graft doc
 
 prune build
 prune doc/_build
-prune sandbox
+prune boneyard

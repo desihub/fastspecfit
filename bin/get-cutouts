@@ -10,8 +10,6 @@ shifter --image dstndstn/cutouts:dvsro bash
 $HOME/code/desihub/fastspecfit/bin/get-cutouts --survey cmx --program other --mp 1 --dry-run
 
 """
-import pdb # for debugging
-
 import os, sys, time
 import numpy as np
 import fitsio
@@ -181,11 +179,11 @@ def weighted_partition(weights, n, groups_per_node=None):
 
 
 def plan(comm=None, specprod=None, coadd_type='healpix',
-         survey=None, program=None, healpix=None, tile=None, night=None, 
+         survey=None, program=None, healpix=None, tile=None, night=None,
          outdir_data='.', outdir_html='.', mp=1, overwrite=False):
 
     from astropy.table import Table
-                                
+
     t0 = time.time()
     if comm is None:
         rank, size = 0, 1
@@ -222,7 +220,7 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
             fitssuffix = 'fits.gz'
         else:
             fitssuffix = 'fits'
-            
+
         if coadd_type == 'healpix':
             thesefiles = []
             for onesurvey in np.atleast_1d(survey):
@@ -312,12 +310,12 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
     else:
         out = [get_jpegfiles_one(*mparg) for mparg in mpargs]
     out = list(zip(*out))
-    
+
     jpegfiles = np.array(out[0], dtype=object)
     allra = np.array(out[1], dtype=object)
     alldec = np.array(out[2], dtype=object)
     ntargets = np.array(out[3])
-        
+
     iempty = np.where(ntargets == 0)[0]
     if len(iempty) > 0:
         print(f'Skipping {len(iempty)} fastspecfiles with no jpeg files to make.')
@@ -333,7 +331,7 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
         #print('Working on {} files with a total of {} targets.'.format(len(itodo), np.sum(ntargets)))
 
         groups = weighted_partition(ntargets, size)
-            
+
         #indices = np.arange(len(jpegfiles))
         #
         ## Assign the sample to ranks to make the jpegfiles distribution per rank ~flat.
@@ -378,17 +376,17 @@ def do_cutouts(args, comm=None, outdir_data='.', outdir_html='.'):
         alldec = comm.bcast(alldec, root=0)
         groups = comm.bcast(groups, root=0)
     sys.stdout.flush()
-    
+
     # all done
     if len(jpegfiles) == 0 or len(np.hstack(jpegfiles)) == 0:
         return
-        
+
     assert(len(groups) == size)
 
     for ii in groups[rank]:
         print(f'Rank {rank} started at {time.asctime()}')
         sys.stdout.flush()
-    
+
         mpargs = [(jpegfile, ra, dec, args.dry_run, rank, iobj) for iobj, (jpegfile, ra, dec) in
                   enumerate(zip(jpegfiles[ii], allra[ii], alldec[ii]))]
         if args.mp > 1:
@@ -405,19 +403,19 @@ def do_cutouts(args, comm=None, outdir_data='.', outdir_html='.'):
 
     if rank == 0 and not args.dry_run:
         print(f'All done at {time.asctime()}')
-        
+
 def main():
     """Main wrapper.
 
     """
-    import argparse    
-    
+    import argparse
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
     parser.add_argument('--specprod', type=str, default='iron', #choices=['fuji', 'guadalupe', 'iron'],
                         help='Spectroscopic production to process.')
-    
+
     parser.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpixels to process.')
     parser.add_argument('--survey', type=str, default='main,special,cmx,sv1,sv2,sv3', help='Survey to process.')
     parser.add_argument('--program', type=str, default='bright,dark,other,backup', help='Program to process.') # backup not supported
@@ -432,7 +430,7 @@ def main():
 
     parser.add_argument('--outdir-html', default='$PSCRATCH/fastspecfit/html', type=str, help='Base output HTML directory.')
     parser.add_argument('--outdir-data', default='$PSCRATCH/fastspecfit/data', type=str, help='Base output data directory.')
-    
+
     args = parser.parse_args()
 
     outdir_data = os.path.expandvars(args.outdir_data)
@@ -451,7 +449,7 @@ def main():
     if args.mp > 1 and 'NERSC_HOST' in os.environ:
         import multiprocessing
         multiprocessing.set_start_method('spawn')
-        
+
     if args.coadd_type == 'healpix':
         args.survey = args.survey.split(',')
         args.program = args.program.split(',')
@@ -461,7 +459,7 @@ def main():
             rank = 0
         else:
             rank = comm.rank
-            
+
         if rank == 0:
             plan(comm=comm, specprod=args.specprod, coadd_type=args.coadd_type,
                  survey=args.survey, program=args.program,

@@ -2,10 +2,12 @@
 Change Log
 ==========
 
-2.6.0 (not released yet)
+3.0.0 (not released yet)
 ------------------------
 
-* 
+* Near-total rewrite of both the continuum and emission-line fitting engines and
+  major updates to the organizational infrastructure of the code, all with the
+  goal of maximizing speed and accuracy.
 
 2.5.2 (2024-04-28)
 ------------------
@@ -29,7 +31,7 @@ Change Log
 
 * Address stellar mass bias; more constrained broad+narrow fitting; and max
   velocity dispersion increased to 475 km/s (bump template version to 1.3.0)
-  [`PR #166`_]. 
+  [`PR #166`_].
 
 .. _`PR #166`: https://github.com/desihub/fastspecfit/pull/166
 
@@ -49,7 +51,7 @@ Change Log
 ------------------
 
 * Fix incorrect syntax synthesizing photometry for highest-redshift targets bug
-  [`PR #152`_]. 
+  [`PR #152`_].
 
 .. _`PR #152`: https://github.com/desihub/fastspecfit/pull/152
 
@@ -87,9 +89,9 @@ Change Log
 * Bug fix of emission-line subtracted Dn(4000) measurement [`PR #135`_].
 * Update IGM attenuation coefficients [`PR #136`_].
 * Several significant changes [`PR #137`_]:
-  
+
   * Record the observed-space emission-line amplitude in ``_AMP`` and move the
-    model-space amplitude to ``_MODELAMP``. 
+    model-space amplitude to ``_MODELAMP``.
   * Demand at least 12 pixels to measure the scatter in the pixels under the
     line (therefore ``_AMP_IVAR`` should be more reliable for narrow lines).
   * Major bug fix whereby the model emission-line spectra were not being
@@ -99,7 +101,7 @@ Change Log
   * Updated documentation (data model) and several non-negligible speed-ups.
 
 * Improved modeling of galaxies with broad+narrow line-emission [`PR #142`_]:
-  
+
 .. _`PR #115`: https://github.com/desihub/fastspecfit/pull/115
 .. _`PR #116`: https://github.com/desihub/fastspecfit/pull/116
 .. _`PR #120`: https://github.com/desihub/fastspecfit/pull/120
@@ -115,7 +117,7 @@ Change Log
 * Web-app updates needed for Fuji/v2.0 database load [`PR #107`_].
 * Get target cutouts using image coadds on-disk [`PR #108`_].
 * Initial hooks to fit stacked spectra [`PR #113`_].
-* Updated documentation for v2.0 Fujilupe and v1.0 Iron VACs [`PR #114`_]. 
+* Updated documentation for v2.0 Fujilupe and v1.0 Iron VACs [`PR #114`_].
 
 .. _`PR #107`: https://github.com/desihub/fastspecfit/pull/107
 .. _`PR #108`: https://github.com/desihub/fastspecfit/pull/108
@@ -145,8 +147,8 @@ Change Log
 
 * Support custom coadds, update laboratory line-wavelengths, and fix major EW
   bug [`PR #87`_].
-* Refactor fitting engine to not use fnnls or astropy.modeling [`PR #92`_]. 
-* Additional Fujilupe documentation [`PR #93`_]. 
+* Refactor fitting engine to not use fnnls or astropy.modeling [`PR #92`_].
+* Additional Fujilupe documentation [`PR #93`_].
 * Webapp updates to support latest data model [`PR #94`_].
 * Joint spectrophotometric fitting and much more [`PR #95`_].
 * Additional fujilupe v2.0 updates [`PR #96`_].

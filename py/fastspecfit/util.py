@@ -5,17 +5,134 @@ fastspecfit.util
 General utilities.
 
 """
+import os
 import numpy as np
 import numba
 
-from desiutil.log import get_logger
-log = get_logger()
+from fastspecfit.logger import log
 
 try: # this fails when building the documentation
     from scipy import constants
     C_LIGHT = constants.c / 1000.0 # [km/s]
 except:
     C_LIGHT = 299792.458 # [km/s]
+
+FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
+
+
+#
+# A BoxedScalar is an item of an Numpy
+# structured scalar type that is initialized
+# to all zeros and can then be passed
+# around by reference.  Access the .value
+# field to unbox the scalar.
+#
+class BoxedScalar(object):
+    def __init__(self, dtype):
+        self.value = np.zeros(1, dtype=dtype)[0]
+
+    def __getitem__(self, key):
+        return self.value[key]
+
+    def __setitem__(self, key, v):
+        self.value[key] = v
+
+
+#
+# A Pool encapsulates paaallel execution with a
+# multiprocessing.Pool, falling back to sequential 
+# execution in the current process if just one worker
+# is requested.
+#
+# Unlike multiprocessing.Pool, our starmap() function
+# takes a list of keyword argument dictionaries,
+# rather than a list of positional arguments.
+#
+class MPPool(object):
+
+    # create a pool with nworkers workers, using the current
+    # process if nworkers is 1.  If initiializer is not None,
+    # apply this function to the arguments in keyword dictionary
+    # init_argdict on startup in each each worker subprocess.
+    def __init__(self, nworkers, initializer=None, init_argdict=None):
+
+        initfunc = None if initializer is None else self.apply_to_dict
+
+        if nworkers > 1:
+            #try:
+            #    from mpi4py.futures import MPIPoolExecutor as Pool
+            #except:
+            #    from multiprocessing import Pool
+            from multiprocessing import Pool
+            self.pool = Pool(nworkers,
+                             initializer=initfunc,
+                             initargs=(initializer, init_argdict,))
+        else:
+            self.pool = None
+
+    # apply function func to each of a list of inputs, represented
+    # as a list of keyword argument dictionaries.
+    def starmap(self, func, argdicts):
+
+        # we cannot pickle a local function, so we must pass
+        # both func and the argument dictionary to the subprocess
+        # worker and have it apply one to the other.
+        wrapped_args = [ ( func, a, ) for a in argdicts ]
+
+        if self.pool is not None:
+            out = self.pool.starmap(self.apply_to_dict, wrapped_args)
+        else:
+            from itertools import starmap
+            out = starmap(self.apply_to_dict, wrapped_args)
+
+        return out
+
+    # close our multiprocess pool if we created one
+    def close(self):
+        if self.pool is not None:
+            self.pool.close()
+
+
+    @staticmethod
+    def apply_to_dict(f, argdict):
+        return f(**argdict)
+
+
+class ZWarningMask(object):
+    """
+    Mask bit definitions for zwarning.
+    Taken from Redrock/0.15.4
+    WARNING on the warnings: not all of these are implemented yet.
+
+    #- TODO: Consider using something like desispec.maskbits to provide a more
+    #- convenient wrapper class (probably copy it here; don't make a dependency)
+    #- That class as-is would bring in a yaml dependency.
+    """
+    SKY               = 2**0  #- sky fiber
+    LITTLE_COVERAGE   = 2**1  #- too little wavelength coverage
+    SMALL_DELTA_CHI2  = 2**2  #- chi-squared of best fit is too close to that of second best
+    NEGATIVE_MODEL    = 2**3  #- synthetic spectrum is negative
+    MANY_OUTLIERS     = 2**4  #- fraction of points more than 5 sigma away from best model is too large (>0.05)
+    Z_FITLIMIT        = 2**5  #- chi-squared minimum at edge of the redshift fitting range
+    NEGATIVE_EMISSION = 2**6  #- a QSO line exhibits negative emission, triggered only in QSO spectra, if  C_IV, C_III, Mg_II, H_beta, or H_alpha has LINEAREA + 3 * LINEAREA_ERR < 0
+    UNPLUGGED         = 2**7  #- the fiber was unplugged/broken, so no spectrum obtained
+    BAD_TARGET        = 2**8  #- catastrophically bad targeting data
+    NODATA            = 2**9  #- No data for this fiber, e.g. because spectrograph was broken during this exposure (ivar=0 for all pixels)
+    BAD_MINFIT        = 2**10 #- Bad parabola fit to the chi2 minimum
+    POORDATA          = 2**11 #- Poor input data quality but try fitting anyway
+
+    @classmethod
+    def flags(cls):
+        flagmask = list()
+        for key, value in cls.__dict__.items():
+            if not key.startswith('_') and key.isupper():
+                flagmask.append((key, value))
+
+        import numpy as np
+        isort = np.argsort([x[1] for x in flagmask])
+        flagmask = [flagmask[i] for i in isort]
+        return flagmask
+
 
 def mwdust_transmission(ebv, filtername):
     """Convert SFD E(B-V) value to dust transmission 0-1 given the bandpass.
@@ -88,21 +205,22 @@ def mwdust_transmission(ebv, filtername):
         'wise2010-W4': 0.00910,
         }
 
-    if filtername not in k_X.keys():
+    if filtername not in k_X:
         errmsg = f'Filtername {filtername} is missing from dictionary of known bandpasses!'
         log.critical(errmsg)
         raise ValueError(errmsg)
 
     A_X = k_X[filtername] * ebv
 
-    transmission = 10**(-0.4 * A_X)
-    
+    transmission = 10.**(-0.4 * A_X)
+
     return transmission
+
 
 def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
     """Safely convert an inverse variance to a variance. Note that we clip at 1e-3
     by default, not zero.
-    
+
     """
     var = np.zeros_like(ivar)
     goodmask = ivar > clip # True is good
@@ -120,6 +238,8 @@ def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
         var = np.sqrt(var) # return a sigma
     return var, goodmask
 
+
+# currently unused - JDB
 def air2vac(airwave):
     """http://www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion"""
     if airwave <= 0:
@@ -128,166 +248,6 @@ def air2vac(airwave):
     nn = 1 + 0.00008336624212083 + 0.02408926869968 / (130.1065924522 - ss**2) + 0.0001599740894897 / (38.92568793293 - ss**2)
     return airwave * nn
 
-def centers2edges(centers):
-    """Convert bin centers to bin edges, guessing at what you probably meant
-
-    Args:
-        centers (array): bin centers,
-
-    Returns:
-        array: bin edges, lenth = len(centers) + 1
-
-    """
-    centers = np.asarray(centers)
-    edges = np.zeros(len(centers)+1)
-    #- Interior edges are just points half way between bin centers
-    edges[1:-1] = (centers[0:-1] + centers[1:]) / 2.0
-    #- edge edges are extrapolation of interior bin sizes
-    edges[0] = centers[0] - (centers[1]-edges[1])
-    edges[-1] = centers[-1] + (centers[-1]-edges[-2])
-
-    return edges
-
-# This code is purposely written in a very "C-like" way.  The logic
-# being that it may help numba optimization and also makes it easier
-# if it ever needs to be ported to Cython.  Actually Cython versions
-# of this code have already been tested and shown to perform no better
-# than numba on Intel haswell and KNL architectures.
-
-@numba.jit(nopython=True)
-def _trapz_rebin(x, y, edges, results):
-    '''
-    Numba-friendly version of trapezoidal rebinning
-
-    See redrock.rebin.trapz_rebin() for input descriptions.
-    `results` is pre-allocated array of length len(edges)-1 to keep results
-    '''
-    nbin = len(edges) - 1
-    i = 0  #- index counter for output
-    j = 0  #- index counter for inputs
-    yedge = 0.0
-    area = 0.0
-
-    while i < nbin:
-        #- Seek next sample beyond bin edge
-        while x[j] <= edges[i]:
-            j += 1
-
-        #- What is the y value where the interpolation crossed the edge?
-        yedge = y[j-1] + (edges[i]-x[j-1]) * (y[j]-y[j-1]) / (x[j]-x[j-1])
-
-        #- Is this sample inside this bin?
-        if x[j] < edges[i+1]:
-            area = 0.5 * (y[j] + yedge) * (x[j] - edges[i])
-            results[i] += area
-
-            #- Continue with interior bins
-            while x[j+1] < edges[i+1]:
-                j += 1
-                area = 0.5 * (y[j] + y[j-1]) * (x[j] - x[j-1])
-                results[i] += area
-
-            #- Next sample will be outside this bin; handle upper edge
-            yedge = y[j] + (edges[i+1]-x[j]) * (y[j+1]-y[j]) / (x[j+1]-x[j])
-            area = 0.5 * (yedge + y[j]) * (edges[i+1] - x[j])
-            results[i] += area
-
-        #- Otherwise the samples span over this bin
-        else:
-            ylo = y[j] + (edges[i]-x[j]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
-            yhi = y[j] + (edges[i+1]-x[j]) * (y[j] - y[j-1]) / (x[j] - x[j-1])
-            area = 0.5 * (ylo+yhi) * (edges[i+1]-edges[i])
-            results[i] += area
-
-        i += 1
-
-    for i in range(nbin):
-        results[i] /= edges[i+1] - edges[i]
-
-    return
-
-def trapz_rebin(x, y, xnew=None, edges=None):
-    """Rebin y(x) flux density using trapezoidal integration between bin edges
-
-    Notes:
-        y is interpreted as a density, as is the output, e.g.
-
-        >>> x = np.arange(10)
-        >>> y = np.ones(10)
-        >>> trapz_rebin(x, y, edges=[0,2,4,6,8])  #- density still 1, not 2
-        array([ 1.,  1.,  1.,  1.])
-
-    Args:
-        x (array): input x values.
-        y (array): input y values.
-        edges (array): (optional) new bin edges.
-
-    Returns:
-        array: integrated results with len(results) = len(edges)-1
-
-    Raises:
-        ValueError: if edges are outside the range of x or if len(x) != len(y)
-
-    """
-    if edges is None:
-        edges = centers2edges(xnew)
-    else:
-        edges = np.asarray(edges)
-
-    if edges[0] < x[0] or x[-1] < edges[-1]:
-        raise ValueError('edges must be within input x range')
-
-    result = np.zeros(len(edges)-1, dtype=np.float64)
-
-    _trapz_rebin(x, y, edges, result)
-
-    return result
-
-class ZWarningMask(object):
-    """
-    Mask bit definitions for zwarning.
-    
-    WARNING on the warnings: not all of these are implemented yet.
-    
-    #- TODO: Consider using something like desispec.maskbits to provide a more
-    #- convenient wrapper class (probably copy it here; don't make a dependency)
-    #- That class as-is would bring in a yaml dependency.
-    """
-    SKY               = 2**0  #- sky fiber
-    LITTLE_COVERAGE   = 2**1  #- too little wavelength coverage
-    SMALL_DELTA_CHI2  = 2**2  #- chi-squared of best fit is too close to that of second best
-    NEGATIVE_MODEL    = 2**3  #- synthetic spectrum is negative
-    MANY_OUTLIERS     = 2**4  #- fraction of points more than 5 sigma away from best model is too large (>0.05)
-    Z_FITLIMIT        = 2**5  #- chi-squared minimum at edge of the redshift fitting range
-    NEGATIVE_EMISSION = 2**6  #- a QSO line exhibits negative emission, triggered only in QSO spectra, if  C_IV, C_III, Mg_II, H_beta, or H_alpha has LINEAREA + 3 * LINEAREA_ERR < 0
-    UNPLUGGED         = 2**7  #- the fiber was unplugged/broken, so no spectrum obtained
-    BAD_TARGET        = 2**8  #- catastrophically bad targeting data
-    NODATA            = 2**9  #- No data for this fiber, e.g. because spectrograph was broken during this exposure (ivar=0 for all pixels)
-    BAD_MINFIT        = 2**10 #- Bad parabola fit to the chi2 minimum
-    POORDATA          = 2**11 #- Poor input data quality but try fitting anyway
-
-    #- The following bits are reserved for experiment-specific post-redrock
-    #- afterburner updates to ZWARN; redrock commits to *not* setting these bits
-    RESERVED16        = 2**16
-    RESERVED17        = 2**17
-    RESERVED18        = 2**18
-    RESERVED19        = 2**19
-    RESERVED20        = 2**20
-    RESERVED21        = 2**21
-    RESERVED22        = 2**22
-    RESERVED23        = 2**23
-
-    @classmethod
-    def flags(cls):
-        flagmask = list()
-        for key, value in cls.__dict__.items():
-            if not key.startswith('_') and key.isupper():
-                flagmask.append((key, value))
-
-        import numpy as np
-        isort = np.argsort([x[1] for x in flagmask])
-        flagmask = [flagmask[i] for i in isort]
-        return flagmask
 
 def find_minima(x):
     """Return indices of local minima of x, including edges.
@@ -369,72 +329,220 @@ def minfit(x, y, return_coeff=False):
     else:
         return (x0, xerr, y0, zwarn)
 
-class TabulatedDESI(object):
+
+#
+# sigma clipping in Numba
+# Rewrite basic sigma clipping to avoid
+# array copies and redundant summation
+# on each iteration
+#
+@numba.jit(nopython=True, nogil=True)
+def sigmaclip(c, low=3., high=3.):
+
+    n  = len(c)
+    mask = np.full(n, True, dtype=np.bool_)
+
+    s  = np.sum(c)
+    s2 = np.sum(c*c)
+
+    delta = 1
+    while delta > 0:
+        mean = s/n
+
+        # differences very close to zero can end up negative
+        # due to limited floating-point precision
+        std = np.sqrt(np.maximum(s2/n - mean*mean, 0.))
+        clo = mean - std * low
+        chi = mean + std * high
+
+        if std == 0.: # don't mask everything
+            break
+
+        n0 = n
+        for j, cval in enumerate(c):
+            if mask[j] and (cval < clo or cval > chi):
+                mask[j] = False
+                n  -= 1
+                s  -= cval
+                s2 -= cval * cval
+
+        delta = n0-n
+
+    return c[mask], clo, chi
+
+
+# Numba's quantile impl is much faster
+# than Numpy's standard version
+@numba.jit(nopython=True, nogil=True)
+def quantile(A, q):
+    return np.quantile(A, q)
+
+
+# Numba's median impl is also faster
+@numba.jit(nopython=True, nogil=True)
+def median(A):
+    return np.median(A)
+
+
+# Open-coded Numba trapz is much faster than np.traz
+@numba.jit(nopython=True, fastmath=True, nogil=True)
+def trapz(y, x):
+    res = 0.
+    for i in range(len(x) - 1):
+        res += (x[i+1] - x[i]) * (y[i+1] + y[i])
+    return 0.5 * res
+
+
+def trapz_rebin(src_x, src_y, bin_centers, out=None, pre=None):
     """
-    Class to load tabulated z->E(z) and z->comoving_radial_distance(z) relations within DESI fiducial cosmology
-    (in LSS/data/desi_fiducial_cosmology.dat) and perform the (linear) interpolations at any z.
+    Resample an signal src_y sampled at points src_x into
+    into a series of x-axis bins, in an area-conserving way
 
-    >>> cosmo = TabulatedDESI()
-    >>> distance = cosmo.comoving_radial_distance([0.1, 0.2])
-    >>> efunc = cosmo.efunc(0.3)
+    Parameters
+    ----------
+    src_y : :class:`numpy.ndarray` [npix]
+        Input signal
+    src_x : :class:`numpy.ndarray` [npix]
+        array of x coordinates corresponing to src_y
+    bin_centers : :class:`numpy.ndarray` [noutpix]
+        center x coordinates of output bins
+    out:  :class:`numpy.ndarray` or None
+        if not None, an array of correct size and type
+        that will receive the result of the computation.
+        If None, a new array will be allocated. 
+    pre :
+        preprocessing data computed by trapz_rebin_pre(),
+        if available.  If not None, it must correspond
+        to the input bin_centers array.
 
-    The cosmology is defined in https://github.com/abacusorg/AbacusSummit/blob/master/Cosmologies/abacus_cosm000/CLASS.ini
-    and the tabulated file was obtained using https://github.com/adematti/cosmoprimo/blob/main/cosmoprimo/fiducial.py.
-
-    Note
-    ----
-    Redshift interpolation range is [0, 100].
+    Returns
+    -------
+    :class:`numpy.ndarray` [noutpix]
+        Resampled signal at centers of each bin
 
     """
-    def __init__(self):
-        from importlib import resources
-        cosmofile = resources.files('fastspecfit').joinpath('data/desi_fiducial_cosmology.dat')
+    if pre == None:
+        pre = trapz_rebin_pre(bin_centers)
 
-        self._z, self._efunc, self._comoving_radial_distance = np.loadtxt(cosmofile, comments='#', usecols=None, unpack=True)
+    edges, ibw = pre
 
-        self.H0 = 100.0
-        self.h = self.H0 / 100
-        self.hubble_time = 3.08567758e19 / 3.15576e16 / self.H0 # Hubble time [Gyr]
+    return _trapz_rebin(src_x, src_y, edges, ibw, out)
 
-    def efunc(self, z):
-        r"""Return :math:`E(z)`, where the Hubble parameter is defined as :math:`H(z) = H_{0} E(z)`, unitless."""
-        z = np.asarray(z)
-        mask = (z < self._z[0]) | (z > self._z[-1])
-        if mask.any():
-            raise ValueError('Input z outside of tabulated range.')
-        return np.interp(z, self._z, self._efunc, left=None, right=None)
 
-    def comoving_radial_distance(self, z):
-        r"""Return comoving radial distance, in :math:`\mathrm{Mpc}/h`."""
-        z = np.asarray(z)
-        mask = (z < self._z[0]) | (z > self._z[-1])
-        if mask.any():
-            raise ValueError('Input z outside of tabulated range.')
-        return np.interp(z, self._z, self._comoving_radial_distance, left=None, right=None)
+def trapz_rebin_pre(bin_centers):
+    """
+    Perform preprocessing on the bin centers passed to trapz_rebin()
+    to avoid some computations each time it is called with these
+    same centers.
 
-    def luminosity_distance(self, z):
-        r"""Return luminosity distance, in :math:`\mathrm{Mpc}/h`."""
-        return self.comoving_radial_distance(z) * (1.0+z)
+    Parameters
+    ----------
+    bin_centers : :class:`numpy.ndarray` [npix]
+        array of bin centers for trapz_rebin()
 
-    def distance_modulus(self, z):
-        """Return the distance modulus at the given redshift (Hogg Eq. 24)."""
-        return 5. * np.log10(self.luminosity_distance(z)) + 25
+    Returns
+    -------
+    A preprocessing data structure that can be passed as the
+    'pre' argument of trapz_rebin whenever it is called with
+    the given bin_centers (for *any* src_x and src_y)
 
-    def universe_age(self, z):
-        """Return the age of the universe at the given redshift.
+    """
 
-        """
-        from scipy.integrate import quad
+    edges = centers2edges(bin_centers)
+    ibw = 1. / np.diff(edges)
 
-        def _agefunc(z):
-            return 1.0 / self.efunc(z) / (1.0 + z)
-        
-        if np.isscalar(z):
-            integ, _ =  quad(_agefunc, z, self._z[-1])
-            return integ * self.hubble_time
-        else:
-            age = []
-            for _z in z:
-                integ, _ =  quad(_agefunc, _z, self._z[-1])
-                age.append(integ * self.hubble_time)
-            return np.array(age)
+    return (edges, ibw)
+
+
+@numba.jit(nopython=True, fastmath=True, nogil=True)
+def _trapz_rebin(x, y, edges, ibw, out):
+    """
+    Trapezoidal rebinning
+
+    This implementation is optimized for compilation with Numba.  It
+    agrees with the earlier fastspecfit implementation to within around
+    1e-12 and is somewhat faster.  It also tolerates the first bin being
+    arbitrarily greater than the first x without performance loss. ibw is
+    the array of inverse bin widths.
+
+    We require, as did the original version of the code, that the values of x
+    extend strictly beyond the edges array in both directions.
+
+    """
+    # interpolated value of y at edge_x, which lies between x[j] and x[j+1]
+    def y_at(edge_x, j): # j: largest j s.t. x[j] < edge_x
+        return y[j] + (edge_x - x[j]) * (y[j+1] - y[j]) / (x[j+1] - x[j])
+
+    if edges[0] < x[0] or x[-1] < edges[-1]:
+        raise ValueError('edges must lie strictly within x range')
+
+    nbins = len(edges) - 1
+
+    results = np.empty(nbins, dtype=y.dtype) if out is None else out
+
+    # greatest j s.t. x[j] < edges[0]
+    j = np.searchsorted(x, edges[0], 'right')
+
+    xlo = edges[0]
+    ylo = y_at(xlo, j)
+
+    # loop invariant: on entry to iteration i,
+    #   x[j] is greatest x < edges[i]
+    #   xlo = edges[i]
+    #   ylo = y_at(edges[i], j)
+    for i in range(nbins):
+
+        a = 0.
+
+        while x[j+1] < edges[i+1]:
+            xhi = x[j+1]
+            yhi = y[j+1]
+
+            # add area from prev boundary to x[j+1]
+            a += (xhi - xlo) * (yhi + ylo)
+
+            xlo = xhi
+            ylo = yhi
+
+            j += 1
+
+        # partial area up to edge i+1
+        xhi = edges[i+1]
+        yhi = y_at(xhi, j)
+
+        a += (xhi - xlo) * (yhi + ylo)
+
+        xlo = xhi
+        ylo = yhi
+
+        results[i] = 0.5 * ibw[i] * a
+
+    return results
+
+
+@numba.jit(nopython=True, nogil=True)
+def centers2edges(centers):
+    """
+    Convert bin centers to bin edges, guessing at what you probably meant.
+
+    Parameters
+    ----------
+    centers: :class:`numpy.ndarray`
+      bin centers
+
+    Returns
+    -------
+    array: bin edges, length = len(centers) + 1
+
+    """
+
+    edges = np.empty(len(centers) + 1, dtype=centers.dtype)
+
+    #- Interior edges are just points half way between bin centers
+    edges[1:-1] = 0.5 * (centers[:-1] + centers[1:])
+
+    #- edge edges are extrapolation of interior bin sizes
+    edges[0]  = centers[0]  - (centers[1]  - edges[1])
+    edges[-1] = centers[-1] + (centers[-1] - edges[-2])
+
+    return edges

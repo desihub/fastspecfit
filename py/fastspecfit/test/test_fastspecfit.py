@@ -1,6 +1,6 @@
 """
-fastspecfit.test.test_continuum
-===============================
+fastspecfit.test.test_fastspecfit
+=================================
 
 Test fastspecfit.fastspecfit.fastspec
 
@@ -14,28 +14,30 @@ fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80895/202104
 fastspec /global/cfs/cdirs/desi/spectro/redux/fuji/tiles/cumulative/80856/20210318/redrock-9-80856-thru20210318.fits -o fastspec.fits --targetids 6432023904256,6448025174016
 
 """
-import pdb
-import unittest, os, shutil, tempfile, subprocess
+import os, unittest, tempfile
 import numpy as np
-from unittest.mock import patch, call
-from pkg_resources import resource_filename
+from urllib.request import urlretrieve
+from importlib import resources
+
 
 class TestFastspec(unittest.TestCase):
     """Test fastspecfit.fastspecfit.fastspec"""
     @classmethod
     def setUpClass(cls):
-        os.environ['DESI_ROOT'] = resource_filename('fastspecfit.test', 'data')
-        cls.specproddir = resource_filename('fastspecfit.test', 'data')
-        cls.mapdir = resource_filename('fastspecfit.test', 'data')
-        cls.fphotodir = resource_filename('fastspecfit.test', 'data')
-        cls.redrockfile = resource_filename('fastspecfit.test', 'data/redrock-4-80613-thru20210324.fits')
+        os.environ['DESI_SPECTRO_REDUX'] = str(resources.files('fastspecfit').joinpath('test/data'))
+        cls.specproddir = resources.files('fastspecfit').joinpath('test/data')
+        cls.mapdir = resources.files('fastspecfit').joinpath('test/data')
+        cls.fphotodir = resources.files('fastspecfit').joinpath('test/data')
+        cls.redrockfile = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
 
         cls.outdir = tempfile.mkdtemp()
-        cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-1.3.0.fits')
-        cmd = 'wget -O {} https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.3.0/ftemplates-chabrier-1.3.0.fits'.format(cls.templates)
+        cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-2.0.0.fits')
+        if os.path.isfile(cls.templates):
+            os.remove(cls.templates)
+        #url = "https://portal.nersc.gov/project/cosmo/temp/ioannis/tmp/ftemplates-chabrier-2.0.0.fits"
+        url = "https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits"
+        urlretrieve(url, cls.templates)
 
-        err = subprocess.call(cmd.split())
-        cls.cwd = os.getcwd()
         cls.fastspec_outfile = os.path.join(cls.outdir, 'fastspec.fits')
         cls.fastphot_outfile = os.path.join(cls.outdir, 'fastphot.fits')
 
@@ -46,6 +48,7 @@ class TestFastspec(unittest.TestCase):
     def tearDownClass(cls):
         pass
 
+
     #def test_ContinuumTools(self):
     #    """Test the ContinuumTools class."""
     #    from fastspecfit.continuum import ContinuumTools
@@ -53,6 +56,7 @@ class TestFastspec(unittest.TestCase):
     #
     #    # expected attributes
     #    self.assertTrue(CTools.imf in ['salpeter', 'chabrier', 'kroupa'])
+
 
     def test_fastphot(self):
         """Test fastphot."""
@@ -71,22 +75,20 @@ class TestFastspec(unittest.TestCase):
             if hdu.has_data(): # skip zeroth extension
                 self.assertTrue(hdu.get_extname() in ['METADATA', 'FASTPHOT'])
 
+
     def test_fastspec(self):
         """Test fastspec."""
         import fitsio
         from fastspecfit.fastspecfit import fastspec, parse
-    
+
         cmd = 'fastspec {} -o {} --mapdir {} --fphotodir {} --specproddir {} --templates {}'.format(
             self.redrockfile, self.fastspec_outfile, self.mapdir, self.fphotodir, self.specproddir, self.templates)
         args = parse(options=cmd.split()[1:])
         fastspec(args=args)
-    
+
         self.assertTrue(os.path.exists(self.fastspec_outfile))
-    
+
         fits = fitsio.FITS(self.fastspec_outfile)
         for hdu in fits:
             if hdu.has_data(): # skip zeroth extension
                 self.assertTrue(hdu.get_extname() in ['METADATA', 'FASTSPEC', 'MODELS'])
-
-if __name__ == '__main__':
-    unittest.main()
