@@ -1043,7 +1043,7 @@ def can_compute_vdisp(redshift, specwave, specivar, minrestwave=3500.,
     maxwave = np.max(restwave)
     s = np.searchsorted(restwave, minrestwave, 'left')
     e = np.searchsorted(restwave, maxrestwave, 'left')
-    if s-e > 0:
+    if e-s > 0:
         deltawave = np.ptp(restwave[s:e])
     else:
         deltawave = 0.

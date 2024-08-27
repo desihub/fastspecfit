@@ -388,7 +388,7 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
 
     write_fastspecfit(out, meta, outfile=mergefile, specprod=specprod,
                       coadd_type=coadd_type, fastphot=fastphot,
-                      fphotofile=deps2['FPHOTO_FILE'], templates=deps2['FTEMPLATES_FILE'],
+                      fphotofile=deps2['FPHOTO_FILE'], template_file=deps2['FTEMPLATES_FILE'],
                       emlinesfile=deps2['EMLINES_FILE'], inputz=deps['INPUTZ'],
                       ignore_photometry=deps['NOPHOTO'], broadlinefit=deps['BRDLFIT'],
                       constrain_age=deps['CONSAGE'], use_quasarnet=deps['USEQNET'],

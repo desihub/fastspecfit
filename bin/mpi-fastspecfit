@@ -291,7 +291,8 @@ def main():
     if args.samplefile is None and args.coadd_type == 'healpix':
         args.survey = args.survey.split(',')
         args.program = args.program.split(',')
-        args.healpix = args.healpix.split(',')
+        if args.healpix is not None:
+            args.healpix = args.healpix.split(',')
 
         # For a test sample, use a range of tiles 
         if args.ntest:
