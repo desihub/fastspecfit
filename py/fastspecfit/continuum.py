@@ -1607,12 +1607,16 @@ def continuum_specfit(data, result, templates, igm, phot,
         data['apercorr'] = median_apercorr # needed for the line-fitting
 
         # populate the output table
+        for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
+            result[f'SNR_{cam.upper()}'] = data['snr'][icam]
+
         msg = 'Smooth continuum correction: '
         for cam, corr in zip(np.atleast_1d(data['cameras']), smoothstats):
-            result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100 # [%]
+            result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100. # [%]
             msg += f'{cam}={corr:.3f}% '
         log.info(msg)
 
+    result['Z'] = redshift
     result['COEFF'][CTools.agekeep] = coeff
     result['RCHI2_PHOT'] = rchi2_phot
     result['VDISP'] = vdisp # * u.kilometer/u.second
