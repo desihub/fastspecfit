@@ -106,14 +106,10 @@ class Templates(object):
         pixkms_bounds = np.searchsorted(self.wave, Templates.PIXKMS_BOUNDS, 'left')
         self.pixkms_bounds = pixkms_bounds
 
-        self.flux_nomvdisp = self.convolve_vdisp(
-            self.flux, vdisp_nominal, pixkms_bounds=pixkms_bounds,
-            pixsize_kms=Templates.PIXKMS)
+        self.flux_nomvdisp =self.convolve_vdisp(self.flux, vdisp_nominal)
 
-        self.flux_nolines_nomvdisp = self.convolve_vdisp(
-            self.flux_nolines, vdisp_nominal, pixkms_bounds=pixkms_bounds,
-            pixsize_kms=Templates.PIXKMS)
-
+        self.flux_nolines_nomvdisp = self.convolve_vdisp(self.flux_nolines, vdisp_nominal)
+        
         self.info = Table(templateinfo)
 
         if self.use_legacy_fitting:
@@ -195,40 +191,36 @@ class Templates(object):
         return template_file
 
 
-    @staticmethod
-    def convolve_vdisp(templateflux, vdisp, pixsize_kms=None, pixkms_bounds=None):
+    def convolve_vdisp(self, templateflux, vdisp):
 
-        from scipy.signal import oaconvolve
-
-        if pixsize_kms is None:
-            pixsize_kms = Templates.PIXKMS
+        from scipy.signal import oaconvolve      
 
         # Convolve by the velocity dispersion.
         if vdisp <= 0.:
             output = templateflux.copy()
         else:
             output = np.empty_like(templateflux)
+            pixsize_kms = Templates.PIXKMS
             sigma = vdisp / pixsize_kms # [pixels]
-
-            if pixkms_bounds is None:
-                pixkms_bounds = (0, templateflux.shape[0])
 
             truncate = 4.
             radius = int(truncate * sigma + 0.5)
             kernel = Templates._gaussian_kernel1d(sigma, radius)
 
+            lo, hi = self.pixkms_bounds
+            
             if templateflux.ndim == 1:
-                output[pixkms_bounds[0]:pixkms_bounds[1]] = oaconvolve(
-                    templateflux[pixkms_bounds[0]:pixkms_bounds[1]], kernel, mode='same')
-                output[:pixkms_bounds[0]] = templateflux[:pixkms_bounds[0]]
-                output[pixkms_bounds[1]:] = templateflux[pixkms_bounds[1]:]
+                output[lo:hi] = oaconvolve(
+                    templateflux[lo:hi], kernel, mode='same')
+                output[:lo] = templateflux[:lo]
+                output[hi:] = templateflux[hi:]
             else:
                 n = templateflux.shape[1]
                 for ii in range(n):
-                    output[pixkms_bounds[0]:pixkms_bounds[1], ii] = oaconvolve(
-                        templateflux[pixkms_bounds[0]:pixkms_bounds[1], ii], kernel, mode='same')
-                output[:pixkms_bounds[0], :] = templateflux[:pixkms_bounds[0], :]
-                output[pixkms_bounds[1]:, :] = templateflux[pixkms_bounds[1]:, :]
+                    output[lo:hi, ii] = oaconvolve(
+                        templateflux[lo:hi, ii], kernel, mode='same')
+                output[:lo, :] = templateflux[:lo, :]
+                output[hi:, :] = templateflux[hi:, :]
 
         return output
 

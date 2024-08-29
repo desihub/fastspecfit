@@ -400,9 +400,7 @@ class ContinuumTools(object):
 
         # broaden for velocity dispersion but only out to ~1 micron
         if vdisp is not None:
-            vd_templateflux = Templates.convolve_vdisp(templateflux, vdisp,
-                                                       pixsize_kms=Templates.PIXKMS,
-                                                       pixkms_bounds=self.pixkms_bounds)
+            vd_templateflux = self.templates.convolve_vdisp(templateflux, vdisp)
         else:
             vd_templateflux = templateflux
 
@@ -682,9 +680,7 @@ class ContinuumTools(object):
 
         # [2] - Optionally convolve to the desired velocity dispersion.
         if vdisp is not None:
-            contmodel = Templates.convolve_vdisp(contmodel, vdisp,
-                                                 pixsize_kms=Templates.PIXKMS,
-                                                 pixkms_bounds=self.pixkms_bounds)
+            contmodel = self.templates.convolve_vdisp(contmodel, vdisp)
 
         # [3] - Apply dust attenuation; ToDo: allow age-dependent
         # attenuation. Also compute the bolometric luminosity before and after
