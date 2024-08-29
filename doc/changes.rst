@@ -5,6 +5,7 @@ Change Log
 3.0.0 (not released yet)
 ------------------------
 
+* Cache Fourier transforms of the templates for speed [`PR #180`_].
 * Update line-list (drop broad HeI lines) and rest wavelengths [`PR #179`_].
 * Near-total rewrite of both the continuum and emission-line fitting engines and
   major updates to the organizational infrastructure of the code, all with the
@@ -12,6 +13,7 @@ Change Log
 
 .. _`PR #177`: https://github.com/desihub/fastspecfit/pull/177
 .. _`PR #179`: https://github.com/desihub/fastspecfit/pull/179
+.. _`PR #180`: https://github.com/desihub/fastspecfit/pull/180
 
 2.5.2 (2024-04-28)
 ------------------
