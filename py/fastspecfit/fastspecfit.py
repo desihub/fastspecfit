@@ -41,11 +41,6 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
     # output structure
     out = BoxedScalar(out_dtype)
 
-    out['Z'] = data['redshift']
-    if not fastphot:
-        for icam, cam in enumerate(data['cameras']):
-            out[f'SNR_{cam.upper()}'] = data['snr'][icam]
-
     continuummodel, smooth_continuum = continuum_specfit(
         data, out, templates, igm, phot, constrain_age=constrain_age,
         no_smooth_continuum=no_smooth_continuum,
@@ -591,23 +586,24 @@ def create_output_meta(input_meta, data, phot,
 
 def create_output_table(result_records, meta, units, stackfit=False):
 
-    # Turn the list of result records into a structured array,
-    # and build the basic table from that.  Columns and their
-    # dtypes are inferred from the array's dtype.
+    from astropy.table import hstack
 
-    results = Table(np.array(result_records), units=units)
+    # Initialize the output table from the metadata table.
+    metacols = set(meta.colnames)
 
-    # add initial columns matching those in meta, at the
-    # beginning of the column list
     if stackfit:
         initcols = ('STACKID', 'SURVEY', 'PROGRAM')
     else:
         initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID')
-
-    metacols = set(meta.colnames)
     initcols = [col for col in initcols if col in metacols]
+
     cdata = [meta[col] for col in initcols]
-    results.add_columns(cdata, indexes=list(range(len(cdata))))
+    results = Table()
+    results.add_columns(cdata)
+
+    # Now add the measurements. Columns and their dtypes are inferred from the
+    # array's dtype.
+    results = hstack((results, Table(np.array(result_records), units=units)))
 
     return results
 

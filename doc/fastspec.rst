@@ -92,7 +92,7 @@ Name                         Type         Units                         Descript
                   FIBER [2]_        int32                               Fiber number.
                   EXPID [3]_        int32                               Exposure ID number.
                            Z      float64                               Stellar continuum redshift.
-                       COEFF float32[168]                               Continuum coefficients.
+                       COEFF   float32[5]                               Continuum coefficients.
                        RCHI2      float32                               Reduced chi-squared of the full-spectrum fit.
                   RCHI2_CONT      float32                               Reduced chi-squared of the fit to the stellar continuum.
                   RCHI2_PHOT      float32                               Reduced chi-squared of the fit to the broadband photometry.
@@ -212,6 +212,23 @@ Name                         Type         Units                         Descript
             LYALPHA_EW_LIMIT      float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
                 LYALPHA_CHI2      float32                               Chi-squared of the line-fit.
                 LYALPHA_NPIX        int32                               Number of pixels attributed to the emission line.
+            NV_1240_MODELAMP      float32  1e-17 erg / (Angstrom cm2 s) Model emission-line amplitude.
+                 NV_1240_AMP      float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
+            NV_1240_AMP_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
+                NV_1240_FLUX      float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
+           NV_1240_FLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
+             NV_1240_BOXFLUX      float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+        NV_1240_BOXFLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of boxcar-integrated flux.
+              NV_1240_VSHIFT      float32                        km / s Velocity shift relative to Z.
+               NV_1240_SIGMA      float32                        km / s Gaussian emission-line width.
+                NV_1240_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
+           NV_1240_CONT_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
+                  NV_1240_EW      float32                      Angstrom Rest-frame emission-line equivalent width.
+             NV_1240_EW_IVAR      float32                 1 / Angstrom2 Inverse variance of equivalent width.
+          NV_1240_FLUX_LIMIT      float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
+            NV_1240_EW_LIMIT      float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
+                NV_1240_CHI2      float32                               Chi-squared of the line-fit.
+                NV_1240_NPIX        int32                               Number of pixels attributed to the emission line.
             OI_1304_MODELAMP      float32  1e-17 erg / (Angstrom cm2 s) Model emission-line amplitude.
                  OI_1304_AMP      float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
             OI_1304_AMP_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
@@ -337,6 +354,7 @@ Name                         Type         Units                         Descript
               MGII_2796_FLUX      float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
          MGII_2796_FLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
            MGII_2796_BOXFLUX      float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+      MGII_2796_BOXFLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of boxcar-integrated flux.
             MGII_2796_VSHIFT      float32                        km / s Velocity shift relative to Z.
              MGII_2796_SIGMA      float32                        km / s Gaussian emission-line width.
               MGII_2796_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
@@ -472,6 +490,7 @@ Name                         Type         Units                         Descript
                H6_BROAD_FLUX      float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
           H6_BROAD_FLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
             H6_BROAD_BOXFLUX      float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+       H6_BROAD_BOXFLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of boxcar-integrated flux.
              H6_BROAD_VSHIFT      float32                        km / s Velocity shift relative to Z.
               H6_BROAD_SIGMA      float32                        km / s Gaussian emission-line width.
                H6_BROAD_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
@@ -754,6 +773,23 @@ Name                         Type         Units                         Descript
             OI_6300_EW_LIMIT      float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
                 OI_6300_CHI2      float32                               Chi-squared of the line-fit.
                 OI_6300_NPIX        int32                               Number of pixels attributed to the emission line.
+          SIII_6312_MODELAMP      float32  1e-17 erg / (Angstrom cm2 s) Model emission line amplitude.
+               SIII_6312_AMP      float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
+          SIII_6312_AMP_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
+              SIII_6312_FLUX      float32           1e-17 erg / (cm2 s) Gaussian-integrated emission-line flux.
+         SIII_6312_FLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of integrated flux.
+           SIII_6312_BOXFLUX      float32           1e-17 erg / (cm2 s) Boxcar-integrated emission-line flux.
+      SIII_6312_BOXFLUX_IVAR      float32           1e+34 cm4 s2 / erg2 Inverse variance of boxcar-integrated flux.
+            SIII_6312_VSHIFT      float32                        km / s Velocity shift relative to Z.
+             SIII_6312_SIGMA      float32                        km / s Gaussian emission-line width.
+              SIII_6312_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at line center.
+         SIII_6312_CONT_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of continuum flux.
+                SIII_6312_EW      float32                      Angstrom Rest-frame emission-line equivalent width.
+           SIII_6312_EW_IVAR      float32                 1 / Angstrom2 Inverse variance of equivalent width.
+        SIII_6312_FLUX_LIMIT      float32                 erg / (cm2 s) One-sigma upper limit on the emission line flux.
+          SIII_6312_EW_LIMIT      float32                      Angstrom One-sigma upper limit on the emission line equivalent width.
+              SIII_6312_CHI2      float32                               Chi-squared of the line-fit.
+              SIII_6312_NPIX        int32                               Number of pixels attributed to the emission line.
            NII_6548_MODELAMP      float32  1e-17 erg / (Angstrom cm2 s) Model emission line amplitude.
                 NII_6548_AMP      float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
            NII_6548_AMP_IVAR      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance of line-amplitude.
@@ -966,7 +1002,7 @@ Name                   Type        Units      Description
             FIBER [2]_   int32                Fiber number.
             NIGHT [2]_   int32                Night of observation.
             EXPID [3]_   int32                Exposure ID number.
-           TILEID_LIST    str5                List of tile IDs that went into healpix coadd.
+           TILEID_LIST    str?                List of tile IDs that went into healpix coadd.
                     RA float64            deg Right ascension from target catalog.
                    DEC float64            deg Declination from target catalog.
      COADD_FIBERSTATUS   int64                Fiber status bit.
@@ -998,7 +1034,7 @@ Name                   Type        Units      Description
              TSNR2_QSO float32                Template signal-to-noise ratio squared for QSO targets.
              TSNR2_LYA float32                Template signal-to-noise ratio squared for LYA targets.
                PHOTSYS    str1                Photometric system (*N* or *S*).
-               LS_ID     int64                Unique Legacy Surveys identification number.
+                 LS_ID   int64                Unique Legacy Surveys identification number.
            FIBERFLUX_G float32           nmgy Fiber g-band flux corrected for Galactic extinction.
            FIBERFLUX_R float32           nmgy Fiber r-band flux corrected for Galactic extinction.
            FIBERFLUX_Z float32           nmgy Fiber z-band flux corrected for Galactic extinction.
@@ -1065,9 +1101,9 @@ Required Header Keywords
 Data: FITS image [int32, 7781x3,338]
 
 .. [1] Column only present when fitting healpix coadds.
-       
+
 .. [2] Column only present when fitting cumulative, per-night, or per-expopsure tile-based coadds.
-       
+
 .. [3] Column only present when fitting per-exposure tile-based coadds.
 
 .. [4] Only observed photometry with a minimum signal-to-noise ratio of two is
