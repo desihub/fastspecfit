@@ -28,13 +28,13 @@ class ContinuumTools(object):
         self.igm = igm  # only needed by legacy fitting
         self.templates = templates
         self.data = data
-
+        
         self.massnorm = 1e10  # stellar mass normalization factor [Msun]
         self.ebv_guess = 0.05 # [mag]
-
+        
         self.pixkms_bounds = templates.pixkms_bounds
         self.lg_atten = np.log(10.) * (-0.4 * templates.dust_klambda)
-
+    
         # Cache the redshift-dependent factors (incl. IGM attenuation),
         redshift = data['redshift']
         self.ztemplatewave = templates.wave * (1. + redshift)
@@ -46,11 +46,13 @@ class ContinuumTools(object):
         # Optionally ignore templates which are older than the age of the
         # universe at the redshift of the object.
         if constrain_age:
-            agekeep = _younger_than_universe(templates.info['age'].value, data['tuniv'])
+            self.agekeep = _younger_than_universe(templates.info['age'].value, data['tuniv'])
+            self.nage = len(self.agekeep) 
         else:
-            agekeep = np.arange(templates.ntemplates)
-        self.agekeep = agekeep
-
+            # use default slice instead of arange to avoid copying templates
+            self.agekeep = slice(None, None)
+            self.nage = templates.ntemplates
+        
         # Get preprocessing data to accelerate continuum_to_photometry()
         # but ONLY when it is called with the default filters=None
         photsys = self.data['photsys']
@@ -599,12 +601,15 @@ class ContinuumTools(object):
         return chi2min, xbest, xivar, bestcoeff
 
 
-    # compute attenuated version of a model spectrum,
-    # including contribution of dust emission
     @staticmethod
     @numba.jit(nopython=True, fastmath=True, nogil=True)
     def attenuate(M, A, zfactors, wave, dustflux):
+        """
+        Compute attenuated version of a model spectrum,
+        including contribution of dust emission.
 
+        """
+        
         # Concurrently replace M by M * (atten ** ebv) and
         # compute (by trapezoidal integration) integral of
         # difference of bolometric luminosities before and after
@@ -635,11 +640,15 @@ class ContinuumTools(object):
         for i in range(len(M)):
             M[i] = (M[i] + lbol_diff * dustflux[i]) * zfactors[i]
 
-    # compute attenuated version of a model spectrum M,
-    # without dust emission
     @staticmethod
     @numba.jit(nopython=True, fastmath=True, nogil=True)
     def attenuate_nodust(M, A, zfactors):
+        """
+        Compute attenuated version of a model spectrum M,
+        without dust emission.
+
+        """
+        
         # final result is
         # M * (atten ** ebv) * zfactors
         for i in range(len(M)):
@@ -647,7 +656,8 @@ class ContinuumTools(object):
 
 
     def build_stellar_continuum(self, templateflux, templatecoeff,
-                                ebv, vdisp=None, dust_emission=True):
+                                ebv, vdisp=None, conv_pre=None,
+                                dust_emission=True):
 
         """Build a stellar continuum model.
 
@@ -665,6 +675,9 @@ class ContinuumTools(object):
             Velocity dispersion in km/s. If `None`, do not convolve to the
             specified velocity dispersion (usually because `templateflux` has
             already been smoothed to some nominal value).
+        conv_pre: :class:`tuple` or None
+            Optional preprocessing data to accelerate template convolution with vdisp 
+            (may be present only if vdisp is not None).  
         dust_emission : :class:`bool`
             Model impact of infrared dust emission spectrum. Energy-balance is used
             to compute the normalization of this spectrum.
@@ -675,13 +688,39 @@ class ContinuumTools(object):
             Full-wavelength, native-resolution, observed-frame model spectrum.
 
         """
-        # [1] - Compute the weighted sum of the templates.
-        contmodel = templateflux.dot(templatecoeff)
+        if conv_pre is None or vdisp > Templates.MAX_PRE_VDISP:
+            # [1] - Compute the weighted sum of the templates.
+            contmodel = templateflux.dot(templatecoeff)
+            
+            # [2] - Optionally convolve to the desired velocity dispersion.
+            if vdisp is not None:
+                contmodel = self.templates.convolve_vdisp(contmodel, vdisp)
+        else:
+            # if conv_pre is present, it contains flux values for non-convolved
+            # regions of template fluxes, plus FTs of tempaltes for convolved
+            # region.  Both must be combined using template coefficients.
+            flux_lohi, ft_flux_mid, fft_len = conv_pre
+            
+            # [1] - Compute the weighted sum of the templates.
+            cont_lohi   = flux_lohi.dot(templatecoeff)
+            ft_cont_mid = ft_flux_mid.dot(templatecoeff)
+            
+            # [2] - convolve to the desired velocity dispersion.
+            # Use the vdisp convolution that takes precomputed FT 
+            # of flux for convolved region
+            flux_len = templateflux.shape[0]
+            contmodel = self.templates.convolve_vdisp_from_pre(cont_lohi,
+                                                               ft_cont_mid,
+                                                               flux_len,
+                                                               fft_len,
+                                                               vdisp)
 
-        # [2] - Optionally convolve to the desired velocity dispersion.
-        if vdisp is not None:
-            contmodel = self.templates.convolve_vdisp(contmodel, vdisp)
+            # sanity check for debugging
+            #contmodel0 = templateflux.dot(templatecoeff)
+            #contmodel0 = self.templates.convolve_vdisp(contmodel0, vdisp)
+            #print("DIFF ", np.max(np.abs(contmodel - contmodel0)))
 
+            
         # [3] - Apply dust attenuation; ToDo: allow age-dependent
         # attenuation. Also compute the bolometric luminosity before and after
         # attenuation but only if we have dustflux.
@@ -793,7 +832,7 @@ class ContinuumTools(object):
 
 
     def _stellar_objective(self, params, templateflux,
-                           dust_emission, fit_vdisp,
+                           dust_emission, fit_vdisp, conv_pre,
                            objflam, objflamistd,
                            specflux, specistd,
                            synthphot, synthspec):
@@ -814,7 +853,8 @@ class ContinuumTools(object):
         # allocating new
         fullmodel = self.build_stellar_continuum(
             templateflux, templatecoeff,
-            ebv=ebv, vdisp=vdisp, dust_emission=dust_emission)
+            ebv=ebv, vdisp=vdisp, conv_pre=conv_pre,
+            dust_emission=dust_emission)
 
         # save the full model each time we compute the objective;
         # after optimization, the final full model will be
@@ -849,7 +889,7 @@ class ContinuumTools(object):
         return resid
 
 
-    def fit_stellar_continuum(self, templateflux, fit_vdisp,
+    def fit_stellar_continuum(self, templateflux, fit_vdisp, conv_pre=None,
                               vdisp_guess=250., ebv_guess=0.05,
                               coeff_guess=None,
                               vdisp_bounds=(75., 500.), ebv_bounds=(0., 3.),
@@ -866,6 +906,9 @@ class ContinuumTools(object):
         fit_vdisp : :class:`bool`
             If true, solve for the velocity dispersion;
             if false, use a nominal dispersion.
+        conv_pre : :class:`tuple` of None
+            If not None, preprocessing data for convolving templateflux
+            with vdisp values.  (Occurs only if fit_vdisp is True.)
         vdisp_guess : :class:`float`
             Guess for scalar value of the velocity dispersion if fitting.
         ebv_guess : :class:`float`
@@ -928,6 +971,7 @@ class ContinuumTools(object):
             'templateflux':  templateflux,
             'dust_emission': dust_emission,
             'fit_vdisp':     fit_vdisp,
+            'conv_pre':      conv_pre,
             'objflam':       objflam,
             'objflamistd':   objflamistd,
             'specflux':      specflux,
@@ -1063,7 +1107,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
     data = CTools.data
     templates = CTools.templates
     agekeep = CTools.agekeep
-    nage = len(agekeep)
+    nage = CTools.nage
 
     ebv = 0.
     ebvivar = 0.
@@ -1160,7 +1204,7 @@ def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
     templates = CTools.templates
     phot = CTools.phot
     agekeep = CTools.agekeep
-    nage = len(agekeep)
+    nage = CTools.nage
 
     vdisp_nominal = templates.vdisp_nominal
     ndof_cont = np.sum(specivar > 0.)
@@ -1339,7 +1383,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
     phot = CTools.phot
     templates = CTools.templates
     agekeep = CTools.agekeep
-    nage = len(agekeep)
+    nage = CTools.nage
 
     # Combine all three cameras; we will unpack them to build the
     # best-fitting model (per-camera) below.
@@ -1347,7 +1391,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
     specflux = np.hstack(data['flux'])
     specivar_nolinemask = np.hstack(data['ivar'])
     specivar = specivar_nolinemask * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
-
+    
     if np.all(specivar == 0.) or np.any(specivar < 0.):
         errmsg = 'All pixels are masked or some inverse variances are negative!'
         log.critical(errmsg)
@@ -1429,17 +1473,21 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
         if compute_vdisp:
             input_templateflux = templates.flux[:, agekeep]
+            input_conv_pre = templates.conv_pre_select(templates.conv_pre, agekeep)
             input_templateflux_nolines = templates.flux_nolines[:, agekeep]
+            input_conv_pre_nolines = templates.conv_pre_select(templates.conv_pre_nolines, agekeep)
         else:
             # Use the cached templates with nominal velocity dispersion
             input_templateflux = templates.flux_nomvdisp[:, agekeep]
+            input_conv_pre = None
             input_templateflux_nolines = templates.flux_nolines_nomvdisp[:, agekeep]
+            input_conv_pre_nolines = None
             log.info('Insufficient wavelength coverage to compute velocity dispersion.')
 
         t0 = time.time()
         ebv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
             input_templateflux, # [npix,nage]
-            fit_vdisp=compute_vdisp,
+            fit_vdisp=compute_vdisp, conv_pre=input_conv_pre,
             vdisp_guess=templates.vdisp_nominal,
             #ebv_guess=ebv, coeff_guess=coeff_guess, # don't bias the answer...?
             objflam=objflam, objflamistd=objflamistd,
@@ -1486,7 +1534,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             sedmodel = CTools.optimizer_saved_contmodel
             sedmodel_nolines = CTools.build_stellar_continuum(
                 input_templateflux_nolines, coeff, ebv=ebv,
-                vdisp=(vdisp if compute_vdisp else None), dust_emission=False)
+                vdisp=(vdisp if compute_vdisp else None),
+                conv_pre=input_conv_pre_nolines, dust_emission=False)
 
     desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
 
