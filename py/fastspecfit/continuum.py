@@ -338,16 +338,6 @@ class ContinuumTools(object):
         return lums, cfluxes
 
 
-    # FIXME:
-    # * templatewave, redshift, luminosity, cameras, specres, specmask, photsys
-    #    all come from stored object data now
-    # * specmask ALSO comes from data, but we don't always use it when it exists,
-    #    so it needs to remain an argument
-    # * replace flamphot with phottable to get it out of this file and into qa
-    # * introduce synthspec flag and use it instead of checking for specwave/specres
-    # * don't handle redshift <= 0 here -- caller checks it in fastspecfit, and
-    #     caller should check it in fastqa if not being done now
-    # after we get all of that working, we can consider internal simplifications
     def templates2data(self, templateflux, templatewave, redshift=0., dluminosity=None,
                        vdisp=None, cameras=['b','r','z'], specwave=None, specres=None,
                        specmask=None, coeff=None, photsys=None, synthphot=True,
@@ -398,7 +388,7 @@ class ContinuumTools(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
-        # broaden for velocity dispersion but only out to ~1 micron
+        # broaden for velocity dispersion
         if vdisp is not None:
             vd_templateflux = Templates.convolve_vdisp(templateflux, vdisp,
                                                        pixsize_kms=Templates.PIXKMS,
@@ -565,7 +555,7 @@ class ContinuumTools(object):
 
         if debug:
             if xivar > 0:
-                leg = r'${:.1f}\pm{:.1f}$'.format(xbest, 1 / np.sqrt(xivar))
+                leg = r'${:.1f}\pm{:.1f}$'.format(xbest, 1. / np.sqrt(xivar))
                 #leg = r'${:.3f}\pm{:.3f}\ (\chi^2_{{min}}={:.2f})$'.format(xbest, 1/np.sqrt(xivar), chi2min)
             else:
                 leg = r'${:.3f}$'.format(xbest)
@@ -886,19 +876,19 @@ class ContinuumTools(object):
             Model impact of infrared dust emission spectrum. Energy-balance is used
             to compute the normalization of this spectrum.
         objflam: :class: `numpy.ndarray`
-            Measured object photometry (used if fitting photometry)
+            Measured object photometry (used if fitting photometry).
         objflamistd: :class: `numpy.ndarray`
-            Sqrt of inverse variance of objflam (used if fitting photometry)
+            Sqrt of inverse variance of objflam (used if fitting photometry).
         specflux : :class:`numpy.ndarray` [nwave]
             Observed-frame spectrum in 10**-17 erg/s/cm2/A corresponding to
-            `specwave` (used if fitting spectroscopy)
+            `specwave` (used if fitting spectroscopy).
         specfluxistd : :class:`numpy.ndarray` [nwave]
             Sqrt of inverse variance of the observed-frame spectrum
-            (used if fitting spectroscopy)
+            (used if fitting spectroscopy).
         synthphot: :class:`bool`
-            True iff fitting objective includes object photometry
+            True iff fitting objective includes object photometry.
         synthspec: :class:`bool`
-            True iff fitting objective includes observed spectrum
+            True iff fitting objective includes observed spectrum.
 
         Returns
         -------
@@ -910,7 +900,7 @@ class ContinuumTools(object):
         templatecoeff : :class:`numpy.ndarray` [ntemplate]
             Column vector of maximum-likelihood template coefficients.
         resid: :class:`numpy.ndarray`
-            Vector of residuals at final parameter values
+            Vector of residuals at final parameter values.
 
         Notes
         -----
@@ -1607,12 +1597,16 @@ def continuum_specfit(data, result, templates, igm, phot,
         data['apercorr'] = median_apercorr # needed for the line-fitting
 
         # populate the output table
+        for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
+            result[f'SNR_{cam.upper()}'] = data['snr'][icam]
+
         msg = 'Smooth continuum correction: '
         for cam, corr in zip(np.atleast_1d(data['cameras']), smoothstats):
-            result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100 # [%]
+            result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100. # [%]
             msg += f'{cam}={corr:.3f}% '
         log.info(msg)
 
+    result['Z'] = redshift
     result['COEFF'][CTools.agekeep] = coeff
     result['RCHI2_PHOT'] = rchi2_phot
     result['VDISP'] = vdisp # * u.kilometer/u.second
