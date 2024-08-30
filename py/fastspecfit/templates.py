@@ -29,7 +29,7 @@ class Templates(object):
 
     # highest vdisp for which we attempt to use cached FFTs
     MAX_PRE_VDISP = 500.
-    
+
     def __init__(self, template_file=None, template_version=None, imf=None,
                  mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=250.,
                  fastphot=False, read_linefluxes=False):
@@ -53,7 +53,7 @@ class Templates(object):
 
         """
         self.init_ffts()
-            
+
         if template_file is None:
             if template_version is None:
                 template_version = Templates.DEFAULT_TEMPLATEVERSION
@@ -111,13 +111,12 @@ class Templates(object):
         pixkms_bounds = np.searchsorted(self.wave, Templates.PIXKMS_BOUNDS, 'left')
         self.pixkms_bounds = pixkms_bounds
 
-        
         self.conv_pre = self.convolve_vdisp_pre(self.flux)
         self.flux_nomvdisp = self.convolve_vdisp(self.flux, vdisp_nominal)
 
         self.conv_pre_nolines = self.convolve_vdisp_pre(self.flux_nolines) 
         self.flux_nolines_nomvdisp = self.convolve_vdisp(self.flux_nolines, vdisp_nominal)
-        
+
         self.info = Table(templateinfo)
 
         if self.use_legacy_fitting:
@@ -198,12 +197,12 @@ class Templates(object):
         Set the appropriate convolution function to call
         for non-cached convolutions in convolve_vdisp(),
         based on what we believe to be fastest.
+
         """
-        
         import scipy.fft as sc_fft
         import scipy.signal as sc_sig
         from importlib.util import find_spec
-        
+
         if find_spec("mkl_fft") is not None:
             import mkl_fft._scipy_fft_backend as be
             sc_fft.set_global_backend(be)
@@ -211,7 +210,7 @@ class Templates(object):
             self.convolve = sc_sig.convolve
         else:
             self.convolve = sc_sig.oaconvolve
-            
+
     @staticmethod
     def get_templates_filename(template_version, imf):
         """Get the templates filename.
@@ -237,34 +236,33 @@ class Templates(object):
         Returns
         -------
         preprocessing structure
-        
-        """
 
+        """
         import scipy.fft as sc_fft
-        
+
         # determine largest kernel we will support
         # based on the maximum supported vdisp.
         pixsize_kms = Templates.PIXKMS
         sigma = Templates.MAX_PRE_VDISP / pixsize_kms # [pixels]
         radius = Templates._gaussian_radius(sigma)
         kernel_size = 2*radius + 1
-        
+
         lo, hi = self.pixkms_bounds
-        
+
         # extract the un-convolved ranges of templateflux
         flux_lo = templateflux[:lo, :]
         flux_hi = templateflux[hi:, :]
         flux_mid = templateflux[lo:hi, :]
-        
+
         mid_len = flux_mid.shape[0]
-        
+
         fft_len = sc_fft.next_fast_len(mid_len + kernel_size - 1,
                                        real=True)
         ft_flux_mid = sc_fft.rfft(flux_mid, n=fft_len, axis=0)
-        
+
         return (np.vstack((flux_lo, flux_hi)), ft_flux_mid, fft_len)
 
-    
+
     @staticmethod
     def conv_pre_select(conv_pre, cols):
         """
@@ -289,8 +287,8 @@ class Templates(object):
         else:
             flux_lohi, ft_flux_mid, fft_len = conv_pre
             return (flux_lohi[:, cols], ft_flux_mid[:, cols], fft_len)
-    
-    
+
+
     def convolve_vdisp_from_pre(self, flux_lohi, ft_flux_mid, flux_len, fft_len, vdisp):
         """
         Convolve an array of fluxes with a velocity dispersion, using
@@ -298,12 +296,12 @@ class Templates(object):
         raw array is not passed as an argument; instead, it is decomposed
         into a central region, for which we receive only the Fourier transform
         in ft_flux_mid, and peripheral regions, for which we receive the raw fluxes
-        in flux_lohi. 
+        in flux_lohi.
 
         Parameters
         ----------
         flux_lohi: :class:`np.ndarray` (float64)
-            1D array of fluxes for wavelengths outside the wavelength range 
+            1D array of fluxes for wavelengths outside the wavelength range
             defined by self.pixkms_bounds.  Lower and upper ranges are
             concatenated together.
         ft_flux_mid: :class:`np.ndarray` (complex128)
@@ -314,32 +312,32 @@ class Templates(object):
             Length of the FFT for ft_flux_mid
         vdisp: :class:`float64`
             Velocity dispersion to convolve with fluxes
-        
+
         Returns
         -------
         1D array of flux_len fluxes, equivalent to what would be
         computed for the raw array of input fluxes by convolve_vdisp().
-        
+
         """
 
         import scipy.fft as sc_fft
-        
+
         assert vdisp <= Templates.MAX_PRE_VDISP
-        
+
         output = np.empty(flux_len)
 
         pixsize_kms = Templates.PIXKMS
         sigma = vdisp / pixsize_kms # [pixels]
-        
+
         radius = Templates._gaussian_radius(sigma)
         kernel = Templates._gaussian_kernel1d(sigma, radius)
-        
+
         # compute FFT of Gaussian kernel, then complete convolution
         ft_kernel = sc_fft.rfft(kernel, n=fft_len)
         conv      = sc_fft.irfft(ft_flux_mid * ft_kernel, n=fft_len)
-        
+
         lo, hi = self.pixkms_bounds
-                
+
         # extract middle of convolution (eqv to mode='same')
         s = len(kernel)//2
         e = s + hi - lo
@@ -349,8 +347,8 @@ class Templates(object):
         output[hi:] = flux_lohi[lo:]
 
         return output
-    
-    
+
+
     def convolve_vdisp(self, templateflux, vdisp):
         """
         Convolve one or more arrays of fluxes with a velocity dispersion.
@@ -358,7 +356,7 @@ class Templates(object):
         Parameters
         ----------
         templateflux: :class:`np.ndarray`
-           Either a 1D template array of fluxes, or a 2D array of size 
+           Either a 1D template array of fluxes, or a 2D array of size
           [nfluxes x ntemplates] representing ntemplates fluxes
         vdisp: :class:`float64`
            Velocity dispersion to convolve with fluxes
@@ -368,9 +366,9 @@ class Templates(object):
         Array with convlution of template(s) with vdisp.  Only
         fluxes in the range self.pixkms_bounds are convolved;
         the rest are copied unchanged.
-        
+
         """
-        from scipy.signal import oaconvolve      
+        from scipy.signal import oaconvolve
 
         # Convolve by the velocity dispersion.
         if vdisp <= 0.:
@@ -384,7 +382,7 @@ class Templates(object):
             kernel = Templates._gaussian_kernel1d(sigma, radius)
 
             lo, hi = self.pixkms_bounds
-            
+
             if templateflux.ndim == 1:
                 output[lo:hi] = self.convolve(
                     templateflux[lo:hi], kernel, mode='same')
@@ -408,12 +406,12 @@ class Templates(object):
 
         Note: truncation removes very small tail values of Gaussian
         to limit size of filter.
-        
+
         """
         truncate = 4.
         return int(truncate * sigma + 0.5)
 
-    
+
     @staticmethod
     def _gaussian_kernel1d(sigma, radius, order=0):
         """
@@ -421,7 +419,7 @@ class Templates(object):
 
         Borrowed from scipy.ndimage.  Width of kernel
         is 2 * radius + 1.
-        
+
         order == k > 0 --> compute kth derivative of kernel
 
         """
@@ -472,4 +470,4 @@ class Templates(object):
         dust_power = -0.7     # power-law slope
         dust_normwave = 5500. # pivot wavelength
 
-        return (wave / dust_normwave)**dust_power 
+        return (wave / dust_normwave)**dust_power
