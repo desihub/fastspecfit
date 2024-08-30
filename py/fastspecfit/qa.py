@@ -398,7 +398,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         else:
             contmodel = CTools.build_stellar_continuum(
                 templates.flux_nolines, fastspec['COEFF'],
-                vdisp=fastspec['VDISP'], 
+                vdisp=fastspec['VDISP'], conv_pre=templates.conv_pre_nolines, 
                 ebv=fastspec['AV'] / Templates.klambda(5500.)
             )
 
