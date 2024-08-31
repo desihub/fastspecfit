@@ -1,7 +1,6 @@
 #
-# Sparse representations of resolution matrices and
-# Jacobian of objective for emission line fitting
-# (Ideal Jacobian rep is generated in EMLines_jacobian())
+# Sparse representations of Jacobian of objective for emission line
+# fitting (Ideal Jacobian rep is generated in EMLines_jacobian())
 #
 
 import numpy as np
@@ -10,90 +9,6 @@ from scipy.sparse.linalg import LinearOperator
 from numba import jit
 
 from .params_mapping import ParamsMapping
-
-    
-#
-# resolution matrix
-# A resolution matrix M of size nrow x nrow is stored as a 2D array A of
-# size nrow x ndiag, where ndiag is the number of nonzero diagonals
-# (which must be odd).  The rows of A are M's rows, but with only the
-# nonzero entries stored.  The nonzero entries on row i run from
-# j = i - diag//2 to i + diag//2, so
-#            M[i,j] = A[i, j - (i - diag//2)]
-#
-class ResMatrix(object):
-
-    def __init__(self, D):
-        self.data = self._from_dia_matrix(D)
-    
-    def ndiag(self):
-        return self.data.shape[1]
-    
-    def matvec(self, v, w):
-        self._matvec(self.data, v, w)
-
-    # for compatibility
-    def dot(self, v):
-        w = np.empty(self.data.shape[0])
-        self.matvec(v, w)
-        return w
-    
-    #
-    # _from_dia_matrix()
-    # Convert a diagonally sparse matrix M in the form
-    # stored by DESI into a sparse row rerpesentation.
-    #
-    # Input M is represented as a 2D array D of size ndiag x nrow,
-    # whose rows are M's diagonals:
-    #            M[i,j] = D[ndiag//2 - (j - i), j]
-    # ndiag is assumed to be odd, and entries in D that would be
-    # outside the bounds of M are ignored.
-    #
-    @staticmethod
-    @jit(nopython=True, fastmath=False, nogil=True)
-    def _from_dia_matrix(D):
-        ndiag, nrow = D.shape
-        hdiag = ndiag//2
-
-        A = np.empty((nrow, ndiag), dtype=D.dtype)
-        
-        for i in range(nrow):
-            # min and max column for row
-            jmin = np.maximum(i - hdiag,        0)
-            jmax = np.minimum(i + hdiag, nrow - 1)
-
-            for j in range(jmin, jmax + 1):
-                A[i, j - i + hdiag] = D[hdiag + i - j, j]
-                
-        return A
-    
-    #
-    # _matvec()
-    # Compute the matrix-vector product M * v, where
-    # M is a row-sparse matrix with a limited
-    # number of diagonals created by
-    # dia_to_row_matrix().
-    #
-    # w is an output parameter
-    #
-    @staticmethod
-    @jit(nopython=True, fastmath=False, nogil=True)
-    def _matvec(M, v, w):
-        nrow, ndiag = M.shape
-        hdiag = ndiag//2
-        
-        for i in range(nrow):
-            jmin = np.maximum(i - hdiag,    0)
-            jmax = np.minimum(i + hdiag, nrow - 1)
-            
-            acc = 0.
-            for j in range(jmin, jmax + 1):
-                acc += M[i, j - i + hdiag] * v[j]
-        
-            w[i] = acc
-
-
-#################################################################
 
 #
 # Sparse Jacobian of objective function.  For

@@ -13,8 +13,8 @@ from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
 from fastspecfit.util import (C_LIGHT, FLUXNORM,
-    trapz_rebin, trapz_rebin_pre, quantile,
-    median, sigmaclip)
+    trapz_rebin, trapz_rebin_pre,
+    quantile, median, sigmaclip)
 
 
 class ContinuumTools(object):
@@ -756,13 +756,13 @@ class ContinuumTools(object):
         specres   = self.data['res']
 
         modelflux = np.empty(self.wavelen)
-
+        
         for icam, (s, e) in enumerate(camerapix):
             resampflux = trapz_rebin(self.ztemplatewave,
                                      contmodel,
                                      specwave[icam],
                                      pre=self.spec_pre[icam])
-            modelflux[s:e] = specres[icam] @ resampflux
+            specres[icam].dot(resampflux, out=modelflux[s:e])
 
         return modelflux
 

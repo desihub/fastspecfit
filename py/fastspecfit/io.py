@@ -637,7 +637,7 @@ class DESISpectra(object):
                 Three-element list of `numpy.ndarray` inverse variance spectra, one
                 for each camera.
             res : :class:`list`
-                Three-element list of :class:`desispec.resolution.Resolution`
+                Three-element list of :class:`fastspecfit.resolution.Resolution`
                 objects, one for each camera.
             snr : `numpy.ndarray`
                 Median per-pixel signal-to-noise ratio in the grz cameras.
@@ -681,8 +681,7 @@ class DESISpectra(object):
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
         from desiutil.dust import SFDMap
-        from desispec.resolution import Resolution
-        from fastspecfit.emline_fit import EMLine_Resolution
+        from fastspecfit.resolution import Resolution
 
         t0 = time.time()
 
@@ -782,7 +781,7 @@ class DESISpectra(object):
                         'coadd_flux': coadd_spec.flux[coadd_cams][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cams][iobj, :],
                         'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
-                        'coadd_res_emline': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
+                        'coadd_res_emline': [Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
                         }
 
                     mpargs.append({
@@ -821,8 +820,7 @@ class DESISpectra(object):
         extinction. Also flag pixels which may be affected by emission lines.
 
         """
-        from desispec.resolution import Resolution
-        from fastspecfit.emline_fit import EMLine_Resolution
+        from fastspecfit.resolution import Resolution
         from fastspecfit.util import mwdust_transmission, median
         from fastspecfit.linemasker import LineMasker
 
@@ -949,8 +947,7 @@ class DESISpectra(object):
                         specdata['mask'].append(specdata['mask0'][icam])
 
                         specdata['res'].append(Resolution(res))
-                        specdata['res_emline'].append(EMLine_Resolution(res))
-
+                        
             if len(cameras) == 0:
                 errmsg = 'No good data, which should never happen.'
                 log.critical(errmsg)
@@ -1058,7 +1055,7 @@ class DESISpectra(object):
                 Three-element list of `numpy.ndarray` inverse variance spectra, one
                 for each camera.
             res : :class:`list`
-                Three-element list of :class:`desispec.resolution.Resolution`
+                Three-element list of :class:`fastspecfit.resolution.Resolution`
                 objects, one for each camera.
             snr : `numpy.ndarray`
                 Median per-pixel signal-to-noise ratio in the grz cameras.
@@ -1098,7 +1095,7 @@ class DESISpectra(object):
 
         """
         from astropy.table import vstack
-        from desispec.resolution import Resolution
+        from fastspecfit.resolution import Resolution
 
         if stackfiles is None:
             errmsg = 'At least one stackfiles file is required.'

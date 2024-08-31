@@ -164,14 +164,14 @@ class EMLine_Objective(object):
                                       ibw,
                                       self.redshift,
                                       self.line_wavelengths,
-                                      self.resolution_matrices[icam].ndiag())
+                                      self.resolution_matrices[icam].ndiag)
             
             # ignore any columns corresponding to fixed parameters
             endpts = idealJac[0]
             endpts[self.params_mapping.fixedMask(), :] = 0
         
             jacs.append( mulWMJ(self.obs_weights[s:e],
-                                self.resolution_matrices[icam].data,
+                                self.resolution_matrices[icam].rowdata(),
                                 idealJac) )
             
         nBins = np.sum(np.diff(self.camerapix))
@@ -445,7 +445,7 @@ def _build_model_core(line_parameters,
         
         # convolve model with resolution matrix and store in
         # this camera's subrange of model_fluxes
-        resolution_matrices[icam].matvec(mf, model_fluxes[s:e])
+        resolution_matrices[icam].dot(mf, model_fluxes[s:e])
 
 
 #
@@ -494,11 +494,11 @@ def _build_multimodel_core(line_parameters,
                                             log_obs_bin_edges[s+icam:e+icam+1],
                                             redshift,
                                             ibw,
-                                            resolution_matrices[icam].ndiag())
+                                            resolution_matrices[icam].ndiag)
         
         # convolve each line's waveform with resolution matrix
         endpts, M = mulWMJ(np.ones(e - s),
-                           resolution_matrices[icam].data,
+                           resolution_matrices[icam].rowdata(),
                            line_models)
         
         # adjust endpoints to reflect camera range

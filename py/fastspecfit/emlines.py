@@ -1100,7 +1100,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
 
     redshift          = data['redshift']
     camerapix         = data['camerapix']
-    resolution_matrix = data['res_emline']
+    resolution_matrix = data['res']
 
     # Combine pixels across all cameras
     emlinewave  = np.hstack(data['wave'])
