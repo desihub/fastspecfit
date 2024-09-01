@@ -209,7 +209,7 @@ class LineMasker(object):
         ivar : :class:`numpy.ndarray` [npix]
             Inverse variance spectrum corresponding to `flux`.
         resolution_matrix : :class:`list`
-            List of :class:`fastspecfit.emline_fit.sparse_rep.ResMatrix`
+            List of :class:`fastspecfit.resolution.Resolution`
             objects, one per camera.
         redshift : :class:`float`
             Object redshift.

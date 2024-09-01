@@ -206,8 +206,9 @@ class Templates(object):
         if find_spec("mkl_fft") is not None:
             import mkl_fft._scipy_fft_backend as be
             sc_fft.set_global_backend(be)
-
+            
             self.convolve = sc_sig.convolve
+            log.info('Using mkl_fft library for FFTs')
         else:
             self.convolve = sc_sig.oaconvolve
 

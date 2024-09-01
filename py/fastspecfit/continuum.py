@@ -32,7 +32,6 @@ class ContinuumTools(object):
         self.massnorm = 1e10  # stellar mass normalization factor [Msun]
         self.ebv_guess = 0.05 # [mag]
 
-        self.pixkms_bounds = templates.pixkms_bounds
         self.lg_atten = np.log(10.) * (-0.4 * templates.dust_klambda)
 
         # Cache the redshift-dependent factors (incl. IGM attenuation),
@@ -341,7 +340,7 @@ class ContinuumTools(object):
 
 
     def templates2data(self, templateflux, templatewave, redshift=0., dluminosity=None,
-                       vdisp=None, cameras=['b','r','z'], specwave=None, specres=None,
+                       vdisp=None, cameras=np.array(['b','r','z']), specwave=None, specres=None,
                        specmask=None, coeff=None, photsys=None, synthphot=True,
                        stack_cameras=False, flamphot=False, debug=False, get_abmag=False):
         """Deprecated. Work-horse method for turning input templates into data-like
@@ -748,13 +747,13 @@ class ContinuumTools(object):
         -------
         modelflux : :class:`numpy.ndarray` [nwave]
             Observed-frame model spectrum at the instrumental resolution and
-            wavelength sampling given by `specwave` and `specres`.
+            wavelength sampling given by `specres` and `specwave`.
 
         """
         camerapix = self.data['camerapix']
         specwave  = self.data['wave']
         specres   = self.data['res']
-
+        
         modelflux = np.empty(self.wavelen)
         
         for icam, (s, e) in enumerate(camerapix):

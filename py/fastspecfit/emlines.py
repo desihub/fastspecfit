@@ -576,8 +576,8 @@ class EMFitTools(object):
                                    obs_weights,
                                    redshift,
                                    line_wavelengths,
-                                   tuple(resolution_matrices),
-                                   camerapix, # for more efficient iteration
+                                   resolution_matrices,
+                                   camerapix,
                                    params_mapping,
                                    continuum_patches=continuum_patches)
 

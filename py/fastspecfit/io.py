@@ -781,8 +781,7 @@ class DESISpectra(object):
                         'coadd_flux': coadd_spec.flux[coadd_cams][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cams][iobj, :],
                         'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
-                        'coadd_res_emline': [Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
-                        }
+                    }
 
                     mpargs.append({
                         'iobj':        iobj,
@@ -894,7 +893,6 @@ class DESISpectra(object):
                 'ivar': [],
                 'mask': [],
                 'res': [],
-                'res_emline': [],
                 'snr': np.zeros(len(np.atleast_1d(specdata['cameras'])), 'f4'),
                 'linemask': [],
                 'linepix': [],
@@ -953,27 +951,29 @@ class DESISpectra(object):
                 log.critical(errmsg)
                 raise ValueError(errmsg)
 
-            # clean up the data dictionary
-            for key in ('wave0', 'flux0', 'ivar0', 'mask0', 'res0'):
-                del specdata[key]
-
+            # clean up unused items in data dictionary and
+            # freeze lists that will not be further modified
+            for key in ('wave', 'flux', 'ivar', 'mask', 'res'):
+                del specdata[key + '0']
+                specdata[key] = tuple(specdata[key])
+            
             # Pre-compute some convenience variables for "un-hstacking"
             # an "hstacked" spectrum.
-            specdata['cameras'] = cameras
-            specdata['npixpercamera'] = npixpercamera
+            specdata['cameras'] = np.array(cameras)
+            specdata['npixpercamera'] = np.array(npixpercamera)
 
             ncam = len(specdata['cameras'])
-            c_ends   = np.cumsum(npixpercamera)
-            c_starts = c_ends - npixpercamera
+            c_ends   = np.cumsum(specdata['npixpercamera'])
+            c_starts = c_ends - specdata['npixpercamera']
             specdata['camerapix'] = np.zeros((ncam, 2), np.int16)
             specdata['camerapix'][:, 0] = c_starts
             specdata['camerapix'][:, 1] = c_ends
-
+            
             # use the coadded spectrum to build a robust emission-line mask
             LM = LineMasker(emline_table)
             pix = LM.build_linemask(
                 specdata['coadd_wave'], specdata['coadd_flux'],
-                specdata['coadd_ivar'], specdata['coadd_res_emline'],
+                specdata['coadd_ivar'], specdata['coadd_res'],
                 uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
                 debug_plots=debug_plots)
 
@@ -982,7 +982,7 @@ class DESISpectra(object):
             # way to do it?
             for icam in range(ncam):
                 camlinepix = {}
-                camlinemask = np.zeros(npixpercamera[icam], bool)
+                camlinemask = np.zeros(specdata['npixpercamera'][icam], bool)
                 for linename in pix['coadd_linepix']:
                     linepix = pix['coadd_linepix'][linename]
                     # if the line is entirely off this camera, skip it
@@ -1346,21 +1346,23 @@ class DESISpectra(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
+        # clean up unused items in data dictionary and
+        # freeze lists that will not be further modified
+        for key in ('wave', 'flux', 'ivar', 'mask', 'res'):
+            del specdata[key + '0']
+            specdata[key] = tuple(specdata[key])
+            
         # Pre-compute some convenience variables for "un-hstacking"
         # an "hstacked" spectrum.
-        specdata['cameras'] = cameras
-        specdata['npixpercamera'] = npixpercamera
+        specdata['cameras'] = np.array(cameras)
+        specdata['npixpercamera'] = np.array(npixpercamera)
 
         ncam = len(specdata['cameras'])
-        c_ends   = np.cumsum(npixpercamera)
-        c_starts = c_ends - npixpercamera
+        c_ends   = np.cumsum(specdata['npixpercamera'])
+        c_starts = c_ends - specdata['npixpercamera']
         specdata['camerapix'] = np.zeros((ncam, 2), np.int16)
         specdata['camerapix'][:, 0] = c_starts
         specdata['camerapix'][:, 1] = c_ends
-
-        # clean up the data dictionary
-        for key in ('wave0', 'flux0', 'ivar0', 'mask0', 'res0'):
-            del specdata[key]
 
         LM = LineMasker(phot, emline_table)
         coadd_linemask_dict = LM.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],
