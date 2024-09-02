@@ -5,7 +5,6 @@ fastspecfit.util
 General utilities.
 
 """
-import os
 import numpy as np
 import numba
 
