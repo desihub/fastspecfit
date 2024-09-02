@@ -831,8 +831,6 @@ class ContinuumTools(object):
             vdisp         = None
             templatecoeff = params[1:]
 
-        # FIXME: write results directly into resid array instead of
-        # allocating new
         fullmodel = self.build_stellar_continuum(
             templateflux, templatecoeff,
             ebv=ebv, vdisp=vdisp, conv_pre=conv_pre,
@@ -857,17 +855,15 @@ class ContinuumTools(object):
         if synthspec:
             modelflux = self.continuum_to_spectroscopy(fullmodel)
             spec_resid = resid[:resid_split]
-            spec_resid[:]  = specflux
-            spec_resid    -= modelflux
-            spec_resid    *= specistd
-
+            np.subtract(modelflux, specflux, spec_resid)
+            spec_resid *= specistd
+        
         if synthphot:
             modelflam = self.continuum_to_photometry(fullmodel)
             phot_resid = resid[resid_split:]
-            phot_resid[:] = objflam
-            phot_resid   -= modelflam
-            phot_resid   *= objflamistd
-
+            np.subtract(modelflam, objflam, phot_resid)
+            phot_resid *= objflamistd
+        
         return resid
 
 
