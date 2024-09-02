@@ -70,9 +70,7 @@ class ContinuumTools(object):
             self.wavelen = np.sum([len(w) for w in self.data['wave']])
 
             # get preprocessing data to accelerate resampling
-            rspre = []
-            for wave in self.data['wave']:
-                rspre.append(trapz_rebin_pre(wave))
+            rspre = [ trapz_rebin_pre(w) for w in self.data['wave'] ]
             self.spec_pre = tuple(rspre)
 
 
