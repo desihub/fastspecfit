@@ -7,7 +7,7 @@ Methods and tools for continuum-fitting.
 """
 import time
 import numpy as np
-import numba
+from numba import jit
 
 from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
@@ -589,7 +589,7 @@ class ContinuumTools(object):
 
 
     @staticmethod
-    @numba.jit(nopython=True, fastmath=True, nogil=True)
+    @jit(nopython=True, nogil=True, fastmath=True)
     def attenuate(M, A, zfactors, wave, dustflux):
         """
         Compute attenuated version of a model spectrum,
@@ -628,7 +628,7 @@ class ContinuumTools(object):
             M[i] = (M[i] + lbol_diff * dustflux[i]) * zfactors[i]
 
     @staticmethod
-    @numba.jit(nopython=True, fastmath=True, nogil=True)
+    @jit(nopython=True, nogil=True, fastmath=True)
     def attenuate_nodust(M, A, zfactors):
         """
         Compute attenuated version of a model spectrum M,
