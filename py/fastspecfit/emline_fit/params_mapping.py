@@ -2,6 +2,7 @@ import numpy as np
 
 from numba import jit
 
+
 class ParamsMapping(object):
     """Compute a mapping from the free (line) parameters of a spectrum
     fitting problem to the full set of parameters for the EMLine
@@ -99,11 +100,11 @@ class ParamsMapping(object):
         for j, src_j_free in doubletPatches:
             factors[j] = freeParms[src_j_free] if patchDoublets else 1.
 
-        if fullParms == None:
+        if fullParms is None:
             fullParms = np.empty(nParms, dtype=freeParms.dtype)
         
         for j, src_j_free in enumerate(sources):
-            fullParms[j] = factors[j] # copy fixed zeros
+            fullParms[j] = factors[j]  # copy fixed zeros
             if src_j_free != -1:
                 fullParms[j] *= freeParms[src_j_free]
         
@@ -152,7 +153,7 @@ class ParamsMapping(object):
         
         shape, elts, factors = J_S
         
-        for j in range(shape[0]): # total params
+        for j in range(shape[0]):  # total params
             w[j] = 0.
         
         for i, (dst, src) in enumerate(elts):
@@ -180,9 +181,10 @@ class ParamsMapping(object):
         for i, (dst, src) in enumerate(elts):
             w[src] += factors[i] * v[dst]
 
-    
+
     ###########################################################
-    
+
+
     def _precomputeMapping(self, isFree, pFree,
                            tiedSources, tiedFactors,
                            doubletTargets, doubletSources):
@@ -293,7 +295,7 @@ class ParamsMapping(object):
             
             # jacElts already has coefficient (j, p[j]).
             # its factor should be patched from v[ p[src_j] ]
-            jacDoubletPatches[2*i,  :] = (liveOffsets[j], p_src_j)
+            jacDoubletPatches[2*i, :] = (liveOffsets[j], p_src_j)
             
             # add a second coefficient (j, p[src_j]).
             # its factor should be patched from v[ p[j] ]

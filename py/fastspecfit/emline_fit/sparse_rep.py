@@ -34,8 +34,8 @@ class EMLineJacobian(LinearOperator):
 
     """
 
-    def __init__(self, shape, nLineFreeParms, camerapix, jacs, J_S,
-                 J_P = None):       
+    def __init__(self, shape, nLineFreeParms, camerapix, jacs,
+                 J_S, J_P=None):       
         """
         Parameters
         ----------
@@ -63,7 +63,7 @@ class EMLineJacobian(LinearOperator):
             nPatchParms = J_P[0].shape[0]
         
         dtype = jacs[0][1].dtype
-        nParms = jacs[0][1].shape[0] # num line params in full set
+        nParms = jacs[0][1].shape[0]  # num line params in full set
         self.vFull = np.empty(nParms, dtype=dtype)
         
         super().__init__(dtype, shape)
@@ -124,7 +124,7 @@ class EMLineJacobian(LinearOperator):
         
         nBins = self.shape[0]
         nVecs = M.shape[1]
-        R = np.empty((nVecs, nBins), dtype=M.dtype) # transpose of result
+        R = np.empty((nVecs, nBins), dtype=M.dtype)  # transpose of result
 
         for i in range(nVecs):
             w = R[i,:]

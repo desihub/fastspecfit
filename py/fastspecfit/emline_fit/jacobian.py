@@ -49,21 +49,21 @@ def emline_model_jacobian(line_parameters,
     SQRT_2PI = np.sqrt(2*np.pi)
     
     nbins = len(log_obs_bin_edges) - 1
-    
+   
     line_amplitudes, line_vshifts, line_sigmas = \
         np.split(line_parameters, 3)
-    
+   
     # buffers for per-parameter calculations, sized large
     # enough for max possible range [s .. e), plus extra
     # padding as directed by caller.
     max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, padding)
-    
+   
     nlines = len(line_wavelengths)
     dd     = np.empty((3 * nlines, max_width), dtype=line_amplitudes.dtype)
     endpts = np.zeros((3 * nlines,         2), dtype=np.int32)
 
-    starts = endpts[:,0]
-    ends   = endpts[:,1]
+    starts = endpts[:, 0]
+    ends   = endpts[:, 1]
     
     # compute partial derivatives for avg values of all Gaussians
     # inside each bin. For each Gaussian, we only compute
@@ -94,7 +94,7 @@ def emline_model_jacobian(line_parameters,
         if hi == 0 or lo == len(log_obs_bin_edges): 
             continue
         
-        nedges = hi - lo + 2 # compute values at edges [lo - 1 ... hi]
+        nedges = hi - lo + 2  # compute values at edges [lo - 1 ... hi]
         
         # Compute contribs of each line to each partial derivative in place.
         # No sharing of params between peaks means that we never have to
@@ -178,7 +178,6 @@ def emline_model_jacobian(line_parameters,
             endpts[i, :] = 0
     
     return (endpts, dd)    
-
 
 
 @staticmethod

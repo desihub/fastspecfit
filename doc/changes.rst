@@ -17,7 +17,7 @@ Change Log
 .. _`PR #177`: https://github.com/desihub/fastspecfit/pull/177
 .. _`PR #179`: https://github.com/desihub/fastspecfit/pull/179
 .. _`PR #180`: https://github.com/desihub/fastspecfit/pull/180
-`` _`PR #181`: https://github.com/desihub/fastspecfit/pull/181
+.. _`PR #181`: https://github.com/desihub/fastspecfit/pull/181
 
 2.5.2 (2024-04-28)
 ------------------

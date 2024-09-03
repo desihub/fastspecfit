@@ -10,6 +10,7 @@ from .utils import (
     norm_cdf
 )
 
+
 @jit(nopython=True, nogil=True)
 def emline_model(line_wavelengths,
                  line_parameters,
@@ -239,7 +240,7 @@ def emline_model_core(line_wavelength,
     
     # vals[i] --> edge i + lo - 1
     
-    vals[0] = 0. # edge lo - 1
+    vals[0] = 0.  # edge lo - 1
     
     for i in range(1, nedges-1):
         

@@ -5,36 +5,37 @@ from numba import jit
 
 from fastspecfit.util import C_LIGHT
 
+
 # Do not bother computing normal PDF/CDF if more than this many 
 # standard deviations from mean.
 MAX_SDEV = 5.
 
-#
-# norm_pdf()
-# PDF of standard normal distribution at a point a
-#
-@jit(nopython=True, fastmath=False, nogil=True)
-def norm_pdf(a):
 
+@jit(nopython=True, nogil=True)
+def norm_pdf(a):
+    """
+    PDF of standard normal distribution at a point a
+    """
+    
     SQRT_2PI = np.sqrt(2 * np.pi)
     
     return 1/SQRT_2PI * np.exp(-0.5 * a**2)
 
-#
-# norm_cdf()
-# Approximate the integral of a standard normal PDF from -infty to a.
-#
-# Optimization (currently disabled because it is not needed): If
-# |a| > MAX_SDEV, treat the value as extreme and return 0 or 1 as
-# appropriate.
-#
-@jit(nopython=True, fastmath=False, nogil=True)
+
+@jit(nopython=True, nogil=True)
 def norm_cdf(a):
+    """
+    Approximate the integral of a standard normal PDF from -infty to a.
+    """
 
     SQRT1_2 = 1.0 / np.sqrt(2)
     
     z = np.abs(a)
 
+    # Optimization (currently disabled because it is not needed): If
+    # |a| > MAX_SDEV, treat the value as extreme and return 0 or 1 as
+    # appropriate.
+    
     #if z > MAX_SDEV: # short-circuit extreme values
     #    if a > 0:
     #        y = 1.
@@ -50,16 +51,25 @@ def norm_cdf(a):
     return y
 
 
-#
-# max_buffer_width()
-# Compute a safe estimate of the number of nonzero bin fluxes possible
-# for a line spanning a subrange of bins with edges log_obs_bin_edges,
-# assuming the line's width is one of the values in line_sigmas.
-# Optionally add 2*padding to allow future expansion to left and right.
-#
-@jit(nopython=True, fastmath=False, nogil=True)
+@jit(nopython=True, nogil=True)
 def max_buffer_width(log_obs_bin_edges, line_sigmas, padding=0):
+    """
+    Compute a safe estimate of the number of nonzero bin fluxes possible
+    for a line spanning a subrange of bins with edges log_obs_bin_edges,
+    assuming the line's width is one of the values in line_sigmas.
+    Optionally add 2*padding to allow future expansion to left and right.
 
+    Parameters
+    ----------
+    log_obs_bin_edges : :class:`np.ndarray` [# obs wavelength bins + 1]
+      log of wavelengths of all observed bin edges.
+    line_sigmas : :class:`np.ndarray`  [# nlines]
+      Gaussian widths of all spectral lines.
+    padding : :class:`int`
+      Padding parameter to add to width for future use.
+
+    """
+    
     # Find the largest width sigma for any line, and
     # allocate enough space for twice that much width
     # in bins, given the smallest observed bin width.
