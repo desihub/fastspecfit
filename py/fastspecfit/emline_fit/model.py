@@ -10,31 +10,37 @@ from .utils import (
     norm_cdf
 )
 
-#
-# emline_model() 
-#
-# Given a fixed set of spectral lines and known redshift, and estimates
-# for the amplitude, width, and velocity shift of each line, compute the
-# average flux values observed in each of a series of spectral bins
-# whose log wavelengths are bounded by log_obs_bin_edges.
-#
-# INPUTS:
-#   line_wavelengths -- array of nominal wavelengths for all fitted lines
-#   line_parameters  -- parameters of each fitted line
-#
-#   log_obs_bin_edges -- natural logs of observed wavelength bin edges
-#   redshift          -- red shift of observed spectrum
-#   ibin_widths       -- one over widths of each observed wavelength bin
-#
-# RETURNS:
-#   vector of average fluxes in each observed wavelength bin
-#
-@jit(nopython=True, fastmath=False, nogil=True)
+@jit(nopython=True, nogil=True)
 def emline_model(line_wavelengths,
                  line_parameters,
                  log_obs_bin_edges,
                  redshift,
                  ibin_widths):
+    """
+    Given a fixed set of spectral lines and known redshift, and estimates
+    for the amplitude, width, and velocity shift of each line, compute the
+    average flux values observed in each of a series of spectral bins
+    whose log wavelengths are bounded by log_obs_bin_edges.
+
+    Parameters
+    ----------
+    line_wavelengths : :class:`np.ndarray` [# lines]
+      Array of nominal wavelengths for all fitted lines.
+    line_parameters : :class:`np.ndarray`
+      Parameters of each fitted line.
+    log_obs_bin_edges : :class:`np.ndarray` [# obs wavelength bins + 1]
+      Natural logs of observed wavelength bin edges
+    redshift : :class:`np.float64`
+      Red shift of observed spectrum
+    ibin_widths : :class:`np.ndarray` [# obs wavelength bins]
+      Inverse widths of each observed wavelength bin.
+
+    Returns
+    -------
+    `np.ndarray` of length [# obs wavelength bins] with 
+     average fluxes in each observed wavelength bin
+
+    """
 
     line_amplitudes, line_vshifts, line_sigmas = \
         np.split(line_parameters, 3)
@@ -70,23 +76,46 @@ def emline_model(line_wavelengths,
     return model_fluxes
     
 
-#
-# emline_perline_models()
-# Given parameters for a set of lines, compute for each
-# line individually its waveform in the range of bins
-# described by log_bin_edges.  The waveforms are returned
-# sparsely in the same forma as the Jacobian below.
-#
-# This function shares the core computation of emline_model()
-# but does not collapse the lines into one composite.
-#
-@jit(nopython=True, fastmath=False, nogil=True)
+@jit(nopython=True, nogil=True)
 def emline_perline_models(line_wavelengths,
                           line_parameters,
                           log_obs_bin_edges,
                           redshift,
                           ibin_widths,
                           padding):
+    """
+    Given parameters for a set of lines, compute for each
+    line individually its waveform in the range of bins
+    described by log_bin_edges.  The waveforms are returned
+    sparsely in the same forma as the Jacobian below.
+    
+    This function shares the core computation of emline_model()
+    but does not collapse the lines into one composite.
+
+    Parameters
+    ----------
+    line_wavelengths : :class:`np.ndarray` [# lines]
+      Array of nominal wavelengths for all fitted lines.
+    line_parameters : :class:`np.ndarray`
+      Parameters of each fitted line.
+    log_obs_bin_edges : :class:`np.ndarray` [# obs wavelength bins + 1]
+      Natural logs of observed wavelength bin edges
+    redshift : :class:`np.float64`
+      Red shift of observed spectrum
+    ibin_widths : :class:`np.ndarray` [# obs wavelength bins]
+      Inverse widths of each observed wavelength bin.
+    padding : :class:`int`
+      Number of entries by which to pad each sparse row for later use.
+    
+    Returns
+    -------
+    Row-sparse matrix of size [# lines x # obs wavelength bins]
+    as tuple (endpts, profiles).  Endpts[j] gives the
+    two endpoints of the range of wavelength bins with nonzero flux
+    for line j, while profiles[j] gives these nonzero values
+    (and may have some empty cells thereafter if padding is non-zero).
+
+    """
     
     line_amplitudes, line_vshifts, line_sigmas = \
         np.split(line_parameters, 3)
@@ -127,37 +156,7 @@ def emline_perline_models(line_wavelengths,
     return (endpts, line_profiles)
 
 
-#
-# emline_model_core()
-# Compute the flux contribution of one spectral line to a model
-# spectrum.  We compute the range of bins where the line
-# contributes flux, then write those contributions to the 
-# output array vals and return half-open range of bins
-# [s, e) to which it contributes.
-#
-# INPUTS:
-#   line_wavelength -- nominal wavelength of line
-#   line_amplitude  -- amplitude for spectral line
-#   line_vshift     -- additional velocity shift for line
-#   line_sigma      -- width of Gaussian profile for line
-#
-#   log_obs_bin_edges -- natural log of observed wavelength bin edges
-#   redshift          -- red shift of observed spectrum
-#   ibin_widths       -- one over widths of each observed wavelength bin
-#
-#   vals            -- array in which to record values of
-#                      any nonzero bin fluxes for this line
-#
-# RETURNS:
-#   tuple (s,e) such that nonzero fluxes occur in bins [s,e)
-#    (if s == e, no nonzero fluxes were computed)
-#   vals[0:e-s] contains these fluxes
-#
-# NB: vals MUST have length at least two more than the largest number
-# of bins that could be computed.  Entries in vals after the returned 
-# range may be set to arbitrary values.
-#
-@jit(nopython=True, fastmath=False, nogil=True)
+@jit(nopython=True, nogil=True)
 def emline_model_core(line_wavelength,
                       line_amplitude,
                       line_vshift,
@@ -166,6 +165,45 @@ def emline_model_core(line_wavelength,
                       redshift,
                       ibin_widths,
                       vals):
+    """
+    Compute the flux contribution of one spectral line to a model
+    spectrum.  We compute the range of bins where the line
+    contributes flux, then write those contributions to the 
+    output array vals and return half-open range of bins
+    [s, e) to which it contributes.
+
+    Parameters
+    ----------
+    line_wavelength : :class:`np.float64`
+      Nominal wavelength of line.
+    line_amplitude : :class:`np.float64`
+      Amplitude of line.
+    line_vshift : :class:`np.float64`
+      Velocity shift of line.
+    line_sigma : :class:`np.float64`
+      Width of Gaussian profile for line
+    log_obs_bin_edges : :class:`np.ndarray` [# obs wavelength bins + 1]
+      Natural logs of observed wavelength bin edges
+    redshift : :class:`np.float64`
+      Red shift of observed spectrum
+    ibin_widths : :class:`np.ndarray` [# obs wavelength bins]
+      Inverse widths of each observed wavelength bin.
+    vals : :class: `np.ndarray` (output)
+      Array in which to write values of any nonzero bin fluxes for this line
+
+    Returns
+    -------
+    Tuple (s,e) such that all nonzero fluxxes occur in the half-open
+    range of bins [s,e).  If s == e, no nonzero fluxes were found.
+    The output parameter vals[0:e-s] contains these fluxes.
+
+    Notes
+    -----
+    vals MUST have length at least two more than the largest number
+    of bins that could be computed.  Entries in vals after the returned 
+    range may be set to arbitrary values.
+
+    """
     
     SQRT_2PI = np.sqrt(2 * np.pi)
     

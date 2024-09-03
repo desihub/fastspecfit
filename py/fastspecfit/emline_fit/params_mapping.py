@@ -1,20 +1,39 @@
-#
-# Compute a mapping from the free parameters of a spectrum fitting problem
-# to the full set of parameters for the EMLine model, as well the Jacobian
-# of this mapping.  We capture most of the complexity of the mapping once and
-# do the minimum necessary updating to it for each new set of freeParameters.
-#
-
 import numpy as np
 
 from numba import jit
 
 class ParamsMapping(object):
+    """Compute a mapping from the free (line) parameters of a spectrum
+    fitting problem to the full set of parameters for the EMLine
+    model, as well the Jacobian of this mapping.  We capture most of
+    the complexity of the mapping once and do the minimum necessary
+    work to update it for each new set of free parameters.
 
+    """
+    
     def __init__(self, nParms,
                  isFree,
                  tiedSources, tiedFactors,
                  doubletTargets, doubletSources):
+        """
+        Parameters
+        ----------
+        nParms : :class:`int`
+          Total number of parameters (free + fixed/tied).
+        isFree : :class:`np.ndarray` of `bool` [nParms]
+          Is each parameter free or fixed/tied?
+        tiedSources : :class:`np.ndarray` of `int` [nParms]
+          For parameters tied to a source param, idx of source
+          (-1 if not tied).
+        tiedFactors : :class:`np.ndarray` of `np.float64` [nParms]
+          For parameters tied to a source param, multiplier from
+          source to target.
+        doubletTargets: :class:`np.ndarray` of `int`
+          Parameters that are doublet ratios vs. a source.
+        doubletSources: :class:`np.ndarray` of `int`
+          Source parameters for all doublet ratios.
+        
+        """
         
         self.nParms     = nParms
         self.nFreeParms = np.sum(isFree)
@@ -31,19 +50,37 @@ class ParamsMapping(object):
         self._precomputeJacobian()
 
         
-
-    # return Boolean mask with "True" for each fixed parameter
     def fixedMask(self):
+        """
+        Return Boolean mask with "True" for each fixed parameter.
+        """
         return self.isFixed
 
     
-    #
-    # mapFreeToFull()
-    # Given a vector of free parameters, return the corresponding
-    # list of full parameters, accounting for fixed, tied, and
-    # doublet features.
-    #
     def mapFreeToFull(self, freeParms, out=None, patchDoublets=True):
+        """
+        Given a vector of free parameters, return the corresponding
+        list of full parameters, accounting for fixed, tied, and
+        (if patchDoublets is true) doublet features.
+
+        Parameters
+        ----------
+        freeParms : :class:`np.ndarray` of `np.float64`
+          Values of free parameters.
+        out : :class: `np.ndarray` of `np.float64` or :None:
+          Vector to hold values of full parameter set; if none,
+          allocate one.
+        patchDoublets : :class: `bool`
+          Replace doublet target ratios by their actual values?
+
+        Returns
+        -------
+        A `np.ndarray` with the values of all parameters.
+
+        Notes
+        ----
+        Accelerated via Numba implementation below.
+        """
 
         return self._mapFreeToFull(freeParms,
                                    self.nParms,
@@ -53,14 +90,9 @@ class ParamsMapping(object):
                                    out,
                                    patchDoublets)
     
-    #
-    # _mapFreeToFull()
-    # Given a vector of free parameters, return the corresponding
-    # list of full parameters, accounting for fixed, tied, and
-    # (if patchDoublets is true) doublet features.
-    #
+
     @staticmethod
-    @jit(nopython=True, fastmath=False, nogil=True)
+    @jit(nopython=True, nogil=True)
     def _mapFreeToFull(freeParms, nParms, sources, factors,
                        doubletPatches, fullParms, patchDoublets):
 
@@ -78,27 +110,46 @@ class ParamsMapping(object):
         return fullParms
         
     
-    #
-    # getJacobian()
-    # Given a vector v of free parameters, return the Jacobian
-    # of the transformation from free to full at v.  The Jacobian
-    # is a sparse matrix represented as an array of nonzero entries
-    # (jacElts) and their values (jacFactors)
-    #
     def getJacobian(self, freeParms):
+        """
+        Given a vector v of free parameters, return the Jacobian
+        of the transformation from free to full parameters at v.
+
+        Parameters
+        ----------
+        freeParms : :class:`np.ndarray` of `np.float64`
+          Vector of free parameter values
+
+        Returns
+        -------
+        Sparse Jacobian as a tuple (shape, elts, factors), where
+          - shape is shape of Jacobian [# parms x # free parms]
+          - elts gives the 2D indices of nonzero elements of Jacobian
+          - factors gives the values of the nonzero elements
+        
+        """
+        
         for j, src_j_free in self.jacDoubletPatches:
             self.jacFactors[j] = freeParms[src_j_free]
         
         return ((self.nParms, self.nFreeParms), self.jacElts, self.jacFactors)
     
 
-    #
-    # Multiply parameter Jacobian J_S * v, writing result to w.
-    #
     @staticmethod
-    @jit(nopython=True, fastmath=False, nogil=True)
+    @jit(nopython=True, nogil=True)
     def _matvec(J_S, v, w):
+        """
+        Multiply sparse parameter Jacobian J_S * v, writing result to w.
 
+        Parameters
+        ----------
+        J_S : :class: `tuple`:
+          Sparse Jacobian computed by getJacobian()
+        v : :class: `np.ndarray` [# free parameters]
+        w : :class: `np.ndarray` [# total parameters] (output)
+
+        """
+        
         shape, elts, factors = J_S
         
         for j in range(shape[0]): # total params
@@ -107,14 +158,22 @@ class ParamsMapping(object):
         for i, (dst, src) in enumerate(elts):
             w[dst] += factors[i] * v[src]
             
-
-
-    #
-    # Multiply parameter Jacobian v * J_S^T, *adding* result to w.
-    #
+    
     @staticmethod
-    @jit(nopython=True, fastmath=False, nogil=True)
+    @jit(nopython=True, nogil=True)
     def _add_rmatvec(J_S, v, w):
+        """
+        Multiply v with sparse parameter Jacobian J_S.T,
+        *adding* result to w.
+
+        Parameters
+        ----------
+        J_S : :class: `tuple`:
+          Sparse Jacobian computed by getJacobian()
+        v : :class: `np.ndarray` [# total parameters]
+        w : :class: `np.ndarray` [# free parameters] (output)
+        
+        """
 
         _, elts, factors = J_S
         
@@ -124,14 +183,34 @@ class ParamsMapping(object):
     
     ###########################################################
     
-    #
-    # Precompute all the transformations from free parameters
-    # to full parameters that do not require knowledge of the
-    # free parameter values.
-    #
     def _precomputeMapping(self, isFree, pFree,
                            tiedSources, tiedFactors,
                            doubletTargets, doubletSources):
+        """
+        Precompute and store all the transformations from free
+        parameters to full parameters that do not require knowledge of
+        the free parameter values.  Create "patches" for doublets so
+        that we can quickly compute the values of all doublet targets
+        once their source values and ratios are known.
+
+        isFree : :class:`np.ndarray` of `bool` [nParms]
+          Is each parameter free or fixed/tied?
+        pFree: :class:`np.ndarray` of `int` [nParms]
+          If a parameter in the full list isFree, which
+          index in the free parameter list does it come from?
+          (If not free, entry is undefined)
+        tiedSources : :class:`np.ndarray` of `int` [nParms]
+          For parameters tied to a source param, idx of source
+          (-1 if not tied).
+        tiedFactors : :class:`np.ndarray` of `np.float64` [nParms]
+          For parameters tied to a source param, multiplier from
+          source to target.
+        doubletTargets: :class:`np.ndarray` of `int`
+          Parameters that are doublet ratios vs. a source.
+        doubletSources: :class:`np.ndarray` of `int`
+          Source parameters for all doublet ratios.
+
+        """
         
         # by default, assume parameters are fixed 
         sources = np.full(self.nParms, -1, dtype=np.int32)
@@ -170,14 +249,17 @@ class ParamsMapping(object):
         self.isFixed = (self.sources == -1)
 
         
-    #
-    # Precompute as much of the Jacobian of the transformation
-    # from free parameters to full parameters as does not require
-    # knowledge of the free parameter values.  We rely on the
-    # precomputation for the mapping to avoid recalculating all
-    # the source/factor information.
-    #
     def _precomputeJacobian(self):
+        """
+        Precompute and store as much of the Jacobian of the
+        transformation from free parameters to full parameters as does
+        not require knowledge of the free parameter values.  We rely
+        on the precomputation for the mapping to avoid recalculating
+        all the source/factor information.  We transform doublet
+        patches for the mapping into a larger set of patches for the
+        Jacobian.
+
+        """
         
         isLive  = np.logical_not(self.isFixed)
         liveIdx = np.where(isLive)[0]
