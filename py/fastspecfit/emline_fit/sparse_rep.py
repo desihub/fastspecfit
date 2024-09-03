@@ -1,8 +1,3 @@
-#
-# Sparse representations of Jacobian of objective for emission line
-# fitting (Ideal Jacobian rep is generated in EMLines_jacobian())
-#
-
 import numpy as np
 from scipy.sparse.linalg import LinearOperator
 
@@ -10,40 +5,54 @@ from numba import jit
 
 from .params_mapping import ParamsMapping
 
-#
-# Sparse Jacobian of objective function.  For
-# each camera's pixel range, the Jacobian
-# is a matrix product
-#
-#    W * M * J_I * J_S
-#
-# where
-#  J_S is the Jacobian of the parameter expansion
-#  J_I is the ideal Jacobian
-#  M is the camera's resolution matrix
-#  w is a diagonal matrix of per-observation weights
-#
-# Note that we precompute W*M*J_I for each camera 
-# with the external mulWMJ() function.  This product
-# has one contiguous run of nonzero entries per column,
-# while J_S has either one or two nonzero entries
-# per row.
-#
+
 class EMLineJacobian(LinearOperator):
-    
-    #
-    # CONSTRUCTOR ARGS:
-    #   shape of Jacobian
-    #   number of *line*-related free parameters in set
-    #   array of start and end obs bin indices
-    #     for each camera
-    #   partial Jacobian jac = (W * M  J_I)
-    #     for each camera
-    #   parameter expansion Jacobian J_S
-    #
+    """Sparse Jacobian of objective function for emission-line
+    fitting. For each camera's pixel range, the Jacobian is a matrix
+    product
+
+      W * M * J_I * J_S
+
+    where
+      J_S is the Jacobian of the parameter expansion
+      J_I is the ideal Jacobian for the Gaussian mixture
+      M is the camera's resolution matrix
+      W is a diagonal matrix of per-observation weights
+
+    Note that we precompute W*M*J_I for each camera 
+    with the external mulWMJ() function.  This product
+    has one contiguous run of nonzero entries per column,
+    while J_S has either one or two nonzero entries
+    per row.
+
+    When we use patch pedestals, the above Jacobian is
+    extended with additional rows corresponding to the
+    two free parameters (slope, intercept) of each patch.
+
+    The components of this Jacobian are computed in params_mapping.py
+    for J_S and jacobian.py for everything else.
+
+    """
+
     def __init__(self, shape, nLineFreeParms, camerapix, jacs, J_S,
-                 J_P = None):
+                 J_P = None):       
+        """
+        Parameters
+        ----------
+        shape : :class:`tuple` [2]
+          Shape of Jacobian matrix.
+        nLineFreeParms : :class:`int`
+          Number of *line*-related free parameters in set.
+        camerapix : :class:`np.ndarray` [# cameras]
+          Array of start and end wavelength bin indices per camera.
+        jacs : :class:`tuple` [# cameras]
+          Tuple of partial Jacobians (W * M * J_I) for each camera.
+        J_S : :class:`np.ndarray` [# line params x # nLineFreeParms]
+          Parameter expansion Jacobian.
+        J_P : :class:`np.ndarray` [# patch params x # wavelength bins] or :None:
+          Jacobian of patch pedestals, if used.
         
+        """
         self.camerapix = camerapix
         self.jacs      = tuple(jacs)
         self.J_S       = J_S
@@ -60,11 +69,19 @@ class EMLineJacobian(LinearOperator):
         super().__init__(dtype, shape)
 
 
-    #
-    # Compute left matrix-vector product J * v
-    # |v| = number of free parameters
-    #
     def _matvec(self, v):
+        """
+        Compute left matrix-vector product J * v, where we are J.
+
+        Parameters
+        ----------
+        v : :class:`np.ndarray` [# of free parameters]
+
+        Returns
+        -------
+        w : :class:`np.ndarray [# of wavelength bins]
+
+        """
         
         nBins = self.shape[0]
         w = np.empty(nBins, dtype=v.dtype)
@@ -88,13 +105,23 @@ class EMLineJacobian(LinearOperator):
         return w
 
 
-    #
-    # Compute left matrix-matrix product J * M
-    # We do this just to avoid needing to ravel
-    # v in the more commonly used _matvec()
-    #
     def _matmat(self, M):
+        """
+        Compute left matrix-matrix product J * M, where we are J.
+        This exists mainly to avoid having to ravel v in the
+        more frequently called _matvec().  M has an arbitrary
+        second dimension N.
 
+        Parameters
+        ----------
+        M : :class:`np.ndarray` [# of free parameters x N]
+
+        Returns
+        -------
+        w : :class:`np.ndarray [N x # of wavelength bins]
+
+        """
+        
         nBins = self.shape[0]
         nVecs = M.shape[1]
         R = np.empty((nVecs, nBins), dtype=M.dtype) # transpose of result
@@ -122,11 +149,19 @@ class EMLineJacobian(LinearOperator):
         return R.T
     
         
-    #
-    # Compute right matrix product product v * J^T
-    # |v| = number of observable bins
-    #
     def _rmatvec(self, v):
+        """
+        Compute right matrix-vector product v * J.T, where we are J.
+
+        Parameters
+        ----------
+        v : :class:`np.ndarray` [# of wavelength bins]
+
+        Returns
+        -------
+        w : :class:`np.ndarray [# of free parameters]
+
+        """
 
         nFreeParms = self.shape[1]
         w = np.zeros(nFreeParms, dtype=v.dtype)
@@ -146,48 +181,48 @@ class EMLineJacobian(LinearOperator):
             self._rmatvec_J(self.J_P, v, wPatches)
             
         return w
-
-    #
-    # col_norms()
-    # Return the column norms of the Jacobian
-    #
-    def col_norms(self):
-        
-        norms = np.empty(self.shape[1], dtype=self.jacs[0][1].dtype)
-        
-        v = np.zeros(self.shape[0])
-        for i in range(self.shape[1]):
-
-            v[i] = 1.
-            
-            w = self._matvec(v)
-            norms[i] = np.norm(w)
-            
-            v[i] = 0.
-            
-        return norms
     
 
     #
     # Multiply ideal Jacobian J * v, writing result to w.
     #
     @staticmethod
-    @jit(nopython=True, fastmath=False, nogil=True)
+    @jit(nopython=True, nogil=True)
     def _matvec_J(J, v, w):
+        """
+        Multiply partial Jacobian J with v,
+        returning result in supplied w.
 
+        Parameters
+        ----------
+        J : :class:`np.ndarray` [# wavelength bins x # line parameters]
+        v : :class:`np.ndarray` [# of line parameters]
+        w : :class:`np.ndarray` [# wavength bins] (output param)
+        
+        """
+        
         nbins = len(w)
         for j in range(nbins):
             w[j] = 0.
             
         _matvec_J_add(J, v, w)
         
-    #
-    # Multiply ideal Jacobian v * J^T, writing result to w.
-    #
-    @staticmethod
-    @jit(nopython=True, fastmath=False, nogil=True)
-    def _rmatvec_J(J, v, w):
     
+    @staticmethod
+    @jit(nopython=True, nogil=True)
+    def _rmatvec_J(J, v, w):
+        """
+        Multiply v with partial Jacobian J.T,
+        returning result in supplied w.
+
+        Parameters
+        ----------
+        J : :class:`np.ndarray` [# wavelength bins x # line parameters]
+        v : :class:`np.ndarray` [# wavength bins] 
+        w : :class:`np.ndarray` [# of line parameters] (output param)
+
+        """
+        
         endpts, values = J
         nvars = endpts.shape[0]
     
@@ -200,37 +235,27 @@ class EMLineJacobian(LinearOperator):
                 acc += vals[j] * v[j + s]
             w[i] = acc
 
-        
-    #
-    # for debugging -- compute singular values of Jacobian
-    # and estimate its condition number.
-    #
-    def estimateConditionNumber(self):
 
-        from scipi.sparse.linalg import svds
-
-        try:
-            svs = svds(self, return_singular_vectors=False,
-                       k=nFreeParms - 1, which="LM")
-            sv0 = svds(self, return_singular_vectors=False,
-                   k=1, which="SM")[0]
-            cond = svs[-1] / sv0
-            print(np.hstack((sv0, svs)))       
-            print(f"cond(J) = {cond:.3e}")
-        
-        except:
-            print("Failed to compute Jacobian condition number")
-
-
-#
-# Multiply ideal Jacobian J * v, *adding* result to w.  We have to
-# make this a standalone function, rather than a static method of the
-# EMLine_Jacobian class, because Numba cannot handle calling a static
-# class method from JIT'd code.
-#
-@jit(nopython=True, fastmath=False, nogil=True)
+@jit(nopython=True, nogil=True)
 def _matvec_J_add(J, v, w):
+    """
+    Multiply partial Jacobian J with v,
+    *adding* result to supplied w.
     
+    Parameters
+    ----------
+    J : :class:`np.ndarray` [# wavelength bins x # line parameters]
+    v : :class:`np.ndarray` [# of line parameters]
+    w : :class:`np.ndarray` [# wavength bins] (output param)
+
+    Notes
+    -----
+    This function is standalone, rather than a static method of
+    the EMLineJacobian class, only because Numba cannot call a static
+    class method from JIT'd code.
+    
+    """
+     
     endpts, values = J
     nvars = endpts.shape[0]
     
