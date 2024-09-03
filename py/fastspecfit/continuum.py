@@ -983,8 +983,8 @@ class ContinuumTools(object):
         # convergence. There may be faster ways, of course...
         fit_info = least_squares(self._stellar_objective, initial_guesses, kwargs=farg,
                                  bounds=tuple(zip(*bounds)), method='trf',
-                                 tr_solver='lsmr', tr_options={'regularize': True},
-                                 x_scale='jac', max_nfev=5000, ftol=1e-5, xtol=1e-10)#, verbose=2)
+                                 tr_solver='exact', tr_options={'regularize': True},
+                                 x_scale='jac', max_nfev=5000, ftol=1e-3, xtol=1e-10)#, verbose=2)
         bestparams = fit_info.x
         resid      = fit_info.fun
 
