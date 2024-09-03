@@ -11,25 +11,40 @@ from .utils import (
     norm_pdf
 )
 
-#
-# emline_model_jacobian() 
-#
-# Compute the Jacobian of the function computed in emlines_model().
-# Inputs are as for emlines_model().
-#
-# RETURNS:
-# Sparse Jacobian as tuple (endpts, dd), where
-#  column j has nonzero values in interval [ endpts[j,0] , endpts[j,1] )
-#  which are stored in dd[j].
-#
-@jit(nopython=True, fastmath=False, nogil=True)
+
+@jit(nopython=True, nogil=True)
 def emline_model_jacobian(line_parameters,
                           log_obs_bin_edges,
                           ibin_widths,
                           redshift,
                           line_wavelengths,
                           padding):
+    """
+    Compute Jacobian of the function computed in emline_model().
 
+    Parameters
+    ----------
+    line_parameters : :class:`np.ndarray`
+      Parameters of all fitted lines.
+    log_obs_bin_edges : :class:`np.ndarray` [# wavelength bins + 1]
+      Natural logs of observed wavelength bin edges.
+    ibin_widths : :class:np.ndarray` [# wavelength bins]
+      Inverse of width of each observed wavelength bin.
+    redshift : :class:`np.float64`
+      Red shift of observed spectrum.
+    line_wavelengths : :class:`np.ndarray` [# lines]
+      Array of nominal wavelengths for all fitted lines.
+    padding : :class:`int`:
+      Number of entries to be added to size of each sparse row
+      allocated for output Jacobian, for later use.
+
+    Returns
+    -------
+    :class:`tuple` (endpts, dd)
+      Sparse Jacobian, where column j has nonzero values in interval
+      [ endpts[j,0] , endpts[j,1] ], which are stored in dd[j].
+
+    """
 
     SQRT_2PI = np.sqrt(2*np.pi)
     
@@ -165,19 +180,38 @@ def emline_model_jacobian(line_parameters,
     return (endpts, dd)    
 
 
-# compute partial Jacobian associated with just the patch parameters
-# in the sparse column form used in sparse_rep.py.  This Jacobian
-# is independent of both the line model and the particular choices
-# of slope/intercept for each patch, so can be computed once when
-# we set up the optimization.
-#
-# FIXME: should we do this for each camera and apply resolution?
+
 @staticmethod
-@jit(nopython=True, fastmath=False, nogil=True)
+@jit(nopython=True, nogil=True)
 def patch_jacobian(obs_bin_centers,
                    obs_weights,
                    patch_endpts,
                    patch_pivotwave):
+    """
+    Compute partial Jacobian associated with just the patch parameters
+    in the sparse column form used in sparse_rep.py.  This Jacobian
+    is independent of both the line model and the particular choices
+    of slope/intercept for each patch, so can be computed once when
+    we set up the optimization.
+
+    Parameters
+    ----------
+    obs_bin_centers : :class:`np.ndarray` [# wavelength bins]
+      Center of each observed wavelength bin.
+    obs_weights : :class:`np.ndarray` [# wavelength bins]
+      Weights for each observed wavelength bin.
+    patch_endpts : :class:`np.ndarray` [# patches x 2]
+      Endpoints of each patch in wavelength array.
+    patch_pivotwave : :class:`np.ndarray` [# patches]
+      Wavelength offset for fitted affine params of each patch .
+    
+    Returns
+    -------
+    :class:`tuple` (endpts, M)
+      Sparse Jacobian, where column j has nonzero values in interval
+      [ endpts[j,0] , endpts[j,1] ], which are stored in M[j].
+
+    """
     
     nPatches = patch_endpts.shape[0]
 
@@ -204,6 +238,7 @@ def patch_jacobian(obs_bin_centers,
     # patch.  These derivatives are nonzero only
     # within the boundaries of the patch.
     #
+    
     M = np.empty((2*nPatches, maxPatchWidth))
     for i in range(nPatches):
         s, e = endpts[i]
