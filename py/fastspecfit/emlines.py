@@ -124,8 +124,9 @@ class EMFitTools(object):
         self.param_table['modelname'] = \
             np.array([ s.replace('_amp', '_modelamp').upper() for s in param_names ])
 
-    #  Record which lines are within the limits of the cameras
+
     def compute_inrange_lines(self, redshift, wavelims=(3600., 9900.), wavepad=5*0.8):
+        """ Record which lines are within the limits of the cameras """
 
         zlinewave = self.line_table['restwave'].value * (1. + redshift)
 
@@ -133,27 +134,33 @@ class EMFitTools(object):
             ((zlinewave > (wavelims[0] + wavepad)) & \
              (zlinewave < (wavelims[1] - wavepad)))
 
-    # Build emission line model tables, with and without suppression of broad lines.
-    # Establish fixed (i.e., forced to zero) params, tying relationships between
-    # params, and doublet relationships for each model, as well as the relationship
-    # between lines and their parameters, which we record in the line table.
-    #
-    # Parameter fixing needs to know which lines are within the observed wavelength
-    # ranges of the cameras, so we first add this information to the line table.
+    
     def build_linemodels(self, separate_oiii_fit=True):
-        # create_model()
-        #
-        # Given the tying info for the model and the list of in-range
-        # lines, determine which parameters of the model are fixed and
-        # free, and create the model's table.
-        #
-        # We fix all parameters for out-of-range lines to zero, unless
-        # the parameter is tied to a parameter for an in-range line.
-        # We also allow the caller to specify parameters that should
-        # be fixed regardless.
+        """Build emission line model tables, with and without
+        suppression of broad lines.  Establish fixed (i.e., forced to
+        zero) params, tying relationships between params, and doublet
+        relationships for each model, as well as the relationship
+        between lines and their parameters, which we record in the
+        line table.
+        
+        Parameter fixing needs to know which lines are within the
+        observed wavelength ranges of the cameras, so we first add
+        this information to the line table.
 
+        """
+        
         def create_model(tying_info, forceFixed=[]):
+            """Given the tying info for the model and the list of
+            in-range lines, determine which parameters of the model
+            are fixed and free, and create the model's table.
+            
+            We fix all parameters for out-of-range lines to zero,
+            unless the parameter is tied to a parameter for an
+            in-range line.  We also allow the caller to specify
+            parameters that should be fixed regardless.
 
+            """
+            
             n_params = len(self.param_table)
             isfixed = np.full(n_params, False, dtype=bool)
 
@@ -346,11 +353,9 @@ class EMFitTools(object):
         return linemodel_broad, linemodel_nobroad
 
 
-    # debugging function to print basic contents of a line model
     def summarize_linemodel(self, linemodel):
-
         """Simple function to summarize an input linemodel."""
-
+        
         def _print(line_mask):
             for line in np.where(line_mask)[0]:
                 line_name   = self.line_table['name'][line]
@@ -600,27 +605,6 @@ class EMFitTools(object):
 
             # least_squares wants two arrays, not a 2D array
             bounds = ( bounds[:,0], bounds[:,1] )
-
-
-            """
-            ########################
-            # SANITY CHECK
-            ########################
-            if continuum_patches is not None:
-                J = jac(initial_guesses)
-                delta = 1e-5
-
-                v = np.zeros(len(initial_guesses))
-                for p in range(len(v)):
-                    v[p] = 1.
-                    ddp  = (objective(initial_guesses + delta*v) - objective(initial_guesses - delta*v))/(2*delta)
-                    ddpj = J.dot(v)
-                    v[p] = 0.
-
-                    d = np.abs(ddpj - ddp)
-                    if d > 1e-5:
-                        print("JAC ", p, d)
-            """
 
             fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
                                      max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
@@ -1301,12 +1285,12 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
 
     result['RCHI2_LINE'] = finalchi2
     #result['NDOF_LINE'] = finalndof
-    result['DELTA_LINECHI2'] = delta_linechi2_balmer # chi2_nobroad - chi2_broad
-    result['DELTA_LINENDOF'] = delta_linendof_balmer # ndof_nobroad - ndof_broad
+    result['DELTA_LINECHI2'] = delta_linechi2_balmer  # chi2_nobroad - chi2_broad
+    result['DELTA_LINENDOF'] = delta_linendof_balmer  # ndof_nobroad - ndof_broad
 
     # full-fit reduced chi2
     rchi2 = np.sum(oemlineivar * (specflux - (continuummodelflux + smoothcontinuummodelflux + emmodel))**2)
-    rchi2 /= np.sum(oemlineivar > 0) # dof??
+    rchi2 /= np.sum(oemlineivar > 0)  # dof??
     result['RCHI2'] = rchi2
 
     # I believe that all the elements of the coadd_wave vector are contained
@@ -1435,7 +1419,7 @@ def synthphot_spectrum(phot, data, result, modelwave, modelflux):
     filters = phot.synth_filters[data['photsys']]
 
     synthmaggies = Photometry.get_ab_maggies(filters, modelflux / FLUXNORM, modelwave)
-    model_synthmag = Photometry.to_nanomaggies(synthmaggies) # units of nanomaggies
+    model_synthmag = Photometry.to_nanomaggies(synthmaggies)  # units of nanomaggies
 
     model_synthphot = Photometry.parse_photometry(phot.synth_bands, maggies=synthmaggies,
                                                   nanomaggies=False,
