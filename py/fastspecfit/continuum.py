@@ -857,13 +857,13 @@ class ContinuumTools(object):
             spec_resid = resid[:resid_split]
             np.subtract(modelflux, specflux, spec_resid)
             spec_resid *= specistd
-        
+
         if synthphot:
             modelflam = self.continuum_to_photometry(fullmodel)
             phot_resid = resid[resid_split:]
             np.subtract(modelflam, objflam, phot_resid)
             phot_resid *= objflamistd
-        
+
         return resid
 
 

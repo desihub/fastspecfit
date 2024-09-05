@@ -28,7 +28,7 @@ class BoxedScalar(object):
     field to unbox the scalar.
 
     """
-    
+
     def __init__(self, dtype):
         self.value = np.zeros(1, dtype=dtype)[0]
 
@@ -42,7 +42,7 @@ class BoxedScalar(object):
 class MPPool(object):
     """
     A Pool encapsulates paraallel execution with a
-    multiprocessing.Pool, falling back to sequential 
+    multiprocessing.Pool, falling back to sequential
     execution in the current process if just one worker
     is requested.
 
@@ -51,7 +51,7 @@ class MPPool(object):
     rather than a list of positional arguments.
 
     """
-    
+
     def __init__(self, nworkers, initializer=None, init_argdict=None):
         """
         create a pool with nworkers workers, using the current
@@ -60,7 +60,7 @@ class MPPool(object):
         init_argdict on startup in each each worker subprocess.
 
         """
-        
+
         initfunc = None if initializer is None else self.apply_to_dict
 
         if nworkers > 1:
@@ -82,7 +82,7 @@ class MPPool(object):
         as a list of keyword argument dictionaries.
 
         """
-        
+
         # we cannot pickle a local function, so we must pass
         # both func and the argument dictionary to the subprocess
         # worker and have it apply one to the other.
@@ -100,7 +100,7 @@ class MPPool(object):
         """
         close our multiprocess pool if we created one
         """
-        
+
         if self.pool is not None:
             self.pool.close()
 
@@ -196,12 +196,12 @@ def mwdust_transmission(ebv, filtername):
         'odin-N419': 4.324,
         'odin-N501': 3.540,
         'odin-N673': 2.438,
-        'hsc2017-g': 3.24, 
-        'hsc2017-r': 2.276, 
-        'hsc2017-r2': 2.276, 
-        'hsc2017-i': 1.633, 
-        'hsc2017-i2': 1.633, 
-        'hsc2017-z': 1.263, 
+        'hsc2017-g': 3.24,
+        'hsc2017-r': 2.276,
+        'hsc2017-r2': 2.276,
+        'hsc2017-i': 1.633,
+        'hsc2017-i2': 1.633,
+        'hsc2017-z': 1.263,
         'hsc2017-y': 1.075,
         'suprime-IB427': 4.202,
         'suprime-IB464': 3.894,
@@ -420,7 +420,7 @@ def trapz_rebin(src_x, src_y, bin_centers, out=None, pre=None):
     out:  :class:`numpy.ndarray` or None
         if not None, an array of correct size and type
         that will receive the result of the computation.
-        If None, a new array will be allocated. 
+        If None, a new array will be allocated.
     pre :
         preprocessing data computed by trapz_rebin_pre(),
         if available.  If not None, it must correspond

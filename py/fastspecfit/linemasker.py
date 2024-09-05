@@ -84,7 +84,7 @@ class LineMasker(object):
         for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
             # skip fixed (e.g., hbeta_broad) lines
             if sigma <= 0.:
-                continue 
+                continue
             I = _get_linepix(zlinewave, sigma)
             if len(I) > 0:
                 linemask[I] = True
@@ -424,7 +424,7 @@ class LineMasker(object):
             else:
                 isNarrow = EMFit.isNarrow * Ifree
                 if np.any(isNarrow):
-                    linesigma_narrow = np.atleast_1d(linesigmas[isNarrow])[0] 
+                    linesigma_narrow = np.atleast_1d(linesigmas[isNarrow])[0]
                     linevshift_narrow = np.atleast_1d(linevshifts[isNarrow])[0]
                     maxsnr_narrow = np.max(linesnrs[isNarrow])
                 else:
@@ -785,4 +785,3 @@ class LineMasker(object):
         }
 
         return out
-

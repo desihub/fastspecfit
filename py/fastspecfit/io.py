@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 fastspecfit.io
 ==============
@@ -36,8 +35,8 @@ TARGETINGBITS = {
 # fibermap and exp_fibermap columns to read
 FMCOLS = ('TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE',
           'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID',
-          #'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-          #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+          #'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
+          #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z',
           #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
           #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2'
           )
@@ -945,7 +944,7 @@ class DESISpectra(object):
                         specdata['mask'].append(specdata['mask0'][icam])
 
                         specdata['res'].append(Resolution(res))
-                        
+
             if len(cameras) == 0:
                 errmsg = 'No good data, which should never happen.'
                 log.critical(errmsg)
@@ -956,7 +955,7 @@ class DESISpectra(object):
             for key in ('wave', 'flux', 'ivar', 'mask', 'res'):
                 del specdata[key + '0']
                 specdata[key] = tuple(specdata[key])
-            
+
             # Pre-compute some convenience variables for "un-hstacking"
             # an "hstacked" spectrum.
             specdata['cameras'] = np.array(cameras)
@@ -968,7 +967,7 @@ class DESISpectra(object):
             specdata['camerapix'] = np.zeros((ncam, 2), np.int16)
             specdata['camerapix'][:, 0] = c_starts
             specdata['camerapix'][:, 1] = c_ends
-            
+
             # use the coadded spectrum to build a robust emission-line mask
             LM = LineMasker(emline_table)
             pix = LM.build_linemask(
@@ -1351,7 +1350,7 @@ class DESISpectra(object):
         for key in ('wave', 'flux', 'ivar', 'mask', 'res'):
             del specdata[key + '0']
             specdata[key] = tuple(specdata[key])
-            
+
         # Pre-compute some convenience variables for "un-hstacking"
         # an "hstacked" spectrum.
         specdata['cameras'] = np.array(cameras)

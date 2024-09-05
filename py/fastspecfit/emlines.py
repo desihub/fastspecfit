@@ -134,7 +134,7 @@ class EMFitTools(object):
             ((zlinewave > (wavelims[0] + wavepad)) & \
              (zlinewave < (wavelims[1] - wavepad)))
 
-    
+
     def build_linemodels(self, separate_oiii_fit=True):
         """Build emission line model tables, with and without
         suppression of broad lines.  Establish fixed (i.e., forced to
@@ -142,25 +142,25 @@ class EMFitTools(object):
         relationships for each model, as well as the relationship
         between lines and their parameters, which we record in the
         line table.
-        
+
         Parameter fixing needs to know which lines are within the
         observed wavelength ranges of the cameras, so we first add
         this information to the line table.
 
         """
-        
+
         def create_model(tying_info, forceFixed=[]):
             """Given the tying info for the model and the list of
             in-range lines, determine which parameters of the model
             are fixed and free, and create the model's table.
-            
+
             We fix all parameters for out-of-range lines to zero,
             unless the parameter is tied to a parameter for an
             in-range line.  We also allow the caller to specify
             parameters that should be fixed regardless.
 
             """
-            
+
             n_params = len(self.param_table)
             isfixed = np.full(n_params, False, dtype=bool)
 
@@ -355,7 +355,7 @@ class EMFitTools(object):
 
     def summarize_linemodel(self, linemodel):
         """Simple function to summarize an input linemodel."""
-        
+
         def _print(line_mask):
             for line in np.where(line_mask)[0]:
                 line_name   = self.line_table['name'][line]
