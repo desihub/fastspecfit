@@ -751,9 +751,9 @@ class ContinuumTools(object):
         camerapix = self.data['camerapix']
         specwave  = self.data['wave']
         specres   = self.data['res']
-        
+
         modelflux = np.empty(self.wavelen)
-        
+
         for icam, (s, e) in enumerate(camerapix):
             resampflux = trapz_rebin(self.ztemplatewave,
                                      contmodel,

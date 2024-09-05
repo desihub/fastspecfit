@@ -11,7 +11,7 @@ from numba import jit
 
 
 class Inoue14(object):
-    """
+    r"""
     IGM absorption from Inoue et al. (2014)
 
     Parameters
