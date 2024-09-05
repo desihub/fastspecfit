@@ -14,10 +14,6 @@ from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import BoxedScalar, MPPool
 
-import cProfile as profile
-import pstats
-pr = profile.Profile()
-shot = 0
 
 def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
@@ -44,19 +40,10 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
     # output structure
     out = BoxedScalar(out_dtype)
 
-    global shot
-    if shot > 0:
-        pr.enable()
-
     continuummodel, smooth_continuum = continuum_specfit(
         data, out, templates, igm, phot, constrain_age=constrain_age,
         no_smooth_continuum=no_smooth_continuum,
         fastphot=fastphot, debug_plots=debug_plots)
-
-    if shot > 0:
-        pr.disable()
-    else:
-        shot = 1
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -223,10 +210,6 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     mp_pool.close()
 
     log.info(f'Fitting {Spec.ntargets} object(s) took {time.time()-t0:.2f} seconds.')
-
-    st = pstats.Stats(pr).strip_dirs().sort_stats("cumulative")
-    st.print_stats()
-    st.print_callees()
 
     write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
