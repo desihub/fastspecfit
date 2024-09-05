@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """Each model will be written as a class here, instantiated and populated by
 load.py, with each model stored as a table in the database and the fields stored
 as columns.
@@ -18,7 +16,7 @@ class FastModel(Model):
     """
     #def __str__(self):
     #    return 'Sample '+self.target_name
-    
+
     # in FITS table
     row_index = BigIntegerField(default=0, db_index=True)
 
@@ -124,11 +122,11 @@ class FastModel(Model):
     smoothcorr_b = FloatField(null=True)
     smoothcorr_r = FloatField(null=True)
     smoothcorr_z = FloatField(null=True)
-    
+
     vdisp = FloatField(null=True)
     vdisp_ivar = FloatField(null=True)
     vdisp_err = CharField(max_length=50, default='')
-    
+
     age = FloatField(null=True)
     zzsun = FloatField(null=True)
     logmstar = FloatField(null=True)
@@ -160,7 +158,7 @@ class FastModel(Model):
     absmag10_decam_g = FloatField(null=True)
     absmag10_decam_r = FloatField(null=True)
     absmag10_decam_z = FloatField(null=True)
-    
+
     kcorr00_u = FloatField(null=True)
     kcorr00_b = FloatField(null=True)
     kcorr00_v = FloatField(null=True)
@@ -246,19 +244,19 @@ class FastModel(Model):
     narrow_dv = FloatField(null=True)
     broad_dv = FloatField(null=True)
     uv_dv = FloatField(null=True)
-    narrow_dv_err = CharField(max_length=50, default='')    
-    broad_dv_err = CharField(max_length=50, default='')    
-    uv_dv_err = CharField(max_length=50, default='')    
-    
+    narrow_dv_err = CharField(max_length=50, default='')
+    broad_dv_err = CharField(max_length=50, default='')
+    uv_dv_err = CharField(max_length=50, default='')
+
     narrow_sigma = FloatField(null=True)
     broad_sigma = FloatField(null=True)
     uv_sigma = FloatField(null=True)
     narrow_sigmarms = FloatField(null=True)
     broad_sigmarms = FloatField(null=True)
     uv_sigmarms = FloatField(null=True)
-    narrow_sigma_err = CharField(max_length=50, default='')    
-    broad_sigma_err = CharField(max_length=50, default='')    
-    uv_sigma_err = CharField(max_length=50, default='')    
+    narrow_sigma_err = CharField(max_length=50, default='')
+    broad_sigma_err = CharField(max_length=50, default='')
+    uv_sigma_err = CharField(max_length=50, default='')
 
     mgii_doublet_ratio = FloatField(null=True)
     oii_doublet_ratio = FloatField(null=True)

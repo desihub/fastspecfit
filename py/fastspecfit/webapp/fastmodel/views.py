@@ -32,11 +32,11 @@ from fastspecfit.webapp.fastmodel.models import FastModel
 def explore(req):
     """Returns the explore.html file, or renders the explore.html page after it
     applies the filter, stores result to session, and sets up pagination.
-    
+
     Args:
         req: the http request
-        
-    Returns: 
+
+    Returns:
         File stream if user clicked download, otherwise render for explore.html
 
     """
@@ -46,7 +46,7 @@ def explore(req):
     # If download button was pressed return the selected subset of the FITS table.
     if req.method == 'POST':
         from fastspecfit.webapp.load import DATADIR, fastspecfile
-        
+
         print('download: req.GET:', req.GET)
         query = pickle.loads(req.session['fastmodel_query'])
         print('Query:', query)
@@ -110,7 +110,7 @@ def explore(req):
         cone_ra  = req.GET.get('conera','')
         cone_dec = req.GET.get('conedec','')
         cone_rad = req.GET.get('coneradius','')
-    
+
         # save for form default
         cone_rad_arcmin = cone_rad
         if len(cone_ra) and len(cone_dec) and len(cone_rad):
@@ -149,12 +149,12 @@ def explore(req):
 
     #use pickle to serialize queryset (just the SQL query), and store in session
     req.session['fastmodel_query'] = pickle.dumps(fastmodel_filtered.query)
-    
+
     #use django pagination functionality
     paginator = Paginator(fastmodel_filtered, 50)
     page_num = req.GET.get('page')
     page = paginator.get_page(page_num)
-    
+
     # Include pagination values we will use in html page in the return
     # statement.
     for sam in page:
@@ -176,7 +176,7 @@ def target(req, target_name):
     # grab this one (unique) target
     target = FastModel.objects.all().filter(target_name=target_name)
     target.order_by('targetid')
-    
+
     result_index = req.GET.get('index', '-1')
     try:
         result_index = int(result_index, 10)
@@ -189,7 +189,7 @@ def target(req, target_name):
         i_prev,_ = get_next_target(req, result_index, direction=-1)
         has_next = i_next is not None
         has_prev = i_prev is not None
-    
+
     return render(req, 'target.html', {'target': target[0],
                                        'target_name': target_name,
                                        'result_index': result_index,
@@ -236,13 +236,13 @@ def target_next(req, index):
 def index(req):
     """
     Renders the homepage from index.html
-    
+
     Args:
         req: the http request
-        
-    Returns: 
+
+    Returns:
         Render for index.html
-    
+
     """
     return render(req, 'index.html')
 
@@ -303,7 +303,7 @@ def fastmodel_near_radec(ra, dec, rad, tablename='fastmodel',
         ('SELECT *, ((ux-(%g))*(ux-(%g))+(uy-(%g))*(uy-(%g))+(uz-(%g))*(uz-(%g))) as r2'
          + ' FROM %s where r2 <= %g %s ORDER BY r2') %
         (x,x,y,y,z,z, tablename, r2, extra_where))
-    
+
     return sample
 
 def index(req, **kwargs):
@@ -322,7 +322,7 @@ def upload_catalog(req):
     from django.urls import reverse
     #from map.views import index
     from fastspecfit.webapp import settings
-    
+
     if req.method != 'POST':
         return HttpResponse('POST only')
     print('Files:', req.FILES)
@@ -344,7 +344,7 @@ def upload_catalog(req):
     print('Wrote', tmpfn)
 
     errtxt = ('<html><body>%s<p>Custom catalogs must be a binary FITS binary table with mandatory columns "SURVEY", "PROGRAM", "HEALPIX" and "TARGETID".</p></body></html>')
-    
+
              #+'See <a href="https://www.legacysurvey.org/svtips/">Tips & Tricks</a> for some hints on how to produce such a catalog.</p></body></html>')
 
     T = None
@@ -426,4 +426,3 @@ if __name__ == '__main__':
         print('Time:', times[i], 'SQL:', queries[i])
 
     #main()
-    
