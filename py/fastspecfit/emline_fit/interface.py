@@ -28,7 +28,7 @@ class EMLine_Objective(object):
     """
     Objective function for emission-line fitting.
     """
-    
+
     def __init__(self,
                  obs_bin_centers,
                  obs_fluxes,
@@ -61,9 +61,9 @@ class EMLine_Objective(object):
           else None.
 
         """
-        
+
         self.dtype = obs_fluxes.dtype
-        
+
         self.obs_fluxes = obs_fluxes
         self.obs_weights = obs_weights
         self.redshift = redshift
@@ -78,7 +78,7 @@ class EMLine_Objective(object):
 
             self.patch_endpts = continuum_patches['endpts'].value
             self.patch_pivotwave = continuum_patches['pivotwave'].value
-            
+
             self.J_P = patch_jacobian(obs_bin_centers,
                                       obs_weights,
                                       self.patch_endpts,
@@ -86,10 +86,10 @@ class EMLine_Objective(object):
         else:
             self.nPatches = 0
             self.J_P = None
-            
+
         self.log_obs_bin_edges, self.ibin_widths = \
             _prepare_bins(obs_bin_centers, camerapix)
-        
+
         # temporary storage to prevent allocation in params_mapping
         # on every call to objective/jacobian
         self.line_parameters = \
@@ -111,12 +111,12 @@ class EMLine_Objective(object):
         Returns
         -------
         `np.ndarray` of residuals for each wavelength bin.
-        
+
         """
-        
+
         nLineParameters = len(free_parameters) - 2 * self.nPatches
         line_free_parameters = free_parameters[:nLineParameters]
-        
+
         #
         # expand line free parameters into complete
         # line parameter array, handling tied params
@@ -124,9 +124,9 @@ class EMLine_Objective(object):
         #
         line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters,
                                                             out=self.line_parameters)
-        
+
         model_fluxes = np.empty_like(self.obs_fluxes, dtype=self.dtype)
-        
+
         _build_model_core(line_parameters,
                           self.line_wavelengths,
                           self.redshift,
@@ -146,13 +146,13 @@ class EMLine_Objective(object):
                          self.patch_pivotwave,
                          slopes,
                          intercepts)
-                  
+
         # turn model fluxes into residuals in-place to avoid
         # unwanted memory allocation
         residuals  = model_fluxes
         residuals -= self.obs_fluxes
         residuals *= self.obs_weights
-        
+
         return residuals
 
 
@@ -172,18 +172,18 @@ class EMLine_Objective(object):
         -------
         Sparse Jacobian at given parameter value as
         defined in sparse_rep.py.
-        
+
         """
-        
+
         nLineFreeParms = len(free_parameters) - 2 * self.nPatches
         line_free_parameters = free_parameters[:nLineFreeParms]
-        
+
         #
         # expand free paramters into complete
         # parameter array, handling tied params
         # and doublets
         #
-        
+
         line_parameters = self.params_mapping.mapFreeToFull(line_free_parameters,
                                                             out=self.line_parameters)
 
@@ -198,7 +198,7 @@ class EMLine_Objective(object):
             # exists to either side of this range, so we can pass
             # those in as dummies.
             ibw = self.ibin_widths[s:e+3]
-                        
+
             idealJac = \
                 emline_model_jacobian(line_parameters,
                                       self.log_obs_bin_edges[s+icam:e+icam+1],
@@ -206,15 +206,15 @@ class EMLine_Objective(object):
                                       self.redshift,
                                       self.line_wavelengths,
                                       self.resolution_matrices[icam].ndiag)
-            
+
             # ignore any columns corresponding to fixed parameters
             endpts = idealJac[0]
             endpts[self.params_mapping.fixedMask(), :] = 0
-        
+
             jacs.append( mulWMJ(self.obs_weights[s:e],
                                 self.resolution_matrices[icam].rowdata(),
                                 idealJac) )
-            
+
         nBins = np.sum(np.diff(self.camerapix))
         nFreeParms = len(free_parameters)
         J =  EMLineJacobian((nBins, nFreeParms), nLineFreeParms,
@@ -236,7 +236,7 @@ def build_model(redshift,
                 continuum_patches=None):
     """
     Compatibility entry point to compute modeled fluxes.
-    
+
     Parameters
     ----------
     redshift : :class:`np.float64`
@@ -256,11 +256,11 @@ def build_model(redshift,
       else None.
 
     """
-    
+
     log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers, camerapix)
-    
+
     model_fluxes = np.empty_like(obs_bin_centers, dtype=obs_bin_centers.dtype)
-    
+
     _build_model_core(line_parameters,
                       line_wavelengths,
                       redshift,
@@ -272,15 +272,15 @@ def build_model(redshift,
 
     # suppress negative pixels arising from resolution matrix
     model_fluxes[model_fluxes < 0.] = 0.
-    
+
     if continuum_patches is not None:
         # add patch pedestals to model fluxes
         _add_patches(obs_bin_centers, model_fluxes,
                      continuum_patches['endpts'].value,
-                     continuum_patches['pivotwave'].value,     
+                     continuum_patches['pivotwave'].value,
                      continuum_patches['slope'].value,
                      continuum_patches['intercept'].value)
-                    
+
     return model_fluxes
 
 
@@ -291,7 +291,7 @@ class MultiLines(object):
     more cameras.  Return an object that lets caller obtain
     a rendered model for each individual line as a sparse array.
     """
-    
+
     def __init__(self,
                  line_parameters,
                  obs_bin_centers,
@@ -319,7 +319,7 @@ class MultiLines(object):
           Pixels corresponding to each camera in obs wavelength array.
 
         """
-        
+
         @jit(nopython=True, nogil=True)
         def _suppress_negative_fluxes(endpts, M):
             """
@@ -329,7 +329,7 @@ class MultiLines(object):
                 s, e = endpts[i]
                 for j in range(e-s):
                     M[i,j] = np.maximum(M[i,j], 0.)
-        
+
         self.line_models = []
         _build_multimodel_core(line_parameters,
                                obs_bin_centers,
@@ -364,7 +364,7 @@ class MultiLines(object):
         the bin values.
 
         """
-        
+
         s = 1000000000
         e =-1
 
@@ -374,14 +374,14 @@ class MultiLines(object):
         # observed flux array.
         live_models = []
         for i, line_model in enumerate(self.line_models):
-            
+
             ls, le = line_model[0][line]
-            
+
             if ls < le: # line has nonzero flux bins
                 s = np.minimum(s, ls)
                 e = np.maximum(e, le)
                 live_models.append(i)
-        
+
         if len(live_models) == 0:
             # line has no nonzero flux bins
             return (0, 0), np.empty((0), dtype=np.float64)
@@ -402,7 +402,7 @@ class MultiLines(object):
                 ldata  = self.line_models[i][1][line]
 
                 data[ls-s:le-s] = ldata[:le-ls]
-    
+
             return (s, e), data
 
 
@@ -437,7 +437,7 @@ def find_peak_amplitudes(line_parameters,
     Array with maximum amplitude observed for each line.
 
     """
-    
+
     @jit(nopython=True, nogil=True)
     def _update_line_maxima(max_amps, line_models):
         """
@@ -447,7 +447,7 @@ def find_peak_amplitudes(line_parameters,
         in place.
         """
         endpts, vals = line_models
-    
+
         # find the highest flux for each peak; if it's
         # bigger than any seen so far, update global max
         for i in range(vals.shape[0]):
@@ -465,10 +465,10 @@ def find_peak_amplitudes(line_parameters,
                            resolution_matrices,
                            camerapix,
                            lambda m: _update_line_maxima(max_amps, m))
-    
+
     return max_amps
 
-            
+
 ##########################################################################
 
 
@@ -483,7 +483,7 @@ def _build_model_core(line_parameters,
     """
     Core loop for computing a combined model flux from a set of
     spectral emission lines.
-    
+
     Parameters
     ----------
     line_parameters : :class:`np.ndarray`
@@ -504,9 +504,9 @@ def _build_model_core(line_parameters,
       Returns computed model flux for each wavelength bin.
 
     """
-    
+
     for icam, campix in enumerate(camerapix):
-        
+
         # start and end for obs fluxes of camera icam
         s, e = campix
 
@@ -515,13 +515,13 @@ def _build_model_core(line_parameters,
         # exists to either side of this range, so we can pass
         # those in as dummies.
         ibw = ibin_widths[s:e+3]
-        
+
         mf = emline_model(line_wavelengths,
                           line_parameters,
                           log_obs_bin_edges[s+icam:e+icam+1],
                           redshift,
                           ibw)
-        
+
         # convolve model with resolution matrix and store in
         # this camera's subrange of model_fluxes
         resolution_matrices[icam].dot(mf, model_fluxes[s:e])
@@ -538,7 +538,7 @@ def _build_multimodel_core(line_parameters,
     Core loop for computing array of individual line flux models sparsely
     from a set of spectral emission lines.  Result is not returned but
     passed to a consumer function supplied by the caller.
-    
+
     Parameters
     ----------
     line_parameters : :class:`np.ndarray`
@@ -558,21 +558,21 @@ def _build_multimodel_core(line_parameters,
       for each camera.
 
     """
-    
+
     log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers,
                                                    camerapix)
-    
+
     for icam, campix in enumerate(camerapix):
-        
+
         # start and end for obs fluxes of camera icam
         s, e = campix
-        
+
         # Actual inverse bin widths are in ibin_widths[s+1:e+2].
         # Setup guarantees that at least one more array entry
         # exists to either side of this range, so we can pass
         # those in as dummies.
         ibw = ibin_widths[s:e+3]
-        
+
         # compute model waveform for each spectral line
         line_models = emline_perline_models(line_wavelengths,
                                             line_parameters,
@@ -580,15 +580,15 @@ def _build_multimodel_core(line_parameters,
                                             redshift,
                                             ibw,
                                             resolution_matrices[icam].ndiag)
-        
+
         # convolve each line's waveform with resolution matrix
         endpts, M = mulWMJ(np.ones(e - s),
                            resolution_matrices[icam].rowdata(),
                            line_models)
-        
+
         # adjust endpoints to reflect camera range
         endpts += s
-        
+
         consumer_fun((endpts, M))
 
 
@@ -620,21 +620,21 @@ def _add_patches(obs_bin_centers,
       Intercept of each patch pedestal.
 
     """
-    
+
     # add patch pedestals to line model
     nPatches = len(slopes)
-    
+
     for ipatch in range(nPatches):
         s, e      = patch_endpts[ipatch]
         pivotwave = patch_pivotwaves[ipatch]
-        
+
         slope     = slopes[ipatch]
         intercept = intercepts[ipatch]
-        
+
         for j in range(s,e):
             model_fluxes[j] += \
                 slope * (obs_bin_centers[j] - pivotwave) + intercept
-        
+
 
 ###################################################################
 
@@ -645,7 +645,7 @@ def mulWMJ(w, M, Jsp):
     W is a diagonal weight matrix
     M is a resolution matrix
     J is a column-sparse matrix giving the nonzero
-      values in one contiguous range per column 
+      values in one contiguous range per column
 
     Parameters
     ----------
@@ -656,7 +656,7 @@ def mulWMJ(w, M, Jsp):
       giving nonzero entries in each row.
     Jsp : :class:`tuple`
       column-sparse matrix (endpts, J), where endpts = (s,e)
-      gives a half-open range of indices [s, e) with values 
+      gives a half-open range of indices [s, e) with values
       for this column, and P[:e-s] contains these values.
 
     Returns
@@ -674,35 +674,35 @@ def mulWMJ(w, M, Jsp):
 
     """
     endpts, J = Jsp
-    
+
     nbins, ndiag = M.shape
     ncol, maxColSize = J.shape
-    
+
     hdiag = ndiag//2
-    
+
     # temporary buffer for each column of WMJ
     buf = np.empty(maxColSize, dtype=J.dtype)
-    
+
     for j in range(ncol):
         # boundaries of nonzero entries
         # in jth column of J
         s, e = endpts[j]
-        
+
         if s == e: # no nonzero values in column j
             continue
-        
+
         # boundaries of entries in jth column of P
         # impacted by matrix multiply
         imin = np.maximum(s - hdiag, 0)
         imax = np.minimum(e + hdiag, nbins) # one past last impacted entry
-        
+
         for i in range(imin, imax):
-            
+
             # boundaries of interval of k where both
             # M[i, k] and J[k, j] are nonzero.
             kmin = np.maximum(i - hdiag,     s)
             kmax = np.minimum(i + hdiag, e - 1)
-            
+
             acc = 0.
             for k in range(kmin, kmax + 1):
                 acc += M[i, k - i + hdiag] * J[j, k - s]
@@ -713,7 +713,7 @@ def mulWMJ(w, M, Jsp):
         newE = np.minimum(imax, nbins)
         J[j, :newE - newS] = buf[:newE - newS]
         endpts[j] = np.array([newS, newE])
-        
+
     return (endpts, J)
 
 
@@ -739,36 +739,36 @@ def _prepare_bins(centers, camerapix):
           building need.
       - array of inverse widths for each wavelength bin. The array is
         zero-padded by one cell on the left and right to accomodate
-        edge-to-bin computations.   
+        edge-to-bin computations.
 
     """
-    
+
     ncameras = camerapix.shape[0]
     edges = np.empty(len(centers) + ncameras, dtype=centers.dtype)
     ibin_widths = np.empty(len(centers) + 2,  dtype=centers.dtype)
-    
+
     for icam, campix in enumerate(camerapix):
-        
+
         s, e = campix
         icenters = centers[s:e]
-        
+
         #- interior edges are just points half way between bin centers
         int_edges = 0.5 * (icenters[:-1] + icenters[1:])
-        
+
         #- exterior edges are extrapolation of interior bin sizes
         edge_l = icenters[ 0] - (icenters[ 1] - int_edges[ 0])
         edge_r = icenters[-1] + (icenters[-1] - int_edges[-1])
-        
+
         edges[s + icam]              = edge_l
         edges[s + icam + 1:e + icam] = int_edges
         edges[e + icam]              = edge_r
 
         # add 1 to indices i ibin_widths to skip dummy at 0
         ibin_widths[s+1:e+1] = 1. / np.diff(edges[s+icam : e+icam+1])
-    
+
     # dummies before and after widths are needed
     # for corner cases in edge -> bin computation
     ibin_widths[0]  = 0.
     ibin_widths[-1] = 0.
-    
+
     return (np.log(edges), ibin_widths)
