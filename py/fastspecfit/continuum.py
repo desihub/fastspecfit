@@ -1371,7 +1371,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
     ncam = len(data['snr'])
     snrmsgs = [ f'Median S/N_{data["cameras"]}={data["snr"][icam]:.2f}' for icam in range(ncam) ]
-    log.info(' '.join(snrmgs))
+    log.info(' '.join(snrmsgs))
 
     if templates.use_legacy_fitting:
         ebv = 0.
