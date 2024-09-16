@@ -6,5 +6,3 @@ from .interface import (
 )
 
 from .params_mapping import ParamsMapping as EMLine_ParamsMapping
-
-from .sparse_rep import ResMatrix as EMLine_Resolution

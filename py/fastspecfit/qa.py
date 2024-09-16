@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 fastspecfit.qa
 ==============
@@ -300,7 +299,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         elif fastspec['HGAMMA_BROAD_AMP']*np.sqrt(fastspec['HGAMMA_BROAD_AMP_IVAR']) > snrcut:
             leg_broad['ewbalmer_broad'] = r'EW(H$\gamma)_{\mathrm{broad}}=$'+r'${:.1f}$'.format(fastspec['HGAMMA_BROAD_EW'])+r' $\AA$'
 
-        if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
+        if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or
             fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
             leg_narrow['ewoii'] = r'EW([OII])'+r'$={:.1f}$'.format(fastspec['OII_3726_EW']+fastspec['OII_3729_EW'])+r' $\AA$'
 
@@ -315,24 +314,24 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         elif fastspec['HGAMMA_AMP']*np.sqrt(fastspec['HGAMMA_AMP_IVAR']) > snrcut:
             leg_narrow['ewbalmer_narrow'] = r'EW(H$\gamma)=$'+r'${:.1f}$'.format(fastspec['HGAMMA_EW'])+r' $\AA$'
 
-        if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
+        if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and
             fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut):
             leg_narrow['hahb'] = r'$\mathrm{H}\alpha/\mathrm{H}\beta=$'+r'${:.3f}$'.format(fastspec['HALPHA_FLUX']/fastspec['HBETA_FLUX'])
-        if 'hahb' not in leg_narrow.keys() and (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
+        if 'hahb' not in leg_narrow.keys() and (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and
             fastspec['HGAMMA_AMP']*np.sqrt(fastspec['HGAMMA_AMP_IVAR']) > snrcut):
             leg_narrow['hbhg'] = r'$\mathrm{H}\beta/\mathrm{H}\gamma=$'+r'${:.3f}$'.format(fastspec['HBETA_FLUX']/fastspec['HGAMMA_FLUX'])
-        if (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and 
-            fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut and 
+        if (fastspec['HBETA_AMP']*np.sqrt(fastspec['HBETA_AMP_IVAR']) > snrcut and
+            fastspec['OIII_5007_AMP']*np.sqrt(fastspec['OIII_5007_AMP_IVAR']) > snrcut and
             fastspec['HBETA_FLUX'] > 0 and fastspec['OIII_5007_FLUX'] > 0):
             leg_narrow['oiiihb'] = r'$\log_{10}(\mathrm{[OIII]/H}\beta)=$'+r'${:.3f}$'.format(
                 np.log10(fastspec['OIII_5007_FLUX']/fastspec['HBETA_FLUX']))
-        if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and 
-            fastspec['NII_6584_AMP']*np.sqrt(fastspec['NII_6584_AMP_IVAR']) > snrcut and 
+        if (fastspec['HALPHA_AMP']*np.sqrt(fastspec['HALPHA_AMP_IVAR']) > snrcut and
+            fastspec['NII_6584_AMP']*np.sqrt(fastspec['NII_6584_AMP_IVAR']) > snrcut and
             fastspec['HALPHA_FLUX'] > 0 and fastspec['NII_6584_FLUX'] > 0):
             leg_narrow['niiha'] = r'$\log_{10}(\mathrm{[NII]/H}\alpha)=$'+r'${:.3f}$'.format(
                 np.log10(fastspec['NII_6584_FLUX']/fastspec['HALPHA_FLUX']))
 
-        if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or 
+        if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or
             fastspec['OII_3729_AMP']*np.sqrt(fastspec['OII_3729_AMP_IVAR']) > snrcut):
             #if fastspec['OII_DOUBLET_RATIO'] != 0:
             leg_narrow['oii_doublet'] = r'[OII] $\lambda3726/\lambda3729={:.3f}$'.format(fastspec['OII_DOUBLET_RATIO'])
@@ -347,7 +346,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             sedmodel, sedphot = CTools.templates2data(
                 templates.flux, templates.wave,
                 redshift=redshift, dluminosity=dlum, photsys=metadata['PHOTSYS'],
-                synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm, 
+                synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm,
                 get_abmag=True)
         else:
             sedmodel = CTools.build_stellar_continuum(
@@ -398,7 +397,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         else:
             contmodel = CTools.build_stellar_continuum(
                 templates.flux_nolines, fastspec['COEFF'],
-                vdisp=fastspec['VDISP'], conv_pre=templates.conv_pre_nolines, 
+                vdisp=fastspec['VDISP'], conv_pre=templates.conv_pre_nolines,
                 ebv=fastspec['AV'] / Templates.klambda(5500.)
             )
 
@@ -421,7 +420,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             fullsmoothcontinuum = np.zeros_like(fullwave)
         else:
             fullsmoothcontinuum = CTools.smooth_continuum(
-                fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']), 
+                fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']),
                 np.hstack(data['linemask']), camerapix=data['camerapix'])
 
         desismoothcontinuum = []
@@ -429,7 +428,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
 
         # full model spectrum
-        _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res_emline'],
+        _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res'],
                                                  data['camerapix'], snrcut=emline_snrmin)
         desiemlines = []
         for icam in range(len(data['cameras'])):
@@ -460,7 +459,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         if not os.path.isfile(cutoutjpeg):
             wait = 5 # seconds
             cmd = 'wget -q -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer={layer}'
-            cmd = cmd.format(outfile=cutoutjpeg, ra=metadata['RA'], dec=metadata['DEC'], 
+            cmd = cmd.format(outfile=cutoutjpeg, ra=metadata['RA'], dec=metadata['DEC'],
                              width=width, height=height, layer=layer)
             log.info(cmd)
             try:
@@ -646,7 +645,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             sedmodel_abmag = -2.5*np.log10(sedmodel * factor)
             sedax.plot(sedwave / 1e4, sedmodel_abmag, color='slategrey', alpha=0.9, zorder=1)
 
-        sedax.scatter(sedphot['lambda_eff']/1e4, sedphot['abmag'], marker='s', 
+        sedax.scatter(sedphot['lambda_eff']/1e4, sedphot['abmag'], marker='s',
                       s=400, color='k', facecolor='none', linewidth=2, alpha=1.0, zorder=2)
 
         if not fastphot:
@@ -694,11 +693,11 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             raise('Problem here!')
         #print(sed_ymin, sed_ymax)
 
-        #sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)') 
+        #sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
         sedax.set_xlim(phot_wavelims[0], phot_wavelims[1])
         sedax.set_xscale('log')
-        sedax.set_ylabel('AB mag') 
-        #sedax.set_ylabel(r'Apparent Brightness (AB mag)') 
+        sedax.set_ylabel('AB mag')
+        #sedax.set_ylabel(r'Apparent Brightness (AB mag)')
         sedax.set_ylim(sed_ymin, sed_ymax)
 
         sedax.xaxis.set_major_formatter(major_formatter)
@@ -712,7 +711,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         sedax_twin = sedax.twiny()
         sedax_twin.set_xlim(phot_wavelims[0]/(1+redshift), phot_wavelims[1]/(1+redshift))
         sedax_twin.set_xscale('log')
-        #sedax_twin.set_xlabel(r'Rest-frame Wavelength ($\mu$m)') 
+        #sedax_twin.set_xlabel(r'Rest-frame Wavelength ($\mu$m)')
 
         sedax_twin.xaxis.set_major_formatter(major_formatter)
         restticks = np.array([0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 15.0, 20.0])
@@ -865,7 +864,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                             thislinename = thislinename.replace('-', ' ')
                             if 'CIII]'  in thislinename:
                                 thislinename = thislinename+'\n'
-                            specax.text(oneline['restwave']*(1+redshift)/1e4, spec_ymax*0.97, thislinename, 
+                            specax.text(oneline['restwave']*(1+redshift)/1e4, spec_ymax*0.97, thislinename,
                                         ha='center', va='top', rotation=270, fontsize=12, alpha=0.5)
                     else:
                         if '4363' in linename:
@@ -888,7 +887,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             parameters[EMFit.doublet_idx] *= parameters[EMFit.doublet_src]
             lineprofiles = EMLine_MultiLines(parameters, np.hstack(data['wave']), redshift,
                                              EMFit.line_table['restwave'].value,
-                                             data['res_emline'], data['camerapix'])
+                                             data['res'], data['camerapix'])
 
             for iax, (minwave, maxwave, meanwave, deltawave, sig, linename, _linename) in enumerate(
                     zip(minwaves, maxwaves, meanwaves, deltawaves, sigmas, linenames, _linenames)):
@@ -932,7 +931,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                                 plotline[s:e] = oneline
                                 # stupid hack; where cameras overlap (e.g.,
                                 # Halpha on sv1-bright-22923-39627731570268174),
-                                # the wavelengths are out of order. 
+                                # the wavelengths are out of order.
                                 srt = np.argsort(fullwave)
                                 xx.plot(fullwave[srt] / 1e4, plotline[srt], lw=1, alpha=0.8, color=col2[icam])
 
@@ -1131,23 +1130,23 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             _ = leg_broad.pop('dv_broad')
 
         ibox = 0
-        #fig.text(startpos, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
-        fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz, 
+        #fig.text(startpos, toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz,
+        fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz,
                  bbox=bbox, linespacing=1.4)
         ibox += 1
 
         txt = [
             r'{}'.format(leg['absmag_r']),
             r'{}'.format(leg['absmag_gr']),
-            r'{}'.format(leg['absmag_rz']), 
+            r'{}'.format(leg['absmag_rz']),
             '',
             r'{}'.format(leg['dn4000_model'])
         ]
         if 'dn4000_spec' in legkeys:
             txt += [r'{}'.format(leg['dn4000_spec'])]
 
-        #fig.text(startpos+deltapos, toppos, '\n'.join(txt), ha='left', va='top', 
-        fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top', 
+        #fig.text(startpos+deltapos, toppos, '\n'.join(txt), ha='left', va='top',
+        fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top',
                  fontsize=legfntsz, bbox=bbox, linespacing=1.4)
         ibox += 1
 
@@ -1488,4 +1487,3 @@ def fastqa(args=None, comm=None):
 
     # if multiprocessing, clean up workers
     mp_pool.close()
-

@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 fastspecfit.io
 ==============
@@ -36,8 +35,8 @@ TARGETINGBITS = {
 # fibermap and exp_fibermap columns to read
 FMCOLS = ('TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE',
           'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID',
-          #'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z', 
-          #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z', 
+          #'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
+          #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z',
           #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
           #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2'
           )
@@ -637,7 +636,7 @@ class DESISpectra(object):
                 Three-element list of `numpy.ndarray` inverse variance spectra, one
                 for each camera.
             res : :class:`list`
-                Three-element list of :class:`desispec.resolution.Resolution`
+                Three-element list of :class:`fastspecfit.resolution.Resolution`
                 objects, one for each camera.
             snr : `numpy.ndarray`
                 Median per-pixel signal-to-noise ratio in the grz cameras.
@@ -681,8 +680,7 @@ class DESISpectra(object):
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
         from desiutil.dust import SFDMap
-        from desispec.resolution import Resolution
-        from fastspecfit.emline_fit import EMLine_Resolution
+        from fastspecfit.resolution import Resolution
 
         t0 = time.time()
 
@@ -782,8 +780,7 @@ class DESISpectra(object):
                         'coadd_flux': coadd_spec.flux[coadd_cams][iobj, :],
                         'coadd_ivar': coadd_spec.ivar[coadd_cams][iobj, :],
                         'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
-                        'coadd_res_emline': [EMLine_Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
-                        }
+                    }
 
                     mpargs.append({
                         'iobj':        iobj,
@@ -821,8 +818,7 @@ class DESISpectra(object):
         extinction. Also flag pixels which may be affected by emission lines.
 
         """
-        from desispec.resolution import Resolution
-        from fastspecfit.emline_fit import EMLine_Resolution
+        from fastspecfit.resolution import Resolution
         from fastspecfit.util import mwdust_transmission, median
         from fastspecfit.linemasker import LineMasker
 
@@ -896,7 +892,6 @@ class DESISpectra(object):
                 'ivar': [],
                 'mask': [],
                 'res': [],
-                'res_emline': [],
                 'snr': np.zeros(len(np.atleast_1d(specdata['cameras'])), 'f4'),
                 'linemask': [],
                 'linepix': [],
@@ -949,25 +944,26 @@ class DESISpectra(object):
                         specdata['mask'].append(specdata['mask0'][icam])
 
                         specdata['res'].append(Resolution(res))
-                        specdata['res_emline'].append(EMLine_Resolution(res))
 
             if len(cameras) == 0:
                 errmsg = 'No good data, which should never happen.'
                 log.critical(errmsg)
                 raise ValueError(errmsg)
 
-            # clean up the data dictionary
-            for key in ('wave0', 'flux0', 'ivar0', 'mask0', 'res0'):
-                del specdata[key]
+            # clean up unused items in data dictionary and
+            # freeze lists that will not be further modified
+            for key in ('wave', 'flux', 'ivar', 'mask', 'res'):
+                del specdata[key + '0']
+                specdata[key] = tuple(specdata[key])
 
             # Pre-compute some convenience variables for "un-hstacking"
             # an "hstacked" spectrum.
-            specdata['cameras'] = cameras
-            specdata['npixpercamera'] = npixpercamera
+            specdata['cameras'] = np.array(cameras)
+            specdata['npixpercamera'] = np.array(npixpercamera)
 
             ncam = len(specdata['cameras'])
-            c_ends   = np.cumsum(npixpercamera)
-            c_starts = c_ends - npixpercamera
+            c_ends   = np.cumsum(specdata['npixpercamera'])
+            c_starts = c_ends - specdata['npixpercamera']
             specdata['camerapix'] = np.zeros((ncam, 2), np.int16)
             specdata['camerapix'][:, 0] = c_starts
             specdata['camerapix'][:, 1] = c_ends
@@ -976,7 +972,7 @@ class DESISpectra(object):
             LM = LineMasker(emline_table)
             pix = LM.build_linemask(
                 specdata['coadd_wave'], specdata['coadd_flux'],
-                specdata['coadd_ivar'], specdata['coadd_res_emline'],
+                specdata['coadd_ivar'], specdata['coadd_res'],
                 uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
                 debug_plots=debug_plots)
 
@@ -985,7 +981,7 @@ class DESISpectra(object):
             # way to do it?
             for icam in range(ncam):
                 camlinepix = {}
-                camlinemask = np.zeros(npixpercamera[icam], bool)
+                camlinemask = np.zeros(specdata['npixpercamera'][icam], bool)
                 for linename in pix['coadd_linepix']:
                     linepix = pix['coadd_linepix'][linename]
                     # if the line is entirely off this camera, skip it
@@ -1058,7 +1054,7 @@ class DESISpectra(object):
                 Three-element list of `numpy.ndarray` inverse variance spectra, one
                 for each camera.
             res : :class:`list`
-                Three-element list of :class:`desispec.resolution.Resolution`
+                Three-element list of :class:`fastspecfit.resolution.Resolution`
                 objects, one for each camera.
             snr : `numpy.ndarray`
                 Median per-pixel signal-to-noise ratio in the grz cameras.
@@ -1098,7 +1094,7 @@ class DESISpectra(object):
 
         """
         from astropy.table import vstack
-        from desispec.resolution import Resolution
+        from fastspecfit.resolution import Resolution
 
         if stackfiles is None:
             errmsg = 'At least one stackfiles file is required.'
@@ -1349,21 +1345,23 @@ class DESISpectra(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
+        # clean up unused items in data dictionary and
+        # freeze lists that will not be further modified
+        for key in ('wave', 'flux', 'ivar', 'mask', 'res'):
+            del specdata[key + '0']
+            specdata[key] = tuple(specdata[key])
+
         # Pre-compute some convenience variables for "un-hstacking"
         # an "hstacked" spectrum.
-        specdata['cameras'] = cameras
-        specdata['npixpercamera'] = npixpercamera
+        specdata['cameras'] = np.array(cameras)
+        specdata['npixpercamera'] = np.array(npixpercamera)
 
         ncam = len(specdata['cameras'])
-        c_ends   = np.cumsum(npixpercamera)
-        c_starts = c_ends - npixpercamera
+        c_ends   = np.cumsum(specdata['npixpercamera'])
+        c_starts = c_ends - specdata['npixpercamera']
         specdata['camerapix'] = np.zeros((ncam, 2), np.int16)
         specdata['camerapix'][:, 0] = c_starts
         specdata['camerapix'][:, 1] = c_ends
-
-        # clean up the data dictionary
-        for key in ('wave0', 'flux0', 'ivar0', 'mask0', 'res0'):
-            del specdata[key]
 
         LM = LineMasker(phot, emline_table)
         coadd_linemask_dict = LM.build_linemask(specdata['coadd_wave'], specdata['coadd_flux'],

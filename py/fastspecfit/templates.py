@@ -208,6 +208,7 @@ class Templates(object):
             sc_fft.set_global_backend(be)
 
             self.convolve = sc_sig.convolve
+            log.debug('Using mkl_fft library for FFTs')
         else:
             self.convolve = sc_sig.oaconvolve
 

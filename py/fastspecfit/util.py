@@ -5,29 +5,30 @@ fastspecfit.util
 General utilities.
 
 """
-import os
 import numpy as np
-import numba
+from numba import jit
 
 from fastspecfit.logger import log
 
-try: # this fails when building the documentation
+try:  # this fails when building the documentation
     from scipy import constants
-    C_LIGHT = constants.c / 1000.0 # [km/s]
+    C_LIGHT = constants.c / 1000.0  # [km/s]
 except:
-    C_LIGHT = 299792.458 # [km/s]
+    C_LIGHT = 299792.458  # [km/s]
 
-FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
+FLUXNORM = 1e17  # flux normalization factor for all DESI spectra [erg/s/cm2/A]
 
 
-#
-# A BoxedScalar is an item of an Numpy
-# structured scalar type that is initialized
-# to all zeros and can then be passed
-# around by reference.  Access the .value
-# field to unbox the scalar.
-#
 class BoxedScalar(object):
+    """
+    A BoxedScalar is an item of an Numpy
+    structured scalar type that is initialized
+    to all zeros and can then be passed
+    around by reference.  Access the .value
+    field to unbox the scalar.
+
+    """
+
     def __init__(self, dtype):
         self.value = np.zeros(1, dtype=dtype)[0]
 
@@ -38,23 +39,27 @@ class BoxedScalar(object):
         self.value[key] = v
 
 
-#
-# A Pool encapsulates paaallel execution with a
-# multiprocessing.Pool, falling back to sequential 
-# execution in the current process if just one worker
-# is requested.
-#
-# Unlike multiprocessing.Pool, our starmap() function
-# takes a list of keyword argument dictionaries,
-# rather than a list of positional arguments.
-#
 class MPPool(object):
+    """
+    A Pool encapsulates paraallel execution with a
+    multiprocessing.Pool, falling back to sequential
+    execution in the current process if just one worker
+    is requested.
 
-    # create a pool with nworkers workers, using the current
-    # process if nworkers is 1.  If initiializer is not None,
-    # apply this function to the arguments in keyword dictionary
-    # init_argdict on startup in each each worker subprocess.
+    Unlike multiprocessing.Pool, our starmap() function
+    takes a list of keyword argument dictionaries,
+    rather than a list of positional arguments.
+
+    """
+
     def __init__(self, nworkers, initializer=None, init_argdict=None):
+        """
+        create a pool with nworkers workers, using the current
+        process if nworkers is 1.  If initiializer is not None,
+        apply this function to the arguments in keyword dictionary
+        init_argdict on startup in each each worker subprocess.
+
+        """
 
         initfunc = None if initializer is None else self.apply_to_dict
 
@@ -70,9 +75,13 @@ class MPPool(object):
         else:
             self.pool = None
 
-    # apply function func to each of a list of inputs, represented
-    # as a list of keyword argument dictionaries.
+
     def starmap(self, func, argdicts):
+        """
+        apply function func to each of a list of inputs, represented
+        as a list of keyword argument dictionaries.
+
+        """
 
         # we cannot pickle a local function, so we must pass
         # both func and the argument dictionary to the subprocess
@@ -87,11 +96,13 @@ class MPPool(object):
 
         return out
 
-    # close our multiprocess pool if we created one
     def close(self):
+        """
+        close our multiprocess pool if we created one
+        """
+
         if self.pool is not None:
             self.pool.close()
-
 
     @staticmethod
     def apply_to_dict(f, argdict):
@@ -185,12 +196,12 @@ def mwdust_transmission(ebv, filtername):
         'odin-N419': 4.324,
         'odin-N501': 3.540,
         'odin-N673': 2.438,
-        'hsc2017-g': 3.24, 
-        'hsc2017-r': 2.276, 
-        'hsc2017-r2': 2.276, 
-        'hsc2017-i': 1.633, 
-        'hsc2017-i2': 1.633, 
-        'hsc2017-z': 1.263, 
+        'hsc2017-g': 3.24,
+        'hsc2017-r': 2.276,
+        'hsc2017-r2': 2.276,
+        'hsc2017-i': 1.633,
+        'hsc2017-i2': 1.633,
+        'hsc2017-z': 1.263,
         'hsc2017-y': 1.075,
         'suprime-IB427': 4.202,
         'suprime-IB464': 3.894,
@@ -336,7 +347,7 @@ def minfit(x, y, return_coeff=False):
 # array copies and redundant summation
 # on each iteration
 #
-@numba.jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True)
 def sigmaclip(c, low=3., high=3.):
 
     n  = len(c)
@@ -373,19 +384,19 @@ def sigmaclip(c, low=3., high=3.):
 
 # Numba's quantile impl is much faster
 # than Numpy's standard version
-@numba.jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True)
 def quantile(A, q):
     return np.quantile(A, q)
 
 
 # Numba's median impl is also faster
-@numba.jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True)
 def median(A):
     return np.median(A)
 
 
 # Open-coded Numba trapz is much faster than np.traz
-@numba.jit(nopython=True, fastmath=True, nogil=True)
+@jit(nopython=True, nogil=True, fastmath=True)
 def trapz(y, x):
     res = 0.
     for i in range(len(x) - 1):
@@ -409,7 +420,7 @@ def trapz_rebin(src_x, src_y, bin_centers, out=None, pre=None):
     out:  :class:`numpy.ndarray` or None
         if not None, an array of correct size and type
         that will receive the result of the computation.
-        If None, a new array will be allocated. 
+        If None, a new array will be allocated.
     pre :
         preprocessing data computed by trapz_rebin_pre(),
         if available.  If not None, it must correspond
@@ -454,7 +465,7 @@ def trapz_rebin_pre(bin_centers):
     return (edges, ibw)
 
 
-@numba.jit(nopython=True, fastmath=True, nogil=True)
+@jit(nopython=True, nogil=True, fastmath=True)
 def _trapz_rebin(x, y, edges, ibw, out):
     """
     Trapezoidal rebinning
@@ -520,7 +531,7 @@ def _trapz_rebin(x, y, edges, ibw, out):
     return results
 
 
-@numba.jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True)
 def centers2edges(centers):
     """
     Convert bin centers to bin edges, guessing at what you probably meant.

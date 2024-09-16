@@ -7,14 +7,14 @@ Methods and tools for continuum-fitting.
 """
 import time
 import numpy as np
-import numba
+from numba import jit
 
 from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
 from fastspecfit.util import (C_LIGHT, FLUXNORM,
-    trapz_rebin, trapz_rebin_pre, quantile,
-    median, sigmaclip)
+    trapz_rebin, trapz_rebin_pre,
+    quantile, median, sigmaclip)
 
 
 class ContinuumTools(object):
@@ -32,7 +32,6 @@ class ContinuumTools(object):
         self.massnorm = 1e10  # stellar mass normalization factor [Msun]
         self.ebv_guess = 0.05 # [mag]
 
-        self.pixkms_bounds = templates.pixkms_bounds
         self.lg_atten = np.log(10.) * (-0.4 * templates.dust_klambda)
 
         # Cache the redshift-dependent factors (incl. IGM attenuation),
@@ -71,9 +70,7 @@ class ContinuumTools(object):
             self.wavelen = np.sum([len(w) for w in self.data['wave']])
 
             # get preprocessing data to accelerate resampling
-            rspre = []
-            for wave in self.data['wave']:
-                rspre.append(trapz_rebin_pre(wave))
+            rspre = [ trapz_rebin_pre(w) for w in self.data['wave'] ]
             self.spec_pre = tuple(rspre)
 
 
@@ -341,7 +338,7 @@ class ContinuumTools(object):
 
 
     def templates2data(self, templateflux, templatewave, redshift=0., dluminosity=None,
-                       vdisp=None, cameras=['b','r','z'], specwave=None, specres=None,
+                       vdisp=None, cameras=np.array(['b','r','z']), specwave=None, specres=None,
                        specmask=None, coeff=None, photsys=None, synthphot=True,
                        stack_cameras=False, flamphot=False, debug=False, get_abmag=False):
         """Deprecated. Work-horse method for turning input templates into data-like
@@ -592,7 +589,7 @@ class ContinuumTools(object):
 
 
     @staticmethod
-    @numba.jit(nopython=True, fastmath=True, nogil=True)
+    @jit(nopython=True, nogil=True, fastmath=True)
     def attenuate(M, A, zfactors, wave, dustflux):
         """
         Compute attenuated version of a model spectrum,
@@ -631,7 +628,7 @@ class ContinuumTools(object):
             M[i] = (M[i] + lbol_diff * dustflux[i]) * zfactors[i]
 
     @staticmethod
-    @numba.jit(nopython=True, fastmath=True, nogil=True)
+    @jit(nopython=True, nogil=True, fastmath=True)
     def attenuate_nodust(M, A, zfactors):
         """
         Compute attenuated version of a model spectrum M,
@@ -748,7 +745,7 @@ class ContinuumTools(object):
         -------
         modelflux : :class:`numpy.ndarray` [nwave]
             Observed-frame model spectrum at the instrumental resolution and
-            wavelength sampling given by `specwave` and `specres`.
+            wavelength sampling given by `specres` and `specwave`.
 
         """
         camerapix = self.data['camerapix']
@@ -762,7 +759,7 @@ class ContinuumTools(object):
                                      contmodel,
                                      specwave[icam],
                                      pre=self.spec_pre[icam])
-            modelflux[s:e] = specres[icam] @ resampflux
+            specres[icam].dot(resampflux, out=modelflux[s:e])
 
         return modelflux
 
@@ -834,8 +831,6 @@ class ContinuumTools(object):
             vdisp         = None
             templatecoeff = params[1:]
 
-        # FIXME: write results directly into resid array instead of
-        # allocating new
         fullmodel = self.build_stellar_continuum(
             templateflux, templatecoeff,
             ebv=ebv, vdisp=vdisp, conv_pre=conv_pre,
@@ -860,16 +855,14 @@ class ContinuumTools(object):
         if synthspec:
             modelflux = self.continuum_to_spectroscopy(fullmodel)
             spec_resid = resid[:resid_split]
-            spec_resid[:]  = specflux
-            spec_resid    -= modelflux
-            spec_resid    *= specistd
+            np.subtract(modelflux, specflux, spec_resid)
+            spec_resid *= specistd
 
         if synthphot:
             modelflam = self.continuum_to_photometry(fullmodel)
             phot_resid = resid[resid_split:]
-            phot_resid[:] = objflam
-            phot_resid   -= modelflam
-            phot_resid   *= objflamistd
+            np.subtract(modelflam, objflam, phot_resid)
+            phot_resid *= objflamistd
 
         return resid
 
@@ -990,8 +983,8 @@ class ContinuumTools(object):
         # convergence. There may be faster ways, of course...
         fit_info = least_squares(self._stellar_objective, initial_guesses, kwargs=farg,
                                  bounds=tuple(zip(*bounds)), method='trf',
-                                 tr_solver='lsmr', tr_options={'regularize': True},
-                                 x_scale='jac', max_nfev=5000, ftol=1e-5, xtol=1e-10)#, verbose=2)
+                                 tr_solver='exact', tr_options={'regularize': True},
+                                 x_scale='jac', max_nfev=5000, ftol=1e-3, xtol=1e-10)#, verbose=2)
         bestparams = fit_info.x
         resid      = fit_info.fun
 

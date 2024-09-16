@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """Custom filters for the FastModel model, which work by selecting FastModel objects
 in the database based on meeting the desired criteria.
 
@@ -16,7 +14,7 @@ class FastModelFilter(django_filters.FilterSet):
 
     """
     #field_name is the FastModel object variable
-    #lookup_expr is used to get ranges (currently using greater/less than or equal to  
+    #lookup_expr is used to get ranges (currently using greater/less than or equal to
     survey__match = django_filters.CharFilter(field_name='survey', lookup_expr='icontains')
     program__match = django_filters.CharFilter(field_name='program', lookup_expr='icontains')
 

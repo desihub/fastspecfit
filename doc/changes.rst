@@ -5,6 +5,9 @@ Change Log
 3.0.0 (not released yet)
 ------------------------
 
+* Use Numba-based Resolution implementation with faster multiply.
+  Also tweak parameters of continuum least_squares optimizer for
+  speed. [`PR #181`_]
 * Cache Fourier transforms of the templates for speed [`PR #180`_].
 * Update line-list (drop broad HeI lines) and rest wavelengths [`PR #179`_].
 * Near-total rewrite of both the continuum and emission-line fitting engines and
@@ -14,6 +17,7 @@ Change Log
 .. _`PR #177`: https://github.com/desihub/fastspecfit/pull/177
 .. _`PR #179`: https://github.com/desihub/fastspecfit/pull/179
 .. _`PR #180`: https://github.com/desihub/fastspecfit/pull/180
+.. _`PR #181`: https://github.com/desihub/fastspecfit/pull/181
 
 2.5.2 (2024-04-28)
 ------------------

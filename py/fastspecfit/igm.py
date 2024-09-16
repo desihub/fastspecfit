@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 fastspecfit.igm
 ===============
@@ -198,7 +197,7 @@ def _tLCDLA(zS, lobs):
                         0.04696 * z**3 - \
                         0.01779 * z**3.3 * (lobs[i]/lamL) ** -0.3 - \
                         0.1347  * (lobs[i]/lamL) ** 2 - \
-                        0.2905  * (lobs[i]/lamL) ** -0.3 
+                        0.2905  * (lobs[i]/lamL) ** -0.3
                 else:
                     r[i] = \
                         0.04696 * z**3 - \

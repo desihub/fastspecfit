@@ -18,12 +18,12 @@ register = template.Library()
 @register.simple_tag
 def url_replace(req, field, value):
     """Replace the old GET value of desired field with a new value.
-    
+
     Args:
         req: the http request
         field: the field to replace
         value: the new value
-    
+
     Returns:
         The updated url with the new value
 
@@ -36,11 +36,11 @@ def url_replace(req, field, value):
 def url_replace_sort(req, new_sort):
     """Replace the old GET value of sort with a new value, or negate it if they are
     equal to sort the opposite way.
-    
+
     Args:
         req: the http request
         new_sort: the sort value a user clicked on
-        
+
     Returns:
         The updated url with the new sort value
 
@@ -55,14 +55,14 @@ def url_replace_sort(req, new_sort):
     else:
         dict_['sort'] = new_sort
     return dict_.urlencode()
-    
+
 @register.simple_tag
 def url_pull(req):
     """Return a string describing the search criteria used.
-    
+
     Args:
         req: the http request
-        
+
     Returns:
         Description of search criteria
 
@@ -80,7 +80,7 @@ def url_pull(req):
         if dict_["ra__lte"] == "":
             search += " RA high: 360 |"
         else:
-            search += " RA high: " + dict_["ra__lte"] + " |"            
+            search += " RA high: " + dict_["ra__lte"] + " |"
             entry = True
     if "dec__gte" in dict_:
         if dict_["dec__gte"] ==  "":
@@ -116,12 +116,12 @@ def url_pull(req):
 def viewer_link(ra, dec):
     """
     Creates a string with the viewer link for desired galaxy.
-    
+
     Args:
         ra: the ra value to use in link
         dec: the dec value to use in link
-        
-    Returns: 
+
+    Returns:
         Viewer link based on ra and dec values
     """
     baseurl = 'http://legacysurvey.org/viewer/'

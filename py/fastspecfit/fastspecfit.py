@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 fastspecfit.fastspecfit
 =======================
@@ -235,7 +234,7 @@ def fastphot(args=None, comm=None):
     Parameters
     ----------
     args : :class:`argparse.Namespace` or ``None``
-        Required and optional arguments parsed via inputs to the command line. 
+        Required and optional arguments parsed via inputs to the command line.
     comm : :class:`mpi4py.MPI.MPI.COMM_WORLD` or `None`
         Intracommunicator used with MPI parallelism.
 
@@ -606,4 +605,3 @@ def create_output_table(result_records, meta, units, stackfit=False):
     results = hstack((results, Table(np.array(result_records), units=units)))
 
     return results
-

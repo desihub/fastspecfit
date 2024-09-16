@@ -23,7 +23,7 @@ datadir = os.path.join(reduxdir, 'tiles', 'cumulative', str(tile), str(night))
 coaddfile = 'coadd-{}-{}-thru{}.fits'.format(petal, tile, night)
 redrockfile = coaddfile.replace('coadd-', 'redrock-')
 
-#spec, redrock = read_tile_spectra(tile, night, specprod=specprod, targets=targetid, 
+#spec, redrock = read_tile_spectra(tile, night, specprod=specprod, targets=targetid,
 #                                  group='cumulative', redrock=True, coadd=True)
 
 coaddfile = os.path.join(datadir, coaddfile)
@@ -47,7 +47,7 @@ template_version = {redhdr['TEMNAM{:02d}'.format(nn)]: redhdr['TEMVER{:02d}'.for
 
 print('Writing {}'.format(os.path.join('data', os.path.basename(redrockfile))))
 write_zbest(os.path.join('data', os.path.basename(redrockfile)),
-            zbest, fibermap, expfibermap, tsnr2, template_version, 
+            zbest, fibermap, expfibermap, tsnr2, template_version,
             archetype_version, spec_header=spechdr)
 
 spec = read_spectra(coaddfile).select(targets=targetid)
@@ -75,4 +75,3 @@ tiles.write(filename=outfile, format='csv', overwrite=True)
 #print('Writing {}'.format(outtractorfile))
 #os.makedirs(os.path.dirname(outtractorfile), exist_ok=True)
 #fitsio.write(outtractorfile, tractor.as_array(), header=tractorhdr, clobber=True)
-
