@@ -1311,7 +1311,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     dwave   = np.round(dwave, decimals=3)
 
     npix = int(np.round((maxwave-minwave)/dwave)) + 1
-    modelwave = minwave + dwave * np.arange(npix)
+    modelwave = minwave + dwave * np.arange(npix, dtype=np.float64)
 
     wavesrt = np.argsort(emlinewave)
     sorted_waves = emlinewave[wavesrt]

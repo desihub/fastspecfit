@@ -114,7 +114,7 @@ class Templates(object):
         self.conv_pre = self.convolve_vdisp_pre(self.flux)
         self.flux_nomvdisp = self.convolve_vdisp(self.flux, vdisp_nominal)
 
-        self.conv_pre_nolines = self.convolve_vdisp_pre(self.flux_nolines) 
+        self.conv_pre_nolines = self.convolve_vdisp_pre(self.flux_nolines)
         self.flux_nolines_nomvdisp = self.convolve_vdisp(self.flux_nolines, vdisp_nominal)
 
         self.info = Table(templateinfo)
@@ -137,7 +137,7 @@ class Templates(object):
                     raise ValueError(errmsg)
 
                 self.vdisp = vdisp
-                self.vdisp_nominal_index = np.where(vdisp == vdisp_nominal)[0] 
+                self.vdisp_nominal_index = np.where(vdisp == vdisp_nominal)[0]
                 self.vdispflux = vdispflux
                 self.vdispwave = vdispwave
         else:
@@ -425,7 +425,7 @@ class Templates(object):
 
         """
         sigma2 = sigma * sigma
-        x = np.arange(-radius, radius+1)
+        x = np.arange(-radius, radius+1, dtype=np.float64)
         phi_x = np.exp(-0.5 / sigma2 * x ** 2)
         phi_x /= phi_x.sum()
 
