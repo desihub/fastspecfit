@@ -1375,7 +1375,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         log.critical(errmsg)
         raise ValueError(errmsg)
 
-    ncam = len(data['snr'])
+    ncam = len(data['cameras'])
     if ncam == 1:
         snrmsg = f"Median S/N_{data['cameras']}={data['snr'][0]:.2f}"
     else:
