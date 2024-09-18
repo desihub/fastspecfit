@@ -1150,14 +1150,12 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             dn4000_model, _ = Photometry.get_dn4000(
                 templates.wave, sedmodel_nolines, rest=True)
 
-            if templates.use_legacy_fitting:
-                log.info(f'Model Dn(4000)={dn4000_model:.3f}, vdisp={vdisp:.0f} km/s.')
-            else:
-                if ebvivar > 0.:
-                    log.info(f'Model Dn(4000)={dn4000_model:.3f}, E(B-V)={ebv:.3f}+/-' + \
-                             f'{1./np.sqrt(ebvivar):.3f} mag, vdisp={vdisp:.0f} km/s.')
-                else:
-                    log.info(f'Model Dn(4000)={dn4000_model:.3f}, E(B-V)={ebv:.3f}, vdisp={vdisp:.0f} km/s.')
+            msg = [f'Model Dn(4000)={dn4000_model:.3f}']
+            if not templates.use_legacy_fitting:
+                var_msg = f'+/-{1./np.sqrt(ebvivar):.3f}' if ebivar > 0. else ''
+                msg.append(f'E(B-V)={ebv:.3f}{var_msg} mag')
+            msg.append(f'vdisp={vdisp:.0f} km/s.')
+            log.info(', '.join(msg))
 
     return coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel
 
@@ -1370,7 +1368,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         raise ValueError(errmsg)
 
     ncam = len(data['snr'])
-    snrmsgs = [ f'Median S/N_{data["cameras"]}={data["snr"][icam]:.2f}' for icam in range(ncam) ]
+    snrmsgs = [ f'Median S/N_{data["cameras"][icam]}={data["snr"][icam]:.2f}' for icam in range(ncam) ]
     log.info(' '.join(snrmsgs))
 
     if templates.use_legacy_fitting:
@@ -1486,16 +1484,15 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             vdispivar = 0.
             ebvivar = 0.
         else:
-            if compute_vdisp:
-                if ebvivar > 0. and vdispivar > 0.:
-                    log.info(f'E(B-V)={ebv:.3f}+/-{1./np.sqrt(ebvivar)} mag, vdisp={vdisp:.1f}+/-{1./np.sqrt(vdispivar):.1f} km/s.')
-                else:
-                    log.info(f'E(B-V)={ebv:.3f} mag, vdisp={vdisp:.0f} km/s.')
+            var_msg = f'+/-{1./np.sqrt(ebvivar)}' if ebvivar > 0. else ''
+            ebv_msg = f'E(B-V)={ebv:.3f}{var_msg} mag'
+
+            if compute_vdisp and vdispivar > 0.:
+                vdisp_msg = f'vdisp={vdisp:.1f}+/-{1./np.sqrt(vdispivar):.1f} km/s'
             else:
-                if ebvivar > 0.:
-                    log.info(f'E(B-V)={ebv:.3f}+/-{1./np.sqrt(ebvivar)} mag, vdisp={vdisp:.0f} km/s.')
-                else:
-                    log.info(f'E(B-V)={ebv:.3f} mag, vdisp={vdisp:.0f} km/s.')
+                vdisp_msg = f'vdisp={vdisp:.0f} km/s'
+
+            log.info(f'{ebv_msg}, {vdisp_msg}.')
 
             # get the best-fitting model with and without line-emission
             sedmodel = CTools.optimizer_saved_contmodel
@@ -1513,11 +1510,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         specwave, specflux, flam_ivar=specivar_nolinemask,
         redshift=redshift, rest=False)
 
-    if dn4000_ivar > 0.:
-        log.info(f'Spectroscopic DN(4000)={dn4000:.3f}+/-{1./np.sqrt(dn4000_ivar):.3f}, ' + \
-                 f'model Dn(4000)={dn4000_model:.3f}')
-    else:
-        log.info(f'Spectroscopic DN(4000)={dn4000:.3f}, model Dn(4000)={dn4000_model:.3f}')
+    var_msg = f'+/-{1./np.sqrt(dn4000_ivar):.3f}' if dn4000_ivar > 0. else ''
+    msg = [f'Spectroscopic DN(4000)={dn4000:.3f}{var_msg}']
+    msg.append(f'model Dn(4000)={dn4000_model:.3f}')
+    log.info(', '.join(msg))
 
     # Get the smooth continuum.
     t0 = time.time()
@@ -1622,11 +1618,11 @@ def continuum_specfit(data, result, templates, igm, phot,
         for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
             result[f'SNR_{cam.upper()}'] = data['snr'][icam]
 
-        msg = 'Smooth continuum correction: '
+        msg = ['Smooth continuum correction:']
         for cam, corr in zip(np.atleast_1d(data['cameras']), smoothstats):
             result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100. # [%]
-            msg += f'{cam}={corr:.3f}% '
-        log.info(msg)
+            msg.append(f'{cam}={corr:.3f}%')
+        log.info(' '.join(msg))
 
     result['Z'] = redshift
     result['COEFF'][CTools.agekeep] = coeff
