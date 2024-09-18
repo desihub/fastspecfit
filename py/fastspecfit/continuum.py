@@ -1152,7 +1152,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
             msg = [f'Model Dn(4000)={dn4000_model:.3f}']
             if not templates.use_legacy_fitting:
-                var_msg = f'+/-{1./np.sqrt(ebvivar):.3f}' if ebivar > 0. else ''
+                var_msg = f'+/-{1./np.sqrt(ebvivar):.3f}' if ebvivar > 0. else ''
                 msg.append(f'E(B-V)={ebv:.3f}{var_msg} mag')
             msg.append(f'vdisp={vdisp:.0f} km/s.')
             log.info(', '.join(msg))
