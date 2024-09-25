@@ -903,7 +903,7 @@ class DESISpectra(object):
             for icam, camera in enumerate(specdata['cameras']):
                 # Check whether the camera is fully masked.
                 if np.sum(specdata['ivar0'][icam]) == 0:
-                    log.warning(f'Dropping fully masked camera {camera}.')
+                    log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
                 else:
                     ivar = specdata['ivar0'][icam]
                     mask = specdata['mask0'][icam]
@@ -917,7 +917,7 @@ class DESISpectra(object):
                     ivar[mask != 0] = 0.
 
                     if np.all(ivar == 0.):
-                        log.warning(f'Dropping fully masked camera {camera}.')
+                        log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
                     else:
                         # interpolate over pixels where the resolution matrix is masked
                         I = (mask != 0)
@@ -970,11 +970,14 @@ class DESISpectra(object):
 
             # use the coadded spectrum to build a robust emission-line mask
             LM = LineMasker(emline_table)
-            pix = LM.build_linemask(
-                specdata['coadd_wave'], specdata['coadd_flux'],
-                specdata['coadd_ivar'], specdata['coadd_res'],
-                uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
-                debug_plots=debug_plots)
+            try:
+                pix = LM.build_linemask(
+                    specdata['coadd_wave'], specdata['coadd_flux'],
+                    specdata['coadd_ivar'], specdata['coadd_res'],
+                    uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
+                    debug_plots=debug_plots)
+            except:
+                raise ValueError('########### LINE-MASKING PROBLEM WITH ', specdata['uniqueid'])
 
             # Map the pixels belonging to individual emission lines onto the
             # original per-camera spectra. This works, but maybe there's a better
@@ -1313,7 +1316,7 @@ class DESISpectra(object):
         for icam, camera in enumerate(specdata['cameras']):
             # Check whether the camera is fully masked.
             if np.sum(specdata['ivar0'][icam]) == 0:
-                log.warning(f'Dropping fully masked camera {camera}.')
+                log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
             else:
                 ivar = specdata['ivar0'][icam]
                 mask = specdata['mask0'][icam]
@@ -1327,7 +1330,7 @@ class DESISpectra(object):
                 ivar[mask != 0] = 0
 
                 if np.all(ivar == 0):
-                    log.warning(f'Dropping fully masked camera {camera}.')
+                    log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
                 else:
                     cameras.append(camera)
                     npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
