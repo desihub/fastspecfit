@@ -970,14 +970,11 @@ class DESISpectra(object):
 
             # use the coadded spectrum to build a robust emission-line mask
             LM = LineMasker(emline_table)
-            try:
-                pix = LM.build_linemask(
-                    specdata['coadd_wave'], specdata['coadd_flux'],
-                    specdata['coadd_ivar'], specdata['coadd_res'],
-                    uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
-                    debug_plots=debug_plots)
-            except:
-                raise ValueError('########### LINE-MASKING PROBLEM WITH ', specdata['uniqueid'])
+            pix = LM.build_linemask(
+                specdata['coadd_wave'], specdata['coadd_flux'],
+                specdata['coadd_ivar'], specdata['coadd_res'],
+                uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
+                debug_plots=debug_plots)
 
             # Map the pixels belonging to individual emission lines onto the
             # original per-camera spectra. This works, but maybe there's a better

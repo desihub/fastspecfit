@@ -76,7 +76,7 @@ class LineMasker(object):
 
         pix = {'linepix': {}, 'contpix': {}}
         if patchMap is not None:
-            pix.update({'patch_contpix': {}, 'dropped': [], 'merged': []})
+            pix.update({'patch_contpix': {}, 'dropped': [], 'merged': [], 'merged_from': []})
             patchids = list(patchMap.keys())
             npatch = len(patchids)
 
@@ -177,6 +177,7 @@ class LineMasker(object):
                         del pix['patch_contpix'][patchids[ipatch+1]]
                         pix['patch_contpix'][newpatchid] = newcontpix
                         pix['merged'].append(newpatchid)
+                        pix['merged_from'].append([patchid, patchids[ipatch+1]])
 
             if patchMap is not None:
                 if len(pix['dropped']) > 0:
@@ -298,8 +299,8 @@ class LineMasker(object):
                 # In the case that patches have been merged, update the
                 # continuum_patches table and patchMap dictionary.
                 if len(pix['merged']) > 0:
-                    for newpatchid in np.atleast_1d(pix['merged']):
-                        oldpatchids = list(newpatchid)
+                    for oldpatchids, newpatchid in zip(np.atleast_1d(pix['merged_from']),
+                                                       np.atleast_1d(pix['merged'])):
                         O = np.where(np.isin(continuum_patches['patchid'].value, oldpatchids))[0]
 
                         # update continuum_patches
@@ -316,6 +317,7 @@ class LineMasker(object):
                             newI.append(patchMap[oldpatchid][1])
                             newJ.append(patchMap[oldpatchid][2])
                             del patchMap[oldpatchid]
+
                         patchMap[newpatchid] = (np.hstack(newlines), np.hstack(newI), np.hstack(newJ))
 
 
@@ -549,7 +551,7 @@ class LineMasker(object):
                     xx.set_ylim(ymin, ymax)
                     xx.legend(loc='upper left', fontsize=8, ncols=nlegcol)
                     xx.set_title(f'Patch {patchid}')
-                for rem in range(ipatch+1, ncols*nrowspatch):
+                for rem in range(ipatch+1, ncols*nrows):
                     ax.flat[rem].axis('off')
 
                 if ax.ndim == 1:
