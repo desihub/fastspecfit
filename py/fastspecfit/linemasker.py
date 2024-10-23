@@ -479,6 +479,8 @@ class LineMasker(object):
                     match line:
                         case 'lyalpha':
                             return r'S/N(Ly$\alpha$)='
+                        case 'nv_1240':
+                            return r'S/N(NV$\lambda1240$)='
                         case 'civ_1549':
                             return r'S/N(CIV$\lambda1549$)='
                         case 'ciii_1908':
@@ -515,6 +517,8 @@ class LineMasker(object):
                             return r'S/N([SII]$\lambda6716$)='
                         case 'sii_6731':
                             return r'S/N([SII]$\lambda6731$)='
+                        case _:
+                            return f'S/N({line})='
 
 
                 fig, ax = plt.subplots(nrows, ncols, figsize=(5.5*ncols, 5.5*nrows))
