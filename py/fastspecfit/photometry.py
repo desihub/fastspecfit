@@ -10,7 +10,7 @@ import numpy as np
 import fitsio
 from astropy.table import Table
 
-from fastspecfit.logger import log
+from fastspecfit.logger import log, DEBUG
 from fastspecfit.util import trapz, C_LIGHT, FLUXNORM
 
 
@@ -334,7 +334,7 @@ class Photometry(object):
                 maggies = Photometry.get_ab_maggies_unchecked(filters, flux, wave)
         except:
             # pad in case of an object at very high redshift (z > 5.5)
-            log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
+            log.debug('Padding input spectrum due to insufficient wavelength coverage to synthesize photometry.')
             padflux, padwave = filters.pad_spectrum(flux, wave, axis=0, method='edge')
 
             if flux.ndim > 1:
