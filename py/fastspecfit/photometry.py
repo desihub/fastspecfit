@@ -10,7 +10,7 @@ import numpy as np
 import fitsio
 from astropy.table import Table
 
-from fastspecfit.logger import log
+from fastspecfit.logger import log, DEBUG
 from fastspecfit.util import trapz, C_LIGHT, FLUXNORM
 
 
@@ -213,7 +213,7 @@ class Photometry(object):
             synth_maggies_in = np.zeros(len(maggies))
             return kcorr, absmag, ivarabsmag, synth_absmag, synth_maggies_in
 
-        maggies     = nanomaggies * 1e-9
+        maggies = nanomaggies * 1e-9
         ivarmaggies = (ivar_nanomaggies / 1e-9**2) * self.bands_to_fit
 
         filters_in = self.filters[photsys]
@@ -244,16 +244,16 @@ class Photometry(object):
 
         # m_R = M_Q + DM(z) + K_QR(z) or
         # M_Q = m_R - DM(z) - K_QR(z)
-        absmag = -2.5 * np.log10(maggies[oband]) - dmod - kcorr
-
-        C = 0.8483036976765437 # (0.4 * np.log(10.))**2
-        ivarabsmag = maggies[oband]**2 * ivarmaggies[oband] * C
+        absmag = np.copy(synth_absmag)
+        ivarabsmag = np.zeros_like(absmag)
 
         # if we use synthesized photometry then ivarabsmag is zero
         # (which should never happen?)
-        I = (maggies[oband] * np.sqrt(ivarmaggies[oband]) <= snrmin)
-        absmag[I] = synth_absmag[I]
-        ivarabsmag[I] = 0.
+        I = (maggies[oband] * np.sqrt(ivarmaggies[oband]) > snrmin)
+        if np.any(I):
+            C = 0.8483036976765437 # (0.4 * np.log(10.))**2
+            absmag[I] = -2.5 * np.log10(maggies[oband[I]]) - dmod - kcorr[I]
+            ivarabsmag[I] = maggies[oband[I]]**2 * ivarmaggies[oband[I]] * C
 
         return kcorr, absmag, ivarabsmag, synth_maggies_in
 
@@ -334,7 +334,7 @@ class Photometry(object):
                 maggies = Photometry.get_ab_maggies_unchecked(filters, flux, wave)
         except:
             # pad in case of an object at very high redshift (z > 5.5)
-            log.warning('Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.')
+            log.debug('Padding input spectrum due to insufficient wavelength coverage to synthesize photometry.')
             padflux, padwave = filters.pad_spectrum(flux, wave, axis=0, method='edge')
 
             if flux.ndim > 1:
