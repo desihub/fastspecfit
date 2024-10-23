@@ -1367,9 +1367,14 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         log.critical(errmsg)
         raise ValueError(errmsg)
 
-    ncam = len(data['snr'])
-    snrmsgs = [ f'Median S/N_{data["cameras"][icam]}={data["snr"][icam]:.2f}' for icam in range(ncam) ]
-    log.info(' '.join(snrmsgs))
+    ncam = len(data['cameras'])
+    if ncam == 1:
+        snrmsg = f"Median spectral S/N_{data['cameras']}={data['snr'][0]:.2f}"
+    else:
+        snrmsg = f"Median spectral S/N_{data['cameras'][0]}={data['snr'][0]:.2f}"
+        for icam in np.arange(ncam-1)+1:
+            snrmsg += f" S/N_{data['cameras'][icam]}={data['snr'][icam]:.2f}"
+    log.info(snrmsg)
 
     if templates.use_legacy_fitting:
         ebv = 0.

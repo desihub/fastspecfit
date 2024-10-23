@@ -11,7 +11,7 @@ import numpy as np
 import fitsio
 from astropy.table import Table
 
-from fastspecfit.logger import log
+from fastspecfit.logger import log, DEBUG
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.photometry import Photometry
 from fastspecfit.util import FLUXNORM, ZWarningMask
@@ -903,7 +903,7 @@ class DESISpectra(object):
             for icam, camera in enumerate(specdata['cameras']):
                 # Check whether the camera is fully masked.
                 if np.sum(specdata['ivar0'][icam]) == 0:
-                    log.warning(f'Dropping fully masked camera {camera}.')
+                    log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
                 else:
                     ivar = specdata['ivar0'][icam]
                     mask = specdata['mask0'][icam]
@@ -917,7 +917,7 @@ class DESISpectra(object):
                     ivar[mask != 0] = 0.
 
                     if np.all(ivar == 0.):
-                        log.warning(f'Dropping fully masked camera {camera}.')
+                        log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
                     else:
                         # interpolate over pixels where the resolution matrix is masked
                         I = (mask != 0)
@@ -1313,7 +1313,7 @@ class DESISpectra(object):
         for icam, camera in enumerate(specdata['cameras']):
             # Check whether the camera is fully masked.
             if np.sum(specdata['ivar0'][icam]) == 0:
-                log.warning(f'Dropping fully masked camera {camera}.')
+                log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
             else:
                 ivar = specdata['ivar0'][icam]
                 mask = specdata['mask0'][icam]
@@ -1327,7 +1327,7 @@ class DESISpectra(object):
                 ivar[mask != 0] = 0
 
                 if np.all(ivar == 0):
-                    log.warning(f'Dropping fully masked camera {camera}.')
+                    log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
                 else:
                     cameras.append(camera)
                     npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera

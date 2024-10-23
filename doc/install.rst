@@ -18,20 +18,39 @@ standard dependencies. Here, we describe two different ways of setting up
 At `NERSC`_, ``FastSpecFit`` can be loaded trivially on top of the standard DESI
 software stack. In a login or interactive `Perlmutter
 <https://docs.nersc.gov/systems/perlmutter>`_ node, simply run the following
-commands:: 
+commands::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
 
-Alternatively, some users may want to access ``FastSpecFit`` through `NERSC`_'s
-`JupyterHub`_ notebook server. To set up the kernel first do::
+Or, to load a specific version or tag of the code simply replace ``main`` with
+the desired version, for example::
 
-  mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit
-  wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit/kernel.json \
+  source /global/cfs/cdirs/desi/software/desi_environment.sh 24.8
+  module load fastspecfit/2.5.2
+
+JupyterHub
+##########
+
+Alternatively, some users may want to access ``FastSpecFit`` through `NERSC`_'s
+`JupyterHub`_ notebook server. In order to use this service, however, we first
+have to install the appropriate *kernel*. To set up the ``main`` kernel do (just
+once!)::
+
+  mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit-main
+  wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit-main/kernel.json \
     https://raw.githubusercontent.com/desihub/fastspecfit/main/etc/jupyter-kernel.json
 
-Then, in `JupyterHub`_, select the *FastSpecFit* kernel and you are all
-set!
+Or you can install a kernal with the latest version of the code by executing the
+following commands (as before, just one time)::
+
+  mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit-latest
+  wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit-latest/kernel.json \
+    https://raw.githubusercontent.com/desihub/fastspecfit/main/etc/jupyter-kernel-latest.json
+
+Then, in `JupyterHub`_, select either the *FastSpecFit Main* or *FastSpecFit
+Latest* kernel and then have fun coding!
+
 
 .. _laptop installation:
 
@@ -44,15 +63,15 @@ been uploaded to `PyPi`_, although there is an `open ticket`_ to do so.)
 Therefore, for the time being, the code and its dependencies must be installed
 "by hand" in an accessible location (e.g., */path/to/desi/code*) with the
 following commands::
-  
+
   conda create -y --name fastspec python numpy scipy numba astropy matplotlib seaborn
   conda activate fastspec
   pip install fitsio healpy speclite
 
   export DESI_CODE=/path/to/desi/code
   mkdir -p $DESI_CODE
-  
-  pushd $DESI_CODE 
+
+  pushd $DESI_CODE
   for package in desiutil desimodel desitarget desispec fastspecfit; do
     git clone https://github.com/desihub/$package.git
     export PATH=$DESI_CODE/$package/bin:$PATH
@@ -70,7 +89,7 @@ their own environment variable:
 
   * ``DESI_ROOT``, which specifies the top-level location of the DESI data;
   * ``DUST_DIR``, which specifies the location of the `Schlegel, Finkbeiner, &
-    Davis dust maps`_; 
+    Davis dust maps`_;
   * ``FPHOTO_DIR``, which specifies the location of the `DESI Legacy Imaging
     Surveys Data Release 9 (DR9)`_ data; and
   * ``FTEMPLATES_DIR``, which indicates the location of the stellar population
@@ -85,11 +104,11 @@ These environment variables can be set with the following commands::
 
   wget -r -np -nH --cut-dirs 5 -A fits -P $DUST_DIR \
     https://portal.nersc.gov/project/cosmo/data/dust/v0_1/maps
-  wget -O $FTEMPLATES_DIR/ftemplates-chabrier-1.3.0.fits \
-    https://data.desi.lbl.gov/public/external/templates/fastspecfit/1.3.0/ftemplates-chabrier-1.3.0.fits
-    
+  wget -O $FTEMPLATES_DIR/ftemplates-chabrier-2.0.0.fits \
+    https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits
+
 .. note::
-   
+
   The DESI `Early Data Release (EDR)`_ became publicly available in
   June 2023!
 
@@ -105,7 +124,7 @@ These environment variables can be set with the following commands::
 
 .. _`NERSC`: https://www.nersc.gov/
 
-.. _`JupyterHub`: https://jupyter.nersc.gov/ 
+.. _`JupyterHub`: https://jupyter.nersc.gov/
 
 .. _`DockerHub/desihub`: https://hub.docker.com/u/desihub
 

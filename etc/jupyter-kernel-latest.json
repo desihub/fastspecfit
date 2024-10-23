@@ -1,0 +1,9 @@
+{
+ "language": "python",
+ "argv": [
+  "/global/cfs/cdirs/desi/spectro/fastspecfit/software/activate_fastspecfit_jupyter_latest.sh",
+  "FastSpecFit Latest",
+  "{connection_file}"
+ ],
+ "display_name": "FastSpecFit Latest"
+}
