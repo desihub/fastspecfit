@@ -242,6 +242,7 @@ class LineMasker(object):
 
         """
         from astropy.table import vstack
+        from fastspecfit.qa import format_niceline
         from fastspecfit.emlines import EMFitTools, ParamType
 
         def _make_patchTable(patchids):
@@ -475,52 +476,6 @@ class LineMasker(object):
                                           linetable['restwave'].value,
                                           resolution_matrix, camerapix)
 
-                def _niceline(line):
-                    match line:
-                        case 'lyalpha':
-                            return r'S/N(Ly$\alpha$)='
-                        case 'nv_1240':
-                            return r'S/N(NV$\lambda1240$)='
-                        case 'civ_1549':
-                            return r'S/N(CIV$\lambda1549$)='
-                        case 'ciii_1908':
-                            return r'S/N(CIII]$\lambda1908$)='
-                        case 'mgii_2796':
-                            return r'S/N(MgII$\lambda2796$)='
-                        case 'mgii_2803':
-                            return r'S/N(MgII$\lambda2803$)='
-                        case 'oii_3726':
-                            return r'S/N([OII]$\lambda3726$)='
-                        case 'oii_3729':
-                            return r'S/N([OII]$\lambda3729$)='
-                        case 'hgamma':
-                            return r'S/N(H$\gamma$)='
-                        case 'hgamma_broad':
-                            return r'S/N(H$\gamma_{b}$)='
-                        case 'hbeta':
-                            return r'S/N(H$\beta$)='
-                        case 'hbeta_broad':
-                            return r'S/N(H$\beta_{b}$)='
-                        case 'oiii_4959':
-                            return r'S/N([OIII]$\lambda4959$)='
-                        case 'oiii_5007':
-                            return r'S/N([OIII]$\lambda5007$)='
-                        case 'nii_6548':
-                            return r'S/N([NII]$\lambda6548$)='
-                        case 'halpha':
-                            return r'S/N(H$\alpha$)='
-                        case 'halpha_broad':
-                            return r'S/N(H$\alpha_{b}$)='
-                        case 'nii_6584':
-                            return r'S/N([NII]$\lambda6584$)='
-                        case 'sii_6716':
-                            return r'S/N([SII]$\lambda6716$)='
-                        case 'sii_6731':
-                            return r'S/N([SII]$\lambda6731$)='
-                        case _:
-                            return f'S/N({line})='
-
-
                 fig, ax = plt.subplots(nrows, ncols, figsize=(5.5*ncols, 5.5*nrows))
                 for ipatch, ((patchid, endpts, slope, intercept, pivotwave), xx) in enumerate(
                         zip(contfit.iterrows('patchid', 'endpts', 'slope', 'intercept', 'pivotwave'), ax.flat)):
@@ -542,7 +497,7 @@ class LineMasker(object):
                     for line, iline in zip(patchMap[patchid][0], patchMap[patchid][2]):
                         (ls, le), profile = lines.getLine(iline)
                         if ls != le: # skip fixed lines
-                            label = _niceline(line)+f'{linesnrs[iline]:.1f}; '+r'$\sigma$='+f'{linesigmas[iline]:.0f}'+' km/s'
+                            label = format_niceline(line)+f'{linesnrs[iline]:.1f}; '+r'$\sigma$='+f'{linesigmas[iline]:.0f}'+' km/s'
                             xx.plot(wave[ls:le] / 1e4, profile, alpha=0.75, label=label)
                     if len(patchMap[patchid][0]) > 4:
                         nlegcol = 1
@@ -604,6 +559,11 @@ class LineMasker(object):
         linetable = EMFit.line_table
         linetable_inrange = linetable[EMFit.line_in_range]
         nline = len(linetable)
+
+        if nline == 0:
+            errmsg = 'No strong lines in range!'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
         # Initialize the continuum_patches table for all patches in range.
         patchids = np.unique(linetable_inrange['patch'])

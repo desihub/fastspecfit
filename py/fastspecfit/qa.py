@@ -12,6 +12,53 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import MPPool
 
 
+def format_niceline(line):
+    """Simple function to nicely format the name of a line."""
+    match line:
+        case 'lyalpha':
+            return r'S/N(Ly$\alpha$)='
+        case 'nv_1240':
+            return r'S/N(NV$\lambda1240$)='
+        case 'civ_1549':
+            return r'S/N(CIV$\lambda1549$)='
+        case 'ciii_1908':
+            return r'S/N(CIII]$\lambda1908$)='
+        case 'mgii_2796':
+            return r'S/N(MgII$\lambda2796$)='
+        case 'mgii_2803':
+            return r'S/N(MgII$\lambda2803$)='
+        case 'oii_3726':
+            return r'S/N([OII]$\lambda3726$)='
+        case 'oii_3729':
+            return r'S/N([OII]$\lambda3729$)='
+        case 'hgamma':
+            return r'S/N(H$\gamma$)='
+        case 'hgamma_broad':
+            return r'S/N(H$\gamma_{b}$)='
+        case 'hbeta':
+            return r'S/N(H$\beta$)='
+        case 'hbeta_broad':
+            return r'S/N(H$\beta_{b}$)='
+        case 'oiii_4959':
+            return r'S/N([OIII]$\lambda4959$)='
+        case 'oiii_5007':
+            return r'S/N([OIII]$\lambda5007$)='
+        case 'nii_6548':
+            return r'S/N([NII]$\lambda6548$)='
+        case 'halpha':
+            return r'S/N(H$\alpha$)='
+        case 'halpha_broad':
+            return r'S/N(H$\alpha_{b}$)='
+        case 'nii_6584':
+            return r'S/N([NII]$\lambda6584$)='
+        case 'sii_6716':
+            return r'S/N([SII]$\lambda6716$)='
+        case 'sii_6731':
+            return r'S/N([SII]$\lambda6731$)='
+        case _:
+            return f'S/N({line})='
+
+
 def desiqa_one(data, fastfit, metadata, coadd_type,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1,
                maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1,
