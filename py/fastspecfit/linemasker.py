@@ -10,7 +10,7 @@ import numpy as np
 from astropy.table import Table
 
 from fastspecfit.logger import log
-from fastspecfit.util import C_LIGHT, quantile
+from fastspecfit.util import C_LIGHT, quantile, median
 
 
 class LineMasker(object):
@@ -30,9 +30,10 @@ class LineMasker(object):
 
 
     @staticmethod
-    def linepix_and_contpix(wave, ivar, linetable, linesigmas, linevshifts=None,
-                            patchMap=None, redshift=0., nsigma=2., minlinesigma=50.,
-                            mincontpix=11, get_contpix=True):
+    def linepix_and_contpix(wave, ivar, linetable, linesigmas, flux=None,
+                            linevshifts=None, patchMap=None, redshift=0.,
+                            nsigma=2., minlinesigma=50., mincontpix=11,
+                            get_contpix=True, get_snr=False):
         """Support routine to determine the pixels potentially containing emission lines
         and the corresponding (adjacent) continuum.
 
@@ -76,6 +77,9 @@ class LineMasker(object):
         zlyawave = zlinewaves[linenames == 'lyalpha']
 
         pix = {'linepix': {}, 'contpix': {}}
+        if get_snr:
+            pix.update({'clocal': {}, 'cnoise': {}, 'amp': {}, 'snr': {}})
+
         if patchMap is not None:
             pix.update({'patch_contpix': {}, 'dropped': [], 'merged': [], 'merged_from': []})
             patchids = list(patchMap.keys())
@@ -204,6 +208,33 @@ class LineMasker(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
+        # get the signal-to-noise ratio of each line
+        if get_snr:
+            for line in pix['linepix'].keys():
+                lpix = pix['linepix'][line]
+                cpix = pix['contpix'][line]
+                clo, clocal, chi = quantile(flux[cpix], (0.25, 0.5, 0.75))
+                cnoise = (chi - clo) / 1.349 # robust sigma
+                if cnoise <= 0.:
+                    snr = 0.
+                    amp = 0.
+                    cnoise = 0.
+                else:
+                    #amp = quantile(flux[lpix] - clocal, 0.975)
+                    npix = len(lpix)
+                    if npix > 15:
+                        mnpx = np.maximum(lpix[npix//2]-7, 0)
+                        mxpx = np.minimum(lpix[npix//2]+7, lpix[-1])
+                        amp = np.max(flux[mnpx:mxpx]) - clocal
+                    else:
+                        #amp = np.max(flux[lpix]) - clocal
+                        amp = quantile(flux[lpix] - clocal, 0.975)
+                    snr = amp / cnoise
+                pix['clocal'][line] = clocal
+                pix['cnoise'][line] = cnoise
+                pix['amp'][line] = amp
+                pix['snr'][line] = snr
+
         return pix
 
 
@@ -211,8 +242,8 @@ class LineMasker(object):
                        uniqueid=0, initsigma_broad=3000., initsigma_narrow=150.,
                        initsigma_balmer_broad=1000., initvshift_broad=0.,
                        initvshift_narrow=0., initvshift_balmer_broad=0.,
-                       minsnr_balmer_broad=1.5, niter=2, nsigma_mask=2.5,
-                       debug_plots=False):
+                       minsnr_balmer_broad=1.5, minsnr_linemask=3.,
+                       niter=2, nsigma_mask=2.5, debug_plots=False):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -654,11 +685,11 @@ class LineMasker(object):
         linevshifts[EMFit.isNarrow] = finalvshift_narrow
         linevshifts[EMFit.isBalmerBroad] = finalvshift_balmer_broad
 
-        pix = self.linepix_and_contpix(wave, ivar,
+        pix = self.linepix_and_contpix(wave, ivar, 
                                        EMFit.line_table[EMFit.line_in_range],
                                        linesigmas[EMFit.line_in_range],
                                        linevshifts=linevshifts[EMFit.line_in_range],
-                                       nsigma=nsigma_mask,
+                                       nsigma=nsigma_mask, get_snr=True, flux=flux,
                                        patchMap=None, redshift=redshift)
 
         # Build another QA figure
@@ -698,10 +729,15 @@ class LineMasker(object):
                 xx.axvline(x=zlinewaves[iline] / 1e4, color='k', ls='--', lw=2)
                 xx.axvline(x=(zlinewaves[iline]+nsigma_mask*linesigmas_ang[iline]) / 1e4, color='k', ls='-', lw=1)
                 xx.axvline(x=(zlinewaves[iline]-nsigma_mask*linesigmas_ang[iline]) / 1e4, color='k', ls='-', lw=1)
+                xx.axhline(y=pix['clocal'][linename], color='blue', ls='-', lw=1)
+                xx.axhline(y=pix['clocal'][linename]+pix['cnoise'][linename], color='blue', ls='--', lw=1)
+                xx.axhline(y=pix['clocal'][linename]-pix['cnoise'][linename], color='blue', ls='--', lw=1)
+                xx.axhline(y=pix['amp'][linename]+pix['clocal'][linename], color='orange', ls='-', lw=1)
                 xx.set_xlim((zlinewaves[iline]-2*dw)/1e4, (zlinewaves[iline]+2*dw)/1e4)
                 xx.set_ylim(ylim[0], 1.3 * ylim[1])
                 xx.margins(x=0)
-                xx.text(0.05, 0.9, format_niceline(linename), ha='left', va='center',
+                label = 'S/N('+format_niceline(linename)+f')={pix["snr"][linename]:.1f}'
+                xx.text(0.05, 0.9, label, ha='left', va='center',
                         transform=xx.transAxes, fontsize=8)
 
             for rem in range(iline+1, ncols*nrows):
@@ -756,12 +792,21 @@ class LineMasker(object):
                                               EMFit.line_table[EMFit.line_in_range],
                                               linesigmas[EMFit.line_in_range],
                                               linevshifts=linevshifts[EMFit.line_in_range],
-                                              nsigma=nsigma_mask,
+                                              nsigma=nsigma_mask, get_snr=True, flux=flux,
                                               patchMap=None, redshift=redshift)
 
             linepix = newpix['linepix']
+            snrpix = newpix['snr']
         else:
             linepix = pix['linepix']
+            snrpix = pix['snr']
+
+        # remove low signal-to-noise ratio lines from the mask
+        linenames = snrpix.keys()
+        for linename in linenames:
+            if snrpix[linename] < minsnr_linemask:
+                print(f'Removing {linename} from linepix.')
+                linepix.pop(linename)
 
         out = {
             'linesigma_broad': finalsigma_broad,
@@ -776,7 +821,5 @@ class LineMasker(object):
             'balmerbroad': np.any(contfit_nobroad['balmerbroad']), # True = one or more broad Balmer line in range
             'coadd_linepix': linepix,
         }
-
-        import pdb ; pdb.set_trace()
 
         return out

@@ -1543,6 +1543,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             specwave, residuals, specivar / median_apercorr**2, linemask,
             camerapix=data['camerapix'], png=png)
     log.info(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
+    import pdb ; pdb.set_trace()
 
     # Unpack the continuum into individual cameras.
     continuummodel, smoothcontinuum = [], []
