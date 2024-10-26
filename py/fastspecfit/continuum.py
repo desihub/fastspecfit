@@ -270,6 +270,8 @@ class ContinuumTools(object):
             fig.savefig(png)#, bbox_inches='tight')
             plt.close()
 
+            import pdb ; pdb.set_trace()
+
         return smooth_flux
 
 

@@ -31,7 +31,7 @@ class LineMasker(object):
 
     @staticmethod
     def linepix_and_contpix(wave, ivar, linetable, linesigmas, linevshifts=None,
-                            patchMap=None, redshift=0., nsigma=4., minlinesigma=50.,
+                            patchMap=None, redshift=0., nsigma=2., minlinesigma=50.,
                             mincontpix=11, get_contpix=True):
         """Support routine to determine the pixels potentially containing emission lines
         and the corresponding (adjacent) continuum.
@@ -46,12 +46,11 @@ class LineMasker(object):
             I = (wave > (zlinewave - nsigma * sigma)) * (wave < (zlinewave + nsigma * sigma)) * (ivar > 0.)
             return np.where(I)[0]
 
-        def _get_contpix(zlinewaves, sigmas, nsigma_factor=2., linemask=None, lya=False):
+        def _get_contpix(zlinewaves, sigmas, nsigma_factor=1., linemask=None, zlyawave=[]):
             # never use continuum pixels blueward of Lyman-alpha
-            if lya:
-                minwave = np.min(zlinewaves)
-            else:
-                minwave = np.min(zlinewaves - nsigma_factor * nsigma * sigmas)
+            minwave = np.min(zlinewaves - nsigma_factor * nsigma * sigmas)
+            if len(zlyawave) > 0 and minwave < zlyawave:
+                minwave = zlyawave
             maxwave = np.max(zlinewaves + nsigma_factor * nsigma * sigmas)
             if linemask is None:
                 J = (wave > minwave) * (wave < maxwave) * (ivar > 0.)
@@ -74,11 +73,16 @@ class LineMasker(object):
         linesigmas[(linesigmas > 0.) * (linesigmas < minlinesigma)] = minlinesigma
         linesigmas_ang = linesigmas * zlinewaves / C_LIGHT # [km/s --> Angstrom]
 
+        zlyawave = zlinewaves[linenames == 'lyalpha']
+
         pix = {'linepix': {}, 'contpix': {}}
         if patchMap is not None:
             pix.update({'patch_contpix': {}, 'dropped': [], 'merged': [], 'merged_from': []})
             patchids = list(patchMap.keys())
             npatch = len(patchids)
+
+        FACTORS = [2., 2.5, 3.]
+        #FACTORS = [1.5, 2., 2.5, 3.]
 
         # Initial set of pixels that may contain emission lines.
         for linename, zlinewave, sigma in zip(linenames, zlinewaves, linesigmas_ang):
@@ -99,24 +103,30 @@ class LineMasker(object):
                 # skip fixed (e.g., hbeta_broad) or fully masked lines
                 if sigma <= 0. or not linename in pix['linepix'].keys():
                     continue
-                lya = linename == 'lyalpha'
-                J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=linemask, lya=lya)
-                # go further out
-                if len(J) < mincontpix:
-                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2.5, linemask=linemask, lya=lya)
+                # iteratively grow the masking factor
+                for factor in FACTORS:
+                    J = _get_contpix(zlinewave, sigma, nsigma_factor=factor, linemask=linemask, zlyawave=zlyawave)
+                    if len(J) >= mincontpix:
+                        break
                 # drop the linemask_ condition; dangerous??
                 if len(J) < mincontpix:
-                    #log.debug(f'Dropping linemask condition for {linename} with width ' + \
-                        #          f'{nsigma*sigma:.3f}-{3*nsigma*sigma:.3f} Angstrom')
+                    print('Dropping linemask condition with ', linename)
+                    log.debug(f'Dropping linemask condition for {linename} with width ' + \
+                              f'{nsigma*sigma:.3f}-{3*nsigma*sigma:.3f} Angstrom')
 
                     # Note the smaller nsigma_factor (to stay closer to the
                     # line); remove the pixels already assigned to this
                     # line.
-                    J = _get_contpix(zlinewave, sigma, nsigma_factor=2., linemask=None, lya=lya)
+                    J = _get_contpix(zlinewave, sigma, nsigma_factor=1.5, linemask=None, zlyawave=zlyawave)
                     J = np.delete(J, np.isin(J, pix['linepix'][linename]))
 
                 if len(J) > 0:
                     pix['contpix'][linename] = J
+                else:
+                    errmsg = f'Unable to measure the continuum pixels for line {linename}'
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
+
         else:
             # Now get the corresponding continuum pixels in "patches."
             for patchid in patchids:
@@ -137,17 +147,20 @@ class LineMasker(object):
 
                 zlinewaves_patch = zlinewaves[I]
                 sigmas_patch = linesigmas_ang[I]
-                lya = 'lyalpha' in patchlines
+                #lya = 'lyalpha' in patchlines
 
-                J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.,
-                                 linemask=linemask, lya=lya)
+                # iteratively grow the masking factor
+                for factor in FACTORS:
+                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=factor,
+                                     linemask=linemask, zlyawave=zlyawave)
+                    if len(J) >= mincontpix:
+                        break
 
-                # go further out
-                if len(J) < mincontpix:
-                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=2.5,
-                                     linemask=linemask, lya=lya)
-
-                if len(J) > 0:
+                if len(J) == 0:
+                    errmsg = f'Unable to measure the continuum pixels for patch {patchid}'
+                    log.critical(errmsg)
+                    raise ValueError(errmsg)
+                else:
                     # all lines in this patch get the same continuum indices
                     mn, mx = np.min(J), np.max(J)
                     for patchline in patchlines:
@@ -198,7 +211,8 @@ class LineMasker(object):
                        uniqueid=0, initsigma_broad=3000., initsigma_narrow=150.,
                        initsigma_balmer_broad=1000., initvshift_broad=0.,
                        initvshift_narrow=0., initvshift_balmer_broad=0.,
-                       minsnr_balmer_broad=1.5, niter=2, debug_plots=False):
+                       minsnr_balmer_broad=1.5, niter=2, nsigma_mask=2.5,
+                       debug_plots=False):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -287,6 +301,7 @@ class LineMasker(object):
                 pix = self.linepix_and_contpix(wave, ivar, linetable_inrange,
                                                linesigmas[EMFit.line_in_range],
                                                linevshifts=linevshifts[EMFit.line_in_range],
+                                               nsigma=nsigma_mask,
                                                patchMap=patchMap, redshift=redshift)
 
                 # Check for fully dropped patches, which can happen if large
@@ -497,7 +512,8 @@ class LineMasker(object):
                     for line, iline in zip(patchMap[patchid][0], patchMap[patchid][2]):
                         (ls, le), profile = lines.getLine(iline)
                         if ls != le: # skip fixed lines
-                            label = format_niceline(line)+f'{linesnrs[iline]:.1f}; '+r'$\sigma$='+f'{linesigmas[iline]:.0f}'+' km/s'
+                            label = 'S/N('+format_niceline(line)+f')={linesnrs[iline]:.1f}; ' + \
+                                r'$\sigma$='+f'{linesigmas[iline]:.0f}'+' km/s'
                             xx.plot(wave[ls:le] / 1e4, profile, alpha=0.75, label=label)
                     if len(patchMap[patchid][0]) > 4:
                         nlegcol = 1
@@ -620,7 +636,7 @@ class LineMasker(object):
             finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
             maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
 
-        log.info(f'Masking line-widths: broad {finalsigma_broad:.0f} km/s narrow {finalsigma_narrow:.0f} km/s ' + \
+        log.info(f'Masking line-widths: broad {finalsigma_broad:.0f} km/s; narrow {finalsigma_narrow:.0f} km/s; ' + \
                  f'broad Balmer {finalsigma_balmer_broad:.0f} km/s.')
 
         # Build the final pixel mask for *all* lines using our current best
@@ -642,6 +658,7 @@ class LineMasker(object):
                                        EMFit.line_table[EMFit.line_in_range],
                                        linesigmas[EMFit.line_in_range],
                                        linevshifts=linevshifts[EMFit.line_in_range],
+                                       nsigma=nsigma_mask,
                                        patchMap=None, redshift=redshift)
 
         # Build another QA figure
@@ -654,29 +671,38 @@ class LineMasker(object):
             png = f'qa-linemask-{uniqueid}.png'
 
             linenames = list(pix['linepix'].keys())
-            zlinewaves = EMFit.line_table[EMFit.line_in_range]['restwave'] * (1. + redshift)
+            zlinewaves = EMFit.line_table[EMFit.line_in_range]['restwave'] * \
+                (1. + redshift + linevshifts[EMFit.line_in_range] / C_LIGHT)
+            linesigmas_ang = linesigmas[EMFit.line_in_range] * zlinewaves / C_LIGHT
             nline = len(linenames)
 
-            ncols = 5
+            ncols = 4
             nrows = int(np.ceil(nline / ncols))
 
             fig, ax = plt.subplots(nrows, ncols, figsize=(3*ncols, 2*nrows))
+
+            linemask = np.unique(np.hstack([pix['linepix'][linename] for linename in linenames]))
 
             for iline, (linename, xx) in enumerate(zip(linenames, ax.flat)):
                 linepix = pix['linepix'][linename]
                 contpix = pix['contpix'][linename]
                 s = np.min((np.min(contpix), np.min(linepix)))
                 e = np.max((np.max(contpix), np.max(linepix)))
-
+                dw = np.max((np.abs(zlinewaves[iline] - wave[s]), np.abs(zlinewaves[iline] - wave[e])))
                 ylim = quantile(flux[s:e], (0.01, 0.99))
 
-                xx.plot(wave[s:e] / 1e4, flux[s:e], color='gray', alpha=0.5)
-                xx.scatter(wave[contpix] / 1e4, flux[contpix], color='blue', s=10, marker='s')
-                xx.scatter(wave[linepix] / 1e4, flux[linepix], color='orange', s=10, marker='o', alpha=0.7)
+                xx.plot(wave / 1e4, flux, color='gray', alpha=0.5)
+                xx.scatter(wave[linemask] / 1e4, flux[linemask], color='purple', s=10, alpha=0.5, marker='s')
+                xx.scatter(wave[contpix] / 1e4, flux[contpix], color='k', s=10, marker='s')
+                xx.scatter(wave[linepix] / 1e4, flux[linepix], color='red', s=10, marker='o', alpha=0.7)
                 xx.axvline(x=zlinewaves[iline] / 1e4, color='k', ls='--', lw=2)
+                xx.axvline(x=(zlinewaves[iline]+nsigma_mask*linesigmas_ang[iline]) / 1e4, color='k', ls='-', lw=1)
+                xx.axvline(x=(zlinewaves[iline]-nsigma_mask*linesigmas_ang[iline]) / 1e4, color='k', ls='-', lw=1)
+                xx.set_xlim((zlinewaves[iline]-2*dw)/1e4, (zlinewaves[iline]+2*dw)/1e4)
                 xx.set_ylim(ylim[0], 1.3 * ylim[1])
-                xx.text(0.1, 0.9, linename, ha='left', va='center', transform=xx.transAxes,
-                        fontsize=8)
+                xx.margins(x=0)
+                xx.text(0.05, 0.9, format_niceline(linename), ha='left', va='center',
+                        transform=xx.transAxes, fontsize=8)
 
             for rem in range(iline+1, ncols*nrows):
                 ax.flat[rem].axis('off')
@@ -695,17 +721,17 @@ class LineMasker(object):
                 urpos = ax[0, -1].get_position()
                 llpos = ax[-1, 0].get_position()
                 lrpos = ax[-1, -1].get_position()
-                top = 0.95
-                bottom = 0.07
-                dytitle = 0.09
-                dyxlabel = 0.08
+                top = 0.91
+                bottom = 0.03
+                dytitle = 0.07
+                dyxlabel = 0.17
 
             xpos = (lrpos.x1 - llpos.x0) / 2. + llpos.x0
             ypos = llpos.y0 - dyxlabel
             fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
                      ha='center', va='center')
 
-            xpos = ulpos.x0 - 0.1
+            xpos = ulpos.x0 - 0.12
             ypos = (ulpos.y1 - llpos.y0) / 2. + llpos.y0# + 0.03
             fig.text(xpos, ypos, r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
                      ha='center', va='center', rotation=90)
@@ -730,6 +756,7 @@ class LineMasker(object):
                                               EMFit.line_table[EMFit.line_in_range],
                                               linesigmas[EMFit.line_in_range],
                                               linevshifts=linevshifts[EMFit.line_in_range],
+                                              nsigma=nsigma_mask,
                                               patchMap=None, redshift=redshift)
 
             linepix = newpix['linepix']
@@ -749,5 +776,7 @@ class LineMasker(object):
             'balmerbroad': np.any(contfit_nobroad['balmerbroad']), # True = one or more broad Balmer line in range
             'coadd_linepix': linepix,
         }
+
+        import pdb ; pdb.set_trace()
 
         return out

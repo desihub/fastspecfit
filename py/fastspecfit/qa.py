@@ -16,47 +16,93 @@ def format_niceline(line):
     """Simple function to nicely format the name of a line."""
     match line:
         case 'lyalpha':
-            return r'S/N(Ly$\alpha$)='
+            return r'Ly$\alpha$'
         case 'nv_1240':
-            return r'S/N(NV$\lambda1240$)='
+            return r'NV $\lambda1240$'
+        case 'oi_1304':
+            return r'OI $\lambda1304$'
+        case 'siliv_1396':
+            return r'SiIV $\lambda1396$'
         case 'civ_1549':
-            return r'S/N(CIV$\lambda1549$)='
+            return r'CIV $\lambda1549$'
+        case 'heii_1640':
+            return r'HeII $\lambda1640$'
+        case 'aliii_1857':
+            return r'AlIII $\lambda1857$'
+        case 'siliii_1892':
+            return r'SiIII] $\lambda1892$'
         case 'ciii_1908':
-            return r'S/N(CIII]$\lambda1908$)='
+            return r'CIII] $\lambda1908$'
         case 'mgii_2796':
-            return r'S/N(MgII$\lambda2796$)='
+            return r'MgII $\lambda2796$'
         case 'mgii_2803':
-            return r'S/N(MgII$\lambda2803$)='
+            return r'MgII $\lambda2803$'
+        case 'nev_3346':
+            return r'[NeV] $\lambda3346$'
+        case 'nev_3426':
+            return r'[NeV] $\lambda3426$'
         case 'oii_3726':
-            return r'S/N([OII]$\lambda3726$)='
+            return r'[OII] $\lambda3726$'
         case 'oii_3729':
-            return r'S/N([OII]$\lambda3729$)='
+            return r'[OII] $\lambda3729$'
+        case 'neiii_3869':
+            return r'[NeIII] $\lambda3869$'
+        case 'h6':
+            return r'H$6$'
+        case 'h6_broad':
+            return r'H$6_{b}$'
+        case 'hepsilon':
+            return r'H$\epsilon$'
+        case 'hepsilon_broad':
+            return r'H$\epsilon_{b}$'
+        case 'hdelta':
+            return r'H$\delta$'
+        case 'hdelta_broad':
+            return r'H$\delta_{b}$'
         case 'hgamma':
-            return r'S/N(H$\gamma$)='
+            return r'H$\gamma$'
         case 'hgamma_broad':
-            return r'S/N(H$\gamma_{b}$)='
+            return r'H$\gamma_{b}$'
+        case 'oiii_4363':
+            return r'[OIII] $\lambda4363$'
+        case 'hei_4471':
+            return r'HeI $\lambda4471$'
+        case 'heii_4686':
+            return r'HeII $\lambda4686$'
         case 'hbeta':
-            return r'S/N(H$\beta$)='
+            return r'H$\beta$'
         case 'hbeta_broad':
-            return r'S/N(H$\beta_{b}$)='
+            return r'H$\beta_{b}$'
         case 'oiii_4959':
-            return r'S/N([OIII]$\lambda4959$)='
+            return r'[OIII] $\lambda4959$'
         case 'oiii_5007':
-            return r'S/N([OIII]$\lambda5007$)='
+            return r'[OIII] $\lambda5007$'
+        case 'nii_5755':
+            return r'[NII] $\lambda5755$'
+        case 'hei_5876':
+            return r'HeI $\lambda5876$'
+        case 'oi_6300':
+            return r'[OI] $\lambda6300$'
+        case 'siii_6312':
+            return r'[SIII] $\lambda6312$'
         case 'nii_6548':
-            return r'S/N([NII]$\lambda6548$)='
+            return r'[NII] $\lambda6548$'
         case 'halpha':
-            return r'S/N(H$\alpha$)='
+            return r'H$\alpha$'
         case 'halpha_broad':
-            return r'S/N(H$\alpha_{b}$)='
+            return r'H$\alpha_{b}$'
         case 'nii_6584':
-            return r'S/N([NII]$\lambda6584$)='
+            return r'[NII] $\lambda6584$'
         case 'sii_6716':
-            return r'S/N([SII]$\lambda6716$)='
+            return r'[SII] $\lambda6716$'
         case 'sii_6731':
-            return r'S/N([SII]$\lambda6731$)='
+            return r'[SII] $\lambda6731$'
+        case 'siii_9069':
+            return r'[SIII] $\lambda9069$'
+        case 'siii_9532':
+            return r'[SIII] $\lambda9532$'
         case _:
-            return f'S/N({line})='
+            return line
 
 
 def desiqa_one(data, fastfit, metadata, coadd_type,

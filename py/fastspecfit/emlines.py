@@ -422,7 +422,7 @@ class EMFitTools(object):
         from fastspecfit.util import quantile, median
 
         initials = np.empty(len(self.param_table), dtype=np.float64)
-        bounds   = np.empty((len(self.param_table), 2), dtype=np.float64)
+        bounds = np.empty((len(self.param_table), 2), dtype=np.float64)
 
         # a priori initial guesses and bounds
         minsigma_broad = 1. # 100.
