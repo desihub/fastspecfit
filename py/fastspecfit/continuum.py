@@ -234,27 +234,42 @@ class ContinuumTools(object):
 
         # Optional QA.
         if png:
+            import numpy.ma as ma
             import matplotlib.pyplot as plt
             import seaborn as sns
 
             resid = flux - smooth_flux
             noise = np.ptp(quantile(resid[~linemask], (0.25, 0.75))) / 1.349 # robust sigma
 
-            sns.set(context='talk', style='ticks', font_scale=0.8)
+            sns.set(context='talk', style='ticks', font_scale=0.7)
 
             sw = np.argsort(wave)
 
+            msk = ma.array(linemask)
+            msk.mask = linemask
+            clumps_masked = ma.clump_masked(msk)
+            clumps_unmasked = ma.clump_unmasked(msk)
+
             fig, ax = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
-            ax[0].plot(wave[sw][~linemask] / 1e4, flux[sw][~linemask], alpha=0.75, label='Data')
-            #ax[0].scatter(wave[linemask] / 1e4, flux[linemask], s=10, marker='s',
-            #              color='k', zorder=2, alpha=0.5, label='Line-masked pixel')
-            ax[0].plot(wave[sw] / 1e4, smooth_flux[sw], color='red', label='Smooth continuum')
+            #for iclump, clump in enumerate(clumps_unmasked):
+            #    if iclump == 0:
+            #        label = 'Unmasked'
+            #    else:
+            #        label = None
+            #    ax[0].plot(wave[sw][clump] / 1e4, flux[sw][clump], alpha=0.75, color='red', label=label)
+            for iclump, clump in enumerate(clumps_masked):
+                if iclump == 0:
+                    label = 'Masked'
+                else:
+                    label = None
+                ax[0].plot(wave[sw][clump] / 1e4, flux[sw][clump], alpha=0.2, color='gray', label=label)
+            ax[0].plot(wave[sw] / 1e4, smooth_flux[sw], color='k', label='Smooth Continuum')
             #ax[0].plot(_smooth_wave / 1e4, _smooth_flux, color='orange')
             #ax[0].plot(wave, median_filter(flux, medbin, mode='nearest'), color='k', lw=2)
 
             ax[0].set_ylim(np.min((-5. * noise, quantile(flux, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
-            ax[0].set_ylabel('Continuum-subtracted Spectrum')
+            ax[0].set_ylabel('Continuum-subtracted Flux')
             ax[0].scatter(_smooth_wave / 1e4, _smooth_flux, color='orange', marker='s', ls='-', s=20)
             ax[0].legend(fontsize=12)
 
@@ -263,12 +278,13 @@ class ContinuumTools(object):
             ax[1].set_ylim(np.min((-5. * noise, quantile(resid, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(resid, 0.975))))
             ax[1].set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
-            ax[1].set_ylabel('Residual Spectrum')
+            ax[1].set_ylabel('Residual Flux')
             #ax[1].legend(fontsize=10)
 
             fig.tight_layout()
             fig.savefig(png)#, bbox_inches='tight')
             plt.close()
+            log.info(f'Wrote {png}')
 
             import pdb ; pdb.set_trace()
 
