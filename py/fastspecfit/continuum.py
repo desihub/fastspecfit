@@ -103,8 +103,9 @@ class ContinuumTools(object):
 
     @staticmethod
     def smooth_continuum(wave, flux, ivar, linemask, camerapix,
-                         smooth_window=75, smooth_step=125,
-                         nminpix=15, nmaskpix=10, png=None):
+                         uniqueid=0, smooth_window=75, smooth_step=125,
+                         clip_sigma=2., nminpix=15, nmaskpix=9,
+                         png=None):
         """Build a smooth, nonparametric continuum spectrum.
 
         Parameters
@@ -149,88 +150,90 @@ class ContinuumTools(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
-        mask = (linemask | (ivar <= 0.))
-        for s, e in camerapix:
-            # Mask the 10 (presumably noisy) pixels from the edge
+
+        def smooth_percamera(camwave, camflux, camivar, camlinemask):
+
+            # Mask nmaskpix (presumably noisy) pixels from the edge
             # of each per-camera spectrum.
-            mask[s:s+nmaskpix] = True
-            mask[e-nmaskpix:e] = True
+            cammask = (camlinemask | (camivar <= 0.))
+            cammask[:nmaskpix] = True
+            cammask[-nmaskpix:] = True
 
-        srt = np.argsort(wave)
-        swave = wave[srt]
-        sflux = flux[srt]
-        smask = mask[srt]
-        sivar = ivar[srt]
+            # Build the smooth (line-free) continuum by computing statistics in a
+            # sliding window, accounting for masked pixels and trying to be smart
+            # about broad lines. See:
+            #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
+            #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
+            wave_win = sliding_window_view(camwave, window_shape=smooth_window)
+            flux_win = sliding_window_view(camflux, window_shape=smooth_window)
+            ivar_win = sliding_window_view(camivar, window_shape=smooth_window)
+            nomask_win = sliding_window_view(np.logical_not(cammask), window_shape=smooth_window)
 
-        # Build the smooth (line-free) continuum by computing statistics in a
-        # sliding window, accounting for masked pixels and trying to be smart
-        # about broad lines. See:
-        #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
-        #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
-        wave_win = sliding_window_view(swave, window_shape=smooth_window)
-        flux_win = sliding_window_view(sflux, window_shape=smooth_window)
-        ivar_win = sliding_window_view(sivar, window_shape=smooth_window)
-        nomask_win = sliding_window_view(np.logical_not(smask), window_shape=smooth_window)
+            swave, sflux, sisig = [], [], []
+            for wwave, wflux, wivar, wnomask in zip(
+                    wave_win[::smooth_step], flux_win[::smooth_step],
+                    ivar_win[::smooth_step], nomask_win[::smooth_step]):
 
-        smooth_wave, smooth_flux, smooth_ivar = [], [], []
-        for wwave, wflux, wivar, wnomask in zip(wave_win[::smooth_step],
-                                                flux_win[::smooth_step],
-                                                ivar_win[::smooth_step],
-                                                nomask_win[::smooth_step]):
+                # If there are fewer than nminpix good pixels after all
+                # masking, discard the window.
+                umflux = wflux[wnomask]
+                if len(umflux) < nminpix:
+                    continue
 
-            # If there are fewer than nminpix good pixels after all
-            # masking, discard the window.
-            umflux = wflux[wnomask]
-            if len(umflux) < nminpix:
-                continue
+                cflux, _, _ = sigmaclip(umflux, low=clip_sigma, high=clip_sigma)
+                if len(cflux) < nminpix:
+                    continue
 
-            cflux, clo, chi = sigmaclip(umflux, low=2., high=2.)
-            if len(cflux) < nminpix:
-                continue
+                mn, clo, chi = quantile(cflux, (0.5, 0.25, 0.75)) # robust stats
+                sig = (chi - clo) / 1.349 # robust sigma
 
-            mn = median(cflux)  # robust estimate of mean
-            sig = np.std(cflux)  # robust estimate of sdev
+                # One more check for crummy spectral regions.
+                if mn == 0. or sig <= 0.:
+                    continue
 
-            # One more check for crummy spectral regions.
-            if mn == 0. or sig <= 0.:
-                continue
+                umwave = wwave[wnomask]
+                swave.append(np.mean(umwave))
+                sflux.append(mn)
+                sisig.append(1./sig) # inverse sigma
 
-            umwave = wwave[wnomask]
-            smooth_wave.append(np.mean(umwave))
-            smooth_flux.append(mn)
-            smooth_ivar.append(1./sig)
+            swave = np.array(swave)
+            sflux = np.array(sflux)
+            sisig = np.array(sisig)
 
-        smooth_wave = np.array(smooth_wave)
-        smooth_flux = np.array(smooth_flux)
-        smooth_ivar = np.array(smooth_ivar)
+            # corner case for very wacky spectra
+            if len(sflux) == 0:
+                smoothflux = np.zeros_like(camflux)
+            else:
+                # remove duplicate wavelength values, which should never
+                # happen...
+                _, uindx = np.unique(swave, return_index=True)
+                swave = swave[uindx]
+                sflux = sflux[uindx]
+                sisig = sisig[uindx]
 
-        # for debugging
-        if png:
-            _smooth_wave = smooth_wave.copy()
-            _smooth_flux = smooth_flux.copy()
+                # We supply estimates local inverse stddev in each window
+                # (i.e., how noisy the data is there) so that variation is
+                # down-weighted in noisier regions.
+                spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3)
 
-        # corner case for very wacky spectra
-        if len(smooth_flux) == 0:
-            smooth_flux = np.zeros_like(flux)
-        else:
-            # remove duplicate wavelength values, if any
-            _, uindx = np.unique(smooth_wave, return_index=True)
+                # evaluate on the original wavelength vector
+                smoothflux = spl_flux(camwave)
 
-            # defaults: k=3, s = # input pts.  We supply
-            # estimates local inverse stddev in each window
-            # (i.e., how noisy the data is there) so that
-            # variation is down-weighted in noisier regions
-            spl_flux = UnivariateSpline(
-                smooth_wave[uindx], smooth_flux[uindx],
-                w=smooth_ivar[uindx], ext=3)
+            # very important!
+            smoothflux[(camflux == 0.) & (camivar == 0.)] = 0.
 
-            smooth_flux = []
-            for s, e in camerapix:
-                smooth_flux.append(spl_flux(wave[s:e]))
-            smooth_flux = np.hstack(smooth_flux)
+            return swave, sflux, smoothflux
 
-        # very important!
-        smooth_flux[(flux == 0.) & (ivar == 0.)] = 0.
+        smooth_wave, smooth_flux, smoothcontinuum = [], [], []
+        for ss, ee in camerapix:
+            smooth_wave1, smooth_flux1, smoothcontinuum1 = smooth_percamera(
+                wave[ss:ee], flux[ss:ee], ivar[ss:ee], linemask[ss:ee])
+            smooth_wave.append(smooth_wave1)
+            smooth_flux.append(smooth_flux1)
+            smoothcontinuum.append(smoothcontinuum1)
+        smooth_wave = np.hstack(smooth_wave)
+        smooth_flux = np.hstack(smooth_flux)
+        smoothcontinuum = np.hstack(smoothcontinuum)
 
         # Optional QA.
         if png:
@@ -240,7 +243,9 @@ class ContinuumTools(object):
 
             sns.set(context='talk', style='ticks', font_scale=0.7)
 
-            resid = flux - smooth_flux
+            srt = np.argsort(wave)
+
+            resid = flux - smoothcontinuum
             noise = np.ptp(quantile(resid[~linemask], (0.25, 0.75))) / 1.349 # robust sigma
 
             msk = ma.array(linemask)
@@ -263,15 +268,21 @@ class ContinuumTools(object):
                     label = None
                 ax[0].plot(wave[srt][clump] / 1e4, flux[srt][clump], alpha=0.3, lw=0.5,
                            color='blue', label=label)
-            ax[0].scatter(_smooth_wave / 1e4, _smooth_flux, edgecolor='k', color='orange',
+            ax[0].scatter(smooth_wave / 1e4, smooth_flux, edgecolor='k', color='orange',
                           marker='s', alpha=0.8, s=20, zorder=3,
                           label='Smooth Data')
-            ax[0].plot(wave[srt] / 1e4, smooth_flux[srt], color='red', zorder=4, ls='-',
-                       lw=2, alpha=0.6, label='Smooth Model')
+            for icam, (ss, ee) in enumerate(camerapix):
+                if icam == 0:
+                    label = 'Smooth Model'
+                else:
+                    label = None
+                ax[0].plot(wave[ss:ee] / 1e4, smoothcontinuum[ss:ee], color='red',
+                           zorder=4, ls='-', lw=2, alpha=0.6, label=label)
 
             ax[0].set_ylim(np.min((-5. * noise, quantile(flux, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
-            ax[0].set_ylabel('Continuum-subtracted Flux')
+            ax[0].set_ylabel('Continuum-subtracted Flux\n' + \
+                             r'$(10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
             leg = ax[0].legend(fontsize=10, loc='upper left')
             for line in leg.get_lines():
                 line.set_linewidth(2)
@@ -287,18 +298,19 @@ class ContinuumTools(object):
             ax[1].set_ylim(np.min((-5. * noise, quantile(resid, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(resid, 0.975))))
             ax[1].set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
-            ax[1].set_ylabel('Residual Flux')
+            ax[1].set_ylabel('Residual Flux\n' + r'$(10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
             #ax[1].legend(fontsize=10)
 
+            ax[0].set_title(f'Smooth Continuum: {uniqueid}')
             fig.tight_layout()
             fig.savefig(png)#, bbox_inches='tight')
             plt.close()
             log.info(f'Wrote {png}')
 
-        return smooth_flux
+        return smoothcontinuum
 
 
-    def continuum_fluxes(self, continuum):
+    def continuum_fluxes(self, continuum, debug_plots=False):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
@@ -1563,7 +1575,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
         linemask = np.hstack(data['linemask'])
         _smoothcontinuum = CTools.smooth_continuum(
-            specwave, residuals, specivar / median_apercorr**2, linemask,
+            specwave, residuals, specivar / median_apercorr**2,
+            linemask, uniqueid=data['uniqueid'],
             camerapix=data['camerapix'], png=png)
     log.info(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
 
@@ -1678,7 +1691,7 @@ def continuum_specfit(data, result, templates, igm, phot,
             redshift, data['dmodulus'], data['photsys'],
             CTools.ztemplatewave, sedmodel)
 
-        lums, cfluxes = CTools.continuum_fluxes(sedmodel)
+        lums, cfluxes = CTools.continuum_fluxes(sedmodel, debug_plots=debug_plots)
 
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
             band = band.upper()

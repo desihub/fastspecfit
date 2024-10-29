@@ -565,16 +565,22 @@ class LineMasker(object):
 
                 if ax.ndim == 1:
                     ulpos = ax[0].get_position()
+                    urpos = ax[-1].get_position()
                     llpos = ax[0].get_position()
                     lrpos = ax[-1].get_position()
                     dxlabel = 0.08
                     bottom = 0.14
+                    top = 0.92
+                    dytitle = 0.13
                 else:
                     ulpos = ax[0, 0].get_position()
+                    urpos = ax[0, -1].get_position()
                     llpos = ax[-1, 0].get_position()
                     lrpos = ax[-1, -1].get_position()
                     dxlabel = 0.07
                     bottom = 0.11
+                    top = 0.9
+                    dytitle = 0.06
 
                 xpos = (lrpos.x1 - llpos.x0) / 2. + llpos.x0
                 ypos = llpos.y0 - dxlabel
@@ -586,7 +592,11 @@ class LineMasker(object):
                 fig.text(xpos, ypos, r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
                          ha='center', va='center', rotation=90)
 
-                fig.subplots_adjust(left=0.08, right=0.97, bottom=bottom, top=0.92, wspace=0.23, hspace=0.3)
+                xpos = (urpos.x1 - ulpos.x0) / 2. + ulpos.x0
+                ypos = ulpos.y1 + dytitle
+                fig.text(xpos, ypos, f'Fit-in-Patches: {uniqueid}', ha='center', va='center')
+
+                fig.subplots_adjust(left=0.08, right=0.97, bottom=bottom, top=top, wspace=0.23, hspace=0.3)
 
                 if png:
                     fig.savefig(png, bbox_inches='tight')
@@ -768,10 +778,10 @@ class LineMasker(object):
                 urpos = ax[0, -1].get_position()
                 llpos = ax[-1, 0].get_position()
                 lrpos = ax[-1, -1].get_position()
-                top = 0.91
-                bottom = 0.03
-                dytitle = 0.07
-                dyxlabel = 0.17
+                top = 0.92
+                bottom = 0.1
+                dytitle = 0.06
+                dyxlabel = 0.04
 
             xpos = (lrpos.x1 - llpos.x0) / 2. + llpos.x0
             ypos = llpos.y0 - dyxlabel
