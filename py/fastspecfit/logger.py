@@ -12,4 +12,4 @@ This needs to be in its own file to prevent circular imports with other code.
 """
 from desiutil.log import get_logger, DEBUG
 
-log = get_logger(DEBUG)
+log = get_logger()

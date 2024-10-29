@@ -103,7 +103,8 @@ class ContinuumTools(object):
 
     @staticmethod
     def smooth_continuum(wave, flux, ivar, linemask, camerapix,
-                         smooth_window=75, smooth_step=125, png=None):
+                         smooth_window=75, smooth_step=125,
+                         nminpix=15, nmaskpix=10, png=None):
         """Build a smooth, nonparametric continuum spectrum.
 
         Parameters
@@ -152,8 +153,8 @@ class ContinuumTools(object):
         for s, e in camerapix:
             # Mask the 10 (presumably noisy) pixels from the edge
             # of each per-camera spectrum.
-            mask[s:s+10] = True
-            mask[e-10:e] = True
+            mask[s:s+nmaskpix] = True
+            mask[e-nmaskpix:e] = True
 
         srt = np.argsort(wave)
         swave = wave[srt]
@@ -171,8 +172,6 @@ class ContinuumTools(object):
         ivar_win = sliding_window_view(sivar, window_shape=smooth_window)
         nomask_win = sliding_window_view(np.logical_not(smask), window_shape=smooth_window)
 
-        nminpix = 15
-
         smooth_wave, smooth_flux, smooth_ivar = [], [], []
         for wwave, wflux, wivar, wnomask in zip(wave_win[::smooth_step],
                                                 flux_win[::smooth_step],
@@ -185,17 +184,16 @@ class ContinuumTools(object):
             if len(umflux) < nminpix:
                 continue
 
-            cflux, clo, chi = sigmaclip(umflux, low=2.0, high=2.0)
+            cflux, clo, chi = sigmaclip(umflux, low=2., high=2.)
             if len(cflux) < nminpix:
                 continue
 
             mn = median(cflux)  # robust estimate of mean
+            sig = np.std(cflux)  # robust estimate of sdev
 
             # One more check for crummy spectral regions.
-            if mn == 0.:
+            if mn == 0. or sig <= 0.:
                 continue
-
-            sig = np.std(cflux)  # robust estimate of sdev
 
             umwave = wwave[wnomask]
             smooth_wave.append(np.mean(umwave))
@@ -213,7 +211,7 @@ class ContinuumTools(object):
 
         # corner case for very wacky spectra
         if len(smooth_flux) == 0:
-            smooth_flux = flux
+            smooth_flux = np.zeros_like(flux)
         else:
             # remove duplicate wavelength values, if any
             _, uindx = np.unique(smooth_wave, return_index=True)
@@ -222,12 +220,14 @@ class ContinuumTools(object):
             # estimates local inverse stddev in each window
             # (i.e., how noisy the data is there) so that
             # variation is down-weighted in noisier regions
-            spl_flux = UnivariateSpline(smooth_wave[uindx],
-                                        smooth_flux[uindx],
-                                        w=smooth_ivar[uindx],
-                                        ext=3)
+            spl_flux = UnivariateSpline(
+                smooth_wave[uindx], smooth_flux[uindx],
+                w=smooth_ivar[uindx], ext=3)
 
-            smooth_flux = spl_flux(wave)
+            smooth_flux = []
+            for s, e in camerapix:
+                smooth_flux.append(spl_flux(wave[s:e]))
+            smooth_flux = np.hstack(smooth_flux)
 
         # very important!
         smooth_flux[(flux == 0.) & (ivar == 0.)] = 0.
@@ -238,43 +238,52 @@ class ContinuumTools(object):
             import matplotlib.pyplot as plt
             import seaborn as sns
 
-            resid = flux - smooth_flux
-            noise = np.ptp(quantile(resid[~linemask], (0.25, 0.75))) / 1.349 # robust sigma
-
             sns.set(context='talk', style='ticks', font_scale=0.7)
 
-            sw = np.argsort(wave)
+            resid = flux - smooth_flux
+            noise = np.ptp(quantile(resid[~linemask], (0.25, 0.75))) / 1.349 # robust sigma
 
             msk = ma.array(linemask)
             msk.mask = linemask
             clumps_masked = ma.clump_masked(msk)
             clumps_unmasked = ma.clump_unmasked(msk)
 
-            fig, ax = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
-            #for iclump, clump in enumerate(clumps_unmasked):
-            #    if iclump == 0:
-            #        label = 'Unmasked'
-            #    else:
-            #        label = None
-            #    ax[0].plot(wave[sw][clump] / 1e4, flux[sw][clump], alpha=0.75, color='red', label=label)
-            for iclump, clump in enumerate(clumps_masked):
+            fig, ax = plt.subplots(2, 1, figsize=(7, 7), sharex=True)
+            for iclump, clump in enumerate(clumps_unmasked):
                 if iclump == 0:
-                    label = 'Masked'
+                    label = 'Unmasked Flux'
                 else:
                     label = None
-                ax[0].plot(wave[sw][clump] / 1e4, flux[sw][clump], alpha=0.2, color='gray', label=label)
-            ax[0].plot(wave[sw] / 1e4, smooth_flux[sw], color='k', label='Smooth Continuum')
-            #ax[0].plot(_smooth_wave / 1e4, _smooth_flux, color='orange')
-            #ax[0].plot(wave, median_filter(flux, medbin, mode='nearest'), color='k', lw=2)
+                ax[0].plot(wave[srt][clump] / 1e4, flux[srt][clump], color='grey',
+                           alpha=0.5, lw=0.5, label=label)
+            for iclump, clump in enumerate(clumps_masked):
+                if iclump == 0:
+                    label = 'Masked Flux'
+                else:
+                    label = None
+                ax[0].plot(wave[srt][clump] / 1e4, flux[srt][clump], alpha=0.3, lw=0.5,
+                           color='blue', label=label)
+            ax[0].scatter(_smooth_wave / 1e4, _smooth_flux, edgecolor='k', color='orange',
+                          marker='s', alpha=0.8, s=20, zorder=3,
+                          label='Smooth Data')
+            ax[0].plot(wave[srt] / 1e4, smooth_flux[srt], color='red', zorder=4, ls='-',
+                       lw=2, alpha=0.6, label='Smooth Model')
 
             ax[0].set_ylim(np.min((-5. * noise, quantile(flux, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
             ax[0].set_ylabel('Continuum-subtracted Flux')
-            ax[0].scatter(_smooth_wave / 1e4, _smooth_flux, color='orange', marker='s', ls='-', s=20)
-            ax[0].legend(fontsize=12)
+            leg = ax[0].legend(fontsize=10, loc='upper left')
+            for line in leg.get_lines():
+                line.set_linewidth(2)
 
-            ax[1].plot(wave / 1e4, resid, alpha=0.75)#, label='Residuals')
-            ax[1].axhline(y=0, color='k')
+            #ax[1].plot(wave[srt] / 1e4, resid[srt], alpha=0.75, lw=0.5)
+            for iclump, clump in enumerate(clumps_unmasked):
+                ax[1].plot(wave[srt][clump] / 1e4, resid[srt][clump], color='grey',
+                           alpha=0.5, lw=0.5)
+            for iclump, clump in enumerate(clumps_masked):
+                ax[1].plot(wave[srt][clump] / 1e4, resid[srt][clump], alpha=0.3,
+                           lw=0.5, color='blue')
+            ax[1].axhline(y=0, color='k', ls='--', lw=2)
             ax[1].set_ylim(np.min((-5. * noise, quantile(resid, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(resid, 0.975))))
             ax[1].set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
@@ -285,8 +294,6 @@ class ContinuumTools(object):
             fig.savefig(png)#, bbox_inches='tight')
             plt.close()
             log.info(f'Wrote {png}')
-
-            import pdb ; pdb.set_trace()
 
         return smooth_flux
 
@@ -1559,7 +1566,6 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             specwave, residuals, specivar / median_apercorr**2, linemask,
             camerapix=data['camerapix'], png=png)
     log.info(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
-    import pdb ; pdb.set_trace()
 
     # Unpack the continuum into individual cameras.
     continuummodel, smoothcontinuum = [], []
