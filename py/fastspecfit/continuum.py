@@ -1584,12 +1584,13 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
     continuummodel, smoothcontinuum = [], []
     smoothstats = np.zeros(len(data['camerapix']))
     for icam, campix in enumerate(data['camerapix']):
-        s, e = campix
-        continuummodel.append(desimodel_nolines[s:e])
-        smoothcontinuum.append(_smoothcontinuum[s:e])
-        I = (desimodel_nolines[s:e] != 0.) * (_smoothcontinuum[s:e] != 0.)
+        ss, ee = campix
+        continuummodel.append(desimodel_nolines[ss:ee])
+        smoothcontinuum.append(_smoothcontinuum[ss:ee])
+        I = (specflux[ss:ee] != 0.) * (specivar[ss:ee] != 0.) * (_smoothcontinuum[ss:ee] != 0.)
+        #I = (desimodel_nolines[ss:ee] != 0.) * (_smoothcontinuum[ss:ee] != 0.)
         if np.count_nonzero(I) > 3:
-            corr = median(_smoothcontinuum[s:e][I] / desimodel_nolines[s:e][I])
+            corr = np.mean(1 - _smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
             smoothstats[icam] = corr
 
     return (coeff, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
