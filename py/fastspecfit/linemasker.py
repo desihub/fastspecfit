@@ -661,7 +661,7 @@ class LineMasker(object):
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_broad
             else:
                 log.info(f'Adopting narrow Balmer-line masking: S/N(broad Balmer) ' + \
-                         f'{maxsnrs_broad[2]:.1f} < {minsnr_balmer_broad:.1f}.')
+                         f'{maxsnrs_broad[2]:.1f} < {minsnr_balmer_broad:.1f}')
                 residuals = residuals_nobroad
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad

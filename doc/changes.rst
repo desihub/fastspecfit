@@ -5,6 +5,7 @@ Change Log
 3.0.0 (not released yet)
 ------------------------
 
+* Rewrite of the smooth continuum algorithm [`PR #186`_].
 * Miscellaneous bug fixes [`PR #185`_].
 * Use Numba-based Resolution implementation with faster multiply.
   Also tweak parameters of continuum least_squares optimizer for
@@ -20,6 +21,8 @@ Change Log
 .. _`PR #180`: https://github.com/desihub/fastspecfit/pull/180
 .. _`PR #181`: https://github.com/desihub/fastspecfit/pull/181
 .. _`PR #185`: https://github.com/desihub/fastspecfit/pull/185
+.. _`PR #186`: https://github.com/desihub/fastspecfit/pull/186
+
 
 2.5.2 (2024-04-28)
 ------------------
