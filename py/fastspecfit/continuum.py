@@ -310,29 +310,33 @@ class ContinuumTools(object):
         return smoothcontinuum
 
 
-    def continuum_fluxes(self, continuum, debug_plots=False):
+    def continuum_fluxes(self, continuum, uniqueid=0, width1=40., width2=75., png=None):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
-        from scipy.ndimage import median_filter
+        def _get_cflux(cwave, return_slope=False):
+            lo = np.searchsorted(templatewave, cwave - width1, 'right')
+            hi = np.searchsorted(templatewave, cwave + width1, 'left')
+            lo2 = np.searchsorted(templatewave, cwave - width2, 'right')
+            hi2 = np.searchsorted(templatewave, cwave + width2, 'left')
 
-        def get_cflux(cwave):
-            templatewave = self.templates.wave
-            lo = np.searchsorted(templatewave, cwave - 20., 'right')
-            hi = np.searchsorted(templatewave, cwave + 20., 'left')
+            slope, cflux = np.polyfit(np.hstack((templatewave[lo2:lo], templatewave[hi:hi2])) - cwave,
+                                      np.hstack((continuum[lo2:lo], continuum[hi:hi2])), 1)
 
-            ksize = 200
-            lo2 = np.maximum(0,              lo - ksize//2)
-            hi2 = np.minimum(len(continuum), hi + ksize//2)
-            smooth = median_filter(continuum[lo2:hi2], ksize)
+            #clipflux, _, _ = sigmaclip(np.hstack((continuum[lo2:lo], continuum[hi:hi2])), low=3., high=3.)
+            #cflux = median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
 
-            clipflux, _, _ = sigmaclip(smooth[lo-lo2:hi-lo2], low=1.5, high=3)
-            return median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
+            if return_slope:
+                return cflux, slope
+            else:
+                return cflux
 
         redshift = self.data['redshift']
         if redshift <= 0.0:
             log.warning('Input redshift not defined, zero, or negative!')
             return {}, {}
+
+        templatewave = self.templates.wave
 
         # compute the model continuum flux at 1500 and 2800 A (to facilitate UV
         # luminosity-based SFRs) and at the positions of strong nebular emission
@@ -341,10 +345,10 @@ class ContinuumTools(object):
         dfactor = (1. + redshift) * 4. * np.pi * (3.08567758e24 * dlum)**2 / FLUXNORM
 
         lums = {}
-        cwaves = (1500.0, 2800.0, 1450., 1700., 3000., 5100.)
-        labels = ('LOGLNU_1500', 'LOGLNU_2800', 'LOGL_1450', 'LOGL_1700', 'LOGL_3000', 'LOGL_5100')
-        for cwave, label in zip(cwaves, labels):
-            cflux = get_cflux(cwave) * dfactor # [monochromatic luminosity in erg/s/A]
+        lcwaves = (1500., 2800., 1450., 1700., 3000., 5100.)
+        llabels = ('LOGLNU_1500', 'LOGLNU_2800', 'LOGL_1450', 'LOGL_1700', 'LOGL_3000', 'LOGL_5100')
+        for cwave, label in zip(lcwaves, llabels):
+            cflux = _get_cflux(cwave) * dfactor # [monochromatic luminosity in erg/s/A]
 
             if 'LOGL_' in label:
                 norm = 1e10
@@ -360,10 +364,82 @@ class ContinuumTools(object):
                 lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
         cfluxes = {}
-        cwaves = (1215.67, 3728.483, 4862.683, 5008.239, 6564.613)
-        labels = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT')
-        for cwave, label in zip(cwaves, labels):
-            cfluxes[label] = get_cflux(cwave) # * u.erg/(u.second*u.cm**2*u.Angstrom)
+        fcwaves = (1215.67, 3728.48, 4862.71, 5008.24, 6564.6)
+        flabels = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT')
+        for cwave, label in zip(fcwaves, flabels):
+            cfluxes[label] = _get_cflux(cwave) # * u.erg/(u.second*u.cm**2*u.Angstrom)
+
+        # simple QA
+        if png:
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+
+            sns.set(context='talk', style='ticks', font_scale=0.6)
+
+            templatewave = self.templates.wave
+
+            labels = np.hstack((llabels, flabels))
+            cwaves = np.hstack((lcwaves, fcwaves))
+            ncwaves = len(cwaves)
+
+            kwidth = 500
+            ncols = 3
+            nrows = int(np.ceil(ncwaves / ncols))
+
+            fig, ax = plt.subplots(nrows, ncols, figsize=(3*ncols, 2*nrows))
+            for iwave, (cwave, label, xx) in enumerate(zip(cwaves, labels, ax.flat)):
+                lo = np.searchsorted(templatewave, cwave - width1, 'right')
+                hi = np.searchsorted(templatewave, cwave + width1, 'left')
+                lo2 = np.searchsorted(templatewave, cwave - width2, 'right')
+                hi2 = np.searchsorted(templatewave, cwave + width2, 'left')
+
+                cflux, slope = _get_cflux(cwave, return_slope=True)
+                xx.plot(templatewave[lo2-kwidth:hi2+kwidth] / 1e4, continuum[lo2-kwidth:hi2+kwidth])
+                xx.plot(templatewave[lo2:hi2] / 1e4, cflux + slope * (templatewave[lo2:hi2] - cwave),
+                        color='k', lw=2, ls='-')
+                xx.axvline(x=(cwave - width1)  / 1e4, lw=1, ls='--', color='k')
+                xx.axvline(x=(cwave + width1) / 1e4, lw=1, ls='--', color='k')
+                xx.axvline(x=(cwave - width2)  / 1e4, lw=1, ls='-', color='k')
+                xx.axvline(x=(cwave + width2) / 1e4, lw=1, ls='-', color='k')
+                xx.axhline(y=cflux, lw=2, ls='-', color='k')
+                xx.axvline(x=cwave, lw=2, ls='-', color='k')
+                xx.scatter([cwave / 1e4] * 2, [cflux] * 2, zorder=10, marker='s',
+                           color='red', edgecolor='k', s=70)
+                xx.set_xlim(templatewave[lo2-kwidth] / 1e4, templatewave[hi2+kwidth] / 1e4)
+                xx.set_ylim(min(continuum[lo2:hi2]) * 0.9, max(continuum[lo2:hi2]) * 1.1)
+                xx.text(0.05, 0.9, label, ha='left', va='center',
+                        transform=xx.transAxes, fontsize=8)
+
+            for rem in range(iwave+1, ncols*nrows):
+                ax.flat[rem].axis('off')
+
+            ulpos = ax[0, 0].get_position()
+            urpos = ax[0, -1].get_position()
+            llpos = ax[-1, 0].get_position()
+            lrpos = ax[-1, -1].get_position()
+            dxlabel = 0.07
+            bottom = 0.11
+            top = 0.9
+            dytitle = 0.06
+
+            xpos = (lrpos.x1 - llpos.x0) / 2. + llpos.x0
+            ypos = llpos.y0 - dxlabel
+            fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
+                     ha='center', va='center')
+
+            xpos = ulpos.x0 - 0.09
+            ypos = (ulpos.y1 - llpos.y0) / 2. + llpos.y0
+            fig.text(xpos, ypos, r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
+                     ha='center', va='center', rotation=90)
+
+            xpos = (urpos.x1 - ulpos.x0) / 2. + ulpos.x0
+            ypos = ulpos.y1 + dytitle
+            fig.text(xpos, ypos, f'Continuum Fluxes: {uniqueid}', ha='center', va='center')
+
+            fig.subplots_adjust(left=0.1, right=0.97, bottom=bottom, top=top, wspace=0.23, hspace=0.3)
+            fig.savefig(png)#, bbox_inches='tight')
+            plt.close()
+            import pdb ; pdb.set_trace()
 
         return lums, cfluxes
 
@@ -1194,7 +1270,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             msg.append(f'vdisp={vdisp:.0f} km/s.')
             log.info(', '.join(msg))
 
-    return coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel
+    return coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel, sedmodel_nolines
 
 
 def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
@@ -1595,7 +1671,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
     return (coeff, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
             ebv, ebvivar, vdisp, vdispivar, dn4000, dn4000_ivar, dn4000_model,
-            sedmodel, continuummodel, smoothcontinuum, smoothstats)
+            sedmodel, sedmodel_nolines, continuummodel, smoothcontinuum, smoothstats)
 
 
 def continuum_specfit(data, result, templates, igm, phot,
@@ -1645,13 +1721,13 @@ def continuum_specfit(data, result, templates, igm, phot,
 
     if fastphot:
         # Photometry-only fitting.
-        coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel = \
+        coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel, sedmodel_nolines = \
             continuum_fastphot(redshift, objflam, objflamivar, CTools,
                                debug_plots=debug_plots)
     else:
         (coeff, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
          ebv, ebvivar, vdisp, vdispivar, dn4000, dn4000_ivar, dn4000_model,
-         sedmodel, continuummodel, smoothcontinuum, smoothstats) = \
+         sedmodel, sedmodel_nolines, continuummodel, smoothcontinuum, smoothstats) = \
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
                                 debug_plots=debug_plots,
                                 no_smooth_continuum=no_smooth_continuum)
@@ -1665,7 +1741,7 @@ def continuum_specfit(data, result, templates, igm, phot,
         msg = ['Smooth continuum correction:']
         for cam, corr in zip(np.atleast_1d(data['cameras']), smoothstats):
             result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100. # [%]
-            msg.append(f'{cam}={corr:.3f}%')
+            msg.append(f'{cam}={100.*corr:.3f}%')
         log.info(' '.join(msg))
 
     result['Z'] = redshift
@@ -1692,7 +1768,11 @@ def continuum_specfit(data, result, templates, igm, phot,
             redshift, data['dmodulus'], data['photsys'],
             CTools.ztemplatewave, sedmodel)
 
-        lums, cfluxes = CTools.continuum_fluxes(sedmodel, debug_plots=debug_plots)
+        if debug_plots:
+            png = f'qa-continuum-fluxes-{data["uniqueid"]}.png'
+        else:
+            png = None
+        lums, cfluxes = CTools.continuum_fluxes(sedmodel_nolines, uniqueid=data['uniqueid'], png=png)
 
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
             band = band.upper()
