@@ -92,6 +92,7 @@ class Templates(object):
         self.wave = templatewave[keeplo:keephi]
         self.flux = templateflux[keeplo:keephi, :]
         self.flux_nolines = self.flux - templatelineflux[keeplo:keephi, :]
+        self.npix = len(self.wave)
 
         # dust attenuation curve
         self.dust_klambda = Templates.klambda(self.wave)
