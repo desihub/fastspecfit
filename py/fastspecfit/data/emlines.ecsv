@@ -36,7 +36,7 @@ name restwave patch isbalmer ishelium isbroad isstrong nicename plotgroup
        civ_1549   1549.06      d   False  False True   True  CIV-$\lambda$1549+HeII-$\lambda$1640                         civ_1549_heii_1640
       heii_1640   1640.42      e   False  True  True   False CIV-$\lambda$1549+HeII-$\lambda$1640                         civ_1549_heii_1640
      aliii_1857   1857.40      f   False  False True   False AlIII-$\lambda$1857+SiIII]-$\lambda$1892+CIII]-$\lambda$1908 aliii_1857_siliii_1892_ciii_1908
-    siliii_1892   1892.03      f   False  False True   False AlIII-$\lambda$1857+SiIII]-$\lambda$1892+CIII]-$\lambda$1908 aliii_1857_siliii_1892_ciii_1908
+    siliii_1892   1892.03      f   False  False True   True  AlIII-$\lambda$1857+SiIII]-$\lambda$1892+CIII]-$\lambda$1908 aliii_1857_siliii_1892_ciii_1908
       ciii_1908   1908.73      f   False  False True   True  AlIII-$\lambda$1857+SiIII]-$\lambda$1892+CIII]-$\lambda$1908 aliii_1857_siliii_1892_ciii_1908
       mgii_2796   2796.352     g   False  False True   True  MgII-$\lambda\lambda$2796,2803                               mgii_2796_2803
       mgii_2803   2803.530     g   False  False True   True  MgII-$\lambda\lambda$2796,2803                               mgii_2796_2803

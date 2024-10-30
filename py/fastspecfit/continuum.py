@@ -102,8 +102,10 @@ class ContinuumTools(object):
 
 
     @staticmethod
-    def smooth_continuum(wave, flux, ivar, linemask, camerapix=None, medbin=175,
-                         smooth_window=75, smooth_step=125, png=None):
+    def smooth_continuum(wave, flux, ivar, linemask, camerapix,
+                         uniqueid=0, smooth_window=75, smooth_step=125,
+                         clip_sigma=2., nminpix=15, nmaskpix=9,
+                         png=None):
         """Build a smooth, nonparametric continuum spectrum.
 
         Parameters
@@ -118,8 +120,6 @@ class ContinuumTools(object):
            Boolean mask with the same number of pixels as `wave` where `True`
            means a pixel is (possibly) affected by an emission line
            (specifically a strong line which likely cannot be median-smoothed).
-        medbin : :class:`int`, optional, defaults to 150 pixels
-           Width of the median-smoothing kernel in pixels; a magic number.
         smooth_window : :class:`int`, optional, defaults to 50 pixels
            Width of the sliding window used to compute the iteratively clipped
            statistics (mean, median, sigma); a magic number. Note: the nominal
@@ -127,7 +127,7 @@ class ContinuumTools(object):
            (3600-9800 A) corresponds to pixels that are 66-24 km/s. So
            `smooth_window` of 50 corresponds to 3300-1200 km/s, which is
            conservative for all but the broadest lines. A magic number.
-           smooth_step : :class:`int`, optional, defaults to 10 pixels
+        smooth_step : :class:`int`, optional, defaults to 10 pixels
            Width of the step size when computing smoothed statistics; a magic
            number.
         png : :class:`str`, optional, defaults to `None`
@@ -135,173 +135,222 @@ class ContinuumTools(object):
 
         Returns
         -------
-        smooth :class:`numpy.ndarray` [npix]
+        smooth_flux :class:`numpy.ndarray` [npix]
         Smooth continuum spectrum which can be subtracted from `flux` in
         order to create a pure emission-line spectrum.
 
         """
         from numpy.lib.stride_tricks import sliding_window_view
         from scipy.ndimage import median_filter
-        from scipy.interpolate import make_interp_spline
+        from scipy.interpolate import UnivariateSpline
 
         npix = len(wave)
-
         if len(linemask) != npix:
             errmsg = 'Linemask must have the same number of pixels as the input spectrum.'
             log.critical(errmsg)
             raise ValueError(errmsg)
 
-        # If camerapix is given, mask the 10 (presumably noisy) pixels from the edge
-        # of each per-camera spectrum.
-        if camerapix is not None:
-            for campix in camerapix:
-                ivar[campix[0]:campix[0]+10] = 0.
-                ivar[campix[1]-10:campix[1]] = 0.
 
-        # Build the smooth (line-free) continuum by computing statistics in a
-        # sliding window, accounting for masked pixels and trying to be smart
-        # about broad lines. See:
-        #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
-        #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
-        wave_win = sliding_window_view(wave, window_shape=smooth_window)
-        flux_win = sliding_window_view(flux, window_shape=smooth_window)
-        ivar_win = sliding_window_view(ivar, window_shape=smooth_window)
-        noline_win = sliding_window_view(np.logical_not(linemask), window_shape=smooth_window)
+        def smooth_percamera(camwave, camflux, camivar, camlinemask):
 
-        nminpix = 15
+            # Mask nmaskpix (presumably noisy) pixels from the edge
+            # of each per-camera spectrum.
+            cammask = (camlinemask | (camivar <= 0.))
+            cammask[:nmaskpix] = True
+            cammask[-nmaskpix:] = True
 
-        smooth_wave, smooth_flux, smooth_sigma = [], [], []
-        for swave, sflux, sivar, noline in zip(wave_win[::smooth_step],
-                                               flux_win[::smooth_step],
-                                               ivar_win[::smooth_step],
-                                               noline_win[::smooth_step]):
+            # Build the smooth (line-free) continuum by computing statistics in a
+            # sliding window, accounting for masked pixels and trying to be smart
+            # about broad lines. See:
+            #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
+            #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
+            wave_win = sliding_window_view(camwave, window_shape=smooth_window)
+            flux_win = sliding_window_view(camflux, window_shape=smooth_window)
+            ivar_win = sliding_window_view(camivar, window_shape=smooth_window)
+            nomask_win = sliding_window_view(np.logical_not(cammask), window_shape=smooth_window)
 
-            # if there are fewer than XX good pixels after accounting for the
-            # line-mask, skip this window.
-            sflux = sflux[noline]
-            if len(sflux) < nminpix:
-                continue
+            swave, sflux, sisig = [], [], []
+            for wwave, wflux, wivar, wnomask in zip(
+                    wave_win[::smooth_step], flux_win[::smooth_step],
+                    ivar_win[::smooth_step], nomask_win[::smooth_step]):
 
-            cflux, clo, chi = sigmaclip(sflux, low=2.0, high=2.0)
-            if len(cflux) < nminpix:
-                continue
+                # If there are fewer than nminpix good pixels after all
+                # masking, discard the window.
+                umflux = wflux[wnomask]
+                if len(umflux) < nminpix:
+                    continue
 
-            sivar = sivar[noline]
-            # Toss out regions with too little good data.
-            if np.sum(sivar > 0) < nminpix:
-                continue
+                cflux, _ = sigmaclip(umflux, low=clip_sigma, high=clip_sigma)
+                if len(cflux) < nminpix:
+                    continue
 
-            sig = np.std(cflux) # simple median and sigma
-            mn = median(cflux)
+                mn, clo, chi = quantile(cflux, (0.5, 0.25, 0.75)) # robust stats
+                sig = (chi - clo) / 1.349 # robust sigma
 
-            # One more check for crummy spectral regions.
-            if mn == 0.0:
-                continue
+                # One more check for crummy spectral regions.
+                if mn == 0. or sig <= 0.:
+                    continue
 
-            swave = swave[noline]
-            I = ((sflux >= clo) & (sflux <= chi))
-            smooth_wave.append(np.mean(swave[I]))
+                umwave = wwave[wnomask]
+                swave.append(np.mean(umwave))
+                sflux.append(mn)
+                sisig.append(1./sig) # inverse sigma
 
-            smooth_sigma.append(sig)
-            smooth_flux.append(mn)
+            swave = np.array(swave)
+            sflux = np.array(sflux)
+            sisig = np.array(sisig)
 
-        smooth_wave = np.array(smooth_wave)
-        smooth_sigma = np.array(smooth_sigma)
-        smooth_flux = np.array(smooth_flux)
+            # corner case for very wacky spectra
+            if len(sflux) == 0:
+                smoothflux = np.zeros_like(camflux)
+            else:
+                # remove duplicate wavelength values, which should never
+                # happen...
+                _, uindx = np.unique(swave, return_index=True)
+                swave = swave[uindx]
+                sflux = sflux[uindx]
+                sisig = sisig[uindx]
 
-        # For debugging.
-        if png:
-            _smooth_wave = smooth_wave.copy()
-            _smooth_flux = smooth_flux.copy()
+                # We supply estimates local inverse stddev in each window
+                # (i.e., how noisy the data is there) so that variation is
+                # down-weighted in noisier regions.
+                spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3)
 
-        # corner case for very wacky spectra
-        if len(smooth_flux) == 0:
-            smooth_flux = flux
-            #smooth_sigma = flux * 0 + np.std(flux)
-        else:
-            #smooth_flux = np.interp(wave, smooth_wave, smooth_flux)
-            #smooth_sigma = np.interp(wave, smooth_wave, smooth_sigma)
-            _, uindx = np.unique(smooth_wave, return_index=True)
-            srt = np.argsort(smooth_wave[uindx])
-            bspl_flux = make_interp_spline(smooth_wave[uindx][srt], smooth_flux[uindx][srt], k=1)
-            smooth_flux = bspl_flux(wave)
+                # evaluate on the original wavelength vector
+                smoothflux = spl_flux(camwave)
 
-            # check for extrapolation
-            blu = np.where(wave < np.min(smooth_wave[srt]))[0]
-            red = np.where(wave > np.max(smooth_wave[srt]))[0]
-            if len(blu) > 0:
-                smooth_flux[:blu[-1]] = smooth_flux[blu[-1]]
-            if len(red) > 0:
-                smooth_flux[red[0]:] = smooth_flux[red[0]]
+            # very important!
+            smoothflux[(camflux == 0.) & (camivar == 0.)] = 0.
 
-        smooth = median_filter(smooth_flux, medbin, mode='nearest')
+            return swave, sflux, smoothflux
 
-        # very important!
-        Z = (flux == 0.0) * (ivar == 0.0)
-        if np.sum(Z) > 0:
-            smooth[Z] = 0.0
+        smooth_wave, smooth_flux, smoothcontinuum = [], [], []
+        for ss, ee in camerapix:
+            smooth_wave1, smooth_flux1, smoothcontinuum1 = smooth_percamera(
+                wave[ss:ee], flux[ss:ee], ivar[ss:ee], linemask[ss:ee])
+            smooth_wave.append(smooth_wave1)
+            smooth_flux.append(smooth_flux1)
+            smoothcontinuum.append(smoothcontinuum1)
+        smooth_wave = np.hstack(smooth_wave)
+        smooth_flux = np.hstack(smooth_flux)
+        smoothcontinuum = np.hstack(smoothcontinuum)
 
         # Optional QA.
         if png:
+            import numpy.ma as ma
             import matplotlib.pyplot as plt
             import seaborn as sns
 
-            resid = flux - smooth
+            sns.set(context='talk', style='ticks', font_scale=0.7)
+
+            srt = np.argsort(wave)
+
+            resid = flux - smoothcontinuum
             noise = np.ptp(quantile(resid[~linemask], (0.25, 0.75))) / 1.349 # robust sigma
 
-            sns.set(context='talk', style='ticks', font_scale=0.8)
+            msk = ma.array(linemask)
+            msk.mask = linemask
+            clumps_masked = ma.clump_masked(msk)
+            clumps_unmasked = ma.clump_unmasked(msk)
 
-            fig, ax = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
-            ax[0].plot(wave / 1e4, flux, alpha=0.75, label='Data')
-            ax[0].scatter(wave[linemask] / 1e4, flux[linemask], s=10, marker='s',
-                          color='k', zorder=2, alpha=0.5, label='Line-masked pixel')
-            ax[0].plot(wave / 1e4, smooth, color='red', label='Smooth continuum')
-            #ax[0].plot(_smooth_wave / 1e4, _smooth_flux, color='orange')
-            #ax[0].plot(wave, median_filter(flux, medbin, mode='nearest'), color='k', lw=2)
+            fig, ax = plt.subplots(2, 1, figsize=(7, 7), sharex=True)
+            for iclump, clump in enumerate(clumps_unmasked):
+                if iclump == 0:
+                    label = 'Unmasked Flux'
+                else:
+                    label = None
+                ax[0].plot(wave[srt][clump] / 1e4, flux[srt][clump], color='grey',
+                           alpha=0.5, lw=0.5, label=label)
+            for iclump, clump in enumerate(clumps_masked):
+                if iclump == 0:
+                    label = 'Masked Flux'
+                else:
+                    label = None
+                ax[0].plot(wave[srt][clump] / 1e4, flux[srt][clump], alpha=0.3, lw=0.5,
+                           color='blue', label=label)
+            ax[0].scatter(smooth_wave / 1e4, smooth_flux, edgecolor='k', color='orange',
+                          marker='s', alpha=0.8, s=20, zorder=3,
+                          label='Smooth Data')
+            for icam, (ss, ee) in enumerate(camerapix):
+                if icam == 0:
+                    label = 'Smooth Model'
+                else:
+                    label = None
+                ax[0].plot(wave[ss:ee] / 1e4, smoothcontinuum[ss:ee], color='red',
+                           zorder=4, ls='-', lw=2, alpha=0.6, label=label)
+
             ax[0].set_ylim(np.min((-5. * noise, quantile(flux, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
-            ax[0].set_ylabel('Continuum-subtracted Spectrum')
-            #ax[0].scatter(_smooth_wave, _smooth_flux, color='orange', marker='s', ls='-', s=20)
-            ax[0].legend(fontsize=12)
+            ax[0].set_ylabel('Continuum-subtracted Flux\n' + \
+                             r'$(10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
+            leg = ax[0].legend(fontsize=10, loc='upper left')
+            for line in leg.get_lines():
+                line.set_linewidth(2)
 
-            ax[1].plot(wave / 1e4, resid, alpha=0.75)#, label='Residuals')
-            ax[1].axhline(y=0, color='k')
+            #ax[1].plot(wave[srt] / 1e4, resid[srt], alpha=0.75, lw=0.5)
+            for iclump, clump in enumerate(clumps_unmasked):
+                ax[1].plot(wave[srt][clump] / 1e4, resid[srt][clump], color='grey',
+                           alpha=0.5, lw=0.5)
+            for iclump, clump in enumerate(clumps_masked):
+                ax[1].plot(wave[srt][clump] / 1e4, resid[srt][clump], alpha=0.3,
+                           lw=0.5, color='blue')
+            ax[1].axhline(y=0, color='k', ls='--', lw=2)
             ax[1].set_ylim(np.min((-5. * noise, quantile(resid, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(resid, 0.975))))
             ax[1].set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
-            ax[1].set_ylabel('Residual Spectrum')
+            ax[1].set_ylabel('Residual Flux\n' + r'$(10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
             #ax[1].legend(fontsize=10)
 
+            ax[0].set_title(f'Smooth Continuum: {uniqueid}')
             fig.tight_layout()
             fig.savefig(png)#, bbox_inches='tight')
             plt.close()
+            log.info(f'Wrote {png}')
 
-        return smooth
+        return smoothcontinuum
 
 
-    def continuum_fluxes(self, continuum):
+    def continuum_fluxes(self, continuum, uniqueid=0, width1=50., width2=100., png=None):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
-        from scipy.ndimage import median_filter
+        def _get_cflux(cwave, linear_fit=False, siglo=2., sighi=2.,
+                       ignore_core=False, return_slope=False):
+            # continuum flux in 10**-17 erg/s/cm2/A
 
-        def get_cflux(cwave):
-            templatewave = self.templates.wave
-            lo = np.searchsorted(templatewave, cwave - 20., 'right')
-            hi = np.searchsorted(templatewave, cwave + 20., 'left')
+            lo = np.searchsorted(templatewave, cwave - width1, 'right')
+            hi = np.searchsorted(templatewave, cwave + width1, 'left')
+            lo2 = np.searchsorted(templatewave, cwave - width2, 'right')
+            hi2 = np.searchsorted(templatewave, cwave + width2, 'left')
 
-            ksize = 200
-            lo2 = np.maximum(0,              lo - ksize//2)
-            hi2 = np.minimum(len(continuum), hi + ksize//2)
-            smooth = median_filter(continuum[lo2:hi2], ksize)
+            if ignore_core:
+                ylo, lomask = sigmaclip(continuum[lo2:lo], low=siglo, high=sighi)
+                yhi, himask = sigmaclip(continuum[hi:hi2], low=siglo, high=sighi)
+                xlo = templatewave[lo2:lo][lomask]
+                xhi = templatewave[hi:hi2][himask]
+                xfit = np.hstack((xlo, xhi))
+                yfit = np.hstack((ylo, yhi))
+            else:
+                yfit, mask = sigmaclip(continuum[lo2:hi2], low=siglo, high=sighi)
+                xfit = templatewave[lo2:hi2][mask]
 
-            clipflux, _, _ = sigmaclip(smooth[lo-lo2:hi-lo2], low=1.5, high=3)
-            return median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
+            if linear_fit:
+                slope, cflux = np.polyfit(xfit - cwave, yfit, 1)
+            else:
+                slope = None
+                cflux = median(yfit)
+
+            if return_slope:
+                return cflux, slope
+            else:
+                return cflux
 
         redshift = self.data['redshift']
         if redshift <= 0.0:
             log.warning('Input redshift not defined, zero, or negative!')
             return {}, {}
+
+        templatewave = self.templates.wave
 
         # compute the model continuum flux at 1500 and 2800 A (to facilitate UV
         # luminosity-based SFRs) and at the positions of strong nebular emission
@@ -310,10 +359,10 @@ class ContinuumTools(object):
         dfactor = (1. + redshift) * 4. * np.pi * (3.08567758e24 * dlum)**2 / FLUXNORM
 
         lums = {}
-        cwaves = (1500.0, 2800.0, 1450., 1700., 3000., 5100.)
-        labels = ('LOGLNU_1500', 'LOGLNU_2800', 'LOGL_1450', 'LOGL_1700', 'LOGL_3000', 'LOGL_5100')
-        for cwave, label in zip(cwaves, labels):
-            cflux = get_cflux(cwave) * dfactor # [monochromatic luminosity in erg/s/A]
+        lcwaves = (1450., 1500., 1700., 2800., 3000., 5100.)
+        llabels = ('LOGL_1450', 'LOGLNU_1500', 'LOGL_1700', 'LOGLNU_2800', 'LOGL_3000', 'LOGL_5100')
+        for cwave, label in zip(lcwaves, llabels):
+            cflux = _get_cflux(cwave, linear_fit=True) * dfactor # [monochromatic luminosity in erg/s/A]
 
             if 'LOGL_' in label:
                 norm = 1e10
@@ -329,10 +378,94 @@ class ContinuumTools(object):
                 lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
         cfluxes = {}
-        cwaves = (1215.67, 3728.483, 4862.683, 5008.239, 6564.613)
-        labels = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT')
-        for cwave, label in zip(cwaves, labels):
-            cfluxes[label] = get_cflux(cwave) # * u.erg/(u.second*u.cm**2*u.Angstrom)
+        fcwaves = (1215.67, 3728.48, 4862.71, 5008.24, 6564.6)
+        flabels = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT')
+        for cwave, label in zip(fcwaves, flabels):
+            if 'FLYA' in label or 'FHBETA' in label or 'FHALPHA' in label:
+                ignore_core = True
+            else:
+                ignore_core = False
+            cfluxes[label] = _get_cflux(cwave, linear_fit=True, ignore_core=ignore_core)
+
+        # simple QA
+        if png:
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+
+            sns.set(context='talk', style='ticks', font_scale=0.6)
+
+            templatewave = self.templates.wave
+
+            labels = np.hstack((llabels, flabels))
+            cwaves = np.hstack((lcwaves, fcwaves))
+            #linear_fits = np.hstack(([True] * len(lcwaves), [False] * len(fcwaves)))
+            linear_fits = [True] * len(labels)
+            ncwaves = len(cwaves)
+
+            ncols = 3
+            nrows = int(np.ceil(ncwaves / ncols))
+
+            fig, ax = plt.subplots(nrows, ncols, figsize=(3*ncols, 2*nrows))
+            for iwave, (cwave, label, linear_fit, xx) in enumerate(zip(cwaves, labels, linear_fits, ax.flat)):
+                lo = np.searchsorted(templatewave, cwave - width1, 'right')
+                hi = np.searchsorted(templatewave, cwave + width1, 'left')
+                lo2 = np.searchsorted(templatewave, cwave - width2, 'right')
+                hi2 = np.searchsorted(templatewave, cwave + width2, 'left')
+                lo3 = np.searchsorted(templatewave, cwave - 300., 'right')
+                hi3 = np.searchsorted(templatewave, cwave + 300., 'left')
+
+                if 'FLYA' in label or 'FHBETA' in label or 'FHALPHA' in label:
+                    ignore_core = True
+                else:
+                    ignore_core = False
+                cflux, slope = _get_cflux(cwave, linear_fit=linear_fit, return_slope=True, ignore_core=ignore_core)
+
+                xx.plot(templatewave[lo3:hi3] / 1e4, continuum[lo3:hi3])
+                if slope is not None:
+                    xx.plot(templatewave[lo2:hi2] / 1e4, cflux + slope * (templatewave[lo2:hi2] - cwave),
+                            color='k', lw=2, ls='-')
+                xx.axvline(x=(cwave - width1)  / 1e4, lw=1, ls='--', color='k')
+                xx.axvline(x=(cwave + width1) / 1e4, lw=1, ls='--', color='k')
+                xx.axvline(x=(cwave - width2)  / 1e4, lw=1, ls='-', color='k')
+                xx.axvline(x=(cwave + width2) / 1e4, lw=1, ls='-', color='k')
+                xx.axhline(y=cflux, lw=2, ls='-', color='k')
+                xx.axvline(x=cwave, lw=2, ls='-', color='k')
+                xx.scatter([cwave / 1e4] * 2, [cflux] * 2, zorder=10, marker='s',
+                           color='red', edgecolor='k', s=70)
+                xx.set_xlim(templatewave[lo3] / 1e4, templatewave[hi3] / 1e4)
+                xx.set_ylim(min(continuum[lo2:hi2]) * 0.9, max(continuum[lo2:hi2]) * 1.1)
+                xx.text(0.05, 0.9, label, ha='left', va='center',
+                        transform=xx.transAxes, fontsize=8)
+
+            for rem in range(iwave+1, ncols*nrows):
+                ax.flat[rem].axis('off')
+
+            ulpos = ax[0, 0].get_position()
+            urpos = ax[0, -1].get_position()
+            llpos = ax[-1, 0].get_position()
+            lrpos = ax[-1, -1].get_position()
+            dxlabel = 0.07
+            bottom = 0.11
+            top = 0.9
+            dytitle = 0.06
+
+            xpos = (lrpos.x1 - llpos.x0) / 2. + llpos.x0
+            ypos = llpos.y0 - dxlabel
+            fig.text(xpos, ypos, r'Observed-frame Wavelength ($\mu$m)',
+                     ha='center', va='center')
+
+            xpos = ulpos.x0 - 0.09
+            ypos = (ulpos.y1 - llpos.y0) / 2. + llpos.y0
+            fig.text(xpos, ypos, r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$',
+                     ha='center', va='center', rotation=90)
+
+            xpos = (urpos.x1 - ulpos.x0) / 2. + ulpos.x0
+            ypos = ulpos.y1 + dytitle
+            fig.text(xpos, ypos, f'Continuum Fluxes: {uniqueid}', ha='center', va='center')
+
+            fig.subplots_adjust(left=0.1, right=0.97, bottom=bottom, top=top, wspace=0.23, hspace=0.3)
+            fig.savefig(png)#, bbox_inches='tight')
+            plt.close()
 
         return lums, cfluxes
 
@@ -968,7 +1101,7 @@ class ContinuumTools(object):
 
         coeff_bounds = (0., 1e5)
 
-        if fit_vdisp == True:
+        if fit_vdisp:
             initial_guesses = np.array((ebv_guess, vdisp_guess))
             bounds = [ebv_bounds, vdisp_bounds]
         else:
@@ -1156,16 +1289,14 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             dn4000_model, _ = Photometry.get_dn4000(
                 templates.wave, sedmodel_nolines, rest=True)
 
-            if templates.use_legacy_fitting:
-                log.info(f'Model Dn(4000)={dn4000_model:.3f}, vdisp={vdisp:.0f} km/s.')
-            else:
-                if ebvivar > 0.:
-                    log.info(f'Model Dn(4000)={dn4000_model:.3f}, E(B-V)={ebv:.3f}+/-' + \
-                             f'{1./np.sqrt(ebvivar):.3f} mag, vdisp={vdisp:.0f} km/s.')
-                else:
-                    log.info(f'Model Dn(4000)={dn4000_model:.3f}, E(B-V)={ebv:.3f}, vdisp={vdisp:.0f} km/s.')
+            msg = [f'Model Dn(4000)={dn4000_model:.3f}']
+            if not templates.use_legacy_fitting:
+                var_msg = f'+/-{1./np.sqrt(ebvivar):.3f}' if ebvivar > 0. else ''
+                msg.append(f'E(B-V)={ebv:.3f}{var_msg} mag')
+            msg.append(f'vdisp={vdisp:.0f} km/s.')
+            log.info(', '.join(msg))
 
-    return coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel
+    return coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel, sedmodel_nolines
 
 
 def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
@@ -1497,16 +1628,15 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             vdispivar = 0.
             ebvivar = 0.
         else:
-            if compute_vdisp:
-                if ebvivar > 0. and vdispivar > 0.:
-                    log.info(f'E(B-V)={ebv:.3f}+/-{1./np.sqrt(ebvivar)} mag, vdisp={vdisp:.1f}+/-{1./np.sqrt(vdispivar):.1f} km/s.')
-                else:
-                    log.info(f'E(B-V)={ebv:.3f} mag, vdisp={vdisp:.0f} km/s.')
+            var_msg = f'+/-{1./np.sqrt(ebvivar)}' if ebvivar > 0. else ''
+            ebv_msg = f'E(B-V)={ebv:.3f}{var_msg} mag'
+
+            if compute_vdisp and vdispivar > 0.:
+                vdisp_msg = f'vdisp={vdisp:.1f}+/-{1./np.sqrt(vdispivar):.1f} km/s'
             else:
-                if ebvivar > 0.:
-                    log.info(f'E(B-V)={ebv:.3f}+/-{1./np.sqrt(ebvivar)} mag, vdisp={vdisp:.0f} km/s.')
-                else:
-                    log.info(f'E(B-V)={ebv:.3f} mag, vdisp={vdisp:.0f} km/s.')
+                vdisp_msg = f'vdisp={vdisp:.0f} km/s'
+
+            log.info(f'{ebv_msg}, {vdisp_msg}.')
 
             # get the best-fitting model with and without line-emission
             sedmodel = CTools.optimizer_saved_contmodel
@@ -1524,11 +1654,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         specwave, specflux, flam_ivar=specivar_nolinemask,
         redshift=redshift, rest=False)
 
-    if dn4000_ivar > 0.:
-        log.info(f'Spectroscopic DN(4000)={dn4000:.3f}+/-{1./np.sqrt(dn4000_ivar):.3f}, ' + \
-                 f'model Dn(4000)={dn4000_model:.3f}')
-    else:
-        log.info(f'Spectroscopic DN(4000)={dn4000:.3f}, model Dn(4000)={dn4000_model:.3f}')
+    var_msg = f'+/-{1./np.sqrt(dn4000_ivar):.3f}' if dn4000_ivar > 0. else ''
+    msg = [f'Spectroscopic DN(4000)={dn4000:.3f}{var_msg}']
+    msg.append(f'model Dn(4000)={dn4000_model:.3f}')
+    log.info(', '.join(msg))
 
     # Get the smooth continuum.
     t0 = time.time()
@@ -1548,7 +1677,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
         linemask = np.hstack(data['linemask'])
         _smoothcontinuum = CTools.smooth_continuum(
-            specwave, residuals, specivar / median_apercorr**2, linemask,
+            specwave, residuals, specivar / median_apercorr**2,
+            linemask, uniqueid=data['uniqueid'],
             camerapix=data['camerapix'], png=png)
     log.info(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
 
@@ -1556,17 +1686,18 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
     continuummodel, smoothcontinuum = [], []
     smoothstats = np.zeros(len(data['camerapix']))
     for icam, campix in enumerate(data['camerapix']):
-        s, e = campix
-        continuummodel.append(desimodel_nolines[s:e])
-        smoothcontinuum.append(_smoothcontinuum[s:e])
-        I = (desimodel_nolines[s:e] != 0.) * (_smoothcontinuum[s:e] != 0.)
+        ss, ee = campix
+        continuummodel.append(desimodel_nolines[ss:ee])
+        smoothcontinuum.append(_smoothcontinuum[ss:ee])
+        I = (specflux[ss:ee] != 0.) * (specivar[ss:ee] != 0.) * (_smoothcontinuum[ss:ee] != 0.)
+        #I = (desimodel_nolines[ss:ee] != 0.) * (_smoothcontinuum[ss:ee] != 0.)
         if np.count_nonzero(I) > 3:
-            corr = median(_smoothcontinuum[s:e][I] / desimodel_nolines[s:e][I])
+            corr = np.mean(1 - _smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
             smoothstats[icam] = corr
 
     return (coeff, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
             ebv, ebvivar, vdisp, vdispivar, dn4000, dn4000_ivar, dn4000_model,
-            sedmodel, continuummodel, smoothcontinuum, smoothstats)
+            sedmodel, sedmodel_nolines, continuummodel, smoothcontinuum, smoothstats)
 
 
 def continuum_specfit(data, result, templates, igm, phot,
@@ -1616,13 +1747,13 @@ def continuum_specfit(data, result, templates, igm, phot,
 
     if fastphot:
         # Photometry-only fitting.
-        coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel = \
+        coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel, sedmodel_nolines = \
             continuum_fastphot(redshift, objflam, objflamivar, CTools,
                                debug_plots=debug_plots)
     else:
         (coeff, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
          ebv, ebvivar, vdisp, vdispivar, dn4000, dn4000_ivar, dn4000_model,
-         sedmodel, continuummodel, smoothcontinuum, smoothstats) = \
+         sedmodel, sedmodel_nolines, continuummodel, smoothcontinuum, smoothstats) = \
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
                                 debug_plots=debug_plots,
                                 no_smooth_continuum=no_smooth_continuum)
@@ -1633,11 +1764,11 @@ def continuum_specfit(data, result, templates, igm, phot,
         for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
             result[f'SNR_{cam.upper()}'] = data['snr'][icam]
 
-        msg = 'Smooth continuum correction: '
+        msg = ['Smooth continuum correction:']
         for cam, corr in zip(np.atleast_1d(data['cameras']), smoothstats):
             result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100. # [%]
-            msg += f'{cam}={corr:.3f}% '
-        log.info(msg)
+            msg.append(f'{cam}={100.*corr:.3f}%')
+        log.info(' '.join(msg))
 
     result['Z'] = redshift
     result['COEFF'][CTools.agekeep] = coeff
@@ -1663,7 +1794,11 @@ def continuum_specfit(data, result, templates, igm, phot,
             redshift, data['dmodulus'], data['photsys'],
             CTools.ztemplatewave, sedmodel)
 
-        lums, cfluxes = CTools.continuum_fluxes(sedmodel)
+        if debug_plots:
+            png = f'qa-continuum-fluxes-{data["uniqueid"]}.png'
+        else:
+            png = None
+        lums, cfluxes = CTools.continuum_fluxes(sedmodel_nolines, uniqueid=data['uniqueid'], png=png)
 
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
             band = band.upper()

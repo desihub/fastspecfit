@@ -99,9 +99,9 @@ Name                         Type         Units                         Descript
                        SNR_B      float32                               Median signal-to-noise ratio per pixel in *b* camera.
                        SNR_R      float32                               Median signal-to-noise ratio per pixel in *r* camera.
                        SNR_Z      float32                               Median signal-to-noise ratio per pixel in *z* camera.
-                SMOOTHCORR_B      float32                       percent Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *b* camera.
-                SMOOTHCORR_R      float32                       percent Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *r* camera.
-                SMOOTHCORR_Z      float32                       percent Mean value of the smooth continuum correction divided by the best-fitting continuum model in the *z* camera.
+                SMOOTHCORR_B      float32                       percent Mean value of the smooth continuum correction relative to the data in the *b* camera.
+                SMOOTHCORR_R      float32                       percent Mean value of the smooth continuum correction relative to the data in the *r* camera.
+                SMOOTHCORR_Z      float32                       percent Mean value of the smooth continuum correction relative to the data in the *z* camera.
                        VDISP      float32                        km / s Stellar velocity dispersion.
                   VDISP_IVAR      float32                      s2 / km2 Inverse variance of VDISP.
                           AV      float32                           mag Attenuation of the integrated stellar population.

@@ -379,7 +379,7 @@ def sigmaclip(c, low=3., high=3.):
 
         delta = n0-n
 
-    return c[mask], clo, chi
+    return c[mask], mask
 
 
 # Numba's quantile impl is much faster

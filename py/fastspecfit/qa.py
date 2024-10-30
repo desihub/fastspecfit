@@ -12,6 +12,99 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import MPPool
 
 
+def format_niceline(line):
+    """Simple function to nicely format the name of a line."""
+    match line:
+        case 'lyalpha':
+            return r'Ly$\alpha$'
+        case 'nv_1240':
+            return r'NV $\lambda1240$'
+        case 'oi_1304':
+            return r'OI $\lambda1304$'
+        case 'siliv_1396':
+            return r'SiIV $\lambda1396$'
+        case 'civ_1549':
+            return r'CIV $\lambda1549$'
+        case 'heii_1640':
+            return r'HeII $\lambda1640$'
+        case 'aliii_1857':
+            return r'AlIII $\lambda1857$'
+        case 'siliii_1892':
+            return r'SiIII] $\lambda1892$'
+        case 'ciii_1908':
+            return r'CIII] $\lambda1908$'
+        case 'mgii_2796':
+            return r'MgII $\lambda2796$'
+        case 'mgii_2803':
+            return r'MgII $\lambda2803$'
+        case 'nev_3346':
+            return r'[NeV] $\lambda3346$'
+        case 'nev_3426':
+            return r'[NeV] $\lambda3426$'
+        case 'oii_3726':
+            return r'[OII] $\lambda3726$'
+        case 'oii_3729':
+            return r'[OII] $\lambda3729$'
+        case 'neiii_3869':
+            return r'[NeIII] $\lambda3869$'
+        case 'h6':
+            return r'H$6$'
+        case 'h6_broad':
+            return r'H$6_{b}$'
+        case 'hepsilon':
+            return r'H$\epsilon$'
+        case 'hepsilon_broad':
+            return r'H$\epsilon_{b}$'
+        case 'hdelta':
+            return r'H$\delta$'
+        case 'hdelta_broad':
+            return r'H$\delta_{b}$'
+        case 'hgamma':
+            return r'H$\gamma$'
+        case 'hgamma_broad':
+            return r'H$\gamma_{b}$'
+        case 'oiii_4363':
+            return r'[OIII] $\lambda4363$'
+        case 'hei_4471':
+            return r'HeI $\lambda4471$'
+        case 'heii_4686':
+            return r'HeII $\lambda4686$'
+        case 'hbeta':
+            return r'H$\beta$'
+        case 'hbeta_broad':
+            return r'H$\beta_{b}$'
+        case 'oiii_4959':
+            return r'[OIII] $\lambda4959$'
+        case 'oiii_5007':
+            return r'[OIII] $\lambda5007$'
+        case 'nii_5755':
+            return r'[NII] $\lambda5755$'
+        case 'hei_5876':
+            return r'HeI $\lambda5876$'
+        case 'oi_6300':
+            return r'[OI] $\lambda6300$'
+        case 'siii_6312':
+            return r'[SIII] $\lambda6312$'
+        case 'nii_6548':
+            return r'[NII] $\lambda6548$'
+        case 'halpha':
+            return r'H$\alpha$'
+        case 'halpha_broad':
+            return r'H$\alpha_{b}$'
+        case 'nii_6584':
+            return r'[NII] $\lambda6584$'
+        case 'sii_6716':
+            return r'[SII] $\lambda6716$'
+        case 'sii_6731':
+            return r'[SII] $\lambda6731$'
+        case 'siii_9069':
+            return r'[SIII] $\lambda9069$'
+        case 'siii_9532':
+            return r'[SIII] $\lambda9532$'
+        case _:
+            return line
+
+
 def desiqa_one(data, fastfit, metadata, coadd_type,
                minspecwave=3500., maxspecwave=9900., minphotwave=0.1,
                maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1,

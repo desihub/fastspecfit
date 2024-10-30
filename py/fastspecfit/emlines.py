@@ -422,7 +422,7 @@ class EMFitTools(object):
         from fastspecfit.util import quantile, median
 
         initials = np.empty(len(self.param_table), dtype=np.float64)
-        bounds   = np.empty((len(self.param_table), 2), dtype=np.float64)
+        bounds = np.empty((len(self.param_table), 2), dtype=np.float64)
 
         # a priori initial guesses and bounds
         minsigma_broad = 1. # 100.
@@ -927,7 +927,7 @@ class EMFitTools(object):
 
             cmed, civar = 0., 0.
             if len(borderindx) >= nminpix: # require at least XX pixels to get the continuum level
-                clipflux, _, _ = sigmaclip(specflux_nolines_s[borderindx], low=3, high=3)
+                clipflux, _ = sigmaclip(specflux_nolines_s[borderindx], low=3, high=3)
 
                 if len(clipflux) > 0:
                     clo, cmed, chi = quantile(clipflux, (0.25, 0.50, 0.75))
@@ -1316,7 +1316,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     dwave   = np.round(dwave, decimals=3)
 
     npix = int(np.round((maxwave-minwave)/dwave)) + 1
-    modelwave = minwave + dwave * np.arange(npix)
+    modelwave = minwave + dwave * np.arange(npix, dtype=np.float64)
 
     wavesrt = np.argsort(emlinewave)
     sorted_waves = emlinewave[wavesrt]
