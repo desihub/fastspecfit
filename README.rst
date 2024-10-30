@@ -29,7 +29,7 @@ If you make use of ``FastSpecFit`` in your research please be sure to include
 the following citation::
 
    @MISC{2023ascl.soft08005M,
-     author = {{Moustakas}, John and {Scholte}, Dirk and {Dey}, Biprateep and {Khederlarian}, Ashod},
+     author = {{Moustakas}, John and {Buhler}, Jeremy and {Scholte}, Dirk and {Dey}, Biprateep and {Khederlarian}, Ashod},
      title = "{FastSpecFit: Fast spectral synthesis and emission-line fitting of DESI spectra}",
      keywords = {Software},
       howpublished = {Astrophysics Source Code Library, record ascl:2308.005},
@@ -47,7 +47,7 @@ John Moustakas gratefully acknowledges funding support for this work from the
 U.S. Department of Energy, Office of Science, Office of High Energy Physics
 under Award Number DE-SC0020086.
 
-| John Moustakas  
+| John Moustakas
 | Siena College
 
 .. _`DESI`: https://desi.lbl.gov
