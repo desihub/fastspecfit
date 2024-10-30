@@ -1609,22 +1609,6 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             specistd=specistd/median_apercorr,
             synthphot=True, synthspec=True)
 
-        if nmonte is not None and nmonte > 0 and (ndof_cont > 0 or ndof_phot > 0):
-            if ndof_cont > 0:
-                specstd = np.zeros_like(specistd)
-                I = specistd > 0.
-                specstd[I] = 1. / specistd[I]
-                specflux_monte = rng.normal(loc=specflux[:, np.newaxis], scale=specstd[:, np.newaxis], size=(len(specflux), nmonte))
-
-                import matplotlib.pyplot as plt
-                plt.clf()
-                for im in range(nmonte):
-                    plt.plot(specwave, specflux_monte[:, im], alpha=0.3, label=str(im))
-                plt.legend()
-                plt.savefig('junk.png')
-
-        import pdb ; pdb.set_trace()
-
         _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
             resid, ncoeff=nage, vdisp_fitted=compute_vdisp,
             split=len(specflux), ndof_spec=ndof_cont, ndof_phot=ndof_phot)
@@ -1633,12 +1617,57 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
                  f'[rchi2_cont={rchi2_cont:.1f}, ndof={ndof_cont:.0f}; ' + \
                  f'rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}].')
 
-        # ToDo:
-        # --Monte Carlo here to get ebvivar, vdispivar, and coeff_monte.
+        # Monte Carlo here to get ebvivar, vdispivar, and coeff_monte.
         # --Capture case where vdisp (and also maybe ebv) hits its bounds.
         # --delta-chi2 test for solving for velocity dispersion.
         ebvivar = 0.
         vdispivar = 0.
+        coeff_monte = None
+        if nmonte is not None and nmonte > 0 and (ndof_cont > 0 or ndof_phot > 0):
+            if ndof_cont > 0:
+                specstd = np.zeros_like(specistd)
+                I = specistd > 0.
+                specstd[I] = 1. / specistd[I]
+                specflux_monte = rng.normal(loc=specflux[:, np.newaxis], scale=specstd[:, np.newaxis],
+                                            size=(len(specflux), nmonte))
+            else:
+                specflux_monte = np.repeat(specflux[:, np.newaxis], nmonte, axis=1)
+
+            if ndof_phot > 0:
+                objflamstd = np.zeros_like(objflamistd)
+                I = objflamistd > 0.
+                objflamstd[I] = 1. / objflamistd[I]
+                objflam_monte = rng.normal(loc=objflam[:, np.newaxis], scale=objflamstd[:, np.newaxis], size=(len(objflam), nmonte))
+            else:
+                objflam_monte = np.repeat(objflam[:, np.newaxis], nmonte, axis=1)
+
+            ebv_monte = np.zeros(nmonte)
+            vdisp_monte = np.zeros(nmonte)
+            coeff_monte = np.zeros((nage, nmonte))
+            for imonte in range(nmonte):
+                ebv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
+                    input_templateflux, # [npix,nage]
+                    fit_vdisp=compute_vdisp, conv_pre=input_conv_pre,
+                    vdisp_guess=templates.vdisp_nominal,
+                    #ebv_guess=ebv, coeff_guess=coeff_guess, # don't bias the answer...?
+                    objflam=objflam_monte[:, imonte], objflamistd=objflamistd,
+                    specflux=specflux_monte[:, imonte]*median_apercorr,
+                    specistd=specistd/median_apercorr,
+                    synthphot=True, synthspec=True)
+                ebv_monte[imonte] = ebv1
+                vdisp_monte[imonte] = vdisp1
+                coeff_monte[:, imonte] = coeff1
+
+            ebvvar = np.var(ebv_monte)
+            vdispvar = np.var(vdisp_monte)
+            if ebvvar > 0.:
+                ebvivar = 1. / ebvvar
+            if vdispvar > 0.:
+                vdispivar = 1. / vdispvar
+            #import matplotlib.pyplot as plt
+            #plt.clf()
+            #plt.hist(vdisp_monte, bins=20)
+            #plt.savefig('junk.png')
 
         if np.all(coeff == 0.):
             log.warning('Continuum coefficients are all zero.')
@@ -1646,16 +1675,13 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             dn4000_model = 0.
             rchi2_cont = 0.
             rchi2_phot = 0.
-            vdispivar = 0.
-            ebvivar = 0.
         else:
-            var_msg = f'+/-{1./np.sqrt(ebvivar)}' if ebvivar > 0. else ''
+            var_msg = f'+/-{1./np.sqrt(ebvivar):.3f}' if ebvivar > 0. else ''
             ebv_msg = f'E(B-V)={ebv:.3f}{var_msg} mag'
 
             if compute_vdisp and vdispivar > 0.:
-                vdisp_msg = f'vdisp={vdisp:.1f}+/-{1./np.sqrt(vdispivar):.1f} km/s'
-            else:
-                vdisp_msg = f'vdisp={vdisp:.0f} km/s'
+                var_msg = f'+/-{1./np.sqrt(vdispivar):.1f}' if vdispivar > 0. else ''
+            vdisp_msg = f'vdisp={vdisp:.1f}{var_msg} km/s'
 
             log.info(f'{ebv_msg}, {vdisp_msg}.')
 
@@ -1666,6 +1692,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
                 vdisp=(vdisp if compute_vdisp else None),
                 conv_pre=input_conv_pre_nolines, dust_emission=False)
 
+    import pdb ; pdb.set_trace()
     desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
 
     # Get DN(4000).
