@@ -1211,7 +1211,7 @@ def can_compute_vdisp(redshift, specwave, specivar, minrestwave=3500.,
 
 
 def continuum_fastphot(redshift, objflam, objflamivar, CTools,
-                       debug_plots=False):
+                       nmonte=50, rng=None, debug_plots=False):
     """Model the broadband photometry.
 
     """
@@ -1484,7 +1484,8 @@ def _continuum_fastspec_legacy(redshift, specwave, specflux, specivar,
 
 
 def continuum_fastspec(redshift, objflam, objflamivar, CTools,
-                       no_smooth_continuum=False, debug_plots=False):
+                       nmonte=50, rng=None, no_smooth_continuum=False,
+                       debug_plots=False):
     """Jointly model the spectroscopy and broadband photometry.
 
     """
@@ -1539,6 +1540,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             log.info('Skipping aperture correction since no bands were fit.')
         else:
             t0 = time.time()
+            # Quick fit to just the spectroscopy; no Monte Carlo.
             ebv, _, coeff, _ = CTools.fit_stellar_continuum(
                 templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
                 dust_emission=False,  fit_vdisp=False,
@@ -1603,6 +1605,22 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             specflux=specflux*median_apercorr,
             specistd=specistd/median_apercorr,
             synthphot=True, synthspec=True)
+
+        if nmonte is not None and nmonte > 0 and (ndof_cont > 0 or ndof_phot > 0):
+            if ndof_cont > 0:
+                specstd = np.zeros_like(specistd)
+                I = specistd > 0.
+                specstd[I] = 1. / specistd[I]
+                specflux_monte = rng.normal(loc=specflux[:, np.newaxis], scale=specstd[:, np.newaxis], size=(len(specflux), nmonte))
+
+                import matplotlib.pyplot as plt
+                plt.clf()
+                for im in range(nmonte):
+                    plt.plot(specwave, specflux_monte[:, im], alpha=0.3, label=str(im))
+                plt.legend()
+                plt.savefig('junk.png')
+
+        import pdb ; pdb.set_trace()
 
         _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
             resid, ncoeff=nage, vdisp_fitted=compute_vdisp,
@@ -1701,7 +1719,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
 
 def continuum_specfit(data, result, templates, igm, phot,
-                      constrain_age=False, no_smooth_continuum=False,
+                      nmonte=50, seed=1, constrain_age=False,
+                      no_smooth_continuum=False,
                       fastphot=False, debug_plots=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
@@ -1745,17 +1764,22 @@ def continuum_specfit(data, result, templates, igm, phot,
     CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot,
                             constrain_age=constrain_age)
 
+    if nmonte is not None and nmonte > 0:
+        rng = np.random.default_rng(seed=seed)
+    else:
+        rng = None
+
     if fastphot:
         # Photometry-only fitting.
         coeff, rchi2_phot, ebv, ebvivar, vdisp, dn4000_model, sedmodel, sedmodel_nolines = \
             continuum_fastphot(redshift, objflam, objflamivar, CTools,
-                               debug_plots=debug_plots)
+                               nmonte=nmonte, rng=rng, debug_plots=debug_plots)
     else:
         (coeff, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
          ebv, ebvivar, vdisp, vdispivar, dn4000, dn4000_ivar, dn4000_model,
          sedmodel, sedmodel_nolines, continuummodel, smoothcontinuum, smoothstats) = \
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
-                                debug_plots=debug_plots,
+                                nmonte=nmonte, rng=rng, debug_plots=debug_plots,
                                 no_smooth_continuum=no_smooth_continuum)
 
         data['apercorr'] = median_apercorr # needed for the line-fitting

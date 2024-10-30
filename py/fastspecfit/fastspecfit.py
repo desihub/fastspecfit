@@ -18,7 +18,7 @@ from fastspecfit.util import BoxedScalar, MPPool
 def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
                  percamera_models=False, debug_plots=False,
-                 minsnr_balmer_broad=2.5):
+                 minsnr_balmer_broad=2.5, nmonte=50):
     """Run :func:`fastspec` on a single object.
 
     """
@@ -43,7 +43,8 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
     continuummodel, smooth_continuum = continuum_specfit(
         data, out, templates, igm, phot, constrain_age=constrain_age,
         no_smooth_continuum=no_smooth_continuum,
-        fastphot=fastphot, debug_plots=debug_plots)
+        fastphot=fastphot, debug_plots=debug_plots,
+        nmonte=nmonte)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -53,7 +54,8 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
                                  phot, emline_table,
                                  broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
-                                 percamera_models=percamera_models)
+                                 percamera_models=percamera_models,
+                                 nmonte=nmonte)
 
     return out.value, emmodel
 
@@ -188,6 +190,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         'percamera_models':    args.percamera_models,
         'debug_plots':         args.debug_plots,
         'minsnr_balmer_broad': args.minsnr_balmer_broad,
+        'nmonte':              args.nmonte,
     } for iobj in range(Spec.ntargets)]
 
     _out = mp_pool.starmap(fastspec_one, fitargs)
@@ -272,6 +275,7 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
+    parser.add_argument('--nmonte', type=int, default=10, help='Number of Monte Carlo realizations.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
@@ -291,7 +295,7 @@ def parse(options=None):
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
-    parser.add_argument('--minsnr-balmer-broad', type=float, default=3., help='Minimum broad Balmer S/N to force broad+narrow-line model.')
+    parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 

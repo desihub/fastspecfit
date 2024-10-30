@@ -1059,7 +1059,7 @@ class EMFitTools(object):
 
 def emline_specfit(data, result, continuummodel, smooth_continuum,
                    phot, emline_table, minsnr_balmer_broad=2.5,
-                   synthphot=True, broadlinefit=True,
+                   nmonte=50, synthphot=True, broadlinefit=True,
                    percamera_models=False):
     """Perform the fit minimization / chi2 minimization.
 
