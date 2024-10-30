@@ -180,7 +180,7 @@ class ContinuumTools(object):
                 if len(umflux) < nminpix:
                     continue
 
-                cflux, _, _ = sigmaclip(umflux, low=clip_sigma, high=clip_sigma)
+                cflux, _ = sigmaclip(umflux, low=clip_sigma, high=clip_sigma)
                 if len(cflux) < nminpix:
                     continue
 
@@ -310,21 +310,39 @@ class ContinuumTools(object):
         return smoothcontinuum
 
 
-    def continuum_fluxes(self, continuum, uniqueid=0, width1=40., width2=75., png=None):
+    def continuum_fluxes(self, continuum, uniqueid=0, width1=50., width2=100., png=None):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
-        def _get_cflux(cwave, return_slope=False):
+        def _get_cflux(cwave, linear_fit=False, siglo=2., sighi=2.,
+                       ignore_core=False, return_slope=False):
+            # continuum flux in 10**-17 erg/s/cm2/A
+
             lo = np.searchsorted(templatewave, cwave - width1, 'right')
             hi = np.searchsorted(templatewave, cwave + width1, 'left')
             lo2 = np.searchsorted(templatewave, cwave - width2, 'right')
             hi2 = np.searchsorted(templatewave, cwave + width2, 'left')
 
-            slope, cflux = np.polyfit(np.hstack((templatewave[lo2:lo], templatewave[hi:hi2])) - cwave,
-                                      np.hstack((continuum[lo2:lo], continuum[hi:hi2])), 1)
+            if ignore_core:
+                ylo, lomask = sigmaclip(continuum[lo2:lo], low=siglo, high=sighi)
+                yhi, himask = sigmaclip(continuum[hi:hi2], low=siglo, high=sighi)
+                xlo = templatewave[lo2:lo][lomask]
+                xhi = templatewave[hi:hi2][himask]
+                xfit = np.hstack((xlo, xhi))
+                yfit = np.hstack((ylo, yhi))
+                #xfit = np.hstack((templatewave[lo2:lo], templatewave[hi:hi2]))
+                #yfit = np.hstack((continuum[lo2:lo], continuum[hi:hi2]))
+            else:
+                yfit, mask = sigmaclip(continuum[lo2:hi2], low=siglo, high=sighi)
+                xfit = templatewave[lo2:hi2][mask]
+                #xfit = templatewave[lo2:hi2]
+                #yfit = continuum[lo2:hi2]
 
-            #clipflux, _, _ = sigmaclip(np.hstack((continuum[lo2:lo], continuum[hi:hi2])), low=3., high=3.)
-            #cflux = median(clipflux) # [flux in 10**-17 erg/s/cm2/A]
+            if linear_fit:
+                slope, cflux = np.polyfit(xfit - cwave, yfit, 1)
+            else:
+                slope = None
+                cflux = median(yfit)
 
             if return_slope:
                 return cflux, slope
@@ -345,10 +363,10 @@ class ContinuumTools(object):
         dfactor = (1. + redshift) * 4. * np.pi * (3.08567758e24 * dlum)**2 / FLUXNORM
 
         lums = {}
-        lcwaves = (1500., 2800., 1450., 1700., 3000., 5100.)
-        llabels = ('LOGLNU_1500', 'LOGLNU_2800', 'LOGL_1450', 'LOGL_1700', 'LOGL_3000', 'LOGL_5100')
+        lcwaves = (1450., 1500., 1700., 2800., 3000., 5100.)
+        llabels = ('LOGL_1450', 'LOGLNU_1500', 'LOGL_1700', 'LOGLNU_2800', 'LOGL_3000', 'LOGL_5100')
         for cwave, label in zip(lcwaves, llabels):
-            cflux = _get_cflux(cwave) * dfactor # [monochromatic luminosity in erg/s/A]
+            cflux = _get_cflux(cwave, linear_fit=True) * dfactor # [monochromatic luminosity in erg/s/A]
 
             if 'LOGL_' in label:
                 norm = 1e10
@@ -367,7 +385,11 @@ class ContinuumTools(object):
         fcwaves = (1215.67, 3728.48, 4862.71, 5008.24, 6564.6)
         flabels = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT')
         for cwave, label in zip(fcwaves, flabels):
-            cfluxes[label] = _get_cflux(cwave) # * u.erg/(u.second*u.cm**2*u.Angstrom)
+            if 'FLYA' in label or 'FHBETA' in label or 'FHALPHA' in label:
+                ignore_core = True
+            else:
+                ignore_core = False
+            cfluxes[label] = _get_cflux(cwave, linear_fit=True, ignore_core=ignore_core)
 
         # simple QA
         if png:
@@ -380,23 +402,32 @@ class ContinuumTools(object):
 
             labels = np.hstack((llabels, flabels))
             cwaves = np.hstack((lcwaves, fcwaves))
+            #linear_fits = np.hstack(([True] * len(lcwaves), [False] * len(fcwaves)))
+            linear_fits = [True] * len(labels)
             ncwaves = len(cwaves)
 
-            kwidth = 500
             ncols = 3
             nrows = int(np.ceil(ncwaves / ncols))
 
             fig, ax = plt.subplots(nrows, ncols, figsize=(3*ncols, 2*nrows))
-            for iwave, (cwave, label, xx) in enumerate(zip(cwaves, labels, ax.flat)):
+            for iwave, (cwave, label, linear_fit, xx) in enumerate(zip(cwaves, labels, linear_fits, ax.flat)):
                 lo = np.searchsorted(templatewave, cwave - width1, 'right')
                 hi = np.searchsorted(templatewave, cwave + width1, 'left')
                 lo2 = np.searchsorted(templatewave, cwave - width2, 'right')
                 hi2 = np.searchsorted(templatewave, cwave + width2, 'left')
+                lo3 = np.searchsorted(templatewave, cwave - 300., 'right')
+                hi3 = np.searchsorted(templatewave, cwave + 300., 'left')
 
-                cflux, slope = _get_cflux(cwave, return_slope=True)
-                xx.plot(templatewave[lo2-kwidth:hi2+kwidth] / 1e4, continuum[lo2-kwidth:hi2+kwidth])
-                xx.plot(templatewave[lo2:hi2] / 1e4, cflux + slope * (templatewave[lo2:hi2] - cwave),
-                        color='k', lw=2, ls='-')
+                if 'FLYA' in label or 'FHBETA' in label or 'FHALPHA' in label:
+                    ignore_core = True
+                else:
+                    ignore_core = False
+                cflux, slope = _get_cflux(cwave, linear_fit=linear_fit, return_slope=True, ignore_core=ignore_core)
+
+                xx.plot(templatewave[lo3:hi3] / 1e4, continuum[lo3:hi3])
+                if slope is not None:
+                    xx.plot(templatewave[lo2:hi2] / 1e4, cflux + slope * (templatewave[lo2:hi2] - cwave),
+                            color='k', lw=2, ls='-')
                 xx.axvline(x=(cwave - width1)  / 1e4, lw=1, ls='--', color='k')
                 xx.axvline(x=(cwave + width1) / 1e4, lw=1, ls='--', color='k')
                 xx.axvline(x=(cwave - width2)  / 1e4, lw=1, ls='-', color='k')
@@ -405,7 +436,7 @@ class ContinuumTools(object):
                 xx.axvline(x=cwave, lw=2, ls='-', color='k')
                 xx.scatter([cwave / 1e4] * 2, [cflux] * 2, zorder=10, marker='s',
                            color='red', edgecolor='k', s=70)
-                xx.set_xlim(templatewave[lo2-kwidth] / 1e4, templatewave[hi2+kwidth] / 1e4)
+                xx.set_xlim(templatewave[lo3] / 1e4, templatewave[hi3] / 1e4)
                 xx.set_ylim(min(continuum[lo2:hi2]) * 0.9, max(continuum[lo2:hi2]) * 1.1)
                 xx.text(0.05, 0.9, label, ha='left', va='center',
                         transform=xx.transAxes, fontsize=8)
@@ -439,7 +470,6 @@ class ContinuumTools(object):
             fig.subplots_adjust(left=0.1, right=0.97, bottom=bottom, top=top, wspace=0.23, hspace=0.3)
             fig.savefig(png)#, bbox_inches='tight')
             plt.close()
-            import pdb ; pdb.set_trace()
 
         return lums, cfluxes
 

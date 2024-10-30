@@ -927,7 +927,7 @@ class EMFitTools(object):
 
             cmed, civar = 0., 0.
             if len(borderindx) >= nminpix: # require at least XX pixels to get the continuum level
-                clipflux, _, _ = sigmaclip(specflux_nolines_s[borderindx], low=3, high=3)
+                clipflux, _ = sigmaclip(specflux_nolines_s[borderindx], low=3, high=3)
 
                 if len(clipflux) > 0:
                     clo, cmed, chi = quantile(clipflux, (0.25, 0.50, 0.75))
