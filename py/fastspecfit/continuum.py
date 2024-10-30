@@ -330,13 +330,9 @@ class ContinuumTools(object):
                 xhi = templatewave[hi:hi2][himask]
                 xfit = np.hstack((xlo, xhi))
                 yfit = np.hstack((ylo, yhi))
-                #xfit = np.hstack((templatewave[lo2:lo], templatewave[hi:hi2]))
-                #yfit = np.hstack((continuum[lo2:lo], continuum[hi:hi2]))
             else:
                 yfit, mask = sigmaclip(continuum[lo2:hi2], low=siglo, high=sighi)
                 xfit = templatewave[lo2:hi2][mask]
-                #xfit = templatewave[lo2:hi2]
-                #yfit = continuum[lo2:hi2]
 
             if linear_fit:
                 slope, cflux = np.polyfit(xfit - cwave, yfit, 1)

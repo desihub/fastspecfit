@@ -5,7 +5,7 @@ Change Log
 3.0.0 (not released yet)
 ------------------------
 
-* Rewrite of the smooth continuum algorithm [`PR #186`_].
+* Rewrite of the smooth continuum and continuum-flux algorithms [`PR #186`_].
 * Miscellaneous bug fixes [`PR #185`_].
 * Use Numba-based Resolution implementation with faster multiply.
   Also tweak parameters of continuum least_squares optimizer for
