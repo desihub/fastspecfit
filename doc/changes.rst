@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-3.0.0 (not released yet)
+3.1.0 (not released yet)
 ------------------------
+
+*
+
+3.0.0 (2024-10-30)
+------------------
 
 * Rewrite of the smooth continuum and continuum-flux algorithms [`PR #186`_].
 * Miscellaneous bug fixes [`PR #185`_].
