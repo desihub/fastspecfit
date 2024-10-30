@@ -204,20 +204,23 @@ class ContinuumTools(object):
             if len(sflux) == 0:
                 smoothflux = np.zeros_like(camflux)
             else:
-                # remove duplicate wavelength values, which should never
-                # happen...
-                _, uindx = np.unique(swave, return_index=True)
-                swave = swave[uindx]
-                sflux = sflux[uindx]
-                sisig = sisig[uindx]
+                ## remove duplicate wavelength values, which should never
+                ## happen...
+                #_, uindx = np.unique(swave, return_index=True)
+                #swave = swave[uindx]
+                #sflux = sflux[uindx]
+                #sisig = sisig[uindx]
 
                 # We supply estimates local inverse stddev in each window
                 # (i.e., how noisy the data is there) so that variation is
                 # down-weighted in noisier regions.
-                spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3)
+                if len(swave) > 3:
+                    spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3, k=3)
+                    smoothflux = spl_flux(camwave)
+                else:
+                    smoothflux = np.zeros_like(camflux)
 
                 # evaluate on the original wavelength vector
-                smoothflux = spl_flux(camwave)
 
             # very important!
             smoothflux[(camflux == 0.) & (camivar == 0.)] = 0.
