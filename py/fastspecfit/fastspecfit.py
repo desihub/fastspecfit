@@ -141,9 +141,6 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                      init_argdict=init_sc_args)
     #log.info(f'Caching took {time.time()-t0:.5f} seconds.')
 
-    if sc_data.templates.use_legacy_fitting:
-        log.warning(f'Fitting with deprecated spectrophotometric templates (version={sc_data.templates.version})!')
-
     log.info(f'Cached stellar templates {sc_data.templates.file}')
     log.info(f'Cached emission-line table {sc_data.emlines.file}')
     log.info(f'Cached photometric filters and parameters {sc_data.photometry.fphotofile}')

@@ -78,9 +78,6 @@ class Templates(object):
 
         self.version = T[0].read_header()['VERSION']
 
-        # maintain backwards compatibility with older templates (versions <2.0.0)
-        self.use_legacy_fitting = ('VDISPFLUX' in T)
-
         self.imf = templatehdr['IMF']
         self.ntemplates = len(templateinfo)
 
@@ -96,17 +93,6 @@ class Templates(object):
 
         # dust attenuation curve
         self.dust_klambda = Templates.klambda(self.wave)
-
-        # Cache a copy of the line-free templates at the nominal velocity
-        # dispersion (needed for fastphot as well).
-        if self.use_legacy_fitting:
-            vdisphdr = T['VDISPFLUX'].read_header()
-            if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
-                if vdisp_nominal != vdisphdr['VDISPNOM']:
-                    errmsg = f'Nominal velocity dispersion in header ({vdisphdr["VDISPNOM"]:.0f} km/s) ' + \
-                        f'does not match requested value ({vdisp_nominal:.0f} km/s)'
-                    log.warning(errmsg)
-
         self.vdisp_nominal = vdisp_nominal # [km/s]
 
         pixkms_bounds = np.searchsorted(self.wave, Templates.PIXKMS_BOUNDS, 'left')
@@ -120,67 +106,45 @@ class Templates(object):
 
         self.info = Table(templateinfo)
 
-        if self.use_legacy_fitting:
-            if not fastphot:
-                vdispwave = T['VDISPWAVE'].read()
-                vdispflux = T['VDISPFLUX'].read() # [nvdisppix,nvdispsed,nvdisp]
+        if 'DUSTFLUX' in T and 'AGNFLUX' in T:
+            from fastspecfit.util import trapz
 
-                # see bin/build-fsps-templates
-                if vdisphdr['VDISPRES'] > 0.:
-                    nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
-                    vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
-                else:
-                    vdisp = np.atleast_1d(vdisphdr['VDISPMIN'])
+            # make sure fluxes are normalized to unity
+            dustflux = T['DUSTFLUX'].read()
+            #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
+            self.dustflux = dustflux[keeplo:keephi]
 
-                if not vdisp_nominal in vdisp:
-                    errmsg = 'Nominal velocity dispersion is not in velocity dispersion vector.'
-                    log.critical(errmsg)
-                    raise ValueError(errmsg)
+            #dusthdr = T['DUSTFLUX'].read_header()
+            #self.qpah     = dusthdr['QPAH']
+            #self.umin     = dusthdr['UMIN']
+            #self.gamma    = dusthdr['GAMMA']
 
-                self.vdisp = vdisp
-                self.vdisp_nominal_index = np.where(vdisp == vdisp_nominal)[0]
-                self.vdispflux = vdispflux
-                self.vdispwave = vdispwave
+            # construct the AGN wavelength vector
+            iragnflux = T['AGNFLUX'].read()
+            iragnwave = T['AGNWAVE'].read()
+            #iragnflux  /= trapz(iragnflux, x=iragnwave) # should already be 1.0
+
+            trim = np.searchsorted(iragnwave, 1e4, 'left') # hack...
+            iragnflux = iragnflux[trim:]
+            iragnwave = iragnwave[trim:]
+
+            feflux = T['FEFLUX'].read()
+            fewave = T['FEWAVE'].read()
+
+            febounds = np.searchsorted(templatewave, Templates.AGN_PIXKMS_BOUNDS, 'left')
+            irbounds = np.searchsorted(templatewave, iragnwave[0], 'left')
+
+            agnwave = np.hstack((templatewave[:febounds[0]], fewave,
+                                 templatewave[febounds[1]:irbounds],
+                                 iragnwave))
+            #self.agnwave = agnwave
+
+            #agnhdr = T['AGNFLUX'].read_header()
+            #self.agntau   = agnhdr['AGNTAU']
         else:
-            if 'DUSTFLUX' in T and 'AGNFLUX' in T:
-                from fastspecfit.util import trapz
-
-                # make sure fluxes are normalized to unity
-                dustflux = T['DUSTFLUX'].read()
-                #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
-                self.dustflux = dustflux[keeplo:keephi]
-
-                #dusthdr = T['DUSTFLUX'].read_header()
-                #self.qpah     = dusthdr['QPAH']
-                #self.umin     = dusthdr['UMIN']
-                #self.gamma    = dusthdr['GAMMA']
-
-                # construct the AGN wavelength vector
-                iragnflux = T['AGNFLUX'].read()
-                iragnwave = T['AGNWAVE'].read()
-                #iragnflux  /= trapz(iragnflux, x=iragnwave) # should already be 1.0
-
-                trim = np.searchsorted(iragnwave, 1e4, 'left') # hack...
-                iragnflux = iragnflux[trim:]
-                iragnwave = iragnwave[trim:]
-
-                feflux = T['FEFLUX'].read()
-                fewave = T['FEWAVE'].read()
-
-                febounds = np.searchsorted(templatewave, Templates.AGN_PIXKMS_BOUNDS, 'left')
-                irbounds = np.searchsorted(templatewave, iragnwave[0], 'left')
-
-                agnwave = np.hstack((templatewave[:febounds[0]], fewave,
-                                     templatewave[febounds[1]:irbounds],
-                                     iragnwave))
-                #self.agnwave = agnwave
-
-                #agnhdr = T['AGNFLUX'].read_header()
-                #self.agntau   = agnhdr['AGNTAU']
-            else:
-                errmsg = f'Templates file {template_file} missing mandatory extensions DUSTFLUX and AGNFLUX.'
-                log.critical(errmsg)
-                raise IOError(errmsg)
+            errmsg = f'Templates file {template_file} missing mandatory extensions DUSTFLUX and AGNFLUX.'
+            log.critical(errmsg)
+            raise IOError(errmsg)
 
         # Read the model emission-line fluxes; only present for
         # template_version>=1.1.1 and generally only useful to a power-user.

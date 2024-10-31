@@ -435,23 +435,15 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
     # rebuild the best-fitting broadband photometric model
     if not stackfit:
-        if templates.use_legacy_fitting:
-            sedmodel, sedphot = CTools.templates2data(
-                templates.flux, templates.wave,
-                redshift=redshift, dluminosity=dlum, photsys=metadata['PHOTSYS'],
-                synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm,
-                get_abmag=True)
-        else:
-            sedmodel = CTools.build_stellar_continuum(
-                templates.flux_nomvdisp,
-                fastspec['COEFF'] * CTools.massnorm,
-                ebv=fastspec['AV'] / Templates.klambda(5500.),
-                vdisp=None
-            )
+        sedmodel = CTools.build_stellar_continuum(
+            templates.flux_nomvdisp,
+            fastspec['COEFF'] * CTools.massnorm,
+            ebv=fastspec['AV'] / Templates.klambda(5500.),
+            vdisp=None)
 
-            sedphot = CTools.continuum_to_photometry(sedmodel,
-                                                     phottable=True,
-                                                     get_abmag=True)
+        sedphot = CTools.continuum_to_photometry(sedmodel,
+                                                 phottable=True,
+                                                 get_abmag=True)
         sedwave = templates.wave * (1 + redshift)
 
         nband = len(phot.bands)
@@ -475,30 +467,16 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         # "per-camera" and prefix "full" has the cameras h-stacked.
         fullwave = np.hstack(data['wave'])
 
-        if templates.use_legacy_fitting:
-            desicontinuum, _ = CTools.templates2data(templates.flux_nolines,
-                                                     templates.wave,
-                                                     redshift=redshift, dluminosity=dlum, synthphot=False,
-                                                     specwave=data['wave'], specres=data['res'],
-                                                     specmask=data['mask'], cameras=data['cameras'],
-                                                     vdisp=fastspec['VDISP'],
-                                                     coeff=fastspec['COEFF'])
+        contmodel = CTools.build_stellar_continuum(
+            templates.flux_nolines, fastspec['COEFF'],
+            vdisp=fastspec['VDISP'], conv_pre=templates.conv_pre_nolines,
+            ebv=fastspec['AV'] / Templates.klambda(5500.))
 
-            # remove the aperture correction
-            desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
-            fullcontinuum = np.hstack(desicontinuum)
-        else:
-            contmodel = CTools.build_stellar_continuum(
-                templates.flux_nolines, fastspec['COEFF'],
-                vdisp=fastspec['VDISP'], conv_pre=templates.conv_pre_nolines,
-                ebv=fastspec['AV'] / Templates.klambda(5500.)
-            )
+        _desicontinuum = CTools.continuum_to_spectroscopy(contmodel)
 
-            _desicontinuum = CTools.continuum_to_spectroscopy(contmodel)
-
-            # remove the aperture correction
-            desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]
-            fullcontinuum = np.hstack(desicontinuum)
+        # remove the aperture correction
+        desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]
+        fullcontinuum = np.hstack(desicontinuum)
 
         # Need to be careful we don't pass a large negative residual where
         # there are gaps in the data.
