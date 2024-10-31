@@ -1852,8 +1852,6 @@ def continuum_specfit(data, result, templates, igm, phot,
     result['RCHI2_PHOT'] = rchi2_phot
     result['VDISP'] = vdisp # * u.kilometer/u.second
 
-    import pdb ; pdb.set_trace()
-
     if not fastphot:
         result['RCHI2_CONT'] = rchi2_cont
         result['VDISP_IVAR'] = vdisp_ivar # * (u.second/u.kilometer)**2
@@ -1864,6 +1862,7 @@ def continuum_specfit(data, result, templates, igm, phot,
         result['DN4000_OBS'] = dn4000
         result['DN4000_IVAR'] = dn4000_ivar
         result['DN4000_MODEL'] = dn4000_model
+        result['DN4000_MODEL_IVAR'] = dn4000_model_ivar
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if not np.all(coeff == 0):
@@ -1893,29 +1892,62 @@ def continuum_specfit(data, result, templates, igm, phot,
                 result[cflux] = cfluxes[cflux]
 
         # get the SPS properties
-        tinfo = templates.info[CTools.agekeep]
-        mstars = tinfo['mstar'] # [current mass in stars, Msun]
-        masstot = coeff.dot(mstars)
-        coefftot = np.sum(coeff)
-        logmstar = np.log10(CTools.massnorm * masstot)
-        zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
-        age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
-        #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
-        sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
-        if templates.use_legacy_fitting:
-            AV = coeff.dot(tinfo['av']) / coefftot # luminosity-weighted [mag]
-        else:
-            AV = ebv * Templates.klambda(5500.) # [mag]
+        kV = Templates.klambda(5500.)
+        def _get_sps_properties(coeff):
+            tinfo = templates.info[CTools.agekeep]
+            mstars = tinfo['mstar'] # [current mass in stars, Msun]
+            masstot = coeff.dot(mstars)
+            coefftot = np.sum(coeff)
+            logmstar = np.log10(CTools.massnorm * masstot)
+            zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
+            age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
+            #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
+            sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
+            if templates.use_legacy_fitting:
+                AV = coeff.dot(tinfo['av']) / coefftot # luminosity-weighted [mag]
+                AV_ivar = 0.
+            else:
+                AV = ebv * kV # [mag]
+                AV_ivar = ebv_ivar / kV**2
+            return AV, AV_ivar, age, zzsun, logmstar, sfr
 
-        result['AV'] = AV # * u.mag
-        result['AGE'] = age # * u.Gyr
+        AV, AV_ivar, age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
+        result['AV'] = AV
+        result['AV_IVAR'] = AV_ivar
+        result['AGE'] = age
         result['ZZSUN'] = zzsun
         result['LOGMSTAR'] = logmstar
         result['SFR'] = sfr
 
+        if coeff_monte is not None:
+            age_monte = np.zeros(nmonte)
+            zzsun_monte = np.zeros(nmonte)
+            logmstar_monte = np.zeros(nmonte)
+            sfr_monte = np.zeros(nmonte)
+            for imonte in range(nmonte):
+                _, _, age1, zzsun1, logmstar1, sfr1 = _get_sps_properties(coeff_monte[:, imonte])
+                age_monte[imonte] = age1
+                zzsun_monte[imonte] = zzsun1
+                logmstar_monte[imonte] = logmstar1
+                sfr_monte[imonte] = sfr1
+            for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
+                                      ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
+                var = np.var(val_monte)
+                if var > 0.:
+                    result[col] = 1. / var
+
         rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600.))
-        log.info(f'log(M/Msun)={logmstar:.2f}, M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag, ' + \
-                 f'A(V)={AV:.3f} mag, Age={age:.3f} Gyr, SFR={sfr:.3f} Msun/yr, Z/Zsun={zzsun:.3f}')
+        msg = [f'M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag', ]
+        for label, units, val, col in zip(['log(M/Msun)', 'A(V)', 'Age', 'SFR', 'Z/Zsun'],
+                                          ['', 'mag', 'Gyr', 'Msun/yr', ''],
+                                          [logmstar, AV, age, sfr, zzsun],
+                                          ['LOGMSTAR', 'AV', 'AGE', 'SFR', 'ZZSUN']):
+            val_ivar = result[f'{col}_IVAR']
+            var_msg = f'+/-{1./np.sqrt(val_ivar):.3f}' if val_ivar > 0. else ''
+            msg.append(f'{label}={val:.3f}{var_msg}')
+        #log.info(f'log(M/Msun)={logmstar:.2f}, , ' + \
+        #         f'A(V)={AV:.3f} mag, Age={age:.3f} Gyr, SFR={sfr:.3f} Msun/yr, Z/Zsun={zzsun:.3f}')
+        log.info(' '.join(msg))
 
     log.info(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
 
@@ -1923,7 +1955,7 @@ def continuum_specfit(data, result, templates, igm, phot,
         return sedmodel, None
     else:
         # divide out the aperture correction
-        continuummodel  = [cm / median_apercorr for cm in continuummodel ]
+        continuummodel  = [cm / median_apercorr for cm in continuummodel]
         smoothcontinuum = [sc / median_apercorr for sc in smoothcontinuum]
 
         return continuummodel, smoothcontinuum
