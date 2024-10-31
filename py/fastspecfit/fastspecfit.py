@@ -361,10 +361,15 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
     if not fastphot:
         add_field('VDISP_IVAR', dtype='f4', unit=u.second**2/u.kilometer**2)
     add_field('AV', dtype='f4', unit=u.mag)
+    add_field('AV_IVAR', dtype='f4', unit=1/u.mag**2)
     add_field('AGE', dtype='f4', unit=u.Gyr)
+    add_field('AGE_IVAR', dtype='f4', unit=1/u.Gyr**2)
     add_field('ZZSUN', dtype='f4')
+    add_field('ZZSUN_IVAR', dtype='f4')
     add_field('LOGMSTAR', dtype='f4', unit=u.solMass)
+    add_field('LOGMSTAR_IVAR', dtype='f4', unit=1/u.solMass**2)
     add_field('SFR', dtype='f4', unit=u.solMass/u.year)
+    add_field('SFR_IVAR', dtype='f4', unit=u.year**2/u.solMass**2)
     #add_field('FAGN', dtype='f4')
 
     if not fastphot:
@@ -372,6 +377,7 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
         add_field('DN4000_OBS', dtype='f4')
         add_field('DN4000_IVAR', dtype='f4')
     add_field('DN4000_MODEL', dtype='f4')
+    add_field('DN4000_MODEL_IVAR', dtype='f4')
 
     if not fastphot:
         # observed-frame photometry synthesized from the spectra
