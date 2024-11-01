@@ -729,17 +729,18 @@ class EMFitTools(object):
 
     def populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
                          emlineivar, oemlineivar, specflux_nolines, redshift,
-                         resolution_matrices, camerapix, nminpix=7, nsigma=3., ):
+                         resolution_matrices, camerapix, parameters_monte=None,
+                         nminpix=7, nsigma=3.):
         """Populate the output table with the emission-line measurements.
 
         """
+        from math import erf
+        from fastspecfit.util import centers2edges, sigmaclip, quantile
+
         # return range (lo, hi) s.t. all pixels of A in range [v_lo,
         # v_hi] lie in half-open interval [lo, hi)
         def get_boundaries(A, v_lo, v_hi):
             return np.searchsorted(A, (v_lo, v_hi), side='right')
-
-        from math import erf
-        from fastspecfit.util import centers2edges, sigmaclip, quantile
 
         line_wavelengths = self.line_table['restwave'].value
 
@@ -748,12 +749,15 @@ class EMFitTools(object):
         # convert doublet ratios to amplitudes
         parameters[self.doublet_idx] *= parameters[self.doublet_src]
 
-        line_fluxes = EMLine_MultiLines(parameters,
-                                        emlinewave,
-                                        redshift,
-                                        line_wavelengths,
-                                        resolution_matrices,
-                                        camerapix)
+        if parameters_monte is not None:
+            nparams, nmonte = parameters_monte.shape
+            parameters_monte[self.doublet_idx, :] *= parameters_monte[self.doublet_src, :]
+            parameters_var = np.var(parameters_monte, axis=1)
+
+        line_fluxes = EMLine_MultiLines(
+            parameters, emlinewave, redshift,
+            line_wavelengths, resolution_matrices,
+            camerapix)
 
         values = finalfit['value'].value
         obsvalues = finalfit.meta['obsvalue']
@@ -765,11 +769,11 @@ class EMFitTools(object):
         # variable pixel size by sorting in wavelength.
         Wsrt = np.argsort(emlinewave)
 
-        emlinewave_s  = emlinewave[Wsrt]
-        emlineflux_s  = emlineflux[Wsrt]
-        emlineivar_s  = emlineivar[Wsrt]
+        emlinewave_s = emlinewave[Wsrt]
+        emlineflux_s = emlineflux[Wsrt]
+        emlineivar_s = emlineivar[Wsrt]
         oemlineivar_s = oemlineivar[Wsrt]
-        finalmodel_s  = finalmodel[Wsrt]
+        finalmodel_s = finalmodel[Wsrt]
         specflux_nolines_s = specflux_nolines[Wsrt]
 
         dwaves = np.diff(centers2edges(emlinewave_s))
@@ -832,15 +836,15 @@ class EMFitTools(object):
                 continue
 
             # number of pixels, chi2, and boxcar integration
-            patchindx = line_s + np.where( emlineivar_s[line_s:line_e] > 0. )[0]
+            patchindx = line_s + np.where(emlineivar_s[line_s:line_e] > 0.)[0]
             npix = len(patchindx)
             result[f'{linename}_NPIX'] = npix
 
-            if npix >= nminpix: # magic number: required at least XX unmasked pixels centered on the line
+            if npix >= nminpix: # magic number: require at least XX unmasked pixels centered on the line
 
                 emlineflux_patch = emlineflux_s[patchindx]
                 emlineivar_patch = emlineivar_s[patchindx]
-                dwaves_patch     = dwaves[patchindx]
+                dwaves_patch = dwaves[patchindx]
 
                 if np.any(emlineivar_patch == 0.):
                     errmsg = 'Ivar should never be zero within an emission line!'
@@ -862,6 +866,9 @@ class EMFitTools(object):
                 amp_ivar = 1./amp_sigma**2 if amp_sigma > 0. else 0.
                 if amp_ivar > 0.:
                     result[f'{linename}_AMP_IVAR'] = amp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+
+                if parameters_monte is not None:
+                    import pdb ; pdb.set_trace()
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
                 if obsvalues[line_amp] > 0.:
@@ -1235,6 +1242,7 @@ def test_broad_model(EMFit, linemodel_nobroad, linemodel_broad, fit_nobroad,
             f'S/N ({line_names[balmerlines[-1]]}) = {balmer_linesnrs[-1]:.1f}'
 
     if dchi2test and sigtest1 and sigtest2 and broadsnrtest:
+        adopt_broad = True
         log.info('Adopting broad-line model:')
         log.info(f'  delta-chi2={delta_linechi2_balmer:.1f} > delta-ndof={delta_linendof_balmer:.0f}')
         log.info(f'  sigma_broad={Habroad:.1f} km/s, sigma_narrow={Hanarrow:.1f} km/s')
@@ -1243,6 +1251,7 @@ def test_broad_model(EMFit, linemodel_nobroad, linemodel_broad, fit_nobroad,
 
         finalfit, finalmodel, finalchi2 = fit_broad, model_broad, chi2_broad
     else:
+        adopt_broad = False
         if dchi2test == False:
             log.info(f'Dropping broad-line model: delta-chi2={delta_linechi2_balmer:.1f} < delta-ndof={delta_linendof_balmer:.0f}')
         elif sigtest1 == False:
@@ -1256,24 +1265,27 @@ def test_broad_model(EMFit, linemodel_nobroad, linemodel_broad, fit_nobroad,
 
         finalfit, finalmodel, finalchi2 = fit_nobroad, model_nobroad, chi2_nobroad
 
-    return finalfit, finalmodel, finalchi2, delta_linechi2_balmer, delta_linendof_balmer
+    return finalfit, finalmodel, finalchi2, delta_linechi2_balmer, delta_linendof_balmer, adopt_broad
 
 
 def linefit(EMFit, linemodel, initial_guesses, param_bounds,
             emlinewave, emlineflux, emlineivar, weights, redshift,
-            resolution_matrix, camerapix, uniqueid=0, debug=False):
+            resolution_matrix, camerapix, uniqueid=0, debug=False,
+            quiet=False):
     """Simple wrapper on EMFit.optimize.
 
     """
-    t0 = time.time()
+    if not quiet:
+        t0 = time.time()
     fit = EMFit.optimize(linemodel, initial_guesses, param_bounds,
                          emlinewave, emlineflux, weights, redshift,
                          resolution_matrix, camerapix, debug=debug)
     model = EMFit.bestfit(fit, redshift, emlinewave, resolution_matrix, camerapix)
     chi2, ndof, nfree = EMFit.chi2(fit, emlinewave, emlineflux, emlineivar,
                                    model, return_dof=True)
-    log.info(f'Line-fitting {uniqueid} with no broad lines and {nfree} free parameters took ' + \
-             f'{time.time()-t0:.4f} seconds [niter={fit.meta["nfev"]}, rchi2={chi2:.4f}].')
+    if not quiet:
+        log.info(f'Line-fitting {uniqueid} with no broad lines and {nfree} free parameters took ' + \
+                 f'{time.time()-t0:.4f} seconds [niter={fit.meta["nfev"]}, rchi2={chi2:.4f}].')
     return fit, model, chi2
 
 
@@ -1372,12 +1384,13 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
             resolution_matrix, camerapix, uniqueid=data['uniqueid'],
             debug=False)
 
-        finalfit, finalmodel, finalchi2, delta_linechi2_balmer, delta_linendof_balmer = \
+        finalfit, finalmodel, finalchi2, delta_linechi2_balmer, delta_linendof_balmer, adopt_broad = \
             test_broad_model(EMFit, linemodel_nobroad, linemodel_broad, fit_nobroad,
                              model_nobroad, chi2_nobroad, fit_broad, model_broad,
                              chi2_broad, emlinewave, emlineflux, emlineivar, redshift,
                              minsnr_balmer_broad, minsigma_balmer_broad)
     else:
+        adopt_broad = False
         if not broadlinefit:
             log.info('Skipping broad-line fitting (broadlinefit=False).')
         elif not data['balmerbroad']:
@@ -1393,16 +1406,23 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         I = emlineivar > 0.
         emlinestd[I] = 1. / np.sqrt(emlineivar[I])
 
-        emlineflux_monte = rng.normal(emlineflux[:, np.newaxis], emlinestd[:, np.newaxis], size=(len(emlineflux), nmonte))
-        fit_nobroad_monte = []
+        emlineflux_monte = rng.normal(emlineflux[:, np.newaxis],
+                                      emlinestd[:, np.newaxis],
+                                      size=(len(emlineflux), nmonte))
+        if adopt_broad:
+            linemodel_monte = linemodel_broad
+        else:
+            linemodel_monte = linemodel_nobroad
+
+        parameters_monte = np.zeros((len(finalfit), nmonte))
         for imonte in range(nmonte):
-            fit_nobroad1 = EMFit.optimize(linemodel_nobroad, initial_guesses, param_bounds,
-                                          emlinewave, emlineflux_monte[:, imonte], weights,
-                                          redshift, resolution_matrix, camerapix, debug=False)
-            fit_nobroad_monte.append(fit_nobroad1.copy())
-        fit_nobroad_monte = vstack(fit_nobroad_monte, metadata_conflicts='silent')
+            finalfit1, _, _ = linefit(EMFit, linemodel_monte, initial_guesses,
+                                      param_bounds, emlinewave, emlineflux,
+                                      emlineivar, weights, redshift, resolution_matrix,
+                                      camerapix, uniqueid=data['uniqueid'], quiet=True)
+            parameters_monte[:, imonte] = finalfit1['value'].value.copy() # copy needed...
     else:
-        fit_nobroad_monte = None
+        parameters_monte = None
 
 
     # Residual spectrum with no emission lines
@@ -1411,7 +1431,8 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # Now fill the output table.
     EMFit.populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
                            emlineivar, oemlineivar, specflux_nolines, redshift,
-                           resolution_matrix, camerapix)
+                           resolution_matrix, camerapix, parameters_monte=parameters_monte)
+    import pdb ; pdb.set_trace()
 
     # Build the model spectrum from the final reported parameter values
     emmodel = EMFit.emlinemodel_bestfit(
