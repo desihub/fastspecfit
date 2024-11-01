@@ -1520,7 +1520,7 @@ def continuum_specfit(data, result, templates, igm, phot,
             val_ivar = result[f'{col}_IVAR']
             var_msg = f'+/-{1./np.sqrt(val_ivar):.3f}' if val_ivar > 0. else ''
             msg.append(f'{label}={val:.3f}{var_msg}{units}')
-        log.info(','.join(msg))
+        log.info(', '.join(msg))
 
     log.info(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
 
