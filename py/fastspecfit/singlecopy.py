@@ -10,7 +10,7 @@ from fastspecfit.igm import Inoue14
 from fastspecfit.photometry import Photometry
 from fastspecfit.linetable import LineTable
 from fastspecfit.templates import Templates
-from fastspecfit.logger import log
+from fastspecfit.logger import log, DEBUG
 
 class Singletons(object):
 
@@ -25,7 +25,13 @@ class Singletons(object):
                    ignore_photometry=False,
                    template_file=None,
                    template_version=None,
-                   template_imf=None):
+                   template_imf=None,
+                   log_verbose=False,
+    ):
+
+        # adjust logging level if requested
+        if log_verbose:
+            log.setLevel(DEBUG)
 
         # templates for continnuum fitting
         self.templates = Templates(template_file=template_file,

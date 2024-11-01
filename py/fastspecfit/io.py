@@ -11,7 +11,7 @@ import numpy as np
 import fitsio
 from astropy.table import Table
 
-from fastspecfit.logger import log, DEBUG
+from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.photometry import Photometry
 from fastspecfit.util import FLUXNORM, ZWarningMask

@@ -101,10 +101,6 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     if verbose:
         args.verbose = True
 
-    if args.verbose:
-        from fastspecfit.logger import DEBUG
-        log.setLevel(DEBUG)
-
     targetids = None
     input_redshifts = None
 
@@ -127,6 +123,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         'template_file':     args.templates,
         'template_version':  args.templateversion,
         'template_imf':      args.imf,
+        'log_verbose':       args.verbose
     }
 
     sc_data.initialize(**init_sc_args)
