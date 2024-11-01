@@ -1054,6 +1054,92 @@ class EMFitTools(object):
             print()
 
 
+def synthphot_spectrum(phot, data, result, modelwave, modelflux):
+    """Synthesize photometry from the best-fitting model (continuum+emission lines).
+
+    """
+    filters = phot.synth_filters[data['photsys']]
+
+    synthmaggies = Photometry.get_ab_maggies(filters, modelflux / FLUXNORM, modelwave)
+    model_synthmag = Photometry.to_nanomaggies(synthmaggies)  # units of nanomaggies
+
+    model_synthphot = Photometry.parse_photometry(
+        phot.synth_bands, maggies=synthmaggies, nanomaggies=False,
+        lambda_eff=filters.effective_wavelengths.value)
+
+    synthmag = data['synthphot']['nanomaggies'].value
+    model_synthmag = model_synthphot['nanomaggies'].value
+    for iband, band in enumerate(phot.synth_bands):
+        bname =  band.upper()
+        result[f'FLUX_SYNTH_{bname}'] = synthmag[iband] # * 'nanomaggies'
+        result[f'FLUX_SYNTH_SPECMODEL_{bname}'] = model_synthmag[iband] # * 'nanomaggies'
+
+
+def build_coadded_models(data, emlinewave, emmodel, continuummodelflux,
+                         smoothcontinuummodelflux):
+    """Package together the output models, coadded across cameras.
+
+    Assume constant dispersion in wavelength!
+
+    """
+    from astropy.table import Column
+
+    # I believe that all the elements of the coadd_wave vector are contained
+    # within one or more of the per-camera wavelength vectors, and so we
+    # should be able to simply map our model spectra with no
+    # interpolation. However, because of round-off, etc., it's probably
+    # easiest to use np.interp.
+    coadd_waves = data['coadd_wave']
+    minwave = np.min(coadd_waves)
+    maxwave = np.max(coadd_waves)
+    dwave = coadd_waves[1] - coadd_waves[0]
+
+    minwave = np.floor(minwave * 1000.) / 1000
+    maxwave = np.floor(maxwave * 1000.) / 1000
+    dwave = np.round(dwave, decimals=3)
+
+    npix = int(np.round((maxwave-minwave)/dwave)) + 1
+    modelwave = minwave + dwave * np.arange(npix, dtype=np.float64)
+
+    wavesrt = np.argsort(emlinewave)
+    sorted_waves = emlinewave[wavesrt]
+    modelcontinuum = np.interp(modelwave, sorted_waves, continuummodelflux[wavesrt])
+    modelsmoothcontinuum = np.interp(modelwave, sorted_waves, smoothcontinuummodelflux[wavesrt])
+    modelemspectrum = np.interp(modelwave, sorted_waves, emmodel[wavesrt])
+
+    modelspectra = Table(
+        # ensure that these columns will stack as rows when
+        # we vstack the Tables for different spectra, rather
+        # than being concatenated into one long row.
+        data=(
+            Column(name='CONTINUUM', dtype='f4',
+                   data=modelcontinuum.reshape(1, npix)),
+            Column(name='SMOOTHCONTINUUM', dtype='f4',
+                   data=modelsmoothcontinuum.reshape(1, npix)),
+            Column(name='EMLINEMODEL', dtype='f4',
+                   data=modelemspectrum.reshape(1, npix))
+        ),
+        # all these header cards need to be 2-element tuples (value, comment),
+        # otherwise io.write_fastspecfit will crash
+        meta = {
+            'NAXIS1': (npix, 'number of pixels'),
+            'NAXIS2': (npix, 'number of models'),
+            'NAXIS3': (npix, 'number of objects'),
+            'BUNIT':  ('10**-17 erg/(s cm2 Angstrom)', 'flux unit'),
+            'CUNIT1': ('Angstrom', 'wavelength unit'),
+            'CTYPE1': ('WAVE', 'type of axis'),
+            'CRVAL1': (minwave, 'wavelength of pixel CRPIX1 (Angstrom)'),
+            'CRPIX1': (0, '0-indexed pixel number corresponding to CRVAL1'),
+            'CDELT1': (dwave, 'pixel size (Angstrom)'),
+            'DC-FLAG': (0, '0 = linear wavelength vector'),
+            'AIRORVAC': ('vac', 'wavelengths in vacuum (vac)')
+        },
+        copy=False
+    )
+
+    return modelwave, modelcontinuum, modelemspectrum, modelspectra
+
+
 def test_broad_model(EMFit, linemodel_nobroad, linemodel_broad, fit_nobroad,
                      model_nobroad, chi2_nobroad, fit_broad, model_broad,
                      chi2_broad, emlinewave, emlineflux, emlineivar, redshift,
@@ -1170,7 +1256,7 @@ def test_broad_model(EMFit, linemodel_nobroad, linemodel_broad, fit_nobroad,
 
         finalfit, finalmodel, finalchi2 = fit_nobroad, model_nobroad, chi2_nobroad
 
-    return finalfit, finalmodel, finalchi2
+    return finalfit, finalmodel, finalchi2, delta_linechi2_balmer, delta_linendof_balmer
 
 
 def linefit(EMFit, linemodel, initial_guesses, param_bounds,
@@ -1212,7 +1298,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     modelflux
 
     """
-    from astropy.table import Column, vstack
+    from astropy.table import vstack
     from fastspecfit.util import ivar2var
 
     tall = time.time()
@@ -1286,11 +1372,11 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
             resolution_matrix, camerapix, uniqueid=data['uniqueid'],
             debug=False)
 
-        finalfit, finalmodel, finalchi2 = test_broad_model(
-            EMFit, linemodel_nobroad, linemodel_broad, fit_nobroad,
-            model_nobroad, chi2_nobroad, fit_broad, model_broad,
-            chi2_broad, emlinewave, emlineflux, emlineivar, redshift,
-            minsnr_balmer_broad, minsigma_balmer_broad)
+        finalfit, finalmodel, finalchi2, delta_linechi2_balmer, delta_linendof_balmer = \
+            test_broad_model(EMFit, linemodel_nobroad, linemodel_broad, fit_nobroad,
+                             model_nobroad, chi2_nobroad, fit_broad, model_broad,
+                             chi2_broad, emlinewave, emlineflux, emlineivar, redshift,
+                             minsnr_balmer_broad, minsigma_balmer_broad)
     else:
         if not broadlinefit:
             log.info('Skipping broad-line fitting (broadlinefit=False).')
@@ -1300,7 +1386,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         finalfit, finalmodel, finalchi2 = fit_nobroad, model_nobroad, chi2_nobroad
         delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
 
-    import pdb ; pdb.set_trace()
 
     # Monte Carlo to get the uncertainties on the derived parameters.
     if nmonte > 0:
@@ -1329,11 +1414,8 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                            resolution_matrix, camerapix)
 
     # Build the model spectrum from the final reported parameter values
-    emmodel = EMFit.emlinemodel_bestfit(result,
-                                        redshift,
-                                        emlinewave,
-                                        resolution_matrix,
-                                        camerapix)
+    emmodel = EMFit.emlinemodel_bestfit(
+        result, redshift, emlinewave, resolution_matrix, camerapix)
 
     result['RCHI2_LINE'] = finalchi2
     #result['NDOF_LINE'] = finalndof
@@ -1345,61 +1427,10 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     rchi2 /= np.sum(oemlineivar > 0)  # dof??
     result['RCHI2'] = rchi2
 
-    # I believe that all the elements of the coadd_wave vector are contained
-    # within one or more of the per-camera wavelength vectors, and so we
-    # should be able to simply map our model spectra with no
-    # interpolation. However, because of round-off, etc., it's probably
-    # easiest to use np.interp.
 
-    # Package together the final output models for writing; assume constant
-    # dispersion in wavelength!
-    coadd_waves = data['coadd_wave']
-    minwave = np.min(coadd_waves)
-    maxwave = np.max(coadd_waves)
-    dwave = coadd_waves[1] - coadd_waves[0]
-
-    minwave = np.floor(minwave * 1000.) / 1000
-    maxwave = np.floor(maxwave * 1000.) / 1000
-    dwave   = np.round(dwave, decimals=3)
-
-    npix = int(np.round((maxwave-minwave)/dwave)) + 1
-    modelwave = minwave + dwave * np.arange(npix, dtype=np.float64)
-
-    wavesrt = np.argsort(emlinewave)
-    sorted_waves = emlinewave[wavesrt]
-    modelcontinuum       = np.interp(modelwave, sorted_waves, continuummodelflux[wavesrt])
-    modelsmoothcontinuum = np.interp(modelwave, sorted_waves, smoothcontinuummodelflux[wavesrt])
-    modelemspectrum      = np.interp(modelwave, sorted_waves, emmodel[wavesrt])
-
-    modelspectra = Table(
-        # ensure that these columns will stack as rows when
-        # we vstack the Tables for different spectra, rather
-        # than being concatenated into one long row.
-        data=(
-            Column(name='CONTINUUM', dtype='f4',
-                   data=modelcontinuum.reshape(1, npix)),
-            Column(name='SMOOTHCONTINUUM', dtype='f4',
-                   data=modelsmoothcontinuum.reshape(1, npix)),
-            Column(name='EMLINEMODEL', dtype='f4',
-                   data=modelemspectrum.reshape(1, npix))
-        ),
-        # all these header cards need to be 2-element tuples (value, comment),
-        # otherwise io.write_fastspecfit will crash
-        meta = {
-            'NAXIS1':   (npix, 'number of pixels'),
-            'NAXIS2':   (npix, 'number of models'),
-            'NAXIS3':   (npix, 'number of objects'),
-            'BUNIT':    ('10**-17 erg/(s cm2 Angstrom)', 'flux unit'),
-            'CUNIT1':   ('Angstrom', 'wavelength unit'),
-            'CTYPE1':   ('WAVE', 'type of axis'),
-            'CRVAL1':   (minwave, 'wavelength of pixel CRPIX1 (Angstrom)'),
-            'CRPIX1':   (0, '0-indexed pixel number corresponding to CRVAL1'),
-            'CDELT1':   (dwave, 'pixel size (Angstrom)'),
-            'DC-FLAG':  (0, '0 = linear wavelength vector'),
-            'AIRORVAC': ('vac', 'wavelengths in vacuum (vac)')
-        },
-        copy=False
-    )
+    # Build the output model spectra.
+    modelwave, modelcontinuum, modelemspectrum, modelspectra = build_coadded_models(
+        data, emlinewave, emmodel, continuummodelflux, smoothcontinuummodelflux)
 
     # Finally, optionally synthesize photometry (excluding the
     # smoothcontinuum!) and measure Dn(4000) from the line-free spectrum.
@@ -1416,65 +1447,69 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         result['DN4000'] = dn4000_nolines
 
         # Simple QA of the Dn(4000) estimate.
-        """
-        import matplotlib.pyplot as plt
+        if debug_plots:
+            dn4000_ivar = result['DN4000_IVAR']
+            if dn4000_ivar == 0.:
+                log.info('Dn(4000) not measured; unable to generate QA figure.')
+            else:
+                import matplotlib.pyplot as plt
+                import seaborn as sns
 
-        dn4000, dn4000_obs, dn4000_model, dn4000_ivar = result['DN4000'], result['DN4000_OBS'], result['DN4000_MODEL'], result['DN4000_IVAR']
-        print(dn4000, dn4000_obs, dn4000_model, 1/np.sqrt(dn4000_ivar))
+                pngfile = f'qa-dn4000-{data["uniqueid"]}.png'
+                sns.set(context='talk', style='ticks', font_scale=0.7)
 
-        restwave = modelwave / (1 + redshift) # [Angstrom]
-        flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) # [erg/s/cm2/A-->erg/s/cm2/Hz, rest]
-        fnu_obs = data['coadd_flux'] * flam2fnu # [erg/s/cm2/Hz]
-        fnu = fluxnolines * flam2fnu # [erg/s/cm2/Hz]
+                dn4000, dn4000_obs = result['DN4000'], result['DN4000_OBS']
+                dn4000_model, dn4000_model_ivar = result['DN4000_MODEL'], result['DN4000_MODEL_IVAR']
 
-        fnu_model = modelcontinuum * flam2fnu
-        fnu_fullmodel = modelflux * flam2fnu
+                dn4000_sigma = 1. / np.sqrt(dn4000_ivar)
+                if dn4000_model_ivar > 0.:
+                    dn4000_model_sigma = 1. / np.sqrt(dn4000_model_ivar)
+                else:
+                    dn4000_model_sigma = 0.
 
-        fnu_ivar = data['coadd_ivar'] / flam2fnu**2
-        fnu_sigma, fnu_mask = ivar2var(fnu_ivar, sigma=True)
+                restwave = modelwave / (1. + redshift) # [Angstrom]
+                flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) * 1e-3 * 1e23 / FLUXNORM # [erg/s/cm2/A-->mJy, rest]
+                fnu_obs = data['coadd_flux'] * flam2fnu # [mJy]
+                fnu = fluxnolines * flam2fnu # [mJy]
 
-        I = (restwave > 3835) * (restwave < 4115)
-        J = (restwave > 3835) * (restwave < 4115) * fnu_mask
+                fnu_model = modelcontinuum * flam2fnu
+                #fnu_fullmodel = modelflux * flam2fnu
 
-        fig, ax = plt.subplots()
-        dn4000_sdev = 1/np.sqrt(dn4000_ivar)
-        ax.fill_between(restwave[I], fnu_obs[I]-fnu_sigma[I], fnu_obs[I]+fnu_sigma[I],
-                        label=f'Observed Dn(4000)={dn4000:.3f}+/-{sdev:.3f}')
-        ax.plot(restwave[I], fnu[I], color='blue', label=f'Line-free Dn(4000)={dn4000:.3f}+/-{dn4000_dev:.3f}')
-        ax.plot(restwave[I], fnu_fullmodel[I], color='k', label=f'Model Dn(4000)={dn4000_model:.3f}')
-        ax.plot(restwave[I], fnu_model[I], color='red', label=f'Model Dn(4000)={dn4000_model:.3f}')
-        ylim = ax.get_ylim()
-        ax.fill_between([3850, 3950], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
-                        color='lightgray', alpha=0.5)
-        ax.fill_between([4000, 4100], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
-                        color='lightgray', alpha=0.5)
-        ax.set_xlabel(r'Rest Wavelength ($\\AA$)')
-        ax.set_ylabel(r'$F_{\\nu}$ (erg/s/cm2/Hz)')
-        ax.legend()
-        fig.savefig('desi-users/ioannis/tmp/qa-dn4000.png')
-        """
+                fnu_ivar = data['coadd_ivar'] / flam2fnu**2
+                fnu_sigma, fnu_mask = ivar2var(fnu_ivar, sigma=True)
+
+                I = (restwave > 3835.) * (restwave < 4115.)
+                J = (restwave > 3835.) * (restwave < 4115.) * fnu_mask
+
+                fig, ax = plt.subplots(figsize=(7, 5))
+                ax.fill_between(restwave[I], fnu_obs[I]-fnu_sigma[I], fnu_obs[I]+fnu_sigma[I], color='red',
+                                alpha=0.5, label=f'Observed Dn(4000)={dn4000:.3f}'+r'$\pm$'+f'{dn4000_sigma:.3f}')
+                ax.plot(restwave[I], fnu[I], alpha=0.7, color='k', label=f'Line-free Dn(4000)={dn4000:.3f}' + \
+                        r'$\pm$'+f'{dn4000_sigma:.3f}')
+                #ax.plot(restwave[I], fnu_fullmodel[I], color='k', label=f'Model Dn(4000)={dn4000_model:.3f}')
+                if dn4000_model_sigma > 0.:
+                    ax.plot(restwave[I], fnu_model[I], alpha=0.7, label=f'Model Dn(4000)={dn4000_model:.3f}' + \
+                            r'$\pm$'+f'{dn4000_model_sigma:.3f}')
+                else:
+                    ax.plot(restwave[I], fnu_model[I], alpha=0.7, label=f'Model Dn(4000)={dn4000_model:.3f}')
+                ylim = ax.get_ylim()
+                ax.fill_between([3850, 3950], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
+                                color='lightgray', alpha=0.5)
+                ax.fill_between([4000, 4100], [ylim[0], ylim[0]], [ylim[1], ylim[1]],
+                                color='lightgray', alpha=0.5)
+                ax.set_xlabel(r'Rest Wavelength ($\AA$)')
+                ax.set_ylabel(r'$F_{\nu}$ (mJy)')
+                #ax.set_ylabel(r'$F_{\nu}\ ({\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~{\rm Hz}^{-1})$')
+                ax.legend(loc='upper left', fontsize=10)
+                ax.set_title(f'Dn(4000): {data["uniqueid"]}')
+
+                fig.tight_layout()
+                fig.savefig(pngfile)#, bbox_inches='tight')
+                plt.close()
+                log.info(f'Wrote {pngfile}')
 
     log.info(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
 
+    import pdb ; pdb.set_trace()
+
     return modelspectra
-
-
-def synthphot_spectrum(phot, data, result, modelwave, modelflux):
-    """Synthesize photometry from the best-fitting model (continuum+emission lines).
-
-    """
-    filters = phot.synth_filters[data['photsys']]
-
-    synthmaggies = Photometry.get_ab_maggies(filters, modelflux / FLUXNORM, modelwave)
-    model_synthmag = Photometry.to_nanomaggies(synthmaggies)  # units of nanomaggies
-
-    model_synthphot = Photometry.parse_photometry(phot.synth_bands, maggies=synthmaggies,
-                                                  nanomaggies=False,
-                                                  lambda_eff=filters.effective_wavelengths.value)
-
-    synthmag = data['synthphot']['nanomaggies'].value
-    model_synthmag = model_synthphot['nanomaggies'].value
-    for iband, band in enumerate(phot.synth_bands):
-        bname =  band.upper()
-        result[f'FLUX_SYNTH_{bname}'] = synthmag[iband] # * 'nanomaggies'
-        result[f'FLUX_SYNTH_SPECMODEL_{bname}'] = model_synthmag[iband] # * 'nanomaggies'

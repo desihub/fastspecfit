@@ -50,11 +50,9 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
         emmodel = None
     else:
         emmodel = emline_specfit(data, out, continuummodel, smooth_continuum,
-                                 phot, emline_table,
-                                 broadlinefit=broadlinefit,
+                                 phot, emline_table, broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
-                                 debug_plots=debug_plots,
-                                 nmonte=nmonte)
+                                 debug_plots=debug_plots, nmonte=nmonte)
 
     return out.value, emmodel
 

@@ -104,7 +104,7 @@ class ContinuumTools(object):
     def smooth_continuum(wave, flux, ivar, linemask, camerapix,
                          uniqueid=0, smooth_window=75, smooth_step=125,
                          clip_sigma=2., nminpix=15, nmaskpix=9,
-                         png=None):
+                         debug_plots=False):
         """Build a smooth, nonparametric continuum spectrum.
 
         Parameters
@@ -238,11 +238,12 @@ class ContinuumTools(object):
         smoothcontinuum = np.hstack(smoothcontinuum)
 
         # Optional QA.
-        if png:
+        if debug_plots:
             import numpy.ma as ma
             import matplotlib.pyplot as plt
             import seaborn as sns
 
+            pngfile = f'qa-smooth-continuum-{uniqueid}.png'
             sns.set(context='talk', style='ticks', font_scale=0.7)
 
             srt = np.argsort(wave)
@@ -305,9 +306,9 @@ class ContinuumTools(object):
 
             ax[0].set_title(f'Smooth Continuum: {uniqueid}')
             fig.tight_layout()
-            fig.savefig(png)#, bbox_inches='tight')
+            fig.savefig(pngfile)#, bbox_inches='tight')
             plt.close()
-            log.info(f'Wrote {png}')
+            log.info(f'Wrote {pngfile}')
 
         return smoothcontinuum
 
@@ -1322,16 +1323,11 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         I = ((specflux == 0.) & (specivar == 0.))
         residuals[I] = 0.
 
-        if debug_plots:
-            png = f'qa-smooth-continuum-{data["uniqueid"]}.png'
-        else:
-            png = None
-
         linemask = np.hstack(data['linemask'])
         _smoothcontinuum = CTools.smooth_continuum(
             specwave, residuals, specivar / median_apercorr**2,
             linemask, uniqueid=data['uniqueid'],
-            camerapix=data['camerapix'], png=png)
+            camerapix=data['camerapix'], debug_plots=debug_plots)
     log.info(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
 
     # Unpack the continuum into individual cameras.
