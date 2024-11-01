@@ -1481,7 +1481,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                 I = (restwave > 3835.) * (restwave < 4115.)
                 J = (restwave > 3835.) * (restwave < 4115.) * fnu_mask
 
-                fig, ax = plt.subplots(figsize=(7, 5))
+                fig, ax = plt.subplots(figsize=(7, 6))
                 ax.fill_between(restwave[I], fnu_obs[I]-fnu_sigma[I], fnu_obs[I]+fnu_sigma[I], color='red',
                                 alpha=0.5, label=f'Observed Dn(4000)={dn4000:.3f}'+r'$\pm$'+f'{dn4000_sigma:.3f}')
                 ax.plot(restwave[I], fnu[I], alpha=0.7, color='k', label=f'Line-free Dn(4000)={dn4000:.3f}' + \
@@ -1509,7 +1509,5 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                 log.info(f'Wrote {pngfile}')
 
     log.info(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
-
-    import pdb ; pdb.set_trace()
 
     return modelspectra
