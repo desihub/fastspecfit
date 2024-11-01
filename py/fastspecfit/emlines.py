@@ -729,7 +729,7 @@ class EMFitTools(object):
 
     def populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
                          emlineivar, oemlineivar, specflux_nolines, redshift,
-                         resolution_matrices, camerapix, parameters_monte=None,
+                         resolution_matrices, camerapix, results_monte=None,
                          nminpix=7, nsigma=3.):
         """Populate the output table with the emission-line measurements.
 
@@ -749,10 +749,10 @@ class EMFitTools(object):
         # convert doublet ratios to amplitudes
         parameters[self.doublet_idx] *= parameters[self.doublet_src]
 
-        if parameters_monte is not None:
-            nparams, nmonte = parameters_monte.shape
-            parameters_monte[self.doublet_idx, :] *= parameters_monte[self.doublet_src, :]
-            parameters_var = np.var(parameters_monte, axis=1)
+        #if parameters_monte is not None:
+        #    nparams, nmonte = parameters_monte.shape
+        #    parameters_monte[self.doublet_idx, :] *= parameters_monte[self.doublet_src, :]
+        #    parameters_var = np.var(parameters_monte, axis=1)
 
         line_fluxes = EMLine_MultiLines(
             parameters, emlinewave, redshift,
@@ -761,6 +761,11 @@ class EMFitTools(object):
 
         values = finalfit['value'].value
         obsvalues = finalfit.meta['obsvalue']
+
+        if results_monte is not None:
+            values_monte, obsvalues_monte = results_monte
+            values_var = np.var(values_monte, axis=1)
+            obsvalues_var = np.var(obsvalues_monte, axis=1)
 
         gausscorr = erf(nsigma / np.sqrt(2))      # correct for the flux outside of +/-nsigma
         dpixwave = np.median(np.diff(emlinewave)) # median pixel size [Angstrom]
@@ -791,9 +796,9 @@ class EMFitTools(object):
             # zero out out-of-range lines
             if not self.line_in_range[iline]:
                 obsvalues[line_amp] = 0.
-                values[line_amp]    = 0.
+                values[line_amp] = 0.
                 values[line_vshift] = 0.
-                values[line_sigma]  = 0.
+                values[line_sigma] = 0.
                 continue
 
             linez = redshift + values[line_vshift] / C_LIGHT
@@ -835,6 +840,13 @@ class EMFitTools(object):
                 values[line_sigma]  = 0.
                 continue
 
+            # Monte Carlo uncertainties
+            if results_monte is not None:
+                obsamp_var = obsvalues_var[line_amp]
+                amp_var = values_var[line_amp]
+                vshift_var = values_var[line_vshift]
+                sigma_var = values_var[line_sigma]
+
             # number of pixels, chi2, and boxcar integration
             patchindx = line_s + np.where(emlineivar_s[line_s:line_e] > 0.)[0]
             npix = len(patchindx)
@@ -863,12 +875,13 @@ class EMFitTools(object):
                 n_lo, n_hi = quantile(specflux_nolines_s[patchindx], (0.25, 0.75))
                 amp_sigma = (n_hi - n_lo) / 1.349 # robust sigma
 
-                amp_ivar = 1./amp_sigma**2 if amp_sigma > 0. else 0.
-                if amp_ivar > 0.:
-                    result[f'{linename}_AMP_IVAR'] = amp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
-
-                if parameters_monte is not None:
-                    import pdb ; pdb.set_trace()
+                if results_monte is not None:
+                    if amp_var > 0.:
+                        result[f'{linename}_AMP_IVAR'] = 1. / amp_var
+                else:
+                    amp_ivar = 1. / amp_sigma**2 if amp_sigma > 0. else 0.
+                    if amp_ivar > 0.:
+                        result[f'{linename}_AMP_IVAR'] = amp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
                 if obsvalues[line_amp] > 0.:
@@ -900,7 +913,7 @@ class EMFitTools(object):
                     flux = np.sum(weight_j * lineprofile_patch[I]) / flux_ivar
 
                     # correction for missing flux
-                    flux      /= _gausscorr
+                    flux /= _gausscorr
                     flux_ivar *= _gausscorr**2
                     result[f'{linename}_FLUX'] = flux
                     result[f'{linename}_FLUX_IVAR'] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
@@ -1414,15 +1427,18 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         else:
             linemodel_monte = linemodel_nobroad
 
-        parameters_monte = np.zeros((len(finalfit), nmonte))
+        values_monte = np.zeros((len(finalfit), nmonte))
+        obsvalues_monte = np.zeros((len(finalfit.meta['obsvalue']), nmonte))
         for imonte in range(nmonte):
             finalfit1, _, _ = linefit(EMFit, linemodel_monte, initial_guesses,
-                                      param_bounds, emlinewave, emlineflux,
+                                      param_bounds, emlinewave, emlineflux_monte[:, imonte],
                                       emlineivar, weights, redshift, resolution_matrix,
                                       camerapix, uniqueid=data['uniqueid'], quiet=True)
-            parameters_monte[:, imonte] = finalfit1['value'].value.copy() # copy needed...
+            values_monte[:, imonte] = np.copy(finalfit1['value'].value) # copy needed...
+            obsvalues_monte[:, imonte] = np.copy(finalfit1.meta['obsvalue'])
+        results_monte = (values_monte, obsvalues_monte)
     else:
-        parameters_monte = None
+        results_monte = None
 
 
     # Residual spectrum with no emission lines
@@ -1431,7 +1447,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # Now fill the output table.
     EMFit.populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
                            emlineivar, oemlineivar, specflux_nolines, redshift,
-                           resolution_matrix, camerapix, parameters_monte=parameters_monte)
+                           resolution_matrix, camerapix, results_monte=results_monte)
     import pdb ; pdb.set_trace()
 
     # Build the model spectrum from the final reported parameter values
