@@ -17,8 +17,7 @@ from fastspecfit.util import BoxedScalar, MPPool
 
 def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
-                 percamera_models=False, debug_plots=False,
-                 minsnr_balmer_broad=2.5, nmonte=50):
+                 debug_plots=False, minsnr_balmer_broad=2.5, nmonte=50):
     """Run :func:`fastspec` on a single object.
 
     """
@@ -54,7 +53,7 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
                                  phot, emline_table,
                                  broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
-                                 percamera_models=percamera_models,
+                                 debug_plots=debug_plots,
                                  nmonte=nmonte)
 
     return out.value, emmodel
@@ -184,7 +183,6 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         'fastphot':            fastphot,
         'constrain_age':       args.constrain_age,
         'no_smooth_continuum': args.no_smooth_continuum,
-        'percamera_models':    args.percamera_models,
         'debug_plots':         args.debug_plots,
         'minsnr_balmer_broad': args.minsnr_balmer_broad,
         'nmonte':              args.nmonte,
@@ -280,7 +278,6 @@ def parse(options=None):
     parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')
     parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
     parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
-    parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
     parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
     parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')

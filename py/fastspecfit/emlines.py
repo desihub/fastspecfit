@@ -1194,7 +1194,7 @@ def linefit(EMFit, linemodel, initial_guesses, param_bounds,
 def emline_specfit(data, result, continuummodel, smooth_continuum,
                    phot, emline_table, minsnr_balmer_broad=2.5,
                    minsigma_balmer_broad=250., nmonte=50, seed=1,
-                   synthphot=True, broadlinefit=True, percamera_models=False):
+                   synthphot=True, broadlinefit=True, debug_plots=False):
     """Perform the fit minimization / chi2 minimization.
 
     Parameters
@@ -1351,7 +1351,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # interpolation. However, because of round-off, etc., it's probably
     # easiest to use np.interp.
 
-    # package together the final output models for writing; assume constant
+    # Package together the final output models for writing; assume constant
     # dispersion in wavelength!
     coadd_waves = data['coadd_wave']
     minwave = np.min(coadd_waves)
@@ -1455,11 +1455,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         """
 
     log.info(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
-
-    if percamera_models:
-        errmsg = 'percamera-models option not yet implemented.'
-        log.critical(errmsg)
-        raise NotImplementedError(errmsg)
 
     return modelspectra
 
