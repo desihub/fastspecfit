@@ -5,7 +5,9 @@ Change Log
 3.1.0 (not released yet)
 ------------------------
 
-*
+* Fix issues with log level retention [`PR #187`_].
+
+.. _`PR #187`: https://github.com/desihub/fastspecfit/pull/187
 
 3.0.0 (2024-10-30)
 ------------------
