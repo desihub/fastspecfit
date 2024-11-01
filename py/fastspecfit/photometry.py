@@ -10,7 +10,7 @@ import numpy as np
 import fitsio
 from astropy.table import Table
 
-from fastspecfit.logger import log, DEBUG
+from fastspecfit.logger import log
 from fastspecfit.util import trapz, C_LIGHT, FLUXNORM
 
 
@@ -1164,7 +1164,7 @@ def _gather_tractorphot_onebrick(input_cat, legacysurveydir, radius_match, racol
 
 def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
                        legacysurveydir=None, dr9dir=None, radius_match=1.0,
-                       restrict_region=None, columns=None, verbose=False):
+                       restrict_region=None, columns=None):
     """Retrieve the Tractor catalog for all the objects in this catalog (one brick).
 
     Args:
@@ -1186,12 +1186,6 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
     """
     from desitarget.targets import decode_targetid
     from desiutil.brick import brickname
-    from desiutil.log import get_logger, DEBUG
-
-    if verbose:
-        log = get_logger(DEBUG)
-    else:
-        log = get_logger()
 
     if len(input_cat) == 0:
         log.warning('No objects in input catalog.')
