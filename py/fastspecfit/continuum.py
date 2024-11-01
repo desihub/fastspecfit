@@ -1285,7 +1285,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         #import matplotlib.pyplot as plt
         #plt.clf()
         #plt.hist(vdisp_monte, bins=20)
+        #plt.ylabel('Number of Realizations')
+        #plt.xlabel(r'$\sigma_{star}$ (km/s)')
         #plt.savefig('junk.png')
+        #import pdb ; pdb.set_trace()
 
     var_msg = f'+/-{1./np.sqrt(ebv_ivar):.3f}' if ebv_ivar > 0. else ''
     ebv_msg = f'E(B-V)={ebv:.3f}{var_msg} mag'
