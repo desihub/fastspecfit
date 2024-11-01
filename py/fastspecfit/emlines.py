@@ -939,13 +939,10 @@ class EMFitTools(object):
 
             ew, ewivar = 0., 0.
             if cmed != 0. and civar != 0.:
-                try:
-                    if flux > 0. and flux_ivar > 0.:
-                        # add the uncertainties in flux and the continuum in quadrature
-                        ew = flux / cmed / (1. + redshift) # rest frame [A]
-                        ewivar = (1. + redshift)**2 / (1. / (cmed**2 * flux_ivar) + flux**2 / (cmed**4 * civar))
-                except:
-                    import pdb ; pdb.set_trace()
+                if flux > 0. and flux_ivar > 0.:
+                    # add the uncertainties in flux and the continuum in quadrature
+                    ew = flux / cmed / (1. + redshift) # rest frame [A]
+                    ewivar = (1. + redshift)**2 / (1. / (cmed**2 * flux_ivar) + flux**2 / (cmed**4 * civar))
 
                 # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
                 fluxlimit = np.sqrt(2. * np.pi) * linesigma_ang / np.sqrt(civar) # * u.erg/(u.second*u.cm**2)
