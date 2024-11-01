@@ -1419,6 +1419,7 @@ def fastqa(args=None, comm=None):
         'template_file':     args.templates,
         'template_version':  args.templateversion,
         'template_imf':      args.imf,
+        'log_verbose':       False,
     }
 
     sc_data.initialize(**init_sc_args)

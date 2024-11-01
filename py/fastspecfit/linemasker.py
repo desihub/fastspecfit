@@ -9,7 +9,7 @@ import time
 import numpy as np
 from astropy.table import Table
 
-from fastspecfit.logger import log, DEBUG
+from fastspecfit.logger import log
 from fastspecfit.util import C_LIGHT, quantile, median
 
 
