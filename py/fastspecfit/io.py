@@ -1592,7 +1592,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     from astropy.io import fits
     from desispec.io.util import fitsheader
     from desiutil.depend import add_dependencies, possible_dependencies, setdep
-
+    import pdb ; pdb.set_trace()
     t0 = time.time()
     outdir = os.path.dirname(os.path.abspath(outfile))
     if not os.path.isdir(outdir):

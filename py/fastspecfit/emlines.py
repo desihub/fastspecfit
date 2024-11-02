@@ -645,16 +645,14 @@ class EMFitTools(object):
                 # calculate the observed maximum amplitude for each
                 # fitted spectral line after convolution with the resolution
                 # matrix.
-                obsvalues = EMLine_find_peak_amplitudes(parameters,
-                                                        obs_bin_centers,
-                                                        redshift,
-                                                        line_wavelengths,
-                                                        resolution_matrices,
-                                                        camerapix)
+                obsamps = EMLine_find_peak_amplitudes(
+                    parameters, obs_bin_centers, redshift,
+                    line_wavelengths, resolution_matrices,
+                    camerapix)
 
                 # add observed values as metadata, since they are only
                 # relevant to amplitudes, not all parameters
-                linemodel.meta['obsvalue'] = obsvalues
+                linemodel.meta['obsamp'] = obsamps
                 return linemodel
             else:
                 return linemodel, continuum_patches
@@ -779,7 +777,8 @@ class EMFitTools(object):
         nwave = len(emlinewave)
         line_wavelengths = self.line_table['restwave'].value
 
-        # Retrieve the parameter values and then convert doublet ratios to amplitudes.
+        # Retrieve the parameter values and then convert doublet ratios to
+        # amplitudes. We need these to build the line-profiles.
         parameters = finalfit['value'].value.copy()
         parameters[self.doublet_idx] *= parameters[self.doublet_src]
 
@@ -788,14 +787,14 @@ class EMFitTools(object):
             resolution_matrices, camerapix)
 
         values = finalfit['value'].value
-        obsvalues = finalfit.meta['obsvalue']
+        obsamps = finalfit.meta['obsamp']
 
         if results_monte is not None:
-            values_monte, obsvalues_monte = results_monte
+            values_monte, obsamps_monte = results_monte
             _, nmonte = values_monte.shape
 
             values_var = np.var(values_monte, axis=1)
-            obsvalues_var = np.var(obsvalues_monte, axis=1)
+            obsamps_var = np.var(obsamps_monte, axis=1)
 
             parameters_monte = values_monte.copy()
             parameters_monte[self.doublet_idx, :] *= parameters_monte[self.doublet_src, :]
@@ -834,7 +833,7 @@ class EMFitTools(object):
 
             # zero out out-of-range lines
             if not self.line_in_range[iline]:
-                obsvalues[line_amp] = 0.
+                obsamps[line_amp] = 0.
                 values[line_amp] = 0.
                 values[line_vshift] = 0.
                 values[line_sigma] = 0.
@@ -873,7 +872,7 @@ class EMFitTools(object):
             # Are the pixels based on the original inverse spectrum fully
             # masked? If so, set everything to zero and move onto the next line.
             if np.sum(oemlineivar_s[line_s:line_e] == 0.) > 0.3 * (line_e - line_s): # use original ivar
-                obsvalues[line_amp] = 0.
+                obsamps[line_amp] = 0.
                 values[line_amp]    = 0.
                 values[line_vshift] = 0.
                 values[line_sigma]  = 0.
@@ -881,10 +880,10 @@ class EMFitTools(object):
 
             # Monte Carlo uncertainties
             if results_monte is not None:
-                obsamp_var = obsvalues_var[line_amp]
-                amp_var = values_var[line_amp]
+                modelamp_var = values_var[line_amp]
                 vshift_var = values_var[line_vshift]
                 sigma_var = values_var[line_sigma]
+                obsamp_var = obsamps_var[line_amp]
 
             # number of pixels, chi2, and boxcar integration
             patchindx = line_s + np.where(emlineivar_s[line_s:line_e] > 0.)[0]
@@ -904,26 +903,31 @@ class EMFitTools(object):
 
                 # boxcar integration of the flux
                 boxflux = np.sum(emlineflux_patch * dwaves_patch)
-                boxflux_ivar = 1 / np.sum(dwaves_patch**2 / emlineivar_patch)
+                boxflux_ivar = 1. / np.sum(dwaves_patch**2 / emlineivar_patch)
                 result[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
                 result[f'{linename}_BOXFLUX_IVAR'] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
 
-                # Get the uncertainty in the line-amplitude based on the scatter
-                # in the pixel values from the emission-line subtracted
-                # spectrum.
-                n_lo, n_hi = quantile(specflux_nolines_s[patchindx], (0.25, 0.75))
-                amp_sigma = (n_hi - n_lo) / 1.349 # robust sigma
-
                 if results_monte is not None:
-                    if amp_var > 0.:
-                        result[f'{linename}_AMP_IVAR'] = 1. / amp_var
+                    obsamp_ivar = 1. / obsamp_var if obsamp_var > 0. else 0.
+                    result[f'{linename}_AMP_IVAR'] = obsamp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                    if vshift_var > 0.:
+                        result[f'{linename}_VSHIFT_IVAR'] = 1. / vshift_var
+                    if sigma_var > 0.:
+                        result[f'{linename}_SIGMA_IVAR'] = 1. / sigma_var
+                    if modelamp_var > 0.:
+                        result[f'{linename}_MODELAMP_IVAR'] = 1. / modelamp_var
                 else:
-                    amp_ivar = 1. / amp_sigma**2 if amp_sigma > 0. else 0.
-                    if amp_ivar > 0.:
-                        result[f'{linename}_AMP_IVAR'] = amp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                    # Legacy algorithm: get the uncertainty in the
+                    # line-amplitude based on the scatter in the pixel values
+                    # from the emission-line subtracted spectrum.
+                    n_lo, n_hi = quantile(specflux_nolines_s[patchindx], (0.25, 0.75))
+                    amp_sigma = (n_hi - n_lo) / 1.349 # robust sigma
+
+                    obsamp_ivar = 1. / obsamp_sigma**2 if amp_sigma > 0. else 0.
+                    result[f'{linename}_AMP_IVAR'] = obsamp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
-                if obsvalues[line_amp] > 0.:
+                if obsamps[line_amp] > 0.:
                     finalmodel_patch = finalmodel_s[patchindx]
                     chi2 = np.sum(emlineivar_patch * (emlineflux_patch - finalmodel_patch)**2)
                     result[f'{linename}_CHI2'] = chi2
@@ -947,10 +951,11 @@ class EMFitTools(object):
                         flux_ivar = flux_gauss_ivar
 
                     result[f'{linename}_FLUX'] = flux
+                    result[f'{linename}_FLUX_GAUSS_IVAR'] = flux_gauss_ivar
                     result[f'{linename}_FLUX_IVAR'] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
 
                     # keep track of sigma and z but only using XX-sigma lines
-                    linesnr = obsvalues[line_amp] * np.sqrt(amp_ivar)
+                    linesnr = obsamps[line_amp] * np.sqrt(obsamp_ivar)
                     if linesnr > 1.5:
                         if isbroad: # includes UV and broad Balmer lines
                             if isbalmer:
@@ -1058,14 +1063,14 @@ class EMFitTools(object):
             if param_types[iparam] == ParamType.AMPLITUDE:
                 if line_doublet_src[iparam] == -1:
                     # not a doublet ratio
-                    result[param_names[iparam].upper()] = obsvalues[iparam]
+                    result[param_names[iparam].upper()] = obsamps[iparam]
                 else:
                     # line name of doublet target
                     orig_line = self.line_table['name'][param_lines[iparam]].upper()
                     isrc = line_doublet_src[iparam] # valid for amplitude params
 
                     result[orig_line + '_MODELAMP'] = val * values[isrc]
-                    result[orig_line + '_AMP'     ] = val * obsvalues[isrc]
+                    result[orig_line + '_AMP'     ] = val * obsamps[isrc]
 
         # Clean up the doublets whose amplitudes were tied in the fitting since
         # they may have been zeroed out in the clean-up, above.
@@ -1253,7 +1258,7 @@ def test_broad_model(EMFit, linemodel_nobroad, linemodel_broad, fit_nobroad,
         bnoise = (hi - lo) / 1.349 # robust sigma
         bindx = line_params[bline, ParamType.AMPLITUDE]
         if bnoise > 0.:
-            balmer_linesnrs[iline] = fit_broad.meta['obsvalue'][bindx] / bnoise
+            balmer_linesnrs[iline] = fit_broad.meta['obsamp'][bindx] / bnoise
 
     # compute delta-chi2 around just the broad, non-helium Balmer lines
     balmerpixels = np.unique(np.hstack(balmerpixels))
@@ -1468,15 +1473,15 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
             linemodel_monte = linemodel_nobroad
 
         values_monte = np.zeros((len(finalfit), nmonte))
-        obsvalues_monte = np.zeros((len(finalfit.meta['obsvalue']), nmonte))
+        obsamps_monte = np.zeros((len(finalfit.meta['obsamp']), nmonte))
         for imonte in range(nmonte):
             finalfit1, _, _ = linefit(EMFit, linemodel_monte, initial_guesses,
                                       param_bounds, emlinewave, emlineflux_monte[:, imonte],
                                       emlineivar, weights, redshift, resolution_matrix,
                                       camerapix, uniqueid=data['uniqueid'], quiet=True)
             values_monte[:, imonte] = np.copy(finalfit1['value'].value) # copy needed...
-            obsvalues_monte[:, imonte] = np.copy(finalfit1.meta['obsvalue'])
-        results_monte = (values_monte, obsvalues_monte)
+            obsamps_monte[:, imonte] = np.copy(finalfit1.meta['obsamp']) # observed amplitudes
+        results_monte = (values_monte, obsamps_monte)
     else:
         results_monte = None
 
@@ -1488,7 +1493,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     EMFit.populate_emtable(result, finalfit, finalmodel, emlinewave, emlineflux,
                            emlineivar, oemlineivar, specflux_nolines, redshift,
                            resolution_matrix, camerapix, results_monte=results_monte)
-    import pdb ; pdb.set_trace()
 
     # Build the model spectrum from the final reported parameter values
     emmodel = EMFit.emlinemodel_bestfit(
