@@ -434,12 +434,16 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
             line = line.upper()
             add_field(f'{line}_MODELAMP', dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+            add_field(f'{line}_MODELAMP_IVAR', dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
             add_field(f'{line}_AMP', dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
             add_field(f'{line}_AMP_IVAR', dtype='f4',
                                   unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
             add_field(f'{line}_FLUX', dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2))
+            add_field(f'{line}_FLUX_GAUSS_IVAR', dtype='f4',
+                                  unit=10**34*u.second**2*u.cm**4/u.erg**2)
             add_field(f'{line}_FLUX_IVAR', dtype='f4',
                                   unit=10**34*u.second**2*u.cm**4/u.erg**2)
             add_field(f'{line}_BOXFLUX', dtype='f4',
@@ -449,8 +453,12 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
 
             add_field(f'{line}_VSHIFT', dtype='f4',
                                   unit=u.kilometer/u.second)
+            add_field(f'{line}_VSHIFT_IVAR', dtype='f4',
+                                  unit=u.second**2/u.kilometer**2)
             add_field(f'{line}_SIGMA', dtype='f4',
                                   unit=u.kilometer / u.second)
+            add_field(f'{line}_SIGMA_IVAR', dtype='f4',
+                                  unit=u.second**2/u.kilometer**2)
 
             add_field(f'{line}_CONT', dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
