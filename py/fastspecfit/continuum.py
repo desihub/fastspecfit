@@ -1551,7 +1551,14 @@ def continuum_specfit(data, result, templates, igm, phot,
         return sedmodel, None, None, None
     else:
         # divide out the aperture correction
-        continuummodel  = [cm / median_apercorr for cm in continuummodel]
+        continuummodel = [cm / median_apercorr for cm in continuummodel]
         smoothcontinuum = [sc / median_apercorr for sc in smoothcontinuum]
+        if continuummodel_monte is not None:
+            continuummodel_monte_renorm = []
+            for imonte in range(nmonte):
+                continuummodel_one = continuummodel_monte[imonte]
+                continuummodel_one = [cm / median_apercorr for cm in continuummodel_one]
+                continuummodel_monte_renorm.append(continuummodel_one)
+            continuummodel_monte = continuummodel_monte_renorm
 
         return continuummodel, smoothcontinuum, continuummodel_monte, specflux_monte

@@ -975,8 +975,8 @@ class EMFitTools(object):
                     # line-amplitude based on the scatter in the pixel values
                     # from the emission-line subtracted spectrum.
                     n_lo, n_hi = quantile(specflux_nolines_s[patchindx], (0.25, 0.75))
-                    amp_sigma = (n_hi - n_lo) / 1.349 # robust sigma
-                    obsamp_ivar = 1. / obsamp_sigma**2 if amp_sigma > 0. else 0.
+                    obsamp_sigma = (n_hi - n_lo) / 1.349 # robust sigma
+                    obsamp_ivar = 1. / obsamp_sigma**2 if obsamp_sigma > 0. else 0.
                     result[f'{linename}_AMP_IVAR'] = obsamp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
                     # formal (statistical) uncertainty
@@ -1479,7 +1479,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     weights = np.sqrt(emlineivar)
 
     # Monte Carlo spectrum carried over from continuum-fitting. Assume that the
-    # continuum and smooth continuum models are the same!
+    # smooth continuum model is the same...
     if specflux_monte is not None:
         if continuummodel_monte is not None:
             continuummodelflux_monte = np.zeros((len(continuummodelflux), nmonte))
@@ -1516,7 +1516,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
 
     # fit spectrum without broad Balmer lines
     fit_nobroad, model_nobroad, chi2_nobroad = linefit(
-        EMFit, linemodel_nobroad, initial_guesses, param_bounds,
+        EMFit, linemodel_nobroad.copy(), initial_guesses, param_bounds,
         emlinewave, emlineflux, emlineivar, weights, redshift,
         resolution_matrix, camerapix, uniqueid=data['uniqueid'],
         debug=False)
@@ -1524,7 +1524,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # Now try to improve the chi2 by adding broad Balmer lines.
     if broadlinefit and data['balmerbroad']:
         fit_broad, model_broad, chi2_broad = linefit(
-            EMFit, linemodel_broad, initial_guesses, param_bounds,
+            EMFit, linemodel_broad.copy(), initial_guesses, param_bounds,
             emlinewave, emlineflux, emlineivar, weights, redshift,
             resolution_matrix, camerapix, uniqueid=data['uniqueid'],
             debug=False)
@@ -1570,7 +1570,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                 emlinewave, emlineflux_monte[:, imonte], emlineivar,
                 weights, redshift, resolution_matrix, camerapix,
                 uniqueid=data['uniqueid'], quiet=True)
-            values_monte[:, imonte] = np.copy(finalfit1['value'].value) # copy needed...
+            values_monte[:, imonte] = np.copy(finalfit1['value'].value)  # copy needed??
             obsamps_monte[:, imonte] = np.copy(finalfit1.meta['obsamp']) # observed amplitudes
             finalmodel_monte[:, imonte] = np.copy(finalmodel1)
         specflux_nolines_monte = specflux_monte - finalmodel_monte
