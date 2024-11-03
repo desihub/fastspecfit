@@ -1228,19 +1228,16 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             vdisp=(vdisp if compute_vdisp else None),
             conv_pre=input_conv_pre_nolines, dust_emission=False)
 
-    # Monte Carlo to get ebv_ivar, vdisp_ivar, and coeff_monte.
+    # Monte Carlo to the uncertainties in the fitting.
     if nmonte > 0 and (ndof_cont > 0 or ndof_phot > 0):
         # ndof_cont==0 should never happen...
-        if ndof_cont > 0:
-            # Use specivar_nolinemask here rather than specivar because we are
-            # going to use the same set of realizations in line-fitting.
-            specstd = np.zeros_like(specivar_nolinemask)
-            I = specivar_nolinemask > 0.
-            specstd[I] = 1. / np.sqrt(specivar_nolinemask[I])
-            specflux_monte = rng.normal(specflux[:, np.newaxis], specstd[:, np.newaxis],
-                                        size=(len(specflux), nmonte))
-        else:
-            specflux_monte = np.repeat(specflux[:, np.newaxis], nmonte, axis=1)
+        # Use specivar_nolinemask here rather than specivar because we are
+        # going to use the same set of realizations in line-fitting.
+        specstd = np.zeros_like(specivar_nolinemask)
+        I = specivar_nolinemask > 0.
+        specstd[I] = 1. / np.sqrt(specivar_nolinemask[I])
+        specflux_monte = rng.normal(specflux[:, np.newaxis], specstd[:, np.newaxis],
+                                    size=(len(specflux), nmonte))
 
         if ndof_phot > 0:
             objflamstd = np.zeros_like(objflamistd)
@@ -1249,6 +1246,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             objflam_monte = rng.normal(objflam[:, np.newaxis], objflamstd[:, np.newaxis],
                                        size=(len(objflam), nmonte))
         else:
+            # should be all zeros
             objflam_monte = np.repeat(objflam[:, np.newaxis], nmonte, axis=1)
 
         ebv_monte = np.zeros(nmonte)

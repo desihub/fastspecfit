@@ -17,7 +17,8 @@ from fastspecfit.util import BoxedScalar, MPPool
 
 def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
-                 debug_plots=False, minsnr_balmer_broad=2.5, nmonte=50):
+                 debug_plots=False, minsnr_balmer_broad=2.5, nmonte=50,
+                 seed=1):
     """Run :func:`fastspec` on a single object.
 
     """
@@ -42,7 +43,7 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
     continuummodel, smooth_continuum, continuummodel_monte, specflux_monte = \
         continuum_specfit(data, out, templates, igm, phot, constrain_age=constrain_age,
                           no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
-                          debug_plots=debug_plots, nmonte=nmonte)
+                          debug_plots=debug_plots, nmonte=nmonte, seed=seed)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -51,9 +52,8 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
         emmodel = emline_specfit(data, out, continuummodel, smooth_continuum,
                                  phot, emline_table, broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
-                                 debug_plots=debug_plots, nmonte=nmonte,
-                                 continuummodel_monte=continuummodel_monte,
-                                 specflux_monte=specflux_monte)
+                                 debug_plots=debug_plots, specflux_monte=specflux_monte,
+                                 continuummodel_monte=continuummodel_monte)
 
     return out.value, emmodel
 
@@ -182,6 +182,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         'debug_plots':         args.debug_plots,
         'minsnr_balmer_broad': args.minsnr_balmer_broad,
         'nmonte':              args.nmonte,
+        'seed':                args.seed,
     } for iobj in range(Spec.ntargets)]
 
     _out = mp_pool.starmap(fastspec_one, fitargs)
@@ -267,6 +268,7 @@ def parse(options=None):
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
     parser.add_argument('--nmonte', type=int, default=100, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')

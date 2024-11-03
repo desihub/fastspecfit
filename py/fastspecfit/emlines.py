@@ -1422,9 +1422,9 @@ def linefit(EMFit, linemodel, initial_guesses, param_bounds,
 
 def emline_specfit(data, result, continuummodel, smooth_continuum,
                    phot, emline_table, minsnr_balmer_broad=2.5,
-                   minsigma_balmer_broad=250., nmonte=50, seed=1,
-                   continuummodel_monte=None, specflux_monte=None,
-                   synthphot=True, broadlinefit=True, debug_plots=False):
+                   minsigma_balmer_broad=250., continuummodel_monte=None,
+                   specflux_monte=None, synthphot=True, broadlinefit=True,
+                   debug_plots=False):
     """Perform the fit minimization / chi2 minimization.
 
     Parameters
@@ -1448,11 +1448,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     tall = time.time()
 
     EMFit = EMFitTools(emline_table, uniqueid=data['uniqueid'])
-
-    if nmonte is not None and nmonte > 0:
-        rng = np.random.default_rng(seed=seed)
-    else:
-        rng = None
 
     redshift = data['redshift']
     camerapix = data['camerapix']
@@ -1481,6 +1476,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # Monte Carlo spectrum carried over from continuum-fitting. Assume that the
     # smooth continuum model is the same...
     if specflux_monte is not None:
+        _, nmonte = specflux_monte.shape
         if continuummodel_monte is not None:
             continuummodelflux_monte = np.zeros((len(continuummodelflux), nmonte))
             for imonte in range(nmonte):
