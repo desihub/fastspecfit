@@ -256,11 +256,12 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         'dn4000_model': r'$D_{n}(4000)_{\mathrm{model}}=$'+r'${:.3f}$'.format(fastspec['DN4000_MODEL']),
         }
 
-    for key, label, col, fmt, units in zip(['age', 'AV', 'mstar', 'sfr', 'zzsun'],
-                                           ['Age', r'$A_{V}$', r'$\log_{10}(M/M_{\odot})$', r'$\mathrm{SFR}$', r'$Z/Z_{\odot}$'],
-                                           ['AGE', 'AV', 'LOGMSTAR', 'SFR', 'ZZSUN'],
-                                           ['{:.2f}', '{:.2f}', '{:.2f}', '{:.1f}', '{:.1f}'],
-                                           [' Gyr', ' mag', '', r' $M_{\odot}/\mathrm{yr}$', '']):
+    for key, label, col, fmt, units in zip(
+            ['age', 'AV', 'mstar', 'sfr', 'zzsun'],
+            ['Age', r'$A_{V}$', r'$\log_{10}(M/M_{\odot})$', r'$\mathrm{SFR}$', r'$Z/Z_{\odot}$'],
+            ['AGE', 'AV', 'LOGMSTAR', 'SFR', 'ZZSUN'],
+            ['{:.2f}', '{:.2f}', '{:.2f}', '{:.1f}', '{:.1f}'],
+            [' Gyr', ' mag', '', r' $M_{\odot}/\mathrm{yr}$', '']):
         val = fastspec[col]
         val_ivar = fastspec[f'{col}_IVAR']
         if val_ivar > 0.:

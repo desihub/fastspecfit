@@ -313,7 +313,8 @@ class ContinuumTools(object):
         return smoothcontinuum
 
 
-    def continuum_fluxes(self, continuum, uniqueid=0, width1=50., width2=100., png=None):
+    def continuum_fluxes(self, continuum, uniqueid=0, width1=50., width2=100.,
+                         debug_plots=False):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
@@ -391,10 +392,11 @@ class ContinuumTools(object):
             cfluxes[label] = _get_cflux(cwave, linear_fit=True, ignore_core=ignore_core)
 
         # simple QA
-        if png:
+        if debug_plots:
             import matplotlib.pyplot as plt
             import seaborn as sns
 
+            pngfile = f'qa-continuum-fluxes-{uniqueid}.png'
             sns.set(context='talk', style='ticks', font_scale=0.6)
 
             templatewave = self.templates.wave
@@ -1117,6 +1119,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
     specflux_monte = None
     sedmodel_monte = None
     sedmodel_nolines_monte = None
+    desimodel_nolines_monte = None
+    continuummodel_monte = None
 
     # First, estimate the aperture correction from a (noiseless) *model*
     # of the spectrum (using the nominal velocity dispersion).
@@ -1253,6 +1257,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         coeff_monte = np.zeros((nage, nmonte))
         sedmodel_monte = np.zeros((templates.npix, nmonte))
         sedmodel_nolines_monte = np.zeros((templates.npix, nmonte))
+        desimodel_nolines_monte = np.zeros((len(specflux), nmonte))
         for imonte in range(nmonte):
             ebv1, vdisp1, coeff1, resid1 = CTools.fit_stellar_continuum(
                 input_templateflux, # [npix,nage]
@@ -1280,6 +1285,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
                 input_templateflux_nolines, coeff1, ebv=ebv1,
                 vdisp=(vdisp1 if compute_vdisp else None),
                 conv_pre=input_conv_pre_nolines, dust_emission=False)
+            desimodel_nolines_monte[:, imonte] = CTools.continuum_to_spectroscopy(
+                sedmodel_nolines_monte[:, imonte])
 
             dn4000_model1, _ = Photometry.get_dn4000(
                 templates.wave, sedmodel_nolines_monte[:, imonte], rest=True)
@@ -1340,21 +1347,30 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
     # Unpack the continuum into individual cameras.
     continuummodel, smoothcontinuum = [], []
+
     smoothstats = np.zeros(len(data['camerapix']))
     for icam, campix in enumerate(data['camerapix']):
         ss, ee = campix
         continuummodel.append(desimodel_nolines[ss:ee])
         smoothcontinuum.append(_smoothcontinuum[ss:ee])
         I = (specflux[ss:ee] != 0.) * (specivar[ss:ee] != 0.) * (_smoothcontinuum[ss:ee] != 0.)
-        #I = (desimodel_nolines[ss:ee] != 0.) * (_smoothcontinuum[ss:ee] != 0.)
         if np.count_nonzero(I) > 3:
             corr = np.mean(1 - _smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
             smoothstats[icam] = corr
 
+    if desimodel_nolines_monte is not None:
+        continuummodel_monte = []
+        for imonte in range(nmonte):
+            continuummodel_monte_one = []
+            for campix in data['camerapix']:
+                continuummodel_monte_one.append(desimodel_nolines_monte[campix[0]:campix[1], imonte])
+            continuummodel_monte.append(continuummodel_monte_one)
+
     return (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
             ebv, ebv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
-            dn4000_model_ivar, specflux_monte, sedmodel, sedmodel_monte, sedmodel_nolines,
-            sedmodel_nolines_monte, continuummodel, smoothcontinuum, smoothstats)
+            dn4000_model_ivar, sedmodel, sedmodel_nolines, continuummodel,
+            smoothcontinuum, smoothstats, specflux_monte, sedmodel_monte,
+            sedmodel_nolines_monte, continuummodel_monte)
 
 
 def continuum_specfit(data, result, templates, igm, phot,
@@ -1417,8 +1433,9 @@ def continuum_specfit(data, result, templates, igm, phot,
     else:
         (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
          ebv, ebv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
-         dn4000_model_ivar, specflux_monte, sedmodel, sedmodel_monte, sedmodel_nolines,
-         sedmodel_nolines_monte, continuummodel, smoothcontinuum, smoothstats) = \
+         dn4000_model_ivar, sedmodel, sedmodel_nolines, continuummodel,
+         smoothcontinuum, smoothstats, specflux_monte, sedmodel_monte,
+         sedmodel_nolines_monte, continuummodel_monte) = \
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
                                 nmonte=nmonte, rng=rng, debug_plots=debug_plots,
                                 no_smooth_continuum=no_smooth_continuum)
@@ -1459,11 +1476,9 @@ def continuum_specfit(data, result, templates, igm, phot,
             redshift, data['dmodulus'], data['photsys'],
             CTools.ztemplatewave, sedmodel)
 
-        if debug_plots:
-            png = f'qa-continuum-fluxes-{data["uniqueid"]}.png'
-        else:
-            png = None
-        lums, cfluxes = CTools.continuum_fluxes(sedmodel_nolines, uniqueid=data['uniqueid'], png=png)
+        lums, cfluxes = CTools.continuum_fluxes(
+            sedmodel_nolines, uniqueid=data['uniqueid'],
+            debug_plots=debug_plots)
 
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
             band = band.upper()
@@ -1533,10 +1548,10 @@ def continuum_specfit(data, result, templates, igm, phot,
     log.info(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
 
     if fastphot:
-        return sedmodel, None, specflux_monte
+        return sedmodel, None, None, None
     else:
         # divide out the aperture correction
         continuummodel  = [cm / median_apercorr for cm in continuummodel]
         smoothcontinuum = [sc / median_apercorr for sc in smoothcontinuum]
 
-        return continuummodel, smoothcontinuum, specflux_monte
+        return continuummodel, smoothcontinuum, continuummodel_monte, specflux_monte

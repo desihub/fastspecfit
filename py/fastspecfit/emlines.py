@@ -1423,8 +1423,8 @@ def linefit(EMFit, linemodel, initial_guesses, param_bounds,
 def emline_specfit(data, result, continuummodel, smooth_continuum,
                    phot, emline_table, minsnr_balmer_broad=2.5,
                    minsigma_balmer_broad=250., nmonte=50, seed=1,
-                   specflux_monte=None, synthphot=True, broadlinefit=True,
-                   debug_plots=False):
+                   continuummodel_monte=None, specflux_monte=None,
+                   synthphot=True, broadlinefit=True, debug_plots=False):
     """Perform the fit minimization / chi2 minimization.
 
     Parameters
@@ -1481,8 +1481,15 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # Monte Carlo spectrum carried over from continuum-fitting. Assume that the
     # continuum and smooth continuum models are the same!
     if specflux_monte is not None:
-        emlineflux_monte = (specflux_monte - continuummodelflux[:, np.newaxis] - \
-                            smoothcontinuummodelflux[:, np.newaxis])
+        if continuummodel_monte is not None:
+            continuummodelflux_monte = np.zeros((len(continuummodelflux), nmonte))
+            for imonte in range(nmonte):
+                continuummodelflux_monte[:, imonte] = np.hstack(continuummodel_monte[imonte])
+            emlineflux_monte = (specflux_monte - continuummodelflux_monte - \
+                                smoothcontinuummodelflux[:, np.newaxis])
+        else:
+            emlineflux_monte = (specflux_monte - continuummodelflux[:, np.newaxis] - \
+                                smoothcontinuummodelflux[:, np.newaxis])
 
     # determine which lines are in range of the camera
     EMFit.compute_inrange_lines(redshift, wavelims=(np.min(emlinewave),
@@ -1565,8 +1572,8 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                 uniqueid=data['uniqueid'], quiet=True)
             values_monte[:, imonte] = np.copy(finalfit1['value'].value) # copy needed...
             obsamps_monte[:, imonte] = np.copy(finalfit1.meta['obsamp']) # observed amplitudes
-            finalmodel_monte[:, imonte] = finalmodel1
-        specflux_nolines_monte = specflux[:, np.newaxis] - finalmodel_monte
+            finalmodel_monte[:, imonte] = np.copy(finalmodel1)
+        specflux_nolines_monte = specflux_monte - finalmodel_monte
         results_monte = (values_monte, obsamps_monte, emlineflux_monte, specflux_nolines_monte)
     else:
         results_monte = None
