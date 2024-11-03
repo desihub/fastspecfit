@@ -1114,6 +1114,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
     vdisp_ivar = 0.
     dn4000_model_ivar = 0.
     coeff_monte = None
+    specflux_monte = None
     sedmodel_monte = None
     sedmodel_nolines_monte = None
 
@@ -1225,10 +1226,13 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
     # Monte Carlo to get ebv_ivar, vdisp_ivar, and coeff_monte.
     if nmonte > 0 and (ndof_cont > 0 or ndof_phot > 0):
+        # ndof_cont==0 should never happen...
         if ndof_cont > 0:
-            specstd = np.zeros_like(specistd)
-            I = specistd > 0.
-            specstd[I] = 1. / specistd[I]
+            # Use specivar_nolinemask here rather than specivar because we are
+            # going to use the same set of realizations in line-fitting.
+            specstd = np.zeros_like(specivar_nolinemask)
+            I = specivar_nolinemask > 0.
+            specstd[I] = 1. / np.sqrt(specivar_nolinemask[I])
             specflux_monte = rng.normal(specflux[:, np.newaxis], specstd[:, np.newaxis],
                                         size=(len(specflux), nmonte))
         else:
@@ -1250,7 +1254,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         sedmodel_monte = np.zeros((templates.npix, nmonte))
         sedmodel_nolines_monte = np.zeros((templates.npix, nmonte))
         for imonte in range(nmonte):
-            ebv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
+            ebv1, vdisp1, coeff1, resid1 = CTools.fit_stellar_continuum(
                 input_templateflux, # [npix,nage]
                 fit_vdisp=compute_vdisp, conv_pre=input_conv_pre,
                 vdisp_guess=templates.vdisp_nominal,
@@ -1260,6 +1264,13 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
                 specflux=specflux_monte[:, imonte]*median_apercorr,
                 specistd=specistd/median_apercorr,
                 synthphot=True, synthspec=True)
+
+            # for testing...
+            #_, rchi2_phot1, rchi2_cont1 = CTools.stellar_continuum_chi2(
+            #    resid1, ncoeff=nage, vdisp_fitted=compute_vdisp,
+            #    split=len(specflux), ndof_spec=ndof_cont, ndof_phot=ndof_phot)
+            #print(rchi2_cont1)
+
             coeff_monte[:, imonte] = coeff1
             ebv_monte[imonte] = ebv1
             vdisp_monte[imonte] = vdisp1
@@ -1283,19 +1294,14 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             vdisp_ivar = 1. / vdisp_var
         if dn4000_model_var > 0.:
             dn4000_model_ivar = 1. / dn4000_model_var
-        #import matplotlib.pyplot as plt
-        #plt.clf()
-        #plt.hist(vdisp_monte, bins=20)
-        #plt.ylabel('Number of Realizations')
-        #plt.xlabel(r'$\sigma_{star}$ (km/s)')
-        #plt.savefig('junk.png')
-        #import pdb ; pdb.set_trace()
 
-    var_msg = f'+/-{1./np.sqrt(ebv_ivar):.3f}' if ebv_ivar > 0. else ''
-    ebv_msg = f'E(B-V)={ebv:.3f}{var_msg} mag'
-    var_msg = f'+/-{1./np.sqrt(vdisp_ivar):.1f}' if vdisp_ivar > 0. else ''
-    vdisp_msg = f'vdisp={vdisp:.1f}{var_msg} km/s'
-    log.info(f'{ebv_msg}, {vdisp_msg}.')
+    msg = []
+    for label, units, val, val_ivar in zip(
+            ['E(B-V)', 'vdisp'], [' mag', ' km/s'],
+            [ebv, vdisp], [ebv_ivar, vdisp_ivar]):
+        var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
+        msg.append(f'{label}={val:.3f}{var_msg}{units}')
+    log.info(', '.join(msg))
 
     desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
 
@@ -1306,10 +1312,12 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         specwave, specflux, flam_ivar=specivar_nolinemask,
         redshift=redshift, rest=False)
 
-    var_msg = f'+/-{1./np.sqrt(dn4000_ivar):.3f}' if dn4000_ivar > 0. else ''
-    msg = [f'Spectroscopic DN(4000)={dn4000:.3f}{var_msg}']
-    var_msg = f'+/-{1./np.sqrt(dn4000_model_ivar):.3f}' if dn4000_model_ivar > 0. else ''
-    msg.append(f'model Dn(4000)={dn4000_model:.3f}{var_msg}')
+    msg = []
+    for label, val, val_ivar in zip(
+            ['Spectroscopic DN(4000)', 'model Dn(4000)'],
+            [dn4000, dn4000_model], [dn4000_ivar, dn4000_model_ivar]):
+        var_msg = f'+/-{1./np.sqrt(val_ivar):.3f}' if val_ivar > 0. else ''
+        msg.append(f'{label}={val:.3f}{var_msg}')
     log.info(', '.join(msg))
 
     # Get the smooth continuum.
@@ -1345,7 +1353,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
     return (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
             ebv, ebv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
-            dn4000_model_ivar, sedmodel, sedmodel_monte, sedmodel_nolines,
+            dn4000_model_ivar, specflux_monte, sedmodel, sedmodel_monte, sedmodel_nolines,
             sedmodel_nolines_monte, continuummodel, smoothcontinuum, smoothstats)
 
 
@@ -1409,7 +1417,7 @@ def continuum_specfit(data, result, templates, igm, phot,
     else:
         (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
          ebv, ebv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
-         dn4000_model_ivar, sedmodel, sedmodel_monte, sedmodel_nolines,
+         dn4000_model_ivar, specflux_monte, sedmodel, sedmodel_monte, sedmodel_nolines,
          sedmodel_nolines_monte, continuummodel, smoothcontinuum, smoothstats) = \
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
                                 nmonte=nmonte, rng=rng, debug_plots=debug_plots,
@@ -1525,10 +1533,10 @@ def continuum_specfit(data, result, templates, igm, phot,
     log.info(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
 
     if fastphot:
-        return sedmodel, None
+        return sedmodel, None, specflux_monte
     else:
         # divide out the aperture correction
         continuummodel  = [cm / median_apercorr for cm in continuummodel]
         smoothcontinuum = [sc / median_apercorr for sc in smoothcontinuum]
 
-        return continuummodel, smoothcontinuum
+        return continuummodel, smoothcontinuum, specflux_monte

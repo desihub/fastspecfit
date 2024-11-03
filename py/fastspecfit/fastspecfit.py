@@ -39,11 +39,10 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
     # output structure
     out = BoxedScalar(out_dtype)
 
-    continuummodel, smooth_continuum = continuum_specfit(
+    continuummodel, smooth_continuum, specflux_monte = continuum_specfit(
         data, out, templates, igm, phot, constrain_age=constrain_age,
-        no_smooth_continuum=no_smooth_continuum,
-        fastphot=fastphot, debug_plots=debug_plots,
-        nmonte=nmonte)
+        no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
+        debug_plots=debug_plots, nmonte=nmonte)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -52,7 +51,8 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
         emmodel = emline_specfit(data, out, continuummodel, smooth_continuum,
                                  phot, emline_table, broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
-                                 debug_plots=debug_plots, nmonte=nmonte)
+                                 debug_plots=debug_plots, nmonte=nmonte,
+                                 specflux_monte=specflux_monte)
 
     return out.value, emmodel
 
