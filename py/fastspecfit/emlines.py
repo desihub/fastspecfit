@@ -734,6 +734,7 @@ class EMFitTools(object):
 
         """
         from math import erf
+        from scipy.stats import moment
         from fastspecfit.util import centers2edges, sigmaclip, quantile, median
 
         def _get_boundaries(A, v_lo, v_hi):
@@ -1141,8 +1142,14 @@ class EMFitTools(object):
                     orig_line = self.line_table['name'][param_lines[iparam]].upper()
                     isrc = line_doublet_src[iparam] # valid for amplitude params
 
-                    result[orig_line + '_MODELAMP'] = val * values[isrc]
-                    result[orig_line + '_AMP'     ] = val * obsamps[isrc]
+                    result[f'{orig_line}_MODELAMP'] = val * values[isrc]
+                    result[f'{orig_line}_AMP'] = val * obsamps[isrc]
+
+                    # uncertainty in the doublet ratio
+                    if results_monte is not None:
+                        val_var = values_var[iparam]
+                        if val_var > 0.:
+                            result[f'{pmodelname}_IVAR'] = 1. / val_var
 
         # Clean up the doublets whose amplitudes were tied in the fitting since
         # they may have been zeroed out in the clean-up, above.
@@ -1187,8 +1194,12 @@ class EMFitTools(object):
                     log.debug(f'{linename} {col}: {val:.4f}')
                 print()
 
-            for col in ('MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO'):
-                log.debug(f'{col}: {result[col]:.4f}')
+            for lname in ['MGII', 'OII', 'SII']:
+                col = f'{lname}_DOUBLET_RATIO'
+                val = result[col]
+                val_ivar = result[f'{col}_IVAR']
+                log.debug(f'{col}: {val:.4f}')
+                log.debug(f'{col}_IVAR: {val_ivar:.4f}')
             print()
 
 
