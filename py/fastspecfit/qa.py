@@ -257,11 +257,11 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         }
 
     for key, label, col, fmt, units in zip(
-            ['age', 'AV', 'mstar', 'sfr', 'zzsun'],
-            ['Age', r'$A_{V}$', r'$\log_{10}(M/M_{\odot})$', r'$\mathrm{SFR}$', r'$Z/Z_{\odot}$'],
-            ['AGE', 'AV', 'LOGMSTAR', 'SFR', 'ZZSUN'],
+            ['age', 'tauv', 'mstar', 'sfr', 'zzsun'],
+            ['Age', r'$\tau_{V}$', r'$\log_{10}(M/M_{\odot})$', r'$\mathrm{SFR}$', r'$Z/Z_{\odot}$'],
+            ['AGE', 'TAUV', 'LOGMSTAR', 'SFR', 'ZZSUN'],
             ['{:.2f}', '{:.2f}', '{:.2f}', '{:.1f}', '{:.1f}'],
-            [' Gyr', ' mag', '', r' $M_{\odot}/\mathrm{yr}$', '']):
+            [' Gyr', '', '', r' $M_{\odot}/\mathrm{yr}$', '']):
         val = fastspec[col]
         val_ivar = fastspec[f'{col}_IVAR']
         if val_ivar > 0.:
@@ -302,11 +302,11 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
     if fastphot:
         leg['vdisp'] = r'$\sigma_{star}=$'+'{:.0f}'.format(fastspec['VDISP'])+' km/s'
     else:
-        #if fastspec['VDISP_IVAR'] > 0:
-        #    leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
-        #else:
-        #    leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
-        leg['vdisp'] = r'$\sigma_{{star}}={:.0f}$ km/s'.format(fastspec['VDISP'])
+        if fastspec['VDISP_IVAR'] > 0:
+            leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1./np.sqrt(fastspec['VDISP_IVAR']))
+        else:
+            leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+        #leg['vdisp'] = r'$\sigma_{{star}}={:.0f}$ km/s'.format(fastspec['VDISP'])
 
         leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(fastspec['RCHI2'])
         leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(fastspec['RCHI2_CONT'])
@@ -448,8 +448,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         sedmodel = CTools.build_stellar_continuum(
             templates.flux_nomvdisp,
             fastspec['COEFF'] * CTools.massnorm,
-            ebv=fastspec['AV'] / Templates.klambda(5500.),
-            vdisp=None)
+            tauv=fastspec['TAUV'], vdisp=None)
 
         sedphot = CTools.continuum_to_photometry(sedmodel,
                                                  phottable=True,
@@ -480,7 +479,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         contmodel = CTools.build_stellar_continuum(
             templates.flux_nolines, fastspec['COEFF'],
             vdisp=fastspec['VDISP'], conv_pre=templates.conv_pre_nolines,
-            ebv=fastspec['AV'] / Templates.klambda(5500.))
+            tauv=fastspec['TAUV'])
 
         _desicontinuum = CTools.continuum_to_spectroscopy(contmodel)
 
@@ -857,7 +856,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         txt = '\n'.join((
             #r'{}'.format(leg['fagn']),
             r'{}'.format(leg['zzsun']),
-            r'{}'.format(leg['AV']),
+            r'{}'.format(leg['tauv']),
             r'{}'.format(leg['sfr']),
             r'{}'.format(leg['age']),
             r'{}'.format(leg['mstar']),

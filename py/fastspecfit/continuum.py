@@ -21,7 +21,7 @@ class ContinuumTools(object):
     """Tools for dealing with spectral continua.
 
     """
-    def __init__(self, data, templates, phot, igm, ebv_guess=0.05,
+    def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
                  fastphot=False, constrain_age=False):
 
         self.phot = phot
@@ -29,9 +29,7 @@ class ContinuumTools(object):
         self.data = data
 
         self.massnorm = 1e10  # stellar mass normalization factor [Msun]
-        self.ebv_guess = 0.05 # [mag]
-
-        self.lg_atten = np.log(10.) * (-0.4 * templates.dust_klambda)
+        self.tauv_guess = tauv_guess
 
         # Cache the redshift-dependent factors (incl. IGM attenuation),
         redshift = data['redshift']
@@ -483,7 +481,6 @@ class ContinuumTools(object):
         including contribution of dust emission.
 
         """
-
         # Concurrently replace M by M * (atten ** ebv) and
         # compute (by trapezoidal integration) integral of
         # difference of bolometric luminosities before and after
@@ -514,6 +511,7 @@ class ContinuumTools(object):
         for i in range(len(M)):
             M[i] = (M[i] + lbol_diff * dustflux[i]) * zfactors[i]
 
+
     @staticmethod
     @jit(nopython=True, nogil=True, fastmath=True)
     def attenuate_nodust(M, A, zfactors):
@@ -522,7 +520,6 @@ class ContinuumTools(object):
         without dust emission.
 
         """
-
         # final result is
         # M * (atten ** ebv) * zfactors
         for i in range(len(M)):
@@ -530,7 +527,7 @@ class ContinuumTools(object):
 
 
     def build_stellar_continuum(self, templateflux, templatecoeff,
-                                ebv, vdisp=None, conv_pre=None,
+                                tauv, vdisp=None, conv_pre=None,
                                 dust_emission=True):
 
         """Build a stellar continuum model.
@@ -543,8 +540,8 @@ class ContinuumTools(object):
         templatecoeff : :class:`numpy.ndarray` [ntemplates]
             Column vector of positive coefficients corresponding to each
             template.
-        ebv : :class:`float`
-            Dust extinction parameter, E(B-V), in mag.
+        tauv : :class:`float`
+            V-band optical depth, tau(V).
         vdisp : :class:`float`
             Velocity dispersion in km/s. If `None`, do not convolve to the
             specified velocity dispersion (usually because `templateflux` has
@@ -563,10 +560,10 @@ class ContinuumTools(object):
 
         """
         if conv_pre is None or vdisp > Templates.MAX_PRE_VDISP:
-            # [1] - Compute the weighted sum of the templates.
+            # Compute the weighted sum of the templates.
             contmodel = templateflux.dot(templatecoeff)
 
-            # [2] - Optionally convolve to the desired velocity dispersion.
+            # Optionally convolve to the desired velocity dispersion.
             if vdisp is not None:
                 contmodel = self.templates.convolve_vdisp(contmodel, vdisp)
         else:
@@ -575,13 +572,13 @@ class ContinuumTools(object):
             # region.  Both must be combined using template coefficients.
             flux_lohi, ft_flux_mid, fft_len = conv_pre
 
-            # [1] - Compute the weighted sum of the templates.
+            # Compute the weighted sum of the templates.
             cont_lohi   = flux_lohi.dot(templatecoeff)
             ft_cont_mid = ft_flux_mid.dot(templatecoeff)
 
-            # [2] - convolve to the desired velocity dispersion.
-            # Use the vdisp convolution that takes precomputed FT
-            # of flux for convolved region
+            # Convolve to the desired velocity dispersion. Use the vdisp
+            # convolution that takes precomputed FT of flux for convolved
+            # region.
             flux_len = templateflux.shape[0]
             contmodel = self.templates.convolve_vdisp_from_pre(
                 cont_lohi, ft_cont_mid, flux_len, fft_len, vdisp)
@@ -604,7 +601,7 @@ class ContinuumTools(object):
 
         # Do this part in Numpy because it is very slow in Numba unless
         # accelerated transcendentals are available via, e.g., Intel SVML.
-        A = self.lg_atten * ebv
+        A = tauv * self.templates.dust_klambda
         np.exp(A, out=A)
 
         if dust_emission:
@@ -711,16 +708,16 @@ class ContinuumTools(object):
         assert (synthphot or synthspec), "request for empty residuals!"
 
         if fit_vdisp:
-            ebv, vdisp    = params[:2]
+            tauv, vdisp    = params[:2]
             templatecoeff = params[2:]
         else:
-            ebv           = params[0]
+            tauv           = params[0]
             vdisp         = None
             templatecoeff = params[1:]
 
         fullmodel = self.build_stellar_continuum(
             templateflux, templatecoeff,
-            ebv=ebv, vdisp=vdisp, conv_pre=conv_pre,
+            tauv=tauv, vdisp=vdisp, conv_pre=conv_pre,
             dust_emission=dust_emission)
 
         # save the full model each time we compute the objective;
@@ -755,9 +752,9 @@ class ContinuumTools(object):
 
 
     def fit_stellar_continuum(self, templateflux, fit_vdisp, conv_pre=None,
-                              vdisp_guess=250., ebv_guess=0.05,
+                              vdisp_guess=250., tauv_guess=0.1,
                               coeff_guess=None,
-                              vdisp_bounds=(75., 500.), ebv_bounds=(0., 3.),
+                              vdisp_bounds=(75., 500.), tauv_bounds=(0., 3.),
                               dust_emission=True,
                               objflam=None, objflamistd=None,
                               specflux=None, specistd=None,
@@ -776,16 +773,16 @@ class ContinuumTools(object):
             with vdisp values.  (Occurs only if fit_vdisp is True.)
         vdisp_guess : :class:`float`
             Guess for scalar value of the velocity dispersion if fitting.
-        ebv_guess : :class:`float`
-            Guess scalar value of the dust attenuation.
+        tauv_guess : :class:`float`
+            Guess scalar value of the dust optical depth.
         coeff_guess : :class:`numpy.ndarray` [ntemplates]
             Guess of the template coefficients.
         vdisp_bounds : :class:`tuple`
             Two-element list of minimum and maximum allowable values of the
             velocity dispersion; only used if `fit_vdisp=True`.
-        ebv_bounds : :class:`tuple`
+        tauv_bounds : :class:`tuple`
             Two-element list of minimum and maximum allowable values of the
-            reddening, E(B-V).
+            V-band optical depth, tau(V).
         dust_emission : :class:`bool`
             Model impact of infrared dust emission spectrum. Energy-balance is used
             to compute the normalization of this spectrum.
@@ -806,8 +803,8 @@ class ContinuumTools(object):
 
         Returns
         -------
-        ebv : :class:`float`
-            Maximum-likelihood dust extinction parameter in mag.
+        tauv : :class:`float`
+            Maximum-likelihood V-band optical depth.
         vdisp : :class:`float`
             Maximum-likelihood velocity dispersion in km/s, or
             nominal velocity if it was not fitted.
@@ -822,7 +819,7 @@ class ContinuumTools(object):
         whether vdisp is fitted or left nominal, and whether the caller requests
         fitting a model against spectroscopy, photometry, or both.
 
-        In all cases, we solve for dust attenuation via the E(B-V) parameter and
+        In all cases, we solve for dust attenuation via the tau(V) parameter and
         we also include IGM attenuation.
 
         """
@@ -856,11 +853,11 @@ class ContinuumTools(object):
         coeff_bounds = (0., 1e5)
 
         if fit_vdisp:
-            initial_guesses = np.array((ebv_guess, vdisp_guess))
-            bounds = [ebv_bounds, vdisp_bounds]
+            initial_guesses = np.array((tauv_guess, vdisp_guess))
+            bounds = [tauv_bounds, vdisp_bounds]
         else:
-            initial_guesses = np.array((ebv_guess,))
-            bounds = [ebv_bounds]
+            initial_guesses = np.array((tauv_guess,))
+            bounds = [tauv_bounds]
 
         initial_guesses = np.concatenate((initial_guesses, coeff_guess))
         bounds = bounds + [coeff_bounds] * ntemplates
@@ -876,14 +873,14 @@ class ContinuumTools(object):
         resid      = fit_info.fun
 
         if fit_vdisp:
-            ebv, vdisp    = bestparams[:2]
+            tauv, vdisp    = bestparams[:2]
             templatecoeff = bestparams[2:]
         else:
-            ebv           = bestparams[0]
+            tauv           = bestparams[0]
             templatecoeff = bestparams[1:]
             vdisp = self.templates.vdisp_nominal
 
-        return ebv, vdisp, templatecoeff, resid
+        return tauv, vdisp, templatecoeff, resid
 
 
     def stellar_continuum_chi2(self, resid,
@@ -907,7 +904,7 @@ class ContinuumTools(object):
            Number of photometry degrees of freedom
 
         """
-        # ebv is always a free parameter
+        # tauv is always a free parameter
         nfree = ncoeff + 1 + int(vdisp_fitted)
 
         def _get_rchi2(chi2, ndof, nfree):
@@ -976,7 +973,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
     vdisp = templates.vdisp_nominal
 
-    ebv_ivar = 0.
+    tauv_ivar = 0.
     dn4000_model_ivar = 0.
     coeff_monte = None
     sedmodel_monte = None
@@ -994,9 +991,9 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
         objflamistd = np.sqrt(objflamivar)
 
         t0 = time.time()
-        ebv, _, coeff, resid = CTools.fit_stellar_continuum(
+        tauv, _, coeff, resid = CTools.fit_stellar_continuum(
             templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
-            fit_vdisp=False, vdisp_guess=vdisp, ebv_guess=CTools.ebv_guess,
+            fit_vdisp=False, vdisp_guess=vdisp, tauv_guess=CTools.tauv_guess,
             objflam=objflam, objflamistd=objflamistd,
             synthphot=True, synthspec=False)
         dt = time.time()-t0
@@ -1019,13 +1016,13 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             sedmodel = CTools.optimizer_saved_contmodel
             sedmodel_nolines = CTools.build_stellar_continuum(
                 templates.flux_nolines_nomvdisp[:, agekeep], coeff,
-                ebv=ebv, vdisp=None, dust_emission=False)
+                tauv=tauv, vdisp=None, dust_emission=False)
 
             # Measure Dn(4000) from the line-free model.
             dn4000_model, _ = Photometry.get_dn4000(
                 templates.wave, sedmodel_nolines, rest=True)
 
-        # Monte Carlo to get ebv_ivar and coeff_monte.
+        # Monte Carlo to get tauv_ivar and coeff_monte.
         if nmonte > 0:
             objflamstd = np.zeros_like(objflamistd)
             I = objflamistd > 0.
@@ -1033,47 +1030,47 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             objflam_monte = rng.normal(objflam[:, np.newaxis], objflamstd[:, np.newaxis],
                                        size=(len(objflam), nmonte))
 
-            ebv_monte = np.zeros(nmonte)
+            tauv_monte = np.zeros(nmonte)
             dn4000_model_monte = np.zeros(nmonte)
             coeff_monte = np.zeros((nage, nmonte))
             sedmodel_monte = np.zeros((templates.npix, nmonte))
             sedmodel_nolines_monte = np.zeros((templates.npix, nmonte))
             for imonte in range(nmonte):
-                ebv1, _, coeff1, _ = CTools.fit_stellar_continuum(
+                tauv1, _, coeff1, _ = CTools.fit_stellar_continuum(
                     templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
-                    fit_vdisp=False, vdisp_guess=vdisp, ebv_guess=CTools.ebv_guess,
+                    fit_vdisp=False, vdisp_guess=vdisp, tauv_guess=CTools.tauv_guess,
                     objflam=objflam_monte[:, imonte], objflamistd=objflamistd,
                     synthphot=True, synthspec=False)
 
                 coeff_monte[:, imonte] = coeff1
-                ebv_monte[imonte] = ebv1
+                tauv_monte[imonte] = tauv1
 
                 sedmodel_monte[:, imonte] = CTools.optimizer_saved_contmodel
                 sedmodel_nolines_monte[:, imonte] = CTools.build_stellar_continuum(
                     templates.flux_nolines_nomvdisp[:, agekeep], coeff1,
-                    ebv=ebv1, vdisp=None, dust_emission=False)
+                    tauv=tauv1, vdisp=None, dust_emission=False)
 
                 dn4000_model1, _ = Photometry.get_dn4000(
                     templates.wave, sedmodel_nolines_monte[:, imonte], rest=True)
                 dn4000_model_monte[imonte] = dn4000_model1
 
-            ebv_var = np.var(ebv_monte)
+            tauv_var = np.var(tauv_monte)
             dn4000_model_var = np.var(dn4000_model_monte)
-            if ebv_var > 0.:
-                ebv_ivar = 1. / ebv_var
+            if tauv_var > 0.:
+                tauv_ivar = 1. / tauv_var
             if dn4000_model_var > 0.:
                 dn4000_model_ivar = 1. / dn4000_model_var
 
             msg = []
             for label, units, val, val_ivar in zip(
-                    ['Model Dn(4000)', 'E(B-V)'], ['', ' mag'],
-                    [dn4000_model, ebv], [dn4000_model_ivar, ebv_ivar]):
+                    ['Model Dn(4000)', 'tau(V)'], ['', ' mag'],
+                    [dn4000_model, tauv], [dn4000_model_ivar, tauv_ivar]):
                 var_msg = f'+/-{1./np.sqrt(val_ivar):.3f}' if val_ivar > 0. else ''
                 msg.append(f'{label}={val:.3f}{var_msg}{units}')
             msg.append(f'vdisp={vdisp:.0f} km/s')
             log.info(' '.join(msg))
 
-    return (coeff, coeff_monte, rchi2_phot, ebv, ebv_ivar, vdisp, dn4000_model,
+    return (coeff, coeff_monte, rchi2_phot, tauv, tauv_ivar, vdisp, dn4000_model,
             dn4000_model_ivar, sedmodel, sedmodel_monte, sedmodel_nolines,
             sedmodel_nolines_monte)
 
@@ -1112,7 +1109,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             snrmsg += f" S/N_{data['cameras'][icam]}={data['snr'][icam]:.2f}"
     log.info(snrmsg)
 
-    ebv_ivar = 0.
+    tauv_ivar = 0.
     vdisp_ivar = 0.
     dn4000_model_ivar = 0.
     coeff_monte = None
@@ -1139,10 +1136,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         t0 = time.time()
         # Quick fit to just the spectroscopy at the nominal velocity
         # dispersion.
-        ebv, _, coeff, _ = CTools.fit_stellar_continuum(
+        tauv, _, coeff, _ = CTools.fit_stellar_continuum(
             templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
             dust_emission=False,  fit_vdisp=False,
-            vdisp_guess=None, ebv_guess=CTools.ebv_guess,
+            vdisp_guess=None, tauv_guess=CTools.tauv_guess,
             specflux=specflux, specistd=specistd,
             synthphot=False, synthspec=True)
 
@@ -1194,12 +1191,12 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         log.info('Insufficient wavelength coverage to compute velocity dispersion.')
 
     t0 = time.time()
-    ebv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
+    tauv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
         input_templateflux, # [npix,nage]
         fit_vdisp=compute_vdisp, conv_pre=input_conv_pre,
         vdisp_guess=templates.vdisp_nominal,
-        ebv_guess=CTools.ebv_guess,
-        #ebv_guess=ebv, coeff_guess=coeff_guess, # don't bias the answer...?
+        tauv_guess=CTools.tauv_guess,
+        #tauv_guess=tauv, coeff_guess=coeff_guess, # don't bias the answer...?
         objflam=objflam, objflamistd=objflamistd,
         specflux=specflux*median_apercorr,
         specistd=specistd/median_apercorr,
@@ -1224,7 +1221,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         # Get the best-fitting model with and without line-emission.
         sedmodel = CTools.optimizer_saved_contmodel
         sedmodel_nolines = CTools.build_stellar_continuum(
-            input_templateflux_nolines, coeff, ebv=ebv,
+            input_templateflux_nolines, coeff, tauv=tauv,
             vdisp=(vdisp if compute_vdisp else None),
             conv_pre=input_conv_pre_nolines, dust_emission=False)
 
@@ -1249,7 +1246,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             # should be all zeros
             objflam_monte = np.repeat(objflam[:, np.newaxis], nmonte, axis=1)
 
-        ebv_monte = np.zeros(nmonte)
+        tauv_monte = np.zeros(nmonte)
         vdisp_monte = np.zeros(nmonte)
         dn4000_model_monte = np.zeros(nmonte)
         coeff_monte = np.zeros((nage, nmonte))
@@ -1257,30 +1254,24 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         sedmodel_nolines_monte = np.zeros((templates.npix, nmonte))
         desimodel_nolines_monte = np.zeros((len(specflux), nmonte))
         for imonte in range(nmonte):
-            ebv1, vdisp1, coeff1, resid1 = CTools.fit_stellar_continuum(
+            tauv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
                 input_templateflux, # [npix,nage]
                 fit_vdisp=compute_vdisp, conv_pre=input_conv_pre,
                 vdisp_guess=templates.vdisp_nominal,
-                ebv_guess=CTools.ebv_guess,
-                #ebv_guess=ebv, coeff_guess=coeff_guess, # don't bias the answer...?
+                tauv_guess=CTools.tauv_guess,
+                #tauv_guess=tauv, coeff_guess=coeff_guess, # don't bias the answer...?
                 objflam=objflam_monte[:, imonte], objflamistd=objflamistd,
                 specflux=specflux_monte[:, imonte]*median_apercorr,
                 specistd=specistd/median_apercorr,
                 synthphot=True, synthspec=True)
 
-            # for testing...
-            #_, rchi2_phot1, rchi2_cont1 = CTools.stellar_continuum_chi2(
-            #    resid1, ncoeff=nage, vdisp_fitted=compute_vdisp,
-            #    split=len(specflux), ndof_spec=ndof_cont, ndof_phot=ndof_phot)
-            #print(rchi2_cont1)
-
             coeff_monte[:, imonte] = coeff1
-            ebv_monte[imonte] = ebv1
+            tauv_monte[imonte] = tauv1
             vdisp_monte[imonte] = vdisp1
 
             sedmodel_monte[:, imonte] = CTools.optimizer_saved_contmodel
             sedmodel_nolines_monte[:, imonte] = CTools.build_stellar_continuum(
-                input_templateflux_nolines, coeff1, ebv=ebv1,
+                input_templateflux_nolines, coeff1, tauv=tauv1,
                 vdisp=(vdisp1 if compute_vdisp else None),
                 conv_pre=input_conv_pre_nolines, dust_emission=False)
             desimodel_nolines_monte[:, imonte] = CTools.continuum_to_spectroscopy(
@@ -1290,11 +1281,11 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
                 templates.wave, sedmodel_nolines_monte[:, imonte], rest=True)
             dn4000_model_monte[imonte] = dn4000_model1
 
-        ebv_var = np.var(ebv_monte)
+        tauv_var = np.var(tauv_monte)
         vdisp_var = np.var(vdisp_monte)
         dn4000_model_var = np.var(dn4000_model_monte)
-        if ebv_var > 0.:
-            ebv_ivar = 1. / ebv_var
+        if tauv_var > 0.:
+            tauv_ivar = 1. / tauv_var
         if vdisp_var > 0.:
             vdisp_ivar = 1. / vdisp_var
         if dn4000_model_var > 0.:
@@ -1302,8 +1293,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
     msg = []
     for label, units, val, val_ivar in zip(
-            ['E(B-V)', 'vdisp'], [' mag', ' km/s'],
-            [ebv, vdisp], [ebv_ivar, vdisp_ivar]):
+            ['tau(V)', 'vdisp'], [' mag', ' km/s'],
+            [tauv, vdisp], [tauv_ivar, vdisp_ivar]):
         var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
         msg.append(f'{label}={val:.3f}{var_msg}{units}')
     log.info(', '.join(msg))
@@ -1365,7 +1356,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             continuummodel_monte.append(continuummodel_monte_one)
 
     return (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
-            ebv, ebv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
+            tauv, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
             dn4000_model_ivar, sedmodel, sedmodel_nolines, continuummodel,
             smoothcontinuum, smoothstats, specflux_monte, sedmodel_monte,
             sedmodel_nolines_monte, continuummodel_monte)
@@ -1424,13 +1415,13 @@ def continuum_specfit(data, result, templates, igm, phot,
 
     if fastphot:
         # Photometry-only fitting.
-        (coeff, coeff_monte, rchi2_phot, ebv, ebv_ivar, vdisp, dn4000_model, dn4000_model_ivar,
+        (coeff, coeff_monte, rchi2_phot, tauv, tauv_ivar, vdisp, dn4000_model, dn4000_model_ivar,
          sedmodel, sedmodel_monte, sedmodel_nolines, sedmodel_nolines_monte) = \
             continuum_fastphot(redshift, objflam, objflamivar, CTools,
                                nmonte=nmonte, rng=rng)
     else:
         (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
-         ebv, ebv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
+         tauv, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
          dn4000_model_ivar, sedmodel, sedmodel_nolines, continuummodel,
          smoothcontinuum, smoothstats, specflux_monte, sedmodel_monte,
          sedmodel_nolines_monte, continuummodel_monte) = \
@@ -1492,7 +1483,6 @@ def continuum_specfit(data, result, templates, igm, phot,
                 result[cflux] = cfluxes[cflux]
 
         # get the SPS properties
-        kV = Templates.klambda(5500.)
         def _get_sps_properties(coeff):
             tinfo = templates.info[CTools.agekeep]
             mstars = tinfo['mstar'] # [current mass in stars, Msun]
@@ -1503,13 +1493,11 @@ def continuum_specfit(data, result, templates, igm, phot,
             age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
             #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
             sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
-            AV = ebv * kV # [mag]
-            AV_ivar = ebv_ivar / kV**2
-            return AV, AV_ivar, age, zzsun, logmstar, sfr
+            return age, zzsun, logmstar, sfr
 
-        AV, AV_ivar, age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
-        result['AV'] = AV
-        result['AV_IVAR'] = AV_ivar
+        age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
+        result['TAUV'] = tauv
+        result['TAUV_IVAR'] = tauv_ivar
         result['AGE'] = age
         result['ZZSUN'] = zzsun
         result['LOGMSTAR'] = logmstar
@@ -1521,7 +1509,7 @@ def continuum_specfit(data, result, templates, igm, phot,
             logmstar_monte = np.zeros(nmonte)
             sfr_monte = np.zeros(nmonte)
             for imonte in range(nmonte):
-                _, _, age1, zzsun1, logmstar1, sfr1 = _get_sps_properties(coeff_monte[:, imonte])
+                age1, zzsun1, logmstar1, sfr1 = _get_sps_properties(coeff_monte[:, imonte])
                 age_monte[imonte] = age1
                 zzsun_monte[imonte] = zzsun1
                 logmstar_monte[imonte] = logmstar1
@@ -1534,10 +1522,10 @@ def continuum_specfit(data, result, templates, igm, phot,
 
         rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600.))
         msg = [f'M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag']
-        for label, units, val, col in zip(['log(M/Msun)', 'A(V)', 'Age', 'SFR', 'Z/Zsun'],
-                                          ['', ' mag', ' Gyr', ' Msun/yr', ''],
-                                          [logmstar, AV, age, sfr, zzsun],
-                                          ['LOGMSTAR', 'AV', 'AGE', 'SFR', 'ZZSUN']):
+        for label, units, val, col in zip(['log(M/Msun)', 'tau(V)', 'Age', 'SFR', 'Z/Zsun'],
+                                          ['', '', ' Gyr', ' Msun/yr', ''],
+                                          [logmstar, tauv, age, sfr, zzsun],
+                                          ['LOGMSTAR', 'TAUV', 'AGE', 'SFR', 'ZZSUN']):
             val_ivar = result[f'{col}_IVAR']
             var_msg = f'+/-{1./np.sqrt(val_ivar):.3f}' if val_ivar > 0. else ''
             msg.append(f'{label}={val:.3f}{var_msg}{units}')

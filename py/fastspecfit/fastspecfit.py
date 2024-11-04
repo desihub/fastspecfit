@@ -352,8 +352,8 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
     add_field('VDISP', dtype='f4', unit=u.kilometer/u.second)
     if not fastphot:
         add_field('VDISP_IVAR', dtype='f4', unit=u.second**2/u.kilometer**2)
-    add_field('AV', dtype='f4', unit=u.mag)
-    add_field('AV_IVAR', dtype='f4', unit=1/u.mag**2)
+    add_field('TAUV', dtype='f4')
+    add_field('TAUV_IVAR', dtype='f4')
     add_field('AGE', dtype='f4', unit=u.Gyr)
     add_field('AGE_IVAR', dtype='f4', unit=1/u.Gyr**2)
     add_field('ZZSUN', dtype='f4')
