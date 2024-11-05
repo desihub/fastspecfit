@@ -37,6 +37,10 @@ class EMFitTools(object):
             isstrong = self.line_table['isstrong'].value
             self.line_table = self.line_table[isstrong]
 
+        # lines for which we want to measure moments
+        self.moment_lines = {'CIV_1549': ['civ_1549'], 'MGII_2800': ['mgii_2796', 'mgii_2803'],
+                             'HBETA': ['hbeta'], 'OIII_5007': ['oiii_5007'], 'HALPHA': ['halpha']}
+
         # Build some convenience (Boolean) arrays that we'll use in many places:
         line_isbroad  = self.line_table['isbroad'].value
         line_isbalmer = self.line_table['isbalmer'].value
@@ -728,14 +732,14 @@ class EMFitTools(object):
     def populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
                          emlineivar, oemlineivar, specflux_nolines, redshift,
                          resolution_matrices, camerapix, results_monte=None,
-                         nminpix=7, nsigma=3., limitsigma_narrow_default=75.,
-                         limitsigma_broad_default=1200.):
+                         nminpix=7, nsigma=3., moment_nsigma=5.,
+                         limitsigma_narrow_default=75., limitsigma_broad_default=1200.):
         """Populate the output table with the emission-line measurements.
 
         """
         from math import erf
-        from scipy.stats import moment
-        from fastspecfit.util import centers2edges, sigmaclip, quantile, median
+        from fastspecfit.util import (centers2edges, sigmaclip, quantile,
+                                      median, trapz)
 
         def _get_boundaries(A, v_lo, v_hi):
             """Find range (lo, hi) such that all pixels of A in range [v_lo,
@@ -1090,6 +1094,52 @@ class EMFitTools(object):
                 result[f'{linename}_EW_IVAR'] = ew_ivar
                 result[f'{linename}_FLUX_LIMIT'] = fluxlimit
                 #result[f'{linename}_EW_LIMIT'] = ewlimit
+
+
+        # Measure moments for the set of lines in self.moment_lines. We need a
+        # separate loop because for one "line" (MgII) we actually want the full
+        # doublet.
+        for moment_col in self.moment_lines.keys():
+            moment_line = self.moment_lines[moment_col]
+            iline = np.isin(self.line_table['name'], moment_line)
+            if not np.all(self.line_in_range[iline]):
+                continue
+
+            ltable = self.line_table[iline]
+            restwave = np.mean(ltable['restwave'])
+
+            # take the zeroth line in the case of a doublet
+            _, line_vshift, line_sigma = ltable['params'][0]
+            isbroad, isbalmer = ltable['isbroad'][0], ltable['isbalmer'][0]
+
+            linezwave = restwave * (1. + redshift + values[line_vshift] / C_LIGHT)
+            _, _, linesigma_ang_window, _ = _preprocess_linesigma(linesigma, linezwave, isbroad, isbalmer)
+
+            ss, ee = _get_boundaries(emlinewave_s,
+                                     linezwave - moment_nsigma * linesigma_ang_window,
+                                     linezwave + moment_nsigma * linesigma_ang_window)
+            if ss == ee: # should never happer
+                continue
+
+            # compute the first three moments of the distribution
+            ww = emlinewave_s[ss:ee]
+            ff = emlineflux_s[ss:ee]
+
+            patchnorm = np.sum(ff)
+            if patchnorm == 0.: # <=0 ??
+                continue
+
+            moment1 = np.sum(ww * ff) / patchnorm               # [Angstrom]
+            moment2 = np.sum((ww-moment1)**2 * ff) / patchnorm  # [Angstrom**2]
+            moment3 = np.sum((ww-moment1)**3 * ff) / patchnorm  # [Angstrom**3]
+            #moment2_sigma = np.sqrt(moment2) * C_LIGHT / moment1 # [Angstrom-->km/s]
+
+            for n, mom in zip(range(1, 4), (moment1, moment2, moment3)):
+                result[f'{moment_col}_MOMENT{n}'] = mom
+
+png')
+
+        import pdb ; pdb.set_trace()
 
         # get the per-group average emission-line redshifts and velocity widths
         for stats, groupname in zip((narrow_stats, broad_stats, uv_stats),

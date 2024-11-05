@@ -1296,7 +1296,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             ['tau(V)', 'vdisp'], [' mag', ' km/s'],
             [tauv, vdisp], [tauv_ivar, vdisp_ivar]):
         var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
-        msg.append(f'{label}={val:.3f}{var_msg}{units}')
+        msg.append(f'{label}={val:.2f}{var_msg}{units}')
     log.info(', '.join(msg))
 
     desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
