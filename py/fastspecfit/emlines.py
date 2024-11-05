@@ -39,7 +39,7 @@ class EMFitTools(object):
 
         # lines for which we want to measure moments
         self.moment_lines = {'CIV_1549': ['civ_1549'], 'MGII_2800': ['mgii_2796', 'mgii_2803'],
-                             'HBETA': ['hbeta'], 'OIII_5007': ['oiii_5007'], 'HALPHA': ['halpha']}
+                             'HBETA': ['hbeta'], 'OIII_5007': ['oiii_5007']} #, 'HALPHA': ['halpha']}
 
         # Build some convenience (Boolean) arrays that we'll use in many places:
         line_isbroad  = self.line_table['isbroad'].value
@@ -1113,6 +1113,7 @@ class EMFitTools(object):
             isbroad, isbalmer = ltable['isbroad'][0], ltable['isbalmer'][0]
 
             linezwave = restwave * (1. + redshift + values[line_vshift] / C_LIGHT)
+            linesigma = values[line_sigma] # [km/s]
             _, _, linesigma_ang_window, _ = _preprocess_linesigma(linesigma, linezwave, isbroad, isbalmer)
 
             ss, ee = _get_boundaries(emlinewave_s,
@@ -1137,9 +1138,33 @@ class EMFitTools(object):
             for n, mom in zip(range(1, 4), (moment1, moment2, moment3)):
                 result[f'{moment_col}_MOMENT{n}'] = mom
 
-png')
+            if results_monte is not None:
+                # Monte Carlo to get the uncertainties
+                moment1_monte = np.zeros(nmonte)
+                moment2_monte = np.zeros(nmonte)
+                moment3_monte = np.zeros(nmonte)
+                for imonte in range(nmonte):
+                    _linezwave = restwave * (1. + redshift + values_monte[line_vshift, imonte] / C_LIGHT)
+                    _linesigma = values_monte[line_sigma, imonte] # [km/s]
+                    _, _, _linesigma_ang_window, _ = _preprocess_linesigma(_linesigma, _linezwave, isbroad, isbalmer)
 
-        import pdb ; pdb.set_trace()
+                    ss, ee = _get_boundaries(emlinewave_s,
+                                             _linezwave - moment_nsigma * _linesigma_ang_window,
+                                             _linezwave + moment_nsigma * _linesigma_ang_window)
+
+                    ww = emlinewave_s[ss:ee]
+                    ff = emlineflux_monte_s[ss:ee, imonte]
+                    patchnorm = np.sum(ff)
+                    if patchnorm == 0.: # could happen I guess
+                        patchnorm = 1.  # hack!
+                    moment1_monte[imonte] = np.sum(ww * ff) / patchnorm               # [Angstrom]
+                    moment2_monte[imonte] = np.sum((ww-moment1)**2 * ff) / patchnorm  # [Angstrom**2]
+                    moment3_monte[imonte] = np.sum((ww-moment1)**3 * ff) / patchnorm  # [Angstrom**3]
+
+                for n, mom_monte in zip(range(1, 4), (moment1_monte, moment2_monte, moment3_monte)):
+                    mom_var = np.var(mom_monte)
+                    if mom_var > 0.:
+                        result[f'{moment_col}_MOMENT{n}_IVAR'] = 1. / mom_var
 
         # get the per-group average emission-line redshifts and velocity widths
         for stats, groupname in zip((narrow_stats, broad_stats, uv_stats),

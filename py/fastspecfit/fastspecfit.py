@@ -481,9 +481,10 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
             add_field(f'{line}_CHI2', dtype='f4')
             add_field(f'{line}_NPIX', dtype=np.int32)
 
-        for line in ['CIV_1549', 'MGII_2800', 'HBETA', 'OIII_5007', 'HALPHA']:
-            for mom in range(1, 4):
-                add_field(f'{line}_MOMENT{mom}', dtype='f4', unit=u.Angstrom**mom)
+        for line in ['CIV_1549', 'MGII_2800', 'HBETA', 'OIII_5007']:
+            for n in range(1, 4):
+                add_field(f'{line}_MOMENT{n}', dtype='f4', unit=u.Angstrom**n)
+                add_field(f'{line}_MOMENT{n}_IVAR', dtype='f4', unit=1/(u.Angstrom**n)**2)
 
     return np.dtype(out_dtype, align=True), out_units
 
