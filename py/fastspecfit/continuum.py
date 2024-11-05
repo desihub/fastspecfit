@@ -467,7 +467,7 @@ class ContinuumTools(object):
             fig.text(xpos, ypos, f'Continuum Fluxes: {uniqueid}', ha='center', va='center')
 
             fig.subplots_adjust(left=0.1, right=0.97, bottom=bottom, top=top, wspace=0.23, hspace=0.3)
-            fig.savefig(png)#, bbox_inches='tight')
+            fig.savefig(pngfile)#, bbox_inches='tight')
             plt.close()
 
         return lums, cfluxes
@@ -601,7 +601,7 @@ class ContinuumTools(object):
 
         # Do this part in Numpy because it is very slow in Numba unless
         # accelerated transcendentals are available via, e.g., Intel SVML.
-        A = tauv * self.templates.dust_klambda
+        A = -tauv * self.templates.dust_klambda
         np.exp(A, out=A)
 
         if dust_emission:
@@ -962,7 +962,7 @@ def can_compute_vdisp(redshift, specwave, specivar, minrestwave=3500.,
 
 
 def continuum_fastphot(redshift, objflam, objflamivar, CTools,
-                       nmonte=50, rng=None):
+                       uniqueid=0, nmonte=50, rng=None, debug_plots=False):
     """Model the broadband photometry.
 
     """
@@ -1076,8 +1076,8 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
 
 def continuum_fastspec(redshift, objflam, objflamivar, CTools,
-                       nmonte=50, rng=None, no_smooth_continuum=False,
-                       debug_plots=False):
+                       nmonte=50, rng=None, uniqueid=0,
+                       no_smooth_continuum=False, debug_plots=False):
     """Jointly model the spectroscopy and broadband photometry.
 
     """
@@ -1299,6 +1299,72 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         msg.append(f'{label}={val:.2f}{var_msg}{units}')
     log.info(', '.join(msg))
 
+    # some QA
+    if debug_plots:
+        import matplotlib.pyplot as plt
+        import corner as cn
+        import seaborn as sns
+
+        pngfile = f'qa-sps-posteriors-{uniqueid}.png'
+
+        sns.set(context='talk', style='ticks', font_scale=0.6)
+        colors = sns.color_palette()
+
+        # get the age distribution
+        info = CTools.templates.info
+        age = coeff.dot(info['age']) / np.sum(coeff) / 1e9  # luminosity-weighted [Gyr]
+        age_monte = np.zeros(nmonte)
+        for imonte in range(nmonte):
+            age_monte[imonte] = coeff_monte[:, imonte].dot(info['age']) / np.sum(coeff_monte[:, imonte]) / 1e9
+
+        vdisp_sigma = np.std(vdisp_monte)
+        tauv_sigma = np.std(tauv_monte)
+        age_sigma = np.std(age_monte)
+
+        dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
+        hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray'}
+        ndim = 3
+
+        plotdata = np.vstack((vdisp_monte, tauv_monte, age_monte)).T
+        truths = [vdisp, tauv, age]
+        labels = [r'$\sigma_{star}$ (km/s)', r'$\tau_{V}$', 'Age (Gyr)']
+        titles = [r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s',
+                  r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
+                  f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr']
+        ranges = ((vdisp-5.*vdisp_sigma, vdisp+5.*vdisp_sigma),
+                  (tauv-5.*tauv_sigma, tauv+5.*tauv_sigma),
+                  (age-5.*age_sigma, age+5.*age_sigma))
+
+        #fig, ax = plt.subplots(figsize=(7, 6))
+        fig = cn.corner(plotdata, bins=nmonte//3, smooth=None, plot_density=False,
+                        plot_contours=False, range=ranges, data_kwargs=dkw,
+                        hist_kwargs=hkw, labels=labels)
+                        #truths=truths, truth_color=colors[0])
+        ax = np.array(fig.axes).reshape((ndim, ndim))
+        for ii, mlval, sig in zip(range(ndim), (vdisp, tauv, age), (vdisp_sigma, tauv_sigma, age_sigma)):
+            ax[ii, ii].axvline(mlval, color=colors[0], lw=2, ls='-')
+            ax[ii, ii].axvline(mlval+sig, color=colors[0], lw=1, ls='--')
+            ax[ii, ii].axvline(mlval-sig, color=colors[0], lw=1, ls='--')
+            ax[ii, ii].set_title(titles[ii])
+            if ii == 0:
+                ax[ii, ii].set_ylabel('Number')
+            else:
+                xx = ax[ii, ii].twinx()
+                xx.set_yticklabels([])
+                xx.set_ylabel('Number')
+        for yi in range(ndim):
+            for xi in range(yi):
+                ax[yi, xi].axvline(truths[xi], color=colors[0], lw=1, ls='-', alpha=0.75)
+                ax[yi, xi].axhline(truths[yi], color=colors[0], lw=1, ls='-', alpha=0.75)
+
+        fig.subplots_adjust(left=0.13, right=0.92, bottom=0.13, top=0.92, wspace=0.12, hspace=0.12)
+        #fig.tight_layout()
+        fig.savefig(pngfile)#, bbox_inches='tight')
+        plt.close()
+        log.info(f'Wrote {pngfile}')
+
+    #import pdb ; pdb.set_trace()
+
     desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
 
     # Get DN(4000).
@@ -1418,6 +1484,8 @@ def continuum_specfit(data, result, templates, igm, phot,
         (coeff, coeff_monte, rchi2_phot, tauv, tauv_ivar, vdisp, dn4000_model, dn4000_model_ivar,
          sedmodel, sedmodel_monte, sedmodel_nolines, sedmodel_nolines_monte) = \
             continuum_fastphot(redshift, objflam, objflamivar, CTools,
+                               uniqueid=data['uniqueid'],
+                               debug_plots=debug_plots,
                                nmonte=nmonte, rng=rng)
     else:
         (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
@@ -1426,7 +1494,8 @@ def continuum_specfit(data, result, templates, igm, phot,
          smoothcontinuum, smoothstats, specflux_monte, sedmodel_monte,
          sedmodel_nolines_monte, continuummodel_monte) = \
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
-                                nmonte=nmonte, rng=rng, debug_plots=debug_plots,
+                                nmonte=nmonte, rng=rng, uniqueid=data['uniqueid'],
+                                debug_plots=debug_plots,
                                 no_smooth_continuum=no_smooth_continuum)
 
         data['apercorr'] = median_apercorr # needed for the line-fitting
