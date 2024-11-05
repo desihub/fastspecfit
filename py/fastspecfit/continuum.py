@@ -873,10 +873,10 @@ class ContinuumTools(object):
         resid      = fit_info.fun
 
         if fit_vdisp:
-            tauv, vdisp    = bestparams[:2]
+            tauv, vdisp = bestparams[:2]
             templatecoeff = bestparams[2:]
         else:
-            tauv           = bestparams[0]
+            tauv = bestparams[0]
             templatecoeff = bestparams[1:]
             vdisp = self.templates.vdisp_nominal
 
@@ -935,7 +935,7 @@ class ContinuumTools(object):
         return rchi2_spec, rchi2_phot, rchi2_tot
 
 
-def can_compute_vdisp(redshift, specwave, specivar, minrestwave=3500.,
+def can_compute_vdisp(redshift, specwave, specivar, minrestwave=3650.,
                       maxrestwave=5500., mindeltawave=500.):
     """Determine if we can solve for the velocity dispersion.
 
@@ -1331,9 +1331,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         titles = [r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s',
                   r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
                   f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr']
-        ranges = ((vdisp-5.*vdisp_sigma, vdisp+5.*vdisp_sigma),
-                  (tauv-5.*tauv_sigma, tauv+5.*tauv_sigma),
-                  (age-5.*age_sigma, age+5.*age_sigma))
+        sig = [max(5.*vdisp_sigma, 3.), max(5.*tauv_sigma, 0.005), max(5.*age_sigma, 0.005)]
+        ranges = ((vdisp-sig[0], vdisp+sig[0]), (tauv-sig[1], tauv+sig[1]), (age-sig[2], age+sig[2]))
 
         #fig, ax = plt.subplots(figsize=(7, 6))
         fig = cn.corner(plotdata, bins=nmonte//3, smooth=None, plot_density=False,
@@ -1347,23 +1346,22 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             ax[ii, ii].axvline(mlval-sig, color=colors[0], lw=1, ls='--')
             ax[ii, ii].set_title(titles[ii])
             if ii == 0:
-                ax[ii, ii].set_ylabel('Number')
+                ax[ii, ii].set_ylabel('Number of\nRealizations')
             else:
                 xx = ax[ii, ii].twinx()
                 xx.set_yticklabels([])
-                xx.set_ylabel('Number')
+                xx.set_ylabel('Number of\nRealizations', rotation=180)
+                xx.tick_params(right=False)
         for yi in range(ndim):
             for xi in range(yi):
                 ax[yi, xi].axvline(truths[xi], color=colors[0], lw=1, ls='-', alpha=0.75)
                 ax[yi, xi].axhline(truths[yi], color=colors[0], lw=1, ls='-', alpha=0.75)
 
-        fig.subplots_adjust(left=0.13, right=0.92, bottom=0.13, top=0.92, wspace=0.12, hspace=0.12)
+        fig.subplots_adjust(left=0.13, right=0.9, bottom=0.13, top=0.92, wspace=0.14, hspace=0.14)
         #fig.tight_layout()
         fig.savefig(pngfile)#, bbox_inches='tight')
         plt.close()
         log.info(f'Wrote {pngfile}')
-
-    #import pdb ; pdb.set_trace()
 
     desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
 
