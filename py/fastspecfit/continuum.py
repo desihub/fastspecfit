@@ -22,8 +22,9 @@ class ContinuumTools(object):
 
     """
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
-                 vdisp_guess=250., tauv_bounds=(0., 3.), vdisp_bounds=(75., 500.),
-                 fastphot=False, constrain_age=False):
+                 vdisp_guess=250., tauv_bounds=(0., 2.),
+                 vdisp_bounds=(75., 500.), fastphot=False,
+                 constrain_age=False):
 
         self.phot = phot
         self.templates = templates
@@ -820,14 +821,14 @@ class ContinuumTools(object):
         """
         from scipy.optimize import least_squares
 
-        if vdisp_guess is None:
-            vdisp_guess = self.vdisp_guess
         if tauv_guess is None:
             tauv_guess = self.tauv_guess
-        if vdisp_bounds is None:
-            vdisp_bounds = self.vdisp_bounds
+        if vdisp_guess is None:
+            vdisp_guess = self.vdisp_guess
         if tauv_bounds is None:
             tauv_bounds = self.tauv_bounds
+        if vdisp_bounds is None:
+            vdisp_bounds = self.vdisp_bounds
 
         ntemplates = templateflux.shape[1]
 
@@ -956,7 +957,7 @@ def can_compute_vdisp(redshift, specwave, minrestwave=3650.,
                      (deltawave >= mindeltawave))
 
     if compute_vdisp:
-        log.info(f'Solving for vdisp: min(restwave)={minwave:.0f}<{minrestwave:.0f} A, ' + \
+        log.debug(f'Solving for vdisp: min(restwave)={minwave:.0f}<{minrestwave:.0f} A, ' + \
                  f'max(restwave)={maxwave:.0f}>{maxrestwave:.0f} A, ' + \
                  f'and delta(restwave)={deltawave:.0f}>{mindeltawave:.0f} A.')
 
@@ -1157,8 +1158,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
     init_tauv_bounds = (0., 1.)
     tauv_nomvdisp, _, coeff_nomvdisp, resid_nomvdisp = CTools.fit_stellar_continuum(
         templates.flux_nolines_nomvdisp[:, agekeep], fit_vdisp=False, conv_pre=None,
-        vdisp_guess=None, tauv_guess=CTools.tauv_guess, tauv_bounds=init_tauv_bounds,
-        specflux=specflux, specistd=specistd, dust_emission=False, synthspec=True)
+        tauv_bounds=init_tauv_bounds, specflux=specflux, specistd=specistd,
+        dust_emission=False, synthspec=True)
 
     # Next, attempt to solve for the velocity dispersion.
     compute_vdisp, _ = can_compute_vdisp(redshift, specwave)
@@ -1178,9 +1179,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         tauv_withvdisp, vdisp, coeff_withvdisp, resid_withvdisp = CTools.fit_stellar_continuum(
             templates.flux_nolines[:, agekeep], fit_vdisp=True,
             conv_pre=None, #input_conv_pre_nolines,
-            vdisp_guess=templates.vdisp_nominal, tauv_guess=CTools.tauv_guess,
-            tauv_bounds=init_tauv_bounds, specflux=specflux, specistd=specistd,
-            dust_emission=False, synthspec=True)
+            vdisp_guess=templates.vdisp_nominal,
+            tauv_bounds=init_tauv_bounds, specflux=specflux,
+            specistd=specistd, dust_emission=False, synthspec=True)
         contmodel_withvdisp = CTools.optimizer_saved_contmodel
 
         # ToDo: use a delta-chi2 test to determine if solving for the velocity
@@ -1213,8 +1214,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
                 tauv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
                     templates.flux_nolines[:, agekeep], fit_vdisp=True,
                     conv_pre=None, #input_conv_pre_nolines,
-                    vdisp_guess=templates.vdisp_nominal, tauv_guess=CTools.tauv_guess,
-                    tauv_bounds=init_tauv_bounds, specflux=specflux_monte[:, imonte],
+                    vdisp_guess=templates.vdisp_nominal,
+                    tauv_bounds=init_tauv_bounds,
+                    specflux=specflux_monte[:, imonte],
                     specistd=specistd, dust_emission=False, synthspec=True)
                 coeff_monte[:, imonte] = coeff1
                 tauv_monte[imonte] = tauv1
@@ -1512,6 +1514,7 @@ def continuum_specfit(data, result, templates, igm, phot,
 
     # Instantiate the continuum tools class.
     CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot,
+                            vdisp_guess=templates.vdisp_nominal,
                             constrain_age=constrain_age)
 
     if nmonte is not None and nmonte > 0:
