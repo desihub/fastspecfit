@@ -188,11 +188,10 @@ class Templates(object):
 
 
     def convolve_vdisp_pre(self, templateflux):
-        """
-        Given a 2D array of of one or more template fluxes,
-        return a preprocessing structure to accelerate
-        future vdisp convolutions via the FFT.  This structure
-        is unpacked in ContinuumTools.build_stellar_continuum()
+        """Given a 2D array of of one or more template fluxes, return a
+        preprocessing structure to accelerate future vdisp convolutions via the
+        FFT. This structure is unpacked in
+        ContinuumTools.build_stellar_continuum()
 
         Parameters
         ----------
