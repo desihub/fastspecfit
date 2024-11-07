@@ -1304,6 +1304,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         vdisp = templates.vdisp_nominal
         input_templateflux = templates.flux_nomvdisp[:, agekeep]
         input_templateflux_nolines = templates.flux_nolines_nomvdisp[:, agekeep]
+        contmodel = CTools.optimizer_saved_contmodel.copy()
 
     # Next, estimate the aperture correction.
     apercorrs = np.ones(len(phot.synth_bands))
