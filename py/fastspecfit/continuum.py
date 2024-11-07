@@ -1173,17 +1173,17 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         t0 = time.time()
 
         # copy the model before it is overwritten...
-        contmodel_nomvdisp = CTools.optimizer_saved_contmodel.copy()
+        contmodel_nomvdisp = CTools.optimizer_saved_contmodel.copy() # copy needed??
 
         input_conv_pre_nolines = templates.conv_pre_select(templates.conv_pre_nolines, agekeep)
 
         tauv_withvdisp, vdisp, coeff_withvdisp, resid_withvdisp = CTools.fit_stellar_continuum(
             templates.flux_nolines[:, agekeep], fit_vdisp=True,
-            conv_pre=None, #input_conv_pre_nolines,
+            conv_pre=input_conv_pre_nolines,
             vdisp_guess=templates.vdisp_nominal,
             tauv_bounds=init_tauv_bounds, specflux=specflux,
             specistd=specistd, dust_emission=False, synthspec=True)
-        contmodel_withvdisp = CTools.optimizer_saved_contmodel
+        contmodel_withvdisp = CTools.optimizer_saved_contmodel.copy() # copy needed??
 
         # ToDo: use a delta-chi2 test to determine if solving for the velocity
         # dispersion improves the fit in a statistically significant way.
@@ -1220,8 +1220,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             for imonte in range(nmonte):
                 tauv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
                     templates.flux_nolines[:, agekeep], fit_vdisp=True,
-                    conv_pre=None, #input_conv_pre_nolines,
-                    vdisp_guess=vdisp_guess[imonte], #templates.vdisp_nominal,
+                    conv_pre=input_conv_pre_nolines,
+                    vdisp_guess=vdisp_guess[imonte],
                     tauv_guess=tauv_guess[imonte],
                     tauv_bounds=init_tauv_bounds,
                     specflux=specflux_monte[:, imonte],
@@ -1366,7 +1366,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         # Get the best-fitting model with and without line-emission. Set
         # dust_emission=False for sedmodel_nolines since we only use it to get
         # Dn(4000) and the UV/optical continuum fluxes.
-        sedmodel = CTools.optimizer_saved_contmodel
+        sedmodel = CTools.optimizer_saved_contmodel.copy() # copy needed?
         sedmodel_nolines = CTools.build_stellar_continuum(
             input_templateflux_nolines, coeff, tauv=tauv,
             vdisp=None, conv_pre=None, dust_emission=False)
@@ -1393,7 +1393,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             coeff_monte[:, imonte] = coeff1
             tauv_monte[imonte] = tauv1
 
-            sedmodel_monte[:, imonte] = CTools.optimizer_saved_contmodel
+            sedmodel_monte[:, imonte] = CTools.optimizer_saved_contmodel.copy() # copy needed?
             sedmodel_nolines_monte[:, imonte] = CTools.build_stellar_continuum(
                 input_templateflux_nolines, coeff1, tauv=tauv1,
                 vdisp=None, conv_pre=None, dust_emission=False)
