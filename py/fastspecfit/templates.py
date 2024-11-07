@@ -28,7 +28,7 @@ class Templates(object):
     DEFAULT_IMF = 'chabrier'
 
     # highest vdisp for which we attempt to use cached FFTs
-    MAX_PRE_VDISP = 400.
+    MAX_PRE_VDISP = 500.
 
     def __init__(self, template_file=None, template_version=None, imf=None,
                  mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=250.,
