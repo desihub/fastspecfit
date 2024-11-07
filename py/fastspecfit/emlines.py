@@ -995,15 +995,23 @@ class EMFitTools(object):
                     result[f'{linename}_CHI2'] = chi2
 
                     (s, e), flux_perpixel = line_fluxes.getLine(iline)
-                    flux, flux_gauss_ivar = _gaussian_lineflux(flux_perpixel, s, e, patchindx, gausscorr=use_gausscorr)
+                    # can be zero if the amplitude is very tiny
+                    if np.all(flux_perpixel == 0.):
+                        flux, flux_gauss_ivar = 0., 0.
+                    else:
+                        flux, flux_gauss_ivar = _gaussian_lineflux(flux_perpixel, s, e, patchindx, gausscorr=use_gausscorr)
 
                     # get the flux uncertainty via Monte Carlo
                     if results_monte is not None:
                         flux_monte = np.zeros(nmonte)
                         for imonte in range(nmonte):
                             (s, e), flux_perpixel = line_fluxes_monte[imonte].getLine(iline)
-                            flux1, _ = _gaussian_lineflux(flux_perpixel, s, e, patchindx,
-                                                          gausscorr=use_gausscorr_monte[imonte])
+                            # can be zero if the amplitude is very tiny
+                            if np.all(flux_perpixel == 0.):
+                                flux1 = 0.
+                            else:
+                                flux1, _ = _gaussian_lineflux(flux_perpixel, s, e, patchindx,
+                                                              gausscorr=use_gausscorr_monte[imonte])
                             flux_monte[imonte] = flux1
                         flux_var = np.var(flux_monte)
                         if flux_var > 0.:
