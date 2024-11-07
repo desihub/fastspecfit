@@ -130,11 +130,11 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     # if multiprocessing, create a pool of worker processes
     # and initialize single-copy objects in each worker
-    #t0 = time.time()
+    t0 = time.time()
     mp_pool = MPPool(args.mp,
                      initializer=sc_data.initialize,
                      init_argdict=init_sc_args)
-    #log.info(f'Caching took {time.time()-t0:.5f} seconds.')
+    log.debug(f'Caching took {time.time()-t0:.5f} seconds.')
 
     log.info(f'Cached stellar templates {sc_data.templates.file}')
     log.info(f'Cached emission-line table {sc_data.emlines.file}')
@@ -267,7 +267,7 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
-    parser.add_argument('--nmonte', type=int, default=100, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--nmonte', type=int, default=30, help='Number of Monte Carlo realizations.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',

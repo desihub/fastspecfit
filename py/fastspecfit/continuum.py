@@ -1235,7 +1235,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             if vdisp_sigma > 0.:
                 vdisp_ivar = 1. / vdisp_sigma**2
 
-        log.info(f'Estimating the velocity dispersion took {time.time()-t0:.2f} seconds.')
+        log.debug(f'Estimating the velocity dispersion took {time.time()-t0:.2f} seconds.')
 
         # Build a diagnostic plot of the fitting results.
         if debug_plots:
@@ -1351,9 +1351,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         resid, ncoeff=nage, vdisp_fitted=False, split=len(specflux),
         ndof_spec=ndof_cont, ndof_phot=ndof_phot)
 
-    log.info(f'Fitting {nage} models took {time.time()-t0:.2f} seconds ' + \
-             f'[rchi2_cont={rchi2_cont:.1f}, ndof={ndof_cont:.0f}; ' + \
-             f'rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}].')
+    log.debug(f'Fitting {nage} models took {time.time()-t0:.2f} seconds ' + \
+              f'[rchi2_cont={rchi2_cont:.1f}, ndof={ndof_cont:.0f}; ' + \
+              f'rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}].')
 
     if np.all(coeff == 0.):
         log.warning('Continuum coefficients are all zero.')
@@ -1452,7 +1452,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             specwave, residuals, specivar / median_apercorr**2,
             linemask, uniqueid=data['uniqueid'],
             camerapix=data['camerapix'], debug_plots=debug_plots)
-    log.info(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
+    log.debug(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
 
     # Unpack the continuum into individual cameras.
     continuummodel, smoothcontinuum = [], []
@@ -1656,7 +1656,7 @@ def continuum_specfit(data, result, templates, igm, phot,
             msg.append(f'{label}={val:.3f}{var_msg}{units}')
         log.info(', '.join(msg))
 
-    log.info(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
+    log.debug(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
 
     if fastphot:
         return sedmodel, None, None, None

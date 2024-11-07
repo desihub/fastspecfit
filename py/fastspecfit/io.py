@@ -594,11 +594,11 @@ class DESISpectra(object):
         self.meta = metas # update
         #log.info(f'Gathered photometric metadata in {time.time()-t1:.2f} seconds.')
         if len(redrockfiles) > 1:
-            log.info(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
-                     f'redrockfiles in {time.time()-t0:.2f} seconds.')
+            log.debug(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
+                      f'redrockfiles in {time.time()-t0:.2f} seconds.')
         else:
-            log.info(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
-                     f'redrockfile in {time.time()-t0:.2f} seconds.')
+            log.debug(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
+                      f'redrockfile in {time.time()-t0:.2f} seconds.')
 
 
     def read(self, mp_pool, fastphot=False, synthphot=True,
@@ -752,10 +752,10 @@ class DESISpectra(object):
                 assert(np.all(spec.fibermap[uniqueid_col] == meta[uniqueid_col]))
 
                 # Coadd across cameras.
-                #t0 = time.time()
+                t0 = time.time()
                 coadd_spec = coadd_cameras(spec)
                 os.environ['DESI_LOGLEVEL'] = 'info'
-                #log.info(f'Coadding across cameras took {time.time()-t0:.2f} seconds.')
+                log.debug(f'Coadding across cameras took {time.time()-t0:.2f} seconds.')
 
                 # unpack the desispec.spectra.Spectra objects into simple arrays
                 cams = spec.bands
@@ -804,9 +804,9 @@ class DESISpectra(object):
         self.ntargets = len(self.meta)
 
         if self.ntargets > 1:
-            log.info(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
+            log.debug(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
         else:
-            log.info(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
+            log.debug(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
 
         return alldata
 
@@ -1262,9 +1262,9 @@ class DESISpectra(object):
         self.ntargets = len(self.meta)
 
         if self.ntargets > 1:
-            log.info(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
+            log.debug(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
         else:
-            log.info(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
+            log.debug(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
 
         return alldata
 
@@ -1670,7 +1670,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
         os.rename(tmpfile, outfile)
 
     if verbose:
-        log.info('Writing out took {:.2f} seconds.'.format(time.time()-t0))
+        log.debug(f'Writing out took {time.time()-t0:.2f} seconds.')
 
 
 def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,

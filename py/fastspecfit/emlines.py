@@ -1470,15 +1470,15 @@ def test_broad_model(EMFit, linemodel_nobroad, linemodel_broad, fit_nobroad,
     else:
         adopt_broad = False
         if dchi2test == False:
-            log.info(f'Dropping broad-line model: delta-chi2={delta_linechi2_balmer:.1f} < delta-ndof={delta_linendof_balmer:.0f}')
+            log.debug(f'Dropping broad-line model: delta-chi2={delta_linechi2_balmer:.1f} < delta-ndof={delta_linendof_balmer:.0f}')
         elif sigtest1 == False:
-            log.info(f'Dropping broad-line model: Halpha_broad_sigma {Habroad:.1f} km/s < {minsigma_balmer_broad:.0f} km/s '
-                     f'(delta-chi2={delta_linechi2_balmer:.1f}, delta-ndof={delta_linendof_balmer:.0f}).')
+            log.debug(f'Dropping broad-line model: Halpha_broad_sigma {Habroad:.1f} km/s < {minsigma_balmer_broad:.0f} km/s '
+                      f'(delta-chi2={delta_linechi2_balmer:.1f}, delta-ndof={delta_linendof_balmer:.0f}).')
         elif sigtest2 == False:
-            log.info(f'Dropping broad-line model: Halpha_broad_sigma {Habroad:.1f} km/s < Halpha_narrow_sigma {Hanarrow:.1f} km/s '
-                     f'(delta-chi2={delta_linechi2_balmer:.1f}, delta-ndof={delta_linendof_balmer:.0f}).')
+            log.debug(f'Dropping broad-line model: Halpha_broad_sigma {Habroad:.1f} km/s < Halpha_narrow_sigma {Hanarrow:.1f} km/s '
+                      f'(delta-chi2={delta_linechi2_balmer:.1f}, delta-ndof={delta_linendof_balmer:.0f}).')
         elif broadsnrtest == False:
-            log.info(f'Dropping broad-line model: {_broadsnr} < {minsnr_balmer_broad:.0f}')
+            log.debug(f'Dropping broad-line model: {_broadsnr} < {minsnr_balmer_broad:.0f}')
 
         finalfit, finalmodel, finalchi2 = fit_nobroad, model_nobroad, chi2_nobroad
 
@@ -1501,8 +1501,8 @@ def linefit(EMFit, linemodel, initial_guesses, param_bounds,
     chi2, ndof, nfree = EMFit.chi2(fit, emlinewave, emlineflux, emlineivar,
                                    model, return_dof=True)
     if not quiet:
-        log.info(f'Line-fitting {uniqueid} with no broad lines and {nfree} free parameters took ' + \
-                 f'{time.time()-t0:.4f} seconds [niter={fit.meta["nfev"]}, rchi2={chi2:.4f}].')
+        log.debug(f'Line-fitting {uniqueid} with no broad lines and {nfree} free parameters took ' + \
+                  f'{time.time()-t0:.4f} seconds [niter={fit.meta["nfev"]}, rchi2={chi2:.4f}].')
     return fit, model, chi2
 
 
@@ -1761,6 +1761,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                 plt.close()
                 log.info(f'Wrote {pngfile}')
 
-    log.info(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
+    log.debug(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
 
     return modelspectra
