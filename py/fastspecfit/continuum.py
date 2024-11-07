@@ -539,7 +539,7 @@ class ContinuumTools(object):
 
         Parameters
         ----------
-        templateflux : :class:`numpy.ndarray` [npix, ntemplates]
+        templateflux : :class:`numpy.ndarray` [ntemplates, npix]
             Rest-frame, native-resolution template spectra corresponding to
             `templatewave`.
         templatecoeff : :class:`numpy.ndarray` [ntemplates]
@@ -566,7 +566,7 @@ class ContinuumTools(object):
         """
         if conv_pre is None or vdisp > Templates.MAX_PRE_VDISP:
             # Compute the weighted sum of the templates.
-            contmodel = templateflux.dot(templatecoeff)
+            contmodel = templatecoeff.dot(templateflux)
 
             # Optionally convolve to the desired velocity dispersion.
             if vdisp is not None:
@@ -578,13 +578,13 @@ class ContinuumTools(object):
             flux_lohi, ft_flux_mid, fft_len = conv_pre
 
             # Compute the weighted sum of the templates.
-            cont_lohi   = flux_lohi.dot(templatecoeff)
-            ft_cont_mid = ft_flux_mid.dot(templatecoeff)
+            cont_lohi   = templatecoeff.dot(flux_lohi)
+            ft_cont_mid = templatecoeff.dot(ft_flux_mid)
 
             # Convolve to the desired velocity dispersion. Use the vdisp
             # convolution that takes precomputed FT of flux for convolved
             # region.
-            flux_len = templateflux.shape[0]
+            flux_len = templateflux.shape[1]
             contmodel = self.templates.convolve_vdisp_from_pre(
                 cont_lohi, ft_cont_mid, flux_len, fft_len, vdisp)
 
@@ -759,7 +759,7 @@ class ContinuumTools(object):
 
         Parameters
         ----------
-        templateflux : :class:`numpy.ndarray` [npix, ntemplate]
+        templateflux : :class:`numpy.ndarray` [ntemplate, npix]
             Grid of input (model) spectra.
         fit_vdisp : :class:`bool`
             If `True`, solve for the velocity dispersion;
@@ -830,7 +830,7 @@ class ContinuumTools(object):
         if vdisp_bounds is None:
             vdisp_bounds = self.vdisp_bounds
 
-        ntemplates = templateflux.shape[1]
+        ntemplates = templateflux.shape[0]
 
         # Unpack the input data to infer the fitting "mode" and the objective
         # function.
@@ -995,7 +995,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
         t0 = time.time()
         tauv, _, coeff, resid = CTools.fit_stellar_continuum(
-            templates.flux_nomvdisp[:, agekeep], fit_vdisp=False,
+            templates.flux_nomvdisp[agekeep, :], fit_vdisp=False,
             objflam=objflam, objflamistd=objflamistd,
             synthphot=True, synthspec=False)
         dt = time.time()-t0
@@ -1017,7 +1017,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             # Get the best-fitting model with and without line-emission.
             sedmodel = CTools.optimizer_saved_contmodel
             sedmodel_nolines = CTools.build_stellar_continuum(
-                templates.flux_nolines_nomvdisp[:, agekeep], coeff,
+                templates.flux_nolines_nomvdisp[agekeep, :], coeff,
                 tauv=tauv, vdisp=None, dust_emission=False)
 
             # Measure Dn(4000) from the line-free model.
@@ -1042,7 +1042,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
             for imonte in range(nmonte):
                 tauv1, _, coeff1, _ = CTools.fit_stellar_continuum(
-                    templates.flux_nomvdisp[:, agekeep], fit_vdisp=False,
+                    templates.flux_nomvdisp[agekeep, :], fit_vdisp=False,
                     tauv_guess=tauv_guess[imonte], objflam=objflam_monte[:, imonte],
                     objflamistd=objflamistd, synthphot=True, synthspec=False)
 
@@ -1051,7 +1051,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
                 sedmodel_monte[:, imonte] = CTools.optimizer_saved_contmodel
                 sedmodel_nolines_monte[:, imonte] = CTools.build_stellar_continuum(
-                    templates.flux_nolines_nomvdisp[:, agekeep], coeff1,
+                    templates.flux_nolines_nomvdisp[agekeep, :], coeff1,
                     tauv=tauv1, vdisp=None, dust_emission=False)
 
                 dn4000_model1, _ = Photometry.get_dn4000(
@@ -1158,7 +1158,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
     # the IR fluxes put an additional constraint on the dust content.
     init_tauv_bounds = (0., 1.)
     tauv_nomvdisp, _, coeff_nomvdisp, resid_nomvdisp = CTools.fit_stellar_continuum(
-        templates.flux_nolines_nomvdisp[:, agekeep], fit_vdisp=False, conv_pre=None,
+        templates.flux_nolines_nomvdisp[agekeep, :], fit_vdisp=False, conv_pre=None,
         tauv_bounds=init_tauv_bounds, specflux=specflux, specistd=specistd,
         dust_emission=False, synthspec=True)
 
@@ -1178,7 +1178,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         input_conv_pre_nolines = templates.conv_pre_select(templates.conv_pre_nolines, agekeep)
 
         tauv_withvdisp, vdisp, coeff_withvdisp, resid_withvdisp = CTools.fit_stellar_continuum(
-            templates.flux_nolines[:, agekeep], fit_vdisp=True,
+            templates.flux_nolines[agekeep, :], fit_vdisp=True,
             conv_pre=input_conv_pre_nolines,
             vdisp_guess=templates.vdisp_nominal,
             tauv_bounds=init_tauv_bounds, specflux=specflux,
@@ -1198,8 +1198,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             contmodel = contmodel_withvdisp
 
             # convolve the templates at the derived vdisp
-            input_templateflux = templates.convolve_vdisp(templates.flux[:, agekeep], vdisp)
-            input_templateflux_nolines = templates.convolve_vdisp(templates.flux_nolines[:, agekeep], vdisp)
+            input_templateflux = templates.convolve_vdisp(templates.flux[agekeep, :], vdisp)
+            input_templateflux_nolines = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp)
         else:
             tauv = tauv_nomvdisp
             coeff = coeff_nomvdisp
@@ -1219,7 +1219,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
             for imonte in range(nmonte):
                 tauv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
-                    templates.flux_nolines[:, agekeep], fit_vdisp=True,
+                    templates.flux_nolines[agekeep, :], fit_vdisp=True,
                     conv_pre=input_conv_pre_nolines,
                     vdisp_guess=vdisp_guess[imonte],
                     tauv_guess=tauv_guess[imonte],
@@ -1302,8 +1302,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         tauv = tauv_nomvdisp
         coeff = coeff_nomvdisp
         vdisp = templates.vdisp_nominal
-        input_templateflux = templates.flux_nomvdisp[:, agekeep]
-        input_templateflux_nolines = templates.flux_nolines_nomvdisp[:, agekeep]
+        input_templateflux = templates.flux_nomvdisp[agekeep, :]
+        input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
         contmodel = CTools.optimizer_saved_contmodel.copy()
 
     # Next, estimate the aperture correction.
