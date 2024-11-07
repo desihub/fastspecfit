@@ -996,7 +996,6 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
         t0 = time.time()
         tauv, _, coeff, resid = CTools.fit_stellar_continuum(
             templates.flux_nomvdisp[:, agekeep], fit_vdisp=False,
-            vdisp_guess=vdisp, tauv_guess=CTools.tauv_guess,
             objflam=objflam, objflamistd=objflamistd,
             synthphot=True, synthspec=False)
         dt = time.time()-t0
@@ -1038,12 +1037,14 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             coeff_monte = np.zeros((nage, nmonte))
             sedmodel_monte = np.zeros((templates.npix, nmonte))
             sedmodel_nolines_monte = np.zeros((templates.npix, nmonte))
+
+            tauv_guess = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
+
             for imonte in range(nmonte):
                 tauv1, _, coeff1, _ = CTools.fit_stellar_continuum(
-                    templates.flux_nomvdisp[:, agekeep], # [npix,nsed]
-                    fit_vdisp=False, vdisp_guess=vdisp, tauv_guess=CTools.tauv_guess,
-                    objflam=objflam_monte[:, imonte], objflamistd=objflamistd,
-                    synthphot=True, synthspec=False)
+                    templates.flux_nomvdisp[:, agekeep], fit_vdisp=False,
+                    tauv_guess=tauv_guess[imonte], objflam=objflam_monte[:, imonte],
+                    objflamistd=objflamistd, synthphot=True, synthspec=False)
 
                 coeff_monte[:, imonte] = coeff1
                 tauv_monte[imonte] = tauv1
@@ -1205,16 +1206,23 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             vdisp = templates.vdisp_nominal
             contmodel = contmodel_nomvdisp
 
-        # Monte Carlo to get vdisp_ivar (and the diagnostic plot, if requested).
+        # Monte Carlo to get vdisp_ivar (and the diagnostic plot, if
+        # requested). Scatter the initial guesses in the parameters within the
+        # bounds.
         if specflux_monte is not None:
             tauv_monte = np.zeros(nmonte)
             vdisp_monte = np.zeros(nmonte)
             coeff_monte = np.zeros((nage, nmonte))
+
+            vdisp_guess = rng.uniform(CTools.vdisp_bounds[0], CTools.vdisp_bounds[1], nmonte)
+            tauv_guess = rng.uniform(init_tauv_bounds[0], init_tauv_bounds[1], nmonte)
+
             for imonte in range(nmonte):
                 tauv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
                     templates.flux_nolines[:, agekeep], fit_vdisp=True,
                     conv_pre=None, #input_conv_pre_nolines,
-                    vdisp_guess=templates.vdisp_nominal,
+                    vdisp_guess=vdisp_guess[imonte], #templates.vdisp_nominal,
+                    tauv_guess=tauv_guess[imonte],
                     tauv_bounds=init_tauv_bounds,
                     specflux=specflux_monte[:, imonte],
                     specistd=specistd, dust_emission=False, synthspec=True)
@@ -1370,9 +1378,13 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         sedmodel_monte = np.zeros((templates.npix, nmonte))
         sedmodel_nolines_monte = np.zeros((templates.npix, nmonte))
         desimodel_nolines_monte = np.zeros((len(specflux), nmonte))
+
+        tauv_guess = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
+
         for imonte in range(nmonte):
             tauv1, _, coeff1, _ = CTools.fit_stellar_continuum(
                 input_templateflux, fit_vdisp=False, conv_pre=None,
+                tauv_guess=tauv_guess[imonte],
                 objflam=objflam_monte[:, imonte], objflamistd=objflamistd,
                 specflux=specflux_monte[:, imonte]*median_apercorr,
                 specistd=specistd/median_apercorr,
