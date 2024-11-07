@@ -150,7 +150,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
     import seaborn as sns
     from PIL import Image, ImageDraw
 
-    from fastspecfit.util import ivar2var, C_LIGHT, FLUXNORM
+    from fastspecfit.util import ivar2var, C_LIGHT, FLUXNORM, median
     from fastspecfit.io import get_qa_filename
     from fastspecfit.photometry import Photometry
     from fastspecfit.continuum import ContinuumTools
@@ -508,6 +508,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
 
         # full model spectrum
+        import pdb ; pdb.set_trace()
         _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res'],
                                                  data['camerapix'], snrcut=emline_snrmin)
         desiemlines = []
@@ -714,9 +715,9 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         if len(sedmodel) == 0:
             log.warning('Best-fitting photometric continuum is all zeros or negative!')
             if np.sum(abmag_good) > 0:
-                medmag = np.median(phot_tbl['abmag'][abmag_good])
+                medmag = median(phot_tbl['abmag'][abmag_good])
             elif np.sum(abmag_goodlim) > 0:
-                medmag = np.median(phot_tbl['abmag_limit'][abmag_goodlim])
+                medmag = median(phot_tbl['abmag_limit'][abmag_goodlim])
             else:
                 medmag = 0.0
             sedmodel_abmag = np.zeros_like(templates.wave) + medmag

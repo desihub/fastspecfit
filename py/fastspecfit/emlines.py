@@ -855,22 +855,22 @@ class EMFitTools(object):
 
         if results_monte is not None:
             values_monte, obsamps_monte, emlineflux_monte, specflux_nolines_monte = results_monte
-            _, nmonte = values_monte.shape
+            nmonte, _ = values_monte.shape
 
-            values_var = np.var(values_monte, axis=1)
-            obsamps_var = np.var(obsamps_monte, axis=1)
+            values_var = np.var(values_monte, axis=0)
+            obsamps_var = np.var(obsamps_monte, axis=0)
 
             parameters_monte = values_monte.copy()
-            parameters_monte[self.doublet_idx, :] *= parameters_monte[self.doublet_src, :]
+            parameters_monte[:, self.doublet_idx] *= parameters_monte[:, self.doublet_src]
 
             line_fluxes_monte = []
             for imonte in range(nmonte):
                 line_fluxes_monte.append(EMLine_MultiLines(
-                    parameters_monte[:, imonte], emlinewave, redshift,
+                    parameters_monte[imonte, :], emlinewave, redshift,
                     line_wavelengths, resolution_matrices, camerapix))
 
-            emlineflux_monte_s = emlineflux_monte[Wsrt, :]
-            specflux_nolines_monte_s = specflux_nolines_monte[Wsrt, :]
+            emlineflux_monte_s = emlineflux_monte[:, Wsrt]
+            specflux_nolines_monte_s = specflux_nolines_monte[:, Wsrt]
 
 
         # get continuum fluxes, EWs, and upper limits
@@ -954,9 +954,9 @@ class EMFitTools(object):
                     boxflux_monte = np.zeros(nmonte)
                     use_gausscorr_monte = np.ones(nmonte)
                     for imonte in range(nmonte):
-                        _linez = redshift + values_monte[line_vshift, imonte] / C_LIGHT
+                        _linez = redshift + values_monte[imonte, line_vshift] / C_LIGHT
                         _linezwave = restwave * (1. + _linez)
-                        _linesigma = values_monte[line_sigma, imonte] # [km/s]
+                        _linesigma = values_monte[imonte, line_sigma] # [km/s]
                         _linesigma, _linesigma_ang, _linesigma_ang_window, _use_gausscorr = \
                             _preprocess_linesigma(_linesigma, _linezwave, isbroad, isbalmer)
                         use_gausscorr_monte[imonte] = _use_gausscorr
@@ -967,7 +967,7 @@ class EMFitTools(object):
                         _patchindx = _line_s + np.where(emlineivar_s[_line_s:_line_e] > 0.)[0]
 
                         _dwaves_patch = dwaves[_patchindx]
-                        _emlineflux_patch = emlineflux_monte_s[_patchindx, imonte]
+                        _emlineflux_patch = emlineflux_monte_s[imonte, _patchindx]
 
                         boxflux_monte[imonte] = np.sum(_emlineflux_patch * _dwaves_patch)
 
@@ -1054,14 +1054,14 @@ class EMFitTools(object):
                 if results_monte is not None:
                     cont_monte = np.zeros(nmonte)
                     for imonte in range(nmonte):
-                        _linez = redshift + values_monte[line_vshift, imonte] / C_LIGHT
+                        _linez = redshift + values_monte[imonte, line_vshift] / C_LIGHT
                         _linezwave = restwave * (1. + _linez)
                         _, _, _linesigma_ang_window, _ = \
                             _preprocess_linesigma(_linesigma, _linezwave, isbroad, isbalmer)
                         _borderindx = _get_continuum_pixels(emlinewave_s, _linezwave, _linesigma_ang_window)
-                        _clipflux, _ = sigmaclip(specflux_nolines_monte_s[_borderindx, imonte], low=3., high=3.)
+                        _clipflux, _ = sigmaclip(specflux_nolines_monte_s[imonte, _borderindx], low=3., high=3.)
                         if len(_clipflux) == 0:
-                            _clipflux = specflux_nolines_monte_s[_borderindx, imonte]
+                            _clipflux = specflux_nolines_monte_s[imonte, _borderindx]
                         cont_monte[imonte] = np.mean(_clipflux)
                     cont_var = np.var(cont_monte)
                     if cont_var > 0.:
@@ -1152,8 +1152,8 @@ class EMFitTools(object):
                 moment2_monte = np.zeros(nmonte)
                 moment3_monte = np.zeros(nmonte)
                 for imonte in range(nmonte):
-                    _linezwave = restwave * (1. + redshift + values_monte[line_vshift, imonte] / C_LIGHT)
-                    _linesigma = values_monte[line_sigma, imonte] # [km/s]
+                    _linezwave = restwave * (1. + redshift + values_monte[imonte, line_vshift] / C_LIGHT)
+                    _linesigma = values_monte[imonte, line_sigma] # [km/s]
                     _, _, _linesigma_ang_window, _ = _preprocess_linesigma(_linesigma, _linezwave, isbroad, isbalmer)
 
                     ss, ee = _get_boundaries(emlinewave_s,
@@ -1161,7 +1161,7 @@ class EMFitTools(object):
                                              _linezwave + moment_nsigma * _linesigma_ang_window)
 
                     ww = emlinewave_s[ss:ee]
-                    ff = emlineflux_monte_s[ss:ee, imonte]
+                    ff = emlineflux_monte_s[imonte, ss:ee]
                     patchnorm = np.sum(ff)
                     if patchnorm == 0.: # could happen I guess
                         patchnorm = 1.  # hack!
@@ -1570,16 +1570,16 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # Monte Carlo spectrum carried over from continuum-fitting. Assume that the
     # smooth continuum model is the same...
     if specflux_monte is not None:
-        _, nmonte = specflux_monte.shape
+        nmonte, _ = specflux_monte.shape
         if continuummodel_monte is not None:
-            continuummodelflux_monte = np.zeros((len(continuummodelflux), nmonte))
+            continuummodelflux_monte = np.zeros((nmonte, len(continuummodelflux)))
             for imonte in range(nmonte):
-                continuummodelflux_monte[:, imonte] = np.hstack(continuummodel_monte[imonte])
+                continuummodelflux_monte[imonte, :] = np.hstack(continuummodel_monte[imonte])
             emlineflux_monte = (specflux_monte - continuummodelflux_monte - \
-                                smoothcontinuummodelflux[:, np.newaxis])
+                                smoothcontinuummodelflux[np.newaxis, :])
         else:
-            emlineflux_monte = (specflux_monte - continuummodelflux[:, np.newaxis] - \
-                                smoothcontinuummodelflux[:, np.newaxis])
+            emlineflux_monte = (specflux_monte - continuummodelflux[np.newaxis, :] - \
+                                smoothcontinuummodelflux[np.newaxis, :])
 
     # determine which lines are in range of the camera
     EMFit.compute_inrange_lines(redshift, wavelims=(np.min(emlinewave),
@@ -1644,25 +1644,18 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         else:
             linemodel_monte = linemodel_nobroad
 
-        #emlinestd = np.zeros_like(emlineivar)
-        #I = emlineivar > 0.
-        #emlinestd[I] = 1. / np.sqrt(emlineivar[I])
-        #emlineflux_monte = rng.normal(emlineflux[:, np.newaxis],
-        #                              emlinestd[:, np.newaxis],
-        #                              size=(len(emlineflux), nmonte))
-
-        values_monte = np.zeros((len(finalfit), nmonte))
-        obsamps_monte = np.zeros((len(finalfit.meta['obsamp']), nmonte))
-        finalmodel_monte = np.zeros((len(finalmodel), nmonte))
+        values_monte = np.zeros((nmonte, len(finalfit)))
+        obsamps_monte = np.zeros((nmonte, len(finalfit.meta['obsamp'])))
+        finalmodel_monte = np.zeros((nmonte, len(finalmodel)))
         for imonte in range(nmonte):
             finalfit1, finalmodel1, _ = linefit(
                 EMFit, linemodel_monte, initial_guesses, param_bounds,
-                emlinewave, emlineflux_monte[:, imonte], emlineivar,
+                emlinewave, emlineflux_monte[imonte, :], emlineivar,
                 weights, redshift, resolution_matrix, camerapix,
                 uniqueid=data['uniqueid'], quiet=True)
-            values_monte[:, imonte] = np.copy(finalfit1['value'].value)  # copy needed??
-            obsamps_monte[:, imonte] = np.copy(finalfit1.meta['obsamp']) # observed amplitudes
-            finalmodel_monte[:, imonte] = np.copy(finalmodel1)
+            values_monte[imonte, :] = np.copy(finalfit1['value'].value)  # copy needed??
+            obsamps_monte[imonte, :] = np.copy(finalfit1.meta['obsamp']) # observed amplitudes
+            finalmodel_monte[imonte, :] = np.copy(finalmodel1)
         specflux_nolines_monte = specflux_monte - finalmodel_monte
         results_monte = (values_monte, obsamps_monte, emlineflux_monte, specflux_nolines_monte)
     else:

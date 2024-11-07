@@ -196,7 +196,7 @@ class ContinuumTools(object):
                 umwave = wwave[wnomask]
                 swave.append(np.mean(umwave))
                 sflux.append(mn)
-                sisig.append(1./sig) # inverse sigma
+                sisig.append(1. / sig) # inverse sigma
 
             swave = np.array(swave)
             sflux = np.array(sflux)
@@ -1029,33 +1029,33 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             objflamstd = np.zeros_like(objflamistd)
             I = objflamistd > 0.
             objflamstd[I] = 1. / objflamistd[I]
-            objflam_monte = rng.normal(objflam[:, np.newaxis], objflamstd[:, np.newaxis],
-                                       size=(len(objflam), nmonte))
+            objflam_monte = rng.normal(objflam[np.newaxis, :], objflamstd[np.newaxis, :],
+                                       size=(nmonte, len(objflam)))
 
             tauv_monte = np.zeros(nmonte)
             dn4000_model_monte = np.zeros(nmonte)
-            coeff_monte = np.zeros((nage, nmonte))
-            sedmodel_monte = np.zeros((templates.npix, nmonte))
-            sedmodel_nolines_monte = np.zeros((templates.npix, nmonte))
+            coeff_monte = np.zeros((nmonte, nage))
+            sedmodel_monte = np.zeros((nmonte, templates.npix))
+            sedmodel_nolines_monte = np.zeros((nmonte, templates.npix))
 
             tauv_guess = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
 
             for imonte in range(nmonte):
                 tauv1, _, coeff1, _ = CTools.fit_stellar_continuum(
                     templates.flux_nomvdisp[agekeep, :], fit_vdisp=False,
-                    tauv_guess=tauv_guess[imonte], objflam=objflam_monte[:, imonte],
+                    tauv_guess=tauv_guess[imonte], objflam=objflam_monte[imonte, :],
                     objflamistd=objflamistd, synthphot=True, synthspec=False)
 
-                coeff_monte[:, imonte] = coeff1
+                coeff_monte[imonte, :] = coeff1
                 tauv_monte[imonte] = tauv1
 
-                sedmodel_monte[:, imonte] = CTools.optimizer_saved_contmodel
-                sedmodel_nolines_monte[:, imonte] = CTools.build_stellar_continuum(
+                sedmodel_monte[imonte, :] = CTools.optimizer_saved_contmodel
+                sedmodel_nolines_monte[imonte, :] = CTools.build_stellar_continuum(
                     templates.flux_nolines_nomvdisp[agekeep, :], coeff1,
                     tauv=tauv1, vdisp=None, dust_emission=False)
 
                 dn4000_model1, _ = Photometry.get_dn4000(
-                    templates.wave, sedmodel_nolines_monte[:, imonte], rest=True)
+                    templates.wave, sedmodel_nolines_monte[imonte, :], rest=True)
                 dn4000_model_monte[imonte] = dn4000_model1
 
             tauv_var = np.var(tauv_monte)
@@ -1136,18 +1136,18 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         specstd = np.zeros_like(specivar_nolinemask)
         I = specivar_nolinemask > 0.
         specstd[I] = 1. / np.sqrt(specivar_nolinemask[I])
-        specflux_monte = rng.normal(specflux[:, np.newaxis], specstd[:, np.newaxis],
-                                    size=(len(specflux), nmonte))
+        specflux_monte = rng.normal(specflux[np.newaxis, :], specstd[np.newaxis, :],
+                                    size=(nmonte, len(specflux)))
 
         if ndof_phot > 0:
             objflamstd = np.zeros_like(objflamistd)
             I = objflamistd > 0.
             objflamstd[I] = 1. / objflamistd[I]
-            objflam_monte = rng.normal(objflam[:, np.newaxis], objflamstd[:, np.newaxis],
-                                       size=(len(objflam), nmonte))
+            objflam_monte = rng.normal(objflam[np.newaxis, :], objflamstd[np.newaxis, :],
+                                       size=(nmonte, len(objflam)))
         else:
             # should be all zeros
-            objflam_monte = np.repeat(objflam[:, np.newaxis], nmonte, axis=1)
+            objflam_monte = np.repeat(objflam[np.newaxis, :], nmonte, axis=1)
 
     # Perform an initial fit to the data using the cached templates with
     # nominal velocity dispersion. Reduce the prior bound on tauv to minimize
@@ -1212,7 +1212,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         if specflux_monte is not None:
             tauv_monte = np.zeros(nmonte)
             vdisp_monte = np.zeros(nmonte)
-            coeff_monte = np.zeros((nage, nmonte))
+            coeff_monte = np.zeros((nmonte, nage))
 
             vdisp_guess = rng.uniform(CTools.vdisp_bounds[0], CTools.vdisp_bounds[1], nmonte)
             tauv_guess = rng.uniform(init_tauv_bounds[0], init_tauv_bounds[1], nmonte)
@@ -1224,9 +1224,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
                     vdisp_guess=vdisp_guess[imonte],
                     tauv_guess=tauv_guess[imonte],
                     tauv_bounds=init_tauv_bounds,
-                    specflux=specflux_monte[:, imonte],
+                    specflux=specflux_monte[imonte, :],
                     specistd=specistd, dust_emission=False, synthspec=True)
-                coeff_monte[:, imonte] = coeff1
+                coeff_monte[imonte, :] = coeff1
                 tauv_monte[imonte] = tauv1
                 vdisp_monte[imonte] = vdisp1
 
@@ -1253,7 +1253,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             age = coeff.dot(info['age']) / np.sum(coeff) / 1e9  # luminosity-weighted [Gyr]
             age_monte = np.zeros(nmonte)
             for imonte in range(nmonte):
-                age_monte[imonte] = coeff_monte[:, imonte].dot(info['age']) / np.sum(coeff_monte[:, imonte]) / 1e9
+                age_monte[imonte] = coeff_monte[imonte, :].dot(info['age']) / np.sum(coeff_monte[imonte, :]) / 1e9
             age_sigma = np.std(age_monte)
 
             dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
@@ -1269,8 +1269,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             sig = [max(5.*vdisp_sigma, 3.), max(5.*tauv_sigma, 0.005), max(5.*age_sigma, 0.005)]
             ranges = ((vdisp-sig[0], vdisp+sig[0]), (tauv-sig[1], tauv+sig[1]), (age-sig[2], age+sig[2]))
 
-            #fig, ax = plt.subplots(figsize=(7, 6))
-            fig = cn.corner(plotdata, bins=nmonte//3, smooth=None, plot_density=False,
+            bins = nmonte//3
+            if bins < 10:
+                bins = 10
+            fig = cn.corner(plotdata, bins=bins, smooth=None, plot_density=False,
                             plot_contours=False, range=ranges, data_kwargs=dkw,
                             hist_kwargs=hkw, labels=labels)
                             #truths=truths, truth_color=colors[0])
@@ -1375,10 +1377,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
     if specflux_monte is not None:
         tauv_monte = np.zeros(nmonte)
         dn4000_model_monte = np.zeros(nmonte)
-        coeff_monte = np.zeros((nage, nmonte))
-        sedmodel_monte = np.zeros((templates.npix, nmonte))
-        sedmodel_nolines_monte = np.zeros((templates.npix, nmonte))
-        desimodel_nolines_monte = np.zeros((len(specflux), nmonte))
+        coeff_monte = np.zeros((nmonte, nage))
+        sedmodel_monte = np.zeros((nmonte, templates.npix))
+        sedmodel_nolines_monte = np.zeros((nmonte, templates.npix))
+        desimodel_nolines_monte = np.zeros((nmonte, len(specflux)))
 
         tauv_guess = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
 
@@ -1386,23 +1388,23 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             tauv1, _, coeff1, _ = CTools.fit_stellar_continuum(
                 input_templateflux, fit_vdisp=False, conv_pre=None,
                 tauv_guess=tauv_guess[imonte],
-                objflam=objflam_monte[:, imonte], objflamistd=objflamistd,
-                specflux=specflux_monte[:, imonte]*median_apercorr,
+                objflam=objflam_monte[imonte, :], objflamistd=objflamistd,
+                specflux=specflux_monte[imonte, :]*median_apercorr,
                 specistd=specistd/median_apercorr,
                 synthphot=True, synthspec=True)
 
-            coeff_monte[:, imonte] = coeff1
+            coeff_monte[imonte, :] = coeff1
             tauv_monte[imonte] = tauv1
 
-            sedmodel_monte[:, imonte] = CTools.optimizer_saved_contmodel.copy() # copy needed?
-            sedmodel_nolines_monte[:, imonte] = CTools.build_stellar_continuum(
+            sedmodel_monte[imonte, :] = CTools.optimizer_saved_contmodel.copy() # copy needed?
+            sedmodel_nolines_monte[imonte, :] = CTools.build_stellar_continuum(
                 input_templateflux_nolines, coeff1, tauv=tauv1,
                 vdisp=None, conv_pre=None, dust_emission=False)
-            desimodel_nolines_monte[:, imonte] = CTools.continuum_to_spectroscopy(
-                sedmodel_nolines_monte[:, imonte])
+            desimodel_nolines_monte[imonte, :] = CTools.continuum_to_spectroscopy(
+                sedmodel_nolines_monte[imonte, :])
 
             dn4000_model1, _ = Photometry.get_dn4000(
-                templates.wave, sedmodel_nolines_monte[:, imonte], rest=True)
+                templates.wave, sedmodel_nolines_monte[imonte, :], rest=True)
             dn4000_model_monte[imonte] = dn4000_model1
 
         tauv_var = np.var(tauv_monte)
@@ -1473,7 +1475,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
         for imonte in range(nmonte):
             continuummodel_monte_one = []
             for campix in data['camerapix']:
-                continuummodel_monte_one.append(desimodel_nolines_monte[campix[0]:campix[1], imonte])
+                continuummodel_monte_one.append(desimodel_nolines_monte[imonte, campix[0]:campix[1]])
             continuummodel_monte.append(continuummodel_monte_one)
 
     return (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
@@ -1635,7 +1637,7 @@ def continuum_specfit(data, result, templates, igm, phot,
             logmstar_monte = np.zeros(nmonte)
             sfr_monte = np.zeros(nmonte)
             for imonte in range(nmonte):
-                age1, zzsun1, logmstar1, sfr1 = _get_sps_properties(coeff_monte[:, imonte])
+                age1, zzsun1, logmstar1, sfr1 = _get_sps_properties(coeff_monte[imonte, :])
                 age_monte[imonte] = age1
                 zzsun_monte[imonte] = zzsun1
                 logmstar_monte[imonte] = logmstar1
