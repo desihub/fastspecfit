@@ -76,6 +76,9 @@ class Templates(object):
         templateinfo     = T['METADATA'].read()
         templatehdr      = T['METADATA'].read_header()
 
+        templateflux     = np.transpose(templateflux).copy()
+        templatelineflux = np.transpose(templatelineflux).copy()
+
         self.version = T[0].read_header()['VERSION']
 
         self.imf = templatehdr['IMF']
@@ -87,8 +90,8 @@ class Templates(object):
         keeplo = np.searchsorted(templatewave, mintemplatewave, 'left')
         keephi = np.searchsorted(templatewave, maxtemplatewave, 'right')
         self.wave = templatewave[keeplo:keephi]
-        self.flux = templateflux[keeplo:keephi, :]
-        self.flux_nolines = self.flux - templatelineflux[keeplo:keephi, :]
+        self.flux = templateflux[:, keeplo:keephi]
+        self.flux_nolines = self.flux - templatelineflux[:, keeplo:keephi]
         self.npix = len(self.wave)
 
         # dust attenuation curve
@@ -196,7 +199,7 @@ class Templates(object):
         Parameters
         ----------
         templateflux: :class:`np.ndarray`
-            [nwavelengths x ntemplates] array of templates
+            [ntemplates x nwavelengths] array of templates
 
         Returns
         -------
@@ -215,43 +218,43 @@ class Templates(object):
         lo, hi = self.pixkms_bounds
 
         # extract the un-convolved ranges of templateflux
-        flux_lo = templateflux[:lo, :]
-        flux_hi = templateflux[hi:, :]
-        flux_mid = templateflux[lo:hi, :]
+        flux_lo = templateflux[:, :lo]
+        flux_hi = templateflux[:, hi:]
+        flux_mid = templateflux[:, lo:hi]
 
-        mid_len = flux_mid.shape[0]
+        mid_len = flux_mid.shape[1]
 
         fft_len = sc_fft.next_fast_len(mid_len + kernel_size - 1,
                                        real=True)
-        ft_flux_mid = sc_fft.rfft(flux_mid, n=fft_len, axis=0)
+        ft_flux_mid = sc_fft.rfft(flux_mid, n=fft_len)
 
-        return (np.vstack((flux_lo, flux_hi)), ft_flux_mid, fft_len)
+        return (np.hstack((flux_lo, flux_hi)), ft_flux_mid, fft_len)
 
 
     @staticmethod
-    def conv_pre_select(conv_pre, cols):
+    def conv_pre_select(conv_pre, rows):
         """
         Filter a set of preprocessing data for vdisp convolution
-        to use only the specified columns (templates)
+        to use only the specified rows (templates)
 
         Parameters
         ----------
         conv_pre: :class:`tuple` or None
             Preprocessing structure for vdisp convolution (may be None)
-        cols: :class:`int`
-            Which columns (templates) from the preprocessing
+        rows: :class:`int`
+            Which rows (templates) from the preprocessing
             data should we keep?
 
         Returns
         -------
-        Revised preprocessing data with only the selected columns
+        Revised preprocessing data with only the selected rows
 
         """
         if conv_pre is None:
             return None
         else:
             flux_lohi, ft_flux_mid, fft_len = conv_pre
-            return (flux_lohi[:, cols], ft_flux_mid[:, cols], fft_len)
+            return (flux_lohi[rows, :], ft_flux_mid[rows, :], fft_len)
 
 
     def convolve_vdisp_from_pre(self, flux_lohi, ft_flux_mid, flux_len, fft_len, vdisp):
@@ -322,7 +325,7 @@ class Templates(object):
         ----------
         templateflux: :class:`np.ndarray`
            Either a 1D template array of fluxes, or a 2D array of size
-          [nfluxes x ntemplates] representing ntemplates fluxes
+          [ntemplates x nfluxes] representing ntemplates fluxes
         vdisp: :class:`float64`
            Velocity dispersion to convolve with fluxes
 
@@ -354,12 +357,12 @@ class Templates(object):
                 output[:lo] = templateflux[:lo]
                 output[hi:] = templateflux[hi:]
             else:
-                ntemplates = templateflux.shape[1]
+                ntemplates = templateflux.shape[0]
                 for ii in range(ntemplates):
-                    output[lo:hi, ii] = self.convolve(
-                        templateflux[lo:hi, ii], kernel, mode='same')
-                output[:lo, :] = templateflux[:lo, :]
-                output[hi:, :] = templateflux[hi:, :]
+                    output[ii, lo:hi] = self.convolve(
+                        templateflux[ii, lo:hi], kernel, mode='same')
+                output[:, :lo] = templateflux[:, :lo]
+                output[:, hi:] = templateflux[:, hi:]
 
         return output
 
