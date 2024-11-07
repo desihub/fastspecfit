@@ -508,7 +508,6 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
 
         # full model spectrum
-        import pdb ; pdb.set_trace()
         _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res'],
                                                  data['camerapix'], snrcut=emline_snrmin)
         desiemlines = []

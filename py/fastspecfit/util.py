@@ -18,6 +18,8 @@ except:
 
 FLUXNORM = 1e17  # flux normalization factor for all DESI spectra [erg/s/cm2/A]
 
+TINY = np.nextafter(0, 1, dtype=np.float32)
+SQTINY = np.sqrt(TINY)
 
 class BoxedScalar(object):
     """

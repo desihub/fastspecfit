@@ -14,7 +14,7 @@ from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
 from fastspecfit.util import (
     C_LIGHT, FLUXNORM, trapz_rebin, trapz_rebin_pre,
-    quantile, median, sigmaclip)
+    quantile, median, sigmaclip, TINY, SQTINY)
 
 
 class ContinuumTools(object):
@@ -1060,9 +1060,9 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
             tauv_var = np.var(tauv_monte)
             dn4000_model_var = np.var(dn4000_model_monte)
-            if tauv_var > 0.:
+            if tauv_var > TINY:
                 tauv_ivar = 1. / tauv_var
-            if dn4000_model_var > 0.:
+            if dn4000_model_var > TINY:
                 dn4000_model_ivar = 1. / dn4000_model_var
 
             msg = []
@@ -1232,7 +1232,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
             tauv_sigma = np.std(tauv_monte)
             vdisp_sigma = np.std(vdisp_monte)
-            if vdisp_sigma > 0.:
+            if vdisp_sigma > SQTINY:
                 vdisp_ivar = 1. / vdisp_sigma**2
 
         log.debug(f'Estimating the velocity dispersion took {time.time()-t0:.2f} seconds.')
@@ -1409,9 +1409,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
         tauv_var = np.var(tauv_monte)
         dn4000_model_var = np.var(dn4000_model_monte)
-        if tauv_var > 0.:
+        if tauv_var > TINY:
             tauv_ivar = 1. / tauv_var
-        if dn4000_model_var > 0.:
+        if dn4000_model_var > TINY:
             dn4000_model_ivar = 1. / dn4000_model_var
 
     msg = []
@@ -1645,7 +1645,7 @@ def continuum_specfit(data, result, templates, igm, phot,
             for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
                                       ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
                 var = np.var(val_monte)
-                if var > 0.:
+                if var > TINY:
                     result[col] = 1. / var
 
         rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600.))

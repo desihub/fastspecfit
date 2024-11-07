@@ -14,7 +14,7 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
-from fastspecfit.util import C_LIGHT, FLUXNORM
+from fastspecfit.util import C_LIGHT, FLUXNORM, TINY, SQTINY
 from fastspecfit.emline_fit import (EMLine_Objective,
     EMLine_MultiLines, EMLine_find_peak_amplitudes,
     EMLine_build_model, EMLine_ParamsMapping)
@@ -941,13 +941,16 @@ class EMFitTools(object):
                 result[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
 
                 if results_monte is not None:
-                    obsamp_ivar = 1. / obsamp_var if obsamp_var > 0. else 0.
+                    if obsamp_var > TINY:
+                        obsamp_ivar = 1. / obsamp_var
+                    else:
+                        obsamp_ivar = 0.
                     result[f'{linename}_AMP_IVAR'] = obsamp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
-                    if vshift_var > 0.:
+                    if vshift_var > TINY:
                         result[f'{linename}_VSHIFT_IVAR'] = 1. / vshift_var
-                    if sigma_var > 0.:
+                    if sigma_var > TINY:
                         result[f'{linename}_SIGMA_IVAR'] = 1. / sigma_var
-                    #if modelamp_var > 0.:
+                    #if modelamp_var > TINY:
                     #    result[f'{linename}_MODELAMP_IVAR'] = 1. / modelamp_var
 
                     # Monte Carlo to get the uncertainties
@@ -972,7 +975,7 @@ class EMFitTools(object):
                         boxflux_monte[imonte] = np.sum(_emlineflux_patch * _dwaves_patch)
 
                     boxflux_var = np.var(boxflux_monte)
-                    if boxflux_var > 0.:
+                    if boxflux_var > TINY:
                         result[f'{linename}_BOXFLUX_IVAR'] = 1. / boxflux_var
 
                 else:
@@ -981,7 +984,10 @@ class EMFitTools(object):
                     # from the emission-line subtracted spectrum.
                     n_lo, n_hi = quantile(specflux_nolines_s[patchindx], (0.25, 0.75))
                     obsamp_sigma = (n_hi - n_lo) / 1.349 # robust sigma
-                    obsamp_ivar = 1. / obsamp_sigma**2 if obsamp_sigma > 0. else 0.
+                    if obsamp_sigma > SQTINY:
+                        obsamp_ivar = 1. / obsamp_sigma**2
+                    else:
+                        obsamp_ivar = 0.
                     result[f'{linename}_AMP_IVAR'] = obsamp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
                     # formal (statistical) uncertainty
@@ -989,7 +995,7 @@ class EMFitTools(object):
                     result[f'{linename}_BOXFLUX_IVAR'] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
-                if obsamps[line_amp] > 0.:
+                if obsamps[line_amp] > TINY:
                     finalmodel_patch = finalmodel_s[patchindx]
                     chi2 = np.sum(emlineivar_patch * (emlineflux_patch - finalmodel_patch)**2)
                     result[f'{linename}_CHI2'] = chi2
@@ -1014,7 +1020,7 @@ class EMFitTools(object):
                                                               gausscorr=use_gausscorr_monte[imonte])
                             flux_monte[imonte] = flux1
                         flux_var = np.var(flux_monte)
-                        if flux_var > 0.:
+                        if flux_var > TINY:
                             flux_ivar = 1. / flux_var
                         else:
                             flux_ivar = 0.
@@ -1064,7 +1070,7 @@ class EMFitTools(object):
                             _clipflux = specflux_nolines_monte_s[imonte, _borderindx]
                         cont_monte[imonte] = np.mean(_clipflux)
                     cont_var = np.var(cont_monte)
-                    if cont_var > 0.:
+                    if cont_var > TINY:
                         cont_ivar = 1. / cont_var
                     else:
                         cont_ivar = 0.
@@ -1072,7 +1078,10 @@ class EMFitTools(object):
                     # legacy algorithm for estimating cont_ivar
                     clo, chi = quantile(clipflux, (0.25, 0.75))
                     csig = (chi - clo) / 1.349  # robust sigma
-                    cont_ivar = (np.sqrt(len(borderindx)) / csig)**2 if csig > 0. else 0.
+                    if csig > SQTINY:
+                        cont_ivar = (np.sqrt(len(borderindx)) / csig)**2
+                    else:
+                        cont_ivar = 0.
 
                 result[f'{linename}_CONT_IVAR'] = cont_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
             else:
@@ -1085,7 +1094,7 @@ class EMFitTools(object):
                     if results_monte is not None:
                         ew_monte = flux_monte / cont_monte / (1. + redshift) # rest frame [A]
                         ew_var = np.var(ew_monte)
-                        if ew_var > 0.:
+                        if ew_var > TINY:
                             ew_ivar = 1. / ew_var
                         else:
                             ew_ivar = 0.
@@ -1171,7 +1180,7 @@ class EMFitTools(object):
 
                 for n, mom_monte in zip(range(1, 4), (moment1_monte, moment2_monte, moment3_monte)):
                     mom_var = np.var(mom_monte)
-                    if mom_var > 0.:
+                    if mom_var > TINY:
                         result[f'{moment_col}_MOMENT{n}_IVAR'] = 1. / mom_var
 
         # get the per-group average emission-line redshifts and velocity widths
@@ -1231,7 +1240,7 @@ class EMFitTools(object):
                     # uncertainty in the doublet ratio
                     if results_monte is not None:
                         val_var = values_var[iparam]
-                        if val_var > 0.:
+                        if val_var > TINY:
                             result[f'{pmodelname}_IVAR'] = 1. / val_var
 
         # Clean up the doublets whose amplitudes were tied in the fitting since
@@ -1716,7 +1725,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                 dn4000_model, dn4000_model_ivar = result['DN4000_MODEL'], result['DN4000_MODEL_IVAR']
 
                 dn4000_sigma = 1. / np.sqrt(dn4000_ivar)
-                if dn4000_model_ivar > 0.:
+                if dn4000_model_ivar > TINY:
                     dn4000_model_sigma = 1. / np.sqrt(dn4000_model_ivar)
                 else:
                     dn4000_model_sigma = 0.
