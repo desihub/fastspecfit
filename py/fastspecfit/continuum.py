@@ -23,8 +23,8 @@ class ContinuumTools(object):
     """
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
                  vdisp_guess=250., tauv_bounds=(0., 2.),
-                 vdisp_bounds=(75., 500.), fastphot=False,
-                 constrain_age=False):
+                 vdisp_bounds=(75., 500.), vdisp_nbin=25,
+                 fastphot=False, constrain_age=False):
 
         self.phot = phot
         self.templates = templates
@@ -35,6 +35,7 @@ class ContinuumTools(object):
         self.vdisp_guess = vdisp_guess
         self.tauv_bounds = tauv_bounds
         self.vdisp_bounds = vdisp_bounds
+        self.vdisp_grid = np.linspace(vdisp_bounds[0], vdisp_bounds[1], vdisp_nbin)
 
         # Cache the redshift-dependent factors (incl. IGM attenuation),
         redshift = data['redshift']
@@ -1087,13 +1088,14 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             sedmodel_nolines_monte)
 
 
-def continuum_fastspec(redshift, objflam, objflamivar, CTools,
-                       nmonte=50, rng=None, uniqueid=0,
-                       no_smooth_continuum=False, debug_plots=False,
-                       fit_for_vdisp=False):
+def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
+                       rng=None, uniqueid=0, no_smooth_continuum=False,
+                       vdisp_chi2scan=True, debug_plots=False):
     """Jointly model the spectroscopy and broadband photometry.
 
     """
+    from fastspecfit.util import find_minima, minfit
+
     data = CTools.data
     phot = CTools.phot
     templates = CTools.templates
@@ -1158,28 +1160,78 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             # should be all zeros
             objflam_monte = np.repeat(objflam[np.newaxis, :], nmonte, axis=1)
 
-    # Perform an initial fit to the data using the cached templates with
-    # nominal velocity dispersion. Reduce the prior bound on tauv to minimize
-    # the age-dust degeneracy, which is especially important when trying to
-    # estimate the velocity dispersion in the next call to
-    # fit_stellar_continuum. When we fit the full spectrum+photometry (at fixed
-    # velocity dispersion), we revert to the larger (default) tauv prior, since
-    # the IR fluxes put an additional constraint on the dust content.
-    init_tauv_bounds = (0., 1.)
-    tauv_nomvdisp, _, coeff_nomvdisp, resid_nomvdisp = CTools.fit_stellar_continuum(
-        templates.flux_nolines_nomvdisp[agekeep, :], fit_vdisp=False, conv_pre=None,
-        tauv_bounds=init_tauv_bounds, specflux=specflux, specistd=specistd,
-        dust_emission=False, synthspec=True)
-
     # Next, attempt to solve for the velocity dispersion.
     compute_vdisp, _ = can_compute_vdisp(redshift, specwave)
 
-    # If the initial coefficients are all zero, override estimating vdisp.
-    if np.all(coeff_nomvdisp == 0.):
-        compute_vdisp = False
-
     if compute_vdisp:
         t0 = time.time()
+
+        init_tauv_bounds = (0., 2.)
+
+        # find vdisp via a chi2 scan
+        chi2grid = np.zeros(len(CTools.vdisp_grid))
+        for iv, vdisp1 in enumerate(CTools.vdisp_grid):
+            # convolve the templates at the derived vdisp and fit
+            input_templateflux_nolines = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp1)
+            tauv1, _, coeff1, resid1 = CTools.fit_stellar_continuum(
+                input_templateflux_nolines, fit_vdisp=False, conv_pre=None,
+                tauv_bounds=init_tauv_bounds, specflux=specflux, specistd=specistd,
+                dust_emission=False, synthspec=True)
+            chi2grid[iv] = resid1.dot(resid1)
+            print(vdisp1, tauv1)
+            if vdisp1 > 360.:
+                model1 = CTools.continuum_to_spectroscopy(CTools.optimizer_saved_contmodel)
+                I = specivar > 0.
+                import matplotlib.pyplot as plt
+                plt.clf()
+                plt.plot(specwave[I], specflux[I])
+                plt.plot(specwave[I], model1[I])
+                plt.savefig('junk.png')
+                import pdb ; pdb.set_trace()
+
+
+        try:
+            imin = find_minima(chi2grid)[0]
+            vdisp, vdisp_sigma, chi2min, warn, (a, b, c) = minfit(
+                CTools.vdisp_grid[imin-1:imin+2], chi2grid[imin-1:imin+2], return_coeff=True)
+        except:
+            errmsg = 'A problem was encountered minimizing chi2.'
+            log.warning(errmsg)
+            imin, vdisp, vdisp_sigma, chi2min, warn, (a, b, c) = \
+                0, templates.vdisp_nominal, 0., 0., 1, (0., 0., 0.)
+
+        if vdisp_sigma > TINY:
+            vdisp_ivar = 1. / vdisp_sigma**2
+        else:
+            vdisp_ivar = 0.
+
+        if debug_plots:
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+            sns.set(context='talk', style='ticks', font_scale=0.8)
+
+            pngfile = f'qa-vdisp-{uniqueid}.png'
+
+            if vdisp_ivar > 0:
+                txt = r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s'
+            else:
+                txt = r'$\sigma_{star}$='+f'{vdisp:.0f}'
+
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.scatter(CTools.vdisp_grid, chi2grid-chi2min, marker='s', s=50, color='gray', edgecolor='k')
+            if not np.all(np.array([a, b, c]) == 0.):
+                yquad = np.polyval([a, b, c], CTools.vdisp_grid)
+                ax.plot(CTools.vdisp_grid[imin-3:imin+4], yquad[imin-3:imin+4]-chi2min, lw=2, ls='--')
+                #ax.set_ylim(0., np.min((np.max(yquad), np.max(chi2grid)))-chi2min)
+            ax.set_xlabel(r'$\sigma_{star}$ (km/s)')
+            ax.text(0.9, 0.9, txt, ha='right', va='center', transform=ax.transAxes)
+            ax.set_ylabel(r'$\Delta\chi^2$')
+            fig.tight_layout()
+            fig.savefig(pngfile)#, bbox_inches='tight')
+            plt.close()
+            log.info(f'Wrote {pngfile}')
+
+        import pdb ; pdb.set_trace()
 
         # copy the model before it is overwritten...
         contmodel_nomvdisp = CTools.optimizer_saved_contmodel.copy() # copy needed??
@@ -1193,6 +1245,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             tauv_bounds=init_tauv_bounds, specflux=specflux,
             specistd=specistd, dust_emission=False, synthspec=True)
         contmodel_withvdisp = CTools.optimizer_saved_contmodel.copy() # copy needed??
+
+        ## If the initial coefficients are all zero, override estimating vdisp.
+        #if np.all(coeff_nomvdisp == 0.):
+        #    compute_vdisp = False
 
         # ToDo: use a delta-chi2 test to determine if solving for the velocity
         # dispersion improves the fit in a statistically significant way.
@@ -1228,12 +1284,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
 
             for imonte in range(nmonte):
                 tauv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
-                    templates.flux_nolines[agekeep, :], fit_vdisp=True,
-                    conv_pre=input_conv_pre_nolines,
-                    vdisp_guess=vdisp_guess[imonte],
-                    tauv_guess=tauv_guess[imonte],
-                    tauv_bounds=init_tauv_bounds,
-                    specflux=specflux_monte[imonte, :],
+                    templates.flux_nolines, fit_vdisp=True, conv_pre=input_conv_pre_nolines,
+                    vdisp_guess=vdisp_guess[imonte], tauv_guess=tauv_guess[imonte],
+                    tauv_bounds=init_tauv_bounds, specflux=specflux_monte[imonte, :],
                     specistd=specistd, dust_emission=False, synthspec=True)
                 coeff_monte[imonte, :] = coeff1
                 tauv_monte[imonte] = tauv1
@@ -1310,12 +1363,29 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools,
             log.info(f'Wrote {pngfile}')
     else:
         log.info('Insufficient wavelength coverage to compute velocity dispersion.')
+
+        # Perform an initial fit to the data using the cached templates with
+        # nominal velocity dispersion. Reduce the prior bound on tauv to minimize
+        # the age-dust degeneracy, which is especially important when trying to
+        # estimate the velocity dispersion in the next call to
+        # fit_stellar_continuum. When we fit the full spectrum+photometry (at fixed
+        # velocity dispersion), we revert to the larger (default) tauv prior, since
+        # the IR fluxes put an additional constraint on the dust content.
+        init_tauv_bounds = (0., 1.)
+        tauv_nomvdisp, _, coeff_nomvdisp, resid_nomvdisp = CTools.fit_stellar_continuum(
+            templates.flux_nolines_nomvdisp[agekeep, :], fit_vdisp=False, conv_pre=None,
+            tauv_bounds=init_tauv_bounds, specflux=specflux, specistd=specistd,
+            dust_emission=False, synthspec=True)
+
+
+        print('OLD CODE HERE')
         tauv = tauv_nomvdisp
         coeff = coeff_nomvdisp
         vdisp = templates.vdisp_nominal
         input_templateflux = templates.flux_nomvdisp[agekeep, :]
         input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
         contmodel = CTools.optimizer_saved_contmodel.copy()
+
 
     # Next, estimate the aperture correction.
     apercorrs = np.ones(len(phot.synth_bands))
