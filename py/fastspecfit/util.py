@@ -239,14 +239,14 @@ def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
     goodmask = ivar > clip # True is good
     if np.count_nonzero(goodmask) == 0:
         # Try clipping at zero.
-        goodmask = ivar > 0 # True is good
+        goodmask = ivar > 0. # True is good
         if np.count_nonzero(goodmask) == 0:
             if allmasked_ok:
                 return var, goodmask
             errmsg = 'All values are masked!'
             log.critical(errmsg)
             raise ValueError(errmsg)
-    var[goodmask] = 1 / ivar[goodmask]
+    var[goodmask] = 1. / ivar[goodmask]
     if sigma:
         var = np.sqrt(var) # return a sigma
     return var, goodmask

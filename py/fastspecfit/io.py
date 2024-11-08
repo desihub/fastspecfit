@@ -602,7 +602,8 @@ class DESISpectra(object):
 
 
     def read(self, mp_pool, fastphot=False, synthphot=True,
-             constrain_age=False, debug_plots=False):
+             constrain_age=False, debug_plots=False,
+             min_uncertainty=0.01):
         """Read selected spectra and/or broadband photometry.
 
         Parameters
@@ -790,6 +791,7 @@ class DESISpectra(object):
                         'fastphot':    fastphot,
                         'synthphot':   synthphot,
                         'debug_plots': debug_plots,
+                        'min_uncertainty': min_uncertainty,
                     })
 
             out = mp_pool.starmap(DESISpectra.one_spectrum, mpargs)
@@ -813,13 +815,13 @@ class DESISpectra(object):
 
     @staticmethod
     def one_spectrum(iobj, specdata, meta, ebv, fastphot,
-                     synthphot, debug_plots):
+                     synthphot, debug_plots, min_uncertainty):
         """Process the data for a single object and correct for Galactic
         extinction. Also flag pixels which may be affected by emission lines.
 
         """
         from fastspecfit.resolution import Resolution
-        from fastspecfit.util import mwdust_transmission, median
+        from fastspecfit.util import mwdust_transmission, median, ivar2var
         from fastspecfit.linemasker import LineMasker
 
         emline_table = sc_data.emlines.table
@@ -928,6 +930,13 @@ class DESISpectra(object):
                         #        res[irow, I] = np.interp(I, J, res[irow, J])
 
                         # should we also interpolate over the coadded resolution matrix??
+
+                        # include the minimum uncertainty in quadrature with the input ivar
+                        minvar = (min_uncertainty * specdata['flux0'][icam])**2
+                        var, I = ivar2var(ivar)
+                        newivar = np.zeros_like(ivar)
+                        newivar[I] = 1. / (minvar[I] + var[I])
+                        ivar = newivar
 
                         cameras.append(camera)
                         npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
