@@ -1243,37 +1243,6 @@ class EMFitTools(object):
                         if val_var > TINY:
                             result[f'{pmodelname}_IVAR'] = 1. / val_var
 
-        # Clean up the doublets whose amplitudes were tied in the fitting since
-        # they may have been zeroed out in the clean-up, above.
-        if result['OIII_5007_MODELAMP'] == 0. and \
-           result['OIII_5007_NPIX'] > 0:
-            result['OIII_4959_MODELAMP'] = 0.
-            result['OIII_4959_AMP'] = 0.
-            result['OIII_4959_FLUX'] = 0.
-            result['OIII_4959_EW'] = 0.
-        if result['NII_6584_MODELAMP'] == 0. and \
-           result['NII_6584_NPIX'] > 0:
-            result['NII_6548_MODELAMP'] = 0.
-            result['NII_6548_AMP'] = 0.
-            result['NII_6548_FLUX'] = 0.
-            result['NII_6548_EW'] = 0.
-        if result['OII_7320_MODELAMP'] == 0. and \
-           result['OII_7320_NPIX'] > 0:
-            result['OII_7330_MODELAMP'] = 0.
-            result['OII_7330_AMP'] = 0.
-            result['OII_7330_FLUX'] = 0.
-            result['OII_7330_EW'] = 0.
-
-        if result['MGII_2796_MODELAMP'] == 0. and \
-           result['MGII_2803_MODELAMP'] == 0.:
-            result['MGII_DOUBLET_RATIO'] = 0.
-        if result['OII_3726_MODELAMP'] == 0. and \
-           result['OII_3729_MODELAMP'] == 0.:
-            result['OII_DOUBLET_RATIO'] = 0.
-        if result['SII_6716_MODELAMP'] == 0. and \
-           result['SII_6731_MODELAMP'] == 0.:
-            result['SII_DOUBLET_RATIO'] = 0.
-
         import logging
         if log.getEffectiveLevel() == logging.DEBUG:
             for ln in self.line_table['name'].value:
