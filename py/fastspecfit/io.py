@@ -906,27 +906,26 @@ class DESISpectra(object):
                     log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
                 else:
                     ivar = specdata['ivar0'][icam]
-                    mask = specdata['mask0'][icam]
+                    mask = specdata['mask0'][icam].astype(bool)
 
-                    # always mask the first and last pixels
-                    mask[ 0] = 1
-                    mask[-1] = 1
+                    # always mask the first and last XX pixels
+                    mask[:3] = True
+                    mask[-3:] = True
 
                     # In the pipeline, if mask!=0 that does not mean ivar==0, but we
                     # want to be more aggressive about masking here.
-                    ivar[mask != 0] = 0.
+                    ivar[mask] = 0.
 
                     if np.all(ivar == 0.):
                         log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
                     else:
-                        # interpolate over pixels where the resolution matrix is masked
-                        I = (mask != 0)
-                        if np.any(I):
-                            J = np.where(np.logical_not(I))[0]
-                            I = np.where(I)[0]
-                            res = specdata['res0'][icam]
-                            for irow in range(res.shape[0]):
-                                res[irow, I] = np.interp(I, J, res[irow, J])
+                        res = specdata['res0'][icam]
+                        ## interpolate over pixels where the resolution matrix is masked
+                        #if np.any(mask):
+                        #    J = np.where(np.logical_not(mask))[0]
+                        #    I = np.where(mask)[0]
+                        #    for irow in range(res.shape[0]):
+                        #        res[irow, I] = np.interp(I, J, res[irow, J])
 
                         # should we also interpolate over the coadded resolution matrix??
 
@@ -941,7 +940,7 @@ class DESISpectra(object):
                         specdata['flux'].append(specdata['flux0'][icam] / mw_transmission_spec)
                         specdata['ivar'].append(ivar * mw_transmission_spec**2)
                         specdata['wave'].append(specdata['wave0'][icam])
-                        specdata['mask'].append(specdata['mask0'][icam])
+                        specdata['mask'].append(mask)
 
                         specdata['res'].append(Resolution(res))
 

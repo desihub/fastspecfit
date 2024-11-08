@@ -638,17 +638,22 @@ class ContinuumTools(object):
 
         """
         camerapix = self.data['camerapix']
-        specwave  = self.data['wave']
-        specres   = self.data['res']
+        specwave = self.data['wave']
+        specres = self.data['res']
+        specmask = self.data['mask']
 
         modelflux = np.empty(self.wavelen)
 
         for icam, (s, e) in enumerate(camerapix):
-            resampflux = trapz_rebin(self.ztemplatewave,
-                                     contmodel,
-                                     specwave[icam],
-                                     pre=self.spec_pre[icam])
+            resampflux = trapz_rebin(
+                self.ztemplatewave, contmodel,
+                specwave[icam], pre=self.spec_pre[icam])
             specres[icam].dot(resampflux, out=modelflux[s:e])
+
+            # interpolate the model over masked pixels, mostly for cosmetic purposes
+            if np.any(specmask[icam]):
+                mask = specmask[icam]
+                modelflux[s:e][mask] = np.interp(specwave[icam][mask], specwave[icam][~mask], modelflux[s:e][~mask])
 
         return modelflux
 
@@ -1081,7 +1086,8 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
 def continuum_fastspec(redshift, objflam, objflamivar, CTools,
                        nmonte=50, rng=None, uniqueid=0,
-                       no_smooth_continuum=False, debug_plots=False):
+                       no_smooth_continuum=False, debug_plots=False,
+                       fit_for_vdisp=False):
     """Jointly model the spectroscopy and broadband photometry.
 
     """
