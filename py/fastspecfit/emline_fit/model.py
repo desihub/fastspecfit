@@ -11,7 +11,7 @@ from .utils import (
 )
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def emline_model(line_wavelengths,
                  line_parameters,
                  log_obs_bin_edges,
@@ -77,7 +77,7 @@ def emline_model(line_wavelengths,
     return model_fluxes
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def emline_perline_models(line_wavelengths,
                           line_parameters,
                           log_obs_bin_edges,
@@ -157,7 +157,7 @@ def emline_perline_models(line_wavelengths,
     return (endpts, line_profiles)
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def emline_model_core(line_wavelength,
                       line_amplitude,
                       line_vshift,

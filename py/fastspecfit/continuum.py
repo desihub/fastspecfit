@@ -480,7 +480,7 @@ class ContinuumTools(object):
 
 
     @staticmethod
-    @jit(nopython=True, nogil=True, fastmath=True)
+    @jit(nopython=True, nogil=True, fastmath=True, cache=True)
     def attenuate(M, A, zfactors, wave, dustflux):
         """
         Compute attenuated version of a model spectrum,
@@ -519,7 +519,7 @@ class ContinuumTools(object):
 
 
     @staticmethod
-    @jit(nopython=True, nogil=True, fastmath=True)
+    @jit(nopython=True, nogil=True, fastmath=True, cache=True)
     def attenuate_nodust(M, A, zfactors):
         """
         Compute attenuated version of a model spectrum M,

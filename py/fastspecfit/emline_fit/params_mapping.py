@@ -93,7 +93,7 @@ class ParamsMapping(object):
 
 
     @staticmethod
-    @jit(nopython=True, nogil=True)
+    @jit(nopython=True, nogil=True, cache=True)
     def _mapFreeToFull(freeParms, nParms, sources, factors,
                        doubletPatches, fullParms, patchDoublets):
 
@@ -137,7 +137,7 @@ class ParamsMapping(object):
 
 
     @staticmethod
-    @jit(nopython=True, nogil=True)
+    @jit(nopython=True, nogil=True, cache=True)
     def _matvec(J_S, v, w):
         """
         Multiply sparse parameter Jacobian J_S * v, writing result to w.
@@ -161,7 +161,7 @@ class ParamsMapping(object):
 
 
     @staticmethod
-    @jit(nopython=True, nogil=True)
+    @jit(nopython=True, nogil=True, cache=True)
     def _add_rmatvec(J_S, v, w):
         """
         Multiply v with sparse parameter Jacobian J_S.T,

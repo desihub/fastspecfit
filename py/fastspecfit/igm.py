@@ -98,7 +98,7 @@ class Inoue14(object):
 
 
     @staticmethod
-    @jit(nopython=True, nogil=True)
+    @jit(nopython=True, nogil=True, cache=True)
     def _full_IGM(z, lobs, scale_tau, igm_params):
 
         lam, cALAF1, cALAF2, cALAF3, cADLA1, cADLA2 = igm_params
@@ -119,7 +119,7 @@ class Inoue14(object):
         return np.exp(-scale_tau * (tau_LC + tau_LS))
 
 
-@jit(nopython=True, fastmath=True, nogil=True)
+@jit(nopython=True, fastmath=True, nogil=True, cache=True)
 def _tLSLAF(zS, lobs, lam,
             cALAF1, cALAF2, cALAF3):
     """
@@ -146,7 +146,7 @@ def _tLSLAF(zS, lobs, lam,
     return r
 
 
-@jit(nopython=True, fastmath=True, nogil=True)
+@jit(nopython=True, fastmath=True, nogil=True, cache=True)
 def _tLSDLA(zS, lobs, lam,
             cADLA1, cADLA2):
     """
@@ -170,7 +170,7 @@ def _tLSDLA(zS, lobs, lam,
     return r
 
 
-@jit(nopython=True, fastmath=True, nogil=True)
+@jit(nopython=True, fastmath=True, nogil=True, cache=True)
 def _tLCDLA(zS, lobs):
     """
     Lyman continuum, DLA
@@ -207,7 +207,7 @@ def _tLCDLA(zS, lobs):
     return r
 
 
-@jit(nopython=True, fastmath=True, nogil=True)
+@jit(nopython=True, fastmath=True, nogil=True, cache=True)
 def _tLCLAF(zS, lobs):
     """
     Lyman continuum, LAF

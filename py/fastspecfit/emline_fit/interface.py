@@ -320,7 +320,7 @@ class MultiLines(object):
 
         """
 
-        @jit(nopython=True, nogil=True)
+        @jit(nopython=True, nogil=True, cache=True)
         def _suppress_negative_fluxes(endpts, M):
             """
             suppress negative fluxes arising from resolution matrix
@@ -438,7 +438,7 @@ def find_peak_amplitudes(line_parameters,
 
     """
 
-    @jit(nopython=True, nogil=True)
+    @jit(nopython=True, nogil=True, cache=True)
     def _update_line_maxima(max_amps, line_models):
         """
         Given an array of line waveforms and an array of maximum
@@ -592,7 +592,7 @@ def _build_multimodel_core(line_parameters,
         consumer_fun((endpts, M))
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def _add_patches(obs_bin_centers,
                  model_fluxes,
                  patch_endpts,
@@ -639,7 +639,7 @@ def _add_patches(obs_bin_centers,
 ###################################################################
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def mulWMJ(w, M, Jsp):
     """Compute the sparse matrix product P = WMJ, where
     W is a diagonal weight matrix
@@ -717,7 +717,7 @@ def mulWMJ(w, M, Jsp):
     return (endpts, J)
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def _prepare_bins(centers, camerapix):
     """
     Convert bin centers to the info needed by the optimizer,

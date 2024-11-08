@@ -75,7 +75,7 @@ class Resolution(object):
 
 
     @staticmethod
-    @jit(nopython=True, fastmath=False, nogil=True)
+    @jit(nopython=True, fastmath=False, nogil=True, cache=True)
     def _matvec(D, v, out):
         """
         Compute matrix-vector product of a Resolution matrix A and a vector v.
@@ -104,7 +104,7 @@ class Resolution(object):
 
 
     @staticmethod
-    @jit(nopython=True, fastmath=False, nogil=True)
+    @jit(nopython=True, fastmath=False, nogil=True, cache=True)
     def _dia_to_rows(D):
         """
         Convert a diagonally sparse matrix M in the form

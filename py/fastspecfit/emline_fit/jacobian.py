@@ -12,7 +12,7 @@ from .utils import (
 )
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def emline_model_jacobian(line_parameters,
                           log_obs_bin_edges,
                           ibin_widths,
@@ -181,7 +181,7 @@ def emline_model_jacobian(line_parameters,
 
 
 @staticmethod
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def patch_jacobian(obs_bin_centers,
                    obs_weights,
                    patch_endpts,

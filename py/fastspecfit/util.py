@@ -349,7 +349,7 @@ def minfit(x, y, return_coeff=False):
 # array copies and redundant summation
 # on each iteration
 #
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def sigmaclip(c, low=3., high=3.):
 
     n  = len(c)
@@ -386,19 +386,19 @@ def sigmaclip(c, low=3., high=3.):
 
 # Numba's quantile impl is much faster
 # than Numpy's standard version
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def quantile(A, q):
     return np.quantile(A, q)
 
 
 # Numba's median impl is also faster
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def median(A):
     return np.median(A)
 
 
 # Open-coded Numba trapz is much faster than np.traz
-@jit(nopython=True, nogil=True, fastmath=True)
+@jit(nopython=True, nogil=True, fastmath=True, cache=True)
 def trapz(y, x):
     res = 0.
     for i in range(len(x) - 1):
@@ -467,7 +467,7 @@ def trapz_rebin_pre(bin_centers):
     return (edges, ibw)
 
 
-@jit(nopython=True, nogil=True, fastmath=True)
+@jit(nopython=True, nogil=True, fastmath=True, cache=True)
 def _trapz_rebin(x, y, edges, ibw, out):
     """
     Trapezoidal rebinning
@@ -533,7 +533,7 @@ def _trapz_rebin(x, y, edges, ibw, out):
     return results
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def centers2edges(centers):
     """
     Convert bin centers to bin edges, guessing at what you probably meant.

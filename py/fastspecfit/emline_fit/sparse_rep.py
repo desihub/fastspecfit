@@ -187,7 +187,7 @@ class EMLineJacobian(LinearOperator):
     # Multiply ideal Jacobian J * v, writing result to w.
     #
     @staticmethod
-    @jit(nopython=True, nogil=True)
+    @jit(nopython=True, nogil=True, cache=True)
     def _matvec_J(J, v, w):
         """
         Multiply partial Jacobian J with v,
@@ -209,7 +209,7 @@ class EMLineJacobian(LinearOperator):
 
 
     @staticmethod
-    @jit(nopython=True, nogil=True)
+    @jit(nopython=True, nogil=True, cache=True)
     def _rmatvec_J(J, v, w):
         """
         Multiply v with partial Jacobian J.T,
@@ -236,7 +236,7 @@ class EMLineJacobian(LinearOperator):
             w[i] = acc
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, cache=True)
 def _matvec_J_add(J, v, w):
     """
     Multiply partial Jacobian J with v,
