@@ -267,7 +267,7 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
-    parser.add_argument('--nmonte', type=int, default=30, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',

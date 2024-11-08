@@ -23,7 +23,7 @@ class ContinuumTools(object):
     """
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
                  vdisp_guess=250., tauv_bounds=(0., 2.),
-                 vdisp_bounds=(75., 500.), vdisp_nbin=25,
+                 vdisp_bounds=(75., 500.), vdisp_nbin=20,
                  fastphot=False, constrain_age=False):
 
         self.phot = phot
@@ -882,7 +882,7 @@ class ContinuumTools(object):
         fit_info = least_squares(self._stellar_objective, initial_guesses, kwargs=farg,
                                  bounds=tuple(zip(*bounds)), method='trf',
                                  tr_solver='exact', tr_options={'regularize': True},
-                                 x_scale='jac', max_nfev=5000, ftol=1e-3, xtol=1e-10)#, verbose=2)
+                                 x_scale='jac', max_nfev=5000, ftol=1e-4, xtol=1e-10)#, verbose=2)
         bestparams = fit_info.x
         resid      = fit_info.fun
 
@@ -947,8 +947,8 @@ class ContinuumTools(object):
         return rchi2_spec, rchi2_phot, rchi2_tot
 
 
-def can_compute_vdisp(redshift, specwave, minrestwave=3650.,
-                      maxrestwave=5500., mindeltawave=500.):
+def can_compute_vdisp(redshift, specwave, minrestwave=3800.,
+                      maxrestwave=5500., mindeltawave=1000.):
     """Determine if we can solve for the velocity dispersion.
 
     """
@@ -957,7 +957,7 @@ def can_compute_vdisp(redshift, specwave, minrestwave=3650.,
     maxwave = np.max(restwave)
     s = np.searchsorted(restwave, minrestwave, 'left')
     e = np.searchsorted(restwave, maxrestwave, 'left')
-    if e-s > 0:
+    if e - s > 0:
         deltawave = np.ptp(restwave[s:e])
     else:
         deltawave = 0.
@@ -1089,8 +1089,8 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
 
 def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
-                       rng=None, uniqueid=0, no_smooth_continuum=False,
-                       vdisp_chi2scan=True, debug_plots=False):
+                       nball=30, rng=None, uniqueid=0, no_smooth_continuum=False,
+                       vdisp_chi2scan=False, debug_plots=False):
     """Jointly model the spectroscopy and broadband photometry.
 
     """
@@ -1161,206 +1161,274 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
             objflam_monte = np.repeat(objflam[np.newaxis, :], nmonte, axis=1)
 
     # Next, attempt to solve for the velocity dispersion.
-    compute_vdisp, _ = can_compute_vdisp(redshift, specwave)
+    compute_vdisp, (s, e) = can_compute_vdisp(redshift, specwave)
 
     if compute_vdisp:
         t0 = time.time()
 
-        init_tauv_bounds = (0., 2.)
+        # fit for vdisp over a restricted wavelength range
+        fitmask = np.zeros(len(specflux), bool)
+        fitmask[s:e] = True
+        init_tauv_bounds = (0., 1.5)
 
-        # find vdisp via a chi2 scan
-        chi2grid = np.zeros(len(CTools.vdisp_grid))
-        for iv, vdisp1 in enumerate(CTools.vdisp_grid):
-            # convolve the templates at the derived vdisp and fit
-            input_templateflux_nolines = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp1)
-            tauv1, _, coeff1, resid1 = CTools.fit_stellar_continuum(
-                input_templateflux_nolines, fit_vdisp=False, conv_pre=None,
-                tauv_bounds=init_tauv_bounds, specflux=specflux, specistd=specistd,
-                dust_emission=False, synthspec=True)
-            chi2grid[iv] = resid1.dot(resid1)
-            print(vdisp1, tauv1)
-            if vdisp1 > 360.:
-                model1 = CTools.continuum_to_spectroscopy(CTools.optimizer_saved_contmodel)
-                I = specivar > 0.
-                import matplotlib.pyplot as plt
-                plt.clf()
-                plt.plot(specwave[I], specflux[I])
-                plt.plot(specwave[I], model1[I])
-                plt.savefig('junk.png')
-                import pdb ; pdb.set_trace()
+        # optionally find vdisp via a chi2 scan - deprecated!
+        if vdisp_chi2scan:
+            chi2grid = np.zeros(len(CTools.vdisp_grid))
+            for iv, vdisp1 in enumerate(CTools.vdisp_grid):
+                # convolve the templates at the derived vdisp and fit
+                input_templateflux_nolines = templates.convolve_vdisp(
+                    templates.flux_nolines[agekeep, :], vdisp1)
+                tauv1, _, coeff1, resid1 = CTools.fit_stellar_continuum(
+                    input_templateflux_nolines, fit_vdisp=False, conv_pre=None,
+                    tauv_bounds=init_tauv_bounds, specflux=specflux, specistd=specistd*fitmask,
+                    dust_emission=False, synthspec=True)
+                chi2grid[iv] = resid1.dot(resid1)
 
-
-        try:
             imin = find_minima(chi2grid)[0]
             vdisp, vdisp_sigma, chi2min, warn, (a, b, c) = minfit(
                 CTools.vdisp_grid[imin-1:imin+2], chi2grid[imin-1:imin+2], return_coeff=True)
-        except:
-            errmsg = 'A problem was encountered minimizing chi2.'
-            log.warning(errmsg)
-            imin, vdisp, vdisp_sigma, chi2min, warn, (a, b, c) = \
-                0, templates.vdisp_nominal, 0., 0., 1, (0., 0., 0.)
 
-        if vdisp_sigma > TINY:
-            vdisp_ivar = 1. / vdisp_sigma**2
-        else:
-            vdisp_ivar = 0.
-
-        if debug_plots:
-            import matplotlib.pyplot as plt
-            import seaborn as sns
-            sns.set(context='talk', style='ticks', font_scale=0.8)
-
-            pngfile = f'qa-vdisp-{uniqueid}.png'
-
-            if vdisp_ivar > 0:
-                txt = r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s'
+            # Did fitting fail?
+            if vdisp < 0.:
+                vdisp = templates.vdisp_nominal
+                vdisp_ivar = 0.
             else:
-                txt = r'$\sigma_{star}$='+f'{vdisp:.0f}'
+                if vdisp_sigma > TINY:
+                    vdisp_ivar = 1. / vdisp_sigma**2
+                else:
+                    vdisp_ivar = 0.
 
-            fig, ax = plt.subplots(figsize=(8, 6))
-            ax.scatter(CTools.vdisp_grid, chi2grid-chi2min, marker='s', s=50, color='gray', edgecolor='k')
-            if not np.all(np.array([a, b, c]) == 0.):
-                yquad = np.polyval([a, b, c], CTools.vdisp_grid)
-                ax.plot(CTools.vdisp_grid[imin-3:imin+4], yquad[imin-3:imin+4]-chi2min, lw=2, ls='--')
-                #ax.set_ylim(0., np.min((np.max(yquad), np.max(chi2grid)))-chi2min)
-            ax.set_xlabel(r'$\sigma_{star}$ (km/s)')
-            ax.text(0.9, 0.9, txt, ha='right', va='center', transform=ax.transAxes)
-            ax.set_ylabel(r'$\Delta\chi^2$')
-            fig.tight_layout()
-            fig.savefig(pngfile)#, bbox_inches='tight')
-            plt.close()
-            log.info(f'Wrote {pngfile}')
+            if debug_plots:
+                import matplotlib.pyplot as plt
+                import seaborn as sns
+                sns.set(context='talk', style='ticks', font_scale=0.8)
 
-        import pdb ; pdb.set_trace()
+                pngfile = f'qa-vdisp-{uniqueid}.png'
 
-        # copy the model before it is overwritten...
-        contmodel_nomvdisp = CTools.optimizer_saved_contmodel.copy() # copy needed??
+                if vdisp_ivar > 0:
+                    txt = r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s'
+                else:
+                    txt = r'$\sigma_{star}$='+f'{vdisp:.0f}'
 
-        input_conv_pre_nolines = templates.conv_pre_select(templates.conv_pre_nolines, agekeep)
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.scatter(CTools.vdisp_grid, chi2grid-chi2min, marker='s', s=50, color='gray', edgecolor='k')
+                if not np.all(np.array([a, b, c]) == 0.):
+                    yquad = np.polyval([a, b, c], CTools.vdisp_grid)
+                    ax.plot(CTools.vdisp_grid[imin-3:imin+4], yquad[imin-3:imin+4]-chi2min, lw=2, ls='--')
+                    #ax.set_ylim(0., np.min((np.max(yquad), np.max(chi2grid)))-chi2min)
+                ax.set_xlabel(r'$\sigma_{star}$ (km/s)')
+                ax.text(0.9, 0.9, txt, ha='right', va='center', transform=ax.transAxes)
+                ax.set_ylabel(r'$\Delta\chi^2$')
+                fig.tight_layout()
+                fig.savefig(pngfile)#, bbox_inches='tight')
+                plt.close()
+                log.info(f'Wrote {pngfile}')
 
-        tauv_withvdisp, vdisp, coeff_withvdisp, resid_withvdisp = CTools.fit_stellar_continuum(
-            templates.flux_nolines[agekeep, :], fit_vdisp=True,
-            conv_pre=input_conv_pre_nolines,
-            vdisp_guess=templates.vdisp_nominal,
-            tauv_bounds=init_tauv_bounds, specflux=specflux,
-            specistd=specistd, dust_emission=False, synthspec=True)
-        contmodel_withvdisp = CTools.optimizer_saved_contmodel.copy() # copy needed??
 
-        ## If the initial coefficients are all zero, override estimating vdisp.
-        #if np.all(coeff_nomvdisp == 0.):
-        #    compute_vdisp = False
-
-        # ToDo: use a delta-chi2 test to determine if solving for the velocity
-        # dispersion improves the fit in a statistically significant way.
-        chi2_withvdisp = resid_withvdisp.dot(resid_withvdisp)
-        chi2_nomvdisp = resid_nomvdisp.dot(resid_nomvdisp)
-        delta_chi2 = chi2_nomvdisp - chi2_withvdisp
-
-        #if delta_chi2 > XX:
-        if True:
-            tauv = tauv_withvdisp
-            coeff = coeff_withvdisp
-            contmodel = contmodel_withvdisp
-
-            # convolve the templates at the derived vdisp
+            # Get the templates, coefficients, and model at the derived vdisp.
             input_templateflux = templates.convolve_vdisp(templates.flux[agekeep, :], vdisp)
             input_templateflux_nolines = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp)
+
+            tauv, _, coeff, _ = CTools.fit_stellar_continuum(
+                input_templateflux_nolines, fit_vdisp=False, conv_pre=None,
+                tauv_bounds=init_tauv_bounds, specflux=specflux, specistd=specistd,
+                dust_emission=False, synthspec=True)
+            contmodel = CTools.optimizer_saved_contmodel
         else:
-            tauv = tauv_nomvdisp
-            coeff = coeff_nomvdisp
-            vdisp = templates.vdisp_nominal
-            contmodel = contmodel_nomvdisp
+            # Get the maximum likelihood velocity dispersion by scattering the
+            # initial guesses in the parameters within the bounds.
+            input_conv_pre_nolines = templates.conv_pre_select(
+                templates.conv_pre_nolines, agekeep)
 
-        # Monte Carlo to get vdisp_ivar (and the diagnostic plot, if
-        # requested). Scatter the initial guesses in the parameters within the
-        # bounds.
-        if specflux_monte is not None:
-            tauv_monte = np.zeros(nmonte)
-            vdisp_monte = np.zeros(nmonte)
-            coeff_monte = np.zeros((nmonte, nage))
+            vdisp_guesses = rng.uniform(CTools.vdisp_bounds[0], CTools.vdisp_bounds[1], nball)
+            tauv_guesses = rng.uniform(init_tauv_bounds[0], init_tauv_bounds[1], nball)
 
-            vdisp_guess = rng.uniform(CTools.vdisp_bounds[0], CTools.vdisp_bounds[1], nmonte)
-            tauv_guess = rng.uniform(init_tauv_bounds[0], init_tauv_bounds[1], nmonte)
+            vdisp_ball = np.zeros(nball)
+            tauv_ball = np.zeros(nball)
+            age_ball = np.zeros(nball)
+            chi2_ball = np.zeros(nball)
 
-            for imonte in range(nmonte):
-                tauv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
-                    templates.flux_nolines, fit_vdisp=True, conv_pre=input_conv_pre_nolines,
-                    vdisp_guess=vdisp_guess[imonte], tauv_guess=tauv_guess[imonte],
-                    tauv_bounds=init_tauv_bounds, specflux=specflux_monte[imonte, :],
-                    specistd=specistd, dust_emission=False, synthspec=True)
-                coeff_monte[imonte, :] = coeff1
-                tauv_monte[imonte] = tauv1
-                vdisp_monte[imonte] = vdisp1
+            for ib, (vdisp_guess, tauv_guess) in enumerate(zip(vdisp_guesses, tauv_guesses)):
+                tauv1, vdisp1, coeff1, resid1 = CTools.fit_stellar_continuum(
+                    templates.flux_nolines[agekeep, :], fit_vdisp=True,
+                    conv_pre=input_conv_pre_nolines,
+                    tauv_guess=tauv_guess, vdisp_guess=vdisp_guess,
+                    tauv_bounds=init_tauv_bounds, specflux=specflux,
+                    specistd=specistd*fitmask, dust_emission=False, synthspec=True)
+                chi2_ball[ib] = resid1.dot(resid1)
+                vdisp_ball[ib] = vdisp1
+                tauv_ball[ib] = tauv1
+                age_ball[ib] = coeff1.dot(CTools.templates.info['age']) / np.sum(coeff1) / 1e9  # luminosity-weighted [Gyr]
 
-            tauv_sigma = np.std(tauv_monte)
-            vdisp_sigma = np.std(vdisp_monte)
-            if vdisp_sigma > SQTINY:
-                vdisp_ivar = 1. / vdisp_sigma**2
+            imin = np.argmin(chi2_ball)
+            vdisp = vdisp_ball[imin]
+            chi2min = chi2_ball[imin]
 
-        log.debug(f'Estimating the velocity dispersion took {time.time()-t0:.2f} seconds.')
+            #srt = np.argsort(vdisp_ball)
+            #chi2_ball = chi2_ball[srt]
+            #vdisp_ball = vdisp_ball[srt]
+            #tauv_ball = tauv_ball[srt]
+            #age_ball = age_ball[srt]
+            #
+            #imin = find_minima(chi2_ball)[0]
+            #vdisp, vdisp_sigma, chi2min, warn, (a, b, c) = minfit(
+            #    vdisp_ball[imin-1:imin+2], chi2_ball[imin-1:imin+2], return_coeff=True)
+            #
+            ## Did fitting fail?
+            #if vdisp < 0.:
+            #    vdisp = templates.vdisp_nominal
+            #    vdisp_ivar = 0.
+            #else:
+            #    if vdisp_sigma > TINY:
+            #        vdisp_ivar = 1. / vdisp_sigma**2
+            #    else:
+            #        vdisp_ivar = 0.
 
-        # Build a diagnostic plot of the fitting results.
-        if debug_plots:
-            import matplotlib.pyplot as plt
-            import corner as cn
-            import seaborn as sns
+            # Build two diagnostic plots of the fitting results.
+            if debug_plots:# and vdisp_ivar > 0.:
+                import matplotlib.pyplot as plt
+                import corner as cn
+                import seaborn as sns
 
-            pngfile = f'qa-sps-posteriors-{uniqueid}.png'
+                tauv = tauv_ball[imin]
+                age = age_ball[imin]
+                tauv_sigma = np.std(tauv_ball)
+                age_sigma = np.std(age_ball)
+                vdisp_sigma = np.std(vdisp_ball)
 
-            sns.set(context='talk', style='ticks', font_scale=0.6)
-            colors = sns.color_palette()
+                ## plot 1
+                #pngfile = f'qa-vdisp-chi2scan-{uniqueid}.png'
+                #txt = r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s'
+                #
+                #fig, ax = plt.subplots(figsize=(8, 6))
+                #ax.scatter(vdisp_ball, chi2_ball-chi2min, marker='s', s=50, color='gray', edgecolor='k')
+                #if not np.all(np.array([a, b, c]) == 0.):
+                #    yquad = np.polyval([a, b, c], vdisp_ball)
+                #    ax.plot(vdisp_ball[imin-3:imin+4], yquad[imin-3:imin+4]-chi2min, lw=2, ls='--')
+                #ax.set_xlabel(r'$\sigma_{star}$ (km/s)')
+                #ax.text(0.9, 0.9, txt, ha='right', va='center', transform=ax.transAxes)
+                #ax.set_ylabel(r'$\Delta\chi^2$')
+                #fig.tight_layout()
+                #fig.savefig(pngfile)#, bbox_inches='tight')
+                #plt.close()
+                #log.info(f'Wrote {pngfile}')
 
-            # get the age distribution
-            info = CTools.templates.info
-            age = coeff.dot(info['age']) / np.sum(coeff) / 1e9  # luminosity-weighted [Gyr]
-            age_monte = np.zeros(nmonte)
-            for imonte in range(nmonte):
-                age_monte[imonte] = coeff_monte[imonte, :].dot(info['age']) / np.sum(coeff_monte[imonte, :]) / 1e9
-            age_sigma = np.std(age_monte)
+                # plot 2
+                pngfile = f'qa-vdisp-corner-{uniqueid}.png'
 
-            dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
-            hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray'}
-            ndim = 3
+                sns.set(context='talk', style='ticks', font_scale=0.6)
+                colors = sns.color_palette()
 
-            plotdata = np.vstack((vdisp_monte, tauv_monte, age_monte)).T
-            truths = [vdisp, tauv, age]
-            labels = [r'$\sigma_{star}$ (km/s)', r'$\tau_{V}$', 'Age (Gyr)']
-            titles = [r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s',
-                      r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
-                      f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr']
-            sig = [max(5.*vdisp_sigma, 3.), max(5.*tauv_sigma, 0.005), max(5.*age_sigma, 0.005)]
-            ranges = ((vdisp-sig[0], vdisp+sig[0]), (tauv-sig[1], tauv+sig[1]), (age-sig[2], age+sig[2]))
+                dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
+                hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray'}
+                ndim = 3
 
-            bins = nmonte//3
-            if bins < 10:
-                bins = 10
-            fig = cn.corner(plotdata, bins=bins, smooth=None, plot_density=False,
-                            plot_contours=False, range=ranges, data_kwargs=dkw,
-                            hist_kwargs=hkw, labels=labels)
-                            #truths=truths, truth_color=colors[0])
-            ax = np.array(fig.axes).reshape((ndim, ndim))
-            for ii, mlval, sig in zip(range(ndim), (vdisp, tauv, age), (vdisp_sigma, tauv_sigma, age_sigma)):
-                ax[ii, ii].axvline(mlval, color=colors[0], lw=2, ls='-')
-                ax[ii, ii].axvline(mlval+sig, color=colors[0], lw=1, ls='--')
-                ax[ii, ii].axvline(mlval-sig, color=colors[0], lw=1, ls='--')
-                ax[ii, ii].set_title(titles[ii])
-                if ii == 0:
-                    ax[ii, ii].set_ylabel('Number of\nRealizations')
-                else:
-                    xx = ax[ii, ii].twinx()
-                    xx.set_yticklabels([])
-                    xx.set_ylabel('Number of\nRealizations', rotation=270)
-                    xx.tick_params(right=False)
-            for yi in range(ndim):
-                for xi in range(yi):
-                    ax[yi, xi].axvline(truths[xi], color=colors[0], lw=1, ls='-', alpha=0.75)
-                    ax[yi, xi].axhline(truths[yi], color=colors[0], lw=1, ls='-', alpha=0.75)
+                plotdata = np.vstack((vdisp_ball, tauv_ball, age_ball)).T
+                truths = [vdisp, tauv, age]
+                labels = [r'$\sigma_{star}$ (km/s)', r'$\tau_{V}$', 'Age (Gyr)']
+                titles = [r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s',
+                          r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
+                          f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr']
+                sig = [max(5.*vdisp_sigma, 3.), max(5.*tauv_sigma, 0.005), max(5.*age_sigma, 0.005)]
+                ranges = ((vdisp-sig[0], vdisp+sig[0]), (tauv-sig[1], tauv+sig[1]), (age-sig[2], age+sig[2]))
 
-            fig.subplots_adjust(left=0.13, right=0.9, bottom=0.13, top=0.92, wspace=0.14, hspace=0.14)
-            #fig.tight_layout()
-            fig.savefig(pngfile)#, bbox_inches='tight')
-            plt.close()
-            log.info(f'Wrote {pngfile}')
+                bins = nmonte // 3
+                if bins < 10:
+                    bins = 10
+                fig = cn.corner(plotdata, bins=bins, smooth=None, plot_density=False,
+                                plot_contours=False, range=ranges,
+                                data_kwargs=dkw, hist_kwargs=hkw, labels=labels)
+                ax = np.array(fig.axes).reshape((ndim, ndim))
+                for ii, mlval, sig in zip(range(ndim), (vdisp, tauv, age), (vdisp_sigma, tauv_sigma, age_sigma)):
+                    ax[ii, ii].axvline(mlval, color=colors[0], lw=2, ls='-')
+                    ax[ii, ii].axvline(mlval+sig, color=colors[0], lw=1, ls='--')
+                    ax[ii, ii].axvline(mlval-sig, color=colors[0], lw=1, ls='--')
+                    ax[ii, ii].set_title(titles[ii])
+                    if ii == 0:
+                        ax[ii, ii].set_ylabel('Number of\nRealizations')
+                    else:
+                        xx = ax[ii, ii].twinx()
+                        xx.set_yticklabels([])
+                        xx.set_ylabel('Number of\nRealizations')
+                        xx.tick_params(right=False)
+                for yi in range(ndim):
+                    for xi in range(yi):
+                        ax[yi, xi].axvline(truths[xi], color=colors[0], lw=1, ls='-', alpha=0.75)
+                        ax[yi, xi].axhline(truths[yi], color=colors[0], lw=1, ls='-', alpha=0.75)
+
+                fig.subplots_adjust(left=0.13, right=0.9, bottom=0.13, top=0.92, wspace=0.14, hspace=0.14)
+                fig.savefig(pngfile)#, bbox_inches='tight')
+                plt.close()
+                log.info(f'Wrote {pngfile}')
+
+            import pdb ; pdb.set_trace()
+
+        ## copy the model before it is overwritten...
+        #contmodel_nomvdisp = CTools.optimizer_saved_contmodel.copy() # copy needed??
+        #
+        #input_conv_pre_nolines = templates.conv_pre_select(templates.conv_pre_nolines, agekeep)
+        #
+        #tauv_withvdisp, vdisp, coeff_withvdisp, resid_withvdisp = CTools.fit_stellar_continuum(
+        #    templates.flux_nolines[agekeep, :], fit_vdisp=True,
+        #    conv_pre=input_conv_pre_nolines,
+        #    vdisp_guess=templates.vdisp_nominal,
+        #    tauv_bounds=init_tauv_bounds, specflux=specflux,
+        #    specistd=specistd, dust_emission=False, synthspec=True)
+        #contmodel_withvdisp = CTools.optimizer_saved_contmodel.copy() # copy needed??
+        #
+        ### If the initial coefficients are all zero, override estimating vdisp.
+        ##if np.all(coeff_nomvdisp == 0.):
+        ##    compute_vdisp = False
+        #
+        ## ToDo: use a delta-chi2 test to determine if solving for the velocity
+        ## dispersion improves the fit in a statistically significant way.
+        #chi2_withvdisp = resid_withvdisp.dot(resid_withvdisp)
+        #chi2_nomvdisp = resid_nomvdisp.dot(resid_nomvdisp)
+        #delta_chi2 = chi2_nomvdisp - chi2_withvdisp
+        #
+        ##if delta_chi2 > XX:
+        #if True:
+        #    tauv = tauv_withvdisp
+        #    coeff = coeff_withvdisp
+        #    contmodel = contmodel_withvdisp
+        #
+        #    # convolve the templates at the derived vdisp
+        #    input_templateflux = templates.convolve_vdisp(templates.flux[agekeep, :], vdisp)
+        #    input_templateflux_nolines = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp)
+        #else:
+        #    tauv = tauv_nomvdisp
+        #    coeff = coeff_nomvdisp
+        #    vdisp = templates.vdisp_nominal
+        #    contmodel = contmodel_nomvdisp
+        #
+        ## Monte Carlo to get vdisp_ivar (and the diagnostic plot, if
+        ## requested). Scatter the initial guesses in the parameters within the
+        ## bounds.
+        #if specflux_monte is not None:
+        #    tauv_monte = np.zeros(nmonte)
+        #    vdisp_monte = np.zeros(nmonte)
+        #    coeff_monte = np.zeros((nmonte, nage))
+        #
+        #    vdisp_guess = rng.uniform(CTools.vdisp_bounds[0], CTools.vdisp_bounds[1], nmonte)
+        #    tauv_guess = rng.uniform(init_tauv_bounds[0], init_tauv_bounds[1], nmonte)
+        #
+        #    for imonte in range(nmonte):
+        #        tauv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
+        #            templates.flux_nolines, fit_vdisp=True, conv_pre=input_conv_pre_nolines,
+        #            vdisp_guess=vdisp_guess[imonte], tauv_guess=tauv_guess[imonte],
+        #            tauv_bounds=init_tauv_bounds, specflux=specflux_monte[imonte, :],
+        #            specistd=specistd, dust_emission=False, synthspec=True)
+        #        coeff_monte[imonte, :] = coeff1
+        #        tauv_monte[imonte] = tauv1
+        #        vdisp_monte[imonte] = vdisp1
+        #
+        #    tauv_sigma = np.std(tauv_monte)
+        #    vdisp_sigma = np.std(vdisp_monte)
+        #    if vdisp_sigma > SQTINY:
+        #        vdisp_ivar = 1. / vdisp_sigma**2
+        #
+        #log.debug(f'Estimating the velocity dispersion took {time.time()-t0:.2f} seconds.')
+        #
     else:
         log.info('Insufficient wavelength coverage to compute velocity dispersion.')
 
@@ -1371,20 +1439,19 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         # fit_stellar_continuum. When we fit the full spectrum+photometry (at fixed
         # velocity dispersion), we revert to the larger (default) tauv prior, since
         # the IR fluxes put an additional constraint on the dust content.
-        init_tauv_bounds = (0., 1.)
-        tauv_nomvdisp, _, coeff_nomvdisp, resid_nomvdisp = CTools.fit_stellar_continuum(
-            templates.flux_nolines_nomvdisp[agekeep, :], fit_vdisp=False, conv_pre=None,
-            tauv_bounds=init_tauv_bounds, specflux=specflux, specistd=specistd,
-            dust_emission=False, synthspec=True)
+        tauv, _, coeff, _ = CTools.fit_stellar_continuum(
+            templates.flux_nolines_nomvdisp[agekeep, :], fit_vdisp=False,
+            conv_pre=None, tauv_bounds=init_tauv_bounds, specflux=specflux,
+            specistd=specistd, dust_emission=False, synthspec=True)
+        contmodel = CTools.optimizer_saved_contmodel
 
-
-        print('OLD CODE HERE')
-        tauv = tauv_nomvdisp
-        coeff = coeff_nomvdisp
-        vdisp = templates.vdisp_nominal
-        input_templateflux = templates.flux_nomvdisp[agekeep, :]
-        input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
-        contmodel = CTools.optimizer_saved_contmodel.copy()
+        #print('OLD CODE HERE')
+        #tauv = tauv_nomvdisp
+        #coeff = coeff_nomvdisp
+        #vdisp = templates.vdisp_nominal
+        #input_templateflux = templates.flux_nomvdisp[agekeep, :]
+        #input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
+        #contmodel = CTools.optimizer_saved_contmodel.copy()
 
 
     # Next, estimate the aperture correction.
@@ -1611,10 +1678,7 @@ def continuum_specfit(data, result, templates, igm, phot,
                             vdisp_guess=templates.vdisp_nominal,
                             constrain_age=constrain_age)
 
-    if nmonte is not None and nmonte > 0:
-        rng = np.random.default_rng(seed=seed)
-    else:
-        rng = None
+    rng = np.random.default_rng(seed=seed)
 
     if fastphot:
         # Photometry-only fitting.
