@@ -481,7 +481,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             vdisp=fastspec['VDISP'], conv_pre=templates.conv_pre_nolines,
             tauv=fastspec['TAUV'])
 
-        _desicontinuum = CTools.continuum_to_spectroscopy(contmodel)
+        _desicontinuum = CTools.continuum_to_spectroscopy(contmodel, interp=True)
 
         # remove the aperture correction
         desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]

@@ -621,7 +621,7 @@ class ContinuumTools(object):
         return contmodel
 
 
-    def continuum_to_spectroscopy(self, contmodel):
+    def continuum_to_spectroscopy(self, contmodel, interp=False):
         """
         Synthesize spectroscopy from a continuum model.
 
@@ -629,6 +629,8 @@ class ContinuumTools(object):
         ----------
         contmodel : :class:`numpy.ndarray` [npix]
             Full-wavelength, native-resolution, observed-frame model spectrum.
+        interp : :class:`bool`
+            For cosmetic (plotting) purposes, interpolate over masked pixels.
 
         Returns
         -------
@@ -650,8 +652,9 @@ class ContinuumTools(object):
                 specwave[icam], pre=self.spec_pre[icam])
             specres[icam].dot(resampflux, out=modelflux[s:e])
 
-            # interpolate the model over masked pixels, mostly for cosmetic purposes
-            if np.any(specmask[icam]):
+            # optionally interpolate the model over masked pixels, for cosmetic
+            # purposes
+            if interp and np.any(specmask[icam]):
                 mask = specmask[icam]
                 modelflux[s:e][mask] = np.interp(specwave[icam][mask], specwave[icam][~mask], modelflux[s:e][~mask])
 
