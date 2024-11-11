@@ -1002,7 +1002,7 @@ class EMFitTools(object):
 
                     (s, e), flux_perpixel = line_fluxes.getLine(iline)
                     # can be zero if the amplitude is very tiny
-                    if np.all(flux_perpixel == 0.):
+                    if np.all(flux_perpixel == 0.) or np.any(flux_perpixel < 0.):
                         flux, flux_gauss_ivar = 0., 0.
                     else:
                         flux, flux_gauss_ivar = _gaussian_lineflux(flux_perpixel, s, e, patchindx, gausscorr=use_gausscorr)
@@ -1013,7 +1013,7 @@ class EMFitTools(object):
                         for imonte in range(nmonte):
                             (s, e), flux_perpixel = line_fluxes_monte[imonte].getLine(iline)
                             # can be zero if the amplitude is very tiny
-                            if np.all(flux_perpixel == 0.):
+                            if np.all(flux_perpixel == 0.) or np.any(flux_perpixel < 0.):
                                 flux1 = 0.
                             else:
                                 flux1, _ = _gaussian_lineflux(flux_perpixel, s, e, patchindx,
