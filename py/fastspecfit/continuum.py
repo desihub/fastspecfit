@@ -1767,8 +1767,12 @@ def continuum_specfit(data, result, templates, igm, phot,
                                           [' km/s', '', '', ' Gyr', ' Msun/yr', ''],
                                           [vdisp, logmstar, tauv, age, sfr, zzsun],
                                           ['VDISP', 'LOGMSTAR', 'TAUV', 'AGE', 'SFR', 'ZZSUN']):
-            val_ivar = result[f'{col}_IVAR']
-            var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
+            ivarcol = f'{col}_IVAR'
+            if ivarcol in result.value.dtype.names:
+                val_ivar = result[ivarcol]
+                var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
+            else:
+                var_msg = ''
             msg.append(f'{label}={val:.2f}{var_msg}{units}')
         log.info(', '.join(msg))
 
