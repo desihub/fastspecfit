@@ -537,7 +537,7 @@ class Photometry(object):
         # Require a 2-Angstrom pad around the break definition.
         wpad = 2.
         if np.min(restwave) > (3850.-wpad) or np.max(restwave) < (4100.+wpad):
-            log.warning('Too little wavelength coverage to compute Dn(4000).')
+            log.debug('Too little wavelength coverage to compute Dn(4000).')
             return dn4000, dn4000_ivar
 
         fnu = flam * flam2fnu # [erg/s/cm2/Hz]

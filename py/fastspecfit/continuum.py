@@ -1273,7 +1273,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         input_templateflux = templates.flux_nomvdisp[agekeep, :]
         input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
 
-        log.info('Insufficient wavelength coverage to compute velocity dispersion; adopting {vdisp:0.0f} km/s')
+        log.debug(f'Insufficient wavelength coverage to compute velocity dispersion; adopting {vdisp:0.0f} km/s')
     else:
         t0 = time.time()
 
@@ -1495,13 +1495,13 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         if dn4000_model_var > TINY:
             dn4000_model_ivar = 1. / dn4000_model_var
 
-    msg = []
-    for label, units, val, val_ivar in zip(
-            ['tau(V)', 'vdisp'], [' mag', ' km/s'],
-            [tauv, vdisp], [tauv_ivar, vdisp_ivar]):
-        var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
-        msg.append(f'{label}={val:.2f}{var_msg}{units}')
-    log.info(', '.join(msg))
+    #msg = []
+    #for label, units, val, val_ivar in zip(
+    #        ['tau(V)', 'vdisp'], [' mag', ' km/s'],
+    #        [tauv, vdisp], [tauv_ivar, vdisp_ivar]):
+    #    var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
+    #    msg.append(f'{label}={val:.2f}{var_msg}{units}')
+    #log.info(', '.join(msg))
 
     desimodel_nolines = CTools.continuum_to_spectroscopy(sedmodel_nolines)
 
@@ -1760,15 +1760,16 @@ def continuum_specfit(data, result, templates, igm, phot,
                 if var > TINY:
                     result[col] = 1. / var
 
-        rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600.))
-        msg = [f'M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag']
-        for label, units, val, col in zip(['log(M/Msun)', 'tau(V)', 'Age', 'SFR', 'Z/Zsun'],
-                                          ['', '', ' Gyr', ' Msun/yr', ''],
-                                          [logmstar, tauv, age, sfr, zzsun],
-                                          ['LOGMSTAR', 'TAUV', 'AGE', 'SFR', 'ZZSUN']):
+        #rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600.))
+        #msg = [f'M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag']
+        msg = []
+        for label, units, val, col in zip(['vdisp', 'log(M/Msun)', 'tau(V)', 'Age', 'SFR', 'Z/Zsun'],
+                                          [' km/s', '', '', ' Gyr', ' Msun/yr', ''],
+                                          [vdisp, logmstar, tauv, age, sfr, zzsun],
+                                          ['VDISP', 'LOGMSTAR', 'TAUV', 'AGE', 'SFR', 'ZZSUN']):
             val_ivar = result[f'{col}_IVAR']
-            var_msg = f'+/-{1./np.sqrt(val_ivar):.3f}' if val_ivar > 0. else ''
-            msg.append(f'{label}={val:.3f}{var_msg}{units}')
+            var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
+            msg.append(f'{label}={val:.2f}{var_msg}{units}')
         log.info(', '.join(msg))
 
     log.debug(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
