@@ -811,8 +811,8 @@ class EMFitTools(object):
             pro_j = lineprofile_patch / patch_sum
             I = pro_j > 0. # very narrow lines can have a profile that goes to zero
 
-            r = pro_j[I] / dwaves_patch[I]
-            weight_j = r * emlineivar_patch[I]
+            r = pro_j[I] / dwaves[patchindx][I]
+            weight_j = r * emlineivar_s[patchindx][I]
             flux_ivar = np.sum(r * weight_j)
             flux = np.sum(weight_j * lineprofile_patch[I]) / flux_ivar
 
@@ -956,6 +956,7 @@ class EMFitTools(object):
                     # Monte Carlo to get the uncertainties
                     boxflux_monte = np.zeros(nmonte)
                     use_gausscorr_monte = np.ones(nmonte)
+                    patchindx_monte = []
                     for imonte in range(nmonte):
                         _linez = redshift + values_monte[imonte, line_vshift] / C_LIGHT
                         _linezwave = restwave * (1. + _linez)
@@ -968,6 +969,7 @@ class EMFitTools(object):
                                                            _linezwave - nsigma * _linesigma_ang_window,
                                                            _linezwave + nsigma * _linesigma_ang_window)
                         _patchindx = _line_s + np.where(emlineivar_s[_line_s:_line_e] > 0.)[0]
+                        patchindx_monte.append(_patchindx)
 
                         _dwaves_patch = dwaves[_patchindx]
                         _emlineflux_patch = emlineflux_monte_s[imonte, _patchindx]
@@ -1011,12 +1013,12 @@ class EMFitTools(object):
                     if results_monte is not None:
                         flux_monte = np.zeros(nmonte)
                         for imonte in range(nmonte):
-                            (s, e), flux_perpixel = line_fluxes_monte[imonte].getLine(iline)
+                            (_s, _e), flux_perpixel1 = line_fluxes_monte[imonte].getLine(iline)
                             # can be zero if the amplitude is very tiny
-                            if np.all(flux_perpixel == 0.) or np.any(flux_perpixel < 0.):
+                            if np.all(flux_perpixel1 == 0.) or np.any(flux_perpixel1 < 0.):
                                 flux1 = 0.
                             else:
-                                flux1, _ = _gaussian_lineflux(flux_perpixel, s, e, patchindx,
+                                flux1, _ = _gaussian_lineflux(flux_perpixel1, _s, _e, patchindx_monte[imonte],
                                                               gausscorr=use_gausscorr_monte[imonte])
                             flux_monte[imonte] = flux1
                         flux_var = np.var(flux_monte)
