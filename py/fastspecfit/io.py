@@ -740,6 +740,7 @@ class DESISpectra(object):
                         'fastphot':    True,
                         'synthphot':   False,
                         'debug_plots': debug_plots,
+                        'min_uncertainty': min_uncertainty,
                     })
             else:
                 # Don't use .select since meta and spec can be sorted
