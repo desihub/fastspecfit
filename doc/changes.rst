@@ -5,9 +5,11 @@ Change Log
 3.1.0 (not released yet)
 ------------------------
 
+* Monte Carlo to estimate model parameters [`PR #189`_].
 * Fix issues with log level retention [`PR #187`_].
 
 .. _`PR #187`: https://github.com/desihub/fastspecfit/pull/187
+.. _`PR #189`: https://github.com/desihub/fastspecfit/pull/189
 
 3.0.0 (2024-10-30)
 ------------------
