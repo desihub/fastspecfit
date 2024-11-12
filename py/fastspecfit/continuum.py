@@ -1570,11 +1570,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
 
     if desimodel_nolines_monte is not None:
         continuummodel_monte = []
-        for imonte in range(nmonte):
-            continuummodel_monte_one = []
-            for campix in data['camerapix']:
-                continuummodel_monte_one.append(desimodel_nolines_monte[imonte, campix[0]:campix[1]])
-            continuummodel_monte.append(continuummodel_monte_one)
+        for icam, campix in enumerate(data['camerapix']):
+            ss, ee = campix
+            models = np.vstack([desimodel_nolines_monte[imonte, ss:ee] for imonte in range(nmonte)])
+            continuummodel_monte.append(models)
 
     return (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
             tauv, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
@@ -1801,11 +1800,6 @@ def continuum_specfit(data, result, templates, igm, phot,
         continuummodel = [cm / median_apercorr for cm in continuummodel]
         smoothcontinuum = [sc / median_apercorr for sc in smoothcontinuum]
         if continuummodel_monte is not None:
-            continuummodel_monte_renorm = []
-            for imonte in range(nmonte):
-                continuummodel_one = continuummodel_monte[imonte]
-                continuummodel_one = [cm / median_apercorr for cm in continuummodel_one]
-                continuummodel_monte_renorm.append(continuummodel_one)
-            continuummodel_monte = continuummodel_monte_renorm
+            continuummodel_monte = [ cm / median_apercorr for cm in continuummodel_monte ]
 
         return continuummodel, smoothcontinuum, continuummodel_monte, specflux_monte

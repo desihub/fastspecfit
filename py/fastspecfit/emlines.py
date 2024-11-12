@@ -1552,9 +1552,8 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     if specflux_monte is not None:
         nmonte, _ = specflux_monte.shape
         if continuummodel_monte is not None:
-            continuummodelflux_monte = np.zeros((nmonte, len(continuummodelflux)))
-            for imonte in range(nmonte):
-                continuummodelflux_monte[imonte, :] = np.hstack(continuummodel_monte[imonte])
+            continuummodelflux_monte = np.hstack(continuummodel_monte)
+
             emlineflux_monte = (specflux_monte - continuummodelflux_monte - \
                                 smoothcontinuummodelflux[np.newaxis, :])
         else:
