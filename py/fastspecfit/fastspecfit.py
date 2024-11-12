@@ -388,17 +388,22 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
         shift = int(10*shift)
         add_field(f'ABSMAG{shift:02d}_{band}', dtype='f4', unit=u.mag) # absolute magnitudes
         add_field(f'ABSMAG{shift:02d}_IVAR_{band}', dtype='f4', unit=1/u.mag**2)
+        add_field(f'ABSMAG{shift:02d}_SYNTH_{band}', dtype='f4', unit=u.mag) # absolute magnitudes
+        add_field(f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}', dtype='f4', unit=1/u.mag**2)
+    for band, shift in zip(phot.absmag_bands, phot.band_shift):
+        band = band.upper()
+        shift = int(10*shift)
         add_field(f'KCORR{shift:02d}_{band}', dtype='f4', unit=u.mag)
 
-    for cflux in ('LOGLNU_1500', 'LOGLNU_2800'):
-        add_field(cflux,  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
-    add_field('LOGL_1450', dtype='f4', unit=10**(10)*u.solLum)
-    add_field('LOGL_1700', dtype='f4', unit=10**(10)*u.solLum)
-    add_field('LOGL_3000', dtype='f4', unit=10**(10)*u.solLum)
-    add_field('LOGL_5100', dtype='f4', unit=10**(10)*u.solLum)
-
-    for cflux in ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT'):
-        add_field(cflux, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+    for wave in ['1500', '2800']:
+        add_field(f'LOGLNU_{wave}',  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
+        add_field(f'LOGLNU_{wave}_IVAR',  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
+    for wave in ['1450', '1700', '3000', '5100']:
+        add_field(f'LOGL_{wave}', dtype='f4', unit=10**(10)*u.solLum)
+        add_field(f'LOGL_{wave}_IVAR', dtype='f4', unit=10**(10)*u.solLum)
+    for line in ['FLYA_1215', 'FOII_3727', 'FHBETA', 'FOIII_5007', 'FHALPHA']:
+        add_field(f'{line}_CONT', dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+        add_field(f'{line}_CONT_IVAR', dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
 
     if not fastphot:
         # Add chi2 metrics
