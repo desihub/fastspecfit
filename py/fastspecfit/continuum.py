@@ -1070,26 +1070,6 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
              dn4000_model_monte, _) = \
                  do_fit_monte(tauv_guess_monte, objflam_monte)
 
-            """
-            for imonte in range(nmonte):
-                tauv1, _, coeff1, _ = CTools.fit_stellar_continuum(
-                    templates.flux_nomvdisp[agekeep, :], fit_vdisp=False,
-                    tauv_guess=tauv_guess[imonte], objflam=objflam_monte[imonte, :],
-                    objflamistd=objflamistd, synthphot=True, synthspec=False)
-
-                coeff_monte[imonte, :] = coeff1
-                tauv_monte[imonte] = tauv1
-
-                sedmodel_monte[imonte, :] = CTools.optimizer_saved_contmodel
-                sedmodel_nolines_monte[imonte, :] = CTools.build_stellar_continuum(
-                    templates.flux_nolines_nomvdisp[agekeep, :], coeff1,
-                    tauv=tauv1, vdisp=None, dust_emission=False)
-
-                dn4000_model1, _ = Photometry.get_dn4000(
-                    templates.wave, sedmodel_nolines_monte[imonte, :], rest=True)
-                dn4000_model_monte[imonte] = dn4000_model1
-            """
-
             tauv_var = np.var(tauv_monte)
             dn4000_model_var = np.var(dn4000_model_monte)
             if tauv_var > TINY:
@@ -1353,17 +1333,6 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
                 (tauv_monte, vdisp_monte, _, age_monte, _) = \
                     do_fit_vdisp_monte(specflux_monte)
 
-                """
-                for imonte in range(nmonte):
-                    tauv1, vdisp1, coeff1, _ = CTools.fit_stellar_continuum(
-                        templates.flux_nolines[agekeep, :], fit_vdisp=True,
-                        conv_pre=input_conv_pre_nolines, specflux=specflux_monte[imonte, :],
-                        specistd=specistd*fitmask, dust_emission=False, synthspec=True)
-                    tauv_monte[imonte] = tauv1
-                    vdisp_monte[imonte] = vdisp1
-                    age_monte[imonte] = coeff1.dot(templates.info['age']) / np.sum(coeff1) / 1e9 # [Gyr]
-                """
-
                 tauv_sigma = np.std(tauv_monte)
                 age_sigma = np.std(age_monte)
                 vdisp_sigma = np.std(vdisp_monte)
@@ -1525,31 +1494,6 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
          sedmodel_monte, sedmodel_nolines_monte,
          desimodel_nolines_monte, dn4000_model_monte, _) = \
              do_fit_full_monte(tauv_guess, objflam_monte, specflux_monte)
-
-        """
-        for imonte in range(nmonte):
-            tauv1, _, coeff1, _ = CTools.fit_stellar_continuum(
-                input_templateflux, fit_vdisp=False, conv_pre=None,
-                tauv_guess=tauv_guess[imonte],
-                objflam=objflam_monte[imonte, :], objflamistd=objflamistd,
-                specflux=specflux_monte[imonte, :]*median_apercorr,
-                specistd=specistd/median_apercorr,
-                synthphot=True, synthspec=True)
-
-            coeff_monte[imonte, :] = coeff1
-            tauv_monte[imonte] = tauv1
-
-            sedmodel_monte[imonte, :] = CTools.optimizer_saved_contmodel.copy() # copy needed?
-            sedmodel_nolines_monte[imonte, :] = CTools.build_stellar_continuum(
-                input_templateflux_nolines, coeff1, tauv=tauv1,
-                vdisp=None, conv_pre=None, dust_emission=False)
-            desimodel_nolines_monte[imonte, :] = CTools.continuum_to_spectroscopy(
-                sedmodel_nolines_monte[imonte, :])
-
-            dn4000_model1, _ = Photometry.get_dn4000(
-                templates.wave, sedmodel_nolines_monte[imonte, :], rest=True)
-            dn4000_model_monte[imonte] = dn4000_model1
-        """
 
         tauv_var = np.var(tauv_monte)
         dn4000_model_var = np.var(dn4000_model_monte)
