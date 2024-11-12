@@ -1662,8 +1662,8 @@ def continuum_specfit(data, result, templates, igm, phot,
         result['VDISP_IVAR'] = vdisp_ivar # * (u.second/u.kilometer)**2
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
-    if not np.all(coeff == 0):
-        kcorr, absmag, ivarabsmag, synth_bestmaggies = phot.kcorr_and_absmag(
+    if not np.all(coeff == 0.):
+        kcorr, absmag, synth_absmag, ivarabsmag, synth_bestmaggies = phot.kcorr_and_absmag(
             data['photometry']['nanomaggies'].value,
             data['photometry']['nanomaggies_ivar'].value,
             redshift, data['dmodulus'], data['photsys'],
@@ -1673,20 +1673,54 @@ def continuum_specfit(data, result, templates, igm, phot,
             sedmodel_nolines, uniqueid=data['uniqueid'],
             debug_plots=debug_plots)
 
-        # ToDo: get the variance in lums, cfluxes via Monte Carlo.
-
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
             band = band.upper()
             shift = int(10*shift)
             result[f'KCORR{shift:02d}_{band}'] = kcorr[iband] # * u.mag
             result[f'ABSMAG{shift:02d}_{band}'] = absmag[iband] # * u.mag
+            result[f'ABSMAG{shift:02d}_SYNTH_{band}'] = synth_absmag[iband] # * u.mag
             result[f'ABSMAG{shift:02d}_IVAR_{band}'] = ivarabsmag[iband] # / (u.mag**2)
-            for iband, band in enumerate(phot.bands):
-                result[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
-            for lum in lums:
-                result[lum] = lums[lum]
-            for cflux in cfluxes:
-                result[cflux] = cfluxes[cflux]
+        for iband, band in enumerate(phot.bands):
+            result[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
+        for lum in lums:
+            result[lum] = lums[lum]
+        for cflux in cfluxes:
+            result[cflux] = cfluxes[cflux]
+
+        # Get the variance via Monte Carlo.
+        if sedmodel_monte is not None:
+            synth_absmag_monte = np.zeros((nmonte, len(absmag)))
+            lums_monte = np.zeros((nmonte, len(lums.keys())))
+            cfluxes_monte = np.zeros((nmonte, len(cfluxes.keys())))
+            for imonte in range(nmonte):
+                synth_absmag_monte[imonte, :] = phot.kcorr_and_absmag(
+                    data['photometry']['nanomaggies'].value,
+                    data['photometry']['nanomaggies_ivar'].value,
+                    redshift, data['dmodulus'], data['photsys'],
+                    CTools.ztemplatewave, sedmodel_monte[imonte, :],
+                    compute_kcorr=False)
+
+                lums1, cfluxes1 = CTools.continuum_fluxes(
+                    sedmodel_nolines_monte[imonte, :], uniqueid=data['uniqueid'],
+                    debug_plots=False)
+                lums_monte[imonte, :] = list(lums1.values())
+                cfluxes_monte[imonte, :] = list(cfluxes1.values())
+
+            synth_absmag_var = np.var(synth_absmag_monte, axis=0)
+            lums_var = np.var(lums_monte, axis=0)
+            cfluxes_var = np.var(cfluxes_monte, axis=0)
+
+            for iband, (band, shift, var) in enumerate(zip(phot.absmag_bands, phot.band_shift, synth_absmag_var)):
+                if var > TINY:
+                    band = band.upper()
+                    shift = int(10*shift)
+                    result[f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}'] = 1. / var
+            for lumkey, var in zip(lums.keys(), lums_var):
+                if var > TINY:
+                    result[f'{lumkey}_IVAR'] = 1. / var
+            for cfluxkey, var in zip(cfluxes.keys(), cfluxes_var):
+                if var > TINY:
+                    result[f'{cfluxkey}_IVAR'] = 1. / var
 
         # get the SPS properties
         def _get_sps_properties(coeff):
