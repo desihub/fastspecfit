@@ -1761,21 +1761,20 @@ def continuum_specfit(data, result, templates, igm, phot,
         result['SFR'] = sfr
 
         if coeff_monte is not None:
-            age_monte = np.zeros(nmonte)
-            zzsun_monte = np.zeros(nmonte)
-            logmstar_monte = np.zeros(nmonte)
-            sfr_monte = np.zeros(nmonte)
-            for imonte in range(nmonte):
-                age1, zzsun1, logmstar1, sfr1 = _get_sps_properties(coeff_monte[imonte, :])
-                age_monte[imonte] = age1
-                zzsun_monte[imonte] = zzsun1
-                logmstar_monte[imonte] = logmstar1
-                sfr_monte[imonte] = sfr1
+            _get_sps_properties_monte = np.vectorize(_get_sps_properties,
+                                                     signature='(n1)->(),(),(),()',
+                                                     otypes=(np.float64,)*4)
+
+            age_monte, zzsun_monte, logmstar_monte, sfr_monte = \
+                _get_sps_properties_monte(coeff_monte)
+
             for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
                                       ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
                 var = np.var(val_monte)
                 if var > TINY:
                     result[col] = 1. / var
+                else:
+                    result[col] = 0.
 
         #rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600.))
         #msg = [f'M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag']
