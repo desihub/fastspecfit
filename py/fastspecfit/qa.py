@@ -150,7 +150,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
     import seaborn as sns
     from PIL import Image, ImageDraw
 
-    from fastspecfit.util import ivar2var, C_LIGHT, FLUXNORM
+    from fastspecfit.util import ivar2var, C_LIGHT, FLUXNORM, median
     from fastspecfit.io import get_qa_filename
     from fastspecfit.photometry import Photometry
     from fastspecfit.continuum import ContinuumTools
@@ -254,12 +254,22 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         'z': '$z={:.7f}$'.format(redshift),
         'rchi2_phot': r'$\chi^{2}_{\nu,\mathrm{phot}}=$'+r'${:.2f}$'.format(fastspec['RCHI2_PHOT']),
         'dn4000_model': r'$D_{n}(4000)_{\mathrm{model}}=$'+r'${:.3f}$'.format(fastspec['DN4000_MODEL']),
-        'age': r'Age$={:.3f}$ Gyr'.format(fastspec['AGE']),
-        'AV': r'$A_{V}=$'+r'${:.3f}$ mag'.format(fastspec['AV']),
-        'mstar': r'$\log_{10}(M/M_{\odot})=$'+r'${:.3f}$'.format(fastspec['LOGMSTAR']),
-        'sfr': r'$\mathrm{SFR}=$'+'${:.1f}$'.format(fastspec['SFR'])+r' $M_{\odot}/\mathrm{yr}$',
-        'zzsun': r'$Z/Z_{\odot}=$'+r'${:.3f}$'.format(fastspec['ZZSUN']),
-    }
+        }
+
+    for key, label, col, fmt, units in zip(
+            ['age', 'tauv', 'mstar', 'sfr', 'zzsun'],
+            ['Age', r'$\tau_{V}$', r'$\log_{10}(M/M_{\odot})$', r'$\mathrm{SFR}$', r'$Z/Z_{\odot}$'],
+            ['AGE', 'TAUV', 'LOGMSTAR', 'SFR', 'ZZSUN'],
+            ['{:.2f}', '{:.2f}', '{:.2f}', '{:.1f}', '{:.1f}'],
+            [' Gyr', '', '', r' $M_{\odot}/\mathrm{yr}$', '']):
+        val = fastspec[col]
+        val_ivar = fastspec[f'{col}_IVAR']
+        if val_ivar > 0.:
+            val_sig = 1. / np.sqrt(val_ivar)
+            strval = '$' + fmt.format(val) + r'\pm' + fmt.format(val_sig) + '$' + units
+        else:
+            strval = fmt.format(val)
+        leg[key] = label + '=' + strval
 
     # try to figure out which absmags to display - default should be SDSS ^{0.1}grz
     gindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 4300))
@@ -292,11 +302,11 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
     if fastphot:
         leg['vdisp'] = r'$\sigma_{star}=$'+'{:.0f}'.format(fastspec['VDISP'])+' km/s'
     else:
-        #if fastspec['VDISP_IVAR'] > 0:
-        #    leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1/np.sqrt(fastspec['VDISP_IVAR']))
-        #else:
-        #    leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
-        leg['vdisp'] = r'$\sigma_{{star}}={:.0f}$ km/s'.format(fastspec['VDISP'])
+        if fastspec['VDISP_IVAR'] > 0:
+            leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1./np.sqrt(fastspec['VDISP_IVAR']))
+        else:
+            leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
+        #leg['vdisp'] = r'$\sigma_{{star}}={:.0f}$ km/s'.format(fastspec['VDISP'])
 
         leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(fastspec['RCHI2'])
         leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(fastspec['RCHI2_CONT'])
@@ -435,23 +445,14 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
     # rebuild the best-fitting broadband photometric model
     if not stackfit:
-        if templates.use_legacy_fitting:
-            sedmodel, sedphot = CTools.templates2data(
-                templates.flux, templates.wave,
-                redshift=redshift, dluminosity=dlum, photsys=metadata['PHOTSYS'],
-                synthphot=True, coeff=fastspec['COEFF'] * CTools.massnorm,
-                get_abmag=True)
-        else:
-            sedmodel = CTools.build_stellar_continuum(
-                templates.flux_nomvdisp,
-                fastspec['COEFF'] * CTools.massnorm,
-                ebv=fastspec['AV'] / Templates.klambda(5500.),
-                vdisp=None
-            )
+        sedmodel = CTools.build_stellar_continuum(
+            templates.flux_nomvdisp,
+            fastspec['COEFF'] * CTools.massnorm,
+            tauv=fastspec['TAUV'], vdisp=None)
 
-            sedphot = CTools.continuum_to_photometry(sedmodel,
-                                                     phottable=True,
-                                                     get_abmag=True)
+        sedphot = CTools.continuum_to_photometry(sedmodel,
+                                                 phottable=True,
+                                                 get_abmag=True)
         sedwave = templates.wave * (1 + redshift)
 
         nband = len(phot.bands)
@@ -475,30 +476,16 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         # "per-camera" and prefix "full" has the cameras h-stacked.
         fullwave = np.hstack(data['wave'])
 
-        if templates.use_legacy_fitting:
-            desicontinuum, _ = CTools.templates2data(templates.flux_nolines,
-                                                     templates.wave,
-                                                     redshift=redshift, dluminosity=dlum, synthphot=False,
-                                                     specwave=data['wave'], specres=data['res'],
-                                                     specmask=data['mask'], cameras=data['cameras'],
-                                                     vdisp=fastspec['VDISP'],
-                                                     coeff=fastspec['COEFF'])
+        contmodel = CTools.build_stellar_continuum(
+            templates.flux_nolines, fastspec['COEFF'],
+            vdisp=fastspec['VDISP'], conv_pre=templates.conv_pre_nolines,
+            tauv=fastspec['TAUV'])
 
-            # remove the aperture correction
-            desicontinuum = [_desicontinuum / apercorr for _desicontinuum in desicontinuum]
-            fullcontinuum = np.hstack(desicontinuum)
-        else:
-            contmodel = CTools.build_stellar_continuum(
-                templates.flux_nolines, fastspec['COEFF'],
-                vdisp=fastspec['VDISP'], conv_pre=templates.conv_pre_nolines,
-                ebv=fastspec['AV'] / Templates.klambda(5500.)
-            )
+        _desicontinuum = CTools.continuum_to_spectroscopy(contmodel, interp=True)
 
-            _desicontinuum = CTools.continuum_to_spectroscopy(contmodel)
-
-            # remove the aperture correction
-            desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]
-            fullcontinuum = np.hstack(desicontinuum)
+        # remove the aperture correction
+        desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr for campix in data['camerapix']]
+        fullcontinuum = np.hstack(desicontinuum)
 
         # Need to be careful we don't pass a large negative residual where
         # there are gaps in the data.
@@ -727,9 +714,9 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         if len(sedmodel) == 0:
             log.warning('Best-fitting photometric continuum is all zeros or negative!')
             if np.sum(abmag_good) > 0:
-                medmag = np.median(phot_tbl['abmag'][abmag_good])
+                medmag = median(phot_tbl['abmag'][abmag_good])
             elif np.sum(abmag_goodlim) > 0:
-                medmag = np.median(phot_tbl['abmag_limit'][abmag_goodlim])
+                medmag = median(phot_tbl['abmag_limit'][abmag_goodlim])
             else:
                 medmag = 0.0
             sedmodel_abmag = np.zeros_like(templates.wave) + medmag
@@ -869,7 +856,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         txt = '\n'.join((
             #r'{}'.format(leg['fagn']),
             r'{}'.format(leg['zzsun']),
-            r'{}'.format(leg['AV']),
+            r'{}'.format(leg['tauv']),
             r'{}'.format(leg['sfr']),
             r'{}'.format(leg['age']),
             r'{}'.format(leg['mstar']),

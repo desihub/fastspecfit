@@ -114,8 +114,8 @@ class LineMasker(object):
                         break
                 # drop the linemask_ condition; dangerous??
                 if len(J) < mincontpix:
-                    log.debug(f'Dropping linemask condition for {linename} with width ' + \
-                              f'{nsigma*sigma:.3f}-{FACTOR_DEFAULT*nsigma*sigma:.3f} Angstrom')
+                    #log.debug(f'Dropping linemask condition for {linename} with width ' + \
+                    #          f'{nsigma*sigma:.3f}-{FACTOR_DEFAULT*nsigma*sigma:.3f} Angstrom')
 
                     # Note the smaller nsigma_factor (to stay closer to the
                     # line); remove the pixels already assigned to this
@@ -143,7 +143,7 @@ class LineMasker(object):
                 keep = np.isin(patchlines, list(pix['linepix'].keys()))
                 if np.count_nonzero(keep) == 0:
                     pix['dropped'].append(patchid)
-                    log.debug(f'Dropping patch {patchid} ({len(patchlines)} lines fully masked).')
+                    #log.debug(f'Dropping patch {patchid} ({len(patchlines)} lines fully masked).')
                     continue
 
                 patchlines = patchlines[keep]
@@ -663,28 +663,28 @@ class LineMasker(object):
 
             # if a broad Balmer line is well-detected, take its linewidth
             if maxsnrs_broad[2] > minsnr_balmer_broad:
-                log.info(f'Adopting broad Balmer-line masking: S/N(broad Balmer) ' + \
-                         f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}')
+                log.debug(f'Adopting broad Balmer-line masking: S/N(broad Balmer) ' + \
+                          f'{maxsnrs_broad[2]:.1f} > {minsnr_balmer_broad:.1f}')
                 residuals = residuals_broad
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_broad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_broad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_broad
             else:
-                log.info(f'Adopting narrow Balmer-line masking: S/N(broad Balmer) ' + \
-                         f'{maxsnrs_broad[2]:.1f} < {minsnr_balmer_broad:.1f}')
+                log.debug(f'Adopting narrow Balmer-line masking: S/N(broad Balmer) ' + \
+                          f'{maxsnrs_broad[2]:.1f} < {minsnr_balmer_broad:.1f}')
                 residuals = residuals_nobroad
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
         else:
-            log.info(f'Adopting narrow Balmer-line masking: no Balmer lines in wavelength range.')
+            log.debug(f'Adopting narrow Balmer-line masking: no Balmer lines in wavelength range.')
             residuals = residuals_nobroad
             finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
             finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
             maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
 
-        log.info(f'Masking line-widths: broad {finalsigma_broad:.0f} km/s; narrow {finalsigma_narrow:.0f} km/s; ' + \
-                 f'broad Balmer {finalsigma_balmer_broad:.0f} km/s.')
+        log.debug(f'Masking line-widths: broad {finalsigma_broad:.0f} km/s; narrow {finalsigma_narrow:.0f} km/s; ' + \
+                  f'broad Balmer {finalsigma_balmer_broad:.0f} km/s.')
 
         # Build the final pixel mask for *all* lines using our current best
         # knowledge of the broad Balmer lines....(comment continued below)

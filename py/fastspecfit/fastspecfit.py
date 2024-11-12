@@ -17,8 +17,8 @@ from fastspecfit.util import BoxedScalar, MPPool
 
 def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
-                 percamera_models=False, debug_plots=False,
-                 minsnr_balmer_broad=2.5):
+                 debug_plots=False, minsnr_balmer_broad=2.5, nmonte=50,
+                 seed=1):
     """Run :func:`fastspec` on a single object.
 
     """
@@ -40,20 +40,20 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
     # output structure
     out = BoxedScalar(out_dtype)
 
-    continuummodel, smooth_continuum = continuum_specfit(
-        data, out, templates, igm, phot, constrain_age=constrain_age,
-        no_smooth_continuum=no_smooth_continuum,
-        fastphot=fastphot, debug_plots=debug_plots)
+    continuummodel, smooth_continuum, continuummodel_monte, specflux_monte = \
+        continuum_specfit(data, out, templates, igm, phot, constrain_age=constrain_age,
+                          no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
+                          debug_plots=debug_plots, nmonte=nmonte, seed=seed)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
         emmodel = None
     else:
         emmodel = emline_specfit(data, out, continuummodel, smooth_continuum,
-                                 phot, emline_table,
-                                 broadlinefit=broadlinefit,
+                                 phot, emline_table, broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
-                                 percamera_models=percamera_models)
+                                 debug_plots=debug_plots, specflux_monte=specflux_monte,
+                                 continuummodel_monte=continuummodel_monte)
 
     return out.value, emmodel
 
@@ -130,14 +130,11 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     # if multiprocessing, create a pool of worker processes
     # and initialize single-copy objects in each worker
-    #t0 = time.time()
+    t0 = time.time()
     mp_pool = MPPool(args.mp,
                      initializer=sc_data.initialize,
                      init_argdict=init_sc_args)
-    #log.info(f'Caching took {time.time()-t0:.5f} seconds.')
-
-    if sc_data.templates.use_legacy_fitting:
-        log.warning(f'Fitting with deprecated spectrophotometric templates (version={sc_data.templates.version})!')
+    log.debug(f'Caching took {time.time()-t0:.5f} seconds.')
 
     log.info(f'Cached stellar templates {sc_data.templates.file}')
     log.info(f'Cached emission-line table {sc_data.emlines.file}')
@@ -182,9 +179,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         'fastphot':            fastphot,
         'constrain_age':       args.constrain_age,
         'no_smooth_continuum': args.no_smooth_continuum,
-        'percamera_models':    args.percamera_models,
         'debug_plots':         args.debug_plots,
         'minsnr_balmer_broad': args.minsnr_balmer_broad,
+        'nmonte':              args.nmonte,
+        'seed':                args.seed,
     } for iobj in range(Spec.ntargets)]
 
     _out = mp_pool.starmap(fastspec_one, fitargs)
@@ -269,6 +267,8 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
+    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
@@ -276,7 +276,6 @@ def parse(options=None):
     parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')
     parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
     parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
-    parser.add_argument('--percamera-models', action='store_true', help='Return the per-camera (not coadded) model spectra.')
     parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
     parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
@@ -288,7 +287,7 @@ def parse(options=None):
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
-    parser.add_argument('--minsnr-balmer-broad', type=float, default=3., help='Minimum broad Balmer S/N to force broad+narrow-line model.')
+    parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
@@ -353,11 +352,16 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
     add_field('VDISP', dtype='f4', unit=u.kilometer/u.second)
     if not fastphot:
         add_field('VDISP_IVAR', dtype='f4', unit=u.second**2/u.kilometer**2)
-    add_field('AV', dtype='f4', unit=u.mag)
+    add_field('TAUV', dtype='f4')
+    add_field('TAUV_IVAR', dtype='f4')
     add_field('AGE', dtype='f4', unit=u.Gyr)
+    add_field('AGE_IVAR', dtype='f4', unit=1/u.Gyr**2)
     add_field('ZZSUN', dtype='f4')
+    add_field('ZZSUN_IVAR', dtype='f4')
     add_field('LOGMSTAR', dtype='f4', unit=u.solMass)
+    add_field('LOGMSTAR_IVAR', dtype='f4', unit=1/u.solMass**2)
     add_field('SFR', dtype='f4', unit=u.solMass/u.year)
+    add_field('SFR_IVAR', dtype='f4', unit=u.year**2/u.solMass**2)
     #add_field('FAGN', dtype='f4')
 
     if not fastphot:
@@ -365,6 +369,7 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
         add_field('DN4000_OBS', dtype='f4')
         add_field('DN4000_IVAR', dtype='f4')
     add_field('DN4000_MODEL', dtype='f4')
+    add_field('DN4000_MODEL_IVAR', dtype='f4')
 
     if not fastphot:
         # observed-frame photometry synthesized from the spectra
@@ -383,17 +388,22 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
         shift = int(10*shift)
         add_field(f'ABSMAG{shift:02d}_{band}', dtype='f4', unit=u.mag) # absolute magnitudes
         add_field(f'ABSMAG{shift:02d}_IVAR_{band}', dtype='f4', unit=1/u.mag**2)
+        add_field(f'ABSMAG{shift:02d}_SYNTH_{band}', dtype='f4', unit=u.mag) # absolute magnitudes
+        add_field(f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}', dtype='f4', unit=1/u.mag**2)
+    for band, shift in zip(phot.absmag_bands, phot.band_shift):
+        band = band.upper()
+        shift = int(10*shift)
         add_field(f'KCORR{shift:02d}_{band}', dtype='f4', unit=u.mag)
 
-    for cflux in ('LOGLNU_1500', 'LOGLNU_2800'):
-        add_field(cflux,  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
-    add_field('LOGL_1450', dtype='f4', unit=10**(10)*u.solLum)
-    add_field('LOGL_1700', dtype='f4', unit=10**(10)*u.solLum)
-    add_field('LOGL_3000', dtype='f4', unit=10**(10)*u.solLum)
-    add_field('LOGL_5100', dtype='f4', unit=10**(10)*u.solLum)
-
-    for cflux in ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT'):
-        add_field(cflux, dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+    for wave in ['1500', '2800']:
+        add_field(f'LOGLNU_{wave}',  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
+        add_field(f'LOGLNU_{wave}_IVAR',  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
+    for wave in ['1450', '1700', '3000', '5100']:
+        add_field(f'LOGL_{wave}', dtype='f4', unit=10**(10)*u.solLum)
+        add_field(f'LOGL_{wave}_IVAR', dtype='f4', unit=10**(10)*u.solLum)
+    for line in ['FLYA_1215', 'FOII_3727', 'FHBETA', 'FOIII_5007', 'FHALPHA']:
+        add_field(f'{line}_CONT', dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+        add_field(f'{line}_CONT_IVAR', dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
 
     if not fastphot:
         # Add chi2 metrics
@@ -425,19 +435,26 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
 
         # special columns for the fitted doublets
         add_field('MGII_DOUBLET_RATIO', dtype='f4')
+        add_field('MGII_DOUBLET_RATIO_IVAR', dtype='f4')
         add_field('OII_DOUBLET_RATIO', dtype='f4')
+        add_field('OII_DOUBLET_RATIO_IVAR', dtype='f4')
         add_field('SII_DOUBLET_RATIO', dtype='f4')
+        add_field('SII_DOUBLET_RATIO_IVAR', dtype='f4')
 
         for line in linetable['name']:
             line = line.upper()
             add_field(f'{line}_MODELAMP', dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+            #add_field(f'{line}_MODELAMP_IVAR', dtype='f4',
+            #                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
             add_field(f'{line}_AMP', dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
             add_field(f'{line}_AMP_IVAR', dtype='f4',
                                   unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
             add_field(f'{line}_FLUX', dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2))
+            #add_field(f'{line}_FLUX_GAUSS_IVAR', dtype='f4',
+            #                      unit=10**34*u.second**2*u.cm**4/u.erg**2)
             add_field(f'{line}_FLUX_IVAR', dtype='f4',
                                   unit=10**34*u.second**2*u.cm**4/u.erg**2)
             add_field(f'{line}_BOXFLUX', dtype='f4',
@@ -447,8 +464,12 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
 
             add_field(f'{line}_VSHIFT', dtype='f4',
                                   unit=u.kilometer/u.second)
+            add_field(f'{line}_VSHIFT_IVAR', dtype='f4',
+                                  unit=u.second**2/u.kilometer**2)
             add_field(f'{line}_SIGMA', dtype='f4',
                                   unit=u.kilometer / u.second)
+            add_field(f'{line}_SIGMA_IVAR', dtype='f4',
+                                  unit=u.second**2/u.kilometer**2)
 
             add_field(f'{line}_CONT', dtype='f4',
                                   unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
@@ -460,10 +481,15 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
                                   unit=1/u.Angstrom**2)
             add_field(f'{line}_FLUX_LIMIT', dtype='f4',
                                   unit=u.erg/(u.second*u.cm**2))
-            add_field(f'{line}_EW_LIMIT', dtype='f4',
-                                  unit=u.Angstrom)
+            #add_field(f'{line}_EW_LIMIT', dtype='f4',
+            #                      unit=u.Angstrom)
             add_field(f'{line}_CHI2', dtype='f4')
             add_field(f'{line}_NPIX', dtype=np.int32)
+
+        for line in ['CIV_1549', 'MGII_2800', 'HBETA', 'OIII_5007']:
+            for n in range(1, 4):
+                add_field(f'{line}_MOMENT{n}', dtype='f4', unit=u.Angstrom**n)
+                add_field(f'{line}_MOMENT{n}_IVAR', dtype='f4', unit=1/(u.Angstrom**n)**2)
 
     return np.dtype(out_dtype, align=True), out_units
 

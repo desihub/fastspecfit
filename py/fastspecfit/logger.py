@@ -28,10 +28,10 @@ def getFastspecLogger():
     log object.
 
     Returns a log object with default level INFO.
-    """
 
-    import logging
+    """
     import sys
+    import logging
 
     root_name = 'fastspec'
 

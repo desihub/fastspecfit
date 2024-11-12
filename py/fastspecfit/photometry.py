@@ -152,7 +152,8 @@ class Photometry(object):
 
 
     def kcorr_and_absmag(self, nanomaggies, ivar_nanomaggies, redshift, dmod,
-                         photsys, zmodelwave, zmodelflux, snrmin=2.0):
+                         photsys, zmodelwave, zmodelflux, snrmin=2.,
+                         compute_kcorr=True):
         """Compute K-corrections and absolute magnitudes for a single object.
 
         Parameters
@@ -172,6 +173,8 @@ class Photometry(object):
         snrmin : :class:`float`, defaults to 2.
            Minimum signal-to-noise ratio in the input photometry (`maggies`) in
            order for that bandpass to be used to compute a K-correction.
+        compute_kcorr : :class:`bool`
+            Boolean flag to compute K-corrections.
 
         Returns
         -------
@@ -180,10 +183,10 @@ class Photometry(object):
         absmag : `numpy.ndarray`
            Absolute magnitudes, band-shifted according to `band_shift` (if
            provided) for each bandpass in `absmag_filters`.
-        ivarabsmag : `numpy.ndarray`
-           Inverse variance corresponding to `absmag`.
         synth_absmag : `numpy.ndarray`
            Like `absmag`, but entirely based on synthesized photometry.
+        ivarabsmag : `numpy.ndarray`
+           Inverse variance corresponding to `absmag`.
         synth_maggies_in : `numpy.ndarray`
            Synthesized input photometry (should closely match `maggies` if the
            model fit is good).
@@ -234,6 +237,9 @@ class Photometry(object):
 
         synth_absmag = -2.5 * np.log10(synth_outmaggies_rest) - dmod
 
+        if not compute_kcorr:
+            return synth_absmag
+
         # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
         oband = np.empty(nabs, dtype=np.int32)
         for jj in range(nabs):
@@ -255,7 +261,7 @@ class Photometry(object):
             absmag[I] = -2.5 * np.log10(maggies[oband[I]]) - dmod - kcorr[I]
             ivarabsmag[I] = maggies[oband[I]]**2 * ivarmaggies[oband[I]] * C
 
-        return kcorr, absmag, ivarabsmag, synth_maggies_in
+        return kcorr, absmag, synth_absmag, ivarabsmag, synth_maggies_in
 
 
     @staticmethod

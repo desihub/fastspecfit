@@ -594,15 +594,16 @@ class DESISpectra(object):
         self.meta = metas # update
         #log.info(f'Gathered photometric metadata in {time.time()-t1:.2f} seconds.')
         if len(redrockfiles) > 1:
-            log.info(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
-                     f'redrockfiles in {time.time()-t0:.2f} seconds.')
+            log.debug(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
+                      f'redrockfiles in {time.time()-t0:.2f} seconds.')
         else:
-            log.info(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
-                     f'redrockfile in {time.time()-t0:.2f} seconds.')
+            log.debug(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
+                      f'redrockfile in {time.time()-t0:.2f} seconds.')
 
 
     def read(self, mp_pool, fastphot=False, synthphot=True,
-             constrain_age=False, debug_plots=False):
+             constrain_age=False, debug_plots=False,
+             min_uncertainty=0.01):
         """Read selected spectra and/or broadband photometry.
 
         Parameters
@@ -739,6 +740,7 @@ class DESISpectra(object):
                         'fastphot':    True,
                         'synthphot':   False,
                         'debug_plots': debug_plots,
+                        'min_uncertainty': min_uncertainty,
                     })
             else:
                 # Don't use .select since meta and spec can be sorted
@@ -752,10 +754,10 @@ class DESISpectra(object):
                 assert(np.all(spec.fibermap[uniqueid_col] == meta[uniqueid_col]))
 
                 # Coadd across cameras.
-                #t0 = time.time()
+                t0 = time.time()
                 coadd_spec = coadd_cameras(spec)
                 os.environ['DESI_LOGLEVEL'] = 'info'
-                #log.info(f'Coadding across cameras took {time.time()-t0:.2f} seconds.')
+                log.debug(f'Coadding across cameras took {time.time()-t0:.2f} seconds.')
 
                 # unpack the desispec.spectra.Spectra objects into simple arrays
                 cams = spec.bands
@@ -790,6 +792,7 @@ class DESISpectra(object):
                         'fastphot':    fastphot,
                         'synthphot':   synthphot,
                         'debug_plots': debug_plots,
+                        'min_uncertainty': min_uncertainty,
                     })
 
             out = mp_pool.starmap(DESISpectra.one_spectrum, mpargs)
@@ -804,22 +807,22 @@ class DESISpectra(object):
         self.ntargets = len(self.meta)
 
         if self.ntargets > 1:
-            log.info(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
+            log.debug(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
         else:
-            log.info(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
+            log.debug(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
 
         return alldata
 
 
     @staticmethod
     def one_spectrum(iobj, specdata, meta, ebv, fastphot,
-                     synthphot, debug_plots):
+                     synthphot, debug_plots, min_uncertainty):
         """Process the data for a single object and correct for Galactic
         extinction. Also flag pixels which may be affected by emission lines.
 
         """
         from fastspecfit.resolution import Resolution
-        from fastspecfit.util import mwdust_transmission, median
+        from fastspecfit.util import mwdust_transmission, median, ivar2var
         from fastspecfit.linemasker import LineMasker
 
         emline_table = sc_data.emlines.table
@@ -903,32 +906,38 @@ class DESISpectra(object):
             for icam, camera in enumerate(specdata['cameras']):
                 # Check whether the camera is fully masked.
                 if np.sum(specdata['ivar0'][icam]) == 0:
-                    log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
+                    log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
                 else:
                     ivar = specdata['ivar0'][icam]
-                    mask = specdata['mask0'][icam]
+                    mask = specdata['mask0'][icam].astype(bool)
 
-                    # always mask the first and last pixels
-                    mask[ 0] = 1
-                    mask[-1] = 1
+                    # always mask the first and last XX pixels
+                    mask[:3] = True
+                    mask[-3:] = True
 
                     # In the pipeline, if mask!=0 that does not mean ivar==0, but we
                     # want to be more aggressive about masking here.
-                    ivar[mask != 0] = 0.
+                    ivar[mask] = 0.
 
                     if np.all(ivar == 0.):
-                        log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
+                        log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
                     else:
-                        # interpolate over pixels where the resolution matrix is masked
-                        I = (mask != 0)
-                        if np.any(I):
-                            J = np.where(np.logical_not(I))[0]
-                            I = np.where(I)[0]
-                            res = specdata['res0'][icam]
-                            for irow in range(res.shape[0]):
-                                res[irow, I] = np.interp(I, J, res[irow, J])
+                        res = specdata['res0'][icam]
+                        ## interpolate over pixels where the resolution matrix is masked
+                        #if np.any(mask):
+                        #    J = np.where(np.logical_not(mask))[0]
+                        #    I = np.where(mask)[0]
+                        #    for irow in range(res.shape[0]):
+                        #        res[irow, I] = np.interp(I, J, res[irow, J])
 
                         # should we also interpolate over the coadded resolution matrix??
+
+                        # include the minimum uncertainty in quadrature with the input ivar
+                        minvar = (min_uncertainty * specdata['flux0'][icam])**2
+                        var, I = ivar2var(ivar)
+                        newivar = np.zeros_like(ivar)
+                        newivar[I] = 1. / (minvar[I] + var[I])
+                        ivar = newivar
 
                         cameras.append(camera)
                         npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
@@ -941,7 +950,7 @@ class DESISpectra(object):
                         specdata['flux'].append(specdata['flux0'][icam] / mw_transmission_spec)
                         specdata['ivar'].append(ivar * mw_transmission_spec**2)
                         specdata['wave'].append(specdata['wave0'][icam])
-                        specdata['mask'].append(specdata['mask0'][icam])
+                        specdata['mask'].append(mask)
 
                         specdata['res'].append(Resolution(res))
 
@@ -1262,9 +1271,9 @@ class DESISpectra(object):
         self.ntargets = len(self.meta)
 
         if self.ntargets > 1:
-            log.info(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
+            log.debug(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
         else:
-            log.info(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
+            log.debug(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
 
         return alldata
 
@@ -1313,7 +1322,7 @@ class DESISpectra(object):
         for icam, camera in enumerate(specdata['cameras']):
             # Check whether the camera is fully masked.
             if np.sum(specdata['ivar0'][icam]) == 0:
-                log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
+                log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
             else:
                 ivar = specdata['ivar0'][icam]
                 mask = specdata['mask0'][icam]
@@ -1327,7 +1336,7 @@ class DESISpectra(object):
                 ivar[mask != 0] = 0
 
                 if np.all(ivar == 0):
-                    log.warning(f'Dropping fully masked camera {camera} [specdata["uniqueid"]].')
+                    log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
                 else:
                     cameras.append(camera)
                     npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
@@ -1670,7 +1679,7 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
         os.rename(tmpfile, outfile)
 
     if verbose:
-        log.info('Writing out took {:.2f} seconds.'.format(time.time()-t0))
+        log.debug(f'Writing out took {time.time()-t0:.2f} seconds.')
 
 
 def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,

@@ -76,10 +76,10 @@ class Templates(object):
         templateinfo     = T['METADATA'].read()
         templatehdr      = T['METADATA'].read_header()
 
-        self.version = T[0].read_header()['VERSION']
+        templateflux     = np.transpose(templateflux).copy()
+        templatelineflux = np.transpose(templatelineflux).copy()
 
-        # maintain backwards compatibility with older templates (versions <2.0.0)
-        self.use_legacy_fitting = ('VDISPFLUX' in T)
+        self.version = T[0].read_header()['VERSION']
 
         self.imf = templatehdr['IMF']
         self.ntemplates = len(templateinfo)
@@ -90,22 +90,12 @@ class Templates(object):
         keeplo = np.searchsorted(templatewave, mintemplatewave, 'left')
         keephi = np.searchsorted(templatewave, maxtemplatewave, 'right')
         self.wave = templatewave[keeplo:keephi]
-        self.flux = templateflux[keeplo:keephi, :]
-        self.flux_nolines = self.flux - templatelineflux[keeplo:keephi, :]
+        self.flux = templateflux[:, keeplo:keephi]
+        self.flux_nolines = self.flux - templatelineflux[:, keeplo:keephi]
+        self.npix = len(self.wave)
 
         # dust attenuation curve
         self.dust_klambda = Templates.klambda(self.wave)
-
-        # Cache a copy of the line-free templates at the nominal velocity
-        # dispersion (needed for fastphot as well).
-        if self.use_legacy_fitting:
-            vdisphdr = T['VDISPFLUX'].read_header()
-            if 'VDISPNOM' in vdisphdr: # older templates do not have this header card
-                if vdisp_nominal != vdisphdr['VDISPNOM']:
-                    errmsg = f'Nominal velocity dispersion in header ({vdisphdr["VDISPNOM"]:.0f} km/s) ' + \
-                        f'does not match requested value ({vdisp_nominal:.0f} km/s)'
-                    log.warning(errmsg)
-
         self.vdisp_nominal = vdisp_nominal # [km/s]
 
         pixkms_bounds = np.searchsorted(self.wave, Templates.PIXKMS_BOUNDS, 'left')
@@ -119,67 +109,45 @@ class Templates(object):
 
         self.info = Table(templateinfo)
 
-        if self.use_legacy_fitting:
-            if not fastphot:
-                vdispwave = T['VDISPWAVE'].read()
-                vdispflux = T['VDISPFLUX'].read() # [nvdisppix,nvdispsed,nvdisp]
+        if 'DUSTFLUX' in T and 'AGNFLUX' in T:
+            from fastspecfit.util import trapz
 
-                # see bin/build-fsps-templates
-                if vdisphdr['VDISPRES'] > 0.:
-                    nvdisp = int(np.ceil((vdisphdr['VDISPMAX'] - vdisphdr['VDISPMIN']) / vdisphdr['VDISPRES'])) + 1
-                    vdisp = np.linspace(vdisphdr['VDISPMIN'], vdisphdr['VDISPMAX'], nvdisp)
-                else:
-                    vdisp = np.atleast_1d(vdisphdr['VDISPMIN'])
+            # make sure fluxes are normalized to unity
+            dustflux = T['DUSTFLUX'].read()
+            #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
+            self.dustflux = dustflux[keeplo:keephi]
 
-                if not vdisp_nominal in vdisp:
-                    errmsg = 'Nominal velocity dispersion is not in velocity dispersion vector.'
-                    log.critical(errmsg)
-                    raise ValueError(errmsg)
+            #dusthdr = T['DUSTFLUX'].read_header()
+            #self.qpah     = dusthdr['QPAH']
+            #self.umin     = dusthdr['UMIN']
+            #self.gamma    = dusthdr['GAMMA']
 
-                self.vdisp = vdisp
-                self.vdisp_nominal_index = np.where(vdisp == vdisp_nominal)[0]
-                self.vdispflux = vdispflux
-                self.vdispwave = vdispwave
+            # construct the AGN wavelength vector
+            iragnflux = T['AGNFLUX'].read()
+            iragnwave = T['AGNWAVE'].read()
+            #iragnflux  /= trapz(iragnflux, x=iragnwave) # should already be 1.0
+
+            trim = np.searchsorted(iragnwave, 1e4, 'left') # hack...
+            iragnflux = iragnflux[trim:]
+            iragnwave = iragnwave[trim:]
+
+            feflux = T['FEFLUX'].read()
+            fewave = T['FEWAVE'].read()
+
+            febounds = np.searchsorted(templatewave, Templates.AGN_PIXKMS_BOUNDS, 'left')
+            irbounds = np.searchsorted(templatewave, iragnwave[0], 'left')
+
+            agnwave = np.hstack((templatewave[:febounds[0]], fewave,
+                                 templatewave[febounds[1]:irbounds],
+                                 iragnwave))
+            #self.agnwave = agnwave
+
+            #agnhdr = T['AGNFLUX'].read_header()
+            #self.agntau   = agnhdr['AGNTAU']
         else:
-            if 'DUSTFLUX' in T and 'AGNFLUX' in T:
-                from fastspecfit.util import trapz
-
-                # make sure fluxes are normalized to unity
-                dustflux = T['DUSTFLUX'].read()
-                #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
-                self.dustflux = dustflux[keeplo:keephi]
-
-                #dusthdr = T['DUSTFLUX'].read_header()
-                #self.qpah     = dusthdr['QPAH']
-                #self.umin     = dusthdr['UMIN']
-                #self.gamma    = dusthdr['GAMMA']
-
-                # construct the AGN wavelength vector
-                iragnflux = T['AGNFLUX'].read()
-                iragnwave = T['AGNWAVE'].read()
-                #iragnflux  /= trapz(iragnflux, x=iragnwave) # should already be 1.0
-
-                trim = np.searchsorted(iragnwave, 1e4, 'left') # hack...
-                iragnflux = iragnflux[trim:]
-                iragnwave = iragnwave[trim:]
-
-                feflux = T['FEFLUX'].read()
-                fewave = T['FEWAVE'].read()
-
-                febounds = np.searchsorted(templatewave, Templates.AGN_PIXKMS_BOUNDS, 'left')
-                irbounds = np.searchsorted(templatewave, iragnwave[0], 'left')
-
-                agnwave = np.hstack((templatewave[:febounds[0]], fewave,
-                                     templatewave[febounds[1]:irbounds],
-                                     iragnwave))
-                #self.agnwave = agnwave
-
-                #agnhdr = T['AGNFLUX'].read_header()
-                #self.agntau   = agnhdr['AGNTAU']
-            else:
-                errmsg = f'Templates file {template_file} missing mandatory extensions DUSTFLUX and AGNFLUX.'
-                log.critical(errmsg)
-                raise IOError(errmsg)
+            errmsg = f'Templates file {template_file} missing mandatory extensions DUSTFLUX and AGNFLUX.'
+            log.critical(errmsg)
+            raise IOError(errmsg)
 
         # Read the model emission-line fluxes; only present for
         # template_version>=1.1.1 and generally only useful to a power-user.
@@ -223,16 +191,15 @@ class Templates(object):
 
 
     def convolve_vdisp_pre(self, templateflux):
-        """
-        Given a 2D array of of one or more template fluxes,
-        return a preprocessing structure to accelerate
-        future vdisp convolutions via the FFT.  This structure
-        is unpacked in ContinuumTools.build_stellar_continuum()
+        """Given a 2D array of of one or more template fluxes, return a
+        preprocessing structure to accelerate future vdisp convolutions via the
+        FFT. This structure is unpacked in
+        ContinuumTools.build_stellar_continuum()
 
         Parameters
         ----------
         templateflux: :class:`np.ndarray`
-            [nwavelengths x ntemplates] array of templates
+            [ntemplates x nwavelengths] array of templates
 
         Returns
         -------
@@ -251,43 +218,43 @@ class Templates(object):
         lo, hi = self.pixkms_bounds
 
         # extract the un-convolved ranges of templateflux
-        flux_lo = templateflux[:lo, :]
-        flux_hi = templateflux[hi:, :]
-        flux_mid = templateflux[lo:hi, :]
+        flux_lo = templateflux[:, :lo]
+        flux_hi = templateflux[:, hi:]
+        flux_mid = templateflux[:, lo:hi]
 
-        mid_len = flux_mid.shape[0]
+        mid_len = flux_mid.shape[1]
 
         fft_len = sc_fft.next_fast_len(mid_len + kernel_size - 1,
                                        real=True)
-        ft_flux_mid = sc_fft.rfft(flux_mid, n=fft_len, axis=0)
+        ft_flux_mid = sc_fft.rfft(flux_mid, n=fft_len)
 
-        return (np.vstack((flux_lo, flux_hi)), ft_flux_mid, fft_len)
+        return (np.hstack((flux_lo, flux_hi)), ft_flux_mid, fft_len)
 
 
     @staticmethod
-    def conv_pre_select(conv_pre, cols):
+    def conv_pre_select(conv_pre, rows):
         """
         Filter a set of preprocessing data for vdisp convolution
-        to use only the specified columns (templates)
+        to use only the specified rows (templates)
 
         Parameters
         ----------
         conv_pre: :class:`tuple` or None
             Preprocessing structure for vdisp convolution (may be None)
-        cols: :class:`int`
-            Which columns (templates) from the preprocessing
+        rows: :class:`int`
+            Which rows (templates) from the preprocessing
             data should we keep?
 
         Returns
         -------
-        Revised preprocessing data with only the selected columns
+        Revised preprocessing data with only the selected rows
 
         """
         if conv_pre is None:
             return None
         else:
             flux_lohi, ft_flux_mid, fft_len = conv_pre
-            return (flux_lohi[:, cols], ft_flux_mid[:, cols], fft_len)
+            return (flux_lohi[rows, :], ft_flux_mid[rows, :], fft_len)
 
 
     def convolve_vdisp_from_pre(self, flux_lohi, ft_flux_mid, flux_len, fft_len, vdisp):
@@ -358,7 +325,7 @@ class Templates(object):
         ----------
         templateflux: :class:`np.ndarray`
            Either a 1D template array of fluxes, or a 2D array of size
-          [nfluxes x ntemplates] representing ntemplates fluxes
+          [ntemplates x nfluxes] representing ntemplates fluxes
         vdisp: :class:`float64`
            Velocity dispersion to convolve with fluxes
 
@@ -390,12 +357,12 @@ class Templates(object):
                 output[:lo] = templateflux[:lo]
                 output[hi:] = templateflux[hi:]
             else:
-                ntemplates = templateflux.shape[1]
+                ntemplates = templateflux.shape[0]
                 for ii in range(ntemplates):
-                    output[lo:hi, ii] = self.convolve(
-                        templateflux[lo:hi, ii], kernel, mode='same')
-                output[:lo, :] = templateflux[:lo, :]
-                output[hi:, :] = templateflux[hi:, :]
+                    output[ii, lo:hi] = self.convolve(
+                        templateflux[ii, lo:hi], kernel, mode='same')
+                output[:, :lo] = templateflux[:, :lo]
+                output[:, hi:] = templateflux[:, hi:]
 
         return output
 
