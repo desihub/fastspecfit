@@ -294,10 +294,10 @@ class ContinuumTools(object):
                 line.set_linewidth(2)
 
             #ax[1].plot(wave[srt] / 1e4, resid[srt], alpha=0.75, lw=0.5)
-            for iclump, clump in enumerate(clumps_unmasked):
+            for clump in clumps_unmasked:
                 ax[1].plot(wave[srt][clump] / 1e4, resid[srt][clump], color='grey',
                            alpha=0.5, lw=0.5)
-            for iclump, clump in enumerate(clumps_masked):
+            for clump in clumps_masked:
                 ax[1].plot(wave[srt][clump] / 1e4, resid[srt][clump], alpha=0.3,
                            lw=0.5, color='blue')
             ax[1].axhline(y=0, color='k', ls='--', lw=2)
@@ -1496,12 +1496,12 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
              do_fit_full_monte(tauv_guess, objflam_monte, specflux_monte)
 
         tauv_var = np.var(tauv_monte)
-        dn4000_model_var = np.var(dn4000_model_monte)
         if tauv_var > TINY:
             tauv_ivar = 1. / tauv_var
         else:
             tauv_ivar = 0.
 
+        dn4000_model_var = np.var(dn4000_model_monte)
         if dn4000_model_var > TINY:
             dn4000_model_ivar = 1. / dn4000_model_var
         else:
@@ -1512,7 +1512,6 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         sedmodel_monte = None
         sedmodel_nolines_monte = None
         desimodel_nolines_monte = None
-        continuummodel_monte = None
 
         tauv_ivar = 0.
         dn4000_model_ivar = 0.
@@ -1559,21 +1558,21 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
     continuummodel, smoothcontinuum = [], []
 
     smoothstats = np.zeros(len(data['camerapix']))
-    for icam, campix in enumerate(data['camerapix']):
-        ss, ee = campix
+    for icam, (ss, ee) in enumerate(data['camerapix']):
         continuummodel.append(desimodel_nolines[ss:ee])
         smoothcontinuum.append(_smoothcontinuum[ss:ee])
-        I = (specflux[ss:ee] != 0.) * (specivar[ss:ee] != 0.) * (_smoothcontinuum[ss:ee] != 0.)
+        I = ((specflux[ss:ee] != 0.) & (specivar[ss:ee] != 0.) & (_smoothcontinuum[ss:ee] != 0.))
         if np.count_nonzero(I) > 3:
-            corr = np.mean(1 - _smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
+            corr = np.mean(1. - _smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
             smoothstats[icam] = corr
 
     if desimodel_nolines_monte is not None:
         continuummodel_monte = []
-        for icam, campix in enumerate(data['camerapix']):
-            ss, ee = campix
-            models = np.vstack([desimodel_nolines_monte[imonte, ss:ee] for imonte in range(nmonte)])
-            continuummodel_monte.append(models)
+
+        for (ss, ee) in data['camerapix']:
+            continuummodel_monte.append(desimodel_nolines_monte[:,ss:ee])
+    else:
+        continuummodel_monte = None
 
     return (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
             tauv, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
@@ -1705,9 +1704,10 @@ def continuum_specfit(data, result, templates, igm, phot,
 
         # Get the variance via Monte Carlo.
         if sedmodel_monte is not None:
-            synth_absmag_monte = np.zeros((nmonte, len(absmag)))
-            lums_monte = np.zeros((nmonte, len(lums.keys())))
-            cfluxes_monte = np.zeros((nmonte, len(cfluxes.keys())))
+            synth_absmag_monte = np.empty((nmonte, len(synth_absmag)))
+            lums_monte = np.empty((nmonte, len(lums)))
+            cfluxes_monte = np.empty((nmonte, len(cfluxes)))
+
             for imonte in range(nmonte):
                 synth_absmag_monte[imonte, :] = phot.kcorr_and_absmag(
                     data['photometry']['nanomaggies'].value,
@@ -1723,17 +1723,18 @@ def continuum_specfit(data, result, templates, igm, phot,
                 cfluxes_monte[imonte, :] = list(cfluxes1.values())
 
             synth_absmag_var = np.var(synth_absmag_monte, axis=0)
-            lums_var = np.var(lums_monte, axis=0)
-            cfluxes_var = np.var(cfluxes_monte, axis=0)
-
-            for iband, (band, shift, var) in enumerate(zip(phot.absmag_bands, phot.band_shift, synth_absmag_var)):
+            for band, shift, var in zip(phot.absmag_bands, phot.band_shift, synth_absmag_var):
                 if var > TINY:
                     band = band.upper()
                     shift = int(10*shift)
                     result[f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}'] = 1. / var
+
+            lums_var = np.var(lums_monte, axis=0)
             for lumkey, var in zip(lums.keys(), lums_var):
                 if var > TINY:
                     result[f'{lumkey}_IVAR'] = 1. / var
+
+            cfluxes_var = np.var(cfluxes_monte, axis=0)
             for cfluxkey, var in zip(cfluxes.keys(), cfluxes_var):
                 if var > TINY:
                     result[f'{cfluxkey}_IVAR'] = 1. / var
