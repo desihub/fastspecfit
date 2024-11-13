@@ -608,7 +608,7 @@ class EMFitTools(object):
                 bounds[nLineFree+nPatches:]                   = continuum_patches['intercept_bounds']
 
             # least_squares wants two arrays, not a 2D array
-            bounds = ( bounds[:,0], bounds[:,1] )
+            bounds = ( bounds[:, 0], bounds[:, 1] )
 
             fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
                                      max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
@@ -906,7 +906,7 @@ class EMFitTools(object):
 
             # Are the pixels based on the original inverse spectrum fully
             # masked? If so, set everything to zero and move onto the next line.
-            if np.sum(oemlineivar_s[line_s:line_e] == 0.) > 0.3 * (line_e - line_s): # use original ivar
+            if (line_s == line_e) or (np.sum(oemlineivar_s[line_s:line_e] == 0.) > 0.3 * (line_e - line_s)):
                 obsamps[line_amp] = 0.
                 values[line_amp]    = 0.
                 values[line_vshift] = 0.
