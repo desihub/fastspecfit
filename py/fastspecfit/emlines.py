@@ -1064,6 +1064,7 @@ class EMFitTools(object):
                     for imonte in range(nmonte):
                         _linez = redshift + values_monte[imonte, line_vshift] / C_LIGHT
                         _linezwave = restwave * (1. + _linez)
+                        _linesigma = values_monte[imonte, line_sigma] # [km/s]
                         _, _, _linesigma_ang_window, _ = \
                             _preprocess_linesigma(_linesigma, _linezwave, isbroad, isbalmer)
                         _borderindx = _get_continuum_pixels(emlinewave_s, _linezwave, _linesigma_ang_window)
