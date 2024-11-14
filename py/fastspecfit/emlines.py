@@ -1533,9 +1533,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     oemlineivar = np.hstack(data['ivar'])
     specflux = np.hstack(data['flux'])
 
-    continuummodelflux = np.hstack(continuummodel)
-    smoothcontinuummodelflux = np.hstack(smooth_continuum)
-    emlineflux = specflux - continuummodelflux - smoothcontinuummodelflux
+    emlineflux = specflux - continuummodel - smooth_continuum
 
     emlineivar = np.copy(oemlineivar)
     _, emlinegood = ivar2var(emlineivar, clip=1e-3)
@@ -1553,13 +1551,12 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     if specflux_monte is not None:
         nmonte, _ = specflux_monte.shape
         if continuummodel_monte is not None:
-            continuummodelflux_monte = np.hstack(continuummodel_monte)
 
-            emlineflux_monte = (specflux_monte - continuummodelflux_monte - \
-                                smoothcontinuummodelflux[np.newaxis, :])
+            emlineflux_monte = (specflux_monte - continuummodel_monte - \
+                                smooth_continuum[np.newaxis, :])
         else:
-            emlineflux_monte = (specflux_monte - continuummodelflux[np.newaxis, :] - \
-                                smoothcontinuummodelflux[np.newaxis, :])
+            emlineflux_monte = (specflux_monte - continuummodel[np.newaxis, :] - \
+                                smooth_continuum[np.newaxis, :])
 
     # determine which lines are in range of the camera
     EMFit.compute_inrange_lines(redshift, wavelims=(np.min(emlinewave),
@@ -1657,14 +1654,14 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     result['DELTA_LINENDOF'] = delta_linendof_balmer  # ndof_nobroad - ndof_broad
 
     # full-fit reduced chi2
-    rchi2 = np.sum(oemlineivar * (specflux - (continuummodelflux + smoothcontinuummodelflux + emmodel))**2)
+    rchi2 = np.sum(oemlineivar * (specflux - (continuummodel + smooth_continuum + emmodel))**2)
     rchi2 /= np.sum(oemlineivar > 0)  # dof??
     result['RCHI2'] = rchi2
 
 
     # Build the output model spectra.
     modelwave, modelcontinuum, modelemspectrum, modelspectra = build_coadded_models(
-        data, emlinewave, emmodel, continuummodelflux, smoothcontinuummodelflux)
+        data, emlinewave, emmodel, continuummodel, smooth_continuum)
 
     # Finally, optionally synthesize photometry (excluding the
     # smoothcontinuum!) and measure Dn(4000) from the line-free spectrum.
