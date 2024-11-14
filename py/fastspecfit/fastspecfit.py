@@ -15,7 +15,8 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import BoxedScalar, MPPool
 
 
-def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
+#def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
+def fastspec_one(out_dtype, broadlinefit=True, fastphot=False,
                  constrain_age=False, no_smooth_continuum=False,
                  debug_plots=False, minsnr_balmer_broad=2.5, nmonte=50,
                  seed=1):
@@ -30,12 +31,14 @@ def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
     emline_table = sc_data.emlines.table
     templates = sc_data.templates
 
-    if fastphot:
-        log.info(f'Continuum fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
-                 f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
-    else:
-        log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
-                 f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
+    import pdb ; pdb.set_trace()
+
+    #if fastphot:
+    #    log.info(f'Continuum fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
+    #             f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
+    #else:
+    #    log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
+    #             f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
 
     # output structure
     out = BoxedScalar(out_dtype)
@@ -130,6 +133,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     # if multiprocessing, create a pool of worker processes
     # and initialize single-copy objects in each worker
+    if args.mp > 1 and not 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        multiprocessing.set_start_method('fork')
+
     t0 = time.time()
     mp_pool = MPPool(args.mp,
                      initializer=sc_data.initialize,
@@ -159,21 +166,18 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         if len(Spec.specfiles) == 0:
             return
 
-        data = Spec.read(mp_pool, fastphot=fastphot, debug_plots=args.debug_plots,
-                         constrain_age=args.constrain_age)
+        import pdb ; pdb.set_trace()
+        data = Spec.read(sc_data.photometry, fastphot=fastphot, constrain_age=args.constrain_age)
 
     ncoeff = sc_data.templates.ntemplates
-    out_dtype, out_units = get_output_dtype(Spec.specprod,
-                                            phot=sc_data.photometry,
-                                            linetable=sc_data.emlines.table,
-                                            ncoeff=ncoeff,
-                                            fastphot=fastphot, stackfit=stackfit)
+    out_dtype, out_units = get_output_dtype(
+        Spec.specprod, phot=sc_data.photometry,
+        linetable=sc_data.emlines.table, ncoeff=ncoeff,
+        fastphot=fastphot, stackfit=stackfit)
 
     # Fit in parallel
     t0 = time.time()
     fitargs = [{
-        'iobj':                iobj,
-        'data':                data[iobj],
         'out_dtype':           out_dtype,
         'broadlinefit':        args.broadlinefit,
         'fastphot':            fastphot,
@@ -183,7 +187,20 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         'minsnr_balmer_broad': args.minsnr_balmer_broad,
         'nmonte':              args.nmonte,
         'seed':                args.seed,
-    } for iobj in range(Spec.ntargets)]
+        }]
+    #fitargs = [{
+    #    'iobj':                iobj,
+    #    'data':                data[iobj],
+    #    'out_dtype':           out_dtype,
+    #    'broadlinefit':        args.broadlinefit,
+    #    'fastphot':            fastphot,
+    #    'constrain_age':       args.constrain_age,
+    #    'no_smooth_continuum': args.no_smooth_continuum,
+    #    'debug_plots':         args.debug_plots,
+    #    'minsnr_balmer_broad': args.minsnr_balmer_broad,
+    #    'nmonte':              args.nmonte,
+    #    'seed':                args.seed,
+    #} for iobj in range(Spec.ntargets)]
 
     _out = mp_pool.starmap(fastspec_one, fitargs)
     out = list(zip(*_out))
