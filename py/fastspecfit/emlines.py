@@ -855,7 +855,7 @@ class EMFitTools(object):
 
         if results_monte is not None:
             values_monte, obsamps_monte, emlineflux_monte, specflux_nolines_monte = results_monte
-            nmonte, _ = values_monte.shape
+            nmonte = len(values_monte)
 
             values_var = np.var(values_monte, axis=0)
             obsamps_var = np.var(obsamps_monte, axis=0)
@@ -954,8 +954,8 @@ class EMFitTools(object):
                     #    result[f'{linename}_MODELAMP_IVAR'] = 1. / modelamp_var
 
                     # Monte Carlo to get the uncertainties
-                    boxflux_monte = np.zeros(nmonte)
-                    use_gausscorr_monte = np.ones(nmonte)
+                    boxflux_monte = np.empty(nmonte)
+                    use_gausscorr_monte = np.empty(nmonte)
                     patchindx_monte = []
                     for imonte in range(nmonte):
                         _linez = redshift + values_monte[imonte, line_vshift] / C_LIGHT
@@ -1011,7 +1011,7 @@ class EMFitTools(object):
 
                     # get the flux uncertainty via Monte Carlo
                     if results_monte is not None:
-                        flux_monte = np.zeros(nmonte)
+                        flux_monte = np.empty(nmonte)
                         for imonte in range(nmonte):
                             (_s, _e), flux_perpixel1 = line_fluxes_monte[imonte].getLine(iline)
                             # can be zero if the amplitude is very tiny
@@ -1060,7 +1060,7 @@ class EMFitTools(object):
                 result[f'{linename}_CONT'] = cont
 
                 if results_monte is not None:
-                    cont_monte = np.zeros(nmonte)
+                    cont_monte = np.empty(nmonte)
                     for imonte in range(nmonte):
                         _linez = redshift + values_monte[imonte, line_vshift] / C_LIGHT
                         _linezwave = restwave * (1. + _linez)
@@ -1160,9 +1160,9 @@ class EMFitTools(object):
 
             if results_monte is not None:
                 # Monte Carlo to get the uncertainties
-                moment1_monte = np.zeros(nmonte)
-                moment2_monte = np.zeros(nmonte)
-                moment3_monte = np.zeros(nmonte)
+                moment1_monte = np.empty(nmonte)
+                moment2_monte = np.empty(nmonte)
+                moment3_monte = np.empty(nmonte)
                 for imonte in range(nmonte):
                     _linezwave = restwave * (1. + redshift + values_monte[imonte, line_vshift] / C_LIGHT)
                     _linesigma = values_monte[imonte, line_sigma] # [km/s]
@@ -1549,7 +1549,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # Monte Carlo spectrum carried over from continuum-fitting. Assume that the
     # smooth continuum model is the same...
     if specflux_monte is not None:
-        nmonte, _ = specflux_monte.shape
+        nmonte = len(specflux_monte)
         if continuummodel_monte is not None:
 
             emlineflux_monte = (specflux_monte - continuummodel_monte - \
@@ -1621,9 +1621,9 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         else:
             linemodel_monte = linemodel_nobroad
 
-        values_monte = np.zeros((nmonte, len(finalfit)))
-        obsamps_monte = np.zeros((nmonte, len(finalfit.meta['obsamp'])))
-        finalmodel_monte = np.zeros((nmonte, len(finalmodel)))
+        values_monte = np.empty((nmonte, len(finalfit)))
+        obsamps_monte = np.empty((nmonte, len(finalfit.meta['obsamp'])))
+        finalmodel_monte = np.empty((nmonte, len(finalmodel)))
         for imonte in range(nmonte):
             finalfit1, finalmodel1, _ = linefit(
                 EMFit, linemodel_monte, initial_guesses, param_bounds,
