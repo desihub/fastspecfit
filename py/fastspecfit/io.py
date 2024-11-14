@@ -151,7 +151,6 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1, fastphot=False,
                     specdata['ivar'].append(ivar * mw_transmission_spec**2)
                     specdata['wave'].append(specdata['wave0'][icam])
                     specdata['mask'].append(mask)
-
                     specdata['res'].append(Resolution(res))
 
         if len(cameras) == 0:
@@ -238,13 +237,140 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1, fastphot=False,
         # Optionally synthesize photometry from the coadded spectrum.
         if synthphot:
             synth_filters = phot.synth_filters[specdata['photsys']]
-            synthmaggies = Photometry.get_ab_maggies(synth_filters,
-                                                     specdata['coadd_flux'] / FLUXNORM,
-                                                     specdata['coadd_wave'])
+            synthmaggies = Photometry.get_ab_maggies(
+                synth_filters, specdata['coadd_flux'] / FLUXNORM, specdata['coadd_wave'])
 
             specdata['synthphot'] = Photometry.parse_photometry(
                 phot.synth_bands, maggies=synthmaggies, nanomaggies=False,
                 lambda_eff=synth_filters.effective_wavelengths.value)
+
+    return specdata
+
+
+def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
+    """Unpack the data for a single stacked spectrum.
+
+    """
+    from fastspecfit.linemasker import LineMasker
+    from fastspecfit.util import median
+
+    phot = sc_data.photometry
+
+    filters = phot.filters[specdata['photsys']]
+    synth_filters = phot.synth_filters[specdata['photsys']]
+
+    # Dummy imaging photometry.
+    maggies = np.zeros(len(phot.bands))
+    ivarmaggies = np.zeros(len(phot.bands))
+
+    specdata['photometry'] = Photometry.parse_photometry(
+        phot.bands, maggies=maggies, ivarmaggies=ivarmaggies,
+        nanomaggies=True, lambda_eff=filters.effective_wavelengths.value,
+        min_uncertainty=phot.min_uncertainty)
+
+    specdata.update({
+        'wave': [],
+        'flux': [],
+        'ivar': [],
+        'mask': [],
+        'res': [],
+        'snr': np.zeros(1, 'f4'),
+        'linemask': [],
+        'linepix': [],
+    })
+
+    cameras, npixpercamera = [], []
+    for icam, camera in enumerate(specdata['cameras']):
+        # Check whether the camera is fully masked.
+        if np.sum(specdata['ivar0'][icam]) == 0:
+            log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
+        else:
+            ivar = specdata['ivar0'][icam]
+            mask = specdata['mask0'][icam]
+
+            # always mask the first and last XX pixels
+            mask[:3] = True
+            mask[-3:] = True
+
+            # In the pipeline, if mask!=0 that does not mean ivar==0, but we
+            # want to be more aggressive about masking here.
+            ivar[mask] = 0.
+
+            if np.all(ivar == 0.):
+                log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
+            else:
+                cameras.append(camera)
+                npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
+
+                specdata['snr'][icam] = median(specdata['flux0'][icam] * np.sqrt(ivar))
+                specdata['flux'].append(specdata['flux0'][icam])
+                specdata['ivar'].append(ivar)
+                specdata['wave'].append(specdata['wave0'][icam])
+                specdata['mask'].append(mask)
+                specdata['res'].append(specdata['res0'][icam])
+
+    if len(cameras) == 0:
+        errmsg = 'No good data, which should never happen.'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
+
+    # clean up unused items in data dictionary and
+    # freeze lists that will not be further modified
+    for key in ('wave', 'flux', 'ivar', 'mask', 'res'):
+        del specdata[key + '0']
+        specdata[key] = tuple(specdata[key])
+
+    # Pre-compute some convenience variables for "un-hstacking"
+    # an "hstacked" spectrum.
+    specdata['cameras'] = np.array(cameras)
+    specdata['npixpercamera'] = np.array(npixpercamera)
+
+    ncam = len(specdata['cameras'])
+    c_ends   = np.cumsum(specdata['npixpercamera'])
+    c_starts = c_ends - specdata['npixpercamera']
+    specdata['camerapix'] = np.zeros((ncam, 2), np.int16)
+    specdata['camerapix'][:, 0] = c_starts
+    specdata['camerapix'][:, 1] = c_ends
+
+    LM = LineMasker(sc_data.emlines.table)
+    pix = LM.build_linemask(
+        specdata['coadd_wave'], specdata['coadd_flux'],
+        specdata['coadd_ivar'], specdata['coadd_res'],
+        uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
+        debug_plots=debug_plots)
+
+    # Map the pixels belonging to individual emission lines onto the
+    # original per-camera spectra. This works, but maybe there's a better
+    # way to do it?
+    for icam in range(ncam):
+        camlinepix = {}
+        camlinemask = np.zeros(specdata['npixpercamera'][icam], bool)
+        for linename in pix['coadd_linepix']:
+            linepix = pix['coadd_linepix'][linename]
+            # if the line is entirely off this camera, skip it
+            oncam = ((specdata["coadd_wave"][linepix] >= np.min(specdata['wave'][icam])) &
+                     (specdata["coadd_wave"][linepix] <= np.max(specdata['wave'][icam])))
+            if not np.any(oncam):
+                continue
+            I = np.searchsorted(specdata['wave'][icam], specdata['coadd_wave'][linepix[oncam]])
+            #print(f'Line {linename:20}: adding {len(I):02d} pixels to camera {icam}')
+            camlinemask[I] = True
+            camlinepix[linename] = I
+        #print()
+        specdata['linemask'].append(camlinemask)
+        specdata['linepix'].append(camlinepix)
+
+    specdata.update(pix)
+    del pix
+
+    # Optionally synthesize photometry from the coadded spectrum.
+    if synthphot:
+        synthmaggies = Photometry.get_ab_maggies(
+            synth_filters, specdata['coadd_flux'] / FLUXNORM, specdata['coadd_wave'])
+
+        specdata['synthphot'] = Photometry.parse_photometry(
+            phot.synth_bands, maggies=synthmaggies, nanomaggies=False,
+            lambda_eff=synth_filters.effective_wavelengths.value)
 
     return specdata
 
@@ -870,6 +996,8 @@ class DESISpectra(object):
 
         SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
+        uniqueid_col = self.phot.uniqueid_col
+
         alldata, allmeta = [], []
         for ispecfile, (specfile, meta) in enumerate(zip(self.specfiles, self.meta)):
             nobj = len(meta)
@@ -878,15 +1006,12 @@ class DESISpectra(object):
             else:
                 log.info(f'Reading {nobj} spectra from {specfile}')
 
-            nobj = len(meta)
-            uniqueid_col = self.phot.uniqueid_col
-
             # Pre-compute the luminosity distance, distance modulus, and age of
             # the universe.
             redshift = meta['Z'].value
             neg = (redshift <= 0.)
             if np.any(neg):
-                errmsg = f'{np.sum(neg)}/{len(redshift)} input redshifts are zero or negative!'
+                errmsg = f'{np.sum(neg)}/{len(redshift)} input redshifts are zero or negative; setting to 1e-8!'
                 log.warning(errmsg)
                 redshift[neg] = 1e-8
 
@@ -985,7 +1110,7 @@ class DESISpectra(object):
 
 
     def read_stacked(self, stackfiles, firsttarget=0, ntargets=None,
-                     stackids=None, synthphot=True, mp_pool=None):
+                     stackids=None, synthphot=True, constrain_age=False):
         """Read one or more stacked spectra.
 
         Parameters
@@ -1080,7 +1205,7 @@ class DESISpectra(object):
         t0 = time.time()
 
         stackfiles = sorted(set(stackfiles))
-        #log.info(f'Reading and parsing {len(stackfiles)} unique stackfile(s).')
+        log.debug(f'Reading and parsing {len(stackfiles)} unique stackfile(s).')
 
         self.specprod = 'stacked'
         self.coadd_type = 'stacked'
@@ -1089,25 +1214,21 @@ class DESISpectra(object):
         healpix = np.int32(0)
 
         READCOLS = ('STACKID', 'Z')
+        uniqueid_col = self.phot.uniqueid_col
 
-        self.stackfiles, self.meta = [], []
-
+        alldata, allmeta = [], []
         for stackfile in stackfiles:
             if not os.path.isfile(stackfile):
                 log.warning(f'File {stackfile} not found!')
                 continue
 
             # Gather some coadd information from the header.
-            #hdr = fitsio.read_header(stackfile, ext=0)
-
             log.info('specprod={}, coadd_type={}, survey={}, program={}, healpix={}'.format(
                 self.specprod, self.coadd_type, survey, program, healpix))
 
             # If stackids is *not* given, read everything.
             if stackids is None:
                 fitindx = np.arange(fitsio.FITS(stackfile)['STACKINFO'].get_nrows())
-                #meta = fitsio.read(stackfile, 'STACKINFO', columns=READCOLS)
-                #fitindx = np.arange(len(meta))
             else:
                 # We already know we like the input stackids, so no selection
                 # needed.
@@ -1124,16 +1245,22 @@ class DESISpectra(object):
             else:
                 _ntargets = ntargets
             if _ntargets > len(fitindx):
-                log.warning(f'Number of requested ntargets exceeds the number of targets on {stackfile}; reading all of them.')
+                log.warning('Number of requested ntargets exceeds the number ' + \
+                            f'of targets on {stackfile}; reading all of them.')
 
             __ntargets = len(fitindx)
             fitindx = fitindx[firsttarget:firsttarget+_ntargets]
             if len(fitindx) == 0:
-                log.info(f'All {__ntargets} targets in stackfile {stackfile} have been dropped (firsttarget={firsttarget}, ntargets={_ntargets}).')
+                log.info(f'All {__ntargets} targets in stackfile {stackfile} have been ' + \
+                         f'dropped (firsttarget={firsttarget}, ntargets={_ntargets}).')
                 continue
 
             # If firsttarget is a large index then the set can become empty.
             meta = Table(fitsio.read(stackfile, 'STACKINFO', rows=fitindx, columns=READCOLS))
+            nobj = len(meta)
+            if nobj == 0:
+                log.warning('No targets read!')
+                return [], []
 
             # Check for uniqueness.
             uu, cc = np.unique(meta['STACKID'], return_counts=True)
@@ -1149,19 +1276,7 @@ class DESISpectra(object):
             meta['PROGRAM'] = program
             meta['HEALPIX'] = healpix
 
-            self.meta.append(Table(meta))
-            self.stackfiles.append(stackfile)
-
-        if len(self.meta) == 0:
-            log.warning('No targets read!')
-            return
-
-        uniqueid_col = self.phot.uniqueid_col
-
-        # Now read the data as in self.read (for unstacked spectra).
-        alldata = []
-        for (stackfile, meta) in zip(self.stackfiles, self.meta):
-            nobj = len(meta)
+            # Now read the data as in self.read (for unstacked spectra).
             if nobj == 1:
                 log.info(f'Reading 1 spectrum from {stackfile}')
             else:
@@ -1169,32 +1284,40 @@ class DESISpectra(object):
 
             # Age of the universe.
             redshift = meta['Z'].value
-            dlum = np.zeros(len(redshift))
-            dmod = np.zeros(len(redshift))
-            dlum[redshift > 0.] = self.cosmo.luminosity_distance(redshift[redshift > 0.])
-            dmod[redshift > 0.] = self.cosmo.distance_modulus(redshift[redshift > 0.])
-            tuniv = self.universe_age(redshift)
+            neg = (redshift <= 0.)
+            if np.any(neg):
+                errmsg = f'{np.sum(neg)}/{len(redshift)} input redshifts are zero or negative; setting to 1e-8!'
+                log.warning(errmsg)
+                redshift[neg] = 1e-8
 
+            dlum = self.cosmo.luminosity_distance(redshift)
+            dmod = self.cosmo.distance_modulus(redshift)
+            if constrain_age:
+                tuniv = self.universe_age(redshift)
+            else:
+                tuniv = np.full_like(redshift, 100.)
+
+            # read the data
             wave = fitsio.read(stackfile, 'WAVE')
             npix = len(wave)
 
             flux = fitsio.read(stackfile, 'FLUX')
-            flux = flux[fitindx, :]
+            flux = flux[fitindx, :].astype('f8')
 
             ivar = fitsio.read(stackfile, 'IVAR')
-            ivar = ivar[fitindx, :]
+            ivar = ivar[fitindx, :].astype('f8')
 
             # Check if the file contains a resolution matrix, if it does not
-            # then use an identity matrix
+            # then use an identity matrix.
             if 'RES' in fitsio.FITS(stackfile):
                 res = fitsio.read(stackfile, 'RES')
                 res = res[fitindx, :, :]
             else:
+                log.warning('No resolution matrix found; using identity matrix.')
                 res = np.ones((nobj, 1, npix)) # Hack!
 
-            # unpack the desispec.spectra.Spectra objects into simple arrays
-            mpargs = []
-            for iobj in range(len(meta)):
+            # Ppack the data into a simple dictionary.
+            for iobj in range(nobj):
                 specdata = {
                     'uniqueid': meta[uniqueid_col][iobj],
                     'redshift': redshift[iobj],
@@ -1206,38 +1329,23 @@ class DESISpectra(object):
                     'wave0': [wave],
                     'flux0': [flux[iobj, :]],
                     'ivar0': [ivar[iobj, :]],
-                    'mask0': [np.zeros(npix, np.int16)],
-                    'res0': [Resolution(res[iobj, :, :])]
+                    'mask0': [np.zeros(npix, bool)],
+                    'res0': [Resolution(res[iobj, :, :])],
                 }
 
                 specdata.update({
                     'coadd_wave': specdata['wave0'][0],
                     'coadd_flux': specdata['flux0'][0],
                     'coadd_ivar': specdata['ivar0'][0],
-                    'coadd_res': specdata['res0'][0],
+                    'coadd_res': specdata['res0'],
                     })
+                alldata.append(specdata)
 
-                mpargs.append({
-                    'iobj':      iobj,
-                    'specdata':  specdata,
-                    'synthphot': synthphot,
-                })
+            allmeta.append(meta)
 
-            out = mp_pool.starmap(DESISpectra.one_stacked_spectrum, mpargs)
+        allmeta = vstack(allmeta)
 
-            alldata.append(out)
-            del out
-
-        alldata = np.concatenate(alldata)
-        self.meta = vstack(self.meta)
-        self.ntargets = len(self.meta)
-
-        if self.ntargets > 1:
-            log.debug(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
-        else:
-            log.debug(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
-
-        return alldata
+        return alldata, allmeta
 
 
     @staticmethod

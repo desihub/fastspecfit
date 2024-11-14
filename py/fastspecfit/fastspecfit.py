@@ -21,7 +21,7 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
     """Run :func:`fastspec` on a single object.
 
     """
-    from fastspecfit.io import one_spectrum
+    from fastspecfit.io import one_spectrum, one_stacked_spectrum
     from fastspecfit.emlines import emline_specfit
     from fastspecfit.continuum import continuum_specfit
 
@@ -37,22 +37,25 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
         log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
                  f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
 
-    one_spectrum(data, meta, uncertainty_floor=uncertainty_floor, fastphot=fastphot,
-                 synthphot=True, debug_plots=debug_plots)
+    if stackfit:
+        one_stacked_spectrum(data, meta, synthphot=True, debug_plots=debug_plots)
+    else:
+        one_spectrum(data, meta, uncertainty_floor=uncertainty_floor, fastphot=fastphot,
+                     synthphot=True, debug_plots=debug_plots)
 
     # Copy parsed photometry from the 'data' dictionary to the 'meta' table.
     if not fastphot:
         if not stackfit:
+            flux = data['photometry']['nanomaggies']
+            fluxivar = data['photometry']['nanomaggies_ivar']
+            for iband, band in enumerate(phot.bands):
+                meta[f'FLUX_{band.upper()}'] = flux[iband]
+                meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
+
             if hasattr(phot, 'fiber_bands'):
                 fibertotflux = data['fiberphot']['nanomaggies']
                 for iband, band in enumerate(phot.fiber_bands):
                     meta[f'FIBERTOTFLUX_{band.upper()}'] = fibertotflux[iband]
-
-        flux = data['photometry']['nanomaggies']
-        fluxivar = data['photometry']['nanomaggies_ivar']
-        for iband, band in enumerate(phot.bands):
-            meta[f'FLUX_{band.upper()}'] = flux[iband]
-            meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
 
     # output structure
     out = BoxedScalar(out_dtype)
@@ -170,8 +173,9 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
                        fphotodir=args.fphotodir, mapdir=args.mapdir)
 
     if stackfit:
-        data = Spec.read_stacked(mp_pool, args.redrockfiles, firsttarget=args.firsttarget,
-                                 stackids=targetids, ntargets=args.ntargets)
+        data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
+                                       stackids=targetids, ntargets=args.ntargets,
+                                       constrain_age=args.constrain_age)
     else:
         Spec.gather_metadata(args.redrockfiles, firsttarget=args.firsttarget,
                              targetids=targetids, input_redshifts=input_redshifts,
