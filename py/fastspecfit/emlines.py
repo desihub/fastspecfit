@@ -1560,6 +1560,8 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         else:
             emlineflux_monte = (specflux_monte - continuummodelflux[np.newaxis, :] - \
                                 smoothcontinuummodelflux[np.newaxis, :])
+    else:
+        nmonte = 0
 
     # determine which lines are in range of the camera
     EMFit.compute_inrange_lines(redshift, wavelims=(np.min(emlinewave),

@@ -172,7 +172,7 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1, fastphot=False,
         ncam = len(specdata['cameras'])
         c_ends   = np.cumsum(specdata['npixpercamera'])
         c_starts = c_ends - specdata['npixpercamera']
-        specdata['camerapix'] = np.zeros((ncam, 2), np.int16)
+        specdata['camerapix'] = np.zeros((ncam, 2), np.int32)
         specdata['camerapix'][:, 0] = c_starts
         specdata['camerapix'][:, 1] = c_ends
 
@@ -328,7 +328,7 @@ def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
     ncam = len(specdata['cameras'])
     c_ends   = np.cumsum(specdata['npixpercamera'])
     c_starts = c_ends - specdata['npixpercamera']
-    specdata['camerapix'] = np.zeros((ncam, 2), np.int16)
+    specdata['camerapix'] = np.zeros((ncam, 2), np.int32)
     specdata['camerapix'][:, 0] = c_starts
     specdata['camerapix'][:, 1] = c_ends
 
@@ -1741,7 +1741,8 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
 
 
 def get_output_dtype(specprod, phot, linetable, ncoeff,
-                     fastphot=False, stackfit=False):
+                     cameras=['B', 'R', 'Z'], fastphot=False,
+                     stackfit=False):
     """
     Get type of one fastspecfit output data record, along
     with dictionary of units for any fields that have them.
@@ -1770,23 +1771,11 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
         add_field('RCHI2_CONT', dtype='f4') # rchi2 fitting just to the continuum (spec+phot)
     add_field('RCHI2_PHOT', dtype='f4') # rchi2 fitting just to the photometry
 
-    if stackfit:
-        for cam in ('BRZ'):
-            add_field(f'SNR_{cam}', dtype='f4') # median S/N in each camera
-        for cam in ('BRZ'):
-            add_field(f'SMOOTHCORR_{cam}', dtype='f4')
-    else:
-        if not fastphot:
-            # if the zeroth object has a fully masked camera, this data model will fail
-            #if data is not None:
-            #    for cam in data[0]['cameras']:
-            #        add_field(f'SNR_{cam.upper()}'), dtype='f4') # median S/N in each camera
-            #    for cam in data[0]['cameras']:
-            #        add_field(f'SMOOTHCORR_{cam.upper()}'), dtype='f4')
-            for cam in ('B', 'R', 'Z'):
-                add_field(f'SNR_{cam.upper()}', dtype='f4') # median S/N in each camera
-            for cam in ('B', 'R', 'Z'):
-                add_field(f'SMOOTHCORR_{cam.upper()}', dtype='f4')
+    if not fastphot:
+        for cam in cameras:
+            add_field(f'SNR_{cam.upper()}', dtype='f4') # median S/N in each camera
+        for cam in cameras:
+            add_field(f'SMOOTHCORR_{cam.upper()}', dtype='f4')
 
     add_field('VDISP', dtype='f4', unit=u.kilometer/u.second)
     if not fastphot:

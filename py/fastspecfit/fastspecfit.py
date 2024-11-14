@@ -190,10 +190,12 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     ntargets = len(meta)
     ncoeff = sc_data.templates.ntemplates
+
     out_dtype, out_units = get_output_dtype(
         Spec.specprod, phot=sc_data.photometry,
         linetable=sc_data.emlines.table, ncoeff=ncoeff,
-        fastphot=fastphot, stackfit=stackfit)
+        cameras=data[0]['cameras'], fastphot=fastphot,
+        stackfit=stackfit)
 
     # Fit in parallel
     t0 = time.time()

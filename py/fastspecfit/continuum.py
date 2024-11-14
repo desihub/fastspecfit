@@ -1217,12 +1217,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         raise ValueError(errmsg)
 
     ncam = len(data['cameras'])
-    if ncam == 1:
-        snrmsg = f"Median spectral S/N_{data['cameras']}={data['snr'][0]:.2f}"
-    else:
-        snrmsg = f"Median spectral S/N_{data['cameras'][0]}={data['snr'][0]:.2f}"
-        for icam in range(1,ncam):
-            snrmsg += f" S/N_{data['cameras'][icam]}={data['snr'][icam]:.2f}"
+    snrmsg = f"Median spectral S/N_{data['cameras'][0]}={data['snr'][0]:.2f}"
+    for icam in range(1, ncam):
+        snrmsg += f" S/N_{data['cameras'][icam]}={data['snr'][icam]:.2f}"
     log.info(snrmsg)
 
     specistd = np.sqrt(specivar)
