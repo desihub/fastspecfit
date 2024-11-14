@@ -16,8 +16,9 @@ from fastspecfit.util import BoxedScalar, MPPool
 
 
 def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
-                 constrain_age=False, no_smooth_continuum=False, debug_plots=False,
-                 uncertainty_floor=0.01, minsnr_balmer_broad=2.5, nmonte=50, seed=1):
+                 fitstack=False, constrain_age=False, no_smooth_continuum=False,
+                 debug_plots=False, uncertainty_floor=0.01, minsnr_balmer_broad=2.5,
+                 nmonte=50, seed=1):
     """Run :func:`fastspec` on a single object.
 
     """
@@ -37,7 +38,7 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
         log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
                  f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
 
-    if stackfit:
+    if fitstack:
         one_stacked_spectrum(data, meta, synthphot=True, debug_plots=debug_plots)
     else:
         one_spectrum(data, meta, uncertainty_floor=uncertainty_floor, fastphot=fastphot,
@@ -45,7 +46,7 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
 
     # Copy parsed photometry from the 'data' dictionary to the 'meta' table.
     if not fastphot:
-        if not stackfit:
+        if not fitstack:
             flux = data['photometry']['nanomaggies']
             fluxivar = data['photometry']['nanomaggies_ivar']
             for iband, band in enumerate(phot.bands):
@@ -78,7 +79,7 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
     return out.value, meta, emmodel
 
 
-def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False):
+def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False):
     """Main fastspec script.
 
     This script is the engine to model one or more DESI spectra. It initializes
@@ -117,7 +118,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
             log.critical(errmsg)
             raise KeyError(errmsg)
 
-    if stackfit:
+    if fitstack:
         args.ignore_photometry = True
 
     if verbose:
@@ -140,7 +141,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         'emlines_file':      args.emlinesfile,
         'fphotofile':        args.fphotofile,
         'fastphot':          fastphot,
-        'stackfit':          stackfit,
+        'fitstack':          fitstack,
         'ignore_photometry': args.ignore_photometry,
         'template_file':     args.templates,
         'template_version':  args.templateversion,
@@ -172,7 +173,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
                        fphotodir=args.fphotodir, mapdir=args.mapdir)
 
-    if stackfit:
+    if fitstack:
         data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
                                        stackids=targetids, ntargets=args.ntargets,
                                        constrain_age=args.constrain_age)
@@ -190,12 +191,16 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     ntargets = len(meta)
     ncoeff = sc_data.templates.ntemplates
+    if fastphot:
+        cameras = None
+    else:
+        cameras = data[0]['cameras']
 
     out_dtype, out_units = get_output_dtype(
         Spec.specprod, phot=sc_data.photometry,
         linetable=sc_data.emlines.table, ncoeff=ncoeff,
-        cameras=data[0]['cameras'], fastphot=fastphot,
-        stackfit=stackfit)
+        cameras=cameras, fastphot=fastphot,
+        fitstack=fitstack)
 
     # Fit in parallel
     t0 = time.time()
@@ -219,10 +224,10 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     out = list(zip(*_out))
 
     meta = create_output_meta(vstack(out[1]), phot=sc_data.photometry,
-                              fastphot=fastphot, stackfit=stackfit)
+                              fastphot=fastphot, fitstack=fitstack)
 
     results = create_output_table(out[0], meta, out_units,
-                                  stackfit=stackfit)
+                                  fitstack=fitstack)
 
     if fastphot:
         modelspectra = None
@@ -276,7 +281,7 @@ def stackfit(args=None, comm=None):
         Intracommunicator used with MPI parallelism.
 
     """
-    fastspec(stackfit=True, args=args, comm=comm)
+    fastspec(fitstack=True, args=args, comm=comm)
 
 
 def parse(options=None):

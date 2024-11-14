@@ -1742,7 +1742,7 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
 
 def get_output_dtype(specprod, phot, linetable, ncoeff,
                      cameras=['B', 'R', 'Z'], fastphot=False,
-                     stackfit=False):
+                     fitstack=False):
     """
     Get type of one fastspecfit output data record, along
     with dictionary of units for any fields that have them.
@@ -1922,7 +1922,7 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
     return np.dtype(out_dtype, align=True), out_units
 
 
-def create_output_meta(input_meta, phot, fastphot=False, stackfit=False):
+def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
     """Create the fastspecfit output metadata table.
 
     """
@@ -1934,7 +1934,7 @@ def create_output_meta(input_meta, phot, fastphot=False, stackfit=False):
 
     # The information stored in the metadata table depends on which spectra
     # were fitted (exposures, nightly coadds, deep coadds).
-    if stackfit:
+    if fitstack:
         fluxcols = ['PHOTSYS']
     else:
         fluxcols = []
@@ -1960,7 +1960,7 @@ def create_output_meta(input_meta, phot, fastphot=False, stackfit=False):
 
     skipcols = fluxcols + ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE']
 
-    if stackfit:
+    if fitstack:
         redrockcols = ('Z')
     else:
         redrockcols = ('Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR', 'TSNR2_BGS',
@@ -1971,7 +1971,7 @@ def create_output_meta(input_meta, phot, fastphot=False, stackfit=False):
 
     # All of this business is so we can get the columns in the order we want
     # (i.e., the order that matches the data model).
-    if stackfit:
+    if fitstack:
         for metacol in ('STACKID', 'SURVEY', 'PROGRAM'):
             if metacol in metacols:
                 meta[metacol] = input_meta[metacol]
@@ -2016,14 +2016,14 @@ def create_output_meta(input_meta, phot, fastphot=False, stackfit=False):
     return meta
 
 
-def create_output_table(result_records, meta, units, stackfit=False):
+def create_output_table(result_records, meta, units, fitstack=False):
 
     from astropy.table import hstack
 
     # Initialize the output table from the metadata table.
     metacols = set(meta.colnames)
 
-    if stackfit:
+    if fitstack:
         initcols = ('STACKID', 'SURVEY', 'PROGRAM')
     else:
         initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID')
