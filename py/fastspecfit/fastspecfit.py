@@ -40,6 +40,20 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
     one_spectrum(data, meta, uncertainty_floor=uncertainty_floor, fastphot=fastphot,
                  synthphot=True, debug_plots=debug_plots)
 
+    # Copy parsed photometry from the 'data' dictionary to the 'meta' table.
+    if not fastphot:
+        if not stackfit:
+            if hasattr(phot, 'fiber_bands'):
+                fibertotflux = data['fiberphot']['nanomaggies']
+                for iband, band in enumerate(phot.fiber_bands):
+                    meta[f'FIBERTOTFLUX_{band.upper()}'] = fibertotflux[iband]
+
+        flux = data['photometry']['nanomaggies']
+        fluxivar = data['photometry']['nanomaggies_ivar']
+        for iband, band in enumerate(phot.bands):
+            meta[f'FLUX_{band.upper()}'] = flux[iband]
+            meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
+
     # output structure
     out = BoxedScalar(out_dtype)
 
@@ -58,7 +72,7 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
                                  debug_plots=debug_plots, specflux_monte=specflux_monte,
                                  continuummodel_monte=continuummodel_monte)
 
-    return out.value, emmodel
+    return out.value, meta, emmodel
 
 
 def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False):
@@ -77,7 +91,9 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         Intracommunicator used with MPI parallelism.
 
     """
-    from fastspecfit.io import DESISpectra, write_fastspecfit
+    from astropy.table import vstack
+    from fastspecfit.io import (DESISpectra, get_output_dtype, create_output_meta,
+                                create_output_table, write_fastspecfit)
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
@@ -196,7 +212,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     _out = mp_pool.starmap(fastspec_one, fitargs)
     out = list(zip(*_out))
 
-    meta = create_output_meta(meta, data, phot=sc_data.photometry,
+    meta = create_output_meta(vstack(out[1]), phot=sc_data.photometry,
                               fastphot=fastphot, stackfit=stackfit)
 
     results = create_output_table(out[0], meta, out_units,
@@ -205,8 +221,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     if fastphot:
         modelspectra = None
     else:
-        from astropy.table import vstack # preserves metadata
-        modelspectra = vstack(out[1], join_type='exact', metadata_conflicts='error')
+        modelspectra = vstack(out[2], join_type='exact', metadata_conflicts='error')
 
     # if multiprocessing, clean up workers
     mp_pool.close()
@@ -309,330 +324,3 @@ def parse(options=None):
     return args
 
 
-def get_output_dtype(specprod, phot, linetable, ncoeff,
-                     fastphot=False, stackfit=False):
-    """
-    Get type of one fastspecfit output data record, along
-    with dictionary of units for any fields that have them.
-
-    """
-    import astropy.units as u
-
-    out_dtype = []
-    out_units = {}
-
-    def add_field(name, dtype, shape=None, unit=None):
-        if shape is not None:
-            t = (name, dtype, shape) # subarray
-        else:
-            t = (name, dtype)
-        out_dtype.append(t)
-
-        if unit is not None:
-            out_units[name] = unit
-
-    add_field('Z', dtype='f8') # redshift
-    add_field('COEFF', shape=(ncoeff,), dtype='f4')
-
-    if not fastphot:
-        add_field('RCHI2', dtype='f4')      # full-spectrum reduced chi2
-        add_field('RCHI2_CONT', dtype='f4') # rchi2 fitting just to the continuum (spec+phot)
-    add_field('RCHI2_PHOT', dtype='f4') # rchi2 fitting just to the photometry
-
-    if stackfit:
-        for cam in ('BRZ'):
-            add_field(f'SNR_{cam}', dtype='f4') # median S/N in each camera
-        for cam in ('BRZ'):
-            add_field(f'SMOOTHCORR_{cam}', dtype='f4')
-    else:
-        if not fastphot:
-            # if the zeroth object has a fully masked camera, this data model will fail
-            #if data is not None:
-            #    for cam in data[0]['cameras']:
-            #        add_field(f'SNR_{cam.upper()}'), dtype='f4') # median S/N in each camera
-            #    for cam in data[0]['cameras']:
-            #        add_field(f'SMOOTHCORR_{cam.upper()}'), dtype='f4')
-            for cam in ('B', 'R', 'Z'):
-                add_field(f'SNR_{cam.upper()}', dtype='f4') # median S/N in each camera
-            for cam in ('B', 'R', 'Z'):
-                add_field(f'SMOOTHCORR_{cam.upper()}', dtype='f4')
-
-    add_field('VDISP', dtype='f4', unit=u.kilometer/u.second)
-    if not fastphot:
-        add_field('VDISP_IVAR', dtype='f4', unit=u.second**2/u.kilometer**2)
-    add_field('TAUV', dtype='f4')
-    add_field('TAUV_IVAR', dtype='f4')
-    add_field('AGE', dtype='f4', unit=u.Gyr)
-    add_field('AGE_IVAR', dtype='f4', unit=1/u.Gyr**2)
-    add_field('ZZSUN', dtype='f4')
-    add_field('ZZSUN_IVAR', dtype='f4')
-    add_field('LOGMSTAR', dtype='f4', unit=u.solMass)
-    add_field('LOGMSTAR_IVAR', dtype='f4', unit=1/u.solMass**2)
-    add_field('SFR', dtype='f4', unit=u.solMass/u.year)
-    add_field('SFR_IVAR', dtype='f4', unit=u.year**2/u.solMass**2)
-    #add_field('FAGN', dtype='f4')
-
-    if not fastphot:
-        add_field('DN4000', dtype='f4')
-        add_field('DN4000_OBS', dtype='f4')
-        add_field('DN4000_IVAR', dtype='f4')
-    add_field('DN4000_MODEL', dtype='f4')
-    add_field('DN4000_MODEL_IVAR', dtype='f4')
-
-    if not fastphot:
-        # observed-frame photometry synthesized from the spectra
-        for band in phot.synth_bands:
-            add_field(f'FLUX_SYNTH_{band.upper()}', dtype='f4', unit='nanomaggies')
-            #add_field(f'FLUX_SYNTH_IVAR_{band.upper()}'), dtype='f4', unit='1/nanomaggies**2')
-        # observed-frame photometry synthesized the best-fitting spectroscopic model
-        for band in phot.synth_bands:
-            add_field(f'FLUX_SYNTH_SPECMODEL_{band.upper()}', dtype='f4', unit='nanomaggies')
-    # observed-frame photometry synthesized the best-fitting continuum model
-    for band in phot.bands:
-        add_field(f'FLUX_SYNTH_PHOTMODEL_{band.upper()}', dtype='f4', unit='nanomaggies')
-
-    for band, shift in zip(phot.absmag_bands, phot.band_shift):
-        band = band.upper()
-        shift = int(10*shift)
-        add_field(f'ABSMAG{shift:02d}_{band}', dtype='f4', unit=u.mag) # absolute magnitudes
-        add_field(f'ABSMAG{shift:02d}_IVAR_{band}', dtype='f4', unit=1/u.mag**2)
-        add_field(f'ABSMAG{shift:02d}_SYNTH_{band}', dtype='f4', unit=u.mag) # absolute magnitudes
-        add_field(f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}', dtype='f4', unit=1/u.mag**2)
-    for band, shift in zip(phot.absmag_bands, phot.band_shift):
-        band = band.upper()
-        shift = int(10*shift)
-        add_field(f'KCORR{shift:02d}_{band}', dtype='f4', unit=u.mag)
-
-    for wave in ['1500', '2800']:
-        add_field(f'LOGLNU_{wave}',  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
-        add_field(f'LOGLNU_{wave}_IVAR',  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
-    for wave in ['1450', '1700', '3000', '5100']:
-        add_field(f'LOGL_{wave}', dtype='f4', unit=10**(10)*u.solLum)
-        add_field(f'LOGL_{wave}_IVAR', dtype='f4', unit=10**(10)*u.solLum)
-    for line in ['FLYA_1215', 'FOII_3727', 'FHBETA', 'FOIII_5007', 'FHALPHA']:
-        add_field(f'{line}_CONT', dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
-        add_field(f'{line}_CONT_IVAR', dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
-
-    if not fastphot:
-        # Add chi2 metrics
-        #add_field('DOF',  dtype='i8') # full-spectrum dof
-        add_field('RCHI2_LINE', dtype='f4') # reduced chi2 with broad line-emission
-        #add_field('NDOF_LINE', dtype='i8') # number of degrees of freedom corresponding to rchi2_line
-        #add_field('DOF_BROAD', dtype='i8')
-        add_field('DELTA_LINECHI2', dtype='f4') # delta-reduced chi2 with and without broad line-emission
-        add_field('DELTA_LINENDOF', dtype=np.int32)
-
-        # aperture corrections
-        add_field('APERCORR', dtype='f4') # median aperture correction
-        for band in phot.synth_bands:
-            add_field(f'APERCORR_{band.upper()}', dtype='f4')
-
-        add_field('NARROW_Z', dtype='f8')
-        add_field('NARROW_ZRMS', dtype='f8')
-        add_field('BROAD_Z', dtype='f8')
-        add_field('BROAD_ZRMS', dtype='f8')
-        add_field('UV_Z', dtype='f8')
-        add_field('UV_ZRMS', dtype='f8')
-
-        add_field('NARROW_SIGMA', dtype='f4', unit=u.kilometer / u.second)
-        add_field('NARROW_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
-        add_field('BROAD_SIGMA', dtype='f4', unit=u.kilometer / u.second)
-        add_field('BROAD_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
-        add_field('UV_SIGMA', dtype='f4', unit=u.kilometer / u.second)
-        add_field('UV_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
-
-        # special columns for the fitted doublets
-        add_field('MGII_DOUBLET_RATIO', dtype='f4')
-        add_field('MGII_DOUBLET_RATIO_IVAR', dtype='f4')
-        add_field('OII_DOUBLET_RATIO', dtype='f4')
-        add_field('OII_DOUBLET_RATIO_IVAR', dtype='f4')
-        add_field('SII_DOUBLET_RATIO', dtype='f4')
-        add_field('SII_DOUBLET_RATIO_IVAR', dtype='f4')
-
-        for line in linetable['name']:
-            line = line.upper()
-            add_field(f'{line}_MODELAMP', dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
-            #add_field(f'{line}_MODELAMP_IVAR', dtype='f4',
-            #                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
-            add_field(f'{line}_AMP', dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
-            add_field(f'{line}_AMP_IVAR', dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
-            add_field(f'{line}_FLUX', dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2))
-            #add_field(f'{line}_FLUX_GAUSS_IVAR', dtype='f4',
-            #                      unit=10**34*u.second**2*u.cm**4/u.erg**2)
-            add_field(f'{line}_FLUX_IVAR', dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4/u.erg**2)
-            add_field(f'{line}_BOXFLUX', dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2))
-            add_field(f'{line}_BOXFLUX_IVAR', dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4/u.erg**2)
-
-            add_field(f'{line}_VSHIFT', dtype='f4',
-                                  unit=u.kilometer/u.second)
-            add_field(f'{line}_VSHIFT_IVAR', dtype='f4',
-                                  unit=u.second**2/u.kilometer**2)
-            add_field(f'{line}_SIGMA', dtype='f4',
-                                  unit=u.kilometer / u.second)
-            add_field(f'{line}_SIGMA_IVAR', dtype='f4',
-                                  unit=u.second**2/u.kilometer**2)
-
-            add_field(f'{line}_CONT', dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
-            add_field(f'{line}_CONT_IVAR', dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
-            add_field(f'{line}_EW', dtype='f4',
-                                  unit=u.Angstrom)
-            add_field(f'{line}_EW_IVAR', dtype='f4',
-                                  unit=1/u.Angstrom**2)
-            add_field(f'{line}_FLUX_LIMIT', dtype='f4',
-                                  unit=u.erg/(u.second*u.cm**2))
-            #add_field(f'{line}_EW_LIMIT', dtype='f4',
-            #                      unit=u.Angstrom)
-            add_field(f'{line}_CHI2', dtype='f4')
-            add_field(f'{line}_NPIX', dtype=np.int32)
-
-        for line in ['CIV_1549', 'MGII_2800', 'HBETA', 'OIII_5007']:
-            for n in range(1, 4):
-                add_field(f'{line}_MOMENT{n}', dtype='f4', unit=u.Angstrom**n)
-                add_field(f'{line}_MOMENT{n}_IVAR', dtype='f4', unit=1/(u.Angstrom**n)**2)
-
-    return np.dtype(out_dtype, align=True), out_units
-
-
-def create_output_meta(input_meta, data, phot,
-                       fastphot=False, stackfit=False):
-    """Create the fastspecfit output metadata table.
-
-    """
-    from fastspecfit.io import TARGETINGBITS
-    from astropy.table import Table
-    import astropy.units as u
-
-    nobj = len(input_meta)
-
-    # The information stored in the metadata table depends on which spectra
-    # were fitted (exposures, nightly coadds, deep coadds).
-    if stackfit:
-        fluxcols = ['PHOTSYS']
-    else:
-        fluxcols = []
-        if hasattr(phot, 'outcols'):
-            fluxcols.extend(phot.outcols)
-        if hasattr(phot, 'fiber_bands'):
-            fluxcols.extend([f'FIBERFLUX_{band.upper()}' for band in phot.fiber_bands])
-            fluxcols.extend([f'FIBERTOTFLUX_{band.upper()}' for band in phot.fiber_bands])
-        fluxcols.extend(phot.fluxcols)
-        fluxcols.extend(phot.fluxivarcols)
-        fluxcols.append('EBV')
-        fluxcols.extend([f'MW_TRANSMISSION_{band.upper()}' for band in phot.bands])
-
-    colunit = {'RA': u.deg, 'DEC': u.deg, 'EBV': u.mag}
-    for fcol, icol in zip(phot.fluxcols, phot.fluxivarcols):
-        colunit[fcol.upper()] = phot.photounits
-        colunit[icol.upper()] = f'{phot.photounits}-2'
-    if hasattr(phot, 'fiber_bands'):
-        for band in phot.fiber_bands:
-            band = band.upper()
-            colunit[f'FIBERFLUX_{band}'] = phot.photounits
-            colunit[f'FIBERTOTFLUX_{band}'] = phot.photounits
-
-    skipcols = fluxcols + ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE']
-
-    if stackfit:
-        redrockcols = ('Z')
-    else:
-        redrockcols = ('Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR', 'TSNR2_BGS',
-                       'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
-
-    meta = Table()
-    metacols = set(input_meta.colnames)
-
-    # All of this business is so we can get the columns in the order we want
-    # (i.e., the order that matches the data model).
-    if stackfit:
-        for metacol in ('STACKID', 'SURVEY', 'PROGRAM'):
-            if metacol in metacols:
-                meta[metacol] = input_meta[metacol]
-    else:
-        for metacol in ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
-                        'EXPID', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS'):
-            if metacol in metacols:
-                meta[metacol] = input_meta[metacol]
-
-        if 'SURVEY' in meta.colnames:
-            if np.any(np.isin(meta['SURVEY'], 'main')) or np.any(np.isin(meta['SURVEY'], 'special')):
-                TARGETINGCOLS = TARGETINGBITS['default']
-            else:
-                TARGETINGCOLS = TARGETINGBITS['all']
-        else:
-            TARGETINGCOLS = TARGETINGBITS['all']
-
-        for metacol in metacols:
-            if metacol in skipcols or metacol in TARGETINGCOLS or metacol in meta.colnames or metacol in redrockcols:
-                continue
-            else:
-                meta[metacol] = input_meta[metacol]
-
-        for bitcol in TARGETINGCOLS:
-            if bitcol in metacols:
-                meta[bitcol] = input_meta[bitcol]
-            else:
-                meta[bitcol] = np.zeros(shape=(1,), dtype=np.int64)
-
-    for redrockcol in redrockcols:
-        if redrockcol in metacols: # the Z_RR from quasarnet may not be present
-            meta[redrockcol] = input_meta[redrockcol]
-
-    for fluxcol in fluxcols:
-        meta[fluxcol] = input_meta[fluxcol]
-
-    # assign units to any columns that should have them
-    for col in meta.colnames:
-        if col in colunit:
-            meta[col].unit = colunit[col]
-
-    # copy some values from the input data to the output metadata
-    for iobj, _data in enumerate(data):
-        if not fastphot:
-            if not stackfit:
-                if hasattr(phot, 'fiber_bands'):
-                    fibertotflux = _data['fiberphot']['nanomaggies']
-                    #fibertotfluxivar = _data['fiberphot']['nanomaggies_ivar']
-                    for iband, band in enumerate(phot.fiber_bands):
-                        meta[f'FIBERTOTFLUX_{band.upper()}'][iobj] = fibertotflux[iband]
-                        #result['FIBERTOTFLUX_IVAR_{band.upper()}'] = fibertotfluxivar[iband]
-
-            flux = _data['photometry']['nanomaggies']
-            fluxivar = _data['photometry']['nanomaggies_ivar']
-            for iband, band in enumerate(phot.bands):
-                meta[f'FLUX_{band.upper()}'][iobj] = flux[iband]
-                meta[f'FLUX_IVAR_{band.upper()}'][iobj] = fluxivar[iband]
-
-    return meta
-
-
-def create_output_table(result_records, meta, units, stackfit=False):
-
-    from astropy.table import hstack
-
-    # Initialize the output table from the metadata table.
-    metacols = set(meta.colnames)
-
-    if stackfit:
-        initcols = ('STACKID', 'SURVEY', 'PROGRAM')
-    else:
-        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID')
-    initcols = [col for col in initcols if col in metacols]
-
-    cdata = [meta[col] for col in initcols]
-    results = Table()
-    results.add_columns(cdata)
-
-    # Now add the measurements. Columns and their dtypes are inferred from the
-    # array's dtype.
-    results = hstack((results, Table(np.array(result_records), units=units)))
-
-    return results
