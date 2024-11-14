@@ -1029,7 +1029,6 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
             return (tauv, coeff, sedmodel, sedmodel_nolines, dn4000_model, resid)
 
-
         (tauv_, coeff,
          sedmodel, sedmodel_nolines,
          dn4000_model, resid) = \
@@ -1061,14 +1060,15 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
             tauv_guess_monte = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
 
-            do_fit_monte = np.vectorize(do_fit,
-                                        signature='(),(n1)->(),(m1),(m2),(m3),(),(m4)',
-                                        otypes=(np.float64,)*6)
+            res = [
+                do_fit(tauv_guess, objflam) for
+                tauv_guess, objflam in
+                zip(tauv_guess_monte, objflam_monte)
+            ]
 
             (tauv_monte, coeff_monte,
              sedmodel_monte, sedmodel_nolines_monte,
-             dn4000_model_monte, _) = \
-                 do_fit_monte(tauv_guess_monte, objflam_monte)
+             dn4000_model_monte, _) = tuple(zip(*res))
 
             tauv_var = np.var(tauv_monte)
             dn4000_model_var = np.var(dn4000_model_monte)
@@ -1326,12 +1326,12 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
             # requested).
             if specflux_monte is not None:
 
-                do_fit_vdisp_monte = np.vectorize(do_fit_vdisp,
-                                                  signature='(n1)->(),(),(m1),(),(m2)',
-                                                  otypes=(np.float64,)*5)
-
-                (tauv_monte, vdisp_monte, _, age_monte, _) = \
-                    do_fit_vdisp_monte(specflux_monte)
+                res = [
+                    do_fit_vdisp(specflux) for
+                    specflux in
+                    specflux_monte
+                ]
+                (tauv_monte, vdisp_monte, _, age_monte, _) = tuple(zip(*res))
 
                 tauv_sigma = np.std(tauv_monte)
                 age_sigma = np.std(age_monte)
@@ -1484,16 +1484,16 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
 
     if specflux_monte is not None:
 
-        tauv_guess = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
+        tauv_guess_monte = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
 
-        do_fit_full_monte = np.vectorize(do_fit_full,
-                                         signature='(),(n1),(n2)->(),(m1),(m2),(m3),(m4),(),(m5)',
-                                         otypes=(np.float64,)*7)
-
+        res = [
+            do_fit_full(tauv_guess, objflam, specflux) for
+            tauv_guess, objflam, specflux in
+            zip(tauv_guess_monte, objflam_monte, specflux_monte)
+        ]
         (tauv_monte, coeff_monte,
          sedmodel_monte, sedmodel_nolines_monte,
-         desimodel_nolines_monte, dn4000_model_monte, _) = \
-             do_fit_full_monte(tauv_guess, objflam_monte, specflux_monte)
+         desimodel_nolines_monte, dn4000_model_monte, _) = tuple(zip(*res))
 
         tauv_var = np.var(tauv_monte)
         if tauv_var > TINY:
@@ -1568,9 +1568,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
 
     if desimodel_nolines_monte is not None:
         continuummodel_monte = []
-
+        dnm = np.vstack(desimodel_nolines_monte)
         for (ss, ee) in data['camerapix']:
-            continuummodel_monte.append(desimodel_nolines_monte[:,ss:ee])
+            continuummodel_monte.append(dnm[:,ss:ee])
     else:
         continuummodel_monte = None
 
@@ -1709,18 +1709,18 @@ def continuum_specfit(data, result, templates, igm, phot,
             cfluxes_monte = np.empty((nmonte, len(cfluxes)))
 
             for imonte in range(nmonte):
-                synth_absmag_monte[imonte, :] = phot.kcorr_and_absmag(
+                synth_absmag_monte[imonte] = phot.kcorr_and_absmag(
                     data['photometry']['nanomaggies'].value,
                     data['photometry']['nanomaggies_ivar'].value,
                     redshift, data['dmodulus'], data['photsys'],
-                    CTools.ztemplatewave, sedmodel_monte[imonte, :],
+                    CTools.ztemplatewave, sedmodel_monte[imonte],
                     compute_kcorr=False)
 
                 lums1, cfluxes1 = CTools.continuum_fluxes(
-                    sedmodel_nolines_monte[imonte, :], uniqueid=data['uniqueid'],
+                    sedmodel_nolines_monte[imonte], uniqueid=data['uniqueid'],
                     debug_plots=False)
-                lums_monte[imonte, :] = list(lums1.values())
-                cfluxes_monte[imonte, :] = list(cfluxes1.values())
+                lums_monte[imonte] = list(lums1.values())
+                cfluxes_monte[imonte] = list(cfluxes1.values())
 
             synth_absmag_var = np.var(synth_absmag_monte, axis=0)
             for band, shift, var in zip(phot.absmag_bands, phot.band_shift, synth_absmag_var):
@@ -1761,12 +1761,12 @@ def continuum_specfit(data, result, templates, igm, phot,
         result['SFR'] = sfr
 
         if coeff_monte is not None:
-            _get_sps_properties_monte = np.vectorize(_get_sps_properties,
-                                                     signature='(n1)->(),(),(),()',
-                                                     otypes=(np.float64,)*4)
-
-            age_monte, zzsun_monte, logmstar_monte, sfr_monte = \
-                _get_sps_properties_monte(coeff_monte)
+            res = [
+                _get_sps_properties(coeff) for
+                coeff in
+                coeff_monte
+            ]
+            age_monte, zzsun_monte, logmstar_monte, sfr_monte = tuple(zip(*res))
 
             for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
                                       ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
