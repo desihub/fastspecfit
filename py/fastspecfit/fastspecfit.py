@@ -15,14 +15,13 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import BoxedScalar, MPPool
 
 
-#def fastspec_one(iobj, data, out_dtype, broadlinefit=True, fastphot=False,
-def fastspec_one(out_dtype, broadlinefit=True, fastphot=False,
-                 constrain_age=False, no_smooth_continuum=False,
-                 debug_plots=False, minsnr_balmer_broad=2.5, nmonte=50,
-                 seed=1):
+def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
+                 constrain_age=False, no_smooth_continuum=False, debug_plots=False,
+                 uncertainty_floor=0.01, minsnr_balmer_broad=2.5, nmonte=50, seed=1):
     """Run :func:`fastspec` on a single object.
 
     """
+    from fastspecfit.io import one_spectrum
     from fastspecfit.emlines import emline_specfit
     from fastspecfit.continuum import continuum_specfit
 
@@ -31,14 +30,15 @@ def fastspec_one(out_dtype, broadlinefit=True, fastphot=False,
     emline_table = sc_data.emlines.table
     templates = sc_data.templates
 
-    import pdb ; pdb.set_trace()
+    if fastphot:
+        log.info(f'Continuum fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
+                 f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
+    else:
+        log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
+                 f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
 
-    #if fastphot:
-    #    log.info(f'Continuum fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
-    #             f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
-    #else:
-    #    log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
-    #             f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
+    one_spectrum(data, meta, uncertainty_floor=uncertainty_floor, fastphot=fastphot,
+                 synthphot=True, debug_plots=debug_plots)
 
     # output structure
     out = BoxedScalar(out_dtype)
@@ -131,8 +131,8 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
 
     sc_data.initialize(**init_sc_args)
 
-    # if multiprocessing, create a pool of worker processes
-    # and initialize single-copy objects in each worker
+    # If multiprocessing, create a pool of worker processes and initialize
+    # single-copy objects in each worker.
     if args.mp > 1 and not 'NERSC_HOST' in os.environ:
         import multiprocessing
         multiprocessing.set_start_method('fork')
@@ -166,9 +166,9 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
         if len(Spec.specfiles) == 0:
             return
 
-        import pdb ; pdb.set_trace()
-        data = Spec.read(sc_data.photometry, fastphot=fastphot, constrain_age=args.constrain_age)
+        data, meta = Spec.read(sc_data.photometry, fastphot=fastphot, constrain_age=args.constrain_age)
 
+    ntargets = len(meta)
     ncoeff = sc_data.templates.ntemplates
     out_dtype, out_units = get_output_dtype(
         Spec.specprod, phot=sc_data.photometry,
@@ -178,35 +178,25 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     # Fit in parallel
     t0 = time.time()
     fitargs = [{
+        'iobj':                iobj,
+        'data':                data[iobj],
+        'meta':                meta[iobj],
         'out_dtype':           out_dtype,
         'broadlinefit':        args.broadlinefit,
         'fastphot':            fastphot,
         'constrain_age':       args.constrain_age,
         'no_smooth_continuum': args.no_smooth_continuum,
         'debug_plots':         args.debug_plots,
+        'uncertainty_floor':   args.uncertainty_floor,
         'minsnr_balmer_broad': args.minsnr_balmer_broad,
         'nmonte':              args.nmonte,
         'seed':                args.seed,
-        }]
-    #fitargs = [{
-    #    'iobj':                iobj,
-    #    'data':                data[iobj],
-    #    'out_dtype':           out_dtype,
-    #    'broadlinefit':        args.broadlinefit,
-    #    'fastphot':            fastphot,
-    #    'constrain_age':       args.constrain_age,
-    #    'no_smooth_continuum': args.no_smooth_continuum,
-    #    'debug_plots':         args.debug_plots,
-    #    'minsnr_balmer_broad': args.minsnr_balmer_broad,
-    #    'nmonte':              args.nmonte,
-    #    'seed':                args.seed,
-    #} for iobj in range(Spec.ntargets)]
+    } for iobj in range(len(meta))]
 
     _out = mp_pool.starmap(fastspec_one, fitargs)
     out = list(zip(*_out))
 
-    meta = create_output_meta(Spec.meta, data,
-                              phot=sc_data.photometry,
+    meta = create_output_meta(meta, data, phot=sc_data.photometry,
                               fastphot=fastphot, stackfit=stackfit)
 
     results = create_output_table(out[0], meta, out_units,
@@ -221,7 +211,7 @@ def fastspec(fastphot=False, stackfit=False, args=None, comm=None, verbose=False
     # if multiprocessing, clean up workers
     mp_pool.close()
 
-    log.info(f'Fitting {Spec.ntargets} object(s) took {time.time()-t0:.2f} seconds.')
+    log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
 
     write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
@@ -304,6 +294,7 @@ def parse(options=None):
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
+    parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum..')
     parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')

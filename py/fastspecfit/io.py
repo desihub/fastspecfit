@@ -34,13 +34,7 @@ TARGETINGBITS = {
 
 # fibermap and exp_fibermap columns to read
 FMCOLS = ('TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE',
-          'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID',
-          #'FIBERFLUX_G', 'FIBERFLUX_R', 'FIBERFLUX_Z',
-          #'FIBERTOTFLUX_G', 'FIBERTOTFLUX_R', 'FIBERTOTFLUX_Z',
-          #'FLUX_G', 'FLUX_R', 'FLUX_Z', 'FLUX_W1', 'FLUX_W2',
-          #'FLUX_IVAR_G', 'FLUX_IVAR_R', 'FLUX_IVAR_Z', 'FLUX_IVAR_W1', 'FLUX_IVAR_W2'
-          )
-#FMCOLS = ('TARGETID', 'TARGET_RA', 'TARGET_DEC', 'COADD_FIBERSTATUS', 'OBJTYPE')
+          'PHOTSYS', 'RELEASE', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID')
 
 EXPFMCOLS = {
     'perexp':     ('TARGETID', 'TILEID', 'FIBER', 'EXPID'),
@@ -62,65 +56,23 @@ QNCOLS = ('TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
 QNLINES = ('C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha')
 
 
-def preprocess_one_spectrum(specdata, meta, ebv, fastphot,
-                            synthphot, debug_plots, min_uncertainty=0.01):
+def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1, fastphot=False,
+                 synthphot=True, debug_plots=False):
     """Pre-process the data for a single object.
 
     """
-    from fastspecfit.resolution import Resolution
-    from fastspecfit.util import mwdust_transmission, median, ivar2var
-    from fastspecfit.linemasker import LineMasker
+    from fastspecfit.util import mwdust_transmission
 
-    emline_table = sc_data.emlines.table
     phot = sc_data.photometry
-
-    log.info(f'Pre-processing spectrum {iobj} [uniqueid={specdata["uniqueid"]} z={specdata["redshift"]:.6f}].')
-
-    RV = 3.1
-    meta['EBV'] = ebv
-
     filters = phot.filters[specdata['photsys']]
-    synth_filters = phot.synth_filters[specdata['photsys']]
-    if hasattr(phot, 'fiber_filters'):
-        fiber_filters = phot.fiber_filters[specdata['photsys']]
-    else:
-        fiber_filters = None
 
-    # Unpack the imaging photometry and correct for MW dust.
-    if fiber_filters is not None:
-        # fiber fluxes
-        mw_transmission_fiberflux = np.array([mwdust_transmission(ebv, filtername) for filtername in
-                                              phot.fiber_filters[specdata['photsys']].names])
-        fibermaggies = np.zeros(len(phot.fiber_bands))
-        fibertotmaggies = np.zeros(len(phot.fiber_bands))
-        #ivarfibermaggies = np.zeros(len(phot.fiber_bands))
-        for iband, band in enumerate(phot.fiber_bands):
-            band = band.upper()
-            fibermaggies[iband] = meta[f'FIBERFLUX_{band}'] / mw_transmission_fiberflux[iband]
-            fibertotmaggies[iband] = meta[f'FIBERTOTFLUX_{band}'] / mw_transmission_fiberflux[iband]
-
-        lambda_eff=fiber_filters.effective_wavelengths.value
-        specdata['fiberphot'] = Photometry.parse_photometry(phot.fiber_bands,
-                                                            maggies=fibermaggies,
-                                                            nanomaggies=True,
-                                                            lambda_eff=lambda_eff)
-        specdata['fibertotphot'] = Photometry.parse_photometry(phot.fiber_bands,
-                                                               maggies=fibertotmaggies,
-                                                               nanomaggies=True,
-                                                               lambda_eff=lambda_eff)
-
-    # total fluxes
-    mw_transmission_flux = np.array([mwdust_transmission(ebv, filtername) for filtername in
-                                     phot.filters[specdata['photsys']].names])
-    for band, mwdust in zip(phot.bands, mw_transmission_flux):
-        band = band.upper()
-        meta[f'MW_TRANSMISSION_{band}'] = mwdust
-
+    # Process the total fluxes, correcting for MW dust.
     maggies = np.zeros(len(phot.bands))
     ivarmaggies = np.zeros(len(phot.bands))
-    for iband, (fluxcol, ivarcol) in enumerate(zip(phot.fluxcols, phot.fluxivarcols)):
-        maggies[iband] = meta[fluxcol.upper()] / mw_transmission_flux[iband]
-        ivarmaggies[iband] = meta[ivarcol.upper()] * mw_transmission_flux[iband]**2
+    for iband, (band, fluxcol, ivarcol) in enumerate(zip(phot.bands, phot.fluxcols, phot.fluxivarcols)):
+        transmission = meta[f'MW_TRANSMISSION_{band.upper()}']
+        maggies[iband] = meta[fluxcol.upper()] / transmission
+        ivarmaggies[iband] = meta[ivarcol.upper()] * transmission**2
 
     if not np.all(ivarmaggies >= 0.):
         errmsg = 'Some ivarmaggies are negative!'
@@ -128,13 +80,17 @@ def preprocess_one_spectrum(specdata, meta, ebv, fastphot,
         raise ValueError(errmsg)
 
     specdata['photometry'] = Photometry.parse_photometry(
-        phot.bands, maggies=maggies, ivarmaggies=ivarmaggies, nanomaggies=True,
-        lambda_eff=filters.effective_wavelengths.value,
+        phot.bands, maggies=maggies, ivarmaggies=ivarmaggies,
+        nanomaggies=True, lambda_eff=filters.effective_wavelengths.value,
         min_uncertainty=phot.min_uncertainty)
 
     if not fastphot:
         from desiutil.dust import dust_transmission
+        from fastspecfit.util import median, ivar2var
+        from fastspecfit.resolution import Resolution
+        from fastspecfit.linemasker import LineMasker
 
+        # now process the spectroscopy
         specdata.update({
             'wave': [],
             'flux': [],
@@ -144,8 +100,6 @@ def preprocess_one_spectrum(specdata, meta, ebv, fastphot,
             'snr': np.zeros(len(np.atleast_1d(specdata['cameras'])), 'f4'),
             'linemask': [],
             'linepix': [],
-            #'linename_balmer_broad': [],
-            #'linepix_balmer_broad': [],
         })
 
         cameras, npixpercamera = [], []
@@ -179,7 +133,7 @@ def preprocess_one_spectrum(specdata, meta, ebv, fastphot,
                     # should we also interpolate over the coadded resolution matrix??
 
                     # include the minimum uncertainty in quadrature with the input ivar
-                    minvar = (min_uncertainty * specdata['flux0'][icam])**2
+                    minvar = (uncertainty_floory * specdata['flux0'][icam])**2
                     var, I = ivar2var(ivar)
                     newivar = np.zeros_like(ivar)
                     newivar[I] = 1. / (minvar[I] + var[I])
@@ -192,7 +146,7 @@ def preprocess_one_spectrum(specdata, meta, ebv, fastphot,
                     specdata['snr'][icam] = median(specdata['flux0'][icam] * np.sqrt(ivar))
 
                     #mw_transmission_spec = 10**(-0.4 * ebv * RV * ext_odonnell(wave[camera], Rv=RV))
-                    mw_transmission_spec = dust_transmission(specdata['wave0'][icam], ebv, Rv=RV)
+                    mw_transmission_spec = dust_transmission(specdata['wave0'][icam], meta['EBV'], Rv=RV)
                     specdata['flux'].append(specdata['flux0'][icam] / mw_transmission_spec)
                     specdata['ivar'].append(ivar * mw_transmission_spec**2)
                     specdata['wave'].append(specdata['wave0'][icam])
@@ -224,7 +178,7 @@ def preprocess_one_spectrum(specdata, meta, ebv, fastphot,
         specdata['camerapix'][:, 1] = c_ends
 
         # use the coadded spectrum to build a robust emission-line mask
-        LM = LineMasker(emline_table)
+        LM = LineMasker(sc_data.emlines.table)
         pix = LM.build_linemask(
             specdata['coadd_wave'], specdata['coadd_flux'],
             specdata['coadd_ivar'], specdata['coadd_res'],
@@ -255,8 +209,35 @@ def preprocess_one_spectrum(specdata, meta, ebv, fastphot,
         specdata.update(pix)
         del pix
 
+        # Optionally add the fiber photometry; note that the transmission
+        # factors were computed in DESISpectra.read.
+        if hasattr(phot, 'fiber_filters'):
+            fiber_filters = phot.fiber_filters[specdata['photsys']]
+
+            mw_transmission_fiberflux = specdata['mw_transmission_fiberflux']
+
+            fibermaggies = np.zeros(len(phot.fiber_bands))
+            fibertotmaggies = np.zeros(len(phot.fiber_bands))
+            #ivarfibermaggies = np.zeros(len(phot.fiber_bands))
+
+            for iband, band in enumerate(phot.fiber_bands):
+                band = band.upper()
+                fibermaggies[iband] = meta[f'FIBERFLUX_{band}'] / mw_transmission_fiberflux[iband]
+                fibertotmaggies[iband] = meta[f'FIBERTOTFLUX_{band}'] / mw_transmission_fiberflux[iband]
+
+            lambda_eff=fiber_filters.effective_wavelengths.value
+            specdata['fiberphot'] = Photometry.parse_photometry(phot.fiber_bands,
+                                                                maggies=fibermaggies,
+                                                                nanomaggies=True,
+                                                                lambda_eff=lambda_eff)
+            specdata['fibertotphot'] = Photometry.parse_photometry(phot.fiber_bands,
+                                                                   maggies=fibertotmaggies,
+                                                                   nanomaggies=True,
+                                                                   lambda_eff=lambda_eff)
+
         # Optionally synthesize photometry from the coadded spectrum.
-        if synthphot and synth_filters is not None:
+        if synthphot:
+            synth_filters = phot.synth_filters[specdata['photsys']]
             synthmaggies = Photometry.get_ab_maggies(synth_filters,
                                                      specdata['coadd_flux'] / FLUXNORM,
                                                      specdata['coadd_wave'])
@@ -265,7 +246,7 @@ def preprocess_one_spectrum(specdata, meta, ebv, fastphot,
                 phot.synth_bands, maggies=synthmaggies, nanomaggies=False,
                 lambda_eff=synth_filters.effective_wavelengths.value)
 
-    return specdata, meta
+    return specdata
 
 
 class DESISpectra(object):
@@ -806,7 +787,7 @@ class DESISpectra(object):
                       f'redrockfile in {time.time()-t0:.2f} seconds.')
 
 
-    def read(self, photometry, fastphot=False, synthphot=True, constrain_age=False):
+    def read(self, photometry, fastphot=False, constrain_age=False):
         """Read selected spectra and/or broadband photometry.
 
         Parameters
@@ -891,20 +872,16 @@ class DESISpectra(object):
 
         SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
-        filters = photometry.filters[specdata['photsys']]
-        synth_filters = photometry.synth_filters[specdata['photsys']]
-        if hasattr(photometry, 'fiber_filters'):
-            fiber_filters = photometry.fiber_filters[specdata['photsys']]
-        else:
-            fiber_filters = None
-
-        alldata = []
+        alldata, allmeta = [], []
         for ispecfile, (specfile, meta) in enumerate(zip(self.specfiles, self.meta)):
             nobj = len(meta)
             if nobj == 1:
                 log.info(f'Reading {nobj} spectrum from {specfile}')
             else:
                 log.info(f'Reading {nobj} spectra from {specfile}')
+
+            nobj = len(meta)
+            uniqueid_col = self.phot.uniqueid_col
 
             # Pre-compute the luminosity distance, distance modulus, and age of
             # the universe.
@@ -922,24 +899,33 @@ class DESISpectra(object):
             else:
                 tuniv = np.full_like(redshift, 100.)
 
+            # Populate 'meta' with dust and filter-related quantities.
+            ebv = SFD.ebv(meta['RA'], meta['DEC'])
+            meta['EBV'] = ebv
+
             if 'PHOTSYS' in meta.colnames:
                 photsys = meta['PHOTSYS'].value
             else:
-                photsys = [''] * len(meta)
+                photsys = [''] * nobj
 
-            uniqueid_col = self.phot.uniqueid_col
+            if hasattr(photometry, 'fiber_filters'):
+                mw_transmission_fiberflux = np.ones((nobj, len(photometry.fiber_bands)))
 
-            # dust
-            ebv = SFD.ebv(meta['RA'], meta['DEC'])
-            for band, filt in zip(photometry.bands, filters.names):
-                band = band.upper()
-                meta[f'MW_TRANSMISSION_{band.upper()}'] = mwdust_transmission(ebv, filt)
+            for onephotsys in set(photsys):
+                I = np.where(onephotsys == photsys)[0]
 
-            import pdb ; pdb.set_trace()
+                filters = photometry.filters[onephotsys]
+                for band, filt in zip(photometry.bands, filters.names):
+                    meta[f'MW_TRANSMISSION_{band.upper()}'][I] = mwdust_transmission(ebv[I], filt)
+
+                if hasattr(photometry, 'fiber_filters'):
+                    for iband, filt in enumerate(photometry.fiber_filters[onephotsys].names):
+                        mw_transmission_fiberflux[I, iband] = mwdust_transmission(ebv, filt)
+                else:
+                    mw_transmission_fiberflux = None
 
             if fastphot:
-                mpargs = []
-                for iobj in range(len(meta)):
+                for iobj in range(nobj):
                     specdata = {
                         'uniqueid': meta[uniqueid_col][iobj],
                         'redshift': redshift[iobj],
@@ -948,17 +934,7 @@ class DESISpectra(object):
                         'dmodulus': dmod[iobj],
                         'tuniv': tuniv[iobj],
                         }
-
-                    mpargs.append({
-                        'iobj':        iobj,
-                        'specdata':    specdata,
-                        'meta':        meta[iobj],
-                        'ebv':         ebv[iobj],
-                        'fastphot':    True,
-                        'synthphot':   False,
-                        'debug_plots': debug_plots,
-                        'min_uncertainty': min_uncertainty,
-                    })
+                    alldata.append(specdata)
             else:
                 # Don't use .select since meta and spec can be sorted
                 # differently if a non-sorted targetids was passed. Do the
@@ -979,8 +955,7 @@ class DESISpectra(object):
                 # unpack the desispec.spectra.Spectra objects into simple arrays
                 cams = spec.bands
                 coadd_cams = coadd_spec.bands[0]
-                mpargs = []
-                for iobj in range(len(meta)):
+                for iobj in range(nobj):
                     specdata = {
                         'uniqueid': meta[uniqueid_col][iobj],
                         'redshift': redshift[iobj],
@@ -989,6 +964,8 @@ class DESISpectra(object):
                         'dluminosity': dlum[iobj],
                         'dmodulus': dmod[iobj],
                         'tuniv': tuniv[iobj],
+                        'ebv': ebv[iobj],
+                        'mw_transmission_fiberflux': mw_transmission_fiberflux[iobj, :],
                         'wave0': [spec.wave[cam] for cam in cams],
                         'flux0': [spec.flux[cam][iobj, :] for cam in cams],
                         'ivar0': [spec.ivar[cam][iobj, :] for cam in cams],
@@ -1002,38 +979,16 @@ class DESISpectra(object):
                     }
                     alldata.append(specdata)
 
-                    #mpargs.append({
-                    #    'iobj':        iobj,
-                    #    'specdata':    specdata,
-                    #    'meta':        meta[iobj],
-                    #    'ebv':         ebv[iobj],
-                    #    'fastphot':    fastphot,
-                    #    'synthphot':   synthphot,
-                    #    'debug_plots': debug_plots,
-                    #    'min_uncertainty': min_uncertainty,
-                    #})
+            allmeta.append(meta)
 
-            #out = mp_pool.starmap(DESISpectra.one_spectrum, mpargs)
-            #out = list(zip(*out))
-            self.meta[ispecfile] = Table(names=meta.columns, rows=out[1])
-            #alldata.append(out[0])
-            #del out
+        allmeta = vstack(allmeta)
 
-        alldata = np.concatenate(alldata)
-        self.meta = vstack(self.meta)
-        self.ntargets = len(self.meta)
-
-        #if self.ntargets > 1:
-        #    log.debug(f'Pre-processing {self.ntargets} spectra took {time.time()-t0:.2f} seconds.')
-        #else:
-        #    log.debug(f'Pre-processing {self.ntargets} spectrum took {time.time()-t0:.2f} seconds.')
-
-        return alldata
+        return alldata, allmeta
 
 
     def read_and_unpack(self, mp_pool, fastphot=False, synthphot=True,
              constrain_age=False, debug_plots=False,
-             min_uncertainty=0.01):
+             uncertainty_floor=0.01):
         """Read selected spectra and/or broadband photometry.
 
         Parameters
@@ -1170,7 +1125,7 @@ class DESISpectra(object):
                         'fastphot':    True,
                         'synthphot':   False,
                         'debug_plots': debug_plots,
-                        'min_uncertainty': min_uncertainty,
+                        'uncertainty_floor': uncertainty_floor,
                     })
             else:
                 # Don't use .select since meta and spec can be sorted
@@ -1222,7 +1177,7 @@ class DESISpectra(object):
                         'fastphot':    fastphot,
                         'synthphot':   synthphot,
                         'debug_plots': debug_plots,
-                        'min_uncertainty': min_uncertainty,
+                        'uncertainty_floor': uncertainty_floor,
                     })
 
             out = mp_pool.starmap(DESISpectra.one_spectrum, mpargs)
@@ -1246,7 +1201,7 @@ class DESISpectra(object):
 
     @staticmethod
     def one_spectrum(iobj, specdata, meta, ebv, fastphot,
-                     synthphot, debug_plots, min_uncertainty):
+                     synthphot, debug_plots, uncertainty_floor):
         """Process the data for a single object and correct for Galactic
         extinction. Also flag pixels which may be affected by emission lines.
 
@@ -1363,7 +1318,7 @@ class DESISpectra(object):
                         # should we also interpolate over the coadded resolution matrix??
 
                         # include the minimum uncertainty in quadrature with the input ivar
-                        minvar = (min_uncertainty * specdata['flux0'][icam])**2
+                        minvar = (uncertainty_floor * specdata['flux0'][icam])**2
                         var, I = ivar2var(ivar)
                         newivar = np.zeros_like(ivar)
                         newivar[I] = 1. / (minvar[I] + var[I])
