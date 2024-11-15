@@ -5,11 +5,13 @@ Change Log
 3.1.0 (not released yet)
 ------------------------
 
+* Merge two multiprocessing loops into one [`PR #192`_].
 * Monte Carlo to estimate model parameters [`PR #189`_].
 * Fix issues with log level retention [`PR #187`_].
 
 .. _`PR #187`: https://github.com/desihub/fastspecfit/pull/187
 .. _`PR #189`: https://github.com/desihub/fastspecfit/pull/189
+.. _`PR #192`: https://github.com/desihub/fastspecfit/pull/192
 
 3.0.0 (2024-10-30)
 ------------------
