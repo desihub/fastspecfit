@@ -64,7 +64,8 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
     continuummodel, smooth_continuum, continuummodel_monte, specflux_monte = \
         continuum_specfit(data, out, templates, igm, phot, constrain_age=constrain_age,
                           no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
-                          debug_plots=debug_plots, nmonte=nmonte, seed=seed)
+                          fitstack=fitstack, debug_plots=debug_plots, nmonte=nmonte,
+                          seed=seed)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -211,6 +212,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         'out_dtype':           out_dtype,
         'broadlinefit':        args.broadlinefit,
         'fastphot':            fastphot,
+        'fitstack':            fitstack,
         'constrain_age':       args.constrain_age,
         'no_smooth_continuum': args.no_smooth_continuum,
         'debug_plots':         args.debug_plots,
