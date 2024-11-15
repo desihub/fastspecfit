@@ -18,7 +18,7 @@ class Photometry(object):
     """Class to load filters and containing filter- and dust-related methods.
 
     """
-    def __init__(self, fphotofile=None, stackfit=False, ignore_photometry=False):
+    def __init__(self, fphotofile=None, fitstack=False, ignore_photometry=False):
 
         """
         Parameters
@@ -33,7 +33,7 @@ class Photometry(object):
 
         if fphotofile is None:
             from importlib import resources
-            if stackfit:
+            if fitstack:
                 fphotofile = resources.files('fastspecfit').joinpath('data/stacked-phot.yaml')
             else:
                 fphotofile = resources.files('fastspecfit').joinpath('data/legacysurvey-dr9.yaml')

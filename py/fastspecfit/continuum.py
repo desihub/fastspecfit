@@ -12,7 +12,7 @@ from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
 from fastspecfit.util import (
-    C_LIGHT, FLUXNORM, trapz_rebin, trapz_rebin_pre,
+    C_LIGHT, trapz_rebin, trapz_rebin_pre,
     quantile, median, sigmaclip, TINY, SQTINY)
 
 
@@ -23,13 +23,16 @@ class ContinuumTools(object):
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
                  vdisp_guess=250., tauv_bounds=(0., 2.),
                  vdisp_bounds=(75., 500.), vdisp_nbin=5,
-                 fastphot=False, constrain_age=False):
+                 fluxnorm=1e-17, massnorm=1e10, fastphot=False,
+                 constrain_age=False):
 
         self.phot = phot
         self.templates = templates
         self.data = data
 
-        self.massnorm = 1e10  # stellar mass normalization factor [Msun]
+        self.massnorm = massnorm  # stellar mass normalization factor [Msun]
+        self.fluxnorm = fluxnorm  # flux normalization factor [erg/s/cm2/A]
+
         self.tauv_guess = tauv_guess
         self.vdisp_guess = vdisp_guess
         self.tauv_bounds = tauv_bounds
@@ -39,10 +42,9 @@ class ContinuumTools(object):
         # Cache the redshift-dependent factors (incl. IGM attenuation),
         redshift = data['redshift']
         self.ztemplatewave = templates.wave * (1. + redshift)
-        self.zfactors = self.get_zfactors(igm,
-                                          self.ztemplatewave,
-                                          redshift=redshift,
-                                          dluminosity=data['dluminosity'])
+        self.zfactors = self.get_zfactors(
+            igm, self.ztemplatewave, redshift=redshift,
+            dluminosity=data['dluminosity'])
 
         # Optionally ignore templates which are older than the age of the
         # universe at the redshift of the object.
@@ -89,7 +91,7 @@ class ContinuumTools(object):
 
         """
         T = igm.full_IGM(redshift, ztemplatewave)
-        T *= FLUXNORM * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
+        T *= self.fluxnorm * self.massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
 
         return T
 
@@ -363,7 +365,7 @@ class ContinuumTools(object):
         # luminosity-based SFRs) and at the positions of strong nebular emission
         # lines [OII], Hbeta, [OIII], and Halpha
         dlum = self.data['dluminosity']
-        dfactor = (1. + redshift) * 4. * np.pi * (3.08567758e24 * dlum)**2 / FLUXNORM
+        dfactor = (1. + redshift) * 4. * np.pi * (3.08567758e24 * dlum)**2 / self.fluxnorm
 
         lums = {}
         lcwaves = (1450., 1500., 1700., 2800., 3000., 5100.)
@@ -700,7 +702,7 @@ class ContinuumTools(object):
         if not phottable:
             modelphot = Photometry.get_photflam(modelmaggies, effwave)
         else:
-            modelmaggies /= FLUXNORM * self.massnorm
+            modelmaggies /= self.fluxnorm * self.massnorm
             modelphot = Photometry.parse_photometry(self.phot.bands, modelmaggies, effwave,
                                                     nanomaggies=False, get_abmag=get_abmag)
         return modelphot
@@ -1095,9 +1097,9 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             sedmodel_nolines_monte)
 
 
-def _vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
-                       specistd, fitmask, agekeep, deltachi2min=25.,
-                       fit_for_min=False, debug_plots=False):
+def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
+                      specistd, fitmask, agekeep, deltachi2min=25.,
+                      fit_for_min=False, debug_plots=False):
     """Determine the velocity dispersion via a chi2 scan.
 
     """
@@ -1200,7 +1202,7 @@ def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
 
 
 def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
-                       nball=30, rng=None, uniqueid=0, no_smooth_continuum=False,
+                       rng=None, uniqueid=0, no_smooth_continuum=False,
                        debug_plots=False):
     """Jointly model the spectroscopy and broadband photometry.
 
@@ -1227,12 +1229,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         raise ValueError(errmsg)
 
     ncam = len(data['cameras'])
-    if ncam == 1:
-        snrmsg = f"Median spectral S/N_{data['cameras']}={data['snr'][0]:.2f}"
-    else:
-        snrmsg = f"Median spectral S/N_{data['cameras'][0]}={data['snr'][0]:.2f}"
-        for icam in range(1,ncam):
-            snrmsg += f" S/N_{data['cameras'][icam]}={data['snr'][icam]:.2f}"
+    snrmsg = f"Median spectral S/N_{data['cameras'][0]}={data['snr'][0]:.2f}"
+    for icam in range(1, ncam):
+        snrmsg += f" S/N_{data['cameras'][icam]}={data['snr'][icam]:.2f}"
     log.info(snrmsg)
 
     specistd = np.sqrt(specivar)
@@ -1258,7 +1257,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
                                        size=(nmonte, len(objflam)))
         else:
             # should be all zeros
-            objflam_monte = np.repeat(objflam[np.newaxis, :], nmonte, axis=1)
+            objflam_monte = np.repeat(objflam, nmonte).reshape(nmonte, len(objflam))
     else:
         specflux_monte = None
 
@@ -1285,7 +1284,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         fitmask[vdisp_s:vdisp_e] = True
 
         # First, perform a basic chi2 scan over a limited set of vdisp values.
-        vdisp, vdisp_ivar = _vdisp_by_chi2scan(
+        vdisp, vdisp_ivar = vdisp_by_chi2scan(
             CTools, templates, uniqueid, specflux, specwave,
             specistd, fitmask, agekeep, deltachi2min=25.,
             fit_for_min=False, debug_plots=debug_plots)
@@ -1410,7 +1409,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
                 contmodel, filters=phot.synth_filters[data['photsys']])
 
             I = np.isin(data['photometry']['band'], phot.synth_bands)
-            objflam_aper = FLUXNORM * data['photometry'][I]['flam'].value
+            objflam_aper = CTools.fluxnorm * data['photometry'][I]['flam'].value
 
             I = ((objflam_aper > 0.) & (sedflam > 0.))
             if np.any(I):
@@ -1515,25 +1514,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         tauv_ivar = 0.
         dn4000_model_ivar = 0.
 
-    #msg = []
-    #for label, units, val, val_ivar in zip(
-    #        ['tau(V)', 'vdisp'], [' mag', ' km/s'],
-    #        [tauv, vdisp], [tauv_ivar, vdisp_ivar]):
-    #    var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
-    #    msg.append(f'{label}={val:.2f}{var_msg}{units}')
-    #log.info(', '.join(msg))
-
     dn4000, dn4000_ivar = Photometry.get_dn4000(
         specwave, specflux, flam_ivar=specivar_nolinemask,
         redshift=redshift, rest=False)
-
-    msg = []
-    for label, val, val_ivar in zip(
-            ['Spectroscopic DN(4000)', 'model Dn(4000)'],
-            [dn4000, dn4000_model], [dn4000_ivar, dn4000_model_ivar]):
-        var_msg = f'+/-{1./np.sqrt(val_ivar):.3f}' if val_ivar > 0. else ''
-        msg.append(f'{label}={val:.3f}{var_msg}')
-    log.info(', '.join(msg))
 
     # Get the smooth continuum.
     t0 = time.time()
@@ -1571,7 +1554,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
 
 def continuum_specfit(data, result, templates, igm, phot,
                       nmonte=50, seed=1, constrain_age=False,
-                      no_smooth_continuum=False,
+                      no_smooth_continuum=False, fitstack=False,
                       fastphot=False, debug_plots=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
@@ -1599,6 +1582,11 @@ def continuum_specfit(data, result, templates, igm, phot,
     if redshift <= 0.:
         log.warning('Input redshift not defined, zero, or negative!')
 
+    if fitstack:
+        FLUXNORM = 1.
+    else:
+        from fastspecfit.util import FLUXNORM
+
     objflam = data['photometry']['flam'].value * FLUXNORM
     objflamivar = (data['photometry']['flam_ivar'].value / FLUXNORM**2) * phot.bands_to_fit
 
@@ -1614,7 +1602,7 @@ def continuum_specfit(data, result, templates, igm, phot,
     # Instantiate the continuum tools class.
     CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot,
                             vdisp_guess=templates.vdisp_nominal,
-                            constrain_age=constrain_age)
+                            fluxnorm=FLUXNORM, constrain_age=constrain_age)
 
     rng = np.random.default_rng(seed=seed)
 
@@ -1633,8 +1621,7 @@ def continuum_specfit(data, result, templates, igm, phot,
          sedmodel_nolines_monte, continuummodel_monte) = \
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
                                 nmonte=nmonte, rng=rng, uniqueid=data['uniqueid'],
-                                debug_plots=debug_plots,
-                                no_smooth_continuum=no_smooth_continuum)
+                                debug_plots=debug_plots, no_smooth_continuum=no_smooth_continuum)
 
         data['apercorr'] = median_apercorr # needed for the line-fitting
 

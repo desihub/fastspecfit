@@ -105,31 +105,36 @@ def format_niceline(line):
             return line
 
 
-def desiqa_one(data, fastfit, metadata, coadd_type,
-               minspecwave=3500., maxspecwave=9900., minphotwave=0.1,
-               maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1,
-               fastphot=False, stackfit=False,
-               inputz=False, no_smooth_continuum=False, outdir=None,
-               outprefix=None):
+def desiqa_one(data, fastfit, metadata, coadd_type, minspecwave=3500.,
+               maxspecwave=9900., minphotwave=0.1, maxphotwave=35.,
+               emline_snrmin=0.0, nsmoothspec=1, fastphot=False,
+               fitstack=False, inputz=False, no_smooth_continuum=False,
+               outdir=None, outprefix=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
+    from fastspecfit.io import one_spectrum, one_stacked_spectrum
+
+    if fitstack:
+        one_stacked_spectrum(data, metadata, synthphot=False)
+    else:
+        one_spectrum(data, metadata, fastphot=fastphot)
+
     qa_fastspec(data, sc_data.templates, fastfit, metadata,
                 coadd_type=coadd_type,
                 spec_wavelims=(minspecwave, maxspecwave),
                 phot_wavelims=(minphotwave, maxphotwave),
                 no_smooth_continuum=no_smooth_continuum,
                 emline_snrmin=emline_snrmin, nsmoothspec=nsmoothspec,
-                fastphot=fastphot, stackfit=stackfit,
+                fastphot=fastphot, fitstack=fitstack,
                 outprefix=outprefix, outdir=outdir, inputz=inputz)
 
 
 def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                 spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
-                fastphot=False, stackfit=False, outprefix=None,
-                no_smooth_continuum=False,
-                emline_snrmin=0.0, nsmoothspec=1, outdir=None,
-                inputz=None):
+                fastphot=False, fitstack=False, outprefix=None,
+                no_smooth_continuum=False, emline_snrmin=0.0,
+                nsmoothspec=1, outdir=None, inputz=None):
     """QA plot the emission-line spectrum and best-fitting model.
 
     """
@@ -161,7 +166,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
     sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
 
-    if stackfit:
+    if fitstack:
         col1 = [colors.to_hex(col) for col in ['violet']]
         col2 = [colors.to_hex(col) for col in ['purple']]
     else:
@@ -311,7 +316,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(fastspec['RCHI2'])
         leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(fastspec['RCHI2_CONT'])
 
-    if not stackfit:
+    if not fitstack:
         if redshift != metadata['Z_RR']:
             leg['redshift'] = r'$z_{\mathrm{Redrock}}=$'+r'${:.7f}$'.format(metadata['Z_RR'])
 
@@ -319,7 +324,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         fontsize1 = 16
         fontsize2 = 22
     else:
-        if stackfit:
+        if fitstack:
             fontsize1 = 16
             fontsize2 = 22
         else:
@@ -444,7 +449,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             leg_narrow['sii_doublet'] = r'[SII] $\lambda6731/\lambda6716={:.3f}$'.format(fastspec['SII_DOUBLET_RATIO'])
 
     # rebuild the best-fitting broadband photometric model
-    if not stackfit:
+    if not fitstack:
         sedmodel = CTools.build_stellar_continuum(
             templates.flux_nomvdisp,
             fastspec['COEFF'] * CTools.massnorm,
@@ -515,7 +520,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             desiemlines.append(_desiemlines[data['camerapix'][icam][0]:data['camerapix'][icam][1]])
 
     # Grab the viewer cutout.
-    if not stackfit:
+    if not fitstack:
         width = int(30 / pixscale)   # =1 arcmin
         height = int(width / 1.3) # 3:2 aspect ratio
 
@@ -572,7 +577,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
         cutax = fig.add_subplot(gs[0:2, 5:8], projection=wcs) # rows x cols
         sedax = fig.add_subplot(gs[0:3, 0:5])
-    elif stackfit:
+    elif fitstack:
         fullheight = 14 # inches
         fullwidth = 24
 
@@ -613,7 +618,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         specax = fig.add_subplot(gs[4:8, 0:5])
 
     # viewer cutout
-    if not stackfit:
+    if not fitstack:
         cutax.imshow(img, origin='lower')#, interpolation='nearest')
         cutax.set_xlabel('RA [J2000]')
         cutax.set_ylabel('Dec [J2000]')
@@ -690,7 +695,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
         fullmodelspec = np.hstack(desimodelspec)
 
-        if stackfit:
+        if fitstack:
             specax_twin = specax.twiny()
             specax_twin.set_xlim(spec_wavelims[0]/(1+redshift)/1e4, spec_wavelims[1]/(1+redshift)/1e4)
             specax_twin.xaxis.set_major_formatter(major_formatter)
@@ -707,7 +712,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         specax.set_ylabel(r'$F_{\lambda}\ (10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
 
     # photometric SED
-    if not stackfit:
+    if not fitstack:
         abmag_good = phot_tbl['abmag_ivar'] > 0
         abmag_goodlim = phot_tbl['abmag_limit'] > 0
 
@@ -957,7 +962,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             removelabels = np.ones(nline, bool)
             line_ymin, line_ymax = np.zeros(nline)+1e6, np.zeros(nline)-1e6
 
-            if stackfit:
+            if fitstack:
                 ax, irow, colshift = [], 0, 5
             else:
                 ax, irow, colshift = [], 4, 5 # skip the gap row
@@ -1146,7 +1151,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                  bbox=bbox, linespacing=1.4)
 
     else:
-        if stackfit:
+        if fitstack:
             ppos = specax.get_position()
             xpos = (ppos.x1 - ppos.x0) / 2 + ppos.x0
             ypos = ppos.y1 + 0.05
@@ -1167,7 +1172,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
         # add some key results about the object at the bottom of the figure
 
-        if stackfit:
+        if fitstack:
             #toppos, startpos, deltapos = 0.21, 0.04, 0.13
             toppos, leftpos, rightpos, adjust = 0.27, 0.05, 0.62, 0.01
         else:
@@ -1414,7 +1419,7 @@ def fastqa(args=None, comm=None):
         'emlines_file':      args.emlinesfile,
         'fphotofile':        args.fphotofile,
         'fastphot':          fastphot,
-        'stackfit':          args.stackfit,
+        'fitstack':          args.stackfit,
         'ignore_photometry': ignore_photometry,
         'template_file':     args.templates,
         'template_version':  args.templateversion,
@@ -1426,22 +1431,32 @@ def fastqa(args=None, comm=None):
 
     # if multiprocessing, create a pool of worker processes
     # and initialize single-copy objects in each worker
+    if args.mp > 1 and not 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        multiprocessing.set_start_method('fork')
+
     mp_pool = MPPool(args.mp,
                      initializer=sc_data.initialize,
                      init_argdict=init_sc_args)
 
+    log.info(f'Cached stellar templates {sc_data.templates.file}')
+    log.info(f'Cached emission-line table {sc_data.emlines.file}')
+    log.info(f'Cached photometric filters and parameters {sc_data.photometry.fphotofile}')
+    log.info(f'Cached cosmology table {sc_data.cosmology.file}')
+    log.info(f'Cached {sc_data.igm.reference} IGM attenuation parameters.')
+
     # Initialize the I/O class.
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                       redux_dir=args.redux_dir,
-                       fphotodir=args.fphotodir, mapdir=args.mapdir)
+                       redux_dir=args.redux_dir, fphotodir=args.fphotodir,
+                       mapdir=args.mapdir)
 
-    def _wrap_qa(redrockfile, indx=None, stackfit=False):
+    def _wrap_qa(redrockfile, indx=None, fitstack=False):
         if indx is None:
             indx = np.arange(len(fastfit))
 
-        if stackfit:
+        if fitstack:
             stackids = fastfit['STACKID'][indx]
-            data = Spec.read_stacked(mp_pool, (redrockfile,), stackids=stackids)
+            data, meta = Spec.read_stacked([redrockfile, ], stackids=stackids)
 
             minspecwave = np.min(data[0]['coadd_wave']) - 20.
             maxspecwave = np.max(data[0]['coadd_wave']) + 20.
@@ -1452,12 +1467,12 @@ def fastqa(args=None, comm=None):
             else:
                 input_redshifts = None
 
-            Spec.gather_metadata(redrockfiles=(redrockfile,), targetids=targetids,
+            Spec.gather_metadata(redrockfiles=[redrockfile, ], targetids=targetids,
                                  input_redshifts=input_redshifts,
                                  redrockfile_prefix=args.redrockfile_prefix,
                                  specfile_prefix=args.specfile_prefix,
                                  qnfile_prefix=args.qnfile_prefix)
-            data = Spec.read(mp_pool, fastphot=fastphot, synthphot=True)
+            data, meta = Spec.read(sc_data.photometry, fastphot=fastphot)
 
             minspecwave = args.minspecwave
             maxspecwave = args.maxspecwave
@@ -1474,11 +1489,11 @@ def fastqa(args=None, comm=None):
             'emline_snrmin':       args.emline_snrmin,
             'nsmoothspec':         args.nsmoothspec,
             'fastphot':            fastphot,
-            'stackfit':            stackfit,
+            'fitstack':            fitstack,
             'inputz':              inputz,
             'no_smooth_continuum': no_smooth_continuum,
             'outdir':              args.outdir,
-            'outprefix': args.outprefix
+            'outprefix':           args.outprefix
         } for igal in range(len(indx)) ]
 
         # desiqa_one has no return value, but we need
@@ -1514,7 +1529,7 @@ def fastqa(args=None, comm=None):
             _wrap_qa(redrockfile)
     elif coadd_type == 'stacked':
         for redrockfile in args.redrockfiles:
-            _wrap_qa(redrockfile, stackfit=True)
+            _wrap_qa(redrockfile, fitstack=True)
     else:
         if args.redrockfiles is not None:
             for redrockfile in args.redrockfiles:
@@ -1564,7 +1579,7 @@ def fastqa(args=None, comm=None):
                                                                'redrock-{}-{}-exp{:08d}.fits'.format(petal, tile, expid))
                                     _wrap_qa(redrockfile, indx)
 
-    log.info('QA for everything took: {:.2f} sec'.format(time.time()-t0))
+    log.debug('QA for everything took: {:.2f} sec'.format(time.time()-t0))
 
     # if multiprocessing, clean up workers
     mp_pool.close()
