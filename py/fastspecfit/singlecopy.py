@@ -21,7 +21,7 @@ class Singletons(object):
                    emlines_file=None,
                    fphotofile=None,
                    fastphot=False,
-                   stackfit=False,
+                   fitstack=False,
                    ignore_photometry=False,
                    template_file=None,
                    template_version=None,
@@ -47,8 +47,7 @@ class Singletons(object):
         log.debug(f'Cached emission-line table {self.emlines.file}')
 
         # photometry
-        self.photometry = Photometry(fphotofile,
-                                     stackfit,
+        self.photometry = Photometry(fphotofile, fitstack,
                                      ignore_photometry)
         log.debug(f'Cached photometric filters and parameters {self.photometry.fphotofile}')
 
