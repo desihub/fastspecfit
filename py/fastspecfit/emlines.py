@@ -863,11 +863,13 @@ class EMFitTools(object):
             parameters_monte = values_monte.copy()
             parameters_monte[:, self.doublet_idx] *= parameters_monte[:, self.doublet_src]
 
-            line_fluxes_monte = []
-            for imonte in range(nmonte):
-                line_fluxes_monte.append(EMLine_MultiLines(
-                    parameters_monte[imonte, :], emlinewave, redshift,
-                    line_wavelengths, resolution_matrices, camerapix))
+            line_fluxes_monte = [
+                EMLine_MultiLines(
+                    p, emlinewave, redshift,
+                    line_wavelengths, resolution_matrices, camerapix) for
+                p in
+                parameters_monte
+            ]
 
             emlineflux_monte_s = emlineflux_monte[:, Wsrt]
             specflux_nolines_monte_s = specflux_nolines_monte[:, Wsrt]
@@ -954,27 +956,32 @@ class EMFitTools(object):
                     #    result[f'{linename}_MODELAMP_IVAR'] = 1. / modelamp_var
 
                     # Monte Carlo to get the uncertainties
-                    boxflux_monte = np.empty(nmonte)
-                    use_gausscorr_monte = np.empty(nmonte)
-                    patchindx_monte = []
-                    for imonte in range(nmonte):
-                        _linez = redshift + values_monte[imonte, line_vshift] / C_LIGHT
-                        _linezwave = restwave * (1. + _linez)
-                        _linesigma = values_monte[imonte, line_sigma] # [km/s]
-                        _linesigma, _linesigma_ang, _linesigma_ang_window, _use_gausscorr = \
-                            _preprocess_linesigma(_linesigma, _linezwave, isbroad, isbalmer)
-                        use_gausscorr_monte[imonte] = _use_gausscorr
+                    # FIXME: merge with nearly identical code for boxflux above
+                    def get_boxflux(values, emlineflux_s):
+                        linez = redshift + values[line_vshift] / C_LIGHT
+                        linezwave = restwave * (1. + linez)
+                        linesigma = values[line_sigma] # [km/s]
+                        linesigma, linesigma_ang, linesigma_ang_window, use_gausscorr = \
+                            _preprocess_linesigma(linesigma, linezwave, isbroad, isbalmer)
 
-                        _line_s, _line_e = _get_boundaries(emlinewave_s,
-                                                           _linezwave - nsigma * _linesigma_ang_window,
-                                                           _linezwave + nsigma * _linesigma_ang_window)
-                        _patchindx = _line_s + np.where(emlineivar_s[_line_s:_line_e] > 0.)[0]
-                        patchindx_monte.append(_patchindx)
+                        line_s, line_e = _get_boundaries(emlinewave_s,
+                                                           linezwave - nsigma * linesigma_ang_window,
+                                                           linezwave + nsigma * linesigma_ang_window)
+                        patchindx = line_s + np.where(emlineivar_s[line_s:line_e] > 0.)[0]
 
-                        _dwaves_patch = dwaves[_patchindx]
-                        _emlineflux_patch = emlineflux_monte_s[imonte, _patchindx]
+                        dwaves_patch = dwaves[patchindx]
+                        emlineflux_patch = emlineflux_s[patchindx]
 
-                        boxflux_monte[imonte] = np.sum(_emlineflux_patch * _dwaves_patch)
+                        boxflux = np.sum(emlineflux_patch * dwaves_patch)
+
+                        return (use_gausscorr, patchindx, boxflux)
+
+                    res = [
+                        get_boxflux(*args) for args in
+                        zip(values_monte, emlineflux_monte_s)
+                    ]
+                    use_gausscorr_monte, patchindx_monte, boxflux_monte = \
+                        tuple(zip(*res))
 
                     boxflux_var = np.var(boxflux_monte)
                     if boxflux_var > TINY:
@@ -1011,16 +1018,24 @@ class EMFitTools(object):
 
                     # get the flux uncertainty via Monte Carlo
                     if results_monte is not None:
-                        flux_monte = np.empty(nmonte)
-                        for imonte in range(nmonte):
-                            (_s, _e), flux_perpixel1 = line_fluxes_monte[imonte].getLine(iline)
+                        # Monte Carlo to get the uncertainties
+                        # FIXME: merge with nearly identical code for flux above
+                        def get_flux(line_fluxes, patchindx, use_gausscorr):
+                            (s, e), flux_perpixel = line_fluxes.getLine(iline)
                             # can be zero if the amplitude is very tiny
-                            if np.all(flux_perpixel1 == 0.) or np.any(flux_perpixel1 < 0.):
-                                flux1 = 0.
+                            if np.all(flux_perpixel == 0.) or np.any(flux_perpixel < 0.):
+                                flux = 0.
                             else:
-                                flux1, _ = _gaussian_lineflux(flux_perpixel1, _s, _e, patchindx_monte[imonte],
-                                                              gausscorr=use_gausscorr_monte[imonte])
-                            flux_monte[imonte] = flux1
+                                flux, _ = _gaussian_lineflux(flux_perpixel, s, e, patchindx,
+                                                              gausscorr=use_gausscorr)
+                            return flux
+
+                        flux_monte = [
+                            get_flux(*args) for args in
+                            zip(line_fluxes_monte, patchindx_monte, use_gausscorr_monte)
+                        ]
+                        flux_monte = np.array(flux_monte) # used in math later
+
                         flux_var = np.var(flux_monte)
                         if flux_var > TINY:
                             flux_ivar = 1. / flux_var
@@ -1060,18 +1075,27 @@ class EMFitTools(object):
                 result[f'{linename}_CONT'] = cont
 
                 if results_monte is not None:
-                    cont_monte = np.empty(nmonte)
-                    for imonte in range(nmonte):
-                        _linez = redshift + values_monte[imonte, line_vshift] / C_LIGHT
-                        _linezwave = restwave * (1. + _linez)
-                        _linesigma = values_monte[imonte, line_sigma] # [km/s]
-                        _, _, _linesigma_ang_window, _ = \
-                            _preprocess_linesigma(_linesigma, _linezwave, isbroad, isbalmer)
-                        _borderindx = _get_continuum_pixels(emlinewave_s, _linezwave, _linesigma_ang_window)
-                        _clipflux, _ = sigmaclip(specflux_nolines_monte_s[imonte, _borderindx], low=3., high=3.)
-                        if len(_clipflux) == 0:
-                            _clipflux = specflux_nolines_monte_s[imonte, _borderindx]
-                        cont_monte[imonte] = np.mean(_clipflux)
+                    # Monte Carlo to get the uncertainties
+                    # FIXME: merge with nearly identical code for cont above
+                    def get_cont(values, specflux_nolines_s):
+                        linez = redshift + values[line_vshift] / C_LIGHT
+                        linezwave = restwave * (1. + linez)
+                        linesigma = values[line_sigma] # [km/s]
+                        _, _, linesigma_ang_window, _ = \
+                            _preprocess_linesigma(linesigma, linezwave, isbroad, isbalmer)
+                        borderindx = _get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
+                        clipflux, _ = sigmaclip(specflux_nolines_s[borderindx], low=3., high=3.)
+                        if len(clipflux) == 0:
+                            clipflux = specflux_nolines_s[borderindx]
+                        cont = np.mean(clipflux)
+                        return cont
+
+                    cont_monte = [
+                        get_cont(*args) for args in
+                        zip(values_monte, specflux_nolines_monte_s)
+                    ]
+                    cont_monte = np.array(cont_monte) # used later in math
+
                     cont_var = np.var(cont_monte)
                     if cont_var > TINY:
                         cont_ivar = 1. / cont_var
@@ -1153,38 +1177,42 @@ class EMFitTools(object):
             moment1 = np.sum(ww * ff) / patchnorm               # [Angstrom]
             moment2 = np.sum((ww-moment1)**2 * ff) / patchnorm  # [Angstrom**2]
             moment3 = np.sum((ww-moment1)**3 * ff) / patchnorm  # [Angstrom**3]
-            #moment2_sigma = np.sqrt(moment2) * C_LIGHT / moment1 # [Angstrom-->km/s]
 
-            for n, mom in zip(range(1, 4), (moment1, moment2, moment3)):
-                result[f'{moment_col}_MOMENT{n}'] = mom
+            for n, mom in enumerate((moment1, moment2, moment3)):
+                result[f'{moment_col}_MOMENT{n+1}'] = mom
 
             if results_monte is not None:
-                # Monte Carlo to get the uncertainties
-                moment1_monte = np.empty(nmonte)
-                moment2_monte = np.empty(nmonte)
-                moment3_monte = np.empty(nmonte)
-                for imonte in range(nmonte):
-                    _linezwave = restwave * (1. + redshift + values_monte[imonte, line_vshift] / C_LIGHT)
-                    _linesigma = values_monte[imonte, line_sigma] # [km/s]
-                    _, _, _linesigma_ang_window, _ = _preprocess_linesigma(_linesigma, _linezwave, isbroad, isbalmer)
+                # get Monte Carlo-based variance of moments
+                # FIXME: merge with nearly identical code for moments above
+                def get_moments(values, emlineflux_s):
+                    linezwave = restwave * (1. + redshift + values[line_vshift] / C_LIGHT)
+                    linesigma = values[line_sigma] # [km/s]
+                    _, _, linesigma_ang_window, _ = _preprocess_linesigma(linesigma, linezwave, isbroad, isbalmer)
 
                     ss, ee = _get_boundaries(emlinewave_s,
-                                             _linezwave - moment_nsigma * _linesigma_ang_window,
-                                             _linezwave + moment_nsigma * _linesigma_ang_window)
+                                             linezwave - moment_nsigma * linesigma_ang_window,
+                                             linezwave + moment_nsigma * linesigma_ang_window)
 
                     ww = emlinewave_s[ss:ee]
-                    ff = emlineflux_monte_s[imonte, ss:ee]
+                    ff = emlineflux_s[ss:ee]
                     patchnorm = np.sum(ff)
                     if patchnorm == 0.: # could happen I guess
                         patchnorm = 1.  # hack!
-                    moment1_monte[imonte] = np.sum(ww * ff) / patchnorm               # [Angstrom]
-                    moment2_monte[imonte] = np.sum((ww-moment1)**2 * ff) / patchnorm  # [Angstrom**2]
-                    moment3_monte[imonte] = np.sum((ww-moment1)**3 * ff) / patchnorm  # [Angstrom**3]
+                    moment1 = np.sum(ww * ff) / patchnorm               # [Angstrom]
+                    moment2 = np.sum((ww-moment1)**2 * ff) / patchnorm  # [Angstrom**2]
+                    moment3 = np.sum((ww-moment1)**3 * ff) / patchnorm  # [Angstrom**3]
+                    return (moment1, moment2, moment3)
 
-                for n, mom_monte in zip(range(1, 4), (moment1_monte, moment2_monte, moment3_monte)):
+                res = [
+                    get_moments(*args) for args in
+                    zip(values_monte, emlineflux_monte_s)
+                ]
+                moments_monte = tuple(zip(*res))
+
+                for n, mom_monte in enumerate(moments_monte):
                     mom_var = np.var(mom_monte)
                     if mom_var > TINY:
-                        result[f'{moment_col}_MOMENT{n}_IVAR'] = 1. / mom_var
+                        result[f'{moment_col}_MOMENT{n+1}_IVAR'] = 1. / mom_var
 
         # get the per-group average emission-line redshifts and velocity widths
         for stats, groupname in zip((narrow_stats, broad_stats, uv_stats),
@@ -1614,26 +1642,35 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # Residual spectrum with no emission lines
     specflux_nolines = specflux - finalmodel
 
-    # Monte Carlo to get the uncertainties on the derived parameters.
     if nmonte > 0:
+        # Monte Carlo to get the uncertainties on the derived parameters.
         if adopt_broad:
             linemodel_monte = linemodel_broad
         else:
             linemodel_monte = linemodel_nobroad
 
-        values_monte = np.empty((nmonte, len(finalfit)))
-        obsamps_monte = np.empty((nmonte, len(finalfit.meta['obsamp'])))
-        finalmodel_monte = np.empty((nmonte, len(finalmodel)))
-        for imonte in range(nmonte):
-            finalfit1, finalmodel1, _ = linefit(
+        def get_results(emlineflux):
+            finalfit, finalmodel, _ = linefit(
                 EMFit, linemodel_monte, initial_guesses, param_bounds,
-                emlinewave, emlineflux_monte[imonte, :], emlineivar,
+                emlinewave, emlineflux, emlineivar,
                 weights, redshift, resolution_matrix, camerapix,
                 uniqueid=data['uniqueid'], quiet=True)
-            values_monte[imonte, :] = np.copy(finalfit1['value'].value)  # copy needed??
-            obsamps_monte[imonte, :] = np.copy(finalfit1.meta['obsamp']) # observed amplitudes
-            finalmodel_monte[imonte, :] = np.copy(finalmodel1)
+            values = np.copy(finalfit['value'].value)  # copy needed??
+            obsamps = np.copy(finalfit.meta['obsamp']) # observed amplitudes
+            finalmodel = np.copy(finalmodel)
+            return (values, obsamps, finalmodel)
+
+        res = [
+            get_results(emlf) for emlf in
+            emlineflux_monte
+        ]
+        values_monte, obsamps_monte, finalmodel_monte = \
+            tuple(zip(*res))
+        values_monte  = np.array(values_monte)  # used as array later
+        obsamps_monte = np.array(obsamps_monte) # used as array later
+
         specflux_nolines_monte = specflux_monte - finalmodel_monte
+
         results_monte = (values_monte, obsamps_monte, emlineflux_monte, specflux_nolines_monte)
     else:
         results_monte = None

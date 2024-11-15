@@ -1061,8 +1061,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             tauv_guess_monte = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
 
             res = [
-                do_fit(tauv_guess, objflam) for
-                tauv_guess, objflam in
+                do_fit(*args) for args in
                 zip(tauv_guess_monte, objflam_monte)
             ]
 
@@ -1327,8 +1326,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
             if specflux_monte is not None:
 
                 res = [
-                    do_fit_vdisp(specflux) for
-                    specflux in
+                    do_fit_vdisp(sf) for sf in
                     specflux_monte
                 ]
                 (tauv_monte, vdisp_monte, _, age_monte, _) = tuple(zip(*res))
@@ -1487,8 +1485,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         tauv_guess_monte = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
 
         res = [
-            do_fit_full(tauv_guess, objflam, specflux) for
-            tauv_guess, objflam, specflux in
+            do_fit_full(*args) for args in
             zip(tauv_guess_monte, objflam_monte, specflux_monte)
         ]
         (tauv_monte, coeff_monte,
@@ -1693,25 +1690,32 @@ def continuum_specfit(data, result, templates, igm, phot,
         for cflux in cfluxes:
             result[cflux] = cfluxes[cflux]
 
-        # Get the variance via Monte Carlo.
-        if sedmodel_monte is not None:
-            synth_absmag_monte = np.empty((nmonte, len(synth_absmag)))
-            lums_monte = np.empty((nmonte, len(lums)))
-            cfluxes_monte = np.empty((nmonte, len(cfluxes)))
 
-            for imonte in range(nmonte):
-                synth_absmag_monte[imonte] = phot.kcorr_and_absmag(
+        if sedmodel_monte is not None:
+
+            # Get the variance via Monte Carlo.
+            # FIXME: merge with computation of synth_absmag/lums/cfluxes above
+            def get_mags(sedmodel, sedmodel_nolines):
+                synth_absmag = phot.kcorr_and_absmag(
                     data['photometry']['nanomaggies'].value,
                     data['photometry']['nanomaggies_ivar'].value,
                     redshift, data['dmodulus'], data['photsys'],
-                    CTools.ztemplatewave, sedmodel_monte[imonte],
+                    CTools.ztemplatewave, sedmodel,
                     compute_kcorr=False)
 
-                lums1, cfluxes1 = CTools.continuum_fluxes(
-                    sedmodel_nolines_monte[imonte], uniqueid=data['uniqueid'],
+                lums, cfluxes = CTools.continuum_fluxes(
+                    sedmodel_nolines, uniqueid=data['uniqueid'],
                     debug_plots=False)
-                lums_monte[imonte] = list(lums1.values())
-                cfluxes_monte[imonte] = list(cfluxes1.values())
+                lums = list(lums.values())
+                cfluxes = list(cfluxes.values())
+                return (synth_absmag, lums, cfluxes)
+
+            res = [
+                get_mags(*args) for args in
+                zip(sedmodel_monte, sedmodel_nolines_monte)
+            ]
+            synth_absmag_monte, lums_monte, cfluxes_monte = \
+                tuple(zip(*res))
 
             synth_absmag_var = np.var(synth_absmag_monte, axis=0)
             for band, shift, var in zip(phot.absmag_bands, phot.band_shift, synth_absmag_var):
@@ -1753,8 +1757,7 @@ def continuum_specfit(data, result, templates, igm, phot,
 
         if coeff_monte is not None:
             res = [
-                _get_sps_properties(coeff) for
-                coeff in
+                _get_sps_properties(c) for c in
                 coeff_monte
             ]
             age_monte, zzsun_monte, logmstar_monte, sfr_monte = tuple(zip(*res))
