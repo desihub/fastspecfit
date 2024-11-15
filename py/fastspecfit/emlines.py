@@ -608,7 +608,7 @@ class EMFitTools(object):
                 bounds[nLineFree+nPatches:]                   = continuum_patches['intercept_bounds']
 
             # least_squares wants two arrays, not a 2D array
-            bounds = ( bounds[:,0], bounds[:,1] )
+            bounds = ( bounds[:, 0], bounds[:, 1] )
 
             fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
                                      max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
@@ -855,7 +855,7 @@ class EMFitTools(object):
 
         if results_monte is not None:
             values_monte, obsamps_monte, emlineflux_monte, specflux_nolines_monte = results_monte
-            nmonte, _ = values_monte.shape
+            nmonte = len(values_monte)
 
             values_var = np.var(values_monte, axis=0)
             obsamps_var = np.var(obsamps_monte, axis=0)
@@ -906,7 +906,7 @@ class EMFitTools(object):
 
             # Are the pixels based on the original inverse spectrum fully
             # masked? If so, set everything to zero and move onto the next line.
-            if np.sum(oemlineivar_s[line_s:line_e] == 0.) > 0.3 * (line_e - line_s): # use original ivar
+            if (line_s == line_e) or (np.sum(oemlineivar_s[line_s:line_e] == 0.) > 0.3 * (line_e - line_s)):
                 obsamps[line_amp] = 0.
                 values[line_amp]    = 0.
                 values[line_vshift] = 0.
@@ -954,8 +954,8 @@ class EMFitTools(object):
                     #    result[f'{linename}_MODELAMP_IVAR'] = 1. / modelamp_var
 
                     # Monte Carlo to get the uncertainties
-                    boxflux_monte = np.zeros(nmonte)
-                    use_gausscorr_monte = np.ones(nmonte)
+                    boxflux_monte = np.empty(nmonte)
+                    use_gausscorr_monte = np.empty(nmonte)
                     patchindx_monte = []
                     for imonte in range(nmonte):
                         _linez = redshift + values_monte[imonte, line_vshift] / C_LIGHT
@@ -1011,7 +1011,7 @@ class EMFitTools(object):
 
                     # get the flux uncertainty via Monte Carlo
                     if results_monte is not None:
-                        flux_monte = np.zeros(nmonte)
+                        flux_monte = np.empty(nmonte)
                         for imonte in range(nmonte):
                             (_s, _e), flux_perpixel1 = line_fluxes_monte[imonte].getLine(iline)
                             # can be zero if the amplitude is very tiny
@@ -1060,10 +1060,11 @@ class EMFitTools(object):
                 result[f'{linename}_CONT'] = cont
 
                 if results_monte is not None:
-                    cont_monte = np.zeros(nmonte)
+                    cont_monte = np.empty(nmonte)
                     for imonte in range(nmonte):
                         _linez = redshift + values_monte[imonte, line_vshift] / C_LIGHT
                         _linezwave = restwave * (1. + _linez)
+                        _linesigma = values_monte[imonte, line_sigma] # [km/s]
                         _, _, _linesigma_ang_window, _ = \
                             _preprocess_linesigma(_linesigma, _linezwave, isbroad, isbalmer)
                         _borderindx = _get_continuum_pixels(emlinewave_s, _linezwave, _linesigma_ang_window)
@@ -1159,9 +1160,9 @@ class EMFitTools(object):
 
             if results_monte is not None:
                 # Monte Carlo to get the uncertainties
-                moment1_monte = np.zeros(nmonte)
-                moment2_monte = np.zeros(nmonte)
-                moment3_monte = np.zeros(nmonte)
+                moment1_monte = np.empty(nmonte)
+                moment2_monte = np.empty(nmonte)
+                moment3_monte = np.empty(nmonte)
                 for imonte in range(nmonte):
                     _linezwave = restwave * (1. + redshift + values_monte[imonte, line_vshift] / C_LIGHT)
                     _linesigma = values_monte[imonte, line_sigma] # [km/s]
@@ -1532,9 +1533,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     oemlineivar = np.hstack(data['ivar'])
     specflux = np.hstack(data['flux'])
 
-    continuummodelflux = np.hstack(continuummodel)
-    smoothcontinuummodelflux = np.hstack(smooth_continuum)
-    emlineflux = specflux - continuummodelflux - smoothcontinuummodelflux
+    emlineflux = specflux - continuummodel - smooth_continuum
 
     emlineivar = np.copy(oemlineivar)
     _, emlinegood = ivar2var(emlineivar, clip=1e-3)
@@ -1550,16 +1549,14 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     # Monte Carlo spectrum carried over from continuum-fitting. Assume that the
     # smooth continuum model is the same...
     if specflux_monte is not None:
-        nmonte, _ = specflux_monte.shape
+        nmonte = len(specflux_monte)
         if continuummodel_monte is not None:
-            continuummodelflux_monte = np.zeros((nmonte, len(continuummodelflux)))
-            for imonte in range(nmonte):
-                continuummodelflux_monte[imonte, :] = np.hstack(continuummodel_monte[imonte])
-            emlineflux_monte = (specflux_monte - continuummodelflux_monte - \
-                                smoothcontinuummodelflux[np.newaxis, :])
+
+            emlineflux_monte = (specflux_monte - continuummodel_monte - \
+                                smooth_continuum[np.newaxis, :])
         else:
-            emlineflux_monte = (specflux_monte - continuummodelflux[np.newaxis, :] - \
-                                smoothcontinuummodelflux[np.newaxis, :])
+            emlineflux_monte = (specflux_monte - continuummodel[np.newaxis, :] - \
+                                smooth_continuum[np.newaxis, :])
 
     # determine which lines are in range of the camera
     EMFit.compute_inrange_lines(redshift, wavelims=(np.min(emlinewave),
@@ -1624,9 +1621,9 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
         else:
             linemodel_monte = linemodel_nobroad
 
-        values_monte = np.zeros((nmonte, len(finalfit)))
-        obsamps_monte = np.zeros((nmonte, len(finalfit.meta['obsamp'])))
-        finalmodel_monte = np.zeros((nmonte, len(finalmodel)))
+        values_monte = np.empty((nmonte, len(finalfit)))
+        obsamps_monte = np.empty((nmonte, len(finalfit.meta['obsamp'])))
+        finalmodel_monte = np.empty((nmonte, len(finalmodel)))
         for imonte in range(nmonte):
             finalfit1, finalmodel1, _ = linefit(
                 EMFit, linemodel_monte, initial_guesses, param_bounds,
@@ -1657,14 +1654,14 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     result['DELTA_LINENDOF'] = delta_linendof_balmer  # ndof_nobroad - ndof_broad
 
     # full-fit reduced chi2
-    rchi2 = np.sum(oemlineivar * (specflux - (continuummodelflux + smoothcontinuummodelflux + emmodel))**2)
+    rchi2 = np.sum(oemlineivar * (specflux - (continuummodel + smooth_continuum + emmodel))**2)
     rchi2 /= np.sum(oemlineivar > 0)  # dof??
     result['RCHI2'] = rchi2
 
 
     # Build the output model spectra.
     modelwave, modelcontinuum, modelemspectrum, modelspectra = build_coadded_models(
-        data, emlinewave, emmodel, continuummodelflux, smoothcontinuummodelflux)
+        data, emlinewave, emmodel, continuummodel, smooth_continuum)
 
     # Finally, optionally synthesize photometry (excluding the
     # smoothcontinuum!) and measure Dn(4000) from the line-free spectrum.
