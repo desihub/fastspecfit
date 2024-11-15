@@ -1087,9 +1087,9 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             sedmodel_nolines_monte)
 
 
-def _vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
-                       specistd, fitmask, agekeep, deltachi2min=25.,
-                       fit_for_min=False, debug_plots=False):
+def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
+                      specistd, fitmask, agekeep, deltachi2min=25.,
+                      fit_for_min=False, debug_plots=False):
     """Determine the velocity dispersion via a chi2 scan.
 
     """
@@ -1258,11 +1258,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
                                        size=(nmonte, len(objflam)))
         else:
             # should be all zeros
-            objflam_monte = np.repeat(objflam[np.newaxis, :], nmonte, axis=1)
+            objflam_monte = np.repeat(objflam, nmonte).reshape(nmonte, len(objflam))
 
     # Attempt to solve for the velocity dispersion based on the rest-wavelength coverage.
     compute_vdisp, (vdisp_s, vdisp_e) = can_compute_vdisp(redshift, specwave)
-    compute_vdisp = False
 
     if not compute_vdisp:
         # Fit to the cached templates at the nominal velocity dispersion.
@@ -1282,7 +1281,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         fitmask[vdisp_s:vdisp_e] = True
 
         # First, perform a basic chi2 scan over a limited set of vdisp values.
-        vdisp, vdisp_ivar = _vdisp_by_chi2scan(
+        vdisp, vdisp_ivar = vdisp_by_chi2scan(
             CTools, templates, uniqueid, specflux, specwave,
             specistd, fitmask, agekeep, deltachi2min=25.,
             fit_for_min=False, debug_plots=debug_plots)
