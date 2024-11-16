@@ -1681,8 +1681,7 @@ def continuum_specfit(data, result, templates, igm, phot, nmonte=50, seed=1,
 
         # Get the variance via Monte Carlo.
         if sedmodel_monte is not None:
-
-            res = [do_kcorr(*args) for args in zip(sedmodel_monte, sedmodel_nolines_monte, [False]*nmonte)]
+            res = [do_kcorr(sm, snm, False) for sm, snm in zip(sedmodel_monte, sedmodel_nolines_monte)]
             (synth_absmag_monte, _, _, _, _, _, lums_monte, cfluxes_monte) = tuple(zip(*res))
 
             synth_absmag_var = np.var(synth_absmag_monte, axis=0)

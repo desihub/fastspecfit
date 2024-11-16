@@ -859,7 +859,8 @@ class EMFitTools(object):
                     flux_perpixel, s, e, patchindx, gausscorr=use_gausscorr)
             return flux, flux_gauss_ivar
 
-        def get_cont(values, specflux_nolines_s):
+
+        def get_cont(values, specflux_nolines_s, isbroad, isbalmer):
             linez = redshift + values[line_vshift] / C_LIGHT
             linezwave = restwave * (1. + linez)
             linesigma = values[line_sigma] # [km/s]
@@ -867,6 +868,9 @@ class EMFitTools(object):
                 linesigma, linezwave, isbroad, isbalmer)
 
             borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
+            if len(borderindx) < nminpix: # require at least XX pixels to get the continuum level
+                return 0., []
+
             clipflux, _ = sigmaclip(specflux_nolines_s[borderindx], low=3., high=3.)
             if len(clipflux) == 0:
                 clipflux = specflux_nolines_s[borderindx]
@@ -890,7 +894,7 @@ class EMFitTools(object):
             ff = emlineflux_s[ss:ee]
             patchnorm = np.sum(ff)
             if patchnorm == 0.: # could happen I guess
-                patchnorm = 1.  # hack!
+                return 0., 0., 0.
 
             moment1 = np.sum(ww * ff) / patchnorm               # [Angstrom]
             moment2 = np.sum((ww-moment1)**2 * ff) / patchnorm  # [Angstrom**2]
@@ -1041,11 +1045,10 @@ class EMFitTools(object):
                     if results_monte is not None:
                         res = [get_flux(*args) for args in zip([iline]*nmonte, line_fluxes_monte, patchindx_monte, use_gausscorr_monte)]
                         flux_monte, _ = tuple(zip(*res))
+                        flux_ivar = var2ivar(np.var(flux_monte))
 
                         # used in the EW calculation below
                         flux_monte = np.array(flux_monte)
-
-                        flux_ivar = var2ivar(np.var(flux_monte))
                     else:
                         flux_ivar = flux_gauss_ivar
 
@@ -1070,19 +1073,17 @@ class EMFitTools(object):
                 flux, flux_ivar = 0., 0.
 
             # next, get the continuum level and the EW
-            borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
-            if len(borderindx) >= nminpix: # require at least XX pixels to get the continuum level
-                cont, clipflux = get_cont(values, specflux_nolines_s)
+            cont, clipflux = get_cont(values, specflux_nolines_s, isbroad, isbalmer)
+            if cont != 0.:
                 result[f'{linename}_CONT'] = cont # * u.erg/(u.second*u.cm**2*u.Angstrom)
 
                 if results_monte is not None:
-                    res = [get_cont(*args) for args in zip(values_monte, specflux_nolines_monte_s)]
+                    res = [get_cont(v, sf, isbroad, isbalmer) for v, sf in zip(values_monte, specflux_nolines_monte_s)]
                     cont_monte, _ = tuple(zip(*res))
+                    cont_ivar = var2ivar(np.var(cont_monte))
 
                     # used in the EW calculation below
                     cont_monte = np.array(cont_monte)
-
-                    cont_ivar = var2ivar(np.var(cont_monte))
                 else:
                     # legacy algorithm for estimating cont_ivar
                     clo, chi = quantile(clipflux, (0.25, 0.75))
