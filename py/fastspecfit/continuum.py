@@ -11,8 +11,9 @@ from numba import jit
 from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
-from fastspecfit.util import (var2ivar, C_LIGHT, quantile, median,
-                              trapz_rebin, trapz_rebin_pre)
+from fastspecfit.util import (
+    C_LIGHT, TINY, quantile, median, var2ivar,
+    trapz_rebin, trapz_rebin_pre)
 
 
 class ContinuumTools(object):
@@ -318,6 +319,30 @@ class ContinuumTools(object):
         return smoothcontinuum
 
 
+    @staticmethod
+    def lums_keys():
+        """Simple method which defines the rest-frame luminosity keys and
+        wavelengths.
+
+        """
+        keys = ('LOGL_1450', 'LOGLNU_1500', 'LOGL_1700',
+                'LOGLNU_2800', 'LOGL_3000', 'LOGL_5100')
+        waves = (1450., 1500., 1700., 2800., 3000., 5100.)
+        return keys, waves
+
+
+    @staticmethod
+    def cfluxes_keys():
+        """Simple method which defines the observed-frame continuum flux keys
+        and wavelengths.
+
+        """
+        keys = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT',
+                'FOIII_5007_CONT', 'FHALPHA_CONT')
+        waves = (1215.67, 3728.48, 4862.71, 5008.24, 6564.6)
+        return keys, waves
+
+
     def continuum_fluxes(self, continuum, uniqueid=0, width1=50., width2=100.,
                          debug_plots=False):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
@@ -356,10 +381,16 @@ class ContinuumTools(object):
             else:
                 return cflux
 
+        llabels, lcwaves = self.lums_keys()
+        flabels, fcwaves = self.cfluxes_keys()
+
+        lums = np.zeros(len(lcwaves))
+        cfluxes = np.zeros(len(fcwaves))
+
         redshift = self.data['redshift']
         if redshift <= 0.0:
             log.warning('Input redshift not defined, zero, or negative!')
-            return {}, {}
+            return lums, cfluxes
 
         templatewave = self.templates.wave
 
@@ -369,10 +400,7 @@ class ContinuumTools(object):
         dlum = self.data['dluminosity']
         dfactor = (1. + redshift) * 4. * np.pi * (3.08567758e24 * dlum)**2 / self.fluxnorm
 
-        lums = {}
-        lcwaves = (1450., 1500., 1700., 2800., 3000., 5100.)
-        llabels = ('LOGL_1450', 'LOGLNU_1500', 'LOGL_1700', 'LOGLNU_2800', 'LOGL_3000', 'LOGL_5100')
-        for cwave, label in zip(lcwaves, llabels):
+        for ilum, (cwave, label) in enumerate(zip(lcwaves, llabels)):
             cflux = _get_cflux(cwave, linear_fit=True) * dfactor # [monochromatic luminosity in erg/s/A]
 
             if 'LOGL_' in label:
@@ -386,17 +414,14 @@ class ContinuumTools(object):
                 cflux *= cwave**2 / (C_LIGHT * 1e13) / norm # [monochromatic luminosity in 10**(-28) erg/s/Hz]
 
             if cflux > 0.:
-                lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
+                lums[ilum] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
-        cfluxes = {}
-        fcwaves = (1215.67, 3728.48, 4862.71, 5008.24, 6564.6)
-        flabels = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT')
-        for cwave, label in zip(fcwaves, flabels):
+        for icflux, (cwave, label) in enumerate(zip(fcwaves, flabels)):
             if 'FLYA' in label or 'FHBETA' in label or 'FHALPHA' in label:
                 ignore_core = True
             else:
                 ignore_core = False
-            cfluxes[label] = _get_cflux(cwave, linear_fit=True, ignore_core=ignore_core)
+            cfluxes[icflux] = _get_cflux(cwave, linear_fit=True, ignore_core=ignore_core)
 
         # simple QA
         if debug_plots:
@@ -430,7 +455,8 @@ class ContinuumTools(object):
                     ignore_core = True
                 else:
                     ignore_core = False
-                cflux, slope = _get_cflux(cwave, linear_fit=linear_fit, return_slope=True, ignore_core=ignore_core)
+                cflux, slope = _get_cflux(cwave, linear_fit=linear_fit, return_slope=True,
+                                          ignore_core=ignore_core)
 
                 xx.plot(templatewave[lo3:hi3] / 1e4, continuum[lo3:hi3])
                 if slope is not None:
@@ -1456,7 +1482,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
 
     if specflux_monte is not None:
         res = [do_fit_full(*args) for args in zip(objflam_monte, specflux_monte)]
-        (tauv_monte, coeff_monte, sedmodel_monte, sedmodel_nolines_monte, 
+
+        (tauv_monte, coeff_monte, sedmodel_monte, sedmodel_nolines_monte,
          desimodel_nolines_monte, dn4000_model_monte, _) = tuple(zip(*res))
 
         continuummodel_monte = np.vstack(desimodel_nolines_monte)
@@ -1610,15 +1637,28 @@ def continuum_specfit(data, result, templates, igm, phot, nmonte=50, seed=1,
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if not np.all(coeff == 0.):
-        kcorr, absmag, synth_absmag, ivarabsmag, synth_bestmaggies = phot.kcorr_and_absmag(
-            data['photometry']['nanomaggies'].value,
-            data['photometry']['nanomaggies_ivar'].value,
-            redshift, data['dmodulus'], data['photsys'],
-            CTools.ztemplatewave, sedmodel)
 
-        lums, cfluxes = CTools.continuum_fluxes(
-            sedmodel_nolines, uniqueid=data['uniqueid'],
-            debug_plots=debug_plots)
+        def do_kcorr(sedmodel, sedmodel_nolines, debug_plots=False):
+            synth_absmag, synth_maggies_rest, synth_bestmaggies = phot.synth_absmag(
+                redshift, data['dmodulus'], data['photsys'], CTools.ztemplatewave,
+                sedmodel)
+
+            kcorr, absmag, ivarabsmag = phot.kcorr_and_absmag(
+                data['photometry']['nanomaggies'].value,
+                data['photometry']['nanomaggies_ivar'].value,
+                redshift, data['dmodulus'], data['photsys'],
+                CTools.ztemplatewave, sedmodel, synth_absmag,
+                synth_maggies_rest, synth_bestmaggies)
+
+            lums, cfluxes = CTools.continuum_fluxes(
+                sedmodel_nolines, uniqueid=data['uniqueid'],
+                debug_plots=debug_plots)
+
+            return (synth_absmag, synth_maggies_rest, synth_bestmaggies,
+                    kcorr, absmag, ivarabsmag, lums, cfluxes)
+
+        (synth_absmag, synth_maggies_rest, synth_bestmaggies, kcorr, absmag, ivarabsmag, lums, cfluxes) = \
+            do_kcorr(sedmodel, sedmodel_nolines, debug_plots=debug_plots)
 
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
             band = band.upper()
@@ -1627,39 +1667,23 @@ def continuum_specfit(data, result, templates, igm, phot, nmonte=50, seed=1,
             result[f'ABSMAG{shift:02d}_{band}'] = absmag[iband] # * u.mag
             result[f'ABSMAG{shift:02d}_SYNTH_{band}'] = synth_absmag[iband] # * u.mag
             result[f'ABSMAG{shift:02d}_IVAR_{band}'] = ivarabsmag[iband] # / (u.mag**2)
+
         for iband, band in enumerate(phot.bands):
             result[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
-        for lum in lums:
-            result[lum] = lums[lum]
-        for cflux in cfluxes:
-            result[cflux] = cfluxes[cflux]
 
+        lumskeys, _ = CTools.lums_keys()
+        for ikey, key in enumerate(lumskeys):
+            result[key] = lums[ikey]
 
+        cfluxeskeys, _ = CTools.cfluxes_keys()
+        for ikey, key in enumerate(cfluxeskeys):
+            result[key] = cfluxes[ikey]
+
+        # Get the variance via Monte Carlo.
         if sedmodel_monte is not None:
 
-            # Get the variance via Monte Carlo.
-            # FIXME: merge with computation of synth_absmag/lums/cfluxes above
-            def get_mags(sedmodel, sedmodel_nolines):
-                synth_absmag = phot.kcorr_and_absmag(
-                    data['photometry']['nanomaggies'].value,
-                    data['photometry']['nanomaggies_ivar'].value,
-                    redshift, data['dmodulus'], data['photsys'],
-                    CTools.ztemplatewave, sedmodel,
-                    compute_kcorr=False)
-
-                lums, cfluxes = CTools.continuum_fluxes(
-                    sedmodel_nolines, uniqueid=data['uniqueid'],
-                    debug_plots=False)
-                lums = list(lums.values())
-                cfluxes = list(cfluxes.values())
-                return (synth_absmag, lums, cfluxes)
-
-            res = [
-                get_mags(*args) for args in
-                zip(sedmodel_monte, sedmodel_nolines_monte)
-            ]
-            synth_absmag_monte, lums_monte, cfluxes_monte = \
-                tuple(zip(*res))
+            res = [do_kcorr(*args) for args in zip(sedmodel_monte, sedmodel_nolines_monte, [False]*nmonte)]
+            (synth_absmag_monte, _, _, _, absmag_monte, _, lums_monte, cfluxes_monte) = tuple(zip(*res))
 
             synth_absmag_var = np.var(synth_absmag_monte, axis=0)
             for band, shift, var in zip(phot.absmag_bands, phot.band_shift, synth_absmag_var):
@@ -1669,12 +1693,12 @@ def continuum_specfit(data, result, templates, igm, phot, nmonte=50, seed=1,
                     result[f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}'] = 1. / var
 
             lums_var = np.var(lums_monte, axis=0)
-            for lumkey, var in zip(lums.keys(), lums_var):
+            for lumkey, var in zip(lumskeys, lums_var):
                 if var > TINY:
                     result[f'{lumkey}_IVAR'] = 1. / var
 
             cfluxes_var = np.var(cfluxes_monte, axis=0)
-            for cfluxkey, var in zip(cfluxes.keys(), cfluxes_var):
+            for cfluxkey, var in zip(cfluxeskeys, cfluxes_var):
                 if var > TINY:
                     result[f'{cfluxkey}_IVAR'] = 1. / var
 
@@ -1700,19 +1724,12 @@ def continuum_specfit(data, result, templates, igm, phot, nmonte=50, seed=1,
         result['SFR'] = sfr
 
         if coeff_monte is not None:
-            res = [
-                _get_sps_properties(c) for c in
-                coeff_monte
-            ]
+            res = [_get_sps_properties(c) for c in coeff_monte]
             age_monte, zzsun_monte, logmstar_monte, sfr_monte = tuple(zip(*res))
 
             for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
                                       ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
-                var = np.var(val_monte)
-                if var > TINY:
-                    result[col] = 1. / var
-                else:
-                    result[col] = 0.
+                result[col] = var2ivar(np.var(val_monte))
 
         #rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600.))
         #msg = [f'M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag']
