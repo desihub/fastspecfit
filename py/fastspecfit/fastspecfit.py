@@ -203,6 +203,14 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         cameras=cameras, fastphot=fastphot,
         fitstack=fitstack)
 
+    # If using Monte Carlo, generate the random seed(s).
+    if args.nmonte > 0:
+        rng = np.random.default_rng(seed=args.seed)
+        seeds = rng.integers(2**32, size=ntargets, dtype=np.int64)
+        print(seeds)
+    else:
+        seeds = [1] * ntargets
+
     # Fit in parallel
     t0 = time.time()
     fitargs = [{
@@ -219,7 +227,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         'uncertainty_floor':   args.uncertainty_floor,
         'minsnr_balmer_broad': args.minsnr_balmer_broad,
         'nmonte':              args.nmonte,
-        'seed':                args.seed,
+        'seed':                seeds[iobj],
     } for iobj in range(len(meta))]
 
     _out = mp_pool.starmap(fastspec_one, fitargs)

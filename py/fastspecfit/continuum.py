@@ -1000,8 +1000,8 @@ def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_rest
     return compute_vdisp, (s, e)
 
 
-def continuum_fastphot(redshift, objflam, objflamivar, CTools,
-                       uniqueid=0, nmonte=50, rng=None, debug_plots=False):
+def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
+                       nmonte=50, rng=None, debug_plots=False):
     """Model the broadband photometry.
 
     """
@@ -1537,9 +1537,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
             sedmodel_nolines_monte, continuummodel_monte)
 
 
-def continuum_specfit(data, result, templates, igm, phot, nmonte=50, seed=1,
-                      constrain_age=False, no_smooth_continuum=False,
-                      fitstack=False, fastphot=False, debug_plots=False):
+def continuum_specfit(data, result, templates, igm, phot,
+                      nmonte=50, seed=1, constrain_age=False,
+                      no_smooth_continuum=False, fitstack=False,
+                      fastphot=False, debug_plots=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -1588,7 +1589,11 @@ def continuum_specfit(data, result, templates, igm, phot, nmonte=50, seed=1,
                             vdisp_guess=templates.vdisp_nominal,
                             fluxnorm=FLUXNORM, constrain_age=constrain_age)
 
-    rng = np.random.default_rng(seed=seed)
+    # Instantiate the random-number generator.
+    if nmonte > 0:
+        rng = np.random.default_rng(seed=seed)
+    else:
+        rng = None
 
     if fastphot:
         # Photometry-only fitting.
@@ -1619,6 +1624,7 @@ def continuum_specfit(data, result, templates, igm, phot, nmonte=50, seed=1,
             msg.append(f'{cam}={100.*corr:.3f}%')
         log.info(' '.join(msg))
 
+    result['SEED'] = seed
     result['Z'] = redshift
     result['COEFF'][CTools.agekeep] = coeff
     result['RCHI2_PHOT'] = rchi2_phot

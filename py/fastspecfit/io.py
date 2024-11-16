@@ -1764,6 +1764,7 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
             out_units[name] = unit
 
     add_field('Z', dtype='f8') # redshift
+    add_field('SEED', dtype=np.int64)
     add_field('COEFF', shape=(ncoeff,), dtype='f4')
 
     if not fastphot:
