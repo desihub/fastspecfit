@@ -151,7 +151,7 @@ class Photometry(object):
             self.bands_to_fit *= [False]
 
 
-    def synth_absmag(self, redshift, dmod, photsys, zmodelwave, zmodelflux):
+    def synth_absmag(self, redshift, dmod, zmodelwave, zmodelflux):
         """Synthesize absolute magnitudes from the best-fitting SED.
 
         Parameters
@@ -160,8 +160,6 @@ class Photometry(object):
            Galaxy or QSO redshift.
         dmod : :class:`float`
            Distance modulus corresponding to `redshift`.
-        photsys : :class:`str`
-           Photometric system.
         zmodelwave : `numpy.ndarray`
            Observed-frame (redshifted) model wavelength array.
         zmodelflux : `numpy.ndarray`
@@ -173,8 +171,6 @@ class Photometry(object):
            Absolute magnitudes based on synthesized photometry.
         synth_maggies_rest : `numpy.ndarray`
            Synthesized rest-frame photometry.
-        synth_maggies_obs : `numpy.ndarray`
-           Synthesized observed-frame photometry.
 
         """
         if redshift <= 0.0:
@@ -182,14 +178,7 @@ class Photometry(object):
             nabs = len(self.absmag_filters)
             synth_absmag = np.zeros(nabs, dtype='f8')
             synth_maggies_rest = np.zeros(nabs, dtype='f8')
-            synth_maggies_obs = np.zeros(len(maggies))
-            return synth_absmag, synth_maggies_rest, synth_maggies_obs
-
-        # Input bandpasses, observed frame; maggies and synth_maggies_obs
-        # should be very close.
-        filters_obs = self.filters[photsys]
-        synth_maggies_obs = self.get_ab_maggies_unchecked(
-            filters_obs, zmodelflux / FLUXNORM, zmodelwave)
+            return synth_absmag, synth_maggies_rest
 
         # Multiply by (1+z) to convert the best-fitting model to the "rest frame".
         synth_maggies_rest = self.get_ab_maggies_unchecked(
@@ -197,12 +186,12 @@ class Photometry(object):
             zmodelwave / (1. + redshift))
         synth_absmag = -2.5 * np.log10(synth_maggies_rest) - dmod
 
-        return synth_absmag, synth_maggies_rest, synth_maggies_obs
+        return synth_absmag, synth_maggies_rest
 
 
     def kcorr_and_absmag(self, nanomaggies, ivar_nanomaggies, redshift, dmod,
                          photsys, zmodelwave, zmodelflux, synth_absmag,
-                         synth_maggies_rest, synth_maggies_obs, snrmin=2.):
+                         synth_maggies_rest, snrmin=2.):
         """Compute K-corrected rest-frame photometry.
 
         Parameters
@@ -223,8 +212,6 @@ class Photometry(object):
            Absolute magnitudes based on synthesized photometry.
         synth_maggies_rest : `numpy.ndarray`
            Synthesized rest-frame photometry.
-        synth_maggies_obs : `numpy.ndarray`
-           Synthesized observed-frame photometry.
         snrmin : :class:`float`, defaults to 2.
            Minimum signal-to-noise ratio in the input photometry (`maggies`) in
            order for that bandpass to be used to compute a K-correction.
@@ -238,6 +225,8 @@ class Photometry(object):
            provided) for each bandpass in `absmag_filters`.
         ivarabsmag : `numpy.ndarray`
            Inverse variance corresponding to `absmag`.
+        synth_maggies_obs : `numpy.ndarray`
+           Synthesized observed-frame photometry.
 
         Notes
         -----
@@ -256,14 +245,21 @@ class Photometry(object):
             kcorr = np.zeros(nabs, dtype='f8')
             absmag = np.zeros(nabs, dtype='f8')
             ivarabsmag = np.zeros(nabs, dtype='f8')
-            return kcorr, absmag, ivarabsmag
+            synth_maggies_obs = np.zeros(len(nanomaggies))
+            return kcorr, absmag, ivarabsmag, synth_maggies_obs
 
         maggies = nanomaggies * 1e-9
         ivarmaggies = (ivar_nanomaggies / 1e-9**2) * self.bands_to_fit
 
+        # Input bandpasses, observed frame; maggies and synth_maggies_obs
+        # should be very close.
         filters_obs = self.filters[photsys]
         lambda_obs = filters_obs.effective_wavelengths.value
         lambda_out = self.filters_out.effective_wavelengths.value
+
+        # Synthesize observed-frame photometry (should be close to maggies).
+        synth_maggies_obs = self.get_ab_maggies_unchecked(
+            filters_obs, zmodelflux / FLUXNORM, zmodelwave)
 
         # K-correct from the nearest "good" bandpass (to minimizes the K-correction)
         oband = np.empty(nabs, dtype=np.int16)
@@ -286,7 +282,7 @@ class Photometry(object):
             absmag[I] = -2.5 * np.log10(maggies[oband[I]]) - dmod - kcorr[I]
             ivarabsmag[I] = maggies[oband[I]]**2 * ivarmaggies[oband[I]] * C
 
-        return kcorr, absmag, ivarabsmag
+        return kcorr, absmag, ivarabsmag, synth_maggies_obs
 
 
     @staticmethod

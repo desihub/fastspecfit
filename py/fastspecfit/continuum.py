@@ -1639,25 +1639,25 @@ def continuum_specfit(data, result, templates, igm, phot, nmonte=50, seed=1,
     if not np.all(coeff == 0.):
 
         def do_kcorr(sedmodel, sedmodel_nolines, debug_plots=False):
-            synth_absmag, synth_maggies_rest, synth_bestmaggies = phot.synth_absmag(
-                redshift, data['dmodulus'], data['photsys'], CTools.ztemplatewave,
+            synth_absmag, synth_maggies_rest = phot.synth_absmag(
+                redshift, data['dmodulus'], CTools.ztemplatewave,
                 sedmodel)
 
-            kcorr, absmag, ivarabsmag = phot.kcorr_and_absmag(
+            kcorr, absmag, ivarabsmag, synth_bestmaggies = phot.kcorr_and_absmag(
                 data['photometry']['nanomaggies'].value,
                 data['photometry']['nanomaggies_ivar'].value,
                 redshift, data['dmodulus'], data['photsys'],
                 CTools.ztemplatewave, sedmodel, synth_absmag,
-                synth_maggies_rest, synth_bestmaggies)
+                synth_maggies_rest)
 
             lums, cfluxes = CTools.continuum_fluxes(
                 sedmodel_nolines, uniqueid=data['uniqueid'],
                 debug_plots=debug_plots)
 
-            return (synth_absmag, synth_maggies_rest, synth_bestmaggies,
-                    kcorr, absmag, ivarabsmag, lums, cfluxes)
+            return (synth_absmag, synth_maggies_rest, kcorr, absmag,
+                    ivarabsmag, synth_bestmaggies, lums, cfluxes)
 
-        (synth_absmag, synth_maggies_rest, synth_bestmaggies, kcorr, absmag, ivarabsmag, lums, cfluxes) = \
+        (synth_absmag, synth_maggies_rest, kcorr, absmag, ivarabsmag, synth_bestmaggies, lums, cfluxes) = \
             do_kcorr(sedmodel, sedmodel_nolines, debug_plots=debug_plots)
 
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
@@ -1683,7 +1683,7 @@ def continuum_specfit(data, result, templates, igm, phot, nmonte=50, seed=1,
         if sedmodel_monte is not None:
 
             res = [do_kcorr(*args) for args in zip(sedmodel_monte, sedmodel_nolines_monte, [False]*nmonte)]
-            (synth_absmag_monte, _, _, _, absmag_monte, _, lums_monte, cfluxes_monte) = tuple(zip(*res))
+            (synth_absmag_monte, _, _, _, _, _, lums_monte, cfluxes_monte) = tuple(zip(*res))
 
             synth_absmag_var = np.var(synth_absmag_monte, axis=0)
             for band, shift, var in zip(phot.absmag_bands, phot.band_shift, synth_absmag_var):
