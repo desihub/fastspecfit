@@ -264,6 +264,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                       template_file=sc_data.templates.file,
                       emlinesfile=sc_data.emlines.file, fastphot=fastphot,
                       inputz=input_redshifts is not None,
+                      nmonte=args.nmonte, seed=args.seed,
+                      inputseeds=input_seeds is not None,
                       ignore_photometry=args.ignore_photometry,
                       broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
                       use_quasarnet=args.use_quasarnet,

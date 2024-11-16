@@ -1506,7 +1506,8 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
 def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
                       coadd_type=None, fphotofile=None, template_file=None,
                       emlinesfile=None, fastphot=False, inputz=False,
-                      no_smooth_continuum=False, ignore_photometry=False, broadlinefit=True,
+                      inputseeds=None, nmonte=50, seed=1, no_smooth_continuum=False,
+                      ignore_photometry=False, broadlinefit=True,
                       use_quasarnet=True, constrain_age=False, verbose=True):
     """Write out.
 
@@ -1547,6 +1548,9 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     if coadd_type:
         primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd type')))
     primhdr.append(('INPUTZ', (inputz is True, 'input redshifts provided')))
+    primhdr.append(('INPUTS', (inputseeds is True, 'input seeds provided')))
+    primhdr.append(('NMONTE', (nmonte, 'number of Monte Carlo realizations')))
+    primhdr.append(('SEED', (seed, 'random seed for Monte Carlo reproducibility')))
     primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))
     primhdr.append(('NOPHOTO', (ignore_photometry is True, 'no fitting to photometry')))
     primhdr.append(('BRDLFIT', (broadlinefit is True, 'carry out broad-line fitting')))
