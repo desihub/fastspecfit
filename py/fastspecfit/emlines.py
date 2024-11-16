@@ -991,7 +991,6 @@ class EMFitTools(object):
                 obsamp_var = obsamps_var[line_amp]
 
             # number of pixels, chi2, and boxcar integration
-            #patchindx = line_s + np.where(emlineivar_s[line_s:line_e] > 0.)[0]
             npix = len(patchindx)
             result[f'{linename}_NPIX'] = npix
 
