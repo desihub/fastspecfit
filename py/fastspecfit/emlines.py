@@ -14,7 +14,7 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
-from fastspecfit.util import C_LIGHT, TINY, FLUXNORM, var2ivar
+from fastspecfit.util import C_LIGHT, TINY, SQTINY, FLUXNORM, var2ivar
 from fastspecfit.emline_fit import (EMLine_Objective,
     EMLine_MultiLines, EMLine_find_peak_amplitudes,
     EMLine_build_model, EMLine_ParamsMapping)
@@ -872,7 +872,7 @@ class EMFitTools(object):
                 clipflux = specflux_nolines_s[borderindx]
 
             cont = np.mean(clipflux)
-            return cont
+            return cont, clipflux
 
 
         def get_moments(values, emlineflux_s, isbroad, isbalmer):
@@ -1075,11 +1075,12 @@ class EMFitTools(object):
             # next, get the continuum level and the EW
             borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
             if len(borderindx) >= nminpix: # require at least XX pixels to get the continuum level
-                cont = get_cont(values, specflux_nolines_s)
+                cont, clipflux = get_cont(values, specflux_nolines_s)
                 result[f'{linename}_CONT'] = cont # * u.erg/(u.second*u.cm**2*u.Angstrom)
 
                 if results_monte is not None:
-                    cont_monte = [get_cont(*args) for args in zip(values_monte, specflux_nolines_monte_s)]
+                    res = [get_cont(*args) for args in zip(values_monte, specflux_nolines_monte_s)]
+                    cont_monte, _ = tuple(zip(*res))
 
                     # used in the EW calculation below
                     cont_monte = np.array(cont_monte)
