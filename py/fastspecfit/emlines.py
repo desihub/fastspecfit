@@ -915,15 +915,9 @@ class EMFitTools(object):
                 values[line_sigma]  = 0.
                 continue
 
-            # Monte Carlo uncertainties
-            if results_monte is not None:
-                modelamp_var = values_var[line_amp]
-                vshift_var = values_var[line_vshift]
-                sigma_var = values_var[line_sigma]
-                obsamp_var = obsamps_var[line_amp]
-
             # number of pixels, chi2, and boxcar integration
             patchindx = line_s + np.where(emlineivar_s[line_s:line_e] > 0.)[0]
+
             npix = len(patchindx)
             result[f'{linename}_NPIX'] = npix
 
@@ -943,17 +937,6 @@ class EMFitTools(object):
                 result[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
 
                 if results_monte is not None:
-                    if obsamp_var > TINY:
-                        obsamp_ivar = 1. / obsamp_var
-                    else:
-                        obsamp_ivar = 0.
-                    result[f'{linename}_AMP_IVAR'] = obsamp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
-                    if vshift_var > TINY:
-                        result[f'{linename}_VSHIFT_IVAR'] = 1. / vshift_var
-                    if sigma_var > TINY:
-                        result[f'{linename}_SIGMA_IVAR'] = 1. / sigma_var
-                    #if modelamp_var > TINY:
-                    #    result[f'{linename}_MODELAMP_IVAR'] = 1. / modelamp_var
 
                     # Monte Carlo to get the uncertainties
                     # FIXME: merge with nearly identical code for boxflux above
@@ -987,6 +970,25 @@ class EMFitTools(object):
                     if boxflux_var > TINY:
                         result[f'{linename}_BOXFLUX_IVAR'] = 1. / boxflux_var
 
+                    vshift_var = values_var[line_vshift]
+                    if vshift_var > TINY:
+                        result[f'{linename}_VSHIFT_IVAR'] = 1. / vshift_var
+
+                    sigma_var = values_var[line_sigma]
+                    if sigma_var > TINY:
+                        result[f'{linename}_SIGMA_IVAR'] = 1. / sigma_var
+
+                    # modelamp_var = values_var[line_amp]
+                    #if modelamp_var > TINY:
+                    #    result[f'{linename}_MODELAMP_IVAR'] = 1. / modelamp_var
+
+                    obsamp_var = obsamps_var[line_amp]
+                    if obsamp_var > TINY:
+                        obsamp_ivar = 1. / obsamp_var
+                        result[f'{linename}_AMP_IVAR'] = obsamp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                    else:
+                        obsamp_ivar = 0. # needed below
+
                 else:
                     # Legacy algorithm: get the uncertainty in the
                     # line-amplitude based on the scatter in the pixel values
@@ -995,9 +997,9 @@ class EMFitTools(object):
                     obsamp_sigma = (n_hi - n_lo) / 1.349 # robust sigma
                     if obsamp_sigma > SQTINY:
                         obsamp_ivar = 1. / obsamp_sigma**2
+                        result[f'{linename}_AMP_IVAR'] = obsamp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
                     else:
-                        obsamp_ivar = 0.
-                    result[f'{linename}_AMP_IVAR'] = obsamp_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                        obsamp_ivar = 0. # needed below
 
                     # formal (statistical) uncertainty
                     boxflux_ivar = 1. / np.sum(dwaves_patch**2 / emlineivar_patch)
