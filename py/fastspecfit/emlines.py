@@ -983,13 +983,6 @@ class EMFitTools(object):
                 values[line_sigma]  = 0.
                 continue
 
-            # Compute the variance on the line-fitting results.
-            if results_monte is not None:
-                modelamp_var = values_var[line_amp]
-                vshift_var = values_var[line_vshift]
-                sigma_var = values_var[line_sigma]
-                obsamp_var = obsamps_var[line_amp]
-
             # number of pixels, chi2, and boxcar integration
             npix = len(patchindx)
             result[f'{linename}_NPIX'] = npix
@@ -1008,10 +1001,15 @@ class EMFitTools(object):
                 result[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
 
                 if results_monte is not None:
+                    # Compute the variance on the line-fitting results.
+                    obsamp_var = obsamps_var[line_amp]
                     obsamp_ivar = var2ivar(obsamp_var) # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
                     result[f'{linename}_AMP_IVAR'] = obsamp_ivar
+                    vshift_var = values_var[line_vshift]
                     result[f'{linename}_VSHIFT_IVAR'] = var2ivar(vshift_var)
+                    sigma_var = values_var[line_sigma]
                     result[f'{linename}_SIGMA_IVAR'] = var2ivar(sigma_var)
+                    #modelamp_var = values_var[line_amp]
                     #result[f'{linename}_MODELAMP_IVAR'] = var2ivar(modelamp_var)
 
                     res = [get_boxflux(*args) for args in zip(values_monte, emlineflux_monte_s)]
@@ -1098,7 +1096,7 @@ class EMFitTools(object):
             else:
                 cont, cont_ivar = 0., 0.
 
-            if cont != 0. and cont_ivar != 0.:
+            if cont != 0. and cont_ivar > 0.:
                 if flux > 0. and flux_ivar > 0.:
                     # add the uncertainties in the flux and continuum in quadrature
                     ew = flux / cont / (1. + redshift) # rest frame [A]
@@ -1142,8 +1140,8 @@ class EMFitTools(object):
                 result[f'{moment_col}_MOMENT{n+1}'] = mom
 
             if results_monte is not None:
-                res = [get_moments(*args) for args in zip(values_monte, emlineflux_monte_s,
-                                                          [isbroad]*nmonte, [isbalmer]*nmonte)]
+                res = [get_moments(v, ef, isbroad, isbalmer) for
+                       v, ef in zip(values_monte, emlineflux_monte_s)]
                 moments_monte = tuple(zip(*res))
 
                 for n, mom_monte in enumerate(moments_monte):
