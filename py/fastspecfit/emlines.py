@@ -1618,6 +1618,26 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                            emlineivar, oemlineivar, specflux_nolines, redshift,
                            resolution_matrix, camerapix, results_monte=results_monte)
 
+    msg = []
+    dv = C_LIGHT*(np.array([result['UV_Z'], result['BROAD_Z'], result['NARROW_Z']])-redshift)
+    dverr = C_LIGHT*np.array([result['UV_ZRMS'], result['BROAD_ZRMS'], result['NARROW_ZRMS']])
+    for label, units, val, valerr in zip(
+            ['delta(v) UV', 'Balmer broad', 'narrow'],
+            [' km/s', ' km/s', ' km/s'], dv, dverr):
+        err_msg = f'+/-{valerr:.1f}' if valerr > 0. else ''
+        msg.append(f'{label}={val:.1f}{err_msg}{units}')
+    log.info(' '.join(msg))
+
+    msg = []
+    for label, units, val, valerr in zip(
+            ['sigma UV', 'Balmer broad', 'narrow'],
+            [' km/s', ' km/s', ' km/s'],
+            [result['UV_SIGMA'], result['BROAD_SIGMA'], result['NARROW_SIGMA']],
+            [result['UV_SIGMARMS'], result['BROAD_SIGMARMS'], result['NARROW_SIGMARMS']]):
+        err_msg = f'+/-{valerr:.0f}' if valerr > 0. else ''
+        msg.append(f'{label}={val:.0f}{err_msg}{units}')
+    log.info(' '.join(msg))
+
     # Build the model spectrum from the final reported parameter values
     emmodel = EMFit.emlinemodel_bestfit(
         result, redshift, emlinewave, resolution_matrix, camerapix)
@@ -1631,7 +1651,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
     rchi2 = np.sum(oemlineivar * (specflux - (continuummodel + smooth_continuum + emmodel))**2)
     rchi2 /= np.sum(oemlineivar > 0)  # dof??
     result['RCHI2'] = rchi2
-
 
     # Build the output model spectra.
     modelwave, modelcontinuum, modelemspectrum, modelspectra = build_coadded_models(

@@ -1750,7 +1750,7 @@ def continuum_specfit(data, result, templates, igm, phot,
             else:
                 var_msg = ''
             msg.append(f'{label}={val:.2f}{var_msg}{units}')
-        log.info(', '.join(msg))
+        log.info(' '.join(msg))
 
     log.debug(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
 
