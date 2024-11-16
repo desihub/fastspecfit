@@ -266,6 +266,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                       inputz=input_redshifts is not None,
                       nmonte=args.nmonte, seed=args.seed,
                       inputseeds=input_seeds is not None,
+                      uncertainty_floor=args.uncertainty_floor,
+                      minsnr_balmer_broad=args.minsnr_balmer_broad,
                       ignore_photometry=args.ignore_photometry,
                       broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
                       use_quasarnet=args.use_quasarnet,
@@ -342,7 +344,7 @@ def parse(options=None):
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
-    parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum..')
+    parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
     parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
