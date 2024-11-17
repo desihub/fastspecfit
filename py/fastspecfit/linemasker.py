@@ -32,7 +32,7 @@ class LineMasker(object):
     @staticmethod
     def linepix_and_contpix(wave, ivar, linetable, linesigmas, residuals=None,
                             flux=None, linevshifts=None, patchMap=None, redshift=0.,
-                            nsigma=2., minlinesigma=50., mincontpix=11,
+                            nsigma=2.5, minlinesigma=50., mincontpix=11,
                             get_contpix=True, get_snr=False):
         """Support routine to determine the pixels potentially containing emission lines
         and the corresponding (adjacent) continuum.
@@ -242,8 +242,8 @@ class LineMasker(object):
                        uniqueid=0, initsigma_broad=3000., initsigma_narrow=150.,
                        initsigma_balmer_broad=1000., initvshift_broad=0.,
                        initvshift_narrow=0., initvshift_balmer_broad=0.,
-                       minsnr_balmer_broad=1.5, minsnr_linemask=5.,
-                       niter=2, nsigma_mask=4.5, debug_plots=False):
+                       minsnr_balmer_broad=1.5, minsnr_linemask=3.5,
+                       niter=2, nsigma_mask=5., debug_plots=False):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -306,9 +306,9 @@ class LineMasker(object):
             return continuum_patches
 
 
-        def _fit_patches(continuum_patches, patchMap, linemodel, debug_plots=False,
-                         testBalmerBroad=False, minsnr=1.5, modelname='',
-                         png=None):
+        def fit_patches(continuum_patches, patchMap, linemodel,
+                        testBalmerBroad=False, minsnr=1.5, modelname='',
+                        suffix='nobroad', debug_plots=False):
             """Iteratively fit all the lines in patches."""
 
             linesigmas = np.zeros(nline)
@@ -517,6 +517,8 @@ class LineMasker(object):
 
                 sns.set(context='talk', style='ticks', font_scale=0.8)
 
+                pngfile = f'qa-patches-{suffix}-{uniqueid}.png'
+
                 npatch = len(contfit)
                 ncols = 3
                 nrows = int(np.ceil(npatch / ncols))
@@ -597,10 +599,9 @@ class LineMasker(object):
                 fig.text(xpos, ypos, f'Fit-in-Patches: {uniqueid}', ha='center', va='center')
 
                 fig.subplots_adjust(left=0.08, right=0.97, bottom=bottom, top=top, wspace=0.23, hspace=0.3)
-
-                if png:
-                    fig.savefig(png, bbox_inches='tight')
-                    plt.close()
+                fig.savefig(pngfile, bbox_inches='tight')
+                plt.close()
+                log.info(f'Wrote {pngfile}')
 
             return linefit, contfit, residuals, final_linesigmas, final_linevshifts, maxsnrs
 
@@ -644,22 +645,22 @@ class LineMasker(object):
             continuum_patches['balmerbroad'][ipatch] = np.any(EMFit.isBalmerBroad_noHelium_Strong[EMFit.line_in_range][I])
 
         # Need to pass copies of continuum_patches and patchMap because they can
-        # get modified dynamically by _fit_patches.
+        # get modified dynamically by fit_patches.
         linefit_nobroad, contfit_nobroad, residuals_nobroad, linesigmas_nobroad, linevshifts_nobroad, maxsnrs_nobroad = \
-            _fit_patches(continuum_patches.copy(), patchMap.copy(),
-                         linemodel_nobroad, testBalmerBroad=False,
-                         debug_plots=debug_plots, modelname='narrow lines only',
-                         png=f'qa-patches-nobroad-{uniqueid}.png')
+            fit_patches(continuum_patches.copy(), patchMap.copy(),
+                        linemodel_nobroad, testBalmerBroad=False,
+                        debug_plots=debug_plots, suffix='nobroad',
+                        modelname='narrow lines only')
 
         # Only fit with broad Balmer lines if at least one patch contains a
         # broad line.
         B = contfit_nobroad['balmerbroad']
         if np.any(B):
             linefit_broad, contfit_broad, residuals_broad, linesigmas_broad, linevshifts_broad, maxsnrs_broad = \
-                _fit_patches(continuum_patches.copy(), patchMap.copy(),
-                             linemodel_broad, testBalmerBroad=True,
-                             debug_plots=debug_plots, modelname='narrow+broad lines',
-                             png=f'qa-patches-broad-{uniqueid}.png')
+                fit_patches(continuum_patches.copy(), patchMap.copy(),
+                            linemodel_broad, testBalmerBroad=True,
+                            debug_plots=debug_plots, suffix='broad',
+                            modelname='narrow+broad lines')
 
             # if a broad Balmer line is well-detected, take its linewidth
             if maxsnrs_broad[2] > minsnr_balmer_broad:
@@ -717,7 +718,7 @@ class LineMasker(object):
 
             sns.set(context='talk', style='ticks', font_scale=0.8)
 
-            png = f'qa-linemask-{uniqueid}.png'
+            pngfile = f'qa-linemask-{uniqueid}.png'
 
             linenames = list(pix['linepix'].keys())
             zlinewaves = EMFit.line_table[EMFit.line_in_range]['restwave'] * \
@@ -798,8 +799,9 @@ class LineMasker(object):
             fig.text(xpos, ypos, f'LinePix/ContPix: {uniqueid}', ha='center', va='center')
 
             fig.subplots_adjust(left=0.06, right=0.97, bottom=bottom, top=top, wspace=0.23, hspace=0.3)
-            fig.savefig(png, bbox_inches='tight')
+            fig.savefig(pngfile, bbox_inches='tight')
             plt.close()
+            log.info(f'Wrote {pngfile}')
 
         # (comment continued from above) ...but reset the broad Balmer
         # line-width to a minimum value and make another linepix mask. We need
