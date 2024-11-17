@@ -1526,7 +1526,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         for icam, (ss, ee) in enumerate(data['camerapix']):
             I = ((specflux[ss:ee] != 0.) & (specivar[ss:ee] != 0.) & (smoothcontinuum[ss:ee] != 0.))
             if np.count_nonzero(I) > 3: # require three good pixels to compute the mean
-                smoothstats[icam] = np.mean(1. - smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
+                smoothstats[icam] = median(smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
 
     log.debug(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
 
