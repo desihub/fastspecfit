@@ -239,10 +239,10 @@ class LineMasker(object):
 
 
     def build_linemask(self, wave, flux, ivar, resolution_matrix, redshift=0.,
-                       uniqueid=0, initsigma_broad=3000., initsigma_narrow=150.,
-                       initsigma_balmer_broad=1000., initvshift_broad=0.,
-                       initvshift_narrow=0., initvshift_balmer_broad=0.,
-                       minsnr_balmer_broad=1.5, minsnr_linemask=3.5,
+                       uniqueid=0, minsnr_balmer_broad=1.5, minsnr_linemask=3.5,
+                       initsigma_broad=None, initsigma_narrow=None,
+                       initsigma_balmer_broad=None, initvshift_broad=None,
+                       initvshift_narrow=None, initvshift_balmer_broad=None,
                        niter=2, nsigma_mask=5., debug_plots=False):
         """Generate a mask which identifies pixels impacted by emission lines.
 
@@ -607,6 +607,19 @@ class LineMasker(object):
 
 
         # main function begins here
+        if initsigma_broad is None:
+            initsigma_broad = 3000.
+        if initsigma_narrow is None:
+            initsigma_narrow = 150.
+        if initsigma_balmer_broad is None:
+            initsigma_balmer_broad = 1000.
+        if initvshift_broad is None:
+            initvshift_broad = 0.
+        if initvshift_narrow is None:
+            initvshift_narrow = 0.
+        if initvshift_balmer_broad is None:
+            initvshift_balmer_broad = 0.
+
         camerapix = np.array([[0, len(wave)]]) # one camera
 
         # Read just the strong lines and determine which lines are in range of the camera.
@@ -709,7 +722,6 @@ class LineMasker(object):
                                        nsigma=nsigma_mask, get_snr=True, flux=flux,
                                        residuals=residuals,
                                        patchMap=None, redshift=redshift)
-
 
         # Build another QA figure
         if debug_plots:
@@ -825,6 +837,7 @@ class LineMasker(object):
             linepix = pix['linepix']
             snrpix = pix['snr']
 
+
         # remove low signal-to-noise ratio lines from the mask
         linenames = snrpix.keys()
         for linename in linenames:
@@ -839,9 +852,6 @@ class LineMasker(object):
             'linevshift_broad': finalvshift_broad,
             'linevshift_narrow': finalvshift_narrow,
             'linevshift_balmer_broad': finalvshift_balmer_broad, # updated value
-            'maxsnr_broad': maxsnr_broad,
-            'maxsnr_narrow': maxsnr_narrow,
-            'maxsnr_balmer_broad': maxsnr_balmer_broad,
             'balmerbroad': np.any(contfit_nobroad['balmerbroad']), # True = one or more broad Balmer line in range
             'coadd_linepix': linepix,
         }

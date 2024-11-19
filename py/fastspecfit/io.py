@@ -185,12 +185,12 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
             specdata['coadd_wave'], specdata['coadd_flux'],
             specdata['coadd_ivar'], specdata['coadd_res'],
             uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
-            final_sigma_uv=init_sigma_uv,
-            final_sigma_narrow=init_sigma_narrow,
-            final_sigma_balmer=init_sigma_balmer,
-            final_vshift_uv=init_vshift_uv,
-            final_vshift_narrow=init_vshift_narrow,
-            final_vshift_balmer=init_vshift_balmer,
+            initsigma_broad=init_sigma_uv,
+            initsigma_narrow=init_sigma_narrow,
+            initsigma_balmer_broad=init_sigma_balmer,
+            initvshift_broad=init_vshift_uv,
+            initvshift_narrow=init_vshift_narrow,
+            initvshift_balmer_broad=init_vshift_balmer,
             debug_plots=debug_plots)
 
         # Map the pixels belonging to individual emission lines onto the
