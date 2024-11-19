@@ -1723,6 +1723,5 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                 log.info(f'Wrote {pngfile}')
 
     log.debug(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
-    for n in result.value.dtype.names:
-        print(n, result[n])
+
     return spectra_out
