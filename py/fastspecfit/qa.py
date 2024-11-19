@@ -110,8 +110,8 @@ def desiqa_one(data, fastfit, metadata, coadd_type, minspecwave=3500.,
                emline_snrmin=0.0, nsmoothspec=1, init_sigma_uv=None,
                init_sigma_narrow=None, init_sigma_balmer=None,
                init_vshift_uv=None, init_vshift_narrow=None,
-               init_vshift_balmer=None, init_balmer_broad=None,
-               fastphot=False, fitstack=False, inputz=False, no_smooth_continuum=False,
+               init_vshift_balmer=None, fastphot=False, fitstack=False,
+               inputz=False, no_smooth_continuum=False,
                outdir=None, outprefix=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
@@ -127,8 +127,7 @@ def desiqa_one(data, fastfit, metadata, coadd_type, minspecwave=3500.,
                      init_sigma_balmer=init_sigma_balmer,
                      init_vshift_uv=init_vshift_uv,
                      init_vshift_narrow=init_vshift_narrow,
-                     init_vshift_balmer=init_vshift_balmer,
-                     init_balmer_broad=init_balmer_broad)
+                     init_vshift_balmer=init_vshift_balmer)
 
     qa_fastspec(data, sc_data.templates, fastfit, metadata,
                 coadd_type=coadd_type,
@@ -1495,7 +1494,6 @@ def fastqa(args=None, comm=None):
                 init_vshift_uv = fastfit['INIT_VSHIFT_UV'][indx].value
                 init_vshift_narrow = fastfit['INIT_VSHIFT_NARROW'][indx].value
                 init_vshift_balmer = fastfit['INIT_VSHIFT_BALMER'][indx].value
-                init_balmer_broad = fastfit['INIT_BALMER_BROAD'][indx].value
             else:
                 nindx = len(indx)
                 init_sigma_uv = [None] * nindx
@@ -1504,7 +1502,6 @@ def fastqa(args=None, comm=None):
                 init_vshift_uv = [None] * nindx
                 init_vshift_narrow = [None] * nindx
                 init_vshift_balmer = [None] * nindx
-                init_balmer_broad = [None] * nindx
 
         qaargs = [{
             'data':                data[igal],
@@ -1523,7 +1520,6 @@ def fastqa(args=None, comm=None):
             'init_vshift_uv':      init_vshift_uv[igal],
             'init_vshift_narrow':  init_vshift_narrow[igal],
             'init_vshift_balmer':  init_vshift_balmer[igal],
-            'init_balmer_broad':   init_balmer_broad[igal],
             'fastphot':            fastphot,
             'fitstack':            fitstack,
             'inputz':              inputz,
