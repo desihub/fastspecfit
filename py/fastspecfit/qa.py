@@ -107,8 +107,11 @@ def format_niceline(line):
 
 def desiqa_one(data, fastfit, metadata, coadd_type, minspecwave=3500.,
                maxspecwave=9900., minphotwave=0.1, maxphotwave=35.,
-               emline_snrmin=0.0, nsmoothspec=1, fastphot=False,
-               fitstack=False, inputz=False, no_smooth_continuum=False,
+               emline_snrmin=0.0, nsmoothspec=1, init_sigma_uv=None,
+               init_sigma_narrow=None, init_sigma_balmer=None,
+               init_vshift_uv=None, init_vshift_narrow=None,
+               init_vshift_balmer=None, fastphot=False, fitstack=False,
+               inputz=False, no_smooth_continuum=False,
                outdir=None, outprefix=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
@@ -118,7 +121,13 @@ def desiqa_one(data, fastfit, metadata, coadd_type, minspecwave=3500.,
     if fitstack:
         one_stacked_spectrum(data, metadata, synthphot=False)
     else:
-        one_spectrum(data, metadata, fastphot=fastphot)
+        one_spectrum(data, metadata, fastphot=fastphot,
+                     init_sigma_uv=init_sigma_uv,
+                     init_sigma_narrow=init_sigma_narrow,
+                     init_sigma_balmer=init_sigma_balmer,
+                     init_vshift_uv=init_vshift_uv,
+                     init_vshift_narrow=init_vshift_narrow,
+                     init_vshift_balmer=init_vshift_balmer)
 
     qa_fastspec(data, sc_data.templates, fastfit, metadata,
                 coadd_type=coadd_type,
@@ -513,8 +522,9 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             desismoothcontinuum.append(fullsmoothcontinuum[campix[0]:campix[1]])
 
         # full model spectrum
-        _desiemlines = EMFit.emlinemodel_bestfit(fastspec, fastspec['Z'], np.hstack(data['wave']), data['res'],
-                                                 data['camerapix'], snrcut=emline_snrmin)
+        _desiemlines = EMFit.emlinemodel_bestfit(
+            fastspec, fastspec['Z'], np.hstack(data['wave']), data['res'],
+            data['camerapix'], snrcut=emline_snrmin)
         desiemlines = []
         for icam in range(len(data['cameras'])):
             desiemlines.append(_desiemlines[data['camerapix'][icam][0]:data['camerapix'][icam][1]])
@@ -1477,6 +1487,22 @@ def fastqa(args=None, comm=None):
             minspecwave = args.minspecwave
             maxspecwave = args.maxspecwave
 
+            if 'INIT_SIGMA_UV' in fastfit.columns:
+                init_sigma_uv = fastfit['INIT_SIGMA_UV'][indx].value
+                init_sigma_narrow = fastfit['INIT_SIGMA_NARROW'][indx].value
+                init_sigma_balmer = fastfit['INIT_SIGMA_BALMER'][indx].value
+                init_vshift_uv = fastfit['INIT_VSHIFT_UV'][indx].value
+                init_vshift_narrow = fastfit['INIT_VSHIFT_NARROW'][indx].value
+                init_vshift_balmer = fastfit['INIT_VSHIFT_BALMER'][indx].value
+            else:
+                nindx = len(indx)
+                init_sigma_uv = [None] * nindx
+                init_sigma_narrow = [None] * nindx
+                init_sigma_balmer = [None] * nindx
+                init_vshift_uv = [None] * nindx
+                init_vshift_narrow = [None] * nindx
+                init_vshift_balmer = [None] * nindx
+
         qaargs = [{
             'data':                data[igal],
             'fastfit':             fastfit[indx[igal]],
@@ -1488,6 +1514,12 @@ def fastqa(args=None, comm=None):
             'maxphotwave':         args.maxphotwave,
             'emline_snrmin':       args.emline_snrmin,
             'nsmoothspec':         args.nsmoothspec,
+            'init_sigma_uv':       init_sigma_uv[igal],
+            'init_sigma_narrow':   init_sigma_narrow[igal],
+            'init_sigma_balmer':   init_sigma_balmer[igal],
+            'init_vshift_uv':      init_vshift_uv[igal],
+            'init_vshift_narrow':  init_vshift_narrow[igal],
+            'init_vshift_balmer':  init_vshift_balmer[igal],
             'fastphot':            fastphot,
             'fitstack':            fitstack,
             'inputz':              inputz,

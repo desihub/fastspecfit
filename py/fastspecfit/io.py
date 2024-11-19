@@ -56,8 +56,11 @@ QNCOLS = ('TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
 QNLINES = ('C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha')
 
 
-def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1, fastphot=False,
-                 synthphot=True, debug_plots=False):
+def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
+                 init_sigma_uv=None, init_sigma_narrow=None,
+                 init_sigma_balmer=None, init_vshift_uv=None,
+                 init_vshift_narrow=None, init_vshift_balmer=None,
+                 fastphot=False, synthphot=True, debug_plots=False):
     """Pre-process the data for a single object.
 
     """
@@ -182,6 +185,12 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1, fastphot=False,
             specdata['coadd_wave'], specdata['coadd_flux'],
             specdata['coadd_ivar'], specdata['coadd_res'],
             uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
+            initsigma_broad=init_sigma_uv,
+            initsigma_narrow=init_sigma_narrow,
+            initsigma_balmer_broad=init_sigma_balmer,
+            initvshift_broad=init_vshift_uv,
+            initvshift_narrow=init_vshift_narrow,
+            initvshift_balmer_broad=init_vshift_balmer,
             debug_plots=debug_plots)
 
         # Map the pixels belonging to individual emission lines onto the
@@ -1018,7 +1027,7 @@ class DESISpectra(object):
             dlum = self.cosmo.luminosity_distance(redshift)
             dmod = self.cosmo.distance_modulus(redshift)
             if constrain_age:
-                tuniv = self.universe_age(redshift)
+                tuniv = self.cosmo.universe_age(redshift)
             else:
                 tuniv = np.full_like(redshift, 100.)
 
@@ -1088,7 +1097,6 @@ class DESISpectra(object):
                         'dmodulus': dmod[iobj],
                         'tuniv': tuniv[iobj],
                         'ebv': ebv[iobj],
-                        'mw_transmission_fiberflux': mw_transmission_fiberflux[iobj, :],
                         'wave0': [spec.wave[cam] for cam in cams],
                         'flux0': [spec.flux[cam][iobj, :] for cam in cams],
                         'ivar0': [spec.ivar[cam][iobj, :] for cam in cams],
@@ -1100,6 +1108,9 @@ class DESISpectra(object):
                         'coadd_ivar': coadd_spec.ivar[coadd_cams][iobj, :],
                         'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
                     }
+                    if mw_transmission_fiberflux is not None:
+                        specdata.update({'mw_transmission_fiberflux': mw_transmission_fiberflux[iobj, :]})
+
                     alldata.append(specdata)
 
             allmeta.append(meta)
@@ -1293,7 +1304,7 @@ class DESISpectra(object):
             dlum = self.cosmo.luminosity_distance(redshift)
             dmod = self.cosmo.distance_modulus(redshift)
             if constrain_age:
-                tuniv = self.universe_age(redshift)
+                tuniv = self.cosmo.universe_age(redshift)
             else:
                 tuniv = np.full_like(redshift, 100.)
 
@@ -1436,7 +1447,7 @@ class DESISpectra(object):
                     metas.append(meta)
         else:
             phot_tbl = Table(fitsio.read(self.fphotodir, ext=self.fphotoext, columns=PHOTCOLS))
-            log.info(f'Read {len(phot_tbl):,d} objects from {self.photodir}')
+            log.info(f'Read {len(phot_tbl):,d} objects from {self.fphotodir}')
 
             metas = []
             for meta in self.meta:
@@ -1444,7 +1455,7 @@ class DESISpectra(object):
                 assert(np.all(meta[uniqueid_col] == phot_tbl[uniqueid_col][srt]))
                 if hasattr(self.phot, 'dropcols'):
                     meta.remove_columns(self.phot.dropcols)
-                for col in phot.colnames:
+                for col in phot_tbl.colnames:
                     meta[col] = phot_tbl[col][srt]
                 # placeholders (to be added in DESISpectra.read)
                 meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
@@ -1506,8 +1517,11 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
 def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
                       coadd_type=None, fphotofile=None, template_file=None,
                       emlinesfile=None, fastphot=False, inputz=False,
-                      no_smooth_continuum=False, ignore_photometry=False, broadlinefit=True,
-                      use_quasarnet=True, constrain_age=False, verbose=True):
+                      inputseeds=None, nmonte=50, seed=1,
+                      uncertainty_floor=0.01, minsnr_balmer_broad=2.5,
+                      no_smooth_continuum=False, ignore_photometry=False,
+                      broadlinefit=True, use_quasarnet=True, constrain_age=False,
+                      verbose=True):
     """Write out.
 
     """
@@ -1547,11 +1561,16 @@ def write_fastspecfit(out, meta, modelspectra=None, outfile=None, specprod=None,
     if coadd_type:
         primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd type')))
     primhdr.append(('INPUTZ', (inputz is True, 'input redshifts provided')))
+    primhdr.append(('INPUTS', (inputseeds is True, 'input seeds provided')))
     primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))
     primhdr.append(('NOPHOTO', (ignore_photometry is True, 'no fitting to photometry')))
     primhdr.append(('BRDLFIT', (broadlinefit is True, 'carry out broad-line fitting')))
     primhdr.append(('CONSAGE', (constrain_age is True, 'constrain SPS ages')))
     primhdr.append(('USEQNET', (use_quasarnet is True, 'use QuasarNet redshifts')))
+    primhdr.append(('NMONTE', (nmonte, 'number of Monte Carlo realizations')))
+    primhdr.append(('SEED', (seed, 'random seed for Monte Carlo reproducibility')))
+    primhdr.append(('UFLOOR', (uncertainty_floor, 'fractional uncertainty floor')))
+    primhdr.append(('SNRBBALM', (minsnr_balmer_broad, 'minimum broad Balmer S/N')))
 
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
@@ -1764,6 +1783,17 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
             out_units[name] = unit
 
     add_field('Z', dtype='f8') # redshift
+    add_field('SEED', dtype=np.int64)
+
+    if not fastphot:
+        add_field('INIT_SIGMA_UV', dtype='f4')
+        add_field('INIT_SIGMA_NARROW', dtype='f4')
+        add_field('INIT_SIGMA_BALMER', dtype='f4')
+        add_field('INIT_VSHIFT_UV', dtype='f4')
+        add_field('INIT_VSHIFT_NARROW', dtype='f4')
+        add_field('INIT_VSHIFT_BALMER', dtype='f4')
+        add_field('INIT_BALMER_BROAD', dtype=bool)
+
     add_field('COEFF', shape=(ncoeff,), dtype='f4')
 
     if not fastphot:

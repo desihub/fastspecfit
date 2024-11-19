@@ -230,6 +230,26 @@ def mwdust_transmission(ebv, filtername):
     return transmission
 
 
+def var2ivar(var, sigma=False):
+    """Simple function to safely turn a (scalar, for now) variance into an
+    inverse variance.
+
+    if sigma=True then assume that `var` is a standard deviation
+
+    """
+    if sigma:
+        if var > SQTINY:
+            ivar = 1. / var**2
+        else:
+            ivar = 0.
+    else:
+        if var > TINY:
+            ivar = 1. / var
+        else:
+            ivar = 0.
+    return ivar
+
+
 def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
     """Safely convert an inverse variance to a variance. Note that we clip at 1e-3
     by default, not zero.

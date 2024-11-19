@@ -12,8 +12,8 @@ from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
 from fastspecfit.util import (
-    C_LIGHT, trapz_rebin, trapz_rebin_pre,
-    quantile, median, sigmaclip, TINY, SQTINY)
+    C_LIGHT, TINY, quantile, median, var2ivar,
+    trapz_rebin, trapz_rebin_pre)
 
 
 class ContinuumTools(object):
@@ -23,7 +23,7 @@ class ContinuumTools(object):
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
                  vdisp_guess=250., tauv_bounds=(0., 2.),
                  vdisp_bounds=(75., 500.), vdisp_nbin=5,
-                 fluxnorm=1e-17, massnorm=1e10, fastphot=False,
+                 fluxnorm=1e17, massnorm=1e10, fastphot=False,
                  constrain_age=False):
 
         self.phot = phot
@@ -147,6 +147,7 @@ class ContinuumTools(object):
         from numpy.lib.stride_tricks import sliding_window_view
         from scipy.ndimage import median_filter
         from scipy.interpolate import UnivariateSpline
+        from fastspecfit.util import sigmaclip
 
         npix = len(wave)
         if len(linemask) != npix:
@@ -318,11 +319,37 @@ class ContinuumTools(object):
         return smoothcontinuum
 
 
+    @staticmethod
+    def lums_keys():
+        """Simple method which defines the rest-frame luminosity keys and
+        wavelengths.
+
+        """
+        keys = ('LOGL_1450', 'LOGLNU_1500', 'LOGL_1700',
+                'LOGLNU_2800', 'LOGL_3000', 'LOGL_5100')
+        waves = (1450., 1500., 1700., 2800., 3000., 5100.)
+        return keys, waves
+
+
+    @staticmethod
+    def cfluxes_keys():
+        """Simple method which defines the observed-frame continuum flux keys
+        and wavelengths.
+
+        """
+        keys = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT',
+                'FOIII_5007_CONT', 'FHALPHA_CONT')
+        waves = (1215.67, 3728.48, 4862.71, 5008.24, 6564.6)
+        return keys, waves
+
+
     def continuum_fluxes(self, continuum, uniqueid=0, width1=50., width2=100.,
                          debug_plots=False):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
 
         """
+        from fastspecfit.util import sigmaclip
+
         def _get_cflux(cwave, linear_fit=False, siglo=2., sighi=2.,
                        ignore_core=False, return_slope=False):
             # continuum flux in 10**-17 erg/s/cm2/A
@@ -354,10 +381,16 @@ class ContinuumTools(object):
             else:
                 return cflux
 
+        llabels, lcwaves = self.lums_keys()
+        flabels, fcwaves = self.cfluxes_keys()
+
+        lums = np.zeros(len(lcwaves))
+        cfluxes = np.zeros(len(fcwaves))
+
         redshift = self.data['redshift']
         if redshift <= 0.0:
             log.warning('Input redshift not defined, zero, or negative!')
-            return {}, {}
+            return lums, cfluxes
 
         templatewave = self.templates.wave
 
@@ -367,10 +400,7 @@ class ContinuumTools(object):
         dlum = self.data['dluminosity']
         dfactor = (1. + redshift) * 4. * np.pi * (3.08567758e24 * dlum)**2 / self.fluxnorm
 
-        lums = {}
-        lcwaves = (1450., 1500., 1700., 2800., 3000., 5100.)
-        llabels = ('LOGL_1450', 'LOGLNU_1500', 'LOGL_1700', 'LOGLNU_2800', 'LOGL_3000', 'LOGL_5100')
-        for cwave, label in zip(lcwaves, llabels):
+        for ilum, (cwave, label) in enumerate(zip(lcwaves, llabels)):
             cflux = _get_cflux(cwave, linear_fit=True) * dfactor # [monochromatic luminosity in erg/s/A]
 
             if 'LOGL_' in label:
@@ -384,17 +414,14 @@ class ContinuumTools(object):
                 cflux *= cwave**2 / (C_LIGHT * 1e13) / norm # [monochromatic luminosity in 10**(-28) erg/s/Hz]
 
             if cflux > 0.:
-                lums[label] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
+                lums[ilum] = np.log10(cflux) # * u.erg/(u.second*u.Hz)
 
-        cfluxes = {}
-        fcwaves = (1215.67, 3728.48, 4862.71, 5008.24, 6564.6)
-        flabels = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT', 'FOIII_5007_CONT', 'FHALPHA_CONT')
-        for cwave, label in zip(fcwaves, flabels):
+        for icflux, (cwave, label) in enumerate(zip(fcwaves, flabels)):
             if 'FLYA' in label or 'FHBETA' in label or 'FHALPHA' in label:
                 ignore_core = True
             else:
                 ignore_core = False
-            cfluxes[label] = _get_cflux(cwave, linear_fit=True, ignore_core=ignore_core)
+            cfluxes[icflux] = _get_cflux(cwave, linear_fit=True, ignore_core=ignore_core)
 
         # simple QA
         if debug_plots:
@@ -428,7 +455,8 @@ class ContinuumTools(object):
                     ignore_core = True
                 else:
                     ignore_core = False
-                cflux, slope = _get_cflux(cwave, linear_fit=linear_fit, return_slope=True, ignore_core=ignore_core)
+                cflux, slope = _get_cflux(cwave, linear_fit=linear_fit, return_slope=True,
+                                          ignore_core=ignore_core)
 
                 xx.plot(templatewave[lo3:hi3] / 1e4, continuum[lo3:hi3])
                 if slope is not None:
@@ -972,8 +1000,8 @@ def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_rest
     return compute_vdisp, (s, e)
 
 
-def continuum_fastphot(redshift, objflam, objflamivar, CTools,
-                       uniqueid=0, nmonte=50, rng=None, debug_plots=False):
+def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
+                       nmonte=50, rng=None, debug_plots=False):
     """Model the broadband photometry.
 
     """
@@ -1005,13 +1033,11 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
         objflamistd = np.sqrt(objflamivar)
 
         t0 = time.time()
-
-        def do_fit(tauv_guess, objflam):
-
+        def do_fit(objflam):
             tauv, _, coeff, resid = CTools.fit_stellar_continuum(
-            templates.flux_nomvdisp[agekeep, :], fit_vdisp=False,
-            tauv_guess=tauv_guess, objflam=objflam,
-            objflamistd=objflamistd, synthphot=True, synthspec=False)
+                templates.flux_nomvdisp[agekeep, :], fit_vdisp=False,
+                objflam=objflam, objflamistd=objflamistd, synthphot=True,
+                synthspec=False)
 
             if np.all(coeff == 0.):
                 log.warning('Continuum coefficients are all zero.')
@@ -1031,16 +1057,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
 
             return (tauv, coeff, sedmodel, sedmodel_nolines, dn4000_model, resid)
 
-        (tauv_, coeff,
-         sedmodel, sedmodel_nolines,
-         dn4000_model, resid) = \
-            do_fit(None, objflam)
-
-        tauv, _, coeff, resid = CTools.fit_stellar_continuum(
-            templates.flux_nomvdisp[agekeep, :], fit_vdisp=False,
-            objflam=objflam, objflamistd=objflamistd,
-            synthphot=True, synthspec=False)
-        dt = time.time()-t0
+        (tauv, coeff, sedmodel, sedmodel_nolines, dn4000_model, resid) = do_fit(objflam)
 
         if np.all(coeff == 0.):
             rchi2_phot = 0.
@@ -1049,6 +1066,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
                 resid, ncoeff=len(coeff), vdisp_fitted=False,
                 ndof_phot=ndof_phot)
 
+        dt = time.time()-t0
         log.info(f'Fitting {nage} models took {dt:.2f} seconds ' + \
                  f'[rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}].')
 
@@ -1057,32 +1075,16 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools,
             objflamstd = np.zeros_like(objflamistd)
             I = objflamistd > 0.
             objflamstd[I] = 1. / objflamistd[I]
-            objflam_monte = rng.normal(objflam[np.newaxis, :], objflamstd[np.newaxis, :],
+            objflam_monte = rng.normal(objflam[np.newaxis, :],
+                                       objflamstd[np.newaxis, :],
                                        size=(nmonte, len(objflam)))
 
-            tauv_guess_monte = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
-
-            res = [
-                do_fit(tauv_guess, objflam) for
-                tauv_guess, objflam in
-                zip(tauv_guess_monte, objflam_monte)
-            ]
-
-            (tauv_monte, coeff_monte,
-             sedmodel_monte, sedmodel_nolines_monte,
+            res = [do_fit(*args) for args in zip(objflam_monte)]
+            (tauv_monte, coeff_monte, sedmodel_monte, sedmodel_nolines_monte,
              dn4000_model_monte, _) = tuple(zip(*res))
 
-            tauv_var = np.var(tauv_monte)
-            dn4000_model_var = np.var(dn4000_model_monte)
-            if tauv_var > TINY:
-                tauv_ivar = 1. / tauv_var
-            else:
-                tauv_ivar = 0.
-
-            if dn4000_model_var > TINY:
-                dn4000_model_ivar = 1. / dn4000_model_var
-            else:
-                dn4000_model_ivar = 0.
+            tauv_ivar = var2ivar(np.var(tauv_monte))
+            dn4000_model_ivar = var2ivar(np.var(dn4000_model_monte))
 
             msg = []
             for label, units, val, val_ivar in zip(
@@ -1127,8 +1129,12 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
         vdisp_init = CTools.vdisp_grid[imin]
         vdisp = templates.vdisp_nominal
         vdisp_ivar = 0.
-        log.info('Initial velocity dispersion fit failed: delta-chi2=' + \
-                 f'{deltachi2:.0f}<{deltachi2min:.0f}, vdisp_init={vdisp_init:.0f} km/s')
+        if deltachi2 < deltachi2min:
+            log.info('Initial velocity dispersion fit failed: delta-chi2=' + \
+                     f'{deltachi2:.0f}<{deltachi2min:.0f}')
+        else:
+            log.info('Initial velocity dispersion fit failed: vdisp_init=' + \
+                     f'{vdisp_init:.0f} km/s a boundary value.')
     else:
         vdisp = CTools.vdisp_grid[imin]
         vdisp_ivar = 1. # =! 0.
@@ -1136,7 +1142,7 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
                  f'{deltachi2:.0f}>{deltachi2min:.0f}, vdisp_init={vdisp:.0f} km/s')
 
     # Optionally fit for the minimum (best) value (only useful with a dense
-    # velocity dispersion grid).
+    # velocity dispersion grid and so deprecated by default).
     if fit_for_min:
         vdisp, vdisp_sigma, chi2min, warn, (a, b, c) = minfit(
             CTools.vdisp_grid[imin-1:imin+2], chi2grid[imin-1:imin+2],
@@ -1148,10 +1154,7 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
             vdisp_ivar = 0.
             chi2min = 0.
         else:
-            if vdisp_sigma > TINY:
-                vdisp_ivar = 1. / vdisp_sigma**2
-            else:
-                vdisp_ivar = 0.
+            vdisp_ivar = var2ivar(vdisp_sigma, sigma=True)
 
         if debug_plots:
             import matplotlib.pyplot as plt
@@ -1221,7 +1224,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
     specwave = np.hstack(data['wave'])
     specflux = np.hstack(data['flux'])
     specivar_nolinemask = np.hstack(data['ivar'])
-    specivar = specivar_nolinemask * np.logical_not(np.hstack(data['linemask'])) # mask emission lines
+    slinemask = np.hstack(data['linemask'])
+    specivar = specivar_nolinemask * np.logical_not(slinemask) # mask emission lines
     npix = len(specwave)
 
     if np.all(specivar == 0.) or np.any(specivar < 0.):
@@ -1242,19 +1246,22 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
 
     if nmonte > 0 and (ndof_cont > 0 or ndof_phot > 0):
         # ndof_cont==0 should never happen...
+
         # Use specivar_nolinemask here rather than specivar because we are
         # going to use the same set of realizations in line-fitting.
         specstd = np.zeros_like(specivar_nolinemask)
         I = specivar_nolinemask > 0.
         specstd[I] = 1. / np.sqrt(specivar_nolinemask[I])
-        specflux_monte = rng.normal(specflux[np.newaxis, :], specstd[np.newaxis, :],
+        specflux_monte = rng.normal(specflux[np.newaxis, :],
+                                    specstd[np.newaxis, :],
                                     size=(nmonte, len(specflux)))
 
         if ndof_phot > 0:
             objflamstd = np.zeros_like(objflamistd)
             I = objflamistd > 0.
             objflamstd[I] = 1. / objflamistd[I]
-            objflam_monte = rng.normal(objflam[np.newaxis, :], objflamstd[np.newaxis, :],
+            objflam_monte = rng.normal(objflam[np.newaxis, :],
+                                       objflamstd[np.newaxis, :],
                                        size=(nmonte, len(objflam)))
         else:
             # should be all zeros
@@ -1276,7 +1283,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         input_templateflux = templates.flux_nomvdisp[agekeep, :]
         input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
 
-        log.debug(f'Insufficient wavelength coverage to compute velocity dispersion; adopting {vdisp:0.0f} km/s')
+        log.debug('Insufficient wavelength coverage to compute velocity ' + \
+                  f'dispersion; adopting {vdisp:.0f} km/s')
     else:
         t0 = time.time()
 
@@ -1308,38 +1316,28 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
                     conv_pre=input_conv_pre_nolines, specflux=specflux,
                     specistd=specistd*fitmask, dust_emission=False, synthspec=True)
                 age = coeff.dot(templates.info['age']) / np.sum(coeff) / 1e9 # luminosity-weighted [Gyr]
-
                 return (tauv, vdisp, coeff, age, resid)
 
-            input_conv_pre_nolines = templates.conv_pre_select(templates.conv_pre_nolines, agekeep)
+            input_conv_pre_nolines = templates.conv_pre_select(
+                templates.conv_pre_nolines, agekeep)
 
             (tauv, vdisp, coeff, age, resid) = do_fit_vdisp(specflux)
 
             contmodel = CTools.optimizer_saved_contmodel
 
             # Get the templates, coefficients, and model at the derived vdisp.
-            input_templateflux = templates.convolve_vdisp(templates.flux[agekeep, :], vdisp)
-            input_templateflux_nolines = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp)
+            input_templateflux = templates.convolve_vdisp(
+                templates.flux[agekeep, :], vdisp)
+            input_templateflux_nolines = templates.convolve_vdisp(
+                templates.flux_nolines[agekeep, :], vdisp)
 
             # Monte Carlo to get vdisp_ivar (and the diagnostic plot, if
             # requested).
             if specflux_monte is not None:
-
-                res = [
-                    do_fit_vdisp(specflux) for
-                    specflux in
-                    specflux_monte
-                ]
+                res = [do_fit_vdisp(sf) for sf in specflux_monte]
                 (tauv_monte, vdisp_monte, _, age_monte, _) = tuple(zip(*res))
 
-                tauv_sigma = np.std(tauv_monte)
-                age_sigma = np.std(age_monte)
-                vdisp_sigma = np.std(vdisp_monte)
-
-                if vdisp_sigma > SQTINY:
-                    vdisp_ivar = 1. / vdisp_sigma**2
-                else:
-                    vdisp_ivar = 0.
+                vdisp_ivar = var2ivar(np.var(vdisp_monte))
 
                 if debug_plots and vdisp_ivar > 0.:
                     import matplotlib.pyplot as plt
@@ -1354,6 +1352,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
                     dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
                     hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray'}
                     ndim = 3
+
+                    tauv_sigma = np.std(tauv_monte)
+                    age_sigma = np.std(age_monte)
+                    vdisp_sigma = np.std(vdisp_monte)
 
                     plotdata = np.vstack((vdisp_monte, tauv_monte, age_monte)).T
                     truths = [vdisp, tauv, age]
@@ -1432,15 +1434,13 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
     # fixed and the bounds on tauv relaxed.
     t0 = time.time()
 
-    def do_fit_full(tauv_guess, objflam, specflux):
-
+    def do_fit_full(objflam, specflux):
         tauv, _, coeff, resid = CTools.fit_stellar_continuum(
             input_templateflux, fit_vdisp=False, conv_pre=None,
-            tauv_guess=tauv_guess,
             objflam=objflam, objflamistd=objflamistd,
-                specflux=specflux*median_apercorr,
-                specistd=specistd/median_apercorr,
-                synthphot=True, synthspec=True)
+            specflux=specflux*median_apercorr,
+            specistd=specistd/median_apercorr,
+            synthphot=True, synthspec=True)
 
         if np.all(coeff == 0.):
             log.warning('Continuum coefficients are all zero.')
@@ -1465,9 +1465,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         return (tauv, coeff, sedmodel, sedmodel_nolines,
                 desimodel_nolines, dn4000_model, resid)
 
-    (tauv, coeff, sedmodel, sedmodel_nolines,
-     desimodel_nolines, dn4000_model, resid) = \
-         do_fit_full(None, objflam, specflux)
+    (tauv, coeff, sedmodel, sedmodel_nolines, desimodel_nolines, dn4000_model, resid) = \
+        do_fit_full(objflam, specflux)
 
     if np.all(coeff == 0.):
         rchi2_cont = 0.
@@ -1482,31 +1481,15 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
               f'rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}].')
 
     if specflux_monte is not None:
+        res = [do_fit_full(*args) for args in zip(objflam_monte, specflux_monte)]
 
-        tauv_guess_monte = rng.uniform(CTools.tauv_bounds[0], CTools.tauv_bounds[1], nmonte)
-
-        res = [
-            do_fit_full(tauv_guess, objflam, specflux) for
-            tauv_guess, objflam, specflux in
-            zip(tauv_guess_monte, objflam_monte, specflux_monte)
-        ]
-        (tauv_monte, coeff_monte,
-         sedmodel_monte, sedmodel_nolines_monte,
+        (tauv_monte, coeff_monte, sedmodel_monte, sedmodel_nolines_monte,
          desimodel_nolines_monte, dn4000_model_monte, _) = tuple(zip(*res))
 
         continuummodel_monte = np.vstack(desimodel_nolines_monte)
 
-        tauv_var = np.var(tauv_monte)
-        if tauv_var > TINY:
-            tauv_ivar = 1. / tauv_var
-        else:
-            tauv_ivar = 0.
-
-        dn4000_model_var = np.var(dn4000_model_monte)
-        if dn4000_model_var > TINY:
-            dn4000_model_ivar = 1. / dn4000_model_var
-        else:
-            dn4000_model_ivar = 0.
+        tauv_ivar = var2ivar(np.var(tauv_monte))
+        dn4000_model_ivar = var2ivar(np.var(dn4000_model_monte))
     else:
         coeff_monte = None
         sedmodel_monte = None
@@ -1531,20 +1514,19 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
     else:
         # Need to be careful we don't pass a large negative residual
         # where there are gaps in the data.
-        residuals = specflux*median_apercorr - desimodel_nolines
+        residuals = specflux * median_apercorr - desimodel_nolines
         I = ((specflux == 0.) & (specivar == 0.))
         residuals[I] = 0.
 
-        linemask = np.hstack(data['linemask'])
         smoothcontinuum = CTools.smooth_continuum(
             specwave, residuals, specivar / median_apercorr**2,
-            linemask, uniqueid=data['uniqueid'],
+            slinemask, uniqueid=data['uniqueid'],
             camerapix=data['camerapix'], debug_plots=debug_plots)
 
         for icam, (ss, ee) in enumerate(data['camerapix']):
             I = ((specflux[ss:ee] != 0.) & (specivar[ss:ee] != 0.) & (smoothcontinuum[ss:ee] != 0.))
-            if np.count_nonzero(I) > 3:
-                smoothstats[icam] = np.mean(1. - smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
+            if np.count_nonzero(I) > 3: # require three good pixels to compute the mean
+                smoothstats[icam] = median(smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
 
     log.debug(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
 
@@ -1607,7 +1589,11 @@ def continuum_specfit(data, result, templates, igm, phot,
                             vdisp_guess=templates.vdisp_nominal,
                             fluxnorm=FLUXNORM, constrain_age=constrain_age)
 
-    rng = np.random.default_rng(seed=seed)
+    # Instantiate the random-number generator.
+    if nmonte > 0:
+        rng = np.random.default_rng(seed=seed)
+    else:
+        rng = None
 
     if fastphot:
         # Photometry-only fitting.
@@ -1638,6 +1624,7 @@ def continuum_specfit(data, result, templates, igm, phot,
             msg.append(f'{cam}={100.*corr:.3f}%')
         log.info(' '.join(msg))
 
+    result['SEED'] = seed
     result['Z'] = redshift
     result['COEFF'][CTools.agekeep] = coeff
     result['RCHI2_PHOT'] = rchi2_phot
@@ -1646,6 +1633,15 @@ def continuum_specfit(data, result, templates, igm, phot,
     result['DN4000_MODEL_IVAR'] = dn4000_model_ivar
 
     if not fastphot:
+        # add the initial line-masking parameters to the output table
+        result['INIT_SIGMA_UV'] = data['linesigma_broad']
+        result['INIT_SIGMA_NARROW'] = data['linesigma_narrow']
+        result['INIT_SIGMA_BALMER'] = data['linesigma_balmer_broad']
+        result['INIT_VSHIFT_UV'] = data['linevshift_broad']
+        result['INIT_VSHIFT_NARROW'] = data['linevshift_narrow']
+        result['INIT_VSHIFT_BALMER'] = data['linevshift_balmer_broad']
+        result['INIT_BALMER_BROAD'] = data['balmerbroad']
+
         result['RCHI2_CONT'] = rchi2_cont
         result['APERCORR'] = median_apercorr
         for iband, band in enumerate(phot.synth_bands):
@@ -1656,15 +1652,28 @@ def continuum_specfit(data, result, templates, igm, phot,
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if not np.all(coeff == 0.):
-        kcorr, absmag, synth_absmag, ivarabsmag, synth_bestmaggies = phot.kcorr_and_absmag(
-            data['photometry']['nanomaggies'].value,
-            data['photometry']['nanomaggies_ivar'].value,
-            redshift, data['dmodulus'], data['photsys'],
-            CTools.ztemplatewave, sedmodel)
 
-        lums, cfluxes = CTools.continuum_fluxes(
-            sedmodel_nolines, uniqueid=data['uniqueid'],
-            debug_plots=debug_plots)
+        def do_kcorr(sedmodel, sedmodel_nolines, debug_plots=False):
+            synth_absmag, synth_maggies_rest = phot.synth_absmag(
+                redshift, data['dmodulus'], CTools.ztemplatewave,
+                sedmodel)
+
+            kcorr, absmag, ivarabsmag, synth_bestmaggies = phot.kcorr_and_absmag(
+                data['photometry']['nanomaggies'].value,
+                data['photometry']['nanomaggies_ivar'].value,
+                redshift, data['dmodulus'], data['photsys'],
+                CTools.ztemplatewave, sedmodel, synth_absmag,
+                synth_maggies_rest)
+
+            lums, cfluxes = CTools.continuum_fluxes(
+                sedmodel_nolines, uniqueid=data['uniqueid'],
+                debug_plots=debug_plots)
+
+            return (synth_absmag, synth_maggies_rest, kcorr, absmag,
+                    ivarabsmag, synth_bestmaggies, lums, cfluxes)
+
+        (synth_absmag, synth_maggies_rest, kcorr, absmag, ivarabsmag, synth_bestmaggies, lums, cfluxes) = \
+            do_kcorr(sedmodel, sedmodel_nolines, debug_plots=debug_plots)
 
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
             band = band.upper()
@@ -1673,32 +1682,22 @@ def continuum_specfit(data, result, templates, igm, phot,
             result[f'ABSMAG{shift:02d}_{band}'] = absmag[iband] # * u.mag
             result[f'ABSMAG{shift:02d}_SYNTH_{band}'] = synth_absmag[iband] # * u.mag
             result[f'ABSMAG{shift:02d}_IVAR_{band}'] = ivarabsmag[iband] # / (u.mag**2)
+
         for iband, band in enumerate(phot.bands):
             result[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
-        for lum in lums:
-            result[lum] = lums[lum]
-        for cflux in cfluxes:
-            result[cflux] = cfluxes[cflux]
+
+        lumskeys, _ = CTools.lums_keys()
+        for ikey, key in enumerate(lumskeys):
+            result[key] = lums[ikey]
+
+        cfluxeskeys, _ = CTools.cfluxes_keys()
+        for ikey, key in enumerate(cfluxeskeys):
+            result[key] = cfluxes[ikey]
 
         # Get the variance via Monte Carlo.
         if sedmodel_monte is not None:
-            synth_absmag_monte = np.empty((nmonte, len(synth_absmag)))
-            lums_monte = np.empty((nmonte, len(lums)))
-            cfluxes_monte = np.empty((nmonte, len(cfluxes)))
-
-            for imonte in range(nmonte):
-                synth_absmag_monte[imonte] = phot.kcorr_and_absmag(
-                    data['photometry']['nanomaggies'].value,
-                    data['photometry']['nanomaggies_ivar'].value,
-                    redshift, data['dmodulus'], data['photsys'],
-                    CTools.ztemplatewave, sedmodel_monte[imonte],
-                    compute_kcorr=False)
-
-                lums1, cfluxes1 = CTools.continuum_fluxes(
-                    sedmodel_nolines_monte[imonte], uniqueid=data['uniqueid'],
-                    debug_plots=False)
-                lums_monte[imonte] = list(lums1.values())
-                cfluxes_monte[imonte] = list(cfluxes1.values())
+            res = [do_kcorr(sm, snm, False) for sm, snm in zip(sedmodel_monte, sedmodel_nolines_monte)]
+            (synth_absmag_monte, _, _, _, _, _, lums_monte, cfluxes_monte) = tuple(zip(*res))
 
             synth_absmag_var = np.var(synth_absmag_monte, axis=0)
             for band, shift, var in zip(phot.absmag_bands, phot.band_shift, synth_absmag_var):
@@ -1708,12 +1707,12 @@ def continuum_specfit(data, result, templates, igm, phot,
                     result[f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}'] = 1. / var
 
             lums_var = np.var(lums_monte, axis=0)
-            for lumkey, var in zip(lums.keys(), lums_var):
+            for lumkey, var in zip(lumskeys, lums_var):
                 if var > TINY:
                     result[f'{lumkey}_IVAR'] = 1. / var
 
             cfluxes_var = np.var(cfluxes_monte, axis=0)
-            for cfluxkey, var in zip(cfluxes.keys(), cfluxes_var):
+            for cfluxkey, var in zip(cfluxeskeys, cfluxes_var):
                 if var > TINY:
                     result[f'{cfluxkey}_IVAR'] = 1. / var
 
@@ -1739,20 +1738,12 @@ def continuum_specfit(data, result, templates, igm, phot,
         result['SFR'] = sfr
 
         if coeff_monte is not None:
-            res = [
-                _get_sps_properties(coeff) for
-                coeff in
-                coeff_monte
-            ]
+            res = [_get_sps_properties(c) for c in coeff_monte]
             age_monte, zzsun_monte, logmstar_monte, sfr_monte = tuple(zip(*res))
 
             for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
                                       ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
-                var = np.var(val_monte)
-                if var > TINY:
-                    result[col] = 1. / var
-                else:
-                    result[col] = 0.
+                result[col] = var2ivar(np.var(val_monte))
 
         #rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600.))
         #msg = [f'M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag']
@@ -1768,7 +1759,7 @@ def continuum_specfit(data, result, templates, igm, phot,
             else:
                 var_msg = ''
             msg.append(f'{label}={val:.2f}{var_msg}{units}')
-        log.info(', '.join(msg))
+        log.info(' '.join(msg))
 
     log.debug(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
 

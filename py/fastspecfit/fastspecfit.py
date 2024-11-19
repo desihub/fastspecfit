@@ -33,10 +33,10 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
 
     if fastphot:
         log.info(f'Continuum fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
-                 f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
+                 f'{data["uniqueid"]}, seed {seed}, z={data["redshift"]:.6f}].')
     else:
         log.info(f'Continuum- and emission-line fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
-                 f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
+                 f'{data["uniqueid"]}, seed {seed}, z={data["redshift"]:.6f}].')
 
     if fitstack:
         one_stacked_spectrum(data, meta, synthphot=True, debug_plots=debug_plots)
@@ -127,13 +127,20 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     targetids = None
     input_redshifts = None
+    input_seeds = None
 
     if args.targetids is not None:
-        targetids = [ int(x) for x in args.targetids.split(',') ]
+        targetids = [int(x) for x in args.targetids.split(',')]
         if args.input_redshifts is not None:
-            input_redshifts = [ float(x) for x in args.input_redshifts.split(',') ]
+            input_redshifts = [float(x) for x in args.input_redshifts.split(',')]
             if len(input_redshifts) != len(targetids):
                 errmsg = 'targetids and input_redshifts must have the same number of elements.'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+        if args.input_seeds is not None:
+            input_seeds = [np.int64(x) for x in args.input_seeds.split(',')]
+            if len(input_seeds) != len(targetids):
+                errmsg = 'targetids and input_seeds must have the same number of elements.'
                 log.critical(errmsg)
                 raise ValueError(errmsg)
 
@@ -203,6 +210,16 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         cameras=cameras, fastphot=fastphot,
         fitstack=fitstack)
 
+    # If using Monte Carlo, generate the random seed(s).
+    if args.nmonte > 0:
+        if input_seeds is not None:
+            seeds = input_seeds
+        else:
+            rng = np.random.default_rng(seed=args.seed)
+            seeds = rng.integers(2**32, size=ntargets, dtype=np.int64)
+    else:
+        seeds = [1] * ntargets
+
     # Fit in parallel
     t0 = time.time()
     fitargs = [{
@@ -219,7 +236,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         'uncertainty_floor':   args.uncertainty_floor,
         'minsnr_balmer_broad': args.minsnr_balmer_broad,
         'nmonte':              args.nmonte,
-        'seed':                args.seed,
+        'seed':                seeds[iobj],
     } for iobj in range(len(meta))]
 
     _out = mp_pool.starmap(fastspec_one, fitargs)
@@ -247,6 +264,10 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                       template_file=sc_data.templates.file,
                       emlinesfile=sc_data.emlines.file, fastphot=fastphot,
                       inputz=input_redshifts is not None,
+                      nmonte=args.nmonte, seed=args.seed,
+                      inputseeds=input_seeds is not None,
+                      uncertainty_floor=args.uncertainty_floor,
+                      minsnr_balmer_broad=args.minsnr_balmer_broad,
                       ignore_photometry=args.ignore_photometry,
                       broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
                       use_quasarnet=args.use_quasarnet,
@@ -302,8 +323,9 @@ def parse(options=None):
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
+    parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
+    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
     parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
-    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
@@ -322,7 +344,7 @@ def parse(options=None):
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
-    parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum..')
+    parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
     parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
