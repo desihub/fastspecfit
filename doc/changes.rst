@@ -5,6 +5,7 @@ Change Log
 3.1.0 (not released yet)
 ------------------------
 
+* Additional cleanups and speedups to the new Monte Carlo code [`PR #194`_].
 * Implement a simplified idiom for Monte Carlo iteration [`PR #193`_].
 * Merge two multiprocessing loops into one [`PR #192`_].
 * Monte Carlo to estimate model parameters [`PR #189`_].
@@ -14,6 +15,7 @@ Change Log
 .. _`PR #189`: https://github.com/desihub/fastspecfit/pull/189
 .. _`PR #192`: https://github.com/desihub/fastspecfit/pull/192
 .. _`PR #193`: https://github.com/desihub/fastspecfit/pull/193
+.. _`PR #194`: https://github.com/desihub/fastspecfit/pull/194
 
 3.0.0 (2024-10-30)
 ------------------

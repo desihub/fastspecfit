@@ -56,8 +56,11 @@ QNCOLS = ('TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
 QNLINES = ('C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha')
 
 
-def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1, fastphot=False,
-                 synthphot=True, debug_plots=False):
+def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
+                 init_sigma_uv=None, init_sigma_narrow=None,
+                 init_sigma_balmer=None, init_vshift_uv=None,
+                 init_vshift_narrow=None, init_vshift_balmer=None,
+                 fastphot=False, synthphot=True, debug_plots=False):
     """Pre-process the data for a single object.
 
     """
@@ -182,6 +185,12 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1, fastphot=False,
             specdata['coadd_wave'], specdata['coadd_flux'],
             specdata['coadd_ivar'], specdata['coadd_res'],
             uniqueid=specdata['uniqueid'], redshift=specdata['redshift'],
+            initsigma_broad=init_sigma_uv,
+            initsigma_narrow=init_sigma_narrow,
+            initsigma_balmer_broad=init_sigma_balmer,
+            initvshift_broad=init_vshift_uv,
+            initvshift_narrow=init_vshift_narrow,
+            initvshift_balmer_broad=init_vshift_balmer,
             debug_plots=debug_plots)
 
         # Map the pixels belonging to individual emission lines onto the
@@ -1775,6 +1784,16 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
 
     add_field('Z', dtype='f8') # redshift
     add_field('SEED', dtype=np.int64)
+
+    if not fastphot:
+        add_field('INIT_SIGMA_UV', dtype='f4')
+        add_field('INIT_SIGMA_NARROW', dtype='f4')
+        add_field('INIT_SIGMA_BALMER', dtype='f4')
+        add_field('INIT_VSHIFT_UV', dtype='f4')
+        add_field('INIT_VSHIFT_NARROW', dtype='f4')
+        add_field('INIT_VSHIFT_BALMER', dtype='f4')
+        add_field('INIT_BALMER_BROAD', dtype=bool)
+
     add_field('COEFF', shape=(ncoeff,), dtype='f4')
 
     if not fastphot:
