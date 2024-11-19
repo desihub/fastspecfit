@@ -1096,7 +1096,7 @@ class EMFitTools(object):
 
                 # FIXME: should we use the value of linesigma returned from this
                 # fcn here (it replaces a zero sigma with a default value)?
-                _, _, linesigma_ang_window, _ = preprocess_linesigma(
+                linesigma, _, linesigma_ang_window, _ = preprocess_linesigma(
                     linesigma, linezwave, isbroad, isbalmer)
 
                 ss, ee = get_boundaries(emlinewave_s,
@@ -1723,5 +1723,6 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                 log.info(f'Wrote {pngfile}')
 
     log.debug(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
-
+    for name in result.value.dtype.names:
+        print(name, result[name])
     return spectra_out
