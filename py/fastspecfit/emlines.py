@@ -661,7 +661,7 @@ class EMFitTools(object):
 
 
     @staticmethod
-    def chi2(linemodel, emlinewave, emlineflux, emlineivar, emlinemodel,
+    def chi2(linemodel, emlinewave, emlineflux, emlineivar, emlineflux_model,
              continuum_model=None, nfree_patches=0, return_dof=False):
         """Compute the reduced chi^2."""
 
@@ -672,10 +672,10 @@ class EMFitTools(object):
 
         if dof > 0:
             if continuum_model is None:
-                model = emlinemodel
+                flux_model = emlineflux_model
             else:
-                model = emlinemodel + continuum_model
-            chi2 = np.sum(emlineivar * (emlineflux - model)**2) / dof
+                flux_model = emlineflux_model + continuum_model
+            chi2 = np.sum(emlineivar * (emlineflux - flux_model)**2) / dof
         else:
             chi2 = 0.
 
@@ -696,11 +696,11 @@ class EMFitTools(object):
 
         linewaves = self.line_table['restwave'].value
 
-        emlinemodel = EMLine_build_model(redshift, line_parameters, linewaves,
-                                         emlinewave, resolution_matrix, camerapix,
-                                         continuum_patches=continuum_patches)
+        emlineflux_best = EMLine_build_model(redshift, line_parameters, linewaves,
+                                             emlinewave, resolution_matrix, camerapix,
+                                             continuum_patches=continuum_patches)
 
-        return emlinemodel
+        return emlineflux_best
 
 
     def emlinemodel_bestfit(self, result, redshift, emlinewave, resolution_matrix,
@@ -721,15 +721,16 @@ class EMFitTools(object):
 
         linewaves = self.line_table['restwave'].value
 
-        model_fluxes = EMLine_build_model(redshift, line_parameters, linewaves,
-                                          emlinewave, resolution_matrix, camerapix)
+        emlineflux_best = EMLine_build_model(redshift, line_parameters, linewaves,
+                                             emlinewave, resolution_matrix, camerapix)
 
-        return model_fluxes
+        return emlineflux_best
 
 
-    def populate_emtable(self, result, finalfit, finalmodel, emlinewave, emlineflux,
-                         emlineivar, oemlineivar, specflux_nolines, redshift,
-                         resolution_matrices, camerapix, results_monte=None,
+    def populate_emtable(self, result, linemodel, emlineflux_model,
+                         emlinewave, emlineflux, emlineivar, oemlineivar,
+                         specflux_nolines, redshift, resolution_matrices, camerapix,
+                         results_monte=None,
                          nminpix=7, nsigma=3., moment_nsigma=5.,
                          limitsigma_narrow_default=75., limitsigma_broad_default=1200.):
         """Populate the output table with the emission-line measurements.
@@ -834,7 +835,7 @@ class EMFitTools(object):
         emlineflux_s = emlineflux[Wsrt]
         emlineivar_s = emlineivar[Wsrt]
         oemlineivar_s = oemlineivar[Wsrt]
-        finalmodel_s = finalmodel[Wsrt]
+        emlineflux_model_s = emlineflux_model[Wsrt]
         specflux_nolines_s = specflux_nolines[Wsrt]
 
         dwaves = np.diff(centers2edges(emlinewave_s))
@@ -849,8 +850,8 @@ class EMFitTools(object):
                 parameters, emlinewave, redshift, line_wavelengths,
                 resolution_matrices, camerapix)
 
-        values = finalfit['value'].value
-        obsamps = finalfit.meta['obsamp']
+        values = linemodel['value'].value
+        obsamps = linemodel.meta['obsamp']
 
         line_profiles = get_line_profiles(values)
 
@@ -1009,8 +1010,8 @@ class EMFitTools(object):
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
                 if obsamps[line_amp] > TINY:
-                    finalmodel_patch = finalmodel_s[patchindx]
-                    chi2 = np.sum(emlineivar_patch * (emlineflux_patch - finalmodel_patch)**2)
+                    emlineflux_model_patch = emlineflux_model_s[patchindx]
+                    chi2 = np.sum(emlineivar_patch * (emlineflux_patch - emlineflux_model_patch)**2)
                     result[f'{linename}_CHI2'] = chi2
 
                     if results_monte is not None:
@@ -1158,7 +1159,7 @@ class EMFitTools(object):
         # create result entries for every parameter with its fitted value
         # we need both model amplitude and computed amplitude from
         # peak-finding.
-        for iparam in range(len(finalfit)):
+        for iparam in range(len(linemodel)):
             pmodelname = param_modelnames[iparam]
             val = values[iparam]
 
