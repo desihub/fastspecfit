@@ -1027,7 +1027,7 @@ class DESISpectra(object):
             dlum = self.cosmo.luminosity_distance(redshift)
             dmod = self.cosmo.distance_modulus(redshift)
             if constrain_age:
-                tuniv = self.universe_age(redshift)
+                tuniv = self.cosmo.universe_age(redshift)
             else:
                 tuniv = np.full_like(redshift, 100.)
 
@@ -1097,7 +1097,6 @@ class DESISpectra(object):
                         'dmodulus': dmod[iobj],
                         'tuniv': tuniv[iobj],
                         'ebv': ebv[iobj],
-                        'mw_transmission_fiberflux': mw_transmission_fiberflux[iobj, :],
                         'wave0': [spec.wave[cam] for cam in cams],
                         'flux0': [spec.flux[cam][iobj, :] for cam in cams],
                         'ivar0': [spec.ivar[cam][iobj, :] for cam in cams],
@@ -1109,6 +1108,9 @@ class DESISpectra(object):
                         'coadd_ivar': coadd_spec.ivar[coadd_cams][iobj, :],
                         'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
                     }
+                    if mw_transmission_fiberflux is not None:
+                        specdata.update({'mw_transmission_fiberflux': mw_transmission_fiberflux[iobj, :]})
+
                     alldata.append(specdata)
 
             allmeta.append(meta)
@@ -1302,7 +1304,7 @@ class DESISpectra(object):
             dlum = self.cosmo.luminosity_distance(redshift)
             dmod = self.cosmo.distance_modulus(redshift)
             if constrain_age:
-                tuniv = self.universe_age(redshift)
+                tuniv = self.cosmo.universe_age(redshift)
             else:
                 tuniv = np.full_like(redshift, 100.)
 
@@ -1445,7 +1447,7 @@ class DESISpectra(object):
                     metas.append(meta)
         else:
             phot_tbl = Table(fitsio.read(self.fphotodir, ext=self.fphotoext, columns=PHOTCOLS))
-            log.info(f'Read {len(phot_tbl):,d} objects from {self.photodir}')
+            log.info(f'Read {len(phot_tbl):,d} objects from {self.fphotodir}')
 
             metas = []
             for meta in self.meta:
@@ -1453,7 +1455,7 @@ class DESISpectra(object):
                 assert(np.all(meta[uniqueid_col] == phot_tbl[uniqueid_col][srt]))
                 if hasattr(self.phot, 'dropcols'):
                     meta.remove_columns(self.phot.dropcols)
-                for col in phot.colnames:
+                for col in phot_tbl.colnames:
                     meta[col] = phot_tbl[col][srt]
                 # placeholders (to be added in DESISpectra.read)
                 meta['EBV'] = np.zeros(shape=(1,), dtype='f4')
