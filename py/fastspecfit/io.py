@@ -1785,13 +1785,14 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
     add_field('Z', dtype='f8') # redshift
     add_field('SEED', dtype=np.int64)
 
-    add_field('INIT_SIGMA_UV', dtype='f4')
-    add_field('INIT_SIGMA_NARROW', dtype='f4')
-    add_field('INIT_SIGMA_BALMER', dtype='f4')
-    add_field('INIT_VSHIFT_UV', dtype='f4')
-    add_field('INIT_VSHIFT_NARROW', dtype='f4')
-    add_field('INIT_VSHIFT_BALMER', dtype='f4')
-    add_field('INIT_BALMER_BROAD', dtype=bool)
+    if not fastphot:
+        add_field('INIT_SIGMA_UV', dtype='f4')
+        add_field('INIT_SIGMA_NARROW', dtype='f4')
+        add_field('INIT_SIGMA_BALMER', dtype='f4')
+        add_field('INIT_VSHIFT_UV', dtype='f4')
+        add_field('INIT_VSHIFT_NARROW', dtype='f4')
+        add_field('INIT_VSHIFT_BALMER', dtype='f4')
+        add_field('INIT_BALMER_BROAD', dtype=bool)
 
     add_field('COEFF', shape=(ncoeff,), dtype='f4')
 

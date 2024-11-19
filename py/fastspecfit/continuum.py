@@ -1624,15 +1624,6 @@ def continuum_specfit(data, result, templates, igm, phot,
             msg.append(f'{cam}={100.*corr:.3f}%')
         log.info(' '.join(msg))
 
-    # add the initial line-masking parameters to the output table
-    result['INIT_SIGMA_UV'] = data['linesigma_broad']
-    result['INIT_SIGMA_NARROW'] = data['linesigma_narrow']
-    result['INIT_SIGMA_BALMER'] = data['linesigma_balmer_broad']
-    result['INIT_VSHIFT_UV'] = data['linevshift_broad']
-    result['INIT_VSHIFT_NARROW'] = data['linevshift_narrow']
-    result['INIT_VSHIFT_BALMER'] = data['linevshift_balmer_broad']
-    result['INIT_BALMER_BROAD'] = data['balmerbroad']
-
     result['SEED'] = seed
     result['Z'] = redshift
     result['COEFF'][CTools.agekeep] = coeff
@@ -1642,6 +1633,15 @@ def continuum_specfit(data, result, templates, igm, phot,
     result['DN4000_MODEL_IVAR'] = dn4000_model_ivar
 
     if not fastphot:
+        # add the initial line-masking parameters to the output table
+        result['INIT_SIGMA_UV'] = data['linesigma_broad']
+        result['INIT_SIGMA_NARROW'] = data['linesigma_narrow']
+        result['INIT_SIGMA_BALMER'] = data['linesigma_balmer_broad']
+        result['INIT_VSHIFT_UV'] = data['linevshift_broad']
+        result['INIT_VSHIFT_NARROW'] = data['linevshift_narrow']
+        result['INIT_VSHIFT_BALMER'] = data['linevshift_balmer_broad']
+        result['INIT_BALMER_BROAD'] = data['balmerbroad']
+
         result['RCHI2_CONT'] = rchi2_cont
         result['APERCORR'] = median_apercorr
         for iband, band in enumerate(phot.synth_bands):
